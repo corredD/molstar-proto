@@ -65,7 +65,8 @@
 .msp-viewport-controls-scene-options {
     width: 290px;
     background: $control-background;
-
+    overflow: auto;
+    height:100%;
     .msp-control-group-wrapper:first-child {
         padding-top: 0;
     }
