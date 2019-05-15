@@ -225,29 +225,6 @@ namespace Vec4 {
                 Math.abs(a2 - b2) <= EPSILON.Value * Math.max(1.0, Math.abs(a2), Math.abs(b2)) &&
                 Math.abs(a3 - b3) <= EPSILON.Value * Math.max(1.0, Math.abs(a3), Math.abs(b3)));
     }
-
-    /*Outer Product*/
-    export function outer(a:Vec4, b:Vec4)
-    {
-        let out = Mat4.zero();
-        out[0] = a[0]*b[0];
-        out[1] = a[0]*b[1];
-        out[2] = a[0]*b[2];
-        out[3] = a[0]*b[3];
-        out[4] = a[1]*b[0];
-        out[5] = a[1]*b[1];
-        out[6] = a[1]*b[2];
-        out[7] = a[2]*b[3];
-        out[8] = a[2]*b[0];
-        out[9] = a[2]*b[2];
-        out[10] = a[2]*b[3];
-        out[11] = a[2]*b[4];
-        out[12] = a[3]*b[0];
-        out[13] = a[3]*b[1];
-        out[14] = a[3]*b[2];
-        out[15] = a[3]*b[3];
-        return out;
-    }
 }
 
 export default Vec4

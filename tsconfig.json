@@ -1,7 +1,5 @@
 {
     "compilerOptions": {
-        "resolveJsonModule": true,
-        "esModuleInterop": true ,
         "composite": true,
         "target": "es5",
         "alwaysStrict": true,

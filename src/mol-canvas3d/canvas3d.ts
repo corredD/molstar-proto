@@ -31,7 +31,7 @@ import { SetUtils } from 'mol-util/set';
 import { Canvas3dInteractionHelper } from './helper/interaction-events';
 import { createTexture } from 'mol-gl/webgl/texture';
 import { ValueCell } from 'mol-util';
-import { getPostprocessingRenderable, PostprocessingParams, ParamsMapping } from './helper/postprocessing';
+import { getPostprocessingRenderable, PostprocessingParams } from './helper/postprocessing';
 import { JitterVectors, getComposeRenderable } from './helper/multi-sample';
 
 export const Canvas3DParams = {
@@ -309,7 +309,7 @@ namespace Canvas3D {
             // TODO: is this a good fix? Also, setClipping does not work if the user has manually set a clipping plane.
             if (!camera.transition.inTransition) setClipping();
             const cameraChanged = camera.updateMatrices();
-            const postprocessingEnabled = p.postprocessing.occlusionEnable || p.postprocessing.outlineEnable || p.postprocessing.ssaoEnable|| p.postprocessing.hashEnable;
+            const postprocessingEnabled = p.postprocessing.occlusionEnable || p.postprocessing.outlineEnable
 
             if (force || cameraChanged) {
                 switch (variant) {
@@ -511,55 +511,8 @@ namespace Canvas3D {
                 if (props.sampleLevel !== undefined) p.sampleLevel = props.sampleLevel
 
                 if (props.postprocessing) {
-                  for (let param in PostprocessingParams) {
-                   let key = ParamsMapping[param.toString()].key;
-                   console.log("postprocess param is "+param);
-                   console.log(key);
-                   console.log(props.postprocessing[param]); // "species"
-                   if (props.postprocessing[param] !== undefined)
-                   {
-                     console.log(p.postprocessing[param]);
-                     console.log(postprocessing.values[key]);
-                     p.postprocessing[param] = props.postprocessing[param];
-                     ValueCell.update(postprocessing.values[key],
-                                        props.postprocessing[param]);
-                   }
-                }
-                    /*
-                    if (props.postprocessing.ssaoEnable !== undefined) {
-                        p.postprocessing.ssaoEnable = props.postprocessing.ssaoEnable
-                        ValueCell.update(postprocessing.values.dSSAOEnable, props.postprocessing.ssaoEnable)
-                    }
-                    if (props.postprocessing.ssaoKernelSize !== undefined) {
-                        p.postprocessing.ssaoKernelSize = props.postprocessing.ssaoKernelSize
-                        ValueCell.update(postprocessing.values.dSSAOKernelSize, props.postprocessing.ssaoKernelSize)
-                    }
-                    if (props.postprocessing.ssaoScale !== undefined) {
-                        p.postprocessing.ssaoScale = props.postprocessing.ssaoScale
-                        ValueCell.update(postprocessing.values.uSSAOscale, props.postprocessing.ssaoScale)
-                    }
-                    if (props.postprocessing.ssaoCap !== undefined) {
-                        p.postprocessing.ssaoCap = props.postprocessing.ssaoCap
-                        ValueCell.update(postprocessing.values.uSSAOcap, props.postprocessing.ssaoCap)
-                    }
-                    if (props.postprocessing.ssaoMultiplier !== undefined) {
-                        p.postprocessing.ssaoMultiplier = props.postprocessing.ssaoMultiplier
-                        ValueCell.update(postprocessing.values.uSSAOMultiplier, props.postprocessing.ssaoMultiplier)
-                    }
-                    if (props.postprocessing.ssaoTolerance !== undefined) {
-                        p.postprocessing.ssaoTolerance = props.postprocessing.ssaoTolerance
-                        ValueCell.update(postprocessing.values.uSSAOTolerance, props.postprocessing.ssaoTolerance)
-                    }
-                    if (props.postprocessing.ssaoRange !== undefined) {
-                        p.postprocessing.ssaoRange = props.postprocessing.ssaoRange
-                        ValueCell.update(postprocessing.values.uSSAOrange, props.postprocessing.ssaoRange)
-                    }
-                    if (props.postprocessing.hashEnable !== undefined) {
-                        p.postprocessing.hashEnable = props.postprocessing.hashEnable
-                        ValueCell.update(postprocessing.values.dHashEnable, props.postprocessing.hashEnable)
-                    }
                     if (props.postprocessing.occlusionEnable !== undefined) {
-                          p.postprocessing.occlusionEnable = props.postprocessing.occlusionEnable
+                        p.postprocessing.occlusionEnable = props.postprocessing.occlusionEnable
                         ValueCell.update(postprocessing.values.dOcclusionEnable, props.postprocessing.occlusionEnable)
                     }
                     if (props.postprocessing.occlusionKernelSize !== undefined) {
@@ -587,7 +540,7 @@ namespace Canvas3D {
                         p.postprocessing.outlineThreshold = props.postprocessing.outlineThreshold
                         ValueCell.update(postprocessing.values.uOutlineThreshold, props.postprocessing.outlineThreshold)
                     }
-                    */
+
                     postprocessing.update()
                 }
 
