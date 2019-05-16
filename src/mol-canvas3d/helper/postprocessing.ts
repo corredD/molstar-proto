@@ -114,19 +114,18 @@ for (let param in ParamsMapping) {
 
 const PostprocessingSchema: RenderableSchema = tempSchem;
 export const PostprocessingParams:PD.Params = tempParam;
-
 export type PostprocessingProps = PD.Values<typeof PostprocessingParams>
 type PostprocessingRenderable = ComputeRenderable<Values<typeof PostprocessingSchema>>
 
 export function getPostprocessingRenderable(ctx: WebGLContext, colorTexture: Texture, depthTexture: Texture, props: Partial<PostprocessingProps>): PostprocessingRenderable {
     const p:PostprocessingProps = { ...PD.getDefaultValues(PostprocessingParams), props }
-    const values: Values<typeof PostprocessingSchema> = {
+    let values: Values<typeof PostprocessingSchema> = {
         ...QuadValues,
         tColor: ValueCell.create(colorTexture),
         tDepth: ValueCell.create(depthTexture),
         uTexSize: ValueCell.create(Vec2.create(colorTexture.width, colorTexture.height)),
     }
-    for (let param in ParamsMapping) {
+    for (const param in ParamsMapping) {
       let key = ParamsMapping[param].key;
       values[key] = ValueCell.create(p[param]);
     }
@@ -144,21 +143,20 @@ export function setPostprocessingProps( props: Partial<PostprocessingProps>,
                                         postprocessing: PostprocessingRenderable, 
                                         currentProps: PostprocessingProps, 
                                         webgl: WebGLContext) {
-  for (let param in PostprocessingParams) {
-    let key = ParamsMapping[param.toString()].key;
-    if (props.postprocessing[param] !== undefined)
+  for (const param in PostprocessingParams) {
+    const key = ParamsMapping[param.toString()].key;
+    if (props[param] !== undefined)
     {
-
-      currentProps.postprocessing[param] = props.postprocessing[param];
+      currentProps[param] = props[param];
       if (key=="outlineScale") 
       {
         ValueCell.update(postprocessing.values[key],
-          props.postprocessing[param] * webgl.pixelRatio);
+          props[param] * webgl.pixelRatio);
       }
       else 
       {
         ValueCell.update(postprocessing.values[key],
-                         props.postprocessing[param]);
+                         props[param]);
       }
     }
   }

@@ -10,11 +10,6 @@ import recipe from './HIV-1_0.1.6-8_mixed_radii_pdb.json';//righthand-spheres
 import recipe2 from './BloodHIV1.0_mixed_fixed_nc1.json';//leftHand-nosphere
 import rna from './rna_allpoints.json';
 
-//import { Canvas3D } from 'mol-canvas3d/canvas3d';
-//import { MeshBuilder } from 'mol-geo/geometry/mesh/mesh-builder';
-//import { Sphere } from 'mol-geo/primitive/sphere';
-//import { SpheresBuilder } from 'mol-geo/geometry/spheres/spheres-builder';
-//import { Spheres } from 'mol-geo/geometry/spheres/spheres';
 import { GaussianSurfaceRepresentationProvider } from 'mol-repr/structure/representation/gaussian-surface';
 import CIF, { CifFrame } from 'mol-io/reader/cif'
 import { parsePDB } from 'mol-io/reader/pdb/parser'
@@ -24,67 +19,32 @@ import { Model, Structure, StructureSymmetry, QueryContext, Queries, StructureSe
 import { ColorTheme } from 'mol-theme/color';
 import { SizeTheme } from 'mol-theme/size';
 
-import './index.html'
-import { Canvas3D } from 'mol-canvas3d/canvas3d';
-import { MeshBuilder } from 'mol-geo/geometry/mesh/mesh-builder';
-import { Sphere } from 'mol-geo/primitive/sphere';
-import { Mat4, Vec3 } from 'mol-math/linear-algebra';
+import { Quat, Mat4, Vec3, Vec4 } from 'mol-math/linear-algebra';
 import { Shape } from 'mol-model/shape';
 import { ShapeRepresentation } from 'mol-repr/shape/representation';
 import { ColorNames } from 'mol-util/color/tables';
-//import { Mesh } from 'mol-geo/geometry/mesh/mesh';
-//import { labelFirst } from 'mol-theme/label';
-//import { RuntimeContext } from 'mol-task';
-//import { Representation } from 'mol-repr/representation';
-//import { MarkerAction } from 'mol-geo/geometry/marker-data';
-//import { EveryLoci } from 'mol-model/loci';
 import { SymmetryOperator } from 'mol-math/geometry';
 import { SpacefillRepresentationProvider } from 'mol-repr/structure/representation/spacefill';
-//import { GLRenderingContext } from 'mol-gl/webgl/compat';
 import { WebGLContext } from 'mol-gl/webgl/context';
 import { PdbFile } from 'mol-io/reader/pdb/schema';
+import { Color } from 'mol-util/color';
+import { ColorNames } from 'mol-util/color/tables';
 require('mol-plugin/skin/dark.scss');
 
-
 const parent = document.getElementById('app')!
-parent.style.width = '100%'
-parent.style.height = '100%'
-
-const canvas = document.createElement('canvas')
-canvas.style.width = '100%'
-canvas.style.height = '100%'
-parent.appendChild(canvas)
-
-const info = document.createElement('div')
-info.style.position = 'absolute'
-info.style.fontFamily = 'sans-serif'
-info.style.fontSize = '24pt'
-info.style.bottom = '20px'
-info.style.right = '20px'
-info.style.color = 'white'
-parent.appendChild(info)
-
-let prevReprLoci = Representation.Loci.Empty
-const canvas3d = Canvas3D.create(canvas, parent)
-canvas3d.animate()
-canvas3d.input.move.subscribe(({x, y}) => {
-    const pickingId = canvas3d.identify(x, y)
-    let label = ''
-    if (pickingId) {
-        const reprLoci = canvas3d.getLoci(pickingId)
-        label = labelFirst(reprLoci.loci)
-        if (!Representation.Loci.areEqual(prevReprLoci, reprLoci)) {
-            canvas3d.mark(prevReprLoci, MarkerAction.RemoveHighlight)
-            canvas3d.mark(reprLoci, MarkerAction.Highlight)
-            prevReprLoci = reprLoci
+let aplugin: PluginContext = createPlugin(parent, {
+    ...DefaultPluginSpec,
+    layout: {
+        initial: {
+            isExpanded: false,
+            showControls: false
         }
-    } else {
-        canvas3d.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight)
-        prevReprLoci = Representation.Loci.Empty
     }
-    info.innerText = label
-})
-*/
+}); 
+const canvas3d = aplugin.canvas3d;// Canvas3D.create(canvas, parent)
+
+declare var paletteGenerator: any;
+
 async function parseCif(data: string|Uint8Array) {
     const comp = CIF.parse(data);
     const parsed = await comp.run();
@@ -193,36 +153,6 @@ function haltonGeneratorVec3(numpts:number, basex:number,
     return points;
 };
 
-/**
- * Create a mesh of spheres at given centers
- * - asynchronous (using async/await)
- * - progress tracking (via `ctx.update`)
- * - re-use storage from an existing mesh if given
- */
-async function getSphereMesh(ctx: RuntimeContext, centers: number[], mesh?: Mesh) {
-    const builderState = MeshBuilder.createState(centers.length * 128, centers.length * 128 / 2, mesh)
-    const t = Mat4.identity()
-    const v = Vec3.zero()
-    const sphere = Sphere(3)
-    builderState.currentGroup = 0
-    for (let i = 0, il = centers.length / 3; i < il; ++i) {
-        // for production, calls to update should be guarded by `if (ctx.shouldUpdate)`
-        await ctx.update({ current: i, max: il, message: `adding sphere ${i}` })
-        builderState.currentGroup = i
-        Mat4.setTranslation(t, Vec3.fromArray(v, centers, i * 3))
-        MeshBuilder.addPrimitive(builderState, t, sphere)
-    }
-    return MeshBuilder.getMesh(builderState)
-}
-
-const myData = {
-    centers: [0, 0, 0, 0, 3, 0, 1, 0 , 4],
-    colors: [ColorNames.tomato, ColorNames.springgreen, ColorNames.springgreen],
-    labels: ['Sphere 0, Instance A', 'Sphere 1, Instance A', 'Sphere 0, Instance B', 'Sphere 1, Instance B'],
-    transforms: [Mat4.identity(), Mat4.fromTranslation(Mat4.zero(), Vec3.create(3, 0, 0))]
-}
-type MyData = typeof myData
-*/
 //use recipe to prepare the data object
 //legacy format for testing
 (window as any).recipe = recipe;
@@ -288,8 +218,48 @@ function getRandomMat(count:number){
     return mats;
 }
 
+function GetNColors(ncolor:number){
+    // Generate colors (as Chroma.js objects)
+    let colors_palette = paletteGenerator.generate(
+        ncolor, // Colors
+        function(color){ // This function filters valid colors
+        var hcl = color.hcl();
+        return hcl[0]>=0 && hcl[0]<=360
+            && hcl[1]>=30 && hcl[1]<=80
+            && hcl[2]>=15 && hcl[2]<=85;//color blind friendly
+        },
+        false, // Using Force Vector instead of k-Means
+        50, // Steps (quality)
+        false, // Ultra precision
+        'Default' // Color distance type (colorblindness)
+    );
+    // Sort colors by differenciation first
+    return paletteGenerator.diffSort(colors_palette, 'Default');
+}
+
+function GenerateOneColorRangePalette(rgb:any,ncolors:number){
+    // Generate colors (as Chroma.js objects)
+    var hcl = rgb._rgb;//chroma.rgb(rgb[0],rgb[1],rgb[2]).hcl();
+    var start = hcl[0]-35;
+    var end = hcl[0]+35;
+    var colors = paletteGenerator.generate(
+      ncolors, // Colors
+      function(color){ // This function filters valid colors
+        var hcl = color.hcl();
+        return hcl[0]>=start && hcl[0]<=end
+          && hcl[1]>=0 && hcl[1]<=100//38.82
+          && hcl[2]>=30 && hcl[2]<=100;//38.04
+      },
+      false, // Using Force Vector instead of k-Means
+      50, // Steps (quality)
+      false, // Ultra precision
+      'Default' // Color distance type (colorblindness)
+    );
+    // Sort colors by differenciation first
+    return paletteGenerator.diffSort(colors, 'Default');
+  }
+  
 let transforms:Mat4[] = recipe2.compartments.HIV1_envelope_Pack_145_0_2_0.surface.ingredients.HIV1_MA_Hyb_0_1_0.results.map(getMat);
-//use random transforms
 //let transforms = getRandomMat(15);
 
 const myData1={
@@ -313,24 +283,8 @@ let datas = [myData1, myData2];
 let pdbs:string[] = [ingr.source.pdb, ingr2.source.pdb];
 (window as any).ingr_data = datas;
 type MyData = typeof myData1;
-
-
-/**
- * Get shape from `MyData` object
- */
-async function getShape(ctx: RuntimeContext, data: MyData, props: {}, shape?: Shape<Mesh>) {
-    await ctx.update('async creation of shape from  myData')
-    const { centers, colors, labels, transforms } = data
-    const mesh = await getSphereMesh(ctx, centers, shape && shape.geometry)
-    const groupCount = centers.length / 3
-    return Shape.create(
-        'test', data, mesh,
-        (groupId: number) => colors[groupId], // color: per group, same for instances
-        () => 1, // size: constant
-        (groupId: number, instanceId: number) => labels[instanceId * groupCount + groupId], // label: per group and instance
-        transforms
-    )
-}
+type Compartment = typeof recipe.compartments.HIV1_envelope_Pack_145_0_2_0.surface;
+type Ingredient = typeof recipe.compartments.HIV1_envelope_Pack_145_0_2_0.surface.ingredients.HIV1_ENV_4nco_0_1_1;
 
 function getSpacefillRepr(webgl?: WebGLContext) {
     return SpacefillRepresentationProvider.factory({ ...reprCtx, webgl }, SpacefillRepresentationProvider.getParams)
@@ -345,9 +299,6 @@ function multiplyStructure(assembler: Structure.StructureBuilder, structure: Str
     }
     return assembler.getStructure();
 }
-
-// Init ShapeRepresentation container
-const repr = ShapeRepresentation(getShape, Mesh.Utils)
 
 async function getOnePDB(pdbname:string, bu:number){
     let models;
@@ -381,265 +332,107 @@ function Assamble(instances_transform:Mat4[], polymers:Structure){
     multiplyStructure(assembler, polymers, operators)
     return assembler.getStructure();
 }
+const showAtoms = false;
+const showSurface = true;
+const surface_resolution:number = 10.0;//can this be change dynamically?
 
+const theme:string ='uniform';//'illustrative'
+   
+async function displayAtomOne(fullStructure:structure, colorTheme:ColorTheme){
+    const spacefillRepr = getSpacefillRepr(canvas3d.webgl)
+    spacefillRepr.setTheme({
+        color: colorTheme,//colorTheme,
+        size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
+    })
+    
+    await spacefillRepr.createOrUpdate(
+        { ...SpacefillRepresentationProvider.defaultValues,
+            alpha: 1.0 }, fullStructure).run()
+    canvas3d.add(spacefillRepr);
+}
+
+async function displaySurfaceOne(fullStructure:structure, colorTheme:ColorTheme){
+    const gaussianSurfaceRepr = getGaussianSurfaceRepr()
+    gaussianSurfaceRepr.setTheme({
+        color: colorTheme,
+        size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
+    })
+    await gaussianSurfaceRepr.createOrUpdate(
+        { ...GaussianSurfaceRepresentationProvider.defaultValues,
+            quality: 'custom', alpha: 1.0, flatShaded: false,
+            doubleSided: false, resolution: surface_resolution, radiusOffset: 2 }, fullStructure).run()
+    canvas3d.add(gaussianSurfaceRepr);
+}
+
+async function OneCompartmentProcess(compartment:Compartment,maincolor:any){
+    const ningredients = Object.keys(compartment.ingredients).length;
+    const ingr_colors = GenerateOneColorRangePalette(maincolor,ningredients);
+    let icounter = 0;
+    console.log(ingr_colors);
+    for (const ingr_name in compartment.ingredients){
+        const ingr:Ingredient = compartment.ingredients[ingr_name];
+        if (ingr_name =="HIV1_CAhex_0_1_0")continue;
+        if (ingr_name =="HIV1_CAhexCyclophilA_0_1_0")continue;
+        if (ingr == undefined) {
+            console.log(ingr_name)
+            continue;
+        }
+        const pdbname:string = ingr.source.pdb;
+        if (!pdbname||pdbname == "None") continue;
+        const instances:Mat4[] =  ingr.results.map(getMat);
+        const bu = ("biomt" in ingr.source)? 1:-1;// && ingr.source.biomt ?
+        const polymers:Structure = await getOnePDB(pdbname,bu);//should also consider chains and modelnb
+        const fullStructure:Structure  = Assamble(instances,polymers);
+        const colorTheme = reprCtx.colorThemeRegistry.create('uniform', 
+            { structure: fullStructure, value: ColorNames.blue}); 
+        const acolor:Color = Color(ingr_colors[icounter].hex().replace("#","0x"));
+        colorTheme.color = ()=>acolor;// ColorNames.blue;
+        if (showAtoms){
+            await displayAtomOne(fullStructure,colorTheme);
+        }
+        if (showSurface) {
+            await displaySurfaceOne(fullStructure,colorTheme);
+        }
+        icounter += 1;
+    }     
+}
 
 export async function init() {
-    const showAtoms = true;
-    const showSurface = false;
-
-    /*const cif = await downloadFromPdb('1aon')
-    const models = await getModels(cif)
-    const baseStructure = await getStructure(models[0])
-    const structure = await StructureSymmetry.buildAssembly(baseStructure, '1').run()
-    const query = Queries.internal.atomicSequence();
-    const result = query(new QueryContext(structure));
-    const polymers = StructureSelection.unionStructure(result);
-
-    // const v = Vec3()
-    // const it = new Structure.ElementLocationIterator(polymers)
-    // while (it.hasNext) {
-    //     const l = it.move()
-    //     l.unit.conformation.position(l.element, v)
-    //     console.log(Vec3.toString(v))
-    // }
-
-    const assembler = Structure.Builder(void 0, void 0);
-    const operators: SymmetryOperator[] = []
-
-    //const transforms:Mat4[] = myData1.transforms
-    for (let i = 0, il = transforms.length; i < il; ++i) {
-        operators.push(SymmetryOperator.create(`${i}`, transforms[i], { id: '', operList: [] }))
-    }
-    // operators[0] = SymmetryOperator.create('identity', Mat4.identity(), { id: '', operList: [] })
-    // operators[1] = SymmetryOperator.create('identity', Mat4.setTranslation(Mat4.identity(), Vec3.create(50, 10, 10)), { id: '', operList: [] })
-
-    multiplyStructure(assembler, polymers, operators)
-
-    const fullStructure = assembler.getStructure();
-    */
-   //loop over the recipe
-   //let transforms:Mat4[] = recipe2.compartments.HIV1_envelope_Pack_145_0_2_0.surface.ingredients.HIV1_MA_Hyb_0_1_0.results.map(getMat);
-   const theme:string ='chain-id';//'illustrative'
-   const surface_resolution:number = 4.0;
-   type ingData = typeof recipe2.compartments.HIV1_envelope_Pack_145_0_2_0.surface.ingredients.HIV1_MA_Hyb_0_1_0;
-
-   for (const ingr_name in recipe2.cytoplasme.ingredients){
-            continue;
-            const ingr:ingData = recipe2.cytoplasme.ingredients[ingr_name];
-            if (ingr == undefined) {
-                console.log("undefined "+ingr_name);
-                continue;
-            }
-            const pdbname:string = ingr.source.pdb;
-            if (!pdbname||pdbname == "None") continue;
-            const instances:Mat4[] =  ingr.results.map(getMat);
-            const bu = ("biomt" in ingr.source)? 1:-1;
-            const polymers:Structure = await getOnePDB(pdbname,bu);//should also consider chains and modelnb
-            const fullStructure:Structure  = Assamble(instances,polymers);
-            if (showAtoms){
-                    const spacefillRepr = getSpacefillRepr(canvas3d.webgl)
-                    spacefillRepr.setTheme({
-                        color: reprCtx.colorThemeRegistry.create(theme, { structure: fullStructure }),
-                        size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
-                    })
-                    console.time('spacefill')
-                    await spacefillRepr.createOrUpdate(
-                        { ...SpacefillRepresentationProvider.defaultValues,
-                            alpha: 1.0 }, fullStructure).run()
-                    console.timeEnd('spacefill')
-                    canvas3d.add(spacefillRepr);
-                    console.log(spacefillRepr)
-             }
-             if (showSurface) {
-                const gaussianSurfaceRepr = getGaussianSurfaceRepr()
-                gaussianSurfaceRepr.setTheme({
-                     color: reprCtx.colorThemeRegistry.create(theme, { structure: fullStructure }),
-                     size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
-                })
-                console.time('gaussian surface')
-                await gaussianSurfaceRepr.createOrUpdate(
-                       { ...GaussianSurfaceRepresentationProvider.defaultValues,
-                         quality: 'custom', alpha: 1.0, flatShaded: false,
-                         doubleSided: false, resolution: surface_resolution, radiusOffset: 2 }, fullStructure).run()
-                 console.timeEnd('gaussian surface');
-                 canvas3d.add(gaussianSurfaceRepr);
-             }
-   }    
+   const ncompartment = Object.keys(recipe2.compartments).length*2 + 1;
+   const colors_comp = GetNColors(ncompartment);
+   let counter = 0;
+   console.log(ncompartment);
+   console.log(colors_comp);
+   await OneCompartmentProcess(recipe2.cytoplasme,colors_comp[0]);
+   counter+=1; 
    for (const comp in recipe2.compartments){
         console.log(comp);
         if ("surface" in recipe2.compartments[comp]){
-
-            for (const ingr_name in recipe2.compartments[comp].surface.ingredients){
-                const ingr = recipe2.compartments[comp].surface.ingredients[ingr_name];
-                if (ingr == undefined) {
-                    console.log(ingr_name)
-                    continue;
-                }
-                const pdbname:string = ingr.source.pdb;
-                if (!pdbname||pdbname == "None") continue;
-                const instances:Mat4[] =  ingr.results.map(getMat);
-                const bu = ("biomt" in ingr.source)? 1:-1;
-                const polymers:Structure = await getOnePDB(pdbname,bu);//should also consider chains and modelnb
-                const fullStructure:Structure  = Assamble(instances,polymers);
-                if (showAtoms){
-                    const spacefillRepr = getSpacefillRepr(canvas3d.webgl)
-                    spacefillRepr.setTheme({
-                        color: reprCtx.colorThemeRegistry.create(theme, { structure: fullStructure }),
-                        size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
-                    })
-                    console.time('spacefill')
-                    await spacefillRepr.createOrUpdate(
-                        { ...SpacefillRepresentationProvider.defaultValues,
-                            alpha: 1.0 }, fullStructure).run()
-                    console.timeEnd('spacefill')
-                    canvas3d.add(spacefillRepr);
-                    console.log(spacefillRepr)
-            }
-                if (showSurface) {
-                    const gaussianSurfaceRepr = getGaussianSurfaceRepr()
-                    gaussianSurfaceRepr.setTheme({
-                        color: reprCtx.colorThemeRegistry.create(theme, { structure: fullStructure  }),
-                        size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
-                    })
-                    console.time('gaussian surface')
-                    await gaussianSurfaceRepr.createOrUpdate(
-                        { ...GaussianSurfaceRepresentationProvider.defaultValues,
-                            quality: 'custom', alpha: 1.0, flatShaded: false,
-                            doubleSided: false, resolution: surface_resolution, radiusOffset: 2 }, fullStructure).run()
-                    console.timeEnd('gaussian surface');
-                    canvas3d.add(gaussianSurfaceRepr);
-                }
-            }    
+            await OneCompartmentProcess(recipe2.compartments[comp].surface,colors_comp[counter]);
+            counter+=1; 
         }
         if ("interior" in recipe2.compartments[comp]){
-            continue
-            for (const ingr_name in recipe2.compartments[comp].interior.ingredients){
-                if (ingr_name =="HIV1_CAhex_0_1_0")continue;
-                if (ingr_name =="HIV1_CAhexCyclophilA_0_1_0")continue;
-                const ingr = recipe2.compartments[comp].interior.ingredients[ingr_name];
-                if (ingr == undefined) {
-                    console.log(ingr_name)
-                    continue;
-                }
-                const pdbname:string = ingr.source.pdb;
-                if (!pdbname||pdbname == "None") continue;
-                const instances:Mat4[] =  ingr.results.map(getMat);
-                const bu = ("biomt" in ingr.source)? 1:-1;
-                const polymers:Structure = await getOnePDB(pdbname,bu);//should also consider chains and modelnb
-                const fullStructure:Structure  = Assamble(instances,polymers);
-                if (showAtoms){
-                    const spacefillRepr = getSpacefillRepr(canvas3d.webgl)
-                    spacefillRepr.setTheme({
-                        color: reprCtx.colorThemeRegistry.create(theme, { structure: fullStructure }),
-                        size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
-                    })
-                    console.time('spacefill')
-                    await spacefillRepr.createOrUpdate(
-                        { ...SpacefillRepresentationProvider.defaultValues,
-                            alpha: 1.0 }, fullStructure).run()
-                    console.timeEnd('spacefill')
-                    canvas3d.add(spacefillRepr);
-                    console.log(spacefillRepr)
-                 }
-                if (showSurface) {
-                    const gaussianSurfaceRepr = getGaussianSurfaceRepr()
-                    gaussianSurfaceRepr.setTheme({
-                        color: reprCtx.colorThemeRegistry.create(theme, { structure: fullStructure }),
-                        size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
-                    })
-                    console.time('gaussian surface')
-                    await gaussianSurfaceRepr.createOrUpdate(
-                        { ...GaussianSurfaceRepresentationProvider.defaultValues,
-                            quality: 'custom', alpha: 1.0, flatShaded: false,
-                            doubleSided: false, resolution: surface_resolution, radiusOffset: 2 }, fullStructure).run()
-                    console.timeEnd('gaussian surface');
-                    canvas3d.add(gaussianSurfaceRepr);
-                }
-            }    
+            await OneCompartmentProcess(recipe2.compartments[comp].interior,colors_comp[counter]);
+            counter+=1; 
         }
    }
    //rna points -> one turn singe strand ?
    //rotation should be pt0->pt1
    
-   const pdbname:string = "DNA_oneTurn.pdb";
-   const instances:Mat4[] =  getMatFromPoints(rna.points);
-   const bu = -1;
-   const polymers:Structure = await getOnePDB(pdbname,bu);//should also consider chains and modelnb
-   const fullStructure:Structure  = Assamble(instances,polymers);
-   if (showAtoms){
-           const spacefillRepr = getSpacefillRepr(canvas3d.webgl)
-           spacefillRepr.setTheme({
-               color: reprCtx.colorThemeRegistry.create(theme, { structure: fullStructure }),
-               size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
-           })
-           console.time('spacefill')
-           await spacefillRepr.createOrUpdate(
-               { ...SpacefillRepresentationProvider.defaultValues,
-                   alpha: 1.0 }, fullStructure).run()
-           console.timeEnd('spacefill')
-           canvas3d.add(spacefillRepr);
-           console.log(spacefillRepr)
+    const pdbname:string = "DNA_oneTurn.pdb";
+    const instances:Mat4[] =  getMatFromPoints(rna.points);
+    const bu = -1;
+    const polymers:Structure = await getOnePDB(pdbname,bu);//should also consider chains and modelnb
+    const fullStructure:Structure  = Assamble(instances,polymers);
+    const colorTheme = reprCtx.colorThemeRegistry.create('uniform', 
+    { structure: fullStructure, value: ColorNames.blue}); 
+    colorTheme.color = ()=>ColorNames.purple;// ColorNames.blue;
+    if (showAtoms){
+        await displayAtomOne(fullStructure,colorTheme);
     }
     if (showSurface) {
-       const gaussianSurfaceRepr = getGaussianSurfaceRepr()
-       gaussianSurfaceRepr.setTheme({
-            color: reprCtx.colorThemeRegistry.create(theme, { structure: fullStructure }),
-            size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
-       })
-       console.time('gaussian surface')
-       await gaussianSurfaceRepr.createOrUpdate(
-              { ...GaussianSurfaceRepresentationProvider.defaultValues,
-                quality: 'custom', alpha: 1.0, flatShaded: false,
-                doubleSided: false, resolution: surface_resolution, radiusOffset: 2 }, fullStructure).run()
-        console.timeEnd('gaussian surface');
-        canvas3d.add(gaussianSurfaceRepr);
+        await displaySurfaceOne(fullStructure,colorTheme);
     }
-
-   /*for (let i=0;i< datas.length;i++) 
-   {
-        const polymers:Structure = await getOnePDB(pdbs[i],-1);//should also consider chains and modelnb
-        const fullStructure:Structure  = Assamble(datas[i].transforms,polymers);
-        const spacefillRepr = getSpacefillRepr(canvas3d.webgl)
-        spacefillRepr.setTheme({
-            color: reprCtx.colorThemeRegistry.create('illustrative', { structure: fullStructure }),
-            size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
-        })
-        console.time('spacefill')
-        await spacefillRepr.createOrUpdate(
-              { ...SpacefillRepresentationProvider.defaultValues,
-                alpha: 1.0 }, fullStructure).run()
-        console.timeEnd('spacefill')
-        canvas3d.add(spacefillRepr);
-        console.log(spacefillRepr)
-   }*/
-    // const gaussianSurfaceRepr = getGaussianSurfaceRepr()
-    // gaussianSurfaceRepr.setTheme({
-    //     color: reprCtx.colorThemeRegistry.create('illustrate', { structure: fullStructure }),
-    //     size: reprCtx.sizeThemeRegistry.create('physical', { structure: fullStructure })
-    // })
-    // console.time('gaussian surface')
-    // await gaussianSurfaceRepr.createOrUpdate(
-    //       { ...GaussianSurfaceRepresentationProvider.defaultValues,
-    //         quality: 'custom', alpha: 1.0, flatShaded: false,
-    //          doubleSided: false, resolution: 8.0, radiusOffset: 2 }, fullStructure).run()
-    // console.timeEnd('gaussian surface');
-    // canvas3d.add(gaussianSurfaceRepr);
-    // (window as any).gaussianSurfaceRepr=gaussianSurfaceRepr;
-
-    // // Create shape from myData and add to canvas3d
-    // for (let i=0;i<reprM.length;i++){
-    //   await reprM[i].createOrUpdate({}, datas[i]).run((p: Progress) => console.log(Progress.format(p)))
-    //   canvas3d.add(reprM[i])
-    // }
-    // await reprS.createOrUpdate({}, myData1).run((p: Progress) => console.log(Progress.format(p)))
-    // canvas3d.add(reprS)
-    // canvas3d.resetCamera()
-
-    // Change color after 1s
-    setTimeout(async () => {
-        myData.colors[0] = ColorNames.darkmagenta
-        // Calling `createOrUpdate` with `data` will trigger color and transform update
-        await repr.createOrUpdate({}, myData).run()
-    }, 1000)
+    canvas3d.resetCamera();
 }
 init()

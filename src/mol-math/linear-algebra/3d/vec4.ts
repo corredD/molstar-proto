@@ -122,7 +122,7 @@ namespace Vec4 {
         out[0] = a[0] * b;
         out[1] = a[1] * b;
         out[2] = a[2] * b;
-        out[4] = a[4] * b;
+        out[3] = a[3] * b;
         return out;
     }
 

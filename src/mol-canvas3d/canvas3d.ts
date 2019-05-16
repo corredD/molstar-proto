@@ -428,7 +428,7 @@ namespace Canvas3D {
             } else {
                 multiSample = false
             }
-            const postprocessingEnabled = p.postprocessing.occlusionEnable || p.postprocessing.outlineEnable
+            const postprocessingEnabled = p.postprocessing.occlusionEnable || p.postprocessing.outlineEnable || p.postprocessing.ssaoEnable || p.postprocessing.hashEnable
 
             if (force || cameraChanged || multiSample) {
                 switch (variant) {
