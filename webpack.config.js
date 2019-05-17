@@ -98,7 +98,6 @@ function createNodeApp(name) { return createNodeEntryPoint('index', `apps/${name
 module.exports = [
     createApp('viewer'),
     createApp('basic-wrapper'),
-    createApp('meso-app'),
     createEntry('examples/proteopedia-wrapper/index', 'examples/proteopedia-wrapper', 'index'),
     createNodeApp('state-docs'),
     createNodeEntryPoint('preprocess', 'servers/model', 'model-server'),
@@ -113,5 +112,7 @@ module.exports = [
     createBrowserTest('render-spheres'),
     createBrowserTest('render-structure'),
     createBrowserTest('render-text'),
-    createBrowserTest('render-meso'),
+
+    createEntryPoint('index', 'apps/meso/meso-app', 'meso/meso-app'),
+    createEntryPoint('render-meso', 'apps/meso/render-meso', 'meso/render-meso')
 ]
