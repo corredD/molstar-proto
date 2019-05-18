@@ -101,4 +101,7 @@ module.exports = [
     createBrowserTest('render-spheres'),
     createBrowserTest('render-structure'),
     createBrowserTest('render-text'),
+
+    createEntryPoint('index', 'apps/meso/meso-app', 'meso/meso-app'),
+    createEntryPoint('render-meso', 'apps/meso/render-meso', 'meso/render-meso')
 ]
