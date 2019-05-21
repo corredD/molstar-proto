@@ -28,6 +28,9 @@ import { ColorNames } from 'mol-util/color/tables';
 import { parseMolScript } from 'mol-script/language/parser';
 import { compile } from 'mol-script/runtime/query/compiler';
 import { transpileMolScript } from 'mol-script/script/mol-script/symbols';
+import { readFromFile } from 'mol-util/data-source';
+import { readUrl } from 'mol-util/read';
+
 require('mol-plugin/skin/dark.scss');
 
 const parent = document.getElementById('app')!
@@ -694,6 +697,14 @@ async function OneCompartmentProcess(compartment:Compartment,maincolor:any){
     }     
 }
 
+
+async function readFile(filename: string) {
+    let input = await readFileAsync(filename)
+    const data = new Uint8Array(input.byteLength);
+    for (let i = 0; i < input.byteLength; i++) data[i] = input[i];
+    return data;
+}
+
 export async function init() {
     const ncompartment = Object.keys(recipe2.compartments).length*2 + 1;
     const colors_comp = GetNColors(ncompartment);
@@ -713,6 +724,7 @@ export async function init() {
                 counter+=1; 
             }
     }
+    
     const pdbname:string = "RNA_U_Base.pdb";//"dna_single_base.pdb";//"DNA_oneTurn.pdb";
     const instances:Mat4[] =  getMatFromResamplePoints(rna.points);
     const bu = -1;
@@ -727,6 +739,24 @@ export async function init() {
     }
     if (showSurface) {
         await displaySurfaceOne(fullStructure,colorTheme);
+    }
+
+    //Lipids
+    const filename:string = "hiv_lipids.bcif";//"dna_single_base.pdb";//"DNA_oneTurn.pdb";
+    const data = await readUrl(filename,true);
+    console.log("file read");
+    const parsed = await parseCif(data);
+    console.log("file parsed");
+    const models = await getModelsCif(parsed.blocks[0]);
+    const baseStructure = await getStructure(models[0]);
+    console.log("representation");
+    const baseTheme = reprCtx.colorThemeRegistry.create('illustrative', 
+    { structure: baseStructure, value: ColorNames.blue}); 
+    if (showAtoms){
+        await displayAtomOne(baseStructure,baseTheme);
+    }
+    if (showSurface) {
+        await displaySurfaceOne(baseStructure,baseTheme);
     }
     canvas3d.resetCamera();
 }
