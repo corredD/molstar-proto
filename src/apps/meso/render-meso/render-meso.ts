@@ -8,6 +8,7 @@ import './index.html'
 import { PluginContext } from 'mol-plugin/context';
 import recipe from './HIV-1_0.1.6-8_mixed_radii_pdb.json';//righthand-spheres
 import recipe2 from './BloodHIV1.0_mixed_fixed_nc1.json';//leftHand-nosphere
+import mycoplasma from './Mycoplasma1.5_mixed_pdb_fixed.json';
 import rna from './rna_allpoints.json';
 import { GaussianSurfaceRepresentationProvider } from 'mol-repr/structure/representation/gaussian-surface';
 import CIF, { CifFrame } from 'mol-io/reader/cif'
@@ -158,13 +159,15 @@ function haltonGeneratorVec3(numpts:number, basex:number,
 
 //use recipe to prepare the data object
 //legacy format for testing
+(window as any).canvas3d = canvas3d;
 (window as any).recipe = recipe;
 (window as any).recipe2 = recipe2;
+(window as any).mycoplasma = mycoplasma;
 //pick the first ingredient sphereTree and results
-let ingr = recipe.compartments.HIV1_envelope_Pack_145_0_2_0.surface.ingredients.HIV1_MA_Hyb_0_1_0;
-let nSpheres = ingr.positions[0].length;
-let nInstances = ingr.results.length;
-let centers = [].concat(...ingr.positions[0]);
+//let ingr = recipe.compartments.HIV1_envelope_Pack_145_0_2_0.surface.ingredients.HIV1_MA_Hyb_0_1_0;
+//let nSpheres = ingr.positions[0].length;
+//let nInstances = ingr.results.length;
+//let centers = [].concat(...ingr.positions[0]);
 
 
 //setTranslation
@@ -381,35 +384,7 @@ function getMatFromResamplePoints(points:number[]){
         let d:number = Vec3.distance(pti, pti1);
         if (d >= segmentLength)
         {
-            let direction:Vec3 = Vec3.normalize(Vec3.zero(),Vec3.sub(Vec3.zero(),pti1,pti));
-             /*
-            let binormal:Vec3 = Vec3.normalize(Vec3.zero(),Vec3.cross(Vec3.zero(),direction, new_normal[i]));
-            let normal:Vec3  = Vec3.normalize(Vec3.zero(),Vec3.cross(Vec3.zero(),direction, binormal));
-            const q:Quat = Quat.setAxisAngle(Quat.zero(),direction, 0.0 );//Math.random()*3.60
-            normal = Vec3.transformQuat(Vec3.zero(), normal, q);	
-            binormal = Vec3.transformQuat(Vec3.zero(),binormal, q);
-            
-            // Get rotation to align with the normal
-            let from:Vec3 = Vec3.create(1,0,0);	// Assuming that the nucleotide is pointing in the up direction
-            let to:Vec3 = Vec3.copy(Vec3.zero(),normal);	
-            let axis:Vec3 = Vec3.normalize(Vec3.zero(),Vec3.cross(Vec3.zero(),from, to));
-            let cos_theta =  Vec3.dot(Vec3.normalize(Vec3.zero(),from), Vec3.normalize(Vec3.zero(),to));
-            let angle = Math.acos(cos_theta);
-            let quat1:Quat = Quat.setAxisAngle(Quat.zero(), axis, angle );//QuaternionFromAxisAngle(axis, angle);
-            quat1 = Quat.rotationTo(Quat.zero(), Vec3.create(0,0,1),direction);//
-            // Get rotation to align with the binormal
-            let from2:Vec3 = Vec3.transformQuat(Vec3.zero(),Vec3.create(1,0,0), quat1);	
-            let to2:Vec3 = Vec3.copy(Vec3.zero(),binormal);	
-            let axis2:Vec3 = Vec3.normalize(Vec3.zero(),Vec3.cross(Vec3.zero(),from2, to2));
-            let cos_theta2 = Vec3.dot(Vec3.normalize(Vec3.zero(),from2), Vec3.normalize(Vec3.zero(),to2));
-            let angle2 = Math.acos(cos_theta2);
-            let quat2:Quat = Quat.setAxisAngle(Quat.zero(), axis2, angle2);
-            //quat2 = Quat.rotationTo(Quat.zero(), from2,binormal);//
-            
-            let v_1 = Vec3.create(0.0,1.0,2.0);
-            let v_3 = Vec3.normalize(Vec3.zero(),Vec3.cross(Vec3.zero(),v_1,direction));
-            v_1 = Vec3.cross(Vec3.zero(),direction,v_3);
-            */
+            //use twist or random ?
             const quat:Quat = Quat.rotationTo(Quat.zero(), Vec3.create(0,0,1),frames[i].t);// Quat.rotationTo(Quat.zero(), Vec3.create(0,0,1),new_normal[i]);//Quat.rotationTo(Quat.zero(), Vec3.create(0,0,1),direction);new_normal
             const rq:Quat = Quat.setAxisAngle(Quat.zero(), frames[i].t, Math.random()*3.60 );//Quat.setAxisAngle(Quat.zero(),direction, Math.random()*3.60 );//Quat.identity();//
             let m:Mat4 = Mat4.fromQuat(Mat4.zero(),Quat.multiply(Quat.zero(),rq,quat));//Mat4.fromQuat(Mat4.zero(),Quat.multiply(Quat.zero(),quat1,quat2));//Mat4.fromQuat(Mat4.zero(),quat);//Mat4.identity();//Mat4.fromQuat(Mat4.zero(),Quat.multiply(Quat.zero(),rq,quat));
@@ -509,7 +484,7 @@ function GenerateOneColorRangePalette(rgb:any,ncolors:number){
   
 let transforms:Mat4[] = recipe2.compartments.HIV1_envelope_Pack_145_0_2_0.surface.ingredients.HIV1_MA_Hyb_0_1_0.results.map(getMat);
 //let transforms = getRandomMat(15);
-
+/*
 const myData1={
   centers: [].concat(...ingr.positions[0]),
   radii: ingr.radii[0],
@@ -531,12 +506,19 @@ let datas = [myData1, myData2];
 let pdbs:string[] = [ingr.source.pdb, ingr2.source.pdb];
 (window as any).ingr_data = datas;
 type MyData = typeof myData1;
+*/
 type Compartment = typeof recipe.compartments.HIV1_envelope_Pack_145_0_2_0.surface;
 type Ingredient = typeof recipe.compartments.HIV1_envelope_Pack_145_0_2_0.surface.ingredients.HIV1_ENV_4nco_0_1_1;
-const showAtoms = true;
-const showSurface = false;
-const onlyCA = true;
-const surface_resolution:number = 3.0;//can this be change dynamically?
+let showAtoms = false;
+let showSurface = true;
+let onlyCA = true;
+let showFiber = true;
+let showProtein = true;
+let showProteinSurface = true;
+let surface_resolution:number = 8.0;//can this be change dynamically?
+let nprot = 0;
+let ninstances = 0;
+let nspheres = 0;
 
 function getSpacefillRepr(webgl?: WebGLContext) {
     return SpacefillRepresentationProvider.factory({ ...reprCtx, webgl }, SpacefillRepresentationProvider.getParams)
@@ -589,7 +571,7 @@ async function getPDBmodel(pdbname:string, bu:number){
     return {s:structure,m:models};   
 }
 
-async function getOnePDB(pdbname:string, bu:number){
+async function getOnePDB({ ingr_name,  pdbname, bu, sele }: { ingr_name:string, pdbname: string; bu: number; sele: boolean; }){
     let models;
     if (pdbname.length == 4) {
         const cif = await downloadFromPdb(pdbname)
@@ -599,23 +581,25 @@ async function getOnePDB(pdbname:string, bu:number){
         const pdb = await downloadFromPdbCellpack(pdbname)
         models = await getModelsPDB(pdb)
     }
+    models[0].label = ingr_name;
+    models[0].entry = ingr_name;
     const baseStructure = await getStructure(models[0])
     let structure:Structure = baseStructure;
     if (bu !==-1)
     {
             structure = await StructureSymmetry.buildAssembly(baseStructure, '1').run()
     }
-    if (onlyCA == true)
+    if (sele == false)
     {
-        structure = GetCASelection(structure);
-    }
-    else 
-    {
+        if (onlyCA == true)
+        {
+            structure = GetCASelection(structure);
+        }
         const query = Queries.internal.atomicSequence();
         const result = query(new QueryContext(structure));
         structure = StructureSelection.unionStructure(result);
     } 
-    return structure;
+    return {s:structure,m:models};   
 }
 
 function Assamble(instances_transform:Mat4[], polymers:Structure){
@@ -647,8 +631,10 @@ async function displayAtomOne(fullStructure:Structure, colorTheme:ColorTheme){
         { ...SpacefillRepresentationProvider.defaultValues,
             alpha: 1.0 }, fullStructure).run()
     console.log("display atom");
+    (window as any).rep = spacefillRepr;
     canvas3d.add(spacefillRepr);
 }
+
 
 async function displaySurfaceOne(fullStructure:Structure, colorTheme:ColorTheme){
     const gaussianSurfaceRepr = getGaussianSurfaceRepr()
@@ -663,30 +649,55 @@ async function displaySurfaceOne(fullStructure:Structure, colorTheme:ColorTheme)
     canvas3d.add(gaussianSurfaceRepr);
 }
 
-async function OneCompartmentProcess(compartment:Compartment,maincolor:any){
+async function OneCompartmentProcess(compartment:Compartment,maincolor:any)
+{
+    if (!("ingredients" in compartment)) return;
     const ningredients = Object.keys(compartment.ingredients).length;
     const ingr_colors = GenerateOneColorRangePalette(maincolor,ningredients);
     let icounter = 0;
-    console.log(ingr_colors);
+    //console.log(ingr_colors);
     for (const ingr_name in compartment.ingredients){
         const ingr:Ingredient = compartment.ingredients[ingr_name];
         if (ingr_name =="HIV1_CAhex_0_1_0")continue;
         if (ingr_name =="HIV1_CAhexCyclophilA_0_1_0")continue;
         if (ingr == undefined) {
-            console.log(ingr_name)
+            console.log(ingr_name+" is undefined");
             continue;
         }
-        const pdbname:string = ingr.source.pdb;
-        if (!pdbname||pdbname == "None") continue;
-        const instances:Mat4[] =  ingr.results.map(getMat);
+        //console.log(ingr_name+" "+ingr.source.pdb)
+        let pdbname:string = ingr.source.pdb;
+        if (!pdbname||pdbname == "None"||pdbname==null) continue;
+        if (pdbname.length > 4 && (!pdbname.endsWith(".pdb")) )
+        {        
+            pdbname = pdbname + ".pdb"; 
+        }
+        let instances:Mat4[]=[];
+        let isFiber = false;
+        if ("nbCurve" in ingr && showFiber){
+            isFiber = true;
+            for (let i=0;i<ingr.nbCurve;i++){
+                const cname = "curve"+i.toString();
+                if (!(cname in ingr)) continue;
+                if (ingr[cname].length <= 2) continue;
+                const points = [].concat(...ingr[cname]);
+                const new_instances:Mat4[] = getMatFromResamplePoints(points);
+                instances=instances.concat(new_instances);
+            }
+        }
+        else {
+            instances =  ingr.results.map(getMat);
+        }
+        ninstances+=instances.length;
+        console.log(("nbCurve " + instances.length.toString()));
         const bu = ("biomt" in ingr.source)? 1:-1;// && ingr.source.biomt ?
-        const polymers:Structure = await getOnePDB(pdbname,bu);//should also consider chains and modelnb
+        const res:{s:Structure,m:Models[]} = await getOnePDB({ ingr_name, pdbname, bu, sele: isFiber });
+        console.log( res );
+        const polymers:Structure = res.s;
+        console.log( polymers );
         const fullStructure:Structure  = Assamble(instances,polymers);
+        nspheres+=fullStructure.elementCount;
         const acolor:Color = Color(ingr_colors[icounter].hex().replace("#","0x"));
         const colorTheme = reprCtx.colorThemeRegistry.create('uniform', { structure: fullStructure }, { value: acolor }),
-        //reprCtx.colorThemeRegistry.create('uniform', 
-        //    { structure: fullStructure, value: ColorNames.blue}); 
-        //colorTheme.color = ()=>acolor;// ColorNames.blue;
         if (showAtoms){
             await displayAtomOne(fullStructure,colorTheme);
         }
@@ -705,60 +716,129 @@ async function readFile(filename: string) {
     return data;
 }
 
+function parseParams(){
+    return window.location.search
+      .substr(1)
+      .split("&")
+      .map(function(pair){
+        var a = pair.split("=");
+        var o = {};
+        o[a[0]] = a[1];
+        return o;
+      })
+      .reduce(function(a,b){
+        for(var key in b) a[key] = b[key];
+        return a;
+      });
+  }
+
 export async function init() {
-    const ncompartment = Object.keys(recipe2.compartments).length*2 + 1;
+    const query = parseParams();
+    const CA = query.ca?JSON.parse(query.ca):onlyCA;
+    const Atoms = query.at?JSON.parse(query.at):showAtoms
+    const Surface = query.surf?JSON.parse(query.surf):showSurface
+    const res = query.res? parseFloat(query.res): surface_resolution;
+    const do_lipids = query.lipids? JSON.parse(query.lipids) : false;
+    const do_fiber = query.fiber? JSON.parse(query.fiber) : false;
+    const arecipe = query.recipe? query.recipe : "hiv";
+    if (CA!=null) {
+        onlyCA = CA;
+    }
+    if (Atoms!=null){
+        showAtoms  = Atoms;        
+    } 
+    if (Surface!=null){
+        showSurface  = Surface;        
+    } 
+    if (do_fiber!=null) showFiber = do_fiber;
+    const current_recipe;
+    if (arecipe!=null) {
+        if (arecipe == "hiv") current_recipe = recipe2;
+        if (arecipe == "myco") current_recipe = mycoplasma;
+    }
+    console.log(query);
+    if (res) surface_resolution = res;
+    const ncompartment = Object.keys(current_recipe.compartments).length*2 + 1;
     const colors_comp = GetNColors(ncompartment);
     let counter = 0;
     console.log(ncompartment);
     console.log(colors_comp);
-    await OneCompartmentProcess(recipe2.cytoplasme,colors_comp[0]);
-    counter+=1; 
-    for (const comp in recipe2.compartments){
+    if ("cytoplasme" in current_recipe && "ingredients" in current_recipe.cytoplasme ) 
+    {   
+        await OneCompartmentProcess(current_recipe.cytoplasme,colors_comp[0]);
+        counter+=1; 
+    }
+    for (const comp in current_recipe.compartments){
             console.log(comp);
-            if ("surface" in recipe2.compartments[comp]){
-                await OneCompartmentProcess(recipe2.compartments[comp].surface,colors_comp[counter]);
+            if ("surface" in current_recipe.compartments[comp]){
+                await OneCompartmentProcess(current_recipe.compartments[comp].surface,colors_comp[counter]);
                 counter+=1; 
             }
-            if ("interior" in recipe2.compartments[comp]){
-                await OneCompartmentProcess(recipe2.compartments[comp].interior,colors_comp[counter]);
+            if ("interior" in current_recipe.compartments[comp]){
+                await OneCompartmentProcess(current_recipe.compartments[comp].interior,colors_comp[counter]);
                 counter+=1; 
             }
     }
-    
-    const pdbname:string = "RNA_U_Base.pdb";//"dna_single_base.pdb";//"DNA_oneTurn.pdb";
-    const instances:Mat4[] =  getMatFromResamplePoints(rna.points);
-    const bu = -1;
-    
-    const res:{s:Structure,m:Models[]} = await getPDBmodel(pdbname,bu);//should also consider chains and modelnb
-    const fullStructure:Structure  = Assamble(instances, res.s);
-    const colorTheme = reprCtx.colorThemeRegistry.create('illustrative', 
-    { structure: fullStructure, value: ColorNames.blue}); 
-    //colorTheme.color = ()=>ColorNames.purple;// ColorNames.blue;
-    if (showAtoms){
-        await displayAtomOne(fullStructure,colorTheme);
+    if (do_fiber) {
+        if (arecipe == "hiv"){
+            const pdbname:string = "RNA_U_Base.pdb";//"dna_single_base.pdb";//"DNA_oneTurn.pdb";
+            const instances:Mat4[] =  getMatFromResamplePoints(rna.points);
+            const bu = -1;
+            
+            const res:{s:Structure,m:Models[]} = await getPDBmodel(pdbname,bu);//should also consider chains and modelnb
+            const fullStructure:Structure  = Assamble(instances, res.s);
+            ninstances+=instances.length;
+            nspheres+=fullStructure.elementCount;
+            const colorTheme = reprCtx.colorThemeRegistry.create('illustrative', 
+            { structure: fullStructure, value: ColorNames.blue}); 
+            //colorTheme.color = ()=>ColorNames.purple;// ColorNames.blue;
+            if (showAtoms){
+                await displayAtomOne(fullStructure,colorTheme);
+            }
+            if (showSurface) {
+                await displaySurfaceOne(fullStructure,colorTheme);
+            }
+        }
     }
-    if (showSurface) {
-        await displaySurfaceOne(fullStructure,colorTheme);
+    if (do_lipids) {
+        //Lipids
+        if (arecipe == "hiv"){
+            const filename:string = "hiv_lipids.bcif";//"dna_single_base.pdb";//"DNA_oneTurn.pdb";
+            const data = await readUrl(filename,true);
+            console.log("file read");
+            const parsed = await parseCif(data);
+            console.log("file parsed");
+            const models = await getModelsCif(parsed.blocks[0]);
+            const baseStructure = await getStructure(models[0]);
+            nspheres+=baseStructure.elementCount;
+            console.log("representation");
+            const baseTheme = reprCtx.colorThemeRegistry.create('illustrative', 
+            { structure: baseStructure, value: ColorNames.blue}); 
+            if (showAtoms){
+                await displayAtomOne(baseStructure,baseTheme);
+            }
+            if (showSurface) {
+                surface_resolution = 8.0;
+                await displaySurfaceOne(baseStructure,baseTheme);
+            }
+        }
     }
-
-    //Lipids
-    const filename:string = "hiv_lipids.bcif";//"dna_single_base.pdb";//"DNA_oneTurn.pdb";
-    const data = await readUrl(filename,true);
-    console.log("file read");
-    const parsed = await parseCif(data);
-    console.log("file parsed");
-    const models = await getModelsCif(parsed.blocks[0]);
-    const baseStructure = await getStructure(models[0]);
-    console.log("representation");
-    const baseTheme = reprCtx.colorThemeRegistry.create('illustrative', 
-    { structure: baseStructure, value: ColorNames.blue}); 
-    if (showAtoms){
-        await displayAtomOne(baseStructure,baseTheme);
-    }
-    if (showSurface) {
-        await displaySurfaceOne(baseStructure,baseTheme);
-    }
-    canvas3d.resetCamera();
+    canvas3d.resetCamera(); 
 }
+
 //init
 init()
+//example run
+//http://localhost:8080/build/meso/render-meso/?ca=true&at=true&surf=false&res=10.0&lipids=true&fiber=true&recipe=myco
+
+/*    https://mesoscope.scripps.edu/beta/build/meso/render-meso/?ca=true&at=true&surf=false&res=10.0&lipids=true&fiber=true&recipe=myco
+(Get-ChildItem D:\lipidMyco.cif).Length
+
+// const v = Vec3()
+    // const it = new Structure.ElementLocationIterator(polymers)
+    // while (it.hasNext) {
+    //     const l = it.move()
+    //     l.unit.conformation.position(l.element, v)
+    //     console.log(Vec3.toString(v))
+    // }
+*/
