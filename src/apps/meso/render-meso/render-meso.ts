@@ -733,13 +733,18 @@ function parseParams(){
   }
 
 export async function init() {
+    //
     const query = parseParams();
     const CA = query.ca?JSON.parse(query.ca):onlyCA;
     const Atoms = query.at?JSON.parse(query.at):showAtoms
-    const Surface = query.surf?JSON.parse(query.surf):showSurface
+    const Surface = (Atoms==true)?false:true;
+    //const Surface = query.surf?JSON.parse(query.surf):showSurface
     const res = query.res? parseFloat(query.res): surface_resolution;
-    const do_lipids = query.lipids? JSON.parse(query.lipids) : false;
-    const do_fiber = query.fiber? JSON.parse(query.fiber) : false;
+    const do_lipids = query.lipids? JSON.parse(query.lipids) : true;
+    const do_fiber = query.fiber? JSON.parse(query.fiber) : true;
+    const do_outside = query.outside? JSON.parse(query.outside) : true;
+    const do_surface = query.surface? JSON.parse(query.surface) : true;
+    const do_inside = query.inside? JSON.parse(query.inside) : true;
     const arecipe = query.recipe? query.recipe : "hiv";
     if (CA!=null) {
         onlyCA = CA;
@@ -763,18 +768,18 @@ export async function init() {
     let counter = 0;
     console.log(ncompartment);
     console.log(colors_comp);
-    if ("cytoplasme" in current_recipe && "ingredients" in current_recipe.cytoplasme ) 
+    if ("cytoplasme" in current_recipe && "ingredients" in current_recipe.cytoplasme && do_outside==true) 
     {   
         await OneCompartmentProcess(current_recipe.cytoplasme,colors_comp[0]);
         counter+=1; 
     }
     for (const comp in current_recipe.compartments){
             console.log(comp);
-            if ("surface" in current_recipe.compartments[comp]){
+            if ("surface" in current_recipe.compartments[comp] && do_surface == true){
                 await OneCompartmentProcess(current_recipe.compartments[comp].surface,colors_comp[counter]);
                 counter+=1; 
             }
-            if ("interior" in current_recipe.compartments[comp]){
+            if ("interior" in current_recipe.compartments[comp] && do_inside == true){
                 await OneCompartmentProcess(current_recipe.compartments[comp].interior,colors_comp[counter]);
                 counter+=1; 
             }
@@ -818,7 +823,7 @@ export async function init() {
                 await displayAtomOne(baseStructure,baseTheme);
             }
             if (showSurface) {
-                surface_resolution = 8.0;
+                if (surface_resolution < 8.0) surface_resolution = 8.0;
                 await displaySurfaceOne(baseStructure,baseTheme);
             }
         }
