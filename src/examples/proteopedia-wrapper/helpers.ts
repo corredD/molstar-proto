@@ -4,11 +4,11 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { ResidueIndex, Model } from 'mol-model/structure';
-import { BuiltInStructureRepresentationsName } from 'mol-repr/structure/registry';
-import { BuiltInColorThemeName } from 'mol-theme/color';
-import { AminoAcidNames } from 'mol-model/structure/model/types';
-import { PluginContext } from 'mol-plugin/context';
+import { ResidueIndex, Model } from '../../mol-model/structure';
+import { BuiltInStructureRepresentationsName } from '../../mol-repr/structure/registry';
+import { BuiltInColorThemeName } from '../../mol-theme/color';
+import { AminoAcidNames } from '../../mol-model/structure/model/types';
+import { PluginContext } from '../../mol-plugin/context';
 
 export interface ModelInfo {
     hetResidues: { name: string, indices: ResidueIndex[] }[],
@@ -105,6 +105,8 @@ export enum StateElements {
     ModelProps = 'model-props',
     Assembly = 'assembly',
 
+    VolumeStreaming = 'volume-streaming',
+
     Sequence = 'sequence',
     SequenceVisual = 'sequence-visual',
     Het = 'het',
@@ -113,5 +115,6 @@ export enum StateElements {
     Water = 'water',
     WaterVisual = 'water-visual',
 
-    HetGroupFocus = 'het-group-focus'
+    HetGroupFocus = 'het-group-focus',
+    HetGroupFocusGroup = 'het-group-focus-group'
 }

@@ -8,32 +8,31 @@ const sharedConfig = {
     module: {
         rules: [
             {
-                loader: 'file-loader',
                 test: /\.(woff2?|ttf|otf|eot|svg|html)$/,
-                include: [path.resolve(__dirname, 'build/src/')],
-                options: {
-                    name: '[name].[ext]'
-                }
+                use: [{
+                    loader: 'file-loader',
+                    options: { name: '[name].[ext]' }
+                }]
             },
             {
                 test: /\.(s*)css$/,
-                use: [MiniCssExtractPlugin.loader, 'css-loader', 'resolve-url-loader', 'sass-loader']
+                use: [
+                    MiniCssExtractPlugin.loader,
+                    'css-loader', 'resolve-url-loader', 'sass-loader'
+                ]
             }
         ]
     },
     plugins: [
         // new CircularDependencyPlugin({
-        //     include: [ path.resolve(__dirname, 'build/src/') ],
+        //     include: [ path.resolve(__dirname, 'lib/') ],
         //     failOnError: false,
         //     cwd: process.cwd(),
         // }),
         new ExtraWatchWebpackPlugin({
             files: [
-                './build/src/**/*.vert',
-                './build/src/**/*.frag',
-                './build/src/**/*.glsl',
-                './build/src/**/*.scss',
-                './build/src/**/*.html'
+                './lib/**/*.scss',
+                './lib/**/*.html'
             ],
         }),
         new webpack.DefinePlugin({
@@ -46,7 +45,7 @@ const sharedConfig = {
     resolve: {
         modules: [
             'node_modules',
-            path.resolve(__dirname, 'build/src/')
+            path.resolve(__dirname, 'lib/')
         ],
     }
 }
@@ -56,7 +55,7 @@ function createEntry(src, outFolder, outFilename, isNode) {
     return {
         node: isNode ? void 0 : { fs: 'empty' }, // TODO find better solution? Currently used in file-handle.ts
         target: isNode ? 'node' : void 0,
-        entry: path.resolve(__dirname, `build/src/${src}.js`),
+        entry: path.resolve(__dirname, `lib/${src}.js`),
         output: { filename: `${outFilename}.js`, path: path.resolve(__dirname, `build/${outFolder}`) },
         ...sharedConfig
     }
@@ -65,7 +64,7 @@ function createEntry(src, outFolder, outFilename, isNode) {
 function createEntryPoint(name, dir, out) {
     return {
         node: { fs: 'empty' }, // TODO find better solution? Currently used in file-handle.ts
-        entry: path.resolve(__dirname, `build/src/${dir}/${name}.js`),
+        entry: path.resolve(__dirname, `lib/${dir}/${name}.js`),
         output: { filename: `${name}.js`, path: path.resolve(__dirname, `build/${out}`) },
         ...sharedConfig
     }
@@ -74,8 +73,14 @@ function createEntryPoint(name, dir, out) {
 function createNodeEntryPoint(name, dir, out) {
     return {
         target: 'node',
-        entry: path.resolve(__dirname, `build/src/${dir}/${name}.js`),
+        entry: path.resolve(__dirname, `lib/${dir}/${name}.js`),
         output: { filename: `${name}.js`, path: path.resolve(__dirname, `build/${out}`) },
+        externals: {
+            argparse: 'require("argparse")',
+            'node-fetch': 'require("node-fetch")',
+            'util.promisify': 'require("util.promisify")',
+            xhr2: 'require("xhr2")',
+        },
         ...sharedConfig
     }
 }

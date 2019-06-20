@@ -4,18 +4,18 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Structure, Model } from 'mol-model/structure';
-import { PerformanceMonitor } from 'mol-util/performance-monitor';
+import { Structure, Model } from '../../../mol-model/structure';
+import { PerformanceMonitor } from '../../../mol-util/performance-monitor';
 import { Cache } from './cache';
 import Config from '../config';
-import CIF, { CifFrame } from 'mol-io/reader/cif'
+import { CIF, CifFrame, CifBlock } from '../../../mol-io/reader/cif'
 import * as util from 'util'
 import * as fs from 'fs'
 import * as zlib from 'zlib'
 import { Job } from './jobs';
-import { ConsoleLogger } from 'mol-util/console-logger';
+import { ConsoleLogger } from '../../../mol-util/console-logger';
 import { ModelPropertiesProvider } from '../property-provider';
-import { trajectoryFromMmCIF } from 'mol-model-formats/structure/mmcif';
+import { trajectoryFromMmCIF } from '../../../mol-model-formats/structure/mmcif';
 
 require('util.promisify').shim();
 
@@ -90,7 +90,7 @@ async function parseCif(data: string|Uint8Array) {
     return parsed.result;
 }
 
-export async function readDataAndFrame(filename: string, key?: string) {
+export async function readDataAndFrame(filename: string, key?: string): Promise<{ data: string | Uint8Array, frame: CifBlock }> {
     perf.start('read');
     let data;
     try {

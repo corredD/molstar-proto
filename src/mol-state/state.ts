@@ -8,18 +8,18 @@ import { StateObject, StateObjectCell } from './object';
 import { StateTree } from './tree';
 import { StateTransform } from './transform';
 import { StateTransformer } from './transformer';
-import { RuntimeContext, Task } from 'mol-task';
+import { RuntimeContext, Task } from '../mol-task';
 import { StateSelection } from './state/selection';
-import { RxEventHelper } from 'mol-util/rx-event-helper';
+import { RxEventHelper } from '../mol-util/rx-event-helper';
 import { StateBuilder } from './state/builder';
 import { StateAction } from './action';
 import { StateActionManager } from './action/manager';
 import { TransientTree } from './tree/transient';
-import { LogEntry } from 'mol-util/log-entry';
-import { now, formatTimespan } from 'mol-util/now';
-import { ParamDefinition } from 'mol-util/param-definition';
+import { LogEntry } from '../mol-util/log-entry';
+import { now, formatTimespan } from '../mol-util/now';
+import { ParamDefinition } from '../mol-util/param-definition';
 import { StateTreeSpine } from './tree/spine';
-import { AsyncQueue } from 'mol-util/async-queue';
+import { AsyncQueue } from '../mol-util/async-queue';
 
 export { State }
 
@@ -162,7 +162,7 @@ class State {
                 return cell && cell.obj;
             }
         } finally {
-            this.spine.setSurrent();
+            this.spine.setCurrent();
 
             if (updated) this.events.changed.next();
             this.events.isUpdating.next(false);
@@ -607,7 +607,7 @@ async function updateNode(ctx: UpdateContext, currentRef: Ref): Promise<UpdateNo
         throw new Error(`No suitable parent found for '${currentRef}'`);
     }
 
-    ctx.spine.setSurrent(current);
+    ctx.spine.setCurrent(current);
 
     const parent = parentCell.obj!;
     current.sourceRef = parentCell.transform.ref;

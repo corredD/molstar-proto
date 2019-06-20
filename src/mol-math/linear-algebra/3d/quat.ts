@@ -25,7 +25,7 @@
 import Mat3 from './mat3';
 import Vec3 from './vec3';
 import { EPSILON } from './common';
-import { NumberArray } from 'mol-util/type-helpers';
+import { NumberArray } from '../../../mol-util/type-helpers';
 
 interface Quat extends Array<number> { [d: number]: number, '@type': 'quat', length: 4 }
 
@@ -434,6 +434,10 @@ namespace Quat {
         axesTmpMat[8] = -view[2];
 
         return normalize(out, Quat.fromMat3(out, axesTmpMat));
+    }
+
+    export function toString(a: Quat, precision?: number) {
+        return `[${a[0].toPrecision(precision)} ${a[1].toPrecision(precision)} ${a[2].toPrecision(precision)}  ${a[3].toPrecision(precision)}]`;
     }
 }
 

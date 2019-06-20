@@ -6,8 +6,8 @@
 
 import * as React from 'react';
 import { PluginUIComponent } from '../base';
-import { ApplyActionContol } from './apply-action';
-import { State } from 'mol-state';
+import { ApplyActionControl } from './apply-action';
+import { State } from '../../../mol-state';
 import { Icon } from '../controls/common';
 
 export class StateObjectActions extends PluginUIComponent<{ state: State, nodeRef: string, hideHeader?: boolean, initiallyColapsed?: boolean }> {
@@ -38,7 +38,7 @@ export class StateObjectActions extends PluginUIComponent<{ state: State, nodeRe
 
         return <div className='msp-state-actions'>
             {!this.props.hideHeader && <div className='msp-section-header'><Icon name='code' /> {`Actions (${display})`}</div> }
-            {actions.map((act, i) => <ApplyActionContol plugin={this.plugin} key={`${act.id}`} state={state} action={act} nodeRef={ref} initiallyCollapsed={this.props.initiallyColapsed} />)}
+            {actions.map((act, i) => <ApplyActionControl plugin={this.plugin} key={`${act.id}`} state={state} action={act} nodeRef={ref} initiallyCollapsed={this.props.initiallyColapsed} />)}
         </div>;
     }
 }

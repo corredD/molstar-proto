@@ -4,20 +4,19 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Link, Structure, StructureElement } from 'mol-model/structure';
-import { ComplexVisual } from '../representation';
+import { ParamDefinition as PD } from '../../../mol-util/param-definition';
+import { VisualContext } from '../../visual';
+import { Structure, StructureElement, Link } from '../../../mol-model/structure';
+import { Theme } from '../../../mol-theme/theme';
+import { Mesh } from '../../../mol-geo/geometry/mesh/mesh';
+import { Vec3 } from '../../../mol-math/linear-algebra';
+import { BitFlags } from '../../../mol-util';
+import { createLinkCylinderMesh, LinkCylinderParams, LinkIterator } from './util/link';
+import { ComplexMeshParams, ComplexVisual, ComplexMeshVisual } from '../complex-visual';
 import { VisualUpdateState } from '../../util';
-import { createLinkCylinderMesh, LinkIterator, LinkCylinderParams } from './util/link';
-import { Vec3 } from 'mol-math/linear-algebra';
-import { Loci, EmptyLoci } from 'mol-model/loci';
-import { ComplexMeshVisual, ComplexMeshParams } from '../complex-visual';
-import { Interval, OrderedSet } from 'mol-data/int';
-import { BitFlags } from 'mol-util';
-import { ParamDefinition as PD } from 'mol-util/param-definition';
-import { Mesh } from 'mol-geo/geometry/mesh/mesh';
-import { PickingId } from 'mol-geo/geometry/picking';
-import { VisualContext } from 'mol-repr/visual';
-import { Theme } from 'mol-theme/theme';
+import { PickingId } from '../../../mol-geo/geometry/picking';
+import { EmptyLoci, Loci } from '../../../mol-model/loci';
+import { Interval, OrderedSet } from '../../../mol-data/int';
 
 function createInterUnitLinkCylinderMesh(ctx: VisualContext, structure: Structure, theme: Theme, props: PD.Values<InterUnitLinkParams>, mesh?: Mesh) {
     const links = structure.links
@@ -98,7 +97,7 @@ function getLinkLoci(pickingId: PickingId, structure: Structure, id: number) {
 function eachLink(loci: Loci, structure: Structure, apply: (interval: Interval) => boolean) {
     let changed = false
     if (Link.isLoci(loci)) {
-        if (!Structure.areEquivalent(loci.structure, structure)) return false
+        if (!Structure.areParentsEquivalent(loci.structure, structure)) return false
         for (const b of loci.links) {
             const idx = structure.links.getBondIndex(b.aIndex, b.aUnit, b.bIndex, b.bUnit)
             if (idx !== -1) {
@@ -106,7 +105,7 @@ function eachLink(loci: Loci, structure: Structure, apply: (interval: Interval) 
             }
         }
     } else if (StructureElement.isLoci(loci)) {
-        if (!Structure.areEquivalent(loci.structure, structure)) return false
+        if (!Structure.areParentsEquivalent(loci.structure, structure)) return false
         // TODO mark link only when both of the link elements are in a StructureElement.Loci
         for (const e of loci.elements) {
             OrderedSet.forEach(e.indices, v => {

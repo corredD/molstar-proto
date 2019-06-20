@@ -1,16 +1,19 @@
 [![License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat)](./LICENSE)
-[![Build Status](https://travis-ci.org/molstar/molstar-proto.svg?branch=master)](https://travis-ci.org/molstar/molstar-proto)
+[![npm version](https://badge.fury.io/js/molstar.svg)](https://www.npmjs.com/package/molstar)
+[![Build Status](https://travis-ci.org/molstar/molstar.svg?branch=master)](https://travis-ci.org/molstar/molstar)
 [![Gitter](https://badges.gitter.im/molstar/Lobby.svg)](https://gitter.im/molstar/Lobby)
 
 # Mol*
 
 The goal of **Mol\*** (*/'mol-star/*) is to provide a technology stack that will serve as basis for the next-generation data delivery and analysis tools for macromolecular structure data. This is a collaboration between PDBe and RCSB PDB teams and the development will be open source and available to anyone who wants to use it for developing visualisation tools for macromolecular structure data available from [PDB](https://www.wwpdb.org/) and other institutions.
 
-This particular project is a prototype implementation of this technology (still under development).
+This particular project is the implementation of this technology (still under development).
+
+*If you are looking for the "MOLeculAR structure annoTator", that package is now available on NPM as [MolArt](https://www.npmjs.com/package/molart).*
 
 ## Project Overview
 
-The core of Mol* currently consists of these modules:
+The core of Mol* currently consists of these modules (see under `src/`):
 
 - `mol-task` Computation abstraction with progress tracking and cancellation support.
 - `mol-data` Collections (integer based sets, interface to columns/tables, etc.)
@@ -21,8 +24,8 @@ The core of Mol* currently consists of these modules:
 - `mol-model-props` Common "custom properties".
 - `mol-script` A scriting language for creating representations/scenes and querying (includes the [MolQL query language](https://molql.github.io)).
 - `mol-geo` Creating (molecular) geometries.
-- `mol-theme` Molecular representation themeing.
-- `mol-repr` Molecular representations.
+- `mol-theme` Theming for structure, volume and shape representations.
+- `mol-repr` Molecular representations for structures, volumes and shapes.
 - `mol-gl` A wrapper around WebGL.
 - `mol-canvas3d` A low level 3d view component. Uses `mol-geo` to generate geometries.
 - `mol-state` State representation tree with state saving and automatic updates.
@@ -60,8 +63,7 @@ This project builds on experience from previous solutions:
     DEBUG=molstar npm run watch
 
 ### Build for production:
-    npm run build
-    NODE_ENV=production npm run build-webpack
+    NODE_ENV=production npm run build
 
 **Run**
 
@@ -80,12 +82,11 @@ and navigate to `build/viewer`
 
 ### Code generation
 **CIF schemas**
+Install CIFTools `npm install ciftools -g`
 
-    export NODE_PATH="build/src"; node build/src/apps/schema-generator/schema-from-cif-dic.js -ts -o src/mol-io/reader/cif/schema/mmcif.ts --fieldNamesPath data/mmcif-field-names.csv --name mmCIF
-
-    export NODE_PATH="build/src"; node build/src/apps/schema-generator/schema-from-cif-dic.js -ts -o src/mol-io/reader/cif/schema/ccd.ts --fieldNamesPath data/ccd-field-names.csv --name CCD
-
-    export NODE_PATH="build/src"; node build/src/apps/schema-generator/schema-from-cif-dic.js -ts -o src/mol-io/reader/cif/schema/bird.ts --fieldNamesPath data/bird-field-names.csv --name BIRD
+    cifschema -mip ../../../../mol-data -o src/mol-io/reader/cif/schema/mmcif.ts -p mmCIF
+    cifschema -mip ../../../../mol-data-o src/mol-io/reader/cif/schema/ccd.ts -p CCD
+    cifschema -mip ../../../../mol-data -o src/mol-io/reader/cif/schema/bird.ts -p BIRD
 
 **GraphQL schemas**
 
@@ -94,15 +95,15 @@ and navigate to `build/viewer`
 ### Other scripts
 **Create chem comp bond table**
 
-    export NODE_PATH="build/src"; node --max-old-space-size=8192 build/src/apps/chem-comp-bond/create-table.js build/data/ccb.bcif -b
+    export NODE_PATH="lib"; node --max-old-space-size=4096 lib/apps/chem-comp-bond/create-table.js build/data/ccb.bcif -b
 
 **Test model server**
 
-    export NODE_PATH="build/src"; node build/src/servers/model/test.js
+    export NODE_PATH="lib"; node build/src/servers/model/test.js
 
 **State Transformer Docs**
 
-    export NODE_PATH="build/src"; node build/state-docs
+    export NODE_PATH="lib"; node build/state-docs
 
 **Convert any CIF to BinaryCIF**
 
@@ -119,17 +120,29 @@ If node complains about a missine acorn peer dependency, run the following comma
     npm update acorn --depth 20
     npm dedupe
 
-If the `gl` package does not compile on node 12 (there are currently no pre-built binaries) revert back to node 10.
-
 ### Editor
 
-To get syntax highlighting for the shader files add the following to Visual Code's settings files
+To get syntax highlighting for shader and graphql files add the following to Visual Code's settings files and make sure relevant extanesions are installed in the editor.
 
     "files.associations": {
         "*.glsl.ts": "glsl",
         "*.frag.ts": "glsl",
-        "*.vert.ts": "glsl"
+        "*.vert.ts": "glsl",
+        "*.gql.ts": "graphql"
     },
+
+## Publish
+
+### Prerelease
+    npm version prerelease # asumes the current version ends with '-dev.X'
+    npm publish --tag next
+
+### Release
+    npm version 0.X.0 # provide valid semver string
+    npm publish
+
+## Deploy
+    node ./scripts/deploy.js # currently updates the viewer on molstar.org/viewer
 
 ## Contributing
 Just open an issue or make a pull request. All contributions are welcome.

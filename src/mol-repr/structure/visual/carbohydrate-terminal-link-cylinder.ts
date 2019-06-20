@@ -4,22 +4,22 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Structure, Link, StructureElement } from 'mol-model/structure';
-import { Loci, EmptyLoci } from 'mol-model/loci';
-import { Vec3 } from 'mol-math/linear-algebra';
+import { ParamDefinition as PD } from '../../../mol-util/param-definition';
+import { VisualContext } from '../../visual';
+import { Structure, StructureElement, Link } from '../../../mol-model/structure';
+import { Theme } from '../../../mol-theme/theme';
+import { Mesh } from '../../../mol-geo/geometry/mesh/mesh';
+import { Vec3 } from '../../../mol-math/linear-algebra';
+import { BitFlags } from '../../../mol-util';
+import { LinkType } from '../../../mol-model/structure/model/types';
 import { createLinkCylinderMesh, LinkCylinderParams } from './util/link';
-import { OrderedSet, Interval } from 'mol-data/int';
-import { ComplexMeshVisual, ComplexVisual } from '../complex-visual';
-import { LinkType } from 'mol-model/structure/model/types';
-import { BitFlags } from 'mol-util';
 import { UnitsMeshParams } from '../units-visual';
-import { ParamDefinition as PD } from 'mol-util/param-definition';
-import { Mesh } from 'mol-geo/geometry/mesh/mesh';
-import { LocationIterator } from 'mol-geo/util/location-iterator';
-import { PickingId } from 'mol-geo/geometry/picking';
+import { ComplexVisual, ComplexMeshVisual } from '../complex-visual';
 import { VisualUpdateState } from '../../util';
-import { VisualContext } from 'mol-repr/visual';
-import { Theme } from 'mol-theme/theme';
+import { LocationIterator } from '../../../mol-geo/util/location-iterator';
+import { OrderedSet, Interval } from '../../../mol-data/int';
+import { PickingId } from '../../../mol-geo/geometry/picking';
+import { EmptyLoci, Loci } from '../../../mol-model/loci';
 
 function createCarbohydrateTerminalLinkCylinderMesh(ctx: VisualContext, structure: Structure, theme: Theme, props: PD.Values<CarbohydrateTerminalLinkParams>, mesh?: Mesh) {
     const { terminalLinks, elements } = structure.carbohydrates
@@ -133,7 +133,7 @@ function eachTerminalLink(loci: Loci, structure: Structure, apply: (interval: In
     const { getTerminalLinkIndex } = structure.carbohydrates
     let changed = false
     if (Link.isLoci(loci)) {
-        if (!Structure.areEquivalent(loci.structure, structure)) return false
+        if (!Structure.areParentsEquivalent(loci.structure, structure)) return false
         for (const l of loci.links) {
             const idx = getTerminalLinkIndex(l.aUnit, l.aUnit.elements[l.aIndex], l.bUnit, l.bUnit.elements[l.bIndex])
             if (idx !== undefined) {
@@ -141,7 +141,7 @@ function eachTerminalLink(loci: Loci, structure: Structure, apply: (interval: In
             }
         }
     } else if (StructureElement.isLoci(loci)) {
-        if (!Structure.areEquivalent(loci.structure, structure)) return false
+        if (!Structure.areParentsEquivalent(loci.structure, structure)) return false
         // TODO mark link only when both of the link elements are in a StructureElement.Loci
         const { getElementIndex, getTerminalLinkIndices, elements } = structure.carbohydrates
         for (const e of loci.elements) {

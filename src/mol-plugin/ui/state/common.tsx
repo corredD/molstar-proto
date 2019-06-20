@@ -4,16 +4,16 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { State, StateTransform, StateTransformer, StateAction } from 'mol-state';
+import { State, StateTransform, StateTransformer, StateAction, StateObject } from '../../../mol-state';
 import * as React from 'react';
 import { PurePluginUIComponent } from '../base';
 import { ParameterControls, ParamOnChange } from '../controls/parameters';
-import { PluginContext } from 'mol-plugin/context';
-import { ParamDefinition as PD } from 'mol-util/param-definition';
+import { PluginContext } from '../../../mol-plugin/context';
+import { ParamDefinition as PD } from '../../../mol-util/param-definition';
 import { Subject } from 'rxjs';
 import { Icon } from '../controls/common';
 
-export { StateTransformParameters, TransformContolBase };
+export { StateTransformParameters, TransformControlBase };
 
 class StateTransformParameters extends PurePluginUIComponent<StateTransformParameters.Props> {
     validate(params: any) {
@@ -48,7 +48,9 @@ namespace StateTransformParameters {
             onEnter: () => void,
         }
         params: any,
-        isDisabled?: boolean
+        isDisabled?: boolean,
+        a?: StateObject,
+        b?: StateObject
     }
 
     export type Class = React.ComponentClass<Props>
@@ -87,7 +89,7 @@ namespace StateTransformParameters {
     }
 }
 
-namespace TransformContolBase {
+namespace TransformControlBase {
     export interface ComponentState {
         params: any,
         error?: string,
@@ -97,7 +99,7 @@ namespace TransformContolBase {
     }
 }
 
-abstract class TransformContolBase<P, S extends TransformContolBase.ComponentState> extends PurePluginUIComponent<P, S> {
+abstract class TransformControlBase<P, S extends TransformControlBase.ComponentState> extends PurePluginUIComponent<P, S> {
     abstract applyAction(): Promise<void>;
     abstract getInfo(): StateTransformParameters.Props['info'];
     abstract getHeader(): StateTransformer.Definition['display'];
@@ -106,6 +108,7 @@ abstract class TransformContolBase<P, S extends TransformContolBase.ComponentSta
     abstract canAutoApply(newParams: any): boolean;
     abstract applyText(): string;
     abstract isUpdate(): boolean;
+    abstract getSourceAndTarget(): { a?: StateObject, b?: StateObject };
     abstract state: S;
 
     private busy: Subject<boolean>;
@@ -185,6 +188,7 @@ abstract class TransformContolBase<P, S extends TransformContolBase.ComponentSta
         //     : 'msp-transform-update-wrapper-collapsed'
         //     : 'msp-transform-wrapper';
 
+        const { a, b } = this.getSourceAndTarget();
         return <div className={wrapClass}>
             <div className='msp-transform-header'>
                 <button className='msp-btn msp-btn-block' onClick={this.toggleExpanded} title={display.description}>
@@ -193,7 +197,7 @@ abstract class TransformContolBase<P, S extends TransformContolBase.ComponentSta
                 </button>
             </div>
             {!isEmpty && !this.state.isCollapsed && <>
-                <ParamEditor info={info} events={this.events} params={this.state.params} isDisabled={this.state.busy} />
+                <ParamEditor info={info} a={a} b={b} events={this.events} params={this.state.params} isDisabled={this.state.busy} />
 
                 <div className='msp-transform-apply-wrap'>
                     <button className='msp-btn msp-btn-block msp-transform-default-params' onClick={this.setDefault} disabled={this.state.busy} title='Set default params'><Icon name='cw' /></button>

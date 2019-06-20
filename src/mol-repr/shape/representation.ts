@@ -4,28 +4,28 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Task, RuntimeContext } from 'mol-task'
-import { createRenderObject, GraphicsRenderObject, getNextMaterialId } from 'mol-gl/render-object';
+import { Geometry, GeometryUtils } from '../../mol-geo/geometry/geometry';
 import { Representation } from '../representation';
-import { Loci, EmptyLoci, isEveryLoci } from 'mol-model/loci';
-import { ValueCell } from 'mol-util';
-import { Shape, ShapeGroup } from 'mol-model/shape';
-import { OrderedSet, Interval } from 'mol-data/int';
-import { ParamDefinition as PD } from 'mol-util/param-definition';
-import { createTransform, TransformData } from 'mol-geo/geometry/transform-data';
-import { PickingId } from 'mol-geo/geometry/picking';
-import { MarkerAction, createMarkers } from 'mol-geo/geometry/marker-data';
-import { LocationIterator } from 'mol-geo/util/location-iterator';
-import { createEmptyTheme, Theme } from 'mol-theme/theme';
+import { Shape, ShapeGroup } from '../../mol-model/shape';
 import { Subject } from 'rxjs';
-import { Geometry, GeometryUtils } from 'mol-geo/geometry/geometry';
-import { ShapeGroupColorTheme } from 'mol-theme/color/shape-group';
-import { createColors } from 'mol-geo/geometry/color-data';
-import { VisualUpdateState } from 'mol-repr/util';
-import { Mat4 } from 'mol-math/linear-algebra';
-import { Visual } from 'mol-repr/visual';
-import { createSizes } from 'mol-geo/geometry/size-data';
-import { ShapeGroupSizeTheme } from 'mol-theme/size/shape-group';
+import { getNextMaterialId, RenderObjectKindType, createRenderObject, RenderObjectValuesType } from '../../mol-gl/render-object';
+import { createEmptyTheme, Theme } from '../../mol-theme/theme';
+import { LocationIterator } from '../../mol-geo/util/location-iterator';
+import { VisualUpdateState } from '../util';
+import { ShapeGroupColorTheme } from '../../mol-theme/color/shape-group';
+import { ShapeGroupSizeTheme } from '../../mol-theme/size/shape-group';
+import { createMarkers, MarkerAction } from '../../mol-geo/geometry/marker-data';
+import { ValueCell } from '../../mol-util';
+import { createColors } from '../../mol-geo/geometry/color-data';
+import { createSizes } from '../../mol-geo/geometry/size-data';
+import { Loci, isEveryLoci, EmptyLoci } from '../../mol-model/loci';
+import { Interval, OrderedSet } from '../../mol-data/int';
+import { PickingId } from '../../mol-geo/geometry/picking';
+import { Visual } from '../visual';
+import { Mat4 } from '../../mol-math/linear-algebra';
+import { TransformData, createTransform } from '../../mol-geo/geometry/transform-data';
+import { RuntimeContext, Task } from '../../mol-task';
+import { ParamDefinition as PD } from '../../mol-util/param-definition';
 
 export interface ShapeRepresentation<D, G extends Geometry, P extends Geometry.Params<G>> extends Representation<D, P> { }
 
@@ -36,8 +36,8 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
     const updated = new Subject<number>()
     const _state = Representation.createState()
     const materialId = getNextMaterialId()
-    const renderObjects: GraphicsRenderObject[] = []
-    let _renderObject: GraphicsRenderObject | undefined
+    const renderObjects: RenderObjectKindType[G['kind']][] = []
+    let _renderObject: RenderObjectKindType[G['kind']] | undefined
     let _shape: Shape<G>
     let _theme = createEmptyTheme()
     let currentProps: PD.Values<P> = PD.getDefaultValues(geometryUtils.Params as P) // TODO avoid casting
@@ -122,7 +122,7 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
 
                 if (updateState.updateTransform || updateState.createGeometry) {
                     // console.log('updateBoundingSphere')
-                    geometryUtils.updateBoundingSphere(_renderObject.values, _shape.geometry)
+                    geometryUtils.updateBoundingSphere(_renderObject.values as RenderObjectValuesType[G['kind']], _shape.geometry)
                 }
 
                 if (updateState.updateColor) {
@@ -138,7 +138,7 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
                     }
                 }
 
-                geometryUtils.updateValues(_renderObject.values, newProps)
+                geometryUtils.updateValues(_renderObject.values as RenderObjectValuesType[G['kind']], newProps)
                 geometryUtils.updateRenderableState(_renderObject.state, newProps)
             }
 

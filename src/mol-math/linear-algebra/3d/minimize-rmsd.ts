@@ -7,11 +7,10 @@
 import Mat4 from './mat4';
 import Vec3 from './vec3';
 import { EVD } from '../matrix/evd';
-import { CentroidHelper } from 'mol-math/geometry/centroid-helper';
+import { CentroidHelper } from '../../../mol-math/geometry/centroid-helper';
 import Matrix from '../matrix/matrix';
 
-export default MinimizeRmsd;
-
+export { MinimizeRmsd };
 namespace MinimizeRmsd {
     export interface Result {
         bTransform: Mat4,
@@ -19,6 +18,11 @@ namespace MinimizeRmsd {
     }
 
     export interface Positions { x: ArrayLike<number>, y: ArrayLike<number>, z: ArrayLike<number> }
+    export namespace Positions {
+        export function empty(n: number) {
+            return { x: new Float64Array(n), y: new Float64Array(n), z: new Float64Array(n) };
+        }
+    }
 
     export interface Input {
         a: Positions,
@@ -54,10 +58,10 @@ class RmsdTransformState {
         this.b = data.b;
 
         if (data.centerA) this.centerA = data.centerA;
-        else this.centerA = CentroidHelper.compute(data.a, Vec3.zero());
+        else this.centerA = data.centerA = CentroidHelper.compute(data.a, Vec3.zero());
 
         if (data.centerB) this.centerB = data.centerB;
-        else this.centerB = CentroidHelper.compute(data.b, Vec3.zero());
+        else this.centerB = data.centerB = CentroidHelper.compute(data.b, Vec3.zero());
 
         this.result = into;
     }

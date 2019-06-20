@@ -1,16 +1,16 @@
 /**
- * Copyright (c) 2017-2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Column, Table } from 'mol-data/db'
-import { Segmentation } from 'mol-data/int'
-import { mmCIF_Schema as mmCIF } from 'mol-io/reader/cif/schema/mmcif'
+import { Column, Table } from '../../../../../mol-data/db'
+import { Segmentation } from '../../../../../mol-data/int'
+import { mmCIF_Schema as mmCIF } from '../../../../../mol-io/reader/cif/schema/mmcif'
 import { ElementSymbol, MoleculeType } from '../../types'
 import { ChainIndex, EntityIndex, ResidueIndex, ElementIndex } from '../../indexing';
-import SortedRanges from 'mol-data/int/sorted-ranges';
+import SortedRanges from '../../../../../mol-data/int/sorted-ranges';
 
 export const AtomsSchema = {
     /**
@@ -113,7 +113,8 @@ export interface AtomicData {
 export interface AtomicDerivedData {
     readonly residue: {
         readonly traceElementIndex: ArrayLike<ElementIndex | -1>
-        readonly directionElementIndex: ArrayLike<ElementIndex | -1>
+        readonly directionFromElementIndex: ArrayLike<ElementIndex | -1>
+        readonly directionToElementIndex: ArrayLike<ElementIndex | -1>
         readonly moleculeType: ArrayLike<MoleculeType>
     }
 }

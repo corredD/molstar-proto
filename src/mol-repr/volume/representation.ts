@@ -4,30 +4,30 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Task } from 'mol-task'
-import { Representation, RepresentationContext, RepresentationProvider, RepresentationParamsGetter } from '../representation';
+import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { Visual, VisualContext } from '../visual';
-import { VolumeData } from 'mol-model/volume';
-import { Loci, EmptyLoci, isEveryLoci } from 'mol-model/loci';
-import { Geometry, GeometryUtils } from 'mol-geo/geometry/geometry';
-import { ParamDefinition as PD } from 'mol-util/param-definition';
-import { PickingId } from 'mol-geo/geometry/picking';
-import { MarkerAction } from 'mol-geo/geometry/marker-data';
-import { GraphicsRenderObject, createRenderObject, getNextMaterialId } from 'mol-gl/render-object';
-import { Interval } from 'mol-data/int';
-import { LocationIterator } from 'mol-geo/util/location-iterator';
-import { VisualUpdateState } from 'mol-repr/util';
-import { ValueCell } from 'mol-util';
-import { Theme, createEmptyTheme } from 'mol-theme/theme';
+import { VolumeData } from '../../mol-model/volume';
+import { Geometry, GeometryUtils } from '../../mol-geo/geometry/geometry';
+import { LocationIterator } from '../../mol-geo/util/location-iterator';
+import { Theme, createEmptyTheme } from '../../mol-theme/theme';
+import { createIdentityTransform } from '../../mol-geo/geometry/transform-data';
+import { createRenderObject, RenderObjectKindType, RenderObjectValuesType, getNextMaterialId, GraphicsRenderObject } from '../../mol-gl/render-object';
+import { PickingId } from '../../mol-geo/geometry/picking';
+import { Loci, isEveryLoci, EmptyLoci } from '../../mol-model/loci';
+import { Interval } from '../../mol-data/int';
+import { VisualUpdateState } from '../util';
+import { ColorTheme } from '../../mol-theme/color';
+import { ValueCell } from '../../mol-util';
+import { createSizes } from '../../mol-geo/geometry/size-data';
+import { createColors } from '../../mol-geo/geometry/color-data';
+import { MarkerAction } from '../../mol-geo/geometry/marker-data';
+import { Mat4 } from '../../mol-math/linear-algebra';
+import { Overpaint } from '../../mol-theme/overpaint';
+import { Transparency } from '../../mol-theme/transparency';
+import { Representation, RepresentationProvider, RepresentationContext, RepresentationParamsGetter } from '../representation';
+import { BaseGeometry } from '../../mol-geo/geometry/base';
 import { Subject } from 'rxjs';
-import { Mat4 } from 'mol-math/linear-algebra';
-import { BaseGeometry } from 'mol-geo/geometry/base';
-import { createIdentityTransform } from 'mol-geo/geometry/transform-data';
-import { ColorTheme } from 'mol-theme/color';
-import { createColors } from 'mol-geo/geometry/color-data';
-import { createSizes } from 'mol-geo/geometry/size-data';
-import { Overpaint } from 'mol-theme/overpaint';
-import { Transparency } from 'mol-theme/transparency';
+import { Task } from '../../mol-task';
 
 export interface VolumeVisual<P extends VolumeParams> extends Visual<VolumeData, P> { }
 
@@ -57,7 +57,7 @@ export function VolumeVisual<G extends Geometry, P extends VolumeParams & Geomet
     const { updateValues, updateBoundingSphere, updateRenderableState } = builder.geometryUtils
     const updateState = VisualUpdateState.create()
 
-    let renderObject: GraphicsRenderObject | undefined
+    let renderObject: RenderObjectKindType[G['kind']] | undefined
 
     let newProps: PD.Values<P>
     let newTheme: Theme
@@ -119,7 +119,7 @@ export function VolumeVisual<G extends Geometry, P extends VolumeParams & Geomet
             if (updateState.createGeometry) {
                 if (newGeometry) {
                     ValueCell.update(renderObject.values.drawCount, Geometry.getDrawCount(newGeometry))
-                    updateBoundingSphere(renderObject.values, newGeometry)
+                    updateBoundingSphere(renderObject.values as RenderObjectValuesType[G['kind']], newGeometry)
                 } else {
                     throw new Error('expected geometry to be given')
                 }
@@ -136,7 +136,7 @@ export function VolumeVisual<G extends Geometry, P extends VolumeParams & Geomet
                 createColors(locationIt, newTheme.color, renderObject.values)
             }
 
-            updateValues(renderObject.values, newProps)
+            updateValues(renderObject.values as RenderObjectValuesType[G['kind']], newProps)
             updateRenderableState(renderObject.state, newProps)
         }
 

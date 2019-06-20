@@ -6,30 +6,33 @@
 
 import { PluginStateObject as SO, PluginStateTransform } from '../../../state/objects';
 import { VolumeServerInfo, VolumeServerHeader } from './model';
-import { ParamDefinition as PD } from 'mol-util/param-definition';
-import { Task } from 'mol-task';
-import { PluginContext } from 'mol-plugin/context';
-import { urlCombine } from 'mol-util/url';
-import { createIsoValueParam } from 'mol-repr/volume/isosurface';
-import { VolumeIsoValue } from 'mol-model/volume';
-import { StateAction, StateObject, StateTransformer } from 'mol-state';
+import { ParamDefinition as PD } from '../../../../mol-util/param-definition';
+import { Task } from '../../../../mol-task';
+import { PluginContext } from '../../../../mol-plugin/context';
+import { urlCombine } from '../../../../mol-util/url';
+import { createIsoValueParam } from '../../../../mol-repr/volume/isosurface';
+import { VolumeIsoValue } from '../../../../mol-model/volume';
+import { StateAction, StateObject, StateTransformer } from '../../../../mol-state';
 import { getStreamingMethod, getEmdbIdAndContourLevel } from './util';
 import { VolumeStreaming } from './behavior';
-import { VolumeRepresentation3DHelpers } from 'mol-plugin/state/transforms/representation';
-import { BuiltInVolumeRepresentations } from 'mol-repr/volume/registry';
-import { createTheme } from 'mol-theme/theme';
-import { Box3D } from 'mol-math/geometry';
-import { Vec3 } from 'mol-math/linear-algebra';
-// import { PluginContext } from 'mol-plugin/context';
+import { VolumeRepresentation3DHelpers } from '../../../../mol-plugin/state/transforms/representation';
+import { BuiltInVolumeRepresentations } from '../../../../mol-repr/volume/registry';
+import { createTheme } from '../../../../mol-theme/theme';
+import { Box3D } from '../../../../mol-math/geometry';
+import { Vec3 } from '../../../../mol-math/linear-algebra';
+// import { PluginContext } from '../../../../mol-plugin/context';
 
 export const InitVolumeStreaming = StateAction.build({
     display: { name: 'Volume Streaming' },
     from: SO.Molecule.Structure,
     params(a) {
+        const method = getStreamingMethod(a && a.data);
         return {
-            method: PD.Select<VolumeServerInfo.Kind>(getStreamingMethod(a && a.data), [['em', 'EM'], ['x-ray', 'X-Ray']]),
+            method: PD.Select<VolumeServerInfo.Kind>(method, [['em', 'EM'], ['x-ray', 'X-Ray']]),
             id: PD.Text((a && a.data.models.length > 0 && a.data.models[0].label) || ''),
-            serverUrl: PD.Text('https://webchem.ncbr.muni.cz/DensityServer')
+            serverUrl: PD.Text('https://ds.litemol.org'),
+            defaultView: PD.Text<VolumeStreaming.ViewTypes>(method === 'em' ? 'cell' : 'selection-box'),
+            behaviorRef: PD.Text('', { isHidden: true })
         };
     },
     isApplicable: (a) => a.data.models.length === 1
@@ -56,7 +59,8 @@ export const InitVolumeStreaming = StateAction.build({
     const infoObj = await state.updateTree(infoTree).runInContext(taskCtx);
 
     const behTree = state.build().to(infoTree.ref).apply(CreateVolumeStreamingBehavior,
-        PD.getDefaultValues(VolumeStreaming.createParams(infoObj.data)));
+        PD.getDefaultValues(VolumeStreaming.createParams(infoObj.data, params.defaultView)),
+        { ref: params.behaviorRef ? params.behaviorRef : void 0 });
 
     if (params.method === 'em') {
         behTree.apply(VolumeStreamingVisual, { channel: 'em' }, { state: { isGhost: true } });
@@ -100,7 +104,7 @@ const CreateVolumeStreamingInfo = PluginStateTransform.BuiltIn({
     to: VolumeServerInfo,
     params(a) {
         return {
-            serverUrl: PD.Text('https://webchem.ncbr.muni.cz/DensityServer'),
+            serverUrl: PD.Text('https://ds.litemol.org'),
             source: PD.MappedStatic('x-ray', {
                 'em': PD.Group({
                     isoValue: createIsoValueParam(VolumeIsoValue.relative(1))

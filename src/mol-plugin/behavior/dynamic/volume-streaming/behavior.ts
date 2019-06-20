@@ -4,25 +4,25 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import CIF from 'mol-io/reader/cif';
-import { Box3D } from 'mol-math/geometry';
-import { Vec3 } from 'mol-math/linear-algebra';
-import { volumeFromDensityServerData } from 'mol-model-formats/volume/density-server';
-import { StructureElement } from 'mol-model/structure';
-import { VolumeData, VolumeIsoValue } from 'mol-model/volume';
-import { PluginBehavior } from 'mol-plugin/behavior';
-import { PluginContext } from 'mol-plugin/context';
-import { PluginStateObject } from 'mol-plugin/state/objects';
-import { createIsoValueParam } from 'mol-repr/volume/isosurface';
-import { Color } from 'mol-util/color';
-import { LRUCache } from 'mol-util/lru-cache';
-import { ParamDefinition as PD } from 'mol-util/param-definition';
-import { urlCombine } from 'mol-util/url';
+import { ParamDefinition as PD } from '../../../../mol-util/param-definition';
+import { PluginStateObject } from '../../../state/objects';
+import { VolumeIsoValue, VolumeData } from '../../../../mol-model/volume';
+import { createIsoValueParam } from '../../../../mol-repr/volume/isosurface';
 import { VolumeServerHeader, VolumeServerInfo } from './model';
-import { ButtonsType } from 'mol-util/input/input-observer';
-import { PluginCommands } from 'mol-plugin/command';
-import { StateSelection } from 'mol-state';
-import { Representation } from 'mol-repr/representation';
+import { Box3D } from '../../../../mol-math/geometry';
+import { Vec3 } from '../../../../mol-math/linear-algebra';
+import { Color } from '../../../../mol-util/color';
+import { PluginBehavior } from '../../behavior';
+import { LRUCache } from '../../../../mol-util/lru-cache';
+import { urlCombine } from '../../../../mol-util/url';
+import { CIF } from '../../../../mol-io/reader/cif';
+import { volumeFromDensityServerData } from '../../../../mol-model-formats/volume/density-server';
+import { PluginCommands } from '../../../command';
+import { StateSelection } from '../../../../mol-state';
+import { Representation } from '../../../../mol-repr/representation';
+import { ButtonsType } from '../../../../mol-util/input/input-observer';
+import { StructureElement } from '../../../../mol-model/structure';
+import { PluginContext } from '../../../context';
 
 export class VolumeStreaming extends PluginStateObject.CreateBehavior<VolumeStreaming.Behavior>({ name: 'Volume Streaming' }) { }
 
@@ -43,13 +43,13 @@ export namespace VolumeStreaming {
         valuesInfo: [{ mean: 0, min: -1, max: 1, sigma: 0.1 }, { mean: 0, min: -1, max: 1, sigma: 0.1 }]
     };
 
-    export function createParams(data?: VolumeServerInfo.Data) {
+    export function createParams(data?: VolumeServerInfo.Data, defaultView?: ViewTypes) {
         // fake the info
         const info = data || { kind: 'em', header: { sampling: [fakeSampling], availablePrecisions: [{ precision: 0, maxVoxels: 0 }] }, emDefaultContourLevel: VolumeIsoValue.relative(0) };
         const box = (data && data.structure.boundary.box) || Box3D.empty();
 
         return {
-            view: PD.MappedStatic(info.kind === 'em' ? 'cell' : 'selection-box', {
+            view: PD.MappedStatic(defaultView || (info.kind === 'em' ? 'cell' : 'selection-box'), {
                 'box': PD.Group({
                     bottomLeft: PD.Vec3(box.min),
                     topRight: PD.Vec3(box.max),
@@ -76,15 +76,20 @@ export namespace VolumeStreaming {
         };
     }
 
-    type RT = typeof createParams extends (...args: any[]) => (infer T) ? T : never
-    export type Params = RT extends PD.Params ? PD.Values<RT> : {}
+    export type ViewTypes = 'box' | 'selection-box' | 'cell'
+
+    export type ParamDefinition = typeof createParams extends (...args: any[]) => (infer T) ? T : never
+    export type Params = ParamDefinition extends PD.Params ? PD.Values<ParamDefinition> : {}
+
+    type CT = typeof channelParam extends (...args: any[]) => (infer T) ? T : never
+    export type ChannelParams = CT extends PD.Group<infer T> ? T : {}
 
     type ChannelsInfo = { [name in ChannelType]?: { isoValue: VolumeIsoValue, color: Color, wireframe: boolean, opacity: number } }
     type ChannelsData = { [name in 'EM' | '2FO-FC' | 'FO-FC']?: VolumeData }
 
     export type ChannelType = 'em' | '2fo-fc' | 'fo-fc(+ve)' | 'fo-fc(-ve)'
     export const ChannelTypeOptions: [ChannelType, string][] = [['em', 'em'], ['2fo-fc', '2fo-fc'], ['fo-fc(+ve)', 'fo-fc(+ve)'], ['fo-fc(-ve)', 'fo-fc(-ve)']]
-    interface ChannelInfo {
+    export interface ChannelInfo {
         data: VolumeData,
         color: Color,
         wireframe: boolean,
@@ -96,7 +101,6 @@ export namespace VolumeStreaming {
     export class Behavior extends PluginBehavior.WithSubscribers<Params> {
         private cache = LRUCache.create<ChannelsData>(25);
         public params: Params = {} as any;
-        // private ref: string = '';
 
         channels: Channels = {}
 

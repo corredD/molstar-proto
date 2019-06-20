@@ -6,11 +6,11 @@
 
 import { readStructureWrapper, resolveStructures, readDataAndFrame } from '../server/structure-wrapper';
 import { classifyCif } from './converter';
-import { Structure } from 'mol-model/structure';
-import { CifWriter } from 'mol-io/writer/cif';
-import Writer from 'mol-io/writer/writer';
+import { Structure } from '../../../mol-model/structure';
+import { CifWriter } from '../../../mol-io/writer/cif';
+import Writer from '../../../mol-io/writer/writer';
 import { wrapFileToWriter } from '../server/api-local';
-import { encode_mmCIF_categories, CifExportContext } from 'mol-model/structure/export/mmcif';
+import { encode_mmCIF_categories, CifExportContext } from '../../../mol-model/structure/export/mmcif';
 import { ModelPropertiesProvider } from '../property-provider';
 
 // TODO: error handling
@@ -20,7 +20,6 @@ export function preprocessFile(filename: string, propertyProvider?: ModelPropert
         ? preprocess(filename, propertyProvider, outputCif, outputBcif)
         : convert(filename, outputCif, outputBcif);
 }
-
 
 async function preprocess(filename: string, propertyProvider?: ModelPropertiesProvider, outputCif?: string, outputBcif?: string) {
     const input = await readStructureWrapper('entry', '_local_', filename, propertyProvider);

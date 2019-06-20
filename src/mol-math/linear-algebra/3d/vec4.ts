@@ -19,7 +19,7 @@
 
 import Mat4 from './mat4';
 import { EPSILON } from '../3d';
-import { NumberArray } from 'mol-util/type-helpers';
+import { NumberArray } from '../../../mol-util/type-helpers';
 
 interface Vec4 extends Array<number> { [d: number]: number, '@type': 'vec4', length: 4 }
 
@@ -224,6 +224,10 @@ namespace Vec4 {
                 Math.abs(a1 - b1) <= EPSILON.Value * Math.max(1.0, Math.abs(a1), Math.abs(b1)) &&
                 Math.abs(a2 - b2) <= EPSILON.Value * Math.max(1.0, Math.abs(a2), Math.abs(b2)) &&
                 Math.abs(a3 - b3) <= EPSILON.Value * Math.max(1.0, Math.abs(a3), Math.abs(b3)));
+    }
+
+    export function toString(a: Vec4, precision?: number) {
+        return `[${a[0].toPrecision(precision)} ${a[1].toPrecision(precision)} ${a[2].toPrecision(precision)}  ${a[3].toPrecision(precision)}]`;
     }
 }
 

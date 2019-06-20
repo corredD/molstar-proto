@@ -4,27 +4,27 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { Mat4, Vec3 } from 'mol-math/linear-algebra';
-import { Box, PerforatedBox } from 'mol-geo/primitive/box';
-import { OctagonalPyramid, PerforatedOctagonalPyramid } from 'mol-geo/primitive/pyramid';
-import { Star } from 'mol-geo/primitive/star';
-import { Octahedron, PerforatedOctahedron } from 'mol-geo/primitive/octahedron';
-import { DiamondPrism, PentagonalPrism, HexagonalPrism } from 'mol-geo/primitive/prism';
-import { Structure, StructureElement } from 'mol-model/structure';
-import { Mesh } from 'mol-geo/geometry/mesh/mesh';
-import { MeshBuilder } from 'mol-geo/geometry/mesh/mesh-builder';
-import { getSaccharideShape, SaccharideShapes } from 'mol-model/structure/structure/carbohydrates/constants';
-import { addSphere } from 'mol-geo/geometry/mesh/builder/sphere';
+import { Mat4, Vec3 } from '../../../mol-math/linear-algebra';
+import { Box, PerforatedBox } from '../../../mol-geo/primitive/box';
+import { OctagonalPyramid, PerforatedOctagonalPyramid } from '../../../mol-geo/primitive/pyramid';
+import { Star } from '../../../mol-geo/primitive/star';
+import { Octahedron, PerforatedOctahedron } from '../../../mol-geo/primitive/octahedron';
+import { DiamondPrism, PentagonalPrism, HexagonalPrism } from '../../../mol-geo/primitive/prism';
+import { Structure, StructureElement } from '../../../mol-model/structure';
+import { Mesh } from '../../../mol-geo/geometry/mesh/mesh';
+import { MeshBuilder } from '../../../mol-geo/geometry/mesh/mesh-builder';
+import { getSaccharideShape, SaccharideShapes } from '../../../mol-model/structure/structure/carbohydrates/constants';
+import { addSphere } from '../../../mol-geo/geometry/mesh/builder/sphere';
 import { ComplexMeshParams, ComplexMeshVisual } from '../complex-visual';
-import { ParamDefinition as PD } from 'mol-util/param-definition';
+import { ParamDefinition as PD } from '../../../mol-util/param-definition';
 import { ComplexVisual } from '../representation';
 import { VisualUpdateState } from '../../util';
-import { LocationIterator } from 'mol-geo/util/location-iterator';
-import { PickingId } from 'mol-geo/geometry/picking';
-import { OrderedSet, Interval } from 'mol-data/int';
-import { EmptyLoci, Loci } from 'mol-model/loci';
-import { VisualContext } from 'mol-repr/visual';
-import { Theme } from 'mol-theme/theme';
+import { LocationIterator } from '../../../mol-geo/util/location-iterator';
+import { PickingId } from '../../../mol-geo/geometry/picking';
+import { OrderedSet, Interval } from '../../../mol-data/int';
+import { EmptyLoci, Loci } from '../../../mol-model/loci';
+import { VisualContext } from '../../../mol-repr/visual';
+import { Theme } from '../../../mol-theme/theme';
 import { getAltResidueLoci } from './util/common';
 
 const t = Mat4.identity()
@@ -196,7 +196,7 @@ function eachCarbohydrate(loci: Loci, structure: Structure, apply: (interval: In
     const { getElementIndex, getAnomericCarbons } = structure.carbohydrates
     let changed = false
     if (!StructureElement.isLoci(loci)) return false
-    if (!Structure.areEquivalent(loci.structure, structure)) return false
+    if (!Structure.areParentsEquivalent(loci.structure, structure)) return false
     for (const e of loci.elements) {
         // TODO make more efficient by handling/grouping `e.indices` by residue index
         // TODO only call apply when the full alt-residue of the unit is part of `e`

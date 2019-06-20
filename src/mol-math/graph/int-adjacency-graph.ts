@@ -5,8 +5,8 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { arrayPickIndices, cantorPairing } from 'mol-data/util';
-import { LinkedIndex, SortedArray } from 'mol-data/int';
+import { arrayPickIndices, cantorPairing } from '../../mol-data/util';
+import { LinkedIndex, SortedArray } from '../../mol-data/int';
 
 /**
  * Represent a graph using vertex adjacency list.
@@ -297,9 +297,9 @@ export namespace IntAdjacencyGraph {
             newOffsets[++vo] = eo;
         }
 
-        const newEdgeProps: P = {} as any;
-        for (const key of Object.keys(edgeProps)) {
-            newEdgeProps[key] = arrayPickIndices(edgeProps[key], edgeIndices);
+        const newEdgeProps = {} as P;
+        for (const key of Object.keys(edgeProps) as (keyof P)[]) {
+            newEdgeProps[key] = arrayPickIndices(edgeProps[key], edgeIndices) as P[keyof P];
         }
 
         return create(newOffsets, newA, newB, newEdgeCount, newEdgeProps);

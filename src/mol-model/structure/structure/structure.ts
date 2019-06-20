@@ -5,11 +5,11 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { IntMap, SortedArray, Iterator, Segmentation } from 'mol-data/int'
-import { UniqueArray } from 'mol-data/generic'
-import { SymmetryOperator } from 'mol-math/geometry/symmetry-operator'
+import { IntMap, SortedArray, Iterator, Segmentation } from '../../../mol-data/int'
+import { UniqueArray } from '../../../mol-data/generic'
+import { SymmetryOperator } from '../../../mol-math/geometry/symmetry-operator'
 import { Model, ElementIndex } from '../model'
-import { sort, arraySwap, hash1, sortArray, hashString, hashFnv32a } from 'mol-data/util';
+import { sort, arraySwap, hash1, sortArray, hashString, hashFnv32a } from '../../../mol-data/util';
 import StructureElement from './element'
 import Unit from './unit'
 import { StructureLookup3D } from './util/lookup3d';
@@ -22,10 +22,10 @@ import StructureProperties from './properties';
 import { ResidueIndex, ChainIndex, EntityIndex } from '../model/indexing';
 import { Carbohydrates } from './carbohydrates/data';
 import { computeCarbohydrates } from './carbohydrates/compute';
-import { Vec3, Mat4 } from 'mol-math/linear-algebra';
-import { idFactory } from 'mol-util/id-factory';
-import { GridLookup3D } from 'mol-math/geometry';
-import { UUID } from 'mol-util';
+import { Vec3, Mat4 } from '../../../mol-math/linear-algebra';
+import { idFactory } from '../../../mol-util/id-factory';
+import { GridLookup3D } from '../../../mol-math/geometry';
+import { UUID } from '../../../mol-util';
 import { CustomProperties } from '../common/custom-property';
 
 class Structure {
@@ -428,7 +428,7 @@ namespace Structure {
 
     export function transform(s: Structure, transform: Mat4) {
         if (Mat4.isIdentity(transform)) return s;
-        if (!Mat4.isRotationAndTranslation(transform)) throw new Error('Only rotation/translation combination can be applied.');
+        if (!Mat4.isRotationAndTranslation(transform, SymmetryOperator.RotationTranslationEpsilon)) throw new Error('Only rotation/translation combination can be applied.');
 
         const units: Unit[] = [];
         for (const u of s.units) {
@@ -505,6 +505,11 @@ namespace Structure {
             a.hashCode === b.hashCode &&
             StructureSymmetry.areTransformGroupsEquivalent(a.unitSymmetryGroups, b.unitSymmetryGroups)
         )
+    }
+
+    /** Check if the structures or their parents are equivalent */
+    export function areParentsEquivalent(a: Structure, b: Structure) {
+        return areEquivalent(a.parent || a, b.parent || b)
     }
 
     export class ElementLocationIterator implements Iterator<StructureElement> {

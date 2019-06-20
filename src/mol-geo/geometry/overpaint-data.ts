@@ -4,10 +4,10 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { ValueCell } from 'mol-util/value-cell'
-import { Vec2 } from 'mol-math/linear-algebra'
-import { TextureImage, createTextureImage } from 'mol-gl/renderable/util';
-import { Color } from 'mol-util/color';
+import { ValueCell } from '../../mol-util/value-cell'
+import { Vec2 } from '../../mol-math/linear-algebra'
+import { TextureImage, createTextureImage } from '../../mol-gl/renderable/util';
+import { Color } from '../../mol-util/color';
 
 export type OverpaintData = {
     tOverpaint: ValueCell<TextureImage<Uint8Array>>
@@ -24,7 +24,7 @@ export function applyOverpaintColor(array: Uint8Array, start: number, end: numbe
 }
 
 export function clearOverpaint(array: Uint8Array, start: number, end: number) {
-    array.fill(0, start, end)
+    array.fill(0, start * 4, end * 4)
 }
 
 export function createOverpaint(count: number, overpaintData?: OverpaintData): OverpaintData {

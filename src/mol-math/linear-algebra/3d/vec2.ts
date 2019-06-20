@@ -1,10 +1,10 @@
-import { NumberArray } from 'mol-util/type-helpers';
-
 /**
  * Copyright (c) 2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
+
+import { NumberArray } from '../../../mol-util/type-helpers';
 
 /*
  * This code has been modified from https://github.com/toji/gl-matrix/,
@@ -165,6 +165,10 @@ namespace Vec2 {
 
     export function areEqual(a: Vec2, b: Vec2) {
         return a[0] === b[0] && a[1] === b[1];
+    }
+
+    export function toString(a: Vec2, precision?: number) {
+        return `[${a[0].toPrecision(precision)} ${a[1].toPrecision(precision)}}]`;
     }
 }
 

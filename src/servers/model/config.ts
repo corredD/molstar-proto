@@ -4,6 +4,8 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
+import { ModelPropertyProviderConfig } from './property-provider';
+
 const config = {
     /**
      * Determine if and how long to cache entries after a request.
@@ -50,10 +52,11 @@ const config = {
     /**
      * Provide a property config or a path a JSON file with the config.
      */
-    customProperties: <import('./property-provider').ModelPropertyProviderConfig | string>{
+    customProperties: <ModelPropertyProviderConfig | string>{
         sources: [
-            './properties/pdbe',
-            './properties/rcsb'
+            'pdbe',
+            'rcsb',
+            'wwpdb'
         ],
         params: {
             PDBe: {
@@ -66,6 +69,14 @@ const config = {
                 File: {
                     residuewise_outlier_summary: 'e:/test/mol-star/model/props/'
                 }
+            },
+            RCSB: {
+                API: {
+                    assembly_symmetry: 'https://rest-staging.rcsb.org/graphql'
+                }
+            },
+            wwPDB: {
+                chemCompBondTablePath: ''
             }
         }
     },

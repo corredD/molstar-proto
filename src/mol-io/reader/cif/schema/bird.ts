@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2017-2018 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2019 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
- * Code-generated 'BIRD' schema file. Dictionary versions: mmCIF 5.309, IHM 0.141, CARB draft.
+ * Code-generated 'BIRD' schema file. Dictionary versions: mmCIF 5.311, IHM 1.0, CARB draft.
  *
- * @author mol-star package (src/apps/schema-generator/generate)
+ * @author molstar/ciftools package
  */
 
-import { Database, Column } from 'mol-data/db'
+import { Database, Column } from '../../../../mol-data/db'
 
 import Schema = Column.Schema
 
@@ -84,6 +84,10 @@ export const BIRD_Schema = {
          * corresponding to the chemical definition for the molecule.
          */
         chem_comp_id: str,
+        /**
+         * Special details about this molecule.
+         */
+        compound_details: str,
         /**
          * Description of this molecule.
          */

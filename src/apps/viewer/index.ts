@@ -4,11 +4,11 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { createPlugin, DefaultPluginSpec } from 'mol-plugin';
+import { createPlugin, DefaultPluginSpec } from '../../mol-plugin';
 import './index.html'
-import { PluginContext } from 'mol-plugin/context';
-import { PluginCommands } from 'mol-plugin/command';
-import { PluginSpec } from 'mol-plugin/spec';
+import { PluginContext } from '../../mol-plugin/context';
+import { PluginCommands } from '../../mol-plugin/command';
+import { PluginSpec } from '../../mol-plugin/spec';
 import { CreateJoleculeState } from './extensions/jolecule';
 require('mol-plugin/skin/light.scss')
 
@@ -24,10 +24,14 @@ function init() {
         actions: [...DefaultPluginSpec.actions, PluginSpec.Action(CreateJoleculeState)],
         behaviors: [...DefaultPluginSpec.behaviors],
         animations: [...DefaultPluginSpec.animations || []],
+        customParamEditors: DefaultPluginSpec.customParamEditors,
         layout: {
             initial: {
                 isExpanded: true,
                 showControls: !hideControls
+            },
+            controls: {
+                ...DefaultPluginSpec.layout && DefaultPluginSpec.layout.controls
             }
         }
     };
