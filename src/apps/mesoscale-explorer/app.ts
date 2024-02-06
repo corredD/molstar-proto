@@ -269,6 +269,7 @@ export class MesoscaleExplorer {
             } else {
                 plugin.runTask(plugin.state.data.applyAction(LoadModel, {
                     files: files.map(f => Asset.File(f)),
+                    clear: true
                 }));
             }
 

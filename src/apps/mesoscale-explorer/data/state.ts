@@ -498,6 +498,15 @@ export function getAllFilteredEntities(plugin: PluginContext, tag: string, filte
     return getAllEntities(plugin, tag).filter(c => getEntityLabel(plugin, c).match(matcher) !== null);
 }
 
+export function getEveryEntities(plugin: PluginContext, filter?: string, tag?: string) {
+    if (filter) {
+        const matcher = getFilterMatcher(filter);
+        return getAllEntities(plugin, tag).filter(c => getEntityLabel(plugin, c).match(matcher) !== null);
+    } else {
+        return getAllEntities(plugin, tag);
+    }
+}
+
 export function getEntityLabel(plugin: PluginContext, cell: StateObjectCell) {
     return StateObjectRef.resolve(plugin.state.data, cell.transform.parent)?.obj?.label || 'Entity';
 }

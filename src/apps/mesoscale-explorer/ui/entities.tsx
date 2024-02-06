@@ -3,8 +3,9 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
-
-import { PluginUIComponent } from '../../../mol-plugin-ui/base';
+import React from 'react';
+import Markdown from 'react-markdown';
+import { PluginReactContext, PluginUIComponent } from '../../../mol-plugin-ui/base';
 import { Button, ControlGroup, IconButton } from '../../../mol-plugin-ui/controls/common';
 import { ArrowDropDownSvg, ArrowRightSvg, CloseSvg, VisibilityOffOutlinedSvg, VisibilityOutlinedSvg, ContentCutSvg, BrushSvg, SearchSvg } from '../../../mol-plugin-ui/controls/icons';
 import { PluginCommands } from '../../../mol-plugin/commands';
@@ -18,16 +19,13 @@ import { CombinedColorControl } from '../../../mol-plugin-ui/controls/color';
 import { MarkerAction } from '../../../mol-util/marker-action';
 import { EveryLoci, Loci } from '../../../mol-model/loci';
 import { deepEqual } from '../../../mol-util';
-import { ColorValueParam, ColorParams, ColorProps, DimLightness, LightnessParams, LodParams, MesoscaleGroup, MesoscaleGroupProps, OpacityParams, SimpleClipParams, SimpleClipProps, createClipMapping, getClipObjects, getDistinctGroupColors, RootParams, MesoscaleState, getRoots, getAllGroups, getAllLeafGroups, getFilteredEntities, getAllFilteredEntities, getGroups, getEntities, getAllEntities, getEntityLabel, updateColors, getGraphicsModeProps, GraphicsMode, MesoscaleStateParams, setGraphicsCanvas3DProps, PatternParams, expandAllGroups, getEntityDescription } from '../data/state';
-import React from 'react';
+import { ColorValueParam, ColorParams, ColorProps, DimLightness, LightnessParams, LodParams, MesoscaleGroup, MesoscaleGroupProps, OpacityParams, SimpleClipParams, SimpleClipProps, createClipMapping, getClipObjects, getDistinctGroupColors, RootParams, MesoscaleState, getRoots, getAllGroups, getAllLeafGroups, getFilteredEntities, getAllFilteredEntities, getGroups, getEntities, getAllEntities, getEntityLabel, updateColors, getGraphicsModeProps, GraphicsMode, MesoscaleStateParams, setGraphicsCanvas3DProps, PatternParams, expandAllGroups, getEntityDescription, getEveryEntities } from '../data/state';
 import { MesoscaleExplorerState } from '../app';
 import { StructureElement } from '../../../mol-model/structure/structure/element';
 import { PluginStateObject as PSO } from '../../../mol-plugin-state/objects';
 import { Structure } from '../../../mol-model/structure';
 import { PluginContext } from '../../../mol-plugin/context';
 import { Sphere3D } from '../../../mol-math/geometry';
-import Markdown from 'react-markdown';
-import { MarkdownAnchor } from '../../../mol-plugin-ui/controls';
 
 function centerLoci(plugin: PluginContext, loci: Loci, durationMs = 250) {
     const { canvas3d } = plugin;
@@ -140,7 +138,7 @@ export class CanvasInfo extends PluginUIComponent<{}, { isDisabled: boolean }> {
         const info = this.info;
         if (info.selectionDescription === '') return <></>;
         return <div className='msp-highlight-info'>
-            <Markdown skipHtml components={{ a: MarkdownAnchor }}>{info.selectionDescription}</Markdown>
+            <Markdown skipHtml components={{ a: MesoMarkdownAnchor }}>{info.selectionDescription}</Markdown>
         </div>;
     }
 
@@ -321,6 +319,156 @@ export class SelectionInfo extends PluginUIComponent<{}, { isDisabled: boolean }
             {this.selection}
         </>;
     }
+}
+
+
+export function MesoViewportSnapshotDescription() {
+    const plugin = React.useContext(PluginReactContext);
+    const [_, setV] = React.useState(0);
+
+    React.useEffect(() => {
+        const sub = plugin.managers.snapshot.events.changed.subscribe(() => setV(v => v + 1));
+        return () => sub.unsubscribe();
+    }, [plugin]);
+
+    const current = plugin.managers.snapshot.state.current;
+    if (!current) return null;
+
+    const e = plugin.managers.snapshot.getEntry(current)!;
+    if (!e?.description?.trim()) return null;
+
+    return <div className='msp-snapshot-description-wrapper'>
+        <Markdown skipHtml components={{ a: MesoMarkdownAnchor }}>{e.description}</Markdown>
+    </div>;
+}
+
+export function MesoMarkdownAnchor({ href, children, element }: { href?: string, children?: any, element?: any }) {
+    const plugin = React.useContext(PluginReactContext);
+
+    if (!href) return element;
+    // Decode the href to handle encoded spaces and other characters
+    const decodedHref = href ? decodeURIComponent(href) : '';
+
+    const handleHover = (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
+        e.preventDefault();
+        // Implement your hover logic here
+        // console.log('Hovered over:', href);
+
+        // Example: Perform an action if the href starts with 'h'
+        if (decodedHref.startsWith('i')) {
+            // Example hover action
+            e.preventDefault();
+            plugin.canvas3d?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
+            const query_names = decodedHref.substring(1).split(',');
+            for (const query_name of query_names) {
+                const entities = getEveryEntities(plugin, query_name); // comp:root or ent:
+                console.log('entities filter in hover ', query_names[0], entities);
+                for (const r of entities) {
+                    const repr = r.obj?.data.repr;
+                    if (repr) {
+                        plugin.canvas3d?.mark({ repr, loci: EveryLoci }, MarkerAction.Highlight);
+                    }
+                }
+            }
+        } else if (decodedHref.startsWith('g')) {
+            // Example hover action
+            e.preventDefault();
+            plugin.canvas3d?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
+            const query = decodedHref.substring(1, 5) + ':'; // .startsWith('gcomp.') ? 'comp:' : 'func:';
+            const query_names = decodedHref.substring(6).split(',');
+            for (const query_name of query_names) {
+                const e = getAllEntities(plugin, query + query_name);
+                // console.log(e, 'comp:' + query_name);
+                for (const r of e) {
+                    const repr = r.obj?.data.repr;
+                    if (repr) {
+                        plugin.canvas3d?.mark({ repr, loci: EveryLoci }, MarkerAction.Highlight);
+                    }
+                }
+            }
+        }
+    };
+    const handleLeave = (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
+        e.preventDefault();
+        // Implement your hover off logic here
+        // console.log('Hovered off:', href);
+        // Example: Perform an action if the href starts with 'h'
+        if (decodedHref.startsWith('i') || decodedHref.startsWith('g')) {
+            // Example hover off action
+            e.preventDefault();
+            plugin.canvas3d?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
+        }
+    };
+    const handleClick = (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
+        e.preventDefault();
+        // Implement your click logic here
+        // console.log('Clicked on:', href);
+        if (href.startsWith('#')) {
+            plugin.managers.snapshot.applyKey(decodedHref.substring(1));
+        } else if (decodedHref.startsWith('i')) {
+            // Example click action for links starting with 'h'
+            // console.log('Perform click action for:', href);
+            // Your existing logic for 'h' links can be placed here
+            // select
+            e.preventDefault();
+            plugin.managers.interactivity.lociSelects.deselectAll();
+            plugin.canvas3d?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
+            const query_names = decodedHref.substring(1).split(',');
+            for (const query_name of query_names) {
+                const entities = getEveryEntities(plugin, query_name); // comp:root
+                console.log('entities filter in hover ', query_names[0], entities);
+                for (const r of entities) {
+                    const repr = r.obj?.data.repr;
+                    if (repr) {
+                        plugin.canvas3d?.mark({ repr, loci: EveryLoci }, MarkerAction.Highlight);
+                    }
+                    const cell = r as StateObjectCell<PSO.Molecule.Structure.Representation3D | PSO.Shape.Representation3D> | undefined;
+                    if (!(cell?.obj?.data.sourceData instanceof Structure)) return;
+                    const loci = Structure.toStructureElementLoci(cell.obj.data.sourceData);
+                    plugin.managers.interactivity.lociSelects.toggle({ loci }, false);
+                }
+            }
+        } else if (decodedHref.startsWith('g')) {
+            // Example click action for links starting with 'h'
+            // console.log('Perform click action for:', href);
+            // Your existing logic for 'h' links can be placed here
+            // select
+            e.preventDefault();
+            plugin.managers.interactivity.lociSelects.deselectAll();
+            plugin.canvas3d?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
+            const query = decodedHref.substring(1, 5) + ':';
+            const query_names = decodedHref.substring(6).split(',');
+            for (const query_name of query_names) {
+                const entities = getAllEntities(plugin, query + query_name);
+                console.log('entities filter in hover ', query_names[0], entities);
+                for (const r of entities) {
+                    const repr = r.obj?.data.repr;
+                    if (repr) {
+                        plugin.canvas3d?.mark({ repr, loci: EveryLoci }, MarkerAction.Highlight);
+                    }
+                    const cell = r as StateObjectCell<PSO.Molecule.Structure.Representation3D | PSO.Shape.Representation3D> | undefined;
+                    if (!(cell?.obj?.data.sourceData instanceof Structure)) return;
+                    const loci = Structure.toStructureElementLoci(cell.obj.data.sourceData);
+                    plugin.managers.interactivity.lociSelects.toggle({ loci }, false);
+                }
+            }
+        } else {
+            // open the link in a new tab
+            window.open(decodedHref, '_blank');
+        }
+        // Add other conditions as needed
+    };
+
+    if (decodedHref[0] === '#') {
+        return <a href={decodedHref[0]} onMouseOver={handleHover} onClick={handleClick}>{children}</a>;
+    }
+    if (decodedHref[0] === 'i' || href[0] === 'g') {
+        return <a href={decodedHref[0]} onMouseLeave={handleLeave} onMouseOver={handleHover} onClick={handleClick}>{children}</a>;
+    }
+    if (decodedHref[0] === 'h') {
+        return <a href={decodedHref[0]} onClick={handleClick} rel="noopener noreferrer">{children}</a>;
+    }
+    return element;
 }
 
 export class EntityControls extends PluginUIComponent<{}, { isDisabled: boolean }> {
@@ -557,6 +705,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
     };
 
     get groups() {
+        console.log('group', this.cell.params?.values.tag);
         return getGroups(this.plugin, this.cell.params?.values.tag);
     }
 
@@ -567,18 +716,22 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
     }
 
     get entities() {
+        console.log('entities', this.cell.params?.values.tag);
         return getEntities(this.plugin, this.cell.params?.values.tag);
     }
 
     get filteredEntities() {
+        console.log('filteredEntities', this.cell.params?.values.tag);
         return getFilteredEntities(this.plugin, this.cell.params?.values.tag, this.props.filter);
     }
 
     get allEntities() {
+        console.log('allEntities', this.cell.params?.values.tag);
         return getAllEntities(this.plugin, this.cell.params?.values.tag);
     }
 
     get allFilteredEntities() {
+        console.log('allFilteredEntities', this.cell.params?.values.tag);
         return getAllFilteredEntities(this.plugin, this.cell.params?.values.tag, this.props.filter);
     }
 

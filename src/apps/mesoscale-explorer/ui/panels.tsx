@@ -6,7 +6,7 @@
 
 import { Mp4EncoderUI } from '../../../extensions/mp4-export/ui';
 import { PluginUIComponent } from '../../../mol-plugin-ui/base';
-import { AnimationViewportControls, LociLabels, SelectionViewportControls, StateSnapshotViewportControls, TrajectoryViewportControls, ViewportSnapshotDescription } from '../../../mol-plugin-ui/controls';
+import { AnimationViewportControls, LociLabels, SelectionViewportControls, StateSnapshotViewportControls, TrajectoryViewportControls } from '../../../mol-plugin-ui/controls';
 import { SectionHeader } from '../../../mol-plugin-ui/controls/common';
 import { StructureMeasurementsControls } from '../../../mol-plugin-ui/structure/measurements';
 import { BackgroundTaskProgress } from '../../../mol-plugin-ui/task';
@@ -14,7 +14,7 @@ import { Toasts } from '../../../mol-plugin-ui/toast';
 import { Viewport, ViewportControls } from '../../../mol-plugin-ui/viewport';
 import { MesoscaleExplorerState } from '../app';
 import { MesoscaleState } from '../data/state';
-import { CanvasInfo, EntityControls, ModelInfo, SelectionInfo } from './entities';
+import { CanvasInfo, EntityControls, MesoViewportSnapshotDescription, ModelInfo, SelectionInfo } from './entities';
 import { LoaderControls, ExampleControls, SessionControls, SnapshotControls, DatabaseControls } from './states';
 
 const Spacer = () => <div style={{ height: '2em' }} />;
@@ -28,7 +28,7 @@ export class MesoScaleViewport extends PluginUIComponent {
                 <AnimationViewportControls />
                 <TrajectoryViewportControls />
                 <StateSnapshotViewportControls />
-                <ViewportSnapshotDescription />
+                <MesoViewportSnapshotDescription />
             </div>
             <SelectionViewportControls />
             <VPControls />

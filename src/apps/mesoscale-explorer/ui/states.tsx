@@ -163,7 +163,19 @@ export async function loadExampleEntry(ctx: PluginContext, entry: ExampleEntry) 
 
 export async function loadUrl(ctx: PluginContext, url: string, type: 'molx' | 'molj' | 'cif' | 'bcif') {
     if (type === 'molx' || type === 'molj') {
+        const customState = ctx.customState as MesoscaleExplorerState;
+        delete customState.stateRef;
+        customState.stateCache = {};
+        ctx.managers.asset.clear();
+
+        await PluginCommands.State.Snapshots.Clear(ctx);
         await PluginCommands.State.Snapshots.OpenUrl(ctx, { url, type });
+
+        const cell = ctx.state.data.selectQ(q => q.ofType(MesoscaleStateObject))[0];
+        if (!cell) throw new Error('Missing MesoscaleState');
+
+        customState.stateRef = cell.transform.ref;
+        customState.graphicsMode = cell.obj?.data.graphics || customState.graphicsMode;
     } else {
         await reset(ctx);
         const isBinary = type === 'bcif';
@@ -172,15 +184,15 @@ export async function loadUrl(ctx: PluginContext, url: string, type: 'molx' | 'm
     }
 }
 
-export async function loadPdb(ctx: PluginContext, id: string) {
-    await reset(ctx);
+export async function loadPdb(ctx: PluginContext, id: string, clear: boolean = true) {
+    if (clear) await reset(ctx);
     const url = `https://models.rcsb.org/${id.toUpperCase()}.bcif`;
     const data = await ctx.builders.data.download({ url, isBinary: true });
     await createHierarchy(ctx, data.ref);
 }
 
-export async function loadPdbDev(ctx: PluginContext, id: string) {
-    await reset(ctx);
+export async function loadPdbDev(ctx: PluginContext, id: string, clear: boolean = true) {
+    if (clear) await reset(ctx);
     const nId = id.toUpperCase().startsWith('PDBDEV_') ? id : `PDBDEV_${id.padStart(8, '0')}`;
     const url = `https://pdb-dev.wwpdb.org/bcif/${nId.toUpperCase()}.bcif`;
     const data = await ctx.builders.data.download({ url, isBinary: true });
@@ -195,14 +207,15 @@ export const LoadDatabase = StateAction.build({
         return {
             source: PD.Select('pdb', PD.objectToOptions({ pdb: 'PDB', pdbDev: 'PDB-Dev' })),
             entry: PD.Text(''),
+            clear: PD.Boolean(false, { description: 'Clear the current state before loading the new one.' })
         };
     },
     from: PluginStateObject.Root
 })(({ params }, ctx: PluginContext) => Task.create('Loading from database...', async taskCtx => {
     if (params.source === 'pdb') {
-        await loadPdb(ctx, params.entry);
+        await loadPdb(ctx, params.entry, params.clear);
     } else if (params.source === 'pdbDev') {
-        await loadPdbDev(ctx, params.entry);
+        await loadPdbDev(ctx, params.entry, params.clear);
     }
 }));
 
@@ -224,6 +237,7 @@ export const LoadModel = StateAction.build({
     display: { name: 'Load', description: 'Load a model' },
     params: {
         files: PD.FileList({ accept: '.cif,.bcif,.cif.gz,.bcif.gz,.zip', multiple: true, description: 'mmCIF or Cellpack- or Petworld-style cif file.', label: 'File(s)' }),
+        clear: PD.Boolean(false, { description: 'Clear the current state before loading the new one.' })
     },
     from: PluginStateObject.Root
 })(({ params }, ctx: PluginContext) => Task.create('Loading model...', async taskCtx => {
@@ -232,7 +246,8 @@ export const LoadModel = StateAction.build({
         return;
     }
 
-    await reset(ctx);
+    // reset only with big file ?
+    if (params.clear) await reset(ctx);
 
     const firstFile = params.files[0];
     const firstInfo = getFileNameInfo(firstFile.file!.name);

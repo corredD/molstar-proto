@@ -92,6 +92,7 @@ export const MesoSelectLoci = PluginBehavior.create<MesoSelectLociProps>({
                     } else {
                         console.log('click else ', current.loci, StructureElement.Loci.is(current.loci));
                         if (StructureElement.Loci.is(current.loci)) {
+                            this.ctx.managers.interactivity.lociSelects.deselectAll();
                             // const loci = Loci.normalize(current.loci, 'chain');
                             const cell = this.ctx.helpers.substructureParent.get(current.loci.structure);
                             const d = cell?.obj?.description || cell?.obj?.label;
