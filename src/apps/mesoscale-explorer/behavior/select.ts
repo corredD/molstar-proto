@@ -70,15 +70,17 @@ export const MesoSelectLoci = PluginBehavior.create<MesoSelectLociProps>({
                 const { click, clickToggleSelect } = this.params.bindings;
                 if (Binding.match(clickToggleSelect, button, modifiers)) {
                     if (Loci.isEmpty(current.loci)) {
+                        console.log('clickToggleSelect nothing ');
                         this.ctx.managers.interactivity.lociSelects.deselectAll();
                         return;
                     }
-
                     const loci = Loci.normalize(current.loci, modifiers.control ? 'entity' : 'chain');
+                    console.log('clickToggleSelect ', loci);
                     this.ctx.managers.interactivity.lociSelects.toggle({ loci }, false);
                 }
                 if (Binding.match(click, button, modifiers)) {
                     if (Loci.isEmpty(current.loci)) {
+                        console.log('click nothing ');
                         this.ctx.managers.interactivity.lociSelects.deselectAll();
                         MesoscaleState.set(this.ctx, { selectionDescription: '' });
                         return;
@@ -102,6 +104,7 @@ export const MesoSelectLoci = PluginBehavior.create<MesoSelectLociProps>({
                             // MesoscaleState.setSelectionDescription(this.ctx, cell?.obj?.label || 'Unknown');
                             // this.ctx.managers.snapshot.applyKey(e.key ?? '');
                         } else {
+                            console.log('click nothing ');
                             this.ctx.managers.interactivity.lociSelects.deselectAll();
                         }
                         // this.ctx.managers.interactivity.lociSelects.selectOnly({ loci }, false);

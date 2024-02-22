@@ -336,33 +336,24 @@ export function MesoViewportSnapshotDescription() {
 
     const e = plugin.managers.snapshot.getEntry(current)!;
     if (!e?.description?.trim()) return null;
-
     return <div className='msp-snapshot-description-wrapper'>
-        <Markdown skipHtml components={{ a: MesoMarkdownAnchor }}>{e.description}</Markdown>
+        <Markdown skipHtml={false} components={{ a: MesoMarkdownAnchor }}>{e.description}</Markdown>
     </div>;
 }
 
 export function MesoMarkdownAnchor({ href, children, element }: { href?: string, children?: any, element?: any }) {
     const plugin = React.useContext(PluginReactContext);
-
     if (!href) return element;
     // Decode the href to handle encoded spaces and other characters
     const decodedHref = href ? decodeURIComponent(href) : '';
-
     const handleHover = (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
         e.preventDefault();
-        // Implement your hover logic here
-        // console.log('Hovered over:', href);
-
-        // Example: Perform an action if the href starts with 'h'
         if (decodedHref.startsWith('i')) {
-            // Example hover action
             e.preventDefault();
             plugin.canvas3d?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
             const query_names = decodedHref.substring(1).split(',');
             for (const query_name of query_names) {
-                const entities = getEveryEntities(plugin, query_name); // comp:root or ent:
-                console.log('entities filter in hover ', query_names[0], entities);
+                const entities = getEveryEntities(plugin, query_name);
                 for (const r of entities) {
                     const repr = r.obj?.data.repr;
                     if (repr) {
@@ -371,14 +362,13 @@ export function MesoMarkdownAnchor({ href, children, element }: { href?: string,
                 }
             }
         } else if (decodedHref.startsWith('g')) {
-            // Example hover action
             e.preventDefault();
             plugin.canvas3d?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
             const query = decodedHref.substring(1, 5) + ':'; // .startsWith('gcomp.') ? 'comp:' : 'func:';
             const query_names = decodedHref.substring(6).split(',');
             for (const query_name of query_names) {
                 const e = getAllEntities(plugin, query + query_name);
-                // console.log(e, 'comp:' + query_name);
+                console.log(e, query + ':' + query_name);
                 for (const r of e) {
                     const repr = r.obj?.data.repr;
                     if (repr) {
@@ -415,15 +405,17 @@ export function MesoMarkdownAnchor({ href, children, element }: { href?: string,
             plugin.canvas3d?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
             const query_names = decodedHref.substring(1).split(',');
             for (const query_name of query_names) {
-                const entities = getEveryEntities(plugin, query_name); // comp:root
-                console.log('entities filter in hover ', query_names[0], entities);
+                const entities = getFilteredEntities(plugin, '', query_name);
                 for (const r of entities) {
                     const repr = r.obj?.data.repr;
                     if (repr) {
                         plugin.canvas3d?.mark({ repr, loci: EveryLoci }, MarkerAction.Highlight);
                     }
                     const cell = r as StateObjectCell<PSO.Molecule.Structure.Representation3D | PSO.Shape.Representation3D> | undefined;
-                    if (!(cell?.obj?.data.sourceData instanceof Structure)) return;
+                    if (!(cell?.obj?.data.sourceData instanceof Structure)) {
+                        console.log('xx return');
+                        return;
+                    }
                     const loci = Structure.toStructureElementLoci(cell.obj.data.sourceData);
                     plugin.managers.interactivity.lociSelects.toggle({ loci }, false);
                 }
@@ -440,7 +432,7 @@ export function MesoMarkdownAnchor({ href, children, element }: { href?: string,
             const query_names = decodedHref.substring(6).split(',');
             for (const query_name of query_names) {
                 const entities = getAllEntities(plugin, query + query_name);
-                console.log('entities filter in hover ', query_names[0], entities);
+                console.log('g entities filter in click ', query_names[0], entities);
                 for (const r of entities) {
                     const repr = r.obj?.data.repr;
                     if (repr) {
