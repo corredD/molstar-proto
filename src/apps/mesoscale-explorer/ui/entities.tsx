@@ -3,11 +3,11 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
-import React from 'react';
+import React, { useState } from 'react';
 import Markdown from 'react-markdown';
 import { PluginReactContext, PluginUIComponent } from '../../../mol-plugin-ui/base';
 import { Button, ControlGroup, IconButton } from '../../../mol-plugin-ui/controls/common';
-import { ArrowDropDownSvg, ArrowRightSvg, CloseSvg, VisibilityOffOutlinedSvg, VisibilityOutlinedSvg, ContentCutSvg, BrushSvg, SearchSvg } from '../../../mol-plugin-ui/controls/icons';
+import { ArrowDropDownSvg, ArrowRightSvg, CloseSvg, VisibilityOffOutlinedSvg, VisibilityOutlinedSvg, ContentCutSvg, BrushSvg, SearchSvg, TooltipTextOutlineSvg, TooltipTextSvg, PlusBoxSvg, MinusBoxSvg } from '../../../mol-plugin-ui/controls/icons';
 import { PluginCommands } from '../../../mol-plugin/commands';
 import { State, StateObjectCell, StateSelection, StateTransformer } from '../../../mol-state';
 import { ParameterControls, ParameterMappingControl, ParamOnChange, SelectControl } from '../../../mol-plugin-ui/controls/parameters';
@@ -325,6 +325,18 @@ export class SelectionInfo extends PluginUIComponent<{}, { isDisabled: boolean }
 export function MesoViewportSnapshotDescription() {
     const plugin = React.useContext(PluginReactContext);
     const [_, setV] = React.useState(0);
+    const [isShown, setIsShown] = useState(true);
+    const [textSize, setTextSize] = useState(14);
+    const toggleVisibility = () => {
+        setIsShown(!isShown);
+    };
+    const increaseTextSize = () => {
+        setTextSize(prevSize => prevSize + 2); // Increase the text size by 2px
+    };
+
+    const decreaseTextSize = () => {
+        setTextSize(prevSize => prevSize - 2); // Decrease the text size by 2px
+    };
 
     React.useEffect(() => {
         const sub = plugin.managers.snapshot.events.changed.subscribe(() => setV(v => v + 1));
@@ -336,9 +348,17 @@ export function MesoViewportSnapshotDescription() {
 
     const e = plugin.managers.snapshot.getEntry(current)!;
     if (!e?.description?.trim()) return null;
-    return <div className='msp-snapshot-description-wrapper'>
-        <Markdown skipHtml={false} components={{ a: MesoMarkdownAnchor }}>{e.description}</Markdown>
-    </div>;
+    const showInfo = <IconButton svg={isShown ? TooltipTextSvg : TooltipTextOutlineSvg} flex='20px' onClick={toggleVisibility} title={isShown ? 'Hide Description' : 'Show Description'}/>;
+    const increasePoliceSize = <IconButton svg={PlusBoxSvg} flex='20px' onClick={increaseTextSize} title='Bigger Text' />;
+    const decreasePoliceSize = <IconButton svg={MinusBoxSvg} flex='20px' onClick={decreaseTextSize} title='Smaller Text' />;
+    return (
+        <>
+            {showInfo}{increasePoliceSize}{decreasePoliceSize}
+            <div className={`msp-snapshot-description-wrapper ${isShown ? 'shown' : 'hidden'}`} style={{ fontSize: `${textSize}px` }}>
+                {<Markdown skipHtml={false} components={{ a: MesoMarkdownAnchor }}>{e.description}</Markdown>}
+            </div>
+        </>
+    );
 }
 
 export function MesoMarkdownAnchor({ href, children, element }: { href?: string, children?: any, element?: any }) {
@@ -756,11 +776,21 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
             const c = type === 'generate' ? groupColors[i] : value;
             update.to(entities[i]).update(old => {
                 if (old.type) {
+                    if (type === 'illustrative') {
+                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: old.colorTheme.params.value } } } };
+                    } else {
+                        old.colorTheme.name = 'uniform';
+                    }
                     old.colorTheme.params.value = c;
                     old.colorTheme.params.lightness = lightness;
                     old.type.params.alpha = alpha;
                     old.type.params.xrayShaded = alpha < 1 ? 'inverted' : false;
                 } else {
+                    if (type === 'illustrative') {
+                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: old.colorTheme.params.value } } } };
+                    } else {
+                        old.colorTheme.name = 'uniform';
+                    }
                     old.coloring.params.color = c;
                     old.coloring.params.lightness = lightness;
                     old.alpha = alpha;
@@ -871,7 +901,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
                 borderRight: `6px solid ${Color.toStyle(Color.lighten(color.value, color.lightness))}`
             };
             return <Button style={style} onClick={this.toggleColor} />;
-        } else if (this.cell.params?.values.color.type === 'generate') {
+        } else if (this.cell.params?.values.color.type === 'generate' || this.cell.params?.values.color.type === 'illustrative') {
             const style = {
                 minWidth: 32,
                 width: 32,
@@ -1031,19 +1061,37 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
     };
 
     get colorValue(): Color | undefined {
-        return this.cell.transform.params?.colorTheme?.params.value ?? this.cell.transform.params?.coloring?.params.color;
+        if (this.cell.transform.params?.colorTheme?.params.value) {
+            return this.cell.transform.params?.colorTheme?.params.value;
+        } else if (this.cell.transform.params?.colorTheme?.name === 'illustrative') {
+            return this.cell.transform.params?.colorTheme?.params.style.params.value;
+        } else {
+            return this.cell.transform.params?.colorTheme?.params.value ?? this.cell.transform.params?.coloring?.params.color;
+        }
     }
 
     get lightnessValue(): { lightness: number } | undefined {
-        return {
-            lightness: this.cell.transform.params?.colorTheme?.params.lightness ?? this.cell.transform.params?.coloring?.params.lightness ?? 0
-        };
+        if (this.cell.transform.params?.colorTheme?.name === 'illustrative') {
+            return {
+                lightness: this.cell.transform.params?.colorTheme?.params.style.params.lightness ?? 0
+            };
+        } else {
+            return {
+                lightness: this.cell.transform.params?.colorTheme?.params.lightness ?? this.cell.transform.params?.coloring?.params.lightness ?? 0
+            };
+        }
     }
 
     get opacityValue(): { alpha: number } | undefined {
-        return {
-            alpha: this.cell.transform.params?.type?.params.alpha ?? this.cell.transform.params?.alpha ?? 1
-        };
+        if (this.cell.transform.params?.colorTheme?.name === 'illustrative') {
+            return {
+                alpha: this.cell.transform.params?.colorTheme?.params.style.params.value.a ?? 1
+            };
+        } else {
+            return {
+                alpha: this.cell.transform.params?.type?.params.alpha ?? this.cell.transform.params?.alpha ?? 1
+            };
+        }
     }
 
     get clipValue(): Clip.Props | undefined {
@@ -1084,7 +1132,11 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
         }
         update.to(this.ref).update(old => {
             if (old.colorTheme) {
-                old.colorTheme.params.value = value;
+                if (old.colorTheme.name === 'illustrative') {
+                    old.colorTheme.params.style.params.value = value;
+                } else {
+                    old.colorTheme.params.value = value;
+                }
             } else if (old.coloring) {
                 old.coloring.params.color = value;
             }
@@ -1095,7 +1147,11 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
     updateLightness = (values: PD.Values) => {
         return this.plugin.build().to(this.ref).update(old => {
             if (old.colorTheme) {
-                old.colorTheme.params.lightness = values.lightness;
+                if (old.colorTheme.name === 'illustrative') {
+                    old.colorTheme.params.style.params.lightness = values.lightness;
+                } else {
+                    old.colorTheme.params.lightness = values.lightness;
+                }
             } else if (old.coloring) {
                 old.coloring.params.lightness = values.lightness;
             }

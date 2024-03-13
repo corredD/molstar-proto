@@ -173,6 +173,7 @@
     background: rgba(red($default-background), green($default-background), blue($default-background), 0.75);
 
     position: absolute;
+    height: 50vh; // 50% of the viewport height
     left: 0;
     top: $control-spacing + $row-height;
     padding: (0.66 * $control-spacing) $control-spacing;
@@ -181,7 +182,7 @@
     // overflow: hidden;
     // overflow-y: auto;
     resize: both; /* Allows resizing in both directions */
-    overflow: auto; /* Adjust as needed */
+    overflow: scroll; /* Adjust as needed */
     // max-width: 400px;
 
     a {
@@ -192,5 +193,13 @@
 
     ul, ol {
         padding-left: $control-spacing + 4px;
+    }
+
+    &.hidden {
+        display: none;
+    }
+
+    &.shown {
+        display: block; // or 'flex', 'grid', etc. depending on your layout
     }
 }
