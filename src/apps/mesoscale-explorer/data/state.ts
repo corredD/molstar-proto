@@ -581,7 +581,8 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
             update.to(entities[j]).update(old => {
                 if (old.type) {
                     if (type === 'illustrative') {
-                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: old.colorTheme.params.value } } } };
+                        const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
+                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: newvalue } } } };
                     } else {
                         old.colorTheme = { name: 'uniform', params: { value: c, lightness: lightness } };
                     }
@@ -589,7 +590,8 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                     old.type.params.xrayShaded = alpha < 1 ? 'inverted' : false;
                 } else if (old.coloring) {
                     if (type === 'illustrative') {
-                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: old.colorTheme.params.value } } } };
+                        const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
+                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: newvalue } } } };
                     } else {
                         old.colorTheme.name = 'uniform';
                     }

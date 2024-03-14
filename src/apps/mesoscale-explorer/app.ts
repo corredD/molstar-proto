@@ -284,6 +284,8 @@ export class MesoscaleExplorer {
             (plugin.customState as MesoscaleExplorerState).stateCache = {};
         });
 
+        plugin.managers.interactivity.setProps({ granularity: 'chain' });
+
         return new MesoscaleExplorer(plugin);
     }
 

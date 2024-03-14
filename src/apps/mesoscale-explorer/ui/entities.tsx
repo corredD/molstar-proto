@@ -777,7 +777,8 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
             update.to(entities[i]).update(old => {
                 if (old.type) {
                     if (type === 'illustrative') {
-                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: old.colorTheme.params.value } } } };
+                        const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
+                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: newvalue } } } };
                     } else {
                         old.colorTheme.name = 'uniform';
                     }
@@ -787,7 +788,8 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
                     old.type.params.xrayShaded = alpha < 1 ? 'inverted' : false;
                 } else {
                     if (type === 'illustrative') {
-                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: old.colorTheme.params.value } } } };
+                        const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
+                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: newvalue } } } };
                     } else {
                         old.colorTheme.name = 'uniform';
                     }
@@ -805,7 +807,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
 
         for (const r of this.roots) {
             update.to(r).update(old => {
-                old.color.type = 'custom';
+                if (old.color.type !== 'illustrative') old.color.type = 'custom';
             });
         }
 
@@ -825,7 +827,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
                 const others = getAllLeafGroups(this.plugin, r.params?.values.tag);
                 for (const o of others) {
                     update.to(o).update(old => {
-                        old.color.type = 'custom';
+                        if (old.color.type !== 'illustrative') old.color.type = 'custom';
                     });
                 }
             }
@@ -1083,15 +1085,9 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
     }
 
     get opacityValue(): { alpha: number } | undefined {
-        if (this.cell.transform.params?.colorTheme?.name === 'illustrative') {
-            return {
-                alpha: this.cell.transform.params?.colorTheme?.params.style.params.value.a ?? 1
-            };
-        } else {
-            return {
-                alpha: this.cell.transform.params?.type?.params.alpha ?? this.cell.transform.params?.alpha ?? 1
-            };
-        }
+        return {
+            alpha: this.cell.transform.params?.type?.params.alpha ?? this.cell.transform.params?.alpha ?? 1
+        };
     }
 
     get clipValue(): Clip.Props | undefined {
@@ -1122,12 +1118,12 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
         const update = this.plugin.state.data.build();
         for (const g of this.groups) {
             update.to(g.transform.ref).update(old => {
-                old.color.type = 'custom';
+                if (old.color.type !== 'illustrative') old.color.type = 'custom';
             });
         }
         for (const r of this.roots) {
             update.to(r).update(old => {
-                old.color.type = 'custom';
+                if (old.color.type !== 'illustrative') old.color.type = 'custom';
             });
         }
         update.to(this.ref).update(old => {
@@ -1160,6 +1156,7 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
 
     updateOpacity = (values: PD.Values) => {
         return this.plugin.build().to(this.ref).update(old => {
+            if (old.colorTheme.name === 'illustrative') {}
             if (old.type) {
                 old.type.params.alpha = values.alpha;
                 old.type.params.xrayShaded = values.alpha < 1 ? 'inverted' : false;

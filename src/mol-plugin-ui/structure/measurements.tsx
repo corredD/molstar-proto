@@ -137,6 +137,7 @@ export class MeasurementControls extends PurePluginUIComponent<{}, { isBusy: boo
 
     addLabel = () => {
         const loci = this.plugin.managers.structure.selection.additionsHistory;
+        console.log(loci[0].loci);
         this.plugin.managers.structure.measurement.addLabel(loci[0].loci);
     };
 

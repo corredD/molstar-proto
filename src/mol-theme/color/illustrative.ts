@@ -61,8 +61,10 @@ export function IllustrativeColorTheme(ctx: ThemeDataContext, props: PD.Values<I
     const { color: styleColor, legend } = getStyleTheme(ctx, props.style);
 
     function illustrativeColor(location: Location, typeSymbol: ElementSymbol) {
-        const baseColor = styleColor(location, false);
-        return typeSymbol === 'C' ? Color.lighten(baseColor, props.carbonLightness) : baseColor;
+        let baseColor = styleColor(location, false);
+        if (typeSymbol === 'C') baseColor = Color.lighten(baseColor, props.carbonLightness);
+        else if (typeSymbol === 'H') baseColor = Color.lighten(baseColor, props.carbonLightness * 2);
+        return baseColor;
     }
 
     function color(location: Location): Color {
