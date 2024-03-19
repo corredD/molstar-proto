@@ -84,7 +84,7 @@ function adjustPluginProps(ctx: PluginContext) {
             shadow: {
                 name: 'on',
                 params: {
-                    bias: 0.6,
+                    bias: 0.25,
                     maxDistance: 80,
                     steps: 3,
                     tolerance: 1.0,

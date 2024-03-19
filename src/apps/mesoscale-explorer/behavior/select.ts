@@ -70,39 +70,30 @@ export const MesoSelectLoci = PluginBehavior.create<MesoSelectLociProps>({
                 const { click, clickToggleSelect } = this.params.bindings;
                 if (Binding.match(clickToggleSelect, button, modifiers)) {
                     if (Loci.isEmpty(current.loci)) {
-                        console.log('clickToggleSelect nothing ');
                         this.ctx.managers.interactivity.lociSelects.deselectAll();
                         return;
                     }
                     const loci = Loci.normalize(current.loci, modifiers.control ? 'entity' : 'chain');
-                    console.log('clickToggleSelect ', loci);
                     this.ctx.managers.interactivity.lociSelects.toggle({ loci }, false);
                 }
                 if (Binding.match(click, button, modifiers)) {
                     if (Loci.isEmpty(current.loci)) {
-                        console.log('click nothing ');
                         this.ctx.managers.interactivity.lociSelects.deselectAll();
                         MesoscaleState.set(this.ctx, { selectionDescription: '' });
                         return;
                     }
 
-                    // const loci = Loci.normalize(current.loci, 'chain'); // this.ctx.managers.interactivity.props.granularity);
                     const snapshotKey = current.repr?.props?.snapshotKey?.trim() ?? '';
                     if (snapshotKey) {
-                        console.log('click snapshotKey ', snapshotKey);
                         this.ctx.managers.snapshot.applyKey(snapshotKey);
                     } else {
-                        console.log('click else ', current.loci, StructureElement.Loci.is(current.loci));
                         if (StructureElement.Loci.is(current.loci)) {
                             this.ctx.managers.interactivity.lociSelects.deselectAll();
-                            // const loci = Loci.normalize(current.loci, 'chain');
                             const cell = this.ctx.helpers.substructureParent.get(current.loci.structure);
                             const d = cell?.obj?.description || cell?.obj?.label;
-                            console.log('cell', d);
                             MesoscaleState.set(this.ctx, { selectionDescription: `"${d}"` });
-                            // MesoscaleState.set(this.ctx, { selectionDescription: `"${cell?.obj?.label}"` });
-                            // MesoscaleState.setSelectionDescription(this.ctx, cell?.obj?.label || 'Unknown');
-                            // this.ctx.managers.snapshot.applyKey(e.key ?? '');
+                            // const sphere = Loci.getBoundingSphere(Loci.normalize(current.loci, 'entity')) || Sphere3D();
+                            // this.ctx.managers.camera.focusSphere(sphere, { minRadius: 50, extraRadius: 4, durationMs: 250 });
                         } else {
                             console.log('click nothing ');
                             this.ctx.managers.interactivity.lociSelects.deselectAll();

@@ -26,6 +26,61 @@ import { PluginStateObject as PSO } from '../../../mol-plugin-state/objects';
 import { Structure } from '../../../mol-model/structure';
 import { PluginContext } from '../../../mol-plugin/context';
 import { Sphere3D } from '../../../mol-math/geometry';
+import { MesoFocusLoci, MesoFocusLociParams, MesoFocusLociProps } from '../behavior/camera'; // Import the missing MesoFocusLociParams
+
+
+
+export class MesoFocusLociControl extends PluginUIComponent<{}, { isDisabled: boolean }> {
+    state = {
+        isDisabled: false,
+    };
+
+    get values() {
+        const state = this.plugin.state.behaviors;
+        const selections = state.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
+        console.log('selections', selections);
+        const params = selections.length === 1 ? selections[0].params : undefined;
+        return params?.values;
+    }
+
+    componentDidMount() {
+        this.subscribe(this.plugin.state.data.behaviors.isUpdating, v => {
+            this.setState({ isDisabled: v });
+        });
+
+        this.subscribe(this.plugin.state.events.cell.stateUpdated, e => {
+            if (!this.state.isDisabled && MesoscaleState.has(this.plugin) && MesoscaleState.ref(this.plugin) === e.ref) {
+                this.forceUpdate();
+            }
+        });
+    }
+
+    paramsOnChange = (options: MesoFocusLociProps) => {
+        console.log('options', options);
+        const state = this.plugin.state.behaviors;
+        const selections = state.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
+        console.log('selections', selections);
+        const tr = selections.length === 1 ? selections[0].params : undefined; // selections[0].transform : undefined; // selections[0].params : undefined;
+        if (!tr) return;
+        // tr.transformer.apply('', options);
+        tr.values = options;
+        this.forceUpdate();
+        // this.plugin.spec.behaviors[4].transformer.apply('camera-meso-focus-loci', { params: options }); // Update MesoFocusLociParams with new options
+    };
+
+    render() {
+        console.log('values', this.values);
+        return <>
+            <div style={{ marginRight: 5 }} className='msp-accent-offset'>
+                <ControlGroup header='Focus Options' initialExpanded={false} hideExpander={true} hideOffset={true}
+                    topRightIcon={CloseSvg} noTopMargin childrenClassName='msp-viewport-controls-panel-controls'>
+                    <ParameterControls params={MesoFocusLociParams} values={this.values} onChangeValues={this.paramsOnChange} />
+                </ControlGroup>
+            </div>
+        </>
+        ;
+    }
+}
 
 function centerLoci(plugin: PluginContext, loci: Loci, durationMs = 250) {
     const { canvas3d } = plugin;
@@ -1058,7 +1113,7 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
         } else {
             const d = getEntityDescription(this.plugin, this.cell);
             MesoscaleState.set(this.plugin, { selectionDescription: `"${d}"` });
-            // this.center(e);
+            this.center(e);
         }
     };
 

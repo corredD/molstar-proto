@@ -14,7 +14,7 @@ import { Toasts } from '../../../mol-plugin-ui/toast';
 import { Viewport, ViewportControls } from '../../../mol-plugin-ui/viewport';
 import { MesoscaleExplorerState } from '../app';
 import { MesoscaleState } from '../data/state';
-import { CanvasInfo, EntityControls, MesoViewportSnapshotDescription, ModelInfo, SelectionInfo } from './entities';
+import { CanvasInfo, EntityControls, MesoFocusLociControl, MesoViewportSnapshotDescription, ModelInfo, SelectionInfo } from './entities';
 import { LoaderControls, ExampleControls, SessionControls, SnapshotControls, DatabaseControls } from './states';
 
 const Spacer = () => <div style={{ height: '2em' }} />;
@@ -115,6 +115,7 @@ export class RightPanel extends PluginUIComponent<{}, { isDisabled: boolean }> {
 
             <>
                 <SectionHeader title='Selection' />
+                <MesoFocusLociControl />
                 <SelectionInfo />
                 <Spacer />
                 <StructureMeasurementsControls />

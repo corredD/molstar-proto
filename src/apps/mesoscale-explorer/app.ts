@@ -55,6 +55,8 @@ export type MesoscaleExplorerState = {
 const Extensions = {
     'backgrounds': PluginSpec.Behavior(Backgrounds),
     'mp4-export': PluginSpec.Behavior(Mp4Export),
+    'mesofocus': PluginSpec.Behavior(MesoFocusLoci),
+    'mesoselect': PluginSpec.Behavior(MesoSelectLoci),
 };
 
 const DefaultMesoscaleExplorerOptions = {
@@ -142,10 +144,6 @@ export class MesoscaleExplorer {
                 PluginSpec.Behavior(PluginBehaviors.Representation.SelectLoci),
                 PluginSpec.Behavior(PluginBehaviors.Representation.DefaultLociLabelProvider),
                 */
-
-                PluginSpec.Behavior(MesoFocusLoci),
-                PluginSpec.Behavior(MesoSelectLoci),
-
                 ...o.extensions.map(e => Extensions[e]),
             ],
             animations: [

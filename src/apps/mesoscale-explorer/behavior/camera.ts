@@ -24,15 +24,16 @@ const DefaultMesoFocusLociBindings = {
         Trigger(B.Flag.Secondary, M.create()),
     ], 'Camera center and focus', 'Click element using ${triggers}'),
 };
-const MesoFocusLociParams = {
+
+export const MesoFocusLociParams = {
     minRadius: PD.Numeric(8, { min: 1, max: 50, step: 1 }),
     extraRadius: PD.Numeric(4, { min: 1, max: 50, step: 1 }, { description: 'Value added to the bounding-sphere radius of the Loci' }),
     durationMs: PD.Numeric(250, { min: 0, max: 1000, step: 1 }, { description: 'Camera transition duration' }),
-    centerOnly: PD.Boolean(true, { description: 'Keep current camera distance' }),
+    centerOnly: PD.Boolean(false, { description: 'Keep current camera distance' }),
 
     bindings: PD.Value(DefaultMesoFocusLociBindings, { isHidden: true }),
 };
-type MesoFocusLociProps = PD.Values<typeof MesoFocusLociParams>
+export type MesoFocusLociProps = PD.Values<typeof MesoFocusLociParams>
 
 export const MesoFocusLoci = PluginBehavior.create<MesoFocusLociProps>({
     name: 'camera-meso-focus-loci',
@@ -47,25 +48,34 @@ export const MesoFocusLoci = PluginBehavior.create<MesoFocusLociProps>({
                 const sphere = Loci.getBoundingSphere(loci) || Sphere3D();
 
                 const { clickCenter, clickCenterFocus } = this.params.bindings;
-                const { durationMs, extraRadius, minRadius } = this.params;
+                const { durationMs, extraRadius, minRadius, centerOnly } = this.params;
                 const radius = Math.max(sphere.radius + extraRadius, minRadius);
-
+                console.log('click ', centerOnly, sphere.center, radius, this);
                 if (Binding.match(clickCenter, button, modifiers)) {
                     if (Loci.isEmpty(current.loci)) {
                         PluginCommands.Camera.Reset(this.ctx, { });
                         return;
                     }
-
-                    const snapshot = canvas3d.camera.getCenter(sphere.center);
-                    canvas3d.requestCameraReset({ durationMs, snapshot });
+                    if (centerOnly) {
+                        const snapshot = canvas3d.camera.getCenter(sphere.center);
+                        canvas3d.requestCameraReset({ durationMs, snapshot });
+                    } else {
+                        const sphere = Loci.getBoundingSphere(Loci.normalize(current.loci, 'entity')) || Sphere3D();
+                        console.log('click centeronly', centerOnly, sphere.center, radius);
+                        this.ctx.managers.camera.focusSphere(sphere, this.params);
+                    }
                 } else if (Binding.match(clickCenterFocus, button, modifiers)) {
                     if (Loci.isEmpty(current.loci)) {
                         PluginCommands.Camera.Reset(this.ctx, { });
                         return;
                     }
-
-                    const snapshot = canvas3d.camera.getCenter(sphere.center, radius);
-                    canvas3d.requestCameraReset({ durationMs, snapshot });
+                    if (centerOnly) {
+                        const snapshot = canvas3d.camera.getCenter(sphere.center, radius);
+                        canvas3d.requestCameraReset({ durationMs, snapshot });
+                    } else {
+                        const sphere = Loci.getBoundingSphere(Loci.normalize(current.loci, 'entity')) || Sphere3D();
+                        this.ctx.managers.camera.focusSphere(sphere, this.params);
+                    }
                 }
             });
         }
