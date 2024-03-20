@@ -50,7 +50,6 @@ export const MesoFocusLoci = PluginBehavior.create<MesoFocusLociProps>({
                 const { clickCenter, clickCenterFocus } = this.params.bindings;
                 const { durationMs, extraRadius, minRadius, centerOnly } = this.params;
                 const radius = Math.max(sphere.radius + extraRadius, minRadius);
-                console.log('click ', centerOnly, sphere.center, radius, this);
                 if (Binding.match(clickCenter, button, modifiers)) {
                     if (Loci.isEmpty(current.loci)) {
                         PluginCommands.Camera.Reset(this.ctx, { });
@@ -60,8 +59,6 @@ export const MesoFocusLoci = PluginBehavior.create<MesoFocusLociProps>({
                         const snapshot = canvas3d.camera.getCenter(sphere.center);
                         canvas3d.requestCameraReset({ durationMs, snapshot });
                     } else {
-                        const sphere = Loci.getBoundingSphere(Loci.normalize(current.loci, 'entity')) || Sphere3D();
-                        console.log('click centeronly', centerOnly, sphere.center, radius);
                         this.ctx.managers.camera.focusSphere(sphere, this.params);
                     }
                 } else if (Binding.match(clickCenterFocus, button, modifiers)) {
@@ -73,7 +70,6 @@ export const MesoFocusLoci = PluginBehavior.create<MesoFocusLociProps>({
                         const snapshot = canvas3d.camera.getCenter(sphere.center, radius);
                         canvas3d.requestCameraReset({ durationMs, snapshot });
                     } else {
-                        const sphere = Loci.getBoundingSphere(Loci.normalize(current.loci, 'entity')) || Sphere3D();
                         this.ctx.managers.camera.focusSphere(sphere, this.params);
                     }
                 }

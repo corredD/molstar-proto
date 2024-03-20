@@ -38,7 +38,6 @@ export class MesoFocusLociControl extends PluginUIComponent<{}, { isDisabled: bo
     get values() {
         const state = this.plugin.state.behaviors;
         const selections = state.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
-        console.log('selections', selections);
         const params = selections.length === 1 ? selections[0].params : undefined;
         return params?.values;
     }
@@ -56,16 +55,16 @@ export class MesoFocusLociControl extends PluginUIComponent<{}, { isDisabled: bo
     }
 
     paramsOnChange = (options: MesoFocusLociProps) => {
-        console.log('options', options);
         const state = this.plugin.state.behaviors;
         const selections = state.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
-        console.log('selections', selections);
         const tr = selections.length === 1 ? selections[0].params : undefined; // selections[0].transform : undefined; // selections[0].params : undefined;
         if (!tr) return;
         // tr.transformer.apply('', options);
         tr.values = options;
+        if (selections[0].obj) {
+            selections[0].obj.data.params = options;
+        }
         this.forceUpdate();
-        // this.plugin.spec.behaviors[4].transformer.apply('camera-meso-focus-loci', { params: options }); // Update MesoFocusLociParams with new options
     };
 
     render() {
@@ -165,10 +164,14 @@ export class CanvasInfo extends PluginUIComponent<{}, { isDisabled: boolean }> {
 
     get info() {
         // const infos: { label: string, key: string, description?: string }[] = [];
-        const info: {selectionDescription: string, infos: { label: string, key: string, description?: string }[] } = { selectionDescription: '', infos: [] };
+        const info: {textSize: number, selectionDescription: string, infos: { label: string, key: string, description?: string }[] } = {
+            selectionDescription: '', infos: [],
+            textSize: 14
+        };
         if (MesoscaleState.has(this.plugin)) {
             const state = MesoscaleState.get(this.plugin);
             if (state.selectionDescription) info.selectionDescription = state.selectionDescription;
+            info.textSize = state.textSizeDescription;
         }
         this.plugin.managers.structure.selection.entries.forEach((e, k) => {
             if (StructureElement.Loci.is(e.selection) && !StructureElement.Loci.isEmpty(e.selection)) {
@@ -192,7 +195,7 @@ export class CanvasInfo extends PluginUIComponent<{}, { isDisabled: boolean }> {
     renderInfo() {
         const info = this.info;
         if (info.selectionDescription === '') return <></>;
-        return <div className='msp-highlight-info'>
+        return <div className='msp-highlight-info' style={{ fontSize: `${info.textSize}px` }}>
             <Markdown skipHtml components={{ a: MesoMarkdownAnchor }}>{info.selectionDescription}</Markdown>
         </div>;
     }
@@ -378,10 +381,15 @@ export class SelectionInfo extends PluginUIComponent<{}, { isDisabled: boolean }
 
 
 export function MesoViewportSnapshotDescription() {
+    let tSize = 14;
     const plugin = React.useContext(PluginReactContext);
+    if (MesoscaleState.has(plugin)) {
+        const state = MesoscaleState.get(plugin);
+        tSize = state.textSizeDescription;
+    }
     const [_, setV] = React.useState(0);
     const [isShown, setIsShown] = useState(true);
-    const [textSize, setTextSize] = useState(14);
+    const [textSize, setTextSize] = useState(tSize);
     const toggleVisibility = () => {
         setIsShown(!isShown);
     };
@@ -403,6 +411,7 @@ export function MesoViewportSnapshotDescription() {
 
     const e = plugin.managers.snapshot.getEntry(current)!;
     if (!e?.description?.trim()) return null;
+    MesoscaleState.set(plugin, { textSizeDescription: textSize });
     const showInfo = <IconButton svg={isShown ? TooltipTextSvg : TooltipTextOutlineSvg} flex='20px' onClick={toggleVisibility} title={isShown ? 'Hide Description' : 'Show Description'}/>;
     const increasePoliceSize = <IconButton svg={PlusBoxSvg} flex='20px' onClick={increaseTextSize} title='Bigger Text' />;
     const decreasePoliceSize = <IconButton svg={MinusBoxSvg} flex='20px' onClick={decreaseTextSize} title='Smaller Text' />;
@@ -1113,7 +1122,7 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
         } else {
             const d = getEntityDescription(this.plugin, this.cell);
             MesoscaleState.set(this.plugin, { selectionDescription: `"${d}"` });
-            this.center(e);
+            // this.center(e);
         }
     };
 
