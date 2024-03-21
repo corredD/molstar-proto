@@ -29,7 +29,7 @@ import { Sphere3D } from '../../../mol-math/geometry';
 import { MesoFocusLoci, MesoFocusLociParams, MesoFocusLociProps } from '../behavior/camera'; // Import the missing MesoFocusLociParams
 
 
-
+/*
 export class MesoFocusLociControl extends PluginUIComponent<{}, { isDisabled: boolean }> {
     state = {
         isDisabled: false,
@@ -38,9 +38,34 @@ export class MesoFocusLociControl extends PluginUIComponent<{}, { isDisabled: bo
     get values() {
         const state = this.plugin.state.behaviors;
         const selections = state.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
-        const params = selections.length === 1 ? selections[0].params : undefined;
-        return params?.values;
+        const params = selections.length === 1 ? selections[0].obj?.data.params : undefined;
+        console.log('values selections', selections[0].obj?.data.params.centerOnly, selections[0].params?.values.centerOnly);
+        return params;
     }
+
+    paramsOnChange = (options: MesoFocusLociProps) => {
+        const state = this.plugin.state.behaviors;
+        const selections = state.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
+        // const ds = this.plugin.state.data.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
+        if (selections[0].obj) {
+            selections[0].obj.data.params = options;
+            if (selections[0].params) {
+                selections[0].params.values = options;
+            }
+            console.log('paramsOnChange selections', selections[0].obj?.data.params?.centerOnly, selections[0].params?.values?.centerOnly);
+        }
+        // this.plugin.state.behaviors.build().to(this.plugin.state.data.select(StateSelection.Generators.ofTransformer(MesoFocusLoci))[0]).update(MesoFocusLoci, p => {
+        //    p.minRadius = 10;
+        // });
+
+        this.plugin.state.behaviors.build().to(selections[0]).update(MesoFocusLoci, p => {
+            p.minRadius = options.minRadius;
+            p.centerOnly = options.centerOnly;
+            p.durationMs = options.durationMs;
+        });
+
+        this.forceUpdate();
+    };
 
     componentDidMount() {
         this.subscribe(this.plugin.state.data.behaviors.isUpdating, v => {
@@ -54,21 +79,8 @@ export class MesoFocusLociControl extends PluginUIComponent<{}, { isDisabled: bo
         });
     }
 
-    paramsOnChange = (options: MesoFocusLociProps) => {
-        const state = this.plugin.state.behaviors;
-        const selections = state.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
-        const tr = selections.length === 1 ? selections[0].params : undefined; // selections[0].transform : undefined; // selections[0].params : undefined;
-        if (!tr) return;
-        // tr.transformer.apply('', options);
-        tr.values = options;
-        if (selections[0].obj) {
-            selections[0].obj.data.params = options;
-        }
-        this.forceUpdate();
-    };
-
     render() {
-        console.log('values', this.values);
+        // console.log('values', this.values);
         return <>
             <div style={{ marginRight: 5 }} className='msp-accent-offset'>
                 <ControlGroup header='Focus Options' initialExpanded={false} hideExpander={true} hideOffset={true}
@@ -80,6 +92,7 @@ export class MesoFocusLociControl extends PluginUIComponent<{}, { isDisabled: bo
         ;
     }
 }
+*/
 
 function centerLoci(plugin: PluginContext, loci: Loci, durationMs = 250) {
     const { canvas3d } = plugin;
@@ -411,7 +424,9 @@ export function MesoViewportSnapshotDescription() {
 
     const e = plugin.managers.snapshot.getEntry(current)!;
     if (!e?.description?.trim()) return null;
-    MesoscaleState.set(plugin, { textSizeDescription: textSize });
+    if (MesoscaleState.has(plugin)) {
+        MesoscaleState.set(plugin, { textSizeDescription: textSize });
+    }
     const showInfo = <IconButton svg={isShown ? TooltipTextSvg : TooltipTextOutlineSvg} flex='20px' onClick={toggleVisibility} title={isShown ? 'Hide Description' : 'Show Description'}/>;
     const increasePoliceSize = <IconButton svg={PlusBoxSvg} flex='20px' onClick={increaseTextSize} title='Bigger Text' />;
     const decreasePoliceSize = <IconButton svg={MinusBoxSvg} flex='20px' onClick={decreaseTextSize} title='Smaller Text' />;
@@ -1117,12 +1132,45 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
     };
 
     handleClick = (e: React.MouseEvent<HTMLElement>) => {
+        // this.plugin.managers.interactivity.lociHighlights.clearHighlights();
         if (e.ctrlKey) {
             this.toggleSelect(e);
         } else {
             const d = getEntityDescription(this.plugin, this.cell);
             MesoscaleState.set(this.plugin, { selectionDescription: `"${d}"` });
             // this.center(e);
+            // center of incremental instance ID
+            // const s = StateObjectRef.resolve(this.plugin.state.data, this.cell.transform.parent)?.obj?.data as Structure; // .sourceData.state
+            if (this.cell?.obj?.data.sourceData.state.models.length !== 0) {
+                const repr = this.cell?.obj?.data.repr;
+                if (repr) {
+                    // for fiber need to think how to handle.
+                    const aloci = repr.getAllLoci()[0];
+                    const locis = Loci.normalize(aloci, 'chainInstances') as StructureElement.Loci;
+                    const nChain = aloci.structure.state.unitSymmetryGroups.length;
+                    let index = MesoscaleState.get(this.plugin).index + 1;
+                    if (index * nChain >= locis.elements.length) index = 0;
+                    const elems = locis.elements.slice(index * nChain, ((index + 1) * nChain)); // end index is not included
+                    const loci = StructureElement.Loci(aloci.structure, elems); // [locis.elements[index]]);
+                    const sphere = Loci.getBoundingSphere(loci) || Sphere3D();
+                    // const snapshot = this.plugin.canvas3d?.camera.getCenter(sphere.center, sphere.radius);
+                    // this.plugin.canvas3d?.requestCameraReset({ durationMs: 250, snapshot });
+                    const state = this.plugin.state.behaviors;
+                    const selections = state.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
+                    const params = selections.length === 1 ? selections[0].obj?.data.params : undefined;
+                    if (!params.centerOnly) {
+                        this.plugin.managers.camera.focusSphere(sphere, params);
+                    } else {
+                        const snapshot = this.plugin.canvas3d?.camera.getCenter(sphere.center);
+                        this.plugin.canvas3d?.requestCameraReset({ durationMs: params.durationMs, snapshot });
+                    }
+                    MesoscaleState.set(this.plugin, { index: index });
+                    // this.plugin.managers.interactivity.lociSelects.toggle({ loci }, false);
+                    // this.plugin.canvas3d?.setProps({ renderer: { dimStrength: 0 } });
+                    // this.plugin.canvas3d?.setProps({ marking: { enabled: true } }, true);
+                    // this.plugin.managers.interactivity.lociHighlights.highlightOnly({ repr: repr, loci }, false);
+                }
+            }
         }
     };
 
