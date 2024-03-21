@@ -26,7 +26,7 @@ import { PluginStateObject as PSO } from '../../../mol-plugin-state/objects';
 import { Structure } from '../../../mol-model/structure';
 import { PluginContext } from '../../../mol-plugin/context';
 import { Sphere3D } from '../../../mol-math/geometry';
-import { MesoFocusLoci, MesoFocusLociParams, MesoFocusLociProps } from '../behavior/camera'; // Import the missing MesoFocusLociParams
+import { MesoFocusLoci } from '../behavior/camera'; // Import the missing MesoFocusLociParams
 
 
 /*

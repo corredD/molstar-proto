@@ -7,8 +7,8 @@
 import { Mp4EncoderUI } from '../../../extensions/mp4-export/ui';
 import { CollapsableControls, CollapsableState, PluginUIComponent } from '../../../mol-plugin-ui/base';
 import { AnimationViewportControls, LociLabels, SelectionViewportControls, StateSnapshotViewportControls, TrajectoryViewportControls } from '../../../mol-plugin-ui/controls';
-import { ControlGroup, SectionHeader } from '../../../mol-plugin-ui/controls/common';
-import { CloseSvg, TuneSvg, TuneSvg } from '../../../mol-plugin-ui/controls/icons';
+import { SectionHeader } from '../../../mol-plugin-ui/controls/common';
+import { TuneSvg } from '../../../mol-plugin-ui/controls/icons';
 import { StructureMeasurementsControls } from '../../../mol-plugin-ui/structure/measurements';
 import { BackgroundTaskProgress } from '../../../mol-plugin-ui/task';
 import { Toasts } from '../../../mol-plugin-ui/toast';
