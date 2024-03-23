@@ -28,72 +28,6 @@ import { PluginContext } from '../../../mol-plugin/context';
 import { Sphere3D } from '../../../mol-math/geometry';
 import { MesoFocusLoci } from '../behavior/camera'; // Import the missing MesoFocusLociParams
 
-
-/*
-export class MesoFocusLociControl extends PluginUIComponent<{}, { isDisabled: boolean }> {
-    state = {
-        isDisabled: false,
-    };
-
-    get values() {
-        const state = this.plugin.state.behaviors;
-        const selections = state.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
-        const params = selections.length === 1 ? selections[0].obj?.data.params : undefined;
-        console.log('values selections', selections[0].obj?.data.params.centerOnly, selections[0].params?.values.centerOnly);
-        return params;
-    }
-
-    paramsOnChange = (options: MesoFocusLociProps) => {
-        const state = this.plugin.state.behaviors;
-        const selections = state.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
-        // const ds = this.plugin.state.data.select(StateSelection.Generators.ofTransformer(MesoFocusLoci));
-        if (selections[0].obj) {
-            selections[0].obj.data.params = options;
-            if (selections[0].params) {
-                selections[0].params.values = options;
-            }
-            console.log('paramsOnChange selections', selections[0].obj?.data.params?.centerOnly, selections[0].params?.values?.centerOnly);
-        }
-        // this.plugin.state.behaviors.build().to(this.plugin.state.data.select(StateSelection.Generators.ofTransformer(MesoFocusLoci))[0]).update(MesoFocusLoci, p => {
-        //    p.minRadius = 10;
-        // });
-
-        this.plugin.state.behaviors.build().to(selections[0]).update(MesoFocusLoci, p => {
-            p.minRadius = options.minRadius;
-            p.centerOnly = options.centerOnly;
-            p.durationMs = options.durationMs;
-        });
-
-        this.forceUpdate();
-    };
-
-    componentDidMount() {
-        this.subscribe(this.plugin.state.data.behaviors.isUpdating, v => {
-            this.setState({ isDisabled: v });
-        });
-
-        this.subscribe(this.plugin.state.events.cell.stateUpdated, e => {
-            if (!this.state.isDisabled && MesoscaleState.has(this.plugin) && MesoscaleState.ref(this.plugin) === e.ref) {
-                this.forceUpdate();
-            }
-        });
-    }
-
-    render() {
-        // console.log('values', this.values);
-        return <>
-            <div style={{ marginRight: 5 }} className='msp-accent-offset'>
-                <ControlGroup header='Focus Options' initialExpanded={false} hideExpander={true} hideOffset={true}
-                    topRightIcon={CloseSvg} noTopMargin childrenClassName='msp-viewport-controls-panel-controls'>
-                    <ParameterControls params={MesoFocusLociParams} values={this.values} onChangeValues={this.paramsOnChange} />
-                </ControlGroup>
-            </div>
-        </>
-        ;
-    }
-}
-*/
-
 function centerLoci(plugin: PluginContext, loci: Loci, durationMs = 250) {
     const { canvas3d } = plugin;
     if (!canvas3d) return;
@@ -432,7 +366,9 @@ export function MesoViewportSnapshotDescription() {
     const decreasePoliceSize = <IconButton svg={MinusBoxSvg} flex='20px' onClick={decreaseTextSize} title='Smaller Text' />;
     return (
         <>
-            {showInfo}{increasePoliceSize}{decreasePoliceSize}
+            <div className="msp-state-snapshot-viewport-controls" style={{ marginRight: '30px' }}>
+                {showInfo}{increasePoliceSize}{decreasePoliceSize}
+            </div>
             <div className={`msp-snapshot-description-wrapper ${isShown ? 'shown' : 'hidden'}`} style={{ fontSize: `${textSize}px` }}>
                 {<Markdown skipHtml={false} components={{ a: MesoMarkdownAnchor }}>{e.description}</Markdown>}
             </div>
@@ -463,11 +399,11 @@ export function MesoMarkdownAnchor({ href, children, element }: { href?: string,
         } else if (decodedHref.startsWith('g')) {
             e.preventDefault();
             plugin.canvas3d?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
-            const query = decodedHref.substring(1, 5) + ':'; // .startsWith('gcomp.') ? 'comp:' : 'func:';
-            const query_names = decodedHref.substring(6).split(',');
+            const qindex = decodedHref.indexOf('.');
+            const query = decodedHref.substring(1, qindex) + ':';
+            const query_names = decodedHref.substring(qindex + 1).split(',');
             for (const query_name of query_names) {
                 const e = getAllEntities(plugin, query + query_name);
-                console.log(e, query + ':' + query_name);
                 for (const r of e) {
                     const repr = r.obj?.data.repr;
                     if (repr) {
@@ -490,15 +426,9 @@ export function MesoMarkdownAnchor({ href, children, element }: { href?: string,
     };
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
         e.preventDefault();
-        // Implement your click logic here
-        // console.log('Clicked on:', href);
         if (href.startsWith('#')) {
             plugin.managers.snapshot.applyKey(decodedHref.substring(1));
         } else if (decodedHref.startsWith('i')) {
-            // Example click action for links starting with 'h'
-            // console.log('Perform click action for:', href);
-            // Your existing logic for 'h' links can be placed here
-            // select
             e.preventDefault();
             plugin.managers.interactivity.lociSelects.deselectAll();
             plugin.canvas3d?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
@@ -520,18 +450,14 @@ export function MesoMarkdownAnchor({ href, children, element }: { href?: string,
                 }
             }
         } else if (decodedHref.startsWith('g')) {
-            // Example click action for links starting with 'h'
-            // console.log('Perform click action for:', href);
-            // Your existing logic for 'h' links can be placed here
-            // select
             e.preventDefault();
             plugin.managers.interactivity.lociSelects.deselectAll();
             plugin.canvas3d?.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
-            const query = decodedHref.substring(1, 5) + ':';
-            const query_names = decodedHref.substring(6).split(',');
+            const qindex = decodedHref.indexOf('.');
+            const query = decodedHref.substring(1, qindex) + ':';
+            const query_names = decodedHref.substring(qindex + 1).split(',');
             for (const query_name of query_names) {
                 const entities = getAllEntities(plugin, query + query_name);
-                console.log('g entities filter in click ', query_names[0], entities);
                 for (const r of entities) {
                     const repr = r.obj?.data.repr;
                     if (repr) {
@@ -547,13 +473,12 @@ export function MesoMarkdownAnchor({ href, children, element }: { href?: string,
             // open the link in a new tab
             window.open(decodedHref, '_blank');
         }
-        // Add other conditions as needed
     };
 
     if (decodedHref[0] === '#') {
         return <a href={decodedHref[0]} onMouseOver={handleHover} onClick={handleClick}>{children}</a>;
     }
-    if (decodedHref[0] === 'i' || href[0] === 'g') {
+    if (decodedHref[0] === 'i' || decodedHref[0] === 'g') {
         return <a href={decodedHref[0]} onMouseLeave={handleLeave} onMouseOver={handleHover} onClick={handleClick}>{children}</a>;
     }
     if (decodedHref[0] === 'h') {
@@ -754,6 +679,51 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
         isDisabled: false,
     };
 
+    autoLabel = () => {
+        for (const r of this.allFilteredEntities) {
+            const repr = r.obj?.data.repr;
+            if (repr) {
+                // const aloci = Structure.toStructureElementLoci(r.obj?.data.sourceData as Structure);
+                const aloci = repr.getAllLoci()[0] as StructureElement.Loci;
+                const locis = Loci.normalize(aloci, 'chainInstances') as StructureElement.Loci;
+                const nChain = aloci.structure.unitSymmetryGroups.length;
+                const index = 0;
+                const elems = locis.elements.slice(index * nChain, ((index + 1) * nChain)); // end index is not included
+                const loci = StructureElement.Loci(aloci.structure, elems); // is this two elems ? 
+                console.log(loci);
+                const options = {
+                    customText: getEntityLabel(this.plugin, r),
+                    // selectionTags?: string | string[],
+                    // reprTags?: string | string[],
+                    // lineParams?: Partial<PD.Values<LineParams>>,
+                    labelParams: {
+                        customText: getEntityLabel(this.plugin, r),
+                        // textColor: PD.Color(ColorNames.black, { isEssential: true }),
+                        textSize: 10,
+                        borderWidth: 0,
+                        sizeFactor: 5,
+                        tether: false,
+                        tetherLength: 3,
+                        tetherBaseWidth: 0.3,
+                        attachment: 'bottom-left',
+                    }, // Partial<PD.Values<LociLabelTextParams>>
+                    visualParams: {
+                        scaleByRadius: false,
+                    } // Partial<PD.Values<VisualParams>>
+                };
+                // { label: getEntityLabel(this.plugin, r), style: 'label', size: 0.5, isSticky: true };
+                this.plugin.managers.structure.measurement.addLabel(loci, {
+                    ...options,
+                    labelParams: {
+                        ...options.labelParams,
+                        attachment: 'bottom-left', // Replace 'string' with 'undefined'
+                    },
+                });
+                // async ?
+            }
+        }
+    };
+
     toggleExpanded = (e: React.MouseEvent<HTMLElement>) => {
         PluginCommands.State.ToggleExpanded(this.plugin, { state: this.cell.parent!, ref: this.ref });
     };
@@ -796,7 +766,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
     };
 
     get groups() {
-        console.log('group', this.cell.params?.values.tag);
+        // console.log('group', this.cell.params?.values.tag);
         return getGroups(this.plugin, this.cell.params?.values.tag);
     }
 
@@ -807,22 +777,22 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
     }
 
     get entities() {
-        console.log('entities', this.cell.params?.values.tag);
+        // console.log('entities', this.cell.params?.values.tag);
         return getEntities(this.plugin, this.cell.params?.values.tag);
     }
 
     get filteredEntities() {
-        console.log('filteredEntities', this.cell.params?.values.tag);
+        // console.log('filteredEntities', this.cell.params?.values.tag);
         return getFilteredEntities(this.plugin, this.cell.params?.values.tag, this.props.filter);
     }
 
     get allEntities() {
-        console.log('allEntities', this.cell.params?.values.tag);
+        // console.log('allEntities', this.cell.params?.values.tag);
         return getAllEntities(this.plugin, this.cell.params?.values.tag);
     }
 
     get allFilteredEntities() {
-        console.log('allFilteredEntities', this.cell.params?.values.tag);
+        // console.log('allFilteredEntities', this.cell.params?.values.tag);
         return getAllFilteredEntities(this.plugin, this.cell.params?.values.tag, this.props.filter);
     }
 
@@ -1023,7 +993,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
         const root = (isRoot && this.allGroups.length > 1) && <IconButton svg={BrushSvg} toggleState={false} disabled={disabled} small onClick={this.toggleRoot} />;
         const clip = <IconButton svg={ContentCutSvg} toggleState={false} disabled={disabled} small onClick={this.toggleClip} />;
         const visibility = <IconButton svg={state.isHidden ? VisibilityOffOutlinedSvg : VisibilityOutlinedSvg} toggleState={false} disabled={disabled} small onClick={this.toggleVisible} />;
-
+        const autolabel = <IconButton svg={TooltipTextSvg} toggleState={false} disabled={disabled} small onClick={this.autoLabel} />;
         return <>
             <div className={`msp-flex-row`} style={{ margin: `1px 5px 1px ${depth * 10 + 5}px` }}>
                 {expand}
@@ -1031,6 +1001,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
                 {root || color}
                 {clip}
                 {visibility}
+                {autolabel}
             </div>
             {this.state.action === 'color' && <div style={{ marginRight: 5 }} className='msp-accent-offset'>
                 <ControlGroup header='Color' initialExpanded={true} hideExpander={true} hideOffset={true} onHeaderClick={this.toggleColor}

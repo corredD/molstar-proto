@@ -479,9 +479,24 @@ function getFilterMatcher(filter: string) {
         : new RegExp(escapeRegExp(filter), 'gi');
 }
 
+/*
+function getExactFilterMatcher(filter: string) {
+    const exactFilter = filter.startsWith('"') && filter.endsWith('"')
+        ? filter.substring(1, filter.length - 1)
+        : filter;
+
+    return new RegExp(`^${exactFilter}$`);
+}
+*/
+
 export function getFilteredEntities(plugin: PluginContext, tag: string, filter: string) {
     const matcher = getFilterMatcher(filter);
     return getEntities(plugin, tag).filter(c => getEntityLabel(plugin, c).match(matcher) !== null);
+}
+
+export function getExactFilteredEntities(plugin: PluginContext, tag: string, filter: string) {
+    // const matcher = getExactFilterMatcher(filter);
+    return getEntities(plugin, tag).filter(c => getEntityLabel(plugin, c).match(filter) !== null);
 }
 
 function _getAllEntities(plugin: PluginContext, tag: string | undefined, list: EntityCells) {
