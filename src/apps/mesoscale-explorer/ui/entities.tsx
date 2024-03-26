@@ -689,7 +689,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
                 const nChain = aloci.structure.unitSymmetryGroups.length;
                 const index = 0;
                 const elems = locis.elements.slice(index * nChain, ((index + 1) * nChain)); // end index is not included
-                const loci = StructureElement.Loci(aloci.structure, elems); // is this two elems ? 
+                const loci = StructureElement.Loci(aloci.structure, elems);
                 console.log(loci);
                 const options = {
                     customText: getEntityLabel(this.plugin, r),
