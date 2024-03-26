@@ -52,7 +52,9 @@ export const MesoFocusLoci = PluginBehavior.create<MesoFocusLociProps>({
                 const radius = Math.max(sphere.radius + extraRadius, minRadius);
                 if (Binding.match(clickCenter, button, modifiers)) {
                     if (Loci.isEmpty(current.loci)) {
-                        PluginCommands.Camera.Reset(this.ctx, { });
+                        const sp = Sphere3D.create(canvas3d.boundingSphereVisible.center, canvas3d.boundingSphereVisible.radius / 2.0);
+                        this.ctx.managers.camera.focusSphere(sp, this.params);
+                        // PluginCommands.Camera.Reset(this.ctx, { });
                         return;
                     }
                     if (centerOnly) {

@@ -993,7 +993,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
         const root = (isRoot && this.allGroups.length > 1) && <IconButton svg={BrushSvg} toggleState={false} disabled={disabled} small onClick={this.toggleRoot} />;
         const clip = <IconButton svg={ContentCutSvg} toggleState={false} disabled={disabled} small onClick={this.toggleClip} />;
         const visibility = <IconButton svg={state.isHidden ? VisibilityOffOutlinedSvg : VisibilityOutlinedSvg} toggleState={false} disabled={disabled} small onClick={this.toggleVisible} />;
-        const autolabel = <IconButton svg={TooltipTextSvg} toggleState={false} disabled={disabled} small onClick={this.autoLabel} />;
+        // const autolabel = <IconButton svg={TooltipTextSvg} toggleState={false} disabled={disabled} small onClick={this.autoLabel} />;
         return <>
             <div className={`msp-flex-row`} style={{ margin: `1px 5px 1px ${depth * 10 + 5}px` }}>
                 {expand}
@@ -1001,7 +1001,6 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
                 {root || color}
                 {clip}
                 {visibility}
-                {autolabel}
             </div>
             {this.state.action === 'color' && <div style={{ marginRight: 5 }} className='msp-accent-offset'>
                 <ControlGroup header='Color' initialExpanded={true} hideExpander={true} hideOffset={true} onHeaderClick={this.toggleColor}
