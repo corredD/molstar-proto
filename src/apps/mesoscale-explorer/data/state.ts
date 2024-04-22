@@ -105,7 +105,7 @@ export function getDistinctBaseColors(count: number, shift: number, props?: Part
 }
 
 export const ColorParams = {
-    type: PD.Select('generate', PD.arrayToOptions(['generate', 'uniform', 'custom', 'illustrative'])),
+    type: PD.Select('generate', PD.arrayToOptions(['generate', 'uniform', 'custom', 'illustrative', 'illustrative-chain'])),
     value: PD.Color(Color(0xFFFFFF), { hideIf: p => p.type === 'custom' }),
     variability: PD.Numeric(20, { min: 1, max: 180, step: 1 }, { hideIf: p => p.type !== 'generate' }),
     shift: PD.Numeric(0, { min: 0, max: 100, step: 1 }, { hideIf: p => !p.type.includes('generate') }),
@@ -118,7 +118,7 @@ export type ColorProps = PD.Values<typeof ColorParams>
 export const ColorValueParam = PD.Color(Color(0xFFFFFF));
 
 export const RootParams = {
-    type: PD.Select('custom', PD.arrayToOptions(['group-generate', 'group-uniform', 'generate', 'uniform', 'custom', 'illustrative'])),
+    type: PD.Select('custom', PD.arrayToOptions(['group-generate', 'group-uniform', 'generate', 'uniform', 'custom', 'illustrative', 'illustrative-chain'])),
     value: PD.Color(Color(0xFFFFFF), { hideIf: p => p.type !== 'uniform' }),
     variability: PD.Numeric(20, { min: 1, max: 180, step: 1 }, { hideIf: p => p.type !== 'group-generate' }),
     shift: PD.Numeric(0, { min: 0, max: 100, step: 1 }, { hideIf: p => !p.type.includes('generate') }),
@@ -559,6 +559,8 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                     if (old.type) {
                         if (type === 'illustrative') {
                             old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: old.colorTheme.params.value } } } };
+                        } else if (type === 'illustrative-chain') {
+                            old.colorTheme = { name: 'illustrative', params: { style: { name: 'chain', params: { value: old.colorTheme.params.value } } } };
                         } else {
                             old.colorTheme = { name: 'uniform', params: { value: c, lightness: lightness } };
                         }
@@ -567,8 +569,10 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                     } else if (old.coloring) {
                         if (type === 'illustrative') {
                             old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: old.colorTheme.params.value } } } };
+                        } else if (type === 'illustrative-chain') {
+                            old.colorTheme = { name: 'illustrative', params: { style: { name: 'chain', params: { value: old.colorTheme.params.value } } } };
                         } else {
-                            old.colorTheme.name = 'uniform';
+                            old.colorTheme = { name: 'uniform', params: { value: c, lightness: lightness } };
                         }
                         old.coloring.params.color = c;
                         old.coloring.params.lightness = lightness;
@@ -585,7 +589,7 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                 old.color.alpha = alpha;
             });
         }
-    } else if (type === 'generate' || type === 'uniform' || type === 'illustrative') {
+    } else if (type === 'generate' || type === 'uniform' || type === 'illustrative' || type === 'illustrative-chain') {
         const entities = getAllFilteredEntities(plugin, tag, filter);
         let groupColors: Color[] = [];
 
@@ -600,6 +604,9 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                     if (type === 'illustrative') {
                         const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
                         old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: newvalue } } } };
+                    } else if (type === 'illustrative-chain') {
+                        const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
+                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'chain', params: { value: newvalue } } } };
                     } else {
                         old.colorTheme = { name: 'uniform', params: { value: c, lightness: lightness } };
                     }
@@ -609,8 +616,11 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                     if (type === 'illustrative') {
                         const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
                         old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: newvalue } } } };
+                    } else if (type === 'illustrative-chain') {
+                        const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
+                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'chain', params: { value: newvalue } } } };
                     } else {
-                        old.colorTheme.name = 'uniform';
+                        old.colorTheme = { name: 'uniform', params: { value: c, lightness: lightness } }; //  = 'uniform';
                     }
                     old.coloring.params.color = c;
                     old.coloring.params.lightness = lightness;

@@ -828,6 +828,9 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
                     if (type === 'illustrative') {
                         const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
                         old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: newvalue } } } };
+                    } else if (type === 'illustrative-chain') {
+                        const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
+                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'chain', params: { value: newvalue } } } };
                     } else {
                         old.colorTheme.name = 'uniform';
                     }
@@ -839,6 +842,9 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
                     if (type === 'illustrative') {
                         const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
                         old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: newvalue } } } };
+                    } else if (type === 'illustrative-chain') {
+                        const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
+                        old.colorTheme = { name: 'illustrative', params: { style: { name: 'chain', params: { value: newvalue } } } };
                     } else {
                         old.colorTheme.name = 'uniform';
                     }
@@ -952,7 +958,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
                 borderRight: `6px solid ${Color.toStyle(Color.lighten(color.value, color.lightness))}`
             };
             return <Button style={style} onClick={this.toggleColor} />;
-        } else if (this.cell.params?.values.color.type === 'generate' || this.cell.params?.values.color.type === 'illustrative') {
+        } else if (this.cell.params?.values.color.type === 'generate' || this.cell.params?.values.color.type === 'illustrative' || this.cell.params?.values.color.type === 'illustrative-chain') {
             const style = {
                 minWidth: 32,
                 width: 32,
@@ -1238,7 +1244,6 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
 
     updateOpacity = (values: PD.Values) => {
         return this.plugin.build().to(this.ref).update(old => {
-            if (old.colorTheme.name === 'illustrative') {}
             if (old.type) {
                 old.type.params.alpha = values.alpha;
                 old.type.params.xrayShaded = values.alpha < 1 ? 'inverted' : false;
