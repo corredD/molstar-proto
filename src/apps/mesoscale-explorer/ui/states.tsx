@@ -85,9 +85,9 @@ function adjustPluginProps(ctx: PluginContext) {
                 name: 'on',
                 params: {
                     bias: 0.25,
-                    maxDistance: 256,
-                    steps: 16,
-                    tolerance: 0.1,
+                    maxDistance: 80,
+                    steps: 3,
+                    tolerance: 1.0,
                 }
             },
             outline: {
