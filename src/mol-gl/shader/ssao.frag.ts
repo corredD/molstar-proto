@@ -1,8 +1,9 @@
 /**
- * Copyright (c) 2019-2023 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2019-2024 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Áron Samuel Kovács <aron.kovacs@mail.muni.cz>
+ * @author Ludovic Autin <ludovic.autin@gmail.com>
  */
 
 export const ssao_frag = `
@@ -89,47 +90,8 @@ float getMappedDepth(const in vec2 coords, const in vec2 selfCoords) {
     #endif
 }
 
-vec3 normalFromDepth(const in float depth, const in float depth1, const in float depth2, vec2 offset1, vec2 offset2) {
-    vec3 p1 = vec3(offset1, depth1 - depth);
-    vec3 p2 = vec3(offset2, depth2 - depth);
-
-    vec3 normal = cross(p1, p2);
-    normal.z = -normal.z;
-
-    return normalize(normal);
-}
-
-//https://gist.github.com/bgolus/a07ed65602c009d5e2f753826e8078a0
-vec3 viewNormalAtPixelPosition(vec2 vpos)
-{
-    // get current pixel's view space position
-    vec3 viewSpacePos_c = screenSpaceToViewSpace(vec3(vpos, getDepth(vpos)), uInvProjection);
-
-    // get view space position at 1 pixel offsets in each major direction
-    vec3 viewSpacePos_l = screenSpaceToViewSpace(vec3(vpos + vec2(-1.0, 0.0) / uTexSize, getDepth(vpos + vec2(-1.0, 0.0) / uTexSize)), uInvProjection);
-    vec3 viewSpacePos_r = screenSpaceToViewSpace(vec3(vpos + vec2( 1.0, 0.0) / uTexSize, getDepth(vpos + vec2( 1.0, 0.0) / uTexSize)), uInvProjection);
-    vec3 viewSpacePos_d = screenSpaceToViewSpace(vec3(vpos + vec2( 0.0,-1.0) / uTexSize, getDepth(vpos + vec2( 0.0,-1.0) / uTexSize)), uInvProjection);
-    vec3 viewSpacePos_u = screenSpaceToViewSpace(vec3(vpos + vec2( 0.0, 1.0) / uTexSize, getDepth(vpos + vec2( 0.0, 1.0) / uTexSize)), uInvProjection);
-
-    // get the difference between the current and each offset position
-    vec3 l = viewSpacePos_c - viewSpacePos_l;
-    vec3 r = viewSpacePos_r - viewSpacePos_c;
-    vec3 d = viewSpacePos_c - viewSpacePos_d;
-    vec3 u = viewSpacePos_u - viewSpacePos_c;
-
-    // pick horizontal and vertical diff with the smallest z difference
-    vec3 hDeriv = abs(l.z) < abs(r.z) ? l : r;
-    vec3 vDeriv = abs(d.z) < abs(u.z) ? d : u;
-
-    // get view space normal from the cross product of the two smallest offsets
-    vec3 viewNormal = normalize(cross(hDeriv, vDeriv));
-
-    return viewNormal;
-}
-
-
-vec3 viewNormalAtPixelPositionAccurate(vec2 vpos)
-{
+// adapted from https://gist.github.com/bgolus/a07ed65602c009d5e2f753826e8078a0
+vec3 viewNormalAtPixelPositionAccurate(vec2 vpos) {
     // current pixel's depth
     float c = getDepth(vpos);
 
@@ -199,13 +161,6 @@ void main(void) {
         return;
     }
 
-    vec2 offset1 = vec2(0.0, invTexSize.y);
-    vec2 offset2 = vec2(invTexSize.x, 0.0);
-
-    float selfDepth1 = getDepth(selfCoords + offset1);
-    float selfDepth2 = getDepth(selfCoords + offset2);
-
-    // vec3 selfViewNormal = normalFromDepth(selfDepth, selfDepth1, selfDepth2, offset1, offset2); //vec3(0.0,1.0,0.0);
     vec3 selfViewNormal = viewNormalAtPixelPositionAccurate(selfCoords);
     vec3 selfViewPos = screenSpaceToViewSpace(vec3(selfCoords, selfDepth), uInvProjection);
 
