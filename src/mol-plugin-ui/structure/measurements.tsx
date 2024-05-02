@@ -41,8 +41,10 @@ export class StructureMeasurementsControls extends CollapsableControls {
 
     renderControls() {
         return <>
-            <MeasurementControls />
-            <MeasurementList />
+            <div id='measurement'>
+                <MeasurementControls />
+                <MeasurementList />
+            </div>
         </>;
     }
 }

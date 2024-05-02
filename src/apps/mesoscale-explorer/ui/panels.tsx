@@ -18,7 +18,7 @@ import { MesoscaleExplorerState } from '../app';
 import { MesoscaleState } from '../data/state';
 import { ParamDefinition as PD } from '../../../mol-util/param-definition';
 import { CanvasInfo, EntityControls, MesoViewportSnapshotDescription, ModelInfo, SelectionInfo } from './entities';
-import { LoaderControls, ExampleControls, SessionControls, SnapshotControls, DatabaseControls } from './states';
+import { LoaderControls, ExampleControls, SessionControls, SnapshotControls, DatabaseControls, ExplorerInfo } from './states';
 import { throttleTime } from 'rxjs';
 import { ParameterControls } from '../../../mol-plugin-ui/controls/parameters';
 import { Canvas3DContext, Canvas3DParams } from '../../../mol-canvas3d/canvas3d';
@@ -54,6 +54,9 @@ export class LeftPanel extends PluginUIComponent {
         const customState = this.plugin.customState as MesoscaleExplorerState;
 
         return <div className='msp-scrollable-container'>
+            <SectionHeader title='Explorer' />
+            <ExplorerInfo />
+            <Spacer />
             <SectionHeader title='Database' />
             <DatabaseControls />
             <Spacer />
@@ -175,7 +178,7 @@ class ViewportSettingsUI extends CollapsableControls<{}, {}> {
     }
 
     protected renderControls(): JSX.Element | null {
-        return <>
+        return <div id='viewport'>
             {this.plugin.canvas3d && this.plugin.canvas3dContext && <>
                 <SectionHeader title='Viewport' />
                 <ParameterControls params={Canvas3DParams} values={this.plugin.canvas3d.props} onChange={this.setSettings} />
