@@ -178,13 +178,13 @@ class ViewportSettingsUI extends CollapsableControls<{}, {}> {
     }
 
     protected renderControls(): JSX.Element | null {
-        return <div id='viewport'>
+        return <>
             {this.plugin.canvas3d && this.plugin.canvas3dContext && <>
                 <SectionHeader title='Viewport' />
                 <ParameterControls params={Canvas3DParams} values={this.plugin.canvas3d.props} onChange={this.setSettings} />
                 <ParameterControls params={Canvas3DContext.Params} values={this.plugin.canvas3dContext.props} onChange={this.setCanvas3DContextProps} />
             </>}
-        </>;
+        </>; // Add closing tag for the JSX element
     }
 
     private setSettings = (p: { param: PD.Base<any>, name: string, value: any }) => {
