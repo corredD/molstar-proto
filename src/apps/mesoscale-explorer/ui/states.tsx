@@ -453,11 +453,13 @@ export class ExplorerInfo extends PluginUIComponent<{}, { isDisabled: boolean, s
     };
 
     render() {
-        const legend = `Welcome to Mol* Mesoscale Explorer
+        const legend = `## Welcome to Mol* Mesoscale Explorer
 
-[Documentation](https://mesoscope.scripps.edu/explorer/docs/)
+Click (?) below to open the [Documentation](https://mesoscope.scripps.edu/explorer/docs/) in a new tab. 
 
-v0.0.0.0`;
+Click &#9873; below to start a tour of the interface with contextual help.
+
+v0.1`;
         const help = <IconButton svg={HelpOutlineSvg} toggleState={false} small onClick={this.openHelp} />;
         const tour = <IconButton svg={TourSvg} toggleState={false} small onClick={this.toggleHelp} />;
         return <>
