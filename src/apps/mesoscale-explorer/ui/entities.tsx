@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2022-2023 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2022-2024 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
@@ -19,7 +19,7 @@ import { CombinedColorControl } from '../../../mol-plugin-ui/controls/color';
 import { MarkerAction } from '../../../mol-util/marker-action';
 import { EveryLoci, Loci } from '../../../mol-model/loci';
 import { deepEqual } from '../../../mol-util';
-import { ColorValueParam, ColorParams, ColorProps, DimLightness, LightnessParams, LodParams, MesoscaleGroup, MesoscaleGroupProps, OpacityParams, SimpleClipParams, SimpleClipProps, createClipMapping, getClipObjects, getDistinctGroupColors, RootParams, MesoscaleState, getRoots, getAllGroups, getAllLeafGroups, getFilteredEntities, getAllFilteredEntities, getGroups, getEntities, getAllEntities, getEntityLabel, updateColors, getGraphicsModeProps, GraphicsMode, MesoscaleStateParams, setGraphicsCanvas3DProps, PatternParams, expandAllGroups, getEntityDescription, getEveryEntities } from '../data/state';
+import { ColorValueParam, ColorParams, ColorProps, DimLightness, LightnessParams, LodParams, MesoscaleGroup, MesoscaleGroupProps, OpacityParams, SimpleClipParams, SimpleClipProps, createClipMapping, getClipObjects, getDistinctGroupColors, RootParams, MesoscaleState, getRoots, getAllGroups, getAllLeafGroups, getFilteredEntities, getAllFilteredEntities, getGroups, getEntities, getAllEntities, getEntityLabel, updateColors, getGraphicsModeProps, GraphicsMode, MesoscaleStateParams, setGraphicsCanvas3DProps, PatternParams, expandAllGroups, getEntityDescription, getEveryEntities, EmissiveParams } from '../data/state';
 import { MesoscaleExplorerState } from '../app';
 import { StructureElement } from '../../../mol-model/structure/structure/element';
 import { PluginStateObject as PSO } from '../../../mol-plugin-state/objects';
@@ -812,7 +812,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
 
     updateColor = (values: ColorProps) => {
         const update = this.plugin.state.data.build();
-        const { value, type, lightness, alpha } = values;
+        const { value, type, lightness, alpha, emissive } = values;
 
         const entities = this.filteredEntities;
 
@@ -839,6 +839,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
                     old.colorTheme.params.lightness = lightness;
                     old.type.params.alpha = alpha;
                     old.type.params.xrayShaded = alpha < 1 ? 'inverted' : false;
+                    old.type.params.emissive = emissive;
                 } else {
                     if (type === 'illustrative') {
                         const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
@@ -853,6 +854,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
                     old.coloring.params.lightness = lightness;
                     old.alpha = alpha;
                     old.xrayShaded = alpha < 1 ? true : false;
+                    old.emissive = emissive;
                 }
             });
         }
@@ -1179,6 +1181,12 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
         };
     }
 
+    get emissiveValue(): { emissive: number } | undefined {
+        return {
+            emissive: this.cell.transform.params?.type?.params.emissive ?? this.cell.transform.params?.emissive ?? 0
+        };
+    }
+
     get clipValue(): Clip.Props | undefined {
         return this.cell.transform.params.type?.params.clip ?? this.cell.transform.params.clip;
     }
@@ -1255,6 +1263,16 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
         }).commit();
     };
 
+    updateEmissive = (values: PD.Values) => {
+        return this.plugin.build().to(this.ref).update(old => {
+            if (old.type) {
+                old.type.params.emissive = values.emissive;
+            } else {
+                old.emissive = values.emissive;
+            }
+        }).commit();
+    };
+
     updateClip = (props: Clip.Props) => {
         const params = this.cell.transform.params;
         const clip = params.type ? params.type.params.clip : params.clip;
@@ -1302,6 +1320,7 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
         const colorValue = this.colorValue;
         const lightnessValue = this.lightnessValue;
         const opacityValue = this.opacityValue;
+        const emissiveValue = this.emissiveValue;
         const lodValue = this.lodValue;
         const patternValue = this.patternValue;
 
@@ -1331,6 +1350,7 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
                     <CombinedColorControl param={ColorValueParam} value={colorValue ?? Color(0xFFFFFF)} onChange={this.updateColor} name='color' hideNameRow />
                     <ParameterControls params={LightnessParams} values={lightnessValue} onChangeValues={this.updateLightness} />
                     <ParameterControls params={OpacityParams} values={opacityValue} onChangeValues={this.updateOpacity} />
+                    <ParameterControls params={EmissiveParams} values={emissiveValue} onChangeValues={this.updateEmissive} />
                     {patternValue && <ParameterControls params={PatternParams} values={patternValue} onChangeValues={this.updatePattern} />}
                 </ControlGroup>
             </div>}

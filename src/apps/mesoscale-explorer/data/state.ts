@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2023 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2023-2024 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
@@ -110,7 +110,8 @@ export const ColorParams = {
     variability: PD.Numeric(20, { min: 1, max: 180, step: 1 }, { hideIf: p => p.type !== 'generate' }),
     shift: PD.Numeric(0, { min: 0, max: 100, step: 1 }, { hideIf: p => !p.type.includes('generate') }),
     lightness: PD.Numeric(0, { min: -6, max: 6, step: 0.1 }, { hideIf: p => p.type === 'custom' || p.type === 'illustrative' }),
-    alpha: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }, { hideIf: p => p.type === 'custom' || p.type === 'illustrative' }),
+    alpha: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }, { hideIf: p => p.type === 'custom'  || p.type === 'illustrative' }),
+    emissive: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }, { hideIf: p => p.type === 'custom'  || p.type === 'illustrative' }),
 };
 
 export type ColorProps = PD.Values<typeof ColorParams>
@@ -123,7 +124,8 @@ export const RootParams = {
     variability: PD.Numeric(20, { min: 1, max: 180, step: 1 }, { hideIf: p => p.type !== 'group-generate' }),
     shift: PD.Numeric(0, { min: 0, max: 100, step: 1 }, { hideIf: p => !p.type.includes('generate') }),
     lightness: PD.Numeric(0, { min: -6, max: 6, step: 0.1 }, { hideIf: p => p.type === 'custom' || p.type === 'illustrative' }),
-    alpha: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }, { hideIf: p => p.type === 'custom' || p.type === 'illustrative' }),
+    alpha: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }, { hideIf: p => p.type === 'custom' || p.type === 'illustrative'  }),
+    emissive: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }, { hideIf: p => p.type === 'custom' || p.type === 'illustrative'  }),
 };
 
 export const LightnessParams = {
@@ -133,6 +135,10 @@ export const DimLightness = 6;
 
 export const OpacityParams = {
     alpha: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }),
+};
+
+export const EmissiveParams = {
+    emissive: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }),
 };
 
 export const PatternParams = {
@@ -250,6 +256,7 @@ export const MesoscaleGroupParams = {
     color: PD.Group(RootParams),
     lightness: PD.Numeric(0, { min: -6, max: 6, step: 0.1 }),
     alpha: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }),
+    emissive: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }),
     lod: PD.Group(LodParams),
     clip: PD.Group(SimpleClipParams),
 };
@@ -537,7 +544,7 @@ export function getEntityDescription(plugin: PluginContext, cell: StateObjectCel
 
 export async function updateColors(plugin: PluginContext, values: PD.Values, tag: string, filter: string) {
     const update = plugin.state.data.build();
-    const { type, value, shift, lightness, alpha } = values;
+    const { type, value, shift, lightness, alpha, emissive } = values;
 
     if (type === 'group-generate' || type === 'group-uniform') {
         const groups = getAllLeafGroups(plugin, tag);
@@ -566,6 +573,7 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                         }
                         old.type.params.alpha = alpha;
                         old.type.params.xrayShaded = alpha < 1 ? 'inverted' : false;
+                        old.type.params.emissive = emissive;
                     } else if (old.coloring) {
                         if (type === 'illustrative') {
                             old.colorTheme = { name: 'illustrative', params: { style: { name: 'uniform', params: { value: old.colorTheme.params.value } } } };
@@ -578,6 +586,7 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                         old.coloring.params.lightness = lightness;
                         old.alpha = alpha;
                         old.xrayShaded = alpha < 1 ? true : false;
+                        old.emissive = emissive;
                     }
                 });
             }
@@ -587,6 +596,7 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                 old.color.value = baseColors[i];
                 old.color.lightness = lightness;
                 old.color.alpha = alpha;
+                old.color.emissive = emissive;
             });
         }
     } else if (type === 'generate' || type === 'uniform' || type === 'illustrative' || type === 'illustrative-chain') {
@@ -612,6 +622,7 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                     }
                     old.type.params.alpha = alpha;
                     old.type.params.xrayShaded = alpha < 1 ? 'inverted' : false;
+                    old.type.params.emissive = emissive;
                 } else if (old.coloring) {
                     if (type === 'illustrative') {
                         const newvalue = old.colorTheme.name === 'illustrative' ? old.colorTheme.params.style.params.value : old.colorTheme.params.value;
@@ -626,6 +637,7 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                     old.coloring.params.lightness = lightness;
                     old.alpha = alpha;
                     old.xrayShaded = alpha < 1 ? true : false;
+                    old.emissive = emissive;
                 }
             });
         }
@@ -637,6 +649,7 @@ export async function updateColors(plugin: PluginContext, values: PD.Values, tag
                 old.color.value = value;
                 old.color.lightness = lightness;
                 old.color.alpha = alpha;
+                old.color.emissive = emissive;
             });
         }
     }
