@@ -137,11 +137,7 @@ export async function createGenericHierarchy(plugin: PluginContext, file: Asset.
     for (const r of manifest.roots) {
         const root = await state.build()
             .toRoot()
-<<<<<<< HEAD
-            .apply(MesoscaleGroup, { ...groupParams, root: true, index: -1, tag: `${r.id}:`, label: r.label || r.id, description: r.description, color: { type: 'custom', value: ColorNames.white, variability: 20, shift: 0, lightness: 0, alpha: 1 } }, { tags: `group:${r.id}:`, state: { isCollapsed: false, isHidden: groupParams.hidden } })
-=======
-            .apply(MesoscaleGroup, { ...groupParams, root: true, index: -1, tag: `${r.id}:`, label: r.label || r.id, color: { type: 'custom', value: ColorNames.white, variability: 20, shift: 0, lightness: 0, alpha: 1, emissive: 0 } }, { tags: `group:${r.id}:`, state: { isCollapsed: false, isHidden: groupParams.hidden } })
->>>>>>> master
+            .apply(MesoscaleGroup, { ...groupParams, root: true, index: -1, tag: `${r.id}:`, label: r.label || r.id, description: r.description, color: { type: 'custom', value: ColorNames.white, variability: 20, shift: 0, lightness: 0, alpha: 1, emissive: 0 } }, { tags: `group:${r.id}:`, state: { isCollapsed: false, isHidden: groupParams.hidden } })
             .commit();
 
         if (r.children) {
