@@ -35,6 +35,7 @@ import { Light } from '../../mol-gl/renderer';
 import { shadows_frag } from '../../mol-gl/shader/shadows.frag';
 import { CasParams, CasPass } from './cas';
 import { BloomParams } from './bloom';
+import { SSGIParams } from './ssgi';
 
 export const OutlinesSchema = {
     ...QuadSchema,
@@ -410,6 +411,10 @@ export const PostprocessingParams = {
         on: PD.Group(BloomParams),
         off: PD.Group({})
     }, { cycle: true, description: 'Bloom' }),
+    ssgi: PD.MappedStatic('off', {
+        on: PD.Group(SSGIParams),
+        off: PD.Group({})
+    }, { cycle: true, description: 'SSGI' }),
 };
 
 export type PostprocessingProps = PD.Values<typeof PostprocessingParams>

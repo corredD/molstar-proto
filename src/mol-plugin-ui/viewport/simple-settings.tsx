@@ -63,6 +63,7 @@ const SimpleSettingsParams = {
         occlusion: Canvas3DParams.postprocessing.params.occlusion,
         shadow: Canvas3DParams.postprocessing.params.shadow,
         outline: Canvas3DParams.postprocessing.params.outline,
+        ssgi: Canvas3DParams.postprocessing.params.ssgi,
         fog: Canvas3DParams.cameraFog,
     }, { isFlat: true }),
     clipping: PD.Group<any>({
@@ -129,6 +130,7 @@ const SimpleSettingsMapping = ParamMapping({
                 occlusion: canvas.postprocessing.occlusion,
                 shadow: canvas.postprocessing.shadow,
                 outline: canvas.postprocessing.outline,
+                ssgi: canvas.postprocessing.ssgi,
                 fog: canvas.cameraFog,
             },
             clipping: {
@@ -152,6 +154,7 @@ const SimpleSettingsMapping = ParamMapping({
         canvas.postprocessing.occlusion = s.lighting.occlusion;
         canvas.postprocessing.shadow = s.lighting.shadow;
         canvas.postprocessing.outline = s.lighting.outline;
+        canvas.postprocessing.ssgi = s.lighting.ssgi;
         canvas.postprocessing.background = s.background.style;
         canvas.cameraFog = s.lighting.fog;
         canvas.cameraClipping = {

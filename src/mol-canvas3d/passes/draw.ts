@@ -25,6 +25,7 @@ import { CopyRenderable, createCopyRenderable } from '../../mol-gl/compute/util'
 import { isDebugMode, isTimingMode } from '../../mol-util/debug';
 import { AssetManager } from '../../mol-util/assets';
 import { BloomPass } from './bloom';
+import { SSGIPass } from './ssgi';
 
 type Props = {
     postprocessing: PostprocessingProps;
@@ -63,6 +64,7 @@ export class DrawPass {
     readonly postprocessing: PostprocessingPass;
     readonly antialiasing: AntialiasingPass;
     readonly bloom: BloomPass;
+    readonly ssgi: SSGIPass;
 
     private transparencyMode: TransparencyMode = 'blended';
     setTransparency(transparency: 'wboit' | 'dpoit' | 'blended') {
@@ -107,6 +109,7 @@ export class DrawPass {
         this.postprocessing = new PostprocessingPass(webgl, assetManager, this);
         this.antialiasing = new AntialiasingPass(webgl, width, height);
         this.bloom = new BloomPass(webgl, width, height);
+        this.ssgi = new SSGIPass(webgl, this.colorTarget.texture, this.depthTextureOpaque);
 
         this.copyFboTarget = createCopyRenderable(webgl, this.colorTarget.texture);
         this.copyFboPostprocessing = createCopyRenderable(webgl, this.postprocessing.target.texture);
@@ -149,6 +152,7 @@ export class DrawPass {
         this.postprocessing.setSize(width, height);
         this.antialiasing.setSize(width, height);
         this.bloom.setSize(width, height);
+        this.ssgi.setSize(width, height);
     }
 
     private _renderDpoit(renderer: Renderer, camera: ICamera, scene: Scene, iterations: number, transparentBackground: boolean, postprocessingProps: PostprocessingProps) {
@@ -418,6 +422,12 @@ export class DrawPass {
                 this.bloom.update(this.colorTarget.texture, this.bloom.emissiveTarget.texture, this.depthTargetOpaque?.texture || this.depthTextureOpaque, props.postprocessing.bloom.params);
                 this.bloom.render(camera.viewport, toDrawingBuffer ? undefined : this.getColorTarget(props.postprocessing));
             }
+        }
+
+        if (props.postprocessing.ssgi.name === 'on') {
+            const input = (postprocessingEnabled ? this.postprocessing.target.texture : this.colorTarget.texture);
+            this.ssgi.update(camera, input, this.depthTargetOpaque?.texture || this.depthTextureOpaque, props.postprocessing.ssgi.params, renderer.light);
+            this.ssgi.render(camera.viewport, toDrawingBuffer ? undefined : this.getColorTarget(props.postprocessing));
         }
 
         this.webgl.gl.flush();
