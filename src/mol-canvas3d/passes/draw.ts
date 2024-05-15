@@ -24,6 +24,7 @@ import { MarkingPass, MarkingProps } from './marking';
 import { CopyRenderable, createCopyRenderable } from '../../mol-gl/compute/util';
 import { isDebugMode, isTimingMode } from '../../mol-util/debug';
 import { AssetManager } from '../../mol-util/assets';
+import { DofPass } from './dof';
 import { BloomPass } from './bloom';
 import { SSGIPass } from './ssgi';
 
@@ -65,6 +66,7 @@ export class DrawPass {
     readonly antialiasing: AntialiasingPass;
     readonly bloom: BloomPass;
     readonly ssgi: SSGIPass;
+    readonly dof: DofPass;
 
     private transparencyMode: TransparencyMode = 'blended';
     setTransparency(transparency: 'wboit' | 'dpoit' | 'blended') {
@@ -110,6 +112,7 @@ export class DrawPass {
         this.antialiasing = new AntialiasingPass(webgl, width, height);
         this.bloom = new BloomPass(webgl, width, height);
         this.ssgi = new SSGIPass(webgl, this.colorTarget.texture, this.depthTextureOpaque);
+        this.dof = new DofPass(webgl, width, height);
 
         this.copyFboTarget = createCopyRenderable(webgl, this.colorTarget.texture);
         this.copyFboPostprocessing = createCopyRenderable(webgl, this.postprocessing.target.texture);
@@ -151,6 +154,7 @@ export class DrawPass {
         this.marking.setSize(width, height);
         this.postprocessing.setSize(width, height);
         this.antialiasing.setSize(width, height);
+        this.dof.setSize(width, height);
         this.bloom.setSize(width, height);
         this.ssgi.setSize(width, height);
     }
@@ -167,7 +171,7 @@ export class DrawPass {
         }
 
         if (PostprocessingPass.isEnabled(postprocessingProps)) {
-            if (PostprocessingPass.isTransparentOutlineEnabled(postprocessingProps)) {
+            if (PostprocessingPass.isTransparentOutlineEnabled(postprocessingProps) || DofPass.isEnabled(postprocessingProps)) {
                 this.depthTargetTransparent.bind();
                 renderer.clearDepth(true);
                 if (scene.opacityAverage < 1) {
@@ -221,7 +225,7 @@ export class DrawPass {
         }
 
         if (PostprocessingPass.isEnabled(postprocessingProps)) {
-            if (PostprocessingPass.isTransparentOutlineEnabled(postprocessingProps)) {
+            if (PostprocessingPass.isTransparentOutlineEnabled(postprocessingProps) || DofPass.isEnabled(postprocessingProps)) {
                 this.depthTargetTransparent.bind();
                 renderer.clearDepth(true);
                 if (scene.opacityAverage < 1) {
@@ -285,7 +289,7 @@ export class DrawPass {
                     this.colorTarget.depthRenderbuffer?.detachFramebuffer(this.postprocessing.target.framebuffer);
                 }
 
-                if (PostprocessingPass.isTransparentOutlineEnabled(postprocessingProps)) {
+                if (PostprocessingPass.isTransparentOutlineEnabled(postprocessingProps) || DofPass.isEnabled(postprocessingProps)) {
                     this.depthTargetTransparent.bind();
                     renderer.clearDepth(true);
                     if (scene.opacityAverage < 1) {
@@ -334,6 +338,7 @@ export class DrawPass {
         const postprocessingEnabled = PostprocessingPass.isEnabled(props.postprocessing);
         const antialiasingEnabled = AntialiasingPass.isEnabled(props.postprocessing);
         const markingEnabled = MarkingPass.isEnabled(props.marking);
+        const dofEnabled = DofPass.isEnabled(props.postprocessing);
 
         const { x, y, width, height } = camera.viewport;
         renderer.setViewport(x, y, width, height);
@@ -392,12 +397,30 @@ export class DrawPass {
             renderer.renderBlended(helper.camera.scene, helper.camera.camera);
         }
 
+        let needsTargetCopy = false;
+
         if (antialiasingEnabled) {
             const input = PostprocessingPass.isEnabled(props.postprocessing)
                 ? this.postprocessing.target.texture
                 : this.colorTarget.texture;
-            this.antialiasing.render(camera, input, toDrawingBuffer, props.postprocessing);
-        } else if (toDrawingBuffer) {
+            this.antialiasing.render(camera, input, toDrawingBuffer && !dofEnabled, props.postprocessing);
+        } else if (toDrawingBuffer && !DofPass.isEnabled(props.postprocessing)) {
+            needsTargetCopy = true;
+        }
+
+        if (props.postprocessing.dof.name === 'on') {
+            const input = AntialiasingPass.isEnabled(props.postprocessing)
+                ? this.antialiasing.target.texture
+                : PostprocessingPass.isEnabled(props.postprocessing)
+                    ? this.postprocessing.target.texture
+                    : this.colorTarget.texture;
+            this.dof.update(camera, input, this.depthTargetOpaque?.texture || this.depthTextureOpaque, this.depthTextureTransparent, props.postprocessing.dof.params, scene.boundingSphereVisible);
+            this.dof.render(camera.viewport, toDrawingBuffer ? undefined : this.getColorTarget(props.postprocessing));
+        } else if (toDrawingBuffer && !AntialiasingPass.isEnabled(props.postprocessing)) {
+            needsTargetCopy = true;
+        }
+
+        if (needsTargetCopy) {
             this.drawTarget.bind();
 
             this.webgl.state.disable(this.webgl.gl.DEPTH_TEST);
@@ -458,7 +481,9 @@ export class DrawPass {
     }
 
     getColorTarget(postprocessingProps: PostprocessingProps): RenderTarget {
-        if (AntialiasingPass.isEnabled(postprocessingProps)) {
+        if (DofPass.isEnabled(postprocessingProps)) {
+            return this.dof.target;
+        } else if (AntialiasingPass.isEnabled(postprocessingProps)) {
             return this.antialiasing.target;
         } else if (PostprocessingPass.isEnabled(postprocessingProps)) {
             return this.postprocessing.target;
