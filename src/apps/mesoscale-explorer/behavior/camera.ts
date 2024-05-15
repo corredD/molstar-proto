@@ -50,7 +50,9 @@ export const MesoFocusLoci = PluginBehavior.create<MesoFocusLociProps>({
                 const { clickCenter, clickCenterFocus } = this.params.bindings;
                 const { durationMs, extraRadius, minRadius, centerOnly } = this.params;
                 const radius = Math.max(sphere.radius + extraRadius, minRadius);
+
                 if (Binding.match(clickCenter, button, modifiers)) {
+                    // left mouse button
                     if (Loci.isEmpty(current.loci)) {
                         const sp = Sphere3D.create(canvas3d.boundingSphereVisible.center, canvas3d.boundingSphereVisible.radius / 2.0);
                         this.ctx.managers.camera.focusSphere(sp, this.params);
@@ -58,12 +60,15 @@ export const MesoFocusLoci = PluginBehavior.create<MesoFocusLociProps>({
                         return;
                     }
                     if (centerOnly) {
-                        const snapshot = canvas3d.camera.getCenter(sphere.center);
+                        const snapshot = canvas3d.camera.getCenter(sphere.center, radius);
                         canvas3d.requestCameraReset({ durationMs, snapshot });
                     } else {
                         this.ctx.managers.camera.focusSphere(sphere, this.params);
                     }
                 } else if (Binding.match(clickCenterFocus, button, modifiers)) {
+                    // right mouse button
+                    PluginCommands.Camera.Reset(this.ctx, { });
+                    /*
                     if (Loci.isEmpty(current.loci)) {
                         PluginCommands.Camera.Reset(this.ctx, { });
                         return;
@@ -74,6 +79,7 @@ export const MesoFocusLoci = PluginBehavior.create<MesoFocusLociProps>({
                     } else {
                         this.ctx.managers.camera.focusSphere(sphere, this.params);
                     }
+                    */
                 }
             });
         }
