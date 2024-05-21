@@ -76,8 +76,8 @@ export const AnimateStateSnapshots = PluginStateAnimation.create({
         if (i === animState.currentIndex) {
             return { kind: 'skip' };
         }
-
-        setPartialSnapshot(ctx.plugin, animState.snapshots[i]);
+        // need to await here otherwise the rendering will record before the state change
+        await setPartialSnapshot(ctx.plugin, animState.snapshots[i]);
 
         return { kind: 'next', state: { ...animState, currentIndex: i } };
     }
