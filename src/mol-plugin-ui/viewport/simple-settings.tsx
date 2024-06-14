@@ -20,6 +20,7 @@ import { PluginUIComponent } from '../base';
 import { PluginUIContext } from '../context';
 import { ParameterMappingControl } from '../controls/parameters';
 import { ViewportHelpContent } from './help';
+import { Canvas } from 'canvas';
 
 export class SimpleSettingsControl extends PluginUIComponent {
     componentDidMount() {
@@ -65,6 +66,7 @@ const SimpleSettingsParams = {
         outline: Canvas3DParams.postprocessing.params.outline,
         dof: Canvas3DParams.postprocessing.params.dof,
         fog: Canvas3DParams.cameraFog,
+        gamma: Canvas3DParams.postprocessing.params.gamma,
     }, { isFlat: true }),
     clipping: PD.Group<any>({
         ...Canvas3DParams.cameraClipping.params,
@@ -132,6 +134,7 @@ const SimpleSettingsMapping = ParamMapping({
                 outline: canvas.postprocessing.outline,
                 dof: canvas.postprocessing.dof,
                 fog: canvas.cameraFog,
+                gamma: canvas.postprocessing.gamma,
             },
             clipping: {
                 ...canvas.cameraClipping,
@@ -155,6 +158,7 @@ const SimpleSettingsMapping = ParamMapping({
         canvas.postprocessing.shadow = s.lighting.shadow;
         canvas.postprocessing.outline = s.lighting.outline;
         canvas.postprocessing.background = s.background.style;
+        canvas.postprocessing.gamma = s.lighting.gamma;
         canvas.cameraFog = s.lighting.fog;
         canvas.cameraClipping = {
             radius: s.clipping.radius,
