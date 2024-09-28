@@ -597,7 +597,7 @@ export class MesoQuickStyles extends PluginUIComponent {
         await updateStyle(this.plugin, {
             ignoreLight: false,
             material: { metalness: 0, roughness: 0.2, bumpiness: 0 },
-            celShaded: true,
+            celShaded: false,
             illustrative: false,
         });
     }
