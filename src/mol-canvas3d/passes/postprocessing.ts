@@ -33,6 +33,7 @@ import { Light } from '../../mol-gl/renderer';
 import { CasParams, CasPass } from './cas';
 import { DofPass, DofParams } from './dof';
 import { BloomParams } from './bloom';
+import { OldMovieParams } from './oldmovie';
 import { OutlinePass, OutlineProps, OutlineParams } from './outline';
 import { ShadowPass, ShadowProps, ShadowParams } from './shadow';
 import { SsaoPass, SsaoProps, SsaoParams } from './ssao';
@@ -71,6 +72,7 @@ const PostprocessingSchema = {
 
     dOutlineEnable: DefineSpec('boolean'),
     dOutlineScale: DefineSpec('number'),
+    
     dTransparentOutline: DefineSpec('boolean'),
 };
 type PostprocessingRenderable = ComputeRenderable<Values<typeof PostprocessingSchema>>
@@ -109,6 +111,7 @@ function getPostprocessingRenderable(ctx: WebGLContext, colorTexture: Texture, t
 
         dOutlineEnable: ValueCell.create(false),
         dOutlineScale: ValueCell.create(1),
+        
         dTransparentOutline: ValueCell.create(transparentOutline),
     };
 
@@ -137,6 +140,10 @@ export const PostprocessingParams = {
         on: PD.Group(DofParams),
         off: PD.Group({})
     }, { cycle: true, description: 'DOF', hideIf: p => p.enabled === false }),
+    oldmovie: PD.MappedStatic('on', {
+        on: PD.Group(OldMovieParams),
+        off: PD.Group({})
+    }, { cycle: true, description: 'Old movie effect', hideIf: p => p.enabled === false }),
     antialiasing: PD.MappedStatic('smaa', {
         fxaa: PD.Group(FxaaParams),
         smaa: PD.Group(SmaaParams),
@@ -184,7 +191,7 @@ export class PostprocessingPass {
     readonly shadow: ShadowPass;
     readonly outline: OutlinePass;
     readonly background: BackgroundPass;
-
+    
     constructor(private readonly webgl: WebGLContext, assetManager: AssetManager, readonly drawPass: DrawPass) {
         const { colorTarget, transparentColorTarget, depthTextureOpaque, depthTextureTransparent, packedDepth } = drawPass;
         const width = colorTarget.getWidth();
@@ -196,7 +203,7 @@ export class PostprocessingPass {
         this.ssao = new SsaoPass(webgl, width, height, packedDepth, depthTextureOpaque, depthTextureTransparent);
         this.shadow = new ShadowPass(webgl, width, height, depthTextureOpaque);
         this.outline = new OutlinePass(webgl, width, height, depthTextureTransparent, depthTextureOpaque);
-
+        
         this.renderable = getPostprocessingRenderable(webgl, colorTarget.texture, transparentColorTarget.texture, depthTextureOpaque, depthTextureTransparent, this.shadow.target.texture, this.outline.target.texture, this.ssao.ssaoDepthTexture, this.ssao.ssaoDepthTransparentTexture, true);
 
         this.background = new BackgroundPass(webgl, assetManager, width, height);
@@ -227,7 +234,7 @@ export class PostprocessingPass {
         const outlinesEnabled = OutlinePass.isEnabled(props);
         const shadowsEnabled = ShadowPass.isEnabled(props);
         const occlusionEnabled = SsaoPass.isEnabled(props);
-
+        
         if (occlusionEnabled) {
             const params = props.occlusion.params as SsaoProps;
             this.ssao.update(camera, scene, params);

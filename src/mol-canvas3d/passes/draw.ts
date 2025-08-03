@@ -26,6 +26,7 @@ import { isDebugMode, isTimingMode } from '../../mol-util/debug';
 import { AssetManager } from '../../mol-util/assets';
 import { DofPass } from './dof';
 import { BloomPass } from './bloom';
+import { OldMoviePass } from './oldmovie';
 
 type Props = {
     postprocessing: PostprocessingProps;
@@ -66,6 +67,7 @@ export class DrawPass {
     readonly antialiasing: AntialiasingPass;
     readonly bloom: BloomPass;
     readonly dof: DofPass;
+    readonly oldMovie: OldMoviePass;
 
     private transparencyMode: TransparencyMode = 'blended';
     setTransparency(transparency: 'wboit' | 'dpoit' | 'blended') {
@@ -113,6 +115,7 @@ export class DrawPass {
         this.antialiasing = new AntialiasingPass(webgl, width, height);
         this.bloom = new BloomPass(webgl, width, height);
         this.dof = new DofPass(webgl, width, height);
+        this.oldMovie = new OldMoviePass(webgl, assetManager, width, height);
 
         this.copyFboTarget = createCopyRenderable(webgl, this.colorTarget.texture);
         this.copyFboPostprocessing = createCopyRenderable(webgl, this.postprocessing.target.texture);
@@ -158,6 +161,7 @@ export class DrawPass {
         this.antialiasing.setSize(width, height);
         this.dof.setSize(width, height);
         this.bloom.setSize(width, height);
+        this.oldMovie.setSize(width, height);
     }
 
     private _renderDpoit(renderer: Renderer, camera: ICamera, scene: Scene, iterations: number, transparentBackground: boolean, postprocessingProps: PostprocessingProps) {
@@ -378,6 +382,7 @@ export class DrawPass {
         const markingEnabled = MarkingPass.isEnabled(props.marking);
         const dofEnabled = DofPass.isEnabled(props.postprocessing);
         const bloomEnabled = BloomPass.isEnabled(props.postprocessing);
+        const oldMovieEnabled = OldMoviePass.isEnabled(props.postprocessing);
 
         const { x, y, width, height } = camera.viewport;
         renderer.setViewport(x, y, width, height);
@@ -484,6 +489,11 @@ export class DrawPass {
                 this.bloom.update(this.colorTarget.texture, this.bloom.emissiveTarget.texture, this.depthTargetOpaque?.texture || this.depthTextureOpaque, props.postprocessing.bloom.params);
                 this.bloom.render(camera.viewport, toDrawingBuffer ? undefined : this.getColorTarget(props.postprocessing));
             }
+        }
+
+        if (oldMovieEnabled && props.postprocessing.oldmovie.name === 'on') {
+            this.oldMovie.update(this.colorTarget.texture, this.depthTargetOpaque?.texture || this.depthTextureOpaque, props.postprocessing.oldmovie.params);
+            this.oldMovie.render(camera.viewport, toDrawingBuffer ? undefined : this.getColorTarget(props.postprocessing));
         }
 
         this.webgl.gl.flush();

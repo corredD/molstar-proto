@@ -7,7 +7,7 @@
 
 import { produce } from 'immer';
 import { throttleTime } from 'rxjs';
-import { Canvas3DContext, Canvas3DParams, Canvas3DProps } from '../../mol-canvas3d/canvas3d';
+import { Canvas3D, Canvas3DContext, Canvas3DParams, Canvas3DProps } from '../../mol-canvas3d/canvas3d';
 import { PluginCommands } from '../../mol-plugin/commands';
 import { PluginConfig } from '../../mol-plugin/config';
 import { StateTransform } from '../../mol-state';
@@ -64,6 +64,7 @@ const SimpleSettingsParams = {
         shadow: Canvas3DParams.postprocessing.params.shadow,
         outline: Canvas3DParams.postprocessing.params.outline,
         dof: Canvas3DParams.postprocessing.params.dof,
+        oldmovie: Canvas3DParams.postprocessing.params.oldmovie,
         fog: Canvas3DParams.cameraFog,
     }, { isFlat: true }),
     clipping: PD.Group<any>({
@@ -134,6 +135,7 @@ const SimpleSettingsMapping = ParamMapping({
                 shadow: canvas.postprocessing.shadow,
                 outline: canvas.postprocessing.outline,
                 dof: canvas.postprocessing.dof,
+                oldmovie: canvas.postprocessing.oldmovie,
                 fog: canvas.cameraFog,
             },
             clipping: {
@@ -173,6 +175,7 @@ const SimpleSettingsMapping = ParamMapping({
         canvas.postprocessing.sharpening = s.advanced.sharpening;
         canvas.postprocessing.bloom = s.advanced.bloom;
         canvas.postprocessing.dof = s.lighting.dof;
+        canvas.postprocessing.oldmovie = s.lighting.oldmovie;
 
         props.layout = s.layout;
         props.resolutionMode = s.advanced.resolutionMode;
