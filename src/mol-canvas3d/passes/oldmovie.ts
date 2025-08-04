@@ -25,11 +25,11 @@ import { AssetManager, Asset } from '../../mol-util/assets';
 import { old_movie_frag } from '../../mol-gl/shader/oldmovie.frag';
 
 export const OldMovieParams = {
-    vignettePower: PD.Numeric(0.15, { min: 0, max: 1, step: 0.01 }),
-    grainIntensity: PD.Numeric(0.5, { min: 0, max: 2, step: 0.01 }),
-    noiseAlpha: PD.Numeric(0.1, { min: 0, max: 1, step: 0.01 }),
+    vignettePower: PD.Numeric(0.65, { min: 0, max: 1, step: 0.01 }),
+    grainIntensity: PD.Numeric(0.3, { min: 0, max: 2, step: 0.01 }),
+    noiseAlpha: PD.Numeric(1.0, { min: 0, max: 1, step: 0.01 }),
     tintColor: PD.Color(Color(0x8B4513)), // sepia brown
-    tintStrength: PD.Numeric(0.3, { min: 0, max: 1, step: 0.01 }),
+    tintStrength: PD.Numeric(0.6, { min: 0, max: 1, step: 0.01 }),
     joltOffset: PD.Group({
         x: PD.Numeric(0, { min: -0.01, max: 0.01, step: 0.0001 }),
         y: PD.Numeric(0, { min: -0.01, max: 0.01, step: 0.0001 }),
