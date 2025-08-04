@@ -42,7 +42,7 @@ export const OldMovieParams = {
         min: PD.Numeric(-0.01, { min: -0.1, max: 0.1, step: 0.001 }),
         max: PD.Numeric(0.07, { min: -0.1, max: 0.1, step: 0.001 }),
     }),
-    noiseType: PD.Numeric(1, { min: 0, max: 5, step: 1 }),
+    noiseType: PD.Numeric(2, { min: 0, max: 5, step: 1 }),
     fps: PD.Numeric(16, { min: 1, max: 60, step: 1 }),
 };
 
@@ -68,11 +68,6 @@ export class OldMoviePass {
     private currentTiling = Vec4.create(2.0, 2.0, 0, 0);
     private currentJolt = Vec2.create(0, 0);
 
-    // Configuration properties (could be moved to params)
-    private readonly flickeringRange = Vec2.create(5.5, 10.0);
-    private readonly joltRange = Vec2.create(-0.01, 0.07);
-    private readonly fps = 16;
-
     // store latest properties
     private props: OldMovieProps = PD.getDefaultValues(OldMovieParams);
 
@@ -97,7 +92,7 @@ export class OldMoviePass {
         // Initialize current noise texture
         ValueCell.update(this.renderable.values.tNoise, this.currentNoiseTexture);
         // Load all noise textures
-        this.loadNoiseTextures();
+        this.loadNoiseTextures(2);
     }
 
     private createBlackTexture() {
@@ -112,11 +107,25 @@ export class OldMoviePass {
         this.blackTexture.load({ array: data, width: size, height: size });  
     }
 
-    private loadNoiseTextures() {
+    private loadNoiseTextures(noisetype:number) {
         // Load all 33 noise textures (00 to 32)
+        // 0 do nothing.
+        // 1-5 load the asset
+        // A,B,C,D,E are possible
+        // if noisetype == 0 do nothing
+        if (noisetype === 0) {
+            return;
+        }
+        const letter = String.fromCharCode(64 + noisetype); // 65 = 'A'
+        // clean up this.noiseTextures if exist
+        if (this.noiseTextures) {
+            this.noiseTextures.forEach(texture => texture.destroy());
+        }
+        this.noiseTextures = []; // Reset the array to avoid duplicates
+        this.currentNoiseTexture = this.blackTexture; // Default to black texture if no noise is
         for (let i = 0; i <= 32; i++) {
             const paddedNumber = i.toString().padStart(2, '0');
-            const noiseAsset = Asset.Url(`https://raw.githubusercontent.com/NullTale/OldMovieFx/master/Runtime/OldMovie/Noise/A/OldMovie${paddedNumber}.png`);
+            const noiseAsset = Asset.Url(`https://raw.githubusercontent.com/NullTale/OldMovieFx/master/Runtime/OldMovie/Noise/${letter}/OldMovie${paddedNumber}.png`);
 
             const texture = this.webgl.resources.texture('image-uint8', 'rgba', 'ubyte', 'linear');
             this.noiseTextures.push(texture);
@@ -218,7 +227,7 @@ export class OldMoviePass {
 
     updateSettings(props: OldMovieProps) {
         const currentTime = performance.now() / 1000; // Convert to seconds
-        const frameTime = 1.0 / this.fps;
+        const frameTime = 1.0 / props.fps;
         const curFrame = Math.floor(currentTime / frameTime);
 
         if (this.currentFrame !== curFrame) {
@@ -226,7 +235,7 @@ export class OldMoviePass {
 
             // Random vignette flickering
             const randomValue = Math.random();
-            this.vignetteFlicker = this.lerp(this.flickeringRange[0], this.flickeringRange[1], randomValue);
+            this.vignetteFlicker = this.lerp(props.flickeringRange.min, props.flickeringRange.max, randomValue);
 
             // Dynamic grain tiling based on screen size
             const screenWidth = this.renderable.values.uTexSize.ref.value[0];
@@ -245,8 +254,8 @@ export class OldMoviePass {
             const joltRandomX = Math.random();
             const joltRandomY = Math.random();
             this.currentJolt = Vec2.create(
-                this.lerp(this.joltRange[0], this.joltRange[1], joltRandomX) * props.joltOffset.x,
-                this.lerp(this.joltRange[0], this.joltRange[1], joltRandomY) * props.joltOffset.y
+                this.lerp(props.joltRange.min, props.joltRange.max, joltRandomX) * props.joltOffset.x,
+                this.lerp(props.joltRange.min, props.joltRange.max, joltRandomY) * props.joltOffset.y
             );
             // Random noise texture selection (matching Unity logic)
             if (props.noiseType === 0) {
@@ -290,6 +299,11 @@ export class OldMoviePass {
         // can this be called everyframe ? 
         if (this.renderable.values.tColor.ref.value !== input) {
             ValueCell.update(this.renderable.values.tColor, input);
+            // needsUpdate = true;
+        }
+        //check if noise type changed
+        if (this.props.noiseType !== props.noiseType) {
+            this.loadNoiseTextures( props.noiseType );
             // needsUpdate = true;
         }
         this.updateSettings(props);

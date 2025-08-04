@@ -140,7 +140,7 @@ export const PostprocessingParams = {
         on: PD.Group(DofParams),
         off: PD.Group({})
     }, { cycle: true, description: 'DOF', hideIf: p => p.enabled === false }),
-    oldmovie: PD.MappedStatic('on', {
+    oldmovie: PD.MappedStatic('off', {
         on: PD.Group(OldMovieParams),
         off: PD.Group({})
     }, { cycle: true, description: 'Old movie effect', hideIf: p => p.enabled === false }),
