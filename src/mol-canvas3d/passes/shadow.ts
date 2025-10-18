@@ -26,9 +26,27 @@ import { shadows_frag } from '../../mol-gl/shader/shadows.frag';
 import { PostprocessingProps } from './postprocessing';
 
 export const ShadowParams = {
+    // Mode switch
+    mode: PD.Select<'simple' | 'advanced'>('simple', [['simple', 'Simple'], ['advanced', 'Advanced']]),
+
+    // SIMPLE (original) params
     steps: PD.Numeric(1, { min: 1, max: 64, step: 1 }),
     maxDistance: PD.Numeric(3, { min: 0, max: 256, step: 1 }),
     tolerance: PD.Numeric(1.0, { min: 0.0, max: 10.0, step: 0.1 }),
+
+    // ADVANCED (Bend-inspired) params
+    sampleCount: PD.Numeric(60, { min: 1, max: 256, step: 1 }),
+    hardShadowSamples: PD.Numeric(4, { min: 0, max: 32, step: 1 }),
+    fadeOutSamples: PD.Numeric(8, { min: 0, max: 64, step: 1 }),
+    maxPixelDistance: PD.Numeric(120, { min: 1, max: 2048, step: 1 }),
+
+    surfaceThickness: PD.Numeric(0.005, { min: 0.0001, max: 0.05, step: 0.0001 }),
+    bilinearThreshold: PD.Numeric(0.02, { min: 0.0, max: 0.25, step: 0.001 }),
+    shadowContrast: PD.Numeric(4.0, { min: 0.5, max: 16.0, step: 0.5 }),
+
+    ignoreEdgePixels: PD.Boolean(false),
+    usePrecisionOffset: PD.Boolean(false),
+    bilinearSamplingOffsetMode: PD.Boolean(false),
 };
 
 export type ShadowProps = PD.Values<typeof ShadowParams>
@@ -87,6 +105,11 @@ export class ShadowPass {
             needsUpdateShadows = true;
         }
 
+        // Mode switch
+        const shadowMode = props.mode === 'advanced' ? 1 : 0;
+        ValueCell.updateIfChanged(this.renderable.values.uShadowMode, shadowMode);
+
+        // SIMPLE uniforms (scaled by camera.scale to match your original code)
         ValueCell.updateIfChanged(this.renderable.values.uMaxDistance, props.maxDistance * camera.scale);
         ValueCell.updateIfChanged(this.renderable.values.uTolerance, props.tolerance * camera.scale);
         if (this.renderable.values.dSteps.ref.value !== props.steps) {
@@ -94,6 +117,21 @@ export class ShadowPass {
             needsUpdateShadows = true;
         }
 
+        // ADVANCED uniforms (pixel-space & dimensionless)
+        ValueCell.updateIfChanged(this.renderable.values.uSampleCount, props.sampleCount);
+        ValueCell.updateIfChanged(this.renderable.values.uHardShadowSamples, props.hardShadowSamples);
+        ValueCell.updateIfChanged(this.renderable.values.uFadeOutSamples, props.fadeOutSamples);
+        ValueCell.updateIfChanged(this.renderable.values.uMaxPixelDistance, props.maxPixelDistance);
+
+        ValueCell.updateIfChanged(this.renderable.values.uSurfaceThickness, props.surfaceThickness);
+        ValueCell.updateIfChanged(this.renderable.values.uBilinearThreshold, props.bilinearThreshold);
+        ValueCell.updateIfChanged(this.renderable.values.uShadowContrast, props.shadowContrast);
+
+        ValueCell.updateIfChanged(this.renderable.values.uIgnoreEdgePixels, props.ignoreEdgePixels ? 1 : 0);
+        ValueCell.updateIfChanged(this.renderable.values.uUsePrecisionOffset, props.usePrecisionOffset ? 1 : 0);
+        ValueCell.updateIfChanged(this.renderable.values.uBilinearSamplingOffsetMode, props.bilinearSamplingOffsetMode ? 1 : 0);
+
+        // Lights
         const hasHeadRotation = !Mat4.isZero(camera.headRotation);
         if (hasHeadRotation) {
             ValueCell.update(this.renderable.values.uLightDirection, getTransformedLightDirection(light, Mat4.invert(this.invHeadRotation, camera.headRotation)));
@@ -133,9 +171,27 @@ const ShadowsSchema = {
     uNear: UniformSpec('f'),
     uFar: UniformSpec('f'),
 
+    // Mode switch
+    uShadowMode: UniformSpec('i'),
+
+    // SIMPLE
     dSteps: DefineSpec('number'),
     uMaxDistance: UniformSpec('f'),
     uTolerance: UniformSpec('f'),
+
+    // ADVANCED (Bend-inspired)
+    uSampleCount: UniformSpec('i'),
+    uHardShadowSamples: UniformSpec('i'),
+    uFadeOutSamples: UniformSpec('i'),
+    uMaxPixelDistance: UniformSpec('f'),
+
+    uSurfaceThickness: UniformSpec('f'),
+    uBilinearThreshold: UniformSpec('f'),
+    uShadowContrast: UniformSpec('f'),
+
+    uIgnoreEdgePixels: UniformSpec('i'),
+    uUsePrecisionOffset: UniformSpec('i'),
+    uBilinearSamplingOffsetMode: UniformSpec('i'),
 
     uLightDirection: UniformSpec('v3[]'),
     uLightColor: UniformSpec('v3[]'),
@@ -161,9 +217,27 @@ function getShadowsRenderable(ctx: WebGLContext, depthTexture: Texture): Shadows
         uNear: ValueCell.create(1),
         uFar: ValueCell.create(10000),
 
+        // Default to SIMPLE
+        uShadowMode: ValueCell.create(0),
+
+        // SIMPLE defaults
         dSteps: ValueCell.create(1),
         uMaxDistance: ValueCell.create(3.0),
         uTolerance: ValueCell.create(1.0),
+
+        // ADVANCED defaults
+        uSampleCount: ValueCell.create(60),
+        uHardShadowSamples: ValueCell.create(4),
+        uFadeOutSamples: ValueCell.create(8),
+        uMaxPixelDistance: ValueCell.create(120.0),
+
+        uSurfaceThickness: ValueCell.create(0.005),
+        uBilinearThreshold: ValueCell.create(0.02),
+        uShadowContrast: ValueCell.create(4.0),
+
+        uIgnoreEdgePixels: ValueCell.create(0),
+        uUsePrecisionOffset: ValueCell.create(0),
+        uBilinearSamplingOffsetMode: ValueCell.create(0),
 
         uLightDirection: ValueCell.create([]),
         uLightColor: ValueCell.create([]),
