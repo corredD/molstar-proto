@@ -778,6 +778,11 @@ namespace Canvas3D {
             camera.transition.tick(currentTime);
             hiZ.tick();
 
+            // NEW: Force frustum update when updateControls is true, even with manualDraw
+            if (options?.updateControls && options?.manualDraw) {
+                renderer.update(camera, scene);
+            }
+
             if (options?.manualDraw) {
                 return;
             }
