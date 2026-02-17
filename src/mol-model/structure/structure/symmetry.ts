@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-2021 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -7,6 +7,7 @@
 
 import { SortedArray } from '../../../mol-data/int';
 import { EquivalenceClasses } from '../../../mol-data/util';
+import { hash2 } from '../../../mol-data/util/hash-functions';
 import { Spacegroup, SpacegroupCell, SymmetryOperator } from '../../../mol-math/geometry';
 import { Vec3, Mat4 } from '../../../mol-math/linear-algebra';
 import { RuntimeContext, Task } from '../../../mol-task';
@@ -120,7 +121,32 @@ namespace StructureSymmetry {
         for (const eqUnits of groups.groups) {
             ret.push(Unit.SymmetryGroup(eqUnits.map(id => s.unitMap.get(id))));
         }
+        return ret;
+    }
 
+    export function computeChildAwareTransformGroups(s: Structure): ReadonlyArray<Unit.SymmetryGroup> {
+        if (!s.child) return computeTransformGroups(s);
+
+        // Units that are in different transform groups in the child must also
+        // be in different transform groups in the parent.
+        const childGroups = s.child.unitSymmetryGroups;
+        const childGroupIndex = new Map<number, number>();
+        for (let i = 0; i < childGroups.length; i++) {
+            for (const u of childGroups[i].units) {
+                childGroupIndex.set(u.id, i);
+            }
+        }
+
+        const groups = EquivalenceClasses<number, Unit>(
+            (u: Unit) => hash2(Unit.hashUnit(u), childGroupIndex.get(u.id) ?? -1),
+            (a: Unit, b: Unit) => areUnitsEquivalent(a, b) && childGroupIndex.get(a.id) === childGroupIndex.get(b.id)
+        );
+        for (const u of s.units) groups.add(u.id, u);
+
+        const ret: Unit.SymmetryGroup[] = [];
+        for (const eqUnits of groups.groups) {
+            ret.push(Unit.SymmetryGroup(eqUnits.map(id => s.unitMap.get(id))));
+        }
         return ret;
     }
 
