@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
@@ -9,7 +9,7 @@ import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { StructureRepresentation, StructureRepresentationStateBuilder, StructureRepresentationState } from './representation';
 import { Visual } from '../visual';
 import { Representation, RepresentationContext, RepresentationParamsGetter } from '../representation';
-import { Structure, Unit, StructureElement, Bond } from '../../mol-model/structure';
+import { Structure, Unit, StructureElement, Bond, StructureSymmetry } from '../../mol-model/structure';
 import { Subject } from 'rxjs';
 import { getNextMaterialId, GraphicsRenderObject } from '../../mol-gl/render-object';
 import { Theme } from '../../mol-theme/theme';
@@ -29,11 +29,11 @@ import { Substance } from '../../mol-theme/substance';
 import { LocationCallback } from '../util';
 import { Emissive } from '../../mol-theme/emissive';
 import { HashMap } from '../../mol-util/map';
+import { hash2 } from '../../mol-data/util';
 
 function createVisualsMap<P extends StructureParams>() {
-    return new HashMap<Unit.SymmetryGroup, { group: Unit.SymmetryGroup, visual: UnitsVisual<P> }>(group => group.hashCode, Unit.SymmetryGroup.areInvariantElementsEqual);
+    return new HashMap<Unit.SymmetryGroup, { group: Unit.SymmetryGroup, visual: UnitsVisual<P> }>(group => hash2(group.hashCode, group.transformHash), Unit.SymmetryGroup.areInvariantElementsEqual);
 }
-
 
 export interface UnitsVisual<P extends StructureParams> extends Visual<StructureGroup, P> { }
 
@@ -66,7 +66,7 @@ export function UnitsRepresentation<P extends StructureParams>(label: string, ct
             } else if (structure && !_structure) {
                 // console.log(label, 'initial structure');
                 // First call with a structure, create visuals for each group.
-                _groups = structure.unitSymmetryGroups;
+                _groups = StructureSymmetry.computeChildAwareTransformGroups(structure);
                 for (let i = 0; i < _groups.length; i++) {
                     const group = _groups[i];
                     const visual = visualCtor(materialId, structure, _props, webgl);
@@ -80,7 +80,7 @@ export function UnitsRepresentation<P extends StructureParams>(label: string, ct
                 // console.log(label, 'structures not equivalent');
                 // Tries to re-use existing visuals for the groups of the new structure.
                 // Creates additional visuals if needed, destroys left-over visuals.
-                _groups = structure.unitSymmetryGroups;
+                _groups = StructureSymmetry.computeChildAwareTransformGroups(structure);
                 // const newGroups: Unit.SymmetryGroup[] = []
                 const oldVisuals = visuals;
                 visuals = createVisualsMap<P>();
@@ -131,8 +131,8 @@ export function UnitsRepresentation<P extends StructureParams>(label: string, ct
                 // Expects that for structures with the same hashCode,
                 // the unitSymmetryGroups are the same as well.
                 // Re-uses existing visuals for the groups of the new structure.
-                _groups = structure.unitSymmetryGroups;
-                // console.log('new', structure.unitSymmetryGroups)
+                _groups = StructureSymmetry.computeChildAwareTransformGroups(structure);
+                // console.log('new', _groups)
                 // console.log('old', _structure.unitSymmetryGroups)
                 for (let i = 0; i < _groups.length; i++) {
                     const group = _groups[i];
