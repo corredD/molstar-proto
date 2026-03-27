@@ -27,6 +27,7 @@ import { hashFnv32a } from '../../../mol-data/util';
 import { createEmptyClipping } from '../clipping-data';
 import { createEmptySubstance } from '../substance-data';
 import { createEmptyEmissive } from '../emissive-data';
+import { getAnimationParam, createAnimationValues, updateAnimationValues } from '../animation';
 
 /** Point cloud */
 export interface Points {
@@ -136,6 +137,7 @@ export namespace Points {
         sizeFactor: PD.Numeric(3, { min: 0, max: 10, step: 0.1 }),
         pointSizeAttenuation: PD.Boolean(false),
         pointStyle: PD.Select('square', PD.objectToOptions(StyleTypes)),
+        animation: getAnimationParam(),
     };
     export type Params = typeof Params
 
@@ -211,6 +213,7 @@ export namespace Points {
             uSizeFactor: ValueCell.create(props.sizeFactor),
             dPointSizeAttenuation: ValueCell.create(props.pointSizeAttenuation),
             dPointStyle: ValueCell.create(props.pointStyle),
+            ...createAnimationValues(props.animation),
         };
     }
 
@@ -225,6 +228,7 @@ export namespace Points {
         ValueCell.updateIfChanged(values.uSizeFactor, props.sizeFactor);
         ValueCell.updateIfChanged(values.dPointSizeAttenuation, props.pointSizeAttenuation);
         ValueCell.updateIfChanged(values.dPointStyle, props.pointStyle);
+        updateAnimationValues(values, props.animation);
     }
 
     function updateBoundingSphere(values: PointsValues, points: Points) {

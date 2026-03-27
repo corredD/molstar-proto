@@ -36,6 +36,7 @@ import { Material } from '../../../mol-util/material';
 import { Clip } from '../../../mol-util/clip';
 import { setStructureEmissive } from '../../helpers/structure-emissive';
 import { areInteriorPropsEquals, getInteriorParam } from '../../../mol-geo/geometry/interior';
+import { areAnimationPropsEqual, getAnimationParam } from '../../../mol-geo/geometry/animation';
 
 export { StructureComponentManager };
 
@@ -84,13 +85,14 @@ class StructureComponentManager extends StatefulPluginComponent<StructureCompone
                 p.material = options.materialStyle;
                 p.clip = options.clipObjects;
                 p.interior = options.interior;
+                p.animation = options.animation;
             });
             if (interactionChanged) await this.updateInterationProps();
         });
     }
 
     private updateReprParams(update: StateBuilder.Root, component: StructureComponentRef) {
-        const { hydrogens, visualQuality: quality, ignoreLight, materialStyle: material, clipObjects: clip, interior } = this.state.options;
+        const { hydrogens, visualQuality: quality, ignoreLight, materialStyle: material, clipObjects: clip, interior, animation } = this.state.options;
         const ignoreHydrogens = hydrogens !== 'all';
         const ignoreHydrogensVariant = hydrogens === 'only-polar' ? 'non-polar' : 'all';
         for (const r of component.representations) {
@@ -98,7 +100,8 @@ class StructureComponentManager extends StatefulPluginComponent<StructureCompone
 
             const params = r.cell.transform.params as StateTransformer.Params<StructureRepresentation3D>;
             const pInterior = params.type.params.interior;
-            if (!!params.type.params.ignoreHydrogens !== ignoreHydrogens || params.type.params.ignoreHydrogensVariant !== ignoreHydrogensVariant || params.type.params.quality !== quality || params.type.params.ignoreLight !== ignoreLight || !Material.areEqual(params.type.params.material, material) || !PD.areEqual(Clip.Params, params.type.params.clip, clip) || (pInterior && !areInteriorPropsEquals(pInterior, interior))) {
+            const pAnimation = params.type.params.animation;
+            if (!!params.type.params.ignoreHydrogens !== ignoreHydrogens || params.type.params.ignoreHydrogensVariant !== ignoreHydrogensVariant || params.type.params.quality !== quality || params.type.params.ignoreLight !== ignoreLight || !Material.areEqual(params.type.params.material, material) || !PD.areEqual(Clip.Params, params.type.params.clip, clip) || (pInterior && !areInteriorPropsEquals(pInterior, interior)) || (pAnimation && !areAnimationPropsEqual(pAnimation, animation))) {
                 update.to(r.cell).update(old => {
                     old.type.params.ignoreHydrogens = ignoreHydrogens;
                     old.type.params.ignoreHydrogensVariant = ignoreHydrogensVariant;
@@ -107,6 +110,7 @@ class StructureComponentManager extends StatefulPluginComponent<StructureCompone
                     old.type.params.material = material;
                     old.type.params.clip = clip;
                     if (pInterior) old.type.params.interior = interior;
+                    if (pAnimation) old.type.params.animation = animation;
                 });
             }
         }
@@ -325,10 +329,10 @@ class StructureComponentManager extends StatefulPluginComponent<StructureCompone
     addRepresentation(components: ReadonlyArray<StructureComponentRef>, type: string) {
         if (components.length === 0) return;
 
-        const { hydrogens, visualQuality: quality, ignoreLight, materialStyle: material, clipObjects: clip, interior } = this.state.options;
+        const { hydrogens, visualQuality: quality, ignoreLight, materialStyle: material, clipObjects: clip, interior, animation } = this.state.options;
         const ignoreHydrogens = hydrogens !== 'all';
         const ignoreHydrogensVariant = hydrogens === 'only-polar' ? 'non-polar' : 'all';
-        const typeParams = { ignoreHydrogens, ignoreHydrogensVariant, quality, ignoreLight, material, clip, interior };
+        const typeParams = { ignoreHydrogens, ignoreHydrogensVariant, quality, ignoreLight, material, clip, interior, animation };
 
         return this.plugin.dataTransaction(async () => {
             for (const component of components) {
@@ -363,10 +367,10 @@ class StructureComponentManager extends StatefulPluginComponent<StructureCompone
             const xs = structures || this.currentStructures;
             if (xs.length === 0) return;
 
-            const { hydrogens, visualQuality: quality, ignoreLight, materialStyle: material, clipObjects: clip, interior } = this.state.options;
+            const { hydrogens, visualQuality: quality, ignoreLight, materialStyle: material, clipObjects: clip, interior, animation } = this.state.options;
             const ignoreHydrogens = hydrogens !== 'all';
             const ignoreHydrogensVariant = hydrogens === 'only-polar' ? 'non-polar' : 'all';
-            const typeParams = { ignoreHydrogens, ignoreHydrogensVariant, quality, ignoreLight, material, clip, interior };
+            const typeParams = { ignoreHydrogens, ignoreHydrogensVariant, quality, ignoreLight, material, clip, interior, animation };
 
             const componentKey = UUID.create22();
             for (const s of xs) {
@@ -488,6 +492,7 @@ namespace StructureComponentManager {
         clipObjects: PD.Group(Clip.Params),
         interactions: PD.Group(InteractionsProvider.defaultParams, { label: 'Non-covalent Interactions' }),
         interior: getInteriorParam(),
+        animation: getAnimationParam(),
     };
     export type Options = PD.Values<typeof OptionsParams>
 

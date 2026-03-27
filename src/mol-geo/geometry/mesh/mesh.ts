@@ -30,6 +30,7 @@ import { degToRad } from '../../../mol-math/misc';
 import { createEmptySubstance } from '../substance-data';
 import { createEmptyEmissive } from '../emissive-data';
 import { createInteriorValues, getInteriorParam, updateInteriorValues } from '../interior';
+import { getAnimationParam, createAnimationValues, updateAnimationValues } from '../animation';
 
 export interface Mesh {
     readonly kind: 'mesh',
@@ -639,6 +640,7 @@ export namespace Mesh {
         bumpFrequency: PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, BaseGeometry.ShadingCategory),
         bumpAmplitude: PD.Numeric(1, { min: 0, max: 5, step: 0.1 }, BaseGeometry.ShadingCategory),
         interior: getInteriorParam(),
+        animation: getAnimationParam(),
     };
     export type Params = typeof Params
 
@@ -729,6 +731,7 @@ export namespace Mesh {
             meta: ValueCell.create(mesh.meta),
 
             ...createInteriorValues(props.interior),
+            ...createAnimationValues(props.animation),
         };
     }
 
@@ -750,6 +753,7 @@ export namespace Mesh {
         ValueCell.updateIfChanged(values.uBumpFrequency, props.bumpFrequency);
         ValueCell.updateIfChanged(values.uBumpAmplitude, props.bumpAmplitude);
         updateInteriorValues(values, props.interior);
+        updateAnimationValues(values, props.animation);
     }
 
     function updateBoundingSphere(values: MeshValues, mesh: Mesh) {

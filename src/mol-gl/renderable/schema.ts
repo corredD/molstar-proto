@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
@@ -179,6 +179,9 @@ export const GlobalUniformSchema = {
     uMarkingDepthTest: UniformSpec('b'),
     uMarkingType: UniformSpec('i'),
     uPickType: UniformSpec('i'),
+
+    uTime: UniformSpec('f'),
+    uEnableAnimation: UniformSpec('b'),
 } as const;
 export type GlobalUniformSchema = typeof GlobalUniformSchema
 export type GlobalUniformValues = Values<GlobalUniformSchema>
@@ -395,3 +398,14 @@ export const InteriorSchema = {
 } as const;
 export type InteriorSchema = typeof InteriorSchema
 export type InteriorValues = Values<InteriorSchema>
+
+export const AnimationSchema = {
+    uWiggleSpeed: UniformSpec('f', 'material'),
+    uWiggleAmplitude: UniformSpec('f', 'material'),
+    uWiggleFrequency: UniformSpec('f', 'material'),
+    uWiggleMode: UniformSpec('i', 'material'),
+    uTumbleSpeed: UniformSpec('f', 'material'),
+    uTumbleAmplitude: UniformSpec('f', 'material'),
+} as const;
+export type AnimationSchema = typeof AnimationSchema
+export type AnimationValues = Values<AnimationSchema>

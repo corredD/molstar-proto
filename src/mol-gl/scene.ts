@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
@@ -98,6 +98,8 @@ interface Scene extends Object3D {
     readonly transparencyMin: number
     /** Is `true` if any primitive renderable (possibly) has any opaque part */
     readonly hasOpaque: boolean
+    /** Is `true` if any primitive renderable has animation enabled */
+    readonly hasAnimation: boolean
 }
 
 namespace Scene {
@@ -122,12 +124,14 @@ namespace Scene {
         let opacityAverageDirty = true;
         let transparencyMinDirty = true;
         let hasOpaqueDirty = true;
+        let hasAnimationDirty = true;
 
         let markerAverage = 0;
         let emissiveAverage = 0;
         let opacityAverage = 0;
         let transparencyMin = 0;
         let hasOpaque = false;
+        let hasAnimation = false;
 
         const object3d = Object3D.create();
         const { view, position, direction, up } = object3d;
@@ -188,6 +192,7 @@ namespace Scene {
             opacityAverageDirty = true;
             transparencyMinDirty = true;
             hasOpaqueDirty = true;
+            hasAnimationDirty = true;
             return true;
         }
 
@@ -214,6 +219,7 @@ namespace Scene {
                 opacityAverageDirty = true;
                 transparencyMinDirty = true;
                 hasOpaqueDirty = true;
+                hasAnimationDirty = true;
                 visibleHash = newVisibleHash;
                 return true;
             } else {
@@ -301,6 +307,21 @@ namespace Scene {
             return false;
         }
 
+        function calculateHasAnimation() {
+            for (let i = 0, il = primitives.length; i < il; ++i) {
+                const p = primitives[i];
+                if (!p.state.visible) continue;
+
+                if (p.values.uWiggleAmplitude?.ref.value > 0 &&
+                    p.values.uWiggleSpeed?.ref.value > 0 &&
+                    p.values.uWiggleFrequency?.ref.value > 0) return true;
+
+                if (p.values.uTumbleAmplitude?.ref.value > 0 &&
+                    p.values.uTumbleSpeed?.ref.value > 0) return true;
+            }
+            return false;
+        }
+
         return {
             view, position, direction, up,
 
@@ -344,6 +365,7 @@ namespace Scene {
                 opacityAverageDirty = true;
                 transparencyMinDirty = true;
                 hasOpaqueDirty = true;
+                hasAnimationDirty = true;
             },
             add: (o: GraphicsRenderObject) => commitQueue.add(o),
             remove: (o: GraphicsRenderObject) => commitQueue.remove(o),
@@ -421,6 +443,13 @@ namespace Scene {
                     hasOpaqueDirty = false;
                 }
                 return hasOpaque;
+            },
+            get hasAnimation() {
+                if (hasAnimationDirty) {
+                    hasAnimation = calculateHasAnimation();
+                    hasAnimationDirty = false;
+                }
+                return hasAnimation;
             },
         };
     }

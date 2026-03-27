@@ -28,6 +28,7 @@ import { RenderableState } from '../../../mol-gl/renderable';
 import { createEmptySubstance } from '../substance-data';
 import { createEmptyEmissive } from '../emissive-data';
 import { createInteriorValues, getInteriorParam, updateInteriorValues } from '../interior';
+import { getAnimationParam, createAnimationValues, updateAnimationValues } from '../animation';
 
 export interface Spheres {
     readonly kind: 'spheres',
@@ -262,6 +263,7 @@ export namespace Spheres {
         bumpFrequency: PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, BaseGeometry.ShadingCategory),
         bumpAmplitude: PD.Numeric(1, { min: 0, max: 5, step: 0.1 }, BaseGeometry.ShadingCategory),
         interior: getInteriorParam(),
+        animation: getAnimationParam(),
         lodLevels: PD.ObjectList({
             minDistance: PD.Numeric(0),
             maxDistance: PD.Numeric(0),
@@ -368,6 +370,7 @@ export namespace Spheres {
             groupBuffer: spheres.groupBuffer,
 
             ...createInteriorValues(props.interior),
+            ...createAnimationValues(props.animation),
         };
     }
 
@@ -392,6 +395,7 @@ export namespace Spheres {
         ValueCell.updateIfChanged(values.uBumpFrequency, props.bumpFrequency);
         ValueCell.updateIfChanged(values.uBumpAmplitude, props.bumpAmplitude);
         updateInteriorValues(values, props.interior);
+        updateAnimationValues(values, props.animation);
 
         const lodLevels = getLodLevels(values.lodLevels.ref.value as LodLevelsValue);
         if (!areLodLevelsEqual(props.lodLevels, lodLevels)) {
