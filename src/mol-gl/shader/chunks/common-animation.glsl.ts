@@ -61,13 +61,15 @@ vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
 mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
     if (!uEnableAnimation) return transform;
     if (uTumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0) {
+        // Scale amplitude inversely with bounding-sphere radius (Stokes-Einstein: D ~ 1/r)
+        float amplitude = uTumbleAmplitude / max(uInvariantBoundingSphere.w, 1.0);
         float t = uTime * uTumbleSpeed;
         float seed = (instanceIndex * 127.1 + uObjectId * 311.7) * uTumbleFrequency;
 
         // Per-instance rotation angles from layered noise (Brownian-like)
-        float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * uTumbleAmplitude;
-        float angleY = (fbm(vec3(seed, 0.0, t)) / 0.4375 - 1.0) * uTumbleAmplitude;
-        float angleZ = (fbm(vec3(0.0, seed, t)) / 0.4375 - 1.0) * uTumbleAmplitude;
+        float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * amplitude;
+        float angleY = (fbm(vec3(seed, 0.0, t)) / 0.4375 - 1.0) * amplitude;
+        float angleZ = (fbm(vec3(0.0, seed, t)) / 0.4375 - 1.0) * amplitude;
 
         float cx = cos(angleX); float sx = sin(angleX);
         float cy = cos(angleY); float sy = sin(angleY);
@@ -85,7 +87,7 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
             (fbm(vec3(seed + 31.7, t, 0.0)) / 0.4375 - 1.0),
             (fbm(vec3(seed + 31.7, 0.0, t)) / 0.4375 - 1.0),
             (fbm(vec3(0.0, seed + 31.7, t)) / 0.4375 - 1.0)
-        ) * uTumbleAmplitude;
+        ) * amplitude;
 
         // Bounding-sphere center transformed by the linear part only (no translation)
         vec3 localCenter = mat3(transform) * uInvariantBoundingSphere.xyz;

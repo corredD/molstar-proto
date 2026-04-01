@@ -812,12 +812,12 @@ class MesoProceduralAnimation extends PluginUIComponent {
                 if (old.type) {
                     old.type.params.animation = {
                         ...old.type.params.animation,
-                        wiggleMode: 'group',
+                        wiggleMode: 'position',
                         wiggleSpeed: 7,
                         wiggleAmplitude: 1,
                         wiggleFrequency: 0.2,
                         tumbleSpeed: 1,
-                        tumbleAmplitude: membrane ? 0 : 0.2,
+                        tumbleAmplitude: membrane ? 0 : 4,
                         tumbleFrequency: 0.2,
                     };
                 }
@@ -829,12 +829,12 @@ class MesoProceduralAnimation extends PluginUIComponent {
             update.to(group).update(old => {
                 old.animation = {
                     ...old.animation,
-                    wiggleMode: 'group',
+                    wiggleMode: 'position',
                     wiggleSpeed: 7,
                     wiggleAmplitude: 1,
                     wiggleFrequency: 0.2,
                     tumbleSpeed: 1,
-                    tumbleAmplitude: membrane ? 0 : 0.2,
+                    tumbleAmplitude: membrane ? 0 : 4,
                     tumbleFrequency: 0.2,
                 };
             });
