@@ -120,7 +120,7 @@ void main(void){
     vec3 position = positionGroup.rgb;
     float group = positionGroup.a;
 
-    position = applyWiggle(position, group);
+    position = applyWiggle(position, group, aInstance);
     mat4 transform = applyTumble(aTransform, aInstance, float(uObjectId));
 
     #include assign_color_varying

@@ -29,6 +29,7 @@ import { arraySetAdd } from '../../../mol-util/array';
 import { degToRad } from '../../../mol-math/misc';
 import { createEmptySubstance } from '../substance-data';
 import { createEmptyEmissive } from '../emissive-data';
+import { createEmptyWiggle } from '../wiggle-data';
 import { createInteriorValues, getInteriorParam, updateInteriorValues } from '../interior';
 import { getAnimationParam, createAnimationValues, updateAnimationValues } from '../animation';
 
@@ -691,6 +692,7 @@ export namespace Mesh {
         const emissive = createEmptyEmissive();
         const material = createEmptySubstance();
         const clipping = createEmptyClipping();
+        const wiggle = createEmptyWiggle();
 
         const counts = { drawCount: mesh.triangleCount * 3, vertexCount: mesh.vertexCount, groupCount, instanceCount };
 
@@ -715,6 +717,7 @@ export namespace Mesh {
             ...emissive,
             ...material,
             ...clipping,
+            ...wiggle,
             ...transform,
 
             ...BaseGeometry.createValues(props, counts),

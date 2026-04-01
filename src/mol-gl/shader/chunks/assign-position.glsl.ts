@@ -12,7 +12,7 @@ mat4 modelView = uView * model;
     vec3 position = aPosition;
 #endif
 #ifndef dGeometryType_image
-    position = applyWiggle(position, group);
+    position = applyWiggle(position, group, aInstance);
 #endif
 vec4 position4 = vec4(position, 1.0);
 // for accessing tColorGrid in vert shader and for clipping in frag shader

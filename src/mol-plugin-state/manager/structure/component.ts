@@ -35,6 +35,7 @@ import { setStructureSubstance } from '../../helpers/structure-substance';
 import { Material } from '../../../mol-util/material';
 import { Clip } from '../../../mol-util/clip';
 import { setStructureEmissive } from '../../helpers/structure-emissive';
+import { setStructureWiggle } from '../../helpers/structure-wiggle';
 import { areInteriorPropsEquals, getInteriorParam } from '../../../mol-geo/geometry/interior';
 import { areAnimationPropsEqual, getAnimationParam } from '../../../mol-geo/geometry/animation';
 
@@ -421,6 +422,9 @@ class StructureComponentManager extends StatefulPluginComponent<StructureCompone
                 } else if (params.action.name === 'clipping') {
                     const p = params.action.params;
                     await setStructureClipping(this.plugin, s.components, Clipping.Groups.fromNames(p.excludeGroups), getLoci, params.representations);
+                } else if (params.action.name === 'wiggle') {
+                    const p = params.action.params;
+                    await setStructureWiggle(this.plugin, s.components, p.value, getLoci, params.representations);
                 }
             }
         }, { canUndo: 'Apply Theme' });
@@ -537,6 +541,9 @@ namespace StructureComponentManager {
                 resetMaterial: PD.EmptyGroup({ label: 'Reset Material' }),
                 clipping: PD.Group({
                     excludeGroups: PD.MultiSelect([] as Clipping.Groups.Names[], PD.objectToOptions(Clipping.Groups.Names)),
+                }, { isFlat: true }),
+                wiggle: PD.Group({
+                    value: PD.Numeric(1, { min: 0, max: 5, step: 0.01 }),
                 }, { isFlat: true }),
             }),
             representations: PD.MultiSelect([], getRepresentationTypes(plugin, pivot), { emptyValue: 'All' })

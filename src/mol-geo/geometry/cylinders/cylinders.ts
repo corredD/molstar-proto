@@ -28,6 +28,7 @@ import { CylindersValues } from '../../../mol-gl/renderable/cylinders';
 import { RenderableState } from '../../../mol-gl/renderable';
 import { createEmptySubstance } from '../substance-data';
 import { createEmptyEmissive } from '../emissive-data';
+import { createEmptyWiggle } from '../wiggle-data';
 import { getInteriorParam, updateInteriorValues, createInteriorValues } from '../interior';
 import { getAnimationParam, createAnimationValues, updateAnimationValues } from '../animation';
 
@@ -232,6 +233,7 @@ export namespace Cylinders {
         const emissive = createEmptyEmissive();
         const material = createEmptySubstance();
         const clipping = createEmptyClipping();
+        const wiggle = createEmptyWiggle();
 
         const counts = { drawCount: cylinders.cylinderCount * 4 * 3, vertexCount: cylinders.cylinderCount * 6, groupCount, instanceCount };
 
@@ -260,6 +262,7 @@ export namespace Cylinders {
             ...emissive,
             ...material,
             ...clipping,
+            ...wiggle,
             ...transform,
 
             padding: ValueCell.create(padding),

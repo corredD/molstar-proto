@@ -28,6 +28,7 @@ import { createEmptySubstance } from '../substance-data';
 import { RenderableState } from '../../../mol-gl/renderable';
 import { WebGLContext } from '../../../mol-gl/webgl/context';
 import { createEmptyEmissive } from '../emissive-data';
+import { createEmptyWiggle } from '../wiggle-data';
 import { createInteriorValues, getInteriorParam, updateInteriorValues } from '../interior';
 
 export interface TextureMesh {
@@ -208,6 +209,7 @@ export namespace TextureMesh {
         const emissive = createEmptyEmissive();
         const substance = createEmptySubstance();
         const clipping = createEmptyClipping();
+        const wiggle = createEmptyWiggle();
 
         const counts = { drawCount: textureMesh.vertexCount, vertexCount: textureMesh.vertexCount, groupCount, instanceCount };
 
@@ -234,6 +236,7 @@ export namespace TextureMesh {
             ...emissive,
             ...substance,
             ...clipping,
+            ...wiggle,
             ...transform,
 
             ...BaseGeometry.createValues(props, counts),

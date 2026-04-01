@@ -14,16 +14,18 @@ export type AnimationData = {
     uWiggleMode: ValueCell<number>,
     uTumbleSpeed: ValueCell<number>,
     uTumbleAmplitude: ValueCell<number>,
+    uTumbleFrequency: ValueCell<number>,
 }
 
 export function getAnimationParam() {
     return PD.Group({
         wiggleMode: PD.Select('position', [['position', 'Position'], ['group', 'Group']] as const, { description: 'Noise seeding mode. Position: spatially correlated (nearby atoms move together). Group: per-group independent noise.' }),
-        wiggleSpeed: PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, { description: 'Speed of vertex wiggle animation.' }),
+        wiggleSpeed: PD.Numeric(7, { min: 0, max: 10, step: 0.1 }, { description: 'Speed of vertex wiggle animation.' }),
         wiggleAmplitude: PD.Numeric(0, { min: 0, max: 5, step: 0.01 }, { description: 'Amplitude of vertex wiggle animation.' }),
         wiggleFrequency: PD.Numeric(0.2, { min: 0.01, max: 2, step: 0.01 }, { description: 'Spatial frequency of vertex wiggle noise (position mode). Lower values correlate nearby atoms more.' }),
-        tumbleSpeed: PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, { description: 'Speed of instance tumble animation.' }),
-        tumbleAmplitude: PD.Numeric(0, { min: 0, max: 5, step: 0.01 }, { description: 'Amplitude of instance tumble animation.' }),
+        tumbleSpeed: PD.Numeric(1, { min: 0, max: 10, step: 0.1 }, { description: 'Speed of instance tumble animation.' }),
+        tumbleAmplitude: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }, { description: 'Amplitude of instance tumble animation.' }),
+        tumbleFrequency: PD.Numeric(0.2, { min: 0, max: 2, step: 0.01 }, { description: 'Spatial frequency multiplier for tumble noise.' }),
     });
 }
 export type AnimationParam = ReturnType<typeof getAnimationParam>
@@ -35,7 +37,8 @@ export function areAnimationPropsEqual(a: AnimationProps, b: AnimationProps): bo
         && a.wiggleAmplitude === b.wiggleAmplitude
         && a.wiggleFrequency === b.wiggleFrequency
         && a.tumbleSpeed === b.tumbleSpeed
-        && a.tumbleAmplitude === b.tumbleAmplitude;
+        && a.tumbleAmplitude === b.tumbleAmplitude
+        && a.tumbleFrequency === b.tumbleFrequency;
 }
 
 export function createAnimationValues(props: AnimationProps) {
@@ -46,6 +49,7 @@ export function createAnimationValues(props: AnimationProps) {
         uWiggleMode: ValueCell.create(props.wiggleMode === 'position' ? 0 : 1),
         uTumbleSpeed: ValueCell.create(props.tumbleSpeed),
         uTumbleAmplitude: ValueCell.create(props.tumbleAmplitude),
+        uTumbleFrequency: ValueCell.create(props.tumbleFrequency),
     };
 }
 
@@ -56,4 +60,5 @@ export function updateAnimationValues(values: AnimationData, props: AnimationPro
     ValueCell.updateIfChanged(values.uWiggleMode, props.wiggleMode === 'position' ? 0 : 1);
     ValueCell.updateIfChanged(values.uTumbleSpeed, props.tumbleSpeed);
     ValueCell.updateIfChanged(values.uTumbleAmplitude, props.tumbleAmplitude);
+    ValueCell.updateIfChanged(values.uTumbleFrequency, props.tumbleFrequency);
 }

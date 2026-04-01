@@ -27,6 +27,7 @@ import { Vec2, Vec3, Vec4 } from '../../../mol-math/linear-algebra';
 import { RenderableState } from '../../../mol-gl/renderable';
 import { createEmptySubstance } from '../substance-data';
 import { createEmptyEmissive } from '../emissive-data';
+import { createEmptyWiggle } from '../wiggle-data';
 import { createInteriorValues, getInteriorParam, updateInteriorValues } from '../interior';
 import { getAnimationParam, createAnimationValues, updateAnimationValues } from '../animation';
 
@@ -321,6 +322,7 @@ export namespace Spheres {
         const emissive = createEmptyEmissive();
         const material = createEmptySubstance();
         const clipping = createEmptyClipping();
+        const wiggle = createEmptyWiggle();
 
         const counts = { drawCount: spheres.sphereCount * 2 * 3, vertexCount: spheres.sphereCount * 6, groupCount, instanceCount };
 
@@ -347,6 +349,7 @@ export namespace Spheres {
             ...emissive,
             ...material,
             ...clipping,
+            ...wiggle,
             ...transform,
 
             padding: ValueCell.create(padding),

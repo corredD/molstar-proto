@@ -92,6 +92,8 @@ interface Scene extends Object3D {
     readonly markerAverage: number
     /** Emissive average of primitive renderables */
     readonly emissiveAverage: number
+    /** Wiggle average of primitive renderables */
+    readonly wiggleAverage: number
     /** Opacity average of primitive renderables */
     readonly opacityAverage: number
     /** Transparency minimum, excluding fully opaque, of primitive renderables */
@@ -121,6 +123,7 @@ namespace Scene {
 
         let markerAverageDirty = true;
         let emissiveAverageDirty = true;
+        let wiggleAverageDirty = true;
         let opacityAverageDirty = true;
         let transparencyMinDirty = true;
         let hasOpaqueDirty = true;
@@ -128,6 +131,7 @@ namespace Scene {
 
         let markerAverage = 0;
         let emissiveAverage = 0;
+        let wiggleAverage = 0;
         let opacityAverage = 0;
         let transparencyMin = 0;
         let hasOpaque = false;
@@ -189,6 +193,7 @@ namespace Scene {
             renderables.sort(renderableSort);
             markerAverageDirty = true;
             emissiveAverageDirty = true;
+            wiggleAverageDirty = true;
             opacityAverageDirty = true;
             transparencyMinDirty = true;
             hasOpaqueDirty = true;
@@ -216,6 +221,7 @@ namespace Scene {
                 boundingSphereVisibleDirty = true;
                 markerAverageDirty = true;
                 emissiveAverageDirty = true;
+                wiggleAverageDirty = true;
                 opacityAverageDirty = true;
                 transparencyMinDirty = true;
                 hasOpaqueDirty = true;
@@ -249,6 +255,18 @@ namespace Scene {
                 count += 1;
             }
             return count > 0 ? emissiveAverage / count : 0;
+        }
+
+        function calculateWiggleAverage() {
+            if (primitives.length === 0) return 0;
+            let count = 0;
+            let wiggleAverage = 0;
+            for (let i = 0, il = primitives.length; i < il; ++i) {
+                if (!primitives[i].state.visible) continue;
+                wiggleAverage += primitives[i].values.wiggleAverage.ref.value;
+                count += 1;
+            }
+            return count > 0 ? wiggleAverage / count : 0;
         }
 
         function calculateOpacityAverage() {
@@ -312,12 +330,13 @@ namespace Scene {
                 const p = primitives[i];
                 if (!p.state.visible) continue;
 
-                if (p.values.uWiggleAmplitude?.ref.value > 0 &&
+                if ((p.values.uWiggleAmplitude?.ref.value > 0 || p.values.wiggleAverage.ref.value > 0) &&
                     p.values.uWiggleSpeed?.ref.value > 0 &&
                     p.values.uWiggleFrequency?.ref.value > 0) return true;
 
                 if (p.values.uTumbleAmplitude?.ref.value > 0 &&
-                    p.values.uTumbleSpeed?.ref.value > 0) return true;
+                    p.values.uTumbleSpeed?.ref.value > 0 &&
+                    p.values.uTumbleFrequency?.ref.value > 0) return true;
             }
             return false;
         }
@@ -362,6 +381,7 @@ namespace Scene {
                 }
                 markerAverageDirty = true;
                 emissiveAverageDirty = true;
+                wiggleAverageDirty = true;
                 opacityAverageDirty = true;
                 transparencyMinDirty = true;
                 hasOpaqueDirty = true;
@@ -422,6 +442,13 @@ namespace Scene {
                     emissiveAverageDirty = false;
                 }
                 return emissiveAverage;
+            },
+            get wiggleAverage() {
+                if (wiggleAverageDirty) {
+                    wiggleAverage = calculateWiggleAverage();
+                    wiggleAverageDirty = false;
+                }
+                return wiggleAverage;
             },
             get opacityAverage() {
                 if (opacityAverageDirty) {

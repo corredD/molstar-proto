@@ -28,6 +28,7 @@ import { hashFnv32a } from '../../../mol-data/util';
 import { createEmptyClipping } from '../clipping-data';
 import { createEmptySubstance } from '../substance-data';
 import { createEmptyEmissive } from '../emissive-data';
+import { createEmptyWiggle } from '../wiggle-data';
 import { getAnimationParam, createAnimationValues, updateAnimationValues } from '../animation';
 
 /** Wide line */
@@ -239,6 +240,7 @@ export namespace Lines {
         const emissive = createEmptyEmissive();
         const material = createEmptySubstance();
         const clipping = createEmptyClipping();
+        const wiggle = createEmptyWiggle();
 
         const counts = { drawCount: lines.lineCount * 2 * 3, vertexCount: lines.vertexCount, groupCount, instanceCount };
 
@@ -264,6 +266,7 @@ export namespace Lines {
             ...emissive,
             ...material,
             ...clipping,
+            ...wiggle,
             ...transform,
 
             ...BaseGeometry.createValues(props, counts),

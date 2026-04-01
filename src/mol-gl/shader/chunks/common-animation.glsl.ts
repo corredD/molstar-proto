@@ -11,6 +11,7 @@ uniform float uWiggleFrequency;
 uniform int uWiggleMode;
 uniform float uTumbleSpeed;
 uniform float uTumbleAmplitude;
+uniform float uTumbleFrequency;
 
 uniform int uTrailMode;
 uniform float uTrailSpeed;
@@ -18,9 +19,23 @@ uniform float uTrailAmplitude;
 uniform float uTrailFrequency;
 uniform float uTrailStep;
 
-vec3 applyWiggle(vec3 pos, float groupId) {
+#ifdef dWiggle
+    uniform vec2 uWiggleTexDim;
+    uniform sampler2D tWiggle;
+    uniform float uWiggleStrength;
+#endif
+
+vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
     if (!uEnableAnimation) return pos;
-    if (uWiggleAmplitude > 0.0 && uWiggleSpeed > 0.0 && uWiggleFrequency > 0.0) {
+    float amplitude = uWiggleAmplitude;
+    #ifdef dWiggle
+        #if defined(dWiggleType_instance)
+            amplitude += readFromTexture(tWiggle, instanceId, uWiggleTexDim).a * uWiggleStrength;
+        #elif defined(dWiggleType_groupInstance)
+            amplitude += readFromTexture(tWiggle, instanceId * float(uGroupCount) + groupId, uWiggleTexDim).a * uWiggleStrength;
+        #endif
+    #endif
+    if (amplitude > 0.0 && uWiggleSpeed > 0.0 && uWiggleFrequency > 0.0) {
         float t = uTime * uWiggleSpeed;
         vec3 s;
         if (uWiggleMode == 0) {
@@ -36,23 +51,23 @@ vec3 applyWiggle(vec3 pos, float groupId) {
             );
         }
         s *= uWiggleFrequency;
-        pos.x += (fbm(vec3(s.x, s.y + t, s.z)) - 0.4375) * uWiggleAmplitude;
-        pos.y += (fbm(vec3(s.x + 37.0, s.y, s.z + t)) - 0.4375) * uWiggleAmplitude;
-        pos.z += (fbm(vec3(s.x + t, s.y + 73.0, s.z)) - 0.4375) * uWiggleAmplitude;
+        pos.x += (fbm(vec3(s.x, s.y + t, s.z)) / 0.4375 - 1.0) * amplitude;
+        pos.y += (fbm(vec3(s.x + 37.0, s.y, s.z + t)) / 0.4375 - 1.0) * amplitude;
+        pos.z += (fbm(vec3(s.x + t, s.y + 73.0, s.z)) / 0.4375 - 1.0) * amplitude;
     }
     return pos;
 }
 
 mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
     if (!uEnableAnimation) return transform;
-    if (uTumbleAmplitude > 0.0 && uTumbleSpeed > 0.0) {
+    if (uTumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0) {
         float t = uTime * uTumbleSpeed;
-        float seed = instanceIndex * 127.1 + uObjectId * 311.7;
+        float seed = (instanceIndex * 127.1 + uObjectId * 311.7) * uTumbleFrequency;
 
         // Per-instance rotation angles from layered noise (Brownian-like)
-        float angleX = (fbm(vec3(seed, t, 0.0)) - 0.4375) * uTumbleAmplitude;
-        float angleY = (fbm(vec3(seed, 0.0, t)) - 0.4375) * uTumbleAmplitude;
-        float angleZ = (fbm(vec3(0.0, seed, t)) - 0.4375) * uTumbleAmplitude;
+        float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * uTumbleAmplitude;
+        float angleY = (fbm(vec3(seed, 0.0, t)) / 0.4375 - 1.0) * uTumbleAmplitude;
+        float angleZ = (fbm(vec3(0.0, seed, t)) / 0.4375 - 1.0) * uTumbleAmplitude;
 
         float cx = cos(angleX); float sx = sin(angleX);
         float cy = cos(angleY); float sy = sin(angleY);
@@ -67,9 +82,9 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
 
         // Per-instance translation offset from layered noise (Brownian-like)
         vec3 offset = vec3(
-            (fbm(vec3(seed + 31.7, t, 0.0)) - 0.4375),
-            (fbm(vec3(seed + 31.7, 0.0, t)) - 0.4375),
-            (fbm(vec3(0.0, seed + 31.7, t)) - 0.4375)
+            (fbm(vec3(seed + 31.7, t, 0.0)) / 0.4375 - 1.0),
+            (fbm(vec3(seed + 31.7, 0.0, t)) / 0.4375 - 1.0),
+            (fbm(vec3(0.0, seed + 31.7, t)) / 0.4375 - 1.0)
         ) * uTumbleAmplitude;
 
         // Bounding-sphere center transformed by the linear part only (no translation)

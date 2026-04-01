@@ -318,6 +318,17 @@ export const ClippingSchema = {
 export type ClippingSchema = typeof ClippingSchema
 export type ClippingValues = Values<ClippingSchema>
 
+export const WiggleSchema = {
+    uWiggleTexDim: UniformSpec('v2'),
+    tWiggle: TextureSpec('image-uint8', 'alpha', 'ubyte', 'nearest'),
+    dWiggle: DefineSpec('boolean'),
+    wiggleAverage: ValueSpec('number'),
+    dWiggleType: DefineSpec('string', ['instance', 'groupInstance']),
+    uWiggleStrength: UniformSpec('f', 'material'),
+} as const;
+export type WiggleSchema = typeof WiggleSchema
+export type WiggleValues = Values<WiggleSchema>
+
 export const BaseSchema = {
     dGeometryType: DefineSpec('string', ['cylinders', 'directVolume', 'image', 'lines', 'mesh', 'points', 'spheres', 'text', 'textureMesh']),
 
@@ -328,6 +339,7 @@ export const BaseSchema = {
     ...EmissiveSchema,
     ...SubstanceSchema,
     ...ClippingSchema,
+    ...WiggleSchema,
 
     dClipObjectCount: DefineSpec('number'),
     dClipVariant: DefineSpec('string', ['instance', 'pixel']),
@@ -406,6 +418,7 @@ export const AnimationSchema = {
     uWiggleMode: UniformSpec('i', 'material'),
     uTumbleSpeed: UniformSpec('f', 'material'),
     uTumbleAmplitude: UniformSpec('f', 'material'),
+    uTumbleFrequency: UniformSpec('f', 'material'),
 } as const;
 export type AnimationSchema = typeof AnimationSchema
 export type AnimationValues = Values<AnimationSchema>

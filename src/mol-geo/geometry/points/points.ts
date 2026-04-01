@@ -27,6 +27,7 @@ import { hashFnv32a } from '../../../mol-data/util';
 import { createEmptyClipping } from '../clipping-data';
 import { createEmptySubstance } from '../substance-data';
 import { createEmptyEmissive } from '../emissive-data';
+import { createEmptyWiggle } from '../wiggle-data';
 import { getAnimationParam, createAnimationValues, updateAnimationValues } from '../animation';
 
 /** Point cloud */
@@ -185,6 +186,7 @@ export namespace Points {
         const emissive = createEmptyEmissive();
         const material = createEmptySubstance();
         const clipping = createEmptyClipping();
+        const wiggle = createEmptyWiggle();
 
         const counts = { drawCount: points.pointCount, vertexCount: points.pointCount, groupCount, instanceCount };
 
@@ -207,6 +209,7 @@ export namespace Points {
             ...emissive,
             ...material,
             ...clipping,
+            ...wiggle,
             ...transform,
 
             ...BaseGeometry.createValues(props, counts),
