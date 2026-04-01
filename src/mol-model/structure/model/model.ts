@@ -80,10 +80,18 @@ export interface Model extends Readonly<{
     customProperties: CustomProperties,
 
     /**
+     * Properties independent of coordinates or other dynamic aspects.
+     *
      * Not to be accessed directly, each custom property descriptor
      * defines property accessors that use this field to store the data.
      */
     _staticPropertyData: { [name: string]: any },
+    /**
+     * Properties that depend on coordinates or other dynamic aspects.
+     *
+     * Not to be accessed directly, each custom property descriptor
+     * defines property accessors that use this field to store the data.
+     */
     _dynamicPropertyData: { [name: string]: any },
 
     coarseHierarchy: CoarseHierarchy,
@@ -113,9 +121,6 @@ export namespace Model {
                 modelNum: i,
                 atomicConformation: getAtomicConformationFromFrame(model, f),
                 // TODO: add support for supplying sphere and gaussian coordinates in addition to atomic coordinates?
-                // coarseConformation: coarse.conformation,
-                customProperties: new CustomProperties(),
-                _staticPropertyData: Object.create(null),
                 _dynamicPropertyData: Object.create(null)
             };
 
@@ -188,14 +193,14 @@ export namespace Model {
     const AtomicRadiiProp = '__AtomicRadii__';
     /** Get array of atomic radii for all atoms in the model (cached). */
     export function getAtomicRadii(model: Model): Float32Array {
-        if (model._dynamicPropertyData[AtomicRadiiProp]) return model._dynamicPropertyData[AtomicRadiiProp];
+        if (model._staticPropertyData[AtomicRadiiProp]) return model._staticPropertyData[AtomicRadiiProp];
         const nAtoms = model.atomicHierarchy.atoms._rowCount;
         const type_symbol = model.atomicHierarchy.atoms.type_symbol.value;
         const radii = new Float32Array(nAtoms);
         for (let i = 0; i < nAtoms; i++) {
             radii[i] = VdwRadius(type_symbol(i));
         }
-        model._dynamicPropertyData[AtomicRadiiProp] = radii;
+        model._staticPropertyData[AtomicRadiiProp] = radii;
         return radii;
     }
 

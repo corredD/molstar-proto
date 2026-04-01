@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -284,9 +284,10 @@ namespace Unit {
 
         get boundary() {
             if (this.props.boundary) return this.props.boundary;
+            const fast = Traits.is(this.traits, Trait.FastBoundary);
             const { x, y, z } = this.model.atomicConformation;
-            const radius = Model.getAtomicRadii(this.model);
-            this.props.boundary = Traits.is(this.traits, Trait.FastBoundary)
+            const radius = fast ? undefined : Model.getAtomicRadii(this.model);
+            this.props.boundary = fast
                 ? getFastBoundary({ x, y, z, radius, indices: this.elements })
                 : getBoundary({ x, y, z, radius, indices: this.elements });
             return this.props.boundary;
