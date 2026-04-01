@@ -1,10 +1,11 @@
 /**
- * Copyright (c) 2023-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2023-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import { MmcifFormat } from '../../../../mol-model-formats/structure/mmcif';
+import { Model } from '../../../../mol-model/structure/model/model';
 import { PluginStateObject } from '../../../../mol-plugin-state/objects';
 import { StructureRepresentation3D } from '../../../../mol-plugin-state/transforms/representation';
 import { PluginContext } from '../../../../mol-plugin/context';
@@ -59,7 +60,7 @@ function getSpacefillParams(color: Color, scaleFactor: number, graphics: Graphic
         sizeTheme: {
             name: 'physical',
             params: {
-                value: 1,
+                scale: scaleFactor,
             }
         },
     };
@@ -101,6 +102,8 @@ export async function createMmcifHierarchy(plugin: PluginContext, trajectory: St
             spheresAvgRadius.set(k, v / spheresCount.get(k)!);
         });
     }
+
+    const coarseGrained = Model.isCoarseGrained(model.data!);
 
     const entGroups = new Map<string, StateObjectSelector>();
     const entIds = new Map<string, { idx: number, members: Map<number, number> }>();
@@ -170,7 +173,7 @@ export async function createMmcifHierarchy(plugin: PluginContext, trajectory: St
             for (let i = 0; i < entities._rowCount; i++) {
                 const t = getEntityType(i);
                 const color = entColors.get(t)![entIds.get(t)!.members.get(i)!];
-                const scaleFactor = spheresAvgRadius.get(entities.id.value(i)) || 1;
+                const scaleFactor = spheresAvgRadius.get(entities.id.value(i)) || (coarseGrained ? 2 : 1);
 
                 build = build
                     .toRoot()
