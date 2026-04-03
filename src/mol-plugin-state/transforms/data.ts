@@ -27,6 +27,8 @@ import { parseTop } from '../../mol-io/reader/top/parser';
 import { ungzip } from '../../mol-util/zip/zip';
 import { StringLike } from '../../mol-io/common/string-like';
 import { utf8ReadLong } from '../../mol-io/common/utf8';
+import { parseRelionStarParticleList } from '../../mol-io/reader/relion/star';
+import { RelionStarParticleListObject } from '../objects/relion';
 
 
 export { Download };
@@ -44,6 +46,7 @@ export { ParsePly };
 export { ParseCcp4 };
 export { ParseDsn6 };
 export { ParseDx };
+export { RelionStarParticleListFromCif };
 export { ImportString };
 export { ImportJson };
 export { ParseJson };
@@ -323,6 +326,24 @@ const ParseCif = PluginStateTransform.BuiltIn({
     }
 });
 
+type RelionStarParticleListFromCif = typeof RelionStarParticleListFromCif
+const RelionStarParticleListFromCif = PluginStateTransform.BuiltIn({
+    name: 'relion-star-particle-list-from-cif',
+    display: { name: 'RELION Particle List', description: 'Parse RELION particle positions and rotations from STAR/CIF data.' },
+    from: SO.Format.Cif,
+    to: RelionStarParticleListObject
+})({
+    apply({ a }) {
+        return Task.create('Parse RELION Particle List', async () => {
+            const data = parseRelionStarParticleList(a.data);
+            return new RelionStarParticleListObject(data, {
+                label: a.label,
+                description: `${data.particles.length} particle${data.particles.length === 1 ? '' : 's'}`
+            });
+        });
+    }
+});
+
 type ParseCube = typeof ParseCube
 const ParseCube = PluginStateTransform.BuiltIn({
     name: 'parse-cube',
@@ -543,4 +564,3 @@ const LazyVolume = PluginStateTransform.BuiltIn({
         });
     }
 });
-

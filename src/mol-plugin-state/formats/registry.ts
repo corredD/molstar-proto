@@ -13,6 +13,7 @@ import { BuiltInVolumeFormats } from './volume';
 import { BuiltInShapeFormats } from './shape';
 import { BuiltInTopologyFormats } from './topology';
 import { BuiltInCoordinatesFormats } from './coordinates';
+import { BuiltInParticleFormats } from './relion-star';
 
 export class DataFormatRegistry {
     private _list: { name: string, provider: DataFormatProvider }[] = [];
@@ -57,6 +58,7 @@ export class DataFormatRegistry {
         for (const [id, p] of BuiltInTopologyFormats) this.add(id, p);
         for (const [id, p] of BuiltInCoordinatesFormats) this.add(id, p);
         for (const [id, p] of BuiltInShapeFormats) this.add(id, p);
+        for (const [id, p] of BuiltInParticleFormats) this.add(id, p);
         for (const [id, p] of BuiltInTrajectoryFormats) this.add(id, p);
     };
 

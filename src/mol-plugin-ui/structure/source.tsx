@@ -7,7 +7,9 @@
 
 import { Model } from '../../mol-model/structure';
 import { ModelRef, StructureHierarchyRef, TrajectoryRef } from '../../mol-plugin-state/manager/structure/hierarchy-state';
+import { RelionStarParticleListObject } from '../../mol-plugin-state/objects/relion';
 import { StateTransforms } from '../../mol-plugin-state/transforms';
+import { applyStructureInstances, clearStructureInstances, getRelionParticleTransforms } from '../../mol-plugin-state/helpers/relion-star';
 import { StateSelection } from '../../mol-state';
 import { CollapsableControls, CollapsableState } from '../base';
 import { ActionMenu } from '../controls/action-menu';
@@ -17,10 +19,13 @@ import { ParameterControls } from '../controls/parameters';
 import { UpdateTransformControl } from '../state/update-transform';
 import { StructureFocusControls } from './focus';
 import { StructureSelectionStatsControls } from './selection';
+import { ParamDefinition as PD } from '../../mol-util/param-definition';
 
 interface StructureSourceControlState extends CollapsableState {
     isBusy: boolean,
-    show?: 'hierarchy' | 'presets'
+    show?: 'hierarchy' | 'presets',
+    particleListRef?: string,
+    particleScale?: number
 }
 
 export class StructureSourceControls extends CollapsableControls<{}, StructureSourceControlState> {
@@ -35,6 +40,7 @@ export class StructureSourceControls extends CollapsableControls<{}, StructureSo
 
     componentDidMount() {
         this.subscribe(this.plugin.managers.structure.hierarchy.behaviors.selection, () => this.forceUpdate());
+        this.subscribe(this.plugin.state.data.events.changed, () => this.forceUpdate());
         this.subscribe(this.plugin.behaviors.state.isBusy, v => {
             this.setState({ isBusy: v });
         });
@@ -294,6 +300,91 @@ export class StructureSourceControls extends CollapsableControls<{}, StructureSo
         </ExpandGroup>;
     }
 
+    private getParticleTarget() {
+        const { selection } = this.plugin.managers.structure.hierarchy;
+        if (selection.structures.length === 1) return selection.structures[0];
+        if (selection.models.length === 1 && selection.models[0].structures.length === 1) return selection.models[0].structures[0];
+        if (selection.trajectories.length === 1 && selection.trajectories[0].models.length === 1 && selection.trajectories[0].models[0].structures.length === 1) {
+            return selection.trajectories[0].models[0].structures[0];
+        }
+    }
+
+    private get particleLists() {
+        return this.plugin.state.data.selectQ(q => q.rootsOfType(RelionStarParticleListObject));
+    }
+
+    private get particleValues() {
+        const particleLists = this.particleLists;
+        const validRef = particleLists.some(p => p.transform.ref === this.state.particleListRef)
+            ? this.state.particleListRef
+            : particleLists[0]?.transform.ref;
+        const selected = validRef ? particleLists.find(p => p.transform.ref === validRef) : void 0;
+        const suggestedScale = selected?.obj?.data.suggestedScale ?? 1;
+
+        return {
+            particleListRef: validRef ?? '',
+            particleScale: this.state.particleListRef === validRef ? (this.state.particleScale ?? suggestedScale) : suggestedScale,
+        };
+    }
+
+    private updateParticleParams = (values: { particleListRef: string, particleScale: number }, prev: { particleListRef: string, particleScale: number }) => {
+        const particleLists = this.particleLists;
+        const selected = particleLists.find(p => p.transform.ref === values.particleListRef);
+        const resetScale = values.particleListRef !== prev.particleListRef;
+
+        this.setState({
+            particleListRef: values.particleListRef,
+            particleScale: resetScale ? (selected?.obj?.data.suggestedScale ?? 1) : values.particleScale,
+        });
+    };
+
+    private applyParticleInstances = async () => {
+        const target = this.getParticleTarget();
+        if (!target) return;
+
+        const values = this.particleValues;
+        const particleList = this.particleLists.find(p => p.transform.ref === values.particleListRef)?.obj?.data;
+        if (!particleList) return;
+
+        const transforms = getRelionParticleTransforms(particleList, values.particleScale);
+        const builder = this.plugin.state.data.build();
+        applyStructureInstances(builder, this.plugin.state.data.tree, target.cell.transform.ref, transforms);
+        await builder.commit({ canUndo: 'Apply Particle Instances' });
+    };
+
+    private clearParticleInstances = async () => {
+        const target = this.getParticleTarget();
+        if (!target) return;
+
+        const builder = this.plugin.state.data.build();
+        if (!clearStructureInstances(builder, this.plugin.state.data.tree, target.cell.transform.ref)) return;
+        await builder.commit({ canUndo: 'Clear Particle Instances' });
+    };
+
+    get particleInstances() {
+        const target = this.getParticleTarget();
+        if (!target) return null;
+
+        const particleLists = this.particleLists;
+        if (particleLists.length === 0) return null;
+
+        const values = this.particleValues;
+        const selected = particleLists.find(p => p.transform.ref === values.particleListRef);
+        const params = {
+            particleListRef: PD.Select(values.particleListRef, particleLists.map(p => [p.transform.ref, `${p.obj?.label || p.transform.ref} (${p.obj?.data.particles.length})`] as [string, string]), { label: 'Particle List' }),
+            particleScale: PD.Numeric(values.particleScale, { min: 0, step: 0.1 }, { label: 'Position Scale', description: 'Applied to coordinates and pixel-space origin shifts.' })
+        };
+
+        return <ExpandGroup header='Particle Instances' initiallyExpanded={true}>
+            <ParameterControls params={params} values={values} onChangeValues={this.updateParticleParams} isDisabled={this.state.isBusy} />
+            {!!selected?.obj?.data.warnings.length && <div className='msp-help-text'>{selected.obj?.data.warnings[0]}</div>}
+            <div className='msp-flex-row'>
+                <Button flex onClick={this.applyParticleInstances} disabled={this.state.isBusy}>Apply</Button>
+                <Button flex onClick={this.clearParticleInstances} disabled={this.state.isBusy}>Clear</Button>
+            </div>
+        </ExpandGroup>;
+    }
+
     renderControls() {
         const disabled = this.state.isBusy || this.isEmpty;
         const presets = this.presetActions;
@@ -308,6 +399,7 @@ export class StructureSourceControls extends CollapsableControls<{}, StructureSo
             {this.modelIndex}
             {this.structureType}
             {this.transform}
+            {this.particleInstances}
 
             <div style={{ marginTop: '6px' }}>
                 <StructureFocusControls />
