@@ -28,6 +28,7 @@ import { getAllEntities, getEntityLabel, MesoscaleState, MesoscaleStateObject, s
 import { isTimingMode } from '../../../mol-util/debug';
 import { now } from '../../../mol-util/now';
 import { readFromFile } from '../../../mol-util/data-source';
+import { Asset } from '../../../mol-util/assets';
 
 function adjustPluginProps(ctx: PluginContext) {
     const customState = ctx.customState as MesoscaleExplorerState;
@@ -146,6 +147,11 @@ async function createHierarchy(ctx: PluginContext, ref: string) {
     } else {
         await createMmcifHierarchy(ctx, parsed.trajectory);
     }
+}
+
+async function loadParticleList(ctx: PluginContext, file: Asset.File) {
+    const { data } = await ctx.builders.data.readFile({ file, isBinary: false });
+    await ctx.dataFormats.get('relion_star')!.parse(ctx, data.ref);
 }
 
 async function reset(ctx: PluginContext) {
@@ -286,7 +292,7 @@ export const LoadExample = StateAction.build({
 export const LoadModel = StateAction.build({
     display: { name: 'Load', description: 'Load a model' },
     params: {
-        files: PD.FileList({ accept: '.cif,.bcif,.cif.gz,.bcif.gz,.zip', multiple: true, description: 'mmCIF or Cellpack- or Petworld-style cif file.', label: 'File(s)' }),
+        files: PD.FileList({ accept: '.cif,.bcif,.cif.gz,.bcif.gz,.zip,.star', multiple: true, description: 'mmCIF, Cellpack, Petworld, generic zip, or RELION particle STAR file.', label: 'File(s)' }),
     },
     from: PluginStateObject.Root
 })(({ params }, ctx: PluginContext) => Task.create('Loading model...', async taskCtx => {
@@ -295,12 +301,20 @@ export const LoadModel = StateAction.build({
         return;
     }
 
-    await reset(ctx);
+    const modelFiles = params.files.filter(file => {
+        const info = getFileNameInfo(file.file!.name);
+        return info.ext === 'zip' || ['cif', 'bcif'].includes(info.ext);
+    });
+    const particleFiles = params.files.filter(file => getFileNameInfo(file.file!.name).ext === 'star');
 
-    const firstFile = params.files[0];
-    const firstInfo = getFileNameInfo(firstFile.file!.name);
+    if (modelFiles.length > 0) {
+        await reset(ctx);
+    }
 
-    if (firstInfo.name.endsWith('zip')) {
+    const firstFile = modelFiles[0];
+    const firstInfo = firstFile ? getFileNameInfo(firstFile.file!.name) : void 0;
+
+    if (firstInfo?.name.endsWith('zip')) {
         try {
             await createGenericHierarchy(ctx, firstFile);
         } catch (e) {
@@ -308,7 +322,7 @@ export const LoadModel = StateAction.build({
             ctx.log.error(`Error opening file '${firstFile.name}'`);
         }
     } else {
-        for (const file of params.files) {
+        for (const file of modelFiles) {
             try {
                 const info = getFileNameInfo(file.file!.name);
                 if (!['cif', 'bcif'].includes(info.ext)) continue;
@@ -320,6 +334,15 @@ export const LoadModel = StateAction.build({
                 console.error(e);
                 ctx.log.error(`Error opening file '${file.name}'`);
             }
+        }
+    }
+
+    for (const file of particleFiles) {
+        try {
+            await loadParticleList(ctx, file);
+        } catch (e) {
+            console.error(e);
+            ctx.log.error(`Error opening particle list '${file.name}'`);
         }
     }
 }));

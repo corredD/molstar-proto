@@ -372,7 +372,7 @@ export class StructureSourceControls extends CollapsableControls<{}, StructureSo
         const selected = particleLists.find(p => p.transform.ref === values.particleListRef);
         const params = {
             particleListRef: PD.Select(values.particleListRef, particleLists.map(p => [p.transform.ref, `${p.obj?.label || p.transform.ref} (${p.obj?.data.particles.length})`] as [string, string]), { label: 'Particle List' }),
-            particleScale: PD.Numeric(values.particleScale, { min: 0, step: 0.1 }, { label: 'Position Scale', description: 'Applied to coordinates and pixel-space origin shifts.' })
+            particleScale: PD.Numeric(values.particleScale, { min: 0.01, max: 100, step: 0.5 }, { label: 'Position Scale', description: 'Applied to coordinates and pixel-space origin shifts.' })
         };
 
         return <ExpandGroup header='Particle Instances' initiallyExpanded={true}>

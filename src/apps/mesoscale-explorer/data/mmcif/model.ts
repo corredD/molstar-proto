@@ -14,11 +14,13 @@ import { ElementIndex, EntityIndex, Model, Structure, Unit } from '../../../../m
 import { Assembly, Symmetry } from '../../../../mol-model/structure/model/properties/symmetry';
 import { PluginStateObject as PSO, PluginStateTransform } from '../../../../mol-plugin-state/objects';
 import { PluginContext } from '../../../../mol-plugin/context';
+import { StateObject } from '../../../../mol-state';
 import { StateTransformer } from '../../../../mol-state/transformer';
 import { Task } from '../../../../mol-task';
 import { deepEqual } from '../../../../mol-util';
 import { ParamDefinition as PD } from '../../../../mol-util/param-definition';
 import { partitionUnits } from '../util';
+import { MesoscalePlacementParams, buildInstancedStructure, getMergedTemplateUnit, getParticleListTransforms } from '../placement';
 
 function createModelChainMap(model: Model) {
     const builder = new Structure.StructureBuilder();
@@ -164,12 +166,13 @@ const MmcifStructure = PluginStateTransform.BuiltIn({
         structureRef: PD.Text(''),
         entityId: PD.Text(''),
         cellSize: PD.Numeric(500, { min: 0, max: 10000, step: 100 }),
+        ...MesoscalePlacementParams,
     }
 })({
     canAutoUpdate({ newParams }) {
         return true;
     },
-    apply({ a, params, dependencies }) {
+    apply({ a, params, dependencies }, plugin: PluginContext) {
         return Task.create('Build Structure', async ctx => {
             const parent = dependencies![params.structureRef].data as Structure;
             const { entities } = parent.model;
@@ -180,7 +183,15 @@ const MmcifStructure = PluginStateTransform.BuiltIn({
             const unitCount = units.length;
 
             let structure: Structure;
-            if (unitCount > 1 && units.every(u => u.conformation.operator.isIdentity)) {
+            const particleTransforms = params.placementMode === 'particle-list'
+                ? getParticleListTransforms(plugin, params.particleListRef, params.positionScale)
+                : void 0;
+
+            if (particleTransforms && particleTransforms.length > 0) {
+                const template = getMergedTemplateUnit(units);
+                if (!template) return StateObject.Null;
+                structure = buildInstancedStructure(template, particleTransforms, entities.data.pdbx_description.value(idx).join(', ') || 'model');
+            } else if (unitCount > 1 && units.every(u => u.conformation.operator.isIdentity)) {
                 const mergedUnits = partitionUnits(units, params.cellSize);
                 structure = Structure.create(mergedUnits);
             } else {

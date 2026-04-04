@@ -13,6 +13,7 @@ import { StateObjectRef, StateObjectSelector, StateBuilder } from '../../../../m
 import { Color } from '../../../../mol-util/color';
 import { ColorNames } from '../../../../mol-util/color/names';
 import { GraphicsMode, MesoscaleGroup, MesoscaleState, getDistinctBaseColors, getDistinctGroupColors, getGraphicsModeProps, getMesoscaleGroupParams } from '../state';
+import { getMesoscalePlacementProps } from '../placement';
 import { CellpackAssembly, CellpackStructure } from './model';
 
 function getSpacefillParams(color: Color, sizeFactor: number, graphics: GraphicsMode, merge?: boolean) {
@@ -203,7 +204,7 @@ export async function createCellpackHierarchy(plugin: PluginContext, trajectory:
 
                     build = build
                         .toRoot()
-                        .apply(CellpackStructure, { structureRef: base.ref, entityId: entities.id.value(i) }, { dependsOn })
+                        .apply(CellpackStructure, { structureRef: base.ref, entityId: entities.id.value(i), ...getMesoscalePlacementProps('instance') }, { dependsOn })
                         .apply(StructureRepresentation3D, getSpacefillParams(color, sizeFactor, graphicsMode), { tags: [`comp:${n}`, `func:${f}`] });
                 }
                 await build.commit();
@@ -226,7 +227,7 @@ export async function createCellpackHierarchy(plugin: PluginContext, trajectory:
 
         await state.build()
             .toRoot()
-            .apply(CellpackStructure, { structureRef: base.ref, entityId: entities.id.value(0) }, { dependsOn })
+            .apply(CellpackStructure, { structureRef: base.ref, entityId: entities.id.value(0), ...getMesoscalePlacementProps(merge ? 'pixel' : 'instance', merge ? ['structure-element-sphere'] : ['element-sphere']) }, { dependsOn })
             .apply(StructureRepresentation3D, getSpacefillParams(ColorNames.lightgray, 1, graphicsMode, merge), { tags: [`comp:`, `func:`] })
             .commit();
     }

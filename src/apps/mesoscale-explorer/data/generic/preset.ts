@@ -24,6 +24,7 @@ import { getFileNameInfo } from '../../../../mol-util/file-info';
 import { NumberArray } from '../../../../mol-util/type-helpers';
 import { BaseGeometry } from '../../../../mol-geo/geometry/base';
 import { ParamDefinition as PD } from '../../../../mol-util/param-definition';
+import { getMesoscalePlacementProps } from '../placement';
 
 function getSpacefillParams(color: Color, sizeFactor: number, graphics: GraphicsMode, clipVariant: Clip.Variant) {
     const gmp = getGraphicsModeProps(graphics === 'custom' ? 'quality' : graphics);
@@ -241,7 +242,7 @@ export async function createGenericHierarchy(plugin: PluginContext, file: Asset.
 
                     build = build
                         .apply(ModelFromTrajectory, { modelIndex: 0 })
-                        .apply(StructureFromGeneric, { instances, label, description })
+                        .apply(StructureFromGeneric, { instances, label, description, ...getMesoscalePlacementProps(clipVariant) })
                         .apply(StructureRepresentation3D, getSpacefillParams(color, sizeFactor, graphicsMode, clipVariant), { tags });
                 } else if (['ply'].includes(info.ext)) {
                     if (['ply'].includes(info.ext)) {

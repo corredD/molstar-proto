@@ -15,6 +15,7 @@ import { GraphicsMode, MesoscaleGroup, MesoscaleState, getDistinctBaseColors, ge
 import { ColorNames } from '../../../../mol-util/color/names';
 import { MmcifFormat } from '../../../../mol-model-formats/structure/mmcif';
 import { Task } from '../../../../mol-task';
+import { getMesoscalePlacementProps } from '../placement';
 
 function getSpacefillParams(color: Color, graphics: GraphicsMode) {
     const gmp = getGraphicsModeProps(graphics === 'custom' ? 'quality' : graphics);
@@ -120,13 +121,13 @@ export async function createPetworldHierarchy(plugin: PluginContext, trajectory:
             for (let i = 0, il = membrane.length; i < il; ++i) {
                 build = build
                     .to(cell)
-                    .apply(StructureFromPetworld, membrane[i])
+                    .apply(StructureFromPetworld, { ...membrane[i], ...getMesoscalePlacementProps('instance') })
                     .apply(StructureRepresentation3D, getSpacefillParams(ColorNames.lightgrey, graphicsMode), { tags: ['ent:mem', '__no_group_color__'] });
             }
             for (let i = 0, il = other.length; i < il; ++i) {
                 build = build
                     .to(cell)
-                    .apply(StructureFromPetworld, other[i])
+                    .apply(StructureFromPetworld, { ...other[i], ...getMesoscalePlacementProps('instance') })
                     .apply(StructureRepresentation3D, getSpacefillParams(colors[i], graphicsMode), { tags: ['ent:'] });
             }
             await build.commit();

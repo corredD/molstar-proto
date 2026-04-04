@@ -19,6 +19,8 @@ import { CifField } from '../../../../mol-io/reader/cif';
 import { ParamDefinition as PD } from '../../../../mol-util/param-definition';
 import { mergeUnits } from '../util';
 import { deepEqual } from '../../../../mol-util';
+import { MesoscalePlacementParams, buildInstancedStructure, getParticleListTransforms } from '../placement';
+import { PluginContext } from '../../../../mol-plugin/context';
 
 export { StructureFromPetworld };
 type StructureFromPetworld = typeof StructureFromPetworld
@@ -30,11 +32,15 @@ const StructureFromPetworld = PluginStateTransform.BuiltIn({
     params: {
         modelIndex: PD.Numeric(0),
         entityIds: PD.Value<string[]>([]),
+        ...MesoscalePlacementParams,
     }
 })({
-    apply({ a, params }) {
+    apply({ a, params }, plugin: PluginContext) {
         return Task.create('Build Structure', async ctx => {
-            const s = await buildModelsAssembly(a.data, '1', params.modelIndex, params.entityIds).runInContext(ctx);
+            const s = await buildModelsAssembly(a.data, '1', params.modelIndex, params.entityIds, params.placementMode === 'particle-list'
+                ? getParticleListTransforms(plugin, params.particleListRef, params.positionScale)
+                : void 0
+            ).runInContext(ctx);
             if (!s || !MmcifFormat.is(s.model.sourceData)) return StateObject.Null;
 
             const { frame } = s.model.sourceData.data;
@@ -56,7 +62,7 @@ const StructureFromPetworld = PluginStateTransform.BuiltIn({
     }
 });
 
-function buildModelsAssembly(trajectory: Trajectory, asmName: string, modelIndex: number, entitiyIds: string[]) {
+function buildModelsAssembly(trajectory: Trajectory, asmName: string, modelIndex: number, entitiyIds: string[], particleTransforms?: Mat4[]) {
     return Task.create('Build Models Assembly', async ctx => {
         const model = await Task.resolveInContext(trajectory.getFrameAtIndex(modelIndex), ctx);
         if (!MmcifFormat.is(model.sourceData)) return;
@@ -85,6 +91,10 @@ function buildModelsAssembly(trajectory: Trajectory, asmName: string, modelIndex
             return entitiyIds.includes(StructureProperties.entity.id(l));
         });
         const unit = mergeUnits(units, 0);
+
+        if (particleTransforms && particleTransforms.length > 0) {
+            return buildInstancedStructure(unit, particleTransforms, model.label);
+        }
 
         for (const oper of g.operators) {
             assembler.addUnit(unit.kind, unit.model, oper, unit.elements, unit.traits | Unit.Trait.FastBoundary, unit.invariantId);

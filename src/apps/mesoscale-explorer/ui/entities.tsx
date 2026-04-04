@@ -6,9 +6,9 @@
 
 import { PluginReactContext, PluginUIComponent } from '../../../mol-plugin-ui/base';
 import { Button, ControlGroup, IconButton } from '../../../mol-plugin-ui/controls/common';
-import { ArrowDropDownSvg, ArrowRightSvg, CloseSvg, VisibilityOffOutlinedSvg, VisibilityOutlinedSvg, ContentCutSvg, BrushSvg, SearchSvg, TooltipTextSvg, TooltipTextOutlineSvg, PlusBoxSvg, MinusBoxSvg } from '../../../mol-plugin-ui/controls/icons';
+import { ArrowDropDownSvg, ArrowRightSvg, CloseSvg, VisibilityOffOutlinedSvg, VisibilityOutlinedSvg, ContentCutSvg, BrushSvg, SearchSvg, TooltipTextSvg, TooltipTextOutlineSvg, PlusBoxSvg, MinusBoxSvg, SwapHorizSvg } from '../../../mol-plugin-ui/controls/icons';
 import { PluginCommands } from '../../../mol-plugin/commands';
-import { State, StateObjectCell, StateSelection, StateTransformer } from '../../../mol-state';
+import { State, StateObjectCell, StateObjectRef, StateSelection, StateTransformer } from '../../../mol-state';
 import { ParameterControls, ParameterMappingControl, ParamOnChange, SelectControl } from '../../../mol-plugin-ui/controls/parameters';
 import { ParamDefinition as PD } from '../../../mol-util/param-definition';
 import { Clip } from '../../../mol-util/clip';
@@ -30,6 +30,12 @@ import { MesoFocusLoci } from '../behavior/camera';
 import Markdown from 'react-markdown';
 import { combineLatest } from 'rxjs';
 import { ColorLoaderControls } from './states';
+import { RelionStarParticleListObject } from '../../../mol-plugin-state/objects/relion';
+import { StructureFromGeneric } from '../data/generic/model';
+import { MmcifStructure } from '../data/mmcif/model';
+import { CellpackStructure } from '../data/cellpack/model';
+import { StructureFromPetworld } from '../data/petworld/model';
+import { getMesoscaleRepresentationPlacement } from '../data/placement';
 
 function centerLoci(plugin: PluginContext, loci: Loci, durationMs = 250) {
     const { canvas3d } = plugin;
@@ -87,6 +93,10 @@ const SelectionStyleParam = PD.Select('color+outline', PD.objectToOptions({
     'outline': 'Outline'
 } as const));
 type SelectionStyle = typeof SelectionStyleParam['defaultValue']
+
+const PlacementScaleParams = {
+    positionScale: PD.Numeric(1, { min: 0.01, max: 100, step: 0.5 }),
+};
 
 export class SelectionInfo extends PluginUIComponent<{}, { isDisabled: boolean }> {
     state = {
@@ -924,7 +934,7 @@ export class GroupNode extends Node<{ filter: string }, { isCollapsed: boolean, 
     }
 }
 
-export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled: boolean }> {
+export class EntityNode extends Node<{}, { action?: 'color' | 'clip' | 'placement', isDisabled: boolean }> {
     state = {
         action: undefined,
         isDisabled: false,
@@ -932,9 +942,58 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
 
     clipMapping = createClipMapping(this);
 
+    componentDidMount() {
+        super.componentDidMount();
+
+        this.subscribe(this.plugin.state.data.events.changed, () => {
+            if (!this.state.isDisabled && this.state.action === 'placement') {
+                this.forceUpdate();
+            }
+        });
+    }
+
     get groups() {
         return this.plugin.state.data.select(StateSelection.Generators.ofTransformer(MesoscaleGroup)
             .filter(c => !!this.cell.transform.tags?.includes(c.params?.values.tag)));
+    }
+
+    get parentStructureCell() {
+        return StateObjectRef.resolveAndCheck(this.plugin.state.data, this.cell.transform.parent) as StateObjectCell<PSO.Molecule.Structure> | undefined;
+    }
+
+    get supportsPlacement() {
+        const transformer = this.parentStructureCell?.transform.transformer;
+        return transformer === StructureFromGeneric || transformer === MmcifStructure || transformer === CellpackStructure || transformer === StructureFromPetworld;
+    }
+
+    get particleLists() {
+        return this.plugin.state.data.selectQ(q => q.rootsOfType(RelionStarParticleListObject));
+    }
+
+    get placementValues() {
+        const params = this.parentStructureCell?.params?.values as any;
+        const originalClipVariant = params?.originalClipVariant ?? this.cell.transform.params?.type?.params.clip?.variant ?? 'instance';
+        const originalVisuals = params?.originalVisuals ?? [];
+        return {
+            placementMode: params?.placementMode ?? 'original',
+            particleListRef: params?.particleListRef ?? '',
+            positionScale: params?.positionScale ?? 1,
+            originalClipVariant,
+            originalVisuals,
+        };
+    }
+
+    get placementSelection() {
+        const { placementMode, particleListRef } = this.placementValues;
+        return placementMode === 'particle-list' && particleListRef ? particleListRef : '__original__';
+    }
+
+    get placementOptions(): [string, string][] {
+        const options: [string, string][] = [['__original__', 'Original Placements']];
+        for (const cell of this.particleLists) {
+            options.push([cell.transform.ref, cell.obj?.label || cell.transform.ref]);
+        }
+        return options;
     }
 
     toggleVisible = (e: React.MouseEvent<HTMLElement>) => {
@@ -954,6 +1013,10 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
 
     toggleClip = () => {
         this.setState({ action: this.state.action === 'clip' ? undefined : 'clip' });
+    };
+
+    togglePlacement = () => {
+        this.setState({ action: this.state.action === 'placement' ? undefined : 'placement' });
     };
 
     highlight = (e: React.MouseEvent<HTMLElement>) => {
@@ -1203,6 +1266,38 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
         }).commit();
     };
 
+    updatePlacement = async (selection: string, positionScale = this.placementValues.positionScale) => {
+        const parent = this.parentStructureCell;
+        if (!parent || !this.supportsPlacement) return;
+
+        const placementMode = selection === '__original__' ? 'original' : 'particle-list';
+        const particleListRef = placementMode === 'particle-list' ? selection : '';
+        const original = this.placementValues;
+        const reprPlacement = getMesoscaleRepresentationPlacement(placementMode, original.originalClipVariant, original.originalVisuals);
+
+        const update = this.plugin.state.data.build();
+        update.to(parent.transform.ref).update(old => {
+            (old as any).placementMode = placementMode;
+            (old as any).particleListRef = particleListRef;
+            (old as any).positionScale = positionScale;
+        });
+        if (placementMode === 'particle-list' && particleListRef) {
+            update.to(parent.transform.ref).dependsOn(particleListRef);
+        }
+        update.to(this.ref).update(old => {
+            if (!old.type) return;
+            old.type.params.clip.variant = reprPlacement.clipVariant;
+            if (reprPlacement.visuals && 'visuals' in old.type.params) {
+                (old.type.params as any).visuals = reprPlacement.visuals;
+            }
+        });
+        await update.commit();
+    };
+
+    updatePlacementScale = async (values: PD.Values<typeof PlacementScaleParams>) => {
+        await this.updatePlacement(this.placementSelection, values.positionScale);
+    };
+
     render() {
         const cellState = this.cell.state;
         const disabled = this.cell.status !== 'error' && this.cell.status !== 'ok';
@@ -1214,6 +1309,7 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
         const emissiveValue = this.emissiveValue;
         const lodValue = this.lodValue;
         const patternValue = this.patternValue;
+        const placementValues = this.placementValues;
 
         const l = getEntityLabel(this.plugin, this.cell);
         const label = <Button className={`msp-btn-tree-label msp-type-class-${this.cell.obj!.type.typeClass}`} noOverflow disabled={disabled}
@@ -1225,6 +1321,7 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
         </Button>;
 
         const color = colorValue !== undefined && <Button style={{ backgroundColor: Color.toStyle(colorValue), minWidth: 32, width: 32, borderRight: `6px solid ${Color.toStyle(Color.lighten(colorValue, lightnessValue?.lightness || 0))}` }} onClick={this.toggleColor} />;
+        const placement = this.supportsPlacement && <IconButton svg={SwapHorizSvg} toggleState={false} disabled={disabled} small onClick={this.togglePlacement} />;
         const clip = <IconButton svg={ContentCutSvg} toggleState={false} disabled={disabled} small onClick={this.toggleClip} />;
         const visibility = <IconButton svg={cellState.isHidden ? VisibilityOffOutlinedSvg : VisibilityOutlinedSvg} toggleState={false} disabled={disabled} small onClick={this.toggleVisible} />;
 
@@ -1232,6 +1329,7 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
             <div className={`msp-flex-row`} style={{ margin: `1px 5px 1px ${depth * 10 + 5}px` }}>
                 {label}
                 {color}
+                {placement}
                 {clip}
                 {visibility}
             </div>
@@ -1253,8 +1351,18 @@ export class EntityNode extends Node<{}, { action?: 'color' | 'clip', isDisabled
                     {lodValue && <ParameterControls params={LodParams} values={lodValue} onChangeValues={this.updateLod} />}
                 </ControlGroup>
             </div>}
+            {this.state.action === 'placement' && this.supportsPlacement && <div style={{ marginRight: 5 }} className='msp-accent-offset'>
+                <ControlGroup header='Placement' initialExpanded={true} hideExpander={true} hideOffset={true} onHeaderClick={this.togglePlacement}
+                    topRightIcon={CloseSvg} noTopMargin childrenClassName='msp-viewport-controls-panel-controls'>
+                    <SelectControl
+                        name={'Source'}
+                        param={PD.Select(this.placementSelection, this.placementOptions)}
+                        value={this.placementSelection}
+                        onChange={(e) => { this.updatePlacement(e.value); }}
+                    />
+                    {this.particleLists.length > 0 && <ParameterControls params={PlacementScaleParams} values={{ positionScale: placementValues.positionScale }} onChangeValues={this.updatePlacementScale} />}
+                </ControlGroup>
+            </div>}
         </>;
     }
 }
-
-

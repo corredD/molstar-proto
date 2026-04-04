@@ -17,6 +17,8 @@ import { PluginStateObject as PSO, PluginStateTransform } from '../../../../mol-
 import { PluginContext } from '../../../../mol-plugin/context';
 import { Task } from '../../../../mol-task';
 import { ParamDefinition as PD } from '../../../../mol-util/param-definition';
+import { StateObject } from '../../../../mol-state';
+import { MesoscalePlacementParams, buildInstancedStructure, getMergedTemplateUnit, getParticleListTransforms } from '../placement';
 
 function createModelChainMap(model: Model) {
     const builder = new Structure.StructureBuilder();
@@ -147,13 +149,14 @@ const CellpackStructure = PluginStateTransform.BuiltIn({
     to: PSO.Molecule.Structure,
     params: {
         structureRef: PD.Text(''),
-        entityId: PD.Text('')
+        entityId: PD.Text(''),
+        ...MesoscalePlacementParams,
     }
 })({
     canAutoUpdate({ newParams }) {
         return true;
     },
-    apply({ a, params, dependencies }) {
+    apply({ a, params, dependencies }, plugin: PluginContext) {
         return Task.create('Build Structure', async ctx => {
             const parent = dependencies![params.structureRef].data as Structure;
             const { entities } = parent.model;
@@ -162,7 +165,18 @@ const CellpackStructure = PluginStateTransform.BuiltIn({
             const unitsByEntity = getUnitsByEntity(parent);
             const units = unitsByEntity.get(idx) || [];
 
-            const structure = Structure.create(units);
+            const particleTransforms = params.placementMode === 'particle-list'
+                ? getParticleListTransforms(plugin, params.particleListRef, params.positionScale)
+                : void 0;
+
+            let structure: Structure;
+            if (particleTransforms && particleTransforms.length > 0) {
+                const template = getMergedTemplateUnit(units);
+                if (!template) return StateObject.Null;
+                structure = buildInstancedStructure(template, particleTransforms, entities.data.pdbx_description.value(idx)[0] || 'model');
+            } else {
+                structure = Structure.create(units);
+            }
             const description_label = entities.data.pdbx_description.value(idx)[0] || 'model';
             const label = description_label.split('.').at(-1) || a.label;
             const description = entities.data.pdbx_parent_entity_id.value(idx) || label;

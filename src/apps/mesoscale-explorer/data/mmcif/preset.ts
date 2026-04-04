@@ -15,6 +15,7 @@ import { Clip } from '../../../../mol-util/clip';
 import { Color } from '../../../../mol-util/color';
 import { ColorNames } from '../../../../mol-util/color/names';
 import { GraphicsMode, MesoscaleGroup, MesoscaleState, getDistinctBaseColors, getDistinctGroupColors, getGraphicsModeProps, getMesoscaleGroupParams } from '../state';
+import { getMesoscalePlacementProps } from '../placement';
 import { MmcifAssembly, MmcifStructure } from './model';
 
 function getSpacefillParams(color: Color, scaleFactor: number, graphics: GraphicsMode, clipVariant: Clip.Variant) {
@@ -177,7 +178,7 @@ export async function createMmcifHierarchy(plugin: PluginContext, trajectory: St
 
                 build = build
                     .toRoot()
-                    .apply(MmcifStructure, { structureRef: base.ref, entityId: entities.id.value(i) }, { dependsOn })
+                    .apply(MmcifStructure, { structureRef: base.ref, entityId: entities.id.value(i), ...getMesoscalePlacementProps(clipVariant) }, { dependsOn })
                     .apply(StructureRepresentation3D, getSpacefillParams(color, scaleFactor, graphicsMode, clipVariant), { tags: [`ent:${t}`] });
             }
             await build.commit();
