@@ -8,13 +8,14 @@ import { MmcifFormat } from '../../../mol-model-formats/structure/mmcif';
 import { MmcifProvider } from '../../../mol-plugin-state/formats/trajectory';
 import { PluginStateObject } from '../../../mol-plugin-state/objects';
 import { Button, ExpandGroup, IconButton } from '../../../mol-plugin-ui/controls/common';
-import { GetAppSvg, HelpOutlineSvg, MagicWandSvg, TourSvg, Icon, OpenInBrowserSvg } from '../../../mol-plugin-ui/controls/icons';
+import { GetAppSvg, HelpOutlineSvg, MagicWandSvg, TourSvg, Icon, OpenInBrowserSvg, VisibilityOffOutlinedSvg, VisibilityOutlinedSvg } from '../../../mol-plugin-ui/controls/icons';
+import { ParameterControls } from '../../../mol-plugin-ui/controls/parameters';
 import { CollapsableControls, PluginUIComponent } from '../../../mol-plugin-ui/base';
 import { ApplyActionControl } from '../../../mol-plugin-ui/state/apply-action';
 import { LocalStateSnapshotList, LocalStateSnapshotParams, LocalStateSnapshots } from '../../../mol-plugin-ui/state/snapshots';
 import { PluginCommands } from '../../../mol-plugin/commands';
 import { PluginContext } from '../../../mol-plugin/context';
-import { StateAction, StateObjectRef, StateTransform } from '../../../mol-state';
+import { StateAction, StateObjectCell, StateObjectRef, StateTransform } from '../../../mol-state';
 import { Task } from '../../../mol-task';
 import { Color } from '../../../mol-util/color/color';
 import { getFileNameInfo } from '../../../mol-util/file-info';
@@ -29,6 +30,9 @@ import { isTimingMode } from '../../../mol-util/debug';
 import { now } from '../../../mol-util/now';
 import { readFromFile } from '../../../mol-util/data-source';
 import { Asset } from '../../../mol-util/assets';
+import { RelionStarParticleListObject } from '../../../mol-plugin-state/objects/relion';
+import { getRelionParticleRepresentationCell, getRelionParticleShapeCell } from '../../../mol-plugin-state/helpers/relion-star';
+import { ShapeRepresentation3D } from '../../../mol-plugin-state/transforms/representation';
 
 function adjustPluginProps(ctx: PluginContext) {
     const customState = ctx.customState as MesoscaleExplorerState;
@@ -151,7 +155,9 @@ async function createHierarchy(ctx: PluginContext, ref: string) {
 
 async function loadParticleList(ctx: PluginContext, file: Asset.File) {
     const { data } = await ctx.builders.data.readFile({ file, isBinary: false });
-    await ctx.dataFormats.get('relion_star')!.parse(ctx, data.ref);
+    const provider = ctx.dataFormats.get('relion_star')!;
+    const parsed = await provider.parse(ctx, data.ref);
+    await provider.visuals?.(ctx, parsed);
 }
 
 async function reset(ctx: PluginContext) {
@@ -799,6 +805,98 @@ export class MesoQuickStyles extends PluginUIComponent {
                     Shiny-DOF
                 </Button>
             </div>
+        </>;
+    }
+}
+
+const ParticleListVisualParams = {
+    positionScale: PD.Numeric(1, { min: 0.01, max: 100, step: 0.5 }, { description: 'Applied to coordinates and pixel-space origin shifts.' }),
+};
+
+export class ParticleListControls extends PluginUIComponent<{}, { isDisabled: boolean }> {
+    state = {
+        isDisabled: false,
+    };
+
+    componentDidMount() {
+        this.subscribe(this.plugin.state.events.object.created, () => this.forceUpdate());
+        this.subscribe(this.plugin.state.events.object.removed, () => this.forceUpdate());
+        this.subscribe(this.plugin.state.data.behaviors.isUpdating, v => {
+            this.setState({ isDisabled: v });
+        });
+        this.subscribe(this.plugin.state.events.cell.stateUpdated, () => {
+            if (!this.state.isDisabled) this.forceUpdate();
+        });
+    }
+
+    get particleLists() {
+        return this.plugin.state.data.selectQ(q => q.rootsOfType(RelionStarParticleListObject));
+    }
+
+    getVisual(cell: StateObjectCell<RelionStarParticleListObject>) {
+        return getRelionParticleRepresentationCell(this.plugin.state.data, cell.transform.ref);
+    }
+
+    getVisualValues(cell: StateObjectCell<RelionStarParticleListObject>) {
+        const visual = this.getVisual(cell);
+        return {
+            positionScale: (visual?.params?.values as any)?.positionScale ?? cell.obj?.data.suggestedScale ?? 1,
+        };
+    }
+
+    addVisual = async (cell: StateObjectCell<RelionStarParticleListObject>) => {
+        const provider = this.plugin.dataFormats.get('relion_star')!;
+        await provider.visuals?.(this.plugin, { particleList: cell.transform.ref });
+    };
+
+    removeVisual = async (cell: StateObjectCell<RelionStarParticleListObject>) => {
+        const shape = getRelionParticleShapeCell(this.plugin.state.data, cell.transform.ref);
+        if (!shape) return;
+        await PluginCommands.State.RemoveObject(this.plugin, { state: this.plugin.state.data, ref: shape.transform.ref });
+    };
+
+    toggleVisibility = (cell: StateObjectCell<RelionStarParticleListObject>) => {
+        const visual = this.getVisual(cell);
+        if (!visual) return;
+        PluginCommands.State.ToggleVisibility(this.plugin, { state: this.plugin.state.data, ref: visual.transform.ref });
+    };
+
+    updateScale = async (cell: StateObjectCell<RelionStarParticleListObject>, values: { positionScale: number }) => {
+        const visual = this.getVisual(cell);
+        if (!visual) return;
+
+        const update = this.plugin.state.data.build();
+        update.to(visual).update(ShapeRepresentation3D, old => {
+            (old as any).positionScale = values.positionScale;
+        });
+        await update.commit();
+    };
+
+    render() {
+        const particleLists = this.particleLists;
+        if (!particleLists.length) {
+            return <div className='msp-help-text'>Load a RELION `.star` file to inspect and manage particle-list previews.</div>;
+        }
+
+        return <>
+            {particleLists.map(cell => {
+                const visual = this.getVisual(cell);
+                const isHidden = !!visual?.state.isHidden;
+                const values = this.getVisualValues(cell);
+                const count = cell.obj?.data.particles.length ?? 0;
+                const warning = cell.obj?.data.warnings[0];
+
+                return <ExpandGroup key={cell.transform.ref} header={`${cell.obj?.label || cell.transform.ref} (${count})`} initiallyExpanded={true}>
+                    {!!warning && <div className='msp-help-text'>{warning}</div>}
+                    {visual && <ParameterControls params={ParticleListVisualParams} values={values} onChangeValues={(v: { positionScale: number }) => this.updateScale(cell, v)} isDisabled={this.state.isDisabled} />}
+                    <div className='msp-flex-row'>
+                        {visual && <IconButton svg={isHidden ? VisibilityOutlinedSvg : VisibilityOffOutlinedSvg} toggleState={false} small disabled={this.state.isDisabled} onClick={() => this.toggleVisibility(cell)} title={isHidden ? 'Show Visual' : 'Hide Visual'} />}
+                        <Button flex onClick={() => visual ? this.removeVisual(cell) : this.addVisual(cell)} disabled={this.state.isDisabled}>
+                            {visual ? 'Remove Visual' : 'Add Visual'}
+                        </Button>
+                    </div>
+                </ExpandGroup>;
+            })}
         </>;
     }
 }

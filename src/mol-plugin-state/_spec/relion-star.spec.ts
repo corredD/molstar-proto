@@ -7,7 +7,9 @@
 import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
 import { RelionStarParticleList } from '../../mol-io/reader/relion/star';
 import { StateTransform, StateTree } from '../../mol-state';
-import { applyStructureInstances, clearStructureInstances, getRelionParticleTransform } from '../helpers/relion-star';
+import { ColorNames } from '../../mol-util/color/names';
+import { ParamDefinition as PD } from '../../mol-util/param-definition';
+import { applyStructureInstances, clearStructureInstances, getRelionParticleAxisParams, getRelionParticleAxisShape, getRelionParticleTransform } from '../helpers/relion-star';
 import { StateTransforms } from '../transforms';
 import { Map as ImmutableMap, OrderedSet } from 'immutable';
 
@@ -117,5 +119,33 @@ describe('RELION STAR helpers', () => {
         expect(calls[0].kind).toBe('update');
         expect(calls[0].ref).toBe('instances');
         expect(calls[0].params.transforms).toHaveLength(1);
+    });
+
+    it('creates an instanced particle-axis preview shape with default scaling', () => {
+        const particleList = {
+            particleBlockHeader: 'particles',
+            particles: [{
+                index: 4,
+                coordinate: Vec3.create(10, 20, 30),
+                coordinateUnit: 'pixel' as const,
+                origin: Vec3.create(1, 2, 3),
+                originUnit: 'pixel' as const,
+                particleAngles: { rot: 0, tilt: 0, psi: 0 }
+            }],
+            suggestedScale: 2,
+            warnings: []
+        } satisfies RelionStarParticleList;
+
+        const props = PD.getDefaultValues(getRelionParticleAxisParams(particleList));
+        const shape = getRelionParticleAxisShape(particleList, props);
+
+        expect(shape.geometry.kind).toBe('lines');
+        expect(shape.geometry.lineCount).toBe(3);
+        expect(shape.transforms).toHaveLength(1);
+        expect(Array.from(Mat4.getTranslation(Vec3(), shape.transforms[0]))).toEqual([18, 36, 54]);
+        expect(shape.getColor(0, 0)).toBe(ColorNames.red);
+        expect(shape.getColor(1, 0)).toBe(ColorNames.green);
+        expect(shape.getColor(2, 0)).toBe(ColorNames.blue);
+        expect(shape.getLabel(2, 0)).toBe('Z axis for particle 5');
     });
 });

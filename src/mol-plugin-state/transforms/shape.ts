@@ -6,6 +6,7 @@
 
 import { Mesh } from '../../mol-geo/geometry/mesh/mesh';
 import { MeshBuilder } from '../../mol-geo/geometry/mesh/mesh-builder';
+import { Lines } from '../../mol-geo/geometry/lines/lines';
 import { BoxCage } from '../../mol-geo/primitive/box';
 import { Box3D, Sphere3D } from '../../mol-math/geometry';
 import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
@@ -14,8 +15,11 @@ import { Task } from '../../mol-task';
 import { ColorNames } from '../../mol-util/color/names';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { PluginStateObject as SO, PluginStateTransform } from '../objects';
+import { RelionStarParticleListObject } from '../objects/relion';
+import { getRelionParticleAxisParams, getRelionParticleAxisShape } from '../helpers/relion-star';
 
 export { BoxShape3D };
+export { RelionStarParticleListShape };
 type BoxShape3D = typeof BoxShape3D
 const BoxShape3D = PluginStateTransform.BuiltIn({
     name: 'box-shape-3d',
@@ -45,6 +49,27 @@ const BoxShape3D = PluginStateTransform.BuiltIn({
                 geometryUtils: Mesh.Utils
             }, { label: 'Box' });
         });
+    }
+});
+
+type RelionStarParticleListShape = typeof RelionStarParticleListShape
+const RelionStarParticleListShape = PluginStateTransform.BuiltIn({
+    name: 'relion-star-particle-list-shape',
+    display: 'Particle Axes',
+    from: RelionStarParticleListObject,
+    to: SO.Shape.Provider,
+})({
+    apply({ a }) {
+        return Task.create('RELION Particle Axes', async () => new SO.Shape.Provider({
+            label: 'Particle Axes',
+            data: a.data,
+            params: getRelionParticleAxisParams(a.data),
+            geometryUtils: Lines.Utils,
+            getShape: (_, data, props, shape) => getRelionParticleAxisShape(data, props, shape),
+        }, {
+            label: 'Particle Axes',
+            description: `${a.data.particles.length} particle${a.data.particles.length === 1 ? '' : 's'}`
+        }));
     }
 });
 

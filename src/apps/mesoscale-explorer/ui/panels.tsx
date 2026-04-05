@@ -13,7 +13,7 @@ import { StructureMeasurementsControls } from '../../../mol-plugin-ui/structure/
 import { MesoscaleExplorerState } from '../app';
 import { MesoscaleState } from '../data/state';
 import { EntityControls, FocusInfo, ModelInfo, SelectionInfo } from './entities';
-import { LoaderControls, ExampleControls, SessionControls, SnapshotControls, DatabaseControls, MesoQuickStylesControls, ExplorerInfo } from './states';
+import { LoaderControls, ExampleControls, SessionControls, SnapshotControls, DatabaseControls, MesoQuickStylesControls, ExplorerInfo, ParticleListControls } from './states';
 import { ParamDefinition as PD } from '../../../mol-util/param-definition';
 import { TuneSvg } from '../../../mol-plugin-ui/controls/icons';
 import { RendererParams } from '../../../mol-gl/renderer';
@@ -145,6 +145,9 @@ export class RightPanel extends PluginUIComponent<{}, { isDisabled: boolean }> {
                 <StructureMeasurementsControls initiallyCollapsed={true}/>
             </>
             <MesoQuickStylesControls />
+            <Spacer />
+            <SectionHeader title='Particle Lists' />
+            <ParticleListControls />
             <Spacer />
             <SectionHeader title='Entities' />
             <EntityControls />

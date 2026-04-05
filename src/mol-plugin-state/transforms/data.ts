@@ -321,7 +321,7 @@ const ParseCif = PluginStateTransform.BuiltIn({
             const parsed = await (CIF.parse(a.data)).runInContext(ctx);
             if (parsed.isError) throw new Error(parsed.message);
             if (parsed.result.blocks.length === 0) return StateObject.Null;
-            return new SO.Format.Cif(parsed.result);
+            return new SO.Format.Cif(parsed.result, { label: a.label, description: a.description });
         });
     }
 });

@@ -4,17 +4,42 @@
  * @author OpenAI
  */
 
+import { Lines } from '../../mol-geo/geometry/lines/lines';
+import { LinesBuilder } from '../../mol-geo/geometry/lines/lines-builder';
+import { Shape } from '../../mol-model/shape';
 import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
 import { RelionStarParticle, RelionStarParticleList } from '../../mol-io/reader/relion/star';
-import { StateBuilder, StateTransform, StateTree } from '../../mol-state';
+import { State, StateBuilder, StateObjectCell, StateSelection, StateTransform, StateTree } from '../../mol-state';
 import { StateTransforms } from '../transforms';
+import { ParamDefinition as PD } from '../../mol-util/param-definition';
+import { ColorNames } from '../../mol-util/color/names';
+import { PluginStateObject } from '../objects';
 
 const ZAxis = Vec3.create(0, 0, 1);
 const YAxis = Vec3.create(0, 1, 0);
 
 export const RelionParticleInstancesTag = 'relion-particle-instances';
+export const RelionParticleShapeTag = 'relion-particle-shape';
+export const RelionParticleRepresentationTag = 'relion-particle-representation';
 
 const IdentityTransformParams = { transform: { name: 'matrix' as const, params: { data: Mat4.identity(), transpose: false } } };
+
+const AxisColorByGroup = [ColorNames.red, ColorNames.green, ColorNames.blue] as const;
+const AxisLabelByGroup = ['X', 'Y', 'Z'] as const;
+
+const PositionScaleOptions = { min: 0.01, max: 100, step: 0.5 } as const;
+const AxisLengthOptions = { min: 0.1, max: 1000, step: 0.1 } as const;
+
+export const BaseRelionParticleAxisParams = {
+    ...Lines.Params,
+    positionScale: PD.Numeric(1, PositionScaleOptions, { description: 'Applied to coordinates and pixel-space origin shifts.' }),
+    axisLength: PD.Numeric(10, AxisLengthOptions, { description: 'Length of the particle orientation axes preview.' }),
+    xColor: PD.Color(ColorNames.red),
+    yColor: PD.Color(ColorNames.green),
+    zColor: PD.Color(ColorNames.blue),
+};
+export type RelionParticleAxisParams = typeof BaseRelionParticleAxisParams
+export type RelionParticleAxisProps = PD.Values<RelionParticleAxisParams>
 
 function degToRad(value: number) {
     return value * Math.PI / 180;
@@ -51,6 +76,52 @@ export function getRelionParticleTransform(out: Mat4, particle: RelionStarPartic
 
 export function getRelionParticleTransforms(data: RelionStarParticleList, positionScale: number) {
     return data.particles.map(particle => getRelionParticleTransform(Mat4(), particle, positionScale));
+}
+
+export function getRelionParticleAxisParams(data: RelionStarParticleList): RelionParticleAxisParams {
+    const suggestedScale = Math.max(PositionScaleOptions.min, data.suggestedScale || 1);
+    const axisLength = Math.max(10, suggestedScale * 2);
+
+    return {
+        ...BaseRelionParticleAxisParams,
+        positionScale: PD.Numeric(suggestedScale, PositionScaleOptions, { description: BaseRelionParticleAxisParams.positionScale.description }),
+        axisLength: PD.Numeric(axisLength, AxisLengthOptions, { description: BaseRelionParticleAxisParams.axisLength.description }),
+    };
+}
+
+function createRelionParticleAxisLines(axisLength: number, lines?: Lines) {
+    const builder = LinesBuilder.create(3, 3, lines);
+    builder.add(0, 0, 0, axisLength, 0, 0, 0);
+    builder.add(0, 0, 0, 0, axisLength, 0, 1);
+    builder.add(0, 0, 0, 0, 0, axisLength, 2);
+    return builder.getLines();
+}
+
+function getAxisColor(props: RelionParticleAxisProps, groupId: number) {
+    switch (groupId) {
+        case 0: return props.xColor;
+        case 1: return props.yColor;
+        case 2: return props.zColor;
+        default: return AxisColorByGroup[groupId % AxisColorByGroup.length];
+    }
+}
+
+export function getRelionParticleAxisShape(data: RelionStarParticleList, props: RelionParticleAxisProps, shape?: Shape<Lines>) {
+    const lines = createRelionParticleAxisLines(props.axisLength, shape?.geometry);
+    const transforms = getRelionParticleTransforms(data, props.positionScale);
+    const name = `${data.particleBlockHeader || 'RELION'} Particle Axes`;
+
+    return Shape.create(name, data, lines,
+        groupId => getAxisColor(props, groupId),
+        () => 1,
+        (groupId, instanceId) => {
+            const particle = data.particles[instanceId];
+            const axis = AxisLabelByGroup[groupId] ?? `Axis ${groupId + 1}`;
+            return `${axis} axis for particle ${(particle?.index ?? instanceId) + 1}`;
+        },
+        transforms,
+        3
+    );
 }
 
 export function getStructureInstancesParams(transforms: ReadonlyArray<Mat4>) {
@@ -95,4 +166,20 @@ export function clearStructureInstances(builder: StateBuilder.Root, tree: StateT
     if (!existing) return false;
     builder.to(existing).update(getStructureInstancesParams([]));
     return true;
+}
+
+export function getRelionParticleShapeCell(state: State, particleListRef: StateTransform.Ref) {
+    return state.select(
+        StateSelection.Generators.ofTransformer(StateTransforms.Shape.RelionStarParticleListShape, particleListRef)
+            .withTag(RelionParticleShapeTag)
+            .first()
+    )[0] as StateObjectCell<PluginStateObject.Shape.Provider> | undefined;
+}
+
+export function getRelionParticleRepresentationCell(state: State, particleListRef: StateTransform.Ref) {
+    return state.select(
+        StateSelection.Generators.ofTransformer(StateTransforms.Representation.ShapeRepresentation3D, particleListRef)
+            .withTag(RelionParticleRepresentationTag)
+            .first()
+    )[0] as StateObjectCell<PluginStateObject.Shape.Representation3D> | undefined;
 }

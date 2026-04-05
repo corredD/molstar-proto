@@ -10,6 +10,7 @@ import { RelionStarParticleListObject } from '../objects/relion';
 import { DataFormatProvider, type DataFormatProvider as DataFormatProviderType } from './provider';
 import { StateTransforms } from '../transforms';
 import { PluginStateObject } from '../objects';
+import { RelionParticleRepresentationTag, RelionParticleShapeTag } from '../helpers/relion-star';
 
 export const ParticleListFormatCategory = 'Particle List';
 
@@ -26,6 +27,12 @@ const RelionStarProviderImpl: DataFormatProviderType<{}, { particleList: StateOb
             .apply(StateTransforms.Data.RelionStarParticleListFromCif)
             .commit({ revertOnError: true });
         return { particleList };
+    },
+    visuals(plugin: PluginContext, data: { particleList: StateObjectRef<RelionStarParticleListObject> }) {
+        const update = plugin.state.data.build().to(data.particleList);
+        const shape = update.applyOrUpdateTagged(RelionParticleShapeTag, StateTransforms.Shape.RelionStarParticleListShape);
+        shape.applyOrUpdateTagged(RelionParticleRepresentationTag, StateTransforms.Representation.ShapeRepresentation3D);
+        return update.commit();
     }
 };
 
