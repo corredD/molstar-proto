@@ -79,6 +79,7 @@ export const DefaultPluginSpec = (): PluginSpec => ({
         PluginSpec.Action(StateTransforms.Data.Download),
         PluginSpec.Action(StateTransforms.Data.ParseCif),
         PluginSpec.Action(StateTransforms.Data.RelionStarParticleListFromCif),
+        PluginSpec.Action(StateTransforms.Data.DynamoTblParticleList),
         PluginSpec.Action(StateTransforms.Data.ParseCcp4),
         PluginSpec.Action(StateTransforms.Data.ParseDsn6),
 

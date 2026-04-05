@@ -38,6 +38,28 @@ const RelionStarProviderImpl: DataFormatProviderType<{}, { particleList: StateOb
 
 export const RelionStarProvider = DataFormatProvider(RelionStarProviderImpl);
 
+const DynamoTblProviderImpl: DataFormatProviderType<{}, { particleList: StateObjectRef<RelionStarParticleListObject> }> = {
+    label: 'Dynamo TBL',
+    description: 'Dynamo particle table',
+    category: ParticleListFormatCategory,
+    stringExtensions: ['tbl'],
+    parse: async (plugin: PluginContext, data: StateObjectRef<PluginStateObject.Data.Binary | PluginStateObject.Data.String>) => {
+        const particleList = await plugin.state.data.build().to(data)
+            .apply(StateTransforms.Data.DynamoTblParticleList)
+            .commit({ revertOnError: true });
+        return { particleList };
+    },
+    visuals(plugin: PluginContext, data: { particleList: StateObjectRef<RelionStarParticleListObject> }) {
+        const update = plugin.state.data.build().to(data.particleList);
+        const shape = update.applyOrUpdateTagged(RelionParticleShapeTag, StateTransforms.Shape.RelionStarParticleListShape);
+        shape.applyOrUpdateTagged(RelionParticleRepresentationTag, StateTransforms.Representation.ShapeRepresentation3D);
+        return update.commit();
+    }
+};
+
+export const DynamoTblProvider = DataFormatProvider(DynamoTblProviderImpl);
+
 export const BuiltInParticleFormats = [
     ['relion_star', RelionStarProvider] as const,
+    ['dynamo_tbl', DynamoTblProvider] as const,
 ] as const;

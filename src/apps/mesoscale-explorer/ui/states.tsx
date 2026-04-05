@@ -155,7 +155,8 @@ async function createHierarchy(ctx: PluginContext, ref: string) {
 
 async function loadParticleList(ctx: PluginContext, file: Asset.File) {
     const { data } = await ctx.builders.data.readFile({ file, isBinary: false });
-    const provider = ctx.dataFormats.get('relion_star')!;
+    const provider = ctx.dataFormats.auto(getFileNameInfo(file.file!.name), data.cell!.obj!);
+    if (!provider) throw new Error(`Unsupported particle list format '${file.file!.name}'.`);
     const parsed = await provider.parse(ctx, data.ref);
     await provider.visuals?.(ctx, parsed);
 }
@@ -298,7 +299,7 @@ export const LoadExample = StateAction.build({
 export const LoadModel = StateAction.build({
     display: { name: 'Load', description: 'Load a model' },
     params: {
-        files: PD.FileList({ accept: '.cif,.bcif,.cif.gz,.bcif.gz,.zip,.star', multiple: true, description: 'mmCIF, Cellpack, Petworld, generic zip, or RELION particle STAR file.', label: 'File(s)' }),
+        files: PD.FileList({ accept: '.cif,.bcif,.cif.gz,.bcif.gz,.zip,.star,.tbl', multiple: true, description: 'mmCIF, Cellpack, Petworld, generic zip, or particle list file (.star, .tbl).', label: 'File(s)' }),
     },
     from: PluginStateObject.Root
 })(({ params }, ctx: PluginContext) => Task.create('Loading model...', async taskCtx => {
@@ -311,7 +312,7 @@ export const LoadModel = StateAction.build({
         const info = getFileNameInfo(file.file!.name);
         return info.ext === 'zip' || ['cif', 'bcif'].includes(info.ext);
     });
-    const particleFiles = params.files.filter(file => getFileNameInfo(file.file!.name).ext === 'star');
+    const particleFiles = params.files.filter(file => ['star', 'tbl'].includes(getFileNameInfo(file.file!.name).ext));
 
     if (modelFiles.length > 0) {
         await reset(ctx);

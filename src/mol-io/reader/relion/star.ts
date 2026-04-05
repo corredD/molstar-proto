@@ -6,9 +6,10 @@
 
 import { CifBlock, CifField, CifFile } from '../cif';
 import { Column } from '../../../mol-data/db';
-import { Vec3 } from '../../../mol-math/linear-algebra';
+import { Mat4, Vec3 } from '../../../mol-math/linear-algebra';
+import { ParticleDistanceUnit, ParticleList, ParticleListParticle } from '../particle-list';
 
-export type RelionDistanceUnit = 'pixel' | 'angstrom';
+export type RelionDistanceUnit = ParticleDistanceUnit;
 
 export interface RelionStarEulerAngles {
     rot: number
@@ -16,24 +17,8 @@ export interface RelionStarEulerAngles {
     psi: number
 }
 
-export interface RelionStarParticle {
-    readonly index: number
-    readonly coordinate: Vec3
-    readonly coordinateUnit: RelionDistanceUnit
-    readonly origin: Vec3
-    readonly originUnit: RelionDistanceUnit
-    readonly particleAngles: RelionStarEulerAngles
-    readonly subtomogramAngles?: RelionStarEulerAngles
-    readonly opticsGroup?: string
-}
-
-export interface RelionStarParticleList {
-    readonly particleBlockHeader: string
-    readonly opticsBlockHeader?: string
-    readonly particles: ReadonlyArray<RelionStarParticle>
-    readonly suggestedScale: number
-    readonly warnings: ReadonlyArray<string>
-}
+export type RelionStarParticle = ParticleListParticle;
+export type RelionStarParticleList = ParticleList;
 
 type TripletFieldSpec = {
     x: string[]
@@ -197,6 +182,20 @@ function getNumericFieldUniqueValue(block: CifBlock | undefined, names: readonly
     }
 }
 
+function degToRad(value: number) {
+    return value * Math.PI / 180;
+}
+
+function relionEulerToRotation(out: Mat4, rot: number, tilt: number, psi: number) {
+    const rotZ = Mat4.fromRotation(Mat4(), degToRad(rot), Vec3.unitZ);
+    const tiltY = Mat4.fromRotation(Mat4(), degToRad(tilt), Vec3.unitY);
+    const psiZ = Mat4.fromRotation(Mat4(), degToRad(psi), Vec3.unitZ);
+
+    Mat4.mul(out, tiltY, rotZ);
+    Mat4.mul(out, psiZ, out);
+    return out;
+}
+
 export function parseRelionStarParticleList(file: CifFile): RelionStarParticleList {
     const particleBlock = findParticlesBlock(file);
     if (!particleBlock) throw new Error('No RELION particle data block with coordinates was found.');
@@ -218,6 +217,14 @@ export function parseRelionStarParticleList(file: CifFile): RelionStarParticleLi
         const origin = getTripletValue(particleBlock, row, OriginSpecs) ?? { value: Vec3.create(0, 0, 0), unit: 'pixel' as const };
         const particleAngles = getAngles(particleBlock, row, ParticleAngleSpecs) ?? { rot: 0, tilt: 0, psi: 0 };
         const subtomogramAngles = getAngles(particleBlock, row, SubtomogramAngleSpecs);
+        const subtomogram = subtomogramAngles
+            ? relionEulerToRotation(Mat4(), subtomogramAngles.rot, subtomogramAngles.tilt, subtomogramAngles.psi)
+            : void 0;
+        const rotation = relionEulerToRotation(Mat4(), particleAngles.rot, particleAngles.tilt, particleAngles.psi);
+        if (subtomogram) {
+            Mat4.mul(rotation, subtomogram, rotation);
+        }
+        const opticsGroup = getOptionalString(opticsGroupField, row);
 
         particles.push({
             index: row,
@@ -225,9 +232,17 @@ export function parseRelionStarParticleList(file: CifFile): RelionStarParticleLi
             coordinateUnit: coordinate.unit,
             origin: origin.value,
             originUnit: origin.unit,
-            particleAngles,
-            subtomogramAngles,
-            opticsGroup: getOptionalString(opticsGroupField, row),
+            originRotation: subtomogram ? Mat4.copy(Mat4(), subtomogram) : void 0,
+            rotation,
+            metadata: {
+                opticsGroup,
+                particleRot: particleAngles.rot,
+                particleTilt: particleAngles.tilt,
+                particlePsi: particleAngles.psi,
+                subtomogramRot: subtomogramAngles?.rot,
+                subtomogramTilt: subtomogramAngles?.tilt,
+                subtomogramPsi: subtomogramAngles?.psi,
+            }
         });
     }
 
@@ -240,6 +255,7 @@ export function parseRelionStarParticleList(file: CifFile): RelionStarParticleLi
     }
 
     return {
+        format: 'relion-star',
         particleBlockHeader: particleBlock.header,
         opticsBlockHeader: opticsBlock?.header,
         particles,

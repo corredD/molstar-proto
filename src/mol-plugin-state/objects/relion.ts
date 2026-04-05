@@ -4,7 +4,7 @@
  * @author OpenAI
  */
 
-import { RelionStarParticleList } from '../../mol-io/reader/relion/star';
+import { ParticleList } from '../../mol-io/reader/particle-list';
 import { PluginStateObject } from '../objects';
 
-export class RelionStarParticleListObject extends PluginStateObject.Create<RelionStarParticleList>({ name: 'RELION STAR Particle List', typeClass: 'Object' }) { }
+export class RelionStarParticleListObject extends PluginStateObject.Create<ParticleList>({ name: 'Particle List', typeClass: 'Object' }) { }

@@ -8,15 +8,12 @@ import { Lines } from '../../mol-geo/geometry/lines/lines';
 import { LinesBuilder } from '../../mol-geo/geometry/lines/lines-builder';
 import { Shape } from '../../mol-model/shape';
 import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
-import { RelionStarParticle, RelionStarParticleList } from '../../mol-io/reader/relion/star';
+import { ParticleList, ParticleListParticle } from '../../mol-io/reader/particle-list';
 import { State, StateBuilder, StateObjectCell, StateSelection, StateTransform, StateTree } from '../../mol-state';
 import { StateTransforms } from '../transforms';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { ColorNames } from '../../mol-util/color/names';
 import { PluginStateObject } from '../objects';
-
-const ZAxis = Vec3.create(0, 0, 1);
-const YAxis = Vec3.create(0, 1, 0);
 
 export const RelionParticleInstancesTag = 'relion-particle-instances';
 export const RelionParticleShapeTag = 'relion-particle-shape';
@@ -41,44 +38,30 @@ export const BaseRelionParticleAxisParams = {
 export type RelionParticleAxisParams = typeof BaseRelionParticleAxisParams
 export type RelionParticleAxisProps = PD.Values<RelionParticleAxisParams>
 
-function degToRad(value: number) {
-    return value * Math.PI / 180;
-}
-
-function relionEulerToRotation(out: Mat4, rot: number, tilt: number, psi: number) {
-    const rotZ = Mat4.fromRotation(Mat4(), degToRad(rot), ZAxis);
-    const tiltY = Mat4.fromRotation(Mat4(), degToRad(tilt), YAxis);
-    const psiZ = Mat4.fromRotation(Mat4(), degToRad(psi), ZAxis);
-
-    Mat4.mul(out, tiltY, rotZ);
-    Mat4.mul(out, psiZ, out);
-    return out;
-}
-
-function getParticleTranslation(out: Vec3, particle: RelionStarParticle, positionScale: number) {
+function getParticleTranslation(out: Vec3, particle: ParticleListParticle, positionScale: number) {
     const coordinateScale = particle.coordinateUnit === 'pixel' ? positionScale : 1;
     const originScale = particle.originUnit === 'pixel' ? positionScale : 1;
 
     Vec3.scale(out, particle.coordinate, coordinateScale);
-    Vec3.sub(out, out, Vec3.scale(Vec3(), particle.origin, originScale));
+    const originShift = Vec3.scale(Vec3(), particle.origin, originScale);
+    if (particle.originRotation) {
+        Vec3.transformMat4(originShift, originShift, particle.originRotation);
+    }
+    Vec3.sub(out, out, originShift);
     return out;
 }
 
-export function getRelionParticleTransform(out: Mat4, particle: RelionStarParticle, positionScale: number) {
-    relionEulerToRotation(out, particle.particleAngles.rot, particle.particleAngles.tilt, particle.particleAngles.psi);
-    if (particle.subtomogramAngles) {
-        const subtomogram = relionEulerToRotation(Mat4(), particle.subtomogramAngles.rot, particle.subtomogramAngles.tilt, particle.subtomogramAngles.psi);
-        Mat4.mul(out, subtomogram, out);
-    }
+export function getRelionParticleTransform(out: Mat4, particle: ParticleListParticle, positionScale: number) {
+    Mat4.copy(out, particle.rotation);
     Mat4.setTranslation(out, getParticleTranslation(Vec3(), particle, positionScale));
     return out;
 }
 
-export function getRelionParticleTransforms(data: RelionStarParticleList, positionScale: number) {
+export function getRelionParticleTransforms(data: ParticleList, positionScale: number) {
     return data.particles.map(particle => getRelionParticleTransform(Mat4(), particle, positionScale));
 }
 
-export function getRelionParticleAxisParams(data: RelionStarParticleList): RelionParticleAxisParams {
+export function getRelionParticleAxisParams(data: ParticleList): RelionParticleAxisParams {
     const suggestedScale = Math.max(PositionScaleOptions.min, data.suggestedScale || 1);
     const axisLength = Math.max(10, suggestedScale * 2);
 
@@ -106,7 +89,7 @@ function getAxisColor(props: RelionParticleAxisProps, groupId: number) {
     }
 }
 
-export function getRelionParticleAxisShape(data: RelionStarParticleList, props: RelionParticleAxisProps, shape?: Shape<Lines>) {
+export function getRelionParticleAxisShape(data: ParticleList, props: RelionParticleAxisProps, shape?: Shape<Lines>) {
     const lines = createRelionParticleAxisLines(props.axisLength, shape?.geometry);
     const transforms = getRelionParticleTransforms(data, props.positionScale);
     const name = `${data.particleBlockHeader || 'RELION'} Particle Axes`;

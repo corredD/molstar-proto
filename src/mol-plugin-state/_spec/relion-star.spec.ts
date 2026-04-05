@@ -15,6 +15,7 @@ import { Map as ImmutableMap, OrderedSet } from 'immutable';
 
 function createParticleList(particle: RelionStarParticleList['particles'][number]): RelionStarParticleList {
     return {
+        format: 'relion-star',
         particleBlockHeader: 'particles',
         particles: [particle],
         suggestedScale: 1,
@@ -78,7 +79,7 @@ describe('RELION STAR helpers', () => {
             coordinateUnit: 'pixel',
             origin: Vec3.create(1, 2, 3),
             originUnit: 'pixel',
-            particleAngles: { rot: 0, tilt: 0, psi: 0 }
+            rotation: Mat4.identity()
         }).particles[0], 2);
         expect(Array.from(Mat4.getTranslation(Vec3(), pixelTransform))).toEqual([18, 36, 54]);
 
@@ -88,9 +89,39 @@ describe('RELION STAR helpers', () => {
             coordinateUnit: 'pixel',
             origin: Vec3.create(1, 2, 3),
             originUnit: 'angstrom',
-            particleAngles: { rot: 0, tilt: 0, psi: 0 }
+            rotation: Mat4.identity()
         }).particles[0], 2);
         expect(Array.from(Mat4.getTranslation(Vec3(), angstromOriginTransform))).toEqual([19, 38, 57]);
+    });
+
+    it('rotates origin shifts before subtraction when an origin frame is provided', () => {
+        const originRotation = Mat4.fromRotation(Mat4(), Math.PI / 2, Vec3.unitZ);
+        const transform = getRelionParticleTransform(Mat4(), createParticleList({
+            index: 0,
+            coordinate: Vec3.create(10, 20, 30),
+            coordinateUnit: 'pixel',
+            origin: Vec3.create(1, 0, 0),
+            originUnit: 'pixel',
+            originRotation,
+            rotation: Mat4.identity()
+        }).particles[0], 2);
+        expect(Array.from(Mat4.getTranslation(Vec3(), transform))).toEqual([20, 38, 60]);
+    });
+
+    it('uses the particle rotation matrix when building transforms', () => {
+        const rotation = Mat4.fromRotation(Mat4(), Math.PI / 2, Vec3.unitZ);
+        const transform = getRelionParticleTransform(Mat4(), createParticleList({
+            index: 0,
+            coordinate: Vec3.create(0, 0, 0),
+            coordinateUnit: 'angstrom',
+            origin: Vec3.create(0, 0, 0),
+            originUnit: 'angstrom',
+            rotation,
+        }).particles[0], 1);
+        const x = Vec3.transformMat4(Vec3(), Vec3.create(1, 0, 0), transform);
+        expect(x[0]).toBeCloseTo(0, 6);
+        expect(x[1]).toBeCloseTo(1, 6);
+        expect(x[2]).toBeCloseTo(0, 6);
     });
 
     it('inserts and updates the structure instances decorator at the end of the decorator chain', () => {
@@ -123,6 +154,7 @@ describe('RELION STAR helpers', () => {
 
     it('creates an instanced particle-axis preview shape with default scaling', () => {
         const particleList = {
+            format: 'relion-star',
             particleBlockHeader: 'particles',
             particles: [{
                 index: 4,
@@ -130,7 +162,7 @@ describe('RELION STAR helpers', () => {
                 coordinateUnit: 'pixel' as const,
                 origin: Vec3.create(1, 2, 3),
                 originUnit: 'pixel' as const,
-                particleAngles: { rot: 0, tilt: 0, psi: 0 }
+                rotation: Mat4.identity()
             }],
             suggestedScale: 2,
             warnings: []

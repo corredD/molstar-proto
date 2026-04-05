@@ -25,12 +25,15 @@ describe('mesoscale placement helpers', () => {
 
     it('resolves particle-list transforms from loaded state cells', () => {
         const particleList: RelionStarParticleList = {
+            format: 'relion-star',
+            particleBlockHeader: 'particles',
             particles: [{
+                index: 0,
                 coordinate: [10, 20, 30],
                 coordinateUnit: 'pixel',
                 origin: [1, 2, 3],
                 originUnit: 'pixel',
-                particleAngles: { rot: 0, tilt: 0, psi: 0 },
+                rotation: Mat4.identity(),
             }],
             suggestedScale: 2,
             warnings: [],

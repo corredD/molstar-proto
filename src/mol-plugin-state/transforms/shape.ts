@@ -60,7 +60,7 @@ const RelionStarParticleListShape = PluginStateTransform.BuiltIn({
     to: SO.Shape.Provider,
 })({
     apply({ a }) {
-        return Task.create('RELION Particle Axes', async () => new SO.Shape.Provider({
+        return Task.create('Particle Axes', async () => new SO.Shape.Provider({
             label: 'Particle Axes',
             data: a.data,
             params: getRelionParticleAxisParams(a.data),

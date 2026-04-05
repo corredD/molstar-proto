@@ -28,6 +28,7 @@ import { ungzip } from '../../mol-util/zip/zip';
 import { StringLike } from '../../mol-io/common/string-like';
 import { utf8ReadLong } from '../../mol-io/common/utf8';
 import { parseRelionStarParticleList } from '../../mol-io/reader/relion/star';
+import { parseDynamoTblParticleList } from '../../mol-io/reader/dynamo/tbl';
 import { RelionStarParticleListObject } from '../objects/relion';
 
 
@@ -47,6 +48,7 @@ export { ParseCcp4 };
 export { ParseDsn6 };
 export { ParseDx };
 export { RelionStarParticleListFromCif };
+export { DynamoTblParticleList };
 export { ImportString };
 export { ImportJson };
 export { ParseJson };
@@ -336,6 +338,24 @@ const RelionStarParticleListFromCif = PluginStateTransform.BuiltIn({
     apply({ a }) {
         return Task.create('Parse RELION Particle List', async () => {
             const data = parseRelionStarParticleList(a.data);
+            return new RelionStarParticleListObject(data, {
+                label: a.label,
+                description: `${data.particles.length} particle${data.particles.length === 1 ? '' : 's'}`
+            });
+        });
+    }
+});
+
+type DynamoTblParticleList = typeof DynamoTblParticleList
+const DynamoTblParticleList = PluginStateTransform.BuiltIn({
+    name: 'dynamo-tbl-particle-list',
+    display: { name: 'Dynamo Particle List', description: 'Parse Dynamo particle positions and rotations from TBL data.' },
+    from: SO.Data.String,
+    to: RelionStarParticleListObject
+})({
+    apply({ a }) {
+        return Task.create('Parse Dynamo Particle List', async () => {
+            const data = parseDynamoTblParticleList(a.data.toString());
             return new RelionStarParticleListObject(data, {
                 label: a.label,
                 description: `${data.particles.length} particle${data.particles.length === 1 ? '' : 's'}`
