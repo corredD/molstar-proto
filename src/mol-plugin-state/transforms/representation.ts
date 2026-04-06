@@ -926,6 +926,86 @@ const ThemeStrengthRepresentation3D = PluginStateTransform.BuiltIn({
 //
 
 export namespace VolumeRepresentation3DHelpers {
+    const LegacyInstancedDotLodLevels = [
+        { minDistance: 1, maxDistance: 1000, overlap: 0, stride: 1, scaleBias: 1 },
+        { minDistance: 1000, maxDistance: 4000, overlap: 0, stride: 10, scaleBias: 3 },
+        { minDistance: 4000, maxDistance: 10000, overlap: 0, stride: 50, scaleBias: 2.7 },
+        { minDistance: 10000, maxDistance: 10000000, overlap: 0, stride: 200, scaleBias: 2.3 },
+    ] as const;
+
+    function getLegacyInstancedDotLodLevels(params: any) {
+        const sizeFactor = params?.sizeFactor ?? 1;
+        return LegacyInstancedDotLodLevels.map(level => ({
+            ...level,
+            stride: Math.max(1, Math.round(level.stride / Math.pow(sizeFactor, level.scaleBias)))
+        }));
+    }
+
+    function hasLegacyInstancedDotLodLevels(params: any) {
+        const lodLevels = params?.lodLevels;
+        if (!lodLevels || lodLevels.length === 0) return false;
+        const legacy = getLegacyInstancedDotLodLevels(params);
+        if (lodLevels.length !== legacy.length) return false;
+        for (let i = 0, il = legacy.length; i < il; ++i) {
+            if (lodLevels[i].minDistance !== legacy[i].minDistance) return false;
+            if (lodLevels[i].maxDistance !== legacy[i].maxDistance) return false;
+            if (lodLevels[i].overlap !== legacy[i].overlap) return false;
+            if (lodLevels[i].stride !== legacy[i].stride) return false;
+            if (lodLevels[i].scaleBias !== legacy[i].scaleBias) return false;
+        }
+        return true;
+    }
+
+    export function normalizeParams(ctx: PluginContext, volume: Volume, params: StateTransformer.Params<VolumeRepresentation3D>): StateTransformer.Params<VolumeRepresentation3D> {
+        const ensureInstanced = volume.instances.length > 1;
+        let next = params;
+
+        if (ensureInstanced && next.type.name === 'slice') {
+            const isoValue = next.type.params?.isoValue;
+            const defaults = getDefaultParams(ctx, 'isosurface', volume);
+            next = {
+                ...defaults,
+                colorTheme: next.colorTheme,
+                sizeTheme: next.sizeTheme,
+                type: {
+                    ...defaults.type,
+                    params: {
+                        ...defaults.type.params,
+                        ...(isoValue !== void 0 ? { isoValue } : {}),
+                    }
+                }
+            };
+        }
+
+        if (ensureInstanced) {
+            next = {
+                ...next,
+                type: {
+                    ...next.type,
+                    params: {
+                        ...next.type.params,
+                        instanceGranularity: true,
+                    }
+                }
+            };
+        }
+
+        if (ensureInstanced && next.type.name === 'dot' && hasLegacyInstancedDotLodLevels(next.type.params)) {
+            next = {
+                ...next,
+                type: {
+                    ...next.type,
+                    params: {
+                        ...next.type.params,
+                        lodLevels: [],
+                    }
+                }
+            };
+        }
+
+        return next;
+    }
+
     export function getDefaultParams(ctx: PluginContext, name: VolumeRepresentationRegistry.BuiltIn, volume: Volume, volumeParams?: Partial<PD.Values<PD.Params>>, colorName?: ColorTheme.BuiltIn, colorParams?: Partial<ColorTheme.Props>, sizeName?: SizeTheme.BuiltIn, sizeParams?: Partial<SizeTheme.Props>): StateTransformer.Params<VolumeRepresentation3D> {
         const type = ctx.representation.volume.registry.get(name);
 
@@ -1011,35 +1091,39 @@ const VolumeRepresentation3D = PluginStateTransform.BuiltIn({
     },
     apply({ a, params }, plugin: PluginContext) {
         return Task.create('Volume Representation', async ctx => {
+            const normalized = VolumeRepresentation3DHelpers.normalizeParams(plugin, a.data, params);
             const propertyCtx = { runtime: ctx, assetManager: plugin.managers.asset, errorContext: plugin.errorContext };
-            const provider = plugin.representation.volume.registry.get(params.type.name);
+            const provider = plugin.representation.volume.registry.get(normalized.type.name);
             if (provider.ensureCustomProperties) await provider.ensureCustomProperties.attach(propertyCtx, a.data);
             const repr = provider.factory({ webgl: plugin.canvas3d?.webgl, ...plugin.representation.volume.themes }, provider.getParams);
-            await Theme.ensureDependencies(propertyCtx, plugin.representation.volume.themes, { volume: a.data }, params);
-            repr.setTheme(Theme.create(plugin.representation.volume.themes, { volume: a.data, locationKinds: provider.locationKinds }, params));
+            await Theme.ensureDependencies(propertyCtx, plugin.representation.volume.themes, { volume: a.data }, normalized);
+            repr.setTheme(Theme.create(plugin.representation.volume.themes, { volume: a.data, locationKinds: provider.locationKinds }, normalized));
 
-            const props = params.type.params || {};
+            const props = normalized.type.params || {};
             await repr.createOrUpdate(props, a.data).runInContext(ctx);
             return new SO.Volume.Representation3D({ repr, sourceData: a.data }, { label: provider.label, description: VolumeRepresentation3DHelpers.getDescription(props) });
         });
     },
     update({ a, b, oldParams, newParams }, plugin: PluginContext) {
         return Task.create('Volume Representation', async ctx => {
-            if (newParams.type.name !== oldParams.type.name) return StateTransformer.UpdateResult.Recreate;
+            const normalizedOld = VolumeRepresentation3DHelpers.normalizeParams(plugin, b.data.sourceData, oldParams);
+            const normalizedNew = VolumeRepresentation3DHelpers.normalizeParams(plugin, a.data, newParams);
 
-            const provider = plugin.representation.volume.registry.get(newParams.type.name);
-            if (provider.mustRecreate?.(oldParams.type.params, newParams.type.params)) return StateTransformer.UpdateResult.Recreate;
+            if (normalizedNew.type.name !== normalizedOld.type.name) return StateTransformer.UpdateResult.Recreate;
+
+            const provider = plugin.representation.volume.registry.get(normalizedNew.type.name);
+            if (provider.mustRecreate?.(normalizedOld.type.params, normalizedNew.type.params)) return StateTransformer.UpdateResult.Recreate;
 
             const propertyCtx = { runtime: ctx, assetManager: plugin.managers.asset, errorContext: plugin.errorContext };
             if (provider.ensureCustomProperties) await provider.ensureCustomProperties.attach(propertyCtx, a.data);
 
             // TODO: if themes had a .needsUpdate method the following block could
             //       be optimized and only executed conditionally
-            Theme.releaseDependencies(plugin.representation.volume.themes, { volume: b.data.sourceData }, oldParams);
-            await Theme.ensureDependencies(propertyCtx, plugin.representation.volume.themes, { volume: a.data }, newParams);
-            b.data.repr.setTheme(Theme.create(plugin.representation.volume.themes, { volume: a.data, locationKinds: provider.locationKinds }, newParams));
+            Theme.releaseDependencies(plugin.representation.volume.themes, { volume: b.data.sourceData }, normalizedOld);
+            await Theme.ensureDependencies(propertyCtx, plugin.representation.volume.themes, { volume: a.data }, normalizedNew);
+            b.data.repr.setTheme(Theme.create(plugin.representation.volume.themes, { volume: a.data, locationKinds: provider.locationKinds }, normalizedNew));
 
-            const props = { ...b.data.repr.props, ...newParams.type.params };
+            const props = { ...b.data.repr.props, ...normalizedNew.type.params };
             await b.data.repr.createOrUpdate(props, a.data).runInContext(ctx);
             b.data.sourceData = a.data;
             b.description = VolumeRepresentation3DHelpers.getDescription(props);

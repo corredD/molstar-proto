@@ -107,15 +107,32 @@ export function getRelionParticleAxisShape(data: ParticleList, props: RelionPart
     );
 }
 
+function getMatrixTransformList(transforms: ReadonlyArray<Mat4>) {
+    return transforms.map(transform => ({ transform: { name: 'matrix' as const, params: { data: transform, transpose: false } } }));
+}
+
 export function getStructureInstancesParams(transforms: ReadonlyArray<Mat4>) {
     return {
-        transforms: transforms.length
-            ? transforms.map(transform => ({ transform: { name: 'matrix' as const, params: { data: transform, transpose: false } } }))
-            : [IdentityTransformParams]
+        transforms: transforms.length ? getMatrixTransformList(transforms) : [IdentityTransformParams]
     };
 }
 
-export function findDecoratorRef(tree: StateTree, rootRef: StateTransform.Ref, transformer: typeof StateTransforms.Model.StructureInstances | typeof StateTransforms.Model.TransformStructureConformation) {
+export function getVolumeInstancesParams(transforms: ReadonlyArray<Mat4>) {
+    return {
+        mode: 'transforms' as const,
+        transforms: getMatrixTransformList(transforms)
+    };
+}
+
+export function findDecoratorRef(
+    tree: StateTree,
+    rootRef: StateTransform.Ref,
+    transformer:
+        | typeof StateTransforms.Model.StructureInstances
+        | typeof StateTransforms.Model.TransformStructureConformation
+        | typeof StateTransforms.Volume.VolumeInstances
+        | typeof StateTransforms.Volume.VolumeTransform
+) {
     let currentRef: StateTransform.Ref | undefined = rootRef;
     while (currentRef) {
         const transform = tree.transforms.get(currentRef);
@@ -148,6 +165,25 @@ export function clearStructureInstances(builder: StateBuilder.Root, tree: StateT
     const existing = findDecoratorRef(tree, structureRef, StateTransforms.Model.StructureInstances);
     if (!existing) return false;
     builder.to(existing).update(getStructureInstancesParams([]));
+    return true;
+}
+
+export function applyVolumeInstances(builder: StateBuilder.Root, tree: StateTree, volumeRef: StateTransform.Ref, transforms: ReadonlyArray<Mat4>) {
+    const params = getVolumeInstancesParams(transforms);
+    const existing = findDecoratorRef(tree, volumeRef, StateTransforms.Volume.VolumeInstances);
+    if (existing) {
+        builder.to(existing).update(params);
+        return existing;
+    }
+
+    const root = StateTree.getDecoratorRoot(tree, volumeRef);
+    return builder.to(root).apply(StateTransforms.Volume.VolumeInstances, params, { tags: [RelionParticleInstancesTag] }).ref;
+}
+
+export function clearVolumeInstances(builder: StateBuilder.Root, tree: StateTree, volumeRef: StateTransform.Ref) {
+    const existing = findDecoratorRef(tree, volumeRef, StateTransforms.Volume.VolumeInstances);
+    if (!existing) return false;
+    builder.to(existing).update(getVolumeInstancesParams([]));
     return true;
 }
 

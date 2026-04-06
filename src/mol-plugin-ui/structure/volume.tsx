@@ -6,18 +6,22 @@
  */
 
 import * as React from 'react';
+import { Mat4 } from '../../mol-math/linear-algebra';
 import { Volume } from '../../mol-model/volume';
 import { createVolumeRepresentationParams } from '../../mol-plugin-state/helpers/volume-representation-params';
 import { StructureHierarchyManager } from '../../mol-plugin-state/manager/structure/hierarchy';
 import { VolumeHierarchyManager } from '../../mol-plugin-state/manager/volume/hierarchy';
 import { LazyVolumeRef, VolumeRef, VolumeRepresentationRef } from '../../mol-plugin-state/manager/volume/hierarchy-state';
 import { PluginStateObject } from '../../mol-plugin-state/objects';
+import { RelionStarParticleListObject } from '../../mol-plugin-state/objects/relion';
 import { StateTransforms } from '../../mol-plugin-state/transforms';
+import { applyVolumeInstances, clearVolumeInstances, getRelionParticleTransforms } from '../../mol-plugin-state/helpers/relion-star';
+import { VolumeRepresentation3DHelpers } from '../../mol-plugin-state/transforms/representation';
 import { FocusLoci } from '../../mol-plugin/behavior/dynamic/representation';
 import { VolumeStreaming } from '../../mol-plugin/behavior/dynamic/volume-streaming/behavior';
 import { InitVolumeStreaming } from '../../mol-plugin/behavior/dynamic/volume-streaming/transformers';
 import { PluginCommands } from '../../mol-plugin/commands';
-import { State, StateObjectCell, StateObjectSelector, StateSelection, StateTransform } from '../../mol-state';
+import { State, StateObjectCell, StateObjectSelector, StateSelection, StateTransform, StateTree } from '../../mol-state';
 import { Color } from '../../mol-util/color';
 import { memoizeLatest } from '../../mol-util/memoize';
 import { ParamDefinition } from '../../mol-util/param-definition';
@@ -281,8 +285,95 @@ function VolumeEntryControls({ volume }: { volume: VolumeRef }) {
         <div className='msp-control-group-header' style={{ marginTop: '1px' }}>
             <div><b>{volume.cell.obj?.label ?? 'n/a'}</b></div>
         </div>
+        <VolumeParticleInstanceControls volume={volume} />
         {volume.representations.map(r => <VolumeRepresentationControls key={r.cell.transform.ref} volume={volume} representation={r} />)}
     </>;
+}
+
+interface VolumeParticleInstanceControlState {
+    particleListRef?: string,
+    particleScale?: number,
+    isBusy: boolean
+}
+
+class VolumeParticleInstanceControls extends PurePluginUIComponent<{ volume: VolumeRef }, VolumeParticleInstanceControlState> {
+    state: VolumeParticleInstanceControlState = { isBusy: false };
+
+    componentDidMount() {
+        this.subscribe(this.plugin.state.data.events.changed, () => this.forceUpdate());
+        this.subscribe(this.plugin.behaviors.state.isBusy, isBusy => this.setState({ isBusy }));
+    }
+
+    private get particleLists() {
+        return this.plugin.state.data.selectQ(q => q.rootsOfType(RelionStarParticleListObject));
+    }
+
+    private get values() {
+        const particleLists = this.particleLists;
+        const validRef = particleLists.some(p => p.transform.ref === this.state.particleListRef)
+            ? this.state.particleListRef
+            : particleLists[0]?.transform.ref;
+        const selected = validRef ? particleLists.find(p => p.transform.ref === validRef) : void 0;
+        const suggestedScale = selected?.obj?.data.suggestedScale ?? 1;
+
+        return {
+            particleListRef: validRef ?? '',
+            particleScale: this.state.particleListRef === validRef ? (this.state.particleScale ?? suggestedScale) : suggestedScale,
+        };
+    }
+
+    private updateParticleParams = (values: { particleListRef: string, particleScale: number }, prev: { particleListRef: string, particleScale: number }) => {
+        const selected = this.particleLists.find(p => p.transform.ref === values.particleListRef);
+        const resetScale = values.particleListRef !== prev.particleListRef;
+        this.setState({
+            particleListRef: values.particleListRef,
+            particleScale: resetScale ? (selected?.obj?.data.suggestedScale ?? 1) : values.particleScale,
+        });
+    };
+
+    private applyParticleInstances = async () => {
+        const values = this.values;
+        const particleList = this.particleLists.find(p => p.transform.ref === values.particleListRef)?.obj?.data;
+        if (!particleList) return;
+
+        const transforms = getRelionParticleTransforms(particleList, values.particleScale);
+        const builder = this.plugin.state.data.build();
+        applyVolumeInstances(builder, this.plugin.state.data.tree, this.props.volume.cell.transform.ref, transforms);
+        const volumeData = withVolumeInstances(getCurrentVolumeData(this.plugin.state.data, this.props.volume), transforms);
+        for (const repr of this.props.volume.representations) {
+            const params = repr.cell.transform.params;
+            if (!params) continue;
+            builder.to(repr.cell.transform.ref).update(VolumeRepresentation3DHelpers.normalizeParams(this.plugin, volumeData!, params));
+        }
+        await builder.commit({ canUndo: 'Apply Particle Instances' });
+    };
+
+    private clearParticleInstances = async () => {
+        const builder = this.plugin.state.data.build();
+        if (!clearVolumeInstances(builder, this.plugin.state.data.tree, this.props.volume.cell.transform.ref)) return;
+        await builder.commit({ canUndo: 'Clear Particle Instances' });
+    };
+
+    render() {
+        const particleLists = this.particleLists;
+        if (particleLists.length === 0) return null;
+
+        const values = this.values;
+        const selected = particleLists.find(p => p.transform.ref === values.particleListRef);
+        const params = {
+            particleListRef: ParamDefinition.Select(values.particleListRef, particleLists.map(p => [p.transform.ref, `${p.obj?.label || p.transform.ref} (${p.obj?.data.particles.length})`] as [string, string]), { label: 'Particle List' }),
+            particleScale: ParamDefinition.Numeric(values.particleScale, { min: 0.01, max: 100, step: 0.5 }, { label: 'Position Scale', description: 'Applied to coordinates and pixel-space origin shifts.' })
+        };
+
+        return <ExpandGroup header='Particle Instances'>
+            <ParameterControls params={params} values={values} onChangeValues={this.updateParticleParams} isDisabled={this.state.isBusy} />
+            {!!selected?.obj?.data.warnings.length && <div className='msp-help-text'>{selected.obj?.data.warnings[0]}</div>}
+            <div className='msp-flex-row'>
+                <Button flex onClick={this.applyParticleInstances} disabled={this.state.isBusy}>Apply</Button>
+                <Button flex onClick={this.clearParticleInstances} disabled={this.state.isBusy}>Clear</Button>
+            </div>
+        </ExpandGroup>;
+    }
 }
 
 type VolumeRepresentationEntryActions = 'update' | 'select-color'
@@ -384,6 +475,7 @@ class VolumeRepresentationControls extends PurePluginUIComponent<{ volume: Volum
         const params = repr.transform.params;
         const color = this.color;
         const isoParams = this.isoValueParams(repr.transform.ref, params?.type.name);
+        const volumeData = getCurrentVolumeData(this.plugin.state.data, this.props.volume);
 
         return <>
             <div className='msp-flex-row'>
@@ -401,7 +493,17 @@ class VolumeRepresentationControls extends PurePluginUIComponent<{ volume: Volum
                     {!!isoParams && <div style={{ marginBottom: '1px' }}>
                         <ParameterControls params={isoParams} values={{ isoValue: params?.type.params.isoValue }} onChangeValues={this.requestIsoValueUpdate} />
                     </div>}
-                    <UpdateTransformControl state={repr.parent} transform={repr.transform} customHeader='none' noMargin />
+                    <UpdateTransformControl
+                        state={repr.parent}
+                        transform={repr.transform}
+                        customHeader='none'
+                        customUpdate={(next) => this.plugin.state.updateTransform(
+                            repr.parent!,
+                            repr.transform.ref,
+                            VolumeRepresentation3DHelpers.normalizeParams(this.plugin, volumeData!, next)
+                        )}
+                        noMargin
+                    />
                 </div>
             </div>}
             {this.state.action === 'select-color' && color !== void 0 && <div style={{ marginBottom: '6px', marginTop: 1 }} className='msp-accent-offset'>
@@ -415,3 +517,21 @@ class VolumeRepresentationControls extends PurePluginUIComponent<{ volume: Volum
 }
 
 const VolumeColorParam = ParamDefinition.Color(Color(0x121212));
+
+function getDecoratedVolumeCell(state: State, volume: VolumeRef) {
+    const root = StateTree.getDecoratorRoot(state.tree, volume.cell.transform.ref);
+    return state.cells.get(root);
+}
+
+function getCurrentVolumeData(state: State, volume: VolumeRef) {
+    const cell = getDecoratedVolumeCell(state, volume);
+    return PluginStateObject.Volume.Data.is(cell?.obj) ? cell.obj.data : volume.cell.obj?.data;
+}
+
+function withVolumeInstances(volume: Volume | undefined, transforms: ReadonlyArray<Mat4>) {
+    if (!volume) return volume;
+    return {
+        ...volume,
+        instances: transforms.map(transform => ({ transform }))
+    };
+}

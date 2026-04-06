@@ -9,8 +9,9 @@ import { RelionStarParticleList } from '../../mol-io/reader/relion/star';
 import { StateTransform, StateTree } from '../../mol-state';
 import { ColorNames } from '../../mol-util/color/names';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
-import { applyStructureInstances, clearStructureInstances, getRelionParticleAxisParams, getRelionParticleAxisShape, getRelionParticleTransform } from '../helpers/relion-star';
+import { applyStructureInstances, applyVolumeInstances, clearStructureInstances, clearVolumeInstances, getRelionParticleAxisParams, getRelionParticleAxisShape, getRelionParticleTransform } from '../helpers/relion-star';
 import { StateTransforms } from '../transforms';
+import { VolumeRepresentation3DHelpers } from '../transforms/representation';
 import { Map as ImmutableMap, OrderedSet } from 'immutable';
 
 function createParticleList(particle: RelionStarParticleList['particles'][number]): RelionStarParticleList {
@@ -47,6 +48,33 @@ function createTree(withInstances = false) {
         [transform.ref, OrderedSet(componentParent ? [componentParent.ref] : [component.ref])],
         ...(componentParent ? [[componentParent.ref, OrderedSet([component.ref])] as const] : []),
         [component.ref, OrderedSet()]
+    ]) as any;
+
+    return StateTree.create(transforms, children, ImmutableMap() as any);
+}
+
+function createVolumeTree(withInstances = false) {
+    const root = StateTransform.createRoot();
+    const volume = StateTransforms.Misc.CreateGroup.apply(root.ref, { label: 'Volume' }, { ref: 'volume' });
+    const transform = StateTransforms.Volume.VolumeTransform.apply(volume.ref, MatrixParams, { ref: 'transform' });
+    const componentParent = withInstances
+        ? StateTransforms.Volume.VolumeInstances.apply(transform.ref, { mode: 'transforms', transforms: [{ transform: { name: 'matrix', params: { data: Mat4.identity(), transpose: false } } }] }, { ref: 'instances' })
+        : void 0;
+    const representation = StateTransforms.Misc.CreateGroup.apply((componentParent ?? transform).ref, { label: 'Representation' }, { ref: 'representation' });
+
+    const transforms = ImmutableMap([
+        [root.ref, root],
+        [volume.ref, volume],
+        [transform.ref, transform],
+        ...(componentParent ? [[componentParent.ref, componentParent] as const] : []),
+        [representation.ref, representation]
+    ]) as any;
+    const children = ImmutableMap([
+        [root.ref, OrderedSet([volume.ref])],
+        [volume.ref, OrderedSet([transform.ref])],
+        [transform.ref, OrderedSet(componentParent ? [componentParent.ref] : [representation.ref])],
+        ...(componentParent ? [[componentParent.ref, OrderedSet([representation.ref])] as const] : []),
+        [representation.ref, OrderedSet()]
     ]) as any;
 
     return StateTree.create(transforms, children, ImmutableMap() as any);
@@ -152,6 +180,37 @@ describe('RELION STAR helpers', () => {
         expect(calls[0].params.transforms).toHaveLength(1);
     });
 
+    it('inserts and updates the volume instances decorator at the end of the decorator chain', () => {
+        const initialTree = createVolumeTree(false);
+        const { builder: insertBuilder, calls: insertCalls } = createBuilderSpy();
+        const insertedRef = applyVolumeInstances(insertBuilder, initialTree, 'volume', [Mat4.identity()]);
+
+        expect(insertedRef).toBe('instances');
+        expect(insertCalls[0].kind).toBe('apply');
+        expect(insertCalls[0].ref).toBe('transform');
+        expect(insertCalls[0].transformer).toBe(StateTransforms.Volume.VolumeInstances);
+
+        const updatedTree = createVolumeTree(true);
+        const { builder: updateBuilder, calls: updateCalls } = createBuilderSpy();
+        const updatedRef = applyVolumeInstances(updateBuilder, updatedTree, 'volume', [Mat4.identity(), Mat4.identity()]);
+
+        expect(updatedRef).toBe('instances');
+        expect(updateCalls[0].kind).toBe('update');
+        expect(updateCalls[0].ref).toBe('instances');
+        expect(updateCalls[0].params.mode).toBe('transforms');
+        expect(updateCalls[0].params.transforms).toHaveLength(2);
+    });
+
+    it('clears volume particle instances by resetting to an empty transform list', () => {
+        const tree = createVolumeTree(true);
+        const { builder, calls } = createBuilderSpy();
+        expect(clearVolumeInstances(builder, tree, 'volume')).toBe(true);
+        expect(calls[0].kind).toBe('update');
+        expect(calls[0].ref).toBe('instances');
+        expect(calls[0].params.mode).toBe('transforms');
+        expect(calls[0].params.transforms).toHaveLength(0);
+    });
+
     it('creates an instanced particle-axis preview shape with default scaling', () => {
         const particleList = {
             format: 'relion-star',
@@ -179,5 +238,50 @@ describe('RELION STAR helpers', () => {
         expect(shape.getColor(1, 0)).toBe(ColorNames.green);
         expect(shape.getColor(2, 0)).toBe(ColorNames.blue);
         expect(shape.getLabel(2, 0)).toBe('Z axis for particle 5');
+    });
+
+    it('preserves dot lod levels for instanced volumes', () => {
+        const volume = { instances: [{ transform: Mat4.identity() }, { transform: Mat4.identity() }] } as any;
+        const customLodLevels = [{ minDistance: 10, maxDistance: 20, overlap: 0, stride: 7, scaleBias: 2 }];
+        const customLodParams = {
+            type: { name: 'dot', params: { lodLevels: customLodLevels, sizeFactor: 1 } },
+            colorTheme: { name: 'uniform', params: {} },
+            sizeTheme: { name: 'uniform', params: {} }
+        } as any;
+        const preserved = VolumeRepresentation3DHelpers.normalizeParams(undefined as any, volume, customLodParams);
+        expect(preserved.type.params.instanceGranularity).toBe(true);
+        expect(preserved.type.params.lodLevels).toEqual(customLodLevels);
+
+        const emptyLodParams = {
+            type: { name: 'dot', params: { lodLevels: [], sizeFactor: 1 } },
+            colorTheme: { name: 'uniform', params: {} },
+            sizeTheme: { name: 'uniform', params: {} }
+        } as any;
+        const empty = VolumeRepresentation3DHelpers.normalizeParams(undefined as any, volume, emptyLodParams);
+        expect(empty.type.params.instanceGranularity).toBe(true);
+        expect(empty.type.params.lodLevels).toEqual([]);
+    });
+
+    it('clears the legacy auto-injected dot lod profile for instanced volumes', () => {
+        const volume = { instances: [{ transform: Mat4.identity() }, { transform: Mat4.identity() }] } as any;
+        const legacyLodParams = {
+            type: {
+                name: 'dot',
+                params: {
+                    sizeFactor: 1,
+                    lodLevels: [
+                        { minDistance: 1, maxDistance: 1000, overlap: 0, stride: 1, scaleBias: 1 },
+                        { minDistance: 1000, maxDistance: 4000, overlap: 0, stride: 10, scaleBias: 3 },
+                        { minDistance: 4000, maxDistance: 10000, overlap: 0, stride: 50, scaleBias: 2.7 },
+                        { minDistance: 10000, maxDistance: 10000000, overlap: 0, stride: 200, scaleBias: 2.3 }
+                    ]
+                }
+            },
+            colorTheme: { name: 'uniform', params: {} },
+            sizeTheme: { name: 'uniform', params: {} }
+        } as any;
+        const cleaned = VolumeRepresentation3DHelpers.normalizeParams(undefined as any, volume, legacyLodParams);
+        expect(cleaned.type.params.instanceGranularity).toBe(true);
+        expect(cleaned.type.params.lodLevels).toEqual([]);
     });
 });

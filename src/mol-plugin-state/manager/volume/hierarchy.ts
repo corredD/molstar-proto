@@ -10,6 +10,8 @@ import { PluginComponent } from '../../component';
 import { buildVolumeHierarchy, VolumeHierarchy, VolumeHierarchyRef, VolumeRef } from './hierarchy-state';
 import { createVolumeRepresentationParams } from '../../helpers/volume-representation-params';
 import { StateTransforms } from '../../transforms';
+import { StateTree } from '../../../mol-state';
+import { PluginStateObject as SO } from '../../objects';
 
 export class VolumeHierarchyManager extends PluginComponent {
     private state = {
@@ -103,10 +105,14 @@ export class VolumeHierarchyManager extends PluginComponent {
     }
 
     addRepresentation(ref: VolumeRef, type: string) {
+        const root = StateTree.getDecoratorRoot(this.dataState.tree, ref.cell.transform.ref);
+        const rootCell = this.dataState.cells.get(root);
+        const volume = rootCell?.obj && SO.Volume.Data.is(rootCell.obj) ? rootCell.obj.data : ref.cell.obj?.data;
         const update = this.dataState.build()
-            .to(ref.cell)
-            .apply(StateTransforms.Representation.VolumeRepresentation3D, createVolumeRepresentationParams(this.plugin, ref.cell.obj?.data, {
+            .to(root)
+            .apply(StateTransforms.Representation.VolumeRepresentation3D, createVolumeRepresentationParams(this.plugin, volume, {
                 type: type as any,
+                typeParams: volume && volume.instances.length > 1 ? { instanceGranularity: true } : void 0,
             }));
 
         return update.commit({ canUndo: 'Add Representation' });
