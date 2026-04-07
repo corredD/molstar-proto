@@ -175,6 +175,10 @@ namespace Image {
 
     export const Params = {
         ...BaseGeometry.Params,
+        brightness: PD.Numeric(0, { min: -1, max: 1, step: 0.01 }),
+        contrast: PD.Numeric(1, { min: 0, max: 4, step: 0.01 }),
+        gamma: PD.Numeric(1, { min: 0.1, max: 5, step: 0.01 }),
+        invert: PD.Boolean(false),
         interpolation: PD.Select('bspline', PD.objectToOptions(InterpolationTypes)),
     };
     export type Params = typeof Params
@@ -238,6 +242,10 @@ namespace Image {
             uInvariantBoundingSphere: ValueCell.create(Vec4.ofSphere(invariantBoundingSphere)),
 
             dInterpolation: ValueCell.create(props.interpolation),
+            uImageBrightness: ValueCell.create(props.brightness),
+            uImageContrast: ValueCell.create(props.contrast),
+            uImageGamma: ValueCell.create(props.gamma),
+            uImageInvert: ValueCell.create(props.invert ? 1 : 0),
 
             uImageTexDim: image.imageTextureDim,
             tImageTex: image.imageTexture,
@@ -263,6 +271,10 @@ namespace Image {
     function updateValues(values: ImageValues, props: PD.Values<Params>) {
         BaseGeometry.updateValues(values, props);
         ValueCell.updateIfChanged(values.dInterpolation, props.interpolation);
+        ValueCell.updateIfChanged(values.uImageBrightness, props.brightness);
+        ValueCell.updateIfChanged(values.uImageContrast, props.contrast);
+        ValueCell.updateIfChanged(values.uImageGamma, props.gamma);
+        ValueCell.updateIfChanged(values.uImageInvert, props.invert ? 1 : 0);
     }
 
     function updateBoundingSphere(values: ImageValues, image: Image) {

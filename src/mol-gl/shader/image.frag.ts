@@ -49,6 +49,10 @@ uniform float uDensity;
 #endif
 
 uniform vec2 uImageTexDim;
+uniform float uImageBrightness;
+uniform float uImageContrast;
+uniform float uImageGamma;
+uniform float uImageInvert;
 uniform sampler2D tImageTex;
 uniform sampler2D tGroupTex;
 uniform sampler2D tValueTex;
@@ -156,6 +160,10 @@ void main() {
     #else
         vec4 material = texture2D(tImageTex, vUv);
     #endif
+
+    material.rgb = clamp((material.rgb - 0.5) * uImageContrast + 0.5 + uImageBrightness, 0.0, 1.0);
+    material.rgb = pow(material.rgb, vec3(1.0 / max(uImageGamma, 0.0001)));
+    material.rgb = mix(material.rgb, 1.0 - material.rgb, uImageInvert);
 
     if (uIsoLevel >= 0.0) {
         if (texture2D(tValueTex, vUv).r < uIsoLevel) discard;

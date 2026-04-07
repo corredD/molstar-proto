@@ -33,4 +33,24 @@ describe('image', () => {
         setDebugMode(false);
         ctx.destroy();
     });
+
+    (ctx ? it : it.skip)('supports display controls', async () => {
+        const ctx = getGLContext(32, 32);
+        const scene = Scene.create(ctx);
+        const image = Image.createEmpty();
+        const props = {
+            ...PD.getDefaultValues(Image.Params),
+            brightness: 0.1,
+            contrast: 1.5,
+            gamma: 0.8,
+            invert: true,
+        };
+        const values = Image.Utils.createValuesSimple(image, props, ColorNames.orange, 1);
+        const state = Image.Utils.createRenderableState(props);
+        scene.add(createRenderObject('image', values, state, -1));
+        setDebugMode(true);
+        expect(() => scene.commit()).not.toThrow();
+        setDebugMode(false);
+        ctx.destroy();
+    });
 });

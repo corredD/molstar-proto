@@ -20,6 +20,10 @@ export const ImageSchema = {
     elements: ElementsSpec('uint32'),
 
     uImageTexDim: UniformSpec('v2'),
+    uImageBrightness: UniformSpec('f'),
+    uImageContrast: UniformSpec('f'),
+    uImageGamma: UniformSpec('f'),
+    uImageInvert: UniformSpec('f'),
     tImageTex: TextureSpec('image-uint8', 'rgba', 'ubyte', 'nearest'),
     tGroupTex: TextureSpec('image-uint8', 'rgba', 'ubyte', 'nearest'),
     tValueTex: TextureSpec('image-float32', 'alpha', 'float', 'linear'),
