@@ -49,10 +49,11 @@ uniform float uDensity;
 #endif
 
 uniform vec2 uImageTexDim;
-uniform float uImageBrightness;
-uniform float uImageContrast;
+uniform float uImageBlack;
+uniform float uImageWhite;
 uniform float uImageGamma;
-uniform float uImageInvert;
+uniform int uImageInvert;
+uniform int uImagePreScaled;
 uniform sampler2D tImageTex;
 uniform sampler2D tGroupTex;
 uniform sampler2D tValueTex;
@@ -142,6 +143,22 @@ uniform float uIsoLevel;
     }
 #endif
 
+float sampleValue(vec2 uv) {
+    #if defined(dInterpolation_cubic)
+        return biCubic(tValueTex, uv).r;
+    #else
+        return texture2D(tValueTex, uv).r;
+    #endif
+}
+
+float applyDisplayLevels(float value) {
+    float black = min(uImageBlack, uImageWhite);
+    float white = max(uImageBlack, uImageWhite);
+    float intensity = clamp((clamp(value, 0.0, 1.0) - black) / max(white - black, 0.0001), 0.0, 1.0);
+    intensity = pow(intensity, 1.0 / max(uImageGamma, 0.0001));
+    return uImageInvert != 0 ? 1.0 - intensity : intensity;
+}
+
 void main() {
     if (uTrimType != 0 && getSignedDistance(vPosition, uTrimType, uTrimCenter, uTrimRotation, uTrimScale, uTrimTransform) > 0.0) discard;
 
@@ -160,13 +177,19 @@ void main() {
     #else
         vec4 material = texture2D(tImageTex, vUv);
     #endif
-
-    material.rgb = clamp((material.rgb - 0.5) * uImageContrast + 0.5 + uImageBrightness, 0.0, 1.0);
-    material.rgb = pow(material.rgb, vec3(1.0 / max(uImageGamma, 0.0001)));
-    material.rgb = mix(material.rgb, 1.0 - material.rgb, uImageInvert);
+    float value = sampleValue(vUv);
+    float intensity = applyDisplayLevels(value);
+    if (uImagePreScaled != 0) {
+        float current = clamp(value, 0.0, 1.0);
+        float factor = current > 0.0001 ? intensity / current : (intensity > 0.0 ? 1.0 : 0.0);
+        material.rgb *= factor;
+    } else {
+        material.rgb *= intensity;
+    }
+    material.rgb = clamp(material.rgb, 0.0, 1.0);
 
     if (uIsoLevel >= 0.0) {
-        if (texture2D(tValueTex, vUv).r < uIsoLevel) discard;
+        if (value < uIsoLevel) discard;
 
         material.a = uAlpha;
     } else {

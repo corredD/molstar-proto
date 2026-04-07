@@ -34,15 +34,14 @@ describe('image', () => {
         ctx.destroy();
     });
 
-    (ctx ? it : it.skip)('supports display controls', async () => {
+    (ctx ? it : it.skip)('supports image display controls', async () => {
         const ctx = getGLContext(32, 32);
         const scene = Scene.create(ctx);
         const image = Image.createEmpty();
         const props = {
             ...PD.getDefaultValues(Image.Params),
-            brightness: 0.1,
-            contrast: 1.5,
-            gamma: 0.8,
+            levels: [32, 220] as [number, number],
+            gamma: 1.2,
             invert: true,
         };
         const values = Image.Utils.createValuesSimple(image, props, ColorNames.orange, 1);

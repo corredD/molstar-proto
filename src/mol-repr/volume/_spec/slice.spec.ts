@@ -8,11 +8,11 @@ import { OrderedSet, Interval } from '../../../mol-data/int';
 import { Grid, Volume } from '../../../mol-model/volume';
 import { Mat4 } from '../../../mol-math/linear-algebra';
 import { CustomProperties } from '../../../mol-model/custom-property';
-import { applySliceObjectLoci, applySlicePixelIntervals } from '../slice';
+import { applySliceObjectLoci, applySlicePixelIntervals, getSliceParams } from '../slice';
 
-function createTestVolume(instanceCount: number, periodic = false): Volume {
+function createTestVolume(instanceCount: number, periodic = false, stats: Grid['stats'] = Grid.One.stats): Volume {
     return {
-        grid: periodic ? { ...Grid.One, periodicity: 'xyz' } : Grid.One,
+        grid: periodic ? { ...Grid.One, periodicity: 'xyz', stats } : { ...Grid.One, stats },
         instances: Array.from({ length: instanceCount }, () => ({ transform: Mat4.identity() })),
         sourceData: { kind: 'test', name: 'test', data: {} } as any,
         customProperties: new CustomProperties(),
@@ -74,5 +74,20 @@ describe('slice helpers', () => {
 
         expect(changed).toBe(true);
         expect(intervals).toEqual([[6, 9], [12, 14], [15, 16]]);
+    });
+
+    it('exposes slice-specific IMOD-style display params', () => {
+        const volume = createTestVolume(1, false, { min: -2, max: 6, mean: 1, sigma: 2 });
+        const params = getSliceParams({} as any, volume);
+
+        expect(params.levels.isHidden).not.toBe(true);
+        expect(params.gamma.isHidden).not.toBe(true);
+        expect(params.invert.isHidden).not.toBe(true);
+        expect(params.levels.defaultValue).toEqual([0, 255]);
+        expect(params.gamma.defaultValue).toBe(1);
+        expect(params.invert.defaultValue).toBe(false);
+        expect(params.levels.min).toBe(0);
+        expect(params.levels.max).toBe(255);
+        expect(params.levels.step).toBe(1);
     });
 });

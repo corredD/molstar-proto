@@ -31,8 +31,19 @@ import { Interval } from '../../mol-data/int/interval';
 import { VolumeVisual } from './visual';
 import { cantorPairing } from '../../mol-data/util/hash-functions';
 
+const SliceInterpolation = Image.Params.interpolation;
+const SliceImageParams = { ...Image.Params } as Omit<typeof Image.Params, 'levels' | 'gamma' | 'invert' | 'interpolation'>;
+delete (SliceImageParams as Partial<typeof Image.Params>).levels;
+delete (SliceImageParams as Partial<typeof Image.Params>).gamma;
+delete (SliceImageParams as Partial<typeof Image.Params>).invert;
+delete (SliceImageParams as Partial<typeof Image.Params>).interpolation;
+
 export const SliceParams = {
-    ...Image.Params,
+    ...SliceImageParams,
+    levels: PD.Interval([0, 255], { min: 0, max: 255, step: 1 }, { label: 'Black / White', description: 'Display range mapped from black to white, in IMOD-style 8-bit display levels.' }),
+    gamma: PD.Numeric(1, { min: 0.1, max: 5, step: 0.01 }, { immediateUpdate: true, description: 'Gamma applied after scalar black/white mapping.' }),
+    invert: PD.Boolean(false, { description: 'Invert the displayed grayscale after scalar mapping.' }),
+    interpolation: SliceInterpolation,
     quality: { ...Image.Params.quality, isEssential: false },
     dimension: PD.MappedStatic('x', {
         x: PD.Numeric(0, { min: 0, max: 0, step: 1 }, { immediateUpdate: true }),
@@ -190,6 +201,11 @@ type SampledImageMapping = {
     index: Map<number, number[]>
 };
 
+function setSliceImageMeta(image: Image, mapping: SampledImageMapping, preScaled: boolean) {
+    image.meta.mapping = mapping;
+    image.meta.preScaled = preScaled;
+}
+
 function getSampledImage(volume: Volume, theme: Theme, info: SamplingInfo, isoValue: Volume.IsoValue, trim: Image.Trim, image?: Image): Image {
     const { m, width, height } = info;
 
@@ -306,8 +322,7 @@ function getSampledImage(volume: Volume, theme: Theme, info: SamplingInfo, isoVa
 
     const im = Image.create(imageTexture, corners, groupTexture, valueTexture, trim, isoLevel, image);
     im.setBoundingSphere(Volume.isPeriodic(volume) ? Volume.getBoundingSphere(volume) : Grid.getBoundingSphere(volume.grid));
-
-    im.meta.mapping = mapping;
+    setSliceImageMeta(im, mapping, isUniform);
 
     return im;
 }
@@ -481,8 +496,7 @@ async function createGridImage(ctx: VisualContext, volume: Volume, key: number, 
 
     const im = Image.create(imageTexture, corners, groupTexture, valueTexture, trim, isoLevel, image);
     im.setBoundingSphere(Volume.isPeriodic(volume) ? Volume.getBoundingSphere(volume) : Grid.getBoundingSphere(volume.grid));
-
-    im.meta.mapping = mapping;
+    setSliceImageMeta(im, mapping, isUniform);
 
     return im;
 }
