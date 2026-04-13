@@ -46,9 +46,8 @@ _rlnTomoName
         const particles = createParticlesFromRelionStar(relion.result, { tomogram: 'tomo-a' });
         expect(particles.particles).toHaveLength(1);
         expect(particles.pixelSize).toBe(4.5);
-        expect(particles.suggestedScale).toBe(4.5);
 
-        const transform = getParticleTransform(Mat4(), particles.particles[0], particles.suggestedScale);
+        const transform = getParticleTransform(Mat4(), particles.particles[0], particles.pixelSize ?? 1);
         expect(transform[12]).toBeCloseTo((10 - 1) * 4.5, 6);
         expect(transform[13]).toBeCloseTo((20 - 2) * 4.5, 6);
         expect(transform[14]).toBeCloseTo((30 - 3) * 4.5, 6);

@@ -30,7 +30,6 @@ export interface ParticlesData {
     readonly label: string
     readonly particles: ReadonlyArray<Particle>
     readonly pixelSize?: number
-    readonly suggestedScale: number
     readonly warnings: ReadonlyArray<string>
     readonly sourceData: unknown
 }
@@ -476,7 +475,6 @@ export function createParticlesFromRelionStar(data: RelionStarFile, options: Rel
         label: options.label ?? buildRelionLabel(particleBlock.header, options.tomogram),
         particles,
         pixelSize,
-        suggestedScale: pixelSize ?? 1,
         warnings,
         sourceData: data,
     };
@@ -535,7 +533,6 @@ export function createParticlesFromDynamoTbl(data: DynamoTblFile, options: Dynam
         label: options.label ?? buildDynamoLabel(options.tomo),
         particles,
         pixelSize,
-        suggestedScale: pixelSize ?? 1,
         warnings,
         sourceData: data,
     };
@@ -579,7 +576,6 @@ export function createParticlesFromCryoEtDataPortalNdjson(data: CryoEtDataPortal
         label: options.label ?? buildCryoEtLabel(options.type),
         particles,
         pixelSize: void 0,
-        suggestedScale: 1,
         warnings,
         sourceData: data,
     };

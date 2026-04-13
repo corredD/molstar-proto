@@ -110,7 +110,7 @@ const ParticlesVisuals = {
 };
 
 export function getParticlesParams(ctx: ThemeRegistryContext, data: ParticlesData) {
-    const defaultPositionScale = data.pixelSize !== void 0 ? data.pixelSize : data.suggestedScale;
+    const defaultPositionScale = data.pixelSize ?? 1;
     const positionScale = Math.max(PositionScaleOptions.min, defaultPositionScale);
     const axisLength = Math.max(10, positionScale * 2);
 

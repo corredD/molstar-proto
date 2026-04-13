@@ -32,7 +32,6 @@ function createParticlesData(): ParticlesData {
             },
         ],
         pixelSize: 2,
-        suggestedScale: 2,
         warnings: [],
         sourceData: {},
     };

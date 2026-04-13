@@ -148,7 +148,6 @@ async function buildParticlesData(file: File) {
                 `tomograms: ${tomograms.length ? tomograms.join(', ') : 'none'}`,
                 `rendered particles: ${particles.particles.length}`,
                 `pixel size: ${particles.pixelSize ?? 'none'}`,
-                `suggested scale: ${particles.suggestedScale}`,
                 ...particles.warnings.map(w => `warning: ${w}`),
             ]
         };
@@ -174,7 +173,6 @@ async function buildParticlesData(file: File) {
                 `tomo ids: ${tomogramIds.length ? tomogramIds.join(', ') : 'none'}`,
                 `rendered particles: ${particles.particles.length}`,
                 `pixel size: ${particles.pixelSize ?? 'none'}`,
-                `suggested scale: ${particles.suggestedScale}`,
                 ...tbl.warnings.map(w => `warning: ${w}`),
                 ...particles.warnings.map(w => `warning: ${w}`),
             ]
@@ -195,7 +193,6 @@ async function buildParticlesData(file: File) {
                 `types: ${types.join(', ')}`,
                 `rendered particles: ${particles.particles.length}`,
                 `pixel size: ${particles.pixelSize ?? 'none'}`,
-                `suggested scale: ${particles.suggestedScale}`,
                 ...particles.warnings.map(w => `warning: ${w}`),
             ]
         };
