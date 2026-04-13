@@ -147,6 +147,7 @@ async function buildParticlesData(file: File) {
                 `optics block: ${relion.result.opticsBlock?.header ?? 'none'}`,
                 `tomograms: ${tomograms.length ? tomograms.join(', ') : 'none'}`,
                 `rendered particles: ${particles.particles.length}`,
+                `pixel size: ${particles.pixelSize ?? 'none'}`,
                 `suggested scale: ${particles.suggestedScale}`,
                 ...particles.warnings.map(w => `warning: ${w}`),
             ]
@@ -172,6 +173,7 @@ async function buildParticlesData(file: File) {
                 `columns: ${tbl.result.columnCount}`,
                 `tomo ids: ${tomogramIds.length ? tomogramIds.join(', ') : 'none'}`,
                 `rendered particles: ${particles.particles.length}`,
+                `pixel size: ${particles.pixelSize ?? 'none'}`,
                 `suggested scale: ${particles.suggestedScale}`,
                 ...tbl.warnings.map(w => `warning: ${w}`),
                 ...particles.warnings.map(w => `warning: ${w}`),
@@ -192,6 +194,7 @@ async function buildParticlesData(file: File) {
                 `record count: ${ndjson.result.records.length}`,
                 `types: ${types.join(', ')}`,
                 `rendered particles: ${particles.particles.length}`,
+                `pixel size: ${particles.pixelSize ?? 'none'}`,
                 `suggested scale: ${particles.suggestedScale}`,
                 ...particles.warnings.map(w => `warning: ${w}`),
             ]

@@ -45,6 +45,7 @@ _rlnTomoName
 
         const particles = createParticlesFromRelionStar(relion.result, { tomogram: 'tomo-a' });
         expect(particles.particles).toHaveLength(1);
+        expect(particles.pixelSize).toBe(4.5);
         expect(particles.suggestedScale).toBe(4.5);
 
         const transform = getParticleTransform(Mat4(), particles.particles[0], particles.suggestedScale);
@@ -59,6 +60,7 @@ _rlnTomoName
 
         const particles = createParticlesFromDynamoTbl(parsed.result, { tomo: 7 });
         expect(particles.particles).toHaveLength(1);
+        expect(particles.pixelSize).toBe(6.5);
         expect(Array.from(particles.particles[0].coordinate)).toEqual([110, 220, 330]);
 
         const z = Vec3.transformMat4(Vec3(), Vec3.create(0, 0, 1), particles.particles[0].rotation);
@@ -78,6 +80,7 @@ _rlnTomoName
 
         const particles = createParticlesFromCryoEtDataPortalNdjson(parsed.result);
         expect(particles.particles).toHaveLength(1);
+        expect(particles.pixelSize).toBeUndefined();
         expect(particles.warnings).toHaveLength(1);
 
         const y = Vec3.transformMat4(Vec3(), Vec3.create(0, 1, 0), particles.particles[0].rotation);

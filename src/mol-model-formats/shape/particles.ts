@@ -29,6 +29,7 @@ export interface ParticlesData {
     readonly format: string
     readonly label: string
     readonly particles: ReadonlyArray<Particle>
+    readonly pixelSize?: number
     readonly suggestedScale: number
     readonly warnings: ReadonlyArray<string>
     readonly sourceData: unknown
@@ -203,6 +204,36 @@ function getNumericFieldUniqueValue(block: CifBlock | undefined, names: readonly
     }
 }
 
+function getNumericFieldValueAtRow(block: CifBlock | undefined, names: readonly string[], row: number) {
+    if (!block) return;
+
+    for (const name of names) {
+        const field = getFlatField(block, name);
+        const value = getOptionalNumber(field, row);
+        if (value !== void 0 && Number.isFinite(value) && value > 0) return value;
+    }
+}
+
+function getUniquePositiveFieldValueForRows(block: CifBlock | undefined, names: readonly string[], rows: Iterable<number>) {
+    if (!block) return;
+
+    let value: number | undefined = void 0;
+    let hasValue = false;
+
+    for (const row of rows) {
+        const current = getNumericFieldValueAtRow(block, names, row);
+        if (current === void 0) continue;
+        hasValue = true;
+        if (value === void 0) {
+            value = current;
+        } else if (Math.abs(value - current) > 1e-6) {
+            return;
+        }
+    }
+
+    return hasValue ? value : void 0;
+}
+
 function getUniquePositiveColumnValue(rows: ReadonlyArray<Float64Array>, column: number) {
     let value: number | undefined = void 0;
     for (const row of rows) {
@@ -290,6 +321,41 @@ function buildCryoEtLabel(type?: string) {
     return 'CryoET Data Portal particles';
 }
 
+function getRelionSelectedPixelSize(particleBlock: CifBlock, opticsBlock: CifBlock | undefined, selectedRows: readonly number[]) {
+    if (selectedRows.length === 0) return;
+
+    const particlePixelSize = getUniquePositiveFieldValueForRows(particleBlock, RelionPixelSizeFields, selectedRows);
+    if (particlePixelSize !== void 0) return particlePixelSize;
+
+    const particleOpticsGroup = getFlatField(particleBlock, 'rlnOpticsGroup');
+    if (!opticsBlock) {
+        return getNumericFieldUniqueValue(opticsBlock, RelionPixelSizeFields) ?? getNumericFieldUniqueValue(particleBlock, RelionPixelSizeFields);
+    }
+    const opticsGroupField = getFlatField(opticsBlock, 'rlnOpticsGroup');
+    if (!particleOpticsGroup || !opticsGroupField) {
+        return getNumericFieldUniqueValue(opticsBlock, RelionPixelSizeFields) ?? getNumericFieldUniqueValue(particleBlock, RelionPixelSizeFields);
+    }
+
+    const selectedGroups = new Set<string>();
+    for (const row of selectedRows) {
+        const group = getOptionalString(particleOpticsGroup, row);
+        if (group) selectedGroups.add(group);
+    }
+
+    if (selectedGroups.size === 0) {
+        return getNumericFieldUniqueValue(opticsBlock, RelionPixelSizeFields) ?? getNumericFieldUniqueValue(particleBlock, RelionPixelSizeFields);
+    }
+
+    const matchingOpticsRows: number[] = [];
+    const opticsRowCount = getFieldRowCount(opticsGroupField, opticsBlock, 'rlnOpticsGroup');
+    for (let row = 0; row < opticsRowCount; ++row) {
+        const group = getOptionalString(opticsGroupField, row);
+        if (group && selectedGroups.has(group)) matchingOpticsRows.push(row);
+    }
+
+    return getUniquePositiveFieldValueForRows(opticsBlock, RelionPixelSizeFields, matchingOpticsRows);
+}
+
 export function getParticleTranslation(out: Vec3, particle: Particle, positionScale: number) {
     const coordinateScale = particle.coordinateUnit === 'pixel' ? positionScale : 1;
     const originScale = particle.originUnit === 'pixel' ? positionScale : 1;
@@ -345,6 +411,7 @@ export function createParticlesFromRelionStar(data: RelionStarFile, options: Rel
     const tomoField = getFirstFlatField(particleBlock, RelionTomogramFields);
     const warnings: string[] = [];
     const particles: Particle[] = [];
+    const selectedRows: number[] = [];
 
     for (let row = 0; row < rowCount; ++row) {
         const tomoName = getOptionalString(tomoField, row);
@@ -364,6 +431,7 @@ export function createParticlesFromRelionStar(data: RelionStarFile, options: Rel
             Mat4.mul(rotation, subtomogram, rotation);
         }
 
+        selectedRows.push(row);
         particles.push({
             index: row,
             coordinate: coordinate.value,
@@ -395,13 +463,20 @@ export function createParticlesFromRelionStar(data: RelionStarFile, options: Rel
         warnings.push('No RELION rotation columns were found; particle rotations default to identity.');
     }
 
+    const pixelSize = coordinateFields.unit === 'pixel'
+        ? getRelionSelectedPixelSize(particleBlock, opticsBlock, selectedRows)
+        : void 0;
+
+    if (coordinateFields.unit === 'pixel' && pixelSize === void 0) {
+        warnings.push('RELION particle coordinates are pixel-space, but no unique positive pixel size was found; pixel-space coordinates default to scale 1.');
+    }
+
     return {
         format: 'relion-star',
         label: options.label ?? buildRelionLabel(particleBlock.header, options.tomogram),
         particles,
-        suggestedScale: coordinateFields.unit === 'pixel'
-            ? getNumericFieldUniqueValue(opticsBlock, RelionPixelSizeFields) ?? getNumericFieldUniqueValue(particleBlock, RelionPixelSizeFields) ?? 1
-            : 1,
+        pixelSize,
+        suggestedScale: pixelSize ?? 1,
         warnings,
         sourceData: data,
     };
@@ -410,6 +485,7 @@ export function createParticlesFromRelionStar(data: RelionStarFile, options: Rel
 export function createParticlesFromDynamoTbl(data: DynamoTblFile, options: DynamoParticlesOptions = {}): ParticlesData {
     const warnings: string[] = [];
     const particles: Particle[] = [];
+    const selectedRows: Float64Array[] = [];
 
     for (let index = 0, il = data.rows.length; index < il; ++index) {
         const row = data.rows[index];
@@ -440,6 +516,7 @@ export function createParticlesFromDynamoTbl(data: DynamoTblFile, options: Dynam
                 narot: row[DynamoAngleColumn + 2],
             }
         });
+        selectedRows.push(row);
     }
 
     if (particles.length === 0) {
@@ -448,11 +525,17 @@ export function createParticlesFromDynamoTbl(data: DynamoTblFile, options: Dynam
             : 'No readable Dynamo table rows were found.');
     }
 
+    const pixelSize = getUniquePositiveColumnValue(selectedRows, DynamoPixelSizeColumn);
+    if (pixelSize === void 0) {
+        warnings.push('Dynamo particle coordinates are pixel-space, but no unique positive pixel size was found; pixel-space coordinates default to scale 1.');
+    }
+
     return {
         format: 'dynamo-tbl',
         label: options.label ?? buildDynamoLabel(options.tomo),
         particles,
-        suggestedScale: getUniquePositiveColumnValue(data.rows, DynamoPixelSizeColumn) ?? 1,
+        pixelSize,
+        suggestedScale: pixelSize ?? 1,
         warnings,
         sourceData: data,
     };
@@ -495,6 +578,7 @@ export function createParticlesFromCryoEtDataPortalNdjson(data: CryoEtDataPortal
         format: 'cryoet-data-portal-ndjson',
         label: options.label ?? buildCryoEtLabel(options.type),
         particles,
+        pixelSize: void 0,
         suggestedScale: 1,
         warnings,
         sourceData: data,

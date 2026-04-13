@@ -31,6 +31,7 @@ function createParticlesData(): ParticlesData {
                 rotation: Mat4.fromRotation(Mat4(), Math.PI / 2, Vec3.unitZ),
             },
         ],
+        pixelSize: 2,
         suggestedScale: 2,
         warnings: [],
         sourceData: {},
@@ -53,5 +54,6 @@ describe('particles representation helpers', () => {
         expect(orientationShape.groupCount).toBe(3);
         expect(orientationShape.transforms).toHaveLength(2);
         expect(orientationShape.getLabel(1, 1)).toContain('Y axis');
+        expect(props.positionScale).toBe(2);
     });
 });

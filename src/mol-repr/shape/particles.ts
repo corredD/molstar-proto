@@ -110,12 +110,13 @@ const ParticlesVisuals = {
 };
 
 export function getParticlesParams(ctx: ThemeRegistryContext, data: ParticlesData) {
-    const suggestedScale = Math.max(PositionScaleOptions.min, data.suggestedScale || 1);
-    const axisLength = Math.max(10, suggestedScale * 2);
+    const defaultPositionScale = data.pixelSize !== void 0 ? data.pixelSize : data.suggestedScale;
+    const positionScale = Math.max(PositionScaleOptions.min, defaultPositionScale);
+    const axisLength = Math.max(10, positionScale * 2);
 
     return {
         ...BaseParticlesParams,
-        positionScale: PD.Numeric(suggestedScale, PositionScaleOptions, { description: BaseParticlesParams.positionScale.description }),
+        positionScale: PD.Numeric(positionScale, PositionScaleOptions, { description: BaseParticlesParams.positionScale.description }),
         axisLength: PD.Numeric(axisLength, AxisLengthOptions, { description: BaseParticlesParams.axisLength.description }),
         visuals: PD.MultiSelect(['position', 'orientation'], PD.objectToOptions(ParticlesVisuals)),
     };
