@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
- * @author OpenAI
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Color } from '../../mol-util/color';
