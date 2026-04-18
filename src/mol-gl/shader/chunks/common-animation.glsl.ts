@@ -13,12 +13,6 @@ uniform float uTumbleSpeed;
 uniform float uTumbleAmplitude;
 uniform float uTumbleFrequency;
 
-uniform int uTrailMode;
-uniform float uTrailSpeed;
-uniform float uTrailAmplitude;
-uniform float uTrailFrequency;
-uniform float uTrailStep;
-
 #ifdef dWiggle
     uniform vec2 uWiggleTexDim;
     uniform sampler2D tWiggle;

@@ -24,7 +24,7 @@ export function getAnimationParam() {
         wiggleAmplitude: PD.Numeric(0, { min: 0, max: 5, step: 0.01 }, { description: 'Amplitude of vertex wiggle animation.' }),
         wiggleFrequency: PD.Numeric(0.2, { min: 0.01, max: 2, step: 0.01 }, { description: 'Spatial frequency of vertex wiggle noise (position mode). Lower values correlate nearby atoms more.' }),
         tumbleSpeed: PD.Numeric(1, { min: 0, max: 10, step: 0.1 }, { description: 'Speed of instance tumble animation.' }),
-        tumbleAmplitude: PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, { description: 'Amplitude of instance tumble animation.' }),
+        tumbleAmplitude: PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, { description: 'Amplitude of instance tumble animation. In Ångströms of implied surface displacement.' }),
         tumbleFrequency: PD.Numeric(0.2, { min: 0, max: 2, step: 0.01 }, { description: 'Spatial frequency multiplier for tumble noise.' }),
     });
 }

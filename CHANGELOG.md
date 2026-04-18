@@ -10,6 +10,15 @@ Note that since we don't clearly distinguish between a public and private interf
 - Handle CCD bonds with Deuterium atoms
 - [Breaking] ComponentBond.Entry.map now returns ComponentBond.Pairs
 - Fix volume slice marking performance regression
+- Add GPU procedural animation (wiggle & tumble)
+    - Per-vertex wiggle via fbm noise (position & group mode)
+    - Per-instance tumble via fbm noise (rotation + translation)
+    - `Wiggle` theme layer for data-driven per-group wiggle
+    - `enableAnimation` Canvas3D param for global toggle
+- Add `AnimateTime` built-in for, e.g., exporting procedural animation
+- Add Procedural Animation panels
+    - Viewer: structure dynamics & uncertainty
+    - Mesoscale Explorer: entity dynamics
 
 ## [v5.8.0] - 2026-04-03
 - Dependencies: remove `utils.promisify`, `node-fetch` (#1797)
