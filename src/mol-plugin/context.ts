@@ -32,6 +32,7 @@ import { StructureSelectionManager } from '../mol-plugin-state/manager/structure
 import { VolumeHierarchyManager } from '../mol-plugin-state/manager/volume/hierarchy';
 import { MarkdownExtensionManager } from '../mol-plugin-state/manager/markdown-extensions';
 import { AudioReactiveAnimationManager } from '../mol-plugin-state/manager/audio-reactive-animation';
+import { AnimateStateSnapshotTransition } from '../mol-plugin-state/animation/built-in/state-snapshots';
 import { LeftPanelTabName, PluginLayout } from './layout';
 import { Representation } from '../mol-repr/representation';
 import { StructureRepresentationRegistry } from '../mol-repr/structure/registry';
@@ -498,7 +499,12 @@ export class PluginContext {
     }
 
     private initAnimations() {
-        if (!this.spec.animations) return;
+        if (!this.spec.animations?.length) {
+            // If no animations are specified, register the built-in state snapshot transition animation
+            // which is used by MVS. This ensures that PluginAnimationManager.current is always defined.
+            this.managers.animation.register(AnimateStateSnapshotTransition);
+            return;
+        }
         for (const anim of this.spec.animations) {
             this.managers.animation.register(anim);
         }
