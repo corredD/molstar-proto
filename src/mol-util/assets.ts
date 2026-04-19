@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2020-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2020-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -54,13 +54,24 @@ namespace Asset {
         return typeof url === 'string' ? url : url.url;
     }
 
-    export function getUrlAsset(manager: AssetManager, url: string | Url, body?: string) {
+    export function getUrlAsset(manager: AssetManager, url: string | Url, body?: string, headers?: [string, string][]) {
         if (typeof url === 'string') {
-            const asset = manager.tryFindUrl(url, body);
-            return asset || Url(url, { body });
+            const asset = manager.tryFindUrl(url, body, headers);
+            return asset || Url(url, { body, headers });
         }
         return url;
     }
+}
+
+function urlHeadersEqual(a?: [string, string][], b?: [string, string][]) {
+    const aLength = a?.length ?? 0;
+    const bLength = b?.length ?? 0;
+    if (aLength !== bLength) return false;
+
+    for (let i = 0; i < aLength; i++) {
+        if (a![i][0] !== b![i][0] || a![i][1] !== b![i][1]) return false;
+    }
+    return true;
 }
 
 class AssetManager {
@@ -73,13 +84,13 @@ class AssetManager {
         return iterableToArray(this._assets.values());
     }
 
-    tryFindUrl(url: string, body?: string): Asset.Url | undefined {
+    tryFindUrl(url: string, body?: string, headers?: [string, string][]): Asset.Url | undefined {
         const assets = this.assets.values();
         while (true) {
             const v = assets.next();
             if (v.done) return;
             const asset = v.value.asset;
-            if (Asset.isUrl(asset) && asset.url === url && (asset.body || '') === (body || '')) return asset;
+            if (Asset.isUrl(asset) && asset.url === url && (asset.body || '') === (body || '') && urlHeadersEqual(asset.headers, headers)) return asset;
         }
     }
 

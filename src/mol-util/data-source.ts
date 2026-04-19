@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -333,7 +333,12 @@ function ajaxGetInternal_http_NodeJS<T extends DataType>(title: string | undefin
     const aborter = new AbortController();
     return Task.create(title ?? 'Download', async ctx => {
         await ctx.update({ message: 'Downloading...', canAbort: true });
-        const response = await fetch(url, { signal: aborter.signal });
+        const response = await fetch(url, {
+            signal: aborter.signal,
+            method: body ? 'POST' : 'GET',
+            body,
+            headers: headers ? Object.fromEntries(headers) : void 0
+        });
         if (!(response.status >= 200 && response.status < 400)) {
             throw new Error(`Download failed with status code ${response.status}`);
         }
