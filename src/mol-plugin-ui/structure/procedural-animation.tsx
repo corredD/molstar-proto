@@ -5,9 +5,11 @@
  */
 
 import { clearStructureWiggle, setStructureWiggleFromUncertainty } from '../../mol-plugin-state/helpers/structure-wiggle';
+import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset } from '../../mol-plugin-state/helpers/audio-reactive-presets';
 import { CollapsableControls, PurePluginUIComponent } from '../base';
 import { Button } from '../controls/common';
 import { AnimationSvg } from '../controls/icons';
+import { AudioReactiveAnimationControls } from '../controls/audio-reactive';
 
 export class StructureProceduralAnimationControls extends CollapsableControls {
     defaultState() {
@@ -89,6 +91,25 @@ class StructureProceduralAnimation extends PurePluginUIComponent<{}, StructurePr
         }
     }
 
+    async applyAudioReactivePreset(name: AudioReactivePresetName) {
+        this.setState({ busy: true });
+        try {
+            const preset = getAudioReactivePreset(name);
+            this.plugin.managers.audioReactive.setParams(preset.analysis);
+            const options = this.plugin.managers.structure.component.state.options;
+            await this.plugin.managers.structure.component.setOptions({
+                ...options,
+                animation: {
+                    ...options.animation,
+                    ...preset.animation,
+                }
+            });
+            await clearStructureWiggle(this.plugin, this.components);
+        } finally {
+            this.setState({ busy: false });
+        }
+    }
+
     render() {
         return <>
             <div className='msp-control-group-wrapper'>
@@ -108,6 +129,20 @@ class StructureProceduralAnimation extends PurePluginUIComponent<{}, StructurePr
                     </Button>
                 </div>
             </div>
+            <div className='msp-control-group-wrapper'>
+                <div className='msp-control-group-header'><div><b>Audio Presets</b></div></div>
+                <div className='msp-flex-row'>
+                    {AudioReactivePresetDefinitions.map(preset => <Button
+                        key={preset.name}
+                        title={preset.description}
+                        onClick={() => this.applyAudioReactivePreset(preset.name)}
+                        disabled={this.state.busy}
+                    >
+                        {preset.label}
+                    </Button>)}
+                </div>
+            </div>
+            <AudioReactiveAnimationControls />
         </>;
     }
 }

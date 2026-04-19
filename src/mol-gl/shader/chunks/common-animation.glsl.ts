@@ -12,6 +12,30 @@ uniform int uWiggleMode;
 uniform float uTumbleSpeed;
 uniform float uTumbleAmplitude;
 uniform float uTumbleFrequency;
+uniform int uTumbleTranslationMode;
+uniform int uTumbleAxisSource;
+uniform int uTumbleAxis;
+uniform int uAudioWiggleSource;
+uniform float uAudioWiggleStrength;
+uniform float uAudioWiggleFloor;
+uniform int uAudioTumbleSource;
+uniform float uAudioTumbleStrength;
+uniform float uAudioTumbleFloor;
+
+uniform float uAudioAmplitude;
+uniform float uAudioPeakAmplitude;
+uniform float uAudioBeatIntensity;
+uniform float uAudioDominantFrequency;
+uniform float uAudioMix;
+uniform float uAudioSubBass;
+uniform float uAudioBass;
+uniform float uAudioLowMids;
+uniform float uAudioMids;
+uniform float uAudioHighMids;
+uniform float uAudioTreble;
+uniform float uAudioWiggleScale;
+uniform float uAudioTumbleScale;
+uniform vec3 uAudioAssemblyAxis;
 
 uniform int uTrailMode;
 uniform float uTrailSpeed;
@@ -25,9 +49,52 @@ uniform float uTrailStep;
     uniform float uWiggleStrength;
 #endif
 
+float getAudioSource(int source) {
+    if (source == 1) return uAudioAmplitude;
+    if (source == 2) return uAudioPeakAmplitude;
+    if (source == 3) return uAudioBeatIntensity;
+    if (source == 4) return uAudioMix;
+    if (source == 5) return uAudioSubBass;
+    if (source == 6) return uAudioBass;
+    if (source == 7) return uAudioLowMids;
+    if (source == 8) return uAudioMids;
+    if (source == 9) return uAudioHighMids;
+    if (source == 10) return uAudioTreble;
+    if (source == 11) return uAudioDominantFrequency;
+    return 1.0;
+}
+
+vec3 getTumbleAxisVector(mat4 transform, int axis) {
+    vec3 axisVector = axis == 0 ? transform[0].xyz : axis == 1 ? transform[1].xyz : transform[2].xyz;
+    float axisLength = length(axisVector);
+    if (axisLength <= 0.00001) {
+        return axis == 0 ? vec3(1.0, 0.0, 0.0) : axis == 1 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+    }
+    return axisVector / axisLength;
+}
+
+vec3 getResolvedTumbleAxisVector(mat4 transform) {
+    if (uTumbleAxisSource == 1) {
+        float assemblyAxisLength = length(uAudioAssemblyAxis);
+        if (assemblyAxisLength > 0.00001) {
+            vec3 worldAxis = mat3(transform) * (uAudioAssemblyAxis / assemblyAxisLength);
+            float worldAxisLength = length(worldAxis);
+            if (worldAxisLength > 0.00001) return worldAxis / worldAxisLength;
+        }
+    }
+    return getTumbleAxisVector(transform, uTumbleAxis);
+}
+
+bool hasResolvedAssemblyTumbleAxis() {
+    return uTumbleAxisSource != 1 || length(uAudioAssemblyAxis) > 0.00001;
+}
+
 vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
     if (!uEnableAnimation) return pos;
     float amplitude = uWiggleAmplitude;
+    if (uAudioWiggleSource != 0) {
+        amplitude *= clamp((uAudioWiggleFloor + getAudioSource(uAudioWiggleSource) * uAudioWiggleStrength) * uAudioWiggleScale, 0.0, 8.0);
+    }
     #ifdef dWiggle
         #if defined(dWiggleType_instance)
             amplitude += readFromTexture(tWiggle, instanceId, uWiggleTexDim).a * uWiggleStrength;
@@ -60,9 +127,13 @@ vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
 
 mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
     if (!uEnableAnimation) return transform;
-    if (uTumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0) {
+    float tumbleAmplitude = uTumbleAmplitude;
+    if (uAudioTumbleSource != 0) {
+        tumbleAmplitude *= clamp((uAudioTumbleFloor + getAudioSource(uAudioTumbleSource) * uAudioTumbleStrength) * uAudioTumbleScale, 0.0, 8.0);
+    }
+    if (tumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0) {
         // Scale amplitude inversely with bounding-sphere radius (Stokes-Einstein: D ~ 1/r)
-        float amplitude = uTumbleAmplitude / max(uInvariantBoundingSphere.w, 1.0);
+        float amplitude = tumbleAmplitude / max(uInvariantBoundingSphere.w, 1.0);
         float t = uTime * uTumbleSpeed;
         float seed = (instanceIndex * 127.1 + uObjectId * 311.7) * uTumbleFrequency;
 
@@ -83,11 +154,20 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
         );
 
         // Per-instance translation offset from layered noise (Brownian-like)
-        vec3 offset = vec3(
-            (fbm(vec3(seed + 31.7, t, 0.0)) / 0.4375 - 1.0),
-            (fbm(vec3(seed + 31.7, 0.0, t)) / 0.4375 - 1.0),
-            (fbm(vec3(0.0, seed + 31.7, t)) / 0.4375 - 1.0)
-        ) * amplitude;
+        vec3 offset;
+        if (uTumbleTranslationMode == 1 && hasResolvedAssemblyTumbleAxis()) {
+            vec3 axis = getResolvedTumbleAxisVector(transform);
+            float phase = seed * 0.73 + fbm(vec3(seed + 13.7, seed + 31.7, 0.0)) * 6.28318530718;
+            float wave = sin(t * 1.61803398875 + phase);
+            float beatBoost = uAudioTumbleSource != 0 ? 1.0 + clamp(uAudioBeatIntensity, 0.0, 1.0) : 1.0;
+            offset = axis * wave * amplitude * beatBoost;
+        } else {
+            offset = vec3(
+                (fbm(vec3(seed + 31.7, t, 0.0)) / 0.4375 - 1.0),
+                (fbm(vec3(seed + 31.7, 0.0, t)) / 0.4375 - 1.0),
+                (fbm(vec3(0.0, seed + 31.7, t)) / 0.4375 - 1.0)
+            ) * amplitude;
+        }
 
         // Bounding-sphere center transformed by the linear part only (no translation)
         vec3 localCenter = mat3(transform) * uInvariantBoundingSphere.xyz;

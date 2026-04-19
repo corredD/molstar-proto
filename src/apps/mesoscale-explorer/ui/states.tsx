@@ -9,6 +9,7 @@ import { MmcifProvider } from '../../../mol-plugin-state/formats/trajectory';
 import { PluginStateObject } from '../../../mol-plugin-state/objects';
 import { Button, ExpandGroup, IconButton } from '../../../mol-plugin-ui/controls/common';
 import { AnimationSvg, GetAppSvg, HelpOutlineSvg, MagicWandSvg, TourSvg, Icon, OpenInBrowserSvg } from '../../../mol-plugin-ui/controls/icons';
+import { AudioReactiveAnimationControls } from '../../../mol-plugin-ui/controls/audio-reactive';
 import { CollapsableControls, PluginUIComponent } from '../../../mol-plugin-ui/base';
 import { ApplyActionControl } from '../../../mol-plugin-ui/state/apply-action';
 import { LocalStateSnapshotList, LocalStateSnapshotParams, LocalStateSnapshots } from '../../../mol-plugin-ui/state/snapshots';
@@ -28,6 +29,7 @@ import { getAllEntities, getAllGroups, getEntityLabel, MesoscaleState, Mesoscale
 import { isTimingMode } from '../../../mol-util/debug';
 import { now } from '../../../mol-util/now';
 import { readFromFile } from '../../../mol-util/data-source';
+import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset } from '../../../mol-plugin-state/helpers/audio-reactive-presets';
 
 function adjustPluginProps(ctx: PluginContext) {
     const customState = ctx.customState as MesoscaleExplorerState;
@@ -873,6 +875,43 @@ class MesoProceduralAnimation extends PluginUIComponent {
         await update.commit();
     }
 
+    async applyAudioPreset(name: AudioReactivePresetName) {
+        const update = this.plugin.state.data.build();
+        const entities = getAllEntities(this.plugin);
+        const groups = getAllGroups(this.plugin);
+        const preset = getAudioReactivePreset(name);
+
+        this.plugin.managers.audioReactive.setParams(preset.analysis);
+
+        for (const entity of entities) {
+            const membrane = this.isMembrane(entity);
+            update.to(entity).update(old => {
+                if (old.type) {
+                    old.type.params.animation = {
+                        ...old.type.params.animation,
+                        ...preset.animation,
+                        tumbleAmplitude: membrane ? 0 : (preset.animation.tumbleAmplitude ?? old.type.params.animation.tumbleAmplitude),
+                        audioTumbleSource: membrane ? 'off' : (preset.animation.audioTumbleSource ?? old.type.params.animation.audioTumbleSource),
+                    };
+                }
+            });
+        }
+
+        for (const group of groups) {
+            const membrane = this.isMembrane(group);
+            update.to(group).update(old => {
+                old.animation = {
+                    ...old.animation,
+                    ...preset.animation,
+                    tumbleAmplitude: membrane ? 0 : (preset.animation.tumbleAmplitude ?? old.animation.tumbleAmplitude),
+                    audioTumbleSource: membrane ? 'off' : (preset.animation.audioTumbleSource ?? old.animation.audioTumbleSource),
+                };
+            });
+        }
+
+        await update.commit();
+    }
+
     render() {
         return <>
             <div className='msp-flex-row'>
@@ -883,6 +922,18 @@ class MesoProceduralAnimation extends PluginUIComponent {
                     Clear
                 </Button>
             </div>
+            <div className='msp-flex-row'>
+                {AudioReactivePresetDefinitions.map(preset => <Button
+                    key={preset.name}
+                    noOverflow
+                    title={preset.description}
+                    onClick={() => this.applyAudioPreset(preset.name)}
+                    style={{ width: 'auto' }}
+                >
+                    {preset.label}
+                </Button>)}
+            </div>
+            <AudioReactiveAnimationControls />
         </>;
     }
 }

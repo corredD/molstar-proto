@@ -182,6 +182,20 @@ export const GlobalUniformSchema = {
 
     uTime: UniformSpec('f'),
     uEnableAnimation: UniformSpec('b'),
+    uAudioAmplitude: UniformSpec('f'),
+    uAudioPeakAmplitude: UniformSpec('f'),
+    uAudioBeatIntensity: UniformSpec('f'),
+    uAudioDominantFrequency: UniformSpec('f'),
+    uAudioMix: UniformSpec('f'),
+    uAudioSubBass: UniformSpec('f'),
+    uAudioBass: UniformSpec('f'),
+    uAudioLowMids: UniformSpec('f'),
+    uAudioMids: UniformSpec('f'),
+    uAudioHighMids: UniformSpec('f'),
+    uAudioTreble: UniformSpec('f'),
+    uAudioWiggleScale: UniformSpec('f'),
+    uAudioTumbleScale: UniformSpec('f'),
+    uAudioAssemblyAxis: UniformSpec('v3'),
 } as const;
 export type GlobalUniformSchema = typeof GlobalUniformSchema
 export type GlobalUniformValues = Values<GlobalUniformSchema>
@@ -419,6 +433,15 @@ export const AnimationSchema = {
     uTumbleSpeed: UniformSpec('f', 'material'),
     uTumbleAmplitude: UniformSpec('f', 'material'),
     uTumbleFrequency: UniformSpec('f', 'material'),
+    uTumbleTranslationMode: UniformSpec('i', 'material'),
+    uTumbleAxisSource: UniformSpec('i', 'material'),
+    uTumbleAxis: UniformSpec('i', 'material'),
+    uAudioWiggleSource: UniformSpec('i', 'material'),
+    uAudioWiggleStrength: UniformSpec('f', 'material'),
+    uAudioWiggleFloor: UniformSpec('f', 'material'),
+    uAudioTumbleSource: UniformSpec('i', 'material'),
+    uAudioTumbleStrength: UniformSpec('f', 'material'),
+    uAudioTumbleFloor: UniformSpec('f', 'material'),
 } as const;
 export type AnimationSchema = typeof AnimationSchema
 export type AnimationValues = Values<AnimationSchema>

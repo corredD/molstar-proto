@@ -31,6 +31,7 @@ import { StructureMeasurementManager } from '../mol-plugin-state/manager/structu
 import { StructureSelectionManager } from '../mol-plugin-state/manager/structure/selection';
 import { VolumeHierarchyManager } from '../mol-plugin-state/manager/volume/hierarchy';
 import { MarkdownExtensionManager } from '../mol-plugin-state/manager/markdown-extensions';
+import { AudioReactiveAnimationManager } from '../mol-plugin-state/manager/audio-reactive-animation';
 import { LeftPanelTabName, PluginLayout } from './layout';
 import { Representation } from '../mol-repr/representation';
 import { StructureRepresentationRegistry } from '../mol-repr/structure/registry';
@@ -193,6 +194,7 @@ export class PluginContext {
         asset: new AssetManager(),
         task: new TaskManager(),
         markdownExtensions: new MarkdownExtensionManager(this),
+        audioReactive: new AudioReactiveAnimationManager(this),
         dragAndDrop: new DragAndDropManager(this),
     } as const;
 
@@ -391,6 +393,7 @@ export class PluginContext {
 
         this.layout.dispose();
         this.managers.markdownExtensions.audio.dispose();
+        this.managers.audioReactive.dispose();
         this.animationLoop.stop();
         this.commands.dispose();
         this.canvas3d?.dispose();

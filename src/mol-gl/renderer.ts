@@ -64,6 +64,7 @@ interface Renderer {
     clearDepth: (packed?: boolean) => void
     update: (camera: ICamera, scene: Scene) => void
     setTime: (time: number) => void
+    setAudioFrame: (frame: AudioReactiveFrame) => void
 
     renderPick: (group: Scene.Group, camera: ICamera, variant: 'pick' | 'depth', pickType: PickType) => void
     renderDepth: (group: Scene.Group, camera: ICamera) => void
@@ -90,6 +91,23 @@ interface Renderer {
 
     dispose: () => void
 }
+
+export type AudioReactiveFrame = {
+    amplitude: number,
+    peakAmplitude: number,
+    beatIntensity: number,
+    dominantFrequency: number,
+    mix: number,
+    subBass: number,
+    bass: number,
+    lowMids: number,
+    mids: number,
+    highMids: number,
+    treble: number,
+    wiggleScale: number,
+    tumbleScale: number,
+    assemblyAxis: Vec3,
+};
 
 export const RendererParams = {
     backgroundColor: PD.Color(Color(0x000000), { description: 'Background color of the 3D canvas' }),
@@ -283,6 +301,20 @@ namespace Renderer {
 
             uTime: ValueCell.create(0),
             uEnableAnimation: ValueCell.create(p.enableAnimation),
+            uAudioAmplitude: ValueCell.create(0),
+            uAudioPeakAmplitude: ValueCell.create(0),
+            uAudioBeatIntensity: ValueCell.create(0),
+            uAudioDominantFrequency: ValueCell.create(0),
+            uAudioMix: ValueCell.create(0),
+            uAudioSubBass: ValueCell.create(0),
+            uAudioBass: ValueCell.create(0),
+            uAudioLowMids: ValueCell.create(0),
+            uAudioMids: ValueCell.create(0),
+            uAudioHighMids: ValueCell.create(0),
+            uAudioTreble: ValueCell.create(0),
+            uAudioWiggleScale: ValueCell.create(1),
+            uAudioTumbleScale: ValueCell.create(1),
+            uAudioAssemblyAxis: ValueCell.create(Vec3.create(0, 0, 0)),
         };
         const globalUniformList = Object.entries(globalUniforms);
 
@@ -838,6 +870,22 @@ namespace Renderer {
 
             setTime: (time: number) => {
                 ValueCell.updateIfChanged(globalUniforms.uTime, time);
+            },
+            setAudioFrame: frame => {
+                ValueCell.updateIfChanged(globalUniforms.uAudioAmplitude, frame.amplitude);
+                ValueCell.updateIfChanged(globalUniforms.uAudioPeakAmplitude, frame.peakAmplitude);
+                ValueCell.updateIfChanged(globalUniforms.uAudioBeatIntensity, frame.beatIntensity);
+                ValueCell.updateIfChanged(globalUniforms.uAudioDominantFrequency, frame.dominantFrequency);
+                ValueCell.updateIfChanged(globalUniforms.uAudioMix, frame.mix);
+                ValueCell.updateIfChanged(globalUniforms.uAudioSubBass, frame.subBass);
+                ValueCell.updateIfChanged(globalUniforms.uAudioBass, frame.bass);
+                ValueCell.updateIfChanged(globalUniforms.uAudioLowMids, frame.lowMids);
+                ValueCell.updateIfChanged(globalUniforms.uAudioMids, frame.mids);
+                ValueCell.updateIfChanged(globalUniforms.uAudioHighMids, frame.highMids);
+                ValueCell.updateIfChanged(globalUniforms.uAudioTreble, frame.treble);
+                ValueCell.updateIfChanged(globalUniforms.uAudioWiggleScale, frame.wiggleScale);
+                ValueCell.updateIfChanged(globalUniforms.uAudioTumbleScale, frame.tumbleScale);
+                ValueCell.update(globalUniforms.uAudioAssemblyAxis, frame.assemblyAxis);
             },
             setProps: (props: Partial<RendererProps>) => {
                 if (props.backgroundColor !== undefined && props.backgroundColor !== p.backgroundColor) {

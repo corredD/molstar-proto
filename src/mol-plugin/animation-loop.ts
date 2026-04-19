@@ -10,6 +10,8 @@ import { now } from '../mol-util/now';
 import { PluginAnimationManager } from '../mol-plugin-state/manager/animation';
 import { isTimingMode } from '../mol-util/debug';
 import { printTimerResults } from '../mol-gl/webgl/timer';
+import { Vec3 } from '../mol-math/linear-algebra';
+import { getSelectedStructureAssemblyAxis } from '../mol-plugin-state/helpers/assembly-symmetry-axis';
 
 const MaxProperFrameDelta = 1000 / 30;
 
@@ -30,6 +32,24 @@ export class PluginAnimationLoop {
 
     async tick(t: number, options?: { isSynchronous?: boolean, manualDraw?: boolean, animation?: PluginAnimationManager.AnimationInfo, updateControls?: boolean, xrFrame?: XRFrame }) {
         await this.plugin.managers.animation.tick(t, options?.isSynchronous, options?.animation);
+        const audioFrame = this.plugin.managers.audioReactive.tick(t);
+        const assemblyAxis = getSelectedStructureAssemblyAxis(this.plugin, this.plugin.managers.audioReactive.state.params.value.assemblyAxisOrder) ?? Vec3.create(0, 0, 0);
+        this.plugin.canvas3d?.setAudioFrame({
+            amplitude: audioFrame.amplitude,
+            peakAmplitude: audioFrame.peakAmplitude,
+            beatIntensity: audioFrame.beatIntensity,
+            dominantFrequency: audioFrame.dominantFrequencyNormalized,
+            mix: audioFrame.mix,
+            subBass: audioFrame.frequencyBands.subBass,
+            bass: audioFrame.frequencyBands.bass,
+            lowMids: audioFrame.frequencyBands.lowMids,
+            mids: audioFrame.frequencyBands.mids,
+            highMids: audioFrame.frequencyBands.highMids,
+            treble: audioFrame.frequencyBands.treble,
+            wiggleScale: this.plugin.managers.audioReactive.state.params.value.wiggleEffectScale,
+            tumbleScale: this.plugin.managers.audioReactive.state.params.value.tumbleEffectScale,
+            assemblyAxis,
+        });
         this.plugin.canvas3d?.tick(t as now.Timestamp, options);
 
         if (isTimingMode) {

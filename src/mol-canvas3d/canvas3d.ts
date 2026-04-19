@@ -11,7 +11,7 @@ import { BehaviorSubject, Subject, Subscription, debounceTime, merge } from 'rxj
 import { now } from '../mol-util/now';
 import { Vec3, Vec2 } from '../mol-math/linear-algebra';
 import { InputObserver, ModifiersKeys, ButtonsType } from '../mol-util/input/input-observer';
-import { Renderer, RendererStats, RendererParams } from '../mol-gl/renderer';
+import { AudioReactiveFrame, Renderer, RendererStats, RendererParams } from '../mol-gl/renderer';
 import { GraphicsRenderObject } from '../mol-gl/render-object';
 import { DefaultTrackballControlsAttribs, TrackballControls, TrackballControlsParams } from './controls/trackball';
 import { Viewport } from './camera/util';
@@ -344,6 +344,7 @@ interface Canvas3D {
 
     /** Reset the timers, used by "animate" */
     resetTime(t: number): void
+    setAudioFrame(frame: AudioReactiveFrame): void
     animate(): void
     /**
      * Pause animation loop and optionally any rendering
@@ -1238,6 +1239,9 @@ namespace Canvas3D {
             tick,
             animate,
             resetTime,
+            setAudioFrame: frame => {
+                renderer.setAudioFrame(frame);
+            },
             pause,
             resume,
 
