@@ -10,6 +10,8 @@ import * as path from 'path';
 import * as argparse from 'argparse';
 import { sassPlugin } from 'esbuild-sass-plugin';
 import * as os from 'os';
+import * as http from 'http';
+import * as https from 'https';
 
 const Apps = [
     // Apps
@@ -17,6 +19,7 @@ const Apps = [
     { kind: 'app', name: 'docking-viewer' },
     { kind: 'app', name: 'mesoscale-explorer' },
     { kind: 'app', name: 'mvs-stories', globalName: 'mvsStories', filename: 'mvs-stories.js' },
+    { kind: 'app', name: 'virus-on-the-rock' },
 
     // Examples
     { kind: 'example', name: 'proteopedia-wrapper' },
@@ -50,6 +53,80 @@ function handleFileError(error, operation, path) {
     process.exit(1);
 }
 
+const DevReloadTokenPath = path.resolve('./build/.dev-reload.txt');
+const DevReloadPollIntervalMs = 1000;
+let devReloadUpdateHandle = void 0;
+
+function ensureDevReloadTokenFile() {
+    if (isProduction) return;
+    mkDir(path.dirname(DevReloadTokenPath));
+    fs.writeFileSync(DevReloadTokenPath, `${Date.now()}\n`);
+}
+
+function scheduleDevReloadTokenUpdate() {
+    if (isProduction) return;
+
+    if (devReloadUpdateHandle !== void 0) clearTimeout(devReloadUpdateHandle);
+    devReloadUpdateHandle = setTimeout(() => {
+        devReloadUpdateHandle = void 0;
+        fs.writeFileSync(DevReloadTokenPath, `${Date.now()}\n`);
+    }, 100);
+}
+
+function getDevReloadSnippet() {
+    return `
+<script id="__MOLSTAR_DEV_LIVE_RELOAD__" type="text/javascript">
+(() => {
+    const tokenUrl = window.location.origin + '/build/.dev-reload.txt';
+    let currentToken = null;
+
+    async function checkForReload() {
+        try {
+            const response = await fetch(tokenUrl + '?t=' + Date.now(), { cache: 'no-store' });
+            if (!response.ok) return;
+
+            const nextToken = (await response.text()).trim();
+            if (!nextToken) return;
+
+            if (currentToken === null) {
+                currentToken = nextToken;
+                return;
+            }
+
+            if (nextToken !== currentToken) {
+                window.location.reload();
+            }
+        } catch {
+            // Ignore transient fetch failures while the dev server restarts.
+        }
+    }
+
+    window.setInterval(checkForReload, ${DevReloadPollIntervalMs});
+    checkForReload();
+})();
+</script>`;
+}
+
+function injectDevReloadSnippet(html) {
+    if (isProduction || html.includes('__MOLSTAR_DEV_LIVE_RELOAD__')) return html;
+
+    const snippet = getDevReloadSnippet();
+    if (html.includes('</body>')) return html.replace('</body>', `${snippet}\n    </body>`);
+    if (html.includes('</head>')) return html.replace('</head>', `${snippet}\n    </head>`);
+    return `${html}\n${snippet}`;
+}
+
+function devReloadPlugin() {
+    return {
+        name: 'dev-reload',
+        setup(build) {
+            build.onEnd((result) => {
+                if (result.errors.length === 0) scheduleDevReloadTokenUpdate();
+            });
+        },
+    };
+}
+
 function fileLoaderPlugin(options) {
     mkDir(options.out);
 
@@ -71,7 +148,13 @@ function fileLoaderPlugin(options) {
             });
             build.onLoad({ filter: /\.(html|ico)$/ }, async (args) => {
                 const name = path.basename(args.path);
-                await fs.promises.copyFile(args.path, path.resolve(options.out, name));
+                const outPath = path.resolve(options.out, name);
+                if (args.path.endsWith('.html')) {
+                    const html = await fs.promises.readFile(args.path, 'utf8');
+                    await fs.promises.writeFile(outPath, injectDevReloadSnippet(html));
+                } else {
+                    await fs.promises.copyFile(args.path, outPath);
+                }
                 return {
                     contents: '',
                     loader: 'empty',
@@ -144,6 +227,7 @@ async function createBundle(app) {
         outfile,
         plugins: [
             fileLoaderPlugin({ out: prefix }),
+            ...(!isProduction ? [devReloadPlugin()] : []),
             sassPlugin({
                 type: 'css',
                 silenceDeprecations: ['import'],
@@ -185,6 +269,7 @@ async function createTheme(appName, themeName) {
         outfile: `./build/${appName}/theme/${themeName}.js`,
         plugins: [
             // fileLoaderPlugin({ out: prefix }),
+            ...(!isProduction ? [devReloadPlugin()] : []),
             sassPlugin({
                 type: 'css',
                 silenceDeprecations: ['import'],
@@ -296,6 +381,8 @@ async function main() {
     const promises = [];
     console.log(isProduction ? 'Building apps...' : 'Initial build...');
 
+    ensureDevReloadTokenFile();
+
     for (const app of apps) {
         promises.push(createBundle(app));
         if (app.themes) {
@@ -321,14 +408,48 @@ async function main() {
 
     const sslEnabled = fs.existsSync(certfile) && fs.existsSync(keyfile);
     const protocol = sslEnabled ? 'https' : 'http';
+    const requestHandler = (req, res) => {
+        const url = new URL(req.url || '/', `${protocol}://localhost:${args.port}`);
+        let requestPath = decodeURIComponent(url.pathname);
+        if (requestPath === '/') requestPath = '/build/virus-on-the-rock/';
 
-    const ctx = await esbuild.context({});
-    ctx.serve({
-        servedir: './',
-        port: args.port,
-        host: '0.0.0.0', // Always listen on all interfaces
-        certfile: sslEnabled ? certfile : undefined,
-        keyfile: sslEnabled ? keyfile : undefined,
+        let filePath = path.resolve('.', `.${requestPath}`);
+        if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+            filePath = path.join(filePath, 'index.html');
+        }
+
+        if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+            res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end('Not found');
+            return;
+        }
+
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = ext === '.html' ? 'text/html; charset=utf-8'
+            : ext === '.js' ? 'text/javascript; charset=utf-8'
+                : ext === '.css' ? 'text/css; charset=utf-8'
+                    : ext === '.json' ? 'application/json; charset=utf-8'
+                        : ext === '.svg' ? 'image/svg+xml'
+                            : ext === '.ico' ? 'image/x-icon'
+                                : ext === '.map' ? 'application/json; charset=utf-8'
+                                    : ext === '.txt' ? 'text/plain; charset=utf-8'
+                                        : 'application/octet-stream';
+
+        res.writeHead(200, {
+            'Content-Type': contentType,
+            'Cache-Control': 'no-store',
+        });
+        fs.createReadStream(filePath).pipe(res);
+    };
+    const server = sslEnabled
+        ? https.createServer({
+            cert: fs.readFileSync(certfile),
+            key: fs.readFileSync(keyfile),
+        }, requestHandler)
+        : http.createServer(requestHandler);
+    await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(args.port, '0.0.0.0', () => resolve());
     });
 
     console.log('');

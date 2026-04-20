@@ -35,7 +35,10 @@ uniform float uAudioHighMids;
 uniform float uAudioTreble;
 uniform float uAudioWiggleScale;
 uniform float uAudioTumbleScale;
-uniform vec3 uAudioAssemblyAxis;
+uniform float uAudioAssemblyAxisAmplitudeScale;
+uniform int uAudioAssemblyAxisCount;
+uniform vec3 uAudioAssemblyAxisCenter;
+uniform vec3 uAudioAssemblyAxes[32];
 
 uniform int uTrailMode;
 uniform float uTrailSpeed;
@@ -54,8 +57,8 @@ float getAudioSource(int source) {
     if (source == 2) return uAudioPeakAmplitude;
     if (source == 3) return uAudioBeatIntensity;
     if (source == 4) return uAudioMix;
-    if (source == 5) return uAudioSubBass;
-    if (source == 6) return uAudioBass;
+    if (source == 5) return uAudioSubBass * 1.75;
+    if (source == 6) return uAudioBass * 1.45;
     if (source == 7) return uAudioLowMids;
     if (source == 8) return uAudioMids;
     if (source == 9) return uAudioHighMids;
@@ -73,20 +76,45 @@ vec3 getTumbleAxisVector(mat4 transform, int axis) {
     return axisVector / axisLength;
 }
 
-vec3 getResolvedTumbleAxisVector(mat4 transform) {
-    if (uTumbleAxisSource == 1) {
-        float assemblyAxisLength = length(uAudioAssemblyAxis);
-        if (assemblyAxisLength > 0.00001) {
-            vec3 worldAxis = mat3(transform) * (uAudioAssemblyAxis / assemblyAxisLength);
-            float worldAxisLength = length(worldAxis);
-            if (worldAxisLength > 0.00001) return worldAxis / worldAxisLength;
+vec3 getResolvedAssemblyTumbleAxisVector(mat4 transform, vec3 instanceCenter) {
+    mat3 basis = mat3(transform);
+    vec3 assemblyCenter = transform[3].xyz + basis * uAudioAssemblyAxisCenter;
+    vec3 radial = instanceCenter - assemblyCenter;
+    float radialLength = length(radial);
+    if (radialLength <= 0.00001) {
+        radial = instanceCenter;
+        radialLength = length(radial);
+    }
+    radial = radialLength > 0.00001 ? radial / radialLength : vec3(0.0, 0.0, 1.0);
+
+    float bestScore = -1.0;
+    vec3 bestAxis = vec3(0.0, 0.0, 1.0);
+    float bestSign = 1.0;
+
+    for (int i = 0; i < 32; ++i) {
+        if (i >= uAudioAssemblyAxisCount) break;
+        vec3 axis = basis * uAudioAssemblyAxes[i];
+        float axisLength = length(axis);
+        if (axisLength <= 0.00001) continue;
+        axis /= axisLength;
+        float projection = dot(radial, axis);
+        float score = abs(projection);
+        if (score > bestScore) {
+            bestScore = score;
+            bestAxis = axis;
+            bestSign = projection >= 0.0 ? 1.0 : -1.0;
         }
     }
-    return getTumbleAxisVector(transform, uTumbleAxis);
+
+    return bestAxis * bestSign;
 }
 
 bool hasResolvedAssemblyTumbleAxis() {
-    return uTumbleAxisSource != 1 || length(uAudioAssemblyAxis) > 0.00001;
+    return uTumbleAxisSource != 1 || uAudioAssemblyAxisCount > 0;
+}
+
+float getAssemblyAxisDrive() {
+    return clamp(uAudioBass * 0.9 + uAudioSubBass * 1.25 + uAudioBeatIntensity * 0.35, 0.0, 3.0);
 }
 
 vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
@@ -136,27 +164,37 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
         float amplitude = tumbleAmplitude / max(uInvariantBoundingSphere.w, 1.0);
         float t = uTime * uTumbleSpeed;
         float seed = (instanceIndex * 127.1 + uObjectId * 311.7) * uTumbleFrequency;
+        vec3 localCenter = mat3(transform) * uInvariantBoundingSphere.xyz;
+        vec3 instanceCenter = transform[3].xyz + localCenter;
+        bool assemblyAxisMode = uTumbleTranslationMode == 1 && uTumbleAxisSource == 1 && uAudioAssemblyAxisCount > 0;
 
         // Per-instance rotation angles from layered noise (Brownian-like)
-        float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * amplitude;
-        float angleY = (fbm(vec3(seed, 0.0, t)) / 0.4375 - 1.0) * amplitude;
-        float angleZ = (fbm(vec3(0.0, seed, t)) / 0.4375 - 1.0) * amplitude;
+        mat3 rot = mat3(1.0);
+        if (!assemblyAxisMode) {
+            float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * amplitude;
+            float angleY = (fbm(vec3(seed, 0.0, t)) / 0.4375 - 1.0) * amplitude;
+            float angleZ = (fbm(vec3(0.0, seed, t)) / 0.4375 - 1.0) * amplitude;
 
-        float cx = cos(angleX); float sx = sin(angleX);
-        float cy = cos(angleY); float sy = sin(angleY);
-        float cz = cos(angleZ); float sz = sin(angleZ);
+            float cx = cos(angleX); float sx = sin(angleX);
+            float cy = cos(angleY); float sy = sin(angleY);
+            float cz = cos(angleZ); float sz = sin(angleZ);
 
-        // Combined rotation matrix (Rz * Ry * Rx)
-        mat3 rot = mat3(
-            cy * cz, cx * sz + sx * sy * cz, sx * sz - cx * sy * cz,
-            -cy * sz, cx * cz - sx * sy * sz, sx * cz + cx * sy * sz,
-            sy, -sx * cy, cx * cy
-        );
+            // Combined rotation matrix (Rz * Ry * Rx)
+            rot = mat3(
+                cy * cz, cx * sz + sx * sy * cz, sx * sz - cx * sy * cz,
+                -cy * sz, cx * cz - sx * sy * sz, sx * cz + cx * sy * sz,
+                sy, -sx * cy, cx * cy
+            );
+        }
 
         // Per-instance translation offset from layered noise (Brownian-like)
         vec3 offset;
-        if (uTumbleTranslationMode == 1 && hasResolvedAssemblyTumbleAxis()) {
-            vec3 axis = getResolvedTumbleAxisVector(transform);
+        if (assemblyAxisMode) {
+            vec3 axis = getResolvedAssemblyTumbleAxisVector(transform, instanceCenter);
+            float axisDrive = uAudioTumbleSource != 0 ? getAssemblyAxisDrive() : 1.0;
+            offset = axis * amplitude * axisDrive * uAudioAssemblyAxisAmplitudeScale;
+        } else if (uTumbleTranslationMode == 1 && hasResolvedAssemblyTumbleAxis()) {
+            vec3 axis = getTumbleAxisVector(transform, uTumbleAxis);
             float phase = seed * 0.73 + fbm(vec3(seed + 13.7, seed + 31.7, 0.0)) * 6.28318530718;
             float wave = sin(t * 1.61803398875 + phase);
             float beatBoost = uAudioTumbleSource != 0 ? 1.0 + clamp(uAudioBeatIntensity, 0.0, 1.0) : 1.0;
@@ -168,9 +206,6 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
                 (fbm(vec3(0.0, seed + 31.7, t)) / 0.4375 - 1.0)
             ) * amplitude;
         }
-
-        // Bounding-sphere center transformed by the linear part only (no translation)
-        vec3 localCenter = mat3(transform) * uInvariantBoundingSphere.xyz;
 
         // Rotate basis vectors
         mat4 result = transform;

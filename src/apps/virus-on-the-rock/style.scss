@@ -1,0 +1,285 @@
+@use 'sass:color';
+
+:root {
+    color-scheme: dark;
+    --vor-bg: #09111a;
+    --vor-panel: rgba(7, 16, 26, 0.76);
+    --vor-panel-border: rgba(255, 255, 255, 0.08);
+    --vor-panel-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+    --vor-accent: #79b8ff;
+    --vor-accent-strong: #1fd1a5;
+    --vor-text: #f5f8fb;
+    --vor-text-dim: rgba(245, 248, 251, 0.72);
+    --vor-chip: rgba(255, 255, 255, 0.08);
+    --vor-chip-active: rgba(121, 184, 255, 0.22);
+    --vor-slider: linear-gradient(90deg, #1fd1a5 0%, #79b8ff 100%);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body, #app {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: radial-gradient(circle at top, #122133 0%, var(--vor-bg) 58%);
+    color: var(--vor-text);
+    font-family: 'SF Pro Display', 'Inter', 'Segoe UI', sans-serif;
+}
+
+#app {
+    position: relative;
+}
+
+#plugin {
+    position: absolute;
+    inset: 0;
+}
+
+#ui {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.vor-overlay {
+    position: absolute;
+    inset: 0;
+    padding: 18px;
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) 1fr;
+    gap: 18px;
+    pointer-events: none;
+}
+
+.vor-controls,
+.vor-status {
+    pointer-events: auto;
+}
+
+.vor-controls {
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: calc(100vh - 36px);
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.vor-status {
+    align-self: end;
+    justify-self: end;
+    width: min(420px, calc(100vw - 420px));
+}
+
+.vor-card {
+    backdrop-filter: blur(18px);
+    background: var(--vor-panel);
+    border: 1px solid var(--vor-panel-border);
+    box-shadow: var(--vor-panel-shadow);
+    border-radius: 18px;
+    padding: 16px;
+}
+
+.vor-title {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.vor-title h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    letter-spacing: -0.03em;
+}
+
+.vor-title p,
+.vor-help,
+.vor-muted,
+.vor-status-text {
+    margin: 0;
+    color: var(--vor-text-dim);
+    line-height: 1.45;
+}
+
+.vor-section-title {
+    margin: 0 0 12px;
+    font-size: 0.82rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--vor-text-dim);
+}
+
+.vor-row {
+    display: flex;
+    gap: 10px;
+}
+
+.vor-row + .vor-row,
+.vor-stack > * + * {
+    margin-top: 10px;
+}
+
+.vor-input,
+.vor-file {
+    width: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--vor-text);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font: inherit;
+}
+
+.vor-file {
+    padding: 10px 12px;
+}
+
+.vor-input:focus,
+.vor-file:focus {
+    outline: 2px solid rgba(121, 184, 255, 0.4);
+    outline-offset: 2px;
+}
+
+.vor-button-row,
+.vor-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.vor-button,
+.vor-chip {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--vor-chip);
+    color: var(--vor-text);
+    border-radius: 999px;
+    padding: 10px 14px;
+    font: inherit;
+    cursor: pointer;
+    transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.vor-button:hover,
+.vor-chip:hover {
+    transform: translateY(-1px);
+    border-color: rgba(121, 184, 255, 0.3);
+}
+
+.vor-button:disabled,
+.vor-chip:disabled {
+    opacity: 0.5;
+    cursor: default;
+    transform: none;
+}
+
+.vor-button.vor-primary {
+    background: linear-gradient(135deg, rgba(121, 184, 255, 0.28), rgba(31, 209, 165, 0.28));
+    border-color: rgba(121, 184, 255, 0.32);
+}
+
+.vor-chip.vor-active {
+    background: var(--vor-chip-active);
+    border-color: rgba(121, 184, 255, 0.38);
+}
+
+.vor-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.92rem;
+    color: var(--vor-text);
+}
+
+.vor-slider-group {
+    display: grid;
+    gap: 12px;
+}
+
+.vor-slider-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px 14px;
+    align-items: center;
+}
+
+.vor-slider-row label {
+    color: var(--vor-text-dim);
+    font-size: 0.92rem;
+}
+
+.vor-slider-row output {
+    font-variant-numeric: tabular-nums;
+    color: var(--vor-text);
+}
+
+.vor-slider-row input[type='range'] {
+    grid-column: 1 / span 2;
+    width: 100%;
+    accent-color: #79b8ff;
+    background: var(--vor-slider);
+}
+
+.vor-status-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
+    margin-top: 12px;
+}
+
+.vor-status-grid dt {
+    margin: 0 0 4px;
+    font-size: 0.78rem;
+    color: var(--vor-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.vor-status-grid dd {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.vor-disclosure {
+    display: grid;
+    gap: 12px;
+}
+
+.vor-disclosure summary {
+    cursor: pointer;
+    color: var(--vor-text);
+    font-weight: 600;
+    list-style: none;
+}
+
+.vor-disclosure summary::-webkit-details-marker {
+    display: none;
+}
+
+.vor-entry-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.vor-entry-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--vor-text-dim);
+}
+
+@media (max-width: 980px) {
+    .vor-overlay {
+        grid-template-columns: 1fr;
+    }
+
+    .vor-status {
+        width: auto;
+        justify-self: stretch;
+    }
+}

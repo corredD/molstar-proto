@@ -12,6 +12,19 @@ import { useBehavior } from '../hooks/use-behavior';
 import { Button } from './common';
 import { ParameterControls } from './parameters';
 
+const DetachedAudioHostId = 'msp-audio-reactive-detached-host';
+
+function getDetachedAudioHost() {
+    let host = document.getElementById(DetachedAudioHostId) as HTMLDivElement | null;
+    if (!host) {
+        host = document.createElement('div');
+        host.id = DetachedAudioHostId;
+        host.style.display = 'none';
+        document.body.appendChild(host);
+    }
+    return host;
+}
+
 function formatFrequency(value?: number) {
     if (value === void 0 || !isFinite(value)) return '0 Hz';
     if (value >= 1000) return `${(value / 1000).toFixed(2)} kHz`;
@@ -26,9 +39,11 @@ export function AudioReactiveAnimationControls() {
     const params = useBehavior(plugin?.managers.audioReactive.state.params);
 
     useEffect(() => {
-        if (!parent.current || !audio) return;
-        parent.current.appendChild(audio);
-        return () => { audio?.remove(); };
+        if (!audio) return;
+        (parent.current ?? getDetachedAudioHost()).appendChild(audio);
+        return () => {
+            getDetachedAudioHost().appendChild(audio);
+        };
     }, [audio]);
 
     if (!plugin || !status || !params) return null;

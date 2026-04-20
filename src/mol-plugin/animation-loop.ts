@@ -11,7 +11,7 @@ import { PluginAnimationManager } from '../mol-plugin-state/manager/animation';
 import { isTimingMode } from '../mol-util/debug';
 import { printTimerResults } from '../mol-gl/webgl/timer';
 import { Vec3 } from '../mol-math/linear-algebra';
-import { getSelectedStructureAssemblyAxis } from '../mol-plugin-state/helpers/assembly-symmetry-axis';
+import { AudioReactiveAssemblyAxisMaxCount, getSelectedStructureAssemblyAxes } from '../mol-plugin-state/helpers/assembly-symmetry-axis';
 
 const MaxProperFrameDelta = 1000 / 30;
 
@@ -25,6 +25,8 @@ export class PluginAnimationLoop {
 
     private currentFrame: number | undefined = undefined;
     private _isAnimating = false;
+    private readonly audioAssemblyAxes = new Array<number>(AudioReactiveAssemblyAxisMaxCount * 3).fill(0);
+    private readonly audioAssemblyAxisCenter = Vec3();
 
     get isAnimating() {
         return this._isAnimating;
@@ -33,7 +35,8 @@ export class PluginAnimationLoop {
     async tick(t: number, options?: { isSynchronous?: boolean, manualDraw?: boolean, animation?: PluginAnimationManager.AnimationInfo, updateControls?: boolean, xrFrame?: XRFrame }) {
         await this.plugin.managers.animation.tick(t, options?.isSynchronous, options?.animation);
         const audioFrame = this.plugin.managers.audioReactive.tick(t);
-        const assemblyAxis = getSelectedStructureAssemblyAxis(this.plugin, this.plugin.managers.audioReactive.state.params.value.assemblyAxisOrder) ?? Vec3.create(0, 0, 0);
+        const audioParams = this.plugin.managers.audioReactive.state.params.value;
+        const assemblyAxisCount = getSelectedStructureAssemblyAxes(this.plugin, audioParams.assemblyAxisOrder, this.audioAssemblyAxes, this.audioAssemblyAxisCenter);
         this.plugin.canvas3d?.setAudioFrame({
             amplitude: audioFrame.amplitude,
             peakAmplitude: audioFrame.peakAmplitude,
@@ -46,9 +49,12 @@ export class PluginAnimationLoop {
             mids: audioFrame.frequencyBands.mids,
             highMids: audioFrame.frequencyBands.highMids,
             treble: audioFrame.frequencyBands.treble,
-            wiggleScale: this.plugin.managers.audioReactive.state.params.value.wiggleEffectScale,
-            tumbleScale: this.plugin.managers.audioReactive.state.params.value.tumbleEffectScale,
-            assemblyAxis,
+            wiggleScale: audioParams.wiggleEffectScale,
+            tumbleScale: audioParams.tumbleEffectScale,
+            assemblyAxisAmplitudeScale: audioParams.assemblyAxisAmplitudeScale,
+            assemblyAxisCount,
+            assemblyAxisCenter: this.audioAssemblyAxisCenter,
+            assemblyAxes: this.audioAssemblyAxes,
         });
         this.plugin.canvas3d?.tick(t as now.Timestamp, options);
 

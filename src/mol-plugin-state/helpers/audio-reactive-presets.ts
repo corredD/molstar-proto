@@ -69,7 +69,7 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
         description: 'Sustained low-end motion with smoother translation.',
         analysis: {
             wiggleEffectScale: 1,
-            tumbleEffectScale: 1,
+            tumbleEffectScale: 1.25,
             fftSize: 2048,
             analysisSampleRate: 24000,
             bandNormalizationGain: 10,
@@ -100,8 +100,8 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
             audioWiggleStrength: 0.7,
             audioWiggleFloor: 0.05,
             audioTumbleSource: 'bass',
-            audioTumbleStrength: 2.2,
-            audioTumbleFloor: 0.08,
+            audioTumbleStrength: 3.1,
+            audioTumbleFloor: 0.14,
         }
     },
     {
@@ -110,7 +110,7 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
         description: 'Stronger low-end translation with a bit more visual weight.',
         analysis: {
             wiggleEffectScale: 1,
-            tumbleEffectScale: 1,
+            tumbleEffectScale: 1.35,
             fftSize: 1024,
             analysisSampleRate: 24000,
             bandNormalizationGain: 12,
@@ -141,8 +141,8 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
             audioWiggleStrength: 0.4,
             audioWiggleFloor: 0.02,
             audioTumbleSource: 'bass',
-            audioTumbleStrength: 3.0,
-            audioTumbleFloor: 0.14,
+            audioTumbleStrength: 4.0,
+            audioTumbleFloor: 0.22,
         }
     },
     {
@@ -151,7 +151,7 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
         description: 'Strong bass translation combined with broad full-spectrum motion.',
         analysis: {
             wiggleEffectScale: 1.05,
-            tumbleEffectScale: 1.2,
+            tumbleEffectScale: 1.35,
             fftSize: 1024,
             analysisSampleRate: 24000,
             bandNormalizationGain: 12,
@@ -182,8 +182,8 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
             audioWiggleStrength: 1.5,
             audioWiggleFloor: 0.06,
             audioTumbleSource: 'bass',
-            audioTumbleStrength: 3.0,
-            audioTumbleFloor: 0.12,
+            audioTumbleStrength: 3.8,
+            audioTumbleFloor: 0.18,
         }
     },
     {
@@ -230,7 +230,7 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
         description: 'Lower-cost audio motion with tumble emphasized and wiggle mostly disabled.',
         analysis: {
             wiggleEffectScale: 1,
-            tumbleEffectScale: 1,
+            tumbleEffectScale: 1.15,
             fftSize: 1024,
             analysisSampleRate: 22050,
             bandNormalizationGain: 9,
@@ -261,8 +261,8 @@ export const AudioReactivePresetDefinitions: readonly AudioReactivePresetDefinit
             audioWiggleStrength: 0,
             audioWiggleFloor: 0,
             audioTumbleSource: 'bass',
-            audioTumbleStrength: 2.1,
-            audioTumbleFloor: 0.08,
+            audioTumbleStrength: 2.8,
+            audioTumbleFloor: 0.14,
         }
     },
     {

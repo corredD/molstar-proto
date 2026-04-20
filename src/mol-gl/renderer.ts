@@ -106,7 +106,10 @@ export type AudioReactiveFrame = {
     treble: number,
     wiggleScale: number,
     tumbleScale: number,
-    assemblyAxis: Vec3,
+    assemblyAxisAmplitudeScale: number,
+    assemblyAxisCount: number,
+    assemblyAxisCenter: Vec3,
+    assemblyAxes: number[],
 };
 
 export const RendererParams = {
@@ -314,7 +317,10 @@ namespace Renderer {
             uAudioTreble: ValueCell.create(0),
             uAudioWiggleScale: ValueCell.create(1),
             uAudioTumbleScale: ValueCell.create(1),
-            uAudioAssemblyAxis: ValueCell.create(Vec3.create(0, 0, 0)),
+            uAudioAssemblyAxisAmplitudeScale: ValueCell.create(1),
+            uAudioAssemblyAxisCount: ValueCell.create(0),
+            uAudioAssemblyAxisCenter: ValueCell.create(Vec3.create(0, 0, 0)),
+            uAudioAssemblyAxes: ValueCell.create(new Array<number>(32 * 3).fill(0)),
         };
         const globalUniformList = Object.entries(globalUniforms);
 
@@ -885,7 +891,10 @@ namespace Renderer {
                 ValueCell.updateIfChanged(globalUniforms.uAudioTreble, frame.treble);
                 ValueCell.updateIfChanged(globalUniforms.uAudioWiggleScale, frame.wiggleScale);
                 ValueCell.updateIfChanged(globalUniforms.uAudioTumbleScale, frame.tumbleScale);
-                ValueCell.update(globalUniforms.uAudioAssemblyAxis, frame.assemblyAxis);
+                ValueCell.updateIfChanged(globalUniforms.uAudioAssemblyAxisAmplitudeScale, frame.assemblyAxisAmplitudeScale);
+                ValueCell.updateIfChanged(globalUniforms.uAudioAssemblyAxisCount, frame.assemblyAxisCount);
+                ValueCell.update(globalUniforms.uAudioAssemblyAxisCenter, frame.assemblyAxisCenter);
+                ValueCell.update(globalUniforms.uAudioAssemblyAxes, frame.assemblyAxes);
             },
             setProps: (props: Partial<RendererProps>) => {
                 if (props.backgroundColor !== undefined && props.backgroundColor !== p.backgroundColor) {
