@@ -11,6 +11,7 @@ import { AssemblySymmetryData, AssemblySymmetryDataProvider, AssemblySymmetryPro
 import { getAssemblySymmetryConfig, tryCreateAssemblySymmetry } from '../../extensions/assembly-symmetry/behavior';
 import { Quat } from '../../mol-math/linear-algebra/3d/quat';
 import { Vec3 } from '../../mol-math/linear-algebra/3d/vec3';
+import { Vec4 } from '../../mol-math/linear-algebra/3d/vec4';
 import { setSubtreeVisibility } from '../../mol-plugin/behavior/static/state';
 import { PostprocessingParams } from '../../mol-canvas3d/passes/postprocessing';
 import { SsaoParams } from '../../mol-canvas3d/passes/ssao';
@@ -20,7 +21,7 @@ import { useBehavior } from '../../mol-plugin-ui/hooks/use-behavior';
 import { PresetStructureRepresentations } from '../../mol-plugin-state/builder/structure/representation-preset';
 import { clearStructureWiggle } from '../../mol-plugin-state/helpers/structure-wiggle';
 import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset } from '../../mol-plugin-state/helpers/audio-reactive-presets';
-import { AudioReactiveAnimationManagerValues } from '../../mol-plugin-state/manager/audio-reactive-animation';
+import { AudioReactiveAnimationManagerValues, type AudioReactiveStatus } from '../../mol-plugin-state/manager/audio-reactive-animation';
 import { AudioReactiveAssemblyAxisOrder } from '../../mol-plugin-state/helpers/assembly-symmetry-axis';
 import { StructureRef } from '../../mol-plugin-state/manager/structure/hierarchy-state';
 import { StateTransforms } from '../../mol-plugin-state/transforms';
@@ -61,6 +62,11 @@ type VirusOnTheRockState = {
     axisCycleEvery: number,
     cycleTargets: AxisCycleTarget[],
     activeCycleTarget?: AxisCycleTarget,
+    showSidebar: boolean,
+    showHistogramBars: boolean,
+    showSessionInfo: boolean,
+    showWaveformLine: boolean,
+    showRadialVisualizer: boolean,
 };
 
 const DefaultPdbId = '2tbv';
@@ -78,6 +84,7 @@ const _spinDir = Vec3();
 const _spinAxis = Vec3();
 const _spinRot = Quat();
 const _spinPosition = Vec3();
+const _sceneCenterScreen = Vec4();
 
 function getDefaultMultiScaleOcclusionProps() {
     const postprocessing = PD.getDefaultValues(PostprocessingParams);
@@ -243,7 +250,85 @@ function createInitialState(params: AudioReactiveAnimationManagerValues, animati
         axisCycleEvery: 1,
         cycleTargets: DefaultLocalCycleTargets,
         activeCycleTarget: void 0,
+        showSidebar: true,
+        showHistogramBars: true,
+        showSessionInfo: true,
+        showWaveformLine: true,
+        showRadialVisualizer: true,
     };
+}
+
+function clamp(value: number, min: number, max: number) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function sampleFloatSeries(values: ArrayLike<number>, t: number) {
+    const count = values.length;
+    if (count === 0) return 0;
+    if (count === 1) return values[0];
+
+    const clamped = clamp(t, 0, 1) * (count - 1);
+    const left = Math.floor(clamped);
+    const right = Math.min(count - 1, left + 1);
+    const alpha = clamped - left;
+    return values[left] * (1 - alpha) + values[right] * alpha;
+}
+
+function useWindowSize() {
+    const [size, setSize] = React.useState(() => ({
+        width: typeof window !== 'undefined' ? window.innerWidth : 1280,
+        height: typeof window !== 'undefined' ? window.innerHeight : 720,
+    }));
+
+    React.useEffect(() => {
+        const update = () => setSize({ width: window.innerWidth, height: window.innerHeight });
+        window.addEventListener('resize', update);
+        return () => window.removeEventListener('resize', update);
+    }, []);
+
+    return size;
+}
+
+function getSceneVisualizerFrame(app: VirusOnTheRockApp, width: number, height: number) {
+    const canvas3d = app.viewer.plugin.canvas3d;
+    const camera = canvas3d?.camera;
+    const sphere = canvas3d?.boundingSphereVisible;
+    if (!camera || !sphere || sphere.radius <= 0 || !isFinite(sphere.radius)) {
+        return {
+            centerX: width * 0.5,
+            centerY: height * 0.5,
+            sceneRadius: Math.min(width, height) * 0.18,
+        };
+    }
+
+    const pixelRatio = canvas3d?.webgl.pixelRatio ?? 1;
+    camera.project(_sceneCenterScreen, sphere.center);
+    const pixelSize = Math.max(camera.getPixelSize(sphere.center), 1e-4);
+    return {
+        centerX: _sceneCenterScreen[0] / pixelRatio,
+        centerY: height - _sceneCenterScreen[1] / pixelRatio,
+        sceneRadius: sphere.radius / (pixelSize * pixelRatio),
+    };
+}
+
+function buildWavePath(samples: ArrayLike<number>, x0: number, x1: number, centerY: number, amplitude: number) {
+    if (samples.length === 0) return '';
+
+    let path = '';
+    const dx = samples.length > 1 ? (x1 - x0) / (samples.length - 1) : 0;
+    for (let i = 0, il = samples.length; i < il; ++i) {
+        const x = x0 + dx * i;
+        const y = centerY - samples[i] * amplitude;
+        path += `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)} `;
+    }
+    return path.trimEnd();
+}
+
+function getRadialColor(value: number, normalizedIndex: number, hueShift: number) {
+    const hue = 196 + hueShift + normalizedIndex * 44;
+    const saturation = 90;
+    const lightness = 60 + value * 18;
+    return `hsla(${hue.toFixed(1)}, ${saturation}%, ${lightness.toFixed(1)}%, ${0.36 + value * 0.58})`;
 }
 
 export class VirusOnTheRockApp {
@@ -286,11 +371,16 @@ export class VirusOnTheRockApp {
         }));
         this.subscriptions.add(this.viewer.plugin.managers.audioReactive.state.status.subscribe(status => {
             void this.updateAxisCycle(status);
-            this.patchState({
-                currentAudioLabel: status.sourceLabel,
-                audioLoaded: status.loaded,
-                audioPlaying: status.playing,
-            });
+            const current = this.state.value;
+            if (current.currentAudioLabel !== status.sourceLabel
+                || current.audioLoaded !== status.loaded
+                || current.audioPlaying !== status.playing) {
+                this.patchState({
+                    currentAudioLabel: status.sourceLabel,
+                    audioLoaded: status.loaded,
+                    audioPlaying: status.playing,
+                });
+            }
         }));
         this.subscriptions.add(this.viewer.plugin.managers.audioReactive.state.params.subscribe(values => {
             this.patchState({
@@ -560,6 +650,26 @@ export class VirusOnTheRockApp {
     setCycleEvery(value: number) {
         this.resetAxisCycleRuntime();
         this.patchState({ axisCycleEvery: value });
+    }
+
+    setWaveformLineVisible(visible: boolean) {
+        this.patchState({ showWaveformLine: visible });
+    }
+
+    setRadialVisualizerVisible(visible: boolean) {
+        this.patchState({ showRadialVisualizer: visible });
+    }
+
+    setSidebarVisible(visible: boolean) {
+        this.patchState({ showSidebar: visible });
+    }
+
+    setHistogramBarsVisible(visible: boolean) {
+        this.patchState({ showHistogramBars: visible });
+    }
+
+    setSessionInfoVisible(visible: boolean) {
+        this.patchState({ showSessionInfo: visible });
     }
 
     private async updateAxisCycle(status: ReturnType<typeof this.viewer.plugin.managers.audioReactive.state.status.getValue>) {
@@ -911,6 +1021,279 @@ function ControlCard(props: React.PropsWithChildren<{ title?: string, className?
     </section>;
 }
 
+function OverlayToggleDock({ app, state }: { app: VirusOnTheRockApp, state: VirusOnTheRockState }) {
+    return null;
+    return <div className='vor-hud'>
+        {/* Sidebar — small collapse/expand button at the top */}
+        <button
+            className={`vor-chip vor-toggle-small ${state.showSidebar ? 'vor-active' : ''}`}
+            onClick={() => app.setSidebarVisible(!state.showSidebar)}
+            title={state.showSidebar ? 'Hide Sidebar' : 'Show Sidebar'}
+        >
+            {state.showSidebar ? '←' : '→'}
+        </button>
+
+        {/* Session — small button next to it */}
+        <button
+            className={`vor-chip vor-toggle-small ${state.showSessionInfo ? 'vor-active' : ''}`}
+            onClick={() => app.setSessionInfoVisible(!state.showSessionInfo)}
+            title={state.showSessionInfo ? 'Hide Session Info' : 'Show Session Info'}
+        >
+            i
+        </button>
+    </div>;
+}
+
+function AudioVisualizerOverlay(props: {
+    app: VirusOnTheRockApp,
+    showWaveformLine: boolean,
+    showHistogramBars: boolean,
+    showRadialVisualizer: boolean,
+}) {
+    const status = useBehavior(props.app.viewer.plugin.managers.audioReactive.state.status) as AudioReactiveStatus | undefined;
+    const { width, height } = useWindowSize();
+    const [radialOffset, setRadialOffset] = React.useState(() => ({ x: 0, y: 0 }));
+    const [radialScale, setRadialScale] = React.useState(1);
+
+    if (!status || width <= 0 || height <= 0) return null;
+
+    const { waveform, spectrum } = status.visualization;
+    const sceneFrame = getSceneVisualizerFrame(props.app, width, height);
+    const overlayOpacity = status.playing ? 1 : status.loaded ? 0.58 : 0.22;
+    const mix = status.frame.mix;
+    const beat = status.frame.beatIntensity;
+    const bass = Math.max(status.frame.frequencyBands.subBass, status.frame.frequencyBands.bass);
+
+    const barCount = Math.max(20, Math.min(56, Math.floor(width / 14)));
+    const barSpan = Math.min(width * 0.78, 960);
+    const barGap = clamp(barSpan / (barCount * 5.5), 2, 6);
+    const barWidth = Math.max(2.5, (barSpan - barGap * (barCount - 1)) / barCount);
+    const barStartX = (width - (barWidth * barCount + barGap * (barCount - 1))) * 0.5;
+    const barBaseY = height - Math.min(42, height * 0.05);
+    const barMaxHeight = Math.min(height * 0.24, 170);
+    const reflectionMaxHeight = Math.min(height * 0.12, 72);
+
+    const waveCenterY = barBaseY - Math.min(120, height * 0.14);
+    const waveAmplitude = Math.min(height * 0.11, 82) * (0.45 + mix * 0.95);
+    const wavePath = props.showWaveformLine
+        ? buildWavePath(waveform, width * 0.08, width * 0.92, waveCenterY, waveAmplitude)
+        : '';
+
+    const now = Date.now();
+    const hueShift = Math.sin(now * 0.00032) * 12;
+    const radialRotation = now * 0.0035;
+    const radialAutoRadius = Math.max(sceneFrame.sceneRadius * 1.18, Math.min(width, height) * 0.2)
+        + bass * 18
+        + beat * 12;
+    const radialBaseRadius = radialAutoRadius * radialScale;
+    const radialMaxLength = Math.min(Math.min(width, height) * 0.14, sceneFrame.sceneRadius * 0.4 + 48) * radialScale;
+    const radialInnerRadius = radialBaseRadius + mix * 8;
+    const radialCount = Math.max(12, Math.min(28, Math.floor(spectrum.length / 2)));
+    const radialCenterX = sceneFrame.centerX + radialOffset.x;
+    const radialCenterY = sceneFrame.centerY + radialOffset.y;
+    const radialHandleRadius = radialInnerRadius + radialMaxLength + 24;
+
+    const beginRadialInteraction = (event: React.PointerEvent<SVGElement>, mode: 'move' | 'scale') => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const startPointerX = event.clientX;
+        const startPointerY = event.clientY;
+        const startOffset = radialOffset;
+        const startScale = radialScale;
+        const startCenterX = radialCenterX;
+        const startCenterY = radialCenterY;
+        const startDistance = Math.max(24, Math.hypot(startPointerX - startCenterX, startPointerY - startCenterY));
+
+        const onPointerMove = (moveEvent: PointerEvent) => {
+            if (mode === 'move') {
+                setRadialOffset({
+                    x: startOffset.x + (moveEvent.clientX - startPointerX),
+                    y: startOffset.y + (moveEvent.clientY - startPointerY),
+                });
+            } else {
+                const currentDistance = Math.max(24, Math.hypot(moveEvent.clientX - startCenterX, moveEvent.clientY - startCenterY));
+                setRadialScale(clamp(startScale * currentDistance / Math.max(24, startDistance), 0.45, 2.6));
+            }
+        };
+
+        const onPointerUp = () => {
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', onPointerUp);
+            window.removeEventListener('pointercancel', onPointerUp);
+        };
+
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+        window.addEventListener('pointercancel', onPointerUp);
+    };
+
+    const barRects: {
+        x: number,
+        y: number,
+        height: number,
+        reflectionY: number,
+        reflectionHeight: number,
+        opacity: number,
+    }[] = [];
+    for (let i = 0; i < barCount; ++i) {
+        const t = barCount > 1 ? i / (barCount - 1) : 0;
+        const value = Math.pow(sampleFloatSeries(spectrum, t), 0.9);
+        const heightPx = 8 + value * barMaxHeight;
+        const reflectionHeight = Math.min(reflectionMaxHeight, heightPx * 0.48);
+        barRects.push({
+            x: barStartX + i * (barWidth + barGap),
+            y: barBaseY - heightPx,
+            height: heightPx,
+            reflectionY: barBaseY + 6,
+            reflectionHeight,
+            opacity: 0.22 + value * 0.78,
+        });
+    }
+
+    const radialSegments: {
+        x1: number,
+        y1: number,
+        x2: number,
+        y2: number,
+        strokeWidth: number,
+        glowWidth: number,
+        color: string,
+        glowOpacity: number,
+    }[] = [];
+    for (let i = 0; i < radialCount; ++i) {
+        const t = radialCount > 1 ? i / (radialCount - 1) : 0;
+        const value = Math.pow(sampleFloatSeries(spectrum, t), 0.88);
+        const innerRadius = radialInnerRadius + value * 8;
+        const outerRadius = innerRadius + 14 + value * radialMaxLength;
+        const strokeWidth = 3.4 + value * 4.6;
+        const glowWidth = strokeWidth + 7 + value * 5;
+        const color = getRadialColor(value, t, hueShift);
+
+        for (const mirror of [0, 1] as const) {
+            const angle = (i / radialCount) * Math.PI + mirror * Math.PI;
+            const rotation = angle + radialRotation * Math.PI / 180;
+            const cos = Math.cos(rotation);
+            const sin = Math.sin(rotation);
+            radialSegments.push({
+                x1: radialCenterX + cos * innerRadius,
+                y1: radialCenterY + sin * innerRadius,
+                x2: radialCenterX + cos * outerRadius,
+                y2: radialCenterY + sin * outerRadius,
+                strokeWidth,
+                glowWidth,
+                color,
+                glowOpacity: 0.08 + value * 0.2,
+            });
+        }
+    }
+
+    return <div className='vor-visualizers' aria-hidden='true' style={{ opacity: overlayOpacity }}>
+        <svg className='vor-visualizer-svg' viewBox={`0 0 ${width} ${height}`} preserveAspectRatio='none'>
+            <defs>
+                <linearGradient id='vor-wave-gradient' x1='0%' y1='0%' x2='100%' y2='0%'>
+                    <stop offset='0%' stopColor='#8457ff' />
+                    <stop offset='52%' stopColor='#b27cff' />
+                    <stop offset='100%' stopColor='#49f2ff' />
+                </linearGradient>
+                <linearGradient id='vor-bar-gradient' x1='0%' y1='100%' x2='0%' y2='0%'>
+                    <stop offset='0%' stopColor='#5b40db' />
+                    <stop offset='52%' stopColor='#9a61ff' />
+                    <stop offset='100%' stopColor='#37e8ff' />
+                </linearGradient>
+            </defs>
+
+            {props.showRadialVisualizer && <>
+                <circle
+                    className='vor-radial-ring-shadow'
+                    cx={radialCenterX}
+                    cy={radialCenterY}
+                    r={radialBaseRadius}
+                    pointerEvents='none'
+                />
+                <circle
+                    className='vor-radial-ring'
+                    cx={radialCenterX}
+                    cy={radialCenterY}
+                    r={radialBaseRadius}
+                    pointerEvents='none'
+                />
+                <circle
+                    className='vor-radial-hit'
+                    cx={radialCenterX}
+                    cy={radialCenterY}
+                    r={radialBaseRadius + 10}
+                    fill='transparent'
+                    stroke='transparent'
+                    strokeWidth={10}
+                    pointerEvents='stroke'
+                    onPointerDown={event => beginRadialInteraction(event, 'move')}
+                />
+                <circle
+                    className='vor-radial-handle'
+                    cx={radialCenterX + radialHandleRadius}
+                    cy={radialCenterY}
+                    r={11}
+                    onPointerDown={event => beginRadialInteraction(event, 'scale')}
+                />
+                <g className='vor-radial-group'>
+                    {radialSegments.map((segment, index) => <React.Fragment key={index}>
+                        <line
+                            className='vor-radial-segment-glow'
+                            x1={segment.x1}
+                            y1={segment.y1}
+                            x2={segment.x2}
+                            y2={segment.y2}
+                            stroke={segment.color}
+                            strokeWidth={segment.glowWidth}
+                            style={{ opacity: segment.glowOpacity }}
+                        />
+                        <line
+                            className='vor-radial-segment'
+                            x1={segment.x1}
+                            y1={segment.y1}
+                            x2={segment.x2}
+                            y2={segment.y2}
+                            stroke={segment.color}
+                            strokeWidth={segment.strokeWidth}
+                        />
+                    </React.Fragment>)}
+                </g>
+            </>}
+
+            {wavePath && <>
+                <path className='vor-wave-shadow' d={wavePath} />
+                <path className='vor-wave-line' d={wavePath} />
+            </>}
+
+            {props.showHistogramBars && <g className='vor-bar-group'>
+                {barRects.map((bar, index) => <React.Fragment key={index}>
+                    <rect
+                        className='vor-bar'
+                        x={bar.x}
+                        y={bar.y}
+                        width={barWidth}
+                        height={bar.height}
+                        rx={barWidth * 0.5}
+                        ry={barWidth * 0.5}
+                        style={{ opacity: bar.opacity }}
+                    />
+                    <rect
+                        className='vor-bar-reflection'
+                        x={bar.x}
+                        y={bar.reflectionY}
+                        width={barWidth}
+                        height={bar.reflectionHeight}
+                        rx={barWidth * 0.5}
+                        ry={barWidth * 0.5}
+                        style={{ opacity: bar.opacity * 0.34 }}
+                    />
+                </React.Fragment>)}
+            </g>}
+        </svg>
+    </div>;
+}
+
 function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
     const state = useBehavior(app.state)!;
     const [pdbId, setPdbId] = React.useState(DefaultPdbId);
@@ -928,9 +1311,29 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
     };
 
     return <div className='vor-overlay'>
-        <div className='vor-controls'>
+        <AudioVisualizerOverlay
+            app={app}
+            showWaveformLine={state.showWaveformLine}
+            showHistogramBars={state.showHistogramBars}
+            showRadialVisualizer={state.showRadialVisualizer}
+        />
+
+        <OverlayToggleDock app={app} state={state} />
+
+        {state.showSidebar && <div className='vor-controls'>
+            {/* Sidebar header with close button at top-right */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h1 style={{ margin: 0, fontSize: '1.5rem', letterSpacing: '-0.03em' }}>Virus on the Rock</h1>
+                <button
+                    className="vor-chip vor-toggle-small"
+                    onClick={() => app.setSidebarVisible(false)}
+                    title="Hide Sidebar"
+                    style={{ minWidth: '36px', height: '36px', padding: 0, fontSize: '1.3rem' }}
+                >
+                    ←
+                </button>
+            </div>
             <ControlCard className='vor-title'>
-                <h1>Virus on the Rock</h1>
                 <p>Minimal audio-reactive virus viewer. Drag a structure or audio file anywhere onto the viewport, or use the inputs below.</p>
             </ControlCard>
 
@@ -994,6 +1397,34 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                     >
                         {formatPresetLabel(name)}
                     </button>)}
+                </div>
+            </ControlCard>
+
+            <ControlCard title='Visualizers'>
+                <div className='vor-stack'>
+                    <div className='vor-chip-row'>
+                        <button
+                            className={`vor-chip ${state.showHistogramBars ? 'vor-active' : ''}`}
+                            onClick={() => app.setHistogramBarsVisible(!state.showHistogramBars)}
+                        >
+                            {state.showHistogramBars ? 'Histogram On' : 'Histogram Off'}
+                        </button>
+                        <button
+                            className={`vor-chip ${state.showWaveformLine ? 'vor-active' : ''}`}
+                            onClick={() => app.setWaveformLineVisible(!state.showWaveformLine)}
+                        >
+                            {state.showWaveformLine ? 'Wave Line On' : 'Wave Line Off'}
+                        </button>
+                        <button
+                            className={`vor-chip ${state.showRadialVisualizer ? 'vor-active' : ''}`}
+                            onClick={() => app.setRadialVisualizerVisible(!state.showRadialVisualizer)}
+                        >
+                            {state.showRadialVisualizer ? 'Circle On' : 'Circle Off'}
+                        </button>
+                    </div>
+                    <p className='vor-help'>
+                        Use these toggles to show or hide the waveform line and the radial ring. The radial ring can be dragged directly in the viewport, and the outer handle scales it.
+                    </p>
                 </div>
             </ControlCard>
 
@@ -1171,31 +1602,92 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                     </div>
                 </div>
             </ControlCard>
-        </div>
+        </div>}
 
-        <div className='vor-status'>
-            <ControlCard title='Session'>
+        {/* EXPAND BUTTON — appears at top-left when sidebar is CLOSED */}
+        {!state.showSidebar && (
+            <div
+                style={{
+                    position: 'absolute',
+                    top: '18px',
+                    left: '18px',
+                    zIndex: 40,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    pointerEvents: 'auto'
+                }}
+            >
+                <h1 style={{ margin: 0, fontSize: '1.5rem', letterSpacing: '-0.03em' }}>Virus on the Rock</h1>
+
+                <button
+                    className="vor-chip vor-toggle-small"
+                    onClick={() => app.setSidebarVisible(!state.showSidebar)}
+                    title={state.showSidebar ? "Hide Sidebar" : "Expand Sidebar"}
+                    style={{
+                        minWidth: '36px',
+                        height: '36px',
+                        padding: 0,
+                        fontSize: '1.3rem',
+                        lineHeight: 1
+                    }}
+                >
+                    {state.showSidebar ? '←' : '→'}
+                </button>
+            </div>
+        )}
+
+        {/* Session widget (when open) */}
+        {state.showSessionInfo && <div className='vor-status'>
+            <ControlCard title='Session' style={{ position: 'relative' }}>
+                {/* Close button inside the widget */}
+                <button
+                    className="vor-chip vor-toggle-small"
+                    onClick={() => app.setSessionInfoVisible(false)}
+                    title="Hide Session Info"
+                    style={{
+                        position: 'absolute',
+                        top: '14px',
+                        right: '14px',
+                        minWidth: '28px',
+                        height: '28px',
+                        padding: 0,
+                        fontSize: '1.1rem'
+                    }}
+                >
+                    ✕
+                </button>
+
                 <p className='vor-status-text'>{state.currentStructureLabel ?? 'No structure loaded yet.'}</p>
                 <dl className='vor-status-grid'>
-                    <div>
-                        <dt>Audio</dt>
-                        <dd>{state.currentAudioLabel ?? 'No track loaded'}</dd>
-                    </div>
-                    <div>
-                        <dt>Playback</dt>
-                        <dd>{state.audioPlaying ? 'Playing' : 'Stopped'}</dd>
-                    </div>
-                    <div>
-                        <dt>Preset</dt>
-                        <dd>{formatPresetLabel(state.activePreset)}</dd>
-                    </div>
-                    <div>
-                        <dt>Axis Mode</dt>
-                        <dd>{getAxisStatusLabel(state)}</dd>
-                    </div>
+                    <div><dt>Audio</dt><dd>{state.currentAudioLabel ?? 'No track loaded'}</dd></div>
+                    <div><dt>Playback</dt><dd>{state.audioPlaying ? 'Playing' : 'Stopped'}</dd></div>
+                    <div><dt>Preset</dt><dd>{formatPresetLabel(state.activePreset)}</dd></div>
+                    <div><dt>Axis Mode</dt><dd>{getAxisStatusLabel(state)}</dd></div>
                 </dl>
             </ControlCard>
-        </div>
+        </div>}
+
+        {/* Floating "Show Session" button — appears only when closed, bottom-right */}
+        {!state.showSessionInfo && (
+            <button
+                className="vor-chip vor-toggle-small"
+                onClick={() => app.setSessionInfoVisible(true)}
+                title="Show Session Info"
+                style={{
+                    position: 'absolute',
+                    bottom: '18px',
+                    right: '18px',
+                    zIndex: 10,
+                    minWidth: '36px',
+                    height: '36px',
+                    padding: 0,
+                    fontSize: '1.1rem'
+                }}
+            >
+                i
+            </button>
+        )}
     </div>;
 }
 

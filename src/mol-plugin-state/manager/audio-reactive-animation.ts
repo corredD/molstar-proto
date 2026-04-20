@@ -58,20 +58,30 @@ export const AudioReactiveAnimationManagerParams = {
 export type AudioReactiveAnimationManagerParams = typeof AudioReactiveAnimationManagerParams
 export type AudioReactiveAnimationManagerValues = PD.Values<AudioReactiveAnimationManagerParams>;
 
+export type AudioReactiveVisualizationFrame = {
+    waveform: Float32Array<ArrayBuffer>,
+    spectrum: Float32Array<ArrayBuffer>,
+};
+
 export type AudioReactiveStatus = {
     sourceLabel?: string,
     loaded: boolean,
     playing: boolean,
     sampleRate?: number,
     frame: AudioReactiveFrame<DefaultAudioBandKey>,
+    visualization: AudioReactiveVisualizationFrame,
     error?: string,
 };
 
+const AudioReactiveWaveformSampleCount = 96;
+const AudioReactiveSpectrumSampleCount = 56;
 const EmptyAudioReactiveFrame = createEmptyAudioReactiveFrame(DefaultAudioBandDefinitions);
+const EmptyAudioReactiveVisualization = createAudioReactiveVisualizationFrame();
 const InitialAudioReactiveStatus: AudioReactiveStatus = {
     loaded: false,
     playing: false,
     frame: EmptyAudioReactiveFrame,
+    visualization: EmptyAudioReactiveVisualization,
 };
 
 function getAudioContextCtor(): (new() => AudioContext) | undefined {
@@ -91,6 +101,59 @@ function areFramesClose(a: AudioReactiveFrame<DefaultAudioBandKey>, b: AudioReac
     return true;
 }
 
+function createAudioReactiveVisualizationFrame(): AudioReactiveVisualizationFrame {
+    return {
+        waveform: new Float32Array(AudioReactiveWaveformSampleCount),
+        spectrum: new Float32Array(AudioReactiveSpectrumSampleCount),
+    };
+}
+
+function clearAudioReactiveVisualization(frame: AudioReactiveVisualizationFrame) {
+    frame.waveform.fill(0);
+    frame.spectrum.fill(0);
+}
+
+function writeWaveformSamples(source: Float32Array, target: Float32Array) {
+    const lastIndex = Math.max(0, source.length - 1);
+    if (source.length === 0) {
+        target.fill(0);
+        return;
+    }
+
+    for (let i = 0, il = target.length; i < il; ++i) {
+        const t = il > 1 ? i / (il - 1) : 0;
+        const position = t * lastIndex;
+        const left = Math.floor(position);
+        const right = Math.min(lastIndex, left + 1);
+        const alpha = position - left;
+        target[i] = source[left] * (1 - alpha) + source[right] * alpha;
+    }
+}
+
+function writeSpectrumSamples(source: Uint8Array, target: Float32Array) {
+    const lastIndex = Math.max(0, source.length - 1);
+    if (source.length === 0) {
+        target.fill(0);
+        return;
+    }
+
+    for (let i = 0, il = target.length; i < il; ++i) {
+        const startT = il > 0 ? i / il : 0;
+        const endT = il > 0 ? (i + 1) / il : 1;
+        const start = Math.min(lastIndex, Math.floor(Math.pow(startT, 1.75) * lastIndex));
+        const end = Math.max(start + 1, Math.min(source.length, Math.ceil(Math.pow(endT, 1.75) * source.length)));
+        let sumSq = 0;
+        let count = 0;
+        for (let j = start; j < end; ++j) {
+            const value = source[j] / 255;
+            sumSq += value * value;
+            count += 1;
+        }
+        const rms = count > 0 ? Math.sqrt(sumSq / count) : 0;
+        target[i] = 1 - Math.exp(-rms * 2.5);
+    }
+}
+
 export class AudioReactiveAnimationManager {
     readonly state = {
         audioPlayer: new BehaviorSubject<HTMLAudioElement | null>(null),
@@ -104,7 +167,9 @@ export class AudioReactiveAnimationManager {
     private analyser?: AnalyserNode;
     private sourceNode?: MediaElementAudioSourceNode;
     private timeDomainData?: Float32Array<ArrayBuffer>;
+    private frequencyDomainData?: Uint8Array<ArrayBuffer>;
     private silenceData?: Float32Array<ArrayBuffer>;
+    private readonly visualization = createAudioReactiveVisualizationFrame();
     private currentFrame = EmptyAudioReactiveFrame;
     private lastUiUpdateMs = 0;
     private lastTickMs = 0;
@@ -153,6 +218,7 @@ export class AudioReactiveAnimationManager {
         }
         this.analyser.smoothingTimeConstant = 0;
         this.timeDomainData = new Float32Array(this.analyser.fftSize);
+        this.frequencyDomainData = new Uint8Array(this.analyser.frequencyBinCount);
         this.silenceData = new Float32Array(this.analyser.fftSize);
     }
 
@@ -174,6 +240,7 @@ export class AudioReactiveAnimationManager {
             playing: !!audio && !audio.paused && !audio.ended,
             sampleRate: this.audioContext?.sampleRate,
             frame: this.currentFrame,
+            visualization: this.visualization,
             error,
         });
     }
@@ -251,6 +318,7 @@ export class AudioReactiveAnimationManager {
         this.sourceLabel = label;
         this.reactor.reset();
         this.currentFrame = EmptyAudioReactiveFrame;
+        clearAudioReactiveVisualization(this.visualization);
         this.lastTickMs = 0;
         audio.pause();
         audio.currentTime = 0;
@@ -291,6 +359,7 @@ export class AudioReactiveAnimationManager {
         audio.currentTime = 0;
         this.reactor.reset();
         this.currentFrame = EmptyAudioReactiveFrame;
+        clearAudioReactiveVisualization(this.visualization);
         this.lastTickMs = 0;
         this.updateStatus(void 0, true);
     }
@@ -307,6 +376,7 @@ export class AudioReactiveAnimationManager {
         this.sourceLabel = void 0;
         this.reactor.reset();
         this.currentFrame = EmptyAudioReactiveFrame;
+        clearAudioReactiveVisualization(this.visualization);
         this.lastTickMs = 0;
         this.updateStatus(void 0, true);
     }
@@ -316,9 +386,10 @@ export class AudioReactiveAnimationManager {
         const dtMs = this.lastTickMs > 0 ? Math.min(100, Math.max(0, timeMs - this.lastTickMs)) : 16;
         this.lastTickMs = timeMs;
 
-        if (!audio || !audio.src || !this.audioContext || !this.analyser || !this.timeDomainData || !this.silenceData) {
+        if (!audio || !audio.src || !this.audioContext || !this.analyser || !this.timeDomainData || !this.frequencyDomainData || !this.silenceData) {
             if (!areFramesClose(this.currentFrame, EmptyAudioReactiveFrame)) {
                 this.currentFrame = EmptyAudioReactiveFrame;
+                clearAudioReactiveVisualization(this.visualization);
                 this.updateStatus(void 0, false, timeMs);
             }
             return this.currentFrame;
@@ -329,8 +400,12 @@ export class AudioReactiveAnimationManager {
         try {
             if (audio.paused || audio.ended) {
                 this.currentFrame = this.reactor.analyze(this.silenceData, sampleRate, dtMs);
+                clearAudioReactiveVisualization(this.visualization);
             } else {
                 this.analyser.getFloatTimeDomainData(this.timeDomainData);
+                this.analyser.getByteFrequencyData(this.frequencyDomainData);
+                writeWaveformSamples(this.timeDomainData, this.visualization.waveform);
+                writeSpectrumSamples(this.frequencyDomainData, this.visualization.spectrum);
                 this.currentFrame = this.reactor.analyze(this.timeDomainData, sampleRate, dtMs);
             }
             this.updateStatus(void 0, false, timeMs);
