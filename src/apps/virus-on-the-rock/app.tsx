@@ -26,10 +26,17 @@ import { StructureRef } from '../../mol-plugin-state/manager/structure/hierarchy
 import { StateTransforms } from '../../mol-plugin-state/transforms';
 import { StructureRepresentation3D } from '../../mol-plugin-state/transforms/representation';
 import { Viewer } from '../viewer/app';
-import { areAnimationPropsEqual } from '../../mol-geo/geometry/animation';
+import { areAnimationPropsEqual, type AnimationProps, type TumbleAxisName, type TumbleAxisSourceName } from '../../mol-geo/geometry/animation';
 
 type AxisOption = {
     value: AudioReactiveAssemblyAxisOrder,
+    label: string,
+};
+
+type AxisCycleTarget = `local:${TumbleAxisName}` | `assembly:${AudioReactiveAssemblyAxisOrder}`;
+
+type AxisCycleOption = {
+    value: AxisCycleTarget,
     label: string,
 };
 
@@ -39,6 +46,9 @@ type VirusOnTheRockState = {
     currentAudioLabel?: string,
     loadedEntries: { ref: string, label: string }[],
     audioLoaded: boolean,
+    axisModeEnabled: boolean,
+    axisSource: TumbleAxisSourceName,
+    localAxis: TumbleAxisName,
     axisOptions: AxisOption[],
     selectedAxisOrder: AudioReactiveAssemblyAxisOrder,
     wiggleEffectScale: number,
@@ -49,6 +59,8 @@ type VirusOnTheRockState = {
     hasAssemblyAxes: boolean,
     axisCycleEnabled: boolean,
     axisCycleEvery: number,
+    cycleTargets: AxisCycleTarget[],
+    activeCycleTarget?: AxisCycleTarget,
 };
 
 const DefaultPdbId = '2tbv';
@@ -132,11 +144,93 @@ function getCyclingAxisOptions(axisOptions: AxisOption[]) {
         .sort((a, b) => parseInt(b.value, 10) - parseInt(a.value, 10));
 }
 
-function createInitialState(params: AudioReactiveAnimationManagerValues): VirusOnTheRockState {
+const LocalAxisOptions = [
+    { value: 'x' as const, label: 'X' },
+    { value: 'y' as const, label: 'Y' },
+    { value: 'z' as const, label: 'Z' },
+] as const;
+
+const DefaultLocalCycleTargets = LocalAxisOptions.map(option => `local:${option.value}` as AxisCycleTarget);
+
+function getLocalCycleTarget(axis: TumbleAxisName): AxisCycleTarget {
+    return `local:${axis}`;
+}
+
+function getAssemblyCycleTarget(order: AudioReactiveAssemblyAxisOrder): AxisCycleTarget {
+    return `assembly:${order}`;
+}
+
+function getAxisCycleOptions(axisOptions: AxisOption[]): AxisCycleOption[] {
+    return [
+        ...LocalAxisOptions.map(option => ({ value: getLocalCycleTarget(option.value), label: option.label })),
+        ...getCyclingAxisOptions(axisOptions).map(option => ({ value: getAssemblyCycleTarget(option.value), label: option.label })),
+    ];
+}
+
+function getDefaultCycleTargets(axisOptions: AxisOption[]) {
+    return getAxisCycleOptions(axisOptions).map(option => option.value);
+}
+
+function getEnabledCycleOptions(state: Pick<VirusOnTheRockState, 'axisOptions' | 'cycleTargets'>) {
+    const cycleTargets = new Set(state.cycleTargets);
+    return getAxisCycleOptions(state.axisOptions).filter(option => cycleTargets.has(option.value));
+}
+
+function isLocalCycleTarget(target: AxisCycleTarget): target is `local:${TumbleAxisName}` {
+    return target.startsWith('local:');
+}
+
+function getLocalAxisFromCycleTarget(target: AxisCycleTarget): TumbleAxisName {
+    return target.slice('local:'.length) as TumbleAxisName;
+}
+
+function getAssemblyOrderFromCycleTarget(target: AxisCycleTarget): AudioReactiveAssemblyAxisOrder {
+    return target.slice('assembly:'.length) as AudioReactiveAssemblyAxisOrder;
+}
+
+function getCycleTargetLabel(target: AxisCycleTarget, axisOptions: AxisOption[]) {
+    return getAxisCycleOptions(axisOptions).find(option => option.value === target)?.label ?? target;
+}
+
+function sanitizeCycleTargets(cycleTargets: readonly AxisCycleTarget[], axisOptions: AxisOption[]) {
+    const available = new Set(getAxisCycleOptions(axisOptions).map(option => option.value));
+    return cycleTargets.filter(target => available.has(target));
+}
+
+function getAxisModeState(animation: AnimationProps) {
+    return {
+        axisModeEnabled: animation.tumbleTranslationMode === 'axis',
+        axisSource: animation.tumbleAxisSource,
+        localAxis: animation.tumbleAxis,
+    } as const;
+}
+
+function getAxisAnimationPatch(state: Pick<VirusOnTheRockState, 'axisModeEnabled' | 'axisSource' | 'localAxis'>): Pick<AnimationProps, 'tumbleTranslationMode' | 'tumbleAxisSource' | 'tumbleAxis'> {
+    return {
+        tumbleTranslationMode: state.axisModeEnabled ? 'axis' : 'noise',
+        tumbleAxisSource: state.axisSource,
+        tumbleAxis: state.localAxis,
+    };
+}
+
+function getAxisStatusLabel(state: VirusOnTheRockState) {
+    if (!state.axisModeEnabled) return 'Off';
+    if (state.axisCycleEnabled) {
+        const activeTarget = state.activeCycleTarget ?? getEnabledCycleOptions(state)[0]?.value;
+        return activeTarget ? `Beat Cycle · ${getCycleTargetLabel(activeTarget, state.axisOptions)}` : 'Beat Cycle';
+    }
+    if (state.axisSource === 'local') return `${state.localAxis.toUpperCase()} / -${state.localAxis.toUpperCase()}`;
+    if (!state.hasAssemblyAxes) return 'Assembly unavailable';
+    return `Manual · ${state.axisOptions.find(option => option.value === state.selectedAxisOrder)?.label ?? 'Auto'}`;
+}
+
+function createInitialState(params: AudioReactiveAnimationManagerValues, animation: AnimationProps): VirusOnTheRockState {
+    const axisState = getAxisModeState(animation);
     return {
         activePreset: 'bass-spectrum',
         loadedEntries: [],
         audioLoaded: false,
+        ...axisState,
         axisOptions: [],
         selectedAxisOrder: params.assemblyAxisOrder,
         wiggleEffectScale: params.wiggleEffectScale,
@@ -147,6 +241,8 @@ function createInitialState(params: AudioReactiveAnimationManagerValues): VirusO
         hasAssemblyAxes: false,
         axisCycleEnabled: false,
         axisCycleEvery: 1,
+        cycleTargets: DefaultLocalCycleTargets,
+        activeCycleTarget: void 0,
     };
 }
 
@@ -157,6 +253,7 @@ export class VirusOnTheRockApp {
     private readonly uiRoot: Root;
     private readonly configuredStructureVersions = new Map<string, string>();
     private readonly styledStructureVersions = new Map<string, string>();
+    private cycleTargetsCustomized = false;
     private syncToken = 0;
     private cameraSpinHandle: number | undefined;
     private lastCameraSpinTimestamp: number | undefined;
@@ -166,7 +263,8 @@ export class VirusOnTheRockApp {
 
     private constructor(readonly viewer: Viewer, uiTarget: HTMLElement) {
         const params = this.viewer.plugin.managers.audioReactive.state.params.value;
-        this.state = new BehaviorSubject(createInitialState(params));
+        const animation = this.viewer.plugin.managers.structure.component.state.options.animation;
+        this.state = new BehaviorSubject(createInitialState(params, animation));
         this.uiRoot = createRoot(uiTarget);
 
         this.viewer.plugin.managers.dragAndDrop.addHandler('virus-on-the-rock', async (files) => {
@@ -187,7 +285,7 @@ export class VirusOnTheRockApp {
             void this.syncSelectedStructure();
         }));
         this.subscriptions.add(this.viewer.plugin.managers.audioReactive.state.status.subscribe(status => {
-            this.updateAxisCycle(status);
+            void this.updateAxisCycle(status);
             this.patchState({
                 currentAudioLabel: status.sourceLabel,
                 audioLoaded: status.loaded,
@@ -196,7 +294,6 @@ export class VirusOnTheRockApp {
         }));
         this.subscriptions.add(this.viewer.plugin.managers.audioReactive.state.params.subscribe(values => {
             this.patchState({
-                selectedAxisOrder: values.assemblyAxisOrder,
                 wiggleEffectScale: values.wiggleEffectScale,
                 tumbleEffectScale: values.tumbleEffectScale,
                 assemblyAxisAmplitudeScale: values.assemblyAxisAmplitudeScale,
@@ -240,8 +337,50 @@ export class VirusOnTheRockApp {
         return this.viewer.plugin.managers.structure.hierarchy.selection.structures[0];
     }
 
+    private isAxisCycleActive(state = this.state.value) {
+        return state.axisModeEnabled
+            && state.axisCycleEnabled
+            && getEnabledCycleOptions(state).length > 1;
+    }
+
     private patchState(patch: Partial<VirusOnTheRockState>) {
         this.state.next({ ...this.state.value, ...patch });
+    }
+
+    private async applyManualAxisSelection(state = this.state.value) {
+        if (state.axisModeEnabled && state.axisSource === 'assembly') {
+            this.viewer.plugin.managers.audioReactive.setParams({ assemblyAxisOrder: state.selectedAxisOrder });
+        }
+        await this.updateAnimationOptions(getAxisAnimationPatch(state));
+    }
+
+    private async applyCycleTarget(target: AxisCycleTarget) {
+        if (isLocalCycleTarget(target)) {
+            await this.updateAnimationOptions({
+                tumbleTranslationMode: 'axis',
+                tumbleAxisSource: 'local',
+                tumbleAxis: getLocalAxisFromCycleTarget(target),
+            });
+        } else {
+            this.viewer.plugin.managers.audioReactive.setParams({ assemblyAxisOrder: getAssemblyOrderFromCycleTarget(target) });
+            await this.updateAnimationOptions({
+                tumbleTranslationMode: 'axis',
+                tumbleAxisSource: 'assembly',
+                tumbleAxis: this.state.value.localAxis,
+            });
+        }
+        this.patchState({ activeCycleTarget: target });
+    }
+
+    private async updateAnimationOptions(patch: Partial<AnimationProps>) {
+        const options = this.viewer.plugin.managers.structure.component.state.options;
+        await this.viewer.plugin.managers.structure.component.setOptions({
+            ...options,
+            animation: {
+                ...options.animation,
+                ...patch,
+            }
+        });
     }
 
     private async initializeDefaults() {
@@ -323,20 +462,99 @@ export class VirusOnTheRockApp {
         this.beatCycleIndex = 0;
     }
 
-    private getCyclingAxes() {
-        return getCyclingAxisOptions(this.state.value.axisOptions);
+    private getCyclingAxes(state = this.state.value) {
+        return getEnabledCycleOptions(state);
     }
 
-    setCycleEnabled(enabled: boolean) {
+    async setAxisModeEnabled(enabled: boolean) {
         this.resetAxisCycleRuntime();
-        this.patchState({ axisCycleEnabled: enabled });
 
-        if (!enabled) return;
+        const axisSource = this.state.value.axisSource === 'assembly' && !this.state.value.hasAssemblyAxes
+            ? 'local'
+            : this.state.value.axisSource;
+        const nextState = { ...this.state.value, axisModeEnabled: enabled, axisSource };
 
-        const cycleAxes = this.getCyclingAxes();
+        this.patchState({ axisModeEnabled: enabled, axisSource, activeCycleTarget: void 0 });
+
+        if (!enabled) {
+            await this.updateAnimationOptions(getAxisAnimationPatch(nextState));
+            return;
+        }
+
+        if (nextState.axisCycleEnabled) {
+            const cycleAxes = this.getCyclingAxes(nextState);
+            if (cycleAxes.length > 0) {
+                await this.applyCycleTarget(cycleAxes[0].value);
+                return;
+            }
+        }
+
+        await this.applyManualAxisSelection(nextState);
+    }
+
+    async setLocalAxis(axis: TumbleAxisName) {
+        this.resetAxisCycleRuntime();
+
+        const nextState = { ...this.state.value, axisSource: 'local' as const, localAxis: axis };
+        this.patchState({ axisSource: 'local', localAxis: axis });
+        if (!nextState.axisCycleEnabled && nextState.axisModeEnabled) {
+            await this.applyManualAxisSelection(nextState);
+        }
+    }
+
+    async setAssemblyAxisSource() {
+        if (!this.state.value.hasAssemblyAxes) return;
+
+        this.resetAxisCycleRuntime();
+
+        const nextState = { ...this.state.value, axisSource: 'assembly' as const };
+        const nextAxisOrder = nextState.axisOptions.some(option => option.value === nextState.selectedAxisOrder)
+            ? nextState.selectedAxisOrder
+            : nextState.axisOptions[0]?.value ?? nextState.selectedAxisOrder;
+
+        this.patchState({ axisSource: 'assembly', selectedAxisOrder: nextAxisOrder });
+        if (!nextState.axisCycleEnabled && nextState.axisModeEnabled) {
+            await this.applyManualAxisSelection({ ...nextState, selectedAxisOrder: nextAxisOrder });
+        }
+    }
+
+    async setCycleEnabled(enabled: boolean) {
+        this.resetAxisCycleRuntime();
+        const nextState = { ...this.state.value, axisCycleEnabled: enabled, activeCycleTarget: void 0 };
+        this.patchState({ axisCycleEnabled: enabled, activeCycleTarget: void 0 });
+
+        if (!enabled) {
+            await this.applyManualAxisSelection(nextState);
+            return;
+        }
+
+        const cycleAxes = this.getCyclingAxes(nextState);
         if (cycleAxes.length === 0) return;
+        await this.applyCycleTarget(cycleAxes[0].value);
+    }
 
-        this.viewer.plugin.managers.audioReactive.setParams({ assemblyAxisOrder: cycleAxes[0].value });
+    async toggleCycleTarget(target: AxisCycleTarget) {
+        this.resetAxisCycleRuntime();
+        this.cycleTargetsCustomized = true;
+
+        const cycleTargets = this.state.value.cycleTargets.includes(target)
+            ? this.state.value.cycleTargets.filter(value => value !== target)
+            : [...this.state.value.cycleTargets, target];
+        const nextState = { ...this.state.value, cycleTargets };
+        const nextCycleTargets = this.getCyclingAxes(nextState);
+        const nextActiveTarget = nextState.activeCycleTarget && cycleTargets.includes(nextState.activeCycleTarget)
+            ? nextState.activeCycleTarget
+            : nextCycleTargets[0]?.value;
+
+        this.patchState({ cycleTargets, activeCycleTarget: nextActiveTarget });
+
+        if (!nextState.axisCycleEnabled || !nextState.axisModeEnabled) return;
+
+        if (nextActiveTarget) {
+            await this.applyCycleTarget(nextActiveTarget);
+        } else {
+            await this.applyManualAxisSelection(nextState);
+        }
     }
 
     setCycleEvery(value: number) {
@@ -344,14 +562,14 @@ export class VirusOnTheRockApp {
         this.patchState({ axisCycleEvery: value });
     }
 
-    private updateAxisCycle(status: ReturnType<typeof this.viewer.plugin.managers.audioReactive.state.status.getValue>) {
+    private async updateAxisCycle(status: ReturnType<typeof this.viewer.plugin.managers.audioReactive.state.status.getValue>) {
         if (!status.playing) {
             this.beatTriggerActive = false;
             return;
         }
 
         const beatActive = status.frame.beatIntensity >= this.state.value.beatThreshold;
-        const shouldAdvance = this.state.value.axisCycleEnabled && beatActive && !this.beatTriggerActive;
+        const shouldAdvance = this.isAxisCycleActive() && beatActive && !this.beatTriggerActive;
         this.beatTriggerActive = beatActive;
 
         if (!shouldAdvance) return;
@@ -363,7 +581,7 @@ export class VirusOnTheRockApp {
         if (this.beatCycleCount % this.state.value.axisCycleEvery !== 0) return;
 
         this.beatCycleIndex = (this.beatCycleIndex + 1) % cycleAxes.length;
-        this.viewer.plugin.managers.audioReactive.setParams({ assemblyAxisOrder: cycleAxes[this.beatCycleIndex].value });
+        await this.applyCycleTarget(cycleAxes[this.beatCycleIndex].value);
     }
 
     private async ensureSpacefillRepresentation(structureRef: StructureRef) {
@@ -482,6 +700,8 @@ export class VirusOnTheRockApp {
                 audioLoaded: this.state.value.audioLoaded,
                 axisOptions: [],
                 hasAssemblyAxes: false,
+                cycleTargets: this.cycleTargetsCustomized ? sanitizeCycleTargets(this.state.value.cycleTargets, []) : DefaultLocalCycleTargets,
+                activeCycleTarget: void 0,
             });
             return;
         }
@@ -500,20 +720,39 @@ export class VirusOnTheRockApp {
         const structure = structureRef.cell.obj?.data;
         const symmetry = structure ? AssemblySymmetryProvider.get(structure).value : void 0;
         const axisOptions = getAxisOptions(symmetry);
-        const selectedAxisOrder = this.viewer.plugin.managers.audioReactive.state.params.value.assemblyAxisOrder;
-        const cycleAxes = getCyclingAxisOptions(axisOptions);
-        const cycleEnabled = this.state.value.axisCycleEnabled && cycleAxes.length > 1;
-        const nextAxisOrder = cycleEnabled
-            ? cycleAxes[0]?.value ?? selectedAxisOrder
-            : axisOptions.some(option => option.value === selectedAxisOrder)
-                ? selectedAxisOrder
-                : axisOptions[0]?.value ?? selectedAxisOrder;
+        const nextAxisOrder = axisOptions.some(option => option.value === this.state.value.selectedAxisOrder)
+            ? this.state.value.selectedAxisOrder
+            : axisOptions[0]?.value ?? this.state.value.selectedAxisOrder;
+        const hasAssemblyAxes = axisOptions.length > 0;
+        let nextAxisSource = this.state.value.axisSource;
+        if (!hasAssemblyAxes && nextAxisSource === 'assembly') nextAxisSource = 'local';
+        const nextCycleTargets = this.cycleTargetsCustomized
+            ? sanitizeCycleTargets(this.state.value.cycleTargets, axisOptions)
+            : getDefaultCycleTargets(axisOptions);
+        const cycleState = {
+            ...this.state.value,
+            axisOptions,
+            hasAssemblyAxes,
+            axisSource: nextAxisSource,
+            selectedAxisOrder: nextAxisOrder,
+            cycleTargets: nextCycleTargets,
+        };
+        const cycleAxes = this.getCyclingAxes(cycleState);
+        const nextActiveCycleTarget = this.state.value.activeCycleTarget && nextCycleTargets.includes(this.state.value.activeCycleTarget)
+            ? this.state.value.activeCycleTarget
+            : cycleAxes[0]?.value;
 
-        if (nextAxisOrder !== selectedAxisOrder) {
-            this.viewer.plugin.managers.audioReactive.setParams({ assemblyAxisOrder: nextAxisOrder });
+        if (this.state.value.axisModeEnabled && this.state.value.axisCycleEnabled && nextActiveCycleTarget) {
+            await this.applyCycleTarget(nextActiveCycleTarget);
+            if (token !== this.syncToken) return;
+        } else if (this.state.value.axisModeEnabled && (nextAxisSource !== this.state.value.axisSource || nextAxisOrder !== this.state.value.selectedAxisOrder)) {
+            await this.applyManualAxisSelection({
+                ...this.state.value,
+                axisSource: nextAxisSource,
+                selectedAxisOrder: nextAxisOrder,
+            });
+            if (token !== this.syncToken) return;
         }
-
-        if (cycleEnabled) this.resetAxisCycleRuntime();
 
         this.patchState({
             currentStructureLabel: getStructureLabel(structureRef),
@@ -522,8 +761,11 @@ export class VirusOnTheRockApp {
                 label: getStructureLabel(structure) ?? structure.cell.obj?.label ?? structure.cell.transform.ref
             })),
             axisOptions,
-            hasAssemblyAxes: axisOptions.length > 0,
+            hasAssemblyAxes,
+            axisSource: nextAxisSource,
             selectedAxisOrder: nextAxisOrder,
+            cycleTargets: nextCycleTargets,
+            activeCycleTarget: this.state.value.axisCycleEnabled ? nextActiveCycleTarget : void 0,
         });
     }
 
@@ -624,21 +866,18 @@ export class VirusOnTheRockApp {
             animation: {
                 ...options.animation,
                 ...preset.animation,
+                ...getAxisAnimationPatch(current),
             }
         });
         await clearStructureWiggle(this.viewer.plugin, this.currentComponents);
         this.patchState({ activePreset: name });
     }
 
-    setAxisOrder(order: AudioReactiveAssemblyAxisOrder) {
-        this.viewer.plugin.managers.audioReactive.setParams({ assemblyAxisOrder: order });
+    async setAxisOrder(order: AudioReactiveAssemblyAxisOrder) {
+        this.patchState({ selectedAxisOrder: order });
 
-        const cycleAxes = this.getCyclingAxes();
-        const cycleIndex = cycleAxes.findIndex(option => option.value === order);
-        if (cycleIndex >= 0) {
-            this.beatCycleIndex = cycleIndex;
-            this.beatCycleCount = 0;
-            this.beatTriggerActive = false;
+        if (!this.state.value.axisCycleEnabled && this.state.value.axisModeEnabled && this.state.value.axisSource === 'assembly') {
+            await this.applyManualAxisSelection({ ...this.state.value, selectedAxisOrder: order });
         }
     }
 
@@ -758,33 +997,80 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                 </div>
             </ControlCard>
 
-            <ControlCard title='Assembly Axis'>
-                {state.hasAssemblyAxes
-                    ? <div className='vor-stack'>
+            <ControlCard title='Axis Mode'>
+                <div className='vor-stack'>
+                    <div className='vor-chip-row'>
+                        <button
+                            className={`vor-chip ${!state.axisModeEnabled ? 'vor-active' : ''}`}
+                            onClick={() => void app.setAxisModeEnabled(false)}
+                        >
+                            Off
+                        </button>
+                        <button
+                            className={`vor-chip ${state.axisModeEnabled ? 'vor-active' : ''}`}
+                            onClick={() => void app.setAxisModeEnabled(true)}
+                        >
+                            On
+                        </button>
+                    </div>
+
+                    {state.axisModeEnabled && <>
+                        <div className='vor-chip-row'>
+                            {LocalAxisOptions.map(option => <button
+                                key={option.value}
+                                className={`vor-chip ${state.axisSource === 'local' && state.localAxis === option.value ? 'vor-active' : ''}`}
+                                onClick={() => void app.setLocalAxis(option.value)}
+                            >
+                                {option.label}
+                            </button>)}
+                            <button
+                                className={`vor-chip ${state.axisSource === 'assembly' ? 'vor-active' : ''}`}
+                                onClick={() => void app.setAssemblyAxisSource()}
+                                disabled={!state.hasAssemblyAxes}
+                            >
+                                Assembly
+                            </button>
+                        </div>
+
                         <div className='vor-chip-row'>
                             <button
                                 className={`vor-chip ${!state.axisCycleEnabled ? 'vor-active' : ''}`}
-                                onClick={() => app.setCycleEnabled(false)}
+                                onClick={() => void app.setCycleEnabled(false)}
                             >
                                 Manual
                             </button>
                             <button
                                 className={`vor-chip ${state.axisCycleEnabled ? 'vor-active' : ''}`}
-                                onClick={() => app.setCycleEnabled(true)}
-                                disabled={getCyclingAxisOptions(state.axisOptions).length <= 1}
+                                onClick={() => void app.setCycleEnabled(true)}
+                                disabled={getEnabledCycleOptions(state).length <= 1}
                             >
                                 Beat Cycle
                             </button>
                         </div>
-                        <div className='vor-chip-row'>
+
+                        {state.axisSource === 'assembly' && state.hasAssemblyAxes && !state.axisCycleEnabled && <div className='vor-chip-row'>
                             {state.axisOptions.map(option => <button
                                 key={option.value}
                                 className={`vor-chip ${state.selectedAxisOrder === option.value ? 'vor-active' : ''}`}
-                                onClick={() => app.setAxisOrder(option.value)}
+                                onClick={() => void app.setAxisOrder(option.value)}
                             >
                                 {option.label}
                             </button>)}
+                        </div>}
+
+                        <div className='vor-stack'>
+                            <label className='vor-label'>Cycle Uses</label>
+                            <div className='vor-chip-row'>
+                                {getAxisCycleOptions(state.axisOptions).map(option => <button
+                                    key={option.value}
+                                    className={`vor-chip ${state.cycleTargets.includes(option.value) ? 'vor-active' : ''}`}
+                                    onClick={() => void app.toggleCycleTarget(option.value)}
+                                >
+                                    {option.label}
+                                </button>)}
+                            </div>
                         </div>
+
                         <div className='vor-slider-group'>
                             <div className='vor-slider-row'>
                                 <label htmlFor='vor-axis-cycle-every'>Cycle Every N Beats</label>
@@ -802,11 +1088,16 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                             </div>
                         </div>
                         <p className='vor-help'>
-                            Beat Cycle ignores the <b>Auto</b> axis and rotates through the available explicit orders, highest to lowest, on every Nth detected beat.
+                            {state.axisCycleEnabled
+                                ? 'Beat Cycle steps through the selected Cycle Uses chips on every Nth detected beat.'
+                                : 'Source chips control the manual axis. Cycle Uses defines which X/Y/Z and assembly axes Beat Cycle will step through.'}
                         </p>
-                    </div>
-                    : <p className='vor-help'>No assembly symmetry axes available on the current structure. Audio tumble will fall back to the default non-axis behavior.</p>
-                }
+
+                        {!state.hasAssemblyAxes && <p className='vor-help'>
+                            No assembly symmetry axes are available on the current structure, but signed X/Y/Z world-axis motion is still available.
+                        </p>}
+                    </>}
+                </div>
             </ControlCard>
 
             <ControlCard title='Entries'>
@@ -900,7 +1191,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                     </div>
                     <div>
                         <dt>Axis Mode</dt>
-                        <dd>{state.hasAssemblyAxes ? `${state.axisCycleEnabled ? 'Beat Cycle' : 'Manual'} · ${state.axisOptions.find(option => option.value === state.selectedAxisOrder)?.label ?? 'Auto'}` : 'Fallback'}</dd>
+                        <dd>{getAxisStatusLabel(state)}</dd>
                     </div>
                 </dl>
             </ControlCard>

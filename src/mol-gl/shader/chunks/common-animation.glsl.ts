@@ -67,13 +67,18 @@ float getAudioSource(int source) {
     return 1.0;
 }
 
-vec3 getTumbleAxisVector(mat4 transform, int axis) {
-    vec3 axisVector = axis == 0 ? transform[0].xyz : axis == 1 ? transform[1].xyz : transform[2].xyz;
-    float axisLength = length(axisVector);
-    if (axisLength <= 0.00001) {
-        return axis == 0 ? vec3(1.0, 0.0, 0.0) : axis == 1 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+vec3 getTumbleAxisVector(mat4 transform, int axis, vec3 instanceCenter) {
+    vec3 axisVector = axis == 0 ? vec3(1.0, 0.0, 0.0) : axis == 1 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+
+    // Resolve the selected axis to the closer signed world-space Cartesian direction
+    // (+/-X, +/-Y, +/-Z) using the instance center.
+    float radialLength = length(instanceCenter);
+    if (radialLength > 0.00001) {
+        float projection = dot(instanceCenter / radialLength, axisVector);
+        return axisVector * (projection >= 0.0 ? 1.0 : -1.0);
     }
-    return axisVector / axisLength;
+
+    return axisVector;
 }
 
 vec3 getResolvedAssemblyTumbleAxisVector(mat4 transform, vec3 instanceCenter) {
@@ -166,11 +171,12 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
         float seed = (instanceIndex * 127.1 + uObjectId * 311.7) * uTumbleFrequency;
         vec3 localCenter = mat3(transform) * uInvariantBoundingSphere.xyz;
         vec3 instanceCenter = transform[3].xyz + localCenter;
-        bool assemblyAxisMode = uTumbleTranslationMode == 1 && uTumbleAxisSource == 1 && uAudioAssemblyAxisCount > 0;
+        bool axisMode = uTumbleTranslationMode == 1;
+        bool assemblyAxisMode = axisMode && uTumbleAxisSource == 1 && uAudioAssemblyAxisCount > 0;
 
         // Per-instance rotation angles from layered noise (Brownian-like)
         mat3 rot = mat3(1.0);
-        if (!assemblyAxisMode) {
+        if (!axisMode) {
             float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * amplitude;
             float angleY = (fbm(vec3(seed, 0.0, t)) / 0.4375 - 1.0) * amplitude;
             float angleZ = (fbm(vec3(0.0, seed, t)) / 0.4375 - 1.0) * amplitude;
@@ -189,16 +195,12 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
 
         // Per-instance translation offset from layered noise (Brownian-like)
         vec3 offset;
-        if (assemblyAxisMode) {
-            vec3 axis = getResolvedAssemblyTumbleAxisVector(transform, instanceCenter);
+        if (axisMode) {
+            vec3 axis = assemblyAxisMode
+                ? getResolvedAssemblyTumbleAxisVector(transform, instanceCenter)
+                : getTumbleAxisVector(transform, uTumbleAxis, instanceCenter);
             float axisDrive = uAudioTumbleSource != 0 ? getAssemblyAxisDrive() : 1.0;
             offset = axis * amplitude * axisDrive * uAudioAssemblyAxisAmplitudeScale;
-        } else if (uTumbleTranslationMode == 1 && hasResolvedAssemblyTumbleAxis()) {
-            vec3 axis = getTumbleAxisVector(transform, uTumbleAxis);
-            float phase = seed * 0.73 + fbm(vec3(seed + 13.7, seed + 31.7, 0.0)) * 6.28318530718;
-            float wave = sin(t * 1.61803398875 + phase);
-            float beatBoost = uAudioTumbleSource != 0 ? 1.0 + clamp(uAudioBeatIntensity, 0.0, 1.0) : 1.0;
-            offset = axis * wave * amplitude * beatBoost;
         } else {
             offset = vec3(
                 (fbm(vec3(seed + 31.7, t, 0.0)) / 0.4375 - 1.0),
@@ -207,7 +209,10 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
             ) * amplitude;
         }
 
-        // Rotate basis vectors
+        // === FINAL MATRIX ASSEMBLY ===
+        // Rotation is applied to the object's basis vectors
+        // Pivot correction rotates AROUND the local center
+        // offset is added in WORLD space
         mat4 result = transform;
         result[0].xyz = rot * transform[0].xyz;
         result[1].xyz = rot * transform[1].xyz;
