@@ -16,6 +16,7 @@ export type AnimationData = {
     uTumbleAmplitude: ValueCell<number>,
     uTumbleFrequency: ValueCell<number>,
     uTumbleTranslationMode: ValueCell<number>,
+    uTumbleTranslationSync: ValueCell<boolean>,
     uTumbleAxisSource: ValueCell<number>,
     uTumbleAxis: ValueCell<number>,
     uAudioWiggleSource: ValueCell<number>,
@@ -110,6 +111,7 @@ export function getAnimationParam() {
         tumbleAmplitude: PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, { description: 'Amplitude of instance tumble animation.' }),
         tumbleFrequency: PD.Numeric(0.2, { min: 0, max: 2, step: 0.01 }, { description: 'Spatial frequency multiplier for tumble noise.' }),
         tumbleTranslationMode: PD.Select('noise', TumbleTranslationModeOptions, { description: 'Translation mode for instance tumble. Noise keeps Brownian-like motion; Axis oscillates along a selected local instance axis.' }),
+        tumbleTranslationSync: PD.Boolean(false, { hideIf: p => p.tumbleTranslationMode !== 'axis', description: 'Whether to synchronize tumble translation for each group.' }),
         tumbleAxisSource: PD.Select('local', TumbleAxisSourceOptions, { hideIf: p => p.tumbleTranslationMode !== 'axis', description: 'Use either a local instance axis or the selected assembly symmetry axis for axis-based tumble translation.' }),
         tumbleAxis: PD.Select('z', TumbleAxisOptions, { hideIf: p => p.tumbleTranslationMode !== 'axis' || p.tumbleAxisSource !== 'local', description: 'Local instance axis used by axis-based tumble translation.' }),
         audioWiggleSource: PD.Select('off', AudioReactiveSourceOptions, { description: 'Use an analyzed audio value to modulate wiggle amplitude.' }),
@@ -132,6 +134,7 @@ export function areAnimationPropsEqual(a: AnimationProps, b: AnimationProps): bo
         && a.tumbleAmplitude === b.tumbleAmplitude
         && a.tumbleFrequency === b.tumbleFrequency
         && a.tumbleTranslationMode === b.tumbleTranslationMode
+        && a.tumbleTranslationSync === b.tumbleTranslationSync
         && a.tumbleAxisSource === b.tumbleAxisSource
         && a.tumbleAxis === b.tumbleAxis
         && a.audioWiggleSource === b.audioWiggleSource
@@ -152,6 +155,7 @@ export function createAnimationValues(props: AnimationProps) {
         uTumbleAmplitude: ValueCell.create(props.tumbleAmplitude),
         uTumbleFrequency: ValueCell.create(props.tumbleFrequency),
         uTumbleTranslationMode: ValueCell.create(getTumbleTranslationModeIndex(props.tumbleTranslationMode)),
+        uTumbleTranslationSync: ValueCell.create(props.tumbleTranslationSync),
         uTumbleAxisSource: ValueCell.create(getTumbleAxisSourceIndex(props.tumbleAxisSource)),
         uTumbleAxis: ValueCell.create(getTumbleAxisIndex(props.tumbleAxis)),
         uAudioWiggleSource: ValueCell.create(getAudioReactiveSourceIndex(props.audioWiggleSource)),
@@ -172,6 +176,7 @@ export function updateAnimationValues(values: AnimationData, props: AnimationPro
     ValueCell.updateIfChanged(values.uTumbleAmplitude, props.tumbleAmplitude);
     ValueCell.updateIfChanged(values.uTumbleFrequency, props.tumbleFrequency);
     ValueCell.updateIfChanged(values.uTumbleTranslationMode, getTumbleTranslationModeIndex(props.tumbleTranslationMode));
+    ValueCell.updateIfChanged(values.uTumbleTranslationSync, props.tumbleTranslationSync);
     ValueCell.updateIfChanged(values.uTumbleAxisSource, getTumbleAxisSourceIndex(props.tumbleAxisSource));
     ValueCell.updateIfChanged(values.uTumbleAxis, getTumbleAxisIndex(props.tumbleAxis));
     ValueCell.updateIfChanged(values.uAudioWiggleSource, getAudioReactiveSourceIndex(props.audioWiggleSource));

@@ -38,6 +38,7 @@ const AudioReactorSampleRateOptions = [
 export const AudioReactiveAnimationManagerParams = {
     wiggleEffectScale: PD.Numeric(1, { min: 0, max: 4, step: 0.05 }, { category: 'Effect', description: 'Global multiplier applied to reactive values when driving wiggle.' }),
     tumbleEffectScale: PD.Numeric(1, { min: 0, max: 50, step: 0.05 }, { category: 'Effect', description: 'Global multiplier applied to reactive values when driving tumble.' }),
+    tumbleTranslationSync: PD.Boolean(false, { hideIf: p => p.tumbleTranslationMode !== 'axis', description: 'Whether to synchronize tumble translation for each group.' }),
     assemblyAxisOrder: PD.Select<AudioReactiveAssemblyAxisOrder>('highest', AudioReactiveAssemblyAxisOrderOptions, { category: 'Effect', description: 'Preferred assembly symmetry axis order when using assembly-based tumble translation.' }),
     assemblyAxisAmplitudeScale: PD.Numeric(1, { min: 0, max: 50, step: 0.05 }, { category: 'Effect', description: 'Extra distance multiplier applied only to assembly-axis tumble translation.' }),
     fftSize: PD.Select(DefaultAudioReactorParams.fftSize, AudioReactorFftSizeOptions, { category: 'Analysis', description: 'FFT size used for the audio analysis window.' }),

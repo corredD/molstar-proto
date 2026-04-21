@@ -48,6 +48,7 @@ type VirusOnTheRockState = {
     loadedEntries: { ref: string, label: string }[],
     audioLoaded: boolean,
     axisModeEnabled: boolean,
+    tumbleTranslationSync: boolean,
     axisSource: TumbleAxisSourceName,
     localAxis: TumbleAxisName,
     axisOptions: AxisOption[],
@@ -242,6 +243,7 @@ function createInitialState(params: AudioReactiveAnimationManagerValues, animati
         selectedAxisOrder: params.assemblyAxisOrder,
         wiggleEffectScale: params.wiggleEffectScale,
         tumbleEffectScale: params.tumbleEffectScale,
+        tumbleTranslationSync: params.tumbleTranslationSync,
         assemblyAxisAmplitudeScale: params.assemblyAxisAmplitudeScale,
         beatThreshold: 0.05,
         audioPlaying: false,
@@ -388,6 +390,7 @@ export class VirusOnTheRockApp {
                 tumbleEffectScale: values.tumbleEffectScale,
                 assemblyAxisAmplitudeScale: values.assemblyAxisAmplitudeScale,
                 beatThreshold: values.beatThreshold,
+                tumbleTranslationSync: values.tumbleTranslationSync,
             });
         }));
 
@@ -621,6 +624,11 @@ export class VirusOnTheRockApp {
         const cycleAxes = this.getCyclingAxes(nextState);
         if (cycleAxes.length === 0) return;
         await this.applyCycleTarget(cycleAxes[0].value);
+    }
+
+    async setTumbleTranslationSync(sync: boolean) {
+        this.viewer.plugin.managers.audioReactive.setParams({ tumbleTranslationSync: sync });
+        this.patchState({ tumbleTranslationSync: sync });
     }
 
     async toggleCycleTarget(target: AxisCycleTarget) {
@@ -966,6 +974,7 @@ export class VirusOnTheRockApp {
             assemblyAxisOrder: current.selectedAxisOrder,
             wiggleEffectScale: current.wiggleEffectScale,
             tumbleEffectScale: current.tumbleEffectScale,
+            tumbleTranslationSync: current.tumbleTranslationSync,
             assemblyAxisAmplitudeScale: current.assemblyAxisAmplitudeScale,
             beatThreshold: current.beatThreshold,
         });
@@ -1478,7 +1487,21 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                                 Beat Cycle
                             </button>
                         </div>
-
+                        <div className='vor-chip-row'>
+                            <label className='vor-label'>tumbleTranslationSync</label>
+                            <button
+                                className={`vor-chip ${!state.tumbleTranslationSync ? 'vor-active' : ''}`}
+                                onClick={() => void app.setTumbleTranslationSync(false)}
+                            >
+                                Off
+                            </button>
+                            <button
+                                className={`vor-chip ${state.tumbleTranslationSync ? 'vor-active' : ''}`}
+                                onClick={() => void app.setTumbleTranslationSync(true)}
+                            >
+                                On
+                            </button>
+                        </div>
                         {state.axisSource === 'assembly' && state.hasAssemblyAxes && !state.axisCycleEnabled && <div className='vor-chip-row'>
                             {state.axisOptions.map(option => <button
                                 key={option.value}

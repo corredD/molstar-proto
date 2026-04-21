@@ -437,6 +437,7 @@ export const AnimationSchema = {
     uTumbleAmplitude: UniformSpec('f', 'material'),
     uTumbleFrequency: UniformSpec('f', 'material'),
     uTumbleTranslationMode: UniformSpec('i', 'material'),
+    uTumbleTranslationSync: UniformSpec('b', 'material'),
     uTumbleAxisSource: UniformSpec('i', 'material'),
     uTumbleAxis: UniformSpec('i', 'material'),
     uAudioWiggleSource: UniformSpec('i', 'material'),

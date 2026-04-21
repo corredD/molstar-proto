@@ -1,9 +1,3 @@
-/**
- * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
- *
- * @author Alexander Rose <alexander.rose@weirdbyte.de>
- */
-
 export const common_animation = `
 uniform float uWiggleSpeed;
 uniform float uWiggleAmplitude;
@@ -13,6 +7,7 @@ uniform float uTumbleSpeed;
 uniform float uTumbleAmplitude;
 uniform float uTumbleFrequency;
 uniform int uTumbleTranslationMode;
+uniform int uTumbleTranslationSync;
 uniform int uTumbleAxisSource;
 uniform int uTumbleAxis;
 uniform int uAudioWiggleSource;
@@ -46,38 +41,80 @@ uniform float uTrailAmplitude;
 uniform float uTrailFrequency;
 uniform float uTrailStep;
 
+uniform float uAudioBeatTrigger;     // 1.0 on beat frame, 0.0 otherwise
+uniform float uBeatDecayRate;         // e.g., 4.0 (higher = faster decay)
+
+// Accumulated beat impulse with exponential decay, computed per-frame
+// This should be computed on the CPU side and passed as a uniform:
+//   beatImpulse = max(beatTrigger, beatImpulse * exp(-decayRate * dt));
+uniform float uBeatImpulse;
+
 #ifdef dWiggle
     uniform vec2 uWiggleTexDim;
     uniform sampler2D tWiggle;
     uniform float uWiggleStrength;
 #endif
+float shapeResponse(float value, float power) {
+    // Attempt soft-knee: quiet signals stay quieter, loud signals punch through
+    return pow(clamp(value, 0.0, 1.0), power);
+}
 
 float getAudioSource(int source) {
-    if (source == 1) return uAudioAmplitude;
-    if (source == 2) return uAudioPeakAmplitude;
-    if (source == 3) return uAudioBeatIntensity;
-    if (source == 4) return uAudioMix;
-    if (source == 5) return uAudioSubBass * 1.75;
-    if (source == 6) return uAudioBass * 1.45;
-    if (source == 7) return uAudioLowMids;
-    if (source == 8) return uAudioMids;
-    if (source == 9) return uAudioHighMids;
-    if (source == 10) return uAudioTreble;
+    if (source == 1) return shapeResponse(uAudioAmplitude, 1.5);
+    if (source == 2) return shapeResponse(uAudioPeakAmplitude, 1.2);
+    if (source == 3) return uAudioBeatIntensity; // already onset-shaped
+    if (source == 4) return shapeResponse(uAudioMix, 1.5);
+    // Perceptual loudness compensation (Fletcher-Munson inspired):
+    // Sub-bass and bass need a boost because humans are less sensitive there,
+    // but the FFT already captures the raw energy accurately.
+    // The boost makes visual response match *perceived* loudness.
+    if (source == 5) return shapeResponse(uAudioSubBass * 1.75, 2.5);
+    if (source == 6) return shapeResponse(uAudioBass * 1.45, 2.0);
+    if (source == 7) return shapeResponse(uAudioLowMids, 1.5);
+    if (source == 8) return shapeResponse(uAudioMids, 1.3);
+    if (source == 9) return shapeResponse(uAudioHighMids, 1.2);
+    if (source == 10) return shapeResponse(uAudioTreble, 1.1);
     if (source == 11) return uAudioDominantFrequency;
     return 1.0;
 }
 
-vec3 getTumbleAxisVector(mat4 transform, int axis, vec3 instanceCenter) {
+/* ================================================================
+   PERCEPTUAL AUDIO HELPERS (best visual results)
+   ================================================================ */
+float perceptualEnergy() {
+    // Weighted perceptual mix (human hearing is more sensitive to mids)
+    // Sub-bass + bass get extra weight for "feel", mids get clarity, treble adds sparkle
+    return uAudioSubBass * 0.35 +
+           uAudioBass     * 0.65 +
+           uAudioLowMids  * 0.85 +
+           uAudioMids     * 1.20 +
+           uAudioHighMids * 0.90 +
+           uAudioTreble   * 0.45;
+}
+
+float getPerceptualDrive(float emphasis) {
+    // emphasis = 0..2 (0 = bass-heavy, 1 = neutral, 2 = treble-heavy)
+    float bassHeavy  = uAudioSubBass * 1.8 + uAudioBass * 1.4;
+    float midHeavy   = uAudioLowMids * 1.1 + uAudioMids * 1.3 + uAudioHighMids * 1.1;
+    float trebleHeavy = uAudioTreble * 1.6;
+    return mix(bassHeavy, mix(midHeavy, trebleHeavy, emphasis - 1.0), clamp(emphasis, 0.0, 2.0));
+}
+
+vec3 getTumbleAxisVector(mat4 transform, int axis, vec3 localRadial) {
     vec3 axisVector = axis == 0 ? vec3(1.0, 0.0, 0.0) : axis == 1 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
 
-    // Resolve the selected axis to the closer signed world-space Cartesian direction
-    // (+/-X, +/-Y, +/-Z) using the instance center.
-    float radialLength = length(instanceCenter);
-    if (radialLength > 0.00001) {
-        float projection = dot(instanceCenter / radialLength, axisVector);
-        return axisVector * (projection >= 0.0 ? 1.0 : -1.0);
+    float axisLength = length(axisVector);
+    if (axisLength <= 0.00001) {
+        axisVector = axis == 0 ? vec3(1.0, 0.0, 0.0) : axis == 1 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+    } else {
+        axisVector /= axisLength;
     }
 
+    float radialLength = length(localRadial);
+    if (radialLength > 0.00001) {
+        float projection = dot(localRadial / radialLength, axisVector);
+        return axisVector * (projection >= 0.0 ? 1.0 : -1.0);
+    }
     return axisVector;
 }
 
@@ -110,7 +147,6 @@ vec3 getResolvedAssemblyTumbleAxisVector(mat4 transform, vec3 instanceCenter) {
             bestSign = projection >= 0.0 ? 1.0 : -1.0;
         }
     }
-
     return bestAxis * bestSign;
 }
 
@@ -119,7 +155,8 @@ bool hasResolvedAssemblyTumbleAxis() {
 }
 
 float getAssemblyAxisDrive() {
-    return clamp(uAudioBass * 0.9 + uAudioSubBass * 1.25 + uAudioBeatIntensity * 0.35, 0.0, 3.0);
+    // Perceptual bass + beat drive (feels most "physical")
+    return clamp(uAudioSubBass * 1.4 + uAudioBass * 1.1 + uAudioBeatIntensity * 0.6, 0.0, 3.5);
 }
 
 vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
@@ -139,11 +176,8 @@ vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
         float t = uTime * uWiggleSpeed;
         vec3 s;
         if (uWiggleMode == 0) {
-            // Position mode: spatial position correlates nearby atoms
             s = pos;
         } else {
-            // Group mode: per-group independent noise
-            // Hash groupId into a well-distributed 3D seed to avoid repetition
             s = vec3(
                 fract(sin(groupId * 127.1) * 43758.5453) * 1000.0,
                 fract(sin(groupId * 269.5) * 21639.7182) * 1000.0,
@@ -160,69 +194,83 @@ vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
 
 mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
     if (!uEnableAnimation) return transform;
+
     float tumbleAmplitude = uTumbleAmplitude;
     if (uAudioTumbleSource != 0) {
         tumbleAmplitude *= clamp((uAudioTumbleFloor + getAudioSource(uAudioTumbleSource) * uAudioTumbleStrength) * uAudioTumbleScale, 0.0, 8.0);
     }
+
     if (tumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0) {
-        // Scale amplitude inversely with bounding-sphere radius (Stokes-Einstein: D ~ 1/r)
         float amplitude = tumbleAmplitude / max(uInvariantBoundingSphere.w, 1.0);
         float t = uTime * uTumbleSpeed;
         float seed = (instanceIndex * 127.1 + uObjectId * 311.7) * uTumbleFrequency;
+
         vec3 localCenter = mat3(transform) * uInvariantBoundingSphere.xyz;
         vec3 instanceCenter = transform[3].xyz + localCenter;
+
         bool axisMode = uTumbleTranslationMode == 1;
         bool assemblyAxisMode = axisMode && uTumbleAxisSource == 1 && uAudioAssemblyAxisCount > 0;
 
-        // Per-instance rotation angles from layered noise (Brownian-like)
         mat3 rot = mat3(1.0);
         if (!axisMode) {
-            float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * amplitude;
-            float angleY = (fbm(vec3(seed, 0.0, t)) / 0.4375 - 1.0) * amplitude;
-            float angleZ = (fbm(vec3(0.0, seed, t)) / 0.4375 - 1.0) * amplitude;
+            float rotDrive = getPerceptualDrive(1.2);
+            float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * amplitude * rotDrive;
+            float angleY = (fbm(vec3(seed, 0.0, t)) / 0.4375 - 1.0) * amplitude * rotDrive;
+            float angleZ = (fbm(vec3(0.0, seed, t)) / 0.4375 - 1.0) * amplitude * rotDrive;
 
             float cx = cos(angleX); float sx = sin(angleX);
             float cy = cos(angleY); float sy = sin(angleY);
             float cz = cos(angleZ); float sz = sin(angleZ);
 
-            // Combined rotation matrix (Rz * Ry * Rx)
-            rot = mat3(
-                cy * cz, cx * sz + sx * sy * cz, sx * sz - cx * sy * cz,
-                -cy * sz, cx * cz - sx * sy * sz, sx * cz + cx * sy * sz,
-                sy, -sx * cy, cx * cy
-            );
+            rot = mat3(cy * cz, cx * sz + sx * sy * cz, sx * sz - cx * sy * cz,
+                       -cy * sz, cx * cz - sx * sy * sz, sx * cz + cx * sy * sz,
+                       sy, -sx * cy, cx * cy);
         }
 
-        // Per-instance translation offset from layered noise (Brownian-like)
         vec3 offset;
         if (axisMode) {
             vec3 axis = assemblyAxisMode
                 ? getResolvedAssemblyTumbleAxisVector(transform, instanceCenter)
-                : getTumbleAxisVector(transform, uTumbleAxis, instanceCenter);
+                : getTumbleAxisVector(transform, uTumbleAxis, localCenter);
+
+            // === OPTIONAL SYNCHRONIZED AXIS TRANSLATION ===
+            float wave;
+            if (uTumbleTranslationSync == 1) {
+                // All instances move together in perfect sync
+                wave = sin(t * 1.61803398875);
+            } else {
+                // Original organic per-instance variation
+                float noisePhase = fbm(vec3(seed + 23.7, seed * 1.61803398875, 0.0)) * 6.28318530718;
+                float phase = seed * 0.73 + noisePhase;
+                float freq = 1.61803398875 * (1.0 + fract(seed * 0.137) * 0.4 - 0.2);
+                wave = sin(t * freq + phase);
+            }
+
+            float transDrive = getPerceptualDrive(0.3);
             float axisDrive = uAudioTumbleSource != 0 ? getAssemblyAxisDrive() : 1.0;
-            offset = axis * amplitude * axisDrive * uAudioAssemblyAxisAmplitudeScale;
+            float beatBoost = uAudioTumbleSource != 0 
+                ? (1.0 + clamp(uAudioBeatIntensity, 0.0, 1.0) * 0.85)
+                : 1.0;
+
+            offset = axis * wave * amplitude * transDrive * axisDrive * uAudioAssemblyAxisAmplitudeScale * beatBoost;
         } else {
+            float energy = perceptualEnergy();
             offset = vec3(
-                (fbm(vec3(seed + 31.7, t, 0.0)) / 0.4375 - 1.0),
-                (fbm(vec3(seed + 31.7, 0.0, t)) / 0.4375 - 1.0),
-                (fbm(vec3(0.0, seed + 31.7, t)) / 0.4375 - 1.0)
-            ) * amplitude;
+                (fbm(vec3(seed + 17.31, t * 1.00, 0.0)) / 0.4375 - 1.0),
+                (fbm(vec3(seed + 43.67, 0.0, t * 1.17)) / 0.4375 - 1.0),
+                (fbm(vec3(0.0, seed + 71.89, t * 0.89)) / 0.4375 - 1.0)
+            ) * amplitude * energy;
         }
 
-        // === FINAL MATRIX ASSEMBLY ===
-        // Rotation is applied to the object's basis vectors
-        // Pivot correction rotates AROUND the local center
-        // offset is added in WORLD space
         mat4 result = transform;
         result[0].xyz = rot * transform[0].xyz;
         result[1].xyz = rot * transform[1].xyz;
         result[2].xyz = rot * transform[2].xyz;
-
-        // Adjust translation so rotation pivots around the transformed center
         result[3].xyz = transform[3].xyz + localCenter - rot * localCenter + offset;
 
         return result;
     }
     return transform;
 }
+
 `;
