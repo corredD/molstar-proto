@@ -57,10 +57,10 @@ export class GraphQLClient {
     constructor(private url: string, private assetManager: AssetManager) { }
 
     async request(ctx: RuntimeContext, query: string, variables?: Variables): Promise<Asset.Wrapper<'json'>> {
-        const headers: [string, string][] = [
-            ['Content-Type', 'application/json; charset=utf-8'],
-            ['Accept', 'application/json']
-        ];
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Accept': 'application/json',
+        };
         const body = JSON.stringify({ query, variables }, null, 2);
         const url = Asset.getUrlAsset(this.assetManager, this.url, body, headers);
         const result = await this.assetManager.resolve(url, 'json').runInContext(ctx);

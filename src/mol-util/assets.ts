@@ -17,10 +17,10 @@ type _File = File;
 type Asset = Asset.Url | Asset.File
 
 namespace Asset {
-    export type Url = { kind: 'url', id: UUID, url: string, title?: string, body?: string, headers?: [string, string][] }
+    export type Url = { kind: 'url', id: UUID, url: string, title?: string, body?: string, headers?: Record<string, string> }
     export type File = { kind: 'file', id: UUID, name: string, file?: _File }
 
-    export function Url(url: string, options?: { body?: string, title?: string, headers?: [string, string][] }): Url {
+    export function Url(url: string, options?: { body?: string, title?: string, headers?: Record<string, string> }): Url {
         return { kind: 'url', id: UUID.create22(), url, ...options };
     }
 
@@ -54,7 +54,7 @@ namespace Asset {
         return typeof url === 'string' ? url : url.url;
     }
 
-    export function getUrlAsset(manager: AssetManager, url: string | Url, body?: string, headers?: [string, string][]) {
+    export function getUrlAsset(manager: AssetManager, url: string | Url, body?: string, headers?: Record<string, string>) {
         if (typeof url === 'string') {
             const asset = manager.tryFindUrl(url, body, headers);
             return asset || Url(url, { body, headers });
@@ -63,13 +63,13 @@ namespace Asset {
     }
 }
 
-function urlHeadersEqual(a?: [string, string][], b?: [string, string][]) {
-    const aLength = a?.length ?? 0;
-    const bLength = b?.length ?? 0;
-    if (aLength !== bLength) return false;
+function urlHeadersEqual(a?: Record<string, string>, b?: Record<string, string>) {
+    const aKeys = a ? Object.keys(a) : [];
+    const bKeys = b ? Object.keys(b) : [];
+    if (aKeys.length !== bKeys.length) return false;
 
-    for (let i = 0; i < aLength; i++) {
-        if (a![i][0] !== b![i][0] || a![i][1] !== b![i][1]) return false;
+    for (const key of aKeys) {
+        if (a![key] !== b![key]) return false;
     }
     return true;
 }
@@ -84,7 +84,7 @@ class AssetManager {
         return iterableToArray(this._assets.values());
     }
 
-    tryFindUrl(url: string, body?: string, headers?: [string, string][]): Asset.Url | undefined {
+    tryFindUrl(url: string, body?: string, headers?: Record<string, string>): Asset.Url | undefined {
         const assets = this.assets.values();
         while (true) {
             const v = assets.next();
