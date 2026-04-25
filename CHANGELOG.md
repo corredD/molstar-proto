@@ -11,6 +11,7 @@ Note that since we don't clearly distinguish between a public and private interf
 - [Breaking] ComponentBond.Entry.map now returns ComponentBond.Pairs
 - Fix volume slice marking performance regression
 - Fix `GraphQLClient` missing required headers
+- [Breaking] Use Record instead of Array for headers (assets & data-source utils)
 
 ## [v5.8.0] - 2026-04-03
 - Dependencies: remove `utils.promisify`, `node-fetch` (#1797)
