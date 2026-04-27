@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2019-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2019-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -495,6 +495,94 @@ const autoLod = StructureRepresentationPresetProvider({
     }
 });
 
+type MesoscaleGraphicsMode = 'ultra' | 'quality' | 'balanced' | 'performance';
+
+function getMesoscaleLodLevels(graphics: MesoscaleGraphicsMode) {
+    switch (graphics) {
+        case 'performance':
+            return [
+                { minDistance: 1, maxDistance: 300, overlap: 0, stride: 1, scaleBias: 1 },
+                { minDistance: 300, maxDistance: 2000, overlap: 0, stride: 40, scaleBias: 3 },
+                { minDistance: 2000, maxDistance: 6000, overlap: 0, stride: 150, scaleBias: 3 },
+                { minDistance: 6000, maxDistance: 10000000, overlap: 0, stride: 300, scaleBias: 2.5 },
+            ];
+        case 'balanced':
+            return [
+                { minDistance: 1, maxDistance: 500, overlap: 0, stride: 1, scaleBias: 1 },
+                { minDistance: 500, maxDistance: 2000, overlap: 0, stride: 15, scaleBias: 3 },
+                { minDistance: 2000, maxDistance: 6000, overlap: 0, stride: 70, scaleBias: 2.7 },
+                { minDistance: 6000, maxDistance: 10000000, overlap: 0, stride: 200, scaleBias: 2.5 },
+            ];
+        case 'quality':
+            return [
+                { minDistance: 1, maxDistance: 1000, overlap: 0, stride: 1, scaleBias: 1 },
+                { minDistance: 1000, maxDistance: 4000, overlap: 0, stride: 10, scaleBias: 3 },
+                { minDistance: 4000, maxDistance: 10000, overlap: 0, stride: 50, scaleBias: 2.7 },
+                { minDistance: 10000, maxDistance: 10000000, overlap: 0, stride: 200, scaleBias: 2.3 },
+            ];
+        case 'ultra':
+            return [
+                { minDistance: 1, maxDistance: 5000, overlap: 0, stride: 1, scaleBias: 1 },
+                { minDistance: 5000, maxDistance: 10000, overlap: 0, stride: 10, scaleBias: 3 },
+                { minDistance: 10000, maxDistance: 30000, overlap: 0, stride: 50, scaleBias: 2.5 },
+                { minDistance: 30000, maxDistance: 10000000, overlap: 0, stride: 200, scaleBias: 2 },
+            ];
+        default:
+            assertUnreachable(graphics);
+    }
+}
+
+const MesoscaleGraphicsOptions = PD.arrayToOptions<MesoscaleGraphicsMode>(['ultra', 'quality', 'balanced', 'performance']);
+
+const mesoscale = StructureRepresentationPresetProvider({
+    id: 'preset-structure-representation-mesoscale',
+    display: {
+        name: 'Mesoscale', group: 'Miscellaneous',
+        description: 'Show everything in spacefill representation with instance-granularity and level-of-detail tuned for large particle scenes.'
+    },
+    params: () => ({
+        ...CommonParams,
+        graphics: PD.Select<MesoscaleGraphicsMode>('quality', MesoscaleGraphicsOptions),
+    }),
+    async apply(ref, params, plugin) {
+        const structureCell = StateObjectRef.resolveAndCheck(plugin.state.data, ref);
+        if (!structureCell) return {};
+
+        const components = {
+            all: await presetStaticComponent(plugin, structureCell, 'all'),
+        };
+
+        const structure = structureCell.obj!.data;
+
+        const { update, builder, typeParams, color } = reprBuilder(plugin, params, structure);
+
+        const graphics: MesoscaleGraphicsMode = params.graphics ?? 'quality';
+        const lodLevels = getMesoscaleLodLevels(graphics);
+        const approximate = graphics !== 'quality' && graphics !== 'ultra';
+        const alphaThickness = graphics === 'performance' ? 15 : 12;
+
+        const representations = {
+            all: builder.buildRepresentation(update, components.all, {
+                type: 'spacefill',
+                typeParams: {
+                    ...typeParams,
+                    instanceGranularity: true,
+                    lodLevels,
+                    approximate,
+                    alphaThickness,
+                    clipPrimitive: true,
+                },
+                color,
+            }, { tag: 'all' }),
+        };
+
+        await update.commit({ revertOnError: true });
+        await updateFocusRepr(plugin, structure, params.theme?.focus?.name ?? color, params.theme?.focus?.params);
+
+        return { components, representations };
+    }
+});
+
 export function presetStaticComponent(plugin: PluginContext, structure: StateObjectRef<PluginStateObject.Molecule.Structure>, type: StaticStructureComponentType, params?: { label?: string, tags?: string[] }) {
     return plugin.builders.structure.tryCreateComponentStatic(structure, type, params);
 }
@@ -514,5 +602,6 @@ export const PresetStructureRepresentations = {
     illustrative,
     'molecular-surface': molecularSurface,
     'auto-lod': autoLod,
+    mesoscale,
 };
 export type PresetStructureRepresentations = typeof PresetStructureRepresentations;

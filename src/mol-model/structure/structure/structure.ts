@@ -870,7 +870,8 @@ namespace Structure {
         return create(units, { parent: s, coordinateSystem: newCS });
     }
 
-     export function instances(s: Structure, transforms: Mat4[]) {
+    // TODO: add option to change at least op name
+    export function instances(s: Structure, transforms: Mat4[], asRoot = false) {
         for (const t of transforms) {
             if (!Mat4.isRotationAndTranslation(t, SymmetryOperator.RotationTranslationEpsilon)) {
                 throw new Error('Only rotation/translation combination can be applied.');
@@ -891,7 +892,7 @@ namespace Structure {
             }
         }
 
-        return create(units, { parent: s });
+        return create(units, asRoot ? { } : { parent: s });
     }
 
 
