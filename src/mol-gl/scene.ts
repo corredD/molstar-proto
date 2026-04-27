@@ -330,13 +330,19 @@ namespace Scene {
                 const p = primitives[i];
                 if (!p.state.visible) continue;
 
-                if ((p.values.uWiggleAmplitude?.ref.value > 0 || p.values.wiggleAverage.ref.value > 0) &&
+                if (p.values.uAtomWiggleEnabled?.ref.value !== false &&
+                    (p.values.uWiggleAmplitude?.ref.value > 0 || p.values.wiggleAverage.ref.value > 0) &&
                     p.values.uWiggleSpeed?.ref.value > 0 &&
                     p.values.uWiggleFrequency?.ref.value > 0) return true;
 
-                if (p.values.uTumbleAmplitude?.ref.value > 0 &&
+                if (p.values.uInstanceTumbleEnabled?.ref.value !== false &&
+                    p.values.uTumbleAmplitude?.ref.value > 0 &&
                     p.values.uTumbleSpeed?.ref.value > 0 &&
                     p.values.uTumbleFrequency?.ref.value > 0) return true;
+
+                if (p.values.uObjectTransformEnabled?.ref.value === true &&
+                    p.values.uObjectTransformAmplitude?.ref.value > 0 &&
+                    p.values.uObjectTransformSpeed?.ref.value > 0) return true;
             }
             return false;
         }

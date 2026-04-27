@@ -230,6 +230,7 @@ html, body, #app {
 }
 
 .vor-input,
+.vor-select,
 .vor-file {
     width: 100%;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -245,6 +246,7 @@ html, body, #app {
 }
 
 .vor-input:focus,
+.vor-select:focus,
 .vor-file:focus {
     outline: 2px solid rgba(121, 184, 255, 0.4);
     outline-offset: 2px;
@@ -354,14 +356,50 @@ html, body, #app {
 }
 
 .vor-disclosure summary {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
     cursor: pointer;
     color: var(--vor-text);
     font-weight: 600;
     list-style: none;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 7px 10px;
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .vor-disclosure summary::-webkit-details-marker {
     display: none;
+}
+
+.vor-disclosure summary::before {
+    content: '▸';
+    color: var(--vor-text-dim);
+    transition: transform 120ms ease;
+}
+
+.vor-disclosure[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.vor-disclosure-state {
+    margin-left: auto;
+    color: var(--vor-text-dim);
+    font-size: 0.78rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.vor-expanded-label,
+.vor-disclosure[open] .vor-collapsed-label {
+    display: none;
+}
+
+.vor-disclosure[open] .vor-expanded-label {
+    display: inline;
 }
 
 .vor-entry-row {
@@ -448,3 +486,17 @@ html, body, #app {
     transform: scale(1.08);
 }
 
+.vor-chip-row + .vor-disclosure {
+    margin-top: 12px;
+}
+
+.vor-analysis-warning {
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255, 140, 80, 0.12);
+    border: 1px solid rgba(255, 140, 80, 0.28);
+    color: #ffb070;
+    font-size: 0.86rem;
+    line-height: 1.45;
+}

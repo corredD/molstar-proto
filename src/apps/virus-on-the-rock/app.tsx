@@ -9,7 +9,6 @@ import { createRoot, Root } from 'react-dom/client';
 import { BehaviorSubject, Subscription } from 'rxjs';
 import { AssemblySymmetryData, AssemblySymmetryDataProvider, AssemblySymmetryProvider, AssemblySymmetryValue } from '../../extensions/assembly-symmetry/prop';
 import { getAssemblySymmetryConfig, tryCreateAssemblySymmetry } from '../../extensions/assembly-symmetry/behavior';
-import { Quat } from '../../mol-math/linear-algebra/3d/quat';
 import { Vec3 } from '../../mol-math/linear-algebra/3d/vec3';
 import { Vec4 } from '../../mol-math/linear-algebra/3d/vec4';
 import { setSubtreeVisibility } from '../../mol-plugin/behavior/static/state';
@@ -27,7 +26,8 @@ import { StructureRef } from '../../mol-plugin-state/manager/structure/hierarchy
 import { StateTransforms } from '../../mol-plugin-state/transforms';
 import { StructureRepresentation3D } from '../../mol-plugin-state/transforms/representation';
 import { Viewer } from '../viewer/app';
-import { areAnimationPropsEqual, type AnimationProps, type TumbleAxisName, type TumbleAxisSourceName } from '../../mol-geo/geometry/animation';
+import { areAnimationPropsEqual, type AnimationProps, type ObjectTransformModeName, type TumbleAxisName, type TumbleAxisSourceName } from '../../mol-geo/geometry/animation';
+import { RandomStructurePdbIds } from './random-structures';
 
 type AxisOption = {
     value: AudioReactiveAssemblyAxisOrder,
@@ -41,6 +41,11 @@ type AxisCycleOption = {
     label: string,
 };
 
+type StreamTrackMetadata = {
+    key: string,
+    label: string,
+};
+
 type VirusOnTheRockState = {
     activePreset: AudioReactivePresetName,
     currentStructureLabel?: string,
@@ -48,13 +53,13 @@ type VirusOnTheRockState = {
     loadedEntries: { ref: string, label: string }[],
     audioLoaded: boolean,
     axisModeEnabled: boolean,
-    tumbleTranslationSync: boolean,
     axisSource: TumbleAxisSourceName,
     localAxis: TumbleAxisName,
     axisOptions: AxisOption[],
     selectedAxisOrder: AudioReactiveAssemblyAxisOrder,
     wiggleEffectScale: number,
     tumbleEffectScale: number,
+    objectTransformEffectScale: number,
     assemblyAxisAmplitudeScale: number,
     beatThreshold: number,
     audioPlaying: boolean,
@@ -63,17 +68,32 @@ type VirusOnTheRockState = {
     axisCycleEvery: number,
     cycleTargets: AxisCycleTarget[],
     activeCycleTarget?: AxisCycleTarget,
+    atomWiggleEnabled: boolean,
+    instanceTumbleEnabled: boolean,
+    objectTransformEnabled: boolean,
+    objectTransformMode: ObjectTransformModeName,
     showSidebar: boolean,
     showHistogramBars: boolean,
     showSessionInfo: boolean,
     showWaveformLine: boolean,
     showRadialVisualizer: boolean,
+    randomOnTrackChangeEnabled: boolean,
+    currentTrackLabel?: string,
 };
 
 const DefaultPdbId = '2tbv';
-const DefaultAudioUrl = '/examples/angine.mp3';
+const DefaultAudioUrl = 'examples/angine.mp3';
+const DefaultAudioFallbackUrl = '/examples/angine.mp3';
 const DefaultAudioLabel = 'angine.mp3';
-const DefaultCameraSpinRadiansPerSecond = 0.01;
+const NearClipAfterCameraReset = 0;
+const AudioUrlPresets = [
+    { label: 'Plus FM', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/plusfm/' },
+    { label: 'Public Domain - Maple Leaf Rag', url: 'https://archive.org/download/MapleLeafRag/MapleLeafRag.mp3' },
+    { label: 'FIP Hi-Fi AAC', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/fip/' },
+    { label: 'Le Son Parisien FLAC', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/lesonparisien/' },
+] as const;
+type AudioUrlPreset = typeof AudioUrlPresets[number];
+const DefaultAudioUrlPreset = AudioUrlPresets[0];
 const ExamplePdbIds = ['2tbv', '2plv'] as const;
 const FeaturedPresetNames: readonly AudioReactivePresetName[] = [
     'bass-spectrum',
@@ -81,11 +101,17 @@ const FeaturedPresetNames: readonly AudioReactivePresetName[] = [
     'full-spectrum',
     'ambient-pulse',
 ];
-const _spinDir = Vec3();
-const _spinAxis = Vec3();
-const _spinRot = Quat();
-const _spinPosition = Vec3();
 const _sceneCenterScreen = Vec4();
+
+// LOD for large instanced structures (e.g. CellPack assemblies).
+// Mirrors the mesoscale explorer "balanced" graphics mode.
+const LargeStructureElementThreshold = 500_000;
+const LargeStructureLodLevels = [
+    { minDistance: 1, maxDistance: 500, overlap: 0, stride: 1, scaleBias: 1 },
+    { minDistance: 500, maxDistance: 2000, overlap: 0, stride: 15, scaleBias: 3 },
+    { minDistance: 2000, maxDistance: 6000, overlap: 0, stride: 70, scaleBias: 2.7 },
+    { minDistance: 6000, maxDistance: 10000000, overlap: 0, stride: 200, scaleBias: 2.5 },
+];
 
 function getDefaultMultiScaleOcclusionProps() {
     const postprocessing = PD.getDefaultValues(PostprocessingParams);
@@ -221,15 +247,86 @@ function getAxisAnimationPatch(state: Pick<VirusOnTheRockState, 'axisModeEnabled
     };
 }
 
+function getMotionTargetState(animation: AnimationProps) {
+    return {
+        atomWiggleEnabled: animation.atomWiggleEnabled,
+        instanceTumbleEnabled: animation.instanceTumbleEnabled,
+        objectTransformEnabled: animation.objectTransformEnabled,
+        objectTransformMode: animation.objectTransformMode,
+    } as const;
+}
+
 function getAxisStatusLabel(state: VirusOnTheRockState) {
     if (!state.axisModeEnabled) return 'Off';
     if (state.axisCycleEnabled) {
         const activeTarget = state.activeCycleTarget ?? getEnabledCycleOptions(state)[0]?.value;
         return activeTarget ? `Beat Cycle · ${getCycleTargetLabel(activeTarget, state.axisOptions)}` : 'Beat Cycle';
     }
-    if (state.axisSource === 'local') return `${state.localAxis.toUpperCase()} / -${state.localAxis.toUpperCase()}`;
+    if (state.axisSource === 'local') return `Local ${state.localAxis.toUpperCase()} / -${state.localAxis.toUpperCase()}`;
+    if (state.axisSource === 'global') return `Global ${state.localAxis.toUpperCase()} / -${state.localAxis.toUpperCase()}`;
     if (!state.hasAssemblyAxes) return 'Assembly unavailable';
     return `Manual · ${state.axisOptions.find(option => option.value === state.selectedAxisOrder)?.label ?? 'Auto'}`;
+}
+
+function isPlaylistAudioUrl(url: string) {
+    const lower = url.toLowerCase().split(/[?#]/, 1)[0];
+    return lower.endsWith('.pls') || lower.endsWith('.m3u') || lower.endsWith('.m3u8');
+}
+
+function resolvePlaylistEntry(line: string, baseUrl: string) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('[')) return;
+
+    const plsMatch = /^File\d+=(.+)$/i.exec(trimmed);
+    const value = plsMatch?.[1]?.trim() ?? trimmed;
+    if (!/^https?:\/\//i.test(value)) return new URL(value, baseUrl).href;
+    return value;
+}
+
+async function resolveAudioUrl(url: string) {
+    if (!isPlaylistAudioUrl(url)) return url;
+
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed to load playlist (${response.status}).`);
+
+    const playlist = await response.text();
+    for (const line of playlist.split(/\r?\n/)) {
+        const entry = resolvePlaylistEntry(line, url);
+        if (entry) return entry;
+    }
+    throw new Error('Playlist did not contain a playable audio URL.');
+}
+
+function getStringProperty(value: unknown, key: string) {
+    if (!value || typeof value !== 'object') return;
+    const property = (value as Record<string, unknown>)[key];
+    return typeof property === 'string' ? property : void 0;
+}
+
+function parseSomaFmTrackMetadata(value: unknown): StreamTrackMetadata | undefined {
+    if (!value || typeof value !== 'object') return;
+    const songs = (value as { songs?: unknown }).songs;
+    if (!Array.isArray(songs) || songs.length === 0) return;
+
+    const song = songs[0];
+    const title = getStringProperty(song, 'title');
+    const artist = getStringProperty(song, 'artist');
+    const date = getStringProperty(song, 'date');
+    if (!title && !artist && !date) return;
+
+    return {
+        key: `${date ?? ''}|${artist ?? ''}|${title ?? ''}`,
+        label: [artist, title].filter(Boolean).join(' - ') || date || 'Unknown track',
+    };
+}
+
+async function fetchTrackMetadata(preset: AudioUrlPreset): Promise<StreamTrackMetadata | undefined> {
+    if (!('metadataUrl' in preset)) return;
+
+    const metadataUrl = (preset as { metadataUrl: string }).metadataUrl;
+    const response = await fetch(metadataUrl, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Failed to load stream metadata (${response.status}).`);
+    return parseSomaFmTrackMetadata(await response.json());
 }
 
 function createInitialState(params: AudioReactiveAnimationManagerValues, animation: AnimationProps): VirusOnTheRockState {
@@ -243,7 +340,7 @@ function createInitialState(params: AudioReactiveAnimationManagerValues, animati
         selectedAxisOrder: params.assemblyAxisOrder,
         wiggleEffectScale: params.wiggleEffectScale,
         tumbleEffectScale: params.tumbleEffectScale,
-        tumbleTranslationSync: params.tumbleTranslationSync,
+        objectTransformEffectScale: params.objectTransformEffectScale,
         assemblyAxisAmplitudeScale: params.assemblyAxisAmplitudeScale,
         beatThreshold: 0.05,
         audioPlaying: false,
@@ -252,11 +349,14 @@ function createInitialState(params: AudioReactiveAnimationManagerValues, animati
         axisCycleEvery: 1,
         cycleTargets: DefaultLocalCycleTargets,
         activeCycleTarget: void 0,
+        ...getMotionTargetState(animation),
         showSidebar: true,
         showHistogramBars: true,
         showSessionInfo: true,
         showWaveformLine: true,
         showRadialVisualizer: true,
+        randomOnTrackChangeEnabled: false,
+        currentTrackLabel: void 0,
     };
 }
 
@@ -342,11 +442,14 @@ export class VirusOnTheRockApp {
     private readonly styledStructureVersions = new Map<string, string>();
     private cycleTargetsCustomized = false;
     private syncToken = 0;
-    private cameraSpinHandle: number | undefined;
-    private lastCameraSpinTimestamp: number | undefined;
     private beatTriggerActive = false;
     private beatCycleCount = 0;
     private beatCycleIndex = 0;
+    private lastRandomPdbId: string | undefined;
+    private activeAudioPreset: AudioUrlPreset | undefined;
+    private trackMetadataInterval: number | undefined;
+    private lastTrackMetadataKey: string | undefined;
+    private isPollingTrackMetadata = false;
 
     private constructor(readonly viewer: Viewer, uiTarget: HTMLElement) {
         const params = this.viewer.plugin.managers.audioReactive.state.params.value;
@@ -388,9 +491,9 @@ export class VirusOnTheRockApp {
             this.patchState({
                 wiggleEffectScale: values.wiggleEffectScale,
                 tumbleEffectScale: values.tumbleEffectScale,
+                objectTransformEffectScale: values.objectTransformEffectScale,
                 assemblyAxisAmplitudeScale: values.assemblyAxisAmplitudeScale,
                 beatThreshold: values.beatThreshold,
-                tumbleTranslationSync: values.tumbleTranslationSync,
             });
         }));
 
@@ -495,7 +598,11 @@ export class VirusOnTheRockApp {
     }
 
     private async loadDefaultAudio() {
-        await this.viewer.plugin.managers.audioReactive.loadUrl(DefaultAudioUrl, DefaultAudioLabel);
+        try {
+            await this.viewer.plugin.managers.audioReactive.loadUrl(DefaultAudioUrl, DefaultAudioLabel);
+        } catch {
+            await this.viewer.plugin.managers.audioReactive.loadUrl(DefaultAudioFallbackUrl, DefaultAudioLabel);
+        }
         try {
             await this.viewer.plugin.managers.audioReactive.play();
         } catch {
@@ -503,50 +610,22 @@ export class VirusOnTheRockApp {
         }
     }
 
-    private async startCameraSpin() {
+    private async resetCamera(keepDirection = false) {
         await this.viewer.plugin.managers.animation.stop();
-        if (this.cameraSpinHandle !== void 0) return;
+        const canvas3d = this.viewer.plugin.canvas3d;
+        if (!canvas3d) return;
+        canvas3d.setProps({ cameraClipping: { minNear: NearClipAfterCameraReset } });
 
-        const step = (timestamp: number) => {
-            if (this.lastCameraSpinTimestamp === void 0) {
-                this.lastCameraSpinTimestamp = timestamp;
-                this.cameraSpinHandle = requestAnimationFrame(step);
+        if (keepDirection) {
+            const sphere = canvas3d.boundingSphereVisible;
+            if (sphere && sphere.radius > 0 && isFinite(sphere.radius)) {
+                const snapshot = canvas3d.camera.getCenter(sphere.center);
+                canvas3d.requestCameraReset({ snapshot: { ...snapshot, minNear: NearClipAfterCameraReset }, durationMs: 400 });
                 return;
             }
-
-            const canvas3d = this.viewer.plugin.canvas3d;
-            const snapshot = canvas3d?.camera.getSnapshot();
-            const dtMs = Math.min(100, Math.max(0, timestamp - this.lastCameraSpinTimestamp));
-            this.lastCameraSpinTimestamp = timestamp;
-
-            if (snapshot && snapshot.radiusMax > 0.0001) {
-                Vec3.sub(_spinDir, snapshot.position, snapshot.target);
-                Vec3.normalize(_spinAxis, snapshot.up);
-                Quat.setAxisAngle(_spinRot, _spinAxis, DefaultCameraSpinRadiansPerSecond * (dtMs / 1000));
-                Vec3.transformQuat(_spinDir, _spinDir, _spinRot);
-                Vec3.add(_spinPosition, snapshot.target, _spinDir);
-                canvas3d?.requestCameraReset({ snapshot: { position: Vec3.clone(_spinPosition) }, durationMs: 0 });
-            }
-
-            this.cameraSpinHandle = requestAnimationFrame(step);
-        };
-
-        this.cameraSpinHandle = requestAnimationFrame(step);
-    }
-
-    private stopCameraSpin() {
-        if (this.cameraSpinHandle !== void 0) {
-            cancelAnimationFrame(this.cameraSpinHandle);
-            this.cameraSpinHandle = void 0;
         }
-        this.lastCameraSpinTimestamp = void 0;
-    }
 
-    private async resetAndSpinCamera() {
-        await this.viewer.plugin.managers.animation.stop();
-        this.viewer.plugin.managers.camera.reset(void 0, 0);
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-        await this.startCameraSpin();
+        this.viewer.plugin.managers.camera.reset({ minNear: NearClipAfterCameraReset }, 0);
     }
 
     private resetAxisCycleRuntime() {
@@ -588,8 +667,21 @@ export class VirusOnTheRockApp {
     async setLocalAxis(axis: TumbleAxisName) {
         this.resetAxisCycleRuntime();
 
-        const nextState = { ...this.state.value, axisSource: 'local' as const, localAxis: axis };
-        this.patchState({ axisSource: 'local', localAxis: axis });
+        // Preserve 'global' frame if already active; otherwise default to 'local'.
+        const axisSource = this.state.value.axisSource === 'global' ? 'global' as const : 'local' as const;
+        const nextState = { ...this.state.value, axisSource, localAxis: axis };
+        this.patchState({ axisSource, localAxis: axis });
+        if (!nextState.axisCycleEnabled && nextState.axisModeEnabled) {
+            await this.applyManualAxisSelection(nextState);
+        }
+    }
+
+    async setAxisFrame(frame: 'local' | 'global') {
+        if (this.state.value.axisSource === 'assembly') return;
+        this.resetAxisCycleRuntime();
+
+        const nextState = { ...this.state.value, axisSource: frame };
+        this.patchState({ axisSource: frame });
         if (!nextState.axisCycleEnabled && nextState.axisModeEnabled) {
             await this.applyManualAxisSelection(nextState);
         }
@@ -624,11 +716,6 @@ export class VirusOnTheRockApp {
         const cycleAxes = this.getCyclingAxes(nextState);
         if (cycleAxes.length === 0) return;
         await this.applyCycleTarget(cycleAxes[0].value);
-    }
-
-    async setTumbleTranslationSync(sync: boolean) {
-        this.viewer.plugin.managers.audioReactive.setParams({ tumbleTranslationSync: sync });
-        this.patchState({ tumbleTranslationSync: sync });
     }
 
     async toggleCycleTarget(target: AxisCycleTarget) {
@@ -680,6 +767,47 @@ export class VirusOnTheRockApp {
         this.patchState({ showSessionInfo: visible });
     }
 
+    setRandomOnTrackChangeEnabled(enabled: boolean) {
+        this.patchState({ randomOnTrackChangeEnabled: enabled });
+        this.updateTrackMetadataPolling();
+        if (enabled) void this.pollTrackMetadata(false);
+    }
+
+    private updateTrackMetadataPolling() {
+        if (this.trackMetadataInterval !== void 0) {
+            window.clearInterval(this.trackMetadataInterval);
+            this.trackMetadataInterval = void 0;
+        }
+
+        if (!this.state.value.randomOnTrackChangeEnabled || !this.activeAudioPreset || !('metadataUrl' in this.activeAudioPreset)) return;
+
+        this.trackMetadataInterval = window.setInterval(() => {
+            void this.pollTrackMetadata(true);
+        }, 20_000);
+    }
+
+    private async pollTrackMetadata(triggerRandomOnChange: boolean) {
+        if (this.isPollingTrackMetadata || !this.activeAudioPreset || !('metadataUrl' in this.activeAudioPreset)) return;
+
+        this.isPollingTrackMetadata = true;
+        try {
+            const metadata = await fetchTrackMetadata(this.activeAudioPreset);
+            if (!metadata) return;
+
+            const previousKey = this.lastTrackMetadataKey;
+            this.lastTrackMetadataKey = metadata.key;
+            this.patchState({ currentTrackLabel: metadata.label });
+
+            if (triggerRandomOnChange && previousKey && previousKey !== metadata.key && this.state.value.randomOnTrackChangeEnabled) {
+                await this.loadRandomPdb();
+            }
+        } catch (error) {
+            this.viewer.plugin.log.warn(`Could not read stream track metadata: ${error}`);
+        } finally {
+            this.isPollingTrackMetadata = false;
+        }
+    }
+
     private async updateAxisCycle(status: ReturnType<typeof this.viewer.plugin.managers.audioReactive.state.status.getValue>) {
         if (!status.playing) {
             this.beatTriggerActive = false;
@@ -709,13 +837,20 @@ export class VirusOnTheRockApp {
 
         await this.viewer.plugin.managers.structure.component.applyPreset([structureRef], PresetStructureRepresentations.illustrative);
         const animation = this.viewer.plugin.managers.structure.component.state.options.animation;
+
+        const structure = this.getDisplayedStructureData(structureRef);
+        const applyLod = (structure?.elementCount ?? 0) > LargeStructureElementThreshold;
+
         const update = this.viewer.plugin.state.data.build();
         for (const component of structureRef.components) {
             for (const repr of component.representations) {
                 update.to(repr.cell).update(old => {
                     old.type.params.ignoreLight = false;
-                    old.colorTheme = { name: 'chain-id', params: {} };
+                    old.colorTheme = { name: 'entity-id', params: {} };
                     if (old.type.params.animation) old.type.params.animation = animation;
+                    if (applyLod) {
+                        old.type.params.lodLevels = LargeStructureLodLevels;
+                    }
                 });
             }
         }
@@ -927,17 +1062,39 @@ export class VirusOnTheRockApp {
         return this.viewer.plugin.managers.structure.hierarchy.selection.structures.flatMap(structure => structure.components);
     }
 
-    async loadPdb(id: string) {
+    private pickRandomPdbId() {
+        const ids = RandomStructurePdbIds.map(id => id.trim().toLowerCase()).filter(Boolean);
+        if (ids.length === 0) return;
+
+        const candidates = ids.length > 1 && this.lastRandomPdbId
+            ? ids.filter(id => id !== this.lastRandomPdbId)
+            : ids;
+        return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+
+    async loadRandomPdb() {
+        const pdbId = this.pickRandomPdbId();
+        if (!pdbId) return;
+
+        this.lastRandomPdbId = pdbId;
+        await this.loadPdb(pdbId, true);
+        return pdbId;
+    }
+
+    async loadPdb(id: string, replaceCurrent = false) {
         const pdbId = id.trim();
         if (!pdbId) return;
         const previousRefs = new Set(this.getAllStructures().map(structure => structure.cell.transform.ref));
         await this.viewer.loadPdb(pdbId);
         const newStructures = this.getAllStructures().filter(structure => !previousRefs.has(structure.cell.transform.ref));
+        if (replaceCurrent && newStructures.length > 0 && previousRefs.size > 0) {
+            await this.viewer.plugin.managers.structure.hierarchy.remove([...previousRefs], false);
+        }
         await this.placeNewStructuresOnGrid(newStructures);
         await this.syncSelectedStructure();
         await this.applyAudioPreset(this.state.value.activePreset);
         await this.applyCurrentAnimationToStructures(newStructures);
-        await this.resetAndSpinCamera();
+        await this.resetCamera(replaceCurrent);
     }
 
     async loadStructureFiles(files: File[]) {
@@ -949,12 +1106,32 @@ export class VirusOnTheRockApp {
         await this.syncSelectedStructure();
         await this.applyAudioPreset(this.state.value.activePreset);
         await this.applyCurrentAnimationToStructures(newStructures);
-        await this.resetAndSpinCamera();
+        await this.resetCamera();
     }
 
     async loadAudioFile(file: File) {
+        this.activeAudioPreset = void 0;
+        this.lastTrackMetadataKey = void 0;
+        this.updateTrackMetadataPolling();
+        this.patchState({ currentTrackLabel: void 0 });
         await this.applyAudioPreset(this.state.value.activePreset);
         await this.viewer.plugin.managers.audioReactive.loadFile(file);
+        await this.playAudio();
+    }
+
+    async loadAudioUrl(url: string, label?: string) {
+        const audioUrl = url.trim();
+        if (!audioUrl) return;
+        const preset = AudioUrlPresets.find(item => item.url === audioUrl);
+        const audioLabel = label ?? preset?.label ?? audioUrl;
+        const playableUrl = await resolveAudioUrl(audioUrl);
+        this.activeAudioPreset = preset;
+        this.lastTrackMetadataKey = void 0;
+        this.patchState({ currentTrackLabel: void 0 });
+        await this.applyAudioPreset(this.state.value.activePreset);
+        await this.viewer.plugin.managers.audioReactive.loadUrl(playableUrl, audioLabel);
+        this.updateTrackMetadataPolling();
+        await this.pollTrackMetadata(false);
         await this.playAudio();
     }
 
@@ -974,7 +1151,7 @@ export class VirusOnTheRockApp {
             assemblyAxisOrder: current.selectedAxisOrder,
             wiggleEffectScale: current.wiggleEffectScale,
             tumbleEffectScale: current.tumbleEffectScale,
-            tumbleTranslationSync: current.tumbleTranslationSync,
+            objectTransformEffectScale: current.objectTransformEffectScale,
             assemblyAxisAmplitudeScale: current.assemblyAxisAmplitudeScale,
             beatThreshold: current.beatThreshold,
         });
@@ -989,7 +1166,24 @@ export class VirusOnTheRockApp {
             }
         });
         await clearStructureWiggle(this.viewer.plugin, this.currentComponents);
-        this.patchState({ activePreset: name });
+        this.patchState({
+            activePreset: name,
+            ...getMotionTargetState({
+                ...options.animation,
+                ...preset.animation,
+                ...getAxisAnimationPatch(current),
+            })
+        });
+    }
+
+    async setMotionTargetEnabled(target: 'atomWiggleEnabled' | 'instanceTumbleEnabled' | 'objectTransformEnabled', enabled: boolean) {
+        await this.updateAnimationOptions({ [target]: enabled } as Partial<AnimationProps>);
+        this.patchState({ [target]: enabled } as Partial<VirusOnTheRockState>);
+    }
+
+    async setObjectTransformMode(mode: ObjectTransformModeName) {
+        await this.updateAnimationOptions({ objectTransformMode: mode });
+        this.patchState({ objectTransformMode: mode });
     }
 
     async setAxisOrder(order: AudioReactiveAssemblyAxisOrder) {
@@ -1000,7 +1194,7 @@ export class VirusOnTheRockApp {
         }
     }
 
-    setEffectScale(key: 'wiggleEffectScale' | 'tumbleEffectScale' | 'assemblyAxisAmplitudeScale', value: number) {
+    setEffectScale(key: 'wiggleEffectScale' | 'tumbleEffectScale' | 'objectTransformEffectScale' | 'assemblyAxisAmplitudeScale', value: number) {
         this.viewer.plugin.managers.audioReactive.setParams({ [key]: value } as Partial<AudioReactiveAnimationManagerValues>);
     }
 
@@ -1011,11 +1205,11 @@ export class VirusOnTheRockApp {
     async removeStructure(ref: string) {
         await this.viewer.plugin.managers.structure.hierarchy.remove([ref], false);
         await this.syncSelectedStructure();
-        await this.resetAndSpinCamera();
+        await this.resetCamera();
     }
 
     dispose() {
-        this.stopCameraSpin();
+        if (this.trackMetadataInterval !== void 0) window.clearInterval(this.trackMetadataInterval);
         this.viewer.plugin.managers.dragAndDrop.removeHandler('virus-on-the-rock');
         this.subscriptions.unsubscribe();
         this.uiRoot.unmount();
@@ -1023,11 +1217,21 @@ export class VirusOnTheRockApp {
     }
 }
 
-function ControlCard(props: React.PropsWithChildren<{ title?: string, className?: string }>) {
-    return <section className={`vor-card ${props.className ?? ''}`}>
+function ControlCard(props: React.PropsWithChildren<{ title?: string, className?: string, style?: React.CSSProperties }>) {
+    return <section className={`vor-card ${props.className ?? ''}`} style={props.style}>
         {props.title && <h2 className='vor-section-title'>{props.title}</h2>}
         {props.children}
     </section>;
+}
+
+function AudioAnalysisWarning({ app }: { app: VirusOnTheRockApp }) {
+    const status = useBehavior(app.viewer.plugin.managers.audioReactive.state.status);
+    if (!status?.analysisBlocked) return null;
+    return (
+        <p className='vor-analysis-warning'>
+            Audio is playing but analysis is silent. Remote streams may be CORS-blocked locally — try a local audio file instead, or run the app over HTTPS.
+        </p>
+    );
 }
 
 function OverlayToggleDock({ app, state }: { app: VirusOnTheRockApp, state: VirusOnTheRockState }) {
@@ -1306,6 +1510,8 @@ function AudioVisualizerOverlay(props: {
 function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
     const state = useBehavior(app.state)!;
     const [pdbId, setPdbId] = React.useState(DefaultPdbId);
+    const [audioUrl, setAudioUrl] = React.useState<string>(DefaultAudioUrlPreset.url);
+    const selectedAudioPreset = AudioUrlPresets.find(preset => preset.url === audioUrl);
 
     const onStructureFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(event.target.files || []);
@@ -1371,6 +1577,23 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                         >
                             {example.toUpperCase()}
                         </button>)}
+                        <button
+                            className='vor-chip'
+                            onClick={async () => {
+                                const randomPdbId = await app.loadRandomPdb();
+                                if (randomPdbId) setPdbId(randomPdbId);
+                            }}
+                            title='Load a random PDB ID from random-structures.ts and replace the current structure.'
+                        >
+                            Random
+                        </button>
+                        <button
+                            className={`vor-chip ${state.randomOnTrackChangeEnabled ? 'vor-active' : ''}`}
+                            onClick={() => app.setRandomOnTrackChangeEnabled(!state.randomOnTrackChangeEnabled)}
+                            title='Best-effort: changes structure when the selected stream exposes readable track metadata.'
+                        >
+                            On Track Change
+                        </button>
                     </div>
                     <label className='vor-label' htmlFor='vor-structure-file'>Browser File</label>
                     <input id='vor-structure-file' className='vor-file' type='file' multiple onChange={onStructureFileChange} />
@@ -1381,17 +1604,43 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                 <div className='vor-stack'>
                     <label className='vor-label' htmlFor='vor-audio-file'>Audio File</label>
                     <input id='vor-audio-file' className='vor-file' type='file' accept='.mp3,audio/*' onChange={onAudioFileChange} />
+                    <label className='vor-label' htmlFor='vor-audio-url-preset'>Audio Source</label>
+                    <select
+                        id='vor-audio-url-preset'
+                        className='vor-select'
+                        value={selectedAudioPreset?.url ?? ''}
+                        onChange={e => {
+                            if (e.target.value) setAudioUrl(e.target.value);
+                        }}
+                    >
+                        {!selectedAudioPreset && <option value=''>Custom URL</option>}
+                        {AudioUrlPresets.map(preset => <option key={preset.url} value={preset.url}>{preset.label}</option>)}
+                    </select>
+                    <label className='vor-label' htmlFor='vor-audio-url'>Audio URL</label>
+                    <div className='vor-row'>
+                        <input
+                            id='vor-audio-url'
+                            className='vor-input'
+                            value={audioUrl}
+                            onChange={e => setAudioUrl(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') void app.loadAudioUrl(audioUrl, selectedAudioPreset?.label); }}
+                            placeholder='https://example.org/audio.mp3'
+                        />
+                        <button className='vor-button vor-primary' onClick={() => void app.loadAudioUrl(audioUrl, selectedAudioPreset?.label)}>Load URL</button>
+                    </div>
                     <div className='vor-button-row'>
                         <button
                             className='vor-button vor-primary'
                             onClick={() => state.audioPlaying ? app.pauseAudio() : void app.playAudio()}
                             disabled={!state.audioLoaded}
                         >
-                            {state.audioPlaying ? 'Pause' : 'Play'}
+                            {state.audioPlaying ? 'Pause Current' : 'Play Current'}
                         </button>
                     </div>
+                    <AudioAnalysisWarning app={app} />
                     <p className='vor-help'>
-                        Loads <b>{DefaultAudioLabel}</b> by default from the examples folder, applies <b>{formatPresetLabel('bass-spectrum')}</b>, and tries to autoplay.
+                        Loads <b>{DefaultAudioLabel}</b> by default. Remote URLs must allow browser media playback with CORS; HTTPS pages can also block HTTP streams.
+                        {state.currentTrackLabel ? <><br />Current track: <b>{state.currentTrackLabel}</b></> : null}
                     </p>
                 </div>
             </ControlCard>
@@ -1409,32 +1658,120 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                 </div>
             </ControlCard>
 
-            <ControlCard title='Visualizers'>
-                <div className='vor-stack'>
-                    <div className='vor-chip-row'>
-                        <button
-                            className={`vor-chip ${state.showHistogramBars ? 'vor-active' : ''}`}
-                            onClick={() => app.setHistogramBarsVisible(!state.showHistogramBars)}
-                        >
-                            {state.showHistogramBars ? 'Histogram On' : 'Histogram Off'}
-                        </button>
-                        <button
-                            className={`vor-chip ${state.showWaveformLine ? 'vor-active' : ''}`}
-                            onClick={() => app.setWaveformLineVisible(!state.showWaveformLine)}
-                        >
-                            {state.showWaveformLine ? 'Wave Line On' : 'Wave Line Off'}
-                        </button>
-                        <button
-                            className={`vor-chip ${state.showRadialVisualizer ? 'vor-active' : ''}`}
-                            onClick={() => app.setRadialVisualizerVisible(!state.showRadialVisualizer)}
-                        >
-                            {state.showRadialVisualizer ? 'Circle On' : 'Circle Off'}
-                        </button>
-                    </div>
-                    <p className='vor-help'>
-                        Use these toggles to show or hide the waveform line and the radial ring. The radial ring can be dragged directly in the viewport, and the outer handle scales it.
-                    </p>
+            <ControlCard title='Motion Targets'>
+                <div className='vor-chip-row'>
+                    <button
+                        className={`vor-chip ${state.atomWiggleEnabled ? 'vor-active' : ''}`}
+                        onClick={() => void app.setMotionTargetEnabled('atomWiggleEnabled', !state.atomWiggleEnabled)}
+                    >
+                        Atom Wiggle
+                    </button>
+                    <button
+                        className={`vor-chip ${state.instanceTumbleEnabled ? 'vor-active' : ''}`}
+                        onClick={() => void app.setMotionTargetEnabled('instanceTumbleEnabled', !state.instanceTumbleEnabled)}
+                    >
+                        Instance Beats
+                    </button>
+                    <button
+                        className={`vor-chip ${state.objectTransformEnabled ? 'vor-active' : ''}`}
+                        onClick={() => void app.setMotionTargetEnabled('objectTransformEnabled', !state.objectTransformEnabled)}
+                    >
+                        Whole Object
+                    </button>
                 </div>
+
+                {state.objectTransformEnabled && <div className='vor-chip-row'>
+                    <button
+                        className={`vor-chip ${state.objectTransformMode !== 'spectral' ? 'vor-active' : ''}`}
+                        onClick={() => void app.setObjectTransformMode('uniform')}
+                        title='All axes move with equal amplitude driven by a single audio source.'
+                    >
+                        Uniform
+                    </button>
+                    <button
+                        className={`vor-chip ${state.objectTransformMode === 'spectral' ? 'vor-active' : ''}`}
+                        onClick={() => void app.setObjectTransformMode('spectral')}
+                        title='X/Y/Z axes respond independently to bass / mids / treble.'
+                    >
+                        Spectral
+                    </button>
+                </div>}
+
+                <details className='vor-disclosure'>
+                    <summary>
+                        <span>Effect Sensitivity</span>
+                        <span className='vor-disclosure-state vor-collapsed-label'>Expand</span>
+                        <span className='vor-disclosure-state vor-expanded-label'>Collapse</span>
+                    </summary>
+                    <div className='vor-slider-group'>
+                        <div className='vor-slider-row'>
+                            <label htmlFor='vor-beat-threshold'>Beat Threshold</label>
+                            <output>{state.beatThreshold.toFixed(2)}</output>
+                            <input
+                                id='vor-beat-threshold'
+                                type='range'
+                                min='0'
+                                max='2'
+                                step='0.01'
+                                value={state.beatThreshold}
+                                onChange={e => app.setBeatThreshold(parseFloat(e.target.value))}
+                            />
+                        </div>
+                        <div className='vor-slider-row'>
+                            <label htmlFor='vor-wiggle-scale'>Atom Wiggle Sensitivity</label>
+                            <output>{state.wiggleEffectScale.toFixed(2)}</output>
+                            <input
+                                id='vor-wiggle-scale'
+                                type='range'
+                                min='0'
+                                max='4'
+                                step='0.05'
+                                value={state.wiggleEffectScale}
+                                onChange={e => app.setEffectScale('wiggleEffectScale', parseFloat(e.target.value))}
+                            />
+                        </div>
+                        <div className='vor-slider-row'>
+                            <label htmlFor='vor-tumble-scale'>Instance Beat Sensitivity</label>
+                            <output>{state.tumbleEffectScale.toFixed(2)}</output>
+                            <input
+                                id='vor-tumble-scale'
+                                type='range'
+                                min='0'
+                                max='50'
+                                step='0.05'
+                                value={state.tumbleEffectScale}
+                                onChange={e => app.setEffectScale('tumbleEffectScale', parseFloat(e.target.value))}
+                            />
+                        </div>
+                        <div className='vor-slider-row'>
+                            <label htmlFor='vor-object-scale'>Whole Object Sensitivity</label>
+                            <output>{state.objectTransformEffectScale.toFixed(2)}</output>
+                            <input
+                                id='vor-object-scale'
+                                type='range'
+                                min='0'
+                                max='8'
+                                step='0.05'
+                                value={state.objectTransformEffectScale}
+                                onChange={e => app.setEffectScale('objectTransformEffectScale', parseFloat(e.target.value))}
+                            />
+                        </div>
+                        <div className='vor-slider-row'>
+                            <label htmlFor='vor-axis-scale'>Axis Amplitude Sensitivity</label>
+                            <output>{state.assemblyAxisAmplitudeScale.toFixed(2)}</output>
+                            <input
+                                id='vor-axis-scale'
+                                type='range'
+                                min='0'
+                                max='50'
+                                step='0.05'
+                                value={state.assemblyAxisAmplitudeScale}
+                                onChange={e => app.setEffectScale('assemblyAxisAmplitudeScale', parseFloat(e.target.value))}
+                            />
+                        </div>
+                    </div>
+
+                </details>
             </ControlCard>
 
             <ControlCard title='Axis Mode'>
@@ -1458,7 +1795,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                         <div className='vor-chip-row'>
                             {LocalAxisOptions.map(option => <button
                                 key={option.value}
-                                className={`vor-chip ${state.axisSource === 'local' && state.localAxis === option.value ? 'vor-active' : ''}`}
+                                className={`vor-chip ${state.axisSource !== 'assembly' && state.localAxis === option.value ? 'vor-active' : ''}`}
                                 onClick={() => void app.setLocalAxis(option.value)}
                             >
                                 {option.label}
@@ -1471,6 +1808,21 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                                 Assembly
                             </button>
                         </div>
+
+                        {state.axisSource !== 'assembly' && <div className='vor-chip-row'>
+                            <button
+                                className={`vor-chip ${state.axisSource === 'local' ? 'vor-active' : ''}`}
+                                onClick={() => void app.setAxisFrame('local')}
+                            >
+                                Local
+                            </button>
+                            <button
+                                className={`vor-chip ${state.axisSource === 'global' ? 'vor-active' : ''}`}
+                                onClick={() => void app.setAxisFrame('global')}
+                            >
+                                Global
+                            </button>
+                        </div>}
 
                         <div className='vor-chip-row'>
                             <button
@@ -1487,21 +1839,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                                 Beat Cycle
                             </button>
                         </div>
-                        <div className='vor-chip-row'>
-                            <label className='vor-label'>tumbleTranslationSync</label>
-                            <button
-                                className={`vor-chip ${!state.tumbleTranslationSync ? 'vor-active' : ''}`}
-                                onClick={() => void app.setTumbleTranslationSync(false)}
-                            >
-                                Off
-                            </button>
-                            <button
-                                className={`vor-chip ${state.tumbleTranslationSync ? 'vor-active' : ''}`}
-                                onClick={() => void app.setTumbleTranslationSync(true)}
-                            >
-                                On
-                            </button>
-                        </div>
+
                         {state.axisSource === 'assembly' && state.hasAssemblyAxes && !state.axisCycleEnabled && <div className='vor-chip-row'>
                             {state.axisOptions.map(option => <button
                                 key={option.value}
@@ -1554,6 +1892,34 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                 </div>
             </ControlCard>
 
+            <ControlCard title='Visualizers'>
+                <div className='vor-stack'>
+                    <div className='vor-chip-row'>
+                        <button
+                            className={`vor-chip ${state.showHistogramBars ? 'vor-active' : ''}`}
+                            onClick={() => app.setHistogramBarsVisible(!state.showHistogramBars)}
+                        >
+                            {state.showHistogramBars ? 'Histogram On' : 'Histogram Off'}
+                        </button>
+                        <button
+                            className={`vor-chip ${state.showWaveformLine ? 'vor-active' : ''}`}
+                            onClick={() => app.setWaveformLineVisible(!state.showWaveformLine)}
+                        >
+                            {state.showWaveformLine ? 'Wave Line On' : 'Wave Line Off'}
+                        </button>
+                        <button
+                            className={`vor-chip ${state.showRadialVisualizer ? 'vor-active' : ''}`}
+                            onClick={() => app.setRadialVisualizerVisible(!state.showRadialVisualizer)}
+                        >
+                            {state.showRadialVisualizer ? 'Circle On' : 'Circle Off'}
+                        </button>
+                    </div>
+                    <p className='vor-help'>
+                        Use these toggles to show or hide the waveform line and the radial ring. The radial ring can be dragged directly in the viewport, and the outer handle scales it.
+                    </p>
+                </div>
+            </ControlCard>
+
             <ControlCard title='Entries'>
                 <details className='vor-disclosure'>
                     <summary>Loaded Structures</summary>
@@ -1569,62 +1935,6 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                 </details>
             </ControlCard>
 
-            <ControlCard title='Effect Scales'>
-                <div className='vor-slider-group'>
-                    <div className='vor-slider-row'>
-                        <label htmlFor='vor-beat-threshold'>Beat Threshold</label>
-                        <output>{state.beatThreshold.toFixed(2)}</output>
-                        <input
-                            id='vor-beat-threshold'
-                            type='range'
-                            min='0'
-                            max='2'
-                            step='0.01'
-                            value={state.beatThreshold}
-                            onChange={e => app.setBeatThreshold(parseFloat(e.target.value))}
-                        />
-                    </div>
-                    <div className='vor-slider-row'>
-                        <label htmlFor='vor-wiggle-scale'>Wiggle Effect Scale</label>
-                        <output>{state.wiggleEffectScale.toFixed(2)}</output>
-                        <input
-                            id='vor-wiggle-scale'
-                            type='range'
-                            min='0'
-                            max='4'
-                            step='0.05'
-                            value={state.wiggleEffectScale}
-                            onChange={e => app.setEffectScale('wiggleEffectScale', parseFloat(e.target.value))}
-                        />
-                    </div>
-                    <div className='vor-slider-row'>
-                        <label htmlFor='vor-tumble-scale'>Tumble Effect Scale</label>
-                        <output>{state.tumbleEffectScale.toFixed(2)}</output>
-                        <input
-                            id='vor-tumble-scale'
-                            type='range'
-                            min='0'
-                            max='50'
-                            step='0.05'
-                            value={state.tumbleEffectScale}
-                            onChange={e => app.setEffectScale('tumbleEffectScale', parseFloat(e.target.value))}
-                        />
-                    </div>
-                    <div className='vor-slider-row'>
-                        <label htmlFor='vor-axis-scale'>Axis Amplitude Scale</label>
-                        <output>{state.assemblyAxisAmplitudeScale.toFixed(2)}</output>
-                        <input
-                            id='vor-axis-scale'
-                            type='range'
-                            min='0'
-                            max='50'
-                            step='0.05'
-                            value={state.assemblyAxisAmplitudeScale}
-                            onChange={e => app.setEffectScale('assemblyAxisAmplitudeScale', parseFloat(e.target.value))}
-                        />
-                    </div>
-                </div>
-            </ControlCard>
         </div>}
 
         {/* EXPAND BUTTON — appears at top-left when sidebar is CLOSED */}
@@ -1646,7 +1956,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                 <button
                     className="vor-chip vor-toggle-small"
                     onClick={() => app.setSidebarVisible(!state.showSidebar)}
-                    title={state.showSidebar ? "Hide Sidebar" : "Expand Sidebar"}
+                    title={state.showSidebar ? 'Hide Sidebar' : 'Expand Sidebar'}
                     style={{
                         minWidth: '36px',
                         height: '36px',

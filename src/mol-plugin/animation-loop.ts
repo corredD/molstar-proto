@@ -51,6 +51,7 @@ export class PluginAnimationLoop {
             treble: audioFrame.frequencyBands.treble,
             wiggleScale: audioParams.wiggleEffectScale,
             tumbleScale: audioParams.tumbleEffectScale,
+            objectTransformScale: audioParams.objectTransformEffectScale,
             assemblyAxisAmplitudeScale: audioParams.assemblyAxisAmplitudeScale,
             assemblyAxisCount,
             assemblyAxisCenter: this.audioAssemblyAxisCenter,

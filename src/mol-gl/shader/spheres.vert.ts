@@ -121,7 +121,7 @@ void main(void){
     float group = positionGroup.a;
 
     position = applyWiggle(position, group, aInstance);
-    mat4 transform = applyTumble(aTransform, aInstance, float(uObjectId));
+    mat4 transform = applyTransformAnimation(aTransform, aInstance, float(uObjectId));
 
     #include assign_color_varying
     #include assign_marker_varying

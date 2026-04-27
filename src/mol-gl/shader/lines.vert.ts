@@ -49,7 +49,7 @@ void main(){
     #include assign_clipping_varying
     #include assign_size
 
-    mat4 transform = applyTumble(aTransform, aInstance, float(uObjectId));
+    mat4 transform = applyTransformAnimation(aTransform, aInstance, float(uObjectId));
     vec3 wigStart = applyWiggle(aStart, group, aInstance);
     vec3 wigEnd = applyWiggle(aEnd, group, aInstance);
     mat4 modelView = uView * uModel * transform;

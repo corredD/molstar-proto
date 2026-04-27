@@ -106,6 +106,7 @@ export type AudioReactiveFrame = {
     treble: number,
     wiggleScale: number,
     tumbleScale: number,
+    objectTransformScale: number,
     assemblyAxisAmplitudeScale: number,
     assemblyAxisCount: number,
     assemblyAxisCenter: Vec3,
@@ -317,6 +318,7 @@ namespace Renderer {
             uAudioTreble: ValueCell.create(0),
             uAudioWiggleScale: ValueCell.create(1),
             uAudioTumbleScale: ValueCell.create(1),
+            uAudioObjectTransformScale: ValueCell.create(1),
             uAudioAssemblyAxisAmplitudeScale: ValueCell.create(1),
             uAudioAssemblyAxisCount: ValueCell.create(0),
             uAudioAssemblyAxisCenter: ValueCell.create(Vec3.create(0, 0, 0)),
@@ -891,6 +893,7 @@ namespace Renderer {
                 ValueCell.updateIfChanged(globalUniforms.uAudioTreble, frame.treble);
                 ValueCell.updateIfChanged(globalUniforms.uAudioWiggleScale, frame.wiggleScale);
                 ValueCell.updateIfChanged(globalUniforms.uAudioTumbleScale, frame.tumbleScale);
+                ValueCell.updateIfChanged(globalUniforms.uAudioObjectTransformScale, frame.objectTransformScale);
                 ValueCell.updateIfChanged(globalUniforms.uAudioAssemblyAxisAmplitudeScale, frame.assemblyAxisAmplitudeScale);
                 ValueCell.updateIfChanged(globalUniforms.uAudioAssemblyAxisCount, frame.assemblyAxisCount);
                 ValueCell.update(globalUniforms.uAudioAssemblyAxisCenter, frame.assemblyAxisCenter);

@@ -195,6 +195,7 @@ export const GlobalUniformSchema = {
     uAudioTreble: UniformSpec('f'),
     uAudioWiggleScale: UniformSpec('f'),
     uAudioTumbleScale: UniformSpec('f'),
+    uAudioObjectTransformScale: UniformSpec('f'),
     uAudioAssemblyAxisAmplitudeScale: UniformSpec('f'),
     uAudioAssemblyAxisCount: UniformSpec('i'),
     uAudioAssemblyAxisCenter: UniformSpec('v3'),
@@ -429,15 +430,16 @@ export type InteriorSchema = typeof InteriorSchema
 export type InteriorValues = Values<InteriorSchema>
 
 export const AnimationSchema = {
+    uAtomWiggleEnabled: UniformSpec('b', 'material'),
     uWiggleSpeed: UniformSpec('f', 'material'),
     uWiggleAmplitude: UniformSpec('f', 'material'),
     uWiggleFrequency: UniformSpec('f', 'material'),
     uWiggleMode: UniformSpec('i', 'material'),
+    uInstanceTumbleEnabled: UniformSpec('b', 'material'),
     uTumbleSpeed: UniformSpec('f', 'material'),
     uTumbleAmplitude: UniformSpec('f', 'material'),
     uTumbleFrequency: UniformSpec('f', 'material'),
     uTumbleTranslationMode: UniformSpec('i', 'material'),
-    uTumbleTranslationSync: UniformSpec('b', 'material'),
     uTumbleAxisSource: UniformSpec('i', 'material'),
     uTumbleAxis: UniformSpec('i', 'material'),
     uAudioWiggleSource: UniformSpec('i', 'material'),
@@ -446,6 +448,13 @@ export const AnimationSchema = {
     uAudioTumbleSource: UniformSpec('i', 'material'),
     uAudioTumbleStrength: UniformSpec('f', 'material'),
     uAudioTumbleFloor: UniformSpec('f', 'material'),
+    uObjectTransformEnabled: UniformSpec('b', 'material'),
+    uObjectTransformSpeed: UniformSpec('f', 'material'),
+    uObjectTransformAmplitude: UniformSpec('f', 'material'),
+    uObjectTransformSource: UniformSpec('i', 'material'),
+    uObjectTransformStrength: UniformSpec('f', 'material'),
+    uObjectTransformFloor: UniformSpec('f', 'material'),
+    uObjectTransformMode: UniformSpec('i', 'material'),
 } as const;
 export type AnimationSchema = typeof AnimationSchema
 export type AnimationValues = Values<AnimationSchema>

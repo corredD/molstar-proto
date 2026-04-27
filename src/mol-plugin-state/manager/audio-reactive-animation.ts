@@ -38,7 +38,7 @@ const AudioReactorSampleRateOptions = [
 export const AudioReactiveAnimationManagerParams = {
     wiggleEffectScale: PD.Numeric(1, { min: 0, max: 4, step: 0.05 }, { category: 'Effect', description: 'Global multiplier applied to reactive values when driving wiggle.' }),
     tumbleEffectScale: PD.Numeric(1, { min: 0, max: 50, step: 0.05 }, { category: 'Effect', description: 'Global multiplier applied to reactive values when driving tumble.' }),
-    tumbleTranslationSync: PD.Boolean(false, { hideIf: p => p.tumbleTranslationMode !== 'axis', description: 'Whether to synchronize tumble translation for each group.' }),
+    objectTransformEffectScale: PD.Numeric(1, { min: 0, max: 8, step: 0.05 }, { category: 'Effect', description: 'Global multiplier applied to reactive values when driving whole-object transform.' }),
     assemblyAxisOrder: PD.Select<AudioReactiveAssemblyAxisOrder>('highest', AudioReactiveAssemblyAxisOrderOptions, { category: 'Effect', description: 'Preferred assembly symmetry axis order when using assembly-based tumble translation.' }),
     assemblyAxisAmplitudeScale: PD.Numeric(1, { min: 0, max: 50, step: 0.05 }, { category: 'Effect', description: 'Extra distance multiplier applied only to assembly-axis tumble translation.' }),
     fftSize: PD.Select(DefaultAudioReactorParams.fftSize, AudioReactorFftSizeOptions, { category: 'Analysis', description: 'FFT size used for the audio analysis window.' }),
@@ -68,6 +68,7 @@ export type AudioReactiveStatus = {
     sourceLabel?: string,
     loaded: boolean,
     playing: boolean,
+    analysisBlocked: boolean,
     sampleRate?: number,
     frame: AudioReactiveFrame<DefaultAudioBandKey>,
     visualization: AudioReactiveVisualizationFrame,
@@ -81,6 +82,7 @@ const EmptyAudioReactiveVisualization = createAudioReactiveVisualizationFrame();
 const InitialAudioReactiveStatus: AudioReactiveStatus = {
     loaded: false,
     playing: false,
+    analysisBlocked: false,
     frame: EmptyAudioReactiveFrame,
     visualization: EmptyAudioReactiveVisualization,
 };
@@ -174,6 +176,7 @@ export class AudioReactiveAnimationManager {
     private currentFrame = EmptyAudioReactiveFrame;
     private lastUiUpdateMs = 0;
     private lastTickMs = 0;
+    private silenceWhilePlayingMs = 0;
     private reactor = new AudioReactor();
 
     constructor(readonly plugin: PluginContext) {
@@ -239,6 +242,7 @@ export class AudioReactiveAnimationManager {
             sourceLabel: this.sourceLabel,
             loaded: !!audio?.src,
             playing: !!audio && !audio.paused && !audio.ended,
+            analysisBlocked: this.silenceWhilePlayingMs > 2000,
             sampleRate: this.audioContext?.sampleRate,
             frame: this.currentFrame,
             visualization: this.visualization,
@@ -362,6 +366,7 @@ export class AudioReactiveAnimationManager {
         this.currentFrame = EmptyAudioReactiveFrame;
         clearAudioReactiveVisualization(this.visualization);
         this.lastTickMs = 0;
+        this.silenceWhilePlayingMs = 0;
         this.updateStatus(void 0, true);
     }
 
@@ -379,6 +384,7 @@ export class AudioReactiveAnimationManager {
         this.currentFrame = EmptyAudioReactiveFrame;
         clearAudioReactiveVisualization(this.visualization);
         this.lastTickMs = 0;
+        this.silenceWhilePlayingMs = 0;
         this.updateStatus(void 0, true);
     }
 
@@ -400,11 +406,19 @@ export class AudioReactiveAnimationManager {
 
         try {
             if (audio.paused || audio.ended) {
+                this.silenceWhilePlayingMs = 0;
                 this.currentFrame = this.reactor.analyze(this.silenceData, sampleRate, dtMs);
                 clearAudioReactiveVisualization(this.visualization);
             } else {
                 this.analyser.getFloatTimeDomainData(this.timeDomainData);
                 this.analyser.getByteFrequencyData(this.frequencyDomainData);
+                const n = this.timeDomainData.length;
+                const analysisSilent =
+                    Math.abs(this.timeDomainData[0]) < 1e-7 &&
+                    Math.abs(this.timeDomainData[n >> 2]) < 1e-7 &&
+                    Math.abs(this.timeDomainData[n >> 1]) < 1e-7 &&
+                    Math.abs(this.timeDomainData[(n >> 1) + (n >> 2)]) < 1e-7;
+                this.silenceWhilePlayingMs = analysisSilent ? this.silenceWhilePlayingMs + dtMs : 0;
                 writeWaveformSamples(this.timeDomainData, this.visualization.waveform);
                 writeSpectrumSamples(this.frequencyDomainData, this.visualization.spectrum);
                 this.currentFrame = this.reactor.analyze(this.timeDomainData, sampleRate, dtMs);
