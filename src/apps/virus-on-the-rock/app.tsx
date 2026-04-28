@@ -592,6 +592,7 @@ export class VirusOnTheRockApp {
                 ...patch,
             }
         });
+        await this.applyCurrentAnimationToScene();
     }
 
     private async initializeDefaults() {
@@ -1178,6 +1179,7 @@ export class VirusOnTheRockApp {
             }
         });
         await clearStructureWiggle(this.viewer.plugin, this.currentComponents);
+        await this.applyCurrentAnimationToScene();
         this.patchState({
             activePreset: name,
             ...getMotionTargetState({
