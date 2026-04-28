@@ -478,7 +478,7 @@ export class VirusOnTheRockApp {
                 await this.loadStructureFiles(structureFiles);
             }
 
-            return audioFiles.length > 0;
+            return audioFiles.length > 0 || structureFiles.length > 0;
         });
 
         this.subscriptions.add(this.viewer.plugin.managers.structure.hierarchy.behaviors.selection.subscribe(() => {
