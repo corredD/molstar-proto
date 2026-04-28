@@ -11,6 +11,7 @@ import { AssemblySymmetryData, AssemblySymmetryDataProvider, AssemblySymmetryPro
 import { getAssemblySymmetryConfig, tryCreateAssemblySymmetry } from '../../extensions/assembly-symmetry/behavior';
 import { Vec3 } from '../../mol-math/linear-algebra/3d/vec3';
 import { Vec4 } from '../../mol-math/linear-algebra/3d/vec4';
+import { ValueCell } from '../../mol-util/value-cell';
 import { setSubtreeVisibility } from '../../mol-plugin/behavior/static/state';
 import { PostprocessingParams } from '../../mol-canvas3d/passes/postprocessing';
 import { SsaoParams } from '../../mol-canvas3d/passes/ssao';
@@ -73,6 +74,8 @@ type VirusOnTheRockState = {
     objectTransformEnabled: boolean,
     objectTransformMode: ObjectTransformModeName,
     lodScaleEnabled: boolean,
+    audioClipEnabled: boolean,
+    audioClipScale: number,
     showSidebar: boolean,
     showHistogramBars: boolean,
     showSessionInfo: boolean,
@@ -354,6 +357,8 @@ function createInitialState(params: AudioReactiveAnimationManagerValues, animati
         activeCycleTarget: void 0,
         ...getMotionTargetState(animation),
         lodScaleEnabled: params.lodScaleEnabled,
+        audioClipEnabled: false,
+        audioClipScale: 1,
         showSidebar: true,
         showHistogramBars: true,
         showSessionInfo: true,
@@ -454,6 +459,8 @@ export class VirusOnTheRockApp {
     private trackMetadataInterval: number | undefined;
     private lastTrackMetadataKey: string | undefined;
     private isPollingTrackMetadata = false;
+    // Stores per-render-object copies of clip position/scale at the moment the toggle was enabled.
+    private clipBaseState = new WeakMap<object, { count: number; position: Float32Array; scale: Float32Array }>();
 
     private constructor(readonly viewer: Viewer, uiTarget: HTMLElement) {
         const params = this.viewer.plugin.managers.audioReactive.state.params.value;
@@ -501,6 +508,10 @@ export class VirusOnTheRockApp {
                 lodScaleEnabled: values.lodScaleEnabled,
             });
         }));
+
+        this.subscriptions.add(
+            this.viewer.plugin.canvas3d!.didDraw.subscribe(() => this.updateAudioReactiveClips())
+        );
 
         this.uiRoot.render(<VirusOnTheRockControls app={this} />);
     }
@@ -1211,6 +1222,109 @@ export class VirusOnTheRockApp {
         this.viewer.plugin.managers.audioReactive.setParams({ lodScaleEnabled: enabled });
     }
 
+    setAudioClipEnabled(enabled: boolean) {
+        if (!enabled) this.restoreClipBaseStates();
+        // Re-capture base state on next frame when enabling.
+        if (enabled) this.clipBaseState = new WeakMap();
+        this.patchState({ audioClipEnabled: enabled });
+    }
+
+    setAudioClipScale(value: number) {
+        this.patchState({ audioClipScale: value });
+    }
+
+    private updateAudioReactiveClips() {
+        if (!this.state.value.audioClipEnabled) return;
+        const canvas3d = this.viewer.plugin.canvas3d;
+        if (!canvas3d) return;
+
+        const audioFrame = this.viewer.plugin.managers.audioReactive.frame;
+        // Low-freq drive: beat + bass blend (same weighting as assembly axis mode).
+        const drive = audioFrame.beatIntensity * 0.6 + audioFrame.frequencyBands.bass * 0.4;
+        const scaledDrive = drive * this.state.value.audioClipScale;
+
+        for (const ro of canvas3d.getRenderObjects()) {
+            if (!ro.state.visible) continue;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const v = ro.values as any;
+            const count = v.dClipObjectCount?.ref?.value as number | undefined;
+            if (!count || count === 0) continue;
+
+            // Capture base state the first frame the toggle is on.
+            let base = this.clipBaseState.get(ro);
+            if (!base) {
+                const pos = v.uClipObjectPosition?.ref?.value;
+                const scale = v.uClipObjectScale?.ref?.value;
+                if (!pos || !scale) continue;
+                base = {
+                    count,
+                    position: new Float32Array(pos as Float32Array),
+                    scale: new Float32Array(scale as Float32Array),
+                };
+                this.clipBaseState.set(ro, base);
+            }
+
+            const types = v.uClipObjectType?.ref?.value as Int32Array | undefined;
+            const rotations = v.uClipObjectRotation?.ref?.value as Float32Array | undefined;
+            if (!types) continue;
+
+            const newPos = new Float32Array(base.position);
+            const newScale = new Float32Array(base.scale);
+
+            for (let i = 0; i < count; i++) {
+                const type = types[i];
+                if (type === 1 && rotations) {
+                    // Plane: translate along its normal.
+                    // Normal = rotate Y-axis (0,1,0) by the clip object's quaternion [x,y,z,w].
+                    const qx = rotations[i * 4], qy = rotations[i * 4 + 1];
+                    const qz = rotations[i * 4 + 2], qw = rotations[i * 4 + 3];
+                    const nx = 2 * (qx * qy + qz * qw);
+                    const ny = 1 - 2 * (qx * qx + qz * qz);
+                    const nz = 2 * (qy * qz - qx * qw);
+                    const offset = scaledDrive * 50; // 50 Å at drive=1, scale=1
+                    newPos[i * 3 + 0] = base.position[i * 3 + 0] + nx * offset;
+                    newPos[i * 3 + 1] = base.position[i * 3 + 1] + ny * offset;
+                    newPos[i * 3 + 2] = base.position[i * 3 + 2] + nz * offset;
+                } else if (type === 2 || type === 3) {
+                    // Sphere / Cube: uniform scale.
+                    const s = 1 + scaledDrive;
+                    newScale[i * 3 + 0] = base.scale[i * 3 + 0] * s;
+                    newScale[i * 3 + 1] = base.scale[i * 3 + 1] * s;
+                    newScale[i * 3 + 2] = base.scale[i * 3 + 2] * s;
+                } else if (type === 4) {
+                    // Cylinder: widen radius (x, z), keep height (y) fixed.
+                    const s = 1 + scaledDrive;
+                    newScale[i * 3 + 0] = base.scale[i * 3 + 0] * s;
+                    newScale[i * 3 + 1] = base.scale[i * 3 + 1];
+                    newScale[i * 3 + 2] = base.scale[i * 3 + 2] * s;
+                } else if (type === 5) {
+                    // Cone: widen the cone angle (scale.xy stores sin/cos of half-angle).
+                    const s = 1 + scaledDrive * 0.5;
+                    newScale[i * 3 + 0] = base.scale[i * 3 + 0] * s;
+                    newScale[i * 3 + 1] = base.scale[i * 3 + 1] * s;
+                    newScale[i * 3 + 2] = base.scale[i * 3 + 2];
+                }
+            }
+
+            ValueCell.updateIfChanged(v.uClipObjectPosition, newPos);
+            ValueCell.updateIfChanged(v.uClipObjectScale, newScale);
+        }
+    }
+
+    private restoreClipBaseStates() {
+        const canvas3d = this.viewer.plugin.canvas3d;
+        if (!canvas3d) return;
+        for (const ro of canvas3d.getRenderObjects()) {
+            const base = this.clipBaseState.get(ro);
+            if (!base) continue;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const v = ro.values as any;
+            ValueCell.updateIfChanged(v.uClipObjectPosition, base.position);
+            ValueCell.updateIfChanged(v.uClipObjectScale, base.scale);
+            this.clipBaseState.delete(ro);
+        }
+    }
+
     async removeStructure(ref: string) {
         await this.viewer.plugin.managers.structure.hierarchy.remove([ref], false);
         await this.syncSelectedStructure();
@@ -1798,6 +1912,43 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                     </div>
 
                 </details>
+            </ControlCard>
+
+            <ControlCard title='Clip Reactivity'>
+                <div className='vor-stack'>
+                    <div className='vor-chip-row'>
+                        <button
+                            className={`vor-chip ${!state.audioClipEnabled ? 'vor-active' : ''}`}
+                            onClick={() => app.setAudioClipEnabled(false)}
+                        >
+                            Off
+                        </button>
+                        <button
+                            className={`vor-chip ${state.audioClipEnabled ? 'vor-active' : ''}`}
+                            onClick={() => app.setAudioClipEnabled(true)}
+                        >
+                            On
+                        </button>
+                    </div>
+                    <p className='vor-help'>
+                        When on, clip objects in the scene react to audio. Planes slide along their normal; spheres and cubes expand; cylinders widen.
+                    </p>
+                    <div className='vor-slider-group'>
+                        <div className='vor-slider-row'>
+                            <label htmlFor='vor-clip-scale'>Scale</label>
+                            <output>{state.audioClipScale.toFixed(2)}</output>
+                            <input
+                                id='vor-clip-scale'
+                                type='range'
+                                min='0'
+                                max='4'
+                                step='0.01'
+                                value={state.audioClipScale}
+                                onChange={e => app.setAudioClipScale(parseFloat(e.target.value))}
+                            />
+                        </div>
+                    </div>
+                </div>
             </ControlCard>
 
             <ControlCard title='Axis Mode'>
