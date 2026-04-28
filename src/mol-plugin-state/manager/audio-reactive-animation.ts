@@ -36,11 +36,12 @@ const AudioReactorSampleRateOptions = [
 ] as const;
 
 export const AudioReactiveAnimationManagerParams = {
-    wiggleEffectScale: PD.Numeric(1, { min: 0, max: 4, step: 0.05 }, { category: 'Effect', description: 'Global multiplier applied to reactive values when driving wiggle.' }),
-    tumbleEffectScale: PD.Numeric(1, { min: 0, max: 50, step: 0.05 }, { category: 'Effect', description: 'Global multiplier applied to reactive values when driving tumble.' }),
-    objectTransformEffectScale: PD.Numeric(1, { min: 0, max: 8, step: 0.05 }, { category: 'Effect', description: 'Global multiplier applied to reactive values when driving whole-object transform.' }),
+    lodScaleEnabled: PD.Boolean(false, { category: 'Effect', description: 'Scale all motion amplitudes based on camera distance so motion stays visible when zoomed out.' }),
+    wiggleEffectScale: PD.Numeric(1, { min: 0, max: 16, step: 0.05 }, { category: 'Effect', description: 'Global multiplier applied to reactive values when driving wiggle.' }),
+    tumbleEffectScale: PD.Numeric(1, { min: 0, max: 200, step: 0.05 }, { category: 'Effect', description: 'Global multiplier applied to reactive values when driving tumble.' }),
+    objectTransformEffectScale: PD.Numeric(1, { min: 0, max: 32, step: 0.05 }, { category: 'Effect', description: 'Global multiplier applied to reactive values when driving whole-object transform.' }),
     assemblyAxisOrder: PD.Select<AudioReactiveAssemblyAxisOrder>('highest', AudioReactiveAssemblyAxisOrderOptions, { category: 'Effect', description: 'Preferred assembly symmetry axis order when using assembly-based tumble translation.' }),
-    assemblyAxisAmplitudeScale: PD.Numeric(1, { min: 0, max: 50, step: 0.05 }, { category: 'Effect', description: 'Extra distance multiplier applied only to assembly-axis tumble translation.' }),
+    assemblyAxisAmplitudeScale: PD.Numeric(1, { min: 0, max: 200, step: 0.05 }, { category: 'Effect', description: 'Extra distance multiplier applied only to assembly-axis tumble translation.' }),
     fftSize: PD.Select(DefaultAudioReactorParams.fftSize, AudioReactorFftSizeOptions, { category: 'Analysis', description: 'FFT size used for the audio analysis window.' }),
     analysisSampleRate: PD.Select(DefaultAudioReactorParams.analysisSampleRate, AudioReactorSampleRateOptions, { category: 'Analysis', label: 'Sample Rate', description: 'Optional analysis resampling rate. Context uses the audio context sample rate.' }),
     bandNormalizationGain: PD.Numeric(DefaultAudioReactorParams.bandNormalizationGain, { min: 0.5, max: 32, step: 0.1 }, { category: 'Analysis', description: 'Gain applied before band values are normalized to 0–1.' }),

@@ -111,6 +111,7 @@ export type AudioReactiveFrame = {
     assemblyAxisCount: number,
     assemblyAxisCenter: Vec3,
     assemblyAxes: number[],
+    lodMotionScale: number,
 };
 
 export const RendererParams = {
@@ -323,6 +324,7 @@ namespace Renderer {
             uAudioAssemblyAxisCount: ValueCell.create(0),
             uAudioAssemblyAxisCenter: ValueCell.create(Vec3.create(0, 0, 0)),
             uAudioAssemblyAxes: ValueCell.create(new Array<number>(32 * 3).fill(0)),
+            uAudioLodMotionScale: ValueCell.create(1),
         };
         const globalUniformList = Object.entries(globalUniforms);
 
@@ -898,6 +900,7 @@ namespace Renderer {
                 ValueCell.updateIfChanged(globalUniforms.uAudioAssemblyAxisCount, frame.assemblyAxisCount);
                 ValueCell.update(globalUniforms.uAudioAssemblyAxisCenter, frame.assemblyAxisCenter);
                 ValueCell.update(globalUniforms.uAudioAssemblyAxes, frame.assemblyAxes);
+                ValueCell.updateIfChanged(globalUniforms.uAudioLodMotionScale, frame.lodMotionScale);
             },
             setProps: (props: Partial<RendererProps>) => {
                 if (props.backgroundColor !== undefined && props.backgroundColor !== p.backgroundColor) {

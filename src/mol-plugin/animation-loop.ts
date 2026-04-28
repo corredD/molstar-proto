@@ -37,6 +37,25 @@ export class PluginAnimationLoop {
         const audioFrame = this.plugin.managers.audioReactive.tick(t);
         const audioParams = this.plugin.managers.audioReactive.state.params.value;
         const assemblyAxisCount = getSelectedStructureAssemblyAxes(this.plugin, audioParams.assemblyAxisOrder, this.audioAssemblyAxes, this.audioAssemblyAxisCenter);
+        const animationOptions = this.plugin.managers.structure.component.state.options.animation;
+        // Zero out the assembly-axis scale for local/global axis modes so the shader takes the
+        // flat (radius-independent) path instead of the Stokes-Einstein–scaled assembly path.
+        const assemblyAxisAmplitudeScale = (
+            animationOptions.tumbleTranslationMode === 'axis' &&
+            animationOptions.tumbleAxisSource !== 'assembly'
+        ) ? 0 : audioParams.assemblyAxisAmplitudeScale;
+        // LOD motion scale: when enabled, amplify all motion proportionally to camera distance
+        // so animations remain visible when zoomed out of a large scene.
+        let lodMotionScale = 1.0;
+        if (audioParams.lodScaleEnabled) {
+            const canvas3d = this.plugin.canvas3d;
+            const sphere = canvas3d?.boundingSphereVisible;
+            const camera = canvas3d?.camera;
+            if (sphere && camera && sphere.radius > 0) {
+                const camDist = Vec3.distance(camera.position, sphere.center);
+                lodMotionScale = Math.max(camDist / sphere.radius, 1.0);
+            }
+        }
         this.plugin.canvas3d?.setAudioFrame({
             amplitude: audioFrame.amplitude,
             peakAmplitude: audioFrame.peakAmplitude,
@@ -52,10 +71,11 @@ export class PluginAnimationLoop {
             wiggleScale: audioParams.wiggleEffectScale,
             tumbleScale: audioParams.tumbleEffectScale,
             objectTransformScale: audioParams.objectTransformEffectScale,
-            assemblyAxisAmplitudeScale: audioParams.assemblyAxisAmplitudeScale,
+            assemblyAxisAmplitudeScale,
             assemblyAxisCount,
             assemblyAxisCenter: this.audioAssemblyAxisCenter,
             assemblyAxes: this.audioAssemblyAxes,
+            lodMotionScale,
         });
         this.plugin.canvas3d?.tick(t as now.Timestamp, options);
 

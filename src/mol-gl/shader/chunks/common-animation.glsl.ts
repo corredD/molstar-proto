@@ -49,6 +49,7 @@ uniform float uAudioAssemblyAxisAmplitudeScale;
 uniform int uAudioAssemblyAxisCount;
 uniform vec3 uAudioAssemblyAxisCenter;
 uniform vec3 uAudioAssemblyAxes[32];
+uniform float uAudioLodMotionScale;
 
 uniform int uTrailMode;
 uniform float uTrailSpeed;
@@ -156,6 +157,7 @@ vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
             amplitude += readFromTexture(tWiggle, instanceId * float(uGroupCount) + groupId, uWiggleTexDim).a * uWiggleStrength;
         #endif
     #endif
+    amplitude *= uAudioLodMotionScale;
     if (amplitude > 0.0 && uWiggleSpeed > 0.0 && uWiggleFrequency > 0.0) {
         float t = uTime * uWiggleSpeed;
         vec3 s;
@@ -185,6 +187,7 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
     if (uAudioTumbleSource != 0) {
         tumbleAmplitude *= clamp((uAudioTumbleFloor + getAudioSource(uAudioTumbleSource) * uAudioTumbleStrength) * uAudioTumbleScale, 0.0, 8.0);
     }
+    tumbleAmplitude *= uAudioLodMotionScale;
     if (tumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0) {
         // Scale amplitude inversely with bounding-sphere radius (Stokes-Einstein: D ~ 1/r)
         float amplitude = tumbleAmplitude / max(uInvariantBoundingSphere.w, 1.0);
@@ -226,7 +229,14 @@ mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
                 axis = getTumbleAxisVector(transform, uTumbleAxis);
             }
             float axisDrive = uAudioTumbleSource != 0 ? getAssemblyAxisDrive() : 1.0;
-            offset = axis * amplitude * axisDrive * uAudioAssemblyAxisAmplitudeScale;
+            if (uAudioAssemblyAxisAmplitudeScale > 0.0) {
+                // Assembly-axis: Stokes-Einstein-scaled amplitude with bass drive and explicit extra scale.
+                offset = axis * amplitude * axisDrive * uAudioAssemblyAxisAmplitudeScale;
+            } else {
+                // Local / global axis: flat world-space displacement, radius-independent.
+                // tumbleAmplitude is already audio-reactive; all instances travel equally.
+                offset = axis * tumbleAmplitude * axisDrive;
+            }
         } else {
             offset = vec3(
                 (fbm(vec3(seed + 31.7, t, 0.0)) / 0.4375 - 1.0),
@@ -256,7 +266,7 @@ mat4 applyObjectTransform(mat4 transform, float uObjectId) {
     if (!uEnableAnimation || !uObjectTransformEnabled || uObjectTransformAmplitude <= 0.0 || uObjectTransformSpeed <= 0.0) return transform;
 
     float drive = getSoftAudioDrive(uObjectTransformSource, uObjectTransformStrength, uObjectTransformFloor, uAudioObjectTransformScale);
-    float amplitude = uObjectTransformAmplitude * drive;
+    float amplitude = uObjectTransformAmplitude * drive * uAudioLodMotionScale;
     if (amplitude <= 0.0) return transform;
 
     float t = uTime * uObjectTransformSpeed;

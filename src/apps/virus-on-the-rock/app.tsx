@@ -72,6 +72,7 @@ type VirusOnTheRockState = {
     instanceTumbleEnabled: boolean,
     objectTransformEnabled: boolean,
     objectTransformMode: ObjectTransformModeName,
+    lodScaleEnabled: boolean,
     showSidebar: boolean,
     showHistogramBars: boolean,
     showSessionInfo: boolean,
@@ -228,7 +229,9 @@ function getCycleTargetLabel(target: AxisCycleTarget, axisOptions: AxisOption[])
 
 function sanitizeCycleTargets(cycleTargets: readonly AxisCycleTarget[], axisOptions: AxisOption[]) {
     const available = new Set(getAxisCycleOptions(axisOptions).map(option => option.value));
-    return cycleTargets.filter(target => available.has(target));
+    const filtered = cycleTargets.filter(target => available.has(target));
+    // Always guarantee >= 2 options so beat cycle works even without assembly symmetry.
+    return filtered.length >= 2 ? filtered : DefaultLocalCycleTargets;
 }
 
 function getAxisModeState(animation: AnimationProps) {
@@ -350,6 +353,7 @@ function createInitialState(params: AudioReactiveAnimationManagerValues, animati
         cycleTargets: DefaultLocalCycleTargets,
         activeCycleTarget: void 0,
         ...getMotionTargetState(animation),
+        lodScaleEnabled: params.lodScaleEnabled,
         showSidebar: true,
         showHistogramBars: true,
         showSessionInfo: true,
@@ -494,6 +498,7 @@ export class VirusOnTheRockApp {
                 objectTransformEffectScale: values.objectTransformEffectScale,
                 assemblyAxisAmplitudeScale: values.assemblyAxisAmplitudeScale,
                 beatThreshold: values.beatThreshold,
+                lodScaleEnabled: values.lodScaleEnabled,
             });
         }));
 
@@ -1202,6 +1207,10 @@ export class VirusOnTheRockApp {
         this.viewer.plugin.managers.audioReactive.setParams({ beatThreshold: value });
     }
 
+    setLodScaleEnabled(enabled: boolean) {
+        this.viewer.plugin.managers.audioReactive.setParams({ lodScaleEnabled: enabled });
+    }
+
     async removeStructure(ref: string) {
         await this.viewer.plugin.managers.structure.hierarchy.remove([ref], false);
         await this.syncSelectedStructure();
@@ -1703,6 +1712,23 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                         <span className='vor-disclosure-state vor-collapsed-label'>Expand</span>
                         <span className='vor-disclosure-state vor-expanded-label'>Collapse</span>
                     </summary>
+                    <div className='vor-chip-row'>
+                        <button
+                            className={`vor-chip ${!state.lodScaleEnabled ? 'vor-active' : ''}`}
+                            onClick={() => app.setLodScaleEnabled(false)}
+                        >
+                            LOD Scale Off
+                        </button>
+                        <button
+                            className={`vor-chip ${state.lodScaleEnabled ? 'vor-active' : ''}`}
+                            onClick={() => app.setLodScaleEnabled(true)}
+                        >
+                            LOD Scale On
+                        </button>
+                    </div>
+                    <p className='vor-help'>
+                        When on, all motion amplitudes scale with camera distance so animation stays visible when zoomed out. The farther you zoom, the larger the motion in world space.
+                    </p>
                     <div className='vor-slider-group'>
                         <div className='vor-slider-row'>
                             <label htmlFor='vor-beat-threshold'>Beat Threshold</label>
@@ -1724,7 +1750,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                                 id='vor-wiggle-scale'
                                 type='range'
                                 min='0'
-                                max='4'
+                                max='16'
                                 step='0.05'
                                 value={state.wiggleEffectScale}
                                 onChange={e => app.setEffectScale('wiggleEffectScale', parseFloat(e.target.value))}
@@ -1737,7 +1763,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                                 id='vor-tumble-scale'
                                 type='range'
                                 min='0'
-                                max='50'
+                                max='200'
                                 step='0.05'
                                 value={state.tumbleEffectScale}
                                 onChange={e => app.setEffectScale('tumbleEffectScale', parseFloat(e.target.value))}
@@ -1750,7 +1776,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                                 id='vor-object-scale'
                                 type='range'
                                 min='0'
-                                max='8'
+                                max='32'
                                 step='0.05'
                                 value={state.objectTransformEffectScale}
                                 onChange={e => app.setEffectScale('objectTransformEffectScale', parseFloat(e.target.value))}
@@ -1763,7 +1789,7 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                                 id='vor-axis-scale'
                                 type='range'
                                 min='0'
-                                max='50'
+                                max='200'
                                 step='0.05'
                                 value={state.assemblyAxisAmplitudeScale}
                                 onChange={e => app.setEffectScale('assemblyAxisAmplitudeScale', parseFloat(e.target.value))}
