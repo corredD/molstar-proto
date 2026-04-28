@@ -25,7 +25,6 @@ import { AudioReactiveAnimationManagerValues, type AudioReactiveStatus } from '.
 import { AudioReactiveAssemblyAxisOrder } from '../../mol-plugin-state/helpers/assembly-symmetry-axis';
 import { StructureRef } from '../../mol-plugin-state/manager/structure/hierarchy-state';
 import { StateTransforms } from '../../mol-plugin-state/transforms';
-import { StructureRepresentation3D } from '../../mol-plugin-state/transforms/representation';
 import { Viewer } from '../viewer/app';
 import { areAnimationPropsEqual, type AnimationProps, type ObjectTransformModeName, type TumbleAxisName, type TumbleAxisSourceName } from '../../mol-geo/geometry/animation';
 import { RandomStructurePdbIds } from './random-structures';
@@ -874,28 +873,25 @@ export class VirusOnTheRockApp {
         this.styledStructureVersions.set(ref, version);
     }
 
-    private async applyCurrentAnimationToStructures(structures: StructureRef[]) {
-        if (structures.length === 0) return;
-
+    // Applies the current animation options to every representation cell in the scene
+    // that has an animation param (structures, volumes, texture-meshes, etc.).
+    private async applyCurrentAnimationToScene() {
         const animation = this.viewer.plugin.managers.structure.component.state.options.animation;
         const update = this.viewer.plugin.state.data.build();
         let changed = false;
 
-        for (const structure of structures) {
-            for (const component of structure.components) {
-                for (const repr of component.representations) {
-                    if (repr.cell.transform.transformer !== StructureRepresentation3D) continue;
+        for (const [, cell] of this.viewer.plugin.state.data.cells) {
+            if (cell.status !== 'ok') continue;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const params = cell.transform.params as any;
+            const current = params?.type?.params?.animation as AnimationProps | undefined;
+            if (!current || areAnimationPropsEqual(current, animation)) continue;
 
-                    const params = repr.cell.transform.params as typeof repr.cell.transform.params & { type: { params: { animation?: typeof animation } } };
-                    const current = params.type.params.animation;
-                    if (!current || areAnimationPropsEqual(current, animation)) continue;
-
-                    changed = true;
-                    update.to(repr.cell).update(old => {
-                        old.type.params.animation = animation;
-                    });
-                }
-            }
+            changed = true;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            update.to(cell).update((old: any) => {
+                old.type.params.animation = animation;
+            });
         }
 
         if (changed) await update.commit();
@@ -1109,7 +1105,7 @@ export class VirusOnTheRockApp {
         await this.placeNewStructuresOnGrid(newStructures);
         await this.syncSelectedStructure();
         await this.applyAudioPreset(this.state.value.activePreset);
-        await this.applyCurrentAnimationToStructures(newStructures);
+        await this.applyCurrentAnimationToScene();
         await this.resetCamera(replaceCurrent);
     }
 
@@ -1121,7 +1117,7 @@ export class VirusOnTheRockApp {
         await this.placeNewStructuresOnGrid(newStructures);
         await this.syncSelectedStructure();
         await this.applyAudioPreset(this.state.value.activePreset);
-        await this.applyCurrentAnimationToStructures(newStructures);
+        await this.applyCurrentAnimationToScene();
         await this.resetCamera();
     }
 
