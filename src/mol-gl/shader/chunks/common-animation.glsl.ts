@@ -51,12 +51,6 @@ uniform vec3 uAudioAssemblyAxisCenter;
 uniform vec3 uAudioAssemblyAxes[32];
 uniform float uAudioLodMotionScale;
 
-uniform int uTrailMode;
-uniform float uTrailSpeed;
-uniform float uTrailAmplitude;
-uniform float uTrailFrequency;
-uniform float uTrailStep;
-
 #ifdef dWiggle
     uniform vec2 uWiggleTexDim;
     uniform sampler2D tWiggle;

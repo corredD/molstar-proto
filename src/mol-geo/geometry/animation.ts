@@ -135,7 +135,7 @@ export function getAnimationParam() {
         wiggleFrequency: PD.Numeric(0.2, { min: 0.01, max: 2, step: 0.01 }, { description: 'Spatial frequency of vertex wiggle noise (position mode). Lower values correlate nearby atoms more.' }),
         instanceTumbleEnabled: PD.Boolean(true, { description: 'Enable per-instance tumble and beat-driven translation motion.' }),
         tumbleSpeed: PD.Numeric(1, { min: 0, max: 10, step: 0.1 }, { description: 'Speed of instance tumble animation.' }),
-        tumbleAmplitude: PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, { description: 'Amplitude of instance tumble animation.' }),
+        tumbleAmplitude: PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, { description: 'Amplitude of instance tumble animation. In Ångströms of implied surface displacement.' }),
         tumbleFrequency: PD.Numeric(0.2, { min: 0, max: 2, step: 0.01 }, { description: 'Spatial frequency multiplier for tumble noise.' }),
         tumbleTranslationMode: PD.Select('noise', TumbleTranslationModeOptions, { description: 'Translation mode for instance tumble. Noise keeps Brownian-like motion; Axis oscillates along a selected local instance axis.' }),
         tumbleAxisSource: PD.Select('local', TumbleAxisSourceOptions, { hideIf: p => p.tumbleTranslationMode !== 'axis', description: 'Use either a local instance axis or the selected assembly symmetry axis for axis-based tumble translation.' }),
