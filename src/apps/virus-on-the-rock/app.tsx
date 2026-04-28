@@ -567,9 +567,11 @@ export class VirusOnTheRockApp {
 
     private async applyCycleTarget(target: AxisCycleTarget) {
         if (isLocalCycleTarget(target)) {
+            // Respect the current local/global frame; fall back to 'local' only when 'assembly' is active.
+            const axisSource = this.state.value.axisSource === 'global' ? 'global' : 'local';
             await this.updateAnimationOptions({
                 tumbleTranslationMode: 'axis',
-                tumbleAxisSource: 'local',
+                tumbleAxisSource: axisSource,
                 tumbleAxis: getLocalAxisFromCycleTarget(target),
             });
         } else {
