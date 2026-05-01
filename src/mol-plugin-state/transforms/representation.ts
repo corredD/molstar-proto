@@ -926,34 +926,15 @@ const ThemeStrengthRepresentation3D = PluginStateTransform.BuiltIn({
 //
 
 export namespace VolumeRepresentation3DHelpers {
-    const LegacyInstancedDotLodLevels = [
-        { minDistance: 1, maxDistance: 1000, overlap: 0, stride: 1, scaleBias: 1 },
-        { minDistance: 1000, maxDistance: 4000, overlap: 0, stride: 10, scaleBias: 3 },
-        { minDistance: 4000, maxDistance: 10000, overlap: 0, stride: 50, scaleBias: 2.7 },
-        { minDistance: 10000, maxDistance: 10000000, overlap: 0, stride: 200, scaleBias: 2.3 },
-    ] as const;
+    const DefaultMaxTextureSize = 8192;
 
-    function getLegacyInstancedDotLodLevels(params: any) {
-        const sizeFactor = params?.sizeFactor ?? 1;
-        return LegacyInstancedDotLodLevels.map(level => ({
-            ...level,
-            stride: Math.max(1, Math.round(level.stride / Math.pow(sizeFactor, level.scaleBias)))
-        }));
-    }
+    function shouldUseInstanceGranularity(ctx: PluginContext, volume: Volume) {
+        if (volume.instances.length <= 1) return false;
 
-    function hasLegacyInstancedDotLodLevels(params: any) {
-        const lodLevels = params?.lodLevels;
-        if (!lodLevels || lodLevels.length === 0) return false;
-        const legacy = getLegacyInstancedDotLodLevels(params);
-        if (lodLevels.length !== legacy.length) return false;
-        for (let i = 0, il = legacy.length; i < il; ++i) {
-            if (lodLevels[i].minDistance !== legacy[i].minDistance) return false;
-            if (lodLevels[i].maxDistance !== legacy[i].maxDistance) return false;
-            if (lodLevels[i].overlap !== legacy[i].overlap) return false;
-            if (lodLevels[i].stride !== legacy[i].stride) return false;
-            if (lodLevels[i].scaleBias !== legacy[i].scaleBias) return false;
-        }
-        return true;
+        const maxTextureSize = ctx?.canvas3d?.webgl.maxTextureSize || DefaultMaxTextureSize;
+        const maxGroupInstanceCount = maxTextureSize * maxTextureSize;
+        const estimatedGroupInstanceCount = volume.grid.cells.data.length * volume.instances.length;
+        return estimatedGroupInstanceCount > maxGroupInstanceCount;
     }
 
     export function normalizeParams(ctx: PluginContext, volume: Volume, params: StateTransformer.Params<VolumeRepresentation3D>): StateTransformer.Params<VolumeRepresentation3D> {
@@ -977,7 +958,7 @@ export namespace VolumeRepresentation3DHelpers {
             };
         }
 
-        if (ensureInstanced) {
+        if (shouldUseInstanceGranularity(ctx, volume)) {
             next = {
                 ...next,
                 type: {
@@ -985,19 +966,6 @@ export namespace VolumeRepresentation3DHelpers {
                     params: {
                         ...next.type.params,
                         instanceGranularity: true,
-                    }
-                }
-            };
-        }
-
-        if (ensureInstanced && next.type.name === 'dot' && hasLegacyInstancedDotLodLevels(next.type.params)) {
-            next = {
-                ...next,
-                type: {
-                    ...next.type,
-                    params: {
-                        ...next.type.params,
-                        lodLevels: [],
                     }
                 }
             };

@@ -29,7 +29,9 @@ import { StringLike } from '../../mol-io/common/string-like';
 import { utf8ReadLong } from '../../mol-io/common/utf8';
 import { parseRelionStarParticleList } from '../../mol-io/reader/relion/star';
 import { parseDynamoTblParticleList } from '../../mol-io/reader/dynamo/tbl';
-import { RelionStarParticleListObject } from '../objects/relion';
+import { parseHaTsvParticleList } from '../../mol-io/reader/ha/tsv';
+import { partitionParticleListByTomogram } from '../../mol-io/reader/particle-list';
+import { ParticleListSetObject, RelionStarParticleListObject } from '../objects/relion';
 
 
 export { Download };
@@ -48,7 +50,12 @@ export { ParseCcp4 };
 export { ParseDsn6 };
 export { ParseDx };
 export { RelionStarParticleListFromCif };
+export { RelionStarParticleListSetFromCif };
 export { DynamoTblParticleList };
+export { DynamoTblParticleListSet };
+export { HaTsvParticleList };
+export { HaTsvParticleListSet };
+export { ParticleListFromSet };
 export { ImportString };
 export { ImportJson };
 export { ParseJson };
@@ -346,6 +353,25 @@ const RelionStarParticleListFromCif = PluginStateTransform.BuiltIn({
     }
 });
 
+type RelionStarParticleListSetFromCif = typeof RelionStarParticleListSetFromCif
+const RelionStarParticleListSetFromCif = PluginStateTransform.BuiltIn({
+    name: 'relion-star-particle-list-set-from-cif',
+    display: { name: 'RELION Particle List Set', description: 'Parse RELION particle positions and rotations from STAR/CIF data and group them by tomogram.' },
+    from: SO.Format.Cif,
+    to: ParticleListSetObject
+})({
+    apply({ a }) {
+        return Task.create('Parse RELION Particle List Set', async () => {
+            const data = parseRelionStarParticleList(a.data);
+            const set = partitionParticleListByTomogram(data);
+            return new ParticleListSetObject(set, {
+                label: a.label,
+                description: `${set.entries.length} particle list${set.entries.length === 1 ? '' : 's'}`
+            });
+        });
+    }
+});
+
 type DynamoTblParticleList = typeof DynamoTblParticleList
 const DynamoTblParticleList = PluginStateTransform.BuiltIn({
     name: 'dynamo-tbl-particle-list',
@@ -359,6 +385,87 @@ const DynamoTblParticleList = PluginStateTransform.BuiltIn({
             return new RelionStarParticleListObject(data, {
                 label: a.label,
                 description: `${data.particles.length} particle${data.particles.length === 1 ? '' : 's'}`
+            });
+        });
+    }
+});
+
+type DynamoTblParticleListSet = typeof DynamoTblParticleListSet
+const DynamoTblParticleListSet = PluginStateTransform.BuiltIn({
+    name: 'dynamo-tbl-particle-list-set',
+    display: { name: 'Dynamo Particle List Set', description: 'Parse Dynamo particle positions and rotations from TBL data and group them by tomogram.' },
+    from: SO.Data.String,
+    to: ParticleListSetObject
+})({
+    apply({ a }) {
+        return Task.create('Parse Dynamo Particle List Set', async () => {
+            const data = parseDynamoTblParticleList(a.data.toString());
+            const set = partitionParticleListByTomogram(data);
+            return new ParticleListSetObject(set, {
+                label: a.label,
+                description: `${set.entries.length} particle list${set.entries.length === 1 ? '' : 's'}`
+            });
+        });
+    }
+});
+
+type HaTsvParticleList = typeof HaTsvParticleList
+const HaTsvParticleList = PluginStateTransform.BuiltIn({
+    name: 'ha-tsv-particle-list',
+    display: { name: 'HA TSV Particle List', description: 'Parse HA TSV particle positions and rotations.' },
+    from: SO.Data.String,
+    to: RelionStarParticleListObject
+})({
+    apply({ a }) {
+        return Task.create('Parse HA TSV Particle List', async () => {
+            const data = parseHaTsvParticleList(a.data.toString());
+            return new RelionStarParticleListObject(data, {
+                label: a.label,
+                description: `${data.particles.length} particle${data.particles.length === 1 ? '' : 's'}`
+            });
+        });
+    }
+});
+
+type HaTsvParticleListSet = typeof HaTsvParticleListSet
+const HaTsvParticleListSet = PluginStateTransform.BuiltIn({
+    name: 'ha-tsv-particle-list-set',
+    display: { name: 'HA TSV Particle List Set', description: 'Parse HA TSV particle positions and rotations and group them by tomogram.' },
+    from: SO.Data.String,
+    to: ParticleListSetObject
+})({
+    apply({ a }) {
+        return Task.create('Parse HA TSV Particle List Set', async () => {
+            const data = parseHaTsvParticleList(a.data.toString());
+            const set = partitionParticleListByTomogram(data);
+            return new ParticleListSetObject(set, {
+                label: a.label,
+                description: `${set.entries.length} particle list${set.entries.length === 1 ? '' : 's'}`
+            });
+        });
+    }
+});
+
+type ParticleListFromSet = typeof ParticleListFromSet
+const ParticleListFromSet = PluginStateTransform.BuiltIn({
+    name: 'particle-list-from-set',
+    display: { name: 'Particle List', description: 'Select one particle list from a parsed particle-list set.' },
+    from: ParticleListSetObject,
+    to: RelionStarParticleListObject,
+    params: {
+        index: PD.Numeric(0, { min: 0, step: 1 }, { isHidden: true }),
+    }
+})({
+    apply({ a, params }) {
+        return Task.create('Select Particle List', async () => {
+            const entry = a.data.entries[params.index];
+            if (!entry) throw new Error(`Particle list index ${params.index} is not available.`);
+            const label = a.data.entries.length > 1 && entry.label
+                ? `${a.label || 'Particle List'} · ${entry.label}`
+                : (a.label || entry.label || 'Particle List');
+            return new RelionStarParticleListObject(entry.particleList, {
+                label,
+                description: `${entry.particleList.particles.length} particle${entry.particleList.particles.length === 1 ? '' : 's'}`
             });
         });
     }

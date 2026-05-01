@@ -112,7 +112,6 @@ export class VolumeHierarchyManager extends PluginComponent {
             .to(root)
             .apply(StateTransforms.Representation.VolumeRepresentation3D, createVolumeRepresentationParams(this.plugin, volume, {
                 type: type as any,
-                typeParams: volume && volume.instances.length > 1 ? { instanceGranularity: true } : void 0,
             }));
 
         return update.commit({ canUndo: 'Add Representation' });

@@ -9,7 +9,7 @@ import { LinesBuilder } from '../../mol-geo/geometry/lines/lines-builder';
 import { Shape } from '../../mol-model/shape';
 import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
 import { ParticleList, ParticleListParticle } from '../../mol-io/reader/particle-list';
-import { State, StateBuilder, StateObjectCell, StateSelection, StateTransform, StateTree } from '../../mol-state';
+import { State, StateBuilder, StateObjectCell, StateObjectRef, StateSelection, StateTransform, StateTree } from '../../mol-state';
 import { StateTransforms } from '../transforms';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { ColorNames } from '../../mol-util/color/names';
@@ -201,4 +201,9 @@ export function getRelionParticleRepresentationCell(state: State, particleListRe
             .withTag(RelionParticleRepresentationTag)
             .first()
     )[0] as StateObjectCell<PluginStateObject.Shape.Representation3D> | undefined;
+}
+
+export function buildParticleListVisual(update: StateBuilder.Root, particleListRef: StateObjectRef) {
+    const shape = update.to(particleListRef).applyOrUpdateTagged(RelionParticleShapeTag, StateTransforms.Shape.RelionStarParticleListShape);
+    shape.applyOrUpdateTagged(RelionParticleRepresentationTag, StateTransforms.Representation.ShapeRepresentation3D);
 }

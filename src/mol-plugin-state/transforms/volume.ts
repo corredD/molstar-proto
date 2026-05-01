@@ -33,6 +33,33 @@ export { VolumeTransform };
 export { VolumeInstances };
 export { CustomVolumeProperties };
 
+const VolumeTransformParam = PD.MappedStatic('matrix', {
+    matrix: TransformParam.map('matrix') as PD.Group<any>,
+    components: TransformParam.map('components') as PD.Group<any>,
+    centerAtOrigin: PD.EmptyGroup({
+        label: 'Center at Origin',
+        description: 'Translate the volume bounding-sphere center to the origin.'
+    }),
+}, {
+    label: 'Kind',
+    options: [
+        ['matrix', 'Matrix'],
+        ['components', 'Components'],
+        ['centerAtOrigin', 'Center at Origin'],
+    ]
+});
+type VolumeTransformParam = (typeof VolumeTransformParam)['defaultValue']
+
+function getVolumeTransformFromParams(volume: Volume, params: VolumeTransformParam) {
+    const center = Grid.getBoundingSphere(volume.grid).center;
+
+    if (params.name === 'centerAtOrigin') {
+        return Mat4.fromTranslation(Mat4(), Vec3.negate(Vec3(), center));
+    }
+
+    return getTransformFromParams(params as TransformParam, transformParamsNeedCentroid(params as TransformParam) ? center : Vec3.unit);
+}
+
 type VolumeFromCcp4 = typeof VolumeFromCcp4
 const VolumeFromCcp4 = PluginStateTransform.BuiltIn({
     name: 'volume-from-ccp4',
@@ -244,7 +271,7 @@ const VolumeTransform = PluginStateTransform.BuiltIn({
     from: SO.Volume.Data,
     to: SO.Volume.Data,
     params: {
-        transform: TransformParam,
+        transform: VolumeTransformParam,
     },
 })({
     canAutoUpdate() {
@@ -252,8 +279,7 @@ const VolumeTransform = PluginStateTransform.BuiltIn({
     },
     apply({ a, params }) {
         // similar to StateTransforms.Model.TransformStructureConformation;
-        const center = transformParamsNeedCentroid(params.transform) ? Grid.getBoundingSphere(a.data.grid).center : Vec3.unit;
-        const transform = getTransformFromParams(params.transform, center);
+        const transform = getVolumeTransformFromParams(a.data, params.transform);
         const gridTransform = {
             kind: 'matrix' as const,
             matrix: Mat4.mul(Mat4(), transform, Grid.getGridToCartesianTransform(a.data.grid)),

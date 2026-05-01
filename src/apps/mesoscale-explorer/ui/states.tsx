@@ -31,7 +31,7 @@ import { now } from '../../../mol-util/now';
 import { readFromFile } from '../../../mol-util/data-source';
 import { Asset } from '../../../mol-util/assets';
 import { RelionStarParticleListObject } from '../../../mol-plugin-state/objects/relion';
-import { getRelionParticleRepresentationCell, getRelionParticleShapeCell } from '../../../mol-plugin-state/helpers/relion-star';
+import { buildParticleListVisual, getRelionParticleRepresentationCell, getRelionParticleShapeCell } from '../../../mol-plugin-state/helpers/relion-star';
 import { ShapeRepresentation3D } from '../../../mol-plugin-state/transforms/representation';
 
 function adjustPluginProps(ctx: PluginContext) {
@@ -846,8 +846,9 @@ export class ParticleListControls extends PluginUIComponent<{}, { isDisabled: bo
     }
 
     addVisual = async (cell: StateObjectCell<RelionStarParticleListObject>) => {
-        const provider = this.plugin.dataFormats.get('relion_star')!;
-        await provider.visuals?.(this.plugin, { particleList: cell.transform.ref });
+        const update = this.plugin.state.data.build();
+        buildParticleListVisual(update, cell.transform.ref);
+        await update.commit();
     };
 
     removeVisual = async (cell: StateObjectCell<RelionStarParticleListObject>) => {
@@ -876,7 +877,7 @@ export class ParticleListControls extends PluginUIComponent<{}, { isDisabled: bo
     render() {
         const particleLists = this.particleLists;
         if (!particleLists.length) {
-            return <div className='msp-help-text'>Load a RELION `.star` file to inspect and manage particle-list previews.</div>;
+            return <div className='msp-help-text'>Load a particle-list file to inspect and manage per-tomogram previews.</div>;
         }
 
         return <>

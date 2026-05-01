@@ -240,16 +240,24 @@ describe('RELION STAR helpers', () => {
         expect(shape.getLabel(2, 0)).toBe('Z axis for particle 5');
     });
 
+    function createInstancedVolume(cellCount: number) {
+        return {
+            grid: { cells: { data: { length: cellCount } } },
+            instances: [{ transform: Mat4.identity() }, { transform: Mat4.identity() }]
+        } as any;
+    }
+
     it('preserves dot lod levels for instanced volumes', () => {
-        const volume = { instances: [{ transform: Mat4.identity() }, { transform: Mat4.identity() }] } as any;
+        const volume = createInstancedVolume(2);
+        const ctx = { canvas3d: { webgl: { maxTextureSize: 2 } } } as any;
         const customLodLevels = [{ minDistance: 10, maxDistance: 20, overlap: 0, stride: 7, scaleBias: 2 }];
         const customLodParams = {
             type: { name: 'dot', params: { lodLevels: customLodLevels, sizeFactor: 1 } },
             colorTheme: { name: 'uniform', params: {} },
             sizeTheme: { name: 'uniform', params: {} }
         } as any;
-        const preserved = VolumeRepresentation3DHelpers.normalizeParams(undefined as any, volume, customLodParams);
-        expect(preserved.type.params.instanceGranularity).toBe(true);
+        const preserved = VolumeRepresentation3DHelpers.normalizeParams(ctx, volume, customLodParams);
+        expect(preserved.type.params.instanceGranularity).toBeUndefined();
         expect(preserved.type.params.lodLevels).toEqual(customLodLevels);
 
         const emptyLodParams = {
@@ -257,13 +265,10 @@ describe('RELION STAR helpers', () => {
             colorTheme: { name: 'uniform', params: {} },
             sizeTheme: { name: 'uniform', params: {} }
         } as any;
-        const empty = VolumeRepresentation3DHelpers.normalizeParams(undefined as any, volume, emptyLodParams);
-        expect(empty.type.params.instanceGranularity).toBe(true);
+        const empty = VolumeRepresentation3DHelpers.normalizeParams(ctx, volume, emptyLodParams);
+        expect(empty.type.params.instanceGranularity).toBeUndefined();
         expect(empty.type.params.lodLevels).toEqual([]);
-    });
 
-    it('clears the legacy auto-injected dot lod profile for instanced volumes', () => {
-        const volume = { instances: [{ transform: Mat4.identity() }, { transform: Mat4.identity() }] } as any;
         const legacyLodParams = {
             type: {
                 name: 'dot',
@@ -280,8 +285,30 @@ describe('RELION STAR helpers', () => {
             colorTheme: { name: 'uniform', params: {} },
             sizeTheme: { name: 'uniform', params: {} }
         } as any;
-        const cleaned = VolumeRepresentation3DHelpers.normalizeParams(undefined as any, volume, legacyLodParams);
-        expect(cleaned.type.params.instanceGranularity).toBe(true);
-        expect(cleaned.type.params.lodLevels).toEqual([]);
+        const legacy = VolumeRepresentation3DHelpers.normalizeParams(ctx, volume, legacyLodParams);
+        expect(legacy.type.params.instanceGranularity).toBeUndefined();
+        expect(legacy.type.params.lodLevels).toEqual(legacyLodParams.type.params.lodLevels);
+    });
+
+    it('uses instance granularity for instanced volumes when group-instance marker data would exceed texture capacity', () => {
+        const volume = createInstancedVolume(3);
+        const ctx = { canvas3d: { webgl: { maxTextureSize: 2 } } } as any;
+        const customLodLevels = [{ minDistance: 10, maxDistance: 20, overlap: 0, stride: 7, scaleBias: 2 }];
+        const params = {
+            type: { name: 'dot', params: { instanceGranularity: false, lodLevels: customLodLevels, sizeFactor: 1 } },
+            colorTheme: { name: 'uniform', params: {} },
+            sizeTheme: { name: 'uniform', params: {} }
+        } as any;
+
+        const normalized = VolumeRepresentation3DHelpers.normalizeParams(ctx, volume, params);
+        expect(normalized.type.params.instanceGranularity).toBe(true);
+        expect(normalized.type.params.lodLevels).toEqual(customLodLevels);
+
+        const isosurface = VolumeRepresentation3DHelpers.normalizeParams(ctx, volume, {
+            type: { name: 'isosurface', params: { instanceGranularity: false } },
+            colorTheme: { name: 'uniform', params: {} },
+            sizeTheme: { name: 'uniform', params: {} }
+        } as any);
+        expect(isosurface.type.params.instanceGranularity).toBe(true);
     });
 });

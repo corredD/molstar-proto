@@ -5,6 +5,7 @@
  */
 
 import { Mat4, Vec3 } from '../../../mol-math/linear-algebra';
+import { partitionParticleListByTomogram } from '../particle-list';
 import { parseDynamoTblParticleList } from '../dynamo/tbl';
 
 test('parses Dynamo TBL particle rows and applies shifts to positions', () => {
@@ -19,7 +20,7 @@ test('parses Dynamo TBL particle rows and applies shifts to positions', () => {
     expect(particleList.particles).toHaveLength(2);
     expect(Array.from(particleList.particles[0].coordinate)).toEqual([110, 220, 330]);
     expect(Array.from(particleList.particles[0].origin)).toEqual([0, 0, 0]);
-    expect(particleList.particles[0].metadata).toMatchObject({ tomo: 7, class: 9, tdrot: 90, tilt: 0, narot: 0 });
+    expect(particleList.particles[0].metadata).toMatchObject({ tomo: 7, tomogram: 7, class: 9, tdrot: 90, tilt: 0, narot: 0 });
 
     const z = Vec3.transformMat4(Vec3(), Vec3.create(0, 0, 1), particleList.particles[1].rotation);
     expect(z[0]).toBeCloseTo(0, 6);
@@ -43,4 +44,18 @@ test('matches the RELION-equivalent pose for paired Dynamo angles', () => {
     for (let i = 0; i < 16; i++) {
         expect(dynamoRotation[i]).toBeCloseTo(relionEquivalent[i], 5);
     }
+});
+
+test('partitions Dynamo particle lists by tomogram id', () => {
+    const data = [
+        '1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 4 8 9 10 100 200 300 0 0 0 0 0 0 0 0 0 6.5',
+        '2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 7 8 9 10 110 210 310 0 0 0 0 0 0 0 0 0 6.5',
+        '3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 4 8 9 10 120 220 320 0 0 0 0 0 0 0 0 0 6.5',
+    ].join('\n');
+
+    const particleList = parseDynamoTblParticleList(data);
+    const set = partitionParticleListByTomogram(particleList);
+    expect(set.entries).toHaveLength(2);
+    expect(set.entries.map(entry => entry.label)).toEqual(['4', '7']);
+    expect(set.entries.map(entry => entry.particleList.particles.length)).toEqual([2, 1]);
 });

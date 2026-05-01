@@ -207,6 +207,12 @@ export function parseRelionStarParticleList(file: CifFile): RelionStarParticleLi
 
     const opticsBlock = findOpticsBlock(file);
     const opticsGroupField = getFlatField(particleBlock, 'rlnOpticsGroup');
+    const tomogramField = getFlatField(particleBlock, 'rlnTomoName');
+    const micrographField = getFlatField(particleBlock, 'rlnMicrographName');
+    const tomogramParticleField = getFlatField(particleBlock, 'rlnTomoParticleName');
+    const imageField = getFlatField(particleBlock, 'rlnImageName');
+    const groupNumberField = getFlatField(particleBlock, 'rlnGroupNumber');
+    const classNumberField = getFlatField(particleBlock, 'rlnClassNumber');
     const warnings: string[] = [];
     const particles: RelionStarParticle[] = [];
 
@@ -225,6 +231,12 @@ export function parseRelionStarParticleList(file: CifFile): RelionStarParticleLi
             Mat4.mul(rotation, subtomogram, rotation);
         }
         const opticsGroup = getOptionalString(opticsGroupField, row);
+        const tomogram = getOptionalString(tomogramField, row);
+        const micrograph = getOptionalString(micrographField, row);
+        const tomogramParticle = getOptionalString(tomogramParticleField, row);
+        const image = getOptionalString(imageField, row);
+        const groupNumber = getOptionalNumber(groupNumberField, row);
+        const classNumber = getOptionalNumber(classNumberField, row);
 
         particles.push({
             index: row,
@@ -236,6 +248,14 @@ export function parseRelionStarParticleList(file: CifFile): RelionStarParticleLi
             rotation,
             metadata: {
                 opticsGroup,
+                groupNumber,
+                classNumber,
+                tomogram,
+                tomoName: tomogram,
+                micrograph,
+                micrographName: micrograph,
+                tomoParticleName: tomogramParticle,
+                imageName: image,
                 particleRot: particleAngles.rot,
                 particleTilt: particleAngles.tilt,
                 particlePsi: particleAngles.psi,

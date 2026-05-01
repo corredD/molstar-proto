@@ -6,6 +6,7 @@
 
 import { parseCifText } from '../cif/text/parser';
 import { Mat4, Vec3 } from '../../../mol-math/linear-algebra';
+import { partitionParticleListByTomogram } from '../particle-list';
 import { parseRelionStarParticleList } from '../relion/star';
 
 test('parses RELION particle STAR blocks with pixel coordinates', async () => {
@@ -84,4 +85,57 @@ _rlnTomoSubtomogramPsi
     expect(rotatedX[0]).toBeCloseTo(expectedX[0], 6);
     expect(rotatedX[1]).toBeCloseTo(expectedX[1], 6);
     expect(rotatedX[2]).toBeCloseTo(expectedX[2], 6);
+});
+
+test('partitions RELION particle lists by tomogram name', async () => {
+    const data = `data_particles
+loop_
+_rlnCoordinateX
+_rlnCoordinateY
+_rlnCoordinateZ
+_rlnTomoName
+10 20 30 TS_01
+40 50 60 TS_02
+70 80 90 TS_01
+`;
+
+    const parsed = await parseCifText(data).run();
+    if (parsed.isError) throw new Error(parsed.message);
+
+    const particleList = parseRelionStarParticleList(parsed.result);
+    const set = partitionParticleListByTomogram(particleList);
+    expect(set.entries).toHaveLength(2);
+    expect(set.entries.map(entry => entry.label)).toEqual(['TS_01', 'TS_02']);
+    expect(set.entries.map(entry => entry.particleList.particles.length)).toEqual([2, 1]);
+    expect(set.entries[0].particleList.particles[0].metadata).toMatchObject({ tomogram: 'TS_01', tomoName: 'TS_01' });
+});
+
+test('partitions RELION particle lists by micrograph name when tomogram name is absent', async () => {
+    const data = `data_particles
+loop_
+_rlnCoordinateX
+_rlnCoordinateY
+_rlnCoordinateZ
+_rlnMicrographName
+_rlnImageName
+_rlnGroupNumber
+10 20 30 TS_29.tomostar image-1.mrc 1
+40 50 60 TS_18.tomostar image-2.mrc 1
+70 80 90 TS_29.tomostar image-3.mrc 1
+`;
+
+    const parsed = await parseCifText(data).run();
+    if (parsed.isError) throw new Error(parsed.message);
+
+    const particleList = parseRelionStarParticleList(parsed.result);
+    const set = partitionParticleListByTomogram(particleList);
+    expect(set.entries).toHaveLength(2);
+    expect(set.entries.map(entry => entry.key)).toEqual(['TS_29.tomostar', 'TS_18.tomostar']);
+    expect(set.entries.map(entry => entry.particleList.particles.length)).toEqual([2, 1]);
+    expect(set.entries[0].particleList.particles[0].metadata).toMatchObject({
+        micrograph: 'TS_29.tomostar',
+        micrographName: 'TS_29.tomostar',
+        groupNumber: 1,
+        imageName: 'image-1.mrc',
+    });
 });

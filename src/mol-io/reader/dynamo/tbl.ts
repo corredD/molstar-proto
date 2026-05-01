@@ -5,6 +5,7 @@
  */
 
 import { Mat4, Vec3 } from '../../../mol-math/linear-algebra';
+import { degToRad } from '../../../mol-math/misc';
 import { ParticleList } from '../particle-list';
 
 const RequiredColumnCount = 26;
@@ -12,10 +13,6 @@ const ShiftColumn = 3;
 const AngleColumn = 6;
 const PositionColumn = 23;
 const PixelSizeColumn = 35;
-
-function degToRad(value: number) {
-    return value * Math.PI / 180;
-}
 
 function dynamoEulerToRotation(out: Mat4, tdrot: number, tilt: number, narot: number) {
     // Dynamo table angles define a clockwise-positive ZXZ rotation that acts on the
@@ -95,6 +92,7 @@ export function parseDynamoTblParticleList(data: string): ParticleList {
             metadata: {
                 tag: row[0],
                 tomo: row[19],
+                tomogram: row[19],
                 region: row[20],
                 class: row[21],
                 annotation: row[22],
