@@ -29,7 +29,7 @@ import { PointsBuilder } from '../../mol-geo/geometry/points/points-builder';
 import { Mat4 } from '../../mol-math/linear-algebra';
 import { Interval } from '../../mol-data/int/interval';
 import { OrderedSet } from '../../mol-data/int/ordered-set';
-import { PCG } from '../../mol-data/util/hash-functions';
+import { mortonOrder3d, PCG } from '../../mol-data/util/hash-functions';
 import { VolumeKey, VolumeVisual } from './visual';
 
 export const VolumeDotParams = {
@@ -121,21 +121,16 @@ function getRandomOffsetFromBasis({ x, y, z, maxScale }: Basis): Vec3 {
     return offset;
 }
 
-export function createVolumeSphereImpostor(ctx: VisualContext, volume: Volume, key: number, theme: Theme, props: VolumeSphereProps, spheres?: Spheres): Spheres {
-    const { cells: { space, data }, stats } = volume.grid;
-    const gridToCartn = Grid.getGridToCartesianTransform(volume.grid);
-    const isoVal = Volume.IsoValue.toAbsolute(props.isoValue, stats).absoluteValue;
+type OrderedDotCell = {
+    readonly order: number
+    readonly offset: number
+}
 
-    const p = Vec3();
+function getOrderedDotCells(volume: Volume, isoVal: number): OrderedDotCell[] {
+    const { cells: { space, data } } = volume.grid;
     const [xn, yn, zn] = space.dimensions;
-
-    const count = Math.ceil((xn * yn * zn) / 10);
-    const builder = SpheresBuilder.create(count, Math.ceil(count / 2), spheres);
-
     const invert = isoVal < 0;
-
-    // Precompute basis vectors and largest cell axis length
-    const basis = props.perturbPositions ? getBasis(gridToCartn) : undefined;
+    const cells: OrderedDotCell[] = [];
 
     for (let z = 0; z < zn; ++z) {
         for (let y = 0; y < yn; ++y) {
@@ -143,19 +138,45 @@ export function createVolumeSphereImpostor(ctx: VisualContext, volume: Volume, k
                 const value = space.get(data, x, y, z);
                 if (!invert && value < isoVal || invert && value > isoVal) continue;
 
-                const cellIdx = space.dataOffset(x, y, z);
-                if (basis) {
-                    Vec3.set(p, x, y, z);
-                    Vec3.transformMat4(p, p, gridToCartn);
-                    const offset = getRandomOffsetFromBasis(basis);
-                    Vec3.add(p, p, offset);
-                } else {
-                    Vec3.set(p, x, y, z);
-                    Vec3.transformMat4(p, p, gridToCartn);
-                }
-                builder.add(p[0], p[1], p[2], cellIdx);
+                cells.push({
+                    order: mortonOrder3d(x, y, z) >>> 0,
+                    offset: space.dataOffset(x, y, z)
+                });
             }
         }
+    }
+
+    cells.sort((a, b) => a.order - b.order || a.offset - b.offset);
+    return cells;
+}
+
+export function createVolumeSphereImpostor(ctx: VisualContext, volume: Volume, key: number, theme: Theme, props: VolumeSphereProps, spheres?: Spheres): Spheres {
+    const { cells: { space }, stats } = volume.grid;
+    const gridToCartn = Grid.getGridToCartesianTransform(volume.grid);
+    const isoVal = Volume.IsoValue.toAbsolute(props.isoValue, stats).absoluteValue;
+
+    const p = Vec3();
+    const coords = [0, 0, 0];
+    const orderedCells = getOrderedDotCells(volume, isoVal);
+
+    const count = orderedCells.length;
+    const builder = SpheresBuilder.create(count, Math.ceil(count / 2), spheres);
+
+    // Precompute basis vectors and largest cell axis length
+    const basis = props.perturbPositions ? getBasis(gridToCartn) : undefined;
+
+    for (const cell of orderedCells) {
+        space.getCoords(cell.offset, coords);
+        if (basis) {
+            Vec3.set(p, coords[0], coords[1], coords[2]);
+            Vec3.transformMat4(p, p, gridToCartn);
+            const offset = getRandomOffsetFromBasis(basis);
+            Vec3.add(p, p, offset);
+        } else {
+            Vec3.set(p, coords[0], coords[1], coords[2]);
+            Vec3.transformMat4(p, p, gridToCartn);
+        }
+        builder.add(p[0], p[1], p[2], cell.offset);
     }
 
     const s = builder.getSpheres();
