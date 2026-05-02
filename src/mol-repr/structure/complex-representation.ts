@@ -140,6 +140,7 @@ export function ComplexRepresentation<P extends StructureParams>(label: string, 
             visual.setClipping(remappedClipping);
         }
         if (state.wiggle !== undefined && visual) {
+            // Remap loci from equivalent structure to the current structure
             const remappedWiggle = Wiggle.remap(state.wiggle, _structure);
             visual.setWiggle(remappedWiggle, webgl);
         }

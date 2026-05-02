@@ -441,7 +441,6 @@ namespace Renderer {
             }
 
             ValueCell.update(globalUniforms.uIsAsymmetricProjection, camera.isAsymmetricProjection);
-
         };
 
         const updateInternal = (group: Scene.Group, camera: ICamera, depthTexture: Texture | null, renderMask: Mask, markingDepthTest: boolean) => {

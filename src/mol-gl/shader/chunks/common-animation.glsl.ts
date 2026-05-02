@@ -52,13 +52,13 @@ vec3 applyWiggle(vec3 pos, float groupId, float instanceId) {
     return pos;
 }
 
-mat4 applyTumble(mat4 transform, float instanceIndex, float uObjectId) {
+mat4 applyTumble(mat4 transform, float instanceIndex, float objectId) {
     if (!uEnableAnimation) return transform;
     if (uTumbleAmplitude > 0.0 && uTumbleSpeed > 0.0 && uTumbleFrequency > 0.0) {
         // Scale amplitude inversely with bounding-sphere radius (Stokes-Einstein: D ~ 1/r)
         float amplitude = uTumbleAmplitude / max(uInvariantBoundingSphere.w, 1.0);
         float t = uTime * uTumbleSpeed;
-        float seed = (instanceIndex * 127.1 + uObjectId * 311.7) * uTumbleFrequency;
+        float seed = (instanceIndex * 127.1 + objectId * 311.7) * uTumbleFrequency;
 
         // Per-instance rotation angles from layered noise (Brownian-like)
         float angleX = (fbm(vec3(seed, t, 0.0)) / 0.4375 - 1.0) * amplitude;
