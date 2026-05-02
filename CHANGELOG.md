@@ -19,6 +19,8 @@ Note that since we don't clearly distinguish between a public and private interf
 - Add Procedural Animation panels
     - Viewer: structure dynamics & uncertainty
     - Mesoscale Explorer: entity dynamics
+- Fix `GraphQLClient` missing required headers
+- [Breaking] Use Record instead of Array for headers (assets & data-source utils)
 
 ## [v5.8.0] - 2026-04-03
 - Dependencies: remove `utils.promisify`, `node-fetch` (#1797)
