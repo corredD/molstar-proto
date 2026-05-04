@@ -13,10 +13,13 @@
  */
 
 import { Mesh } from '../../mol-geo/geometry/mesh/mesh';
+import { BaseGeometry } from '../../mol-geo/geometry/base';
 import { Shape } from '../../mol-model/shape';
 import { ShapeProvider } from '../../mol-model/shape/provider';
 import { Color } from '../../mol-util/color';
 import { Mat4 } from '../../mol-math/linear-algebra';
+import { Material } from '../../mol-util/material';
+import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { RuntimeContext, Task } from '../../mol-task';
 import { SffData, SffSegment, SffTransform } from '../../mol-io/reader/hff/schema';
 
@@ -137,7 +140,20 @@ function segmentLabel(seg: SffSegment): string {
     return seg.biologicalAnnotation?.name?.trim() || `Segment ${seg.id}`;
 }
 
-const Params = { ...Mesh.Params };
+// SFF mesh segmentations are typically thin oriented surfaces (membranes,
+// organelles); render both sides by default and keep the back face the same
+// colour as the front (interior.colorStrength = 0 disables the dark interior
+// blend that the global mesh default applies).
+const Params = {
+    ...Mesh.Params,
+    doubleSided: PD.Boolean(true, BaseGeometry.CustomQualityParamInfo),
+    interior: PD.Group({
+        color: PD.Color(Color.fromRgb(76, 76, 76)),
+        colorStrength: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }),
+        substance: Material.getParam(),
+        substanceStrength: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }),
+    }),
+};
 type Params = typeof Params;
 
 export function shapeFromSff(data: SffData): Task<ShapeProvider<SffData, Mesh, Params>> {
