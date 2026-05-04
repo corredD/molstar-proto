@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Ludovic Autin <autin@scripps.edu>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import { Task, RuntimeContext } from '../../../mol-task';
@@ -9,36 +10,40 @@ import { StringLike } from '../../common/string-like';
 import { Tokenizer } from '../common/text/tokenizer';
 import { ReaderResult as Result } from '../result';
 
-export interface CryoEtDataPortalLocation {
-    readonly x: number
-    readonly y: number
-    readonly z: number
+
+// from https://chanzuckerberg.github.io/cryoet-data-portal/stable/cryoet_data_portal_docsite_data.html#annotations
+
+interface OrientedPoint {
+    readonly type: 'orientedPoint'
+    readonly location: {
+        readonly x: number
+        readonly y: number
+        readonly z: number
+    }
+    readonly xyz_rotation_matrix: [
+        [number, number, number],
+        [number, number, number],
+        [number, number, number]
+    ]
 }
 
-export interface CryoEtDataPortalNdjsonRecord {
-    readonly raw: Readonly<Record<string, unknown>>
-    readonly type: string
-    readonly location: CryoEtDataPortalLocation
-    readonly xyz_rotation_matrix?: unknown
-    readonly instance_id?: number | string
+interface Point {
+    readonly type: 'point'
+    readonly location: {
+        readonly x: number
+        readonly y: number
+        readonly z: number
+    }
+}
+
+export type CryoEtDataPortalNdjsonRecord = OrientedPoint | Point;
+
+function isSupportedRecord(record: any): record is CryoEtDataPortalNdjsonRecord {
+    return record?.type === 'orientedPoint' || record?.type === 'point';
 }
 
 export interface CryoEtDataPortalNdjsonFile {
     readonly records: ReadonlyArray<CryoEtDataPortalNdjsonRecord>
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isLocation(value: unknown): value is CryoEtDataPortalLocation {
-    if (!isObject(value)) return false;
-    const x = value.x;
-    const y = value.y;
-    const z = value.z;
-    return typeof x === 'number' && Number.isFinite(x)
-        && typeof y === 'number' && Number.isFinite(y)
-        && typeof z === 'number' && Number.isFinite(z);
 }
 
 async function parseInternal(data: StringLike, ctx: RuntimeContext) {
@@ -52,43 +57,13 @@ async function parseInternal(data: StringLike, ctx: RuntimeContext) {
             await ctx.update({ current: tokenizer.position, max: tokenizer.length });
         }
 
-        const lineNumber = tokenizer.lineNumber;
         const line = Tokenizer.readLine(tokenizer).trim();
         if (!line) continue;
 
-        let parsed: unknown;
-        try {
-            parsed = JSON.parse(line);
-        } catch {
-            return Result.error<CryoEtDataPortalNdjsonFile>('Invalid CryoET Data Portal ndjson record.', lineNumber);
+        const parsed = JSON.parse(line);
+        if (isSupportedRecord(parsed)) {
+            records.push(parsed);
         }
-
-        if (!isObject(parsed)) {
-            return Result.error<CryoEtDataPortalNdjsonFile>('CryoET Data Portal ndjson records must be JSON objects.', lineNumber);
-        }
-        if (typeof parsed.type !== 'string') {
-            return Result.error<CryoEtDataPortalNdjsonFile>('CryoET Data Portal ndjson records must define a string "type".', lineNumber);
-        }
-        const location = parsed.location;
-        if (!isLocation(location)) {
-            return Result.error<CryoEtDataPortalNdjsonFile>('CryoET Data Portal ndjson records must define a numeric "location" object with x, y, and z fields.', lineNumber);
-        }
-
-        const instanceId = typeof parsed.instance_id === 'number' || typeof parsed.instance_id === 'string'
-            ? parsed.instance_id
-            : void 0;
-
-        records.push({
-            raw: parsed,
-            type: parsed.type,
-            location: {
-                x: location.x,
-                y: location.y,
-                z: location.z,
-            },
-            xyz_rotation_matrix: parsed.xyz_rotation_matrix,
-            instance_id: instanceId,
-        });
     }
 
     if (records.length === 0) {

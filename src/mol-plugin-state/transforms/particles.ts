@@ -5,11 +5,10 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { parseRelionStar } from '../../mol-io/reader/relion/star';
+import { parseRelionStar, getRelionStarTomogramNames, getRelionStarMicrographNames } from '../../mol-io/reader/relion/star';
 import { createParticleListFromCryoEtDataPortalNdjson } from '../../mol-model-formats/particles/ndjson';
 import { createParticleListFromRelionStar } from '../../mol-model-formats/particles/star';
-import { createParticleListFromDynamoTbl } from '../../mol-model-formats/particles/tbl';
-import { ParticleUnit } from '../../mol-model/particles/particle-list';
+import { createParticleListFromDynamoTbl, getDynamoTblTomogramIds } from '../../mol-model-formats/particles/tbl';
 import { PluginContext } from '../../mol-plugin/context';
 import { StateTransformer } from '../../mol-state';
 import { Task } from '../../mol-task';
@@ -28,9 +27,30 @@ const ParticleListFromRelionStar = PluginStateTransform.BuiltIn({
     display: { name: 'Particle List from RELION STAR', description: 'Create ParticleList from RELION STAR data.' },
     from: SO.Format.Cif,
     to: SO.Particle.List,
-    params: {
-        label: PD.Optional(PD.Text('')),
-        tomogram: PD.Optional(PD.Text('')),
+    params: a => {
+        if (!a) {
+            return {
+                tomograms: PD.MultiSelect<string>([], [], { description: 'Empty selection includes all tomograms.' }),
+                micrographs: PD.MultiSelect<string>([], [], { description: 'Empty selection includes all micrographs. Combined with the tomogram filter using AND.' }),
+                pixelSize: PD.Optional(PD.Numeric(0, { min: 0, step: 0.001 }, { description: 'Override pixel size in Å/pixel for converting pixel-space coordinates to angstrom. Leave 0 to auto-detect from STAR optics/particle metadata.' })),
+            };
+        }
+        let tomoNames: string[] = [];
+        let micrographNames: string[] = [];
+        try {
+            tomoNames = getRelionStarTomogramNames(a.data);
+            micrographNames = getRelionStarMicrographNames(a.data);
+        } catch {
+            // ignore; apply will surface parse errors
+        }
+        const tomoOptions = tomoNames.map(n => [n, n] as [string, string]);
+        const micrographOptions = micrographNames.map(n => [n, n] as [string, string]);
+        const tomoDefault = tomoNames.length > 0 ? [tomoNames[0]] : [];
+        return {
+            tomograms: PD.MultiSelect<string>(tomoDefault, tomoOptions, { description: 'Empty selection includes all tomograms.' }),
+            micrographs: PD.MultiSelect<string>([], micrographOptions, { description: 'Empty selection includes all micrographs. Combined with the tomogram filter using AND.' }),
+            pixelSize: PD.Optional(PD.Numeric(0, { min: 0, step: 0.001 }, { description: 'Override pixel size in Å/pixel for converting pixel-space coordinates to angstrom. Leave 0 to auto-detect from STAR optics/particle metadata.' })),
+        };
     }
 })({
     apply({ a, params }) {
@@ -39,8 +59,9 @@ const ParticleListFromRelionStar = PluginStateTransform.BuiltIn({
             if (relion.isError) throw new Error(relion.message);
 
             const list = createParticleListFromRelionStar(relion.result, {
-                label: params.label || void 0,
-                tomogram: params.tomogram || void 0,
+                tomograms: params.tomograms,
+                micrographs: params.micrographs,
+                pixelSize: params.pixelSize && params.pixelSize > 0 ? params.pixelSize : void 0,
             });
 
             return new SO.Particle.List(list, { label: list.label, description: 'RELION Particle List' });
@@ -54,16 +75,27 @@ const ParticleListFromDynamoTbl = PluginStateTransform.BuiltIn({
     display: { name: 'Particle List from Dynamo TBL', description: 'Create ParticleList from Dynamo TBL data.' },
     from: SO.Format.DynamoTbl,
     to: SO.Particle.List,
-    params: {
-        label: PD.Optional(PD.Text('')),
-        tomo: PD.Optional(PD.Numeric(0, { step: 1 })),
+    params: a => {
+        if (!a) {
+            return {
+                tomos: PD.MultiSelect<string>([], [], { description: 'Empty selection includes all tomograms.' }),
+                pixelSize: PD.Optional(PD.Numeric(0, { min: 0, step: 0.001 }, { description: 'Override pixel size in Å/pixel for converting pixel-space coordinates to angstrom. Leave 0 to auto-detect from the table’s `apix` field.' })),
+            };
+        }
+        const ids = getDynamoTblTomogramIds(a.data);
+        const options = ids.map(id => [String(id), String(id)] as [string, string]);
+        const defaultValue = ids.length > 0 ? [String(ids[0])] : [];
+        return {
+            tomos: PD.MultiSelect<string>(defaultValue, options, { description: 'Empty selection includes all tomograms.' }),
+            pixelSize: PD.Optional(PD.Numeric(0, { min: 0, step: 0.001 }, { description: 'Override pixel size in Å/pixel for converting pixel-space coordinates to angstrom. Leave 0 to auto-detect from the table’s `apix` field.' })),
+        };
     }
 })({
     apply({ a, params }) {
         return Task.create('Create Particle List from Dynamo TBL', async ctx => {
             const list = createParticleListFromDynamoTbl(a.data, {
-                label: params.label || void 0,
-                tomo: params.tomo,
+                tomos: params.tomos.map(v => Number(v)),
+                pixelSize: params.pixelSize && params.pixelSize > 0 ? params.pixelSize : void 0,
             });
             return new SO.Particle.List(list, { label: list.label, description: 'Dynamo Particle List' });
         });
@@ -77,16 +109,14 @@ const ParticleListFromCryoEtDataPortalNdjson = PluginStateTransform.BuiltIn({
     from: SO.Format.CryoEtDataPortalNdjson,
     to: SO.Particle.List,
     params: {
-        label: PD.Optional(PD.Text('')),
-        coordinateUnit: PD.Optional(PD.Select<ParticleUnit>('pixel', [['pixel', 'pixel'], ['angstrom', 'angstrom']])),
+        pixelSize: PD.Numeric(1, { min: 0, step: 0.001 }, { description: 'Pixel size in Å/pixel used to convert pixel-space NDJSON coordinates to angstrom. Required because CryoET Data Portal NDJSON does not encode distance units.' }),
         type: PD.Optional(PD.Text('')),
     }
 })({
     apply({ a, params }) {
         return Task.create('Create Particle List from CryoET NDJSON', async ctx => {
             const list = createParticleListFromCryoEtDataPortalNdjson(a.data, {
-                label: params.label || void 0,
-                coordinateUnit: params.coordinateUnit,
+                pixelSize: params.pixelSize,
                 type: params.type || void 0,
             });
             return new SO.Particle.List(list, { label: list.label, description: 'CryoET NDJSON Particle List' });

@@ -2,11 +2,13 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Ludovic Autin <autin@scripps.edu>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
 import { ParticleList } from '../../mol-model/particles/particle-list';
 import { DynamoTblFile } from '../../mol-io/reader/dynamo/tbl';
+import { Column } from '../../mol-data/db';
 import { packParticleList } from './common';
 import { degToRad } from '../../mol-math/misc';
 
@@ -20,10 +22,13 @@ function dynamoEulerToRotation(out: Mat4, tdrot: number, tilt: number, narot: nu
     return out;
 }
 
-function getUniquePositiveColumnValue(rows: ReadonlyArray<Float64Array>, column: number) {
+function getUniquePositiveFieldValue(field: Column<number>, rowIndices?: ReadonlyArray<number>) {
     let value: number | undefined = void 0;
-    for (const row of rows) {
-        const current = row[column];
+    const il = rowIndices ? rowIndices.length : field.rowCount;
+    for (let i = 0; i < il; ++i) {
+        const row = rowIndices ? rowIndices[i] : i;
+        if (field.valueKind(row) !== Column.ValueKinds.Present) continue;
+        const current = field.value(row);
         if (!Number.isFinite(current) || current <= 0) continue;
         if (value === void 0) {
             value = current;
@@ -36,28 +41,27 @@ function getUniquePositiveColumnValue(rows: ReadonlyArray<Float64Array>, column:
 
 export interface DynamoParticleListOptions {
     readonly label?: string
-    readonly tomo?: number
+    readonly tomos?: ReadonlyArray<number>
+    /** Override pixel size (Å/pixel) used to convert pixel-space coordinates to angstrom. */
+    readonly pixelSize?: number
 }
 
-const DynamoShiftColumn = 3;
-const DynamoAngleColumn = 6;
-const DynamoTomoColumn = 19;
-const DynamoRegionColumn = 20;
-const DynamoClassColumn = 21;
-const DynamoAnnotationColumn = 22;
-const DynamoPositionColumn = 23;
-const DynamoPixelSizeColumn = 35;
-
-function buildDynamoLabel(tomo?: number) {
-    if (tomo !== void 0) return `Dynamo particles (tomo ${tomo})`;
+function buildDynamoLabel(tomos?: ReadonlyArray<number>) {
+    if (tomos !== void 0 && tomos.length > 0) {
+        return tomos.length === 1
+            ? `Dynamo particles (tomo ${tomos[0]})`
+            : `Dynamo particles (tomos ${tomos.join(', ')})`;
+    }
     return 'Dynamo particles';
 }
 
 export function getDynamoTblTomogramIds(data: DynamoTblFile) {
     const tomograms = new Set<number>();
-    for (const row of data.rows) {
-        const tomo = row[DynamoTomoColumn];
-        if (Number.isFinite(tomo)) tomograms.add(tomo);
+    const tomo = data.fields.tomo;
+    for (let i = 0, il = tomo.rowCount; i < il; ++i) {
+        if (tomo.valueKind(i) !== Column.ValueKinds.Present) continue;
+        const v = tomo.value(i);
+        if (Number.isFinite(v)) tomograms.add(v);
     }
     return Array.from(tomograms).sort((a, b) => a - b);
 }
@@ -65,58 +69,66 @@ export function getDynamoTblTomogramIds(data: DynamoTblFile) {
 export function createParticleListFromDynamoTbl(data: DynamoTblFile, options: DynamoParticleListOptions = {}): ParticleList {
     const particleData: {
         coordinate: Vec3
-        coordinateUnit: 'pixel'
         origin: Vec3
-        originUnit: 'pixel'
         rotation: Mat4
     }[] = [];
-    const selectedRows: Float64Array[] = [];
+    const selectedRows: number[] = [];
 
-    for (let index = 0, il = data.rows.length; index < il; ++index) {
-        const row = data.rows[index];
-        if (options.tomo !== void 0 && row[DynamoTomoColumn] !== options.tomo) continue;
+    const { x, y, z, dx, dy, dz, tdrot, tilt, narot, tomo, apix } = data.fields;
+
+    const tomoFilter = options.tomos !== void 0 && options.tomos.length > 0
+        ? new Set<number>(options.tomos)
+        : void 0;
+
+    for (let i = 0, il = data.rowCount; i < il; ++i) {
+        if (tomoFilter !== void 0 && !tomoFilter.has(tomo.value(i))) {
+            continue;
+        }
 
         particleData.push({
             coordinate: Vec3.create(
-                row[DynamoPositionColumn + 0] + row[DynamoShiftColumn + 0],
-                row[DynamoPositionColumn + 1] + row[DynamoShiftColumn + 1],
-                row[DynamoPositionColumn + 2] + row[DynamoShiftColumn + 2],
+                x.value(i) + dx.value(i),
+                y.value(i) + dy.value(i),
+                z.value(i) + dz.value(i),
             ),
-            coordinateUnit: 'pixel',
             origin: Vec3.create(0, 0, 0),
-            originUnit: 'pixel',
-            rotation: dynamoEulerToRotation(Mat4(), row[DynamoAngleColumn + 0], row[DynamoAngleColumn + 1], row[DynamoAngleColumn + 2]),
+            rotation: dynamoEulerToRotation(Mat4(), tdrot.value(i), tilt.value(i), narot.value(i)),
         });
 
-        selectedRows.push(row);
+        selectedRows.push(i);
     }
 
     if (particleData.length === 0) {
-        throw new Error(options.tomo !== void 0
-            ? `No Dynamo particle rows matched tomo '${options.tomo}'.`
+        throw new Error(tomoFilter !== void 0
+            ? `No Dynamo particle rows matched tomos '${options.tomos!.join(', ')}'.`
             : 'No readable Dynamo table rows were found.');
     }
 
-    const pixelSize = getUniquePositiveColumnValue(selectedRows, DynamoPixelSizeColumn);
+    const overrideValid = options.pixelSize !== void 0 && Number.isFinite(options.pixelSize) && options.pixelSize > 0;
+    const detectedPixelSize = overrideValid ? void 0 : getUniquePositiveFieldValue(apix, selectedRows);
+    const pixelSize = overrideValid ? options.pixelSize : detectedPixelSize;
+    const pixelScale = (pixelSize !== void 0 && Number.isFinite(pixelSize) && pixelSize > 0) ? pixelSize : 1;
+
+    if (pixelScale !== 1) {
+        for (const p of particleData) Vec3.scale(p.coordinate, p.coordinate, pixelScale);
+    }
 
     return packParticleList(
-        options.label ?? buildDynamoLabel(options.tomo),
-        'pixel',
-        pixelSize,
+        options.label ?? buildDynamoLabel(options.tomos),
         particleData,
         {
             data,
             format: 'dynamo-tbl',
             warnings: [
                 pixelSize === void 0
-                    ? 'Dynamo particle coordinates are pixel-space, but no unique positive pixel size was found; pixel-space coordinates default to scale 1.'
+                    ? 'Dynamo particle coordinates are pixel-space, but no pixel size was provided or detected; coordinates are kept unscaled.'
                     : void 0,
             ].filter((v): v is string => !!v),
-            metadataColumns: {
-                tomo: DynamoTomoColumn,
-                region: DynamoRegionColumn,
-                class: DynamoClassColumn,
-                annotation: DynamoAnnotationColumn,
+            metadataFields: {
+                tomo: data.fields.tomo,
+                region: data.fields.reg,
+                class: data.fields.class,
+                annotation: data.fields.annotation,
             }
         }
     );

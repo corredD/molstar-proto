@@ -61,11 +61,16 @@ export type OrientationParticlesParams = typeof OrientationParticlesParams
 export type OrientationParticlesProps = PD.Values<OrientationParticlesParams>
 
 export function getOrientationParticlesParams(ctx: ThemeRegistryContext, data: ParticleList) {
-    const axisLength = Math.max(10, (data.pixelSize ?? 1) * 2);
+    const hasRotations = !!data.rotations;
+    const visualKinds: OrientationParticlesVisualKind[] = hasRotations
+        ? ['position', 'orientation']
+        : ['position'];
+    const defaultVisuals: OrientationParticlesVisualKind[] = hasRotations
+        ? ['position', 'orientation']
+        : ['position'];
     return {
         ...BaseOrientationParticlesParams,
-        axisLength: PD.Numeric(axisLength, AxisLengthOptions, { description: BaseOrientationParticlesParams.axisLength.description }),
-        visuals: PD.MultiSelect(['position', 'orientation'] as OrientationParticlesVisualKind[], PD.arrayToOptions(OrientationParticlesVisualKinds as unknown as OrientationParticlesVisualKind[])),
+        visuals: PD.MultiSelect(defaultVisuals, PD.arrayToOptions(visualKinds)),
     };
 }
 
@@ -218,7 +223,7 @@ export function OrientationParticlesRepresentation(ctx: RepresentationContext, g
             const e = buildPositionEntry(_data, _props);
             if (e) entries.set('position', e);
         }
-        if (enabled.has('orientation')) {
+        if (enabled.has('orientation') && _data.rotations) {
             const e = buildOrientationEntry(_data, _props);
             if (e) entries.set('orientation', e);
         }

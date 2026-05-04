@@ -10,16 +10,13 @@ import { Mat4, Quat, Vec3 } from '../../mol-math/linear-algebra';
 import { Sphere3D } from '../../mol-math/geometry';
 import { BoundaryHelper } from '../../mol-math/geometry/boundary-helper';
 
-export type ParticleUnit = 'pixel' | 'angstrom';
-
 export interface ParticleList {
     readonly label: string
 
-    readonly unit: ParticleUnit
-    readonly pixelSize?: number
-
+    /** Particle positions in angstrom, packed as `[x0, y0, z0, x1, y1, z1, ...]`. */
     readonly coordinates: Float32Array
-    readonly rotations: Float32Array // TODO: optional?
+    /** Optional per-particle orientations as unit quaternions, packed as `[x0, y0, z0, w0, ...]`. */
+    readonly rotations?: Float32Array
 
     // TODO: add common data fields, anything format-specific should be accessed via `sourceData`
 
@@ -27,24 +24,32 @@ export interface ParticleList {
 }
 
 export function getParticleCount(data: ParticleList) {
-    return Math.min(Math.floor(data.coordinates.length / 3), Math.floor(data.rotations.length / 4));
+    const positionCount = Math.floor(data.coordinates.length / 3);
+    if (!data.rotations) return positionCount;
+    return Math.min(positionCount, Math.floor(data.rotations.length / 4));
 }
 
 export function getParticleTransforms(data: ParticleList) {
     const particleCount = getParticleCount(data);
     const transforms: Mat4[] = [];
+    const { rotations } = data;
 
     for (let i = 0; i < particleCount; ++i) {
         const cOffset = i * 3;
-        const qOffset = i * 4;
 
-        const q = Quat.create(
-            data.rotations[qOffset + 0],
-            data.rotations[qOffset + 1],
-            data.rotations[qOffset + 2],
-            data.rotations[qOffset + 3],
-        );
-        const transform = Mat4.fromQuat(Mat4(), q);
+        let transform: Mat4;
+        if (rotations) {
+            const qOffset = i * 4;
+            const q = Quat.create(
+                rotations[qOffset + 0],
+                rotations[qOffset + 1],
+                rotations[qOffset + 2],
+                rotations[qOffset + 3],
+            );
+            transform = Mat4.fromQuat(Mat4(), q);
+        } else {
+            transform = Mat4.identity();
+        }
         transform[12] = data.coordinates[cOffset + 0];
         transform[13] = data.coordinates[cOffset + 1];
         transform[14] = data.coordinates[cOffset + 2];
@@ -112,7 +117,7 @@ export namespace Particle {
     export function getBoundingSphere(loci: Loci, boundingSphere?: Sphere3D): Sphere3D {
         if (!boundingSphere) boundingSphere = Sphere3D();
         const { particles, indices } = loci;
-        const { coordinates, pixelSize } = particles;
+        const { coordinates } = particles;
         if (OrderedSet.isEmpty(indices)) {
             boundingSphere.center[0] = boundingSphere.center[1] = boundingSphere.center[2] = 0;
             boundingSphere.radius = 0;
@@ -132,7 +137,6 @@ export namespace Particle {
         });
         const sphere = _boundaryHelper.getSphere();
         Sphere3D.copy(boundingSphere, sphere);
-        if (pixelSize) Sphere3D.expand(boundingSphere, boundingSphere, pixelSize);
         return boundingSphere;
     }
 

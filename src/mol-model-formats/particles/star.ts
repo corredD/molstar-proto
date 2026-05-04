@@ -1,164 +1,105 @@
-/**
+﻿/**
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Ludovic Autin <autin@scripps.edu>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import { Column } from '../../mol-data/db';
-import { CifBlock, CifField } from '../../mol-io/reader/cif';
-import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
+import { Mat4, Quat, Vec3 } from '../../mol-math/linear-algebra';
 import { ParticleList } from '../../mol-model/particles/particle-list';
 import { RelionStarFile } from '../../mol-io/reader/relion/star';
-import { packParticleList } from './common';
+import { RelionStar_Database } from '../../mol-io/reader/relion/schema';
 import { degToRad } from '../../mol-math/misc';
 
-type TripletFieldSpec = {
-    x: readonly string[]
-    y: readonly string[]
-    z: readonly string[]
-    unit: 'pixel' | 'angstrom'
+type Particles = RelionStar_Database['particles'];
+type Optics = RelionStar_Database['optics'];
+
+type CoordinateKind = 'pixel' | 'angstrom';
+
+type TripletColumns = {
+    x: Column<number>
+    y: Column<number>
+    z?: Column<number>
+    rowCount: number
+    kind: CoordinateKind
+};
+
+type TripletSpec = {
+    x: keyof Particles
+    y: keyof Particles
+    z: keyof Particles
+    kind: CoordinateKind
 };
 
 type Angles = { rot: number, tilt: number, psi: number };
 
-function getFlatField(block: CifBlock, name: string) {
-    return block.categories[name]?.getField('');
-}
+type AngleSpec = {
+    rot: 'rlnAngleRot' | 'rlnTomoSubtomogramRot'
+    tilt: 'rlnAngleTilt' | 'rlnTomoSubtomogramTilt'
+    psi: 'rlnAnglePsi' | 'rlnTomoSubtomogramPsi'
+};
 
-function getFirstFlatField(block: CifBlock, names: readonly string[]) {
-    for (const name of names) {
-        const field = getFlatField(block, name);
-        if (field) return field;
-    }
-}
+const RelionCoordinateSpecs: TripletSpec[] = [
+    { x: 'rlnCenteredCoordinateXAngst', y: 'rlnCenteredCoordinateYAngst', z: 'rlnCenteredCoordinateZAngst', kind: 'angstrom' },
+    { x: 'rlnCoordinateX', y: 'rlnCoordinateY', z: 'rlnCoordinateZ', kind: 'pixel' },
+];
 
-function hasPresentValue(field: CifField | undefined, row: number) {
-    return !!field && field.valueKind(row) === Column.ValueKinds.Present;
-}
+const RelionOriginSpecs: TripletSpec[] = [
+    { x: 'rlnOriginXAngst', y: 'rlnOriginYAngst', z: 'rlnOriginZAngst', kind: 'angstrom' },
+    { x: 'rlnOriginX', y: 'rlnOriginY', z: 'rlnOriginZ', kind: 'pixel' },
+];
 
-function getOptionalNumber(field: CifField | undefined, row: number) {
-    return hasPresentValue(field, row) ? field!.float(row) : void 0;
-}
+const ParticleAngleSpec: AngleSpec = {
+    rot: 'rlnAngleRot', tilt: 'rlnAngleTilt', psi: 'rlnAnglePsi',
+};
 
-function getOptionalString(field: CifField | undefined, row: number) {
-    return hasPresentValue(field, row) ? field!.str(row) : void 0;
-}
+const SubtomogramAngleSpec: AngleSpec = {
+    rot: 'rlnTomoSubtomogramRot', tilt: 'rlnTomoSubtomogramTilt', psi: 'rlnTomoSubtomogramPsi',
+};
 
-function getFieldRowCount(field: CifField | undefined, block: CifBlock, name: string) {
-    return field ? block.categories[name].rowCount : 0;
-}
+const RelionPixelSizeFields: ReadonlyArray<keyof Optics> = [
+    'rlnTomoTiltSeriesPixelSize',
+    'rlnImagePixelSize',
+    'rlnMicrographPixelSize',
+    'rlnDetectorPixelSize',
+];
 
-function getTripletFields(block: CifBlock, spec: TripletFieldSpec) {
-    const xName = spec.x.find(name => !!getFlatField(block, name));
-    const yName = spec.y.find(name => !!getFlatField(block, name));
-    const zName = spec.z.find(name => !!getFlatField(block, name));
-
-    if (!xName || !yName) return;
-
+function getTripletColumns(particles: Particles, spec: TripletSpec): TripletColumns | undefined {
+    const x = particles[spec.x] as Column<number>;
+    const y = particles[spec.y] as Column<number>;
+    const z = particles[spec.z] as Column<number>;
+    if (!x.isDefined || !y.isDefined) return;
     return {
-        xName,
-        yName,
-        zName,
-        x: getFlatField(block, xName)!,
-        y: getFlatField(block, yName)!,
-        z: zName ? getFlatField(block, zName) : void 0,
-        rowCount: block.categories[xName].rowCount,
-        unit: spec.unit,
+        x, y,
+        z: z.isDefined ? z : void 0,
+        rowCount: x.rowCount,
+        kind: spec.kind,
     };
 }
 
-function getTripletFieldsFromSpecs(block: CifBlock, specs: readonly TripletFieldSpec[]) {
+function getTripletColumnsFromSpecs(particles: Particles, specs: readonly TripletSpec[]) {
     for (const spec of specs) {
-        const fields = getTripletFields(block, spec);
-        if (fields) return fields;
+        const cols = getTripletColumns(particles, spec);
+        if (cols) return cols;
     }
 }
 
-function getTripletValue(block: CifBlock, row: number, specs: readonly TripletFieldSpec[]) {
-    for (const spec of specs) {
-        const fields = getTripletFields(block, spec);
-        if (!fields) continue;
-
-        const x = getOptionalNumber(fields.x, row);
-        const y = getOptionalNumber(fields.y, row);
-        const z = getOptionalNumber(fields.z, row);
-        if (x === void 0 || y === void 0) continue;
-
-        return {
-            value: Vec3.create(x, y, z ?? 0),
-            unit: fields.unit,
-        };
-    }
+function readTriplet(out: Vec3, cols: TripletColumns, row: number) {
+    return Vec3.set(out, cols.x.value(row), cols.y.value(row), cols.z ? cols.z.value(row) : 0);
 }
 
-function getAngles(block: CifBlock, row: number, specs: ReadonlyArray<{ rot: readonly string[], tilt: readonly string[], psi: readonly string[] }>): Angles | undefined {
-    for (const spec of specs) {
-        const rot = getOptionalNumber(getFirstFlatField(block, spec.rot), row);
-        const tilt = getOptionalNumber(getFirstFlatField(block, spec.tilt), row);
-        const psi = getOptionalNumber(getFirstFlatField(block, spec.psi), row);
-        if (rot === void 0 && tilt === void 0 && psi === void 0) continue;
-        return {
-            rot: rot ?? 0,
-            tilt: tilt ?? 0,
-            psi: psi ?? 0,
-        };
-    }
+function readAngles(out: Angles, particles: Particles, row: number, spec: AngleSpec) {
+    out.rot = particles[spec.rot].value(row);
+    out.tilt = particles[spec.tilt].value(row);
+    out.psi = particles[spec.psi].value(row);
+    return out;
 }
 
-function getNumericFieldUniqueValue(block: CifBlock | undefined, names: readonly string[]) {
-    if (!block) return;
-
-    for (const name of names) {
-        const field = getFlatField(block, name);
-        if (!field) continue;
-
-        const rowCount = getFieldRowCount(field, block, name);
-        let value: number | undefined = void 0;
-        let isUnique = true;
-
-        for (let i = 0; i < rowCount; ++i) {
-            const current = getOptionalNumber(field, i);
-            if (current === void 0) continue;
-            if (value === void 0) {
-                value = current;
-            } else if (Math.abs(value - current) > 1e-6) {
-                isUnique = false;
-                break;
-            }
-        }
-
-        if (isUnique && value !== void 0 && Number.isFinite(value) && value > 0) return value;
-    }
-}
-
-function getNumericFieldValueAtRow(block: CifBlock | undefined, names: readonly string[], row: number) {
-    if (!block) return;
-
-    for (const name of names) {
-        const field = getFlatField(block, name);
-        const value = getOptionalNumber(field, row);
-        if (value !== void 0 && Number.isFinite(value) && value > 0) return value;
-    }
-}
-
-function getUniquePositiveFieldValueForRows(block: CifBlock | undefined, names: readonly string[], rows: Iterable<number>) {
-    if (!block) return;
-
-    let value: number | undefined = void 0;
-    let hasValue = false;
-
-    for (const row of rows) {
-        const current = getNumericFieldValueAtRow(block, names, row);
-        if (current === void 0) continue;
-        hasValue = true;
-        if (value === void 0) {
-            value = current;
-        } else if (Math.abs(value - current) > 1e-6) {
-            return;
-        }
-    }
-
-    return hasValue ? value : void 0;
+function hasAngleColumns(particles: Particles, spec: AngleSpec) {
+    return particles[spec.rot].isDefined
+        && particles[spec.tilt].isDefined
+        && particles[spec.psi].isDefined;
 }
 
 function relionEulerToRotation(out: Mat4, rot: number, tilt: number, psi: number) {
@@ -172,172 +113,186 @@ function relionEulerToRotation(out: Mat4, rot: number, tilt: number, psi: number
 }
 
 export interface RelionParticleListOptions {
-    readonly label?: string
-    readonly tomogram?: string
+    readonly tomograms?: ReadonlyArray<string>
+    readonly micrographs?: ReadonlyArray<string>
+    /** Override pixel size (Å/pixel) used to convert pixel-space coordinates to angstrom. */
+    readonly pixelSize?: number
 }
 
-const RelionCoordinateSpecs: TripletFieldSpec[] = [
-    { x: ['rlnCenteredCoordinateXAngst', 'rlnCenteredCoordinateXAngstrom'], y: ['rlnCenteredCoordinateYAngst', 'rlnCenteredCoordinateYAngstrom'], z: ['rlnCenteredCoordinateZAngst', 'rlnCenteredCoordinateZAngstrom'], unit: 'angstrom' },
-    { x: ['rlnCoordinateX'], y: ['rlnCoordinateY'], z: ['rlnCoordinateZ'], unit: 'pixel' },
-];
-
-const RelionOriginSpecs: TripletFieldSpec[] = [
-    { x: ['rlnOriginXAngst', 'rlnOriginXAngstrom'], y: ['rlnOriginYAngst', 'rlnOriginYAngstrom'], z: ['rlnOriginZAngst', 'rlnOriginZAngstrom'], unit: 'angstrom' },
-    { x: ['rlnOriginX'], y: ['rlnOriginY'], z: ['rlnOriginZ'], unit: 'pixel' },
-];
-
-const RelionParticleAngleSpecs = [
-    { rot: ['rlnAngleRot'], tilt: ['rlnAngleTilt'], psi: ['rlnAnglePsi'] },
-];
-
-const RelionSubtomogramAngleSpecs = [
-    { rot: ['rlnTomoSubtomogramRot'], tilt: ['rlnTomoSubtomogramTilt'], psi: ['rlnTomoSubtomogramPsi'] },
-];
-
-const RelionPixelSizeFields = [
-    'rlnTomoTiltSeriesPixelSize',
-    'rlnImagePixelSize',
-    'rlnMicrographPixelSize',
-    'rlnDetectorPixelSize',
-];
-
-const RelionTomogramFields = ['rlnTomoName'];
-
-function buildRelionLabel(particleBlockHeader: string, tomogram?: string) {
-    if (tomogram) return `${particleBlockHeader || 'RELION'} particles (${tomogram})`;
-    return `${particleBlockHeader || 'RELION'} particles`;
+function buildRelionLabel(particleBlockHeader: string, tomograms?: ReadonlyArray<string>, micrographs?: ReadonlyArray<string>) {
+    const base = particleBlockHeader || 'RELION';
+    const filters: string[] = [];
+    if (tomograms !== void 0 && tomograms.length > 0) filters.push(tomograms.join(', '));
+    if (micrographs !== void 0 && micrographs.length > 0) filters.push(micrographs.join(', '));
+    if (filters.length > 0) {
+        return `${base} particles (${filters.join('; ')})`;
+    }
+    return `${base} particles`;
 }
 
-function getRelionSelectedPixelSize(particleBlock: RelionStarFile['particleBlock'], opticsBlock: RelionStarFile['opticsBlock'], selectedRows: readonly number[]) {
-    if (selectedRows.length === 0) return;
-
-    const particlePixelSize = getUniquePositiveFieldValueForRows(particleBlock, RelionPixelSizeFields, selectedRows);
-    if (particlePixelSize !== void 0) return particlePixelSize;
-
-    const particleOpticsGroup = getFlatField(particleBlock, 'rlnOpticsGroup');
-    if (!opticsBlock) {
-        return getNumericFieldUniqueValue(opticsBlock, RelionPixelSizeFields) ?? getNumericFieldUniqueValue(particleBlock, RelionPixelSizeFields);
+/** Find the first defined pixel-size column in the optics block. */
+function getOpticsPixelSizeColumn(optics: Optics | undefined): Column<number> | undefined {
+    if (!optics) return;
+    for (const name of RelionPixelSizeFields) {
+        const col = optics[name] as Column<number>;
+        if (col.isDefined && col.rowCount > 0) return col;
     }
-    const opticsGroupField = getFlatField(opticsBlock, 'rlnOpticsGroup');
-    if (!particleOpticsGroup || !opticsGroupField) {
-        return getNumericFieldUniqueValue(opticsBlock, RelionPixelSizeFields) ?? getNumericFieldUniqueValue(particleBlock, RelionPixelSizeFields);
-    }
-
-    const selectedGroups = new Set<string>();
-    for (const row of selectedRows) {
-        const group = getOptionalString(particleOpticsGroup, row);
-        if (group) selectedGroups.add(group);
-    }
-
-    if (selectedGroups.size === 0) {
-        return getNumericFieldUniqueValue(opticsBlock, RelionPixelSizeFields) ?? getNumericFieldUniqueValue(particleBlock, RelionPixelSizeFields);
-    }
-
-    const matchingOpticsRows: number[] = [];
-    const opticsRowCount = getFieldRowCount(opticsGroupField, opticsBlock, 'rlnOpticsGroup');
-    for (let row = 0; row < opticsRowCount; ++row) {
-        const group = getOptionalString(opticsGroupField, row);
-        if (group && selectedGroups.has(group)) matchingOpticsRows.push(row);
-    }
-
-    return getUniquePositiveFieldValueForRows(opticsBlock, RelionPixelSizeFields, matchingOpticsRows);
 }
 
-function hasAnyRotationColumn(particleBlock: RelionStarFile['particleBlock']) {
-    return !!getFirstFlatField(particleBlock, RelionParticleAngleSpecs[0].rot)
-        || !!getFirstFlatField(particleBlock, RelionParticleAngleSpecs[0].tilt)
-        || !!getFirstFlatField(particleBlock, RelionParticleAngleSpecs[0].psi)
-        || !!getFirstFlatField(particleBlock, RelionSubtomogramAngleSpecs[0].rot)
-        || !!getFirstFlatField(particleBlock, RelionSubtomogramAngleSpecs[0].tilt)
-        || !!getFirstFlatField(particleBlock, RelionSubtomogramAngleSpecs[0].psi);
-}
+type ResolvedPixelSize = {
+    fixed: number | undefined
+    perRow: Column<number> | undefined
+    perGroup: Map<number, number> | undefined
+};
 
-function getCombinedRotation(particleAngles: Angles, subtomogramAngles: Angles | undefined) {
-    const rotation = relionEulerToRotation(Mat4(), particleAngles.rot, particleAngles.tilt, particleAngles.psi);
-    if (subtomogramAngles) {
-        const subtomogram = relionEulerToRotation(Mat4(), subtomogramAngles.rot, subtomogramAngles.tilt, subtomogramAngles.psi);
-        Mat4.mul(rotation, subtomogram, rotation);
+function resolvePixelSize(particles: Particles, optics: Optics | undefined, options: RelionParticleListOptions): ResolvedPixelSize {
+    const overrideValid = options.pixelSize !== void 0 && Number.isFinite(options.pixelSize) && options.pixelSize > 0;
+    if (overrideValid) return { fixed: options.pixelSize, perRow: undefined, perGroup: undefined };
+
+    // Per-row pixel size in the particles block takes precedence over the optics block.
+    const particlePixelSizeCol = particles.rlnPixelSize;
+    if (particlePixelSizeCol.isDefined && particlePixelSizeCol.rowCount > 0) {
+        return { fixed: undefined, perRow: particlePixelSizeCol, perGroup: undefined };
     }
-    return rotation;
-}
 
-export function getRelionStarTomogramNames(data: RelionStarFile) {
-    const tomoField = getFirstFlatField(data.particleBlock, RelionTomogramFields);
-    const tomograms = new Set<string>();
-    if (!tomoField) return [];
+    const opticsCol = getOpticsPixelSizeColumn(optics);
+    if (!opticsCol || !optics) return { fixed: undefined, perRow: undefined, perGroup: undefined };
 
-    const rowCount = getFieldRowCount(tomoField, data.particleBlock, RelionTomogramFields[0]);
-    for (let row = 0; row < rowCount; ++row) {
-        const tomoName = getOptionalString(tomoField, row);
-        if (tomoName) tomograms.add(tomoName);
+    const opticsGroupCol = optics.rlnOpticsGroup;
+    const particleGroupCol = particles.rlnOpticsGroup;
+    if (opticsGroupCol.isDefined && particleGroupCol.isDefined) {
+        const perGroup = new Map<number, number>();
+        for (let i = 0, n = opticsGroupCol.rowCount; i < n; ++i) {
+            perGroup.set(opticsGroupCol.value(i), opticsCol.value(i));
+        }
+        return { fixed: undefined, perRow: undefined, perGroup };
     }
-    return Array.from(tomograms).sort();
+
+    return { fixed: opticsCol.value(0), perRow: undefined, perGroup: undefined };
 }
 
 export function createParticleListFromRelionStar(data: RelionStarFile, options: RelionParticleListOptions = {}): ParticleList {
-    const { particleBlock, opticsBlock } = data;
-    const coordinateFields = getTripletFieldsFromSpecs(particleBlock, RelionCoordinateSpecs);
-    if (!coordinateFields) throw new Error(`Block '${particleBlock.header}' does not define supported particle coordinates.`);
+    const { particleBlock, particles, optics } = data;
+    const coordinateColumns = getTripletColumnsFromSpecs(particles, RelionCoordinateSpecs);
+    if (!coordinateColumns) throw new Error(`Block '${particleBlock.header}' does not define supported particle coordinates.`);
+    const originColumns = getTripletColumnsFromSpecs(particles, RelionOriginSpecs);
 
-    const rowCount = coordinateFields.rowCount;
-    const particleData: {
-        coordinate: Vec3
-        coordinateUnit: 'pixel' | 'angstrom'
-        origin: Vec3
-        originUnit: 'pixel' | 'angstrom'
-        rotation: Mat4
-        originRotation?: Mat4
-    }[] = [];
-    const selectedRows: number[] = [];
+    const rowCount = coordinateColumns.rowCount;
+    const tomoNameCol = particles.rlnTomoName;
+    const micrographNameCol = particles.rlnMicrographName;
+    const tomoFilter = options.tomograms !== void 0 && options.tomograms.length > 0
+        ? new Set<string>(options.tomograms)
+        : void 0;
+    const micrographFilter = options.micrographs !== void 0 && options.micrographs.length > 0
+        ? new Set<string>(options.micrographs)
+        : void 0;
 
-    const tomoField = getFirstFlatField(particleBlock, RelionTomogramFields);
+    const hasParticleAngles = hasAngleColumns(particles, ParticleAngleSpec);
+    const hasSubtomogramAngles = hasAngleColumns(particles, SubtomogramAngleSpec);
+    const hasRotations = hasParticleAngles || hasSubtomogramAngles;
+    const needsPixelSize = coordinateColumns.kind === 'pixel' || originColumns?.kind === 'pixel';
 
+    const { fixed: fixedPixelSize, perRow: perRowPixelSize, perGroup: perGroupPixelSize } = resolvePixelSize(particles, optics, options);
+    const particleGroupCol = particles.rlnOpticsGroup;
+
+    const coordinates = new Float32Array(rowCount * 3);
+    const rotations = hasRotations ? new Float32Array(rowCount * 4) : undefined;
+
+    const position = Vec3();
+    const originShift = Vec3();
+    const originRotation = Mat4();
+    const rotation = Mat4();
+    const subtomogram = Mat4();
+    const quaternion = Quat();
+    const particleAngles: Angles = { rot: 0, tilt: 0, psi: 0 };
+    const subtomogramAngles: Angles = { rot: 0, tilt: 0, psi: 0 };
+
+    let count = 0;
     for (let row = 0; row < rowCount; ++row) {
-        const tomoName = getOptionalString(tomoField, row);
-        if (options.tomogram && tomoName !== options.tomogram) continue;
+        if (tomoFilter !== void 0) {
+            if (!tomoNameCol.isDefined) break;
+            if (!tomoFilter.has(tomoNameCol.value(row))) continue;
+        }
+        if (micrographFilter !== void 0) {
+            if (!micrographNameCol.isDefined) break;
+            if (!micrographFilter.has(micrographNameCol.value(row))) continue;
+        }
 
-        const coordinate = getTripletValue(particleBlock, row, RelionCoordinateSpecs);
-        if (!coordinate) continue;
+        const pixelScale = fixedPixelSize
+            ?? perRowPixelSize?.value(row)
+            ?? (perGroupPixelSize && particleGroupCol.isDefined
+                ? perGroupPixelSize.get(particleGroupCol.value(row))
+                : undefined)
+            ?? 1;
 
-        const origin = getTripletValue(particleBlock, row, RelionOriginSpecs) ?? { value: Vec3.create(0, 0, 0), unit: 'pixel' as const };
-        const particleAngles = getAngles(particleBlock, row, RelionParticleAngleSpecs) ?? { rot: 0, tilt: 0, psi: 0 };
-        const subtomogramAngles = getAngles(particleBlock, row, RelionSubtomogramAngleSpecs);
+        readTriplet(position, coordinateColumns, row);
+        if (coordinateColumns.kind === 'pixel') Vec3.scale(position, position, pixelScale);
 
-        particleData.push({
-            coordinate: coordinate.value,
-            coordinateUnit: coordinate.unit,
-            origin: origin.value,
-            originUnit: origin.unit,
-            originRotation: subtomogramAngles ? relionEulerToRotation(Mat4(), subtomogramAngles.rot, subtomogramAngles.tilt, subtomogramAngles.psi) : void 0,
-            rotation: getCombinedRotation(particleAngles, subtomogramAngles),
-        });
-        selectedRows.push(row);
+        if (hasSubtomogramAngles) {
+            readAngles(subtomogramAngles, particles, row, SubtomogramAngleSpec);
+        }
+
+        if (originColumns) {
+            readTriplet(originShift, originColumns, row);
+            if (originColumns.kind === 'pixel') Vec3.scale(originShift, originShift, pixelScale);
+            if (hasSubtomogramAngles) {
+                relionEulerToRotation(originRotation, subtomogramAngles.rot, subtomogramAngles.tilt, subtomogramAngles.psi);
+                Vec3.transformMat4(originShift, originShift, originRotation);
+            }
+            Vec3.sub(position, position, originShift);
+        }
+
+        const cOffset = count * 3;
+        coordinates[cOffset + 0] = position[0];
+        coordinates[cOffset + 1] = position[1];
+        coordinates[cOffset + 2] = position[2];
+
+        if (rotations) {
+            if (hasParticleAngles) {
+                readAngles(particleAngles, particles, row, ParticleAngleSpec);
+                relionEulerToRotation(rotation, particleAngles.rot, particleAngles.tilt, particleAngles.psi);
+            } else {
+                Mat4.setIdentity(rotation);
+            }
+            if (hasSubtomogramAngles) {
+                relionEulerToRotation(subtomogram, subtomogramAngles.rot, subtomogramAngles.tilt, subtomogramAngles.psi);
+                Mat4.mul(rotation, subtomogram, rotation);
+            }
+            Quat.normalize(quaternion, Quat.fromMat4(quaternion, rotation));
+            const qOffset = count * 4;
+            rotations[qOffset + 0] = quaternion[0];
+            rotations[qOffset + 1] = quaternion[1];
+            rotations[qOffset + 2] = quaternion[2];
+            rotations[qOffset + 3] = quaternion[3];
+        }
+
+        ++count;
     }
 
-    if (particleData.length === 0) {
-        throw new Error(options.tomogram
-            ? `No RELION particle rows matched tomogram '${options.tomogram}'.`
+    if (count === 0) {
+        const filterDesc: string[] = [];
+        if (tomoFilter !== void 0) filterDesc.push(`tomograms '${options.tomograms!.join(', ')}'`);
+        if (micrographFilter !== void 0) filterDesc.push(`micrographs '${options.micrographs!.join(', ')}'`);
+        throw new Error(filterDesc.length > 0
+            ? `No RELION particle rows matched ${filterDesc.join(' and ')}.`
             : `Block '${particleBlock.header}' does not contain any readable particle rows.`);
     }
 
-    const pixelSize = coordinateFields.unit === 'pixel'
-        ? getRelionSelectedPixelSize(particleBlock, opticsBlock, selectedRows)
-        : void 0;
+    const finalCoordinates = count === rowCount ? coordinates : coordinates.slice(0, count * 3);
+    const finalRotations = rotations && (count === rowCount ? rotations : rotations.slice(0, count * 4));
 
-    return packParticleList(
-        options.label ?? buildRelionLabel(particleBlock.header, options.tomogram),
-        coordinateFields.unit,
-        pixelSize,
-        particleData,
-        {
+    return {
+        label: buildRelionLabel(particleBlock.header, options.tomograms, options.micrographs),
+        coordinates: finalCoordinates,
+        rotations: finalRotations,
+        sourceData: {
             data,
             format: 'relion-star',
             warnings: [
-                !hasAnyRotationColumn(particleBlock) ? 'No RELION rotation columns were found; particle rotations default to identity.' : void 0,
-                coordinateFields.unit === 'pixel' && pixelSize === void 0
-                    ? 'RELION particle coordinates are pixel-space, but no unique positive pixel size was found; pixel-space coordinates default to scale 1.'
+                needsPixelSize && fixedPixelSize === void 0 && perRowPixelSize === void 0 && perGroupPixelSize === void 0
+                    ? 'RELION particle coordinates are pixel-space, but no pixel size was provided or detected; coordinates are kept unscaled.'
                     : void 0,
             ].filter((v): v is string => !!v)
         }
-    );
+    };
 }

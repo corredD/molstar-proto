@@ -2,50 +2,34 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Ludovic Autin <autin@scripps.edu>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
-import { ParticleList, ParticleUnit } from '../../mol-model/particles/particle-list';
+import { ParticleList } from '../../mol-model/particles/particle-list';
 import { CryoEtDataPortalNdjsonFile } from '../../mol-io/reader/cryoet/ndjson';
-import { packParticleList } from './common';
+import { packParticleList, ParticleTransformInput } from './common';
 
-function setRotationFromRowMajor3x3(out: Mat4, values: ArrayLike<number>) {
+function setRotationFromRowMajor3x3(out: Mat4, values: ReadonlyArray<ReadonlyArray<number>>) {
     Mat4.setIdentity(out);
-    Mat4.setValue(out, 0, 0, values[0]);
-    Mat4.setValue(out, 0, 1, values[1]);
-    Mat4.setValue(out, 0, 2, values[2]);
-    Mat4.setValue(out, 1, 0, values[3]);
-    Mat4.setValue(out, 1, 1, values[4]);
-    Mat4.setValue(out, 1, 2, values[5]);
-    Mat4.setValue(out, 2, 0, values[6]);
-    Mat4.setValue(out, 2, 1, values[7]);
-    Mat4.setValue(out, 2, 2, values[8]);
+    Mat4.setValue(out, 0, 0, values[0][0]);
+    Mat4.setValue(out, 0, 1, values[0][1]);
+    Mat4.setValue(out, 0, 2, values[0][2]);
+    Mat4.setValue(out, 1, 0, values[1][0]);
+    Mat4.setValue(out, 1, 1, values[1][1]);
+    Mat4.setValue(out, 1, 2, values[1][2]);
+    Mat4.setValue(out, 2, 0, values[2][0]);
+    Mat4.setValue(out, 2, 1, values[2][1]);
+    Mat4.setValue(out, 2, 2, values[2][2]);
     return out;
 }
 
-function cryoEtRotationToMat4(out: Mat4, matrix: unknown) {
-    if (matrix === void 0) return Mat4.setIdentity(out);
-
-    if (Array.isArray(matrix) && matrix.length === 9 && matrix.every(value => Number.isFinite(value))) {
-        return setRotationFromRowMajor3x3(out, matrix as ArrayLike<number>);
-    }
-
-    if (Array.isArray(matrix) && matrix.length === 3 && matrix.every(row => Array.isArray(row) && row.length === 3)) {
-        const flat: number[] = [];
-        for (const row of matrix as ReadonlyArray<ReadonlyArray<number>>) {
-            for (const value of row) flat.push(value);
-        }
-        if (flat.every(value => Number.isFinite(value))) {
-            return setRotationFromRowMajor3x3(out, flat);
-        }
-    }
-
-    throw new Error('Unsupported CryoET Data Portal xyz_rotation_matrix format.');
-}
-
 export interface CryoEtDataPortalParticleListOptions {
-    readonly label?: string
-    readonly coordinateUnit?: ParticleUnit
+    /**
+     * Pixel size (Å/pixel) used to convert pixel-space NDJSON coordinates to angstrom.
+     * CryoET Data Portal NDJSON does not encode distance units, so this must be supplied.
+     */
+    readonly pixelSize: number
     readonly type?: string
 }
 
@@ -54,27 +38,28 @@ function buildCryoEtLabel(type?: string) {
     return 'CryoET Data Portal particles';
 }
 
-export function createParticleListFromCryoEtDataPortalNdjson(data: CryoEtDataPortalNdjsonFile, options: CryoEtDataPortalParticleListOptions = {}): ParticleList {
-    const coordinateUnit = options.coordinateUnit ?? 'pixel';
+export function createParticleListFromCryoEtDataPortalNdjson(data: CryoEtDataPortalNdjsonFile, options: CryoEtDataPortalParticleListOptions): ParticleList {
+    const { pixelSize } = options;
+    if (pixelSize === void 0 || !Number.isFinite(pixelSize) || pixelSize <= 0) {
+        throw new Error('CryoET Data Portal ndjson requires a positive pixelSize (Å/pixel) to convert pixel-space coordinates to angstrom.');
+    }
 
-    const particleData: {
-        coordinate: Vec3
-        coordinateUnit: ParticleUnit
-        origin: Vec3
-        originUnit: ParticleUnit
-        rotation: Mat4
-    }[] = [];
+    const particleData: ParticleTransformInput[] = [];
 
     for (let index = 0, il = data.records.length; index < il; ++index) {
         const record = data.records[index];
         if (options.type && record.type !== options.type) continue;
 
         particleData.push({
-            coordinate: Vec3.create(record.location.x, record.location.y, record.location.z),
-            coordinateUnit,
+            coordinate: Vec3.create(
+                record.location.x * pixelSize,
+                record.location.y * pixelSize,
+                record.location.z * pixelSize,
+            ),
             origin: Vec3.create(0, 0, 0),
-            originUnit: coordinateUnit,
-            rotation: cryoEtRotationToMat4(Mat4(), record.xyz_rotation_matrix),
+            rotation: record.type === 'orientedPoint'
+                ? setRotationFromRowMajor3x3(Mat4(), record.xyz_rotation_matrix)
+                : undefined,
         });
     }
 
@@ -85,18 +70,12 @@ export function createParticleListFromCryoEtDataPortalNdjson(data: CryoEtDataPor
     }
 
     return packParticleList(
-        options.label ?? buildCryoEtLabel(options.type),
-        coordinateUnit,
-        void 0,
+        buildCryoEtLabel(options.type),
         particleData,
         {
             data,
             format: 'cryoet-data-portal-ndjson',
-            warnings: [
-                options.coordinateUnit === void 0
-                    ? 'CryoET Data Portal ndjson does not encode distance units; coordinates are treated as pixel-space by default.'
-                    : void 0,
-            ].filter((v): v is string => !!v),
+            pixelSize,
         }
     );
 }

@@ -35,8 +35,7 @@ export const RelionStarParticlesProvider = DataFormatProvider({
             .apply(StateTransforms.Data.ParseCif, void 0, { state: { isGhost: true } });
 
         const list = format.apply(StateTransforms.Particles.ParticleListFromRelionStar, {
-            label: params?.label,
-            tomogram: params?.tomogram,
+            tomograms: params?.tomogram ? [params.tomogram] : [],
         });
 
         await format.commit({ revertOnError: true });
@@ -57,8 +56,7 @@ export const DynamoTblParticlesProvider = DataFormatProvider({
             .apply(StateTransforms.Data.ParseDynamoTbl, void 0, { state: { isGhost: true } });
 
         const list = format.apply(StateTransforms.Particles.ParticleListFromDynamoTbl, {
-            label: params?.label,
-            tomo: params?.tomo,
+            tomos: params?.tomo !== void 0 ? [String(params.tomo)] : [],
         });
 
         await format.commit({ revertOnError: true });
@@ -79,7 +77,6 @@ export const CryoEtDataPortalNdjsonParticlesProvider = DataFormatProvider({
             .apply(StateTransforms.Data.ParseCryoEtDataPortalNdjson, void 0, { state: { isGhost: true } });
 
         const list = format.apply(StateTransforms.Particles.ParticleListFromCryoEtDataPortalNdjson, {
-            label: params?.label,
             type: params?.type,
         });
 
