@@ -1,26 +1,21 @@
 /**
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
- * Build a mol* Mesh + ShapeProvider from a parsed SffData (HFF).
+ * Build a mol* Mesh / Lines from a parsed SffData (HFF).
  *
- * Strategy: concatenate all meshes from all segments into a single Mesh, with
- * the per-vertex `groups` channel encoding the segment index. Per-group
- * colour and label lookups then index back into SffData.segments. This keeps
- * the result a single Shape (good UX for highlighting / picking) while still
- * letting each segment carry its own colour and biological annotation.
+ * Concatenates all meshes from all segments into a single geometry, with the
+ * per-vertex `groups` channel encoding the segment index. Per-group colour
+ * and label lookups index back into SffData.segments. The output geometry is
+ * consumed by the multi-visual representation in `representation.ts`.
  *
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Mesh } from '../../mol-geo/geometry/mesh/mesh';
-import { BaseGeometry } from '../../mol-geo/geometry/base';
-import { Shape } from '../../mol-model/shape';
-import { ShapeProvider } from '../../mol-model/shape/provider';
+import { Lines } from '../../mol-geo/geometry/lines/lines';
+import { LinesBuilder } from '../../mol-geo/geometry/lines/lines-builder';
 import { Color } from '../../mol-util/color';
 import { Mat4 } from '../../mol-math/linear-algebra';
-import { Material } from '../../mol-util/material';
-import { ParamDefinition as PD } from '../../mol-util/param-definition';
-import { RuntimeContext, Task } from '../../mol-task';
 import { SffData, SffSegment, SffTransform } from '../../mol-io/reader/hff/schema';
 
 function transformMatrix(t: SffTransform | undefined): Mat4 | undefined {
@@ -66,13 +61,13 @@ function findTransformById(transforms: SffTransform[], id: number | undefined): 
     return transforms.find(t => t.id === id);
 }
 
-interface Built {
+export interface BuiltMesh {
     mesh: Mesh;
     /** Per-group-id segment lookup (group id == segment index in SffData.segments). */
     segmentByGroup: SffSegment[];
 }
 
-function buildMesh(data: SffData): Built {
+export function buildMesh(data: SffData): BuiltMesh {
     let totalV = 0, totalT = 0;
     for (const seg of data.segments) {
         for (const m of seg.meshes) {
@@ -87,8 +82,8 @@ function buildMesh(data: SffData): Built {
     const groups = new Float32Array(totalV);
 
     const rotScratch = Mat4();
-    let vBase = 0; // current base vertex index
-    let iOff = 0; // index write offset
+    let vBase = 0;
+    let iOff = 0;
     let anyMissingNormals = false;
     const segmentByGroup: SffSegment[] = [];
 
@@ -132,54 +127,34 @@ function buildMesh(data: SffData): Built {
     return { mesh, segmentByGroup };
 }
 
-function colourToColor(c: [number, number, number, number]): Color {
+export function buildLinesFromMesh(built: BuiltMesh): Lines {
+    const m = built.mesh;
+    const verts = m.vertexBuffer.ref.value;
+    const tris = m.indexBuffer.ref.value;
+    const groups = m.groupBuffer.ref.value;
+    const triCount = m.triangleCount;
+
+    const builder = LinesBuilder.create(triCount * 3);
+    for (let t = 0; t < triCount; t++) {
+        const a = tris[t * 3], b = tris[t * 3 + 1], c = tris[t * 3 + 2];
+        const ax = verts[a * 3], ay = verts[a * 3 + 1], az = verts[a * 3 + 2];
+        const bx = verts[b * 3], by = verts[b * 3 + 1], bz = verts[b * 3 + 2];
+        const cx = verts[c * 3], cy = verts[c * 3 + 1], cz = verts[c * 3 + 2];
+        const g = groups[a];
+        builder.add(ax, ay, az, bx, by, bz, g);
+        builder.add(bx, by, bz, cx, cy, cz, g);
+        builder.add(cx, cy, cz, ax, ay, az, g);
+    }
+    return builder.getLines();
+}
+
+export function colourToColor(c: [number, number, number, number]): Color {
     return Color.fromNormalizedRgb(c[0], c[1], c[2]);
 }
 
-function segmentLabel(seg: SffSegment): string {
+export function segmentLabel(seg: SffSegment): string {
     return seg.biologicalAnnotation?.name?.trim() || `Segment ${seg.id}`;
 }
 
-// SFF mesh segmentations are typically thin oriented surfaces (membranes,
-// organelles); render both sides by default and keep the back face the same
-// colour as the front (interior.colorStrength = 0 disables the dark interior
-// blend that the global mesh default applies).
-const Params = {
-    ...Mesh.Params,
-    doubleSided: PD.Boolean(true, BaseGeometry.CustomQualityParamInfo),
-    interior: PD.Group({
-        color: PD.Color(Color.fromRgb(76, 76, 76)),
-        colorStrength: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }),
-        substance: Material.getParam(),
-        substanceStrength: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }),
-    }),
-};
-type Params = typeof Params;
-
-export function shapeFromSff(data: SffData): Task<ShapeProvider<SffData, Mesh, Params>> {
-    return Task.create('Build SFF Shape', async (_ctx: RuntimeContext) => {
-        const built = buildMesh(data);
-        const colors = built.segmentByGroup.map(s => colourToColor(s.colour));
-        const labels = built.segmentByGroup.map(s => segmentLabel(s));
-
-        const baseLabel = data.name?.trim() || 'EMDB-SFF';
-        const shape: Shape<Mesh> = Shape.create(
-            baseLabel,
-            data,
-            built.mesh,
-            (group: number) => colors[group] ?? Color.fromNormalizedRgb(0.7, 0.7, 0.7),
-            () => 1,
-            (group: number) => labels[group] ?? `Segment ${group}`,
-        );
-        return {
-            label: baseLabel,
-            data,
-            params: { ...Params } as Params,
-            getShape: async () => shape,
-            geometryUtils: Mesh.Utils,
-        };
-    });
-}
-
-// exported for unit tests
-export const _internals = { buildMesh };
+// re-exported for unit tests
+export const _internals = { buildMesh, buildLinesFromMesh };
