@@ -37,8 +37,33 @@ export const PlyProvider = DataFormatProvider({
     }
 });
 
+export const ObjProvider = DataFormatProvider({
+    label: 'OBJ',
+    description: 'Wavefront OBJ',
+    category: ShapeFormatCategory,
+    stringExtensions: ['obj'],
+    parse: async (plugin, data) => {
+        const format = plugin.state.data.build()
+            .to(data)
+            .apply(StateTransforms.Data.ParseObj, {}, { state: { isGhost: true } });
+
+        const shape = format.apply(StateTransforms.Model.ShapeFromObj);
+
+        await format.commit();
+
+        return { format: format.selector, shape: shape.selector };
+    },
+    visuals(plugin: PluginContext, data: { shape: StateObjectRef<PluginStateObject.Shape.Provider> }) {
+        const repr = plugin.state.data.build()
+            .to(data.shape)
+            .apply(StateTransforms.Representation.ShapeRepresentation3D);
+        return repr.commit();
+    }
+});
+
 export const BuiltInShapeFormats = [
     ['ply', PlyProvider] as const,
+    ['obj', ObjProvider] as const,
 ] as const;
 
 export type BuildInShapeFormat = (typeof BuiltInShapeFormats)[number][0]

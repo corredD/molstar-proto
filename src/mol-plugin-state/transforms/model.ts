@@ -12,6 +12,7 @@ import { parseGRO } from '../../mol-io/reader/gro/parser';
 import { parsePDB } from '../../mol-io/reader/pdb/parser';
 import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
 import { shapeFromPly } from '../../mol-model-formats/shape/ply';
+import { shapeFromObj } from '../../mol-model-formats/shape/obj';
 import { coordinatesFromDcd } from '../../mol-model-formats/structure/dcd';
 import { trajectoryFromGRO } from '../../mol-model-formats/structure/gro';
 import { trajectoryFromCCD, trajectoryFromMmCIF } from '../../mol-model-formats/structure/mmcif';
@@ -94,6 +95,7 @@ export { StructureComponent };
 export { CustomModelProperties };
 export { CustomStructureProperties };
 export { ShapeFromPly };
+export { ShapeFromObj };
 
 type CoordinatesFromDcd = typeof CoordinatesFromDcd
 const CoordinatesFromDcd = PluginStateTransform.BuiltIn({
@@ -1312,6 +1314,28 @@ const ShapeFromPly = PluginStateTransform.BuiltIn({
     apply({ a, params }) {
         return Task.create('Create shape from PLY', async ctx => {
             const shape = await shapeFromPly(a.data, params).runInContext(ctx);
+            const props = { label: params.label || 'Shape' };
+            return new SO.Shape.Provider(shape, props);
+        });
+    }
+});
+
+type ShapeFromObj = typeof ShapeFromObj
+const ShapeFromObj = PluginStateTransform.BuiltIn({
+    name: 'shape-from-obj',
+    display: { name: 'Shape from OBJ', description: 'Create Shape from Wavefront OBJ data' },
+    from: SO.Format.Obj,
+    to: SO.Shape.Provider,
+    params(a) {
+        return {
+            transforms: PD.Optional(PD.Value<Mat4[]>([], { isHidden: true })),
+            label: PD.Optional(PD.Text('', { isHidden: true }))
+        };
+    }
+})({
+    apply({ a, params }) {
+        return Task.create('Create shape from OBJ', async ctx => {
+            const shape = await shapeFromObj(a.data, params).runInContext(ctx);
             const props = { label: params.label || 'Shape' };
             return new SO.Shape.Provider(shape, props);
         });
