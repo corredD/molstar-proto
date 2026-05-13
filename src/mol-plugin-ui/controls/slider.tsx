@@ -669,30 +669,38 @@ export class SliderBase extends React.Component<SliderBaseProps, SliderBaseState
         const { handle, bounds } = (this.state || {}) as this['state'];
         const { marks, step, min, max, allowCross } = { ...this.props, ...(props || {}) } as SliderBaseProps;
 
-        let val = v;
-        if (val <= min) {
-            val = min;
-        }
-        if (val >= max) {
-            val = max;
-        }
-        if (!allowCross && handle != null && handle > 0 && val <= bounds[handle - 1]) {
+        const safeMin = Number.isFinite(min) ? min : 0;
+        const safeMax = Number.isFinite(max) ? max : safeMin;
+
+        let val = (typeof v === 'number' && Number.isFinite(v)) ? v : safeMin;
+        if (val <= safeMin) val = safeMin;
+        if (val >= safeMax) val = safeMax;
+
+        if (!allowCross && handle != null && bounds && handle > 0 && val <= bounds[handle - 1]) {
             val = bounds[handle - 1];
         }
-        if (!allowCross && handle != null && handle < bounds.length - 1 && val >= bounds[handle + 1]) {
+        if (!allowCross && handle != null && bounds && handle < bounds.length - 1 && val >= bounds[handle + 1]) {
             val = bounds[handle + 1];
         }
 
-        const points = Object.keys(marks).map(parseFloat);
-        if (step !== null) {
-            const closestStep = (Math.round((val - min) / step!) * step!) + min;
-            points.push(closestStep);
+        const points = marks ? Object.keys(marks).map(parseFloat).filter(p => Number.isFinite(p)) : [];
+        const hasValidStep = step !== null && step !== undefined && Number.isFinite(step) && step > 0;
+        if (hasValidStep) {
+            const closestStep = (Math.round((val - safeMin) / step!) * step!) + safeMin;
+            if (Number.isFinite(closestStep)) points.push(closestStep);
         }
 
-        const diffs = points.map((point) => Math.abs(val - point));
-        const closestPoint = points[diffs.indexOf(Math.min.apply(Math, diffs))];
+        if (points.length === 0) return Number.isFinite(val) ? val : safeMin;
 
-        return step !== null ? parseFloat(closestPoint.toFixed(this.getPrecision(step!))) : closestPoint;
+        const diffs = points.map(point => Math.abs(val - point));
+        const idx = diffs.indexOf(Math.min.apply(Math, diffs));
+        const closestPoint = idx >= 0 ? points[idx] : val;
+
+        if (typeof closestPoint !== 'number' || !Number.isFinite(closestPoint)) {
+            return Number.isFinite(val) ? val : safeMin;
+        }
+
+        return hasValidStep ? parseFloat(closestPoint.toFixed(this.getPrecision(step!))) : closestPoint;
     }
 
     render() {

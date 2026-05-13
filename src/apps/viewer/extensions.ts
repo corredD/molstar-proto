@@ -16,6 +16,7 @@ import { GeometryExport } from '../../extensions/geo-export';
 import { MAQualityAssessment, MAQualityAssessmentConfig } from '../../extensions/model-archive/quality-assessment/behavior';
 import { ModelExport } from '../../extensions/model-export';
 import { Mp4Export } from '../../extensions/mp4-export';
+import { ParticleExport } from '../../extensions/particle-export';
 import { loadMVS } from '../../extensions/mvs';
 import { MolViewSpec } from '../../extensions/mvs/behavior';
 import { loadMVSData } from '../../extensions/mvs/components/formats';
@@ -37,6 +38,7 @@ export const ExtensionMap = {
     'model-export': PluginSpec.Behavior(ModelExport),
     'mp4-export': PluginSpec.Behavior(Mp4Export),
     'geo-export': PluginSpec.Behavior(GeometryExport),
+    'particle-export': PluginSpec.Behavior(ParticleExport),
     'zenodo-import': PluginSpec.Behavior(ZenodoImport),
     'wwpdb-chemical-component-dictionary': PluginSpec.Behavior(wwPDBChemicalComponentDictionary),
 
