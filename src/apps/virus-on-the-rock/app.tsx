@@ -19,6 +19,7 @@ import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { Task } from '../../mol-task';
 import { useBehavior } from '../../mol-plugin-ui/hooks/use-behavior';
 import { PresetStructureRepresentations } from '../../mol-plugin-state/builder/structure/representation-preset';
+import { PluginConfig } from '../../mol-plugin/config';
 import { clearStructureWiggle } from '../../mol-plugin-state/helpers/structure-wiggle';
 import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset } from '../../mol-plugin-state/helpers/audio-reactive-presets';
 import { AudioReactiveAnimationManagerValues, type AudioReactiveStatus } from '../../mol-plugin-state/manager/audio-reactive-animation';
@@ -89,6 +90,9 @@ const DefaultAudioUrl = 'examples/angine.mp3';
 const DefaultAudioFallbackUrl = '/examples/angine.mp3';
 const DefaultAudioLabel = 'angine.mp3';
 const NearClipAfterCameraReset = 0;
+// Multiplier applied to the visible bounding-sphere radius when framing.
+// >1 = camera pulled back so the structure isn't filling the viewport.
+const FrameRadiusPadding = 1.3;
 const AudioUrlPresets = [
     { label: 'Plus FM', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/plusfm/' },
     { label: 'Public Domain - Maple Leaf Rag', url: 'https://archive.org/download/MapleLeafRag/MapleLeafRag.mp3' },
@@ -205,7 +209,8 @@ function getAxisCycleOptions(axisOptions: AxisOption[]): AxisCycleOption[] {
 }
 
 function getDefaultCycleTargets(axisOptions: AxisOption[]) {
-    return getAxisCycleOptions(axisOptions).map(option => option.value);
+    // Local X/Y/Z are off by default; cycle uses assembly axes when available.
+    return getCyclingAxisOptions(axisOptions).map(option => getAssemblyCycleTarget(option.value));
 }
 
 function getEnabledCycleOptions(state: Pick<VirusOnTheRockState, 'axisOptions' | 'cycleTargets'>) {
@@ -341,6 +346,10 @@ function createInitialState(params: AudioReactiveAnimationManagerValues, animati
         loadedEntries: [],
         audioLoaded: false,
         ...axisState,
+        // Override axis-mode defaults: axis mode on, assembly source, beat cycle on,
+        // local X/Y/Z deselected (cycle picks up assembly axes once available).
+        axisModeEnabled: true,
+        axisSource: 'assembly',
         axisOptions: [],
         selectedAxisOrder: params.assemblyAxisOrder,
         wiggleEffectScale: params.wiggleEffectScale,
@@ -350,9 +359,9 @@ function createInitialState(params: AudioReactiveAnimationManagerValues, animati
         beatThreshold: 0.05,
         audioPlaying: false,
         hasAssemblyAxes: false,
-        axisCycleEnabled: false,
+        axisCycleEnabled: true,
         axisCycleEvery: 1,
-        cycleTargets: DefaultLocalCycleTargets,
+        cycleTargets: [],
         activeCycleTarget: void 0,
         ...getMotionTargetState(animation),
         lodScaleEnabled: params.lodScaleEnabled,
@@ -539,6 +548,10 @@ export class VirusOnTheRockApp {
             postprocessing: getDefaultMultiScaleOcclusionProps(),
         });
 
+        viewer.plugin.config.set(
+            PluginConfig.Structure.DefaultRepresentationPreset,
+            PresetStructureRepresentations['polymer-and-ligand'].id);
+
         const app = new VirusOnTheRockApp(viewer, uiTarget);
         await app.initializeDefaults();
         return app;
@@ -632,18 +645,23 @@ export class VirusOnTheRockApp {
         await this.viewer.plugin.managers.animation.stop();
         const canvas3d = this.viewer.plugin.canvas3d;
         if (!canvas3d) return;
-        canvas3d.setProps({ cameraClipping: { minNear: NearClipAfterCameraReset } });
+        // radius:0 -> show the full scene (no slab clipping); minNear:0 -> near plane unrestricted.
+        canvas3d.setProps({ cameraClipping: { minNear: NearClipAfterCameraReset, radius: 0 } });
 
-        if (keepDirection) {
-            const sphere = canvas3d.boundingSphereVisible;
-            if (sphere && sphere.radius > 0 && isFinite(sphere.radius)) {
-                const snapshot = canvas3d.camera.getCenter(sphere.center);
-                canvas3d.requestCameraReset({ snapshot: { ...snapshot, minNear: NearClipAfterCameraReset }, durationMs: 400 });
-                return;
-            }
-        }
-
-        this.viewer.plugin.managers.camera.reset({ minNear: NearClipAfterCameraReset }, 0);
+        // Lazy snapshot: bounding sphere is evaluated at apply time so we frame the
+        // post-load scene, not a stale pre-load one. getFocus preserves the current
+        // viewing direction while pulling the camera to the padded radius.
+        canvas3d.requestCameraReset({
+            snapshot: (scene, camera) => {
+                const sphere = scene.boundingSphereVisible;
+                if (!sphere || sphere.radius <= 0 || !isFinite(sphere.radius)) {
+                    return { minNear: NearClipAfterCameraReset };
+                }
+                const paddedRadius = sphere.radius * FrameRadiusPadding;
+                return { ...camera.getFocus(sphere.center, paddedRadius), minNear: NearClipAfterCameraReset };
+            },
+            durationMs: keepDirection ? 400 : 0,
+        });
     }
 
     private resetAxisCycleRuntime() {
@@ -853,20 +871,51 @@ export class VirusOnTheRockApp {
         const version = structureRef.cell.transform.version;
         if (this.styledStructureVersions.get(ref) === version) return;
 
-        await this.viewer.plugin.managers.structure.component.applyPreset([structureRef], PresetStructureRepresentations.illustrative);
-        const animation = this.viewer.plugin.managers.structure.component.state.options.animation;
+        const plugin = this.viewer.plugin;
+        const dataState = plugin.state.data;
 
-        const structure = this.getDisplayedStructureData(structureRef);
+        // The default 'auto' preset (and the older illustrative path) builds a single 'all'
+        // component, which mixes water/ions in with polymer atoms. Tear that down and apply
+        // polymer-and-ligand so we have separate, hideable components.
+        const preApply = this.getAllStructures().find(s => s.cell.transform.ref === ref) ?? structureRef;
+        const allComponent = preApply.components.find(c =>
+            c.cell.transform.tags?.includes('structure-component-static-all'));
+        if (allComponent) {
+            await plugin.managers.structure.hierarchy.remove([allComponent.cell.transform.ref], false);
+        }
+        await plugin.managers.structure.component.applyPreset(
+            [preApply], PresetStructureRepresentations['polymer-and-ligand']);
+
+        const styled = this.getAllStructures().find(s => s.cell.transform.ref === ref);
+        if (!styled) return;
+
+        // Hide water + ion; swap polymer's cartoon representation for spacefill.
+        for (const component of styled.components) {
+            const tags = component.cell.transform.tags;
+            if (!tags) continue;
+            if (tags.includes('structure-component-static-water') || tags.includes('structure-component-static-ion')) {
+                setSubtreeVisibility(dataState, component.cell.transform.ref, true);
+            } else if (tags.includes('structure-component-static-polymer')) {
+                await plugin.builders.structure.representation.addRepresentation(
+                    component.cell, { type: 'spacefill' }, { tag: 'polymer' });
+            }
+        }
+
+        const restyled = this.getAllStructures().find(s => s.cell.transform.ref === ref);
+        if (!restyled) return;
+
+        const animation = plugin.managers.structure.component.state.options.animation;
+        const structure = this.getDisplayedStructureData(restyled);
         const applyLod = (structure?.elementCount ?? 0) > LargeStructureElementThreshold;
 
-        const update = this.viewer.plugin.state.data.build();
-        for (const component of structureRef.components) {
+        const update = dataState.build();
+        for (const component of restyled.components) {
             for (const repr of component.representations) {
                 update.to(repr.cell).update(old => {
                     old.type.params.ignoreLight = false;
                     old.colorTheme = { name: 'entity-id', params: {} };
                     if (old.type.params.animation) old.type.params.animation = animation;
-                    if (applyLod) {
+                    if (applyLod && 'lodLevels' in old.type.params) {
                         old.type.params.lodLevels = LargeStructureLodLevels;
                     }
                 });
@@ -968,7 +1017,7 @@ export class VirusOnTheRockApp {
                 audioLoaded: this.state.value.audioLoaded,
                 axisOptions: [],
                 hasAssemblyAxes: false,
-                cycleTargets: this.cycleTargetsCustomized ? sanitizeCycleTargets(this.state.value.cycleTargets, []) : DefaultLocalCycleTargets,
+                cycleTargets: this.cycleTargetsCustomized ? sanitizeCycleTargets(this.state.value.cycleTargets, []) : [],
                 activeCycleTarget: void 0,
             });
             return;
