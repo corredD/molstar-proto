@@ -11,9 +11,9 @@ mat4 modelView = uView * model;
 #else
     vec3 position = aPosition;
 #endif
-// #ifndef dGeometryType_image
+#ifndef dGeometryType_image
     position = applyWiggle(position, group, aInstance);
-// #endif
+#endif
 vec4 position4 = vec4(position, 1.0);
 // for accessing tColorGrid in vert shader and for clipping in frag shader
 vModelPosition = (model * position4).xyz;

@@ -1,7 +1,8 @@
 /**
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
- * @author OpenAI Codex
+ * @author Ludovic Autin <ludovic.autin@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import { RuntimeContext } from '../../mol-task';
@@ -20,10 +21,10 @@ describe('graphql transport', () => {
             if (!Asset.isUrl(asset)) throw new Error('expected URL asset');
 
             expect(asset.url).toBe('https://example.org/graphql');
-            expect(asset.headers).toEqual([
-                ['Content-Type', 'application/json; charset=utf-8'],
-                ['Accept', 'application/json']
-            ]);
+            expect(asset.headers).toEqual({
+                'Content-Type': 'application/json; charset=utf-8',
+                'Accept': 'application/json'
+            });
             expect(asset.body).toContain('"query"');
             expect(asset.body).toContain('"variables"');
 
@@ -55,10 +56,10 @@ describe('graphql transport', () => {
             url: 'https://example.org/graphql',
             type: 'json',
             body: '{"query":"{ test }"}',
-            headers: [
-                ['Content-Type', 'application/json'],
-                ['Accept', 'application/json']
-            ]
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
         }).run();
 
         expect(fetchSpy).toHaveBeenCalledWith('https://example.org/graphql', {
