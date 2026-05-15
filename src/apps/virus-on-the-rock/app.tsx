@@ -511,7 +511,7 @@ export class VirusOnTheRockApp {
 
         viewer.plugin.config.set(
             PluginConfig.Structure.DefaultRepresentationPreset,
-            PresetStructureRepresentations['polymer-and-ligand'].id);
+            PresetStructureRepresentations['mesoscale'].id);
 
         const app = new VirusOnTheRockApp(viewer, uiTarget);
         await app.initializeDefaults();
@@ -794,46 +794,29 @@ export class VirusOnTheRockApp {
         const plugin = this.viewer.plugin;
         const dataState = plugin.state.data;
 
-        // The default 'auto' preset (and the older illustrative path) builds a single 'all'
-        // component, which mixes water/ions in with polymer atoms. Tear that down and apply
-        // polymer-and-ligand so we have separate, hideable components.
+        // Apply the mesoscale preset: single 'all' spacefill component with instance
+        // granularity and tuned LOD. Large structures get vor's balanced LOD via the
+        // post-walk override below.
         const preApply = this.getAllStructures().find(s => s.cell.transform.ref === ref) ?? structureRef;
-        const allComponent = preApply.components.find(c =>
-            c.cell.transform.tags?.includes('structure-component-static-all'));
-        if (allComponent) {
-            await plugin.managers.structure.hierarchy.remove([allComponent.cell.transform.ref], false);
+        const existingComponents = preApply.components.map(c => c.cell.transform.ref);
+        if (existingComponents.length > 0) {
+            await plugin.managers.structure.hierarchy.remove(existingComponents, false);
         }
         await plugin.managers.structure.component.applyPreset(
-            [preApply], PresetStructureRepresentations['polymer-and-ligand']);
+            [preApply], PresetStructureRepresentations['mesoscale']);
 
         const styled = this.getAllStructures().find(s => s.cell.transform.ref === ref);
         if (!styled) return;
 
-        // Hide water + ion; swap polymer's cartoon representation for spacefill.
-        for (const component of styled.components) {
-            const tags = component.cell.transform.tags;
-            if (!tags) continue;
-            if (tags.includes('structure-component-static-water') || tags.includes('structure-component-static-ion')) {
-                setSubtreeVisibility(dataState, component.cell.transform.ref, true);
-            } else if (tags.includes('structure-component-static-polymer')) {
-                await plugin.builders.structure.representation.addRepresentation(
-                    component.cell, { type: 'spacefill' }, { tag: 'polymer' });
-            }
-        }
-
-        const restyled = this.getAllStructures().find(s => s.cell.transform.ref === ref);
-        if (!restyled) return;
-
         const animation = plugin.managers.structure.component.state.options.animation;
-        const structure = this.getDisplayedStructureData(restyled);
+        const structure = this.getDisplayedStructureData(styled);
         const applyLod = (structure?.elementCount ?? 0) > LargeStructureElementThreshold;
 
         const update = dataState.build();
-        for (const component of restyled.components) {
+        for (const component of styled.components) {
             for (const repr of component.representations) {
                 update.to(repr.cell).update(old => {
                     old.type.params.ignoreLight = false;
-                    old.colorTheme = { name: 'entity-id', params: {} };
                     if (old.type.params.animation) old.type.params.animation = animation;
                     if (applyLod && 'lodLevels' in old.type.params) {
                         old.type.params.lodLevels = LargeStructureLodLevels;
