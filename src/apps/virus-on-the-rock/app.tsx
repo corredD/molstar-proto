@@ -42,11 +42,6 @@ type AxisCycleOption = {
     label: string,
 };
 
-type StreamTrackMetadata = {
-    key: string,
-    label: string,
-};
-
 type VirusOnTheRockState = {
     activePreset: AudioReactivePresetName,
     currentStructureLabel?: string,
@@ -81,8 +76,6 @@ type VirusOnTheRockState = {
     showSessionInfo: boolean,
     showWaveformLine: boolean,
     showRadialVisualizer: boolean,
-    randomOnTrackChangeEnabled: boolean,
-    currentTrackLabel?: string,
 };
 
 const DefaultPdbId = '2tbv';
@@ -99,7 +92,6 @@ const AudioUrlPresets = [
     { label: 'FIP Hi-Fi AAC', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/fip/' },
     { label: 'Le Son Parisien FLAC', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/lesonparisien/' },
 ] as const;
-type AudioUrlPreset = typeof AudioUrlPresets[number];
 const DefaultAudioUrlPreset = AudioUrlPresets[0];
 const ExamplePdbIds = ['2tbv', '2plv'] as const;
 const FeaturedPresetNames: readonly AudioReactivePresetName[] = [
@@ -307,38 +299,6 @@ async function resolveAudioUrl(url: string) {
     throw new Error('Playlist did not contain a playable audio URL.');
 }
 
-function getStringProperty(value: unknown, key: string) {
-    if (!value || typeof value !== 'object') return;
-    const property = (value as Record<string, unknown>)[key];
-    return typeof property === 'string' ? property : void 0;
-}
-
-function parseSomaFmTrackMetadata(value: unknown): StreamTrackMetadata | undefined {
-    if (!value || typeof value !== 'object') return;
-    const songs = (value as { songs?: unknown }).songs;
-    if (!Array.isArray(songs) || songs.length === 0) return;
-
-    const song = songs[0];
-    const title = getStringProperty(song, 'title');
-    const artist = getStringProperty(song, 'artist');
-    const date = getStringProperty(song, 'date');
-    if (!title && !artist && !date) return;
-
-    return {
-        key: `${date ?? ''}|${artist ?? ''}|${title ?? ''}`,
-        label: [artist, title].filter(Boolean).join(' - ') || date || 'Unknown track',
-    };
-}
-
-async function fetchTrackMetadata(preset: AudioUrlPreset): Promise<StreamTrackMetadata | undefined> {
-    if (!('metadataUrl' in preset)) return;
-
-    const metadataUrl = (preset as { metadataUrl: string }).metadataUrl;
-    const response = await fetch(metadataUrl, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`Failed to load stream metadata (${response.status}).`);
-    return parseSomaFmTrackMetadata(await response.json());
-}
-
 function createInitialState(params: AudioReactiveAnimationManagerValues, animation: AnimationProps): VirusOnTheRockState {
     const axisState = getAxisModeState(animation);
     return {
@@ -372,8 +332,6 @@ function createInitialState(params: AudioReactiveAnimationManagerValues, animati
         showSessionInfo: true,
         showWaveformLine: true,
         showRadialVisualizer: true,
-        randomOnTrackChangeEnabled: false,
-        currentTrackLabel: void 0,
     };
 }
 
@@ -463,12 +421,15 @@ export class VirusOnTheRockApp {
     private beatCycleCount = 0;
     private beatCycleIndex = 0;
     private lastRandomPdbId: string | undefined;
-    private activeAudioPreset: AudioUrlPreset | undefined;
-    private trackMetadataInterval: number | undefined;
-    private lastTrackMetadataKey: string | undefined;
-    private isPollingTrackMetadata = false;
-    // Stores per-render-object copies of clip position/scale at the moment the toggle was enabled.
-    private clipBaseState = new WeakMap<object, { count: number; position: Float32Array; scale: Float32Array }>();
+    // Per-render-object snapshot of clip position/scale at the moment the toggle was enabled,
+    // plus reusable working buffers we mutate in place each frame to avoid GC churn.
+    private clipBaseState = new WeakMap<object, {
+        count: number,
+        basePosition: Float32Array,
+        baseScale: Float32Array,
+        workPosition: Float32Array,
+        workScale: Float32Array,
+    }>();
 
     private constructor(readonly viewer: Viewer, uiTarget: HTMLElement) {
         const params = this.viewer.plugin.managers.audioReactive.state.params.value;
@@ -803,47 +764,6 @@ export class VirusOnTheRockApp {
         this.patchState({ showSessionInfo: visible });
     }
 
-    setRandomOnTrackChangeEnabled(enabled: boolean) {
-        this.patchState({ randomOnTrackChangeEnabled: enabled });
-        this.updateTrackMetadataPolling();
-        if (enabled) void this.pollTrackMetadata(false);
-    }
-
-    private updateTrackMetadataPolling() {
-        if (this.trackMetadataInterval !== void 0) {
-            window.clearInterval(this.trackMetadataInterval);
-            this.trackMetadataInterval = void 0;
-        }
-
-        if (!this.state.value.randomOnTrackChangeEnabled || !this.activeAudioPreset || !('metadataUrl' in this.activeAudioPreset)) return;
-
-        this.trackMetadataInterval = window.setInterval(() => {
-            void this.pollTrackMetadata(true);
-        }, 20_000);
-    }
-
-    private async pollTrackMetadata(triggerRandomOnChange: boolean) {
-        if (this.isPollingTrackMetadata || !this.activeAudioPreset || !('metadataUrl' in this.activeAudioPreset)) return;
-
-        this.isPollingTrackMetadata = true;
-        try {
-            const metadata = await fetchTrackMetadata(this.activeAudioPreset);
-            if (!metadata) return;
-
-            const previousKey = this.lastTrackMetadataKey;
-            this.lastTrackMetadataKey = metadata.key;
-            this.patchState({ currentTrackLabel: metadata.label });
-
-            if (triggerRandomOnChange && previousKey && previousKey !== metadata.key && this.state.value.randomOnTrackChangeEnabled) {
-                await this.loadRandomPdb();
-            }
-        } catch (error) {
-            this.viewer.plugin.log.warn(`Could not read stream track metadata: ${error}`);
-        } finally {
-            this.isPollingTrackMetadata = false;
-        }
-    }
-
     private async updateAxisCycle(status: ReturnType<typeof this.viewer.plugin.managers.audioReactive.state.status.getValue>) {
         if (!status.playing) {
             this.beatTriggerActive = false;
@@ -1157,7 +1077,6 @@ export class VirusOnTheRockApp {
         await this.placeNewStructuresOnGrid(newStructures);
         await this.syncSelectedStructure();
         await this.applyAudioPreset(this.state.value.activePreset);
-        await this.applyCurrentAnimationToScene();
         await this.resetCamera(replaceCurrent);
     }
 
@@ -1169,15 +1088,10 @@ export class VirusOnTheRockApp {
         await this.placeNewStructuresOnGrid(newStructures);
         await this.syncSelectedStructure();
         await this.applyAudioPreset(this.state.value.activePreset);
-        await this.applyCurrentAnimationToScene();
         await this.resetCamera();
     }
 
     async loadAudioFile(file: File) {
-        this.activeAudioPreset = void 0;
-        this.lastTrackMetadataKey = void 0;
-        this.updateTrackMetadataPolling();
-        this.patchState({ currentTrackLabel: void 0 });
         await this.applyAudioPreset(this.state.value.activePreset);
         await this.viewer.plugin.managers.audioReactive.loadFile(file);
         await this.playAudio();
@@ -1189,13 +1103,8 @@ export class VirusOnTheRockApp {
         const preset = AudioUrlPresets.find(item => item.url === audioUrl);
         const audioLabel = label ?? preset?.label ?? audioUrl;
         const playableUrl = await resolveAudioUrl(audioUrl);
-        this.activeAudioPreset = preset;
-        this.lastTrackMetadataKey = void 0;
-        this.patchState({ currentTrackLabel: void 0 });
         await this.applyAudioPreset(this.state.value.activePreset);
         await this.viewer.plugin.managers.audioReactive.loadUrl(playableUrl, audioLabel);
-        this.updateTrackMetadataPolling();
-        await this.pollTrackMetadata(false);
         await this.playAudio();
     }
 
@@ -1302,13 +1211,15 @@ export class VirusOnTheRockApp {
             // Capture base state the first frame the toggle is on.
             let base = this.clipBaseState.get(ro);
             if (!base) {
-                const pos = v.uClipObjectPosition?.ref?.value;
-                const scale = v.uClipObjectScale?.ref?.value;
+                const pos = v.uClipObjectPosition?.ref?.value as Float32Array | undefined;
+                const scale = v.uClipObjectScale?.ref?.value as Float32Array | undefined;
                 if (!pos || !scale) continue;
                 base = {
                     count,
-                    position: new Float32Array(pos as Float32Array),
-                    scale: new Float32Array(scale as Float32Array),
+                    basePosition: new Float32Array(pos),
+                    baseScale: new Float32Array(scale),
+                    workPosition: new Float32Array(pos.length),
+                    workScale: new Float32Array(scale.length),
                 };
                 this.clipBaseState.set(ro, base);
             }
@@ -1317,8 +1228,9 @@ export class VirusOnTheRockApp {
             const rotations = v.uClipObjectRotation?.ref?.value as Float32Array | undefined;
             if (!types) continue;
 
-            const newPos = new Float32Array(base.position);
-            const newScale = new Float32Array(base.scale);
+            const { basePosition, baseScale, workPosition, workScale } = base;
+            workPosition.set(basePosition);
+            workScale.set(baseScale);
 
             for (let i = 0; i < count; i++) {
                 const type = types[i];
@@ -1331,32 +1243,32 @@ export class VirusOnTheRockApp {
                     const ny = 1 - 2 * (qx * qx + qz * qz);
                     const nz = 2 * (qy * qz - qx * qw);
                     const offset = scaledDrive * 50; // 50 Å at drive=1, scale=1
-                    newPos[i * 3 + 0] = base.position[i * 3 + 0] + nx * offset;
-                    newPos[i * 3 + 1] = base.position[i * 3 + 1] + ny * offset;
-                    newPos[i * 3 + 2] = base.position[i * 3 + 2] + nz * offset;
+                    workPosition[i * 3 + 0] = basePosition[i * 3 + 0] + nx * offset;
+                    workPosition[i * 3 + 1] = basePosition[i * 3 + 1] + ny * offset;
+                    workPosition[i * 3 + 2] = basePosition[i * 3 + 2] + nz * offset;
                 } else if (type === 2 || type === 3) {
                     // Sphere / Cube: uniform scale.
                     const s = 1 + scaledDrive;
-                    newScale[i * 3 + 0] = base.scale[i * 3 + 0] * s;
-                    newScale[i * 3 + 1] = base.scale[i * 3 + 1] * s;
-                    newScale[i * 3 + 2] = base.scale[i * 3 + 2] * s;
+                    workScale[i * 3 + 0] = baseScale[i * 3 + 0] * s;
+                    workScale[i * 3 + 1] = baseScale[i * 3 + 1] * s;
+                    workScale[i * 3 + 2] = baseScale[i * 3 + 2] * s;
                 } else if (type === 4) {
                     // Cylinder: widen radius (x, z), keep height (y) fixed.
                     const s = 1 + scaledDrive;
-                    newScale[i * 3 + 0] = base.scale[i * 3 + 0] * s;
-                    newScale[i * 3 + 1] = base.scale[i * 3 + 1];
-                    newScale[i * 3 + 2] = base.scale[i * 3 + 2] * s;
+                    workScale[i * 3 + 0] = baseScale[i * 3 + 0] * s;
+                    workScale[i * 3 + 2] = baseScale[i * 3 + 2] * s;
                 } else if (type === 5) {
                     // Cone: widen the cone angle (scale.xy stores sin/cos of half-angle).
                     const s = 1 + scaledDrive * 0.5;
-                    newScale[i * 3 + 0] = base.scale[i * 3 + 0] * s;
-                    newScale[i * 3 + 1] = base.scale[i * 3 + 1] * s;
-                    newScale[i * 3 + 2] = base.scale[i * 3 + 2];
+                    workScale[i * 3 + 0] = baseScale[i * 3 + 0] * s;
+                    workScale[i * 3 + 1] = baseScale[i * 3 + 1] * s;
                 }
             }
 
-            ValueCell.updateIfChanged(v.uClipObjectPosition, newPos);
-            ValueCell.updateIfChanged(v.uClipObjectScale, newScale);
+            // Force a version bump even when the working buffer ref hasn't changed,
+            // so the renderer re-uploads the mutated contents.
+            ValueCell.update(v.uClipObjectPosition, workPosition);
+            ValueCell.update(v.uClipObjectScale, workScale);
         }
     }
 
@@ -1368,8 +1280,8 @@ export class VirusOnTheRockApp {
             if (!base) continue;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const v = ro.values as any;
-            ValueCell.updateIfChanged(v.uClipObjectPosition, base.position);
-            ValueCell.updateIfChanged(v.uClipObjectScale, base.scale);
+            ValueCell.updateIfChanged(v.uClipObjectPosition, base.basePosition);
+            ValueCell.updateIfChanged(v.uClipObjectScale, base.baseScale);
             this.clipBaseState.delete(ro);
         }
     }
@@ -1381,7 +1293,6 @@ export class VirusOnTheRockApp {
     }
 
     dispose() {
-        if (this.trackMetadataInterval !== void 0) window.clearInterval(this.trackMetadataInterval);
         this.viewer.plugin.managers.dragAndDrop.removeHandler('virus-on-the-rock');
         this.subscriptions.unsubscribe();
         this.uiRoot.unmount();
@@ -1404,29 +1315,6 @@ function AudioAnalysisWarning({ app }: { app: VirusOnTheRockApp }) {
             Audio is playing but analysis is silent. Remote streams may be CORS-blocked locally — try a local audio file instead, or run the app over HTTPS.
         </p>
     );
-}
-
-function OverlayToggleDock({ app, state }: { app: VirusOnTheRockApp, state: VirusOnTheRockState }) {
-    return null;
-    return <div className='vor-hud'>
-        {/* Sidebar — small collapse/expand button at the top */}
-        <button
-            className={`vor-chip vor-toggle-small ${state.showSidebar ? 'vor-active' : ''}`}
-            onClick={() => app.setSidebarVisible(!state.showSidebar)}
-            title={state.showSidebar ? 'Hide Sidebar' : 'Show Sidebar'}
-        >
-            {state.showSidebar ? '←' : '→'}
-        </button>
-
-        {/* Session — small button next to it */}
-        <button
-            className={`vor-chip vor-toggle-small ${state.showSessionInfo ? 'vor-active' : ''}`}
-            onClick={() => app.setSessionInfoVisible(!state.showSessionInfo)}
-            title={state.showSessionInfo ? 'Hide Session Info' : 'Show Session Info'}
-        >
-            i
-        </button>
-    </div>;
 }
 
 function AudioVisualizerOverlay(props: {
@@ -1705,8 +1593,6 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
             showRadialVisualizer={state.showRadialVisualizer}
         />
 
-        <OverlayToggleDock app={app} state={state} />
-
         {state.showSidebar && <div className='vor-controls'>
             {/* Sidebar header with close button at top-right */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -1759,13 +1645,6 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                         >
                             Random
                         </button>
-                        <button
-                            className={`vor-chip ${state.randomOnTrackChangeEnabled ? 'vor-active' : ''}`}
-                            onClick={() => app.setRandomOnTrackChangeEnabled(!state.randomOnTrackChangeEnabled)}
-                            title='Best-effort: changes structure when the selected stream exposes readable track metadata.'
-                        >
-                            On Track Change
-                        </button>
                     </div>
                     <label className='vor-label' htmlFor='vor-structure-file'>Browser File</label>
                     <input id='vor-structure-file' className='vor-file' type='file' multiple onChange={onStructureFileChange} />
@@ -1812,7 +1691,6 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                     <AudioAnalysisWarning app={app} />
                     <p className='vor-help'>
                         Loads <b>{DefaultAudioLabel}</b> by default. Remote URLs must allow browser media playback with CORS; HTTPS pages can also block HTTP streams.
-                        {state.currentTrackLabel ? <><br />Current track: <b>{state.currentTrackLabel}</b></> : null}
                     </p>
                 </div>
             </ControlCard>
