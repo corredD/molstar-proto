@@ -30,7 +30,7 @@ const AxisLengthOptions = { min: 0.1, max: 1000, step: 0.1 } as const;
 export const BaseRelionParticleAxisParams = {
     ...Lines.Params,
     positionScale: PD.Numeric(1, PositionScaleOptions, { description: 'Applied to coordinates and pixel-space origin shifts.' }),
-    axisLength: PD.Numeric(10, AxisLengthOptions, { description: 'Length of the particle orientation axes preview.' }),
+    axisLength: PD.Numeric(200, AxisLengthOptions, { description: 'Length of the particle orientation axes preview.' }),
     xColor: PD.Color(ColorNames.red),
     yColor: PD.Color(ColorNames.green),
     zColor: PD.Color(ColorNames.blue),
@@ -63,7 +63,7 @@ export function getRelionParticleTransforms(data: ParticleList, positionScale: n
 
 export function getRelionParticleAxisParams(data: ParticleList): RelionParticleAxisParams {
     const suggestedScale = Math.max(PositionScaleOptions.min, data.suggestedScale || 1);
-    const axisLength = Math.max(10, suggestedScale * 2);
+    const axisLength = Math.max(200, suggestedScale * 2);
 
     return {
         ...BaseRelionParticleAxisParams,
