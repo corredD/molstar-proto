@@ -26,7 +26,7 @@ import { StateTransforms } from '../../../mol-plugin-state/transforms';
 type Mode = 'translate-axis' | 'translate-screen' | 'rotate'
 type TargetKind = 'structure' | 'volume'
 
-type GizmoTarget = { kind: TargetKind, ref: string, center: Vec3, baseMatrix: Mat4 }
+type GizmoTarget = { kind: TargetKind, ref: string, center: Vec3, radius: number, baseMatrix: Mat4 }
 type GizmoSession = {
     mode: Mode
     axis: Vec3 // world axis (translate-axis / rotate) or view direction (translate-screen)
@@ -75,9 +75,10 @@ function aboutCenter(out: Mat4, center: Vec3, axis: Vec3, angle: number): Mat4 {
 export const GizmoMode = PluginBehavior.create({
     name: 'gizmo-mode',
     category: 'interaction',
-    display: { name: '3D Gizmo Mode', description: 'Click an object to attach a translate/rotate gizmo; drag handles or use Blender-style G/R + X/Y/Z keys.' },
+    display: { name: '3D Gizmo Mode', description: 'Click a structure or volume to attach a translate/rotate gizmo, then drag its handles.' },
     ctor: class extends PluginBehavior.Handler {
         private handleEnabled = false;
+        private handleScale = 0;
         private hoverGroup = HandleGroup.None as number;
         private target: GizmoTarget | undefined;
         private session: GizmoSession | undefined;
@@ -90,11 +91,19 @@ export const GizmoMode = PluginBehavior.create({
 
         private get canvas3d() { return this.ctx.canvas3d; }
 
-        private setHandleEnabled(on: boolean) {
-            if (on === this.handleEnabled) return;
-            this.handleEnabled = on;
-            const params = (HandleHelperParams.handle.map('on') as any).defaultValue;
-            this.canvas3d?.setProps({ handle: { handle: on ? { name: 'on', params } : { name: 'off', params: {} } } });
+        private hideHandle() {
+            if (!this.handleEnabled) return;
+            this.handleEnabled = false;
+            this.canvas3d?.setProps({ handle: { handle: { name: 'off', params: {} } } });
+        }
+
+        /** Show the handle sized to the target (the helper is a fixed world size, so scale it). */
+        private showHandle(scale: number) {
+            if (this.handleEnabled && Math.abs(scale - this.handleScale) < 1e-3) return;
+            this.handleEnabled = true;
+            this.handleScale = scale;
+            const params = { ...(HandleHelperParams.handle.map('on') as any).defaultValue, scale };
+            this.canvas3d?.setProps({ handle: { handle: { name: 'on', params } } });
         }
 
         private setTrackball(on: boolean) {
@@ -149,16 +158,19 @@ export const GizmoMode = PluginBehavior.create({
         private resolveTarget(loci: Loci): GizmoTarget | undefined {
             const sphere = Loci.getBoundingSphere(loci);
             if (!sphere) return undefined;
+            const radius = sphere.radius;
             if (StructureElement.Loci.is(loci)) {
                 const cell = this.ctx.helpers.substructureParent.get(loci.structure, true);
                 if (!cell) return undefined;
                 const ref = cell.transform.ref;
-                return { kind: 'structure', ref, center: Vec3.clone(sphere.center), baseMatrix: this.readBaseMatrix(ref, StateTransforms.Model.TransformStructureConformation) };
+                return { kind: 'structure', ref, radius, center: Vec3.clone(sphere.center), baseMatrix: this.readBaseMatrix(ref, StateTransforms.Model.TransformStructureConformation) };
             }
-            if (Volume.isLoci(loci) || Volume.Isosurface.isLoci(loci)) {
-                const ref = this.cellRefForVolume(loci.volume);
+            // any volume loci kind (volume / isosurface / cell / segment) carries `.volume`
+            const volume = (loci as any).volume;
+            if (volume && Volume.is(volume)) {
+                const ref = this.cellRefForVolume(volume);
                 if (!ref) return undefined;
-                return { kind: 'volume', ref, center: Vec3.clone(sphere.center), baseMatrix: this.readBaseMatrix(ref, StateTransforms.Volume.VolumeTransform) };
+                return { kind: 'volume', ref, radius, center: Vec3.clone(sphere.center), baseMatrix: this.readBaseMatrix(ref, StateTransforms.Volume.VolumeTransform) };
             }
             return undefined; // shapes not yet supported
         }
@@ -167,9 +179,9 @@ export const GizmoMode = PluginBehavior.create({
             const c = this.canvas3d;
             if (!c) return;
             const target = this.resolveTarget(loci);
-            if (!target) { this.target = undefined; this.setHandleEnabled(false); return; }
+            if (!target) { this.target = undefined; this.hideHandle(); return; }
             this.target = target;
-            this.setHandleEnabled(true);
+            this.showHandle(Math.max(target.radius * 0.12, 0.3));
             c.handle.update(c.camera, target.center, this._rot);
             c.requestDraw();
         }
@@ -276,7 +288,7 @@ export const GizmoMode = PluginBehavior.create({
                 if (!on) {
                     this.session = undefined;
                     this.target = undefined;
-                    this.setHandleEnabled(false);
+                    this.hideHandle();
                     this.setTrackball(true);
                 }
             });
@@ -296,7 +308,7 @@ export const GizmoMode = PluginBehavior.create({
             this.subscribeObservable(this.ctx.behaviors.interaction.click, ({ current }) => {
                 if (!this.ctx.gizmoMode) return;
                 if (this.session || isHandleLoci(current.loci)) return; // dragging / gizmo click
-                if (Loci.isEmpty(current.loci)) { this.target = undefined; this.setHandleEnabled(false); } else this.attach(current.loci);
+                if (Loci.isEmpty(current.loci)) { this.target = undefined; this.hideHandle(); } else this.attach(current.loci);
             });
 
             // raw drag (isStart) / interactionEnd are only available once canvas3d exists
