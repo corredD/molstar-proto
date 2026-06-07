@@ -2,70 +2,87 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * Interactive 3D transform gizmo. While gizmo mode is enabled:
- *  - clicking a structure attaches the translate/rotate handle at its center;
- *  - dragging a translate axis (or the centre handle) moves the structure in real time
- *    and commits a TransformStructureConformation on release.
- * (P2: translate, structures only. Rotation rings = P3, Blender G/R+XYZ keys = P4,
- *  volume/shape targets = P5.)
+ *  - clicking a structure or volume attaches the translate/rotate handle at its centre;
+ *  - dragging a translate axis / rotation ring / centre handle moves it in real time and
+ *    commits on release (TransformStructureConformation / VolumeTransform);
+ *  - Blender-style keys: G then X/Y/Z to translate, R then X/Y/Z to rotate; left-click or
+ *    Enter confirms, Esc or right-click cancels.
+ *
+ * Whole-object transforms only. Shapes are not yet targeted (no standard transform decorator).
  */
 
 import { PluginBehavior } from '../behavior';
 import { HandleGroup, HandleHelperParams, isHandleLoci } from '../../../mol-canvas3d/helper/handle-helper';
 import { Loci } from '../../../mol-model/loci';
 import { StructureElement } from '../../../mol-model/structure';
+import { Volume } from '../../../mol-model/volume';
 import { Mat3, Mat4, Vec3 } from '../../../mol-math/linear-algebra';
 import { Ray3D } from '../../../mol-math/geometry/primitives/ray3d';
 import { Plane3D } from '../../../mol-math/geometry/primitives/plane3d';
 import { Visual } from '../../../mol-repr/visual';
 import { GraphicsRenderObject } from '../../../mol-gl/render-object';
-import { StateSelection } from '../../../mol-state';
+import { StateSelection, StateTransformer } from '../../../mol-state';
 import { StateTransforms } from '../../../mol-plugin-state/transforms';
 
-type GizmoTarget = { ref: string, center: Vec3, baseMatrix: Mat4 }
-type GizmoDrag = {
-    axis?: Vec3 // world axis for object-axis translate; undefined = screen-plane translate
-    center: Vec3
-    baseMatrix: Mat4
+type Mode = 'translate-axis' | 'translate-screen' | 'rotate'
+type TargetKind = 'structure' | 'volume'
+
+type GizmoTarget = { kind: TargetKind, ref: string, center: Vec3, baseMatrix: Mat4 }
+type GizmoSession = {
+    viaKeyboard: boolean
+    mode: Mode
+    axis: Vec3 // world axis (translate-axis / rotate) or view direction (translate-screen)
+    target: GizmoTarget
     renderObjects: GraphicsRenderObject[]
-    startParam: number
-    startHit: Vec3
-    deltaVec: Vec3
+    startParam: number // translate-axis
+    startHit: Vec3 // translate-screen world hit
+    startVec: Vec3 // rotate: centre -> hit, in the ring plane
+    deltaMat: Mat4
 }
 
-function isTranslateGroup(g: number) {
-    return g === HandleGroup.TranslateObjectX || g === HandleGroup.TranslateObjectY
-        || g === HandleGroup.TranslateObjectZ || g === HandleGroup.TranslateScreenXY;
+function transformerForKind(kind: TargetKind): StateTransformer {
+    return kind === 'structure'
+        ? StateTransforms.Model.TransformStructureConformation
+        : StateTransforms.Volume.VolumeTransform;
 }
 
-function axisForGroup(g: number): Vec3 | undefined {
-    switch (g) {
-        case HandleGroup.TranslateObjectX: return Vec3.unitX;
-        case HandleGroup.TranslateObjectY: return Vec3.unitY;
-        case HandleGroup.TranslateObjectZ: return Vec3.unitZ;
-        default: return undefined; // TranslateScreenXY -> camera plane
-    }
-}
-
-/** Parameter t such that `center + t*axis` is the point on the axis closest to the ray (both dirs unit). */
+/** Parameter t such that `center + t*axis` is the point on the axis closest to the ray (unit dirs). */
 function rayAxisParam(ray: Ray3D, center: Vec3, axis: Vec3): number {
     const w0 = Vec3.sub(Vec3(), ray.origin, center);
     const b = Vec3.dot(ray.direction, axis);
     const d = Vec3.dot(ray.direction, w0);
     const e = Vec3.dot(axis, w0);
     const denom = 1 - b * b;
-    if (Math.abs(denom) < 1e-6) return NaN; // ray parallel to axis
+    if (Math.abs(denom) < 1e-6) return NaN;
     return (e - b * d) / denom;
+}
+
+const _cross = Vec3();
+/** Signed angle from a to b about `axis` (right-handed). */
+function signedAngle(a: Vec3, b: Vec3, axis: Vec3): number {
+    Vec3.cross(_cross, a, b);
+    return Math.atan2(Vec3.dot(_cross, axis), Vec3.dot(a, b));
+}
+
+const _r = Mat4(), _t1 = Mat4(), _t2 = Mat4(), _negc = Vec3();
+/** Rotation by `angle` about `axis` through `center`: T(c) R(axis,angle) T(-c). */
+function aboutCenter(out: Mat4, center: Vec3, axis: Vec3, angle: number): Mat4 {
+    Mat4.fromRotation(_r, angle, axis);
+    Mat4.fromTranslation(_t1, center);
+    Mat4.fromTranslation(_t2, Vec3.negate(_negc, center));
+    Mat4.mul(out, _t1, _r);
+    return Mat4.mul(out, out, _t2);
 }
 
 export const GizmoMode = PluginBehavior.create({
     name: 'gizmo-mode',
     category: 'interaction',
-    display: { name: '3D Gizmo Mode', description: 'Click a structure to attach a translate/rotate gizmo and drag it to move the structure.' },
+    display: { name: '3D Gizmo Mode', description: 'Click an object to attach a translate/rotate gizmo; drag handles or use Blender-style G/R + X/Y/Z keys.' },
     ctor: class extends PluginBehavior.Handler {
         private handleEnabled = false;
         private hoverGroup = HandleGroup.None as number;
         private target: GizmoTarget | undefined;
-        private drag: GizmoDrag | undefined;
+        private session: GizmoSession | undefined;
 
         private readonly _ray: Ray3D = { origin: Vec3(), direction: Vec3() };
         private readonly _plane: Plane3D = { normal: Vec3(), constant: 0 };
@@ -86,8 +103,28 @@ export const GizmoMode = PluginBehavior.create({
             if (this.canvas3d) this.canvas3d.controls.enabled = on;
         }
 
-        private readBaseMatrix(ref: string): Mat4 {
-            const o = this.ctx.state.data.selectQ(q => q.byRef(ref).subtree().withTransformer(StateTransforms.Model.TransformStructureConformation))[0];
+        private viewDir(out: Vec3): Vec3 {
+            const c = this.canvas3d!;
+            return Vec3.normalize(out, Vec3.sub(out, c.camera.state.target, c.camera.state.position));
+        }
+
+        /** Mouse ray into the scene. `camera.getRay` expects bottom-up Y, input is top-down. */
+        private updateRay(x: number, y: number) {
+            const c = this.canvas3d!;
+            c.camera.getRay(this._ray, x, c.input.height - y);
+            Vec3.normalize(this._ray.direction, this._ray.direction);
+        }
+
+        private planeHit(center: Vec3, normal: Vec3, x: number, y: number): Vec3 | undefined {
+            this.updateRay(x, y);
+            Vec3.copy(this._plane.normal, normal);
+            this._plane.constant = -Vec3.dot(normal, center);
+            const out = Vec3();
+            return Plane3D.intersectRay3D(out, this._plane, this._ray) ? out : undefined;
+        }
+
+        private readBaseMatrix(ref: string, transformer: StateTransformer): Mat4 {
+            const o = this.ctx.state.data.selectQ(q => q.byRef(ref).subtree().withTransformer(transformer))[0];
             const t = o?.transform.params?.transform;
             if (t && t.name === 'matrix') return Mat4.clone(t.params.data);
             return Mat4.identity();
@@ -103,13 +140,29 @@ export const GizmoMode = PluginBehavior.create({
             return ros;
         }
 
+        private cellRefForVolume(volume: Volume): string | undefined {
+            const cells = this.ctx.state.data.cells;
+            for (const [ref, cell] of cells) {
+                if (cell.obj?.data === volume) return ref;
+            }
+            return undefined;
+        }
+
         private resolveTarget(loci: Loci): GizmoTarget | undefined {
-            // P2: structures only
-            if (!StructureElement.Loci.is(loci)) return undefined;
-            const cell = this.ctx.helpers.substructureParent.get(loci.structure, true);
-            if (!cell) return undefined;
-            const ref = cell.transform.ref;
-            return { ref, center: Vec3.clone(loci.structure.boundary.sphere.center), baseMatrix: this.readBaseMatrix(ref) };
+            const sphere = Loci.getBoundingSphere(loci);
+            if (!sphere) return undefined;
+            if (StructureElement.Loci.is(loci)) {
+                const cell = this.ctx.helpers.substructureParent.get(loci.structure, true);
+                if (!cell) return undefined;
+                const ref = cell.transform.ref;
+                return { kind: 'structure', ref, center: Vec3.clone(sphere.center), baseMatrix: this.readBaseMatrix(ref, StateTransforms.Model.TransformStructureConformation) };
+            }
+            if (Volume.isLoci(loci) || Volume.Isosurface.isLoci(loci)) {
+                const ref = this.cellRefForVolume(loci.volume);
+                if (!ref) return undefined;
+                return { kind: 'volume', ref, center: Vec3.clone(sphere.center), baseMatrix: this.readBaseMatrix(ref, StateTransforms.Volume.VolumeTransform) };
+            }
+            return undefined; // shapes not yet supported
         }
 
         private attach(loci: Loci) {
@@ -123,116 +176,114 @@ export const GizmoMode = PluginBehavior.create({
             c.requestDraw();
         }
 
-        /** Mouse ray into the scene. `camera.getRay` expects bottom-up Y, input is top-down. */
-        private updateRay(x: number, y: number) {
-            const c = this.canvas3d!;
-            c.camera.getRay(this._ray, x, c.input.height - y);
-            Vec3.normalize(this._ray.direction, this._ray.direction);
+        private modeForGroup(g: number): Mode | undefined {
+            if (g === HandleGroup.TranslateObjectX || g === HandleGroup.TranslateObjectY || g === HandleGroup.TranslateObjectZ) return 'translate-axis';
+            if (g === HandleGroup.TranslateScreenXY) return 'translate-screen';
+            if (g === HandleGroup.RotateObjectX || g === HandleGroup.RotateObjectY || g === HandleGroup.RotateObjectZ) return 'rotate';
+            return undefined;
         }
 
-        /** Intersection of the mouse ray with the camera-facing plane through `center`. */
-        private screenHit(center: Vec3, x: number, y: number): Vec3 | undefined {
-            const c = this.canvas3d!;
-            this.updateRay(x, y);
-            const n = Vec3.sub(this._vec, c.camera.state.target, c.camera.state.position);
-            Vec3.normalize(n, n);
-            Vec3.copy(this._plane.normal, n);
-            this._plane.constant = -Vec3.dot(n, center);
-            const out = Vec3();
-            return Plane3D.intersectRay3D(out, this._plane, this._ray) ? out : undefined;
-        }
-
-        private onDrag(x: number, y: number, isStart: boolean) {
-            const c = this.canvas3d;
-            if (!c) return;
-
-            if (isStart) {
-                this.drag = undefined;
-                if (!this.ctx.gizmoMode || !this.target || !isTranslateGroup(this.hoverGroup)) return;
-                this.setTrackball(false);
-                const axis = axisForGroup(this.hoverGroup);
-                const center = Vec3.clone(this.target.center);
-                let startParam = 0;
-                const startHit = Vec3();
-                if (axis) {
-                    this.updateRay(x, y);
-                    startParam = rayAxisParam(this._ray, center, axis);
-                } else {
-                    const hit = this.screenHit(center, x, y);
-                    if (hit) Vec3.copy(startHit, hit);
-                }
-                this.drag = {
-                    axis, center, baseMatrix: this.target.baseMatrix,
-                    renderObjects: this.collectRenderObjects(this.target.ref),
-                    startParam, startHit, deltaVec: Vec3(),
-                };
-                return;
+        private worldAxis(out: Vec3, g: number): Vec3 {
+            switch (g) {
+                case HandleGroup.TranslateObjectX: case HandleGroup.RotateObjectX: return Vec3.copy(out, Vec3.unitX);
+                case HandleGroup.TranslateObjectY: case HandleGroup.RotateObjectY: return Vec3.copy(out, Vec3.unitY);
+                default: return Vec3.copy(out, Vec3.unitZ);
             }
+        }
 
-            const d = this.drag;
-            if (!d) return;
-
-            if (d.axis) {
+        private begin(mode: Mode, axis: Vec3, viaKeyboard: boolean, x: number, y: number) {
+            const t = this.target;
+            if (!t) return;
+            this.setTrackball(false);
+            const center = t.center;
+            const session: GizmoSession = {
+                viaKeyboard, mode, axis: Vec3.clone(axis), target: t,
+                renderObjects: this.collectRenderObjects(t.ref),
+                startParam: 0, startHit: Vec3(), startVec: Vec3(), deltaMat: Mat4.identity(),
+            };
+            if (mode === 'translate-axis') {
                 this.updateRay(x, y);
-                const p = rayAxisParam(this._ray, d.center, d.axis);
-                if (!Number.isFinite(p) || !Number.isFinite(d.startParam)) return;
-                Vec3.scale(d.deltaVec, d.axis, p - d.startParam);
+                session.startParam = rayAxisParam(this._ray, center, axis);
+            } else if (mode === 'translate-screen') {
+                const hit = this.planeHit(center, axis, x, y);
+                if (hit) Vec3.copy(session.startHit, hit);
             } else {
-                const hit = this.screenHit(d.center, x, y);
-                if (!hit) return;
-                Vec3.sub(d.deltaVec, hit, d.startHit);
+                const hit = this.planeHit(center, axis, x, y);
+                if (hit) Vec3.sub(session.startVec, hit, center);
             }
+            this.session = session;
+        }
 
-            // live preview: offset every render object of the target by the world delta
-            Mat4.fromTranslation(this._mat, d.deltaVec);
-            for (const r of d.renderObjects) Visual.setTransform(r, this._mat);
-            // keep the gizmo on the object
-            Vec3.add(this._vec, d.center, d.deltaVec);
-            c.handle.update(c.camera, this._vec, this._rot);
+        private updateSession(x: number, y: number) {
+            const s = this.session;
+            const c = this.canvas3d;
+            if (!s || !c) return;
+            const center = s.target.center;
+            if (s.mode === 'translate-axis') {
+                this.updateRay(x, y);
+                const p = rayAxisParam(this._ray, center, s.axis);
+                if (!Number.isFinite(p) || !Number.isFinite(s.startParam)) return;
+                Mat4.fromTranslation(s.deltaMat, Vec3.scale(this._vec, s.axis, p - s.startParam));
+            } else if (s.mode === 'translate-screen') {
+                const hit = this.planeHit(center, s.axis, x, y);
+                if (!hit) return;
+                Mat4.fromTranslation(s.deltaMat, Vec3.sub(this._vec, hit, s.startHit));
+            } else {
+                const hit = this.planeHit(center, s.axis, x, y);
+                if (!hit) return; // ring edge-on: skip frame
+                const v = Vec3.sub(this._vec, hit, center);
+                aboutCenter(s.deltaMat, center, s.axis, signedAngle(s.startVec, v, s.axis));
+            }
+            for (const ro of s.renderObjects) Visual.setTransform(ro, s.deltaMat);
+            c.handle.update(c.camera, Vec3.transformMat4(this._vec, center, s.deltaMat), this._rot);
             c.requestDraw();
         }
 
-        private async onDragEnd() {
-            const d = this.drag;
-            this.drag = undefined;
+        private async finish(commit: boolean) {
+            const s = this.session;
+            this.session = undefined;
             this.setTrackball(true);
-            if (!d || !this.target) return;
-            if (Vec3.magnitude(d.deltaVec) < 1e-4) return; // no-op click
+            const c = this.canvas3d;
+            if (!s || !c) return;
 
-            // absolute transform (from root coords) = Translate(delta) * existing
-            Mat4.fromTranslation(this._mat, d.deltaVec);
-            const abs = Mat4.mul(Mat4(), this._mat, d.baseMatrix);
-            await this.commit(this.target.ref, abs);
-
-            // the structure rebuilt at baked coords; update cached base + center for the next drag
-            this.target.baseMatrix = abs;
-            Vec3.add(this.target.center, d.center, d.deltaVec);
+            if (commit && !Mat4.isIdentity(s.deltaMat, 1e-6)) {
+                const abs = Mat4.mul(Mat4(), s.deltaMat, s.target.baseMatrix);
+                await this.commit(s.target.ref, abs, transformerForKind(s.target.kind));
+                s.target.baseMatrix = abs;
+                Vec3.transformMat4(s.target.center, s.target.center, s.deltaMat);
+                // committed -> downstream representation rebuilds at baked coords; reposition gizmo
+                c.handle.update(c.camera, s.target.center, this._rot);
+            } else {
+                // cancel: clear the live preview and put the gizmo back
+                for (const ro of s.renderObjects) Visual.setTransform(ro, Mat4.identity());
+                c.handle.update(c.camera, s.target.center, this._rot);
+            }
+            c.requestDraw();
         }
 
-        private async commit(ref: string, matrix: Mat4) {
+        private async commit(ref: string, matrix: Mat4, transformer: StateTransformer) {
             const state = this.ctx.state.data;
-            const o = state.selectQ(q => q.byRef(ref).subtree().withTransformer(StateTransforms.Model.TransformStructureConformation))[0];
+            const o = state.selectQ(q => q.byRef(ref).subtree().withTransformer(transformer))[0];
             const params = { transform: { name: 'matrix' as const, params: { data: matrix, transpose: false } } };
             const b = o
                 ? state.build().to(o).update(params)
-                : state.build().to(ref).insert(StateTransforms.Model.TransformStructureConformation, params);
+                : state.build().to(ref).insert(transformer, params);
             await this.ctx.runTask(state.updateTree(b));
         }
 
         register() {
             this.subscribeObservable(this.ctx.behaviors.interaction.gizmoMode, on => {
                 if (!on) {
-                    this.setHandleEnabled(false);
+                    this.session = undefined;
                     this.target = undefined;
-                    this.drag = undefined;
+                    this.setHandleEnabled(false);
                     this.setTrackball(true);
                 }
             });
 
-            // hovering a handle disables the camera trackball, so a drag that starts on a
-            // handle never orbits the view (the flag is already set before the drag begins).
+            // hovering a handle disables the camera trackball so a drag starting on it never orbits
             this.subscribeObservable(this.ctx.behaviors.interaction.hover, ({ current }) => {
-                if (this.drag) return;
+                if (this.session) return;
                 if (this.ctx.gizmoMode && isHandleLoci(current.loci) && current.loci.elements.length > 0) {
                     this.hoverGroup = current.loci.elements[0].groupId;
                     this.setTrackball(false);
@@ -244,21 +295,55 @@ export const GizmoMode = PluginBehavior.create({
 
             this.subscribeObservable(this.ctx.behaviors.interaction.click, ({ current }) => {
                 if (!this.ctx.gizmoMode) return;
+                if (this.session?.viaKeyboard) { this.finish(true); return; } // confirm modal with a click
                 if (isHandleLoci(current.loci)) return; // gizmo clicks are for dragging
-                if (Loci.isEmpty(current.loci)) {
-                    this.target = undefined;
-                    this.setHandleEnabled(false);
-                } else {
-                    this.attach(current.loci);
+                if (Loci.isEmpty(current.loci)) { this.target = undefined; this.setHandleEnabled(false); } else this.attach(current.loci);
+            });
+
+            // keyboard modal (Blender-style)
+            this.subscribeObservable(this.ctx.behaviors.interaction.key, ({ code, x, y }) => {
+                if (!this.ctx.gizmoMode || !this.target) return;
+                if (code === 'KeyG') {
+                    this.begin('translate-screen', this.viewDir(this._vec), true, x, y);
+                } else if (code === 'KeyR') {
+                    this.begin('rotate', this.viewDir(this._vec), true, x, y);
+                } else if (code === 'KeyX' || code === 'KeyY' || code === 'KeyZ') {
+                    const s = this.session;
+                    if (!s || !s.viaKeyboard) return;
+                    const axis = code === 'KeyX' ? Vec3.unitX : code === 'KeyY' ? Vec3.unitY : Vec3.unitZ;
+                    // fold the current preview into the base, then restart along the chosen world axis
+                    Mat4.mul(this._mat, s.deltaMat, s.target.baseMatrix);
+                    s.target.baseMatrix = Mat4.clone(this._mat);
+                    Vec3.transformMat4(s.target.center, s.target.center, s.deltaMat);
+                    this.begin(s.mode === 'rotate' ? 'rotate' : 'translate-axis', axis, true, x, y);
+                } else if (code === 'Escape') {
+                    this.finish(false);
+                } else if (code === 'Enter' || code === 'NumpadEnter') {
+                    this.finish(true);
                 }
             });
 
-            // raw input (isStart / interactionEnd) is only available once canvas3d exists
+            // raw drag (isStart) / interactionEnd are only available once canvas3d exists
             this.subscribeObservable(this.ctx.behaviors.canvas3d.initialized, () => {
                 const input = this.ctx.canvas3d?.input;
                 if (!input) return;
-                this.subscribeObservable(input.drag, ({ x, y, isStart }) => this.onDrag(x, y, isStart));
-                this.subscribeObservable(input.interactionEnd, () => { this.onDragEnd(); });
+                this.subscribeObservable(input.drag, ({ x, y, isStart }) => {
+                    if (this.session?.viaKeyboard) return; // keyboard modal owns the interaction
+                    if (isStart) {
+                        const mode = this.modeForGroup(this.hoverGroup);
+                        if (!this.ctx.gizmoMode || !this.target || !mode) return;
+                        const axis = mode === 'translate-screen' ? this.viewDir(this._vec) : this.worldAxis(this._vec, this.hoverGroup);
+                        this.begin(mode, axis, false, x, y);
+                    } else {
+                        this.updateSession(x, y);
+                    }
+                });
+                this.subscribeObservable(input.interactionEnd, () => {
+                    if (this.session && !this.session.viaKeyboard) this.finish(true);
+                });
+                this.subscribeObservable(input.move, ({ x, y }) => {
+                    if (this.session?.viaKeyboard) this.updateSession(x, y);
+                });
             });
         }
     },
