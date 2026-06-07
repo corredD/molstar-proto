@@ -264,12 +264,15 @@ export class PickPass {
         renderer.renderPick(scene.primitives, camera, variant, pickType);
 
         if (helper.handle.isEnabled) {
+            // gizmo handle is drawn on top of the scene, so pick it on top too
+            renderer.clearDepth();
             renderer.renderPick(helper.handle.scene, camera, variant, pickType);
         }
 
         if (helper.camera.isEnabled) {
             helper.camera.update(camera);
             renderer.update(helper.camera.camera, helper.camera.scene);
+            renderer.clearDepth();
             renderer.renderPick(helper.camera.scene, helper.camera.camera, variant, pickType);
         }
     }
