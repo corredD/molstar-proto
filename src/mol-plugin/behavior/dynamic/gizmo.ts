@@ -85,8 +85,9 @@ export const GizmoMode = PluginBehavior.create({
 
         private readonly _ray: Ray3D = { origin: Vec3(), direction: Vec3() };
         private readonly _plane: Plane3D = { normal: Vec3(), constant: 0 };
-        private readonly _rot = Mat3.identity();
+        private readonly _baseRot = Mat3();
         private readonly _rotDyn = Mat3();
+        private readonly _tmpMat = Mat4();
         private readonly _vec = Vec3();
 
         private get canvas3d() { return this.ctx.canvas3d; }
@@ -182,7 +183,7 @@ export const GizmoMode = PluginBehavior.create({
             if (!target) { this.target = undefined; this.hideHandle(); return; }
             this.target = target;
             this.showHandle(Math.max(target.radius * 0.12, 0.3));
-            c.handle.update(c.camera, target.center, this._rot);
+            c.handle.update(c.camera, target.center, Mat3.fromMat4(this._rotDyn, target.baseMatrix));
             c.requestDraw();
         }
 
@@ -193,12 +194,14 @@ export const GizmoMode = PluginBehavior.create({
             return undefined;
         }
 
-        private worldAxis(out: Vec3, g: number): Vec3 {
-            switch (g) {
-                case HandleGroup.TranslateObjectX: case HandleGroup.RotateObjectX: return Vec3.copy(out, Vec3.unitX);
-                case HandleGroup.TranslateObjectY: case HandleGroup.RotateObjectY: return Vec3.copy(out, Vec3.unitY);
-                default: return Vec3.copy(out, Vec3.unitZ);
-            }
+        /** Gizmo axis for a handle group, in the target's local (accumulated-rotation) frame. */
+        private localAxis(out: Vec3, g: number): Vec3 {
+            const unit = (g === HandleGroup.TranslateObjectX || g === HandleGroup.RotateObjectX) ? Vec3.unitX
+                : (g === HandleGroup.TranslateObjectY || g === HandleGroup.RotateObjectY) ? Vec3.unitY
+                    : Vec3.unitZ;
+            if (!this.target) return Vec3.copy(out, unit);
+            Mat3.fromMat4(this._baseRot, this.target.baseMatrix);
+            return Vec3.normalize(out, Vec3.transformMat3(out, unit, this._baseRot));
         }
 
         private begin(mode: Mode, axis: Vec3, x: number, y: number) {
@@ -245,8 +248,9 @@ export const GizmoMode = PluginBehavior.create({
                 aboutCenter(s.deltaMat, center, s.axis, -signedAngle(s.startVec, v, s.axis));
             }
             for (const ro of s.renderObjects) Visual.setTransform(ro, s.deltaMat);
-            // rotate the gizmo with the object for visual feedback (identity for pure translation)
-            Mat3.fromMat4(this._rotDyn, s.deltaMat);
+            // gizmo shows the object's total orientation (delta * base) and follows its centre
+            Mat4.mul(this._tmpMat, s.deltaMat, s.target.baseMatrix);
+            Mat3.fromMat4(this._rotDyn, this._tmpMat);
             c.handle.update(c.camera, Vec3.transformMat4(this._vec, center, s.deltaMat), this._rotDyn);
             c.requestDraw();
         }
@@ -263,12 +267,13 @@ export const GizmoMode = PluginBehavior.create({
                 await this.commit(s.target.ref, abs, transformerForKind(s.target.kind));
                 s.target.baseMatrix = abs;
                 Vec3.transformMat4(s.target.center, s.target.center, s.deltaMat);
-                // committed -> downstream representation rebuilds at baked coords; reposition gizmo
-                c.handle.update(c.camera, s.target.center, this._rot);
+                // committed -> downstream representation rebuilds at baked coords; keep the gizmo
+                // at the object's new orientation (no snap back to world axes)
+                c.handle.update(c.camera, s.target.center, Mat3.fromMat4(this._rotDyn, abs));
             } else {
-                // cancel: clear the live preview and put the gizmo back
+                // cancel: clear the live preview and restore the gizmo to its pre-drag orientation
                 for (const ro of s.renderObjects) Visual.setTransform(ro, Mat4.identity());
-                c.handle.update(c.camera, s.target.center, this._rot);
+                c.handle.update(c.camera, s.target.center, Mat3.fromMat4(this._rotDyn, s.target.baseMatrix));
             }
             c.requestDraw();
         }
@@ -319,7 +324,7 @@ export const GizmoMode = PluginBehavior.create({
                     if (isStart) {
                         const mode = this.modeForGroup(this.hoverGroup);
                         if (!this.ctx.gizmoMode || !this.target || !mode) return;
-                        const axis = mode === 'translate-screen' ? this.viewDir(this._vec) : this.worldAxis(this._vec, this.hoverGroup);
+                        const axis = mode === 'translate-screen' ? this.viewDir(this._vec) : this.localAxis(this._vec, this.hoverGroup);
                         this.begin(mode, axis, x, y);
                     } else {
                         this.updateSession(x, y);
