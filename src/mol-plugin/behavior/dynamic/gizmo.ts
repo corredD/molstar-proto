@@ -6,8 +6,10 @@
  *  - dragging a translate axis / rotation ring / centre handle moves it in real time and
  *    commits on release (TransformStructureConformation / VolumeTransform).
  *
+ * Keyboard modal (mouse-driven): M = translate, O = rotate; X/Y/Z constrain to a world axis;
+ * left-click or Enter confirms, Esc cancels.
+ *
  * Whole-object transforms only. Shapes are not yet targeted (no standard transform decorator).
- * (Keyboard shortcuts intentionally omitted for now.)
  */
 
 import { PluginBehavior } from '../behavior';
@@ -28,9 +30,14 @@ type TargetKind = 'structure' | 'volume'
 
 type GizmoTarget = { kind: TargetKind, ref: string, center: Vec3, radius: number, baseMatrix: Mat4 }
 type GizmoSession = {
+    viaKeyboard: boolean
     mode: Mode
     axis: Vec3 // world axis (translate-axis / rotate) or view direction (translate-screen)
     target: GizmoTarget
+    /** preview transform accumulated from earlier sub-moves (e.g. before a keyboard axis switch) */
+    base: Mat4
+    /** rotation pivot / current displayed centre = base * target.center */
+    center: Vec3
     renderObjects: GraphicsRenderObject[]
     startParam: number // translate-axis
     startHit: Vec3 // translate-screen world hit
@@ -92,6 +99,7 @@ export const GizmoMode = PluginBehavior.create({
         private readonly _baseRot = Mat3();
         private readonly _rotDyn = Mat3();
         private readonly _tmpMat = Mat4();
+        private readonly _eff = Mat4();
         private readonly _vec = Vec3();
 
         private get canvas3d() { return this.ctx.canvas3d; }
@@ -208,13 +216,13 @@ export const GizmoMode = PluginBehavior.create({
             return Vec3.normalize(out, Vec3.transformMat3(out, unit, this._baseRot));
         }
 
-        private begin(mode: Mode, axis: Vec3, x: number, y: number) {
+        private begin(mode: Mode, axis: Vec3, viaKeyboard: boolean, x: number, y: number, base = Mat4.identity()) {
             const t = this.target;
             if (!t) return;
             this.setTrackball(false);
-            const center = t.center;
+            const center = Vec3.transformMat4(Vec3(), t.center, base); // pivot in the current preview frame
             const session: GizmoSession = {
-                mode, axis: Vec3.clone(axis), target: t,
+                viaKeyboard, mode, axis: Vec3.clone(axis), target: t, base: Mat4.clone(base), center,
                 renderObjects: this.collectRenderObjects(t.ref),
                 startParam: 0, startHit: Vec3(), startVec: Vec3(), deltaMat: Mat4.identity(),
             };
@@ -251,11 +259,14 @@ export const GizmoMode = PluginBehavior.create({
                 const v = Vec3.sub(this._vec, hit, center);
                 aboutCenter(s.deltaMat, center, s.axis, -signedAngle(s.startVec, v, s.axis) * RotationSensitivity);
             }
-            for (const ro of s.renderObjects) Visual.setTransform(ro, s.deltaMat);
-            // gizmo shows the object's total orientation (delta * base) and follows its centre
-            Mat4.mul(this._tmpMat, s.deltaMat, s.target.baseMatrix);
+            // effective preview = this sub-move composed onto earlier ones (base)
+            Mat4.mul(this._eff, s.deltaMat, s.base);
+            for (const ro of s.renderObjects) Visual.setTransform(ro, this._eff);
+            // gizmo follows the displayed centre and the object's total orientation (eff * baseMatrix)
+            Vec3.transformMat4(this._vec, s.target.center, this._eff);
+            Mat4.mul(this._tmpMat, this._eff, s.target.baseMatrix);
             Mat3.fromMat4(this._rotDyn, this._tmpMat);
-            c.handle.update(c.camera, Vec3.transformMat4(this._vec, center, s.deltaMat), this._rotDyn);
+            c.handle.update(c.camera, this._vec, this._rotDyn);
             c.requestDraw();
         }
 
@@ -266,11 +277,12 @@ export const GizmoMode = PluginBehavior.create({
             const c = this.canvas3d;
             if (!s || !c) return;
 
-            if (commit && !Mat4.isIdentity(s.deltaMat, 1e-6)) {
-                const abs = Mat4.mul(Mat4(), s.deltaMat, s.target.baseMatrix);
+            Mat4.mul(this._eff, s.deltaMat, s.base); // total preview transform
+            if (commit && !Mat4.isIdentity(this._eff, 1e-6)) {
+                const abs = Mat4.mul(Mat4(), this._eff, s.target.baseMatrix);
                 await this.commit(s.target.ref, abs, transformerForKind(s.target.kind));
+                Vec3.transformMat4(s.target.center, s.target.center, this._eff);
                 s.target.baseMatrix = abs;
-                Vec3.transformMat4(s.target.center, s.target.center, s.deltaMat);
                 // committed -> downstream representation rebuilds at baked coords; keep the gizmo
                 // at the object's new orientation (no snap back to world axes)
                 c.handle.update(c.camera, s.target.center, Mat3.fromMat4(this._rotDyn, abs));
@@ -327,26 +339,51 @@ export const GizmoMode = PluginBehavior.create({
 
             this.subscribeObservable(this.ctx.behaviors.interaction.click, ({ current }) => {
                 if (!this.ctx.gizmoMode) return;
-                if (this.session || isHandleLoci(current.loci)) return; // dragging / gizmo click
+                if (this.session) { if (this.session.viaKeyboard) this.finish(true); return; } // click confirms a keyboard modal
+                if (isHandleLoci(current.loci)) return; // gizmo click is for dragging
                 if (Loci.isEmpty(current.loci)) { this.target = undefined; this.hideHandle(); } else this.attach(current.loci);
             });
 
-            // raw drag (isStart) / interactionEnd are only available once canvas3d exists
+            // keyboard modal: M = translate, O = rotate; X/Y/Z constrain to a world axis; Enter/Esc confirm/cancel
+            this.subscribeObservable(this.ctx.behaviors.interaction.key, ({ code, x, y }) => {
+                if (!this.ctx.gizmoMode || !this.target) return;
+                if (code === 'KeyM') {
+                    this.begin('translate-screen', this.viewDir(this._vec), true, x, y);
+                } else if (code === 'KeyO') {
+                    this.begin('rotate', this.viewDir(this._vec), true, x, y);
+                } else if (code === 'KeyX' || code === 'KeyY' || code === 'KeyZ') {
+                    const s = this.session;
+                    if (!s || !s.viaKeyboard) return;
+                    Mat4.mul(this._eff, s.deltaMat, s.base); // fold current sub-move, then constrain to the axis
+                    const unit = code === 'KeyX' ? Vec3.unitX : code === 'KeyY' ? Vec3.unitY : Vec3.unitZ;
+                    this.begin(s.mode === 'rotate' ? 'rotate' : 'translate-axis', unit, true, x, y, this._eff);
+                } else if (code === 'Escape') {
+                    this.finish(false);
+                } else if (code === 'Enter' || code === 'NumpadEnter') {
+                    this.finish(true);
+                }
+            });
+
+            // raw drag (isStart) / interactionEnd / move are only available once canvas3d exists
             this.subscribeObservable(this.ctx.behaviors.canvas3d.initialized, () => {
                 const input = this.ctx.canvas3d?.input;
                 if (!input) return;
                 this.subscribeObservable(input.drag, ({ x, y, isStart }) => {
+                    if (this.session?.viaKeyboard) return; // keyboard modal owns the interaction
                     if (isStart) {
                         const mode = this.modeForGroup(this.hoverGroup);
                         if (!this.ctx.gizmoMode || !this.target || !mode) return;
                         const axis = mode === 'translate-screen' ? this.viewDir(this._vec) : this.localAxis(this._vec, this.hoverGroup);
-                        this.begin(mode, axis, x, y);
+                        this.begin(mode, axis, false, x, y);
                     } else {
                         this.updateSession(x, y);
                     }
                 });
                 this.subscribeObservable(input.interactionEnd, () => {
-                    if (this.session) this.finish(true);
+                    if (this.session && !this.session.viaKeyboard) this.finish(true);
+                });
+                this.subscribeObservable(input.move, ({ x, y }) => {
+                    if (this.session?.viaKeyboard) this.updateSession(x, y);
                 });
             });
         }
