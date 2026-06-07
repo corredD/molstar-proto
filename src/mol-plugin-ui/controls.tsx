@@ -20,7 +20,7 @@ import { Icon, NavigateBeforeSvg, NavigateNextSvg, SkipPreviousSvg, StopSvg, Pla
 import { AnimationControls } from './state/animation';
 import { StructureComponentControls } from './structure/components';
 import { StructureMeasurementsControls } from './structure/measurements';
-import { StructureSelectionActionsControls } from './structure/selection';
+import { GizmoModeControls, StructureSelectionActionsControls } from './structure/selection';
 import { StructureSourceControls } from './structure/source';
 import { VolumeStreamingControls, VolumeSourceControls } from './structure/volume';
 import { PluginConfig } from '../mol-plugin/config';
@@ -284,6 +284,19 @@ export class SelectionViewportControls extends PluginUIComponent {
         if (!this.plugin.selectionMode) return null;
         return <div className='msp-selection-viewport-controls'>
             <StructureSelectionActionsControls />
+        </div>;
+    }
+}
+
+export class GizmoViewportControls extends PluginUIComponent {
+    componentDidMount() {
+        this.subscribe(this.plugin.behaviors.interaction.gizmoMode, () => this.forceUpdate());
+    }
+
+    render() {
+        if (!this.plugin.gizmoMode) return null;
+        return <div className='msp-selection-viewport-controls'>
+            <GizmoModeControls />
         </div>;
     }
 }

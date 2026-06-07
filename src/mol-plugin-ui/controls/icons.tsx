@@ -53,6 +53,9 @@ export function CursorDefaultOutlineSvg() { return _CursorDefaultOutline; }
 const _AxisArrow = <svg width='24px' height='24px' viewBox='0 0 24 24'><path d='M12,2L16,6H13V13.85L19.53,17.61L21,15.03L22.5,20.5L17,21.96L18.53,19.35L12,15.58L5.47,19.35L7,21.96L1.5,20.5L3,15.03L4.47,17.61L11,13.85V6H8L12,2Z' /></svg>;
 export function AxisArrowSvg() { return _AxisArrow; }
 
+const _Magnet = <svg width='24px' height='24px' viewBox='0 0 24 24'><path d='M3,7V13A9,9 0 0,0 12,22A9,9 0 0,0 21,13V7H17V13A5,5 0 0,1 12,18A5,5 0 0,1 7,13V7H3M3,3H7V6H3V3M17,3H21V6H17V3Z' /></svg>;
+export function MagnetSvg() { return _Magnet; }
+
 const _FileOutline = <svg width='24px' height='24px' viewBox='0 0 24 24' strokeWidth='0.1px'><path fill='currentColor' d='M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z' /></svg>;
 export function FileOutlineSvg() { return _FileOutline; }
 

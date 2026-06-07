@@ -199,11 +199,13 @@ export const GizmoMode = PluginBehavior.create({
             return undefined; // shapes not yet supported
         }
 
-        private attach(loci: Loci) {
+        private attach(loci: Loci, position?: Vec3) {
             const c = this.canvas3d;
             if (!c) return;
             const target = this.resolveTarget(loci);
             if (!target) { this.target = undefined; this.hideHandle(); return; }
+            // placement: 'center' keeps the bounding-sphere centre; 'loci' pivots at the clicked point
+            if (position && this.ctx.gizmoPlacement === 'loci') Vec3.copy(target.center, position);
             this.target = target;
             this.showHandle(Math.max(target.radius * 0.12, 0.3));
             c.handle.update(c.camera, target.center, Mat3.fromMat4(this._rotDyn, target.baseMatrix));
@@ -363,11 +365,11 @@ export const GizmoMode = PluginBehavior.create({
                 }
             });
 
-            this.subscribeObservable(this.ctx.behaviors.interaction.click, ({ current }) => {
+            this.subscribeObservable(this.ctx.behaviors.interaction.click, ({ current, position }) => {
                 if (!this.ctx.gizmoMode) return;
                 if (this.session) { if (this.session.viaKeyboard) this.finish(true); return; } // click confirms a keyboard modal
                 if (isHandleLoci(current.loci)) return; // gizmo click is for dragging
-                if (Loci.isEmpty(current.loci)) { this.target = undefined; this.hideHandle(); } else this.attach(current.loci);
+                if (Loci.isEmpty(current.loci)) { this.target = undefined; this.hideHandle(); } else this.attach(current.loci, position);
             });
 
             // keyboard modal: M = translate, O = rotate; X/Y/Z constrain to a world axis; Enter/Esc confirm/cancel

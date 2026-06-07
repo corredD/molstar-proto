@@ -24,7 +24,7 @@ import { capitalize, stripTags } from '../../mol-util/string';
 import { PluginUIComponent, PurePluginUIComponent } from '../base';
 import { ActionMenu } from '../controls/action-menu';
 import { Button, ControlGroup, IconButton, ToggleButton } from '../controls/common';
-import { BrushSvg, CancelOutlinedSvg, CloseSvg, CubeOutlineSvg, GizmoModeSvg, HelpOutlineSvg, Icon, IntersectSvg, RemoveSvg, RestoreSvg, SelectionModeSvg, SetSvg, SubtractSvg, UnionSvg } from '../controls/icons';
+import { BrushSvg, CancelOutlinedSvg, CloseSvg, CubeOutlineSvg, GizmoModeSvg, HelpOutlineSvg, Icon, IntersectSvg, MagnetSvg, RemoveSvg, RestoreSvg, SelectionModeSvg, SetSvg, SubtractSvg, UnionSvg } from '../controls/icons';
 import { ParameterControls, ParamOnChange, PureSelectControl } from '../controls/parameters';
 import { HelpGroup, HelpText, ViewportHelpContent } from '../viewport/help';
 import { AddComponentControls } from './components';
@@ -63,6 +63,34 @@ export class ToggleGizmoModeButton extends PurePluginUIComponent<{ inline?: bool
             ? { background: 'transparent', width: 'auto', height: 'auto', lineHeight: 'unset' }
             : { background: 'transparent' };
         return <IconButton svg={GizmoModeSvg} onClick={this._toggleGizmoMode} title={'Toggle 3D Gizmo Mode'} style={style} toggleState={this.plugin.gizmoMode} />;
+    }
+}
+
+/** Top-of-viewer options shown only in gizmo mode: a magnet (snap-to-surface) toggle and a placement dropdown. */
+export class GizmoModeControls extends PurePluginUIComponent {
+    componentDidMount() {
+        this.subscribe(this.plugin.behaviors.interaction.gizmoMagnet, () => this.forceUpdate());
+        this.subscribe(this.plugin.behaviors.interaction.gizmoPlacement, () => this.forceUpdate());
+    }
+
+    private toggleMagnet = () => {
+        this.plugin.gizmoMagnet = !this.plugin.gizmoMagnet;
+    };
+
+    private setPlacement = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        this.plugin.gizmoPlacement = e.target.value as 'center' | 'loci';
+    };
+
+    render() {
+        return <div className='msp-flex-row'>
+            <IconButton svg={MagnetSvg} onClick={this.toggleMagnet} toggleState={this.plugin.gizmoMagnet}
+                title={'Snap to surface: while dragging, project the object onto the surface behind the cursor (position + normal).'} />
+            <select className='msp-form-control' value={this.plugin.gizmoPlacement} onChange={this.setPlacement} style={{ flex: '1 1 auto', textAlignLast: 'center' }}
+                title={'Where the gizmo is placed when you click an object.'}>
+                <option value='center'>Gizmo at object centre</option>
+                <option value='loci'>Gizmo at clicked point</option>
+            </select>
+        </div>;
     }
 }
 

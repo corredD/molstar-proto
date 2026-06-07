@@ -112,6 +112,8 @@ export class PluginContext {
             keyReleased: this.ev.behavior<KeyInput>(EmptyKeyInput),
             selectionMode: this.ev.behavior<boolean>(false),
             gizmoMode: this.ev.behavior<boolean>(false),
+            gizmoMagnet: this.ev.behavior<boolean>(false),
+            gizmoPlacement: this.ev.behavior<'center' | 'loci'>('center'),
         },
         labels: {
             highlight: this.ev.behavior<{ labels: ReadonlyArray<LociLabel> }>({ labels: [] })
@@ -380,6 +382,22 @@ export class PluginContext {
 
     set gizmoMode(mode: boolean) {
         this.behaviors.interaction.gizmoMode.next(mode);
+    }
+
+    get gizmoMagnet() {
+        return this.behaviors.interaction.gizmoMagnet.value;
+    }
+
+    set gizmoMagnet(on: boolean) {
+        this.behaviors.interaction.gizmoMagnet.next(on);
+    }
+
+    get gizmoPlacement() {
+        return this.behaviors.interaction.gizmoPlacement.value;
+    }
+
+    set gizmoPlacement(placement: 'center' | 'loci') {
+        this.behaviors.interaction.gizmoPlacement.next(placement);
     }
 
     dataTransaction(f: (ctx: RuntimeContext) => Promise<void> | void, options?: { canUndo?: string | boolean, rethrowErrors?: boolean }) {
