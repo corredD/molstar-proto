@@ -55,6 +55,9 @@ function rayAxisParam(ray: Ray3D, center: Vec3, axis: Vec3): number {
     return (e - b * d) / denom;
 }
 
+/** Multiplier applied to the geometric rotation angle to make ring dragging more sensitive. */
+const RotationSensitivity = 3;
+
 const _cross = Vec3();
 /** Signed angle from a to b about `axis` (right-handed). */
 function signedAngle(a: Vec3, b: Vec3, axis: Vec3): number {
@@ -246,7 +249,7 @@ export const GizmoMode = PluginBehavior.create({
                 const hit = this.planeHit(center, s.axis, x, y);
                 if (!hit) return; // ring edge-on: skip frame
                 const v = Vec3.sub(this._vec, hit, center);
-                aboutCenter(s.deltaMat, center, s.axis, -signedAngle(s.startVec, v, s.axis));
+                aboutCenter(s.deltaMat, center, s.axis, -signedAngle(s.startVec, v, s.axis) * RotationSensitivity);
             }
             for (const ro of s.renderObjects) Visual.setTransform(ro, s.deltaMat);
             // gizmo shows the object's total orientation (delta * base) and follows its centre
