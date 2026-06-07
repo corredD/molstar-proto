@@ -123,11 +123,17 @@ export const GizmoMode = PluginBehavior.create({
             c.requestDraw();
         }
 
+        /** Mouse ray into the scene. `camera.getRay` expects bottom-up Y, input is top-down. */
+        private updateRay(x: number, y: number) {
+            const c = this.canvas3d!;
+            c.camera.getRay(this._ray, x, c.input.height - y);
+            Vec3.normalize(this._ray.direction, this._ray.direction);
+        }
+
         /** Intersection of the mouse ray with the camera-facing plane through `center`. */
         private screenHit(center: Vec3, x: number, y: number): Vec3 | undefined {
             const c = this.canvas3d!;
-            c.camera.getRay(this._ray, x, y);
-            Vec3.normalize(this._ray.direction, this._ray.direction);
+            this.updateRay(x, y);
             const n = Vec3.sub(this._vec, c.camera.state.target, c.camera.state.position);
             Vec3.normalize(n, n);
             Vec3.copy(this._plane.normal, n);
@@ -149,8 +155,7 @@ export const GizmoMode = PluginBehavior.create({
                 let startParam = 0;
                 const startHit = Vec3();
                 if (axis) {
-                    c.camera.getRay(this._ray, x, y);
-                    Vec3.normalize(this._ray.direction, this._ray.direction);
+                    this.updateRay(x, y);
                     startParam = rayAxisParam(this._ray, center, axis);
                 } else {
                     const hit = this.screenHit(center, x, y);
@@ -168,8 +173,7 @@ export const GizmoMode = PluginBehavior.create({
             if (!d) return;
 
             if (d.axis) {
-                c.camera.getRay(this._ray, x, y);
-                Vec3.normalize(this._ray.direction, this._ray.direction);
+                this.updateRay(x, y);
                 const p = rayAxisParam(this._ray, d.center, d.axis);
                 if (!Number.isFinite(p) || !Number.isFinite(d.startParam)) return;
                 Vec3.scale(d.deltaVec, d.axis, p - d.startParam);
