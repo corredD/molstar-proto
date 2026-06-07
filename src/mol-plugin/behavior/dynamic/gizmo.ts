@@ -4,11 +4,10 @@
  * Interactive 3D transform gizmo. While gizmo mode is enabled:
  *  - clicking a structure or volume attaches the translate/rotate handle at its centre;
  *  - dragging a translate axis / rotation ring / centre handle moves it in real time and
- *    commits on release (TransformStructureConformation / VolumeTransform);
- *  - Blender-style keys: G then X/Y/Z to translate, R then X/Y/Z to rotate; left-click or
- *    Enter confirms, Esc or right-click cancels.
+ *    commits on release (TransformStructureConformation / VolumeTransform).
  *
  * Whole-object transforms only. Shapes are not yet targeted (no standard transform decorator).
+ * (Keyboard shortcuts intentionally omitted for now.)
  */
 
 import { PluginBehavior } from '../behavior';
@@ -29,7 +28,6 @@ type TargetKind = 'structure' | 'volume'
 
 type GizmoTarget = { kind: TargetKind, ref: string, center: Vec3, baseMatrix: Mat4 }
 type GizmoSession = {
-    viaKeyboard: boolean
     mode: Mode
     axis: Vec3 // world axis (translate-axis / rotate) or view direction (translate-screen)
     target: GizmoTarget
@@ -87,7 +85,7 @@ export const GizmoMode = PluginBehavior.create({
         private readonly _ray: Ray3D = { origin: Vec3(), direction: Vec3() };
         private readonly _plane: Plane3D = { normal: Vec3(), constant: 0 };
         private readonly _rot = Mat3.identity();
-        private readonly _mat = Mat4();
+        private readonly _rotDyn = Mat3();
         private readonly _vec = Vec3();
 
         private get canvas3d() { return this.ctx.canvas3d; }
@@ -191,13 +189,13 @@ export const GizmoMode = PluginBehavior.create({
             }
         }
 
-        private begin(mode: Mode, axis: Vec3, viaKeyboard: boolean, x: number, y: number) {
+        private begin(mode: Mode, axis: Vec3, x: number, y: number) {
             const t = this.target;
             if (!t) return;
             this.setTrackball(false);
             const center = t.center;
             const session: GizmoSession = {
-                viaKeyboard, mode, axis: Vec3.clone(axis), target: t,
+                mode, axis: Vec3.clone(axis), target: t,
                 renderObjects: this.collectRenderObjects(t.ref),
                 startParam: 0, startHit: Vec3(), startVec: Vec3(), deltaMat: Mat4.identity(),
             };
@@ -232,10 +230,12 @@ export const GizmoMode = PluginBehavior.create({
                 const hit = this.planeHit(center, s.axis, x, y);
                 if (!hit) return; // ring edge-on: skip frame
                 const v = Vec3.sub(this._vec, hit, center);
-                aboutCenter(s.deltaMat, center, s.axis, signedAngle(s.startVec, v, s.axis));
+                aboutCenter(s.deltaMat, center, s.axis, -signedAngle(s.startVec, v, s.axis));
             }
             for (const ro of s.renderObjects) Visual.setTransform(ro, s.deltaMat);
-            c.handle.update(c.camera, Vec3.transformMat4(this._vec, center, s.deltaMat), this._rot);
+            // rotate the gizmo with the object for visual feedback (identity for pure translation)
+            Mat3.fromMat4(this._rotDyn, s.deltaMat);
+            c.handle.update(c.camera, Vec3.transformMat4(this._vec, center, s.deltaMat), this._rotDyn);
             c.requestDraw();
         }
 
@@ -295,32 +295,8 @@ export const GizmoMode = PluginBehavior.create({
 
             this.subscribeObservable(this.ctx.behaviors.interaction.click, ({ current }) => {
                 if (!this.ctx.gizmoMode) return;
-                if (this.session?.viaKeyboard) { this.finish(true); return; } // confirm modal with a click
-                if (isHandleLoci(current.loci)) return; // gizmo clicks are for dragging
+                if (this.session || isHandleLoci(current.loci)) return; // dragging / gizmo click
                 if (Loci.isEmpty(current.loci)) { this.target = undefined; this.setHandleEnabled(false); } else this.attach(current.loci);
-            });
-
-            // keyboard modal (Blender-style)
-            this.subscribeObservable(this.ctx.behaviors.interaction.key, ({ code, x, y }) => {
-                if (!this.ctx.gizmoMode || !this.target) return;
-                if (code === 'KeyG') {
-                    this.begin('translate-screen', this.viewDir(this._vec), true, x, y);
-                } else if (code === 'KeyR') {
-                    this.begin('rotate', this.viewDir(this._vec), true, x, y);
-                } else if (code === 'KeyX' || code === 'KeyY' || code === 'KeyZ') {
-                    const s = this.session;
-                    if (!s || !s.viaKeyboard) return;
-                    const axis = code === 'KeyX' ? Vec3.unitX : code === 'KeyY' ? Vec3.unitY : Vec3.unitZ;
-                    // fold the current preview into the base, then restart along the chosen world axis
-                    Mat4.mul(this._mat, s.deltaMat, s.target.baseMatrix);
-                    s.target.baseMatrix = Mat4.clone(this._mat);
-                    Vec3.transformMat4(s.target.center, s.target.center, s.deltaMat);
-                    this.begin(s.mode === 'rotate' ? 'rotate' : 'translate-axis', axis, true, x, y);
-                } else if (code === 'Escape') {
-                    this.finish(false);
-                } else if (code === 'Enter' || code === 'NumpadEnter') {
-                    this.finish(true);
-                }
             });
 
             // raw drag (isStart) / interactionEnd are only available once canvas3d exists
@@ -328,21 +304,17 @@ export const GizmoMode = PluginBehavior.create({
                 const input = this.ctx.canvas3d?.input;
                 if (!input) return;
                 this.subscribeObservable(input.drag, ({ x, y, isStart }) => {
-                    if (this.session?.viaKeyboard) return; // keyboard modal owns the interaction
                     if (isStart) {
                         const mode = this.modeForGroup(this.hoverGroup);
                         if (!this.ctx.gizmoMode || !this.target || !mode) return;
                         const axis = mode === 'translate-screen' ? this.viewDir(this._vec) : this.worldAxis(this._vec, this.hoverGroup);
-                        this.begin(mode, axis, false, x, y);
+                        this.begin(mode, axis, x, y);
                     } else {
                         this.updateSession(x, y);
                     }
                 });
                 this.subscribeObservable(input.interactionEnd, () => {
-                    if (this.session && !this.session.viaKeyboard) this.finish(true);
-                });
-                this.subscribeObservable(input.move, ({ x, y }) => {
-                    if (this.session?.viaKeyboard) this.updateSession(x, y);
+                    if (this.session) this.finish(true);
                 });
             });
         }
