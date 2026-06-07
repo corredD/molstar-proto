@@ -120,6 +120,8 @@ interface TrackballControls {
     readonly viewport: Viewport
     readonly isAnimating: boolean
     readonly isMoving: boolean
+    /** When false, pointer drag/wheel/pinch camera interaction is suppressed (e.g. while dragging a gizmo). */
+    enabled: boolean
 
     readonly props: Readonly<TrackballControlsProps>
     setProps: (props: Partial<TrackballControlsProps>) => void
@@ -147,6 +149,7 @@ namespace TrackballControls {
         const viewport = Viewport.clone(camera.viewport);
 
         let disposed = false;
+        let enabled = true;
 
         const dragSub = input.drag.subscribe(onDrag);
         const interactionEndSub = input.interactionEnd.subscribe(onInteractionEnd);
@@ -571,6 +574,7 @@ namespace TrackballControls {
         // listeners
 
         function onDrag({ x, y, dx, dy, pageX, pageY, buttons, modifiers, isStart, useDelta }: DragInput) {
+            if (!enabled) return;
             const isOutside = !useDelta && outsideViewport(x, y);
 
             if (isStart && isOutside) return;
@@ -636,6 +640,7 @@ namespace TrackballControls {
         }
 
         function onWheel({ x, y, spinX, spinY, dz, buttons, modifiers }: WheelInput) {
+            if (!enabled) return;
             if (outsideViewport(x, y)) return;
 
             let delta = absMax(spinX * 0.075, spinY * 0.075, dz * 0.0001);
@@ -651,6 +656,7 @@ namespace TrackballControls {
         }
 
         function onPinch({ isStart, startX, startY, centerPageX, centerPageY, fractionDelta, buttons, modifiers }: PinchInput) {
+            if (!enabled) return;
             if (outsideViewport(startX, startY)) return;
 
             const pan = Binding.match(b.dragPan, buttons, modifiers);
@@ -936,6 +942,8 @@ namespace TrackballControls {
 
         return {
             viewport,
+            get enabled() { return enabled; },
+            set enabled(v: boolean) { enabled = v; },
             get isAnimating() { return p.animate.name !== 'off'; },
             get isMoving() {
                 return (

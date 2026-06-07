@@ -382,6 +382,8 @@ interface Canvas3D {
     /** Focuses camera on scene's bounding sphere, centered and zoomed. */
     requestCameraReset(options?: Canvas3DCameraResetOptions): void
     readonly camera: Camera
+    /** Camera trackball controls (e.g. to suppress orbiting while dragging a gizmo). */
+    readonly controls: TrackballControls
     /** Interactive translate/rotate gizmo overlay (used by gizmo mode). */
     readonly handle: HandleHelper
     readonly boundingSphere: Readonly<Sphere3D>
@@ -1273,6 +1275,7 @@ namespace Canvas3D {
                 cameraResetRequested = true;
             },
             camera,
+            controls,
             handle: helper.handle,
             boundingSphere: scene.boundingSphere,
             boundingSphereVisible: scene.boundingSphereVisible,
