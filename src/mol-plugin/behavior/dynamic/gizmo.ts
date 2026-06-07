@@ -6,8 +6,8 @@
  *  - dragging a translate axis / rotation ring / centre handle moves it in real time and
  *    commits on release (TransformStructureConformation / VolumeTransform).
  *
- * Keyboard modal (mouse-driven): M = translate, O = rotate; X/Y/Z constrain to a world axis;
- * left-click or Enter confirms, Esc cancels.
+ * Keyboard modal (mouse-driven): M = translate, K = rotate (free trackball); X/Y/Z then
+ * constrain to a world axis; left-click or Enter confirms, Esc cancels.
  *
  * Whole-object transforms only. Shapes are not yet targeted (no standard transform decorator).
  */
@@ -25,7 +25,7 @@ import { GraphicsRenderObject } from '../../../mol-gl/render-object';
 import { StateSelection, StateTransformer } from '../../../mol-state';
 import { StateTransforms } from '../../../mol-plugin-state/transforms';
 
-type Mode = 'translate-axis' | 'translate-screen' | 'rotate'
+type Mode = 'translate-axis' | 'translate-screen' | 'rotate' | 'rotate-trackball'
 type TargetKind = 'structure' | 'volume'
 
 type GizmoTarget = { kind: TargetKind, ref: string, center: Vec3, radius: number, baseMatrix: Mat4 }
@@ -72,13 +72,24 @@ function signedAngle(a: Vec3, b: Vec3, axis: Vec3): number {
     return Math.atan2(Vec3.dot(_cross, axis), Vec3.dot(a, b));
 }
 
-const _r = Mat4(), _t1 = Mat4(), _t2 = Mat4(), _negc = Vec3();
+/** Trackball rotation amount per normalized-viewport drag (full width = one turn). */
+const TrackballSensitivity = Math.PI * 2;
+
+const _r = Mat4(), _r2 = Mat4(), _rotMat = Mat4(), _t1 = Mat4(), _t2 = Mat4(), _negc = Vec3();
+const _v1 = Vec3(), _v2 = Vec3(), _v3 = Vec3();
 /** Rotation by `angle` about `axis` through `center`: T(c) R(axis,angle) T(-c). */
 function aboutCenter(out: Mat4, center: Vec3, axis: Vec3, angle: number): Mat4 {
     Mat4.fromRotation(_r, angle, axis);
     Mat4.fromTranslation(_t1, center);
     Mat4.fromTranslation(_t2, Vec3.negate(_negc, center));
     Mat4.mul(out, _t1, _r);
+    return Mat4.mul(out, out, _t2);
+}
+/** Rotation by matrix `rot` about `center`: T(c) rot T(-c). */
+function aboutCenterMat(out: Mat4, center: Vec3, rot: Mat4): Mat4 {
+    Mat4.fromTranslation(_t1, center);
+    Mat4.fromTranslation(_t2, Vec3.negate(_negc, center));
+    Mat4.mul(out, _t1, rot);
     return Mat4.mul(out, out, _t2);
 }
 
@@ -232,6 +243,8 @@ export const GizmoMode = PluginBehavior.create({
             } else if (mode === 'translate-screen') {
                 const hit = this.planeHit(center, axis, x, y);
                 if (hit) Vec3.copy(session.startHit, hit);
+            } else if (mode === 'rotate-trackball') {
+                Vec3.set(session.startVec, x, y, 0); // start screen position
             } else {
                 const hit = this.planeHit(center, axis, x, y);
                 if (hit) Vec3.sub(session.startVec, hit, center);
@@ -254,6 +267,18 @@ export const GizmoMode = PluginBehavior.create({
                 const hit = this.planeHit(center, s.axis, x, y);
                 if (!hit) return;
                 Mat4.fromTranslation(s.deltaMat, Vec3.sub(this._vec, hit, center));
+            } else if (s.mode === 'rotate-trackball') {
+                // free trackball: yaw about the camera up axis, pitch about the camera right axis
+                const vp = c.camera.viewport;
+                const dx = (x - s.startVec[0]) / vp.width;
+                const dy = (y - s.startVec[1]) / vp.height;
+                const dir = Vec3.normalize(_v1, Vec3.sub(_v1, c.camera.state.target, c.camera.state.position));
+                const right = Vec3.normalize(_v2, Vec3.cross(_v2, dir, c.camera.state.up));
+                const tup = Vec3.normalize(_v3, Vec3.cross(_v3, right, dir));
+                Mat4.fromRotation(_r, -dx * TrackballSensitivity, tup);
+                Mat4.fromRotation(_r2, dy * TrackballSensitivity, right);
+                Mat4.mul(_rotMat, _r, _r2);
+                aboutCenterMat(s.deltaMat, center, _rotMat);
             } else {
                 const hit = this.planeHit(center, s.axis, x, y);
                 if (!hit) return; // ring edge-on: skip frame
@@ -350,14 +375,15 @@ export const GizmoMode = PluginBehavior.create({
                 if (!this.ctx.gizmoMode || !this.target) return;
                 if (code === 'KeyM') {
                     this.begin('translate-screen', this.viewDir(this._vec), true, x, y);
-                } else if (code === 'KeyO') {
-                    this.begin('rotate', this.viewDir(this._vec), true, x, y);
+                } else if (code === 'KeyK') {
+                    this.begin('rotate-trackball', Vec3.unitZ, true, x, y);
                 } else if (code === 'KeyX' || code === 'KeyY' || code === 'KeyZ') {
                     const s = this.session;
                     if (!s || !s.viaKeyboard) return;
                     Mat4.mul(this._eff, s.deltaMat, s.base); // fold current sub-move, then constrain to the axis
                     const unit = code === 'KeyX' ? Vec3.unitX : code === 'KeyY' ? Vec3.unitY : Vec3.unitZ;
-                    this.begin(s.mode === 'rotate' ? 'rotate' : 'translate-axis', unit, true, x, y, this._eff);
+                    const rotating = s.mode === 'rotate' || s.mode === 'rotate-trackball';
+                    this.begin(rotating ? 'rotate' : 'translate-axis', unit, true, x, y, this._eff);
                 } else if (code === 'Escape') {
                     this.finish(false);
                 } else if (code === 'Enter' || code === 'NumpadEnter') {
