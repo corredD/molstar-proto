@@ -15,7 +15,7 @@ import { ParamDefinition as PD } from '../mol-util/param-definition';
 import { PluginUIComponent } from './base';
 import { Button, ControlGroup, IconButton } from './controls/common';
 import { AspectRatioSvg, AutorenewSvg, BuildOutlinedSvg, CameraOutlinedSvg, CloseSvg, FullscreenSvg, HeadsetVRSvg, LightModeSvg, TuneSvg } from './controls/icons';
-import { ToggleSelectionModeButton } from './structure/selection';
+import { ToggleGizmoModeButton, ToggleSelectionModeButton } from './structure/selection';
 import { ViewportCanvas } from './viewport/canvas';
 import { DownloadScreenshotControls } from './viewport/screenshot';
 import { SimpleSettingsControl } from './viewport/simple-settings';
@@ -197,6 +197,10 @@ export class ViewportControls extends PluginUIComponent<ViewportControlsProps, V
                 {this.plugin.config.get(PluginConfig.Viewport.ShowSelectionMode) && <div>
                     <div className='msp-semi-transparent-background' />
                     <ToggleSelectionModeButton />
+                </div>}
+                {this.plugin.config.get(PluginConfig.Viewport.ShowGizmoMode) && <div>
+                    <div className='msp-semi-transparent-background' />
+                    <ToggleGizmoModeButton />
                 </div>}
             </div>
             {this.state.isScreenshotExpanded && <div className='msp-viewport-controls-panel'>

@@ -126,6 +126,7 @@ export const DefaultPluginSpec = (): PluginSpec => ({
         PluginSpec.Behavior(PluginBehaviors.Camera.FocusLoci),
         PluginSpec.Behavior(PluginBehaviors.Camera.CameraAxisHelper),
         PluginSpec.Behavior(PluginBehaviors.Camera.CameraControls),
+        PluginSpec.Behavior(PluginBehaviors.Gizmo.GizmoMode),
         PluginSpec.Behavior(PluginBehaviors.State.SnapshotControls),
         PluginSpec.Behavior(StructureFocusRepresentation),
 

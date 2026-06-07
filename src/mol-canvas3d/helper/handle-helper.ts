@@ -13,6 +13,7 @@ import { GraphicsRenderObject } from '../../mol-gl/render-object';
 import { Mesh } from '../../mol-geo/geometry/mesh/mesh';
 import { ColorNames } from '../../mol-util/color/names';
 import { addCylinder } from '../../mol-geo/geometry/mesh/builder/cylinder';
+import { Torus } from '../../mol-geo/primitive/torus';
 import { ValueCell } from '../../mol-util';
 import { Sphere3D } from '../../mol-math/geometry';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
@@ -166,7 +167,15 @@ function createHandleMesh(scale: number, mesh?: Mesh) {
     addSphere(state, z, radius, 2);
     addCylinder(state, Vec3.origin, z, 1, cylinderProps);
 
-    // TODO add more helper geometries for the other HandleGroup options
+    // rotation rings, one per axis (torus lies in XY plane by default = ring around Z)
+    const torusProps = { radius: scale, tube: radius, radialSegments: 8, tubularSegments: 48 };
+    state.currentGroup = HandleGroup.RotateObjectZ;
+    MeshBuilder.addPrimitive(state, Mat4.identity(), Torus(torusProps));
+    state.currentGroup = HandleGroup.RotateObjectX;
+    MeshBuilder.addPrimitive(state, Mat4.fromRotation(Mat4(), Math.PI / 2, Vec3.unitY), Torus(torusProps));
+    state.currentGroup = HandleGroup.RotateObjectY;
+    MeshBuilder.addPrimitive(state, Mat4.fromRotation(Mat4(), Math.PI / 2, Vec3.unitX), Torus(torusProps));
+
     // TODO add props to create subset of geometries
 
     return MeshBuilder.getMesh(state);
@@ -184,9 +193,9 @@ export const HandleGroup = {
     // TranslateObjectYZ: 8,
 
     // RotateScreenZ: 9,
-    // RotateObjectX: 10,
-    // RotateObjectY: 11,
-    // RotateObjectZ: 12,
+    RotateObjectX: 10,
+    RotateObjectY: 11,
+    RotateObjectZ: 12,
 } as const;
 
 function HandleLoci(handleHelper: HandleHelper, groupId: number, instanceId: number) {
@@ -208,6 +217,9 @@ function getHandleShape(props: HandleProps, shape?: Shape<Mesh>) {
             case HandleGroup.TranslateObjectX: return props.colorX;
             case HandleGroup.TranslateObjectY: return props.colorY;
             case HandleGroup.TranslateObjectZ: return props.colorZ;
+            case HandleGroup.RotateObjectX: return props.colorX;
+            case HandleGroup.RotateObjectY: return props.colorY;
+            case HandleGroup.RotateObjectZ: return props.colorZ;
             default: return ColorNames.grey;
         }
     };

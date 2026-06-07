@@ -111,6 +111,7 @@ export class PluginContext {
             key: this.ev.behavior<KeyInput>(EmptyKeyInput),
             keyReleased: this.ev.behavior<KeyInput>(EmptyKeyInput),
             selectionMode: this.ev.behavior<boolean>(false),
+            gizmoMode: this.ev.behavior<boolean>(false),
         },
         labels: {
             highlight: this.ev.behavior<{ labels: ReadonlyArray<LociLabel> }>({ labels: [] })
@@ -371,6 +372,14 @@ export class PluginContext {
 
     set selectionMode(mode: boolean) {
         this.behaviors.interaction.selectionMode.next(mode);
+    }
+
+    get gizmoMode() {
+        return this.behaviors.interaction.gizmoMode.value;
+    }
+
+    set gizmoMode(mode: boolean) {
+        this.behaviors.interaction.gizmoMode.next(mode);
     }
 
     dataTransaction(f: (ctx: RuntimeContext) => Promise<void> | void, options?: { canUndo?: string | boolean, rethrowErrors?: boolean }) {

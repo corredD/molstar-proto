@@ -58,6 +58,7 @@ export const PluginConfig = {
         ShowControls: item('viewer.show-controls-button', true),
         ShowSettings: item('viewer.show-settings-button', true),
         ShowSelectionMode: item('viewer.show-selection-model-button', true),
+        ShowGizmoMode: item('viewer.show-gizmo-mode-button', true),
         ShowAnimation: item('viewer.show-animation-button', true),
         ShowTrajectoryControls: item('viewer.show-trajectory-controls', true),
         ShowScreenshotControls: item('viewer.show-screenshot-controls', true),

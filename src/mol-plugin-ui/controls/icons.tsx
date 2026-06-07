@@ -50,6 +50,9 @@ export function CubeSendSvg() { return _CubeSend; }
 const _CursorDefaultOutline = <svg width='24px' height='24px' viewBox='0 0 24 24'><path d='M10.07,14.27C10.57,14.03 11.16,14.25 11.4,14.75L13.7,19.74L15.5,18.89L13.19,13.91C12.95,13.41 13.17,12.81 13.67,12.58L13.95,12.5L16.25,12.05L8,5.12V15.9L9.82,14.43L10.07,14.27M13.64,21.97C13.14,22.21 12.54,22 12.31,21.5L10.13,16.76L7.62,18.78C7.45,18.92 7.24,19 7,19A1,1 0 0,1 6,18V3A1,1 0 0,1 7,2C7.24,2 7.47,2.09 7.64,2.23L7.65,2.22L19.14,11.86C19.57,12.22 19.62,12.85 19.27,13.27C19.12,13.45 18.91,13.57 18.7,13.61L15.54,14.23L17.74,18.96C18,19.46 17.76,20.05 17.26,20.28L13.64,21.97Z' /></svg>;
 export function CursorDefaultOutlineSvg() { return _CursorDefaultOutline; }
 
+const _AxisArrow = <svg width='24px' height='24px' viewBox='0 0 24 24'><path d='M12,2L16,6H13V13.85L19.53,17.61L21,15.03L22.5,20.5L17,21.96L18.53,19.35L12,15.58L5.47,19.35L7,21.96L1.5,20.5L3,15.03L4.47,17.61L11,13.85V6H8L12,2Z' /></svg>;
+export function AxisArrowSvg() { return _AxisArrow; }
+
 const _FileOutline = <svg width='24px' height='24px' viewBox='0 0 24 24' strokeWidth='0.1px'><path fill='currentColor' d='M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z' /></svg>;
 export function FileOutlineSvg() { return _FileOutline; }
 
@@ -207,6 +210,7 @@ export function HeadsetVRSvg() { return _HeadsetVR; }
 // Aliases
 
 export const SelectionModeSvg = CursorDefaultOutlineSvg;
+export const GizmoModeSvg = AxisArrowSvg;
 export const SuperposeAtomsSvg = ScatterPlotSvg;
 export const SuperposeChainsSvg = LinearScaleSvg;
 export const SuperpositionSvg = FlipToFrontSvg;

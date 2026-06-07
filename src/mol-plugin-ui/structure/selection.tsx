@@ -24,7 +24,7 @@ import { capitalize, stripTags } from '../../mol-util/string';
 import { PluginUIComponent, PurePluginUIComponent } from '../base';
 import { ActionMenu } from '../controls/action-menu';
 import { Button, ControlGroup, IconButton, ToggleButton } from '../controls/common';
-import { BrushSvg, CancelOutlinedSvg, CloseSvg, CubeOutlineSvg, HelpOutlineSvg, Icon, IntersectSvg, RemoveSvg, RestoreSvg, SelectionModeSvg, SetSvg, SubtractSvg, UnionSvg } from '../controls/icons';
+import { BrushSvg, CancelOutlinedSvg, CloseSvg, CubeOutlineSvg, GizmoModeSvg, HelpOutlineSvg, Icon, IntersectSvg, RemoveSvg, RestoreSvg, SelectionModeSvg, SetSvg, SubtractSvg, UnionSvg } from '../controls/icons';
 import { ParameterControls, ParamOnChange, PureSelectControl } from '../controls/parameters';
 import { HelpGroup, HelpText, ViewportHelpContent } from '../viewport/help';
 import { AddComponentControls } from './components';
@@ -46,6 +46,23 @@ export class ToggleSelectionModeButton extends PurePluginUIComponent<{ inline?: 
             ? { background: 'transparent', width: 'auto', height: 'auto', lineHeight: 'unset' }
             : { background: 'transparent' };
         return <IconButton svg={SelectionModeSvg} onClick={this._toggleSelMode} title={'Toggle Selection Mode'} style={style} toggleState={this.plugin.selectionMode} />;
+    }
+}
+
+export class ToggleGizmoModeButton extends PurePluginUIComponent<{ inline?: boolean }> {
+    componentDidMount() {
+        this.subscribe(this.plugin.behaviors.interaction.gizmoMode, () => this.forceUpdate());
+    }
+
+    _toggleGizmoMode = () => {
+        this.plugin.gizmoMode = !this.plugin.gizmoMode;
+    };
+
+    render() {
+        const style = this.props.inline
+            ? { background: 'transparent', width: 'auto', height: 'auto', lineHeight: 'unset' }
+            : { background: 'transparent' };
+        return <IconButton svg={GizmoModeSvg} onClick={this._toggleGizmoMode} title={'Toggle 3D Gizmo Mode'} style={style} toggleState={this.plugin.gizmoMode} />;
     }
 }
 
