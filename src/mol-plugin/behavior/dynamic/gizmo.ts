@@ -243,16 +243,17 @@ export const GizmoMode = PluginBehavior.create({
             const s = this.session;
             const c = this.canvas3d;
             if (!s || !c) return;
-            const center = s.target.center;
+            const center = s.center;
             if (s.mode === 'translate-axis') {
                 this.updateRay(x, y);
                 const p = rayAxisParam(this._ray, center, s.axis);
                 if (!Number.isFinite(p) || !Number.isFinite(s.startParam)) return;
                 Mat4.fromTranslation(s.deltaMat, Vec3.scale(this._vec, s.axis, p - s.startParam));
             } else if (s.mode === 'translate-screen') {
+                // direct 1:1: move the object centre to the cursor's point on the view plane
                 const hit = this.planeHit(center, s.axis, x, y);
                 if (!hit) return;
-                Mat4.fromTranslation(s.deltaMat, Vec3.sub(this._vec, hit, s.startHit));
+                Mat4.fromTranslation(s.deltaMat, Vec3.sub(this._vec, hit, center));
             } else {
                 const hit = this.planeHit(center, s.axis, x, y);
                 if (!hit) return; // ring edge-on: skip frame
