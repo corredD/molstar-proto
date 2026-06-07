@@ -465,13 +465,24 @@ export class DrawPass {
                 this.depthTextureOpaque.detachFramebuffer(target.framebuffer, 'depth');
             }
         }
-        if (helper.handle.isEnabled) {
-            renderer.renderBlended(helper.handle.scene, camera);
-        }
-        if (helper.camera.isEnabled) {
-            helper.camera.update(camera);
-            renderer.update(helper.camera.camera, helper.camera.scene);
-            renderer.renderBlended(helper.camera.scene, helper.camera.camera);
+        if (helper.handle.isEnabled || helper.camera.isEnabled) {
+            // render the helpers on top of the scene but with their own (cleared) depth buffer,
+            // so their parts self-occlude (depth sorted) while never being hidden by the scene
+            if (!this.packedDepth) {
+                this.depthTextureOpaque.attachFramebuffer(target.framebuffer, 'depth');
+            }
+            renderer.clearDepth(this.packedDepth);
+            if (helper.handle.isEnabled) {
+                renderer.renderBlended(helper.handle.scene, camera);
+            }
+            if (helper.camera.isEnabled) {
+                helper.camera.update(camera);
+                renderer.update(helper.camera.camera, helper.camera.scene);
+                renderer.renderBlended(helper.camera.scene, helper.camera.camera);
+            }
+            if (!this.packedDepth) {
+                this.depthTextureOpaque.detachFramebuffer(target.framebuffer, 'depth');
+            }
         }
 
         let needsTargetCopy = false;

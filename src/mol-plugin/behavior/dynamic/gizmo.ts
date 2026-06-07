@@ -79,6 +79,7 @@ export const GizmoMode = PluginBehavior.create({
     ctor: class extends PluginBehavior.Handler {
         private handleEnabled = false;
         private handleScale = 0;
+        private prevHighlight: number | undefined = undefined;
         private hoverGroup = HandleGroup.None as number;
         private target: GizmoTarget | undefined;
         private session: GizmoSession | undefined;
@@ -290,11 +291,22 @@ export const GizmoMode = PluginBehavior.create({
 
         register() {
             this.subscribeObservable(this.ctx.behaviors.interaction.gizmoMode, on => {
-                if (!on) {
+                const c = this.canvas3d;
+                if (on) {
+                    // boost the marker highlight so the hovered/active axis is clearly visible
+                    if (c && this.prevHighlight === undefined) {
+                        this.prevHighlight = c.props.renderer.highlightStrength;
+                        c.setProps({ renderer: { highlightStrength: 0.8 } });
+                    }
+                } else {
                     this.session = undefined;
                     this.target = undefined;
                     this.hideHandle();
                     this.setTrackball(true);
+                    if (c && this.prevHighlight !== undefined) {
+                        c.setProps({ renderer: { highlightStrength: this.prevHighlight } });
+                        this.prevHighlight = undefined;
+                    }
                 }
             });
 
