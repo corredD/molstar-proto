@@ -366,6 +366,8 @@ interface Canvas3D {
 
     identify(target: Vec2 | Ray3D): PickData | undefined
     asyncIdentify(target: Vec2 | Ray3D): AsyncPickData | undefined
+    /** Force the next `identify` to re-render the pick buffer (e.g. after toggling `pickable` on a render object). */
+    markPickingDirty(): void
     mark(loci: Representation.Loci, action: MarkerAction): void
     getLoci(pickingId: PickingId | undefined): Representation.Loci
 
@@ -1263,6 +1265,7 @@ namespace Canvas3D {
 
             identify,
             asyncIdentify,
+            markPickingDirty: () => { pickHelper.dirty = true; },
             mark,
             getLoci,
 

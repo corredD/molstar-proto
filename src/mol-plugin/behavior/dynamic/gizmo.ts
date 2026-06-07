@@ -17,7 +17,7 @@ import { HandleGroup, HandleHelperParams, isHandleLoci } from '../../../mol-canv
 import { Loci } from '../../../mol-model/loci';
 import { StructureElement } from '../../../mol-model/structure';
 import { Volume } from '../../../mol-model/volume';
-import { Mat3, Mat4, Vec3 } from '../../../mol-math/linear-algebra';
+import { Mat3, Mat4, Quat, Vec2, Vec3 } from '../../../mol-math/linear-algebra';
 import { Ray3D } from '../../../mol-math/geometry/primitives/ray3d';
 import { Plane3D } from '../../../mol-math/geometry/primitives/plane3d';
 import { Visual } from '../../../mol-repr/visual';
@@ -112,6 +112,16 @@ export const GizmoMode = PluginBehavior.create({
         private readonly _tmpMat = Mat4();
         private readonly _eff = Mat4();
         private readonly _vec = Vec3();
+        // magnet scratch
+        private readonly _hit0 = Vec3();
+        private readonly _normal = Vec3();
+        private readonly _vd = Vec3();
+        private readonly _curZ = Vec3();
+        private readonly _rotQuat = Quat();
+        private readonly _rotMat4 = Mat4();
+        private readonly _tA = Mat4();
+        private readonly _tB = Mat4();
+        private readonly _ncenter = Vec3();
 
         private get canvas3d() { return this.ctx.canvas3d; }
 
@@ -152,6 +162,58 @@ export const GizmoMode = PluginBehavior.create({
             this._plane.constant = -Vec3.dot(normal, center);
             const out = Vec3();
             return Plane3D.intersectRay3D(out, this._plane, this._ray) ? out : undefined;
+        }
+
+        /**
+         * Blender-style magnet: project the dragged object onto the surface behind the cursor.
+         * Excludes the dragged object from picking (`pickable = false` + forced re-pick) so we read
+         * the surface beneath it, samples three pixels from the same pick buffer for a finite-difference
+         * normal, and writes `s.deltaMat = T(P) * R * T(-centre)` (centre -> contact point, local +Z -> normal).
+         * Returns false when nothing is hit so the caller can fall back to the plane translate.
+         */
+        private magnetSnap(s: GizmoSession, x: number, y: number): boolean {
+            const c = this.canvas3d;
+            if (!c) return false;
+            // identify uses input (top-down) coords directly and flips internally.
+            // exclude both the dragged object and the gizmo handle (drawn on top in the pick pass)
+            for (const ro of s.renderObjects) ro.state.pickable = false;
+            c.handle.scene.forEach((_, ro) => { ro.state.pickable = false; });
+            c.markPickingDirty();
+            const p0 = c.identify(Vec2.create(x, y)); // re-renders the pick buffer with the object excluded
+            let normalOk = false;
+            if (p0) {
+                Vec3.copy(this._hit0, p0.position);
+                const d = 3; // px offset; neighbours are read from the same (now clean) buffer
+                const px = c.identify(Vec2.create(x + d, y));
+                const py = c.identify(Vec2.create(x, y + d));
+                if (px && py) {
+                    Vec3.cross(this._normal, Vec3.sub(this._vd, px.position, this._hit0), Vec3.sub(this._curZ, py.position, this._hit0));
+                    if (Vec3.magnitude(this._normal) > 1e-6) {
+                        Vec3.normalize(this._normal, this._normal);
+                        if (Vec3.dot(this._normal, this.viewDir(this._vd)) > 0) Vec3.negate(this._normal, this._normal); // face the camera
+                        normalOk = true;
+                    }
+                }
+            }
+            for (const ro of s.renderObjects) ro.state.pickable = true;
+            c.handle.scene.forEach((_, ro) => { ro.state.pickable = true; });
+            c.markPickingDirty(); // keep normal hover-picking fresh
+            if (!p0) return false;
+
+            if (normalOk) {
+                Mat3.fromMat4(this._baseRot, s.target.baseMatrix);
+                Vec3.normalize(this._curZ, Vec3.transformMat3(this._curZ, Vec3.unitZ, this._baseRot));
+                Quat.rotationTo(this._rotQuat, this._curZ, this._normal);
+                Mat4.fromQuat(this._rotMat4, this._rotQuat);
+            } else {
+                Mat4.setIdentity(this._rotMat4);
+            }
+            // deltaMat = T(P) * R * T(-centre)
+            Mat4.fromTranslation(this._tA, this._hit0);
+            Mat4.fromTranslation(this._tB, Vec3.negate(this._ncenter, s.center));
+            Mat4.mul(s.deltaMat, this._tA, this._rotMat4);
+            Mat4.mul(s.deltaMat, s.deltaMat, this._tB);
+            return true;
         }
 
         private readBaseMatrix(ref: string, transformer: StateTransformer): Mat4 {
@@ -265,10 +327,14 @@ export const GizmoMode = PluginBehavior.create({
                 if (!Number.isFinite(p) || !Number.isFinite(s.startParam)) return;
                 Mat4.fromTranslation(s.deltaMat, Vec3.scale(this._vec, s.axis, p - s.startParam));
             } else if (s.mode === 'translate-screen') {
-                // direct 1:1: move the object centre to the cursor's point on the view plane
-                const hit = this.planeHit(center, s.axis, x, y);
-                if (!hit) return;
-                Mat4.fromTranslation(s.deltaMat, Vec3.sub(this._vec, hit, center));
+                if (this.ctx.gizmoMagnet && this.magnetSnap(s, x, y)) {
+                    // s.deltaMat set by the magnet (snap to surface position + normal)
+                } else {
+                    // direct 1:1: move the object centre to the cursor's point on the view plane
+                    const hit = this.planeHit(center, s.axis, x, y);
+                    if (!hit) return;
+                    Mat4.fromTranslation(s.deltaMat, Vec3.sub(this._vec, hit, center));
+                }
             } else if (s.mode === 'rotate-trackball') {
                 // free trackball: yaw about the camera up axis, pitch about the camera right axis
                 const vp = c.camera.viewport;
