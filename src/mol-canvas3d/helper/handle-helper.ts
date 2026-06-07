@@ -101,8 +101,10 @@ export class HandleHelper {
             this.setProps(this.props);
         }
 
-        Mat4.setTranslation(this.renderObject.values.aTransform.ref.value as unknown as Mat4, position);
-        Mat4.fromMat3(this.renderObject.values.aTransform.ref.value as unknown as Mat4, rotation);
+        const m = this.renderObject.values.aTransform.ref.value as unknown as Mat4;
+        // set rotation first (fromMat3 zeroes the translation column), then the translation
+        Mat4.fromMat3(m, rotation);
+        Mat4.setTranslation(m, position);
 
         // TODO make invariant to camera scaling by adjusting renderObject transform
 

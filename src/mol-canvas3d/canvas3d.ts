@@ -34,7 +34,7 @@ import { ImagePass, ImageProps } from './passes/image';
 import { Sphere3D } from '../mol-math/geometry';
 import { addConsoleStatsProvider, isDebugMode, isTimingMode, removeConsoleStatsProvider } from '../mol-util/debug';
 import { CameraHelperParams } from './helper/camera-helper';
-import { HandleHelperParams } from './helper/handle-helper';
+import { HandleHelper, HandleHelperParams } from './helper/handle-helper';
 import { StereoCamera, StereoCameraParams } from './camera/stereo';
 import { Helper } from './helper/helper';
 import { Passes } from './passes/passes';
@@ -382,6 +382,8 @@ interface Canvas3D {
     /** Focuses camera on scene's bounding sphere, centered and zoomed. */
     requestCameraReset(options?: Canvas3DCameraResetOptions): void
     readonly camera: Camera
+    /** Interactive translate/rotate gizmo overlay (used by gizmo mode). */
+    readonly handle: HandleHelper
     readonly boundingSphere: Readonly<Sphere3D>
     readonly boundingSphereVisible: Readonly<Sphere3D>
     setProps(props: PartialCanvas3DProps | ((old: Canvas3DProps) => Partial<Canvas3DProps> | void), doNotRequestDraw?: boolean /* = false */): void
@@ -1271,6 +1273,7 @@ namespace Canvas3D {
                 cameraResetRequested = true;
             },
             camera,
+            handle: helper.handle,
             boundingSphere: scene.boundingSphere,
             boundingSphereVisible: scene.boundingSphereVisible,
             get notifyDidDraw() { return notifyDidDraw; },
