@@ -80,6 +80,7 @@ export const FocusLoci = PluginBehavior.create<FocusLociProps>({
         register(): void {
             this.subscribeObservable(this.ctx.behaviors.interaction.click, ({ current, button, modifiers }) => {
                 if (!this.ctx.canvas3d) return;
+                if (this.ctx.gizmoMode) return; // gizmo mode owns the click (attach), no camera focus
 
                 const binding = this.ctx.selectionMode
                     ? this.params.bindings.clickCenterFocusSelectMode

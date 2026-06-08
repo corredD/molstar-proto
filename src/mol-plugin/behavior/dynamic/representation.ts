@@ -271,6 +271,7 @@ export const FocusLoci = PluginBehavior.create<FocusLociProps>({
     ctor: class extends PluginBehavior.Handler<FocusLociProps> {
         register(): void {
             this.subscribeObservable(this.ctx.behaviors.interaction.click, ({ current, button, modifiers }) => {
+                if (this.ctx.gizmoMode) return; // gizmo mode owns the click (attach), no representation focus
                 const { clickFocus, clickFocusAdd, clickFocusExtend, clickFocusSelectMode, clickFocusAddSelectMode, clickFocusExtendSelectMode } = this.params.bindings;
 
                 const binding = this.ctx.selectionMode ? clickFocusSelectMode : clickFocus;

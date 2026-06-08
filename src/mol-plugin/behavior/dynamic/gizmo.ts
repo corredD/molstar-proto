@@ -330,10 +330,11 @@ export const GizmoMode = PluginBehavior.create({
                 if (this.ctx.gizmoMagnet && this.magnetSnap(s, x, y)) {
                     // s.deltaMat set by the magnet (snap to surface position + normal)
                 } else {
-                    // direct 1:1: move the object centre to the cursor's point on the view plane
+                    // direct 1:1: translate by the cursor's displacement on the view plane since the
+                    // grab point (startHit), so the object stays under the cursor and never jumps
                     const hit = this.planeHit(center, s.axis, x, y);
                     if (!hit) return;
-                    Mat4.fromTranslation(s.deltaMat, Vec3.sub(this._vec, hit, center));
+                    Mat4.fromTranslation(s.deltaMat, Vec3.sub(this._vec, hit, s.startHit));
                 }
             } else if (s.mode === 'rotate-trackball') {
                 // free trackball: yaw about the camera up axis, pitch about the camera right axis
