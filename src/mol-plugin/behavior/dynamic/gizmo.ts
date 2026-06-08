@@ -104,8 +104,6 @@ export const GizmoMode = PluginBehavior.create({
         private hoverGroup = HandleGroup.None as number;
         private target: GizmoTarget | undefined;
         private session: GizmoSession | undefined;
-        /** a drag ends with a pointer-up click; ignore that one click so it doesn't re-attach/detach */
-        private suppressNextClick = false;
 
         private readonly _ray: Ray3D = { origin: Vec3(), direction: Vec3() };
         private readonly _plane: Plane3D = { normal: Vec3(), constant: 0 };
@@ -267,7 +265,7 @@ export const GizmoMode = PluginBehavior.create({
             const c = this.canvas3d;
             if (!c) return;
             const target = this.resolveTarget(loci);
-            if (!target) { this.target = undefined; this.hideHandle(); return; }
+            if (!target) return; // clicked something untargetable (e.g. a surface): keep the current gizmo
             // placement: 'center' keeps the bounding-sphere centre; 'loci' pivots at the clicked point
             if (position && this.ctx.gizmoPlacement === 'loci') Vec3.copy(target.center, position);
             this.target = target;
@@ -373,8 +371,6 @@ export const GizmoMode = PluginBehavior.create({
             this.setTrackball(true);
             const c = this.canvas3d;
             if (!s || !c) return;
-            // a mouse drag releases with a click event; ignore it so it doesn't re-attach/detach the gizmo
-            if (!s.viaKeyboard) this.suppressNextClick = true;
 
             Mat4.mul(this._eff, s.deltaMat, s.base); // total preview transform
             if (commit && !Mat4.isIdentity(this._eff, 1e-6)) {
@@ -450,7 +446,6 @@ export const GizmoMode = PluginBehavior.create({
 
             this.subscribeObservable(this.ctx.behaviors.interaction.click, ({ current, position }) => {
                 if (!this.ctx.gizmoMode) return;
-                if (this.suppressNextClick) { this.suppressNextClick = false; return; } // tail-of-drag click
                 if (this.session) { if (this.session.viaKeyboard) this.finish(true); return; } // click confirms a keyboard modal
                 if (isHandleLoci(current.loci)) return; // gizmo click is for dragging
                 if (Loci.isEmpty(current.loci)) { this.target = undefined; this.hideHandle(); } else this.attach(current.loci, position);
