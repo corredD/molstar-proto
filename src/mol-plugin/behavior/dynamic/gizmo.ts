@@ -104,6 +104,8 @@ export const GizmoMode = PluginBehavior.create({
         private hoverGroup = HandleGroup.None as number;
         private target: GizmoTarget | undefined;
         private session: GizmoSession | undefined;
+        /** a drag ends with a pointer-up click; ignore that one click so it doesn't re-attach/detach */
+        private suppressNextClick = false;
 
         private readonly _ray: Ray3D = { origin: Vec3(), direction: Vec3() };
         private readonly _plane: Plane3D = { normal: Vec3(), constant: 0 };
@@ -371,16 +373,30 @@ export const GizmoMode = PluginBehavior.create({
             this.setTrackball(true);
             const c = this.canvas3d;
             if (!s || !c) return;
+            // a mouse drag releases with a click event; ignore it so it doesn't re-attach/detach the gizmo
+            if (!s.viaKeyboard) this.suppressNextClick = true;
 
             Mat4.mul(this._eff, s.deltaMat, s.base); // total preview transform
             if (commit && !Mat4.isIdentity(this._eff, 1e-6)) {
                 const abs = Mat4.mul(Mat4(), this._eff, s.target.baseMatrix);
-                await this.commit(s.target.ref, abs, transformerForKind(s.target.kind));
-                Vec3.transformMat4(s.target.center, s.target.center, this._eff);
+                // the gizmo's displayed centre/orientation for this preview, kept even if commit fails
+                const previewCenter = Vec3.transformMat4(Vec3(), s.target.center, this._eff);
+                Mat3.fromMat4(this._rotDyn, abs);
+                try {
+                    await this.commit(s.target.ref, abs, transformerForKind(s.target.kind));
+                } catch (e) {
+                    console.error('[gizmo] transform commit failed; keeping live preview', e);
+                    this.showHandle(this.handleScale);
+                    c.handle.update(c.camera, previewCenter, this._rotDyn);
+                    c.requestDraw();
+                    return;
+                }
+                Vec3.copy(s.target.center, previewCenter);
                 s.target.baseMatrix = abs;
-                // committed -> downstream representation rebuilds at baked coords; keep the gizmo
-                // at the object's new orientation (no snap back to world axes)
-                c.handle.update(c.camera, s.target.center, Mat3.fromMat4(this._rotDyn, abs));
+                // committed -> downstream representation rebuilds at baked coords; re-assert the handle
+                // (the rebuild can disturb it) and keep it at the object's new position/orientation
+                this.showHandle(this.handleScale);
+                c.handle.update(c.camera, s.target.center, this._rotDyn);
             } else {
                 // cancel: clear the live preview and restore the gizmo to its pre-drag orientation
                 for (const ro of s.renderObjects) Visual.setTransform(ro, Mat4.identity());
@@ -434,6 +450,7 @@ export const GizmoMode = PluginBehavior.create({
 
             this.subscribeObservable(this.ctx.behaviors.interaction.click, ({ current, position }) => {
                 if (!this.ctx.gizmoMode) return;
+                if (this.suppressNextClick) { this.suppressNextClick = false; return; } // tail-of-drag click
                 if (this.session) { if (this.session.viaKeyboard) this.finish(true); return; } // click confirms a keyboard modal
                 if (isHandleLoci(current.loci)) return; // gizmo click is for dragging
                 if (Loci.isEmpty(current.loci)) { this.target = undefined; this.hideHandle(); } else this.attach(current.loci, position);
