@@ -15,7 +15,7 @@
 import { PluginBehavior } from '../behavior';
 import { HandleGroup, HandleHelperParams, isHandleLoci } from '../../../mol-canvas3d/helper/handle-helper';
 import { Loci } from '../../../mol-model/loci';
-import { StructureElement } from '../../../mol-model/structure';
+import { Structure, StructureElement } from '../../../mol-model/structure';
 import { Volume } from '../../../mol-model/volume';
 import { Mat3, Mat4, Quat, Vec2, Vec3 } from '../../../mol-math/linear-algebra';
 import { Ray3D } from '../../../mol-math/geometry/primitives/ray3d';
@@ -149,10 +149,15 @@ export const GizmoMode = PluginBehavior.create({
             return Vec3.normalize(out, Vec3.sub(out, c.camera.state.target, c.camera.state.position));
         }
 
-        /** Mouse ray into the scene. `camera.getRay` expects bottom-up Y, input is top-down. */
+        /**
+         * Mouse ray into the scene. `camera.getRay` works in viewport (device-pixel) space, but the
+         * input drag coords are CSS pixels, so scale by pixelRatio (otherwise translate runs at 1/pr on
+         * hi-dpi screens). Y is flipped because getRay expects bottom-up and input is top-down.
+         */
         private updateRay(x: number, y: number) {
             const c = this.canvas3d!;
-            c.camera.getRay(this._ray, x, c.input.height - y);
+            const pr = c.input.pixelRatio;
+            c.camera.getRay(this._ray, x * pr, c.input.height - y * pr);
             Vec3.normalize(this._ray.direction, this._ray.direction);
         }
 
@@ -249,7 +254,11 @@ export const GizmoMode = PluginBehavior.create({
                 const cell = this.ctx.helpers.substructureParent.get(loci.structure, true);
                 if (!cell) return undefined;
                 const ref = cell.transform.ref;
-                return { kind: 'structure', ref, radius, center: Vec3.clone(sphere.center), baseMatrix: this.readBaseMatrix(ref, StateTransforms.Model.TransformStructureConformation) };
+                // 'centre' placement must be the whole object's centre, not the clicked sub-loci's
+                // (at element/residue granularity those coincide, hiding the difference from 'loci')
+                const struct = cell.obj?.data as Structure | undefined;
+                const objSphere = struct ? struct.boundary.sphere : sphere;
+                return { kind: 'structure', ref, radius: objSphere.radius, center: Vec3.clone(objSphere.center), baseMatrix: this.readBaseMatrix(ref, StateTransforms.Model.TransformStructureConformation) };
             }
             // any volume loci kind (volume / isosurface / cell / segment) carries `.volume`
             const volume = (loci as any).volume;
