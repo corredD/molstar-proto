@@ -353,15 +353,15 @@ export const GizmoMode = PluginBehavior.create({
                 const dir = Vec3.normalize(_v1, Vec3.sub(_v1, c.camera.state.target, c.camera.state.position));
                 const right = Vec3.normalize(_v2, Vec3.cross(_v2, dir, c.camera.state.up));
                 const tup = Vec3.normalize(_v3, Vec3.cross(_v3, right, dir));
-                Mat4.fromRotation(_r, -dx * TrackballSensitivity, tup);
-                Mat4.fromRotation(_r2, dy * TrackballSensitivity, right);
+                Mat4.fromRotation(_r, dx * TrackballSensitivity, tup);
+                Mat4.fromRotation(_r2, -dy * TrackballSensitivity, right);
                 Mat4.mul(_rotMat, _r, _r2);
                 aboutCenterMat(s.deltaMat, center, _rotMat);
             } else {
                 const hit = this.planeHit(center, s.axis, x, y);
                 if (!hit) return; // ring edge-on: skip frame
                 const v = Vec3.sub(this._vec, hit, center);
-                aboutCenter(s.deltaMat, center, s.axis, -signedAngle(s.startVec, v, s.axis) * RotationSensitivity);
+                aboutCenter(s.deltaMat, center, s.axis, signedAngle(s.startVec, v, s.axis) * RotationSensitivity);
             }
             // effective preview = this sub-move composed onto earlier ones (base)
             Mat4.mul(this._eff, s.deltaMat, s.base);
