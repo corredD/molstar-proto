@@ -128,7 +128,6 @@ export const GizmoMode = PluginBehavior.create({
 
         private hideHandle() {
             if (!this.handleEnabled) return;
-            console.trace('[gizmo] hideHandle'); // TEMP diagnostic: confirm what hides the gizmo
             this.handleEnabled = false;
             this.canvas3d?.setProps({ handle: { handle: { name: 'off', params: {} } } });
         }

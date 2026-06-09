@@ -109,14 +109,18 @@ export class HandleHelper {
 
         // keep a ~constant on-screen size: getPixelSize is world units per device pixel at the gizmo,
         // so HandleScreenSize CSS px -> (HandleScreenSize * pixelRatio * pixelSize) world units.
-        // Guard/clamp so a degenerate camera frame can never collapse or blow up the handle.
         const pixelSize = camera.getPixelSize(position);
         let f = 1;
         if (this.baseScale > 0 && Number.isFinite(pixelSize) && pixelSize > 0) {
             f = (HandleScreenSize * this.webgl.pixelRatio * pixelSize) / this.baseScale;
         }
         if (!Number.isFinite(f) || f <= 0) f = 1;
-        f = Math.max(1e-3, Math.min(f, 1e4));
+        // Cap the world size to a fraction of the camera->gizmo distance: when the camera is close,
+        // getPixelSize grows and a constant-screen-size handle would extend past the near plane and be
+        // clipped away (the "disappears when too close" case). This keeps it just in front of the camera.
+        const dist = Vec3.distance(camera.state.position, position);
+        if (Number.isFinite(dist) && dist > 0) f = Math.min(f, (0.5 * dist) / this.baseScale);
+        f = Math.max(1e-4, Math.min(f, 1e4));
 
         const m = this.renderObject.values.aTransform.ref.value as unknown as Mat4;
         // rotation first (fromMat3 zeroes the translation column), then uniform scale, then translation
