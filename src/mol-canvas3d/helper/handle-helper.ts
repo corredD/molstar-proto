@@ -115,11 +115,12 @@ export class HandleHelper {
             f = (HandleScreenSize * this.webgl.pixelRatio * pixelSize) / this.baseScale;
         }
         if (!Number.isFinite(f) || f <= 0) f = 1;
-        // Cap the world size to a fraction of the camera->gizmo distance: when the camera is close,
-        // getPixelSize grows and a constant-screen-size handle would extend past the near plane and be
-        // clipped away (the "disappears when too close" case). This keeps it just in front of the camera.
+        // Cap the world size so the handle never extends past the near clip plane (which would clip it
+        // away as you zoom in). The available margin in front of the gizmo is (distance - near); keep the
+        // handle within most of it so it stays visible and unclipped, just shrinking as the camera nears.
         const dist = Vec3.distance(camera.state.position, position);
-        if (Number.isFinite(dist) && dist > 0) f = Math.min(f, (0.5 * dist) / this.baseScale);
+        const margin = dist - camera.near;
+        if (Number.isFinite(margin) && margin > 0) f = Math.min(f, (0.9 * margin) / this.baseScale);
         f = Math.max(1e-4, Math.min(f, 1e4));
 
         const m = this.renderObject.values.aTransform.ref.value as unknown as Mat4;
@@ -220,10 +221,23 @@ export const HandleGroup = {
     RotateObjectZ: 12,
 } as const;
 
+export function handleGroupLabel(groupId: number): string {
+    switch (groupId) {
+        case HandleGroup.TranslateScreenXY: return 'Move XYZ';
+        case HandleGroup.TranslateObjectX: return 'Move X';
+        case HandleGroup.TranslateObjectY: return 'Move Y';
+        case HandleGroup.TranslateObjectZ: return 'Move Z';
+        case HandleGroup.RotateObjectX: return 'Rotate X';
+        case HandleGroup.RotateObjectY: return 'Rotate Y';
+        case HandleGroup.RotateObjectZ: return 'Rotate Z';
+        default: return 'Gizmo';
+    }
+}
+
 function HandleLoci(handleHelper: HandleHelper, groupId: number, instanceId: number) {
     return DataLoci('handle', handleHelper, [{ groupId, instanceId }],
         (boundingSphere: Sphere3D) => handleHelper.getBoundingSphere(boundingSphere, instanceId),
-        () => `Handle Helper | Group Id ${groupId} | Instance Id ${instanceId}`);
+        () => `Gizmo | ${handleGroupLabel(groupId)}`);
 }
 export type HandleLoci = ReturnType<typeof HandleLoci>
 export function isHandleLoci(x: Loci): x is HandleLoci {
