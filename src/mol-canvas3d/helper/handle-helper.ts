@@ -47,6 +47,9 @@ export const HandleHelperParams = {
 export type HandleHelperParams = typeof HandleHelperParams
 export type HandleHelperProps = PD.Values<HandleHelperParams>
 
+/** Target on-screen size (in CSS pixels) of the gizmo's axis length, kept constant across zoom. */
+const HandleScreenSize = 80;
+
 export class HandleHelper {
     scene: Scene;
     props: HandleHelperProps = {
@@ -55,6 +58,8 @@ export class HandleHelper {
 
     private renderObject: GraphicsRenderObject | undefined;
     private pixelRatio = 1;
+    /** world size the mesh was built at (axis length); used to rescale to a constant screen size */
+    private baseScale = 1;
 
     private _transform = Mat4();
     getBoundingSphere(out: Sphere3D, instanceId: number) {
@@ -79,6 +84,7 @@ export class HandleHelper {
                         cellSize: 0,
                     };
                     this.renderObject = createHandleRenderObject(params);
+                    this.baseScale = 10 * params.scale; // getHandleShape builds the mesh at 10 * scale
                     this.scene.add(this.renderObject);
                     this.scene.commit();
 
@@ -101,12 +107,17 @@ export class HandleHelper {
             this.setProps(this.props);
         }
 
-        const m = this.renderObject.values.aTransform.ref.value as unknown as Mat4;
-        // set rotation first (fromMat3 zeroes the translation column), then the translation
-        Mat4.fromMat3(m, rotation);
-        Mat4.setTranslation(m, position);
+        // keep a constant on-screen size: getPixelSize gives world units per device pixel at the gizmo,
+        // so HandleScreenSize CSS px maps to (HandleScreenSize * pixelRatio * pixelSize) world units
+        const pixelSize = camera.getPixelSize(position);
+        const target = HandleScreenSize * this.webgl.pixelRatio * pixelSize;
+        const f = (this.baseScale > 0 && Number.isFinite(target) && target > 0) ? target / this.baseScale : 1;
 
-        // TODO make invariant to camera scaling by adjusting renderObject transform
+        const m = this.renderObject.values.aTransform.ref.value as unknown as Mat4;
+        // set rotation first (fromMat3 zeroes the translation column), scale it, then the translation
+        Mat4.fromMat3(m, rotation);
+        Mat4.scaleUniformly(m, m, f);
+        Mat4.setTranslation(m, position);
 
         ValueCell.update(this.renderObject.values.aTransform, this.renderObject.values.aTransform.ref.value);
         this.scene.update([this.renderObject], true);
