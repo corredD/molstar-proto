@@ -128,6 +128,7 @@ export const GizmoMode = PluginBehavior.create({
 
         private hideHandle() {
             if (!this.handleEnabled) return;
+            console.trace('[gizmo] hideHandle'); // TEMP diagnostic: confirm what hides the gizmo
             this.handleEnabled = false;
             this.canvas3d?.setProps({ handle: { handle: { name: 'off', params: {} } } });
         }
@@ -474,7 +475,8 @@ export const GizmoMode = PluginBehavior.create({
                 if (!this.ctx.gizmoMode) return;
                 if (this.session) { if (this.session.viaKeyboard) this.finish(true); return; } // click confirms a keyboard modal
                 if (isHandleLoci(current.loci)) return; // gizmo click is for dragging
-                if (Loci.isEmpty(current.loci)) { this.target = undefined; this.hideHandle(); } else this.attach(current.loci, position);
+                if (Loci.isEmpty(current.loci)) return; // keep the gizmo; detach by toggling gizmo mode off
+                this.attach(current.loci, position);
             });
 
             // keyboard modal: M = translate, O = rotate; X/Y/Z constrain to a world axis; Enter/Esc confirm/cancel
