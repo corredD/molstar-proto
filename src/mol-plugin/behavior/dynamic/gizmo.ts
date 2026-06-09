@@ -15,7 +15,7 @@
 import { PluginBehavior } from '../behavior';
 import { HandleGroup, HandleHelperParams, isHandleLoci } from '../../../mol-canvas3d/helper/handle-helper';
 import { Loci } from '../../../mol-model/loci';
-import { StructureElement } from '../../../mol-model/structure';
+import { Structure, StructureElement } from '../../../mol-model/structure';
 import { Volume } from '../../../mol-model/volume';
 import { Mat3, Mat4, Quat, Vec2, Vec3 } from '../../../mol-math/linear-algebra';
 import { Ray3D } from '../../../mol-math/geometry/primitives/ray3d';
@@ -281,7 +281,11 @@ export const GizmoMode = PluginBehavior.create({
                 const ref = cell.transform.ref;
                 // 'centre' placement = the whole rendered object's centre (not the clicked sub-loci's,
                 // which at element/residue granularity sits at the click and hides the 'loci' difference)
-                const objSphere = this.objectBoundingSphere(ref) ?? sphere;
+                // object centre via the SAME getBoundingSphere path as the clicked sphere, over the
+                // whole rendered structure, so it shares the click's coordinate frame
+                const wholeLoci = Structure.toStructureElementLoci(loci.structure.root);
+                const objSphere = Loci.getBoundingSphere(wholeLoci) ?? sphere;
+                console.log('[gizmo] centers', { objCenter: [...objSphere.center], clickedCenter: [...sphere.center], roMean: this.objectBoundingSphere(ref)?.center }); // TEMP diagnostic
                 return { kind: 'structure', ref, radius: objSphere.radius, center: Vec3.clone(objSphere.center), baseMatrix: this.readBaseMatrix(ref, StateTransforms.Model.TransformStructureConformation) };
             }
             // any volume loci kind (volume / isosurface / cell / segment) carries `.volume`
