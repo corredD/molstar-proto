@@ -15,11 +15,12 @@
 import { PluginBehavior } from '../behavior';
 import { HandleGroup, HandleHelperParams, isHandleLoci } from '../../../mol-canvas3d/helper/handle-helper';
 import { Loci } from '../../../mol-model/loci';
-import { Structure, StructureElement } from '../../../mol-model/structure';
+import { StructureElement } from '../../../mol-model/structure';
 import { Volume } from '../../../mol-model/volume';
 import { Mat3, Mat4, Quat, Vec2, Vec3 } from '../../../mol-math/linear-algebra';
 import { Ray3D } from '../../../mol-math/geometry/primitives/ray3d';
 import { Plane3D } from '../../../mol-math/geometry/primitives/plane3d';
+import { Sphere3D } from '../../../mol-math/geometry/primitives/sphere3d';
 import { Visual } from '../../../mol-repr/visual';
 import { GraphicsRenderObject } from '../../../mol-gl/render-object';
 import { StateSelection, StateTransformer } from '../../../mol-state';
@@ -238,6 +239,23 @@ export const GizmoMode = PluginBehavior.create({
             return ros;
         }
 
+        /**
+         * World-space bounding sphere of what's actually rendered under `ref` (union of the
+         * renderObjects' world bounding spheres). Use this for the gizmo centre so it sits on the
+         * drawn geometry — the cell's `structure.boundary` can be in a different frame (e.g. mesoscale
+         * instances), which would put the gizmo off the molecule.
+         */
+        private objectBoundingSphere(ref: string): Sphere3D | undefined {
+            let out: Sphere3D | undefined;
+            for (const ro of this.collectRenderObjects(ref)) {
+                const bs = ro.values.boundingSphere?.ref.value as Sphere3D | undefined;
+                if (!bs || !(bs.radius > 0)) continue;
+                if (!out) out = Sphere3D.clone(bs);
+                else Sphere3D.expandBySphere(out, out, bs);
+            }
+            return out;
+        }
+
         private cellRefForVolume(volume: Volume): string | undefined {
             const cells = this.ctx.state.data.cells;
             for (const [ref, cell] of cells) {
@@ -254,10 +272,9 @@ export const GizmoMode = PluginBehavior.create({
                 const cell = this.ctx.helpers.substructureParent.get(loci.structure, true);
                 if (!cell) return undefined;
                 const ref = cell.transform.ref;
-                // 'centre' placement must be the whole object's centre, not the clicked sub-loci's
-                // (at element/residue granularity those coincide, hiding the difference from 'loci')
-                const struct = cell.obj?.data as Structure | undefined;
-                const objSphere = struct ? struct.boundary.sphere : sphere;
+                // 'centre' placement = the whole rendered object's centre (not the clicked sub-loci's,
+                // which at element/residue granularity sits at the click and hides the 'loci' difference)
+                const objSphere = this.objectBoundingSphere(ref) ?? sphere;
                 return { kind: 'structure', ref, radius: objSphere.radius, center: Vec3.clone(objSphere.center), baseMatrix: this.readBaseMatrix(ref, StateTransforms.Model.TransformStructureConformation) };
             }
             // any volume loci kind (volume / isosurface / cell / segment) carries `.volume`
