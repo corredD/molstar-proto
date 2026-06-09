@@ -20,7 +20,6 @@ import { Volume } from '../../../mol-model/volume';
 import { Mat3, Mat4, Quat, Vec2, Vec3 } from '../../../mol-math/linear-algebra';
 import { Ray3D } from '../../../mol-math/geometry/primitives/ray3d';
 import { Plane3D } from '../../../mol-math/geometry/primitives/plane3d';
-import { Sphere3D } from '../../../mol-math/geometry/primitives/sphere3d';
 import { Visual } from '../../../mol-repr/visual';
 import { GraphicsRenderObject } from '../../../mol-gl/render-object';
 import { StateSelection, StateTransformer } from '../../../mol-state';
@@ -239,30 +238,6 @@ export const GizmoMode = PluginBehavior.create({
             return ros;
         }
 
-        /**
-         * World-space bounding sphere of what's actually rendered under `ref` (union of the
-         * renderObjects' world bounding spheres). Use this for the gizmo centre so it sits on the
-         * drawn geometry — the cell's `structure.boundary` can be in a different frame (e.g. mesoscale
-         * instances), which would put the gizmo off the molecule.
-         */
-        private objectBoundingSphere(ref: string): Sphere3D | undefined {
-            const center = Vec3();
-            let n = 0;
-            let radius = 0;
-            // mean of the rendered renderObjects' world sphere centres (expandBySphere keeps the first
-            // centre, so it can't be used for a true centroid)
-            for (const ro of this.collectRenderObjects(ref)) {
-                const bs = ro.values.boundingSphere?.ref.value as Sphere3D | undefined;
-                if (!bs || !(bs.radius > 0)) continue;
-                Vec3.add(center, center, bs.center);
-                radius = Math.max(radius, bs.radius);
-                n++;
-            }
-            if (n === 0) return undefined;
-            Vec3.scale(center, center, 1 / n);
-            return Sphere3D.create(center, radius);
-        }
-
         private cellRefForVolume(volume: Volume): string | undefined {
             const cells = this.ctx.state.data.cells;
             for (const [ref, cell] of cells) {
@@ -285,7 +260,6 @@ export const GizmoMode = PluginBehavior.create({
                 // whole rendered structure, so it shares the click's coordinate frame
                 const wholeLoci = Structure.toStructureElementLoci(loci.structure.root);
                 const objSphere = Loci.getBoundingSphere(wholeLoci) ?? sphere;
-                console.log('[gizmo] centers', { objCenter: [...objSphere.center], clickedCenter: [...sphere.center], roMean: this.objectBoundingSphere(ref)?.center }); // TEMP diagnostic
                 return { kind: 'structure', ref, radius: objSphere.radius, center: Vec3.clone(objSphere.center), baseMatrix: this.readBaseMatrix(ref, StateTransforms.Model.TransformStructureConformation) };
             }
             // any volume loci kind (volume / isosurface / cell / segment) carries `.volume`
