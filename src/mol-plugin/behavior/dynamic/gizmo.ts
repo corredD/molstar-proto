@@ -246,14 +246,21 @@ export const GizmoMode = PluginBehavior.create({
          * instances), which would put the gizmo off the molecule.
          */
         private objectBoundingSphere(ref: string): Sphere3D | undefined {
-            let out: Sphere3D | undefined;
+            const center = Vec3();
+            let n = 0;
+            let radius = 0;
+            // mean of the rendered renderObjects' world sphere centres (expandBySphere keeps the first
+            // centre, so it can't be used for a true centroid)
             for (const ro of this.collectRenderObjects(ref)) {
                 const bs = ro.values.boundingSphere?.ref.value as Sphere3D | undefined;
                 if (!bs || !(bs.radius > 0)) continue;
-                if (!out) out = Sphere3D.clone(bs);
-                else Sphere3D.expandBySphere(out, out, bs);
+                Vec3.add(center, center, bs.center);
+                radius = Math.max(radius, bs.radius);
+                n++;
             }
-            return out;
+            if (n === 0) return undefined;
+            Vec3.scale(center, center, 1 / n);
+            return Sphere3D.create(center, radius);
         }
 
         private cellRefForVolume(volume: Volume): string | undefined {
