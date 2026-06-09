@@ -47,6 +47,9 @@ export const HandleHelperParams = {
 export type HandleHelperParams = typeof HandleHelperParams
 export type HandleHelperProps = PD.Values<HandleHelperParams>
 
+/** Target on-screen size (CSS px) of the gizmo's axis length, kept ~constant across zoom. */
+const HandleScreenSize = 80;
+
 export class HandleHelper {
     scene: Scene;
     props: HandleHelperProps = {
@@ -55,6 +58,8 @@ export class HandleHelper {
 
     private renderObject: GraphicsRenderObject | undefined;
     private pixelRatio = 1;
+    /** world axis length the mesh was built at; used to renormalise to a constant screen size */
+    private baseScale = 1;
 
     private _transform = Mat4();
     getBoundingSphere(out: Sphere3D, instanceId: number) {
@@ -79,6 +84,7 @@ export class HandleHelper {
                         cellSize: 0,
                     };
                     this.renderObject = createHandleRenderObject(params);
+                    this.baseScale = 10 * params.scale; // getHandleShape builds the mesh at 10 * scale
                     this.scene.add(this.renderObject);
                     this.scene.commit();
 
@@ -101,12 +107,22 @@ export class HandleHelper {
             this.setProps(this.props);
         }
 
-        const m = this.renderObject.values.aTransform.ref.value as unknown as Mat4;
-        // set rotation first (fromMat3 zeroes the translation column), then the translation
-        Mat4.fromMat3(m, rotation);
-        Mat4.setTranslation(m, position);
+        // keep a ~constant on-screen size: getPixelSize is world units per device pixel at the gizmo,
+        // so HandleScreenSize CSS px -> (HandleScreenSize * pixelRatio * pixelSize) world units.
+        // Guard/clamp so a degenerate camera frame can never collapse or blow up the handle.
+        const pixelSize = camera.getPixelSize(position);
+        let f = 1;
+        if (this.baseScale > 0 && Number.isFinite(pixelSize) && pixelSize > 0) {
+            f = (HandleScreenSize * this.webgl.pixelRatio * pixelSize) / this.baseScale;
+        }
+        if (!Number.isFinite(f) || f <= 0) f = 1;
+        f = Math.max(1e-3, Math.min(f, 1e4));
 
-        // TODO make invariant to camera scaling by adjusting renderObject transform
+        const m = this.renderObject.values.aTransform.ref.value as unknown as Mat4;
+        // rotation first (fromMat3 zeroes the translation column), then uniform scale, then translation
+        Mat4.fromMat3(m, rotation);
+        Mat4.scaleUniformly(m, m, f);
+        Mat4.setTranslation(m, position);
 
         ValueCell.update(this.renderObject.values.aTransform, this.renderObject.values.aTransform.ref.value);
         this.scene.update([this.renderObject], true);

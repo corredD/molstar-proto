@@ -502,6 +502,16 @@ export const GizmoMode = PluginBehavior.create({
                 this.subscribeObservable(input.move, ({ x, y }) => {
                     if (this.session?.viaKeyboard) this.updateSession(x, y);
                 });
+                // rescale the (idle) handle on any camera change so it keeps a constant on-screen size;
+                // during a session updateSession already re-positions/-scales it each frame
+                const camera = this.ctx.canvas3d?.camera;
+                if (camera) {
+                    this.subscribeObservable(camera.changed, () => {
+                        const c = this.canvas3d;
+                        if (!c || !this.target || this.session || !this.handleEnabled) return;
+                        c.handle.update(c.camera, this.target.center, Mat3.fromMat4(this._rotDyn, this.target.baseMatrix));
+                    });
+                }
             });
         }
     },
