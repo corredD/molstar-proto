@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2023-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2023-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
@@ -15,7 +15,7 @@ import { GraphicsMode, MesoscaleGroup, MesoscaleState, getGraphicsModeProps, get
 import { ColorNames } from '../../../../mol-util/color/names';
 import { ShapeRepresentation3D, StructureRepresentation3D } from '../../../../mol-plugin-state/transforms/representation';
 import { ParseCif, ParsePly, ReadFile } from '../../../../mol-plugin-state/transforms/data';
-import { ModelFromTrajectory, ShapeFromPly, TrajectoryFromGRO, TrajectoryFromMOL, TrajectoryFromMOL2, TrajectoryFromMmCif, TrajectoryFromPDB, TrajectoryFromSDF, TrajectoryFromXYZ } from '../../../../mol-plugin-state/transforms/model';
+import { ModelFromTrajectory, TrajectoryFromGRO, TrajectoryFromMOL, TrajectoryFromMOL2, TrajectoryFromMmCif, TrajectoryFromPDB, TrajectoryFromSDF, TrajectoryFromXYZ } from '../../../../mol-plugin-state/transforms/model';
 import { Euler } from '../../../../mol-math/linear-algebra/3d/euler';
 import { Asset } from '../../../../mol-util/assets';
 import { Clip } from '../../../../mol-util/clip';
@@ -25,6 +25,7 @@ import { NumberArray } from '../../../../mol-util/type-helpers';
 import { BaseGeometry } from '../../../../mol-geo/geometry/base';
 import { ParamDefinition as PD } from '../../../../mol-util/param-definition';
 import { getMesoscalePlacementProps } from '../placement';
+import { ShapeFromPly } from '../../../../mol-plugin-state/transforms/shape';
 
 function getSpacefillParams(color: Color, sizeFactor: number, graphics: GraphicsMode, clipVariant: Clip.Variant) {
     const gmp = getGraphicsModeProps(graphics === 'custom' ? 'quality' : graphics);
