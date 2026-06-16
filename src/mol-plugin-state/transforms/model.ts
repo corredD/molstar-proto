@@ -12,6 +12,7 @@ import { parseGRO } from '../../mol-io/reader/gro/parser';
 import { parsePDB } from '../../mol-io/reader/pdb/parser';
 import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
 import { shapeFromPly } from '../../mol-model-formats/shape/ply';
+import { shapeFromVtp } from '../../mol-model-formats/shape/vtp';
 import { coordinatesFromDcd } from '../../mol-model-formats/structure/dcd';
 import { trajectoryFromGRO } from '../../mol-model-formats/structure/gro';
 import { trajectoryFromCCD, trajectoryFromMmCIF } from '../../mol-model-formats/structure/mmcif';
@@ -94,6 +95,7 @@ export { StructureComponent };
 export { CustomModelProperties };
 export { CustomStructureProperties };
 export { ShapeFromPly };
+export { ShapeFromVtp };
 
 type CoordinatesFromDcd = typeof CoordinatesFromDcd
 const CoordinatesFromDcd = PluginStateTransform.BuiltIn({
@@ -1319,6 +1321,27 @@ const ShapeFromPly = PluginStateTransform.BuiltIn({
         return Task.create('Create shape from PLY', async ctx => {
             const shape = await shapeFromPly(a.data, params).runInContext(ctx);
             const props = { label: params.label || 'Shape' };
+            return new SO.Shape.Provider(shape, props);
+        });
+    }
+});
+
+type ShapeFromVtp = typeof ShapeFromVtp
+const ShapeFromVtp = PluginStateTransform.BuiltIn({
+    name: 'shape-from-vtp',
+    display: { name: 'Shape from VTP', description: 'Create Shape from VTP (VTK PolyData) file' },
+    from: SO.Format.Vtp,
+    to: SO.Shape.Provider,
+    params(a) {
+        return {
+            label: PD.Optional(PD.Text('', { isHidden: true }))
+        };
+    }
+})({
+    apply({ a, params }) {
+        return Task.create('Create shape from VTP', async ctx => {
+            const shape = await shapeFromVtp(a.data).runInContext(ctx);
+            const props = { label: params.label || 'VTP Shape' };
             return new SO.Shape.Provider(shape, props);
         });
     }
