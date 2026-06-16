@@ -13,6 +13,7 @@ import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
 import { parseMtl } from '../../mol-io/reader/obj/mtl-parser';
 import { shapeFromObj } from '../../mol-model-formats/shape/obj';
 import { shapeFromPly } from '../../mol-model-formats/shape/ply';
+import { shapeFromGltf } from '../../mol-model-formats/shape/gltf';
 import { Shape } from '../../mol-model/shape';
 import { Task } from '../../mol-task';
 import { Asset } from '../../mol-util/assets';
@@ -127,5 +128,61 @@ const ShapeFromObj = PluginStateTransform.BuiltIn({
     },
     dispose({ cache }) {
         ((cache as any)?.mtlAsset as Asset.Wrapper | undefined)?.dispose();
+    }
+});
+
+export { ShapeFromGltf };
+type ShapeFromGltf = typeof ShapeFromGltf
+const ShapeFromGltf = PluginStateTransform.BuiltIn({
+    name: 'shape-from-gltf',
+    display: { name: 'Shape from glTF', description: 'Create Shape from glTF/GLB data' },
+    from: SO.Format.Gltf,
+    to: SO.Shape.Provider,
+    params(a) {
+        // Show binFile param only when the parsed glTF has at least one unresolved external buffer
+        const needsBin = (a?.data.buffers ?? []).some((b, i) => {
+            const uri = a?.data.json.buffers?.[i]?.uri;
+            return b === null && !!uri && !uri.startsWith('data:');
+        });
+        return {
+            transforms: PD.Optional(PD.Value([Mat4.identity()], { isHidden: true })),
+            label: PD.Optional(PD.Text('', { isHidden: true })),
+            binFile: needsBin
+                ? PD.Optional(PD.File({ accept: '.bin', label: 'Binary Buffer (.bin)' }))
+                : PD.Optional(PD.Value<null>(null, { isHidden: true })),
+        };
+    }
+})({
+    apply({ a, params, cache }, plugin: PluginContext) {
+        return Task.create('Create shape from glTF', async ctx => {
+            let file = a.data;
+
+            // If the glTF references external .bin buffers and the user provided one, inject it
+            if (params.binFile) {
+                const asset = await plugin.managers.asset.resolve(params.binFile, 'binary').runInContext(ctx);
+                (cache as any).binAsset = asset;
+                const binData = asset.data as Uint8Array;
+
+                // Find the first external buffer slot that is still unresolved
+                const targetIdx = file.buffers.findIndex((b, i) => {
+                    const uri = file.json.buffers?.[i]?.uri;
+                    return b === null && !!uri && !uri.startsWith('data:');
+                });
+
+                if (targetIdx >= 0) {
+                    // Create a new GltfFile with the bin injected (keep original immutable)
+                    const patchedBuffers = file.buffers.slice() as (Uint8Array | null)[];
+                    patchedBuffers[targetIdx] = binData;
+                    file = { json: file.json, buffers: patchedBuffers };
+                }
+            }
+
+            const shape = await shapeFromGltf(file).runInContext(ctx);
+            const props = { label: params.label || 'Shape' };
+            return new SO.Shape.Provider(shape, props);
+        });
+    },
+    dispose({ cache }) {
+        ((cache as any)?.binAsset as Asset.Wrapper | undefined)?.dispose();
     }
 });

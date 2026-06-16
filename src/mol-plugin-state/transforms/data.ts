@@ -11,6 +11,7 @@ import { CIF } from '../../mol-io/reader/cif';
 import * as DSN6 from '../../mol-io/reader/dsn6/parser';
 import * as PLY from '../../mol-io/reader/ply/parser';
 import * as OBJ from '../../mol-io/reader/obj/parser';
+import * as GLTF from '../../mol-io/reader/gltf/parser';
 import { parsePsf } from '../../mol-io/reader/psf/parser';
 import { PluginContext } from '../../mol-plugin/context';
 import { StateObject, StateTransformer } from '../../mol-state';
@@ -43,6 +44,7 @@ export { ParsePrmtop };
 export { ParseTop };
 export { ParsePly };
 export { ParseObj };
+export { ParseGltf };
 export { ParseCcp4 };
 export { ParseDsn6 };
 export { ParseDx };
@@ -417,6 +419,26 @@ const ParseObj = PluginStateTransform.BuiltIn({
             const parsed = await OBJ.parseObj(a.data).runInContext(ctx);
             if (parsed.isError) throw new Error(parsed.message);
             return new SO.Format.Obj(parsed.result, { label: 'OBJ Data' });
+        });
+    }
+});
+
+type ParseGltf = typeof ParseGltf
+const ParseGltf = PluginStateTransform.BuiltIn({
+    name: 'parse-gltf',
+    display: { name: 'Parse glTF', description: 'Parse glTF/GLB from String or Binary data' },
+    from: [SO.Data.String, SO.Data.Binary],
+    to: SO.Format.Gltf
+})({
+    apply({ a }) {
+        return Task.create('Parse glTF', async ctx => {
+            const raw = a.data;
+            const data: string | Uint8Array = raw instanceof Uint8Array
+                ? raw
+                : StringLike.toString(raw as StringLike);
+            const parsed = await GLTF.parseGltf(data).runInContext(ctx);
+            if (parsed.isError) throw new Error(parsed.message);
+            return new SO.Format.Gltf(parsed.result, { label: 'glTF Data' });
         });
     }
 });
