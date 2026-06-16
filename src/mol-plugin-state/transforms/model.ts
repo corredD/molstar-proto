@@ -10,7 +10,7 @@
 import { parseDcd } from '../../mol-io/reader/dcd/parser';
 import { parseGRO } from '../../mol-io/reader/gro/parser';
 import { parsePDB } from '../../mol-io/reader/pdb/parser';
-import { Vec3 } from '../../mol-math/linear-algebra';
+import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
 import { shapeFromVtp } from '../../mol-model-formats/shape/vtp';
 import { coordinatesFromDcd } from '../../mol-model-formats/structure/dcd';
 import { trajectoryFromGRO } from '../../mol-model-formats/structure/gro';
