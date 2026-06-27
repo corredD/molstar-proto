@@ -116,6 +116,7 @@ export const DefaultPluginSpec = (): PluginSpec => ({
         PluginSpec.Action(StateTransforms.Volume.VolumeFromDx),
         PluginSpec.Action(StateTransforms.Representation.VolumeRepresentation3D),
         PluginSpec.Action(StateTransforms.Volume.VolumeTransform),
+        PluginSpec.Action(StateTransforms.Volume.VolumeDownsample),
         PluginSpec.Action(StateTransforms.Volume.VolumeInstances),
     ],
     behaviors: [
