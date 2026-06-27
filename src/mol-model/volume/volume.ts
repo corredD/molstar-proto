@@ -3,12 +3,13 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Grid } from './grid';
 import { Interval, OrderedSet } from '../../mol-data/int';
 import { Box3D, Sphere3D } from '../../mol-math/geometry';
-import { Vec3, Mat4 } from '../../mol-math/linear-algebra';
+import { Vec3, Mat4, Tensor } from '../../mol-math/linear-algebra';
 import { BoundaryHelper } from '../../mol-math/geometry/boundary-helper';
 import { CubeFormat } from '../../mol-model-formats/volume/cube';
 import { EPSILON, equalEps } from '../../mol-math/linear-algebra/3d/common';
@@ -53,6 +54,86 @@ export namespace Volume {
             x?._propertyData &&
             x?._localPropertyData
         );
+    }
+
+    /**
+     * Box-average downsample of a volume by an integer `factor` per axis (`factor >= 2`), producing a
+     * coarser grid that occupies the same world space. This is a level-of-detail aid for interactive
+     * direct-volume rendering of large maps: e.g. factor 2 cuts the cell count (and thus the 3D-texture
+     * memory bandwidth and the ray-march step count) ~8-fold, which is what makes a multi-hundred-million
+     * voxel tomogram interactive. Returns the input unchanged for `factor <= 1`.
+     *
+     * The grid->cartesian transform is preserved: for `spacegroup` grids the scale derives from
+     * `fractionalBox.size / dimensions`, so it rescales automatically when only the dimensions shrink;
+     * for `matrix` grids the matrix is post-scaled per axis by `dim / coarseDim` so the coarse index
+     * space still maps onto the same cartesian box. Stats (min/max/mean/sigma) are recomputed from the
+     * downsampled cells so transfer-function thresholds stay meaningful.
+     */
+    export function downsample(volume: Volume, factor: number): Volume {
+        const f = Math.floor(factor);
+        if (f <= 1) return volume;
+
+        const { grid } = volume;
+        const { cells, transform, periodicity } = grid;
+        const space = cells.space;
+        const data = cells.data;
+        const [nx, ny, nz] = space.dimensions as Vec3;
+        const get = space.get;
+
+        const cx = Math.ceil(nx / f), cy = Math.ceil(ny / f), cz = Math.ceil(nz / f);
+        const coarseSpace = Tensor.Space([cx, cy, cz], [...space.axisOrderSlowToFast], Float32Array);
+        const coarse = coarseSpace.create();
+        const set = coarseSpace.set;
+
+        let min = Infinity, max = -Infinity, sum = 0, sumSq = 0;
+        for (let k = 0; k < cz; ++k) {
+            const z0 = k * f, z1 = Math.min(z0 + f, nz);
+            for (let j = 0; j < cy; ++j) {
+                const y0 = j * f, y1 = Math.min(y0 + f, ny);
+                for (let i = 0; i < cx; ++i) {
+                    const x0 = i * f, x1 = Math.min(x0 + f, nx);
+                    let acc = 0, count = 0;
+                    for (let z = z0; z < z1; ++z) {
+                        for (let y = y0; y < y1; ++y) {
+                            for (let x = x0; x < x1; ++x) {
+                                acc += get(data, x, y, z);
+                                ++count;
+                            }
+                        }
+                    }
+                    const v = count > 0 ? acc / count : 0;
+                    set(coarse, i, j, k, v);
+                    if (v < min) min = v;
+                    if (v > max) max = v;
+                    sum += v;
+                    sumSq += v * v;
+                }
+            }
+        }
+
+        const n = cx * cy * cz;
+        const mean = n > 0 ? sum / n : 0;
+        const sigma = n > 0 ? Math.sqrt(Math.max(0, sumSq / n - mean * mean)) : 0;
+        if (!isFinite(min)) { min = 0; max = 0; }
+
+        let coarseTransform: Grid.Transform;
+        if (transform.kind === 'matrix') {
+            const scale = Mat4.fromScaling(Mat4(), Vec3.create(nx / cx, ny / cy, nz / cz));
+            coarseTransform = { kind: 'matrix', matrix: Mat4.mul(Mat4(), transform.matrix, scale) };
+        } else {
+            // spacegroup: scale derives from fractionalBox.size / dimensions, so shrinking the
+            // dimensions alone rescales onto the same world box - reuse cell and fractionalBox as-is.
+            coarseTransform = transform;
+        }
+
+        const coarseGrid: Grid = {
+            transform: coarseTransform,
+            cells: Tensor.create(coarseSpace, coarse),
+            stats: { min, max, mean, sigma },
+            periodicity,
+        };
+
+        return { ...volume, grid: coarseGrid };
     }
 
     export type CellIndex = { readonly '@type': 'cell-index' } & number

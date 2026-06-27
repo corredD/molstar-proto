@@ -4,6 +4,7 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Yakov Pechersky <ffxen158@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { CIF } from '../../mol-io/reader/cif';
@@ -30,6 +31,7 @@ export { AssignColorVolume };
 export { VolumeFromDensityServerCif };
 export { VolumeFromSegmentationCif };
 export { VolumeTransform };
+export { VolumeDownsample };
 export { VolumeInstances };
 export { CustomVolumeProperties };
 
@@ -238,6 +240,31 @@ const AssignColorVolume = PluginStateTransform.BuiltIn({
 });
 
 type VolumeTransform = typeof VolumeTransform;
+type VolumeDownsample = typeof VolumeDownsample
+const VolumeDownsample = PluginStateTransform.BuiltIn({
+    name: 'volume-downsample',
+    display: { name: 'Downsample Volume', description: 'Box-average the volume to a coarser grid (level-of-detail) for faster interactive direct-volume rendering of large maps.' },
+    isDecorator: true,
+    from: SO.Volume.Data,
+    to: SO.Volume.Data,
+    params: {
+        factor: PD.Numeric(2, { min: 1, max: 8, step: 1 }, { description: 'Integer downsample factor per axis. 2 reduces the cell count (and 3D-texture bandwidth) ~8x; 1 is a no-op.' }),
+    },
+})({
+    canAutoUpdate() {
+        return true;
+    },
+    apply({ a, params }) {
+        const volume = Volume.downsample(a.data, params.factor);
+        if (volume === a.data) return new SO.Volume.Data(a.data, { label: a.label, description: a.description });
+        const [nx, ny, nz] = volume.grid.cells.space.dimensions;
+        return new SO.Volume.Data({ ...volume, _localPropertyData: Object.create(null) }, {
+            label: a.label,
+            description: `${a.description ?? 'Volume'} [Downsampled ${params.factor}x → ${nx}×${ny}×${nz}]`,
+        });
+    },
+});
+
 const VolumeTransform = PluginStateTransform.BuiltIn({
     name: 'volume-transform',
     display: { name: 'Transform Volume' },

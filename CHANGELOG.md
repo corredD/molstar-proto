@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file, following t
 Note that since we don't clearly distinguish between a public and private interfaces there will be changes in non-major versions that are potentially breaking. If we make breaking changes to less used interfaces we will highlight it in here.
 
 ## [Unreleased]
+- Add `Volume.downsample` and a `VolumeDownsample` state transform: box-average level-of-detail for interactive direct-volume rendering of large maps/tomograms
 - Fix size-only representation theme updates in `updateRepresentationsTheme`.
 - Fix ASA coloring for hydrogens
 - Add `defaultSnapshotIndex` argument to `MVSLoadOptions` to enable loading a snapshot other than the first one by default
