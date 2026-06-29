@@ -10,6 +10,7 @@ import { AnimateAssemblyUnwind } from '../mol-plugin-state/animation/built-in/as
 import { AnimateCameraSpin } from '../mol-plugin-state/animation/built-in/camera-spin';
 import { AnimateModelIndex } from '../mol-plugin-state/animation/built-in/model-index';
 import { AnimateParticleDynamics } from '../mol-plugin-state/animation/built-in/particle-dynamics';
+import { AnimateParticleTrajectory } from '../mol-plugin-state/animation/built-in/particles';
 import { AnimateStateSnapshotTransition, AnimateStateSnapshots } from '../mol-plugin-state/animation/built-in/state-snapshots';
 import { PluginStateAnimation } from '../mol-plugin-state/animation/model';
 import { DataFormatProvider } from '../mol-plugin-state/formats/provider';
@@ -72,6 +73,7 @@ export const DefaultPluginSpec = (): PluginSpec => ({
         PluginSpec.Action(StateActions.Structure.LoadTrajectory),
         PluginSpec.Action(StateActions.Particles.LoadParticles),
         PluginSpec.Action(StateActions.Particles.LoadMmcifAsParticles),
+        PluginSpec.Action(StateActions.Particles.LoadSimulariumGeometries),
         PluginSpec.Action(StateActions.Structure.EnableModelCustomProps),
         PluginSpec.Action(StateActions.Structure.EnableStructureCustomProps),
 
@@ -128,7 +130,9 @@ export const DefaultPluginSpec = (): PluginSpec => ({
         PluginSpec.Action(StateTransforms.Particles.ParticleListFromCryoEtDataPortalNdjson),
         PluginSpec.Action(StateTransforms.Particles.ParticleListFromArtiatomiEm),
         PluginSpec.Action(StateTransforms.Particles.ParticleListFromMmcifAssembly),
-        PluginSpec.Action(StateTransforms.Particles.ParticleListWithStructures),
+        PluginSpec.Action(StateTransforms.Particles.ParticleTrajectoryFromSimularium),
+        PluginSpec.Action(StateTransforms.Particles.ParticleListFromTrajectory),
+        PluginSpec.Action(StateTransforms.Particles.ParticleListWithTargets),
         PluginSpec.Action(StateTransforms.Particles.ParticlesRepresentation3D),
     ],
     behaviors: [
@@ -153,6 +157,7 @@ export const DefaultPluginSpec = (): PluginSpec => ({
     ],
     animations: [
         AnimateModelIndex,
+        AnimateParticleTrajectory,
         AnimateCameraSpin,
         AnimateCameraRock,
         AnimateStateSnapshots,

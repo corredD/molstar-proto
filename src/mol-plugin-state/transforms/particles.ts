@@ -10,6 +10,7 @@ import { createParticleListFromCryoEtDataPortalNdjson } from '../../mol-model-fo
 import { createParticleListFromRelionStar } from '../../mol-model-formats/particles/star';
 import { createParticleListFromDynamoTbl, getDynamoTblTomogramIds } from '../../mol-model-formats/particles/tbl';
 import { createParticleListFromArtiatomiEm, getArtiatomiMotivelistTomogramIds } from '../../mol-model-formats/particles/em';
+import { createSimulariumParticleTrajectory, getSimulariumAgentTypeNames, getSimulariumFrameCount } from '../../mol-model-formats/particles/simularium';
 import { createParticleListFromMmcifAssembly, getAssemblyIdsFromMmcif, getAsymIdsFromMmcif } from '../../mol-model-formats/particles/mmcif';
 import { PluginContext } from '../../mol-plugin/context';
 import { StateTransform, StateTransformer } from '../../mol-state';
@@ -18,15 +19,18 @@ import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { Theme } from '../../mol-theme/theme';
 import { PluginStateObject as SO, PluginStateTransform } from '../objects';
 import { Structure, Trajectory } from '../../mol-model/structure';
-import { ParticleList, Particle } from '../../mol-model/particles/particle-list';
+import { ParticleList, Particle, ParticleTarget } from '../../mol-model/particles/particle-list';
 import { buildTargetStructuresFromMapping } from '../../mol-model/particles/structure-mapping';
+import { ShapeProvider } from '../../mol-model/shape/provider';
 
 export { ParticleListFromRelionStar };
 export { ParticleListFromDynamoTbl };
 export { ParticleListFromCryoEtDataPortalNdjson };
 export { ParticleListFromArtiatomiEm };
+export { ParticleTrajectoryFromSimularium };
+export { ParticleListFromTrajectory };
 export { ParticleListFromMmcifAssembly };
-export { ParticleListWithStructures };
+export { ParticleListWithTargets };
 export { ParticlesRepresentation3D };
 
 type ParticleListFromRelionStar = typeof ParticleListFromRelionStar
@@ -41,6 +45,7 @@ const ParticleListFromRelionStar = PluginStateTransform.BuiltIn({
                 tomograms: PD.MultiSelect<string>([], [], { description: 'Empty selection includes all tomograms.' }),
                 micrographs: PD.MultiSelect<string>([], [], { description: 'Empty selection includes all micrographs. Combined with the tomogram filter using AND.' }),
                 pixelSize: PD.Optional(PD.Numeric(0, { min: 0, step: 0.001 }, { description: 'Override pixel size in Å/pixel for converting pixel-space coordinates to angstrom. Leave 0 to auto-detect from STAR optics/particle metadata.' })),
+                particleRadius: PD.Numeric(0, { min: 0, step: 0.1 }, { description: 'Uniform particle radius in angstrom. Leave 0 to omit.' }),
             };
         }
         let tomoNames: string[] = [];
@@ -59,6 +64,7 @@ const ParticleListFromRelionStar = PluginStateTransform.BuiltIn({
             tomograms: PD.MultiSelect<string>(tomoDefault, tomoOptions, { description: 'Empty selection includes all tomograms.' }),
             micrographs: PD.MultiSelect<string>(micrographDefault, micrographOptions, { description: 'Empty selection includes all micrographs. Combined with the tomogram filter using AND.' }),
             pixelSize: PD.Optional(PD.Numeric(0, { min: 0, step: 0.001 }, { description: 'Override pixel size in Å/pixel for converting pixel-space coordinates to angstrom. Leave 0 to auto-detect from STAR optics/particle metadata.' })),
+            particleRadius: PD.Numeric(0, { min: 0, step: 0.1 }, { description: 'Uniform particle radius in angstrom. Leave 0 to omit.' }),
         };
     }
 })({
@@ -71,6 +77,7 @@ const ParticleListFromRelionStar = PluginStateTransform.BuiltIn({
                 tomograms: params.tomograms,
                 micrographs: params.micrographs,
                 pixelSize: params.pixelSize && params.pixelSize > 0 ? params.pixelSize : void 0,
+                particleRadius: params.particleRadius > 0 ? params.particleRadius : void 0,
             });
 
             return new SO.Particle.List(list, { label: list.label || 'Particles', description: 'RELION Particle List' });
@@ -89,6 +96,7 @@ const ParticleListFromDynamoTbl = PluginStateTransform.BuiltIn({
             return {
                 tomos: PD.MultiSelect<string>([], [], { description: 'Empty selection includes all tomograms.' }),
                 pixelSize: PD.Optional(PD.Numeric(0, { min: 0, step: 0.001 }, { description: 'Override pixel size in Å/pixel for converting pixel-space coordinates to angstrom. Leave 0 to auto-detect from the table’s `apix` field.' })),
+                particleRadius: PD.Numeric(0, { min: 0, step: 0.1 }, { description: 'Uniform particle radius in angstrom. Leave 0 to omit.' }),
             };
         }
         const ids = getDynamoTblTomogramIds(a.data);
@@ -97,6 +105,7 @@ const ParticleListFromDynamoTbl = PluginStateTransform.BuiltIn({
         return {
             tomos: PD.MultiSelect<string>(defaultValue, options, { description: 'Empty selection includes all tomograms.' }),
             pixelSize: PD.Optional(PD.Numeric(0, { min: 0, step: 0.001 }, { description: 'Override pixel size in Å/pixel for converting pixel-space coordinates to angstrom. Leave 0 to auto-detect from the table’s `apix` field.' })),
+            particleRadius: PD.Numeric(0, { min: 0, step: 0.1 }, { description: 'Uniform particle radius in angstrom. Leave 0 to omit.' }),
         };
     }
 })({
@@ -105,6 +114,7 @@ const ParticleListFromDynamoTbl = PluginStateTransform.BuiltIn({
             const list = createParticleListFromDynamoTbl(a.data, {
                 tomos: params.tomos.map(v => Number(v)),
                 pixelSize: params.pixelSize && params.pixelSize > 0 ? params.pixelSize : void 0,
+                particleRadius: params.particleRadius > 0 ? params.particleRadius : void 0,
             });
             return new SO.Particle.List(list, { label: list.label || 'Particles', description: 'Dynamo Particle List' });
         });
@@ -120,6 +130,7 @@ const ParticleListFromCryoEtDataPortalNdjson = PluginStateTransform.BuiltIn({
     params: {
         pixelSize: PD.Numeric(1, { min: 0, step: 0.001 }, { description: 'Pixel size in Å/pixel used to convert pixel-space NDJSON coordinates to angstrom. Required because CryoET Data Portal NDJSON does not encode distance units.' }),
         type: PD.Optional(PD.Text('')),
+        particleRadius: PD.Numeric(0, { min: 0, step: 0.1 }, { description: 'Uniform particle radius in angstrom. Leave 0 to omit.' }),
     }
 })({
     apply({ a, params }) {
@@ -127,6 +138,7 @@ const ParticleListFromCryoEtDataPortalNdjson = PluginStateTransform.BuiltIn({
             const list = createParticleListFromCryoEtDataPortalNdjson(a.data, {
                 pixelSize: params.pixelSize,
                 type: params.type || void 0,
+                particleRadius: params.particleRadius > 0 ? params.particleRadius : void 0,
             });
             return new SO.Particle.List(list, { label: list.label || 'Particles', description: 'CryoET NDJSON Particle List' });
         });
@@ -144,6 +156,7 @@ const ParticleListFromArtiatomiEm = PluginStateTransform.BuiltIn({
             return {
                 tomos: PD.MultiSelect<string>([], [], { description: 'Empty selection includes all tomograms.' }),
                 pixelSize: PD.Numeric(1, { min: 0, step: 0.001 }, { description: 'Pixel size in Å/pixel used to convert voxel-space coordinates to angstrom. Required because Artiatomi EM files do not encode distance units.' }),
+                particleRadius: PD.Numeric(0, { min: 0, step: 0.1 }, { description: 'Uniform particle radius in angstrom. Leave 0 to omit.' }),
             };
         }
         const ids = getArtiatomiMotivelistTomogramIds(a.data);
@@ -152,6 +165,7 @@ const ParticleListFromArtiatomiEm = PluginStateTransform.BuiltIn({
         return {
             tomos: PD.MultiSelect<string>(defaultValue, options, { description: 'Empty selection includes all tomograms.' }),
             pixelSize: PD.Numeric(1, { min: 0, step: 0.001 }, { description: 'Pixel size in Å/pixel used to convert voxel-space coordinates to angstrom. Required because Artiatomi EM files do not encode distance units.' }),
+            particleRadius: PD.Numeric(0, { min: 0, step: 0.1 }, { description: 'Uniform particle radius in angstrom. Leave 0 to omit.' }),
         };
     }
 })({
@@ -160,11 +174,66 @@ const ParticleListFromArtiatomiEm = PluginStateTransform.BuiltIn({
             const list = createParticleListFromArtiatomiEm(a.data, {
                 tomos: params.tomos.map(v => Number(v)),
                 pixelSize: params.pixelSize,
-                label: a.label
+                label: a.label,
+                particleRadius: params.particleRadius > 0 ? params.particleRadius : void 0,
             });
             return new SO.Particle.List(list, { label: list.label || 'Particles', description: 'Artiatomi EM Particle List' });
         });
     }
+});
+
+type ParticleTrajectoryFromSimularium = typeof ParticleTrajectoryFromSimularium
+const ParticleTrajectoryFromSimularium = PluginStateTransform.BuiltIn({
+    name: 'particle-trajectory-from-simularium',
+    display: { name: 'Particle Trajectory from Simularium', description: 'Create a ParticleTrajectory wrapping all frames of a Simularium file.' },
+    from: SO.Format.Simularium,
+    to: SO.Particle.Trajectory,
+    params: a => {
+        if (!a) {
+            return {
+                types: PD.MultiSelect<string>([], [], { description: 'Agent types to include. Empty selection includes all types.' }),
+                scale: PD.Numeric(0, { min: 0, step: 0.001 }, { description: 'Spatial scale to angstrom. Leave 0 to auto-detect from the file spatial units.' }),
+            };
+        }
+        const typeOptions = getSimulariumAgentTypeNames(a.data).map(t => [String(t.id), t.name] as [string, string]);
+        return {
+            types: PD.MultiSelect<string>([], typeOptions, { description: 'Agent types to include. Empty selection includes all types.' }),
+            scale: PD.Numeric(0, { min: 0, step: 0.001 }, { description: 'Spatial scale to angstrom. Leave 0 to auto-detect from the file spatial units.' }),
+        };
+    }
+})({
+    apply({ a, params }) {
+        const traj = createSimulariumParticleTrajectory(a.data, {
+            scale: params.scale && params.scale > 0 ? params.scale : void 0,
+            typeFilter: params.types.length > 0 ? params.types.map(v => Number(v)) : void 0,
+        });
+        const frameCount = getSimulariumFrameCount(a.data);
+        return new SO.Particle.Trajectory(traj, { label: a.label, description: `${frameCount} frame${frameCount !== 1 ? 's' : ''}` });
+    }
+});
+
+type ParticleListFromTrajectory = typeof ParticleListFromTrajectory
+const ParticleListFromTrajectory = PluginStateTransform.BuiltIn({
+    name: 'particle-list-from-trajectory',
+    display: { name: 'Particle List from Trajectory', description: 'Extract a single frame from a ParticleTrajectory.' },
+    from: SO.Particle.Trajectory,
+    to: SO.Particle.List,
+    params: a => ({
+        frameIndex: PD.Numeric(0, { min: 0, max: a ? Math.max(0, a.data.frameCount - 1) : 0, step: 1 }, { description: 'Index of the trajectory frame to display.' }),
+    })
+})({
+    apply({ a, params }) {
+        const list = a.data.getFrameAtIndex(Math.max(0, Math.min(params.frameIndex, a.data.frameCount - 1)));
+        return new SO.Particle.List(list, { label: list.label || 'Particles', description: `Frame ${params.frameIndex + 1} of ${a.data.frameCount}` });
+    },
+    // update({ a, b, oldParams, newParams }) {
+    //     if (oldParams.frameIndex === newParams.frameIndex) return StateTransformer.UpdateResult.Unchanged;
+    //     const list = a.data.getFrameAtIndex(Math.max(0, Math.min(newParams.frameIndex, a.data.frameCount - 1)));
+    //     b.data = list;
+    //     b.label = list.label || 'Particles';
+    //     b.description = `Frame ${newParams.frameIndex + 1} of ${a.data.frameCount}`;
+    //     return StateTransformer.UpdateResult.Updated;
+    // }
 });
 
 type ParticleListFromMmcifAssembly = typeof ParticleListFromMmcifAssembly
@@ -230,10 +299,20 @@ function getTrajectoryRefOptions(ctx: PluginContext): [string, string][] {
     return out;
 }
 
-type ParticleListWithStructures = typeof ParticleListWithStructures
-const ParticleListWithStructures = PluginStateTransform.BuiltIn({
-    name: 'particle-list-with-structures',
-    display: { name: 'Particle List with Structures', description: 'Associate reference structures with a particle list for structure-based representation.' },
+function getShapeRefOptions(ctx: PluginContext): [string, string][] {
+    const out: [string, string][] = [];
+    (ctx.state.data.cells as Map<string, any>).forEach((cell: any) => {
+        if (cell.obj instanceof SO.Shape.Provider) {
+            out.push([cell.transform.ref, cell.obj.label ?? '<shape>']);
+        }
+    });
+    return out;
+}
+
+type ParticleListWithTargets = typeof ParticleListWithTargets
+const ParticleListWithTargets = PluginStateTransform.BuiltIn({
+    name: 'particle-list-with-targets',
+    display: { name: 'Particle List with Targets', description: 'Associate reference structures and shapes with a particle list for target-based representation.' },
     isDecorator: true,
     from: SO.Particle.List,
     to: SO.Particle.List,
@@ -272,6 +351,17 @@ const ParticleListWithStructures = PluginStateTransform.BuiltIn({
                 description: 'Reference structures mapped per particle target ID.',
                 isHidden: hasMappedTargets || hasModelTargets,
             }),
+            // Explicit per-target shape mapping (e.g. meshes from OBJ).
+            shapes: PD.ObjectList({
+                targetId: PD.Numeric(0, { min: 0, step: 1 }, { description: 'Target ID in the particle list this shape maps to (matches ParticleList.targets).' }),
+                shape: PD.ValueRef<ShapeProvider<any, any, any>>(
+                    getShapeRefOptions,
+                    (ref, getData) => getData(ref) as ShapeProvider<any, any, any>,
+                ),
+            }, e => `Target ${e.targetId}`, {
+                description: 'Reference shapes mapped per particle target ID.',
+                isHidden: hasMappedTargets || hasModelTargets,
+            }),
         };
     },
 })({
@@ -282,49 +372,59 @@ const ParticleListWithStructures = PluginStateTransform.BuiltIn({
         for (const e of params.structures) {
             if (e.structure.ref) deps.push(e.structure.ref as StateTransform.Ref);
         }
+        for (const e of params.shapes) {
+            if (e.shape.ref) deps.push(e.shape.ref as StateTransform.Ref);
+        }
         return deps;
     },
     apply({ a, params }) {
-        return Task.create('Associate structures with particle list', async _ctx => {
-            let resolvedMap: ReadonlyMap<number, Structure>;
+        return Task.create('Associate targets with particle list', async _ctx => {
+            const targetMap = new Map<number, ParticleTarget>();
 
+            // Structure targets: from trajectory models, a chain-split parent, or explicit refs.
             if (a.data.targetModels) {
-                // targetModels path: build one reference structure per trajectory model.
                 try {
                     const trajectory = params.trajectory.getValue();
-                    const map = new Map<number, Structure>();
                     for (const [targetId, modelIndex] of a.data.targetModels) {
                         const model = await Task.resolveInContext(trajectory.getFrameAtIndex(modelIndex), _ctx);
-                        map.set(targetId, Structure.ofModel(model));
+                        targetMap.set(targetId, { kind: 'structure', structure: Structure.ofModel(model) });
                     }
-                    resolvedMap = map;
                 } catch {
-                    resolvedMap = new Map();
+                    // leave structure targets empty on failure
                 }
             } else if (a.data.targetMapping) {
-                // targetMapping path: split the single parent structure by chain IDs
                 try {
                     const parentStructure = params.structure.getValue();
-                    resolvedMap = buildTargetStructuresFromMapping(parentStructure, a.data.targetMapping);
+                    const map = buildTargetStructuresFromMapping(parentStructure, a.data.targetMapping);
+                    for (const [targetId, structure] of map) targetMap.set(targetId, { kind: 'structure', structure });
                 } catch {
-                    resolvedMap = new Map();
+                    // leave structure targets empty on failure
                 }
             } else {
-                // Explicit per-target mapping path
-                const targetStructures = new Map<number, Structure>();
                 for (const entry of params.structures) {
                     try {
                         const s = entry.structure.getValue();
-                        if (s) targetStructures.set(entry.targetId, s);
+                        if (s) targetMap.set(entry.targetId, { kind: 'structure', structure: s });
                     } catch {
                         // ref not resolved yet; skip
                     }
                 }
-                resolvedMap = targetStructures;
+            }
+
+            // Shape targets: explicit per-target refs resolved to concrete shapes.
+            for (const entry of params.shapes) {
+                try {
+                    const provider = entry.shape.getValue();
+                    if (!provider) continue;
+                    const shape = await provider.getShape(_ctx, provider.data, PD.getDefaultValues(provider.params));
+                    targetMap.set(entry.targetId, { kind: 'shape', shape });
+                } catch {
+                    // ref not resolved yet; skip
+                }
             }
 
             const particles: ParticleList = { ...a.data };
-            Particle.setTargetStructures(particles, resolvedMap);
+            Particle.setParticleTargets(particles, targetMap);
             return new SO.Particle.List(particles, { label: a.label, description: a.description });
         });
     },
