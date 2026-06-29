@@ -9,6 +9,7 @@ import { PartialCanvas3DProps } from '../mol-canvas3d/canvas3d';
 import { AnimateAssemblyUnwind } from '../mol-plugin-state/animation/built-in/assembly-unwind';
 import { AnimateCameraSpin } from '../mol-plugin-state/animation/built-in/camera-spin';
 import { AnimateModelIndex } from '../mol-plugin-state/animation/built-in/model-index';
+import { AnimateParticleDynamics } from '../mol-plugin-state/animation/built-in/particle-dynamics';
 import { AnimateStateSnapshotTransition, AnimateStateSnapshots } from '../mol-plugin-state/animation/built-in/state-snapshots';
 import { PluginStateAnimation } from '../mol-plugin-state/animation/model';
 import { DataFormatProvider } from '../mol-plugin-state/formats/provider';
@@ -159,6 +160,7 @@ export const DefaultPluginSpec = (): PluginSpec => ({
         AnimateAssemblyUnwind,
         AnimateStructureSpin,
         AnimateStateInterpolation,
-        AnimateTime
+        AnimateTime,
+        AnimateParticleDynamics
     ]
 });

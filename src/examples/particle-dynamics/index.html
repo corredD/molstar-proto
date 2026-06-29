@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+        <title>Mol* Particle Dynamics Demo</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            #app { position: absolute; width: 100%; height: 100%; }
+            #controls { position: absolute; width: 160px; top: 20px; right: 20px; z-index: 10; font-family: sans-serif; font-size: smaller; }
+            #controls > button { display: block; width: 100%; text-align: left; margin: 5px 0px; }
+            #controls > h3 { margin-top: 10px; }
+        </style>
+        <link rel="stylesheet" type="text/css" href="molstar.css" />
+        <script type="text/javascript" src="./index.js"></script>
+    </head>
+    <body>
+        <div id="controls"></div>
+        <div id="app"></div>
+        <script>
+            ParticleDynamicsDemo.init('app').then(refreshSources);
+
+            addHeader('Particle count');
+            addControl('1k particles', () => ParticleDynamicsDemo.start(1000, 120));
+            addControl('3k particles', () => ParticleDynamicsDemo.start(3000, 150));
+            addControl('10k particles', () => ParticleDynamicsDemo.start(10000, 220));
+            addControl('25k particles', () => ParticleDynamicsDemo.start(25000, 300));
+            addControl('50k particles', () => ParticleDynamicsDemo.start(50000, 380));
+
+            addHeader('Rigid bodies');
+            addControl('Cube (4 spheres)', () => ParticleDynamicsDemo.startRigid('cube', 500, 150));
+            addControl('Tube (5 spheres)', () => ParticleDynamicsDemo.startRigid('tube', 500, 150));
+
+            addHeader('Add body from object');
+            var sourceSelect = document.createElement('select');
+            sourceSelect.id = 'bodySource';
+            sourceSelect.style.width = '100%';
+            $('controls').appendChild(sourceSelect);
+            addControl('Refresh sources', refreshSources);
+            addControl('Add body', () => ParticleDynamicsDemo.addBody($('bodySource').value));
+
+            addControl('Stop', () => ParticleDynamicsDemo.stop());
+
+            function $(id) { return document.getElementById(id); }
+            function addControl(label, action) {
+                var btn = document.createElement('button');
+                btn.onclick = action;
+                btn.innerText = label;
+                $('controls').appendChild(btn);
+            }
+            function addHeader(header) {
+                var h = document.createElement('h3');
+                h.innerText = header;
+                $('controls').appendChild(h);
+            }
+            // (re)populate the source dropdown from the built-in shapes + whatever is loaded in the viewer
+            function refreshSources() {
+                var sel = $('bodySource');
+                if (!sel || !window.ParticleDynamicsDemo) return;
+                sel.innerHTML = '';
+                ParticleDynamicsDemo.getSources().forEach(function (s) {
+                    var o = document.createElement('option');
+                    o.value = s.id; o.text = s.label;
+                    sel.appendChild(o);
+                });
+            }
+        </script>
+        <!-- __MOLSTAR_ANALYTICS__ -->
+    </body>
+</html>

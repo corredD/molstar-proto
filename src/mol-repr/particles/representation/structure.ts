@@ -159,6 +159,8 @@ interface TargetVisual {
     /** Maps local instance index → global particle index in the unfiltered ParticleList. */
     particleIndices: OrderedSet<number> | undefined
     createOrUpdate(ctx: VisualContext, theme: Theme, props: ParticlesStructureRepresentationProps, particles: ParticleList, particleIndices: OrderedSet<number>, structure: Structure, filtered: ParticleList): Promise<void>
+    /** Recompute the instanced (composed, per-target) transforms in place from the current particle positions. */
+    updateTransforms(particles: ParticleList): void
     mark(loci: ModelLoci, action: MarkerAction): boolean
     destroy(): void
 }
@@ -317,6 +319,14 @@ function createTargetVisual(targetId: number, materialId: number, webgl?: WebGLC
         currentParticleIndices = particleIndices;
     }
 
+    function updateTransforms(particles: ParticleList) {
+        if (!renderObject || !geometry || !currentProps) return;
+        const { list: filtered } = makeFilteredParticleList(particles, targetId);
+        if (filtered.count === 0) return;
+        createFilteredParticleTransform(filtered, geometry.boundingSphere, currentProps.cellSize, currentProps.batchSize, renderObject.values as unknown as TransformData);
+        currentFiltered = filtered;
+    }
+
     function mark(loci: ModelLoci, action: MarkerAction): boolean {
         if (!renderObject || !currentParticleIndices) return false;
         const instanceCount = OrderedSet.size(currentParticleIndices);
@@ -370,6 +380,7 @@ function createTargetVisual(targetId: number, materialId: number, webgl?: WebGLC
         get geometryVersion() { return geometryVersion; },
         get particleIndices() { return currentParticleIndices; },
         createOrUpdate,
+        updateTransforms,
         mark,
         destroy,
     };
@@ -377,7 +388,10 @@ function createTargetVisual(targetId: number, materialId: number, webgl?: WebGLC
 
 // ---- Public representation -------------------------------------------------
 
-export interface ParticlesStructureRepresentation extends Representation<ParticleList, ParticlesStructureRepresentationParams> { }
+export interface ParticlesStructureRepresentation extends Representation<ParticleList, ParticlesStructureRepresentationParams> {
+    /** Refresh the instanced transforms in place from the current particle positions (e.g. after a dynamics step), without rebuilding geometry. */
+    updateParticleTransforms(particles?: ParticleList): void
+}
 
 export type ParticlesStructureRepresentationProvider<Id extends string = string> = RepresentationProvider<ParticleList, ParticlesStructureRepresentationParams, Representation.State, Id>
 
@@ -535,6 +549,13 @@ export function ParticlesStructureRepresentation(
         },
         get geometryVersion() { return geometryState.version; },
         createOrUpdate,
+        /** Refresh the instanced transforms in place from the current particle positions (e.g. after a dynamics step), without rebuilding geometry. */
+        updateParticleTransforms: (particles?: ParticleList) => {
+            const p = particles ?? _particles;
+            if (!p) return;
+            for (const visual of targetVisuals.values()) visual.updateTransforms(p);
+            updated.next(version++);
+        },
         setState,
         setTheme,
         getLoci,

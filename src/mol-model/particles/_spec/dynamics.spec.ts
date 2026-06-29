@@ -1,0 +1,118 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+import { ParamDefinition as PD } from '../../../mol-util/param-definition';
+import { Vec3 } from '../../../mol-math/linear-algebra';
+import { ParticleList } from '../particle-list';
+import { createParticleDynamics, ParticleDynamicsParams } from '../dynamics';
+
+function makeParticles(n: number): ParticleList {
+    const coordinates = new Float32Array(n * 3);
+    const rotations = new Float32Array(n * 4);
+    for (let i = 0; i < n; ++i) {
+        coordinates[i * 3] = (i % 7) - 3;
+        coordinates[i * 3 + 1] = (i % 5) - 2;
+        coordinates[i * 3 + 2] = (i % 3) - 1;
+        rotations[i * 4 + 3] = 1; // identity quaternion
+    }
+    // the dynamics only reads count/coordinates/rotations; the rest is irrelevant for this unit test
+    return { count: n, coordinates, rotations } as unknown as ParticleList;
+}
+
+const baseProps = { ...PD.getDefaultValues(ParticleDynamicsParams), seed: 42, bounds: 50, timestep: 0.02 };
+
+describe('particle dynamics', () => {
+    it('is deterministic for a given seed', () => {
+        const a = makeParticles(64), b = makeParticles(64);
+        createParticleDynamics(a, baseProps).getFrameAtIndex(50);
+        createParticleDynamics(b, baseProps).getFrameAtIndex(50);
+        for (let i = 0; i < a.coordinates.length; ++i) expect(b.coordinates[i]).toBeCloseTo(a.coordinates[i], 5);
+        for (let i = 0; i < a.rotations!.length; ++i) expect(b.rotations![i]).toBeCloseTo(a.rotations![i], 5);
+    });
+
+    it('keeps particles inside the box and quaternions unit-length', () => {
+        const p = makeParticles(200);
+        createParticleDynamics(p, baseProps).getFrameAtIndex(300);
+        const eps = 1e-3;
+        for (let i = 0; i < p.coordinates.length; ++i) expect(Math.abs(p.coordinates[i])).toBeLessThanOrEqual(baseProps.bounds + eps);
+        for (let i = 0; i < p.count; ++i) {
+            const r = i * 4;
+            const len = Math.hypot(p.rotations![r], p.rotations![r + 1], p.rotations![r + 2], p.rotations![r + 3]);
+            expect(len).toBeCloseTo(1, 5);
+        }
+    });
+
+    it('reset restores the initial positions and orientations', () => {
+        const p = makeParticles(32);
+        const coords0 = Float32Array.from(p.coordinates);
+        const rot0 = Float32Array.from(p.rotations!);
+        const dyn = createParticleDynamics(p, baseProps);
+        dyn.getFrameAtIndex(25);
+        // moved away from the start
+        let moved = 0;
+        for (let i = 0; i < p.coordinates.length; ++i) moved += Math.abs(p.coordinates[i] - coords0[i]);
+        expect(moved).toBeGreaterThan(0);
+        dyn.reset();
+        for (let i = 0; i < coords0.length; ++i) expect(p.coordinates[i]).toBeCloseTo(coords0[i], 6);
+        for (let i = 0; i < rot0.length; ++i) expect(p.rotations![i]).toBeCloseTo(rot0[i], 6);
+    });
+
+    it('pushes overlapping particles apart when collisions are enabled', () => {
+        // two particles closer than 2 * particleRadius (= 10) overlap and must be separated
+        const makeTwo = () => ({
+            count: 2,
+            coordinates: new Float32Array([-3, 0, 0, 3, 0, 0]),
+            rotations: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1]),
+        } as unknown as ParticleList);
+        const dist = (p: ParticleList) => Math.hypot(
+            p.coordinates[3] - p.coordinates[0], p.coordinates[4] - p.coordinates[1], p.coordinates[5] - p.coordinates[2]);
+
+        const common = { ...baseProps, gravity: Vec3.create(0, 0, 0), particleRadius: 5, bounds: 1000 };
+        const on = makeTwo(), off = makeTwo();
+        createParticleDynamics(on, { ...common, collisions: true }).getFrameAtIndex(1);
+        createParticleDynamics(off, { ...common, collisions: false }).getFrameAtIndex(1);
+
+        // same seed => identical random velocities; the only difference is the collision response
+        expect(dist(on)).toBeGreaterThan(dist(off));
+        expect(dist(on)).toBeGreaterThanOrEqual(9.5); // separated to ~2 * particleRadius
+    });
+
+    it('rigid bodies stay in the box, keep unit quaternions, and tumble under collisions', () => {
+        const p = makeParticles(60);
+        const rot0 = Float32Array.from(p.rotations!);
+        const props = { ...baseProps, rigidBody: true, rigidShape: 'cube' as const, particleRadius: 3, bounds: 40 };
+        createParticleDynamics(p, props).getFrameAtIndex(120);
+
+        const eps = 1e-3;
+        for (let i = 0; i < p.coordinates.length; ++i) expect(Math.abs(p.coordinates[i])).toBeLessThanOrEqual(props.bounds + eps);
+        for (let i = 0; i < p.count; ++i) {
+            const r = i * 4;
+            const len = Math.hypot(p.rotations![r], p.rotations![r + 1], p.rotations![r + 2], p.rotations![r + 3]);
+            expect(len).toBeCloseTo(1, 4);
+        }
+        // collisions impart torque, so orientations must have moved away from the identity start
+        let rotChange = 0;
+        for (let i = 0; i < p.rotations!.length; ++i) rotChange += Math.abs(p.rotations![i] - rot0[i]);
+        expect(rotChange).toBeGreaterThan(0);
+    });
+
+    it('is deterministic with rigid bodies enabled', () => {
+        const props = { ...baseProps, rigidBody: true, rigidShape: 'tube' as const, particleRadius: 3, bounds: 40 };
+        const a = makeParticles(40), b = makeParticles(40);
+        createParticleDynamics(a, props).getFrameAtIndex(60);
+        createParticleDynamics(b, props).getFrameAtIndex(60);
+        for (let i = 0; i < a.coordinates.length; ++i) expect(b.coordinates[i]).toBeCloseTo(a.coordinates[i], 5);
+        for (let i = 0; i < a.rotations!.length; ++i) expect(b.rotations![i]).toBeCloseTo(a.rotations![i], 5);
+    });
+
+    it('getFrameAtIndex is stable when stepping forward incrementally vs jumping', () => {
+        const a = makeParticles(48), b = makeParticles(48);
+        const da = createParticleDynamics(a, baseProps);
+        for (let i = 1; i <= 40; ++i) da.getFrameAtIndex(i); // incremental
+        createParticleDynamics(b, baseProps).getFrameAtIndex(40); // single jump
+        for (let i = 0; i < a.coordinates.length; ++i) expect(a.coordinates[i]).toBeCloseTo(b.coordinates[i], 5);
+    });
+});

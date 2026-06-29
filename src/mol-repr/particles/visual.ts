@@ -21,7 +21,7 @@ import { ValueCell } from '../../mol-util';
 import { createSizes } from '../../mol-geo/geometry/size-data';
 import { createColors } from '../../mol-geo/geometry/color-data';
 import { MarkerAction } from '../../mol-util/marker-action';
-import { Mat4 } from '../../mol-math/linear-algebra';
+import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
 import { Overpaint } from '../../mol-theme/overpaint';
 import { Transparency } from '../../mol-theme/transparency';
 import { SizeValues } from '../../mol-gl/renderable/schema';
@@ -52,6 +52,46 @@ export function createParticleTransform(particles: ParticleList, invariantBoundi
         transformArray.set(transforms[i], i * 16);
     }
     return createTransform(transformArray, instanceCount, invariantBoundingSphere, cellSize, batchSize, transformData);
+}
+
+/**
+ * Refresh an instanced particle render object's per-particle transforms in place from `particles`,
+ * reading the bounding sphere and instance-grid config off the render object itself. The cheap
+ * per-frame seam for dynamics: a stepper mutates the particle list's coordinates/rotations, then this
+ * rewrites the instanced matrices without rebuilding geometry. No-op for non-instanced render objects.
+ * Call `canvas3d.requestDraw()` afterwards to show the update.
+ */
+export function updateParticleRenderObjectTransforms(renderObject: GraphicsRenderObject, particles: ParticleList) {
+    const values = renderObject.values as Partial<TransformData> & { invariantBoundingSphere?: ValueCell<Sphere3D> };
+    if (!values.aTransform || !values.instanceGrid || !values.invariantBoundingSphere) return;
+    const grid = values.instanceGrid.ref.value;
+    createParticleTransform(particles, values.invariantBoundingSphere.ref.value, grid.cellSize, grid.batchSize, values as TransformData);
+}
+
+/**
+ * Refresh the instanced transforms of a structure render object built from particles in place
+ * (the `particles-structure` decorator: `Structure.instances` with one instance per particle,
+ * each transform composed with a pre-translation by `-center`, the source structure's centroid).
+ * Used to make a baked particle-instanced structure (e.g. its surface) follow a dynamics step
+ * without rebuilding the structure or its geometry. Pass the source structure's boundary center.
+ */
+export function updateInstancedStructureTransforms(renderObject: GraphicsRenderObject, particles: ParticleList, center: Vec3) {
+    const values = renderObject.values as Partial<TransformData> & { invariantBoundingSphere?: ValueCell<Sphere3D> };
+    if (!values.aTransform || !values.instanceGrid || !values.invariantBoundingSphere) return;
+    const transforms = getParticleTransforms(particles);
+    const instanceCount = transforms.length;
+    const cx = center[0], cy = center[1], cz = center[2];
+    const transformArray = new Float32Array(instanceCount * 16);
+    for (let i = 0; i < instanceCount; ++i) {
+        const t = transforms[i];
+        // T_final = T_particle * T(-center)
+        t[12] -= t[0] * cx + t[4] * cy + t[8] * cz;
+        t[13] -= t[1] * cx + t[5] * cy + t[9] * cz;
+        t[14] -= t[2] * cx + t[6] * cy + t[10] * cz;
+        transformArray.set(t, i * 16);
+    }
+    const grid = values.instanceGrid.ref.value;
+    createTransform(transformArray, instanceCount, values.invariantBoundingSphere.ref.value, grid.cellSize, grid.batchSize, values as TransformData);
 }
 
 function createParticleRenderObject<G extends Geometry>(particles: ParticleList, geometry: G, locationIt: LocationIterator, theme: Theme, props: PD.Values<Geometry.Params<G>>, materialId: number) {

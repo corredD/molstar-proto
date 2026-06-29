@@ -22,6 +22,7 @@ const Apps = [
     { kind: 'example', name: 'proteopedia-wrapper' },
     { kind: 'example', name: 'basic-wrapper' },
     { kind: 'example', name: 'lighting' },
+    { kind: 'example', name: 'particle-dynamics' },
     { kind: 'example', name: 'alpha-orbitals' },
     { kind: 'example', name: 'alphafolddb-pae' },
     { kind: 'example', name: 'mvs-stories' },

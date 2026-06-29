@@ -39,8 +39,10 @@ export class AnimationControls extends PluginUIComponent<{ onStart?: () => void 
         const canApply = anim.current.anim.canApply?.(this.plugin);
 
         return <>
+            {/* the animation selector is locked while playing, but the current animation's own
+                parameters stay editable so they can be tuned live (e.g. particle collision radius) */}
             <ParameterControls params={anim.getParams()} values={anim.state.params} onChange={this.updateParams} isDisabled={isDisabled} />
-            <ParameterControls params={anim.current.params} values={anim.current.paramValues} onChange={this.updateCurrentParams} isDisabled={isDisabled} />
+            <ParameterControls params={anim.current.params} values={anim.current.paramValues} onChange={this.updateCurrentParams} />
 
             <div className='msp-flex-row'>
                 <Button icon={anim.state.animationState !== 'playing' ? void 0 : PlayArrowSvg} onClick={this.startOrStop} disabled={canApply !== void 0 && canApply.canApply === false}>

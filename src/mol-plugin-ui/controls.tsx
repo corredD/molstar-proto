@@ -241,11 +241,17 @@ export class AnimationViewportControls extends PluginUIComponent<{}, { isEmpty: 
             else this.setState({ isPlaying: false });
         });
         this.subscribe(this.plugin.behaviors.state.isBusy, isBusy => {
-            if (isBusy) this.setState({ isBusy: true, isExpanded: false, isEmpty: this.plugin.state.data.tree.transforms.size < 2 });
-            else this.setState({ isBusy: false, isEmpty: this.plugin.state.data.tree.transforms.size < 2 });
+            const isEmpty = this.plugin.state.data.tree.transforms.size < 2;
+            // don't auto-collapse while an animation is playing - the panel must stay open so its
+            // parameters remain editable live (the small icon below toggles visibility on demand)
+            if (isBusy && !this.state.isAnimating) this.setState({ isBusy: true, isExpanded: false, isEmpty });
+            else this.setState({ isBusy, isEmpty });
         });
         this.subscribe(this.plugin.behaviors.state.isAnimating, isAnimating => {
-            if (isAnimating) this.setState({ isAnimating: true, isExpanded: false });
+            // expand the panel when playback starts so the parameters are visible/editable, and leave
+            // it as-is when it stops (so it stays visible). Crucially DON'T touch isExpanded on the
+            // initial `false` emission at mount, otherwise the panel flashes open on every page load.
+            if (isAnimating) this.setState({ isAnimating: true, isExpanded: true });
             else this.setState({ isAnimating: false });
         });
     }
@@ -264,12 +270,14 @@ export class AnimationViewportControls extends PluginUIComponent<{}, { isEmpty: 
         return <div className='msp-animation-viewport-controls'>
             <div>
                 <div className='msp-semi-transparent-background' />
-                <IconButton svg={isAnimating || isPlaying ? StopSvg : SubscriptionsOutlinedSvg} transparent title={isAnimating ? 'Stop' : 'Select Animation'}
-                    onClick={isAnimating || isPlaying ? this.stop : this.toggleExpanded} toggleState={this.state.isExpanded}
-                    disabled={isAnimating || isPlaying ? false : this.state.isBusy || this.state.isPlaying || this.state.isEmpty} />
+                <IconButton svg={isAnimating ? StopSvg : SubscriptionsOutlinedSvg} transparent title={isAnimating ? 'Stop' : 'Select Animation'}
+                    onClick={isAnimating ? this.stop : this.toggleExpanded} toggleState={this.state.isExpanded}
+                    disabled={isAnimating ? false : this.state.isBusy || this.state.isPlaying || this.state.isEmpty} />
             </div>
-            {(this.state.isExpanded && !this.state.isBusy) && <div className='msp-animation-viewport-controls-select'>
-                <AnimationControls onStart={this.toggleExpanded} />
+            {/* keep the panel visible while an animation plays (so parameters stay editable) - the
+                running animation keeps the plugin "busy", so ignore isBusy in that case */}
+            {(this.state.isExpanded && (this.state.isAnimating || !this.state.isBusy)) && <div className='msp-animation-viewport-controls-select'>
+                <AnimationControls />
             </div>}
         </div>;
     }

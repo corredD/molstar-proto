@@ -103,6 +103,7 @@ export interface ParticleList {
 }
 
 const TargetStructuresDescriptor = CustomPropertyDescriptor({ name: 'particle-target-structures' });
+const RigidClustersDescriptor = CustomPropertyDescriptor({ name: 'particle-rigid-clusters' });
 
 export function getParticleTransforms(data: ParticleList) {
     const particleCount = data.count;
@@ -251,5 +252,27 @@ export namespace Particle {
         particles: ParticleList
     ): ReadonlyMap<number, import('../structure').Structure> | undefined {
         return particles._propertyData[TargetStructuresDescriptor.name];
+    }
+
+    /**
+     * Per-body rigid-cluster geometry for the dynamics: the collision spheres that make up each
+     * rigid body, allowing a different shape (and sphere count) per particle. `offsets` are
+     * body-local sphere centres (mean-centred per body), packed `[x,y,z,...]` for ALL spheres of all
+     * bodies in order; body `b` owns spheres `[starts[b], starts[b] + counts[b])`. When absent, the
+     * dynamics falls back to a single uniform `rigidShape` for every body.
+     */
+    export interface RigidClusters {
+        readonly offsets: Float32Array
+        readonly starts: Int32Array
+        readonly counts: Int32Array
+    }
+
+    export function setRigidClusters(particles: ParticleList, clusters: RigidClusters): void {
+        particles.customProperties.add(RigidClustersDescriptor);
+        particles._propertyData[RigidClustersDescriptor.name] = clusters;
+    }
+
+    export function getRigidClusters(particles: ParticleList): RigidClusters | undefined {
+        return particles._propertyData?.[RigidClustersDescriptor.name];
     }
 }
