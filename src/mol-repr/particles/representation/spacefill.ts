@@ -30,7 +30,7 @@ import { BaseGeometry } from '../../../mol-geo/geometry/base';
 import { WebGLContext } from '../../../mol-gl/webgl/context';
 import { Representation, RepresentationContext, RepresentationParamsGetter } from '../../representation';
 import { ParticleRepresentation, ParticleRepresentationProvider } from '../representation';
-import { ParticleVisual, ParticleKey } from '../visual';
+import { ParticleVisual, ParticleKey, createParticleTransform, createParticleClusterTransform } from '../visual';
 
 // ---- Params -----------------------------------------------------------------
 
@@ -43,6 +43,7 @@ export const SpacefillParticlesParams = {
     detail: PD.Numeric(0, { min: 0, max: 3, step: 1 }, BaseGeometry.CustomQualityParamInfo),
     pointSize: PD.Numeric(1, PointSizeOptions, { description: 'Radius used for the particle position marker.' }),
     positionColor: PD.Color(ColorNames.white),
+    showRigidClusters: PD.Boolean(false, { description: 'When the particle list carries rigid clusters (collision spheres), draw one sphere per collision sphere instead of one per particle. No effect when no clusters are attached.' }),
 };
 export type SpacefillParticlesParams = typeof SpacefillParticlesParams;
 export type SpacefillParticlesProps = PD.Values<SpacefillParticlesParams>;
@@ -74,8 +75,15 @@ export function SpacefillParticlesImpostorVisual(materialId: number): ParticleVi
         setUpdateState: (state: VisualUpdateState, _np: ParticleList, _cp: ParticleList, newProps: SpacefillParticlesProps, currentProps: SpacefillParticlesProps) => {
             if (newProps.pointSize !== currentProps.pointSize) state.updateSize = true;
             if (newProps.positionColor !== currentProps.positionColor) state.updateColor = true;
+            if (newProps.showRigidClusters !== currentProps.showRigidClusters) {
+                // instance count changes (per-particle <-> per-collision-sphere): rebuild transforms,
+                // markers, colors and sizes
+                state.createGeometry = true;
+                state.updateTransform = true;
+            }
         },
         overrideTheme: spacefillOverrideTheme,
+        instanceTransform: (props: SpacefillParticlesProps) => props.showRigidClusters ? createParticleClusterTransform : createParticleTransform,
         geometryUtils: Spheres.Utils,
         mustRecreate: (_key: ParticleKey, props: SpacefillParticlesProps, webgl?: WebGLContext) => {
             return !props.tryUseImpostor || !webgl;
@@ -104,8 +112,15 @@ export function SpacefillParticlesMeshVisual(materialId: number): ParticleVisual
         setUpdateState: (state: VisualUpdateState, _np: ParticleList, _cp: ParticleList, newProps: SpacefillParticlesProps, currentProps: SpacefillParticlesProps) => {
             state.createGeometry = newProps.detail !== currentProps.detail || newProps.pointSize !== currentProps.pointSize;
             if (newProps.positionColor !== currentProps.positionColor) state.updateColor = true;
+            if (newProps.showRigidClusters !== currentProps.showRigidClusters) {
+                // instance count changes (per-particle <-> per-collision-sphere): rebuild transforms,
+                // markers, colors and sizes
+                state.createGeometry = true;
+                state.updateTransform = true;
+            }
         },
         overrideTheme: spacefillOverrideTheme,
+        instanceTransform: (props: SpacefillParticlesProps) => props.showRigidClusters ? createParticleClusterTransform : createParticleTransform,
         geometryUtils: Mesh.Utils,
         mustRecreate: (_key: ParticleKey, props: SpacefillParticlesProps, webgl?: WebGLContext) => {
             return props.tryUseImpostor && !!webgl;
@@ -122,18 +137,48 @@ export function SpacefillParticlesVisual(materialId: number, _particles: Particl
 
 // ---- Shared helpers ---------------------------------------------------------
 
-function createSpacefillLocationIterator(particles: ParticleList, _geometry: Spheres | Mesh): LocationIterator {
-    const { count } = particles;
+/** When cluster mode is active and clusters are attached, map each collision-sphere instance back to
+ *  its source particle (body); otherwise `undefined` (one instance per particle). */
+function clusterBodyMap(particles: ParticleList, props: SpacefillParticlesProps): Int32Array | undefined {
+    if (!props.showRigidClusters) return undefined;
+    const clusters = Particle.getRigidClusters(particles);
+    if (!clusters) return undefined;
+    const { counts } = clusters;
+    let total = 0;
+    for (let b = 0; b < particles.count; ++b) total += counts[b];
+    const bodyOf = new Int32Array(total);
+    let si = 0;
+    for (let b = 0; b < particles.count; ++b) {
+        const n = counts[b];
+        for (let k = 0; k < n; ++k) bodyOf[si++] = b;
+    }
+    return bodyOf;
+}
+
+function createSpacefillLocationIterator(particles: ParticleList, _geometry: Spheres | Mesh, props: SpacefillParticlesProps): LocationIterator {
+    const bodyOf = clusterBodyMap(particles, props);
     const location = Particle.Location(particles, 0);
+    if (bodyOf) {
+        return LocationIterator(1, bodyOf.length, 1, (_groupIndex, instanceIndex) => {
+            location.index = bodyOf[instanceIndex];
+            return location;
+        });
+    }
+    const { count } = particles;
     return LocationIterator(1, count, 1, (_groupIndex, instanceIndex) => {
         location.index = instanceIndex;
         return location;
     });
 }
 
-function getSpacefillLoci(pickingId: PickingId, particles: ParticleList, _props: SpacefillParticlesProps, id: number, _geometry: Spheres | Mesh): Loci {
+function getSpacefillLoci(pickingId: PickingId, particles: ParticleList, props: SpacefillParticlesProps, id: number, _geometry: Spheres | Mesh): Loci {
     const { objectId, instanceId } = pickingId;
     if (id !== objectId) return EmptyLoci;
+    const bodyOf = clusterBodyMap(particles, props);
+    if (bodyOf) {
+        if (instanceId < 0 || instanceId >= bodyOf.length) return EmptyLoci;
+        return Particle.Loci(particles, OrderedSet.ofSingleton(bodyOf[instanceId] as any));
+    }
     if (instanceId < 0 || instanceId >= particles.count) return EmptyLoci;
     return Particle.Loci(particles, OrderedSet.ofSingleton(instanceId as any));
 }

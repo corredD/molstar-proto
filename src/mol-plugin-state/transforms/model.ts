@@ -17,7 +17,7 @@ import { trajectoryFromCCD, trajectoryFromMmCIF } from '../../mol-model-formats/
 import { trajectoryFromPDB } from '../../mol-model-formats/structure/pdb';
 import { topologyFromPsf } from '../../mol-model-formats/structure/psf';
 import { Coordinates, Model, Queries, QueryContext, Structure, StructureElement, StructureQuery, StructureSelection as Sel, Topology, ArrayTrajectory, Trajectory, Frame } from '../../mol-model/structure';
-import { getParticleTransforms, ParticleList } from '../../mol-model/particles/particle-list';
+import { getParticleTransformsForEntity, ParticleList } from '../../mol-model/particles/particle-list';
 import { PluginContext } from '../../mol-plugin/context';
 import { MolScriptBuilder } from '../../mol-script/language/builder';
 import { Expression } from '../../mol-script/language/expression';
@@ -279,12 +279,18 @@ const ParticlesStructure = PluginStateTransform.BuiltIn({
             },
             (ref, getData) => getData(ref),
         ),
+        entity: PD.Numeric(-1, { min: -1, step: 1 }, { description: 'Particle type/entity index to instance the structure at (-1 = all particles).' }),
     }
 })({
+    getDependencies({ particles }) {
+        // depend on the particle-list cell so this decorator re-instances when the list changes
+        return particles?.ref ? [particles.ref as StateTransform.Ref] : [];
+    },
     apply({ a, params }) {
         return Task.create('Create structure from structure and particles', async ctx => {
             const particles = params.particles.getValue();
-            const transforms = getParticleTransforms(particles);
+            // Instance at every particle, or only those of one type/entity when `entity >= 0`.
+            const transforms = getParticleTransformsForEntity(particles, params.entity);
             // Center the structure on each particle position by composing each
             // particle's rotation/translation with a translation that brings
             // the structure's centroid to the origin.
@@ -292,7 +298,9 @@ const ParticlesStructure = PluginStateTransform.BuiltIn({
             const offset = Mat4.fromTranslation(Mat4(), Vec3.negate(Vec3(), center));
             for (const t of transforms) Mat4.mul(t, t, offset);
             const instanced = Structure.instances(a.data, transforms.map((transform, i) => ({ transform, group: i })), true);
+            // store the full list (so a shared dynamics keys on it) plus the entity filter
             Structure.ParticleList.set(instanced, particles);
+            Structure.ParticleListEntity.set(instanced, params.entity);
             return new SO.Molecule.Structure(instanced, { label: a.label, description: `${transforms.length} particle${transforms.length === 1 ? '' : 's'}` });
         });
     },

@@ -71,9 +71,10 @@ function collectSims(ctx: PluginContext, props: ParticleDynamicsProps): Sim[] {
         if (!particles) continue;
         const base = ctx.state.data.cells.get(instancedCell!.transform.parent)?.obj?.data as Structure | undefined;
         const center = Vec3.clone((base ?? instanced).boundary.sphere.center);
+        const entity = Structure.ParticleListEntity.get(instanced);
         const repr = (cell.obj!.data as any).repr as Representation.Any;
         const sim = getSim(particles);
-        sim.consumers.push({ repr, update: p => { for (const ro of repr.renderObjects) updateInstancedStructureTransforms(ro, p, center); } });
+        sim.consumers.push({ repr, update: p => { for (const ro of repr.renderObjects) updateInstancedStructureTransforms(ro, p, center, entity); } });
     }
 
     return Array.from(byList.values());

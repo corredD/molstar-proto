@@ -17,7 +17,7 @@ import { DefaultPluginUISpec } from '../../mol-plugin-ui/spec';
 import { PluginStateObject as SO, PluginStateTransform } from '../../mol-plugin-state/objects';
 import { StateTransforms } from '../../mol-plugin-state/transforms';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
-import { ParticleList, Particle } from '../../mol-model/particles/particle-list';
+import { ParticleList, Particle, ParticleTarget } from '../../mol-model/particles/particle-list';
 import { ParticleDynamicsParams, ParticleDynamicsProps, particleRigidShapeOffsets } from '../../mol-model/particles/dynamics';
 import { AnimateParticleDynamics } from '../../mol-plugin-state/animation/built-in/particle-dynamics';
 import { CustomProperties } from '../../mol-model/custom-property';
@@ -34,6 +34,7 @@ import { ComponentBuilder } from '../../mol-model-formats/structure/common/compo
 import { StateSelection } from '../../mol-state';
 import { Vec3, Quat, Mat4 } from '../../mol-math/linear-algebra';
 import { RuntimeContext, Task } from '../../mol-task';
+import { Color } from '../../mol-util/color';
 import './index.html';
 import '../../mol-plugin-ui/skin/light.scss';
 
@@ -44,8 +45,9 @@ const RIGID_RADIUS = 10;
 
 /**
  * Build a tiny reference structure of `n` spheres at `offsets` (one carbon per sphere). This is the
- * shape that `particles-structure` instances at every particle's position+orientation, so the rigid
- * clusters from the simulation become visible (and we can confirm they translate AND rotate).
+ * shape the `target` representation instances at every particle's position+orientation; the demo
+ * renders the clusters via `spacefill` (`showRigidClusters`), but the structure is still attached as a
+ * target so you can switch to the `target` representation to see the same clusters as real structures.
  */
 async function buildClusterStructure(ctx: RuntimeContext, offsets: Float32Array): Promise<Structure> {
     const n = offsets.length / 3;
@@ -137,10 +139,25 @@ const SyntheticParticles = PluginStateTransform.BuiltIn({
             const particles = makeParticles(params.count, params.box);
             if (params.rigidShape !== 'none') {
                 // every particle is target 0 (makeParticles fills `targets` with 0); attach the cluster
-                // structure for target 0 so `particles-structure` instances it per body
+                // structure for target 0 so the `target` representation can instance it per body
                 const offsets = particleRigidShapeOffsets(params.rigidShape, RIGID_RADIUS);
                 const structure = await buildClusterStructure(ctx, offsets);
-                Particle.setTargetStructures(particles, new Map([[0, structure]]));
+                Particle.setParticleTargets(particles, new Map<number, ParticleTarget>([[0, { kind: 'structure', structure }]]));
+
+                // also attach the collision spheres as a uniform rigid cluster (same offsets for every
+                // body) so the `spacefill` representation can draw them via `showRigidClusters`, and size
+                // each particle to the collision radius
+                const k = offsets.length / 3;
+                const allOffsets = new Float32Array(particles.count * offsets.length);
+                const starts = new Int32Array(particles.count);
+                const counts = new Int32Array(particles.count);
+                for (let b = 0; b < particles.count; ++b) {
+                    starts[b] = b * k;
+                    counts[b] = k;
+                    allOffsets.set(offsets, b * offsets.length);
+                    particles.radii![b] = RIGID_RADIUS;
+                }
+                Particle.setRigidClusters(particles, { offsets: allOffsets, starts, counts });
             }
             return new SO.Particle.List(particles, { label: 'Synthetic Particles' });
         });
@@ -160,6 +177,21 @@ const PrebuiltParticles = PluginStateTransform.BuiltIn({
     apply({ params }) {
         if (!params.list) throw new Error('PrebuiltParticles: no list provided');
         return new SO.Particle.List(params.list, { label: 'Rigid Bodies' });
+    },
+});
+
+/** Wrap an already-built reference `Structure` as a state object, so it can be the input of the
+ * `particles-structure` decorator (instanced per type). A demo convenience, not serializable. */
+const PrebuiltStructure = PluginStateTransform.BuiltIn({
+    name: 'example-prebuilt-structure',
+    display: 'Prebuilt Structure',
+    from: SO.Root,
+    to: SO.Molecule.Structure,
+    params: { structure: PD.Value<Structure | undefined>(undefined, { isHidden: true }), label: PD.Text('Reference') },
+})({
+    apply({ params }) {
+        if (!params.structure) throw new Error('PrebuiltStructure: no structure provided');
+        return new SO.Molecule.Structure(params.structure, { label: params.label });
     },
 });
 
@@ -287,8 +319,22 @@ async function shapePoints(ctx: RuntimeContext, provider: any): Promise<Float32A
     return Float32Array.from(out);
 }
 
-/** One rigid body in the demo scene: a baked, body-local set of bead offsets plus its current pose. */
+/** One rigid body in the demo scene: a baked, body-local set of bead offsets plus its current pose.
+ *  `label` is the source id (e.g. `builtin:cube`) and doubles as the body's *type* identity. */
 type DemoBody = { offsets: Float32Array, position: Vec3, rotation: Quat, label: string };
+
+/** Human-friendly entity/type name for a body source id (e.g. `builtin:cube` -> `Cube`). */
+function bodyTypeName(sourceId: string): string {
+    const [kind, ref] = sourceId.split(':');
+    if (kind === 'builtin') return ref.charAt(0).toUpperCase() + ref.slice(1);
+    return sourceId;
+}
+
+/** A distinct, stable colour per type/entity index (Tableau-10 palette, cycled). */
+const ENTITY_PALETTE = [0x4e79a7, 0xf28e2b, 0xe15759, 0x76b7b2, 0x59a14f, 0xedc948, 0xb07aa1, 0xff9da7, 0x9c755f, 0xbab0ac].map(c => Color(c));
+function entityColor(i: number): Color {
+    return ENTITY_PALETTE[((i % ENTITY_PALETTE.length) + ENTITY_PALETTE.length) % ENTITY_PALETTE.length];
+}
 
 class ParticleDynamicsDemo {
     plugin: PluginUIContext = undefined as unknown as PluginUIContext;
@@ -301,6 +347,9 @@ class ParticleDynamicsDemo {
     private bodiesList: ParticleList | undefined = undefined;
     /** State ref of the synthetic demo cloud, removed when we switch to the add-body workflow. */
     private syntheticRef: string | undefined = undefined;
+    /** Per type/entity: the `particles-structure` cell ref instancing that type's reference structure
+     *  only at that type's particles. Created once per type; recomputes on add-body via its list dependency. */
+    private bodyStructureRefs = new Map<number, string>();
     /** Box half-extent for the add-body rigid simulation. */
     private bodiesBox = 150;
 
@@ -328,13 +377,14 @@ class ParticleDynamicsDemo {
     /**
      * Build a synthetic particle cloud + representation and play the dynamics via the animation manager.
      * With `rigidShape` set, each particle is rendered as the matching cube/tube cluster of spheres
-     * (via `particles-structure`) and the simulation runs in Flex-style rigid-body mode, so we can see
-     * the clusters translate and rotate to confirm the rigid dynamics work.
+     * (via `spacefill` with `showRigidClusters`) and the simulation runs in Flex-style rigid-body mode,
+     * so we can see the clusters translate and rotate to confirm the rigid dynamics work.
      */
     async start(count = 3000, box = 150, rigidShape: RigidShape = 'none') {
         await this.plugin.managers.animation.stop();
         await this.plugin.clear();
         this.bodies = []; this.bodiesRef = undefined; this.bodiesList = undefined; this.syntheticRef = undefined;
+        this.bodyStructureRefs.clear();
 
         const list = await this.plugin.state.data.build().toRoot()
             .apply(SyntheticParticles, { count, box, rigidShape }).commit();
@@ -342,8 +392,8 @@ class ParticleDynamicsDemo {
 
         const type = rigidShape === 'none'
             ? { name: 'orientation', params: {} }
-            // scale the element spheres so they roughly fill the rigid sphere radius (carbon vdw ~1.7 A)
-            : { name: 'particles-structure', params: { sizeFactor: RIGID_RADIUS / 1.7 } };
+            // draw each body's collision spheres directly via spacefill's rigid-cluster mode
+            : { name: 'spacefill', params: { showRigidClusters: true } };
         await this.plugin.state.data.build().to(list.ref)
             .apply(StateTransforms.Particles.ParticlesRepresentation3D, { type }).commit();
 
@@ -469,6 +519,7 @@ class ParticleDynamicsDemo {
         }
         if (this.bodies.length === 0) {
             if (this.bodiesRef) { await this.plugin.state.data.build().delete(this.bodiesRef).commit(); this.bodiesRef = undefined; this.bodiesList = undefined; }
+            this.bodyStructureRefs.clear();
             return;
         }
 
@@ -476,16 +527,17 @@ class ParticleDynamicsDemo {
         this.bodiesList = list;
 
         if (this.bodiesRef && this.plugin.state.data.cells.has(this.bodiesRef)) {
-            // CRUCIAL: keep the same particle-list cell ref. A source attached to the particle system
-            // (the `particles-structure` decorator references the list by ref) stays connected and is
-            // re-instanced at the updated bodies, instead of dangling when the cell is recreated.
+            // CRUCIAL: keep the same particle-list cell ref. The `particles-structure` decorators depend
+            // on this cell, so they re-instance at the updated bodies instead of dangling.
             await this.plugin.state.data.build().to(this.bodiesRef).update({ list }).commit();
         } else {
             const cell = await this.plugin.state.data.build().toRoot().apply(PrebuiltParticles, { list }).commit();
             this.bodiesRef = cell.ref;
-            await this.plugin.state.data.build().to(cell.ref)
-                .apply(StateTransforms.Particles.ParticlesRepresentation3D, { type: { name: 'particles-structure', params: { sizeFactor: RIGID_RADIUS / 1.7 } } }).commit();
         }
+
+        // one `particles-structure` per type/entity: that type's reference structure instanced only at
+        // its own particles. Existing types recompute via their list dependency; new types are wired here.
+        await this.linkTargetStructures(list);
 
         // preserve the current animation parameters across the rebuild (e.g. a `bounds` the user set in
         // the controls) - adding a body must not reset them. Only the rigid-body flag is forced on; the
@@ -499,6 +551,31 @@ class ParticleDynamicsDemo {
             ...(cur ?? {}),
             rigidBody: true,
         });
+    }
+
+    /** Ensure every type/entity present in `list` has a `particles-structure` subtree: its reference
+     * structure (the attached `ParticleTarget`) instanced only at that type's particles, with a distinct
+     * colour. Subtrees are created once per type; on later rebuilds existing ones recompute through their
+     * dependency on the particle-list cell, and only newly introduced types are wired here. */
+    private async linkTargetStructures(list: ParticleList) {
+        if (!this.bodiesRef) return;
+        const targets = Particle.getParticleTargets(list);
+        if (!targets) return;
+        for (const [entity, target] of targets) {
+            if (this.bodyStructureRefs.has(entity) || target.kind !== 'structure') continue;
+            const label = list.entityInfo?.get(entity) ?? `Type ${entity}`;
+            const refCell = await this.plugin.state.data.build().toRoot()
+                .apply(PrebuiltStructure, { structure: target.structure, label }).commit();
+            const instanced = await this.plugin.state.data.build().to(refCell.ref)
+                .apply(StateTransforms.Model.ParticlesStructure, { particles: PD.Ref(this.bodiesRef), entity }).commit();
+            await this.plugin.builders.structure.representation.addRepresentation(instanced.ref, {
+                type: 'spacefill',
+                typeParams: { sizeFactor: RIGID_RADIUS / 1.7 },
+                color: 'uniform',
+                colorParams: { value: entityColor(entity) },
+            });
+            this.bodyStructureRefs.set(entity, instanced.ref);
+        }
     }
 
     /** Build the particle list: one particle per body, per-body bead offsets packed into a single
@@ -518,8 +595,11 @@ class ParticleDynamicsDemo {
         const offsets = new Float32Array(totalSpheres * 3);
         const starts = new Int32Array(n);
         const counts = new Int32Array(n);
+        const entities = new Int32Array(n);
         const targetStructures = new Map<number, Structure>();
-        const targetOfShape = new Map<Float32Array, number>(); // distinct shape -> shared target id
+        // distinct shape *type* (by source label) -> shared target id; cube and tube are different types,
+        // and the same type added across batches still collapses to one target/entity
+        const targetOfLabel = new Map<string, number>();
 
         let s = 0;
         for (let b = 0; b < n; ++b) {
@@ -527,27 +607,33 @@ class ParticleDynamicsDemo {
             const k = body.offsets.length / 3;
             coordinates[b * 3] = body.position[0]; coordinates[b * 3 + 1] = body.position[1]; coordinates[b * 3 + 2] = body.position[2];
             rotations[b * 4] = body.rotation[0]; rotations[b * 4 + 1] = body.rotation[1]; rotations[b * 4 + 2] = body.rotation[2]; rotations[b * 4 + 3] = body.rotation[3];
-            // share a target (and reference structure) between bodies of the same shape
-            let target = targetOfShape.get(body.offsets);
+            // share a target (and reference structure) between bodies of the same type
+            let target = targetOfLabel.get(body.label);
             if (target === undefined) {
-                target = targetOfShape.size;
-                targetOfShape.set(body.offsets, target);
+                target = targetOfLabel.size;
+                targetOfLabel.set(body.label, target);
                 targetStructures.set(target, await buildClusterStructure(ctx, body.offsets));
             }
-            radii[b] = RIGID_RADIUS; keys[b] = b; targets[b] = target;
+            radii[b] = RIGID_RADIUS; keys[b] = b; targets[b] = target; entities[b] = target;
             offsets.set(body.offsets, s * 3);
             starts[b] = s; counts[b] = k; s += k;
         }
 
+        // one entity per body type, so the `particle-entity` color theme distinguishes cube/tube/etc.
+        const entityInfo = new Map<number, string>();
+        for (const [label, id] of targetOfLabel) entityInfo.set(id, bodyTypeName(label));
+
         const list: ParticleList = {
-            count: n, keys, targets, coordinates, rotations, radii,
+            count: n, keys, targets, entities, entityInfo, coordinates, rotations, radii,
             getParticleLabel: (i: number) => this.bodies[i]?.label ?? `Body ${i}`,
             sourceData: { kind: 'particle-dynamics-demo' } as unknown as ModelFormat,
             customProperties: new CustomProperties(),
             _propertyData: {},
         };
         Particle.setRigidClusters(list, { offsets, starts, counts });
-        Particle.setTargetStructures(list, targetStructures);
+        const targetMap = new Map<number, ParticleTarget>();
+        for (const [id, structure] of targetStructures) targetMap.set(id, { kind: 'structure', structure });
+        Particle.setParticleTargets(list, targetMap);
         return list;
     }
 

@@ -115,7 +115,6 @@ export interface ParticleList {
     _propertyData: { [name: string]: any }
 }
 
-const TargetStructuresDescriptor = CustomPropertyDescriptor({ name: 'particle-target-structures' });
 const RigidClustersDescriptor = CustomPropertyDescriptor({ name: 'particle-rigid-clusters' });
 
 /**
@@ -155,6 +154,131 @@ export function getParticleTransforms(data: ParticleList) {
     }
 
     return transforms;
+}
+
+/**
+ * Per-particle transforms restricted to a single type/entity (`entities[i] === entity`), in
+ * particle-index order. `entity < 0`, or a list without `entities`, yields all particle transforms.
+ *
+ * Used to instance a structure at only one molecule type's particles (see the `particles-structure`
+ * transform). The build and the live dynamics update must use this same predicate/order so the
+ * filtered instances stay consistent across a simulation step.
+ */
+export function getParticleTransformsForEntity(data: ParticleList, entity: number): Mat4[] {
+    const all = getParticleTransforms(data);
+    const { entities } = data;
+    if (entity < 0 || !entities) return all;
+    const out: Mat4[] = [];
+    for (let i = 0; i < all.length; ++i) {
+        if (entities[i] === entity) out.push(all[i]);
+    }
+    return out;
+}
+
+/**
+ * Expand a particle list into one transform per rigid-cluster collision sphere: each body's
+ * transform composed with a translation by the body-local sphere offset, placing a reference
+ * geometry at every collision sphere (e.g. the cube/tube/kmeans spheres). `bodyOf` maps each
+ * produced transform back to its source particle (body) so themes and picking remain per-body.
+ *
+ * When no rigid clusters are attached this is equivalent to `getParticleTransforms` with an
+ * identity body->particle mapping.
+ */
+export function getParticleClusterTransforms(data: ParticleList): { transforms: Mat4[], bodyOf: Int32Array } {
+    const clusters = Particle.getRigidClusters(data);
+    if (!clusters) {
+        const transforms = getParticleTransforms(data);
+        const bodyOf = new Int32Array(transforms.length);
+        for (let i = 0; i < bodyOf.length; ++i) bodyOf[i] = i;
+        return { transforms, bodyOf };
+    }
+
+    const { offsets, starts, counts } = clusters;
+    const { coordinates, rotations, count } = data;
+    let total = 0;
+    for (let b = 0; b < count; ++b) total += counts[b];
+
+    const transforms: Mat4[] = [];
+    const bodyOf = new Int32Array(total);
+    let si = 0;
+    for (let b = 0; b < count; ++b) {
+        let base: Mat4;
+        if (rotations) {
+            const qOffset = b * 4;
+            base = Mat4.fromQuat(Mat4(), Quat.create(rotations[qOffset + 0], rotations[qOffset + 1], rotations[qOffset + 2], rotations[qOffset + 3]));
+        } else {
+            base = Mat4.identity();
+        }
+        const px = coordinates[b * 3 + 0], py = coordinates[b * 3 + 1], pz = coordinates[b * 3 + 2];
+        const s0 = starts[b], n = counts[b];
+        for (let k = 0; k < n; ++k) {
+            const o = (s0 + k) * 3;
+            const ox = offsets[o + 0], oy = offsets[o + 1], oz = offsets[o + 2];
+            const m = Mat4.clone(base);
+            // world translation = body position + R_body * offset (keeping the body rotation)
+            m[12] = px + m[0] * ox + m[4] * oy + m[8] * oz;
+            m[13] = py + m[1] * ox + m[5] * oy + m[9] * oz;
+            m[14] = pz + m[2] * ox + m[6] * oy + m[10] * oz;
+            transforms.push(m);
+            bodyOf[si++] = b;
+        }
+    }
+    return { transforms, bodyOf };
+}
+
+/**
+ * Enforce a one-type-one-target invariant: remap `targets` so every particle of the same *type*
+ * shares a single target id, and each target id covers exactly one type. The type is read from
+ * `typeField` (default `entities`, the per-particle molecule-type category) — which field carries
+ * "type" depends on the data source, so it is configurable.
+ *
+ * Because the distinct target ids key the reference objects (structures/shapes) that get instanced
+ * at each particle, collapsing `targets` to the type means a single reference is instanced across all
+ * copies of a type, instead of one reference per chain/copy. `targetMapping` and `targetModels` (the
+ * per-target reference descriptors) are rebuilt for the new ids using the *first-seen* old target of
+ * each type as the representative.
+ *
+ * Particles with no type (value `< 0`), or lists lacking the type field, keep their original target
+ * grouping (each preserved as its own target). Idempotent on data that is already one-type-one-target.
+ */
+export function groupTargetsByType(particles: ParticleList, typeField: 'entities' | 'compartments' = 'entities'): ParticleList {
+    const types = particles[typeField];
+    const { count, targets } = particles;
+
+    // type key -> new compact target id, assigned in first-appearance order
+    const keyToNewId = new Map<string, number>();
+    // new target id -> a representative old target id, for rebuilding the reference descriptors
+    const newIdToOldTarget = new Map<number, number>();
+    const newTargets = new Int32Array(count);
+
+    for (let i = 0; i < count; ++i) {
+        // typed particles group by type; untyped particles fall back to their existing target
+        const key = types && types[i] >= 0 ? `e${types[i]}` : `t${targets[i]}`;
+        let id = keyToNewId.get(key);
+        if (id === undefined) {
+            id = keyToNewId.size;
+            keyToNewId.set(key, id);
+            newIdToOldTarget.set(id, targets[i]);
+        }
+        newTargets[i] = id;
+    }
+
+    const remap = <V>(old: ReadonlyMap<number, V> | undefined): ReadonlyMap<number, V> | undefined => {
+        if (!old) return undefined;
+        const next = new Map<number, V>();
+        for (const [newId, oldTarget] of newIdToOldTarget) {
+            const v = old.get(oldTarget);
+            if (v !== undefined) next.set(newId, v);
+        }
+        return next;
+    };
+
+    return {
+        ...particles,
+        targets: newTargets,
+        targetMapping: remap(particles.targetMapping),
+        targetModels: remap(particles.targetModels),
+    };
 }
 
 export namespace Particle {

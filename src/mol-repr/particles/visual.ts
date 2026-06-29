@@ -6,7 +6,7 @@
 
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { Visual, VisualContext } from '../visual';
-import { ParticleList, getParticleTransforms, Particle } from '../../mol-model/particles/particle-list';
+import { ParticleList, getParticleTransforms, getParticleClusterTransforms, getParticleTransformsForEntity, Particle } from '../../mol-model/particles/particle-list';
 import { Geometry, GeometryUtils } from '../../mol-geo/geometry/geometry';
 import { LocationIterator } from '../../mol-geo/util/location-iterator';
 import { Theme } from '../../mol-theme/theme';
@@ -44,6 +44,8 @@ export type ParticleParams = typeof ParticleParams;
 export type ParticleKey = { particles: ParticleList }
 export interface ParticleVisual<P extends ParticleParams> extends Visual<ParticleKey, P> { }
 
+export type ParticleTransformBuilder = (particles: ParticleList, invariantBoundingSphere: Sphere3D, cellSize: number, batchSize: number, transformData?: TransformData) => TransformData
+
 export function createParticleTransform(particles: ParticleList, invariantBoundingSphere: Sphere3D, cellSize: number, batchSize: number, transformData?: TransformData) {
     const transforms = getParticleTransforms(particles);
     const instanceCount = transforms.length;
@@ -52,6 +54,27 @@ export function createParticleTransform(particles: ParticleList, invariantBoundi
         transformArray.set(transforms[i], i * 16);
     }
     return createTransform(transformArray, instanceCount, invariantBoundingSphere, cellSize, batchSize, transformData);
+}
+
+/** Like `createParticleTransform`, but one instance per rigid-cluster collision sphere (see
+ *  `getParticleClusterTransforms`). Falls back to one-per-particle when no clusters are attached. */
+export function createParticleClusterTransform(particles: ParticleList, invariantBoundingSphere: Sphere3D, cellSize: number, batchSize: number, transformData?: TransformData) {
+    const { transforms } = getParticleClusterTransforms(particles);
+    const instanceCount = transforms.length;
+    const transformArray = new Float32Array(instanceCount * 16);
+    for (let i = 0; i < instanceCount; ++i) {
+        transformArray.set(transforms[i], i * 16);
+    }
+    return createTransform(transformArray, instanceCount, invariantBoundingSphere, cellSize, batchSize, transformData);
+}
+
+/** Total number of rigid-cluster collision spheres, or `undefined` if no clusters are attached. */
+function totalClusterSpheres(particles: ParticleList): number | undefined {
+    const clusters = Particle.getRigidClusters(particles);
+    if (!clusters) return undefined;
+    let total = 0;
+    for (let b = 0; b < particles.count; ++b) total += clusters.counts[b];
+    return total;
 }
 
 /**
@@ -65,6 +88,14 @@ export function updateParticleRenderObjectTransforms(renderObject: GraphicsRende
     const values = renderObject.values as Partial<TransformData> & { invariantBoundingSphere?: ValueCell<Sphere3D> };
     if (!values.aTransform || !values.instanceGrid || !values.invariantBoundingSphere) return;
     const grid = values.instanceGrid.ref.value;
+    // A render object built with one instance per collision sphere (spacefill's rigid-cluster mode)
+    // has `instanceCount === totalClusterSpheres`; refresh it with cluster transforms so the spheres
+    // track the dynamics. Everything else (one instance per particle) uses the per-particle path.
+    const total = totalClusterSpheres(particles);
+    if (total !== undefined && values.instanceCount?.ref.value === total) {
+        createParticleClusterTransform(particles, values.invariantBoundingSphere.ref.value, grid.cellSize, grid.batchSize, values as TransformData);
+        return;
+    }
     createParticleTransform(particles, values.invariantBoundingSphere.ref.value, grid.cellSize, grid.batchSize, values as TransformData);
 }
 
@@ -75,10 +106,11 @@ export function updateParticleRenderObjectTransforms(renderObject: GraphicsRende
  * Used to make a baked particle-instanced structure (e.g. its surface) follow a dynamics step
  * without rebuilding the structure or its geometry. Pass the source structure's boundary center.
  */
-export function updateInstancedStructureTransforms(renderObject: GraphicsRenderObject, particles: ParticleList, center: Vec3) {
+export function updateInstancedStructureTransforms(renderObject: GraphicsRenderObject, particles: ParticleList, center: Vec3, entity: number = -1) {
     const values = renderObject.values as Partial<TransformData> & { invariantBoundingSphere?: ValueCell<Sphere3D> };
     if (!values.aTransform || !values.instanceGrid || !values.invariantBoundingSphere) return;
-    const transforms = getParticleTransforms(particles);
+    // match the filtering used when the structure was instanced (`particles-structure`'s `entity`)
+    const transforms = getParticleTransformsForEntity(particles, entity);
     const instanceCount = transforms.length;
     const cx = center[0], cy = center[1], cz = center[2];
     const transformArray = new Float32Array(instanceCount * 16);
@@ -94,11 +126,11 @@ export function updateInstancedStructureTransforms(renderObject: GraphicsRenderO
     createTransform(transformArray, instanceCount, values.invariantBoundingSphere.ref.value, grid.cellSize, grid.batchSize, values as TransformData);
 }
 
-function createParticleRenderObject<G extends Geometry>(particles: ParticleList, geometry: G, locationIt: LocationIterator, theme: Theme, props: PD.Values<Geometry.Params<G>>, materialId: number) {
+function createParticleRenderObject<G extends Geometry>(particles: ParticleList, geometry: G, locationIt: LocationIterator, theme: Theme, props: PD.Values<Geometry.Params<G>>, materialId: number, buildTransform: ParticleTransformBuilder) {
     const { createValues, createRenderableState } = Geometry.getUtils(geometry);
     const transform = locationIt.nonInstanceable
         ? createIdentityTransform()
-        : createParticleTransform(particles, geometry.boundingSphere, props.cellSize, props.batchSize);
+        : buildTransform(particles, geometry.boundingSphere, props.cellSize, props.batchSize);
     const values = createValues(geometry, transform, locationIt, theme, props);
     const state = createRenderableState(props);
     ValueCell.update(values.boundingSphere, Particle.getBoundary(particles).sphere);
@@ -119,12 +151,15 @@ function eachParticleLoci(loci: Loci, particles: ParticleList, apply: (interval:
 interface ParticleVisualBuilder<P extends ParticleParams, G extends Geometry> {
     defaultProps: PD.Values<P>
     createGeometry(ctx: VisualContext, particles: ParticleList, theme: Theme, props: PD.Values<P>, geometry?: G): Promise<G> | G
-    createLocationIterator(particles: ParticleList, geometry: G): LocationIterator
+    createLocationIterator(particles: ParticleList, geometry: G, props: PD.Values<P>): LocationIterator
     getLoci(pickingId: PickingId, particles: ParticleList, props: PD.Values<P>, id: number, geometry: G): Loci
     eachLocation(loci: Loci, particles: ParticleList, props: PD.Values<P>, apply: (interval: Interval) => boolean, geometry: G): boolean
     setUpdateState(state: VisualUpdateState, newParticles: ParticleList, currentParticles: ParticleList, newProps: PD.Values<P>, currentProps: PD.Values<P>, newTheme: Theme, currentTheme: Theme): void
     /** Optional hook to override the theme before geometry creation and color/size updates. */
     overrideTheme?: (theme: Theme, props: PD.Values<P>) => Theme
+    /** Optional hook selecting how per-instance transforms are built (defaults to one-per-particle).
+     *  Returning `createParticleClusterTransform` expands rigid clusters into per-collision-sphere instances. */
+    instanceTransform?: (props: PD.Values<P>) => ParticleTransformBuilder
     mustRecreate?: (particleKey: ParticleKey, props: PD.Values<P>, webgl?: WebGLContext) => boolean
     dispose?: (geometry: G) => void
 }
@@ -134,7 +169,7 @@ interface ParticleVisualGeometryBuilder<P extends ParticleParams, G extends Geom
 }
 
 export function ParticleVisual<G extends Geometry, P extends ParticleParams & Geometry.Params<G>>(builder: ParticleVisualGeometryBuilder<P, G>, materialId: number): ParticleVisual<P> {
-    const { defaultProps, createGeometry, createLocationIterator, getLoci, eachLocation, setUpdateState, overrideTheme, mustRecreate, dispose } = builder;
+    const { defaultProps, createGeometry, createLocationIterator, getLoci, eachLocation, setUpdateState, overrideTheme, instanceTransform, mustRecreate, dispose } = builder;
     const { updateValues, updateBoundingSphere, updateRenderableState, createPositionIterator } = builder.geometryUtils;
     const updateState = VisualUpdateState.create();
 
@@ -211,11 +246,12 @@ export function ParticleVisual<G extends Geometry, P extends ParticleParams & Ge
 
     function update(newGeometry?: G) {
         const effectiveTheme = overrideTheme ? overrideTheme(newTheme, newProps) : newTheme;
+        const buildTransform = instanceTransform ? instanceTransform(newProps) : createParticleTransform;
 
         if (updateState.createNew) {
             if (newGeometry) {
-                locationIt = createLocationIterator(newParticles, newGeometry);
-                renderObject = createParticleRenderObject(newParticles, newGeometry, locationIt, effectiveTheme, newProps, materialId);
+                locationIt = createLocationIterator(newParticles, newGeometry, newProps);
+                renderObject = createParticleRenderObject(newParticles, newGeometry, locationIt, effectiveTheme, newProps, materialId, buildTransform);
                 positionIt = createPositionIterator(newGeometry, renderObject.values);
             } else {
                 throw new Error('expected geometry to be given');
@@ -226,7 +262,7 @@ export function ParticleVisual<G extends Geometry, P extends ParticleParams & Ge
             }
 
             if (updateState.updateColor || updateState.updateSize || updateState.updateTransform || updateState.updateLocation) {
-                locationIt = createLocationIterator(newParticles, newGeometry || geometry);
+                locationIt = createLocationIterator(newParticles, newGeometry || geometry, newProps);
             }
 
             if (updateState.updateTransform || updateState.updateLocation) {
@@ -239,7 +275,7 @@ export function ParticleVisual<G extends Geometry, P extends ParticleParams & Ge
             }
 
             if (updateState.updateMatrix) {
-                createParticleTransform(newParticles, geometry.boundingSphere, newProps.cellSize, newProps.batchSize, renderObject.values);
+                buildTransform(newParticles, geometry.boundingSphere, newProps.cellSize, newProps.batchSize, renderObject.values);
             }
 
             if (updateState.createGeometry) {

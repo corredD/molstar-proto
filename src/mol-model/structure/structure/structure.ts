@@ -1310,6 +1310,18 @@ namespace Structure {
         }
     };
 
+    /** The particle type/entity a `particles-structure` was filtered to (-1 = all particles). Stored
+     *  alongside the full `ParticleList` so a dynamics step can refresh only that type's instances. */
+    export const ParticleListEntity = {
+        set(structure: Structure, entity: number) {
+            structure.root.inheritedPropertyData['__particleListEntity__'] = entity;
+        },
+        get(structure: Structure): number {
+            const e = structure.root.inheritedPropertyData['__particleListEntity__'];
+            return typeof e === 'number' ? e : -1;
+        }
+    };
+
     const PrincipalAxesProp = '__PrincipalAxes__';
     export function getPrincipalAxes(structure: Structure): PrincipalAxes {
         if (structure.currentPropertyData[PrincipalAxesProp]) return structure.currentPropertyData[PrincipalAxesProp];

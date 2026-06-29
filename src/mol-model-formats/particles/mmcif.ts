@@ -5,7 +5,7 @@
  */
 
 import { Mat4, Quat, Vec3 } from '../../mol-math/linear-algebra';
-import { ParticleList } from '../../mol-model/particles/particle-list';
+import { ParticleList, groupTargetsByType } from '../../mol-model/particles/particle-list';
 import { CustomProperties } from '../../mol-model/custom-property';
 import { CifBlock, CifFile } from '../../mol-io/reader/cif/data-model';
 import { toDatabase } from '../../mol-io/reader/cif/schema';
@@ -33,6 +33,12 @@ export interface MmcifAssemblyParticleListOptions {
      *   one particle per operator combo per gen row.
      */
     readonly variant?: MmcifVariant
+    /**
+     * When `true` (default), collapse `targets` so each distinct molecule type (entity) maps to a
+     * single target, instead of one target per chain/copy. This makes one reference object be
+     * instanced across all copies of a type. Set `false` to keep one target per chain.
+     */
+    readonly groupTargetsByEntity?: boolean
 }
 
 /**
@@ -71,8 +77,12 @@ export function createParticleListFromMmcifAssembly(cifFile: CifFile, options: M
     const block = cifFile.blocks[0];
     if (!block) throw new Error('CIF file contains no data blocks.');
     const variant = resolveVariant(block, options.variant);
-    if (variant === 'petworld') return buildPetworldParticleList(cifFile, block, options);
-    return buildCellpackStandardParticleList(cifFile, block, options, variant);
+    const particles = variant === 'petworld'
+        ? buildPetworldParticleList(cifFile, block, options)
+        : buildCellpackStandardParticleList(cifFile, block, options, variant);
+    // Enforce one-type-one-target by default: chain-split data assigns one target per chain, so a
+    // single molecule type (entity) ends up spread across many targets; collapse to one per type.
+    return options.groupTargetsByEntity === false ? particles : groupTargetsByType(particles);
 }
 
 function detectMmcifVariant(block: CifBlock): 'cellpack' | 'petworld' | 'standard' {
