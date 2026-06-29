@@ -18,7 +18,7 @@ import { PluginStateObject as SO, PluginStateTransform } from '../../mol-plugin-
 import { StateTransforms } from '../../mol-plugin-state/transforms';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { ParticleList, Particle } from '../../mol-model/particles/particle-list';
-import { ParticleDynamicsParams, particleRigidShapeOffsets } from '../../mol-model/particles/dynamics';
+import { ParticleDynamicsParams, ParticleDynamicsProps, particleRigidShapeOffsets } from '../../mol-model/particles/dynamics';
 import { AnimateParticleDynamics } from '../../mol-plugin-state/animation/built-in/particle-dynamics';
 import { CustomProperties } from '../../mol-model/custom-property';
 import { ModelFormat } from '../../mol-model-formats/format';
@@ -419,6 +419,26 @@ class ParticleDynamicsDemo {
         await this.rebuildBodies();
     }
 
+    /** Add `n` bodies of the selected source at once (one shape sampled, one rebuild), spread through
+     * the box - for performance testing. All `n` share the same shape, so they instance one structure. */
+    async addBodies(sourceId: string, n: number) {
+        const offsets = await this.plugin.runTask(Task.create('Sample rigid body', ctx => this.computeOffsets(ctx, sourceId)));
+        if (!offsets || offsets.length < 3) {
+            console.warn(`rigid body: could not build a shape from "${sourceId}" (no usable geometry)`);
+            return;
+        }
+        let extent = 0;
+        for (let i = 0; i < offsets.length / 3; ++i) {
+            extent = Math.max(extent, Math.abs(offsets[i * 3]), Math.abs(offsets[i * 3 + 1]), Math.abs(offsets[i * 3 + 2]));
+        }
+        const span = Math.max(1, this.bodiesBox - extent - RIGID_RADIUS);
+        for (let i = 0; i < n; ++i) {
+            const position = Vec3.create((Math.random() * 2 - 1) * span, (Math.random() * 2 - 1) * span, (Math.random() * 2 - 1) * span);
+            this.bodies.push({ offsets, position, rotation: Quat.create(0, 0, 0, 1), label: sourceId });
+        }
+        await this.rebuildBodies();
+    }
+
     /** Assemble the accumulated bodies into one particle list (heterogeneous rigid clusters + per-body
      * reference structures) and (re)start the rigid simulation, without disturbing loaded objects. */
     private async rebuildBodies() {
@@ -462,17 +482,24 @@ class ParticleDynamicsDemo {
                 .apply(StateTransforms.Particles.ParticlesRepresentation3D, { type: { name: 'particles-structure', params: { sizeFactor: RIGID_RADIUS / 1.7 } } }).commit();
         }
 
+        // preserve the current animation parameters across the rebuild (e.g. a `bounds` the user set in
+        // the controls) - adding a body must not reset them. Only the rigid-body flag is forced on; the
+        // first transition (from the synthetic demo) falls back to these defaults.
+        const cur = this.plugin.managers.animation.current?.paramValues as Partial<ParticleDynamicsProps> | undefined;
         await this.plugin.managers.animation.play(AnimateParticleDynamics, {
             ...PD.getDefaultValues(ParticleDynamicsParams),
             bounds: this.bodiesBox,
             particleRadius: RIGID_RADIUS,
-            rigidBody: true,
             rigidShape: 'cube',
+            ...(cur ?? {}),
+            rigidBody: true,
         });
     }
 
-    /** Build the heterogeneous particle list: one body per particle, each its own target/reference
-     * structure, with the per-body bead offsets packed into a single `RigidClusters`. */
+    /** Build the particle list: one particle per body, per-body bead offsets packed into a single
+     * `RigidClusters`. Bodies that share the same shape (same `offsets` reference) share a target, so
+     * they render as instances of ONE reference structure (one render object) rather than one per body
+     * - this is what makes "Add 100 Bodies" a meaningful sim test rather than a render-object stress test. */
     private async buildBodiesList(ctx: RuntimeContext): Promise<ParticleList> {
         const n = this.bodies.length;
         const coordinates = new Float32Array(n * 3);
@@ -487,6 +514,7 @@ class ParticleDynamicsDemo {
         const starts = new Int32Array(n);
         const counts = new Int32Array(n);
         const targetStructures = new Map<number, Structure>();
+        const targetOfShape = new Map<Float32Array, number>(); // distinct shape -> shared target id
 
         let s = 0;
         for (let b = 0; b < n; ++b) {
@@ -494,10 +522,16 @@ class ParticleDynamicsDemo {
             const k = body.offsets.length / 3;
             coordinates[b * 3] = body.position[0]; coordinates[b * 3 + 1] = body.position[1]; coordinates[b * 3 + 2] = body.position[2];
             rotations[b * 4] = body.rotation[0]; rotations[b * 4 + 1] = body.rotation[1]; rotations[b * 4 + 2] = body.rotation[2]; rotations[b * 4 + 3] = body.rotation[3];
-            radii[b] = RIGID_RADIUS; keys[b] = b; targets[b] = b; // each body is its own target/shape
+            // share a target (and reference structure) between bodies of the same shape
+            let target = targetOfShape.get(body.offsets);
+            if (target === undefined) {
+                target = targetOfShape.size;
+                targetOfShape.set(body.offsets, target);
+                targetStructures.set(target, await buildClusterStructure(ctx, body.offsets));
+            }
+            radii[b] = RIGID_RADIUS; keys[b] = b; targets[b] = target;
             offsets.set(body.offsets, s * 3);
             starts[b] = s; counts[b] = k; s += k;
-            targetStructures.set(b, await buildClusterStructure(ctx, body.offsets));
         }
 
         const list: ParticleList = {

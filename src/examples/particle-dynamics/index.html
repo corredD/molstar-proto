@@ -38,6 +38,7 @@
             $('controls').appendChild(sourceSelect);
             addControl('Refresh sources', refreshSources);
             addControl('Add body', () => ParticleDynamicsDemo.addBody($('bodySource').value));
+            addControl('Add 100 Bodies', () => ParticleDynamicsDemo.addBodies($('bodySource').value, 100));
 
             addControl('Stop', () => ParticleDynamicsDemo.stop());
 
