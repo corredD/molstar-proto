@@ -314,6 +314,11 @@ class ParticleDynamicsDemo {
                 layout: { initial: { isExpanded: true } },
             },
         });
+        // Disable automatic camera re-framing: by default the canvas re-centers whenever a renderable
+        // moves outside the bounding sphere, which fires constantly during the simulation and every
+        // time a body is added. With manualReset on, the camera only moves on an explicit reset (which
+        // `start()` still issues for the initial framing).
+        this.plugin.canvas3d?.setProps({ camera: { manualReset: true } });
         // open with the full UI so a structure can be loaded and the particle representation applied;
         // also start the synthetic dynamics demo so it runs out of the box (play/pause from the
         // animation controls; the example buttons reseed it or stop it).
