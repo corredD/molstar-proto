@@ -3,6 +3,7 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /*
@@ -716,6 +717,47 @@ export namespace Vec3 {
         sub(triangleNormalTmpAB, b, a);
         sub(triangleNormalTmpAC, c, a);
         return normalize(out, cross(out, triangleNormalTmpAB, triangleNormalTmpAC));
+    }
+
+    const cptAB = zero(), cptAC = zero(), cptAP = zero(), cptBP = zero(), cptCP = zero(), cptBC = zero();
+    /**
+     * Closest point to `p` on the triangle `a`, `b`, `c`, written to `out` (Ericson, Real-Time
+     * Collision Detection §5.1.5 - the seven barycentric/Voronoi regions).
+     */
+    export function closestPointOnTriangle(out: Vec3, p: Vec3, a: Vec3, b: Vec3, c: Vec3) {
+        sub(cptAB, b, a);
+        sub(cptAC, c, a);
+        sub(cptAP, p, a);
+        const d1 = dot(cptAB, cptAP);
+        const d2 = dot(cptAC, cptAP);
+        if (d1 <= 0 && d2 <= 0) return copy(out, a); // vertex region A
+
+        sub(cptBP, p, b);
+        const d3 = dot(cptAB, cptBP);
+        const d4 = dot(cptAC, cptBP);
+        if (d3 >= 0 && d4 <= d3) return copy(out, b); // vertex region B
+
+        const vc = d1 * d4 - d3 * d2;
+        if (vc <= 0 && d1 >= 0 && d3 <= 0) return scaleAndAdd(out, a, cptAB, d1 / (d1 - d3)); // edge AB
+
+        sub(cptCP, p, c);
+        const d5 = dot(cptAB, cptCP);
+        const d6 = dot(cptAC, cptCP);
+        if (d6 >= 0 && d5 <= d6) return copy(out, c); // vertex region C
+
+        const vb = d5 * d2 - d1 * d6;
+        if (vb <= 0 && d2 >= 0 && d6 <= 0) return scaleAndAdd(out, a, cptAC, d2 / (d2 - d6)); // edge AC
+
+        const va = d3 * d6 - d5 * d4;
+        if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) { // edge BC
+            sub(cptBC, c, b);
+            return scaleAndAdd(out, b, cptBC, (d4 - d3) / ((d4 - d3) + (d5 - d6)));
+        }
+
+        // inside the face
+        const denom = 1 / (va + vb + vc);
+        scaleAndAdd(out, a, cptAB, vb * denom);
+        return scaleAndAdd(out, out, cptAC, vc * denom);
     }
 
     const centerTmpV = zero();

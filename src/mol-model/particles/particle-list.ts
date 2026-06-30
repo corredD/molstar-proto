@@ -12,6 +12,7 @@ import { BoundaryHelper } from '../../mol-math/geometry/boundary-helper';
 import { ModelFormat } from '../../mol-model-formats/format';
 import { CustomProperties, CustomPropertyDescriptor } from '../custom-property';
 import { Boundary } from '../../mol-math/geometry/boundary';
+import { MeshSurface } from '../../mol-math/geometry/mesh-surface';
 
 export interface ParticleList {
     readonly entryId?: string
@@ -116,6 +117,7 @@ export interface ParticleList {
 }
 
 const RigidClustersDescriptor = CustomPropertyDescriptor({ name: 'particle-rigid-clusters' });
+const SurfaceBindingsDescriptor = CustomPropertyDescriptor({ name: 'particle-surface-bindings' });
 
 /**
  * A reference object instanced at each particle of a given target id. Each particle has
@@ -469,5 +471,24 @@ export namespace Particle {
 
     export function getRigidClusters(particles: ParticleList): RigidClusters | undefined {
         return particles._propertyData?.[RigidClustersDescriptor.name];
+    }
+
+    /** How a compartment relates to its bound mesh: stuck `on` the surface, confined `inside` it, or
+     * excluded to `outside` it (the two latter let particles move freely but never cross the mesh). */
+    export type SurfaceMode = 'on' | 'inside' | 'outside'
+    export interface SurfaceBinding { readonly surface: MeshSurface, readonly mode: SurfaceMode }
+
+    /**
+     * Per-compartment surface bindings for the dynamics: maps a `compartments` index to the mesh its
+     * particles are bound to and how (`mode`). Particles whose compartment is not in the map are
+     * simulated freely. Set by the transform that builds the list after resolving the mesh ref.
+     */
+    export function setSurfaceBindings(particles: ParticleList, bindings: ReadonlyMap<number, SurfaceBinding>): void {
+        particles.customProperties.add(SurfaceBindingsDescriptor);
+        particles._propertyData[SurfaceBindingsDescriptor.name] = bindings;
+    }
+
+    export function getSurfaceBindings(particles: ParticleList): ReadonlyMap<number, SurfaceBinding> | undefined {
+        return particles._propertyData?.[SurfaceBindingsDescriptor.name];
     }
 }

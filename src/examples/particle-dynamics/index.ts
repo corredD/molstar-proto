@@ -12,6 +12,7 @@
 
 import { createPluginUI } from '../../mol-plugin-ui';
 import { PluginUIContext } from '../../mol-plugin-ui/context';
+import { PluginContext } from '../../mol-plugin/context';
 import { renderReact18 } from '../../mol-plugin-ui/react18';
 import { DefaultPluginUISpec } from '../../mol-plugin-ui/spec';
 import { PluginStateObject as SO, PluginStateTransform } from '../../mol-plugin-state/objects';
@@ -25,6 +26,7 @@ import { ModelFormat } from '../../mol-model-formats/format';
 import { Structure } from '../../mol-model/structure';
 import { Volume, Grid } from '../../mol-model/volume';
 import { Mesh } from '../../mol-geo/geometry/mesh/mesh';
+import { MeshSurface } from '../../mol-math/geometry/mesh-surface';
 import { Column, Table } from '../../mol-data/db';
 import { ElementSymbol, MoleculeType } from '../../mol-model/structure/model/types';
 import { BasicSchema, createBasic } from '../../mol-model-formats/structure/basic/schema';
@@ -100,6 +102,9 @@ function makeParticles(count: number, box: number): ParticleList {
     const radii = new Float32Array(count);
     const keys = new Int32Array(count);
     const targets = new Int32Array(count);
+    // single compartment "cloud" so the cloud can be bound to a loaded mesh surface via the
+    // Synthetic Particles node's `surface` parameter
+    const compartments = new Int32Array(count);
     const rand = mulberry32(1);
     for (let i = 0; i < count; ++i) {
         coordinates[i * 3] = (rand() * 2 - 1) * box;
@@ -115,11 +120,59 @@ function makeParticles(count: number, box: number): ParticleList {
     }
     return {
         count, keys, targets, coordinates, rotations, radii,
+        compartments, compartmentInfo: new Map([[0, 'cloud']]),
         getParticleLabel: (i: number) => `Particle ${i}`,
         sourceData: { kind: 'particle-dynamics-demo' } as unknown as ModelFormat,
         customProperties: new CustomProperties(),
         _propertyData: {},
     };
+}
+
+/** Build a `MeshSurface` from a loaded mesh shape provider (the `SO.Shape.Provider` data). */
+async function meshSurfaceFromProvider(ctx: RuntimeContext, provider: any): Promise<MeshSurface | undefined> {
+    // getShape needs the param VALUES (e.g. PLY reads props.grouping); provider.params is the schema
+    const shape = await provider.getShape(ctx, provider.data, PD.getDefaultValues(provider.params));
+    const geo = shape?.geometry;
+    if (!geo || geo.kind !== 'mesh') return undefined;
+    const mesh = geo as Mesh;
+    const positions = mesh.vertexBuffer.ref.value.subarray(0, mesh.vertexCount * 3);
+    const indices = mesh.indexBuffer.ref.value.subarray(0, mesh.triangleCount * 3);
+    return MeshSurface.create(positions instanceof Float32Array ? positions : new Float32Array(positions), indices);
+}
+
+/**
+ * Per-compartment surface bindings shared by the particle-producing transforms: each row constrains a
+ * compartment/type (matched by name in `compartmentInfo`, e.g. "cloud", "Cube", "Tube", "Protein") to a
+ * loaded mesh, by mode. Editable in the UI on the node; the ValueRef resolves because it's a transform.
+ */
+const surfaceParams = {
+    surfaceBindings: PD.ObjectList(
+        {
+            compartment: PD.Text('', { label: 'Compartment' }),
+            surface: PD.ValueRef<any>(
+                (ctx: PluginContext) => ctx.state.data.select(StateSelection.Generators.rootsOfType(SO.Shape.Provider)).map(s => [s.transform.ref, s.obj?.label ?? s.transform.ref] as [string, string]),
+                (ref, getData) => getData(ref),
+            ),
+            mode: PD.Select<Particle.SurfaceMode>('on', [['on', 'On surface'], ['inside', 'Inside (confined)'], ['outside', 'Outside (excluded)']]),
+        },
+        e => `${e.compartment || '?'} → ${e.mode}`,
+        { description: 'Constrain a compartment/type (by name) to a loaded mesh surface.' }
+    ),
+};
+
+/** Resolve the binding rows and attach them to `list` (compartment name -> mesh surface + mode). */
+async function applySurfaceBindings(ctx: RuntimeContext, list: ParticleList, rows: { compartment: string, surface: any, mode: Particle.SurfaceMode }[]): Promise<void> {
+    if (!rows?.length || !list.compartmentInfo) return;
+    const bindings = new Map<number, Particle.SurfaceBinding>();
+    for (const row of rows) {
+        if (!row.compartment || !row.surface?.ref) continue;
+        const surface = await meshSurfaceFromProvider(ctx, row.surface.getValue());
+        if (!surface) continue;
+        let index = -1;
+        list.compartmentInfo.forEach((name, i) => { if (name === row.compartment) index = i; });
+        if (index >= 0) bindings.set(index, { surface, mode: row.mode });
+    }
+    if (bindings.size) Particle.setSurfaceBindings(list, bindings);
 }
 
 const SyntheticParticles = PluginStateTransform.BuiltIn({
@@ -132,12 +185,29 @@ const SyntheticParticles = PluginStateTransform.BuiltIn({
         box: PD.Numeric(150, { min: 10, max: 1000, step: 10 }),
         // when set, attach a matching cube/tube reference structure so the rigid clusters are visible
         rigidShape: PD.Select<RigidShape>('none', [['none', 'None'], ['cube', 'Cube'], ['tube', 'Tube']]),
+        // constrain the cloud to a loaded mesh (mode = on surface / inside / outside). Bound by the mesh's
+        // state ref; the ValueRef resolves correctly because this is a transform (unlike an animation param).
+        ...surfaceParams,
+        // link a loaded structure to every particle (rendered via the `target` representation). Built-in
+        // cube/tube cluster shapes come from `rigidShape` above instead.
+        linkStructure: PD.ValueRef<any>(
+            (ctx: PluginContext) => ctx.state.data.select(StateSelection.Generators.rootsOfType(SO.Molecule.Structure)).map(s => [s.transform.ref, s.obj?.label ?? s.transform.ref] as [string, string]),
+            (ref, getData) => getData(ref),
+        ),
     },
 })({
     apply({ params }) {
         return Task.create('Synthetic Particles', async ctx => {
             const particles = makeParticles(params.count, params.box);
-            if (params.rigidShape !== 'none') {
+            // constrain compartments (here just "cloud") to meshes per the binding rows
+            await applySurfaceBindings(ctx, particles, params.surfaceBindings);
+            if (params.linkStructure?.ref) {
+                // link a loaded structure to every particle: the `target` representation instances it
+                // at each particle's position+orientation (on the surface, oriented to its normal). One
+                // structure per particle for now; a rigid group-of-beads per structure is a follow-up.
+                const structure = params.linkStructure.getValue() as Structure;
+                Particle.setParticleTargets(particles, new Map<number, ParticleTarget>([[0, { kind: 'structure', structure }]]));
+            } else if (params.rigidShape !== 'none') {
                 // every particle is target 0 (makeParticles fills `targets` with 0); attach the cluster
                 // structure for target 0 so the `target` representation can instance it per body
                 const offsets = particleRigidShapeOffsets(params.rigidShape, RIGID_RADIUS);
@@ -172,11 +242,20 @@ const PrebuiltParticles = PluginStateTransform.BuiltIn({
     display: 'Prebuilt Particles',
     from: SO.Root,
     to: SO.Particle.List,
-    params: { list: PD.Value<ParticleList | undefined>(undefined, { isHidden: true }) },
+    params: { list: PD.Value<ParticleList | undefined>(undefined, { isHidden: true }), ...surfaceParams },
 })({
     apply({ params }) {
-        if (!params.list) throw new Error('PrebuiltParticles: no list provided');
-        return new SO.Particle.List(params.list, { label: 'Rigid Bodies' });
+        return Task.create('Prebuilt Particles', async ctx => {
+            if (!params.list) throw new Error('PrebuiltParticles: no list provided');
+            let list = params.list;
+            if (params.surfaceBindings.length) {
+                // shallow-clone so a new list object triggers the animation to re-collect (the typed
+                // arrays stay shared, so the running poses carry over); attach the bindings to the clone
+                list = { ...list, _propertyData: { ...list._propertyData } };
+                await applySurfaceBindings(ctx, list, params.surfaceBindings);
+            }
+            return new SO.Particle.List(list, { label: 'Rigid Bodies' });
+        });
     },
 });
 
@@ -301,7 +380,7 @@ function volumePoints(volume: Volume): Float32Array {
 
 /** World-space vertices of a shape's mesh geometry (sub-sampled by stride), or empty if not a mesh. */
 async function shapePoints(ctx: RuntimeContext, provider: any): Promise<Float32Array> {
-    const shape = await provider.getShape(ctx, provider.data);
+    const shape = await provider.getShape(ctx, provider.data, PD.getDefaultValues(provider.params));
     const geo = shape?.geometry;
     if (!geo || geo.kind !== 'mesh') return new Float32Array(0);
     const mesh = geo as Mesh;
@@ -625,6 +704,9 @@ class ParticleDynamicsDemo {
 
         const list: ParticleList = {
             count: n, keys, targets, entities, entityInfo, coordinates, rotations, radii,
+            // compartment = body type (cube/tube/protein/...), so the surface constraint and cohesion
+            // treat each type as its own group rather than one lumped set of bodies
+            compartments: entities, compartmentInfo: entityInfo,
             getParticleLabel: (i: number) => this.bodies[i]?.label ?? `Body ${i}`,
             sourceData: { kind: 'particle-dynamics-demo' } as unknown as ModelFormat,
             customProperties: new CustomProperties(),

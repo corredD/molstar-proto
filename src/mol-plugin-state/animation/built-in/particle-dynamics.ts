@@ -20,10 +20,36 @@ import { PluginStateAnimation } from '../model';
 type Consumer = { repr: Representation.Any, update: (particles: ParticleList) => void }
 /** One simulation per particle list, shared by all consumers of that list so they stay in sync. */
 type Sim = { particles: ParticleList, dynamics: ParticleDynamics, consumers: Consumer[] }
-/** `structuralKey` captures props that change the simulation's shape (rigid body, shape, seed); when
- * it changes mid-play the sims are rebuilt rather than live-updated via `setProps`. `lastBounds`
- * tracks the box half-extent so a change to it can reframe the camera onto the new box. */
-type State = { sims: Sim[], structuralKey: string, lastBounds: number }
+/** `structuralKey` (shape/seed) forces a full rebuild; `consumerKey` tracks the representation set so a
+ * representation added or its type switched mid-play is picked up; `lastBounds` reframes the camera
+ * when the box half-extent changes. Surface bindings live on the `ParticleList` itself (set by the
+ * transform that builds it, via `Particle.setSurfaceBindings`) - the animation just reads them. */
+type State = { sims: Sim[], structuralKey: string, consumerKey: string, lastBounds: number }
+
+/** Identity of the current particle/structure representations - changes when one is added, removed, or
+ * its type is switched in the UI, so the sims re-collect (reusing dynamics, no motion reset). */
+function consumerKey(ctx: PluginContext): string {
+    const refs: string[] = [];
+    for (const c of ctx.state.data.select(StateSelection.Generators.ofType(SO.Particle.Representation3D))) refs.push(c.transform.ref);
+    for (const c of ctx.state.data.select(StateSelection.Generators.ofType(SO.Molecule.Structure.Representation3D))) refs.push(c.transform.ref);
+    return refs.sort().join(',');
+}
+
+/** The set of particle lists currently feeding a representation. Used to detect when a list's data was
+ * rebuilt (e.g. a surface bound on its transform produced a new list object) so the sims re-collect. */
+function consumedParticleLists(ctx: PluginContext): Set<ParticleList> {
+    const lists = new Set<ParticleList>();
+    for (const c of ctx.state.data.select(StateSelection.Generators.ofType(SO.Particle.Representation3D))) {
+        const list = c.obj?.data?.sourceData as ParticleList | undefined;
+        if (list) lists.add(list);
+    }
+    for (const c of ctx.state.data.select(StateSelection.Generators.ofType(SO.Molecule.Structure.Representation3D))) {
+        const instanced = ctx.state.data.cells.get(c.transform.parent)?.obj?.data as Structure | undefined;
+        const list = instanced && Structure.ParticleList.get(instanced);
+        if (list) lists.add(list);
+    }
+    return lists;
+}
 
 /** Frame the camera on the cubic simulation box (origin-centred, half-extent `bounds`). */
 function focusOnBounds(ctx: PluginContext, bounds: number) {
@@ -36,14 +62,21 @@ function hasParticleConsumers(ctx: PluginContext) {
         || ctx.state.data.select(StateSelection.Generators.ofType(SO.Molecule.Structure)).some(c => c.obj?.data && Structure.ParticleList.get(c.obj.data));
 }
 
-function collectSims(ctx: PluginContext, props: ParticleDynamicsProps): Sim[] {
+function collectSims(ctx: PluginContext, props: ParticleDynamicsProps, reuse?: Map<ParticleList, ParticleDynamics>): Sim[] {
     // One dynamics per particle list, stepped once per frame, so every consumer of that list
     // (orientation markers, an instanced particle-structure, or a structure surface baked from the
-    // particles) reads the exact same coordinates and stays in sync.
+    // particles) reads the exact same coordinates and stays in sync. Any surface constraints are
+    // already attached to the list (Particle.setSurfaceBindings) by the transform that built it.
     const byList = new Map<ParticleList, Sim>();
     const getSim = (particles: ParticleList) => {
         let sim = byList.get(particles);
-        if (!sim) { sim = { particles, dynamics: createParticleDynamics(particles, props), consumers: [] }; byList.set(particles, sim); }
+        if (!sim) {
+            // reuse an existing dynamics (re-collecting only because the representation set changed) so
+            // the running motion isn't reset; otherwise build a fresh one
+            const dynamics = reuse?.get(particles) ?? createParticleDynamics(particles, props);
+            sim = { particles, dynamics, consumers: [] };
+            byList.set(particles, sim);
+        }
         return sim;
     };
 
@@ -99,7 +132,7 @@ export const AnimateParticleDynamics = PluginStateAnimation.create({
             ? { canApply: true }
             : { canApply: false, reason: 'No particle representation in the state' };
     },
-    initialState: (props, ctx) => ({ sims: collectSims(ctx, props), structuralKey: particleDynamicsStructuralKey(props), lastBounds: props.bounds }) as State,
+    initialState: (props, ctx) => ({ sims: collectSims(ctx, props), structuralKey: particleDynamicsStructuralKey(props), consumerKey: consumerKey(ctx), lastBounds: props.bounds }) as State,
     setup: (_props, _state, ctx) => {
         // Force continuous rendering while the simulation runs. Otherwise the canvas only redraws on
         // demand (interaction / a scene shader-animation like wiggle), so the per-frame transform
@@ -108,11 +141,25 @@ export const AnimateParticleDynamics = PluginStateAnimation.create({
     },
     getDuration: () => ({ kind: 'infinite' }),
     async apply(state: State, _t, ctx) {
-        // a structural param changed (rigid body toggle, shape, seed) - rebuild the sims from scratch
-        const key = particleDynamicsStructuralKey(ctx.params);
+        // a structural param changed (rigid body/shape/seed) - rebuild the sims from scratch. Otherwise,
+        // if the representation set changed (a rep added/removed/type-switched) OR a consumed list was
+        // rebuilt (e.g. a surface bound on its transform produced a new list), re-collect consumers but
+        // REUSE the existing dynamics for lists that persist so the running motion isn't reset.
+        const props = ctx.params;
+        const key = particleDynamicsStructuralKey(props);
         if (key !== state.structuralKey) {
-            state.sims = collectSims(ctx.plugin, ctx.params);
+            state.sims = collectSims(ctx.plugin, props);
             state.structuralKey = key;
+            state.consumerKey = consumerKey(ctx.plugin);
+        } else {
+            const ck = consumerKey(ctx.plugin);
+            const lists = consumedParticleLists(ctx.plugin);
+            const listsChanged = lists.size !== state.sims.length || state.sims.some(s => !lists.has(s.particles));
+            if (ck !== state.consumerKey || listsChanged) {
+                const reuse = new Map(state.sims.map(s => [s.particles, s.dynamics]));
+                state.sims = collectSims(ctx.plugin, props, reuse);
+                state.consumerKey = ck;
+            }
         }
         // box half-extent changed - reframe the camera so the view tracks the new simulation bounds
         if (ctx.params.bounds !== state.lastBounds) {

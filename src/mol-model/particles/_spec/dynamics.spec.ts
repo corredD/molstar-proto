@@ -6,7 +6,9 @@
 
 import { ParamDefinition as PD } from '../../../mol-util/param-definition';
 import { Vec3 } from '../../../mol-math/linear-algebra';
-import { ParticleList } from '../particle-list';
+import { MeshSurface } from '../../../mol-math/geometry/mesh-surface';
+import { CustomProperties } from '../../custom-property';
+import { ParticleList, Particle } from '../particle-list';
 import { createParticleDynamics, ParticleDynamicsParams } from '../dynamics';
 
 function makeParticles(n: number): ParticleList {
@@ -114,5 +116,87 @@ describe('particle dynamics', () => {
         for (let i = 1; i <= 40; ++i) da.getFrameAtIndex(i); // incremental
         createParticleDynamics(b, baseProps).getFrameAtIndex(40); // single jump
         for (let i = 0; i < a.coordinates.length; ++i) expect(a.coordinates[i]).toBeCloseTo(b.coordinates[i], 5);
+    });
+});
+
+/** Low-res UV sphere of radius `r` as packed positions + triangle indices. */
+function uvSphere(r: number, lat = 12, lon = 16) {
+    const verts: number[] = [], idx: number[] = [];
+    for (let i = 0; i <= lat; ++i) {
+        const theta = i / lat * Math.PI, st = Math.sin(theta), ct = Math.cos(theta);
+        for (let j = 0; j <= lon; ++j) {
+            const phi = j / lon * 2 * Math.PI;
+            verts.push(r * st * Math.cos(phi), r * ct, r * st * Math.sin(phi));
+        }
+    }
+    const row = lon + 1;
+    for (let i = 0; i < lat; ++i) for (let j = 0; j < lon; ++j) {
+        const a = i * row + j, b = a + 1, c = a + row, d = c + 1;
+        idx.push(a, c, b, b, c, d);
+    }
+    return { positions: Float32Array.from(verts), indices: Uint32Array.from(idx) };
+}
+
+function makeBoundParticles(n: number, spread: number): ParticleList {
+    const coordinates = new Float32Array(n * 3);
+    const rotations = new Float32Array(n * 4);
+    const compartments = new Int32Array(n); // all compartment 0
+    const rand = (s: number) => ((Math.sin(s * 12.9898) * 43758.5453) % 1 + 1) % 1;
+    for (let i = 0; i < n; ++i) {
+        coordinates[i * 3] = (rand(i) - 0.5) * spread;
+        coordinates[i * 3 + 1] = (rand(i + 100) - 0.5) * spread;
+        coordinates[i * 3 + 2] = (rand(i + 200) - 0.5) * spread;
+        rotations[i * 4 + 3] = 1;
+    }
+    return {
+        count: n, coordinates, rotations, compartments,
+        customProperties: new CustomProperties(), _propertyData: {},
+    } as unknown as ParticleList;
+}
+
+describe('particle dynamics - surface constraints', () => {
+    it('projects bound particles onto the surface and keeps them there', () => {
+        const R = 50;
+        const sphere = uvSphere(R);
+        const surface = MeshSurface.create(sphere.positions, sphere.indices);
+        const p = makeBoundParticles(80, 120); // scattered well off the sphere
+        Particle.setSurfaceBindings(p, new Map([[0, { surface, mode: 'on' as const }]]));
+
+        const props = { ...PD.getDefaultValues(ParticleDynamicsParams), gravity: Vec3.create(0, 0, 0), particleRadius: 3, bounds: 200 };
+        createParticleDynamics(p, props).getFrameAtIndex(80);
+
+        for (let i = 0; i < p.count; ++i) {
+            // every bound particle sits on the (faceted) sphere surface
+            const d = Math.hypot(p.coordinates[i * 3], p.coordinates[i * 3 + 1], p.coordinates[i * 3 + 2]);
+            expect(d).toBeGreaterThan(R * 0.9);
+            expect(d).toBeLessThan(R * 1.02);
+            // orientations stay unit quaternions
+            const r = i * 4;
+            expect(Math.hypot(p.rotations![r], p.rotations![r + 1], p.rotations![r + 2], p.rotations![r + 3])).toBeCloseTo(1, 4);
+        }
+    });
+
+    it('a mesh confines particles to one side and inside/outside pick opposite sides', () => {
+        const R = 50;
+        const sphere = uvSphere(R);
+        const surface = MeshSurface.create(sphere.positions, sphere.indices);
+        const props = { ...PD.getDefaultValues(ParticleDynamicsParams), gravity: Vec3.create(0, 0, 0), particleRadius: 3, bounds: 200 };
+        // run a mode and count how many particles end up inside vs outside the sphere
+        const sideOf = (mode: 'inside' | 'outside') => {
+            const p = makeBoundParticles(60, 120); // start scattered on both sides
+            Particle.setSurfaceBindings(p, new Map([[0, { surface, mode }]]));
+            createParticleDynamics(p, props).getFrameAtIndex(120);
+            let inside = 0;
+            for (let i = 0; i < p.count; ++i) {
+                if (Math.hypot(p.coordinates[i * 3], p.coordinates[i * 3 + 1], p.coordinates[i * 3 + 2]) < R) inside++;
+            }
+            return inside;
+        };
+        const insideMode = sideOf('inside'), outsideMode = sideOf('outside');
+        // each mode confines ALL particles to a single side (none cross the mesh)
+        expect(insideMode === 60 || insideMode === 0).toBe(true);
+        expect(outsideMode === 60 || outsideMode === 0).toBe(true);
+        // the two modes confine to OPPOSITE sides
+        expect(insideMode).not.toBe(outsideMode);
     });
 });
