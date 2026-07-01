@@ -608,7 +608,8 @@ class ParticleDynamicsDemo {
         if (this.bodiesRef && this.plugin.state.data.cells.has(this.bodiesRef)) {
             // CRUCIAL: keep the same particle-list cell ref. The `particles-structure` decorators depend
             // on this cell, so they re-instance at the updated bodies instead of dangling.
-            await this.plugin.state.data.build().to(this.bodiesRef).update({ list }).commit();
+            // Merge (don't replace) the params so the node's `surfaceBindings` (mesh bindings) survive.
+            await this.plugin.state.data.build().to(this.bodiesRef).update(old => { old.list = list; }).commit();
         } else {
             const cell = await this.plugin.state.data.build().toRoot().apply(PrebuiltParticles, { list }).commit();
             this.bodiesRef = cell.ref;

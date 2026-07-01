@@ -21,11 +21,13 @@ export const ParticleDynamicsParams = {
     bounds: PD.Numeric(150, { min: 1, max: 2000, step: 1 }, { description: 'Half-extent of the cubic box the particles bounce inside, in angstrom.' }),
     restitution: PD.Numeric(0.8, { min: 0, max: 1, step: 0.05 }, { description: 'Fraction of velocity kept when bouncing off a wall or off another particle.' }),
     collisions: PD.Boolean(true, { description: 'Resolve sphere-sphere overlaps between particles each step (push apart + exchange momentum).' }),
+    solverIterations: PD.Numeric(4, { min: 1, max: 32, step: 1 }, { description: 'Constraint-solver passes per step. A single pass cannot unwind dense or high-gravity sphere stacks (residual overlaps, beads pushed through a surface); more passes converge them, at higher cost.' }),
     particleRadius: PD.Numeric(10, { min: 0.1, max: 500, step: 0.1 }, { description: 'Uniform collision sphere radius for every particle (the grid assumes a single diameter).' }),
     rigidBody: PD.Boolean(false, { description: 'Flex-style rigid bodies: each particle is a small cluster of collision spheres; collisions between clusters induce a position AND rotation that is fed back to the viewer (shape matching).' }),
     rigidShape: PD.Select('cube', PD.arrayToOptions(['cube', 'tube'] as const), { description: 'Sphere arrangement of a rigid body: "cube" = 4 spheres in a square, "tube" = 5 spheres in a line.' }),
     surfaceCohesion: PD.Numeric(0.4, { min: 0, max: 2, step: 0.05 }, { description: 'Attraction pulling surface-constrained particles of the same compartment together each step (clamped). 0 = no attraction. See `Particle.setSurfaceBindings`.' }),
-    surfaceOrient: PD.Boolean(true, { description: 'Orient surface-constrained particles to the surface normal.' }),
+    surfaceOrient: PD.Boolean(true, { description: 'Orient surface-constrained objects to the surface normal.' }),
+    surfaceOrientAxis: PD.Vec3(Vec3.create(0, 0, 1), {}, { description: 'Local axis of a surface-constrained object aligned to the surface normal (default +Z).' }),
     timestep: PD.Numeric(0.016, { min: 0.001, max: 0.1, step: 0.001 }, { description: 'Integration timestep per simulation step.' }),
     angularSpeed: PD.Numeric(0, { min: 0, max: 20, step: 0.1 }, { description: 'Artificial tumble rate (non-rigid only): each particle spins forever about a fixed random axis at this many radians per second. 0 = no tumble (default); use rigid bodies for physical rotation that settles.' }),
     seed: PD.Numeric(1, { min: 0, max: 65535, step: 1 }, { description: 'Seed for the initial velocities and spin axes (deterministic).' }),
@@ -113,12 +115,20 @@ export function createParticleDynamics(particles: ParticleList, props: ParticleD
     let bounds = props.bounds;
     let restitution = props.restitution;
     let collisions = props.collisions;
+    let solverIterations = Math.max(1, props.solverIterations | 0);
     // Uniform collision radius for every particle - the grid assumes a single diameter. Per-particle
     // `radii` from the source data are intentionally ignored here so the cell size stays uniform.
     let particleRadius = props.particleRadius;
     let invCell = 1 / Math.max(2 * particleRadius, 1e-3);
     let surfaceCohesion = props.surfaceCohesion;
     let surfaceOrient = props.surfaceOrient;
+    // local axis (unit) aligned to the surface normal for `on`-constrained objects; refreshed by setProps
+    const orientAxis = Vec3.create(0, 0, 1);
+    const setOrientAxis = (v: Vec3) => {
+        const m = Vec3.magnitude(v);
+        if (m > 1e-6) Vec3.scale(orientAxis, v, 1 / m); else Vec3.set(orientAxis, 0, 0, 1);
+    };
+    setOrientAxis(props.surfaceOrientAxis);
     // half-extent of the largest bound mesh (set in the surface setup below); the reflective box grows
     // to at least this so it never clips a mesh the particles are constrained to
     let meshExtent = 0;
@@ -181,10 +191,12 @@ export function createParticleDynamics(particles: ParticleList, props: ParticleD
         bounds = p.bounds;
         restitution = p.restitution;
         collisions = p.collisions;
+        solverIterations = Math.max(1, p.solverIterations | 0);
         particleRadius = p.particleRadius;
         invCell = 1 / Math.max(2 * particleRadius, 1e-3);
         surfaceCohesion = p.surfaceCohesion;
         surfaceOrient = p.surfaceOrient;
+        setOrientAxis(p.surfaceOrientAxis);
         boxBounds = Math.max(p.bounds, meshExtent);
         spinAngle = rotations ? p.angularSpeed * dt : 0;
     };
@@ -223,7 +235,6 @@ export function createParticleDynamics(particles: ParticleList, props: ParticleD
     boxBounds = Math.max(bounds, meshExtent);
     const cohForce = onCount > 0 ? new Float32Array(count * 3) : undefined; // accumulated cohesion pull
     const projPoint = Vec3(), projNormal = Vec3(), constrainPos = Vec3();
-    const orientFrom = Vec3.create(0, 0, 1); // local axis mapped onto the surface normal
 
     /** Constrain a point to a bound mesh per `mode`: `on` snaps it to the surface; `inside`/`outside`
      * keep it a radius clear on the allowed side. Writes the result to `constrainPos`; returns whether
@@ -316,8 +327,10 @@ export function createParticleDynamics(particles: ParticleList, props: ParticleD
         ((Math.imul(ix, 73856093) ^ Math.imul(iy, 19349663) ^ Math.imul(iz, 83492791)) >>> 0) & tableMask;
 
     /** Resolve sphere-sphere overlaps in `p`/`v` (length `n` spheres). `bodies` (if given) excludes
-     * pairs from the same rigid body, whose rigidity is enforced by shape matching instead. */
-    const resolveCollisions = (p: Float32Array, v: Float32Array, n: number, bodies?: Int32Array) => {
+     * pairs from the same rigid body, whose rigidity is enforced by shape matching instead.
+     * `applyImpulse` exchanges momentum; pass `false` on the intermediate iterations of a multi-pass
+     * solve (only the positional projection should iterate, so velocities are not over-damped). */
+    const resolveCollisions = (p: Float32Array, v: Float32Array, n: number, bodies?: Int32Array, applyImpulse = true) => {
         if (n < 2) return;
         const minD = 2 * particleRadius, minD2 = minD * minD;
         // bin spheres by hashed cell via a counting sort (allocation-stable across steps)
@@ -359,6 +372,7 @@ export function createParticleDynamics(particles: ParticleList, props: ParticleD
                     p[ci] = (xi -= nx * corr); p[ci + 1] = (yi -= ny * corr); p[ci + 2] = (zi -= nz * corr);
                     p[cj] += nx * corr; p[cj + 1] += ny * corr; p[cj + 2] += nz * corr;
                     // velocity impulse: equal-mass elastic response, only when the spheres are approaching
+                    if (!applyImpulse) continue;
                     const vn = (v[cj] - v[ci]) * nx + (v[cj + 1] - v[ci + 1]) * ny + (v[cj + 2] - v[ci + 2]) * nz;
                     if (vn < 0) {
                         const J = -(1 + restitution) * vn * 0.5;
@@ -440,7 +454,7 @@ export function createParticleDynamics(particles: ParticleList, props: ParticleD
             if (mode === MODE_ON) {
                 vel[c] *= keep; vel[c + 1] *= keep; vel[c + 2] *= keep; // no normal velocity build-up
                 if (surfaceOrient && rotations) {
-                    Quat.rotationTo(q, orientFrom, projNormal);
+                    Quat.rotationTo(q, orientAxis, projNormal);
                     const r = i * 4;
                     rotations[r] = q[0]; rotations[r + 1] = q[1]; rotations[r + 2] = q[2]; rotations[r + 3] = q[3];
                 }
@@ -476,7 +490,9 @@ export function createParticleDynamics(particles: ParticleList, props: ParticleD
 
     const stepSimple = () => {
         integrate(count);
-        if (collisions) resolveCollisions(pos, vel, count);
+        // iterate the positional solve so dense / high-gravity stacks converge (one pass leaves overlaps);
+        // momentum is exchanged only on the final pass to avoid over-damping
+        if (collisions) for (let it = 0; it < solverIterations; ++it) resolveCollisions(pos, vel, count, undefined, it === solverIterations - 1);
         // reflective cubic box centered at the origin (kept last so particles never escape), plus tumble
         for (let i = 0; i < count; ++i) {
             if (boundMode && boundMode[i] === MODE_ON) continue; // surface pass owns surface-stuck particles
@@ -536,13 +552,33 @@ export function createParticleDynamics(particles: ParticleList, props: ParticleD
         // derive velocities from the net displacement over the step.
         prevPos.set(pos);
         integrate(simCount);
-        if (collisions) resolveCollisions(pos, vel, simCount, bodyOf);
-        // clamp spheres into the box (position only; velocity is rebuilt from the displacement below)
-        for (let s = 0; s < simCount; ++s) {
-            const c = s * 3;
-            if (pos[c] > boxBounds) pos[c] = boxBounds; else if (pos[c] < -boxBounds) pos[c] = -boxBounds;
-            if (pos[c + 1] > boxBounds) pos[c + 1] = boxBounds; else if (pos[c + 1] < -boxBounds) pos[c + 1] = -boxBounds;
-            if (pos[c + 2] > boxBounds) pos[c + 2] = boxBounds; else if (pos[c + 2] < -boxBounds) pos[c + 2] = -boxBounds;
+        // iterate the positional solve (contacts, walls, per-sphere mesh confinement). Velocities are
+        // rebuilt from the net displacement after shape matching, so collisions run positional-only.
+        for (let it = 0; it < solverIterations; ++it) {
+            if (collisions) resolveCollisions(pos, vel, simCount, bodyOf, false);
+            // clamp spheres into the box (position only; velocity is rebuilt from the displacement below)
+            for (let s = 0; s < simCount; ++s) {
+                const c = s * 3;
+                if (pos[c] > boxBounds) pos[c] = boxBounds; else if (pos[c] < -boxBounds) pos[c] = -boxBounds;
+                if (pos[c + 1] > boxBounds) pos[c + 1] = boxBounds; else if (pos[c + 1] < -boxBounds) pos[c + 1] = -boxBounds;
+                if (pos[c + 2] > boxBounds) pos[c + 2] = boxBounds; else if (pos[c + 2] < -boxBounds) pos[c + 2] = -boxBounds;
+            }
+            // inside/outside confinement collides EVERY sub-sphere with the mesh (not just the COM), so a
+            // rigid body can't poke through; the shape match below then fits a rigid pose to the corrected
+            // spheres, keeping the whole body on the allowed side. (`on` stays COM-based + orient, per body.)
+            if (boundMode && boundSurfaces) {
+                for (let b = 0; b < count; ++b) {
+                    const mode = boundMode[b], surf = boundSurfaces[b];
+                    if (!surf || (mode !== MODE_INSIDE && mode !== MODE_OUTSIDE)) continue;
+                    const s0 = clusterStart[b], n = clusterCount[b];
+                    for (let k = 0; k < n; ++k) {
+                        const so = (s0 + k) * 3;
+                        if (constrain(surf, mode, pos[so], pos[so + 1], pos[so + 2])) {
+                            pos[so] = constrainPos[0]; pos[so + 1] = constrainPos[1]; pos[so + 2] = constrainPos[2];
+                        }
+                    }
+                }
+            }
         }
 
         const invDt = 1 / dt;
@@ -568,12 +604,21 @@ export function createParticleDynamics(particles: ParticleList, props: ParticleD
             Quat.set(q, bodyQuat[b * 4], bodyQuat[b * 4 + 1], bodyQuat[b * 4 + 2], bodyQuat[b * 4 + 3]);
             extractRotation(apq);
             bodyQuat[b * 4] = q[0]; bodyQuat[b * 4 + 1] = q[1]; bodyQuat[b * 4 + 2] = q[2]; bodyQuat[b * 4 + 3] = q[3];
-            // constrain the body's centre of mass to its bound mesh (the body keeps its tumble); the
-            // sub-spheres are reprojected around the constrained COM below, so velocity reflects naturally
-            if (boundMode && boundSurfaces) {
-                const mode = boundMode[b], surf = boundSurfaces[b];
-                if (mode !== MODE_NONE && surf && constrain(surf, mode, cx, cy, cz)) {
+            // `on`: stick the body's centre of mass to the surface and align its chosen local axis to the
+            // surface normal (request: surface-constrained objects oriented along Z by default). The
+            // alignment is twist-preserving - it rotates the shape-matched orientation minimally onto the
+            // normal, so the body can still spin in-plane. (inside/outside already confined per-sphere above.)
+            if (boundMode && boundSurfaces && boundMode[b] === MODE_ON) {
+                const surf = boundSurfaces[b];
+                if (surf && constrain(surf, MODE_ON, cx, cy, cz)) {
                     cx = constrainPos[0]; cy = constrainPos[1]; cz = constrainPos[2];
+                    if (surfaceOrient) {
+                        // current world direction of the body's local orient axis, then rotate it onto the normal
+                        Vec3.transformQuat(tmp, orientAxis, q);
+                        Quat.rotationTo(dq, tmp, projNormal);
+                        Quat.multiply(q, dq, q);
+                        Quat.normalize(q, q);
+                    }
                 }
             }
             // write the rigid pose back to the viewer particle
