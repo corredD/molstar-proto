@@ -117,6 +117,63 @@ describe('particle dynamics', () => {
         createParticleDynamics(b, baseProps).getFrameAtIndex(40); // single jump
         for (let i = 0; i < a.coordinates.length; ++i) expect(a.coordinates[i]).toBeCloseTo(b.coordinates[i], 5);
     });
+
+    it('separates overlapping particles the same way at contactCompliance=0 regardless of substep count', () => {
+        const makeTwo = () => ({
+            count: 2,
+            coordinates: new Float32Array([-3, 0, 0, 3, 0, 0]),
+            rotations: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1]),
+        } as unknown as ParticleList);
+        const dist = (p: ParticleList) => Math.hypot(
+            p.coordinates[3] - p.coordinates[0], p.coordinates[4] - p.coordinates[1], p.coordinates[5] - p.coordinates[2]);
+        const common = { ...baseProps, gravity: Vec3.create(0, 0, 0), particleRadius: 5, bounds: 1000, collisions: true, contactCompliance: 0 };
+        const a = makeTwo(), b = makeTwo();
+        createParticleDynamics(a, { ...common, numSubsteps: 1 }).getFrameAtIndex(1);
+        createParticleDynamics(b, { ...common, numSubsteps: 8 }).getFrameAtIndex(1);
+        // compliance=0 is a hard constraint regardless of numSubsteps - both must fully separate
+        expect(dist(a)).toBeGreaterThanOrEqual(9.5);
+        expect(dist(b)).toBeGreaterThanOrEqual(9.5);
+    });
+
+    it('settles to the same rest configuration regardless of substep count (XPBD compliance invariance)', () => {
+        // a single particle resting against a compliant floor wall under constant gravity: the
+        // equilibrium penetration depth is the property XPBD's compliance is supposed to make
+        // independent of the substep count - a plain (non-extended) PBD pass would NOT have this
+        // property, since its correction strength scales with the timestep.
+        const makeOne = () => ({
+            count: 1,
+            coordinates: new Float32Array([0, -38, 0]),
+            rotations: new Float32Array([0, 0, 0, 1]),
+        } as unknown as ParticleList);
+        const settle = (numSubsteps: number) => {
+            const p = makeOne();
+            const props = {
+                ...baseProps, gravity: Vec3.create(0, -300, 0), damping: 0, restitution: 0,
+                collisions: false, bounds: 40, contactCompliance: 3e-3, numSubsteps, iterationsPerSubstep: 1,
+            };
+            createParticleDynamics(p, props).getFrameAtIndex(600);
+            return p.coordinates[1];
+        };
+        expect(settle(1)).toBeCloseTo(settle(8), 1);
+    });
+
+    it('raising contactCompliance increases the resting penetration past a wall (sign check on alpha_tilde)', () => {
+        const makeOne = () => ({
+            count: 1,
+            coordinates: new Float32Array([0, -38, 0]),
+            rotations: new Float32Array([0, 0, 0, 1]),
+        } as unknown as ParticleList);
+        const penetration = (contactCompliance: number) => {
+            const p = makeOne();
+            const props = {
+                ...baseProps, gravity: Vec3.create(0, -300, 0), damping: 0, restitution: 0,
+                collisions: false, bounds: 40, contactCompliance, numSubsteps: 4, iterationsPerSubstep: 1,
+            };
+            createParticleDynamics(p, props).getFrameAtIndex(150);
+            return -40 - p.coordinates[1]; // how far past the -40 wall it rests (>= 0)
+        };
+        expect(penetration(5e-3)).toBeGreaterThan(penetration(0));
+    });
 });
 
 /** Low-res UV sphere of radius `r` as packed positions + triangle indices. */
@@ -198,5 +255,27 @@ describe('particle dynamics - surface constraints', () => {
         expect(outsideMode === 60 || outsideMode === 0).toBe(true);
         // the two modes confine to OPPOSITE sides
         expect(insideMode).not.toBe(outsideMode);
+    });
+
+    it('the clearance cache keeps confinement identical to projecting every step (no wrong skips)', () => {
+        // Regression guard for the surface-projection clearance cache (the perf fix that skips the
+        // O(triangleCount) projection for a particle far from every triangle - e.g. settled deep inside a
+        // hollow mesh). The cache must be transparent: skipping only ever drops a zero-magnitude
+        // correction. A particle held motionless just inside the surface (its clearance is captured once,
+        // then every subsequent step is skipped) must end in the exact same place as one whose constraint
+        // is genuinely satisfied every step - i.e. it must not drift.
+        const R = 50;
+        const sphere = uvSphere(R);
+        const surface = MeshSurface.create(sphere.positions, sphere.indices);
+        // one rigid body at the centre (deepest interior -> largest clearance -> every step after the
+        // first is skipped). A rigid body starts at rest, so with no gravity and no collisions there is
+        // no force on it: it must sit perfectly still. A wrong skip that applied a phantom correction, or
+        // a genuine `inside` violation the cache failed to catch, would move it off the origin.
+        const p = { count: 1, coordinates: new Float32Array([0, 0, 0]), rotations: new Float32Array([0, 0, 0, 1]), compartments: new Int32Array([0]), customProperties: new CustomProperties(), _propertyData: {} } as unknown as ParticleList;
+        Particle.setSurfaceBindings(p, new Map([[0, { surface, mode: 'inside' as const }]]));
+        const props = { ...PD.getDefaultValues(ParticleDynamicsParams), gravity: Vec3.create(0, 0, 0), collisions: false, particleRadius: 3, bounds: 200, rigidBody: true, rigidShape: 'cube' as const, numSubsteps: 4 };
+        const dyn = createParticleDynamics(p, props);
+        dyn.getFrameAtIndex(300);
+        expect(Vec3.magnitude(Vec3.create(p.coordinates[0], p.coordinates[1], p.coordinates[2]))).toBeCloseTo(0, 3);
     });
 });

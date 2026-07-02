@@ -20,6 +20,12 @@ interface MeshSurface {
     /** Smallest origin-centred cube half-extent that contains the mesh (max abs coordinate); a box of
      * this half-extent never clips the mesh. */
     readonly extent: number
+    /** Centre of an axis-aligned bounding sphere of the mesh (the AABB midpoint). */
+    readonly center: Vec3
+    /** Radius of that bounding sphere (half the AABB diagonal): every mesh point is within `radius` of
+     * `center`, so a query point farther than `radius` from `center` is provably outside the mesh - a
+     * cheap broad-phase reject that avoids an O(triangleCount) `project` for far-away points. */
+    readonly radius: number
     /**
      * Closest point on the mesh to `p`, written to `outPoint`, with the hit triangle's normal written
      * to `outNormal`. Returns the distance (not squared). Returns `Infinity` for an empty mesh.
@@ -45,6 +51,10 @@ namespace MeshSurface {
         }
         const dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ;
         const extent = Math.max(Math.abs(minX), Math.abs(maxX), Math.abs(minY), Math.abs(maxY), Math.abs(minZ), Math.abs(maxZ), 0);
+        const center = triangleCount > 0
+            ? Vec3.create((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2)
+            : Vec3();
+        const radius = 0.5 * Math.sqrt(dx * dx + dy * dy + dz * dz);
 
         // cell size: aim for ~1 triangle per cell (volume / count), with planar/degenerate fallbacks
         const maxExtent = Math.max(dx, dy, dz, 1e-3);
@@ -121,23 +131,43 @@ namespace MeshSurface {
             ++gen;
             const px = cellX(p[0]), py = cellY(p[1]), pz = cellZ(p[2]);
             let best = Infinity, bestT = -1;
+            // scan one cell's triangles (skipping any already visited this query) against `p`
+            const scanCell = (ix: number, iy: number, iz: number) => {
+                const c = (ix * ny + iy) * nz + iz;
+                for (let k = cellStart[c], kl = cellStart[c + 1]; k < kl; ++k) {
+                    const t = entries[k];
+                    if (seen[t] === gen) continue;
+                    seen[t] = gen;
+                    triBounds(t);
+                    Vec3.closestPointOnTriangle(cp, p, va, vb, vc);
+                    const d2 = Vec3.squaredDistance(p, cp);
+                    if (d2 < best) { best = d2; bestT = t; Vec3.copy(outPoint, cp); }
+                }
+            };
             for (let r = 0; r <= maxRing; ++r) {
-                const x0 = Math.max(0, px - r), x1 = Math.min(nx - 1, px + r);
-                const y0 = Math.max(0, py - r), y1 = Math.min(ny - 1, py + r);
-                const z0 = Math.max(0, pz - r), z1 = Math.min(nz - 1, pz + r);
-                for (let ix = x0; ix <= x1; ++ix) for (let iy = y0; iy <= y1; ++iy) for (let iz = z0; iz <= z1; ++iz) {
-                    // only the shell at Chebyshev distance r (inner cells were scanned already)
-                    if (Math.max(Math.abs(ix - px), Math.abs(iy - py), Math.abs(iz - pz)) !== r) continue;
-                    const c = (ix * ny + iy) * nz + iz;
-                    for (let k = cellStart[c], kl = cellStart[c + 1]; k < kl; ++k) {
-                        const t = entries[k];
-                        if (seen[t] === gen) continue;
-                        seen[t] = gen;
-                        triBounds(t);
-                        Vec3.closestPointOnTriangle(cp, p, va, vb, vc);
-                        const d2 = Vec3.squaredDistance(p, cp);
-                        if (d2 < best) { best = d2; bestT = t; Vec3.copy(outPoint, cp); }
-                    }
+                // Scan ONLY the cells whose Chebyshev distance from (px,py,pz) is exactly `r` (the shell),
+                // enumerated as the up-to-6 clamped faces of the cube of half-width r - never re-scanning
+                // the r^3 interior each ring (which made a query to a point R rings from the nearest
+                // triangle O(R^4); a body settled deep inside a hollow mesh sits at large R). Edge/corner
+                // cells shared between faces are cheap and harmless: the `seen` stamp skips their triangles
+                // on the second visit. Cells are still visited in nondecreasing distance order, so the
+                // `r*cellSize` termination below stays exact.
+                if (r === 0) {
+                    scanCell(px, py, pz);
+                } else {
+                    const yc0 = Math.max(0, py - r), yc1 = Math.min(ny - 1, py + r);
+                    const zc0 = Math.max(0, pz - r), zc1 = Math.min(nz - 1, pz + r);
+                    // x = px ± r faces (full clamped y,z span of the shell)
+                    if (px - r >= 0) for (let iy = yc0; iy <= yc1; ++iy) for (let iz = zc0; iz <= zc1; ++iz) scanCell(px - r, iy, iz);
+                    if (px + r <= nx - 1) for (let iy = yc0; iy <= yc1; ++iy) for (let iz = zc0; iz <= zc1; ++iz) scanCell(px + r, iy, iz);
+                    // y = py ± r faces, excluding the x extremes already covered above
+                    const xc0 = Math.max(0, px - r + 1), xc1 = Math.min(nx - 1, px + r - 1);
+                    if (py - r >= 0) for (let ix = xc0; ix <= xc1; ++ix) for (let iz = zc0; iz <= zc1; ++iz) scanCell(ix, py - r, iz);
+                    if (py + r <= ny - 1) for (let ix = xc0; ix <= xc1; ++ix) for (let iz = zc0; iz <= zc1; ++iz) scanCell(ix, py + r, iz);
+                    // z = pz ± r faces, excluding the x and y extremes already covered above
+                    const yb0 = Math.max(0, py - r + 1), yb1 = Math.min(ny - 1, py + r - 1);
+                    if (pz - r >= 0) for (let ix = xc0; ix <= xc1; ++ix) for (let iy = yb0; iy <= yb1; ++iy) scanCell(ix, iy, pz - r);
+                    if (pz + r <= nz - 1) for (let ix = xc0; ix <= xc1; ++ix) for (let iy = yb0; iy <= yb1; ++iy) scanCell(ix, iy, pz + r);
                 }
                 // any not-yet-scanned cell is >= r*cellSize away; stop once the best hit is closer
                 if (bestT >= 0 && best <= r * cellSize * (r * cellSize)) break;
@@ -148,7 +178,7 @@ namespace MeshSurface {
             return Math.sqrt(best);
         };
 
-        return { triangleCount, extent, project, sample };
+        return { triangleCount, extent, center, radius, project, sample };
     }
 }
 

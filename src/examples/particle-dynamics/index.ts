@@ -10,11 +10,15 @@
  * solver (XPBD / position-based dynamics) behind the same `ParticleDynamics` interface.
  */
 
+import * as React from 'react';
 import { createPluginUI } from '../../mol-plugin-ui';
+import { PluginReactContext } from '../../mol-plugin-ui/base';
 import { PluginUIContext } from '../../mol-plugin-ui/context';
 import { PluginContext } from '../../mol-plugin/context';
 import { renderReact18 } from '../../mol-plugin-ui/react18';
 import { DefaultPluginUISpec } from '../../mol-plugin-ui/spec';
+import { RecipePanel } from './recipe-panel';
+import { ParticleRecipe, ParticleRecipeEntry } from './recipe';
 import { PluginStateObject as SO, PluginStateTransform } from '../../mol-plugin-state/objects';
 import { StateTransforms } from '../../mol-plugin-state/transforms';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
@@ -36,7 +40,6 @@ import { ComponentBuilder } from '../../mol-model-formats/structure/common/compo
 import { StateSelection } from '../../mol-state';
 import { Vec3, Quat, Mat4 } from '../../mol-math/linear-algebra';
 import { RuntimeContext, Task } from '../../mol-task';
-import { Color } from '../../mol-util/color';
 import './index.html';
 import '../../mol-plugin-ui/skin/light.scss';
 
@@ -400,19 +403,13 @@ async function shapePoints(ctx: RuntimeContext, provider: any): Promise<Float32A
 
 /** One rigid body in the demo scene: a baked, body-local set of bead offsets plus its current pose.
  *  `label` is the source id (e.g. `builtin:cube`) and doubles as the body's *type* identity. */
-type DemoBody = { offsets: Float32Array, position: Vec3, rotation: Quat, label: string };
+type DemoBody = { offsets: Float32Array, position: Vec3, rotation: Quat, label: string, compartment?: string };
 
 /** Human-friendly entity/type name for a body source id (e.g. `builtin:cube` -> `Cube`). */
 function bodyTypeName(sourceId: string): string {
     const [kind, ref] = sourceId.split(':');
     if (kind === 'builtin') return ref.charAt(0).toUpperCase() + ref.slice(1);
     return sourceId;
-}
-
-/** A distinct, stable colour per type/entity index (Tableau-10 palette, cycled). */
-const ENTITY_PALETTE = [0x4e79a7, 0xf28e2b, 0xe15759, 0x76b7b2, 0x59a14f, 0xedc948, 0xb07aa1, 0xff9da7, 0x9c755f, 0xbab0ac].map(c => Color(c));
-function entityColor(i: number): Color {
-    return ENTITY_PALETTE[((i % ENTITY_PALETTE.length) + ENTITY_PALETTE.length) % ENTITY_PALETTE.length];
 }
 
 class ParticleDynamicsDemo {
@@ -426,9 +423,13 @@ class ParticleDynamicsDemo {
     private bodiesList: ParticleList | undefined = undefined;
     /** State ref of the synthetic demo cloud, removed when we switch to the add-body workflow. */
     private syntheticRef: string | undefined = undefined;
-    /** Per type/entity: the `particles-structure` cell ref instancing that type's reference structure
-     *  only at that type's particles. Created once per type; recomputes on add-body via its list dependency. */
+    /** Per structure-sourced entity: the `particles-structure` subtree root that instances that type's
+     *  original loaded structure at its particles (its own representation, following the sim). Created once
+     *  per type; recomputes on rebuild via its dependency on the particle-list cell. */
     private bodyStructureRefs = new Map<number, string>();
+    /** Per entity whose source is a loaded structure: the original `Structure` to instance (see above).
+     *  Collision beads of every type are drawn from the list's rigid clusters, not from here. */
+    private entitySourceStructures = new Map<number, Structure>();
     /** Box half-extent for the add-body rigid simulation. */
     private bodiesBox = 150;
 
@@ -451,6 +452,15 @@ class ParticleDynamicsDemo {
         // also start the synthetic dynamics demo so it runs out of the box (play/pause from the
         // animation controls; the example buttons reseed it or stop it).
         await this.start();
+
+        // Recipe panel: a second React root (not part of the plugin's own component tree), wrapped in
+        // `PluginReactContext` so its `ParameterControls` (and any future context-consuming control)
+        // resolves `this.plugin` correctly.
+        const recipeElement = document.getElementById('recipe-panel');
+        if (recipeElement) {
+            renderReact18(React.createElement(PluginReactContext.Provider, { value: this.plugin },
+                React.createElement(RecipePanel, { demo: this })), recipeElement);
+        }
     }
 
     /**
@@ -513,6 +523,13 @@ class ParticleDynamicsDemo {
         return sources;
     }
 
+    /** Loaded mesh shape providers a recipe entry's `surfaceMeshRef` can bind a compartment to. */
+    getMeshSources(): { id: string, label: string }[] {
+        return this.plugin.state.data.select(StateSelection.Generators.ofType(SO.Shape.Provider))
+            .map(c => ({ id: c.transform.ref, label: c.obj?.label ?? c.transform.ref }));
+    }
+
+
     /** Compute body-local (mean-centred) bead offsets for a source: built-in shape or k-means of geometry. */
     private async computeOffsets(ctx: RuntimeContext, sourceId: string): Promise<Float32Array | undefined> {
         const [kind, ref] = sourceId.split(':');
@@ -573,9 +590,87 @@ class ParticleDynamicsDemo {
         await this.rebuildBodies();
     }
 
+    /** Resolve a declarative `ParticleRecipe` (see `recipe.ts`, edited by the schematic + table UI) into
+     * the same rigid-body pipeline `addBody`/`addBodies` use: sample each entry's source once, place
+     * `count` copies spread through the box tagged with the entry's `compartment`, then a single
+     * `rebuildBodies` (list + representations + animation) - a recipe is a declarative front-end to
+     * this existing code path, not a new simulation pipeline. Entries with both a `surfaceMode` and a
+     * `surfaceMeshRef` get a surface binding on the resulting `PrebuiltParticles` node, reusing its
+     * existing `surfaceBindings` param (the same one the generic state-tree panel already exposes). */
+    async applyRecipe(recipe: ParticleRecipe) {
+        await this.plugin.managers.animation.stop();
+        // Drop only the PREVIOUS recipe's own bodies/structures - never `plugin.clear()`, which would
+        // also delete the structures/meshes the user loaded as recipe sources/surface targets (their
+        // refs are what `entry.source`/`entry.surfaceMeshRef` resolve against below).
+        if (this.bodiesRef && this.plugin.state.data.cells.has(this.bodiesRef)) {
+            await this.plugin.state.data.build().delete(this.bodiesRef).commit();
+        }
+        await this.deleteBodyStructures();
+        this.bodies = []; this.bodiesRef = undefined; this.bodiesList = undefined;
+
+        for (const entry of recipe.entries) {
+            const offsets = await this.plugin.runTask(Task.create('Sample rigid body', ctx => this.computeOffsets(ctx, entry.source)));
+            if (!offsets || offsets.length < 3) {
+                console.warn(`recipe: could not build a shape from "${entry.source}" for type "${entry.name}" (no usable geometry)`);
+                continue;
+            }
+            let extent = 0;
+            for (let i = 0; i < offsets.length / 3; ++i) {
+                extent = Math.max(extent, Math.abs(offsets[i * 3]), Math.abs(offsets[i * 3 + 1]), Math.abs(offsets[i * 3 + 2]));
+            }
+            const span = Math.max(1, this.bodiesBox - extent - RIGID_RADIUS);
+
+            // A mesh loaded from a file typically keeps its own real-world coordinates, which are rarely
+            // centred on the simulation's origin (e.g. a Blender export centred at (850, 862, 881)). Spawning
+            // "on"-bound bodies uniformly around the origin like free bodies would place every one of them
+            // far from the mesh, so the very first `initState` projection onto it is an expensive
+            // ring-expansion search from far outside the mesh's grid (~300x slower than a query that starts
+            // near the surface) - for hundreds of bodies this shows up as a multi-second stall on Apply.
+            // Sample a point on the mesh itself instead, so bodies start near their target surface.
+            let surface: MeshSurface | undefined;
+            if (entry.surfaceMode && entry.surfaceMeshRef) {
+                const meshCell = this.plugin.state.data.cells.get(entry.surfaceMeshRef);
+                if (meshCell?.obj?.data) {
+                    surface = await this.plugin.runTask(Task.create('Sample mesh surface', ctx => meshSurfaceFromProvider(ctx, meshCell.obj!.data)));
+                }
+            }
+
+            for (let i = 0; i < entry.count; ++i) {
+                let position: Vec3;
+                if (surface) {
+                    position = Vec3();
+                    surface.sample(position, Math.random);
+                    Vec3.add(position, position, Vec3.create((Math.random() * 2 - 1) * RIGID_RADIUS, (Math.random() * 2 - 1) * RIGID_RADIUS, (Math.random() * 2 - 1) * RIGID_RADIUS));
+                } else {
+                    position = Vec3.create((Math.random() * 2 - 1) * span, (Math.random() * 2 - 1) * span, (Math.random() * 2 - 1) * span);
+                }
+                // Key the physics compartment by the entry's NAME, not its (often shared) `compartment`
+                // grouping: `surfaceMode`/`surfaceMeshRef` are per-entry, so binding by the shared
+                // compartment collapses several types' distinct constraints onto one (last-wins) - e.g.
+                // three types all in the default compartment would all get the last row's mode. Naming the
+                // compartment after the type makes each entry its own surface-binding + cohesion group.
+                this.bodies.push({ offsets, position, rotation: Quat.create(0, 0, 0, 1), label: entry.source, compartment: entry.name });
+            }
+        }
+        // resolved BEFORE the list is ever committed, so the particle list the animation starts playing
+        // already carries its surface bindings - no later patch while the sim is running (a previous
+        // version patched `surfaceBindings` in a second `.update()` after `rebuildBodies` had already
+        // started the animation against the unbound list, racing the running simulation against the
+        // rebind).
+        const rows = recipe.entries
+            .filter((e): e is ParticleRecipeEntry & { surfaceMode: Particle.SurfaceMode, surfaceMeshRef: string } => !!e.surfaceMode && !!e.surfaceMeshRef)
+            // bind by the entry NAME (matching the per-type compartment stamped on the bodies above), so
+            // each type's mode/mesh applies to its own particles instead of collapsing per shared compartment
+            .map(e => ({ compartment: e.name, surface: PD.Ref<any>(e.surfaceMeshRef), mode: e.surfaceMode }));
+        await this.rebuildBodies(rows);
+        // frame the freshly-built scene: with a bound mesh the simulation box is centred on the mesh (far
+        // off-origin for a file-loaded mesh), so an explicit reset brings the mesh + bodies into view
+        this.plugin.canvas3d?.requestCameraReset();
+    }
+
     /** Assemble the accumulated bodies into one particle list (heterogeneous rigid clusters + per-body
      * reference structures) and (re)start the rigid simulation, without disturbing loaded objects. */
-    private async rebuildBodies() {
+    private async rebuildBodies(surfaceBindings?: { compartment: string, surface: PD.Ref<any>, mode: Particle.SurfaceMode }[]) {
         await this.plugin.managers.animation.stop();
 
         // carry the live poses (the sim mutates the list in place) back into `bodies` so existing
@@ -598,7 +693,7 @@ class ParticleDynamicsDemo {
         }
         if (this.bodies.length === 0) {
             if (this.bodiesRef) { await this.plugin.state.data.build().delete(this.bodiesRef).commit(); this.bodiesRef = undefined; this.bodiesList = undefined; }
-            this.bodyStructureRefs.clear();
+            await this.deleteBodyStructures();
             return;
         }
 
@@ -608,15 +703,31 @@ class ParticleDynamicsDemo {
         if (this.bodiesRef && this.plugin.state.data.cells.has(this.bodiesRef)) {
             // CRUCIAL: keep the same particle-list cell ref. The `particles-structure` decorators depend
             // on this cell, so they re-instance at the updated bodies instead of dangling.
-            // Merge (don't replace) the params so the node's `surfaceBindings` (mesh bindings) survive.
-            await this.plugin.state.data.build().to(this.bodiesRef).update(old => { old.list = list; }).commit();
+            // Merge (don't replace) the params: `addBody`/`addBodies` pass no `surfaceBindings`, so an
+            // existing binding (set via the recipe or the generic node panel) survives untouched; a
+            // recipe re-apply passes its full row set (possibly empty) to replace it outright.
+            await this.plugin.state.data.build().to(this.bodiesRef).update(old => {
+                old.list = list;
+                if (surfaceBindings) old.surfaceBindings = surfaceBindings;
+            }).commit();
         } else {
-            const cell = await this.plugin.state.data.build().toRoot().apply(PrebuiltParticles, { list }).commit();
+            const cell = await this.plugin.state.data.build().toRoot()
+                .apply(PrebuiltParticles, surfaceBindings ? { list, surfaceBindings } : { list }).commit();
             this.bodiesRef = cell.ref;
+            // draw the collision shape of EVERY body straight from the list's rigid clusters (spacefill in
+            // rigid-cluster mode), coloured per type - this is "the particle system shows the beads". The
+            // rep depends on the list cell, so it recomputes in place on later rebuilds (same `bodiesRef`).
+            await this.plugin.state.data.build().to(this.bodiesRef)
+                .apply(StateTransforms.Particles.ParticlesRepresentation3D, {
+                    // semi-transparent so a structure-sourced type's protein (instanced inside these beads
+                    // by linkTargetStructures) stays visible; toggle this node off to see only the proteins
+                    type: { name: 'spacefill', params: { showRigidClusters: true, alpha: 0.5 } },
+                    colorTheme: { name: 'particle-entity', params: {} },
+                }).commit();
         }
 
-        // one `particles-structure` per type/entity: that type's reference structure instanced only at
-        // its own particles. Existing types recompute via their list dependency; new types are wired here.
+        // link each structure-sourced type's original structure so the real protein follows its particles
+        // (the collision beads above already show every type's shape)
         await this.linkTargetStructures(list);
 
         // preserve the current animation parameters across the rebuild (e.g. a `bounds` the user set in
@@ -633,28 +744,36 @@ class ParticleDynamicsDemo {
         });
     }
 
-    /** Ensure every type/entity present in `list` has a `particles-structure` subtree: its reference
-     * structure (the attached `ParticleTarget`) instanced only at that type's particles, with a distinct
-     * colour. Subtrees are created once per type; on later rebuilds existing ones recompute through their
-     * dependency on the particle-list cell, and only newly introduced types are wired here. */
+    /** Remove every tracked per-type reference-structure subtree (`PrebuiltStructure` root + its
+     * `particles-structure` decorator + representation) and clear the tracking map. Used before a fresh
+     * `applyRecipe`/when bodies drop to zero, so stale subtrees from a previous set of types don't leak. */
+    private async deleteBodyStructures() {
+        for (const ref of this.bodyStructureRefs.values()) {
+            if (this.plugin.state.data.cells.has(ref)) {
+                await this.plugin.state.data.build().delete(ref).commit();
+            }
+        }
+        this.bodyStructureRefs.clear();
+    }
+
+    /** Link each structure-sourced type's ORIGINAL loaded structure to the particle system: one
+     * `particles-structure` subtree per such type, instancing the real structure (its own auto
+     * representation - cartoon/surface) at every particle of that type, so the protein follows the sim.
+     * The collision beads of ALL types are drawn separately, straight from the list's rigid clusters (see
+     * `rebuildBodies`), so non-structure types (cube/tube/mesh) need no subtree here. Subtrees are created
+     * once per type; on later rebuilds existing ones recompute through their dependency on the list cell. */
     private async linkTargetStructures(list: ParticleList) {
         if (!this.bodiesRef) return;
-        const targets = Particle.getParticleTargets(list);
-        if (!targets) return;
-        for (const [entity, target] of targets) {
-            if (this.bodyStructureRefs.has(entity) || target.kind !== 'structure') continue;
+        for (const [entity, src] of this.entitySourceStructures) {
+            if (this.bodyStructureRefs.has(entity)) continue;
             const label = list.entityInfo?.get(entity) ?? `Type ${entity}`;
             const refCell = await this.plugin.state.data.build().toRoot()
-                .apply(PrebuiltStructure, { structure: target.structure, label }).commit();
+                .apply(PrebuiltStructure, { structure: src, label: `${label} (structure)` }).commit();
             const instanced = await this.plugin.state.data.build().to(refCell.ref)
                 .apply(StateTransforms.Model.ParticlesStructure, { particles: PD.Ref(this.bodiesRef), entity }).commit();
-            await this.plugin.builders.structure.representation.addRepresentation(instanced.ref, {
-                type: 'spacefill',
-                typeParams: { sizeFactor: RIGID_RADIUS / 1.7 },
-                color: 'uniform',
-                colorParams: { value: entityColor(entity) },
-            });
-            this.bodyStructureRefs.set(entity, instanced.ref);
+            await this.plugin.builders.structure.representation.applyPreset(instanced.ref, 'auto');
+            // track the subtree ROOT so a fresh apply removes structure + decorator + representation in one call
+            this.bodyStructureRefs.set(entity, refCell.ref);
         }
     }
 
@@ -663,6 +782,7 @@ class ParticleDynamicsDemo {
      * they render as instances of ONE reference structure (one render object) rather than one per body
      * - this is what makes "Add 100 Bodies" a meaningful sim test rather than a render-object stress test. */
     private async buildBodiesList(ctx: RuntimeContext): Promise<ParticleList> {
+        this.entitySourceStructures.clear(); // recomputed below as targets are assigned
         const n = this.bodies.length;
         const coordinates = new Float32Array(n * 3);
         const rotations = new Float32Array(n * 4);
@@ -676,9 +796,7 @@ class ParticleDynamicsDemo {
         const starts = new Int32Array(n);
         const counts = new Int32Array(n);
         const entities = new Int32Array(n);
-        const targetStructures = new Map<number, Structure>();
-        // distinct shape *type* (by source label) -> shared target id; cube and tube are different types,
-        // and the same type added across batches still collapses to one target/entity
+        // distinct shape *type* (by source label) -> shared entity id
         const targetOfLabel = new Map<string, number>();
 
         let s = 0;
@@ -687,12 +805,18 @@ class ParticleDynamicsDemo {
             const k = body.offsets.length / 3;
             coordinates[b * 3] = body.position[0]; coordinates[b * 3 + 1] = body.position[1]; coordinates[b * 3 + 2] = body.position[2];
             rotations[b * 4] = body.rotation[0]; rotations[b * 4 + 1] = body.rotation[1]; rotations[b * 4 + 2] = body.rotation[2]; rotations[b * 4 + 3] = body.rotation[3];
-            // share a target (and reference structure) between bodies of the same type
+            // one entity per body type (by source label); cube and tube are different types, and the same
+            // type added across batches collapses to one entity. The collision beads are drawn straight
+            // from the list's rigid clusters (a `ParticlesRepresentation3D` in `rebuildBodies`), so no
+            // per-type reference structure is built here; a structure source just keeps its original
+            // structure so `linkTargetStructures` can instance the real protein at each of its particles.
             let target = targetOfLabel.get(body.label);
             if (target === undefined) {
                 target = targetOfLabel.size;
                 targetOfLabel.set(body.label, target);
-                targetStructures.set(target, await buildClusterStructure(ctx, body.offsets));
+                const [kind, ref] = body.label.split(':');
+                const src = kind === 'structure' ? this.plugin.state.data.cells.get(ref)?.obj?.data as Structure | undefined : undefined;
+                if (src) this.entitySourceStructures.set(target, src);
             }
             radii[b] = RIGID_RADIUS; keys[b] = b; targets[b] = target; entities[b] = target;
             offsets.set(body.offsets, s * 3);
@@ -703,20 +827,30 @@ class ParticleDynamicsDemo {
         const entityInfo = new Map<number, string>();
         for (const [label, id] of targetOfLabel) entityInfo.set(id, bodyTypeName(label));
 
+        // Compartment groups bodies for surface binding/cohesion: defaults to the body type (matching
+        // the old behavior for bodies added via `addBody`/`addBodies`, which don't set `compartment`),
+        // but a recipe entry's explicit `compartment` lets several distinct types (sources) share one
+        // surface binding group, per the cellPACK compartment->ingredient concept `ParticleRecipe` mirrors.
+        const compartmentOfName = new Map<string, number>();
+        const compartments = new Int32Array(n);
+        for (let b = 0; b < n; ++b) {
+            const name = this.bodies[b].compartment ?? bodyTypeName(this.bodies[b].label);
+            let c = compartmentOfName.get(name);
+            if (c === undefined) { c = compartmentOfName.size; compartmentOfName.set(name, c); }
+            compartments[b] = c;
+        }
+        const compartmentInfo = new Map<number, string>();
+        for (const [name, id] of compartmentOfName) compartmentInfo.set(id, name);
+
         const list: ParticleList = {
             count: n, keys, targets, entities, entityInfo, coordinates, rotations, radii,
-            // compartment = body type (cube/tube/protein/...), so the surface constraint and cohesion
-            // treat each type as its own group rather than one lumped set of bodies
-            compartments: entities, compartmentInfo: entityInfo,
+            compartments, compartmentInfo,
             getParticleLabel: (i: number) => this.bodies[i]?.label ?? `Body ${i}`,
             sourceData: { kind: 'particle-dynamics-demo' } as unknown as ModelFormat,
             customProperties: new CustomProperties(),
             _propertyData: {},
         };
         Particle.setRigidClusters(list, { offsets, starts, counts });
-        const targetMap = new Map<number, ParticleTarget>();
-        for (const [id, structure] of targetStructures) targetMap.set(id, { kind: 'structure', structure });
-        Particle.setParticleTargets(list, targetMap);
         return list;
     }
 

@@ -51,10 +51,11 @@ function consumedParticleLists(ctx: PluginContext): Set<ParticleList> {
     return lists;
 }
 
-/** Frame the camera on the cubic simulation box (origin-centred, half-extent `bounds`). */
-function focusOnBounds(ctx: PluginContext, bounds: number) {
-    // radius reaches the box corners (bounds * sqrt(3)); focusSphere adds its own padding
-    ctx.managers.camera.focusSphere(Sphere3D.create(Vec3.create(0, 0, 0), bounds * Math.sqrt(3)));
+/** Frame the camera on the cubic simulation box (`center`, half-extent `half`). The box is origin-centred
+ * for a free sim but centred on the bound mesh when one is present, so this keeps the view on the action. */
+function focusOnBox(ctx: PluginContext, center: Vec3, half: number) {
+    // radius reaches the box corners (half * sqrt(3)); focusSphere adds its own padding
+    ctx.managers.camera.focusSphere(Sphere3D.create(Vec3.clone(center), half * Math.sqrt(3)));
 }
 
 function hasParticleConsumers(ctx: PluginContext) {
@@ -161,10 +162,12 @@ export const AnimateParticleDynamics = PluginStateAnimation.create({
                 state.consumerKey = ck;
             }
         }
-        // box half-extent changed - reframe the camera so the view tracks the new simulation bounds
+        // box half-extent changed - reframe the camera so the view tracks the new simulation box (which
+        // may be centred on a bound mesh, not the origin); frame the first sim's box
         if (ctx.params.bounds !== state.lastBounds) {
             state.lastBounds = ctx.params.bounds;
-            focusOnBounds(ctx.plugin, ctx.params.bounds);
+            const box = state.sims[0]?.dynamics.getBox();
+            if (box) focusOnBox(ctx.plugin, box.center, box.half);
         }
         for (const sim of state.sims) {
             // push the current UI param values into the running simulation so edits (e.g. the
