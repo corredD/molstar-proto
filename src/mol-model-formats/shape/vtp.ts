@@ -19,11 +19,19 @@ import { ColorListOptionsScale, ColorListName } from '../../mol-util/color/lists
 import { ValueCell } from '../../mol-util/value-cell';
 import { deepClone } from '../../mol-util/object';
 import { Mat4 } from '../../mol-math/linear-algebra/3d/mat4';
+import { Vec3 } from '../../mol-math/linear-algebra/3d/vec3';
+import { Grid, Volume } from '../../mol-model/volume';
 
 export interface VtpData {
     source: VtpFile,
     transforms?: Mat4[],
 }
+
+/**
+ * Enumerates the volumes selectable by the `volume` color option, e.g. from the plugin state.
+ * Injected by the caller so this format module stays free of any plugin-layer dependency.
+ */
+export type VolumeRefOptions = PD.ValueRef<Volume>['getOptions'];
 
 const _identityTransforms = [Mat4.identity()];
 
@@ -112,7 +120,20 @@ function scalarRange(values: ArrayLike<number>): [number, number] {
 }
 
 
-export function createVtpShapeParams(vtpFile?: VtpFile, getStats?: () => string) {
+/** Color-scale params shared by the `attribute` and `volume` color options: a color list and an auto/custom domain. */
+function scaleColoringParams() {
+    return {
+        colors: PD.Select('viridis' as ColorListName, ColorListOptionsScale),
+        domain: PD.MappedStatic('auto', {
+            custom: PD.Interval([-1, 1], { step: 0.001 }),
+            auto: PD.Group({
+                symmetric: PD.Boolean(false, { description: 'If true the automatic range is determined as [-|max|, |max|].' })
+            })
+        })
+    };
+}
+
+export function createVtpShapeParams(vtpFile?: VtpFile, getStats?: () => string, getVolumeOptions?: VolumeRefOptions) {
     const attrOptions = buildAttrOptions(vtpFile);
     const defKey = defaultAttrKey(vtpFile);
     const defStats = vtpFile && defKey ? computeAttrStatsText(vtpFile, defKey) : '';
@@ -127,14 +148,12 @@ export function createVtpShapeParams(vtpFile?: VtpFile, getStats?: () => string)
                 name: PD.Select(defKey, attrOptions, { help: () => {
                     return { description: getStats ? getStats() : defStats };
                 } }),
-                colors: PD.Select('viridis' as ColorListName, ColorListOptionsScale),
-                domain: PD.MappedStatic('auto', {
-                    custom: PD.Interval([-1, 1], { step: 0.001 }),
-                    auto: PD.Group({
-                        symmetric: PD.Boolean(false, { description: 'If true the automatic range is determined as [-|max|, |max|].' })
-                    })
-                })
+                ...scaleColoringParams()
             }),
+            'external-volume': PD.Group({
+                volume: PD.ValueRef<Volume>(getVolumeOptions ?? (() => []), (ref, getData) => getData(ref)),
+                ...scaleColoringParams()
+            }, { label: 'External Volume', description: 'Color by trilinearly sampling a selected volume at each vertex.' }),
             uniform: PD.Group({
                 color: PD.Color(ColorNames.grey, { label: 'Uniform Color' })
             })
@@ -296,8 +315,40 @@ function computeVertexValues(vtpFile: VtpFile, attribute: string): VertexResult 
     return null;
 }
 
+/** Resolve the volume behind a `ValueRef`; returns undefined for an unset ref or before reconciliation binds it. */
+function resolveVolumeRef(ref: PD.ValueRef<Volume>['defaultValue']): Volume | undefined {
+    try {
+        return ref.getValue();
+    } catch {
+        return undefined;
+    }
+}
+
 /**
- * Build a color function from pre-computed per-vertex scalar values.
+ * Sample a volume at each vertex position via trilinear interpolation, reusing the same
+ * `Grid.makeGetTrilinearlyInterpolated` primitive as `ExternalVolumeColorTheme`. The result flows
+ * through the shared color-scale path in `makeColorFn`, just like a per-vertex attribute.
+ *
+ * Sampling assumes VTP positions share the volume's Cartesian frame — the same contract
+ * ExternalVolumeColorTheme imposes on any surface mesh. Vertices outside the grid (NaN) are clamped
+ * to 0 so the auto domain and color scale stay well-defined. The `scale` param is applied via instance
+ * transforms only, so at scale !== 1 the sampled colors won't follow the displayed geometry.
+ */
+function computeVolumeVertexValues(vtpFile: VtpFile, volume: Volume): VertexResult {
+    const { positions, numberOfPoints } = vtpFile;
+    const getInterpolated = Grid.makeGetTrilinearlyInterpolated(volume.grid, 'none');
+    const values = new Float64Array(numberOfPoints);
+    const p = Vec3();
+    for (let i = 0; i < numberOfPoints; i++) {
+        Vec3.set(p, positions[3 * i], positions[3 * i + 1], positions[3 * i + 2]);
+        const v = getInterpolated(p);
+        values[i] = Number.isNaN(v) ? 0 : v;
+    }
+    return { values, isMagnitude: false };
+}
+
+/**
+ * Build a color function from pre-computed per-vertex scalar values (from a VTP attribute or a sampled volume).
  * Auto domain matches smgui [min, max]. For magnitude attributes where all values are
  * nearly identical (e.g. PointData unit normals, range < 1% of max), fall back to [0, max].
  */
@@ -358,10 +409,14 @@ function makeShapeGetter() {
         const oldAttrKey = _props
             ? (_props.colorTheme.name === 'attribute' ? _props.colorTheme.params.name : null)
             : undefined;
-        const attributeChanged = needsNewMesh || newAttrKey !== oldAttrKey;
+        // Per-vertex values come from a VTP attribute or a sampled volume; recompute when either the
+        // selected attribute or the referenced volume changes (a changed ref covers switching modes too).
+        const newVolRef = props.colorTheme.name === 'external-volume' ? props.colorTheme.params.volume.ref : undefined;
+        const oldVolRef = _props?.colorTheme.name === 'external-volume' ? _props.colorTheme.params.volume.ref : undefined;
+        const resultChanged = needsNewMesh || newAttrKey !== oldAttrKey || newVolRef !== oldVolRef;
 
         const colorThemeChanged = !_props || !PD.isParamEqual(params.colorTheme, _props.colorTheme, props.colorTheme);
-        const needsNewColor = needsNewMesh || attributeChanged || colorThemeChanged;
+        const needsNewColor = needsNewMesh || resultChanged || colorThemeChanged;
 
         const needsNewShape = needsNewMesh || needsNewColor ||
             _vtpData?.transforms !== vtpData.transforms ||
@@ -371,8 +426,15 @@ function makeShapeGetter() {
             _mesh = await buildMesh(ctx, vtpData.source, shape?.geometry);
         }
 
-        if (attributeChanged) {
-            _vertexResult = newAttrKey ? computeVertexValues(vtpData.source, newAttrKey) : null;
+        if (resultChanged) {
+            if (newAttrKey) {
+                _vertexResult = computeVertexValues(vtpData.source, newAttrKey);
+            } else if (props.colorTheme.name === 'external-volume') {
+                const volume = resolveVolumeRef(props.colorTheme.params.volume);
+                _vertexResult = volume ? computeVolumeVertexValues(vtpData.source, volume) : null;
+            } else {
+                _vertexResult = null;
+            }
             if (newAttrKey && newAttrKey !== _lastStatsAttr) {
                 _lastStatsText = computeAttrStatsText(vtpData.source, newAttrKey);
                 _lastStatsAttr = newAttrKey;
@@ -401,13 +463,13 @@ function makeShapeGetter() {
     return { getShape, getStats };
 }
 
-export function shapeFromVtp(source: VtpFile, params?: { transforms?: Mat4[] }) {
+export function shapeFromVtp(source: VtpFile, params?: { transforms?: Mat4[], getVolumeOptions?: VolumeRefOptions }) {
     return Task.create<ShapeProvider<VtpData, Mesh, VtpShapeParams>>('Shape Provider', async () => {
         const getter = makeShapeGetter();
         const provider: ShapeProvider<VtpData, Mesh, VtpShapeParams> = {
             label: 'VTP Mesh',
             data: { source, transforms: params?.transforms },
-            params: createVtpShapeParams(source, () => getter.getStats().text),
+            params: createVtpShapeParams(source, () => getter.getStats().text, params?.getVolumeOptions),
             getShape: getter.getShape,
             geometryUtils: Mesh.Utils,
         };

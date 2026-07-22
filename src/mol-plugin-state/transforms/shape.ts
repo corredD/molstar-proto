@@ -25,6 +25,7 @@ import { PluginContext } from '../../mol-plugin/context';
 import { PluginStateObject as SO, PluginStateTransform } from '../objects';
 import { RelionStarParticleListObject } from '../objects/relion';
 import { getRelionParticleAxisParams, getRelionParticleAxisShape } from '../helpers/relion-star';
+import { StateSelection } from '../../mol-state';
 
 export { BoxShape3D };
 export { RelionStarParticleListShape };
@@ -159,6 +160,12 @@ const ShapeFromObj = PluginStateTransform.BuiltIn({
 
 const _vtpIdentityTransforms = [Mat4.identity()];
 
+/** Options for the VTP `volume` color picker: all volumes currently in the state tree. */
+function getVtpVolumeOptions(ctx: PluginContext): [string, string][] {
+    const volumes = ctx.state.data.select(StateSelection.Generators.rootsOfType(SO.Volume.Data)).filter(c => c.obj?.data);
+    return volumes.map(v => [v.transform.ref, v.obj?.label ?? '<unknown>'] as [string, string]);
+}
+
 export { ShapeFromVtp };
 type ShapeFromVtp = typeof ShapeFromVtp
 const ShapeFromVtp = PluginStateTransform.BuiltIn({
@@ -175,7 +182,7 @@ const ShapeFromVtp = PluginStateTransform.BuiltIn({
 })({
     apply({ a, params }) {
         return Task.create('Create shape from VTP', async ctx => {
-            const shape = await shapeFromVtp(a.data, params).runInContext(ctx);
+            const shape = await shapeFromVtp(a.data, { ...params, getVolumeOptions: getVtpVolumeOptions }).runInContext(ctx);
             const props = { label: params.label || 'VTP Shape' };
             return new SO.Shape.Provider(shape, props);
         });
