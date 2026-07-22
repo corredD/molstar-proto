@@ -72,7 +72,8 @@ interface Renderer {
     renderDepthTransparent: (group: Scene.Group, camera: ICamera, depthTexture: Texture) => void
     renderMarkingDepth: (group: Scene.Group, camera: ICamera) => void
     renderMarkingMask: (group: Scene.Group, camera: ICamera, depthTexture: Texture | null) => void
-    renderEmissive: (group: Scene.Group, camera: ICamera) => void
+    renderEmissiveOpaque: (group: Scene.Group, camera: ICamera, depthTexture: Texture, occludeWithOpaqueDepth: boolean) => void
+    renderEmissiveTransparent: (group: Scene.Group, camera: ICamera, depthTexture: Texture) => void
     renderTracing: (group: Scene.Group, camera: ICamera) => void
     renderBlended: (group: Scene, camera: ICamera) => void
     renderOpaque: (group: Scene.Group, camera: ICamera) => void
@@ -508,6 +509,10 @@ namespace Renderer {
             );
         };
 
+        const checkEmissive = function (r: GraphicsRenderable) {
+            return (r.values.emissiveAverage.ref.value + r.values.uEmissive.ref.value) > 0;
+        };
+
         const renderPick = (group: Scene.Group, camera: ICamera, variant: 'pick' | 'depth', pickType: PickType) => {
             if (isTimingMode) ctx.timer.mark('Renderer.renderPick');
             state.disable(gl.BLEND);
@@ -638,22 +643,59 @@ namespace Renderer {
             if (isTimingMode) ctx.timer.markEnd('Renderer.renderMarkingMask');
         };
 
-        const renderEmissive = (group: Scene.Group, camera: ICamera) => {
-            if (isTimingMode) ctx.timer.mark('Renderer.renderEmissive');
+        const renderEmissiveOpaque = (group: Scene.Group, camera: ICamera, depthTexture: Texture, occludeWithOpaqueDepth: boolean) => {
+            if (isTimingMode) ctx.timer.mark('Renderer.renderEmissiveOpaque');
             state.disable(gl.BLEND);
             state.enable(gl.DEPTH_TEST);
-            state.depthMask(true);
+            if (occludeWithOpaqueDepth) {
+                // test against caller-attached opaque depth, read-only + LEQUAL so an emitter at its own depth still passes
+                state.depthMask(false);
+                state.depthFunc(gl.LEQUAL);
+            } else {
+                // packed depth: build own occluding depth from all opaque geometry
+                state.depthMask(true);
+            }
 
-            updateInternal(group, camera, null, Mask.Opaque, false);
+            // tDepth = front transparent depth+alpha; emissive shader dims emitters behind it
+            updateInternal(group, camera, depthTexture, Mask.Opaque, false);
 
             const { renderables } = group;
             for (let i = 0, il = renderables.length; i < il; ++i) {
                 const r = renderables[i];
-                if (checkOpaque(r)) {
+                if (checkOpaque(r) && (!occludeWithOpaqueDepth || checkEmissive(r))) {
                     renderObject(r, 'emissive', Flag.None);
                 }
             }
-            if (isTimingMode) ctx.timer.markEnd('Renderer.renderEmissive');
+
+            if (occludeWithOpaqueDepth) {
+                state.depthFunc(gl.LESS);
+                state.depthMask(true);
+            }
+            if (isTimingMode) ctx.timer.markEnd('Renderer.renderEmissiveOpaque');
+        };
+
+        const renderEmissiveTransparent = (group: Scene.Group, camera: ICamera, depthTexture: Texture) => {
+            if (isTimingMode) ctx.timer.mark('Renderer.renderEmissiveTransparent');
+            const blendMinMax = ctx.extensions.blendMinMax;
+            state.enable(gl.BLEND);
+            state.blendFunc(gl.ONE, gl.ONE);
+            // MAX blend so overlapping faces don't accumulate; falls back to additive when unavailable.
+            if (blendMinMax) state.blendEquation(blendMinMax.MAX);
+            state.enable(gl.DEPTH_TEST);
+            state.depthMask(false);
+
+            // tDepth = front transparent depth+alpha; emissive shader dims emitters behind it
+            updateInternal(group, camera, depthTexture, Mask.Transparent, false);
+
+            const { renderables } = group;
+            for (let i = 0, il = renderables.length; i < il; ++i) {
+                const r = renderables[i];
+                if (checkTransparent(r) && r.values.dGeometryType.ref.value !== 'directVolume' && checkEmissive(r)) {
+                    renderObject(r, 'emissive', Flag.None);
+                }
+            }
+            if (blendMinMax) state.blendEquation(gl.FUNC_ADD);
+            if (isTimingMode) ctx.timer.markEnd('Renderer.renderEmissiveTransparent');
         };
 
         const renderTracing = (group: Scene.Group, camera: ICamera) => {
@@ -826,7 +868,8 @@ namespace Renderer {
             renderDepthTransparent,
             renderMarkingDepth,
             renderMarkingMask,
-            renderEmissive,
+            renderEmissiveOpaque,
+            renderEmissiveTransparent,
             renderTracing,
             renderBlended,
             renderOpaque,

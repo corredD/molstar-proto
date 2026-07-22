@@ -1,15 +1,16 @@
 /**
- * Copyright (c) 2017-2020 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Sebastian Bittrich <sebastian.m.bittrich@gmail.com>
  */
 
-import { Table } from '../../../mol-data/db';
+import { Column, Table } from '../../../mol-data/db';
 import { Model } from '../../../mol-model/structure/model/model';
 import { AtomicHierarchy } from '../../../mol-model/structure/model/properties/atomic';
 import { ChemicalComponent, MissingResidue, StructAsym } from '../../../mol-model/structure/model/properties/common';
-import { getDefaultChemicalComponent, getMoleculeType, MoleculeType } from '../../../mol-model/structure/model/types';
+import { getComponentType, getDefaultChemicalComponent, getMoleculeType, MoleculeType } from '../../../mol-model/structure/model/types';
 import { SaccharideCompIdMap, SaccharideComponent, SaccharideComponentMap, SaccharidesSnfgMap, UnknownSaccharideComponent } from '../../../mol-model/structure/structure/carbohydrates/constants';
 import { memoize1 } from '../../../mol-util/memoize';
 import { BasicData } from './schema';
@@ -21,9 +22,17 @@ export function getMissingResidues(data: BasicData): Model['properties']['missin
     };
 
     const c = data.pdbx_unobs_or_zero_occ_residues;
-    for (let i = 0, il = c._rowCount; i < il; ++i) {
-        const key = getKey(c.PDB_model_num.value(i), c.label_asym_id.value(i), c.label_seq_id.value(i));
-        map.set(key, { polymer_flag: c.polymer_flag.value(i), occupancy_flag: c.occupancy_flag.value(i) });
+    if (c._rowCount > 0) {
+        for (let i = 0, il = c._rowCount; i < il; ++i) {
+            const key = getKey(c.PDB_model_num.value(i), c.label_asym_id.value(i), c.label_seq_id.value(i));
+            map.set(key, { polymer_flag: c.polymer_flag.value(i), occupancy_flag: c.occupancy_flag.value(i) });
+        }
+    } else if (data.entity_poly_seq._rowCount > 0) {
+        // `pdbx_unobs_or_zero_occ_residues` is not always present (e.g., files converted
+        // from other formats). In that case, derive missing residues by comparing the
+        // full polymer sequence in `entity_poly_seq` against the residues that actually
+        // have coordinates in `atom_site`.
+        addMissingResiduesFromEntityPolySeq(data, map, getKey);
     }
 
     return {
@@ -37,13 +46,60 @@ export function getMissingResidues(data: BasicData): Model['properties']['missin
     };
 }
 
+function addMissingResiduesFromEntityPolySeq(data: BasicData, map: Map<string, MissingResidue>, getKey: (model_num: number, asym_id: string, seq_id: number) => string) {
+    // map entity_id to the asym_ids (chains) that belong to it
+    const entityAsymIds = new Map<string, string[]>();
+    const { id: struct_asym_id, entity_id: struct_asym_entity_id } = data.struct_asym;
+    for (let i = 0, il = struct_asym_id.rowCount; i < il; ++i) {
+        const entity_id = struct_asym_entity_id.value(i);
+        const asym_id = struct_asym_id.value(i);
+        if (entityAsymIds.has(entity_id)) entityAsymIds.get(entity_id)!.push(asym_id);
+        else entityAsymIds.set(entity_id, [asym_id]);
+    }
+
+    // collect the (model_num, asym_id, seq_id) triples that have coordinates
+    const observed = new Set<string>();
+    const _models = new Set<number>();
+    const { label_asym_id, label_seq_id, pdbx_PDB_model_num } = data.atom_site;
+    for (let i = 0, il = label_asym_id.rowCount; i < il; ++i) {
+        if (label_seq_id.valueKind(i) !== Column.ValueKinds.Present) continue;
+        const model_num = pdbx_PDB_model_num.value(i);
+        _models.add(model_num);
+        observed.add(getKey(model_num, label_asym_id.value(i), label_seq_id.value(i)));
+    }
+    if (_models.size === 0) _models.add(1);
+    const models = Array.from(_models);
+
+    const { entity_id, num } = data.entity_poly_seq;
+    for (let i = 0, il = entity_id.rowCount; i < il; ++i) {
+        const asym_ids = entityAsymIds.get(entity_id.value(i));
+        if (!asym_ids) continue;
+
+        const seq_id = num.value(i);
+        for (const asym_id of asym_ids) {
+            for (const model_num of models) {
+                const key = getKey(model_num, asym_id, seq_id);
+                if (!observed.has(key)) {
+                    map.set(key, { polymer_flag: 'y', occupancy_flag: 1 });
+                }
+            }
+        }
+    }
+}
+
 export function getChemicalComponentMap(data: BasicData): Model['properties']['chemicalComponentMap'] {
     const map = new Map<string, ChemicalComponent>();
 
     if (data.chem_comp._rowCount > 0) {
-        const { id } = data.chem_comp;
+        const { id, type } = data.chem_comp;
         for (let i = 0, il = id.rowCount; i < il; ++i) {
-            map.set(id.value(i), Table.getRow(data.chem_comp, i));
+            const _id = id.value(i);
+            const row = Table.getRow(data.chem_comp, i);
+            // some tools like gemmi list `chem_comp` rows without a meaningful `type`
+            if (type.valueKind(i) !== Column.ValueKinds.Present) {
+                row.type = getComponentType(_id);
+            }
+            map.set(_id, row);
         }
     } else {
         const uniqueNames = getUniqueComponentNames(data);
