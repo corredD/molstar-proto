@@ -6,8 +6,13 @@
  */
 
 import { utf8ByteCount, utf8Write } from '../../mol-io/common/utf8';
+import { Vec3 } from '../../mol-math/linear-algebra';
 import { Structure, to_mmCIF, Unit } from '../../mol-model/structure';
+import { InstanceAssemblyData } from '../../mol-model/structure/export/categories/instance_assembly';
+import { StateTransforms } from '../../mol-plugin-state/transforms';
+import { getTransformFromParams, transformParamsNeedCentroid } from '../../mol-plugin-state/transforms/helpers';
 import { PluginContext } from '../../mol-plugin/context';
+import { StateSelection, StateTransform } from '../../mol-state';
 import { Task } from '../../mol-task';
 import { getFormattedTime } from '../../mol-util/date';
 import { download } from '../../mol-util/download';
@@ -23,7 +28,27 @@ export const ModelExport = {
     }
 };
 
-export async function exportHierarchy(plugin: PluginContext, options?: { format?: 'cif' | 'bcif' }) {
+/**
+ * Instance transforms of the `StructureInstances` decorator sitting on `structureRef`, if any.
+ *
+ * `structure` must be the decorator's *input*, i.e. a single copy of the coordinates, because the
+ * operators are what generate the instances from it. That holds today only because the structure
+ * hierarchy has no mapping for `StructureInstances`, so `StructureRef.cell` is the cell before the
+ * decorator. If that ever changes, this has to select the pre-instance structure explicitly —
+ * otherwise the export writes the expanded copies *and* the operators, double-applying them.
+ */
+function getInstanceAssembly(plugin: PluginContext, structureRef: StateTransform.Ref, structure: Structure): InstanceAssemblyData | undefined {
+    const cell = StateSelection.tryFindDecorator(plugin.state.data, structureRef, StateTransforms.Model.StructureInstances);
+    const transformParams = cell?.params?.values?.transforms;
+    if (!transformParams?.length) return void 0;
+
+    const center = transformParams.some((t: any) => transformParamsNeedCentroid(t.transform))
+        ? structure.boundary.sphere.center
+        : Vec3.unit;
+    return { transforms: transformParams.map((t: any) => getTransformFromParams(t.transform, center)) };
+}
+
+export async function exportHierarchy(plugin: PluginContext, options?: { format?: 'cif' | 'bcif', instancesAsAssembly?: boolean }) {
     try {
         await plugin.runTask(_exportHierarchy(plugin, options), { useOverlay: true });
     } catch (e) {
@@ -32,7 +57,7 @@ export async function exportHierarchy(plugin: PluginContext, options?: { format?
     }
 }
 
-function _exportHierarchy(plugin: PluginContext, options?: { format?: 'cif' | 'bcif' }) {
+function _exportHierarchy(plugin: PluginContext, options?: { format?: 'cif' | 'bcif', instancesAsAssembly?: boolean }) {
     return Task.create('Export', async ctx => {
         await ctx.update({ message: 'Exporting...', isIndeterminate: true, canAbort: false });
 
@@ -67,8 +92,15 @@ function _exportHierarchy(plugin: PluginContext, options?: { format?: 'cif' | 'b
                 await new Promise(res => setTimeout(res, 50));
             }
 
+            const instanceAssembly = options?.instancesAsAssembly
+                ? getInstanceAssembly(plugin, _s.cell.transform.ref, s)
+                : void 0;
+            if (instanceAssembly) {
+                plugin.log.info(`[Export] ${name}: writing ${instanceAssembly.transforms.length} particle instances as assembly operators.`);
+            }
+
             try {
-                files.push([fileName, to_mmCIF(name, s, format === 'bcif', { copyAllCategories: true })]);
+                files.push([fileName, to_mmCIF(name, s, format === 'bcif', { copyAllCategories: true, instanceAssembly })]);
             } catch (e) {
                 if (format === 'cif' && s.elementCount > 2000000) {
                     plugin.log.warn(`[Export] The structure might be too big to be exported as Text CIF, consider using the BinaryCIF format instead.`);

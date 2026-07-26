@@ -28,7 +28,11 @@ export class ModelExportUI extends CollapsableControls<{}, {}> {
 }
 
 const Params = {
-    format: PD.Select<'cif' | 'bcif'>('cif', [['cif', 'mmCIF'], ['bcif', 'Binary mmCIF']])
+    format: PD.Select<'cif' | 'bcif'>('cif', [['cif', 'mmCIF'], ['bcif', 'Binary mmCIF']]),
+    instancesAsAssembly: PD.Boolean(false, {
+        label: 'Instances as Assembly',
+        description: 'If the structure has particle instances applied, write them as pdbx_struct_assembly operators over a single copy of the coordinates instead of ignoring them.'
+    })
 };
 const DefaultParams = PD.getDefaultValues(Params);
 
@@ -49,7 +53,7 @@ function ExportControls({ plugin }: { plugin: PluginContext }) {
     const onExport = async () => {
         setExporting(true);
         try {
-            await exportHierarchy(plugin, { format: params.format });
+            await exportHierarchy(plugin, { format: params.format, instancesAsAssembly: params.instancesAsAssembly });
         } finally {
             setExporting(false);
         }
