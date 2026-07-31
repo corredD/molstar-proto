@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Ludovic Autin <autin@scripps.edu>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  *
  * Self-contained real spherical-harmonics utilities: associated Legendre
  * polynomials, the real SH basis Y_l^m, least-squares fitting of a radial
@@ -14,6 +15,7 @@
  * so an expansion up to degree L has (L + 1)^2 terms.
  */
 
+import { fastAtan2, fastCos, fastSin } from '../approx';
 import { Matrix } from '../linear-algebra/matrix/matrix';
 import { svd } from '../linear-algebra/matrix/svd';
 
@@ -74,9 +76,14 @@ export function assocLegendre(L: number, x: number, out?: Float64Array): Float64
 }
 
 // Precomputed normalization factors K_l^m = sqrt((2l+1)/(4pi) * (l-|m|)!/(l+|m|)!)
-const normCache = new Map<number, Float64Array>();
-function getNormFactors(L: number): Float64Array {
-    const cached = normCache.get(L);
+// Indexed directly by L (a small non-negative integer) rather than a `Map`: a plain array lookup
+// avoids the hashing/bucket overhead of `Map.get`, which matters here since this is looked up on
+// every `realSph` call unless the caller supplies a precomputed `norm` (see below) - `realSph` is
+// called once per sample point during fitting and once per grid voxel during reconstruction, i.e.
+// this is one of the hottest call sites in the whole module.
+const normCache: (Float64Array | undefined)[] = [];
+export function getNormFactors(L: number): Float64Array {
+    const cached = normCache[L];
     if (cached) return cached;
 
     const size = ((L + 1) * (L + 2)) / 2;
@@ -90,13 +97,17 @@ function getNormFactors(L: number): Float64Array {
             norm[legendreIndex(l, m)] = Math.sqrt(((2 * l + 1) / fourPi) * ratio);
         }
     }
-    normCache.set(L, norm);
+    normCache[L] = norm;
     return norm;
 }
 
 /**
  * Evaluate the real SH basis Y_l^m(theta, phi) for all 0 <= l <= L, -l <= m <= l.
- * theta is the polar angle [0, pi], phi the azimuth [-pi, pi].
+ * `cosTheta` is the cosine of the polar angle, in [-1, 1]; phi the azimuth [-pi, pi].
+ * The polar angle is taken as its cosine rather than the angle itself because that is the only
+ * form the associated Legendre recurrences need - callers invariably have it directly (`z / r`
+ * for a direction, or a uniform table axis), so going through `acos` here and `cos` back again
+ * would cost two transcendentals per call to recover a value that was already exact.
  * Results are written into `out` (length shTermCount(L)).
  *
  * Real form:
@@ -104,32 +115,52 @@ function getNormFactors(L: number): Float64Array {
  *   m = 0:  K_l^0 P_l^0(cos theta)
  *   m < 0:  sqrt(2) K_l^|m| sin(|m| phi) P_l^|m|(cos theta)
  */
-export function realSph(L: number, theta: number, phi: number, out?: Float64Array, legendreScratch?: Float64Array): Float64Array {
+export function realSph(L: number, cosTheta: number, phi: number, out: Float64Array, legendreScratch: Float64Array, norm: Float64Array): Float64Array {
     const y = out && out.length >= shTermCount(L) ? out : new Float64Array(shTermCount(L));
-    const p = assocLegendre(L, Math.cos(theta), legendreScratch);
-    const norm = getNormFactors(L);
+    const p = assocLegendre(L, cosTheta, legendreScratch);
     const sqrt2 = Math.SQRT2;
 
+    // m = 0 band: no azimuthal (phi) dependence
     for (let l = 0; l <= L; ++l) {
-        // m = 0
         y[shIndex(l, 0)] = norm[legendreIndex(l, 0)] * p[legendreIndex(l, 0)];
-        for (let m = 1; m <= l; ++m) {
-            const k = norm[legendreIndex(l, m)] * p[legendreIndex(l, m)] * sqrt2;
-            y[shIndex(l, m)] = k * Math.cos(m * phi);
-            y[shIndex(l, -m)] = k * Math.sin(m * phi);
+    }
+
+    // cos(m phi)/sin(m phi) via the angle-addition recurrence from a single cos(phi)/sin(phi)
+    // evaluation, instead of calling Math.cos/Math.sin(m * phi) directly for every (l, m) pair -
+    // the original loop nested m inside l, so it recomputed the SAME cos(m phi)/sin(m phi)
+    // (which does not depend on l at all) once per l >= m, i.e. up to O(L^2) redundant
+    // transcendental calls. This brings it down to 2 `Math.cos`/`Math.sin` calls total plus O(L)
+    // cheap multiply-adds.
+    if (L > 0) {
+        const cos1 = fastCos(phi), sin1 = fastSin(phi);
+        let cm = 1, sm = 0; // cos(0 * phi), sin(0 * phi)
+        for (let m = 1; m <= L; ++m) {
+            const cmNext = cos1 * cm - sin1 * sm;
+            const smNext = sin1 * cm + cos1 * sm;
+            cm = cmNext; sm = smNext;
+
+            for (let l = m; l <= L; ++l) {
+                const k = norm[legendreIndex(l, m)] * p[legendreIndex(l, m)] * sqrt2;
+                y[shIndex(l, m)] = k * cm;
+                y[shIndex(l, -m)] = k * sm;
+            }
         }
     }
     return y;
 }
 
-/** Spherical coordinates of a point relative to a center. */
-export interface SphericalCoord { r: number, theta: number, phi: number }
+/**
+ * Spherical coordinates of a point relative to a center. The polar angle is kept as its cosine
+ * (`z / r`, clamped) rather than the angle: that is the form `realSph` consumes, and it is exact
+ * and free here, whereas the angle would cost an `acos` only for the callee to undo it.
+ */
+export interface SphericalCoord { r: number, cosTheta: number, phi: number }
 export function toSpherical(x: number, y: number, z: number, out?: SphericalCoord): SphericalCoord {
-    const o = out ?? { r: 0, theta: 0, phi: 0 };
+    const o = out ?? { r: 0, cosTheta: 1, phi: 0 };
     const r = Math.sqrt(x * x + y * y + z * z);
     o.r = r;
-    o.theta = r > 1e-12 ? Math.acos(Math.min(1, Math.max(-1, z / r))) : 0;
-    o.phi = Math.atan2(y, x);
+    o.cosTheta = r > 1e-12 ? Math.min(1, Math.max(-1, z / r)) : 1;
+    o.phi = fastAtan2(y, x);
     return o;
 }
 
@@ -170,14 +201,18 @@ export function fitSphericalHarmonics(points: ArrayLike<number>, center: ArrayLi
 
     const basis = new Float64Array(K);
     const legendreScratch = new Float64Array(((L + 1) * (L + 2)) / 2);
-    const sc: SphericalCoord = { r: 0, theta: 0, phi: 0 };
+    const sc: SphericalCoord = { r: 0, cosTheta: 1, phi: 0 };
     let rMax = 0;
+    // fetched once and reused for every sample - `realSph` would otherwise redo this lookup
+    // (previously a Map.get, now an array index) on every single one of the up to `maxPoints`
+    // calls below, for a value that never changes within one fit
+    const norm = getNormFactors(L);
 
     for (let i = 0; i < pointCount; i += stride) {
         toSpherical(points[i * 3] - cx, points[i * 3 + 1] - cy, points[i * 3 + 2] - cz, sc);
         if (sc.r <= 1e-12) continue;
         if (sc.r > rMax) rMax = sc.r;
-        realSph(L, sc.theta, sc.phi, basis, legendreScratch);
+        realSph(L, sc.cosTheta, sc.phi, basis, legendreScratch, norm);
 
         // accumulate A += basis basis^T (upper triangle) and rhs += basis * r
         for (let a = 0; a < K; ++a) {
@@ -289,10 +324,12 @@ function choleskySolveSymmetric(A: ArrayLike<number>, K: number, rhs: ArrayLike<
     return x;
 }
 
-/** Reconstruct the radius from fitted coefficients at the given direction. */
-export function reconstructRadius(coeffs: ArrayLike<number>, L: number, theta: number, phi: number, basisScratch?: Float64Array, legendreScratch?: Float64Array): number {
+/** Reconstruct the radius from fitted coefficients at the given direction. `norm` can be a
+ * precomputed `getNormFactors(L)` result, saving a lookup when called repeatedly for the same
+ * `L` (e.g. once per grid voxel while reconstructing a blob's surface). */
+export function reconstructRadius(coeffs: ArrayLike<number>, L: number, cosTheta: number, phi: number, basisScratch: Float64Array, legendreScratch: Float64Array, norm: Float64Array): number {
     const K = shTermCount(L);
-    const basis = realSph(L, theta, phi, basisScratch, legendreScratch);
+    const basis = realSph(L, cosTheta, phi, basisScratch, legendreScratch, norm);
     let r = 0;
     for (let i = 0; i < K; ++i) r += coeffs[i] * basis[i];
     return r;
@@ -302,163 +339,93 @@ export function reconstructRadius(coeffs: ArrayLike<number>, L: number, theta: n
 export interface SphericalHarmonicLobe { center: number[], coeffs: Float64Array, rMax: number }
 export interface SphericalHarmonicLobesFit { lobes: SphericalHarmonicLobe[], L: number }
 
-/** Gather a subset of an interleaved xyz cloud into a flat array and its centroid. */
-function gatherSubset(points: ArrayLike<number>, idx: ArrayLike<number>): { flat: Float64Array, center: number[] } {
-    const m = idx.length;
-    const flat = new Float64Array(m * 3);
-    let cx = 0, cy = 0, cz = 0;
-    for (let i = 0; i < m; ++i) {
-        const p = idx[i] * 3;
-        const x = points[p], y = points[p + 1], z = points[p + 2];
-        flat[i * 3] = x; flat[i * 3 + 1] = y; flat[i * 3 + 2] = z;
-        cx += x; cy += y; cz += z;
-    }
-    return { flat, center: m > 0 ? [cx / m, cy / m, cz / m] : [0, 0, 0] };
-}
+/**
+ * A bilinear-interpolatable lookup table of `R(theta, phi)` over a uniform `(nTheta+1) x nPhi`
+ * grid spanning `theta` in `[0, pi]` (both poles included) and `phi` in `[-pi, pi)` (wrapping).
+ *
+ * Rows are uniform in `theta`, NOT in `cos(theta)`, even though that would let callers (which hold
+ * a direction, i.e. `z / r`) skip an `acos`: every `m != 0` band carries `sin^|m|(theta) =
+ * (1 - cos^2 theta)^(|m|/2)`, which has a square-root branch point at the poles, so `R` is analytic
+ * in `theta` but not smooth in `cos(theta)`. Interpolating in `cos(theta)` costs ~20x the error
+ * within `|cos theta| > 0.8` at equal table size, and converges too slowly in `nTheta` to buy back.
+ */
+export interface RadiusLUT { nTheta: number, nPhi: number, values: Float64Array }
 
-/** Small deterministic PRNG (mulberry32) for seeded, reproducible k-means++ initialization. */
-function mulberry32(seed: number): () => number {
-    let a = seed >>> 0;
-    return () => {
-        a = (a + 0x6D2B79F5) | 0;
-        let t = Math.imul(a ^ (a >>> 15), 1 | a);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
+/**
+ * Precomputes a `RadiusLUT` for the fitted radial boundary `R(theta, phi) = sum coeffs[k] *
+ * Y_k(theta, phi)`.
+ *
+ * ALGORITHMIC MOTIVATION: evaluating `R` directly (`reconstructRadius`) costs O(L^2) per call (a
+ * fresh associated-Legendre table plus O(L) trig recurrence, since both depend on the specific
+ * direction). Caching a scalar or a few intermediate values does not help when `R` must be
+ * evaluated at a very large number of DIFFERENT directions - which is exactly what
+ * `computeBlobSurface`'s marching-cubes splat loop does, calling it once per grid voxel within a
+ * blob's padded box (easily thousands to millions of directions for one blob). Building this
+ * table ONCE per blob - a fixed O(tableSize * L^2) cost, independent of how many voxels will
+ * query it - and then looking values up via `sampleRadiusLUT` (O(1): 4 array reads + a bilinear
+ * blend, no trigonometry or Legendre recursion at all) changes the TOTAL complexity of
+ * reconstructing one blob's surface from O(voxels * L^2) to O(tableSize * L^2 + voxels), which is
+ * a genuine asymptotic win whenever (as is typical) voxels >> tableSize.
+ *
+ * `minR`/`maxR` clamp each table entry once at build time (rather than after every lookup).
+ * `out`, if given and the right size, has its `values` array reused instead of reallocating -
+ * useful when rebuilding the table once per blob but the table dimensions (which only depend on
+ * the shared `shDegree` prop, not on any individual blob) stay constant across all of them.
+ */
+export function buildRadiusLUT(coeffs: ArrayLike<number>, L: number, nTheta: number, nPhi: number, minR = -Infinity, maxR = Infinity, out?: RadiusLUT): RadiusLUT {
+    const size = (nTheta + 1) * nPhi;
+    const values = out && out.nTheta === nTheta && out.nPhi === nPhi && out.values.length === size ? out.values : new Float64Array(size);
+
+    const K = shTermCount(L);
+    const basis = new Float64Array(K);
+    const legendreScratch = new Float64Array(((L + 1) * (L + 2)) / 2);
+    const norm = getNormFactors(L);
+
+    for (let it = 0; it <= nTheta; ++it) {
+        // exact `Math.cos` rather than `fastCos`: this is once per table row, not per lookup
+        const cosTheta = Math.cos((it / nTheta) * Math.PI);
+        for (let ip = 0; ip < nPhi; ++ip) {
+            const phi = (ip / nPhi) * 2 * Math.PI - Math.PI;
+            realSph(L, cosTheta, phi, basis, legendreScratch, norm);
+
+            let r = 0;
+            for (let k = 0; k < K; ++k) r += coeffs[k] * basis[k];
+            if (r < minR) r = minR; else if (r > maxR) r = maxR;
+            values[it * nPhi + ip] = r;
+        }
+    }
+    return { nTheta, nPhi, values };
 }
 
 /**
- * Partition an interleaved xyz cloud into `k` spatial clusters by k-means (k-means++ seeded init,
- * Lloyd iterations) and return a per-point cluster label. Deterministic for a given `seed`, so the
- * same cloud yields the same partition (the fit caches on it). Spatial clusters give locally compact,
- * star-convex lobes - for a threaded chain (e.g. rRNA) far more compact per cluster than contiguous
- * sequence runs.
- *
- * The Lloyd iterations (the O(points * k * iterations) cost) run on a strided subsample of at most
- * `maxSamples` points to find the cluster centers; every point is then labelled by its nearest center
- * in a single final pass. Subsampling a large cloud changes the centers negligibly but cuts the
- * dominant cost several-fold (e.g. a 63k-atom rRNA chain).
+ * Bilinearly samples a `RadiusLUT` (built by `buildRadiusLUT`) at the given direction - O(1): 4
+ * array reads plus a bilinear blend, no trigonometry or Legendre recursion.
  */
-export function kmeansLabels(points: ArrayLike<number>, k: number, options: { maxIterations?: number, seed?: number, maxSamples?: number } = {}): Int32Array {
-    const n = Math.floor(points.length / 3);
-    const labels = new Int32Array(n);
-    const K = Math.min(Math.max(1, Math.round(k)), n);
-    if (K <= 1 || n === 0) return labels;
+export function sampleRadiusLUT(lut: RadiusLUT, theta: number, phi: number): number {
+    const { nTheta, nPhi, values } = lut;
 
-    const maxIterations = options.maxIterations ?? 20;
-    const maxSamples = options.maxSamples ?? 8192;
-    const rand = mulberry32((options.seed ?? 0x9e3779b9) >>> 0);
+    let tt = (theta / Math.PI) * nTheta;
+    if (tt < 0) tt = 0; else if (tt > nTheta) tt = nTheta;
+    let it0 = Math.floor(tt);
+    if (it0 >= nTheta) it0 = nTheta - 1;
+    const it1 = it0 + 1;
+    const ft = tt - it0;
 
-    // strided subsample that the iterative center search runs on (all points are labelled at the end)
-    const stride = Math.max(1, Math.floor(n / maxSamples));
-    const sn = Math.floor((n + stride - 1) / stride);
-    const sample = new Float64Array(sn * 3);
-    for (let s = 0; s < sn; ++s) {
-        const i = s * stride;
-        sample[s * 3] = points[i * 3]; sample[s * 3 + 1] = points[i * 3 + 1]; sample[s * 3 + 2] = points[i * 3 + 2];
-    }
+    // phi wraps around the full circle: no separate last column is stored for phi = pi, it is
+    // the same direction as phi = -pi (column 0), so ip1 wraps back to 0 past the last column
+    let pp = ((phi + Math.PI) / (2 * Math.PI)) * nPhi;
+    if (pp < 0) pp = 0; else if (pp >= nPhi) pp -= nPhi;
+    let ip0 = Math.floor(pp);
+    if (ip0 >= nPhi) ip0 = nPhi - 1;
+    const fp = pp - ip0;
+    let ip1 = ip0 + 1;
+    if (ip1 >= nPhi) ip1 -= nPhi;
 
-    // k-means++ seeding: spread initial centers by squared-distance probability
-    const centers = new Float64Array(K * 3);
-    const d2 = new Float64Array(sn).fill(Infinity);
-    let pick = Math.floor(rand() * sn);
-    for (let c = 0; c < K; ++c) {
-        centers[c * 3] = sample[pick * 3]; centers[c * 3 + 1] = sample[pick * 3 + 1]; centers[c * 3 + 2] = sample[pick * 3 + 2];
-        if (c === K - 1) break;
-        let sum = 0;
-        for (let i = 0; i < sn; ++i) {
-            const dx = sample[i * 3] - centers[c * 3], dy = sample[i * 3 + 1] - centers[c * 3 + 1], dz = sample[i * 3 + 2] - centers[c * 3 + 2];
-            const dd = dx * dx + dy * dy + dz * dz;
-            if (dd < d2[i]) d2[i] = dd;
-            sum += d2[i];
-        }
-        let target = rand() * sum;
-        pick = sn - 1;
-        for (let i = 0; i < sn; ++i) { target -= d2[i]; if (target <= 0) { pick = i; break; } }
-    }
+    const row0 = it0 * nPhi, row1 = it1 * nPhi;
+    const v00 = values[row0 + ip0], v01 = values[row0 + ip1];
+    const v10 = values[row1 + ip0], v11 = values[row1 + ip1];
 
-    // Lloyd iterations on the subsample
-    const sLabels = new Int32Array(sn);
-    const sums = new Float64Array(K * 3);
-    const counts = new Int32Array(K);
-    for (let it = 0; it < maxIterations; ++it) {
-        let changed = false;
-        for (let i = 0; i < sn; ++i) {
-            let best = Infinity, bi = 0;
-            for (let c = 0; c < K; ++c) {
-                const dx = sample[i * 3] - centers[c * 3], dy = sample[i * 3 + 1] - centers[c * 3 + 1], dz = sample[i * 3 + 2] - centers[c * 3 + 2];
-                const dd = dx * dx + dy * dy + dz * dz;
-                if (dd < best) { best = dd; bi = c; }
-            }
-            if (sLabels[i] !== bi) { sLabels[i] = bi; changed = true; }
-        }
-        if (!changed && it > 0) break;
-        sums.fill(0); counts.fill(0);
-        for (let i = 0; i < sn; ++i) {
-            const c = sLabels[i];
-            sums[c * 3] += sample[i * 3]; sums[c * 3 + 1] += sample[i * 3 + 1]; sums[c * 3 + 2] += sample[i * 3 + 2];
-            counts[c]++;
-        }
-        for (let c = 0; c < K; ++c) {
-            if (counts[c] > 0) { centers[c * 3] = sums[c * 3] / counts[c]; centers[c * 3 + 1] = sums[c * 3 + 1] / counts[c]; centers[c * 3 + 2] = sums[c * 3 + 2] / counts[c]; }
-        }
-    }
-
-    // label every point by its nearest final center
-    for (let i = 0; i < n; ++i) {
-        let best = Infinity, bi = 0;
-        for (let c = 0; c < K; ++c) {
-            const dx = points[i * 3] - centers[c * 3], dy = points[i * 3 + 1] - centers[c * 3 + 1], dz = points[i * 3 + 2] - centers[c * 3 + 2];
-            const dd = dx * dx + dy * dy + dz * dz;
-            if (dd < best) { best = dd; bi = c; }
-        }
-        labels[i] = bi;
-    }
-    return labels;
-}
-
-/**
- * Fit one star-shaped radial SH lobe per distinct label: points sharing the same `labels[i]`
- * form one lobe. The caller decides the partition (e.g. contiguous sequence runs, k-means clusters).
- *
- * Each lobe is centered on the centroid of its (original) points. When `radii` is given, every point
- * is inflated outward from that centroid by its radius *after* the centroid is computed, so the fitted
- * envelope tracks the outer surface (atom size + probe) while the center stays put. Inflating the
- * points in 3D *before* the centroid would shift the center proportionally to the offset on an
- * asymmetric cluster, drifting the lobe off the atoms - so the inflation must follow the centroid.
- */
-export function fitSphericalHarmonicLobesByLabel(points: ArrayLike<number>, labels: ArrayLike<number>, L: number, options: { maxPoints?: number, regularization?: number, radii?: ArrayLike<number> } = {}): SphericalHarmonicLobesFit {
-    const maxPoints = options.maxPoints ?? 8192;
-    const regularization = options.regularization ?? 0;
-    const radii = options.radii;
-    const n = Math.floor(points.length / 3);
-
-    const byLabel = new Map<number, number[]>();
-    for (let i = 0; i < n; ++i) {
-        const lbl = labels[i];
-        let arr = byLabel.get(lbl);
-        if (!arr) { arr = []; byLabel.set(lbl, arr); }
-        arr.push(i);
-    }
-
-    const lobes: SphericalHarmonicLobe[] = [];
-    for (const idxArr of byLabel.values()) {
-        const idx = Int32Array.from(idxArr);
-        const { flat, center } = gatherSubset(points, idx);
-        if (radii) {
-            const cx = center[0], cy = center[1], cz = center[2];
-            for (let t = 0; t < idx.length; ++t) {
-                const p = t * 3;
-                const dx = flat[p] - cx, dy = flat[p + 1] - cy, dz = flat[p + 2] - cz;
-                const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                if (len > 1e-3) {
-                    const s = radii[idx[t]] / len; // displace by `radius` along the centroid->point ray
-                    flat[p] += dx * s; flat[p + 1] += dy * s; flat[p + 2] += dz * s;
-                }
-            }
-        }
-        const { coeffs, rMax } = fitSphericalHarmonics(flat, center, L, maxPoints, regularization);
-        lobes.push({ center, coeffs, rMax });
-    }
-    return { lobes, L };
+    const v0 = v00 + (v01 - v00) * fp;
+    const v1 = v10 + (v11 - v10) * fp;
+    return v0 + (v1 - v0) * ft;
 }

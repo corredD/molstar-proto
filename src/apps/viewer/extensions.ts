@@ -25,7 +25,6 @@ import { loadMVSData } from '../../extensions/mvs/components/formats';
 import { PDBeStructureQualityReport } from '../../extensions/pdbe';
 import { RCSBValidationReport } from '../../extensions/rcsb';
 import { SbNcbrPartialCharges, SbNcbrTunnels } from '../../extensions/sb-ncbr';
-import { SphericalHarmonicSurface } from '../../extensions/spherical-harmonic-surface';
 import { wwPDBChemicalComponentDictionary } from '../../extensions/wwpdb/ccd/behavior';
 import { wwPDBStructConnExtensionFunctions } from '../../extensions/wwpdb/struct-conn';
 import { ZenodoImport } from '../../extensions/zenodo';
@@ -62,7 +61,6 @@ export const ExtensionMap = {
     'ma-quality-assessment': PluginSpec.Behavior(MAQualityAssessment),
     'sb-ncbr-partial-charges': PluginSpec.Behavior(SbNcbrPartialCharges),
     'tunnels': PluginSpec.Behavior(SbNcbrTunnels),
-    'spherical-harmonic-surface': PluginSpec.Behavior(SphericalHarmonicSurface),
 };
 
 export const PluginExtensions = {

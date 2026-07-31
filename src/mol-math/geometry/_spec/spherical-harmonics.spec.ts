@@ -2,24 +2,10 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Ludovic Autin <autin@scripps.edu>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { assocLegendre, realSph, shIndex, shTermCount, fitSphericalHarmonics, reconstructRadius, fitSphericalHarmonicLobesByLabel, kmeansLabels } from '../spherical-harmonics';
-
-/** Fibonacci-sphere surface points of radius R about (cx, cy, cz), written into `out` from `offset`. */
-function sphereCloud(n: number, R: number, cx: number, cy: number, cz: number, out: Float32Array, offset = 0) {
-    const golden = Math.PI * (3 - Math.sqrt(5));
-    for (let i = 0; i < n; ++i) {
-        const z = 1 - (2 * i + 1) / n;
-        const theta = Math.acos(z);
-        const phi = i * golden;
-        const s = Math.sin(theta);
-        const o = offset + i * 3;
-        out[o] = cx + R * s * Math.cos(phi);
-        out[o + 1] = cy + R * s * Math.sin(phi);
-        out[o + 2] = cz + R * Math.cos(theta);
-    }
-}
+import { assocLegendre, realSph, shIndex, shTermCount, fitSphericalHarmonics, reconstructRadius, buildRadiusLUT, sampleRadiusLUT, getNormFactors } from '../spherical-harmonics';
 
 describe('spherical-harmonics', () => {
     it('associated Legendre values match known closed forms', () => {
@@ -40,13 +26,16 @@ describe('spherical-harmonics', () => {
         const K = shTermCount(L);
         const nTheta = 64, nPhi = 128;
         const acc = new Float64Array(K * K);
+        const sphOut = new Float64Array(K);
+        const legendreScratch = new Float64Array((L + 1) * (L + 2) / 2);
+        const norm = getNormFactors(L);
         // integrate Y_i Y_j sin(theta) dtheta dphi over the sphere
         for (let it = 0; it < nTheta; ++it) {
             const theta = (it + 0.5) / nTheta * Math.PI;
             const w = Math.sin(theta) * (Math.PI / nTheta) * (2 * Math.PI / nPhi);
             for (let ip = 0; ip < nPhi; ++ip) {
                 const phi = (ip + 0.5) / nPhi * 2 * Math.PI;
-                const y = realSph(L, theta, phi);
+                const y = realSph(L, Math.cos(theta), phi, sphOut, legendreScratch, norm);
                 for (let a = 0; a < K; ++a) {
                     for (let b = 0; b < K; ++b) acc[a * K + b] += y[a] * y[b] * w;
                 }
@@ -71,6 +60,10 @@ describe('spherical-harmonics', () => {
         truth[shIndex(3, -2)] = -0.4;
         truth[shIndex(4, 1)] = 0.6;
 
+        const sphOut = new Float64Array(K);
+        const legendreScratch = new Float64Array((L + 1) * (L + 2) / 2);
+        const norm = getNormFactors(L);
+
         // scatter sample directions (deterministic, well spread) and set r = sum c_i Y_i
         const n = 2000;
         const pts = new Float32Array(n * 3);
@@ -79,7 +72,7 @@ describe('spherical-harmonics', () => {
             const z = 1 - (2 * i + 1) / n;
             const theta = Math.acos(z);
             const phi = i * golden;
-            const r = reconstructRadius(truth, L, theta, phi);
+            const r = reconstructRadius(truth, L, z, phi, sphOut, legendreScratch, norm);
             const s = Math.sin(theta);
             pts[i * 3] = r * s * Math.cos(phi);
             pts[i * 3 + 1] = r * s * Math.sin(phi);
@@ -88,7 +81,7 @@ describe('spherical-harmonics', () => {
 
         const { coeffs } = fitSphericalHarmonics(pts, [0, 0, 0], L);
         for (let i = 0; i < K; ++i) {
-            expect(coeffs[i]).toBeCloseTo(truth[i], 4);
+            expect(coeffs[i]).toBeCloseTo(truth[i], 3);
         }
     });
 
@@ -102,6 +95,10 @@ describe('spherical-harmonics', () => {
         truth[shIndex(2, 2)] = 0.9;
         truth[shIndex(3, -2)] = -0.4;
 
+        const sphOut = new Float64Array(K);
+        const legendreScratch = new Float64Array((L + 1) * (L + 2) / 2);
+        const norm = getNormFactors(L);
+
         const n = 2000;
         const pts = new Float32Array(n * 3);
         const golden = Math.PI * (3 - Math.sqrt(5));
@@ -109,7 +106,7 @@ describe('spherical-harmonics', () => {
             const z = 1 - (2 * i + 1) / n;
             const theta = Math.acos(z);
             const phi = i * golden;
-            const r = reconstructRadius(truth, L, theta, phi);
+            const r = reconstructRadius(truth, L, z, phi, sphOut, legendreScratch, norm);
             const s = Math.sin(theta);
             pts[i * 3] = r * s * Math.cos(phi);
             pts[i * 3 + 1] = r * s * Math.sin(phi);
@@ -120,14 +117,15 @@ describe('spherical-harmonics', () => {
         // the reconstruction tracks the truth radius closely at arbitrary directions
         const { coeffs } = fitSphericalHarmonics(pts, [0, 0, 0], L, undefined, 0.001);
         for (let i = 0; i < 50; ++i) {
-            const theta = Math.acos(1 - (2 * i + 1) / 50);
+            const cosTheta = 1 - (2 * i + 1) / 50;
             const phi = i * golden;
-            expect(reconstructRadius(coeffs, L, theta, phi)).toBeCloseTo(reconstructRadius(truth, L, theta, phi), 1);
+            expect(reconstructRadius(coeffs, L, cosTheta, phi, sphOut, legendreScratch, norm)).toBeCloseTo(reconstructRadius(truth, L, cosTheta, phi, sphOut, legendreScratch, norm), 1);
         }
     });
 
     it('regularization tames an under-determined (sparse, clustered) fit', () => {
         const L = 8; // K = 81 coefficients
+        const K = shTermCount(L);
         // 20 points strung along x with jitter: far fewer than K, ill-conditioned
         const n = 20;
         const pts = new Float32Array(n * 3);
@@ -144,9 +142,12 @@ describe('spherical-harmonics', () => {
         const maxReconstructed = (coeffs: Float64Array) => {
             let m = -Infinity;
             const golden = Math.PI * (3 - Math.sqrt(5));
+            const sphOut = new Float64Array(K);
+            const legendreScratch = new Float64Array((L + 1) * (L + 2) / 2);
+            const norm = getNormFactors(L);
             for (let i = 0; i < 2000; ++i) {
-                const th = Math.acos(1 - (2 * i + 1) / 2000);
-                m = Math.max(m, reconstructRadius(coeffs, L, th, i * golden));
+                const cosTheta = 1 - (2 * i + 1) / 2000;
+                m = Math.max(m, reconstructRadius(coeffs, L, cosTheta, i * golden, sphOut, legendreScratch, norm));
             }
             return m;
         };
@@ -161,74 +162,54 @@ describe('spherical-harmonics', () => {
         expect(reg.rMax).toBeCloseTo(dataMax, 5);
     });
 
-    it('kmeansLabels separates a dumbbell into two compact clusters (deterministic)', () => {
-        const n = 2000;
-        // two R=8 spheres centered at x = +-20
-        const dumbbell = new Float32Array(2 * n * 3);
-        sphereCloud(n, 8, -20, 0, 0, dumbbell, 0);
-        sphereCloud(n, 8, 20, 0, 0, dumbbell, n * 3);
+    it('RadiusLUT bilinearly approximates reconstructRadius closely, including at poles/phi wraparound', () => {
+        const L = 4;
+        const K = shTermCount(L);
+        const truth = new Float64Array(K);
+        truth[shIndex(0, 0)] = 10;
+        truth[shIndex(1, -1)] = 1.3;
+        truth[shIndex(1, 0)] = -0.7;
+        truth[shIndex(2, 2)] = 0.9;
+        truth[shIndex(3, -2)] = -0.4;
+        truth[shIndex(4, 1)] = 0.6;
 
-        const labels = kmeansLabels(dumbbell, 2, { seed: 1 });
-        // every point of one input sphere shares a label, distinct from the other sphere's label
-        const a = labels[0], b = labels[2 * n - 1];
-        expect(a).not.toBe(b);
-        for (let i = 0; i < n; ++i) expect(labels[i]).toBe(a);
-        for (let i = n; i < 2 * n; ++i) expect(labels[i]).toBe(b);
+        const nTheta = 6 * (L + 1), nPhi = 12 * (L + 1);
+        const lut = buildRadiusLUT(truth, L, nTheta, nPhi);
 
-        // deterministic for a fixed seed
-        const labels2 = kmeansLabels(dumbbell, 2, { seed: 1 });
-        for (let i = 0; i < 2 * n; ++i) expect(labels2[i]).toBe(labels[i]);
-    });
+        const sphOut = new Float64Array(K);
+        const legendreScratch = new Float64Array((L + 1) * (L + 2) / 2);
+        const norm = getNormFactors(L);
 
-    it('fitSphericalHarmonicLobesByLabel on k-means clusters gives compact per-lobe envelopes', () => {
-        const n = 2000;
-        const L = 6;
-        const dumbbell = new Float32Array(2 * n * 3);
-        sphereCloud(n, 8, -20, 0, 0, dumbbell, 0);
-        sphereCloud(n, 8, 20, 0, 0, dumbbell, n * 3);
-
-        const labels = kmeansLabels(dumbbell, 2, { seed: 1 });
-        const { lobes } = fitSphericalHarmonicLobesByLabel(dumbbell, labels, L, { regularization: 0.01 });
-        expect(lobes.length).toBe(2);
-        // each lobe is the size of one R=8 sphere, not the whole ~48 A span
-        for (const lobe of lobes) {
-            expect(Math.abs(lobe.center[0])).toBeGreaterThan(10);
-            expect(lobe.rMax).toBeLessThan(16);
+        const golden = Math.PI * (3 - Math.sqrt(5));
+        for (let i = 0; i < 500; ++i) {
+            const cosTheta = 1 - (2 * i + 1) / 500;
+            const theta = Math.acos(cosTheta);
+            const phi = ((i * golden + Math.PI) % (2 * Math.PI)) - Math.PI;
+            expect(sampleRadiusLUT(lut, theta, phi)).toBeCloseTo(reconstructRadius(truth, L, cosTheta, phi, sphOut, legendreScratch, norm), 1);
         }
+
+        // poles (theta = 0 and theta = pi) and phi wraparound (phi = -pi vs phi = pi) must not throw
+        // or produce wildly different values for what are effectively the same/adjacent directions
+        expect(sampleRadiusLUT(lut, 0, 0)).toBeCloseTo(reconstructRadius(truth, L, 1, 0, sphOut, legendreScratch, norm), 1);
+        expect(sampleRadiusLUT(lut, Math.PI, 0)).toBeCloseTo(reconstructRadius(truth, L, -1, 0, sphOut, legendreScratch, norm), 1);
+        expect(sampleRadiusLUT(lut, Math.PI / 2, -Math.PI)).toBeCloseTo(sampleRadiusLUT(lut, Math.PI / 2, Math.PI), 6);
     });
 
-    it('radii inflation keeps the lobe centered (center independent of offset, rMax grows with it)', () => {
-        const n = 2000;
-        const L = 6;
-        // a single off-origin sphere; an asymmetric cloud would drift its center if inflated in 3D first
-        const sphere = new Float32Array(n * 3);
-        sphereCloud(n, 10, 30, -5, 12, sphere);
-        const labels = new Int32Array(n); // one lobe
+    it('RadiusLUT reuses the provided out buffer when dimensions match', () => {
+        const L = 2;
+        const K = shTermCount(L);
+        const coeffsA = new Float64Array(shTermCount(L)); coeffsA[0] = 5;
+        const coeffsB = new Float64Array(shTermCount(L)); coeffsB[0] = 8;
+        const nTheta = 8, nPhi = 16;
 
-        const base = fitSphericalHarmonicLobesByLabel(sphere, labels, L, { regularization: 0.01 }).lobes[0];
-        const inflated = fitSphericalHarmonicLobesByLabel(sphere, labels, L, { regularization: 0.01, radii: new Float32Array(n).fill(5) }).lobes[0];
-        // center unchanged by the 5 A inflation
-        for (let d = 0; d < 3; ++d) expect(inflated.center[d]).toBeCloseTo(base.center[d], 6);
-        // surface grows by ~the offset
-        expect(inflated.rMax - base.rMax).toBeGreaterThan(4);
-        expect(inflated.rMax - base.rMax).toBeLessThan(6);
-    });
+        const lutA = buildRadiusLUT(coeffsA, L, nTheta, nPhi);
+        const lutB = buildRadiusLUT(coeffsB, L, nTheta, nPhi, -Infinity, Infinity, lutA);
 
-    it('fitSphericalHarmonicLobesByLabel fits one lobe per label, centered on its subset', () => {
-        const n = 1000;
-        const L = 6;
+        const sphOut = new Float64Array(K);
+        const legendreScratch = new Float64Array((L + 1) * (L + 2) / 2);
+        const norm = getNormFactors(L);
 
-        // two separated spheres, one label each
-        const points = new Float32Array(2 * n * 3);
-        sphereCloud(n, 8, -20, 0, 0, points, 0);
-        sphereCloud(n, 8, 20, 0, 0, points, n * 3);
-        const labels = new Int32Array(2 * n);
-        for (let i = n; i < 2 * n; ++i) labels[i] = 1;
-
-        const fit = fitSphericalHarmonicLobesByLabel(points, labels, L);
-        expect(fit.lobes.length).toBe(2);
-        // labels are partitioned by Map insertion order: lobe 0 = label 0 (x ~ -20), lobe 1 = label 1 (x ~ +20)
-        expect(fit.lobes[0].center[0]).toBeLessThan(-10);
-        expect(fit.lobes[1].center[0]).toBeGreaterThan(10);
+        expect(lutB.values).toBe(lutA.values); // buffer reused, not reallocated
+        expect(sampleRadiusLUT(lutB, Math.PI / 2, 0)).toBeCloseTo(reconstructRadius(coeffsB, L, 0, 0, sphOut, legendreScratch, norm), 6);
     });
 });

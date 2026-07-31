@@ -15,7 +15,7 @@ import { Asset } from '../../../mol-util/assets';
 import { Clip } from '../../../mol-util/clip';
 import { ParamDefinition as PD } from '../../../mol-util/param-definition';
 import { NumberArray } from '../../../mol-util/type-helpers';
-import { mergeUnits } from './util';
+import { mergeUnitsWithSameOperator } from '../../../mol-model/structure/structure/util/unit-merging';
 
 export const MesoscalePlacementParams = {
     placementMode: PD.Select<'original' | 'particle-list'>('original', [
@@ -151,7 +151,7 @@ export function getMergedTemplateUnit(units: readonly Unit[]): Unit | undefined 
         ));
     }
 
-    return templateUnits.length === 1 ? templateUnits[0] : mergeUnits(templateUnits, 0);
+    return templateUnits.length === 1 ? templateUnits[0] : mergeUnitsWithSameOperator(templateUnits, 0);
 }
 
 export function buildInstancedStructure(unit: Unit, transforms: readonly Mat4[], label: string) {

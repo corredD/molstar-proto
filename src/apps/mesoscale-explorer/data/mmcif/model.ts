@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2023 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2023-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
@@ -12,6 +12,7 @@ import { ModelSymmetry } from '../../../../mol-model-formats/structure/property/
 import { CustomStructureProperty } from '../../../../mol-model-props/common/custom-structure-property';
 import { ElementIndex, EntityIndex, Model, Structure, Unit } from '../../../../mol-model/structure';
 import { Assembly, Symmetry } from '../../../../mol-model/structure/model/properties/symmetry';
+import { partitionUntransformedUnits } from '../../../../mol-model/structure/structure/util/unit-merging';
 import { PluginStateObject as PSO, PluginStateTransform } from '../../../../mol-plugin-state/objects';
 import { PluginContext } from '../../../../mol-plugin/context';
 import { StateObject } from '../../../../mol-state';
@@ -19,7 +20,6 @@ import { StateTransformer } from '../../../../mol-state/transformer';
 import { Task } from '../../../../mol-task';
 import { deepEqual } from '../../../../mol-util';
 import { ParamDefinition as PD } from '../../../../mol-util/param-definition';
-import { partitionUnits } from '../util';
 import { MesoscalePlacementParams, buildInstancedStructure, getMergedTemplateUnit, getParticleListTransforms } from '../placement';
 
 function createModelChainMap(model: Model) {
@@ -192,7 +192,7 @@ const MmcifStructure = PluginStateTransform.BuiltIn({
                 if (!template) return StateObject.Null;
                 structure = buildInstancedStructure(template, particleTransforms, entities.data.pdbx_description.value(idx).join(', ') || 'model');
             } else if (unitCount > 1 && units.every(u => u.conformation.operator.isIdentity)) {
-                const mergedUnits = partitionUnits(units, params.cellSize);
+                const mergedUnits = partitionUntransformedUnits(units, params.cellSize);
                 structure = Structure.create(mergedUnits);
             } else {
                 structure = Structure.create(units);
