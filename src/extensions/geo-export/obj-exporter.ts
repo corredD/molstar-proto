@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2021-2023 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2021-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Sukolsak Sakshuwong <sukolsak@stanford.edu>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -107,7 +107,9 @@ export class ObjExporter extends MeshExporter<ObjData> {
         for (let instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex) {
             if (ctx.shouldUpdate) await ctx.update({ current: instanceIndex + 1 });
 
-            const { vertices, normals, indices, groups, vertexCount, drawCount, vertexMapping } = ObjExporter.getInstance(input, instanceIndex);
+            const instance = this.getFilteredInstance(input, instanceIndex);
+            if (!instance) continue; // fully clipped away
+            const { vertices, normals, indices, groups, vertexCount, drawCount, vertexMapping } = instance;
 
             Mat4.fromArray(t, aTransform, instanceIndex * 16);
             Mat4.mul(t, this.centerTransform, t);
@@ -146,7 +148,8 @@ export class ObjExporter extends MeshExporter<ObjData> {
                 const color = ObjExporter.getColor(v, geoData, interpolatedColors, interpolatedOverpaint);
                 Color.toArray(color, quantizedColors, i);
             }
-            ObjExporter.quantizeColors(quantizedColors, vertexCount);
+            // one color per triangle was written above, so the entry count is the triangle count
+            ObjExporter.quantizeColors(quantizedColors, drawCount / 3);
 
             // face
             for (let i = 0; i < drawCount; i += 3) {

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2021-2023 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2021-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Sukolsak Sakshuwong <sukolsak@stanford.edu>
  */
@@ -46,7 +46,9 @@ export class StlExporter extends MeshExporter<StlData> {
         for (let instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex) {
             if (ctx.shouldUpdate) await ctx.update({ current: instanceIndex + 1 });
 
-            const { vertices, indices, vertexCount, drawCount } = StlExporter.getInstance(input, instanceIndex);
+            const instance = this.getFilteredInstance(input, instanceIndex);
+            if (!instance) continue; // fully clipped away
+            const { vertices, indices, vertexCount, drawCount } = instance;
 
             Mat4.fromArray(t, aTransform, instanceIndex * 16);
             Mat4.mul(t, this.centerTransform, t);

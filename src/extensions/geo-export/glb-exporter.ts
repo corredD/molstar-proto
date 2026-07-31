@@ -3,6 +3,7 @@
  *
  * @author Sukolsak Sakshuwong <sukolsak@stanford.edu>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { asciiWrite } from '../../mol-io/common/ascii';
@@ -98,13 +99,12 @@ export class GlbExporter extends MeshExporter<GlbData> {
         return accessorOffset;
     }
 
-    private addGeometryBuffers(vertices: Float32Array, normals: Float32Array | undefined, indices: Uint32Array | undefined, vertexCount: number, drawCount: number, isGeoTexture: boolean) {
+    private addVertexBuffers(vertices: Float32Array, normals: Float32Array | undefined, vertexCount: number, isGeoTexture: boolean) {
         const tmpV = Vec3();
         const stride = isGeoTexture ? 4 : 3;
 
         const vertexArray = new Float32Array(vertexCount * 3);
         let normalArray: Float32Array | undefined;
-        let indexArray: Uint32Array | undefined;
 
         // position
         for (let i = 0; i < vertexCount; ++i) {
@@ -122,27 +122,33 @@ export class GlbExporter extends MeshExporter<GlbData> {
             }
         }
 
-        // face
-        if (!isGeoTexture && indices) {
-            indexArray = indices.slice(0, drawCount);
-        }
-
         const [vertexMin, vertexMax] = GlbExporter.vec3MinMax(vertexArray);
 
         let vertexBuffer = vertexArray.buffer;
         let normalBuffer = normalArray?.buffer;
-        let indexBuffer = (isGeoTexture || !indexArray) ? undefined : indexArray.buffer;
         if (!IsNativeEndianLittle) {
             vertexBuffer = flipByteOrder(new Uint8Array(vertexBuffer), 4);
             if (normalBuffer) normalBuffer = flipByteOrder(new Uint8Array(normalBuffer), 4);
-            if (!isGeoTexture) indexBuffer = flipByteOrder(new Uint8Array(indexBuffer!), 4);
         }
 
         return {
             vertexAccessorIndex: this.addBuffer(vertexBuffer, FLOAT, 'VEC3', vertexCount, ARRAY_BUFFER, vertexMin, vertexMax),
             normalAccessorIndex: normalBuffer ? this.addBuffer(normalBuffer, FLOAT, 'VEC3', vertexCount, ARRAY_BUFFER) : undefined,
-            indexAccessorIndex: (isGeoTexture || !indexBuffer) ? undefined : this.addBuffer(indexBuffer, UNSIGNED_INT, 'SCALAR', drawCount, ELEMENT_ARRAY_BUFFER)
         };
+    }
+
+    /**
+     * Kept separate from `addVertexBuffers` so that instances which share vertices but differ in which
+     * triangles survive clipping only pay for their own index buffer, rather than a full duplicate of
+     * the vertex, normal and color buffers.
+     */
+    private addIndexBuffer(indices: Uint32Array, drawCount: number) {
+        const indexArray = indices.slice(0, drawCount);
+        let indexBuffer: ArrayBufferLike = indexArray.buffer;
+        if (!IsNativeEndianLittle) {
+            indexBuffer = flipByteOrder(new Uint8Array(indexBuffer), 4);
+        }
+        return this.addBuffer(indexBuffer, UNSIGNED_INT, 'SCALAR', drawCount, ELEMENT_ARRAY_BUFFER);
     }
 
     private addColorBuffer(geoData: MeshGeoData, interpolatedColors: Uint8Array | undefined, interpolatedOverpaint: Uint8Array | undefined, interpolatedTransparency: Uint8Array | undefined) {
@@ -226,34 +232,60 @@ export class GlbExporter extends MeshExporter<GlbData> {
         }
 
         // instancing
-        const sameGeometryBuffers = mesh !== undefined;
-        const sameColorBuffer = sameGeometryBuffers && colorType !== 'instance' && !colorType.endsWith('Instance') && !dTransparency;
-        let vertexAccessorIndex: number;
-        let normalAccessorIndex: number | undefined;
-        let indexAccessorIndex: number | undefined;
-        let colorAccessorIndex: number;
-        let meshIndex: number;
+        const sameColorBuffer = mesh !== undefined && colorType !== 'instance' && !colorType.endsWith('Instance') && !dTransparency;
+
+        // Reuse is keyed on reference identity rather than `instanceIndex === 0`, because clipping can
+        // drop instance 0 entirely and can leave some instances with their own index buffer. Index-only
+        // filtering keeps the vertex/normal/color buffers shareable even then, so `sharedVertices` and
+        // `sharedGeometry` are tracked separately.
+        let sharedVertexBuffers: { vertex: number, normal: number | undefined } | undefined;
+        let sharedIndexAccessorIndex: number | undefined;
+        let sharedColorAccessorIndex: number | undefined;
+        let sharedMeshIndex: number | undefined;
 
         await ctx.update({ isIndeterminate: false, current: 0, max: instanceCount });
 
         for (let instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex) {
+            const instance = this.getFilteredInstance(input, instanceIndex);
+            if (!instance) continue; // fully clipped away
+
             if (ctx.shouldUpdate) await ctx.update({ current: instanceIndex + 1 });
 
-            // create a glTF mesh if needed
-            if (instanceIndex === 0 || !sameGeometryBuffers || !sameColorBuffer) {
-                const { vertices, normals, indices, groups, vertexCount, drawCount, vertexMapping } = GlbExporter.getInstance(input, instanceIndex);
+            // unchanged by clipping, so geometry and indices can both be shared
+            const sharedGeometry = instance === mesh;
+            // survives index-only filtering, so vertices/normals/colors can be shared even when the
+            // surviving triangles differ
+            const sharedVertices = instance.vertices === mesh?.vertices;
 
-                // create geometry buffers if needed
-                if (instanceIndex === 0 || !sameGeometryBuffers) {
-                    const accessorIndices = this.addGeometryBuffers(vertices, normals, indices, vertexCount, drawCount, isGeoTexture);
-                    vertexAccessorIndex = accessorIndices.vertexAccessorIndex;
-                    normalAccessorIndex = accessorIndices.normalAccessorIndex;
-                    indexAccessorIndex = accessorIndices.indexAccessorIndex;
+            let meshIndex: number;
+            if (sharedGeometry && sameColorBuffer && sharedMeshIndex !== undefined) {
+                meshIndex = sharedMeshIndex;
+            } else {
+                const { vertices, normals, indices, groups, vertexCount, drawCount, vertexMapping } = instance;
+
+                let vertexBuffers = sharedVertices ? sharedVertexBuffers : undefined;
+                if (vertexBuffers === undefined) {
+                    const accessorIndices = this.addVertexBuffers(vertices, normals, vertexCount, isGeoTexture);
+                    vertexBuffers = { vertex: accessorIndices.vertexAccessorIndex, normal: accessorIndices.normalAccessorIndex };
+                    if (sharedVertices) sharedVertexBuffers = vertexBuffers;
                 }
 
-                // create a color buffer if needed
-                if (instanceIndex === 0 || !sameColorBuffer) {
+                let indexAccessorIndex: number | undefined;
+                if (!isGeoTexture && indices) {
+                    if (sharedGeometry && sharedIndexAccessorIndex !== undefined) {
+                        indexAccessorIndex = sharedIndexAccessorIndex;
+                    } else {
+                        indexAccessorIndex = this.addIndexBuffer(indices, drawCount);
+                        if (sharedGeometry) sharedIndexAccessorIndex = indexAccessorIndex;
+                    }
+                }
+
+                let colorAccessorIndex: number;
+                if (sameColorBuffer && sharedVertices && sharedColorAccessorIndex !== undefined) {
+                    colorAccessorIndex = sharedColorAccessorIndex;
+                } else {
                     colorAccessorIndex = this.addColorBuffer({ values, groups, vertexCount, instanceIndex, isGeoTexture, mode, vertexMapping }, interpolatedColors, interpolatedOverpaint, interpolatedTransparency);
+                    if (sameColorBuffer && sharedVertices) sharedColorAccessorIndex = colorAccessorIndex;
                 }
 
                 // glTF mesh
@@ -261,22 +293,23 @@ export class GlbExporter extends MeshExporter<GlbData> {
                 this.meshes.push({
                     primitives: [{
                         attributes: {
-                            POSITION: vertexAccessorIndex!,
-                            NORMAL: normalAccessorIndex!,
-                            COLOR_0: colorAccessorIndex!
+                            POSITION: vertexBuffers.vertex,
+                            NORMAL: vertexBuffers.normal!,
+                            COLOR_0: colorAccessorIndex
                         },
                         indices: indexAccessorIndex,
                         material,
                         mode: getPrimitiveMode(mode),
                     }]
                 });
+                if (sharedGeometry && sameColorBuffer) sharedMeshIndex = meshIndex;
             }
 
             // node
             Mat4.fromArray(t, aTransform, instanceIndex * 16);
             Mat4.mul(t, this.centerTransform, t);
             const node: Record<string, any> = {
-                mesh: meshIndex!,
+                mesh: meshIndex,
                 matrix: t.slice()
             };
             this.nodes.push(node);

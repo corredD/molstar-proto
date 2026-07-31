@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2021 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2021-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Sukolsak Sakshuwong <sukolsak@stanford.edu>
  */
@@ -23,7 +23,8 @@ export const GeometryParams = {
         ['stl', 'Stl (.stl)'],
         ['obj', 'Wavefront (.obj)'],
         ['usdz', 'Universal Scene Description (.usdz)']
-    ])
+    ]),
+    applyClipping: PD.Boolean(false, { label: 'Apply Clipping', description: 'Leave geometry removed by a visual\'s clip objects out of the export, instead of exporting the whole scene. Cuts are made at primitive granularity, without re-triangulation or capping.' }),
 };
 
 export class GeometryControls extends PluginComponent {
@@ -63,6 +64,7 @@ export class GeometryControls extends PluginComponent {
                         break;
                     default: throw new Error('Unsupported format.');
                 }
+                renderObjectExporter.setOptions({ applyClipping: this.behaviors.params.value.applyClipping });
 
                 for (let i = 0, il = renderObjects.length; i < il; ++i) {
                     await ctx.update({ message: `Exporting object ${i}/${il}` });

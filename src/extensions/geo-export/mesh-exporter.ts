@@ -3,6 +3,7 @@
  *
  * @author Sukolsak Sakshuwong <sukolsak@stanford.edu>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { sort, arraySwap } from '../../mol-data/util';
@@ -34,6 +35,7 @@ import { ColorTheme } from '../../mol-theme/color';
 import { computeFrenetFrames } from '../../mol-math/linear-algebra/3d/frenet-frames';
 import { addTube } from '../../mol-geo/geometry/mesh/builder/tube';
 import { arrayCopyOffset } from '../../mol-util/array';
+import { ClipState, filterInstance, getClipState } from './clip-filter';
 
 const GeoExportName = 'geo-export';
 
@@ -170,8 +172,13 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
         return interpolated.array;
     }
 
-    protected static quantizeColors(colorArray: Uint8Array, vertexCount: number) {
-        if (vertexCount <= 1024) return;
+    /**
+     * Median-cut `colorArray` in place. `count` is the number of colors it holds, at byte offsets
+     * `0, 3, 6, ...` - callers that write one color per triangle must pass the triangle count, not the
+     * vertex count, or entries past the end of what they wrote are folded into the palette.
+     */
+    protected static quantizeColors(colorArray: Uint8Array, count: number) {
+        if (count <= 1024) return;
         const rgb = Vec3();
         const min = Vec3();
         const max = Vec3();
@@ -221,20 +228,38 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
 
         // Create an array of unique colors and use the median cut algorithm.
         const colorSet = new Set<Color>();
-        for (let i = 0; i < vertexCount; ++i) {
+        for (let i = 0; i < count; ++i) {
             colorSet.add(Color.fromArray(colorArray, i * 3));
         }
         const colors = Array.from(colorSet);
         medianCut(colors, 0, colors.length - 1, 0);
 
         // Map actual colors to quantized colors.
-        for (let i = 0; i < vertexCount; ++i) {
+        for (let i = 0; i < count; ++i) {
             const color = colorMap.get(Color.fromArray(colorArray, i * 3));
             Color.toArray(color!, colorArray, i * 3);
         }
     }
 
-    protected static getInstance(input: AddMeshInput, instanceIndex: number) {
+    /**
+     * Clip objects of the render object currently being added, when `applyClipping` is on. Set by
+     * `add` and read for the duration of that call, so callers must await each `add` before the next -
+     * which every caller already does, since `add` returns the work as a promise.
+     */
+    private clipState: ClipState | undefined;
+
+    /**
+     * Per-instance geometry with clipping applied: `undefined` when the whole instance is clipped
+     * away and must be skipped. Returns the very same object as `getInstance` whenever nothing is
+     * clipped, which is what lets `GlbExporter` keep sharing geometry between instances.
+     */
+    protected getFilteredInstance(input: AddMeshInput, instanceIndex: number) {
+        const instance = MeshExporter.getInstance(input, instanceIndex);
+        if (!this.clipState) return instance;
+        return filterInstance(this.clipState, input, instanceIndex, instance);
+    }
+
+    private static getInstance(input: AddMeshInput, instanceIndex: number) {
         const { mesh, meshes } = input;
         if (mesh !== undefined) {
             return mesh;
@@ -669,7 +694,12 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
         const vertexCount = values.uVertexCount.ref.value;
         const meshes: Mesh[] = [];
 
-        const sphereCount = (vertexCount / 6) * instanceCount;
+        // `centerBuffer` holds one center per sphere, i.e. `uVertexCount / 6` of them - the same way
+        // `spheres.ts` recovers the count. `sphereCount` is the total across instances and is only
+        // meant for the `detail` heuristic below; using it as the per-instance loop bound read past
+        // the end of `centerBuffer`/`groupBuffer` whenever there was more than one instance.
+        const spheresPerInstance = vertexCount / 6;
+        const sphereCount = spheresPerInstance * instanceCount;
         let detail: number;
         switch (this.options.primitivesQuality) {
             case 'auto':
@@ -695,7 +725,7 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
         for (let instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex) {
             const state = MeshBuilder.createState(512, 256);
 
-            for (let i = 0; i < sphereCount; ++i) {
+            for (let i = 0; i < spheresPerInstance; ++i) {
                 v3fromArray(center, aPosition, i * 3);
 
                 const group = aGroup[i];
@@ -816,6 +846,10 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
         if (renderObject.values.drawCount.ref.value === 0) return;
         if (renderObject.values.instanceCount.ref.value === 0) return;
 
+        this.clipState = this.options.applyClipping
+            ? getClipState(renderObject.values)
+            : undefined;
+
         switch (renderObject.type) {
             case 'mesh':
                 return this.addMesh(renderObject.values as MeshValues, webgl, ctx);
@@ -837,7 +871,13 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
         linesAsTriangles: false,
         pointsAsTriangles: false,
         primitivesQuality: 'auto' as 'auto' | 'high' | 'medium' | 'low',
+        /** Evaluate each render object's clip objects on the CPU and leave clipped geometry out. */
+        applyClipping: false,
     };
+
+    setOptions(options: Partial<MeshExporter<D>['options']>) {
+        Object.assign(this.options, options);
+    }
 
     abstract getData(ctx: RuntimeContext): Promise<D>;
 

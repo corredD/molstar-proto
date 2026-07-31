@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2021-2023 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2021-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Sukolsak Sakshuwong <sukolsak@stanford.edu>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -100,7 +100,9 @@ def Material "material${materialKey}"
         for (let instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex) {
             if (ctx.shouldUpdate) await ctx.update({ current: instanceIndex + 1 });
 
-            const { vertices, normals, indices, groups, vertexCount, drawCount, vertexMapping } = UsdzExporter.getInstance(input, instanceIndex);
+            const instance = this.getFilteredInstance(input, instanceIndex);
+            if (!instance) continue; // fully clipped away
+            const { vertices, normals, indices, groups, vertexCount, drawCount, vertexMapping } = instance;
 
             Mat4.fromArray(t, aTransform, instanceIndex * 16);
             Mat4.mul(t, this.centerTransform, t);
@@ -150,7 +152,8 @@ def Material "material${materialKey}"
                 const color = UsdzExporter.getColor(v, geoData, interpolatedColors, interpolatedOverpaint);
                 Color.toArray(color, quantizedColors, i);
             }
-            UsdzExporter.quantizeColors(quantizedColors, vertexCount);
+            // one color per triangle was written above, so the entry count is the triangle count
+            UsdzExporter.quantizeColors(quantizedColors, drawCount / 3);
 
             // material
             const faceIndicesByMaterial = new Map<number, number[]>();
