@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file, following t
 Note that since we don't clearly distinguish between a public and private interfaces there will be changes in non-major versions that are potentially breaking. If we make breaking changes to less used interfaces we will highlight it in here.
 
 ## [Unreleased]
+- Add `Apply Clipping` option to `Export Geometry`, leaving geometry removed by a visual's clip objects out of the exported file instead of exporting the whole scene. Adds a CPU port of the shader clip test (`Clip.createTest`/`testPoint`/`classifyBall` in `mol-util/clip`).
+- Fix `quantizeColors` being called with the vertex count in the OBJ and USDZ exporters, where the color array holds one entry per triangle
 - Fix extra Hydrogens not in chemcomp dict. are disconnected (#1888)
 - Add `NH`, `MC`, `TS`, `OG` to `ElementSymbolColors` so they can be customized in the `element-symbol` color theme's `custom` colors (previously silently ignored, atoms fell back to white, indistinguishable from Hydrogen)
 - Fix `getElementFromAtomicNumber` returning the deprecated `Uut`/`Uup`/`Uus`/`Uuo` placeholder names for atomic numbers 113/115/117/118 instead of the current IUPAC names `Nh`/`Mc`/`Ts`/`Og`

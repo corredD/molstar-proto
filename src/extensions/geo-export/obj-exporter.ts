@@ -107,7 +107,9 @@ export class ObjExporter extends MeshExporter<ObjData> {
         for (let instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex) {
             if (ctx.shouldUpdate) await ctx.update({ current: instanceIndex + 1 });
 
-            const { vertices, normals, indices, groups, vertexCount, drawCount, vertexMapping } = ObjExporter.getInstance(input, instanceIndex);
+            const instance = this.getFilteredInstance(input, instanceIndex);
+            if (!instance) continue; // fully clipped away
+            const { vertices, normals, indices, groups, vertexCount, drawCount, vertexMapping } = instance;
 
             Mat4.fromArray(t, aTransform, instanceIndex * 16);
             Mat4.mul(t, this.centerTransform, t);
@@ -146,7 +148,10 @@ export class ObjExporter extends MeshExporter<ObjData> {
                 const color = ObjExporter.getColor(v, geoData, interpolatedColors, interpolatedOverpaint);
                 Color.toArray(color, quantizedColors, i);
             }
-            ObjExporter.quantizeColors(quantizedColors, vertexCount);
+            // one color was written per triangle above, at byte offsets 0, 3, 6, ... - so the entry
+            // count is the triangle count, not the vertex count (which can exceed it once clipping
+            // has removed triangles, making this read past what was written)
+            ObjExporter.quantizeColors(quantizedColors, drawCount / 3);
 
             // face
             for (let i = 0; i < drawCount; i += 3) {

@@ -34,6 +34,7 @@ import { ColorTheme } from '../../mol-theme/color';
 import { computeFrenetFrames } from '../../mol-math/linear-algebra/3d/frenet-frames';
 import { addTube } from '../../mol-geo/geometry/mesh/builder/tube';
 import { arrayCopyOffset } from '../../mol-util/array';
+import { ClipState, filterInstance, getClipState } from './clip-filter';
 
 const GeoExportName = 'geo-export';
 
@@ -232,6 +233,24 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
             const color = colorMap.get(Color.fromArray(colorArray, i * 3));
             Color.toArray(color!, colorArray, i * 3);
         }
+    }
+
+    /**
+     * Clip objects of the render object currently being added, when `applyClipping` is on. Set by
+     * `add` and read for the duration of that call, so callers must await each `add` before the next -
+     * which every caller already does, since `add` returns the work as a promise.
+     */
+    private clipState: ClipState | undefined;
+
+    /**
+     * Per-instance geometry with clipping applied: `undefined` when the whole instance is clipped
+     * away and must be skipped. Returns the very same object as `getInstance` whenever nothing is
+     * clipped, which is what lets `GlbExporter` keep sharing geometry between instances.
+     */
+    protected getFilteredInstance(input: AddMeshInput, instanceIndex: number) {
+        const instance = MeshExporter.getInstance(input, instanceIndex);
+        if (!this.clipState) return instance;
+        return filterInstance(this.clipState, input, instanceIndex, instance);
     }
 
     protected static getInstance(input: AddMeshInput, instanceIndex: number) {
@@ -816,6 +835,10 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
         if (renderObject.values.drawCount.ref.value === 0) return;
         if (renderObject.values.instanceCount.ref.value === 0) return;
 
+        this.clipState = this.options.applyClipping
+            ? getClipState(renderObject.values)
+            : undefined;
+
         switch (renderObject.type) {
             case 'mesh':
                 return this.addMesh(renderObject.values as MeshValues, webgl, ctx);
@@ -837,7 +860,13 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
         linesAsTriangles: false,
         pointsAsTriangles: false,
         primitivesQuality: 'auto' as 'auto' | 'high' | 'medium' | 'low',
+        /** Evaluate each render object's clip objects on the CPU and leave clipped geometry out. */
+        applyClipping: false,
     };
+
+    setOptions(options: Partial<MeshExporter<D>['options']>) {
+        Object.assign(this.options, options);
+    }
 
     abstract getData(ctx: RuntimeContext): Promise<D>;
 

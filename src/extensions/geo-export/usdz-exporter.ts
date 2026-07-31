@@ -100,7 +100,9 @@ def Material "material${materialKey}"
         for (let instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex) {
             if (ctx.shouldUpdate) await ctx.update({ current: instanceIndex + 1 });
 
-            const { vertices, normals, indices, groups, vertexCount, drawCount, vertexMapping } = UsdzExporter.getInstance(input, instanceIndex);
+            const instance = this.getFilteredInstance(input, instanceIndex);
+            if (!instance) continue; // fully clipped away
+            const { vertices, normals, indices, groups, vertexCount, drawCount, vertexMapping } = instance;
 
             Mat4.fromArray(t, aTransform, instanceIndex * 16);
             Mat4.mul(t, this.centerTransform, t);
@@ -150,7 +152,10 @@ def Material "material${materialKey}"
                 const color = UsdzExporter.getColor(v, geoData, interpolatedColors, interpolatedOverpaint);
                 Color.toArray(color, quantizedColors, i);
             }
-            UsdzExporter.quantizeColors(quantizedColors, vertexCount);
+            // one color per triangle was written above, at byte offsets 0, 3, 6, ... - so the entry
+            // count is the triangle count, not the vertex count (which can exceed it once clipping
+            // has removed triangles, making this read past what was written)
+            UsdzExporter.quantizeColors(quantizedColors, drawCount / 3);
 
             // material
             const faceIndicesByMaterial = new Map<number, number[]>();

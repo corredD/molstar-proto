@@ -23,7 +23,8 @@ export const GeometryParams = {
         ['stl', 'Stl (.stl)'],
         ['obj', 'Wavefront (.obj)'],
         ['usdz', 'Universal Scene Description (.usdz)']
-    ])
+    ]),
+    applyClipping: PD.Boolean(false, { label: 'Apply Clipping', description: 'Apply each visual\'s clip objects so that clipped geometry is left out of the export, instead of exporting the whole scene. Cuts are made at primitive granularity - whole instances, and individual triangles by centroid - without re-triangulation or capping, so boundaries are jagged and the surface is left open. Per-group clipping masks are not applied.' }),
 };
 
 export class GeometryControls extends PluginComponent {
@@ -63,6 +64,7 @@ export class GeometryControls extends PluginComponent {
                         break;
                     default: throw new Error('Unsupported format.');
                 }
+                renderObjectExporter.setOptions({ applyClipping: this.behaviors.params.value.applyClipping });
 
                 for (let i = 0, il = renderObjects.length; i < il; ++i) {
                     await ctx.update({ message: `Exporting object ${i}/${il}` });

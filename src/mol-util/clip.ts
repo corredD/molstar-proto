@@ -100,6 +100,230 @@ export namespace Clip {
         };
     }
 
+    //
+
+    /** How a region relates to the union of all clip objects. */
+    export type Classification = 'keep' | 'discard' | 'partial'
+
+    /**
+     * Precomputed per-object state for the CPU clip test, a port of `clipTest`/`getSignedDistance`
+     * from `mol-gl/shader/chunks/common-clip.glsl.ts`. Kept honest by `mol-util/_spec/clip.spec.ts`,
+     * which asserts agreement with a literal transcription of that shader chunk.
+     *
+     * Points are given in the space the geometry is defined in; the instance transform is folded
+     * into `transform` once per instance by `setTestInstanceTransform`, so no per-point matrix
+     * bookkeeping is needed. Everything after `createTest` is allocation-free.
+     */
+    export type Test = {
+        readonly count: number
+        readonly type: number[]
+        readonly invert: boolean[]
+        /** the object's own transform, as given by `Objects.transform` */
+        readonly objectTransform: Mat4[]
+        /** `objectTransform` pre-multiplied with the current instance transform */
+        readonly transform: Mat4[]
+        /** upper bound on the operator norm of `transform[i]` */
+        readonly transformScale: number[]
+        readonly position: Vec3[]
+        /** conjugate of the object rotation, which is what the sphere/cube/cylinder/cone SDs apply */
+        readonly rotationConj: Quat[]
+        /** `scale * 0.5`, as the shader passes it */
+        readonly size: Vec3[]
+        /** plane only: normalized `rotation * unitY` */
+        readonly planeNormal: Vec3[]
+        /** plane only: `-dot(normal, position)` */
+        readonly planeW: number[]
+        /** upper bound on the gradient magnitude of the signed distance */
+        readonly lipschitz: number[]
+    }
+
+    /** port of the shader's `quaternionTransform`; safe when `out === v` */
+    function quaternionTransform(out: Vec3, q: Quat, v: Vec3) {
+        const vx = v[0], vy = v[1], vz = v[2];
+        const qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+        const tx = 2 * (qy * vz - qz * vy);
+        const ty = 2 * (qz * vx - qx * vz);
+        const tz = 2 * (qx * vy - qy * vx);
+        out[0] = vx + qw * tx + (qy * tz - qz * ty);
+        out[1] = vy + qw * ty + (qz * tx - qx * tz);
+        out[2] = vz + qw * tz + (qx * ty - qy * tx);
+        return out;
+    }
+
+    /**
+     * `(m * vec4(v, 1)).xyz`. Deliberately not `Vec3.transformMat4`, which also divides by the
+     * homogeneous `w` - a no-op for the affine transforms clip objects use, but the shader does not
+     * do it and matching the shader exactly is the point.
+     */
+    function transformPoint(out: Vec3, v: Vec3, m: Mat4) {
+        const x = v[0], y = v[1], z = v[2];
+        out[0] = m[0] * x + m[4] * y + m[8] * z + m[12];
+        out[1] = m[1] * x + m[5] * y + m[9] * z + m[13];
+        out[2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+        return out;
+    }
+
+    /**
+     * Upper bound on the operator norm of the linear part of `m` - the largest factor by which it can
+     * stretch a vector. Exact when the columns are orthogonal (rotations, axis-aligned scalings),
+     * where the operator norm is the largest column norm; otherwise the Frobenius norm, which is
+     * always an upper bound. Never under-estimates: doing so would shrink the radius used by
+     * `classifyBall` and could report `keep` for a region that is in fact partly clipped.
+     */
+    function maxScale(m: Mat4) {
+        const xx = m[0] * m[0] + m[1] * m[1] + m[2] * m[2];
+        const yy = m[4] * m[4] + m[5] * m[5] + m[6] * m[6];
+        const zz = m[8] * m[8] + m[9] * m[9] + m[10] * m[10];
+        const xy = m[0] * m[4] + m[1] * m[5] + m[2] * m[6];
+        const xz = m[0] * m[8] + m[1] * m[9] + m[2] * m[10];
+        const yz = m[4] * m[8] + m[5] * m[9] + m[6] * m[10];
+        const eps = EPSILON * (xx + yy + zz);
+        if (Math.abs(xy) <= eps && Math.abs(xz) <= eps && Math.abs(yz) <= eps) {
+            return Math.sqrt(Math.max(xx, yy, zz));
+        }
+        return Math.sqrt(xx + yy + zz);
+    }
+
+    export function createTest(objects: Objects): Test {
+        const count = objects.count;
+        const test: Test = {
+            count,
+            type: [], invert: [],
+            objectTransform: [], transform: [], transformScale: [],
+            position: [], rotationConj: [], size: [],
+            planeNormal: [], planeW: [], lipschitz: [],
+        };
+
+        // note: `objects` arrays can be longer than `count` - `getClip` reuses a previous allocation
+        for (let i = 0; i < count; ++i) {
+            const type = objects.type[i];
+            test.type.push(type);
+            test.invert.push(objects.invert[i]);
+
+            const position = Vec3.fromArray(Vec3(), objects.position, i * 3);
+            test.position.push(position);
+
+            const rotation = Quat.fromArray(Quat(), objects.rotation, i * 4);
+            test.rotationConj.push(Quat.create(-rotation[0], -rotation[1], -rotation[2], rotation[3]));
+
+            const size = Vec3.fromArray(Vec3(), objects.scale, i * 3);
+            Vec3.scale(size, size, 0.5);
+            test.size.push(size);
+
+            // `computePlane` takes `w` from the un-normalized normal and normalizes only `xyz`; for a
+            // unit quaternion the normal is already unit, so this is the same - but stay literal
+            const normal = quaternionTransform(Vec3(), rotation, Vec3.unitY);
+            test.planeW.push(-Vec3.dot(normal, position));
+            test.planeNormal.push(Vec3.normalize(normal, normal));
+
+            // plane/sphere/cube/cylinder distances are all 1-Lipschitz. `infiniteConeSD` is
+            // `dot(size.xy, (length(t.xy), t.z))`, a plane distance in that 2d space scaled by
+            // `|size.xy|`, so its gradient is that much larger.
+            test.lipschitz.push(type === Type.infiniteCone
+                ? Math.sqrt(size[0] * size[0] + size[1] * size[1])
+                : type === Type.plane || type === Type.sphere || type === Type.cube || type === Type.cylinder ? 1 : 0);
+
+            const objectTransform = Mat4.fromArray(Mat4(), objects.transform, i * 16);
+            test.objectTransform.push(objectTransform);
+            test.transform.push(Mat4.clone(objectTransform));
+            test.transformScale.push(maxScale(objectTransform));
+        }
+        return test;
+    }
+
+    /**
+     * Fold `instanceTransform` into every object's transform, so subsequent `testPoint`/
+     * `classifyBall`/`getSignedDistance` calls take points in the instance's local space. Call once
+     * per instance.
+     */
+    export function setTestInstanceTransform(test: Test, instanceTransform?: Mat4) {
+        for (let i = 0, il = test.count; i < il; ++i) {
+            const t = test.transform[i];
+            if (instanceTransform) Mat4.mul(t, test.objectTransform[i], instanceTransform);
+            else Mat4.copy(t, test.objectTransform[i]);
+            test.transformScale[i] = maxScale(t);
+        }
+    }
+
+    const sdA = Vec3();
+    const sdB = Vec3();
+
+    /** Signed distance of `point` to clip object `i`; negative inside. */
+    export function getSignedDistance(test: Test, i: number, point: Vec3): number {
+        const c = transformPoint(sdA, point, test.transform[i]);
+        const type = test.type[i];
+
+        if (type === Type.plane) {
+            // `planeSD(plane, c) = -dot(n, c - n * -w)` collapses to `-(dot(n, c) + w)` for unit `n`
+            return -(Vec3.dot(test.planeNormal[i], c) + test.planeW[i]);
+        }
+        if (type !== Type.sphere && type !== Type.cube && type !== Type.cylinder && type !== Type.infiniteCone) {
+            // `none` and unknown types never clip - unless inverted, in which case they clip
+            // everything. Matches the shader's `else { return 0.1; }`.
+            return 0.1;
+        }
+
+        const s = test.size[i];
+        const t = quaternionTransform(sdB, test.rotationConj[i], Vec3.sub(sdB, c, test.position[i]));
+
+        switch (type) {
+            case Type.sphere: {
+                // a zero `size` component yields Infinity/NaN here, exactly as the shader does; `NaN
+                // <= 0` is false in both, and `classifyBall` degrades to `partial` on its own
+                const x = t[0] / s[0], y = t[1] / s[1], z = t[2] / s[2];
+                return (Math.sqrt(x * x + y * y + z * z) - 1) * Math.min(s[0], Math.min(s[1], s[2]));
+            }
+            case Type.cube: {
+                const dx = Math.abs(t[0]) - s[0], dy = Math.abs(t[1]) - s[1], dz = Math.abs(t[2]) - s[2];
+                const mx = Math.max(dx, 0), my = Math.max(dy, 0), mz = Math.max(dz, 0);
+                return Math.min(Math.max(dx, Math.max(dy, dz)), 0) + Math.sqrt(mx * mx + my * my + mz * mz);
+            }
+            case Type.cylinder: {
+                // axis is Y; `abs(length(t.xz))` is just `length(t.xz)`
+                const dx = Math.sqrt(t[0] * t[0] + t[2] * t[2]) - s[0];
+                const dy = Math.abs(t[1]) - s[1];
+                const mx = Math.max(dx, 0), my = Math.max(dy, 0);
+                return Math.min(Math.max(dx, dy), 0) + Math.sqrt(mx * mx + my * my);
+            }
+            default: {
+                // infiniteCone; axis is Z
+                return s[0] * Math.sqrt(t[0] * t[0] + t[1] * t[1]) + s[1] * t[2];
+            }
+        }
+    }
+
+    /** `true` means the point is clipped away, mirroring the shader's `clipTest`. */
+    export function testPoint(test: Test, point: Vec3): boolean {
+        for (let i = 0, il = test.count; i < il; ++i) {
+            const inside = getSignedDistance(test, i, point) <= 0;
+            if (test.invert[i] ? !inside : inside) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Classify a ball against all clip objects, using each signed distance's Lipschitz bound.
+     * `keep`/`discard` are only returned when they provably hold for every point of the ball, so a
+     * `partial` result is always safe to fall back on - being conservative costs work, never
+     * correctness.
+     */
+    export function classifyBall(test: Test, center: Vec3, radius: number): Classification {
+        let partial = false;
+        for (let i = 0, il = test.count; i < il; ++i) {
+            const sd = getSignedDistance(test, i, center);
+            // the signed distance over the ball lies within `sd +/- r`
+            const r = radius * test.transformScale[i] * test.lipschitz[i];
+            const allInside = sd + r <= 0;
+            const noneInside = sd - r > 0;
+            const invert = test.invert[i];
+            if (invert ? noneInside : allInside) return 'discard';
+            if (!(invert ? allInside : noneInside)) partial = true;
+        }
+        return partial ? 'partial' : 'keep';
+    }
+
+    //
+
     export function areEqual(cA: Clip, cB: Clip) {
         if (cA.variant !== cB.variant) return false;
         if (cA.objects.count !== cB.objects.count) return false;
