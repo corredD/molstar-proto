@@ -171,8 +171,11 @@ function filterPrimitives(state: ClipState, instance: InstanceMesh): InstanceMes
     let n = 0;
     for (let i = 0; i < drawCount; i += 3) {
         const a = src[i];
-        // all three vertices of a triangle belong to the same primitive
-        if (!keep[map[a]]) continue;
+        // all three vertices of a triangle belong to the same primitive. The range check is not
+        // redundant: `keep` is a reused scratch buffer, so an out-of-range mapping would otherwise
+        // read a stale value from a previous render object rather than fail predictably.
+        const primitive = map[a];
+        if (primitive >= primitiveCount || keep[primitive] === 0) continue;
         out[n++] = a; out[n++] = src[i + 1]; out[n++] = src[i + 2];
     }
 

@@ -688,7 +688,12 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
         const vertexCount = values.uVertexCount.ref.value;
         const meshes: Mesh[] = [];
 
-        const sphereCount = (vertexCount / 6) * instanceCount;
+        // `centerBuffer` holds one center per sphere, i.e. `uVertexCount / 6` of them - the same way
+        // `spheres.ts` recovers the count. `sphereCount` is the total across instances and is only
+        // meant for the `detail` heuristic below; using it as the per-instance loop bound read past
+        // the end of `centerBuffer`/`groupBuffer` whenever there was more than one instance.
+        const spheresPerInstance = vertexCount / 6;
+        const sphereCount = spheresPerInstance * instanceCount;
         let detail: number;
         switch (this.options.primitivesQuality) {
             case 'auto':
@@ -714,7 +719,7 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
         for (let instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex) {
             const state = MeshBuilder.createState(512, 256);
 
-            for (let i = 0; i < sphereCount; ++i) {
+            for (let i = 0; i < spheresPerInstance; ++i) {
                 v3fromArray(center, aPosition, i * 3);
 
                 const group = aGroup[i];

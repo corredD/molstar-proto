@@ -157,6 +157,24 @@ describe('geo-export clipping', () => {
         expect(cut).toBeGreaterThan(0);
     });
 
+    it('exports multi-instance spheres without NaN vertices', async () => {
+        // regression: the per-instance loop bound used to be multiplied by the instance count, so it
+        // read past the end of `centerBuffer` and emitted NaN positions. Independent of clipping.
+        const spheres = Spheres.create(new Float32Array([0, 0, 0, 3, 0, 0]), new Float32Array([0, 1]), 2);
+        const transform = createTransform(new Float32Array([
+            ...Mat4.fromTranslation(Mat4(), Vec3.create(0, 5, 0)),
+            ...Mat4.fromTranslation(Mat4(), Vec3.create(0, -5, 0)),
+        ]), 2);
+        const values = Spheres.Utils.createValuesSimple(spheres, {}, ColorNames.red, 1, transform);
+
+        const exporter = new ObjExporter('test', boundingBox);
+        await exporter.add(createRenderObject('spheres', values, state, -1), undefined!, SyncRuntimeContext);
+        const { obj } = await exporter.getData();
+
+        expect(obj).not.toContain('NaN');
+        expect(obj.split('\n').filter(l => l.startsWith('v ')).length).toBeGreaterThan(0);
+    });
+
     it('keeps sharing one glTF mesh across instances with clipping off', async () => {
         // guards the glb-exporter refactor itself, independently of any clipping behaviour
         const transform = createTransform(new Float32Array([
