@@ -105,10 +105,24 @@ async function sphereFaceCount(clipPrimitive: boolean) {
     return obj.split('\n').filter(l => l.startsWith('f ')).length;
 }
 
+/** two instances of the fixture, translated to `y0` and `y1` */
+function twoInstances(y0: number, y1: number) {
+    return createTransform(new Float32Array([
+        ...Mat4.fromTranslation(Mat4(), Vec3.create(0, y0, 0)),
+        ...Mat4.fromTranslation(Mat4(), Vec3.create(0, y1, 0)),
+    ]), 2);
+}
+
+async function glbOf(props: any, applyClipping: boolean, transform: ReturnType<typeof createTransform>) {
+    const exporter = new GlbExporter(boundingBox);
+    exporter.setOptions({ applyClipping });
+    await exporter.add(renderObject(props, transform), undefined!, SyncRuntimeContext);
+    return parseGlb((await exporter.getData()).glb);
+}
+
 describe('geo-export clipping', () => {
     it('exports everything when the toggle is off', async () => {
         expect(await objFaceCount(planeClip(false), false)).toBe(4);
-        expect(await objFaceCount({}, false)).toBe(4);
     });
 
     it('is a no-op when the render object has no clip objects', async () => {
@@ -129,16 +143,8 @@ describe('geo-export clipping', () => {
     });
 
     it('culls whole instances for the instance variant, leaving no mesh-less glTF node', async () => {
-        // two instances, one shifted to +y and one to -y, so the plane keeps exactly one of them
-        const transform = createTransform(new Float32Array([
-            ...Mat4.fromTranslation(Mat4(), Vec3.create(0, 5, 0)),
-            ...Mat4.fromTranslation(Mat4(), Vec3.create(0, -5, 0)),
-        ]), 2);
-
-        const exporter = new GlbExporter(boundingBox);
-        exporter.setOptions({ applyClipping: true });
-        await exporter.add(renderObject(planeClip(false, 'instance'), transform), undefined!, SyncRuntimeContext);
-        const gltf = parseGlb((await exporter.getData()).glb);
+        // one instance either side of the plane, so exactly one of them is kept
+        const gltf = await glbOf(planeClip(false, 'instance'), true, twoInstances(5, -5));
 
         expect(gltf.nodes.length).toBe(1);
         for (const node of gltf.nodes) {
@@ -161,11 +167,7 @@ describe('geo-export clipping', () => {
         // regression: the per-instance loop bound used to be multiplied by the instance count, so it
         // read past the end of `centerBuffer` and emitted NaN positions. Independent of clipping.
         const spheres = Spheres.create(new Float32Array([0, 0, 0, 3, 0, 0]), new Float32Array([0, 1]), 2);
-        const transform = createTransform(new Float32Array([
-            ...Mat4.fromTranslation(Mat4(), Vec3.create(0, 5, 0)),
-            ...Mat4.fromTranslation(Mat4(), Vec3.create(0, -5, 0)),
-        ]), 2);
-        const values = Spheres.Utils.createValuesSimple(spheres, {}, ColorNames.red, 1, transform);
+        const values = Spheres.Utils.createValuesSimple(spheres, {}, ColorNames.red, 1, twoInstances(5, -5));
 
         const exporter = new ObjExporter('test', boundingBox);
         await exporter.add(createRenderObject('spheres', values, state, -1), undefined!, SyncRuntimeContext);
@@ -175,34 +177,20 @@ describe('geo-export clipping', () => {
         expect(obj.split('\n').filter(l => l.startsWith('v ')).length).toBeGreaterThan(0);
     });
 
-    it('keeps sharing one glTF mesh across instances with clipping off', async () => {
+    it('shares one glTF mesh across instances with the toggle off', async () => {
         // guards the glb-exporter refactor itself, independently of any clipping behaviour
-        const transform = createTransform(new Float32Array([
-            ...Mat4.fromTranslation(Mat4(), Vec3.create(0, 5, 0)),
-            ...Mat4.fromTranslation(Mat4(), Vec3.create(0, -5, 0)),
-        ]), 2);
-
-        const exporter = new GlbExporter(boundingBox);
-        exporter.setOptions({ applyClipping: false });
-        await exporter.add(renderObject(planeClip(false), transform), undefined!, SyncRuntimeContext);
-        const gltf = parseGlb((await exporter.getData()).glb);
+        const gltf = await glbOf(planeClip(false), false, twoInstances(5, -5));
 
         expect(gltf.nodes.length).toBe(2);
         expect(gltf.meshes.length).toBe(1);
         expect(gltf.nodes[0].mesh).toBe(gltf.nodes[1].mesh);
     });
 
-    it('keeps sharing one glTF mesh across instances when nothing is clipped', async () => {
-        const transform = createTransform(new Float32Array([
-            ...Mat4.fromTranslation(Mat4(), Vec3.create(0, 5, 0)),
-            ...Mat4.fromTranslation(Mat4(), Vec3.create(0, 6, 0)),
-        ]), 2);
-
-        const exporter = new GlbExporter(boundingBox);
-        exporter.setOptions({ applyClipping: true });
-        // inverted plane at the origin keeps everything above it, i.e. both instances whole
-        await exporter.add(renderObject(planeClip(true, 'instance'), transform), undefined!, SyncRuntimeContext);
-        const gltf = parseGlb((await exporter.getData()).glb);
+    it('shares one glTF mesh across instances with the toggle on but nothing clipped', async () => {
+        // inverted plane at the origin keeps everything above it, i.e. both instances whole - a
+        // different path from the toggle being off, and the one that would regress if clipping
+        // silently disabled sharing
+        const gltf = await glbOf(planeClip(true, 'instance'), true, twoInstances(5, 6));
 
         expect(gltf.nodes.length).toBe(2);
         // one mesh, two nodes - losing this would multiply file size by the instance count

@@ -3,6 +3,7 @@
  *
  * @author Sukolsak Sakshuwong <sukolsak@stanford.edu>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { asciiWrite } from '../../mol-io/common/ascii';
@@ -231,15 +232,13 @@ export class GlbExporter extends MeshExporter<GlbData> {
         }
 
         // instancing
-        const sameGeometryBuffers = mesh !== undefined;
-        const sameColorBuffer = sameGeometryBuffers && colorType !== 'instance' && !colorType.endsWith('Instance') && !dTransparency;
+        const sameColorBuffer = mesh !== undefined && colorType !== 'instance' && !colorType.endsWith('Instance') && !dTransparency;
 
         // Reuse is keyed on reference identity rather than `instanceIndex === 0`, because clipping can
         // drop instance 0 entirely and can leave some instances with their own index buffer. Index-only
         // filtering keeps the vertex/normal/color buffers shareable even then, so `sharedVertices` and
         // `sharedGeometry` are tracked separately.
-        let sharedVertexAccessorIndex: number | undefined;
-        let sharedNormalAccessorIndex: number | undefined;
+        let sharedVertexBuffers: { vertex: number, normal: number | undefined } | undefined;
         let sharedIndexAccessorIndex: number | undefined;
         let sharedColorAccessorIndex: number | undefined;
         let sharedMeshIndex: number | undefined;
@@ -256,7 +255,7 @@ export class GlbExporter extends MeshExporter<GlbData> {
             const sharedGeometry = instance === mesh;
             // survives index-only filtering, so vertices/normals/colors can be shared even when the
             // surviving triangles differ
-            const sharedVertices = mesh !== undefined && instance.vertices === mesh.vertices;
+            const sharedVertices = instance.vertices === mesh?.vertices;
 
             let meshIndex: number;
             if (sharedGeometry && sameColorBuffer && sharedMeshIndex !== undefined) {
@@ -264,19 +263,11 @@ export class GlbExporter extends MeshExporter<GlbData> {
             } else {
                 const { vertices, normals, indices, groups, vertexCount, drawCount, vertexMapping } = instance;
 
-                let vertexAccessorIndex: number;
-                let normalAccessorIndex: number | undefined;
-                if (sharedVertices && sharedVertexAccessorIndex !== undefined) {
-                    vertexAccessorIndex = sharedVertexAccessorIndex;
-                    normalAccessorIndex = sharedNormalAccessorIndex;
-                } else {
+                let vertexBuffers = sharedVertices ? sharedVertexBuffers : undefined;
+                if (vertexBuffers === undefined) {
                     const accessorIndices = this.addVertexBuffers(vertices, normals, vertexCount, isGeoTexture);
-                    vertexAccessorIndex = accessorIndices.vertexAccessorIndex;
-                    normalAccessorIndex = accessorIndices.normalAccessorIndex;
-                    if (sharedVertices) {
-                        sharedVertexAccessorIndex = vertexAccessorIndex;
-                        sharedNormalAccessorIndex = normalAccessorIndex;
-                    }
+                    vertexBuffers = { vertex: accessorIndices.vertexAccessorIndex, normal: accessorIndices.normalAccessorIndex };
+                    if (sharedVertices) sharedVertexBuffers = vertexBuffers;
                 }
 
                 let indexAccessorIndex: number | undefined;
@@ -302,8 +293,8 @@ export class GlbExporter extends MeshExporter<GlbData> {
                 this.meshes.push({
                     primitives: [{
                         attributes: {
-                            POSITION: vertexAccessorIndex,
-                            NORMAL: normalAccessorIndex!,
+                            POSITION: vertexBuffers.vertex,
+                            NORMAL: vertexBuffers.normal!,
                             COLOR_0: colorAccessorIndex
                         },
                         indices: indexAccessorIndex,

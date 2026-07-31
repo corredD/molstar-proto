@@ -5,7 +5,7 @@
  */
 
 import { BaseValues } from '../../mol-gl/renderable/schema';
-import { Sphere3D } from '../../mol-math/geometry/primitives/sphere3d';
+import { SpheresValues } from '../../mol-gl/renderable/spheres';
 import { Mat4 } from '../../mol-math/linear-algebra/3d/mat4';
 import { Vec3 } from '../../mol-math/linear-algebra/3d/vec3';
 import { Clip } from '../../mol-util/clip';
@@ -16,23 +16,16 @@ export type InstanceMesh = NonNullable<AddMeshInput['mesh']>
 export type ClipState = {
     readonly variant: Clip.Variant
     readonly test: Clip.Test
-    /** the geometry's bounding sphere, before any instance transform */
-    readonly sphere: Sphere3D
     /**
      * Set for spheres rendered with `clipPrimitive`, where the GPU clips whole spheres by their
      * center in the vertex shader and does no per-fragment test at all - so the export has to drop
-     * whole spheres too, or it would slice open spheres the viewer shows whole. Holds the sphere
-     * centers (xyz triples) and how many there are.
+     * whole spheres too, or it would slice open spheres the viewer shows whole.
      */
-    readonly primitiveCenters: Float32Array | undefined
-    readonly primitiveCount: number
+    readonly primitives: { readonly centers: Float32Array, readonly count: number } | undefined
 }
 
 /** the extra values a spheres render object carries; absent on every other geometry */
-type MaybeSpheresValues = BaseValues & {
-    readonly dClipPrimitive?: { readonly ref: { readonly value: boolean } }
-    readonly centerBuffer?: { readonly ref: { readonly value: Float32Array } }
-}
+type MaybeSpheresValues = BaseValues & Partial<Pick<SpheresValues, 'dClipPrimitive' | 'centerBuffer'>>
 
 /**
  * Read a render object's clip objects into a CPU-testable form, or `undefined` when there is nothing
@@ -71,10 +64,10 @@ export function getClipState(values: BaseValues): ClipState | undefined {
     return {
         variant,
         test: Clip.createTest(objects),
-        sphere: values.invariantBoundingSphere.ref.value,
-        primitiveCenters: usePrimitives ? spheres.centerBuffer!.ref.value : undefined,
-        // one center per sphere, six impostor vertices each
-        primitiveCount: usePrimitives ? values.uVertexCount.ref.value / 6 : 0,
+        primitives: usePrimitives
+            // one center per sphere, six impostor vertices each
+            ? { centers: spheres.centerBuffer!.ref.value, count: values.uVertexCount.ref.value / 6 }
+            : undefined,
     };
 }
 
@@ -105,7 +98,8 @@ export function filterInstance(state: ClipState, input: AddMeshInput, instanceIn
     if (state.variant === 'instance') {
         // the instance variant has no per-fragment test at all: `clip-instance.glsl.ts` culls the
         // whole instance by its bounding-sphere center, so match that exactly
-        return Clip.testPoint(state.test, state.sphere.center) ? undefined : instance;
+        const center = values.invariantBoundingSphere.ref.value.center;
+        return Clip.testPoint(state.test, center) ? undefined : instance;
     }
 
     // Classifying the whole instance up front skips the per-triangle pass for everything that is
@@ -114,8 +108,10 @@ export function filterInstance(state: ClipState, input: AddMeshInput, instanceIn
     // meshes that `addSpheres`/`addCylinders`/`addPoints` tessellate need their own sphere, which
     // `Mesh` computes lazily and caches. Skipped for the primitive path below, which is already
     // cheaper than one pass over the vertices.
-    if (state.primitiveCenters === undefined) {
-        const sphere = input.mesh !== undefined ? state.sphere : input.meshes?.[instanceIndex].boundingSphere;
+    if (state.primitives === undefined) {
+        const sphere = input.mesh !== undefined
+            ? values.invariantBoundingSphere.ref.value
+            : input.meshes?.[instanceIndex].boundingSphere;
         if (sphere) {
             const classification = Clip.classifyBall(state.test, sphere.center, sphere.radius);
             if (classification === 'discard') return undefined;
@@ -126,7 +122,7 @@ export function filterInstance(state: ClipState, input: AddMeshInput, instanceIn
     // raw `points`/`lines` modes have no primitives to filter here; they get instance granularity only
     if (mode !== 'triangles') return instance;
 
-    if (state.primitiveCenters !== undefined && instance.indices !== undefined && instance.vertexMapping !== undefined) {
+    if (state.primitives !== undefined && instance.indices !== undefined && instance.vertexMapping !== undefined) {
         return filterPrimitives(state, instance);
     }
 
@@ -154,13 +150,12 @@ function getMaskScratch(size: number) {
  */
 function filterPrimitives(state: ClipState, instance: InstanceMesh): InstanceMesh | undefined {
     const { indices, drawCount, vertexMapping } = instance;
-    const centers = state.primitiveCenters!;
+    const { centers, count } = state.primitives!;
     const map = vertexMapping!;
     const src = indices!;
 
-    const primitiveCount = state.primitiveCount;
-    const keep = getMaskScratch(primitiveCount);
-    for (let i = 0; i < primitiveCount; ++i) {
+    const keep = getMaskScratch(count);
+    for (let i = 0; i < count; ++i) {
         tmpCentroid[0] = centers[i * 3];
         tmpCentroid[1] = centers[i * 3 + 1];
         tmpCentroid[2] = centers[i * 3 + 2];
@@ -171,11 +166,10 @@ function filterPrimitives(state: ClipState, instance: InstanceMesh): InstanceMes
     let n = 0;
     for (let i = 0; i < drawCount; i += 3) {
         const a = src[i];
-        // all three vertices of a triangle belong to the same primitive. The range check is not
-        // redundant: `keep` is a reused scratch buffer, so an out-of-range mapping would otherwise
-        // read a stale value from a previous render object rather than fail predictably.
+        // all three vertices of a triangle belong to the same primitive; `keep` is a reused scratch
+        // buffer, so bound the lookup rather than trust the mapping's range
         const primitive = map[a];
-        if (primitive >= primitiveCount || keep[primitive] === 0) continue;
+        if (primitive >= count || keep[primitive] === 0) continue;
         out[n++] = a; out[n++] = src[i + 1]; out[n++] = src[i + 2];
     }
 
@@ -231,13 +225,13 @@ function compactImplicitTriangles(state: ClipState, instance: InstanceMesh, stri
     const { vertices, normals, drawCount } = instance;
     const triangleCount = Math.floor(drawCount / 3);
 
-    const keep = new Uint8Array(triangleCount);
+    const keep = getMaskScratch(triangleCount);
     let kept = 0;
     for (let t = 0; t < triangleCount; ++t) {
         const i = t * 3;
-        if (isTriangleClipped(state, vertices, stride, i, i + 1, i + 2)) continue;
-        keep[t] = 1;
-        ++kept;
+        const clipped = isTriangleClipped(state, vertices, stride, i, i + 1, i + 2);
+        keep[t] = clipped ? 0 : 1;
+        if (!clipped) ++kept;
     }
 
     if (kept === 0) return undefined;
@@ -248,21 +242,17 @@ function compactImplicitTriangles(state: ClipState, instance: InstanceMesh, stri
     const outNormals = normals ? new Float32Array(vertexCount * stride) : undefined;
     const vertexMapping = new Array<number>(vertexCount);
     const previous = instance.vertexMapping;
+    const run = 3 * stride; // a triangle's three vertices are contiguous when indices are implicit
 
     let w = 0;
     for (let t = 0; t < triangleCount; ++t) {
         if (!keep[t]) continue;
-        for (let k = 0; k < 3; ++k) {
-            const source = t * 3 + k;
-            const from = source * stride;
-            const to = w * stride;
-            for (let s = 0; s < stride; ++s) {
-                outVertices[to + s] = vertices[from + s];
-                if (outNormals && normals) outNormals[to + s] = normals[from + s];
-            }
-            vertexMapping[w] = previous ? previous[source] : source;
-            ++w;
-        }
+        const source = t * 3;
+        const from = source * stride;
+        outVertices.set(vertices.subarray(from, from + run), w * stride);
+        if (outNormals) outNormals.set(normals!.subarray(from, from + run), w * stride);
+        for (let k = 0; k < 3; ++k) vertexMapping[w + k] = previous ? previous[source + k] : source + k;
+        w += 3;
     }
 
     return { ...instance, vertices: outVertices, normals: outNormals, vertexCount, drawCount: vertexCount, vertexMapping };

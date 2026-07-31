@@ -2,6 +2,7 @@
  * Copyright (c) 2021-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { EPSILON } from '../mol-math/linear-algebra/3d/common';
@@ -124,8 +125,6 @@ export namespace Clip {
         readonly transform: Mat4[]
         /** whether `transform[i]` is anything other than the identity, so points can skip it */
         readonly hasTransform: boolean[]
-        /** upper bound on the operator norm of `transform[i]` */
-        readonly transformScale: number[]
         readonly position: Vec3[]
         /** conjugate of the object rotation, which is what the sphere/cube/cylinder/cone SDs apply */
         readonly rotationConj: Quat[]
@@ -139,37 +138,12 @@ export namespace Clip {
         readonly lipschitz: number[]
     }
 
-    /** port of the shader's `quaternionTransform`; safe when `out === v` */
-    function quaternionTransform(out: Vec3, q: Quat, v: Vec3) {
-        const vx = v[0], vy = v[1], vz = v[2];
-        const qx = q[0], qy = q[1], qz = q[2], qw = q[3];
-        const tx = 2 * (qy * vz - qz * vy);
-        const ty = 2 * (qz * vx - qx * vz);
-        const tz = 2 * (qx * vy - qy * vx);
-        out[0] = vx + qw * tx + (qy * tz - qz * ty);
-        out[1] = vy + qw * ty + (qz * tx - qx * tz);
-        out[2] = vz + qw * tz + (qx * ty - qy * tx);
-        return out;
-    }
-
-    /**
-     * `(m * vec4(v, 1)).xyz`. Deliberately not `Vec3.transformMat4`, which also divides by the
-     * homogeneous `w` - a no-op for the affine transforms clip objects use, but the shader does not
-     * do it and matching the shader exactly is the point.
-     */
-    function transformPoint(out: Vec3, v: Vec3, m: Mat4) {
-        const x = v[0], y = v[1], z = v[2];
-        out[0] = m[0] * x + m[4] * y + m[8] * z + m[12];
-        out[1] = m[1] * x + m[5] * y + m[9] * z + m[13];
-        out[2] = m[2] * x + m[6] * y + m[10] * z + m[14];
-        return out;
-    }
-
     /**
      * Upper bound on the operator norm of the linear part of `m` - the largest factor by which it can
      * stretch a vector. Exact when the columns are orthogonal (rotations, axis-aligned scalings),
      * where the operator norm is the largest column norm; otherwise the Frobenius norm, which is
-     * always an upper bound. Never under-estimates: doing so would shrink the radius used by
+     * always an upper bound. Stronger than `Mat4.getMaxScaleOnAxis`, which is the same as the first
+     * branch and so under-estimates under shear: doing that here would shrink the radius used by
      * `classifyBall` and could report `keep` for a region that is in fact partly clipped.
      */
     function maxScale(m: Mat4) {
@@ -191,7 +165,7 @@ export namespace Clip {
         const test: Test = {
             count,
             type: [], invert: [],
-            objectTransform: [], transform: [], hasTransform: [], transformScale: [],
+            objectTransform: [], transform: [], hasTransform: [],
             position: [], rotationConj: [], size: [],
             planeNormal: [], planeW: [], lipschitz: [],
         };
@@ -206,7 +180,7 @@ export namespace Clip {
             test.position.push(position);
 
             const rotation = Quat.fromArray(Quat(), objects.rotation, i * 4);
-            test.rotationConj.push(Quat.create(-rotation[0], -rotation[1], -rotation[2], rotation[3]));
+            test.rotationConj.push(Quat.conjugate(Quat(), rotation));
 
             const size = Vec3.fromArray(Vec3(), objects.scale, i * 3);
             Vec3.scale(size, size, 0.5);
@@ -214,7 +188,7 @@ export namespace Clip {
 
             // `computePlane` takes `w` from the un-normalized normal and normalizes only `xyz`; for a
             // unit quaternion the normal is already unit, so this is the same - but stay literal
-            const normal = quaternionTransform(Vec3(), rotation, Vec3.unitY);
+            const normal = Vec3.transformQuat(Vec3(), Vec3.unitY, rotation);
             test.planeW.push(-Vec3.dot(normal, position));
             test.planeNormal.push(Vec3.normalize(normal, normal));
 
@@ -225,12 +199,12 @@ export namespace Clip {
                 ? Math.sqrt(size[0] * size[0] + size[1] * size[1])
                 : type === Type.plane || type === Type.sphere || type === Type.cube || type === Type.cylinder ? 1 : 0);
 
-            const objectTransform = Mat4.fromArray(Mat4(), objects.transform, i * 16);
-            test.objectTransform.push(objectTransform);
-            test.transform.push(Mat4.clone(objectTransform));
-            test.hasTransform.push(!Mat4.isIdentity(objectTransform));
-            test.transformScale.push(maxScale(objectTransform));
+            test.objectTransform.push(Mat4.fromArray(Mat4(), objects.transform, i * 16));
+            // filled in by `setTestInstanceTransform` below, so the derivation lives in one place
+            test.transform.push(Mat4());
+            test.hasTransform.push(false);
         }
+        setTestInstanceTransform(test);
         return test;
     }
 
@@ -245,7 +219,6 @@ export namespace Clip {
             if (instanceTransform) Mat4.mul(t, test.objectTransform[i], instanceTransform);
             else Mat4.copy(t, test.objectTransform[i]);
             test.hasTransform[i] = !Mat4.isIdentity(t);
-            test.transformScale[i] = maxScale(t);
         }
     }
 
@@ -256,7 +229,7 @@ export namespace Clip {
     export function getSignedDistance(test: Test, i: number, point: Vec3): number {
         // the common case is an identity transform, where the point can be used as-is; `c` is only
         // ever read from here on, so handing back `point` itself is safe
-        const c = test.hasTransform[i] ? transformPoint(sdA, point, test.transform[i]) : point;
+        const c = test.hasTransform[i] ? Vec3.transformMat4(sdA, point, test.transform[i]) : point;
         const type = test.type[i];
 
         if (type === Type.plane) {
@@ -270,7 +243,7 @@ export namespace Clip {
         }
 
         const s = test.size[i];
-        const t = quaternionTransform(sdB, test.rotationConj[i], Vec3.sub(sdB, c, test.position[i]));
+        const t = Vec3.transformQuat(sdB, Vec3.sub(sdB, c, test.position[i]), test.rotationConj[i]);
 
         switch (type) {
             case Type.sphere: {
@@ -318,7 +291,7 @@ export namespace Clip {
         for (let i = 0, il = test.count; i < il; ++i) {
             const sd = getSignedDistance(test, i, center);
             // the signed distance over the ball lies within `sd +/- r`
-            const r = radius * test.transformScale[i] * test.lipschitz[i];
+            const r = radius * maxScale(test.transform[i]) * test.lipschitz[i];
             const allInside = sd + r <= 0;
             const noneInside = sd - r > 0;
             const invert = test.invert[i];

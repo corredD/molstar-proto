@@ -3,6 +3,7 @@
  *
  * @author Sukolsak Sakshuwong <sukolsak@stanford.edu>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { sort, arraySwap } from '../../mol-data/util';
@@ -171,8 +172,13 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
         return interpolated.array;
     }
 
-    protected static quantizeColors(colorArray: Uint8Array, vertexCount: number) {
-        if (vertexCount <= 1024) return;
+    /**
+     * Median-cut `colorArray` in place. `count` is the number of colors it holds, at byte offsets
+     * `0, 3, 6, ...` - callers that write one color per triangle must pass the triangle count, not the
+     * vertex count, or entries past the end of what they wrote are folded into the palette.
+     */
+    protected static quantizeColors(colorArray: Uint8Array, count: number) {
+        if (count <= 1024) return;
         const rgb = Vec3();
         const min = Vec3();
         const max = Vec3();
@@ -222,14 +228,14 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
 
         // Create an array of unique colors and use the median cut algorithm.
         const colorSet = new Set<Color>();
-        for (let i = 0; i < vertexCount; ++i) {
+        for (let i = 0; i < count; ++i) {
             colorSet.add(Color.fromArray(colorArray, i * 3));
         }
         const colors = Array.from(colorSet);
         medianCut(colors, 0, colors.length - 1, 0);
 
         // Map actual colors to quantized colors.
-        for (let i = 0; i < vertexCount; ++i) {
+        for (let i = 0; i < count; ++i) {
             const color = colorMap.get(Color.fromArray(colorArray, i * 3));
             Color.toArray(color!, colorArray, i * 3);
         }
@@ -253,7 +259,7 @@ export abstract class MeshExporter<D extends RenderObjectExportData> implements 
         return filterInstance(this.clipState, input, instanceIndex, instance);
     }
 
-    protected static getInstance(input: AddMeshInput, instanceIndex: number) {
+    private static getInstance(input: AddMeshInput, instanceIndex: number) {
         const { mesh, meshes } = input;
         if (mesh !== undefined) {
             return mesh;

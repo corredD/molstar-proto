@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2021-2023 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2021-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Sukolsak Sakshuwong <sukolsak@stanford.edu>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -148,9 +148,7 @@ export class ObjExporter extends MeshExporter<ObjData> {
                 const color = ObjExporter.getColor(v, geoData, interpolatedColors, interpolatedOverpaint);
                 Color.toArray(color, quantizedColors, i);
             }
-            // one color was written per triangle above, at byte offsets 0, 3, 6, ... - so the entry
-            // count is the triangle count, not the vertex count (which can exceed it once clipping
-            // has removed triangles, making this read past what was written)
+            // one color per triangle was written above, so the entry count is the triangle count
             ObjExporter.quantizeColors(quantizedColors, drawCount / 3);
 
             // face

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2021 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2021-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Sukolsak Sakshuwong <sukolsak@stanford.edu>
  */
@@ -24,7 +24,7 @@ export const GeometryParams = {
         ['obj', 'Wavefront (.obj)'],
         ['usdz', 'Universal Scene Description (.usdz)']
     ]),
-    applyClipping: PD.Boolean(false, { label: 'Apply Clipping', description: 'Apply each visual\'s clip objects so that clipped geometry is left out of the export, instead of exporting the whole scene. Cuts are made at primitive granularity - whole instances, and individual triangles by centroid - without re-triangulation or capping, so boundaries are jagged and the surface is left open. Per-group clipping masks are not applied.' }),
+    applyClipping: PD.Boolean(false, { label: 'Apply Clipping', description: 'Leave geometry removed by a visual\'s clip objects out of the export, instead of exporting the whole scene. Cuts are made at primitive granularity, without re-triangulation or capping.' }),
 };
 
 export class GeometryControls extends PluginComponent {
