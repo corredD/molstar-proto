@@ -14,6 +14,7 @@ import { SyncRuntimeContext } from '../../../mol-task/execution/synchronous';
 import { Clip } from '../../../mol-util/clip';
 import { ColorNames } from '../../../mol-util/color/names';
 import { createTransform } from '../../../mol-geo/geometry/transform-data';
+import { Spheres } from '../../../mol-geo/geometry/spheres/spheres';
 import { GlbExporter } from '../glb-exporter';
 import { ObjExporter } from '../obj-exporter';
 
@@ -91,6 +92,19 @@ async function objFaceCount(props: any, applyClipping: boolean, transform?: Retu
     return obj.split('\n').filter(l => l.startsWith('f ')).length;
 }
 
+/** one sphere straddling y = 0, with its center just above the plane */
+async function sphereFaceCount(clipPrimitive: boolean) {
+    const spheres = Spheres.create(new Float32Array([0, 0.5, 0]), new Float32Array([0]), 1);
+    const values = Spheres.Utils.createValuesSimple(spheres, { ...planeClip(false), clipPrimitive }, ColorNames.red, 2);
+    expect(values.dColorType.ref.value).toBe('uniform');
+
+    const exporter = new ObjExporter('test', boundingBox);
+    exporter.setOptions({ applyClipping: true });
+    await exporter.add(createRenderObject('spheres', values, state, -1), undefined!, SyncRuntimeContext);
+    const { obj } = await exporter.getData();
+    return obj.split('\n').filter(l => l.startsWith('f ')).length;
+}
+
 describe('geo-export clipping', () => {
     it('exports everything when the toggle is off', async () => {
         expect(await objFaceCount(planeClip(false), false)).toBe(4);
@@ -131,6 +145,16 @@ describe('geo-export clipping', () => {
             // this is what silently broke when reuse was keyed on `instanceIndex === 0`
             expect(node.mesh).toBeDefined();
         }
+    });
+
+    it('drops whole spheres when clipPrimitive is set, and cuts them when it is not', async () => {
+        // with `clipPrimitive` the vertex shader culls the whole sphere by its center and the fragment
+        // shader does no per-pixel test at all (`spheres.frag.ts:57`), so a sphere whose center is on
+        // the clipped side must disappear entirely rather than be sliced open
+        expect(await sphereFaceCount(true)).toBe(0);
+        // without it, the sphere is cut and the part on the visible side survives
+        const cut = await sphereFaceCount(false);
+        expect(cut).toBeGreaterThan(0);
     });
 
     it('keeps sharing one glTF mesh across instances with clipping off', async () => {

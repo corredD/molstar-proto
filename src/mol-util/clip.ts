@@ -122,6 +122,8 @@ export namespace Clip {
         readonly objectTransform: Mat4[]
         /** `objectTransform` pre-multiplied with the current instance transform */
         readonly transform: Mat4[]
+        /** whether `transform[i]` is anything other than the identity, so points can skip it */
+        readonly hasTransform: boolean[]
         /** upper bound on the operator norm of `transform[i]` */
         readonly transformScale: number[]
         readonly position: Vec3[]
@@ -189,7 +191,7 @@ export namespace Clip {
         const test: Test = {
             count,
             type: [], invert: [],
-            objectTransform: [], transform: [], transformScale: [],
+            objectTransform: [], transform: [], hasTransform: [], transformScale: [],
             position: [], rotationConj: [], size: [],
             planeNormal: [], planeW: [], lipschitz: [],
         };
@@ -226,6 +228,7 @@ export namespace Clip {
             const objectTransform = Mat4.fromArray(Mat4(), objects.transform, i * 16);
             test.objectTransform.push(objectTransform);
             test.transform.push(Mat4.clone(objectTransform));
+            test.hasTransform.push(!Mat4.isIdentity(objectTransform));
             test.transformScale.push(maxScale(objectTransform));
         }
         return test;
@@ -241,6 +244,7 @@ export namespace Clip {
             const t = test.transform[i];
             if (instanceTransform) Mat4.mul(t, test.objectTransform[i], instanceTransform);
             else Mat4.copy(t, test.objectTransform[i]);
+            test.hasTransform[i] = !Mat4.isIdentity(t);
             test.transformScale[i] = maxScale(t);
         }
     }
@@ -250,7 +254,9 @@ export namespace Clip {
 
     /** Signed distance of `point` to clip object `i`; negative inside. */
     export function getSignedDistance(test: Test, i: number, point: Vec3): number {
-        const c = transformPoint(sdA, point, test.transform[i]);
+        // the common case is an identity transform, where the point can be used as-is; `c` is only
+        // ever read from here on, so handing back `point` itself is safe
+        const c = test.hasTransform[i] ? transformPoint(sdA, point, test.transform[i]) : point;
         const type = test.type[i];
 
         if (type === Type.plane) {
