@@ -1,15 +1,24 @@
 /**
- * Copyright (c) 2018-2024 Mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2026 Mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Adam Midlik <midlik@gmail.com>
  */
 
+import { EasingFunction, getEasingFn } from '../../mol-math/easing';
 import { Camera } from '../camera';
-import { lerp } from '../../mol-math/interpolate';
-import { Quat } from '../../mol-math/linear-algebra/3d/quat';
-import { Vec3 } from '../../mol-math/linear-algebra/3d/vec3';
+import { getTransitionFn, TransitionTrajectory } from './transition-functions';
 
 export { CameraTransitionManager };
+
+export interface CameraTransitionOptions {
+    /** If present, approximates the transion between, [current] -> [keyframes] -> -> [target] */
+    keyframes?: CameraTransitionManager.TransitionKeyframes,
+    /** Global easing, if easing is specified for keyframes, the "end" frame value is used  */
+    easing?: EasingFunction,
+    /** Defines shape of the camera trajectory during transition */
+    trajectory?: TransitionTrajectory,
+}
 
 class CameraTransitionManager {
     private t = 0;
@@ -20,12 +29,18 @@ class CameraTransitionManager {
     private durationMs = 0;
     private _source: Camera.Snapshot = Camera.createDefaultSnapshot();
     private _target: Camera.Snapshot = Camera.createDefaultSnapshot();
+    private _options: CameraTransitionOptions | undefined = void 0;
     private _current = Camera.createDefaultSnapshot();
 
     get source(): Readonly<Camera.Snapshot> { return this._source; }
     get target(): Readonly<Camera.Snapshot> { return this._target; }
 
-    apply(to: Partial<Camera.Snapshot>, durationMs: number = 0, transition?: CameraTransitionManager.TransitionFunc) {
+    apply(
+        to: Partial<Camera.Snapshot>,
+        durationMs: number = 0,
+        transition?: CameraTransitionManager.TransitionFunc,
+        options?: CameraTransitionOptions,
+    ) {
         if (!this.inTransition || durationMs > 0) {
             Camera.copySnapshot(this._source, this.camera.state);
         }
@@ -49,11 +64,12 @@ class CameraTransitionManager {
         }
 
         this.inTransition = true;
-        this.func = transition || CameraTransitionManager.defaultTransition;
 
         if (!this.inTransition || durationMs > 0) {
             this.start = this.t;
             this.durationMs = durationMs;
+            this.func = transition || CameraTransitionManager.defaultTransition;
+            this._options = options;
         }
     }
 
@@ -76,7 +92,7 @@ class CameraTransitionManager {
             return;
         }
 
-        this.func(this._current, normalized, this._source, this._target);
+        this.func(this._current, normalized, this._source, this._target, this._options);
         Camera.copySnapshot(this.camera.state, this._current);
     }
 
@@ -86,51 +102,61 @@ class CameraTransitionManager {
 }
 
 namespace CameraTransitionManager {
-    export type TransitionFunc = (out: Camera.Snapshot, t: number, source: Camera.Snapshot, target: Camera.Snapshot) => void
+    export type TransitionKeyframes = { t: number, snapshot: Partial<Camera.Snapshot>, easing?: EasingFunction, trajectory?: TransitionTrajectory }[]
+    export type TransitionFunc = (out: Camera.Snapshot, t: number, source: Camera.Snapshot, target: Camera.Snapshot, options?: CameraTransitionOptions) => void
 
-    const _rotUp = Quat.identity();
-    const _rotDist = Quat.identity();
+    let _tempSource: Camera.Snapshot | undefined = undefined;
+    let _tempTarget: Camera.Snapshot | undefined = undefined;
 
-    const _sourcePosition = Vec3();
-    const _targetPosition = Vec3();
+    export function defaultTransition(
+        out: Camera.Snapshot,
+        t_: number,
+        source_: Camera.Snapshot,
+        target_: Camera.Snapshot,
+        options?: CameraTransitionOptions
+    ): void {
+        let sourcePartial: Partial<Camera.Snapshot> = source_;
+        let targetPartial: Partial<Camera.Snapshot> = target_;
 
-    export function defaultTransition(out: Camera.Snapshot, t: number, source: Camera.Snapshot, target: Camera.Snapshot): void {
-        Camera.copySnapshot(out, target);
+        let tStart = 0;
+        let tEnd = 1;
+        let easingKind = options?.easing;
+        let trajectoryKind = options?.trajectory;
 
-        // Rotate up
-        Quat.slerp(_rotUp, Quat.Identity, Quat.rotationTo(_rotUp, source.up, target.up), t);
-        Vec3.transformQuat(out.up, source.up, _rotUp);
+        const keyframes = options?.keyframes;
+        if (keyframes && keyframes.length > 0) {
+            for (let i = 0; i < keyframes.length; i++) {
+                const keyframe = keyframes[i];
+                if (t_ >= keyframe.t) {
+                    sourcePartial = keyframe.snapshot;
+                    tStart = keyframe.t;
+                    break;
+                }
+            }
+            for (let i = 0; i < keyframes.length; i++) {
+                const keyframe = keyframes[i];
+                if (keyframe.t >= t_) {
+                    targetPartial = keyframe.snapshot;
+                    tEnd = keyframe.t;
+                    easingKind = keyframe.easing ?? easingKind;
+                    trajectoryKind = keyframe.trajectory ?? trajectoryKind;
+                    break;
+                }
+            }
+        }
 
-        // Lerp target, position & radius
-        Vec3.lerp(out.target, source.target, target.target, t);
+        const easing = getEasingFn(easingKind);
+        const t = easing((t_ - tStart) / (tEnd - tStart));
 
-        // Interpolate distance
-        const distSource = Vec3.distance(source.target, source.position);
-        const distTarget = Vec3.distance(target.target, target.position);
-        const dist = lerp(distSource, distTarget, t);
+        if (!_tempSource) _tempSource = Camera.createDefaultSnapshot();
+        if (!_tempTarget) _tempTarget = Camera.createDefaultSnapshot();
 
-        // Rotate between source and targer direction
-        Vec3.sub(_sourcePosition, source.position, source.target);
-        Vec3.normalize(_sourcePosition, _sourcePosition);
+        Camera.copySnapshot(_tempSource, source_);
+        Camera.copySnapshot(_tempSource, sourcePartial);
+        Camera.copySnapshot(_tempTarget, target_);
+        Camera.copySnapshot(_tempTarget, targetPartial);
 
-        Vec3.sub(_targetPosition, target.position, target.target);
-        Vec3.normalize(_targetPosition, _targetPosition);
-
-        Quat.rotationTo(_rotDist, _sourcePosition, _targetPosition);
-        Quat.slerp(_rotDist, Quat.Identity, _rotDist, t);
-
-        Vec3.transformQuat(_sourcePosition, _sourcePosition, _rotDist);
-        Vec3.scale(_sourcePosition, _sourcePosition, dist);
-
-        Vec3.add(out.position, out.target, _sourcePosition);
-
-        // Interpolate radius
-        out.radius = lerp(source.radius, target.radius, t);
-        // TODO take change of `clipFar` into account
-        out.radiusMax = lerp(source.radiusMax, target.radiusMax, t);
-
-        // Interpolate fov & fog
-        out.fov = lerp(source.fov, target.fov, t);
-        out.fog = lerp(source.fog, target.fog, t);
+        const transition = getTransitionFn(trajectoryKind);
+        transition(out, t, _tempSource, _tempTarget);
     }
 }

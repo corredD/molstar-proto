@@ -1,7 +1,8 @@
 /**
- * Copyright (c) 2024 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2024-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Gianluca Tomasello <giagitom@gmail.com>
  */
 
 export const trace_frag = `
@@ -135,6 +136,15 @@ vec2 viewSpaceToScreenSpace(const vec3 position) {
     return projectedCoord.xy;
 }
 
+float getRayOffset(const vec3 position) {
+    vec4 projectedCoord = uProjection * vec4(position, 1.0);
+    projectedCoord.xyz /= projectedCoord.w;
+    projectedCoord.xyz = projectedCoord.xyz * 0.5 + 0.5;
+    float viewportWidth = uTexSize.x * (uBounds.z - uBounds.x);
+    vec3 adjacentPosition = screenSpaceToViewSpace(vec3(projectedCoord.xy + vec2(1.0 / viewportWidth, 0.0), projectedCoord.z), uInvProjection);
+    return max(distance(position, adjacentPosition) * 0.1, 0.001);
+}
+
 vec2 binarySearch(inout vec3 dir, inout vec3 hitPos) {
     float rayHitDepthDifference;
     vec2 coords;
@@ -169,13 +179,14 @@ vec2 rayMarch(in vec3 dir, in float thickness, inout vec3 hitPos, out bool misse
     float rayHitDepthDifference;
     vec2 coords;
 
-    float begin = float(dFirstStepSize);
+    float begin = getRayOffset(hitPos);
     dir *= begin;
     missed = false;
     float gf = calculateGrowthFactor(begin, uRayDistance, float(dSteps));
 
     for (int i = 1; i < dSteps; i++) {
         hitPos += dir;
+        float stepZ = abs(dir.z);
         dir *= gf;
 
         coords = viewSpaceToScreenSpace(hitPos);
@@ -183,19 +194,22 @@ vec2 rayMarch(in vec3 dir, in float thickness, inout vec3 hitPos, out bool misse
         float z = getViewZ(depth);
         rayHitDepthDifference = z - hitPos.z;
 
-        if (thickness == 0.0) {
-            #ifdef dThicknessMode_auto
-                thickness = max(uMinThickness, (getViewZ(getThickness(coords)) - z) * uThicknessFactor * texture2D(tColor, coords).a);
-            #else
-                thickness = uThickness;
-            #endif
-        }
+        if (rayHitDepthDifference >= 0.0) {
+            float t = thickness;
+            if (t == 0.0) {
+                #ifdef dThicknessMode_auto
+                    t = max(uMinThickness, (z - getViewZ(getThickness(coords))) * uThicknessFactor * texture2D(tColor, coords).a);
+                #else
+                    t = uThickness;
+                #endif
+            }
 
-        if (rayHitDepthDifference >= 0.0 && rayHitDepthDifference < thickness) {
-            if (dRefineSteps == 0) {
-                return coords;
-            } else {
-                return binarySearch(dir, hitPos);
+            if (rayHitDepthDifference < max(t, stepZ)) {
+                if (dRefineSteps == 0) {
+                    return coords;
+                } else {
+                    return binarySearch(dir, hitPos);
+                }
             }
         }
     }

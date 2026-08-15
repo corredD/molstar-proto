@@ -4,6 +4,88 @@ All notable changes to this project will be documented in this file, following t
 Note that since we don't clearly distinguish between a public and private interfaces there will be changes in non-major versions that are potentially breaking. If we make breaking changes to less used interfaces we will highlight it in here.
 
 ## [Unreleased]
+- Added support for molecular atom_style in lammps data files
+- Added element symbol detection in lammps data file
+- Fix inconsistent atomic weight for some elements in `ElementAtomWeights`
+- Fix extra Hydrogens not in chemcomp dict. are disconnected (#1888)
+- Add `NH`, `MC`, `TS`, `OG` to `ElementSymbolColors` so they can be customized in the `element-symbol` color theme's `custom` colors (previously silently ignored, atoms fell back to white, indistinguishable from Hydrogen)
+- Fix `getElementFromAtomicNumber` returning the deprecated `Uut`/`Uup`/`Uus`/`Uuo` placeholder names for atomic numbers 113/115/117/118 instead of the current IUPAC names `Nh`/`Mc`/`Ts`/`Og`
+- Add `mergeBySymmetry` option to root structure transform, merging units with same symmetry operator into a single unit
+- Add support for multi-chain units in sequence UI
+- Add script to generate spacegroup data from CCP4 syminfo.lib
+- Refactor spacegroup construction
+    - Use syminfo.lib spacegroup data as source
+    - Generate operators from Hall symbols
+    - Introduce change-of-basis settings
+    - Move base functionality from `SpacegroupCell` to `Cell`
+- Improve `Cell` handling
+    - Fix volume calculation for non-orthogonal cells
+    - Use as base for `Unitcell` shape
+    - Add `order` property (for AU volume estimation)
+- Add per-format cache for `FormatProperty`
+    - Use for `ModelSymmetry` and `ComponentBond`
+- `ModelSymmetry` improvements
+    - Fix property not being dynamic
+    - Defer Symmetry calculation in ModelSymmetry.fromData
+- Support non-default CRYSIN setting in MOL2 format (#338)
+- Fix `ssao-blur` background test: the RG-packed depth never equals `1.0`, so background samples were blurred into geometry and produced a bright rim at the far-clip cutoff
+- Fix picking/hover-highlight of the nucleic cartoon polymer-trace on reduced trace structures returning empty: `getResidueLoci` now accounts for whole residue, not limited to unit.
+- Fix stale marker data in `VolumeVisual` when a geometry update changes the group count (e.g. switching `slice` mode), which mismarked unrelated groups and disabled the marking pass scene-wide
+- Add Spherical Harmonics to mol-math
+- Add `blob-surface` structure representation
+    - Bin atoms to grid or cluster
+    - Fast option fits ellipsoids to bins
+    - Artistic option fits spherical harmonics to bins
+- Fix camera reset handling for (temporary) empty scenes (#1903)
+- Remove `firstStepSize` tracing parameter, derive automatically
+- Fix illumination `auto` thickness mode never correctly being applied
+- Fix illumination ray marching stepping over occluders when the acceptance window is narrower than the current step
+- Evaluate illumination `auto` thickness at the surface being tested instead of latching it from the shaded pixel
+- Add `.parseRaw` to `DataFormatProvider` for out of state tree parsing
+- Camera improvements
+  - Support multiple camera transition shapes
+  - Add `transitionTrajectory` and `transitionEasing` parameters to `PluginState.Snapshot` (MOLJ) and Plugin State > Save Options
+  - Add `trajectory` and `easing` parameters to `FocusLoci` behavior
+  - Add `cameraResetTrajectory` and `cameraResetEasing` parameters to `Canvas3DParams`
+- MolViewSpec
+  - Added `transition` node with params `duration_ms`, `trajectory`, `easing`
+  - Snapshot metadata: `linger_duration_ms` renamed to `duration_ms`, deprecated `transition_duration_ms`
+
+## [v5.11.0] - 2026-07-18
+- Fix LAMMPS unsorted-atom handling (trajectory frame ordering and data-file bonds)
+- Add `variant` option (rectangle/circle) to the best-fit `Plane` (#358)
+- Add VTK PolyData `.vtp` file format support
+- Bloom on transparent and emissive geometry
+  - Move bloom into the postprocessing/illumination pass (composited inline)
+  - Tighten `isBackground` to handle packed transparent depth precisely
+  - Enable bloom on transparent background
+  - Background-aware blend: screen on transparent background, PMA over on opaque background, additive on geometry
+  - Occlude emissive bloom behind opaque foreground (e.g. opaque label backgrounds) by reusing the opaque depth (#1881)
+  - Dim emitters behind transparent foreground by its coverage
+  - Text label backgrounds occlude/dim emitters using their own opacity
+- Fix size-only representation theme updates in `updateRepresentationsTheme`.
+- Fix ASA coloring for hydrogens
+- Add `histogramPercentile`, `histogramRobustStats`, `downsampleHistogram` to `mol-math/histogram`
+- Direct-volume transfer function improvements
+    - Add data-aware default control points and preset library
+    - Use log-scale on y-axis in control-points UI
+- Add `defaultSnapshotIndex` argument to `MVSLoadOptions` to enable loading a snapshot other than the first one by default
+- Fix `loaders.loadMvs*` options type
+- Read simulation box from gro and lammps files
+- Add FFT to mol-math
+- Add SF-CIF and MTZ structure factors file formats support
+- Add support for calculating volumes from structure factors
+- Rework Superposition UI panel
+- Add Ligand alignments by maximum common connected subgraphs (MCCS)
+- Handle unobserved residues from `entity_poly_seq` (#965)
+- Refine step for coarse BoundaryHelper instances (#1455)
+- Refactor `StructureElement.Loci.getBoundary`
+    - Add `.getBoundingSphere`, reuse whole structure/unit boundary
+    - [Breaking] remove transform argument
+
+## [v5.10.0] - 2026-06-14
+- Fix exported image artifacts on transparent background with emissive, bloom, or antialiasing
+- Fix cel-shaded ambient color being stripped to luminance (now uses full RGB, matching the classic lighting path)
 - Fix empty transforms default in `ShapeFromPly`
 - Use morton order for spheres in dot visual with lod-levels
 - Add `Camera.changed` event and rotation/translation setter/getter
@@ -12,7 +94,33 @@ Note that since we don't clearly distinguish between a public and private interf
 - Add mesoscale representation preset
 - Add presets option to `ObjectList` param definition
 - Fix memory leak in `State.dispose()` not invoking transformer `dispose` callbacks for live cells
+- Adds File/Open and drag-and-drop support for Kinemage files in the viewer app
+- Fix bugs in ModelServer surroundingLigands endpoint, resulting in omitWater not honored
 - Fix `Volume` and `Isosurface` getBoundingSphere ignoring instances
+- Fix aromatic ring detection not accounting for hybridization
+- Add axis param to camera spin/rock animation
+- Fix SSAO half/quarter resolution textures for multi-scale
+- Camera improvements
+  - Add the option to approximate "least obstructed direction" when focusing camera, accessibe via `PluginContext.managers.camera.focusLoci` with `optimizeDirection` option
+  - Add `CameraFocusOptions.zoomOut` option that zooms out to to make the entire scene visible before focusing on the target
+  - Add easing support in camera transtion
+- Non-covalent interactions: water bridge support
+- Add OBJ format support
+    - Positions, normals, faces
+    - Groups from usemtl directive
+    - Vertex color extension
+    - Sideload MTL files (diffuse color only)
+- Download Structure From AlphaFoldDB allows IDs with version suffix (version is ignored)
+- Add `loadUrl` method and GET params to Viewer app
+- Add binary PLY format variants support
+- Add `extensions/plugin` with several QoL improvements
+  - Standalone useful loading functions previously avaiable only in the `Viewer` class
+  - Standalong plugin interactivity helper function previously available only via the `Viewer` class
+  - View models (and hooks) for more straightforward usage in React (and in other UI libraries)
+- Add `examples/react` that showcases few ways the Mol* can be used together with React
+- Fix default representation plugin option, which resulted in represenations not being shown automatically when using the default plugin spec
+- Track added custom props in `QueryRuntimeTable` to prevent excess "symbol already added" messages when creating multiple instances of a pluing
+- Handle empty `chem_comp.type`
 
 ## [v5.9.0] - 2026-05-03
 - Fix edge case when `PluginSpec.animations` is empty

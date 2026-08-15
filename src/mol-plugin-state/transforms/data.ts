@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-2024 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -10,7 +10,10 @@ import * as CCP4 from '../../mol-io/reader/ccp4/parser';
 import { CIF } from '../../mol-io/reader/cif';
 import * as DSN6 from '../../mol-io/reader/dsn6/parser';
 import * as PLY from '../../mol-io/reader/ply/parser';
+import * as OBJ from '../../mol-io/reader/obj/parser';
+import * as VTP from '../../mol-io/reader/vtp/parser';
 import { parsePsf } from '../../mol-io/reader/psf/parser';
+import { parseMtz } from '../../mol-io/reader/mtz/parser';
 import { PluginContext } from '../../mol-plugin/context';
 import { StateObject, StateTransformer } from '../../mol-state';
 import { Task } from '../../mol-task';
@@ -41,8 +44,11 @@ export { ParsePsf };
 export { ParsePrmtop };
 export { ParseTop };
 export { ParsePly };
+export { ParseObj };
+export { ParseVtp };
 export { ParseCcp4 };
 export { ParseDsn6 };
+export { ParseMtz };
 export { ParseDx };
 export { ImportString };
 export { ImportJson };
@@ -390,8 +396,8 @@ const ParseTop = PluginStateTransform.BuiltIn({
 type ParsePly = typeof ParsePly
 const ParsePly = PluginStateTransform.BuiltIn({
     name: 'parse-ply',
-    display: { name: 'Parse PLY', description: 'Parse PLY from String data' },
-    from: [SO.Data.String],
+    display: { name: 'Parse PLY', description: 'Parse PLY from String or Binary data' },
+    from: [SO.Data.String, SO.Data.Binary],
     to: SO.Format.Ply
 })({
     apply({ a }) {
@@ -399,6 +405,38 @@ const ParsePly = PluginStateTransform.BuiltIn({
             const parsed = await PLY.parsePly(a.data).runInContext(ctx);
             if (parsed.isError) throw new Error(parsed.message);
             return new SO.Format.Ply(parsed.result, { label: parsed.result.comments[0] || 'PLY Data' });
+        });
+    }
+});
+
+type ParseObj = typeof ParseObj
+const ParseObj = PluginStateTransform.BuiltIn({
+    name: 'parse-obj',
+    display: { name: 'Parse OBJ', description: 'Parse OBJ from String data' },
+    from: [SO.Data.String],
+    to: SO.Format.Obj
+})({
+    apply({ a }) {
+        return Task.create('Parse OBJ', async ctx => {
+            const parsed = await OBJ.parseObj(a.data).runInContext(ctx);
+            if (parsed.isError) throw new Error(parsed.message);
+            return new SO.Format.Obj(parsed.result, { label: 'OBJ Data' });
+        });
+    }
+});
+
+type ParseVtp = typeof ParseVtp
+const ParseVtp = PluginStateTransform.BuiltIn({
+    name: 'parse-vtp',
+    display: { name: 'Parse VTP', description: 'Parse VTP (VTK PolyData) from Binary data' },
+    from: [SO.Data.Binary],
+    to: SO.Format.Vtp
+})({
+    apply({ a }) {
+        return Task.create('Parse VTP', async ctx => {
+            const parsed = await VTP.parseVtp(a.data).runInContext(ctx);
+            if (parsed.isError) throw new Error(parsed.message);
+            return new SO.Format.Vtp(parsed.result, { label: 'VTP Data' });
         });
     }
 });
@@ -431,6 +469,22 @@ const ParseDsn6 = PluginStateTransform.BuiltIn({
             const parsed = await DSN6.parse(a.data, a.label).runInContext(ctx);
             if (parsed.isError) throw new Error(parsed.message);
             return new SO.Format.Dsn6(parsed.result);
+        });
+    }
+});
+
+type ParseMtz = typeof ParseMtz
+const ParseMtz = PluginStateTransform.BuiltIn({
+    name: 'parse-mtz',
+    display: { name: 'Parse MTZ', description: 'Parse CCP4 MTZ reflection file from Binary data' },
+    from: [SO.Data.Binary],
+    to: SO.Format.Mtz
+})({
+    apply({ a }) {
+        return Task.create('Parse MTZ', async ctx => {
+            const parsed = await parseMtz(a.data, a.label).runInContext(ctx);
+            if (parsed.isError) throw new Error(parsed.message);
+            return new SO.Format.Mtz(parsed.result);
         });
     }
 });

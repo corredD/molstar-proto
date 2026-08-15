@@ -6,7 +6,7 @@
  */
 
 import { SortedArray } from '../../../mol-data/int';
-import * as EasingFns from '../../../mol-math/easing';
+import { EasingFunctions } from '../../../mol-math/easing';
 import { clamp, lerp } from '../../../mol-math/interpolate';
 import { EPSILON, Mat3, Mat4, Quat, Vec3 } from '../../../mol-math/linear-algebra';
 import { RuntimeContext } from '../../../mol-task';
@@ -17,11 +17,11 @@ import { produce } from '../../../mol-util/produce';
 import { makeContinuousPaletteCheckpoints, MVSContinuousPaletteProps, MVSDiscretePaletteProps } from '../components/annotation-color-theme';
 import { palettePropsFromMVSPalette } from '../load-helpers';
 import { Snapshot } from '../mvs-data';
-import { MVSAnimationEasing, MVSAnimationNode, MVSAnimationSchema } from '../tree/animation/animation-tree';
+import { MVSAnimationNode, MVSAnimationSchema } from '../tree/animation/animation-tree';
 import { Tree } from '../tree/generic/tree-schema';
 import { addDefaults } from '../tree/generic/tree-utils';
 import { MVSTree } from '../tree/mvs/mvs-tree';
-import { ColorT } from '../tree/mvs/param-types';
+import { ColorT, EasingT } from '../tree/mvs/param-types';
 
 export async function generateStateTransition(ctx: RuntimeContext, snapshot: Snapshot, snapshotIndex: number, snapshotCount: number) {
     if (!snapshot.animation) return undefined;
@@ -65,27 +65,7 @@ export async function generateStateTransition(ctx: RuntimeContext, snapshot: Sna
     return { tree, frametimeMs: dt, frames };
 }
 
-const EasingFnMap: Record<MVSAnimationEasing, (t: number) => number> = {
-    'linear': t => t,
-    'bounce-in': EasingFns.bounceIn,
-    'bounce-out': EasingFns.bounceOut,
-    'bounce-in-out': EasingFns.bounceInOut,
-    'circle-in': EasingFns.circleIn,
-    'circle-out': EasingFns.circleOut,
-    'circle-in-out': EasingFns.circleInOut,
-    'cubic-in': EasingFns.cubicIn,
-    'cubic-out': EasingFns.cubicOut,
-    'cubic-in-out': EasingFns.cubicInOut,
-    'exp-in': EasingFns.expIn,
-    'exp-out': EasingFns.expOut,
-    'exp-in-out': EasingFns.expInOut,
-    'quad-in': EasingFns.quadIn,
-    'quad-out': EasingFns.quadOut,
-    'quad-in-out': EasingFns.quadInOut,
-    'sin-in': EasingFns.sinIn,
-    'sin-out': EasingFns.sinOut,
-    'sin-in-out': EasingFns.sinInOut,
-};
+const EasingFnMap: Record<EasingT, (t: number) => number> = EasingFunctions;
 
 interface InterpolationCacheEntry {
     paletteFn?: (value: number) => Color,

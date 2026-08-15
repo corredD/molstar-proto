@@ -5,6 +5,7 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Gianluca Tomasello <giagitom@gmail.com>
  * @author Herman Bergwerf <post@hbergwerf.nl>
+ * @author Adam Midlik <midlik@gmail.com>
  */
 
 import { BehaviorSubject, Subject, Subscription, debounceTime, merge } from 'rxjs';
@@ -53,6 +54,9 @@ import { RayHelper } from './helper/ray-helper';
 import { produce } from '../mol-util/produce';
 import { ShaderManager } from './helper/shader-manager';
 import { toFixed } from '../mol-util/number';
+import type { CameraTransitionManager } from './camera/transition';
+import { TransitionTrajectoryParamDefinition, type TransitionTrajectory } from './camera/transition-functions';
+import { EasingFunction, EasingParamDefinition } from '../mol-math/easing';
 
 export const CameraFogParams = {
     intensity: PD.Numeric(15, { min: 1, max: 100, step: 1 }),
@@ -94,11 +98,12 @@ export const Canvas3DParams = {
     }),
 
     cameraResetDurationMs: PD.Numeric(250, { min: 0, max: 1000, step: 1 }, { description: 'The time it takes to reset the camera.' }),
+    cameraResetEasing: EasingParamDefinition('linear'),
+    cameraResetTrajectory: TransitionTrajectoryParamDefinition('linear'),
     sceneRadiusFactor: PD.Numeric(1, { min: 1, max: 10, step: 0.1 }),
     transparentBackground: PD.Boolean(false),
     checkeredTransparentBackground: PD.Boolean(false),
     dpoitIterations: PD.Numeric(2, { min: 1, max: 10, step: 1 }),
-    enableAnimation: PD.Boolean(true, { description: 'Enable GPU time-based animations (wiggle/tumble).' }),
     pickPadding: PD.Numeric(3, { min: 0, max: 10, step: 1 }, { description: 'Extra pixels to around target to check in case target is empty.' }),
     userInteractionReleaseMs: PD.Numeric(250, { min: 0, max: 1000, step: 1 }, { description: 'The time before the user is not considered interacting anymore.' }),
 
@@ -322,6 +327,14 @@ namespace Canvas3DContext {
 
 export { Canvas3D };
 
+export interface Canvas3DCameraResetOptions {
+    durationMs?: number,
+    snapshot?: Camera.SnapshotProvider,
+    keyframes?: CameraTransitionManager.TransitionKeyframes,
+    easing?: EasingFunction,
+    trajectory?: TransitionTrajectory,
+}
+
 interface Canvas3D {
     readonly webgl: WebGLContext,
 
@@ -373,7 +386,7 @@ interface Canvas3D {
     /** performs handleResize on the next animation frame */
     requestResize(): void
     /** Focuses camera on scene's bounding sphere, centered and zoomed. */
-    requestCameraReset(options?: { durationMs?: number, snapshot?: Camera.SnapshotProvider }): void
+    requestCameraReset(options?: Canvas3DCameraResetOptions): void
     readonly camera: Camera
     readonly boundingSphere: Readonly<Sphere3D>
     readonly boundingSphereVisible: Readonly<Sphere3D>
@@ -481,7 +494,6 @@ namespace Canvas3D {
         const hiZ = new HiZPass(webgl, passes.draw, canvas, p.hiZ);
 
         const renderer = Renderer.create(webgl, p.renderer);
-        renderer.setProps({ enableAnimation: p.enableAnimation });
         renderer.setOcclusionTest(hiZ.isOccluded);
 
         const shaderManager = new ShaderManager(webgl, scene);
@@ -501,8 +513,13 @@ namespace Canvas3D {
         });
 
         let cameraResetRequested = false;
-        let nextCameraResetDuration: number | undefined = void 0;
-        let nextCameraResetSnapshot: Camera.SnapshotProvider | undefined = void 0;
+        const nextCameraResetOptions: Canvas3DCameraResetOptions = {
+            durationMs: undefined,
+            snapshot: undefined,
+            keyframes: undefined,
+            easing: undefined,
+            trajectory: undefined,
+        };
         let resizeRequested = false;
 
         //
@@ -678,7 +695,7 @@ namespace Canvas3D {
             const xrChanged = xrManager.update(xrFrame);
             if (!xrChanged && xrFrame) return false;
 
-            const activeAnimation = p.enableAnimation && scene.hasAnimation;
+            const activeAnimation = renderer.props.enableAnimation && scene.hasAnimation;
             const shouldRender = force || cameraChanged || resized || forceNextRender || xrChanged || activeAnimation;
             forceNextRender = false;
 
@@ -873,23 +890,28 @@ namespace Canvas3D {
             const boundingSphere = scene.boundingSphereVisible;
             const { center, radius } = boundingSphere;
 
-            const autoAdjustControls = controls.props.autoAdjustMinMaxDistance;
-            if (autoAdjustControls.name === 'on') {
-                const minDistance = autoAdjustControls.params.minDistanceFactor * radius + autoAdjustControls.params.minDistancePadding;
-                const maxDistance = Math.max(autoAdjustControls.params.maxDistanceFactor * radius, autoAdjustControls.params.maxDistanceMin);
-                controls.setProps({ minDistance, maxDistance });
-            }
-
             if (radius > 0) {
-                const duration = nextCameraResetDuration === undefined ? p.cameraResetDurationMs : nextCameraResetDuration;
+                const duration = nextCameraResetOptions.durationMs ?? p.cameraResetDurationMs;
+                const easing = nextCameraResetOptions.easing ?? p.cameraResetEasing;
+                const trajectory = nextCameraResetOptions.trajectory ?? p.cameraResetTrajectory;
+                const autoAdjustControls = controls.props.autoAdjustMinMaxDistance;
+                if (autoAdjustControls.name === 'on') {
+                    const minDistance = autoAdjustControls.params.minDistanceFactor * radius + autoAdjustControls.params.minDistancePadding;
+                    const maxDistance = Math.max(autoAdjustControls.params.maxDistanceFactor * radius, autoAdjustControls.params.maxDistanceMin);
+                    controls.setProps({ minDistance, maxDistance });
+                }
                 const focus = camera.getFocus(center, radius);
-                const next = typeof nextCameraResetSnapshot === 'function' ? nextCameraResetSnapshot(scene, camera) : nextCameraResetSnapshot;
+                const next = typeof nextCameraResetOptions.snapshot === 'function' ? nextCameraResetOptions.snapshot(scene, camera) : nextCameraResetOptions.snapshot;
                 const snapshot = next ? { ...focus, ...next } : focus;
-                camera.setState({ ...snapshot, radiusMax: getSceneRadius() }, duration);
+                camera.setState({ ...snapshot, radiusMax: getSceneRadius() }, duration, { keyframes: nextCameraResetOptions.keyframes, easing, trajectory });
             }
 
-            nextCameraResetDuration = void 0;
-            nextCameraResetSnapshot = void 0;
+            nextCameraResetOptions.durationMs = void 0;
+            nextCameraResetOptions.snapshot = void 0;
+            nextCameraResetOptions.keyframes = void 0;
+            nextCameraResetOptions.easing = void 0;
+            nextCameraResetOptions.trajectory = void 0;
+
             cameraResetRequested = false;
         }
 
@@ -899,7 +921,7 @@ namespace Canvas3D {
         function shouldResetCamera() {
             if (camera.state.radiusMax === 0) return true;
 
-            if (camera.transition.inTransition || nextCameraResetSnapshot) return false;
+            if (camera.transition.inTransition || nextCameraResetOptions.snapshot) return false;
 
             let cameraSphereOverlapsNone = true, isEmpty = true;
             Sphere3D.set(cameraSphere, camera.state.target, camera.state.radius);
@@ -941,9 +963,11 @@ namespace Canvas3D {
             if (!p.camera.manualReset && (reprCount.value === 0 || shouldResetCamera())) {
                 cameraResetRequested = true;
             }
-            if (oldBoundingSphereVisible.radius === 0) nextCameraResetDuration = 0;
+            if (oldBoundingSphereVisible.radius === 0) nextCameraResetOptions.durationMs = 0;
 
-            if (!p.camera.manualReset) camera.setState({ radiusMax: getSceneRadius() }, 0);
+            if (!p.camera.manualReset && scene.boundingSphere.radius > 0) {
+                camera.setState({ radiusMax: getSceneRadius() }, 0);
+            }
             reprCount.next(reprRenderObjects.size);
             if (isDebugMode) consoleStats();
 
@@ -1068,11 +1092,12 @@ namespace Canvas3D {
                     minNear: camera.state.minNear,
                 },
                 cameraResetDurationMs: p.cameraResetDurationMs,
+                cameraResetEasing: p.cameraResetEasing,
+                cameraResetTrajectory: p.cameraResetTrajectory,
                 sceneRadiusFactor: p.sceneRadiusFactor,
                 transparentBackground: p.transparentBackground,
                 checkeredTransparentBackground: p.checkeredTransparentBackground,
                 dpoitIterations: p.dpoitIterations,
-                enableAnimation: p.enableAnimation,
                 pickPadding: p.pickPadding,
                 userInteractionReleaseMs: p.userInteractionReleaseMs,
                 viewport: p.viewport,
@@ -1226,7 +1251,7 @@ namespace Canvas3D {
             syncVisibility: () => {
                 if (camera.state.radiusMax === 0) {
                     cameraResetRequested = true;
-                    nextCameraResetDuration = 0;
+                    nextCameraResetOptions.durationMs = 0;
                 }
 
                 if (scene.syncVisibility()) {
@@ -1258,8 +1283,7 @@ namespace Canvas3D {
                 resizeRequested = true;
             },
             requestCameraReset: options => {
-                nextCameraResetDuration = options?.durationMs;
-                nextCameraResetSnapshot = options?.snapshot;
+                Object.assign(nextCameraResetOptions, options);
                 cameraResetRequested = true;
             },
             camera,
@@ -1318,13 +1342,11 @@ namespace Canvas3D {
                     stereoCamera.setProps(p.camera.stereo.params);
                 }
                 if (props.cameraResetDurationMs !== undefined) p.cameraResetDurationMs = props.cameraResetDurationMs;
+                if (props.cameraResetEasing !== undefined) p.cameraResetEasing = props.cameraResetEasing;
+                if (props.cameraResetTrajectory !== undefined) p.cameraResetTrajectory = props.cameraResetTrajectory;
                 if (props.transparentBackground !== undefined) p.transparentBackground = props.transparentBackground;
                 if (props.checkeredTransparentBackground !== undefined) p.checkeredTransparentBackground = props.checkeredTransparentBackground;
                 if (props.dpoitIterations !== undefined) p.dpoitIterations = props.dpoitIterations;
-                if (props.enableAnimation !== undefined) {
-                    p.enableAnimation = props.enableAnimation;
-                    renderer.setProps({ enableAnimation: p.enableAnimation });
-                }
                 if (props.pickPadding !== undefined) {
                     p.pickPadding = props.pickPadding;
                     pickHelper.setPickPadding(p.pickPadding);

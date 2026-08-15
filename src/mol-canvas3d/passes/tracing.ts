@@ -1,7 +1,8 @@
 /**
- * Copyright (c) 2024-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2024-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Gianluca Tomasello <giagitom@gmail.com>
  */
 
 import { QuadSchema, QuadValues } from '../../mol-gl/compute/util';
@@ -43,7 +44,6 @@ export const TracingParams = {
     rendersPerFrame: PD.Interval([1, 16], { min: 1, max: 64, step: 1 }, { description: 'Number of rays per pixel each frame. May be adjusted to reach targetFps but will stay within given interval.' }),
     targetFps: PD.Numeric(30, { min: 0, max: 120, step: 0.1 }, { description: 'Target FPS per frame. If observed FPS is lower or higher, some parameters may get adjusted.' }),
     steps: PD.Numeric(32, { min: 1, max: 1024, step: 1 }),
-    firstStepSize: PD.Numeric(0.01, { min: 0.001, max: 1, step: 0.001 }),
     refineSteps: PD.Numeric(4, { min: 0, max: 8, step: 1 }, { description: 'Number of refine steps per ray hit. May be lower to reach targetFps.' }),
     rayDistance: PD.Numeric(256, { min: 1, max: 8192, step: 1 }, { description: 'Maximum distance a ray can travel (in world units).' }),
     thicknessMode: PD.Select('auto', PD.arrayToOptions(['auto', 'fixed'] as const)),
@@ -54,7 +54,7 @@ export const TracingParams = {
     glow: PD.Boolean(true, { description: 'Bounced rays always get the full light. This produces a slight glowing effect.' }),
     shadowEnable: PD.Boolean(false),
     shadowSoftness: PD.Numeric(0.1, { min: 0.01, max: 1.0, step: 0.01 }),
-    shadowThickness: PD.Numeric(0.5, { min: 0.1, max: 32, step: 0.1 }),
+    shadowThickness: PD.Numeric(0.5, { min: 0.0, max: 32, step: 0.1 }, { description: 'Thickness of the shadow casting geometry. Set to 0.0 for automatic estimation.' }),
 };
 export type TracingProps = PD.Values<typeof TracingParams>
 
@@ -152,8 +152,10 @@ export class TracingPass {
         if (props.thicknessMode === 'auto') {
             this.thicknessTarget.bind();
             state.clearColor(0, 0, 0, 0);
+            state.clearDepth(0);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             renderer.renderDepthOpaqueBack(scene.primitives, camera);
+            state.clearDepth(1);
         }
         if (isTimingMode) this.webgl.timer.markEnd('TracePass.renderInput');
     }
@@ -371,10 +373,6 @@ export class TracingPass {
             ValueCell.update(this.traceRenderable.values.dSteps, steps);
             needsUpdateTrace = true;
         }
-        if (this.traceRenderable.values.dFirstStepSize.ref.value !== props.firstStepSize) {
-            ValueCell.update(this.traceRenderable.values.dFirstStepSize, props.firstStepSize);
-            needsUpdateTrace = true;
-        }
         if (this.traceRenderable.values.dRefineSteps.ref.value !== refineSteps) {
             ValueCell.update(this.traceRenderable.values.dRefineSteps, refineSteps);
             needsUpdateTrace = true;
@@ -440,7 +438,6 @@ const TraceSchema = {
     dGlow: DefineSpec('boolean'),
     dBounces: DefineSpec('number'),
     dSteps: DefineSpec('number'),
-    dFirstStepSize: DefineSpec('number'),
     dRefineSteps: DefineSpec('number'),
     uRayDistance: UniformSpec('f'),
 
@@ -490,7 +487,6 @@ function getTraceRenderable(ctx: WebGLContext, colorTexture: Texture, normalText
         dGlow: ValueCell.create(true),
         dBounces: ValueCell.create(4),
         dSteps: ValueCell.create(32),
-        dFirstStepSize: ValueCell.create(0.01),
         dRefineSteps: ValueCell.create(4),
         uRayDistance: ValueCell.create(256),
 

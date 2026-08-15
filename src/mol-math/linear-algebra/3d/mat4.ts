@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
@@ -26,7 +26,7 @@ import { Mat3 } from './mat3';
 import { Euler } from './euler';
 
 interface Mat4 extends Array<number> { [d: number]: number, '@type': 'mat4', length: 16 }
-interface ReadonlyMat4 extends Array<number> { readonly [d: number]: number, '@type': 'mat4', length: 16 }
+export interface ReadonlyMat4 extends Array<number> { readonly [d: number]: number, '@type': 'mat4', length: 16 }
 
 function Mat4() {
     return Mat4.zero();
@@ -108,6 +108,10 @@ namespace Mat4 {
     const _id = identity();
     export function isIdentity(m: Mat4, eps?: number) {
         return areEqual(m, _id, typeof eps === 'undefined' ? EPSILON : eps);
+    }
+
+    export function is(a: any): a is Mat4 {
+        return Array.isArray(a) && a.length === 16;
     }
 
     export function hasNaN(m: Mat4) {

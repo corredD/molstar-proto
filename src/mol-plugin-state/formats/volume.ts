@@ -7,7 +7,7 @@
  */
 
 import { StateTransforms } from '../transforms';
-import { DataFormatProvider, guessCifVariant } from './provider';
+import { applyTransformerRaw, DataFormatProvider, guessCifVariant, rawDataObject } from './provider';
 import { PluginContext } from '../../mol-plugin/context';
 import { StateObjectSelector } from '../../mol-state';
 import { PluginStateObject } from '../objects';
@@ -19,6 +19,8 @@ import { objectForEach } from '../../mol-util/object';
 import { RecommendedIsoValue } from '../../mol-model-formats/volume/property';
 import { getContourLevelEmdb } from '../../mol-plugin/behavior/dynamic/volume-streaming/util';
 import { Task } from '../../mol-task';
+import { Color } from '../../mol-util/color/color';
+import { detectMtzColumnPairs } from '../../mol-model-formats/volume/mtz';
 
 export const VolumeFormatCategory = 'Volume';
 type Params = { entryId?: string };
@@ -47,7 +49,9 @@ function tryGetRecomendedIsoValue(volume: Volume) {
     return Volume.adjustedIsoValue(volume, recommendedIsoValue.absoluteValue, 'absolute');
 }
 
-async function defaultVisuals(plugin: PluginContext, data: { volume: StateObjectSelector<PluginStateObject.Volume.Data> }) {
+type VolumeData = StateObjectSelector<PluginStateObject.Volume.Data>
+
+async function defaultVisuals(plugin: PluginContext, data: { volume: VolumeData }) {
 
     const typeParams: { isoValue?: Volume.IsoValue } = {};
     const isoValue = data.volume.data && tryGetRecomendedIsoValue(data.volume.data);
@@ -79,6 +83,11 @@ export const Ccp4Provider = DataFormatProvider({
 
         return { format: format.selector, volume: volume.selector };
     },
+    parseRaw: async (plugin, ctx, data, params?: Params) => {
+        const format = await applyTransformerRaw(plugin, ctx, StateTransforms.Data.ParseCcp4, rawDataObject(data));
+        const volume = await applyTransformerRaw(plugin, ctx, StateTransforms.Volume.VolumeFromCcp4, format, { entryId: params?.entryId });
+        return { volume: volume.data };
+    },
     visuals: defaultVisuals
 });
 
@@ -100,6 +109,11 @@ export const Dsn6Provider = DataFormatProvider({
         await tryObtainRecommendedIsoValue(plugin, volume.selector.data);
 
         return { format: format.selector, volume: volume.selector };
+    },
+    parseRaw: async (plugin, ctx, data, params?: Params) => {
+        const format = await applyTransformerRaw(plugin, ctx, StateTransforms.Data.ParseDsn6, rawDataObject(data));
+        const volume = await applyTransformerRaw(plugin, ctx, StateTransforms.Volume.VolumeFromDsn6, format, { entryId: params?.entryId });
+        return { volume: volume.data };
     },
     visuals: defaultVisuals
 });
@@ -123,6 +137,11 @@ export const DxProvider = DataFormatProvider({
         await tryObtainRecommendedIsoValue(plugin, volume.selector.data);
 
         return { volume: volume.selector };
+    },
+    parseRaw: async (plugin, ctx, data, params?: Params) => {
+        const format = await applyTransformerRaw(plugin, ctx, StateTransforms.Data.ParseDx, rawDataObject(data));
+        const volume = await applyTransformerRaw(plugin, ctx, StateTransforms.Volume.VolumeFromDx, format, { entryId: params?.entryId });
+        return { volume: volume.data };
     },
     visuals: defaultVisuals
 });
@@ -152,7 +171,12 @@ export const CubeProvider = DataFormatProvider({
 
         return { format: format.selector, volume: volume.selector, structure: structure.selector };
     },
-    visuals: async (plugin: PluginContext, data: { volume: StateObjectSelector<PluginStateObject.Volume.Data>, structure: StateObjectSelector<PluginStateObject.Molecule.Structure> }) => {
+    parseRaw: async (plugin, ctx, data, params?: Params) => {
+        const format = await applyTransformerRaw(plugin, ctx, StateTransforms.Data.ParseCube, rawDataObject(data));
+        const volume = await applyTransformerRaw(plugin, ctx, StateTransforms.Volume.VolumeFromCube, format, { entryId: params?.entryId });
+        return { volume: volume.data };
+    },
+    visuals: async (plugin: PluginContext, data: { volume: VolumeData, structure: StateObjectSelector<PluginStateObject.Molecule.Structure> }) => {
         const surfaces = plugin.build();
 
         const volumeReprs: StateObjectSelector<PluginStateObject.Volume.Representation3D>[] = [];
@@ -211,7 +235,7 @@ export const DscifProvider = DataFormatProvider({
 
         if (blocks.length === 0) throw new Error('no data blocks');
 
-        const volumes: StateObjectSelector<PluginStateObject.Volume.Data>[] = [];
+        const volumes: VolumeData[] = [];
         let i = 0;
         for (const block of blocks) {
             // Skip "server" data block.
@@ -229,6 +253,23 @@ export const DscifProvider = DataFormatProvider({
 
         await b.commit();
         for (const v of volumes) await tryObtainRecommendedIsoValue(plugin, v.data);
+
+        return { volumes };
+    },
+    parseRaw: async (plugin, ctx, data, params?: DsCifParams) => {
+        const cif = await applyTransformerRaw(plugin, ctx, StateTransforms.Data.ParseCif, rawDataObject(data));
+        const blocks = cif.data.blocks;
+        if (blocks.length === 0) throw new Error('no data blocks');
+
+        const volumes: Volume[] = [];
+        for (const block of blocks) {
+            if (block.header.toUpperCase() === 'SERVER') continue;
+            if (!(block.categories['volume_data_3d_info']?.rowCount > 0)) continue;
+
+            const entryId = Array.isArray(params?.entryId) ? params?.entryId[volumes.length] : params?.entryId;
+            const volume = await applyTransformerRaw(plugin, ctx, StateTransforms.Volume.VolumeFromDensityServerCif, cif, { blockHeader: block.header, entryId });
+            volumes.push(volume.data);
+        }
 
         return { volumes };
     },
@@ -275,7 +316,7 @@ export const SegcifProvider = DataFormatProvider({
 
         if (blocks.length === 0) throw new Error('no data blocks');
 
-        const volumes: StateObjectSelector<PluginStateObject.Volume.Data>[] = [];
+        const volumes: VolumeData[] = [];
         for (const block of blocks) {
             // Skip "server" data block.
             if (block.header.toUpperCase() === 'SERVER') continue;
@@ -289,6 +330,22 @@ export const SegcifProvider = DataFormatProvider({
         }
 
         await b.commit();
+
+        return { volumes };
+    },
+    parseRaw: async (plugin, ctx, data) => {
+        const cif = await applyTransformerRaw(plugin, ctx, StateTransforms.Data.ParseCif, rawDataObject(data));
+        const blocks = cif.data.blocks;
+        if (blocks.length === 0) throw new Error('no data blocks');
+
+        const volumes: Volume[] = [];
+        for (const block of blocks) {
+            if (block.header.toUpperCase() === 'SERVER') continue;
+            if (!(block.categories['volume_data_3d_info']?.rowCount > 0)) continue;
+
+            const volume = await applyTransformerRaw(plugin, ctx, StateTransforms.Volume.VolumeFromSegmentationCif, cif, { blockHeader: block.header });
+            volumes.push(volume.data);
+        }
 
         return { volumes };
     },
@@ -313,6 +370,189 @@ export const SegcifProvider = DataFormatProvider({
     }
 });
 
+type SfcifParams = { entryId?: string };
+
+export const SfcifProvider = DataFormatProvider({
+    label: 'Structure Factors CIF',
+    description: 'mmCIF structure factor file with reflection data (pdbx_FWT/pdbx_PHWT map coefficients)',
+    category: VolumeFormatCategory,
+    stringExtensions: ['cif'],
+    binaryExtensions: ['bcif'],
+    isApplicable: (info, data) => {
+        return guessCifVariant(info, data) === 'sfcif' ? true : false;
+    },
+    parse: async (plugin, data, params?: SfcifParams) => {
+        const cifCell = await plugin.build().to(data).apply(StateTransforms.Data.ParseCif).commit();
+        const b = plugin.build().to(cifCell);
+        const blocks = cifCell.obj!.data.blocks;
+
+        if (blocks.length === 0) throw new Error('no data blocks');
+
+        const volumes: { '2fofc': VolumeData[], 'fofc': VolumeData[] } = { '2fofc': [], 'fofc': [] };
+        for (const block of blocks) {
+            const reflnCat = block.categories['refln'];
+            if (!(reflnCat?.rowCount > 0)) continue;
+
+            const has2fofcCoeffs = (reflnCat.getField('pdbx_FWT')?.rowCount ?? 0) > 0 && (reflnCat.getField('pdbx_PHWT')?.rowCount ?? 0) > 0;
+            const hasFofcCoeffs = (reflnCat.getField('pdbx_DELFWT')?.rowCount ?? 0) > 0 && (reflnCat.getField('pdbx_DELPHWT')?.rowCount ?? 0) > 0;
+            if (!has2fofcCoeffs && !hasFofcCoeffs) continue;
+
+            if (has2fofcCoeffs) {
+                // 2Fo-Fc map
+                const vol2FoFc = b
+                    .apply(StateTransforms.Volume.VolumeFromStructureFactorsCif, { blockHeader: block.header, entryId: params?.entryId, mapType: '2fo-fc' })
+                    .apply(StateTransforms.Volume.CustomVolumeProperties);
+                volumes['2fofc'].push(vol2FoFc.selector);
+            }
+
+            if (hasFofcCoeffs) {
+                // Fo-Fc difference map
+                const volFoFc = b
+                    .apply(StateTransforms.Volume.VolumeFromStructureFactorsCif, { blockHeader: block.header, entryId: params?.entryId, mapType: 'fo-fc' })
+                    .apply(StateTransforms.Volume.CustomVolumeProperties);
+                volumes['fofc'].push(volFoFc.selector);
+            }
+        }
+
+        await b.commit();
+
+        return { volumes };
+    },
+    parseRaw: async (plugin, ctx, data, params?: SfcifParams) => {
+        const cif = await applyTransformerRaw(plugin, ctx, StateTransforms.Data.ParseCif, rawDataObject(data));
+        const blocks = cif.data.blocks;
+        if (blocks.length === 0) throw new Error('no data blocks');
+
+        const twoFoFc: Volume[] = [];
+        const foFc: Volume[] = [];
+        for (const block of blocks) {
+            const reflnCat = block.categories['refln'];
+            if (!(reflnCat?.rowCount > 0)) continue;
+
+            if ((reflnCat.getField('pdbx_FWT')?.rowCount ?? 0) > 0 && (reflnCat.getField('pdbx_PHWT')?.rowCount ?? 0) > 0) {
+                const volume = await applyTransformerRaw(plugin, ctx, StateTransforms.Volume.VolumeFromStructureFactorsCif, cif, { blockHeader: block.header, entryId: params?.entryId, mapType: '2fo-fc' });
+                twoFoFc.push(volume.data);
+            }
+
+            if ((reflnCat.getField('pdbx_DELFWT')?.rowCount ?? 0) > 0 && (reflnCat.getField('pdbx_DELPHWT')?.rowCount ?? 0) > 0) {
+                const volume = await applyTransformerRaw(plugin, ctx, StateTransforms.Volume.VolumeFromStructureFactorsCif, cif, { blockHeader: block.header, entryId: params?.entryId, mapType: 'fo-fc' });
+                foFc.push(volume.data);
+            }
+        }
+
+        return { volumes: [...twoFoFc, ...foFc] };
+    },
+    visuals: async (plugin, data: { volumes: { '2fofc': VolumeData[], 'fofc': VolumeData[] } }) => {
+        const { volumes } = data;
+        const tree = plugin.build();
+        const visuals: StateObjectSelector<PluginStateObject.Volume.Representation3D>[] = [];
+
+        // 2Fo-Fc map: teal solid isosurface at 2σ
+        if (volumes['2fofc'].length > 0) {
+            const isoValue = Volume.IsoValue.relative(2);
+            visuals.push(tree
+                .to(volumes['2fofc'][0])
+                .apply(StateTransforms.Representation.VolumeRepresentation3D, VolumeRepresentation3DHelpers.getDefaultParamsStatic(plugin, 'isosurface', { isoValue, alpha: 1 }, 'uniform', { value: Color(0x3362B2) }))
+                .selector);
+        }
+
+        // Fo-Fc map: green positive / red negative at ±3σ
+        if (volumes['fofc'].length > 0) {
+            const posParams = VolumeRepresentation3DHelpers.getDefaultParamsStatic(plugin, 'isosurface', { isoValue: Volume.IsoValue.relative(3), alpha: 0.3 }, 'uniform', { value: Color(0x33BB33) });
+            const negParams = VolumeRepresentation3DHelpers.getDefaultParamsStatic(plugin, 'isosurface', { isoValue: Volume.IsoValue.relative(-3), alpha: 0.3 }, 'uniform', { value: Color(0xBB3333) });
+            visuals.push(tree.to(volumes['fofc'][0]).apply(StateTransforms.Representation.VolumeRepresentation3D, posParams).selector);
+            visuals.push(tree.to(volumes['fofc'][0]).apply(StateTransforms.Representation.VolumeRepresentation3D, negParams).selector);
+        }
+
+        await tree.commit();
+
+        return visuals;
+    }
+});
+
+type MtzParams = { entryId?: string };
+
+export const MtzProvider = DataFormatProvider({
+    label: 'MTZ',
+    description: 'CCP4 MTZ reflection data file with amplitude and phase columns',
+    category: VolumeFormatCategory,
+    binaryExtensions: ['mtz'],
+    isApplicable: (info, data) => {
+        // Check magic bytes "MTZ"
+        if (!(data instanceof Uint8Array) || data.length < 4) return false;
+        return data[0] === 0x4D && data[1] === 0x54 && data[2] === 0x5A;
+    },
+    parse: async (plugin, data, params?: MtzParams) => {
+        const mtzCell = await plugin.build().to(data).apply(StateTransforms.Data.ParseMtz).commit();
+        const b = plugin.build().to(mtzCell);
+        const mtz = mtzCell.obj!.data;
+        const pairs = detectMtzColumnPairs(mtz.header);
+
+        if (pairs.length === 0) {
+            throw new Error('MTZ file does not contain any recognised amplitude+phase column pairs (FWT/PHWT, DELFWT/DELPHWT, 2FOFCWT/PH2FOFCWT, FOFCWT/PHFOFCWT).');
+        }
+
+        const volumes: { '2fofc': VolumeData[], 'fofc': VolumeData[] } = { '2fofc': [], 'fofc': [] };
+        for (const pair of pairs) {
+            const vol = b
+                .apply(StateTransforms.Volume.VolumeFromMtz, { ampLabel: pair.ampLabel, phiLabel: pair.phiLabel, entryId: params?.entryId })
+                .apply(StateTransforms.Volume.CustomVolumeProperties);
+            if (pair.label === '2fo-fc') volumes['2fofc'].push(vol.selector);
+            else volumes['fofc'].push(vol.selector);
+        }
+
+        await b.commit();
+        return { volumes };
+    },
+    parseRaw: async (plugin, ctx, data, params?: MtzParams) => {
+        const mtz = await applyTransformerRaw(plugin, ctx, StateTransforms.Data.ParseMtz, rawDataObject(data));
+        const pairs = detectMtzColumnPairs(mtz.data.header);
+
+        if (pairs.length === 0) {
+            throw new Error('MTZ file does not contain any recognised amplitude+phase column pairs (FWT/PHWT, DELFWT/DELPHWT, 2FOFCWT/PH2FOFCWT, FOFCWT/PHFOFCWT).');
+        }
+
+        const twoFoFc: Volume[] = [];
+        const foFc: Volume[] = [];
+        for (const pair of pairs) {
+            const volume = await applyTransformerRaw(plugin, ctx, StateTransforms.Volume.VolumeFromMtz, mtz, { ampLabel: pair.ampLabel, phiLabel: pair.phiLabel, entryId: params?.entryId });
+            if (pair.label === '2fo-fc') twoFoFc.push(volume.data);
+            else foFc.push(volume.data);
+        }
+
+        return { volumes: [...twoFoFc, ...foFc] };
+    },
+    visuals: async (plugin, data: { volumes: { '2fofc': VolumeData[], 'fofc': VolumeData[] } }) => {
+        const { volumes } = data;
+        const tree = plugin.build();
+        const visuals: StateObjectSelector<PluginStateObject.Volume.Representation3D>[] = [];
+
+        // 2Fo-Fc map: teal solid isosurface at 2σ
+        if (volumes['2fofc'].length > 0) {
+            const isoValue = Volume.IsoValue.relative(2);
+            visuals.push(tree
+                .to(volumes['2fofc'][0])
+                .apply(StateTransforms.Representation.VolumeRepresentation3D,
+                    VolumeRepresentation3DHelpers.getDefaultParamsStatic(plugin, 'isosurface',
+                        { isoValue, alpha: 1 }, 'uniform', { value: Color(0x3362B2) }))
+                .selector);
+        }
+
+        // Fo-Fc map: green positive / red negative at ±3σ
+        if (volumes['fofc'].length > 0) {
+            const posParams = VolumeRepresentation3DHelpers.getDefaultParamsStatic(plugin, 'isosurface',
+                { isoValue: Volume.IsoValue.relative(3), alpha: 0.3 }, 'uniform', { value: Color(0x33BB33) });
+            const negParams = VolumeRepresentation3DHelpers.getDefaultParamsStatic(plugin, 'isosurface',
+                { isoValue: Volume.IsoValue.relative(-3), alpha: 0.3 }, 'uniform', { value: Color(0xBB3333) });
+            visuals.push(tree.to(volumes['fofc'][0]).apply(StateTransforms.Representation.VolumeRepresentation3D, posParams).selector);
+            visuals.push(tree.to(volumes['fofc'][0]).apply(StateTransforms.Representation.VolumeRepresentation3D, negParams).selector);
+        }
+
+        await tree.commit();
+        return visuals;
+    }
+});
+
 export const BuiltInVolumeFormats = [
     ['ccp4', Ccp4Provider] as const,
     ['dsn6', Dsn6Provider] as const,
@@ -320,6 +560,8 @@ export const BuiltInVolumeFormats = [
     ['dx', DxProvider] as const,
     ['dscif', DscifProvider] as const,
     ['segcif', SegcifProvider] as const,
+    ['sfcif', SfcifProvider] as const,
+    ['mtz', MtzProvider] as const,
 ] as const;
 
 export type BuildInVolumeFormat = (typeof BuiltInVolumeFormats)[number][0]
