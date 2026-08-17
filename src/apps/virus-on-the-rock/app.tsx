@@ -21,10 +21,15 @@ import { useBehavior } from '../../mol-plugin-ui/hooks/use-behavior';
 import { PresetStructureRepresentations } from '../../mol-plugin-state/builder/structure/representation-preset';
 import { PluginConfig } from '../../mol-plugin/config';
 import { clearStructureWiggle } from '../../mol-plugin-state/helpers/structure-wiggle';
+import { BlobSurfaceRepresentationProvider } from '../../mol-repr/structure/representation/blob-surface';
+import { SpacefillRepresentationProvider } from '../../mol-repr/structure/representation/spacefill';
+import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audio-reactor';
+import { AudioProminenceRadar } from '../../mol-plugin-ui/controls/audio-prominence-radar';
 import { AudioReactivePresetDefinitions, AudioReactivePresetName, getAudioReactivePreset } from '../../mol-plugin-state/helpers/audio-reactive-presets';
 import { AudioReactiveAnimationManagerValues, type AudioReactiveStatus } from '../../mol-plugin-state/manager/audio-reactive-animation';
 import { AudioReactiveAssemblyAxisOrder } from '../../mol-plugin-state/helpers/assembly-symmetry-axis';
 import { StructureRef } from '../../mol-plugin-state/manager/structure/hierarchy-state';
+import { PluginStateObject } from '../../mol-plugin-state/objects';
 import { StateTransforms } from '../../mol-plugin-state/transforms';
 import { Viewer } from '../viewer/app';
 import { areAnimationPropsEqual, type AnimationProps, type ObjectTransformModeName, type TumbleAxisName, type TumbleAxisSourceName } from '../../mol-geo/geometry/animation';
@@ -69,6 +74,7 @@ type VirusOnTheRockState = {
     objectTransformEnabled: boolean,
     objectTransformMode: ObjectTransformModeName,
     lodScaleEnabled: boolean,
+    representationMode: RepresentationMode,
     audioClipEnabled: boolean,
     audioClipScale: number,
     showSidebar: boolean,
@@ -79,9 +85,11 @@ type VirusOnTheRockState = {
 };
 
 const DefaultPdbId = '2tbv';
-const DefaultAudioUrl = 'examples/angine.mp3';
-const DefaultAudioFallbackUrl = '/examples/angine.mp3';
-const DefaultAudioLabel = 'angine.mp3';
+const DefaultAudioUrl = 'https://radio-proxy.ludomolgraphlab.workers.dev/lesonparisien/';
+/** Local file used when the live stream cannot be reached (offline, proxy down, CORS). */
+const DefaultAudioFallbackUrl = 'examples/angine.mp3';
+const DefaultAudioLabel = 'Le Son Parisien';
+const DefaultAudioFallbackLabel = 'angine.mp3';
 const NearClipAfterCameraReset = 0;
 // Multiplier applied to the visible bounding-sphere radius when framing.
 // >1 = camera pulled back so the structure isn't filling the viewport.
@@ -92,7 +100,7 @@ const AudioUrlPresets = [
     { label: 'FIP Hi-Fi AAC', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/fip/' },
     { label: 'Le Son Parisien FLAC', url: 'https://radio-proxy.ludomolgraphlab.workers.dev/lesonparisien/' },
 ] as const;
-const DefaultAudioUrlPreset = AudioUrlPresets[0];
+const DefaultAudioUrlPreset = AudioUrlPresets.find(p => p.url === DefaultAudioUrl) ?? AudioUrlPresets[0];
 const ExamplePdbIds = ['2tbv', '2plv'] as const;
 const FeaturedPresetNames: readonly AudioReactivePresetName[] = [
     'bass-spectrum',
@@ -103,6 +111,32 @@ const FeaturedPresetNames: readonly AudioReactivePresetName[] = [
 const _sceneCenterScreen = Vec4();
 
 // LOD for large instanced structures (e.g. CellPack assemblies).
+/** How the structure is drawn. Blob surface trades per-atom spheres for one coarse mesh. */
+type RepresentationMode = 'spacefill' | 'blob-surface'
+const DefaultRepresentationMode: RepresentationMode = 'blob-surface';
+
+/**
+ * The `type` block for drawing the structure as a coarse blob surface.
+ *
+ * Mirrors `getBlobSurfaceTypeParams` in the mesoscale explorer - kept local for the same reason the
+ * graphics constants below are: the two apps deliberately do not import each other's presets.
+ *
+ * Spacefill draws one impostor sphere per atom and relies on LOD strides to stay affordable;
+ * a blob surface is a single marching-cubes mesh, so there is far less to redraw each frame - which
+ * is what matters while audio-reactive animation forces a continuous redraw - but it costs a one-off
+ * CPU build and has no LOD to fall back on.
+ */
+function getBlobSurfaceTypeParams() {
+    return {
+        name: 'blob-surface' as const,
+        params: {
+            ...BlobSurfaceRepresentationProvider.defaultValues,
+            ignoreLight: true,
+            quality: 'lowest' as const, // avoid 'auto', triggers boundary calc
+        },
+    };
+}
+
 // Mirrors the mesoscale explorer "balanced" graphics mode.
 const LargeStructureElementThreshold = 500_000;
 const LargeStructureLodLevels = [
@@ -111,6 +145,25 @@ const LargeStructureLodLevels = [
     { minDistance: 2000, maxDistance: 6000, overlap: 0, stride: 70, scaleBias: 2.7 },
     { minDistance: 6000, maxDistance: 10000000, overlap: 0, stride: 200, scaleBias: 2.5 },
 ];
+
+/**
+ * Fallback spacefill `type` block, matching what the mesoscale structure preset builds. Used when
+ * switching back to spacefill for a node whose original block was never seen - e.g. a session that
+ * was restored with the blob surface already applied.
+ */
+function getSpacefillTypeParams() {
+    return {
+        name: 'spacefill' as const,
+        params: {
+            ...SpacefillRepresentationProvider.defaultValues,
+            instanceGranularity: true,
+            lodLevels: LargeStructureLodLevels,
+            approximate: true,
+            alphaThickness: 12,
+            clipPrimitive: true,
+        },
+    };
+}
 
 function getDefaultMultiScaleOcclusionProps() {
     const postprocessing = PD.getDefaultValues(PostprocessingParams);
@@ -325,6 +378,7 @@ function createInitialState(params: AudioReactiveAnimationManagerValues, animati
         activeCycleTarget: void 0,
         ...getMotionTargetState(animation),
         lodScaleEnabled: params.lodScaleEnabled,
+        representationMode: DefaultRepresentationMode,
         audioClipEnabled: false,
         audioClipScale: 1,
         showSidebar: true,
@@ -593,7 +647,7 @@ export class VirusOnTheRockApp {
         try {
             await this.viewer.plugin.managers.audioReactive.loadUrl(DefaultAudioUrl, DefaultAudioLabel);
         } catch {
-            await this.viewer.plugin.managers.audioReactive.loadUrl(DefaultAudioFallbackUrl, DefaultAudioLabel);
+            await this.viewer.plugin.managers.audioReactive.loadUrl(DefaultAudioFallbackUrl, DefaultAudioFallbackLabel);
         }
         try {
             await this.viewer.plugin.managers.audioReactive.play();
@@ -912,6 +966,9 @@ export class VirusOnTheRockApp {
 
     private async syncSelectedStructure() {
         const token = ++this.syncToken;
+        // structure presets always build spacefill, so re-assert the chosen representation
+        await this.setRepresentationMode(this.state.value.representationMode);
+        if (token !== this.syncToken) return;
         const allStructures = this.getAllStructures();
         if (allStructures.length === 0) {
             this.patchState({
@@ -1138,6 +1195,43 @@ export class VirusOnTheRockApp {
         this.patchState({ [target]: enabled } as Partial<VirusOnTheRockState>);
     }
 
+    /**
+     * Swap every structure representation between the mesoscale spacefill preset and a coarse blob
+     * surface. The previous `type` block is remembered per node so switching back is lossless.
+     */
+    async setRepresentationMode(mode: RepresentationMode) {
+        const plugin = this.viewer.plugin;
+
+        // Record the mode before committing: the commit below mutates the state tree, which fires
+        // `hierarchy.behaviors.selection` and re-enters `syncSelectedStructure` -> this method. If
+        // the state still held the previous mode at that point, the re-entrant call would undo the
+        // switch. With the state already updated the re-entrant call hits the idempotent guard.
+        this.patchState({ representationMode: mode });
+
+        const cells = plugin.state.data.selectQ(q => q.ofType(PluginStateObject.Molecule.Structure.Representation3D));
+        if (cells.length === 0) return;
+
+        const update = plugin.state.data.build();
+        for (const cell of cells) {
+            const ref = cell.transform.ref;
+            update.to(ref).update((old: any) => {
+                if (!old?.type) return;
+                // idempotent: re-applying the current mode must not rebuild the geometry
+                if (mode === 'blob-surface') {
+                    if (old.type.name === 'blob-surface') return;
+                    this.spacefillTypeCache.set(ref, old.type);
+                    old.type = getBlobSurfaceTypeParams();
+                } else {
+                    if (old.type.name !== 'blob-surface') return;
+                    old.type = this.spacefillTypeCache.get(ref) ?? getSpacefillTypeParams();
+                }
+            });
+        }
+        await update.commit();
+    }
+
+    private spacefillTypeCache = new Map<string, any>();
+
     async setObjectTransformMode(mode: ObjectTransformModeName) {
         await this.updateAnimationOptions({ objectTransformMode: mode });
         this.patchState({ objectTransformMode: mode });
@@ -1288,6 +1382,24 @@ function ControlCard(props: React.PropsWithChildren<{ title?: string, className?
         {props.title && <h2 className='vor-section-title'>{props.title}</h2>}
         {props.children}
     </section>;
+}
+
+function AudioProminenceReadout({ app }: { app: VirusOnTheRockApp }) {
+    const status = useBehavior(app.viewer.plugin.managers.audioReactive.state.status) as AudioReactiveStatus | undefined;
+    if (!status) return null;
+
+    return <>
+        <AudioProminenceRadar
+            sources={DefaultAudioBandDefinitions}
+            prominence={status.frame.bandProminence}
+            level={status.frame.frequencyBands}
+            onset={status.frame.bandOnsets}
+            size={190}
+        />
+        <p className='vor-help'>
+            {DefaultAudioBandDefinitions.map(b => `${b.label} ${(status.frame.bandProminence[b.key] * 100).toFixed(0)}%`).join(' · ')}
+        </p>
+    </>;
 }
 
 function AudioAnalysisWarning({ app }: { app: VirusOnTheRockApp }) {
@@ -1673,8 +1785,33 @@ function VirusOnTheRockControls({ app }: { app: VirusOnTheRockApp }) {
                     </div>
                     <AudioAnalysisWarning app={app} />
                     <p className='vor-help'>
-                        Loads <b>{DefaultAudioLabel}</b> by default. Remote URLs must allow browser media playback with CORS; HTTPS pages can also block HTTP streams.
+                        Streams <b>{DefaultAudioLabel}</b> on start and falls back to <b>{DefaultAudioFallbackLabel}</b> if it cannot be reached. Autoplay may be blocked until you interact with the page — use Play Current then. Remote URLs must allow browser media playback with CORS; HTTPS pages can also block HTTP streams.
                     </p>
+                </div>
+            </ControlCard>
+
+            <ControlCard title='Prominence'>
+                <div className='vor-stack'>
+                    <AudioProminenceReadout app={app} />
+                    <p className='vor-help'>
+                        Relative weight of each band, from its level plus a decaying onset peak.
+                        Tune <b>Onset Weight</b> and <b>Temperature</b> until the shape follows what you hear.
+                    </p>
+                </div>
+            </ControlCard>
+
+            <ControlCard title='Representation'>
+                <div className='vor-chip-row'>
+                    {(['spacefill', 'blob-surface'] as RepresentationMode[]).map(mode => <button
+                        key={mode}
+                        className={`vor-chip ${state.representationMode === mode ? 'vor-active' : ''}`}
+                        onClick={() => void app.setRepresentationMode(mode)}
+                        title={mode === 'spacefill'
+                            ? 'One impostor sphere per atom with level-of-detail strides.'
+                            : 'A single coarse mesh per structure: much less to redraw each frame, but built once on the CPU and without level-of-detail.'}
+                    >
+                        {mode === 'spacefill' ? 'Spacefill' : 'Blob Surface'}
+                    </button>)}
                 </div>
             </ControlCard>
 
