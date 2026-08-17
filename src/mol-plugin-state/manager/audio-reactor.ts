@@ -2,7 +2,10 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author OpenAI
+ * @author Ludovic Autin <autin@scripps.edu>
  */
+
+import { AudioProminenceParams, AudioProminenceTracker, DefaultAudioProminenceParams } from './audio-prominence';
 
 export type AudioBandDefinition<K extends string = string> = {
     key: K,
@@ -29,6 +32,13 @@ export type AudioReactiveScalarSet<K extends string = string> = {
     dominantFrequencyNormalized: number,
     mix: number,
     frequencyBands: Record<K, number>,
+    /** Leaky peak-hold of the positive flux of each band, i.e. how much it just jumped. */
+    bandOnsets: Record<K, number>,
+    /**
+     * Relative prominence of each band, softmax of level + onset over the non-silent bands.
+     * Sums to 1 while anything is playing and to 0 in silence. See `audio-prominence.ts`.
+     */
+    bandProminence: Record<K, number>,
 };
 
 export type AudioReactiveFrame<K extends string = string> = AudioReactiveScalarSet<K> & {
@@ -51,7 +61,7 @@ export type AudioReactorParams<K extends string = string> = {
     beatThreshold: number,
     beatSensitivity: number,
     beatBaselineMs: number,
-};
+} & AudioProminenceParams;
 
 export const DefaultAudioReactorParams: AudioReactorParams<DefaultAudioBandKey> = {
     fftSize: 1024,
@@ -69,6 +79,7 @@ export const DefaultAudioReactorParams: AudioReactorParams<DefaultAudioBandKey> 
     beatThreshold: 1.35,
     beatSensitivity: 8,
     beatBaselineMs: 320,
+    ...DefaultAudioProminenceParams,
 };
 
 type AudioReactorState<K extends string> = {
@@ -78,6 +89,8 @@ type AudioReactorState<K extends string> = {
     dominantFrequency: number,
     mix: number,
     frequencyBands: Record<K, number>,
+    bandOnsets: Record<K, number>,
+    bandProminence: Record<K, number>,
 };
 
 function assertPowerOfTwo(value: number) {
@@ -107,6 +120,8 @@ function createEmptyScalarSet<K extends string>(bands: readonly AudioBandDefinit
         dominantFrequencyNormalized: 0,
         mix: 0,
         frequencyBands: createZeroBandRecord(bands),
+        bandOnsets: createZeroBandRecord(bands),
+        bandProminence: createZeroBandRecord(bands),
     };
 }
 
@@ -239,10 +254,14 @@ export class AudioReactor<K extends string = DefaultAudioBandKey> {
     private previousMagnitudes: Float32Array;
     private analysisSamples: Float32Array;
     private beatFluxBaseline = 0;
+    private bandKeys: K[];
+    private prominence: AudioProminenceTracker<K>;
     private state: AudioReactorState<K>;
 
     constructor(params?: Partial<AudioReactorParams<K>>) {
         this.params = { ...(DefaultAudioReactorParams as AudioReactorParams<K>), ...params };
+        this.bandKeys = this.params.bands.map(b => b.key);
+        this.prominence = new AudioProminenceTracker(this.bandKeys, this.params);
         this.window = new Float32Array(0);
         this.bitReverse = new Uint32Array(0);
         this.real = new Float32Array(0);
@@ -257,6 +276,8 @@ export class AudioReactor<K extends string = DefaultAudioBandKey> {
             dominantFrequency: 0,
             mix: 0,
             frequencyBands: createZeroBandRecord(this.params.bands),
+            bandOnsets: createZeroBandRecord(this.params.bands),
+            bandProminence: createZeroBandRecord(this.params.bands),
         };
         this.rebuildCaches();
     }
@@ -267,6 +288,8 @@ export class AudioReactor<K extends string = DefaultAudioBandKey> {
 
     setParams(params: Partial<AudioReactorParams<K>>) {
         this.params = { ...this.params, ...params };
+        this.bandKeys = this.params.bands.map(b => b.key);
+        this.prominence = new AudioProminenceTracker(this.bandKeys, this.params);
         this.rebuildCaches();
         this.reset();
     }
@@ -274,6 +297,7 @@ export class AudioReactor<K extends string = DefaultAudioBandKey> {
     reset() {
         this.previousMagnitudes.fill(0);
         this.beatFluxBaseline = 0;
+        this.prominence.reset();
         this.state = {
             amplitude: 0,
             peakAmplitude: 0,
@@ -281,6 +305,8 @@ export class AudioReactor<K extends string = DefaultAudioBandKey> {
             dominantFrequency: 0,
             mix: 0,
             frequencyBands: createZeroBandRecord(this.params.bands),
+            bandOnsets: createZeroBandRecord(this.params.bands),
+            bandProminence: createZeroBandRecord(this.params.bands),
         };
     }
 
@@ -369,6 +395,11 @@ export class AudioReactor<K extends string = DefaultAudioBandKey> {
         const rawBeat = normalize01((flux - this.beatFluxBaseline * this.params.beatThreshold) * this.params.beatSensitivity);
         const rawDominantFrequency = dominantIndex * effectiveSampleRate / fftSize;
 
+        // Onset and prominence are derived from the raw band levels: the attack/release smoothing
+        // below is what a transient has to survive, so measuring the flux after it would blunt
+        // exactly the spikes prominence is meant to catch.
+        const { onset: rawBandOnsets, prominence: rawBandProminence } = this.prominence.update(rawBands, dtMs);
+
         this.state.amplitude = applyAttackRelease(this.state.amplitude, rawAmplitude, dtMs, this.params.amplitudeAttackMs, this.params.amplitudeReleaseMs);
         this.state.peakAmplitude = applyAttackRelease(this.state.peakAmplitude, rawPeakAmplitude, dtMs, this.params.amplitudeAttackMs, this.params.amplitudeReleaseMs);
         this.state.beatIntensity = applyAttackRelease(this.state.beatIntensity, rawBeat, dtMs, this.params.beatAttackMs, this.params.beatReleaseMs);
@@ -378,6 +409,21 @@ export class AudioReactor<K extends string = DefaultAudioBandKey> {
             this.state.frequencyBands[band.key] = applyAttackRelease(
                 this.state.frequencyBands[band.key],
                 rawBands[band.key],
+                dtMs,
+                this.params.bandAttackMs,
+                this.params.bandReleaseMs
+            );
+            // the onset already has its own peak-hold decay, so only the beat envelope is applied
+            this.state.bandOnsets[band.key] = applyAttackRelease(
+                this.state.bandOnsets[band.key],
+                rawBandOnsets[band.key],
+                dtMs,
+                this.params.beatAttackMs,
+                this.params.beatReleaseMs
+            );
+            this.state.bandProminence[band.key] = applyAttackRelease(
+                this.state.bandProminence[band.key],
+                rawBandProminence[band.key],
                 dtMs,
                 this.params.bandAttackMs,
                 this.params.bandReleaseMs
@@ -392,6 +438,8 @@ export class AudioReactor<K extends string = DefaultAudioBandKey> {
             dominantFrequencyNormalized: effectiveSampleRate > 0 ? normalize01(this.state.dominantFrequency / (effectiveSampleRate / 2)) : 0,
             mix: this.state.mix,
             frequencyBands: { ...this.state.frequencyBands },
+            bandOnsets: { ...this.state.bandOnsets },
+            bandProminence: { ...this.state.bandProminence },
             raw: {
                 amplitude: rawAmplitude,
                 peakAmplitude: rawPeakAmplitude,
@@ -400,6 +448,8 @@ export class AudioReactor<K extends string = DefaultAudioBandKey> {
                 dominantFrequencyNormalized: effectiveSampleRate > 0 ? normalize01(rawDominantFrequency / (effectiveSampleRate / 2)) : 0,
                 mix: rawMix,
                 frequencyBands: rawBands,
+                bandOnsets: { ...rawBandOnsets },
+                bandProminence: { ...rawBandProminence },
             }
         };
     }

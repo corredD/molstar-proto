@@ -56,6 +56,10 @@ export const AudioReactiveAnimationManagerParams = {
     beatThreshold: PD.Numeric(DefaultAudioReactorParams.beatThreshold, { min: 0.5, max: 4, step: 0.01 }, { category: 'Beat Detection', description: 'Energy threshold above the running spectral flux baseline.' }),
     beatSensitivity: PD.Numeric(DefaultAudioReactorParams.beatSensitivity, { min: 0.1, max: 32, step: 0.1 }, { category: 'Beat Detection', description: 'Scales beat onset strength after thresholding.' }),
     beatBaselineMs: PD.Numeric(DefaultAudioReactorParams.beatBaselineMs, { min: 10, max: 2000, step: 1 }, { category: 'Beat Detection', description: 'Averaging window used for the onset baseline.' }),
+    onsetHalfLifeMs: PD.Numeric(DefaultAudioReactorParams.onsetHalfLifeMs, { min: 0, max: 2000, step: 1 }, { category: 'Prominence', description: 'How long a band keeps credit for a sudden jump in level. Shorter tracks fast rhythms, longer holds the spike.' }),
+    onsetWeight: PD.Numeric(DefaultAudioReactorParams.onsetWeight, { min: 0, max: 16, step: 0.1 }, { category: 'Prominence', description: 'How much a sudden jump counts against a steady level. Raise it so a quiet transient can out-rank a loud sustained band.' }),
+    temperature: PD.Numeric(DefaultAudioReactorParams.temperature, { min: 0, max: 40, step: 0.5 }, { category: 'Prominence', description: 'Sharpness of the prominence distribution. High values let the loudest band claim almost all the weight.' }),
+    activityThreshold: PD.Numeric(DefaultAudioReactorParams.activityThreshold, { min: 0, max: 1, step: 0.005 }, { category: 'Prominence', description: 'Bands quieter than this are treated as silent and excluded, so the rest share the full weight.' }),
 } as const;
 export type AudioReactiveAnimationManagerParams = typeof AudioReactiveAnimationManagerParams
 export type AudioReactiveAnimationManagerValues = PD.Values<AudioReactiveAnimationManagerParams>;
@@ -101,6 +105,8 @@ function areFramesClose(a: AudioReactiveFrame<DefaultAudioBandKey>, b: AudioReac
     if (Math.abs(a.mix - b.mix) > epsilon) return false;
     for (const band of DefaultAudioBandDefinitions) {
         if (Math.abs(a.frequencyBands[band.key] - b.frequencyBands[band.key]) > epsilon) return false;
+        if (Math.abs(a.bandOnsets[band.key] - b.bandOnsets[band.key]) > epsilon) return false;
+        if (Math.abs(a.bandProminence[band.key] - b.bandProminence[band.key]) > epsilon) return false;
     }
     return true;
 }
@@ -206,6 +212,10 @@ export class AudioReactiveAnimationManager {
             beatThreshold: params.beatThreshold,
             beatSensitivity: params.beatSensitivity,
             beatBaselineMs: params.beatBaselineMs,
+            onsetHalfLifeMs: params.onsetHalfLifeMs,
+            onsetWeight: params.onsetWeight,
+            temperature: params.temperature,
+            activityThreshold: params.activityThreshold,
         } as const;
     }
 

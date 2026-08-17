@@ -2,13 +2,15 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author OpenAI
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { ChangeEvent, useContext, useEffect, useRef } from 'react';
+import { ChangeEvent, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import { DefaultAudioBandDefinitions } from '../../mol-plugin-state/manager/audio-reactor';
 import { AudioReactiveAnimationManagerParams } from '../../mol-plugin-state/manager/audio-reactive-animation';
 import { PluginReactContext } from '../base';
 import { useBehavior } from '../hooks/use-behavior';
+import { AudioProminenceRadar } from './audio-prominence-radar';
 import { Button } from './common';
 import { ParameterControls } from './parameters';
 
@@ -46,6 +48,20 @@ export function AudioReactiveAnimationControls() {
         };
     }, [audio]);
 
+    const onChangeValues = useCallback((values: typeof params) => {
+        plugin?.managers.audioReactive.setParams(values!);
+    }, [plugin]);
+
+    // The status behavior emits ~30x a second while audio plays, so this component re-renders at
+    // that rate. `ParameterControls` is pure but would still rebuild its whole tree on every one of
+    // those renders unless both its `values` and its callback keep their identity - `params` only
+    // changes when a parameter is actually edited.
+    const parameterControls = useMemo(() => params && <ParameterControls
+        params={AudioReactiveAnimationManagerParams}
+        values={params}
+        onChangeValues={onChangeValues}
+    />, [params, onChangeValues]);
+
     if (!plugin || !status || !params) return null;
 
     const onFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -77,11 +93,7 @@ export function AudioReactiveAnimationControls() {
             <Button onClick={() => plugin.managers.audioReactive.clear()} disabled={disabled}>Clear</Button>
         </div>
         <div ref={parent} />
-        <ParameterControls
-            params={AudioReactiveAnimationManagerParams}
-            values={params}
-            onChangeValues={values => plugin.managers.audioReactive.setParams(values)}
-        />
+        {parameterControls}
         {status.sourceLabel && <div className='msp-help-text'>{status.sourceLabel}</div>}
         <div className='msp-help-text'>
             {`Amp ${frame.amplitude.toFixed(2)} (${frame.raw.amplitude.toFixed(2)} raw) | Peak ${frame.peakAmplitude.toFixed(2)} | Beat ${frame.beatIntensity.toFixed(2)} (${frame.raw.beatIntensity.toFixed(2)} raw) | Dominant ${formatFrequency(frame.dominantFrequency)} | Mix ${frame.mix.toFixed(2)}`}
@@ -91,6 +103,15 @@ export function AudioReactiveAnimationControls() {
         </div>
         <div className='msp-help-text'>
             {DefaultAudioBandDefinitions.map(band => `${band.label} ${frame.frequencyBands[band.key].toFixed(2)} (${frame.raw.frequencyBands[band.key].toFixed(2)} raw)`).join(' | ')}
+        </div>
+        <AudioProminenceRadar
+            sources={DefaultAudioBandDefinitions}
+            prominence={frame.bandProminence}
+            level={frame.frequencyBands}
+            onset={frame.bandOnsets}
+        />
+        <div className='msp-help-text'>
+            {DefaultAudioBandDefinitions.map(band => `${band.label} ${(frame.bandProminence[band.key] * 100).toFixed(0)}%`).join(' | ')}
         </div>
         {status.error && <div className='msp-help-text'>{status.error}</div>}
     </div>;

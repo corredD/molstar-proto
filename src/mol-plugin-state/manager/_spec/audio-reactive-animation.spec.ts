@@ -93,6 +93,60 @@ describe('audio reactor', () => {
         expect(beatFrame.beatIntensity).toBeGreaterThan(0);
     });
 
+    it('lets a treble transient out-rank a louder sustained bass once the onset is weighted', () => {
+        // The point of prominence over a single global beat value: the bass is louder throughout,
+        // but the moment the hat enters it is what the ear (and the visual) should follow.
+        // With equal weighting the saturated bass band still wins - frequency bands of one mix are
+        // not level-matched the way separate stems are - so `onsetWeight` is what buys the switch.
+        const reactor = new AudioReactor({
+            onsetWeight: 6,
+            fftSize: 1024,
+            bandNormalizationGain: 18,
+            amplitudeAttackMs: 0,
+            amplitudeReleaseMs: 0,
+            bandAttackMs: 0,
+            bandReleaseMs: 0,
+            beatAttackMs: 0,
+            beatReleaseMs: 0,
+            dominantFrequencyAttackMs: 0,
+            dominantFrequencyReleaseMs: 0,
+        });
+
+        const bass = createSineWave(1024, 48_000, 120, 0.9);
+        const bassAndHat = createSineWave(1024, 48_000, 120, 0.9);
+        const hat = createSineWave(1024, 48_000, 11_000, 0.35);
+        for (let i = 0; i < bassAndHat.length; ++i) bassAndHat[i] += hat[i];
+
+        // bass sustains on its own for a while
+        let sustained = reactor.analyze(bass, 48_000, 16);
+        for (let i = 0; i < 20; ++i) sustained = reactor.analyze(bass, 48_000, 16);
+        expect(sustained.bandProminence.bass).toBeGreaterThan(sustained.bandProminence.treble);
+
+        // the hat enters without the bass changing at all
+        const entry = reactor.analyze(bassAndHat, 48_000, 16);
+        expect(entry.frequencyBands.bass).toBeGreaterThan(entry.frequencyBands.treble);
+        expect(entry.bandOnsets.treble).toBeGreaterThan(entry.bandOnsets.bass);
+        expect(entry.bandProminence.treble).toBeGreaterThan(entry.bandProminence.bass);
+    });
+
+    it('reports no prominence in silence and a normalized split while playing', () => {
+        const reactor = new AudioReactor({
+            fftSize: 1024,
+            bandAttackMs: 0,
+            bandReleaseMs: 0,
+            beatAttackMs: 0,
+            beatReleaseMs: 0,
+        });
+
+        const silent = reactor.analyze(new Float32Array(1024), 48_000, 16);
+        const silentTotal = DefaultAudioBandDefinitions.reduce((sum, b) => sum + silent.bandProminence[b.key], 0);
+        expect(silentTotal).toBe(0);
+
+        const playing = reactor.analyze(createSineWave(1024, 48_000, 120, 0.9), 48_000, 16);
+        const playingTotal = DefaultAudioBandDefinitions.reduce((sum, b) => sum + playing.raw.bandProminence[b.key], 0);
+        expect(playingTotal).toBeCloseTo(1, 6);
+    });
+
     it('expands analyser fft size when analysis sample rate is lowered', () => {
         const analyserSize = getAudioReactorAnalyserFftSize({
             ...DefaultAudioReactorParams,
