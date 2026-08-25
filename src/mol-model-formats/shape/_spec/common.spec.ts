@@ -14,9 +14,9 @@ import { Color } from '../../../mol-util/color';
 import { ColorNames } from '../../../mol-util/color/names';
 import { ParamDefinition as PD } from '../../../mol-util/param-definition';
 import { ShapeWireframeParams, wireframeShapeGetter } from '../common';
-import { ObjShapeParams } from '../obj';
-import { PlyShapeParams } from '../ply';
-import { VtpShapeParams } from '../vtp';
+import { ObjShapeParams, shapeFromObj } from '../obj';
+import { PlyShapeParams, shapeFromPly } from '../ply';
+import { VtpShapeParams, shapeFromVtp } from '../vtp';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -101,5 +101,24 @@ describe('shape wireframe params', () => {
         const values = PD.getDefaultValues(params);
         expect(values.visuals).toEqual(['mesh']);
         expect(values.sizeFactor).toBe(PD.getDefaultValues(ShapeWireframeParams).sizeFactor);
+    });
+
+    it('every mesh-based shape provider wires up a wireframe getter', async () => {
+        const emptyVtp = {
+            positions: new Float32Array(0), connectivity: new Int32Array(0),
+            triangleCellIndex: new Int32Array(0), numberOfPoints: 0, numberOfTriangles: 0,
+            pointData: new Map(), cellData: new Map(),
+        } as any;
+        const emptyPly = { getElement: () => undefined } as any;
+        const emptyObj = {
+            positions: new Float32Array(0), normals: new Float32Array(0),
+            positionIndices: new Int32Array(0), normalIndices: new Int32Array(0),
+            positionCount: 0, normalCount: 0, triangleCount: 0,
+            vertexColors: new Float32Array(0), materialNames: [], faceGroups: new Int32Array(0),
+        } as any;
+
+        for (const provider of [await shapeFromVtp(emptyVtp).run(), await shapeFromPly(emptyPly).run(), await shapeFromObj(emptyObj).run()]) {
+            expect(typeof provider.getWireframeShape).toBe('function');
+        }
     });
 });
