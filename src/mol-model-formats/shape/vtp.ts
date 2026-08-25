@@ -19,6 +19,7 @@ import { ColorListOptionsScale, ColorListName } from '../../mol-util/color/lists
 import { ValueCell } from '../../mol-util/value-cell';
 import { deepClone } from '../../mol-util/object';
 import { Mat4 } from '../../mol-math/linear-algebra/3d/mat4';
+import { ShapeWireframeParams, wireframeShapeGetter } from './common';
 
 export interface VtpData {
     source: VtpFile,
@@ -120,6 +121,7 @@ export function createVtpShapeParams(vtpFile?: VtpFile, getStats?: () => string)
 
     return {
         ...Mesh.Params,
+        ...ShapeWireframeParams,
         doubleSided: { ...Mesh.Params.doubleSided, defaultValue: true },
         interior: { ...Mesh.Params.interior, defaultValue: { ...Mesh.Params.interior.defaultValue, colorStrength: 0 } },
         colorTheme: PD.MappedStatic(hasAttrs ? 'attribute' : 'uniform', {
@@ -410,6 +412,7 @@ export function shapeFromVtp(source: VtpFile, params?: { transforms?: Mat4[] }) 
             params: createVtpShapeParams(source, () => getter.getStats().text),
             getShape: getter.getShape,
             geometryUtils: Mesh.Utils,
+            getWireframeShape: wireframeShapeGetter(getter.getShape),
         };
         return provider;
     });

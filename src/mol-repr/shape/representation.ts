@@ -18,7 +18,7 @@ import { MarkerAction, MarkerActions } from '../../mol-util/marker-action';
 import { ValueCell } from '../../mol-util';
 import { createColors } from '../../mol-geo/geometry/color-data';
 import { createSizes, SizeData } from '../../mol-geo/geometry/size-data';
-import { Loci, isEveryLoci, EmptyLoci } from '../../mol-model/loci';
+import { Loci, isEveryLoci, isEmptyLoci, EmptyLoci } from '../../mol-model/loci';
 import { Interval, OrderedSet } from '../../mol-data/int';
 import { PickingId } from '../../mol-geo/geometry/picking';
 import { Visual } from '../visual';
@@ -289,6 +289,106 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
                 _renderObject.state.disposed = true;
                 _renderObject = undefined;
             }
+        }
+    };
+}
+
+/** Combines several `ShapeRepresentation`s of the same data into one, picking which of them are
+ * shown from the `visuals` prop -- the shape counterpart of `Representation.createMulti`.
+ *
+ * It deliberately does not run `getQualityProps`: shape geometry comes ready-made from the shape
+ * provider, so there is nothing for the quality settings to tune, and letting them through would
+ * silently rewrite props (e.g. `doubleSided`) that the provider set on purpose. */
+export function ShapeMultiRepresentation<D, P extends PD.Params>(label: string, params: P, reprs: { [name: string]: ShapeRepresentation<D, Geometry, any> }): Representation<D, P> {
+    let version = 0;
+    const updated = new Subject<number>();
+    const geometryState = new Representation.GeometryState();
+    const _state = Representation.createState();
+    const currentProps = PD.getDefaultValues(params);
+    let currentData: D | undefined;
+
+    const names = Object.keys(reprs);
+    const reprList = names.map(n => reprs[n]);
+    for (const repr of reprList) repr.setState(_state);
+
+    /** Whether the visual at `index` is selected; an absent `visuals` prop means all of them. */
+    function isVisible(index: number) {
+        const visuals = (currentProps as PD.Values<any>).visuals as string[] | undefined;
+        return !visuals || visuals.includes(names[index]);
+    }
+
+    return {
+        label,
+        updated,
+        get groupCount() {
+            let groupCount = 0;
+            for (let i = 0, il = reprList.length; i < il; ++i) {
+                if (isVisible(i)) groupCount += reprList[i].groupCount;
+            }
+            return groupCount;
+        },
+        get renderObjects() {
+            const renderObjects: GraphicsRenderObject[] = [];
+            for (let i = 0, il = reprList.length; i < il; ++i) {
+                if (isVisible(i)) renderObjects.push(...reprList[i].renderObjects);
+            }
+            return renderObjects;
+        },
+        get geometryVersion() { return geometryState.version; },
+        get props() { return currentProps; },
+        get params() { return params; },
+        get state() { return _state; },
+        // The sub-representations fix their own theme to the shape's; report the first one's so the
+        // UI has something meaningful to show.
+        get theme() { return reprList[0].theme; },
+        createOrUpdate(props: Partial<PD.Values<P>> = {}, data?: D) {
+            Object.assign(currentProps, props);
+            if (data !== undefined) currentData = data;
+            return Task.create(`Creating or updating '${label}' representation`, async runtime => {
+                for (let i = 0, il = reprList.length; i < il; ++i) {
+                    if (isVisible(i)) {
+                        await reprList[i].createOrUpdate(currentProps, currentData).runInContext(runtime);
+                    }
+                    geometryState.add(i, reprList[i].geometryVersion);
+                }
+                geometryState.snapshot();
+                updated.next(version++);
+            });
+        },
+        getLoci(pickingId: PickingId) {
+            for (let i = 0, il = reprList.length; i < il; ++i) {
+                if (!isVisible(i)) continue;
+                const loci = reprList[i].getLoci(pickingId);
+                if (!isEmptyLoci(loci)) return loci;
+            }
+            return EmptyLoci;
+        },
+        getAllLoci() {
+            const loci: Loci[] = [];
+            for (let i = 0, il = reprList.length; i < il; ++i) {
+                if (isVisible(i)) loci.push(...reprList[i].getAllLoci());
+            }
+            return loci;
+        },
+        eachLocation(cb: LocationCallback) {
+            for (let i = 0, il = reprList.length; i < il; ++i) {
+                if (isVisible(i)) reprList[i].eachLocation(cb);
+            }
+        },
+        mark(loci: Loci, action: MarkerAction) {
+            let marked = false;
+            for (const repr of reprList) marked = repr.mark(loci, action) || marked;
+            return marked;
+        },
+        setState(state: Partial<Representation.State>) {
+            Representation.updateState(_state, state);
+            for (const repr of reprList) repr.setState(state);
+        },
+        setTheme(theme: Theme) {
+            for (const repr of reprList) repr.setTheme(theme);
+        },
+        destroy() {
+            for (const repr of reprList) repr.destroy();
         }
     };
 }

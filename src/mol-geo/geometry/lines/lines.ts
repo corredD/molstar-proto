@@ -83,21 +83,36 @@ export namespace Lines {
     }
 
     export function fromMesh(mesh: Mesh, lines?: Lines) {
+        const { vertexCount, triangleCount } = mesh;
         const vb = mesh.vertexBuffer.ref.value;
         const ib = mesh.indexBuffer.ref.value;
         const gb = mesh.groupBuffer.ref.value;
 
-        const builder = LinesBuilder.create(mesh.triangleCount * 3, mesh.triangleCount / 10, lines);
+        const builder = LinesBuilder.create(triangleCount * 3, triangleCount / 10, lines);
 
-        // TODO avoid duplicate lines
-        for (let i = 0, il = mesh.triangleCount * 3; i < il; i += 3) {
+        // Every interior edge is shared by two triangles and would otherwise be added twice. The
+        // pair key is exact only while it stays within the safe integer range; above that, fall
+        // back to emitting duplicates rather than silently merging distinct edges.
+        const seen = vertexCount * vertexCount <= Number.MAX_SAFE_INTEGER ? new Set<number>() : undefined;
+
+        const addEdge = (a: number, b: number) => {
+            if (seen) {
+                const key = a < b ? a * vertexCount + b : b * vertexCount + a;
+                if (seen.has(key)) return;
+                seen.add(key);
+            }
+            builder.add(
+                vb[a * 3], vb[a * 3 + 1], vb[a * 3 + 2],
+                vb[b * 3], vb[b * 3 + 1], vb[b * 3 + 2],
+                gb[a]
+            );
+        };
+
+        for (let i = 0, il = triangleCount * 3; i < il; i += 3) {
             const i0 = ib[i], i1 = ib[i + 1], i2 = ib[i + 2];
-            const x0 = vb[i0 * 3], y0 = vb[i0 * 3 + 1], z0 = vb[i0 * 3 + 2];
-            const x1 = vb[i1 * 3], y1 = vb[i1 * 3 + 1], z1 = vb[i1 * 3 + 2];
-            const x2 = vb[i2 * 3], y2 = vb[i2 * 3 + 1], z2 = vb[i2 * 3 + 2];
-            builder.add(x0, y0, z0, x1, y1, z1, gb[i0]);
-            builder.add(x0, y0, z0, x2, y2, z2, gb[i0]);
-            builder.add(x1, y1, z1, x2, y2, z2, gb[i1]);
+            addEdge(i0, i1);
+            addEdge(i0, i2);
+            addEdge(i1, i2);
         }
 
         return builder.getLines();

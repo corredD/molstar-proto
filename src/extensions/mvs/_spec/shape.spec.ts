@@ -143,6 +143,25 @@ describe('MVS shape node', () => {
         expect(shape.getColor(5, 0)).not.toEqual(shape.getColor(4, 0));
     });
 
+    it('asks for a wireframe through molstar_mesh_params, sharing the mesh colors', async () => {
+        const node = { kind: 'shape', params: {}, custom: { vtp_attribute: 'height', molstar_mesh_params: { visuals: ['mesh', 'wireframe'] } } } as any;
+        expect((shapeRepresentationProps(node, 'vtp') as any).visuals).toEqual(['mesh', 'wireframe']);
+
+        const parsed = await parseVtp(new TextEncoder().encode(OCTAHEDRON_VTP)).run();
+        if (parsed.isError) throw new Error(parsed.message);
+        const provider = await shapeFromVtp(parsed.result).run();
+        const props = { ...PD.getDefaultValues(provider.params), ...shapeRepresentationProps(node, 'vtp') } as any;
+
+        const mesh = await Task.create('t', ctx => provider.getShape(ctx, provider.data, props)).run();
+        const wireframe = await Task.create('t', ctx => provider.getWireframeShape!(ctx, provider.data, props)).run();
+
+        expect(wireframe.geometry.kind).toEqual('lines');
+        // The octahedron's 8 triangles share every edge, so 12 edges rather than 24.
+        expect(wireframe.geometry.lineCount).toEqual(12);
+        expect(wireframe.getColor(5, 0)).toEqual(mesh.getColor(5, 0));
+        expect(wireframe.getLabel(5, 0)).toEqual(mesh.getLabel(5, 0));
+    });
+
     it('passes a palette name and domain straight through to the provider', () => {
         const props = (custom: any) => shapeRepresentationProps({ kind: 'shape', params: {}, custom } as any, 'vtp') as any;
 

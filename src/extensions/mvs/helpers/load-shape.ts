@@ -44,7 +44,8 @@ interface ShapeCustomProps {
      * provider for its generated per-material palette from here, and no access to the material
      * names to pre-fill them. Materials not listed render grey (the provider's own fallback). */
     obj_material_colors?: Record<string, string>,
-    /** Mesh-level rendering params, as for `primitives`. */
+    /** Mesh-level rendering params, as for `primitives`. Also where the surface is asked for as
+     * a wireframe: `visuals: ['wireframe']` instead of the default `['mesh']`, or both at once. */
     molstar_mesh_params?: Record<string, any>,
 }
 
