@@ -26,7 +26,11 @@ import { RuntimeContext, Task } from '../../mol-task';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { isDebugMode } from '../../mol-util/debug';
 
-export interface ShapeRepresentation<D, G extends Geometry, P extends Geometry.Params<G>> extends Representation<D, P> { }
+export interface ShapeRepresentation<D, G extends Geometry, P extends Geometry.Params<G>> extends Representation<D, P> {
+    /** The shape the representation was last built from. Absent before the first update, and on
+     * the composed representations that are also typed as one. */
+    readonly shape?: Shape<G>
+}
 
 export type ShapeGetter<D, G extends Geometry, P extends Geometry.Params<G>> = (ctx: RuntimeContext, data: D, props: PD.Values<P>, shape?: Shape<G>) => Shape<G> | Promise<Shape<G>>
 
@@ -216,6 +220,7 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
 
     return {
         label: 'Shape geometry',
+        get shape(): Shape<G> | undefined { return _shape; },
         get groupCount() { return locationIt ? locationIt.count : 0; },
         get props() { return currentProps; },
         get params() { return currentParams; },
@@ -338,9 +343,14 @@ export function ShapeMultiRepresentation<D, P extends PD.Params>(label: string, 
         get props() { return currentProps; },
         get params() { return params; },
         get state() { return _state; },
-        // The sub-representations fix their own theme to the shape's; report the first one's so the
-        // UI has something meaningful to show.
-        get theme() { return reprList[0].theme; },
+        // The sub-representations fix their own theme to the shape's. Only a visual that has been
+        // updated has one, so report the first visible visual's rather than the first visual's.
+        get theme() {
+            for (let i = 0, il = reprList.length; i < il; ++i) {
+                if (isVisible(i)) return reprList[i].theme;
+            }
+            return reprList[0].theme;
+        },
         createOrUpdate(props: Partial<PD.Values<P>> = {}, data?: D) {
             Object.assign(currentProps, props);
             if (data !== undefined) currentData = data;
@@ -377,7 +387,9 @@ export function ShapeMultiRepresentation<D, P extends PD.Params>(label: string, 
         },
         mark(loci: Loci, action: MarkerAction) {
             let marked = false;
-            for (const repr of reprList) marked = repr.mark(loci, action) || marked;
+            for (const repr of reprList) {
+                marked = repr.mark(retargetLoci(loci, repr.shape), action) || marked;
+            }
             return marked;
         },
         setState(state: Partial<Representation.State>) {
@@ -391,6 +403,17 @@ export function ShapeMultiRepresentation<D, P extends PD.Params>(label: string, 
             for (const repr of reprList) repr.destroy();
         }
     };
+}
+
+/** Each visual owns a separate `Shape` and only marks loci pointing at that one. The visuals are
+ * built from the same geometry and so share group ids, which makes re-pointing a loci at another
+ * visual's shape exact -- and picking one visual then highlights all of them, as it does when
+ * structure visuals share a `Structure`. */
+function retargetLoci(loci: Loci, shape: Shape | undefined): Loci {
+    if (!shape) return loci;
+    if (Shape.isLoci(loci)) return loci.shape === shape ? loci : Shape.Loci(shape);
+    if (ShapeGroup.isLoci(loci)) return loci.shape === shape ? loci : ShapeGroup.Loci(shape, loci.groups);
+    return loci;
 }
 
 function eachShapeGroup(loci: Loci, shape: Shape, apply: (interval: Interval) => boolean) {
