@@ -15,6 +15,7 @@ Note that since we don't clearly distinguish between a public and private interf
 - Fix `floodfill` not applied on the gaussian surface wireframe
 - Fix `traceOnly` update being ignored by the molecular surface wireframe visuals
 - Add MVS `shape` node for rendering meshes from `vtp`, `ply` and `obj` resources
+- Add a wireframe visual to `vtp`, `ply` and `obj` shapes
 - Added support for molecular atom_style in lammps data files
 - Added element symbol detection in lammps data file
 - Fix inconsistent atomic weight for some elements in `ElementAtomWeights`
