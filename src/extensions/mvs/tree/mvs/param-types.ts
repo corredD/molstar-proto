@@ -19,6 +19,8 @@ export type ParseFormatT =
     | 'psf' | 'prmtop' | 'top'
     // volumes
     | 'map' | 'dx' | 'dxbin'
+    // shape
+    | 'vtp' | 'ply' | 'obj'
 export const ParseFormatT = literal<ParseFormatT>(
     // trajectory
     'mmcif',
@@ -44,6 +46,10 @@ export const ParseFormatT = literal<ParseFormatT>(
     'map',
     'dx',
     'dxbin',
+    // shape
+    'vtp',
+    'ply',
+    'obj',
 );
 
 /** `format` parameter values for `parse` node in Molstar tree */
@@ -56,6 +62,8 @@ export type MolstarParseFormatT =
     | 'psf' | 'prmtop' | 'top'
     // volumes
     | 'map' | 'dx' | 'dxbin'
+    // shape
+    | 'vtp' | 'ply' | 'obj'
 export const MolstarParseFormatT = literal<MolstarParseFormatT>(
     // trajectory
     'cif', // +volumes
@@ -80,6 +88,10 @@ export const MolstarParseFormatT = literal<MolstarParseFormatT>(
     'map',
     'dx',
     'dxbin',
+    // shape
+    'vtp',
+    'ply',
+    'obj',
 );
 
 /** `kind` parameter values for `structure` node in MVS tree */
@@ -137,6 +149,15 @@ export const Matrix = list(float); // TODO impl custom types Matrix3x3 and Matri
 
 export type LabelAttachments = 'bottom-left' | 'bottom-center' | 'bottom-right' | 'middle-left' | 'middle-center' | 'middle-right' | 'top-left' | 'top-center' | 'top-right';
 export const LabelAttachments = literal<LabelAttachments>('bottom-left', 'bottom-center', 'bottom-right', 'middle-left', 'middle-center', 'middle-right', 'top-left', 'top-center', 'top-right');
+
+/** `trajectory` parameter values for `transition` node in MVS tree, describes camera transition trajectory shape */
+export type CameraTransitionTrajectoryT = 'linear' | 'linear-relative' | 'leap' | 'leap-relative';
+export const CameraTransitionTrajectoryT = literal<CameraTransitionTrajectoryT>('linear', 'linear-relative', 'leap', 'leap-relative');
+
+/** `easing` parameter values for `transition` node in MVS tree and for animations, describes easing function */
+export type EasingT = 'linear' | 'bounce-in' | 'bounce-out' | 'bounce-in-out' | 'circle-in' | 'circle-out' | 'circle-in-out' | 'cubic-in' | 'cubic-out' | 'cubic-in-out' | 'exp-in' | 'exp-out' | 'exp-in-out' | 'quad-in' | 'quad-out' | 'quad-in-out' | 'sin-in' | 'sin-out' | 'sin-in-out';
+export const EasingT = literal<EasingT>('linear', 'bounce-in', 'bounce-out', 'bounce-in-out', 'circle-in', 'circle-out', 'circle-in-out', 'cubic-in', 'cubic-out', 'cubic-in-out', 'exp-in', 'exp-out', 'exp-in-out', 'quad-in', 'quad-out', 'quad-in-out', 'sin-in', 'sin-out', 'sin-in-out');
+
 
 /** Primitives-related types */
 const _PrimitiveComponentExpressionT = partial({

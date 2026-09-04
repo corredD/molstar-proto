@@ -111,7 +111,6 @@ function adjustPluginProps(ctx: PluginContext) {
         },
         illumination: {
             enabled: customState.illumination,
-            firstStepSize: 0.1,
             rayDistance: 1024,
         },
     });

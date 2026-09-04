@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file, following t
 Note that since we don't clearly distinguish between a public and private interfaces there will be changes in non-major versions that are potentially breaking. If we make breaking changes to less used interfaces we will highlight it in here.
 
 ## [Unreleased]
+- Optimize `GridLookup3D` building for sparse grids
+- Optimize `calcInstanceGrid` by reducing amount of data copied
+- Viewer app: keep track of instances in static `Viewer.instances`
+- Fix missing reset time for `Canvas3dInteractionHelper`
+- Fix the blob surface density blocking the main thread
+- Add `blob-surface-wireframe` and `structure-blob-surface-wireframe` visuals
+- Remove unused `floodfill` param from the gaussian density volume representation
+- Fix CPU surface/volume visuals rebuilding on every update if GPU path is unavailable
+- Fix `floodfill` not applied on the gaussian surface wireframe
+- Fix `traceOnly` update being ignored by the molecular surface wireframe visuals
+- Add MVS `shape` node for rendering meshes from `vtp`, `ply` and `obj` resources
 - VTP mesh coloring: add `external-volume` color option (samples a volume at each vertex), plus `best`/`zscale` domain modes and linear/log mapping
 - Add `Apply Clipping` option to `Export Geometry`, leaving geometry removed by a visual's clip objects out of the exported file instead of exporting the whole scene. Adds a CPU port of the shader clip test (`Clip.createTest`/`testPoint`/`classifyBall` in `mol-util/clip`).
 - Fix `quantizeColors` being called with the vertex count in the OBJ and USDZ exporters, where the color array holds one entry per triangle
@@ -22,9 +33,43 @@ Note that since we don't clearly distinguish between a public and private interf
     - Generate operators from Hall symbols
     - Introduce change-of-basis settings
     - Move base functionality from `SpacegroupCell` to `Cell`
+- Improve `Cell` handling
+    - Fix volume calculation for non-orthogonal cells
+    - Use as base for `Unitcell` shape
+    - Add `order` property (for AU volume estimation)
+- Add per-format cache for `FormatProperty`
+    - Use for `ModelSymmetry` and `ComponentBond`
+- `ModelSymmetry` improvements
+    - Fix property not being dynamic
+    - Defer Symmetry calculation in ModelSymmetry.fromData
 - Support non-default CRYSIN setting in MOL2 format (#338)
 - Fix `ssao-blur` background test: the RG-packed depth never equals `1.0`, so background samples were blurred into geometry and produced a bright rim at the far-clip cutoff
 - Fix picking/hover-highlight of the nucleic cartoon polymer-trace on reduced trace structures returning empty: `getResidueLoci` now accounts for whole residue, not limited to unit.
+- Fix stale marker data in `VolumeVisual` when a geometry update changes the group count (e.g. switching `slice` mode), which mismarked unrelated groups and disabled the marking pass scene-wide
+- Add Spherical Harmonics to mol-math
+- Add `blob-surface` structure representation
+    - Bin atoms to grid or cluster
+    - Fast option fits ellipsoids to bins
+    - Artistic option fits spherical harmonics to bins
+- Fix camera reset handling for (temporary) empty scenes (#1903)
+- Remove `firstStepSize` tracing parameter, derive automatically
+- Fix illumination `auto` thickness mode never correctly being applied
+- Fix illumination ray marching stepping over occluders when the acceptance window is narrower than the current step
+- Evaluate illumination `auto` thickness at the surface being tested instead of latching it from the shaded pixel
+- Add `.parseRaw` to `DataFormatProvider` for out of state tree parsing
+- Camera improvements
+  - Support multiple camera transition shapes
+  - Add `transitionTrajectory` and `transitionEasing` parameters to `PluginState.Snapshot` (MOLJ) and Plugin State > Save Options
+  - Add `trajectory` and `easing` parameters to `FocusLoci` behavior
+  - Add `cameraResetTrajectory` and `cameraResetEasing` parameters to `Canvas3DParams`
+- MolViewSpec
+  - Added `transition` node with params `duration_ms`, `trajectory`, `easing`
+  - Snapshot metadata: `linger_duration_ms` renamed to `duration_ms`, deprecated `transition_duration_ms`
+  - MVS-related custom model properties (and custom structure properties) are hidden in UI (fixes override of default custom properties)
+- Remove `new Function` usage for CSP / SOC2 compliance; server path templates use a whitelist of `${id...}` string methods
+- Fix CCP4/MRC volumes with unset cell angles failing to load: a zero `cellb` (e.g. written by IMOD) made the fractional transform `NaN`; a right angle is now assumed via `getCcp4Angles`
+- Fix CCP4/MRC volume `sigma` being taken from the header when the header rms is negative, which by convention means it was not computed (e.g. IMOD writes -1) and put the default 2 sigma iso value below every voxel value
+- Guard `GridLookup3D` against degenerate grid sizes so an empty or non-finite boundary gives an empty lookup instead of throwing `RangeError: invalid array length`
 
 ## [v5.11.0] - 2026-07-18
 - Fix LAMMPS unsorted-atom handling (trajectory frame ordering and data-file bonds)

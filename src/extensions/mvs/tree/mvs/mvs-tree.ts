@@ -10,7 +10,7 @@ import { SimpleParamsSchema } from '../generic/params-schema';
 import { NodeFor, ParamsOfKind, SubtreeOfKind, TreeFor, TreeSchema, TreeSchemaWithAllRequired } from '../generic/tree-schema';
 import { MVSPrimitiveParams } from './mvs-tree-primitives';
 import { MVSClipParams, MVSRepresentationParams, MVSVolumeRepresentationParams } from './mvs-tree-representations';
-import { ColorT, ComponentExpressionT, ComponentSelectorT, LabelAttachments, Matrix, Palette, ParseFormatT, SchemaFormatT, SchemaT, StrList, StructureTypeT, Vector3 } from './param-types';
+import { CameraTransitionTrajectoryT, ColorT, ComponentExpressionT, ComponentSelectorT, EasingT, LabelAttachments, Matrix, Palette, ParseFormatT, SchemaFormatT, SchemaT, StrList, StructureTypeT, Vector3 } from './param-types';
 
 
 const SelectorT = union(ComponentSelectorT, ComponentExpressionT, list(ComponentExpressionT));
@@ -126,13 +126,13 @@ export const MVSTreeSchema = TreeSchema({
         /** This node instructs to rotate and/or translate structure coordinates. */
         transform: {
             description: 'This node instructs to rotate and/or translate coordinates OR provide a transformation matrix.',
-            parent: ['structure', 'component', 'volume'],
+            parent: ['structure', 'component', 'volume', 'shape'],
             params: TransformParams,
         },
         /** This node allows instantiation using the provided transformation parameters. */
         instance: {
             description: 'This node allows instantiation using the provided transformation parameters.',
-            parent: ['structure', 'component', 'volume'],
+            parent: ['structure', 'component', 'volume', 'shape'],
             params: TransformParams,
         },
         /** This node instructs to create a component (i.e. a subset of the parent structure). */
@@ -189,10 +189,16 @@ export const MVSTreeSchema = TreeSchema({
             parent: ['volume'],
             params: MVSVolumeRepresentationParams,
         },
+        /** This node instructs to create a mesh from a parsed 3D geometry resource (VTP, PLY, or OBJ). */
+        shape: {
+            description: 'This node instructs to create a mesh from a parsed 3D geometry resource (VTP, PLY, or OBJ). Color is applied via child `color` nodes; format-specific options (e.g. coloring a VTP by one of its data arrays) are carried as prefixed custom properties.',
+            parent: ['parse'],
+            params: SimpleParamsSchema({}),
+        },
         /** This node instructs to apply color to a visual representation. */
         color: {
             description: 'This node instructs to apply color to a visual representation.',
-            parent: ['representation', 'volume_representation'],
+            parent: ['representation', 'volume_representation', 'shape'],
             params: SimpleParamsSchema({
                 /** Color to apply to the representation. Can be either an X11 color name (e.g. `"red"`) or a hexadecimal code (e.g. `"#FF0011"`). */
                 color: OptionalField(ColorT, DefaultColor, 'Color to apply to the representation. Can be either an X11 color name (e.g. `"red"`) or a hexadecimal code (e.g. `"#FF0011"`).'),
@@ -231,13 +237,13 @@ export const MVSTreeSchema = TreeSchema({
         /** This node instructs to apply clipping to a visual representation. */
         clip: {
             description: 'This node instructs to apply clipping to a visual representation.',
-            parent: ['representation', 'volume_representation', 'primitives', 'primitives_from_uri'],
+            parent: ['representation', 'volume_representation', 'primitives', 'primitives_from_uri', 'shape'],
             params: MVSClipParams,
         },
         /** This node instructs to apply opacity/transparency to a visual representation. */
         opacity: {
             description: 'This node instructs to apply opacity/transparency to a visual representation.',
-            parent: ['representation', 'volume_representation'],
+            parent: ['representation', 'volume_representation', 'shape'],
             params: SimpleParamsSchema({
                 /** Opacity of a representation. 0.0: fully transparent, 1.0: fully opaque. */
                 opacity: RequiredField(float, 'Opacity of a representation. 0.0: fully transparent, 1.0: fully opaque.'),
@@ -316,7 +322,7 @@ export const MVSTreeSchema = TreeSchema({
         /** This node instructs to set the camera focus to a component (zoom in). */
         focus: {
             description: 'This node instructs to set the camera focus to a component (zoom in).',
-            parent: ['root', 'component', 'component_from_uri', 'component_from_source', 'primitives', 'primitives_from_uri', 'volume', 'volume_representation'],
+            parent: ['root', 'component', 'component_from_uri', 'component_from_source', 'primitives', 'primitives_from_uri', 'volume', 'volume_representation', 'shape'],
             params: SimpleParamsSchema({
                 /** Vector describing the direction of the view (camera position -> focused target). */
                 direction: OptionalField(Vector3, [0, 0, -1], 'Vector describing the direction of the view (camera position -> focused target).'),
@@ -328,30 +334,6 @@ export const MVSTreeSchema = TreeSchema({
                 radius_factor: OptionalField(float, 1, 'Radius of the focused sphere relative to the radius of parent component (default: 1). Focused radius = component_radius * radius_factor + radius_extent.'),
                 /** Addition to the radius of the focused sphere, if computed from the radius of parent component (default: 0). Focused radius = component_radius * radius_factor + radius_extent. */
                 radius_extent: OptionalField(float, 0, 'Addition to the radius of the focused sphere, if computed from the radius of parent component (default: 0). Focused radius = component_radius * radius_factor + radius_extent.'),
-            }),
-        },
-        /** This node instructs to set the camera position and orientation. */
-        camera: {
-            description: 'This node instructs to set the camera position and orientation.',
-            parent: ['root'],
-            params: SimpleParamsSchema({
-                /** Coordinates of the point in space at which the camera is pointing. */
-                target: RequiredField(Vector3, 'Coordinates of the point in space at which the camera is pointing.'),
-                /** Coordinates of the camera. */
-                position: RequiredField(Vector3, 'Coordinates of the camera.'),
-                /** Vector which will be aligned with the screen Y axis. */
-                up: OptionalField(Vector3, [0, 1, 0], 'Vector which will be aligned with the screen Y axis.'),
-                /** Near clipping plane distance from the position. */
-                near: OptionalField(nullable(float), null, 'Near clipping plane distance from the position.'),
-            }),
-        },
-        /** This node sets canvas properties. */
-        canvas: {
-            description: 'This node sets canvas properties.',
-            parent: ['root'],
-            params: SimpleParamsSchema({
-                /** Color of the canvas background. Can be either an X11 color name (e.g. `"red"`) or a hexadecimal code (e.g. `"#FF0011"`). */
-                background_color: OptionalField(ColorT, 'white', 'Color of the canvas background. Can be either an X11 color name (e.g. `"red"`) or a hexadecimal code (e.g. `"#FF0011"`). Defaults to white.'),
             }),
         },
         primitives: {
@@ -398,6 +380,44 @@ export const MVSTreeSchema = TreeSchema({
             description: 'This node represents a geometrical primitive',
             parent: ['primitives'],
             params: MVSPrimitiveParams,
+        },
+        /** This node instructs to set the camera position and orientation. */
+        camera: {
+            description: 'This node instructs to set the camera position and orientation.',
+            parent: ['root'],
+            params: SimpleParamsSchema({
+                /** Coordinates of the point in space at which the camera is pointing. */
+                target: RequiredField(Vector3, 'Coordinates of the point in space at which the camera is pointing.'),
+                /** Coordinates of the camera. */
+                position: RequiredField(Vector3, 'Coordinates of the camera.'),
+                /** Vector which will be aligned with the screen Y axis. */
+                up: OptionalField(Vector3, [0, 1, 0], 'Vector which will be aligned with the screen Y axis.'),
+                /** Near clipping plane distance from the position. */
+                near: OptionalField(nullable(float), null, 'Near clipping plane distance from the position.'),
+            }),
+        },
+        /** This node sets canvas properties. */
+        canvas: {
+            description: 'This node sets canvas properties.',
+            parent: ['root'],
+            params: SimpleParamsSchema({
+                /** Color of the canvas background. Can be either an X11 color name (e.g. `"red"`) or a hexadecimal code (e.g. `"#FF0011"`). */
+                background_color: OptionalField(ColorT, 'white', 'Color of the canvas background. Can be either an X11 color name (e.g. `"red"`) or a hexadecimal code (e.g. `"#FF0011"`). Defaults to white.'),
+            }),
+        },
+        /** This node specifies camera transition when entering this MVS snapshot from the previous snapshot. */
+        transition: {
+            description: 'This node specifies camera transition when entering this MVS snapshot.',
+            parent: ['root'],
+            params: SimpleParamsSchema({
+                /** Duration of the transition from the previous snapshot to this snapshot, in milliseconds. This overrides the deprecated `transition_duration_ms` in the snapshot metadata (which applies to the transition from this snapshot to the next snapshot). */
+                duration_ms: OptionalField(float, 0, 'Duration of the transition from the previous snapshot to this snapshot, in milliseconds. This overrides the deprecated `transition_duration_ms` in the snapshot metadata (which applies to the transition from this snapshot to the next snapshot). Defaults to 0.'),
+                /** Camera transition trajectory shape. "linear": interpolates along a straight line with constant absolute speed; "linear-relative": like "linear" but moves relatively slower when zoomed-in more; "leap": zooms out during the transition to capture both the initial and the final camera target (becomes linear if the targets are near); "leap-relative": like "leap" but moves relatively slower when zoomed-in more. Defaults to "linear". */
+                trajectory: OptionalField(CameraTransitionTrajectoryT, 'linear', 'Camera transition trajectory shape. "linear": interpolates along a straight line with constant absolute speed; "linear-relative": like "linear" but moves relatively slower when zoomed-in more; "leap": zooms out during the transition to capture both the initial and the final camera target (becomes linear if the targets are near); "leap-relative": like "leap" but moves relatively slower when zoomed-in more. Defaults to "linear".'),
+                /** Transition easing function. Adjusts transition speed near the beginning and end of the transition to create smoother camera motion. Defaults to "linear". */
+                easing: OptionalField(EasingT, 'linear', 'Transition easing function. Adjusts transition speed near the beginning and end of the transition to create smoother camera motion. Defaults to "linear".'),
+                // TODO: update MVS tree schema in docs
+            }),
         },
     }
 });

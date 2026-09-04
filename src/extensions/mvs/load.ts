@@ -9,9 +9,10 @@
 
 import { PluginStateSnapshotManager } from '../../mol-plugin-state/manager/snapshots';
 import { PluginStateObject } from '../../mol-plugin-state/objects';
-import { Download, ParseCcp4, ParseCif, ParseDx, ParsePrmtop, ParsePsf, ParseTop } from '../../mol-plugin-state/transforms/data';
+import { Download, ParseCcp4, ParseCif, ParseDx, ParseObj, ParsePly, ParsePrmtop, ParsePsf, ParseTop, ParseVtp } from '../../mol-plugin-state/transforms/data';
 import { CoordinatesFromDcd, CoordinatesFromLammpstraj, CoordinatesFromNctraj, CoordinatesFromTrr, CoordinatesFromXtc, CustomModelProperties, CustomStructureProperties, ModelFromTrajectory, StructureComponent, StructureFromModel, TopologyFromPrmtop, TopologyFromPsf, TopologyFromTop, TrajectoryFromGRO, TrajectoryFromLammpsTrajData, TrajectoryFromMmCif, TrajectoryFromMOL, TrajectoryFromMOL2, TrajectoryFromPDB, TrajectoryFromSDF, TrajectoryFromXYZ } from '../../mol-plugin-state/transforms/model';
-import { StructureRepresentation3D, VolumeRepresentation3D } from '../../mol-plugin-state/transforms/representation';
+import { ShapeRepresentation3D, StructureRepresentation3D, VolumeRepresentation3D } from '../../mol-plugin-state/transforms/representation';
+import { ShapeFromObj, ShapeFromPly, ShapeFromVtp } from '../../mol-plugin-state/transforms/shape';
 import { VolumeFromCcp4, VolumeFromDensityServerCif, VolumeFromDx } from '../../mol-plugin-state/transforms/volume';
 import { PluginCommands } from '../../mol-plugin/commands';
 import { PluginContext } from '../../mol-plugin/context';
@@ -30,6 +31,7 @@ import { IsMVSModelProps, IsMVSModelProvider } from './components/is-mvs-model-p
 import { getPrimitiveStructureRefs, MVSBuildPrimitiveShape, MVSDownloadPrimitiveData, MVSInlinePrimitiveData, MVSShapeRepresentation3D } from './components/primitives';
 import { MVSTrajectoryWithCoordinates } from './components/trajectory';
 import { generateStateTransition } from './helpers/animation';
+import { ShapeFormat, shapeRepresentationProps, shapeTransforms } from './helpers/load-shape';
 import { IsHiddenCustomStateExtension } from './load-extensions/is-hidden-custom-state';
 import { NonCovalentInteractionsExtension } from './load-extensions/non-covalent-interactions';
 import { VolumeStreamingExtension } from './load-extensions/volume-streaming';
@@ -192,16 +194,23 @@ function molstarTreeToEntry(
     snapshot.canvas3d = {
         props: plugin.canvas3d ? modifyCanvasProps(plugin.canvas3d.props, context.canvas, animation) : undefined,
     };
+    const snapshotDurationMs = metadata.duration_ms ?? metadata.linger_duration_ms ?? SnapshotMetadata.Defaults.duration_ms;
+    const transitionParams = context.transition?.params;
+    const transitionDurationMs = transitionParams?.duration_ms ?? metadata.previousTransitionDurationMs ?? 0;
     if (options?.keepCamera) {
         // do nothing
     } else if (options.keepCameraOrientation) {
         // load camera target, keep orientation
-        snapshot.camera = createPluginStateSnapshotCamera(plugin, context, { previousTransitionDurationMs: metadata.previousTransitionDurationMs, ignoreCameraOrientation: true });
+        snapshot.camera = createPluginStateSnapshotCamera(plugin, context, { incomingTransitionDurationMs: transitionDurationMs, ignoreCameraOrientation: true });
     } else {
         // fully load camera
-        snapshot.camera = createPluginStateSnapshotCamera(plugin, context, { previousTransitionDurationMs: metadata.previousTransitionDurationMs });
+        snapshot.camera = createPluginStateSnapshotCamera(plugin, context, { incomingTransitionDurationMs: transitionDurationMs });
     }
-    snapshot.durationInMs = metadata.linger_duration_ms + (metadata.previousTransitionDurationMs ?? 0);
+    if (snapshot.camera) {
+        if (transitionParams?.easing) snapshot.camera.transitionEasing = transitionParams.easing;
+        if (transitionParams?.trajectory) snapshot.camera.transitionTrajectory = transitionParams.trajectory;
+    }
+    snapshot.durationInMs = snapshotDurationMs + transitionDurationMs;
     snapshot.structureFocus = {}; // avoid structure focus persisting through states (causes weird behaviors, e.g. when turning on Volume Streaming)
 
     if (tree.custom?.molstar_on_load_markdown_commands) {
@@ -229,6 +238,7 @@ export interface MolstarLoadingContext {
         focuses: { target: StateObjectSelector, params: MolstarNodeParams<'focus'> }[],
     },
     canvas?: MolstarNode<'canvas'>,
+    transition?: MolstarNode<'transition'>,
 }
 export const MolstarLoadingContext = {
     create(): MolstarLoadingContext {
@@ -281,6 +291,12 @@ const MolstarLoadingActions: LoadingActions<MolstarTree, MolstarLoadingContext> 
             case 'dx':
             case 'dxbin':
                 return UpdateTarget.apply(updateParent, ParseDx, {});
+            case 'vtp':
+                return UpdateTarget.apply(updateParent, ParseVtp, {});
+            case 'ply':
+                return UpdateTarget.apply(updateParent, ParsePly, {});
+            case 'obj':
+                return UpdateTarget.apply(updateParent, ParseObj, {});
             default:
                 console.error(`Unknown format in "parse" node: "${format}"`);
                 return undefined;
@@ -370,10 +386,7 @@ const MolstarLoadingActions: LoadingActions<MolstarTree, MolstarLoadingContext> 
                 [IsMVSModelProvider.descriptor.name]: { isMvs: true } satisfies IsMVSModelProps,
                 [MVSAnnotationsProvider.descriptor.name]: { annotations },
             },
-            autoAttach: [
-                IsMVSModelProvider.descriptor.name,
-                MVSAnnotationsProvider.descriptor.name,
-            ],
+            // autoAttach not needed for these properties because they have isHidden:true (explicit autoAttach here would override default autoAttach of other properties!, e.g. sifts_sequence_mapping)
         });
         return model;
     },
@@ -388,10 +401,7 @@ const MolstarLoadingActions: LoadingActions<MolstarTree, MolstarLoadingContext> 
                 [MVSAnnotationTooltipsProvider.descriptor.name]: { tooltips: annotationTooltips },
                 [CustomTooltipsProvider.descriptor.name]: { tooltips: inlineTooltips },
             },
-            autoAttach: [
-                MVSAnnotationTooltipsProvider.descriptor.name,
-                CustomTooltipsProvider.descriptor.name,
-            ],
+            // autoAttach not needed for these properties because they have isHidden:true (explicit autoAttach here would override default autoAttach of other properties!)
         }); // CustomStructureProperties must be applied even when `annotationTooltips` and `inlineTooltips` are empty, otherwise tooltips would persists across MVS snapshots
         const inlineLabels = collectInlineLabels(node, context);
         if (inlineLabels.length > 0) {
@@ -456,6 +466,28 @@ const MolstarLoadingActions: LoadingActions<MolstarTree, MolstarLoadingContext> 
             colorTheme: volumeColorThemeForNode(node, context),
         });
     },
+    shape(updateParent: UpdateTarget, node: MolstarSubtree<'shape'>): UpdateTarget | undefined {
+        // Same transformers the plugin's own shape format provider uses, so the resulting state
+        // object is identical to one produced by opening the file through the UI. MVS only
+        // supplies the initial parameter values -- the `volume` node works the same way.
+        const transforms = shapeTransforms(node);
+        let shape: UpdateTarget;
+        let format: ShapeFormat;
+        if (updateParent.transformer?.definition.to.includes(PluginStateObject.Format.Vtp)) {
+            format = 'vtp';
+            shape = UpdateTarget.apply(updateParent, ShapeFromVtp, { transforms });
+        } else if (updateParent.transformer?.definition.to.includes(PluginStateObject.Format.Ply)) {
+            format = 'ply';
+            shape = UpdateTarget.apply(updateParent, ShapeFromPly, { transforms });
+        } else if (updateParent.transformer?.definition.to.includes(PluginStateObject.Format.Obj)) {
+            format = 'obj';
+            shape = UpdateTarget.apply(updateParent, ShapeFromObj, { transforms });
+        } else {
+            console.error(`Unsupported format for "shape" node`);
+            return undefined;
+        }
+        return UpdateTarget.apply(shape, ShapeRepresentation3D, shapeRepresentationProps(node, format));
+    },
     color: undefined, // No action needed, already loaded in `representation`
     color_from_uri: undefined, // No action needed, already loaded in `representation`
     color_from_source: undefined, // No action needed, already loaded in `representation`
@@ -478,6 +510,10 @@ const MolstarLoadingActions: LoadingActions<MolstarTree, MolstarLoadingContext> 
     },
     canvas(updateParent: UpdateTarget, node: MolstarNode<'canvas'>, context: MolstarLoadingContext): UpdateTarget {
         context.canvas = node;
+        return updateParent;
+    },
+    transition(updateParent: UpdateTarget, node: MolstarNode<'transition'>, context: MolstarLoadingContext): UpdateTarget {
+        context.transition = node;
         return updateParent;
     },
     primitives(updateParent: UpdateTarget, tree: MolstarSubtree<'primitives'>, context: MolstarLoadingContext): UpdateTarget {

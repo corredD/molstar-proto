@@ -87,6 +87,11 @@ export class Root extends _Base<'root'> implements FocusMixin, PrimitivesMixin {
         this.addChild('canvas', params);
         return this;
     }
+    /** Add a 'transition' node and return builder pointing to the root. 'transition' node specifies camera transition when entering the current MVS snapshot from the previous snapshot. */
+    transition(params: MVSNodeParams<'transition'> & CustomAndRef): Root {
+        this.addChild('transition', params);
+        return this;
+    }
     /** Add a 'download' node and return builder pointing to it. 'download' node instructs to retrieve a data resource. */
     download(params: MVSNodeParams<'download'> & CustomAndRef): Download {
         return new Download(this._root, this.addChild('download', params));
@@ -197,6 +202,10 @@ export class Parse extends _Base<'parse'> {
     /** Add a 'volume' node representing raw volume data */
     volume(params: MVSNodeParams<'volume'> & CustomAndRef = {}): Volume {
         return new Volume(this._root, this.addChild('volume', params));
+    }
+    /** Add a 'shape' node representing a mesh loaded from a 3D geometry resource (VTP, PLY, or OBJ) */
+    shape(params: MVSNodeParams<'shape'> & CustomAndRef = {}): Shape {
+        return new Shape(this._root, this.addChild('shape', params));
     }
     /** Add a 'coordinates' node indicating the parsed data type */
     coordinates(params: MVSNodeParams<'coordinates'> & CustomAndRef = {}): Parse {
@@ -309,6 +318,30 @@ export class Volume extends _Base<'volume'> implements FocusMixin, TransformMixi
             params = { type: 'isosurface' };
         }
         return new VolumeRepresentation(this._root, this.addChild('volume_representation', params));
+    }
+    focus = bindMethod(this, FocusMixinImpl, 'focus');
+    transform = bindMethod(this, TransformMixinImpl, 'transform');
+    instance = bindMethod(this, TransformMixinImpl, 'instance');
+}
+
+
+/** MVS builder pointing to a 'shape' node.
+ * A shape has exactly one representation (a mesh), so color and opacity attach directly to it. */
+export class Shape extends _Base<'shape'> implements FocusMixin, TransformMixin {
+    /** Add a 'color' node and return builder pointing back to the shape node. 'color' node instructs to apply color to a visual representation. */
+    color(params: MVSNodeParams<'color'> & CustomAndRef): Shape {
+        this.addChild('color', params);
+        return this;
+    }
+    /** Add an 'opacity' node and return builder pointing back to the shape node. 'opacity' node instructs to customize opacity/transparency of a visual representation. */
+    opacity(params: MVSNodeParams<'opacity'> & CustomAndRef): Shape {
+        this.addChild('opacity', params);
+        return this;
+    }
+    /** Add a 'clip' node and return builder pointing back to the shape node. 'clip' node instructs to apply clipping to a visual representation. */
+    clip(params: MVSNodeParams<'clip'> & CustomAndRef): Shape {
+        this.addChild('clip', params);
+        return this;
     }
     focus = bindMethod(this, FocusMixinImpl, 'focus');
     transform = bindMethod(this, TransformMixinImpl, 'transform');
