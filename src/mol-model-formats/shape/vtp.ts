@@ -21,6 +21,7 @@ import { deepClone } from '../../mol-util/object';
 import { Mat4 } from '../../mol-math/linear-algebra/3d/mat4';
 import { Vec3 } from '../../mol-math/linear-algebra/3d/vec3';
 import { Grid, Volume } from '../../mol-model/volume';
+import { ShapeWireframeParams, wireframeShapeGetter } from './common';
 
 export interface VtpData {
     source: VtpFile,
@@ -271,6 +272,7 @@ export function createVtpShapeParams(vtpFile?: VtpFile, getStats?: () => string,
 
     return {
         ...Mesh.Params,
+        ...ShapeWireframeParams,
         doubleSided: { ...Mesh.Params.doubleSided, defaultValue: true },
         interior: { ...Mesh.Params.interior, defaultValue: { ...Mesh.Params.interior.defaultValue, colorStrength: 0 } },
         colorTheme: PD.MappedStatic(hasAttrs ? 'attribute' : 'uniform', {
@@ -634,6 +636,7 @@ export function shapeFromVtp(source: VtpFile, params?: { transforms?: Mat4[], ge
             params: createVtpShapeParams(source, () => getter.getStats().text, params?.getVolumeOptions, () => formatUsedDomain(getter.getUsedDomain())),
             getShape: getter.getShape,
             geometryUtils: Mesh.Utils,
+            getWireframeShape: wireframeShapeGetter(getter.getShape),
         };
         return provider;
     });

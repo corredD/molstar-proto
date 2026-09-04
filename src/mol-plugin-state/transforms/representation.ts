@@ -17,7 +17,9 @@ import { Theme } from '../../mol-theme/theme';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 import { PluginStateObject as SO, PluginStateTransform } from '../objects';
 import { ColorNames } from '../../mol-util/color/names';
-import { ShapeRepresentation } from '../../mol-repr/shape/representation';
+import { ShapeMultiRepresentation, ShapeRepresentation } from '../../mol-repr/shape/representation';
+import { ShapeProvider } from '../../mol-model/shape/provider';
+import { Lines } from '../../mol-geo/geometry/lines/lines';
 import { StructureUnitTransforms } from '../../mol-model/structure/structure/util/unit-transforms';
 import { unwindStructureAssembly, explodeStructure, spinStructure, SpinStructureParams, getSpinStructureAxisAndOrigin } from '../animation/helpers';
 import { Color } from '../../mol-util/color';
@@ -1221,6 +1223,16 @@ const VolumeRepresentation3D = PluginStateTransform.BuiltIn({
 
 //
 
+/** A provider offering a wireframe gets both visuals, switched by the `visuals` param; one that
+ * does not keeps the plain single-geometry representation. */
+function createShapeRepr(provider: ShapeProvider<any, any, any>) {
+    if (!provider.getWireframeShape) return ShapeRepresentation(provider.getShape, provider.geometryUtils);
+    return ShapeMultiRepresentation(provider.label, provider.params, {
+        mesh: ShapeRepresentation(provider.getShape, provider.geometryUtils),
+        wireframe: ShapeRepresentation(provider.getWireframeShape, Lines.Utils),
+    });
+}
+
 export { ShapeRepresentation3D };
 type ShapeRepresentation3D = typeof ShapeRepresentation3D
 const ShapeRepresentation3D = PluginStateTransform.BuiltIn({
@@ -1238,7 +1250,7 @@ const ShapeRepresentation3D = PluginStateTransform.BuiltIn({
     apply({ a, params }) {
         return Task.create('Shape Representation', async ctx => {
             const props = { ...PD.getDefaultValues(a.data.params), ...params };
-            const repr = ShapeRepresentation(a.data.getShape, a.data.geometryUtils);
+            const repr = createShapeRepr(a.data);
             await repr.createOrUpdate(props, a.data.data).runInContext(ctx);
             return new SO.Shape.Representation3D({ repr, sourceData: a.data }, { label: a.data.label });
         });

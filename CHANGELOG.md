@@ -19,6 +19,7 @@ Note that since we don't clearly distinguish between a public and private interf
 - Add `Apply Clipping` option to `Export Geometry`, leaving geometry removed by a visual's clip objects out of the exported file instead of exporting the whole scene. Adds a CPU port of the shader clip test (`Clip.createTest`/`testPoint`/`classifyBall` in `mol-util/clip`).
 - Fix `quantizeColors` being called with the vertex count in the OBJ and USDZ exporters, where the color array holds one entry per triangle
 - Fix geometry export of multi-instance spheres reading past the end of `centerBuffer`, which produced `NaN` vertices for any assembly or symmetry expansion
+- Add a wireframe visual to `vtp`, `ply` and `obj` shapes
 - Added support for molecular atom_style in lammps data files
 - Added element symbol detection in lammps data file
 - Fix inconsistent atomic weight for some elements in `ElementAtomWeights`
