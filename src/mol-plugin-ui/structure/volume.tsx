@@ -15,7 +15,7 @@ import { LazyVolumeRef, VolumeRef, VolumeRepresentationRef } from '../../mol-plu
 import { PluginStateObject } from '../../mol-plugin-state/objects';
 import { RelionStarParticleListObject } from '../../mol-plugin-state/objects/relion';
 import { StateTransforms } from '../../mol-plugin-state/transforms';
-import { applyVolumeInstances, clearVolumeInstances, getRelionParticleTransforms } from '../../mol-plugin-state/helpers/relion-star';
+import { applyVolumeInstances, clearVolumeInstances, getDefaultParticleInstanceOffset, getParticleInstanceOffsetParams, getRelionParticleTransforms, ParticleInstanceOffset } from '../../mol-plugin-state/helpers/relion-star';
 import { VolumeRepresentation3DHelpers } from '../../mol-plugin-state/transforms/representation';
 import { FocusLoci } from '../../mol-plugin/behavior/dynamic/representation';
 import { VolumeStreaming } from '../../mol-plugin/behavior/dynamic/volume-streaming/behavior';
@@ -290,9 +290,12 @@ function VolumeEntryControls({ volume }: { volume: VolumeRef }) {
     </>;
 }
 
+type VolumeParticleValues = { particleListRef: string, particleScale: number } & ParticleInstanceOffset
+
 interface VolumeParticleInstanceControlState {
     particleListRef?: string,
     particleScale?: number,
+    particleOffset?: ParticleInstanceOffset,
     isBusy: boolean
 }
 
@@ -319,15 +322,17 @@ class VolumeParticleInstanceControls extends PurePluginUIComponent<{ volume: Vol
         return {
             particleListRef: validRef ?? '',
             particleScale: this.state.particleListRef === validRef ? (this.state.particleScale ?? suggestedScale) : suggestedScale,
+            ...(this.state.particleOffset ?? getDefaultParticleInstanceOffset()),
         };
     }
 
-    private updateParticleParams = (values: { particleListRef: string, particleScale: number }, prev: { particleListRef: string, particleScale: number }) => {
+    private updateParticleParams = (values: VolumeParticleValues, prev: VolumeParticleValues) => {
         const selected = this.particleLists.find(p => p.transform.ref === values.particleListRef);
         const resetScale = values.particleListRef !== prev.particleListRef;
         this.setState({
             particleListRef: values.particleListRef,
             particleScale: resetScale ? (selected?.obj?.data.suggestedScale ?? 1) : values.particleScale,
+            particleOffset: { offsetPosition: values.offsetPosition, offsetRotation: values.offsetRotation },
         });
     };
 
@@ -336,7 +341,7 @@ class VolumeParticleInstanceControls extends PurePluginUIComponent<{ volume: Vol
         const particleList = this.particleLists.find(p => p.transform.ref === values.particleListRef)?.obj?.data;
         if (!particleList) return;
 
-        const transforms = getRelionParticleTransforms(particleList, values.particleScale);
+        const transforms = getRelionParticleTransforms(particleList, values.particleScale, values);
         const builder = this.plugin.state.data.build();
         applyVolumeInstances(builder, this.plugin.state.data.tree, this.props.volume.cell.transform.ref, transforms);
         const volumeData = withVolumeInstances(getCurrentVolumeData(this.plugin.state.data, this.props.volume), transforms);
@@ -362,7 +367,8 @@ class VolumeParticleInstanceControls extends PurePluginUIComponent<{ volume: Vol
         const selected = particleLists.find(p => p.transform.ref === values.particleListRef);
         const params = {
             particleListRef: ParamDefinition.Select(values.particleListRef, particleLists.map(p => [p.transform.ref, `${p.obj?.label || p.transform.ref} (${p.obj?.data.particles.length})`] as [string, string]), { label: 'Particle List' }),
-            particleScale: ParamDefinition.Numeric(values.particleScale, { min: 0.01, max: 100, step: 0.5 }, { label: 'Position Scale', description: 'Applied to coordinates and pixel-space origin shifts.' })
+            particleScale: ParamDefinition.Numeric(values.particleScale, { min: 0.01, max: 100, step: 0.5 }, { label: 'Position Scale', description: 'Applied to coordinates and pixel-space origin shifts.' }),
+            ...getParticleInstanceOffsetParams(),
         };
 
         return <ExpandGroup header='Particle Instances'>

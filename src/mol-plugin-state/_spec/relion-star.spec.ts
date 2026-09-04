@@ -9,7 +9,7 @@ import { RelionStarParticleList } from '../../mol-io/reader/relion/star';
 import { StateTransform, StateTree } from '../../mol-state';
 import { ColorNames } from '../../mol-util/color/names';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
-import { applyStructureInstances, applyVolumeInstances, clearStructureInstances, clearVolumeInstances, getRelionParticleAxisParams, getRelionParticleAxisShape, getRelionParticleTransform } from '../helpers/relion-star';
+import { applyStructureInstances, applyVolumeInstances, clearStructureInstances, clearVolumeInstances, getDefaultParticleInstanceOffset, getParticleInstanceOffsetMatrix, getRelionParticleAxisParams, getRelionParticleAxisShape, getRelionParticleTransform, ParticleInstanceOffset } from '../helpers/relion-star';
 import { StateTransforms } from '../transforms';
 import { VolumeRepresentation3DHelpers } from '../transforms/representation';
 import { Map as ImmutableMap, OrderedSet } from 'immutable';
@@ -22,6 +22,10 @@ function createParticleList(particle: RelionStarParticleList['particles'][number
         suggestedScale: 1,
         warnings: []
     };
+}
+
+function offsetMatrix(offset: ParticleInstanceOffset) {
+    return getParticleInstanceOffsetMatrix(Mat4(), offset);
 }
 
 const MatrixParams = { transform: { name: 'matrix' as const, params: { data: Mat4.identity(), transpose: false } } };
@@ -150,6 +154,94 @@ describe('RELION STAR helpers', () => {
         expect(x[0]).toBeCloseTo(0, 6);
         expect(x[1]).toBeCloseTo(1, 6);
         expect(x[2]).toBeCloseTo(0, 6);
+    });
+
+    it('leaves transforms untouched for a zero offset', () => {
+        const particle = createParticleList({
+            index: 0,
+            coordinate: Vec3.create(10, 20, 30),
+            coordinateUnit: 'angstrom',
+            origin: Vec3.zero(),
+            originUnit: 'angstrom',
+            rotation: Mat4.fromRotation(Mat4(), Math.PI / 3, Vec3.unitY),
+        }).particles[0];
+
+        const plain = getRelionParticleTransform(Mat4(), particle, 1);
+        const offset = getRelionParticleTransform(Mat4(), particle, 1, offsetMatrix(getDefaultParticleInstanceOffset()));
+        expect(Array.from(offset)).toEqual(Array.from(plain));
+    });
+
+    it('rotation offset spins each instance around its own origin without moving it', () => {
+        const particle = createParticleList({
+            index: 0,
+            coordinate: Vec3.create(100, 0, 0),
+            coordinateUnit: 'angstrom',
+            origin: Vec3.zero(),
+            originUnit: 'angstrom',
+            rotation: Mat4.identity(),
+        }).particles[0];
+
+        const transform = getRelionParticleTransform(Mat4(), particle, 1, offsetMatrix({
+            offsetPosition: Vec3.zero(),
+            offsetRotation: Vec3.create(0, 0, 90),
+        }));
+
+        // the instance stays where the particle list put it
+        const t = Mat4.getTranslation(Vec3(), transform);
+        expect(t[0]).toBeCloseTo(100, 6);
+        expect(t[1]).toBeCloseTo(0, 6);
+        expect(t[2]).toBeCloseTo(0, 6);
+
+        // but its local +X now points along +Y
+        const x = Vec3.transformMat4(Vec3(), Vec3.create(1, 0, 0), transform);
+        expect(x[0]).toBeCloseTo(100, 6);
+        expect(x[1]).toBeCloseTo(1, 6);
+        expect(x[2]).toBeCloseTo(0, 6);
+    });
+
+    it('position offset acts along the particle local axes', () => {
+        const particle = createParticleList({
+            index: 0,
+            coordinate: Vec3.create(0, 0, 0),
+            coordinateUnit: 'angstrom',
+            origin: Vec3.zero(),
+            originUnit: 'angstrom',
+            // particle frame is rotated 90 deg about Z, so local +X is world +Y
+            rotation: Mat4.fromRotation(Mat4(), Math.PI / 2, Vec3.unitZ),
+        }).particles[0];
+
+        const transform = getRelionParticleTransform(Mat4(), particle, 1, offsetMatrix({
+            offsetPosition: Vec3.create(10, 0, 0),
+            offsetRotation: Vec3.zero(),
+        }));
+
+        const t = Mat4.getTranslation(Vec3(), transform);
+        expect(t[0]).toBeCloseTo(0, 6);
+        expect(t[1]).toBeCloseTo(10, 6);
+        expect(t[2]).toBeCloseTo(0, 6);
+    });
+
+    it('rotation offset does not rotate the position offset', () => {
+        const particle = createParticleList({
+            index: 0,
+            coordinate: Vec3.create(0, 0, 0),
+            coordinateUnit: 'angstrom',
+            origin: Vec3.zero(),
+            originUnit: 'angstrom',
+            rotation: Mat4.identity(),
+        }).particles[0];
+
+        const withoutRotation = getRelionParticleTransform(Mat4(), particle, 1, offsetMatrix({
+            offsetPosition: Vec3.create(10, 0, 0),
+            offsetRotation: Vec3.zero(),
+        }));
+        const withRotation = getRelionParticleTransform(Mat4(), particle, 1, offsetMatrix({
+            offsetPosition: Vec3.create(10, 0, 0),
+            offsetRotation: Vec3.create(0, 0, 90),
+        }));
+
+        expect(Array.from(Mat4.getTranslation(Vec3(), withRotation)))
+            .toEqual(Array.from(Mat4.getTranslation(Vec3(), withoutRotation)));
     });
 
     it('inserts and updates the structure instances decorator at the end of the decorator chain', () => {

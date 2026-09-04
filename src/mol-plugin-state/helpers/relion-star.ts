@@ -8,6 +8,8 @@ import { Lines } from '../../mol-geo/geometry/lines/lines';
 import { LinesBuilder } from '../../mol-geo/geometry/lines/lines-builder';
 import { Shape } from '../../mol-model/shape';
 import { Mat4, Vec3 } from '../../mol-math/linear-algebra';
+import { Euler } from '../../mol-math/linear-algebra/3d/euler';
+import { degToRad } from '../../mol-math/misc';
 import { ParticleList, ParticleListParticle } from '../../mol-io/reader/particle-list';
 import { State, StateBuilder, StateObjectCell, StateObjectRef, StateSelection, StateTransform, StateTree } from '../../mol-state';
 import { StateTransforms } from '../transforms';
@@ -38,6 +40,46 @@ export const BaseRelionParticleAxisParams = {
 export type RelionParticleAxisParams = typeof BaseRelionParticleAxisParams
 export type RelionParticleAxisProps = PD.Values<RelionParticleAxisParams>
 
+// `Vec3Control` only forwards `step` to its component controls, so offsets are deliberately unbounded.
+// `NumberInputControl` rounds input to `getPrecision(step)` decimals, so `step` sets the usable
+// precision of the fields rather than just an increment: keep it small enough for fractional Å/degrees.
+const OffsetStepOptions = { step: 0.001 } as const;
+
+/**
+ * Rigid-body correction applied on top of every particle transform. Lets a reference model whose
+ * frame does not match the particle convention be lined up without editing the particle list.
+ */
+export function getParticleInstanceOffsetParams() {
+    return {
+        offsetPosition: PD.Vec3(Vec3.zero(), OffsetStepOptions, { label: 'Position Offset', description: 'Shifts each instance along the particle local axes, in Å.' }),
+        offsetRotation: PD.Vec3(Vec3.zero(), OffsetStepOptions, { label: 'Rotation Offset', description: 'Rotates each instance around its own origin. Euler angles in degrees, XYZ order.' }),
+    };
+}
+export type ParticleInstanceOffsetParams = ReturnType<typeof getParticleInstanceOffsetParams>
+export type ParticleInstanceOffset = PD.Values<ParticleInstanceOffsetParams>
+
+export function getDefaultParticleInstanceOffset(): ParticleInstanceOffset {
+    return { offsetPosition: Vec3.zero(), offsetRotation: Vec3.zero() };
+}
+
+export function hasParticleInstanceOffset(offset?: ParticleInstanceOffset) {
+    if (!offset) return false;
+    return !Vec3.isZero(offset.offsetPosition) || !Vec3.isZero(offset.offsetRotation);
+}
+
+const offsetEuler = Euler();
+
+/** `[R_offset | t_offset]`, i.e. rotate around the model origin, then translate. */
+export function getParticleInstanceOffsetMatrix(out: Mat4, offset?: ParticleInstanceOffset) {
+    if (!hasParticleInstanceOffset(offset)) return Mat4.setIdentity(out);
+
+    const r = offset!.offsetRotation;
+    Euler.set(offsetEuler, degToRad(r[0]), degToRad(r[1]), degToRad(r[2]));
+    Mat4.fromEuler(out, offsetEuler, 'XYZ');
+    Mat4.setTranslation(out, offset!.offsetPosition);
+    return out;
+}
+
 function getParticleTranslation(out: Vec3, particle: ParticleListParticle, positionScale: number) {
     const coordinateScale = particle.coordinateUnit === 'pixel' ? positionScale : 1;
     const originScale = particle.originUnit === 'pixel' ? positionScale : 1;
@@ -51,14 +93,19 @@ function getParticleTranslation(out: Vec3, particle: ParticleListParticle, posit
     return out;
 }
 
-export function getRelionParticleTransform(out: Mat4, particle: ParticleListParticle, positionScale: number) {
+/** `offsetMatrix` is post-multiplied so it acts in each instance's own frame, see `getParticleInstanceOffsetMatrix`. */
+export function getRelionParticleTransform(out: Mat4, particle: ParticleListParticle, positionScale: number, offsetMatrix?: Mat4) {
     Mat4.copy(out, particle.rotation);
     Mat4.setTranslation(out, getParticleTranslation(Vec3(), particle, positionScale));
+    if (offsetMatrix) Mat4.mul(out, out, offsetMatrix);
     return out;
 }
 
-export function getRelionParticleTransforms(data: ParticleList, positionScale: number) {
-    return data.particles.map(particle => getRelionParticleTransform(Mat4(), particle, positionScale));
+export function getRelionParticleTransforms(data: ParticleList, positionScale: number, offset?: ParticleInstanceOffset) {
+    const offsetMatrix = hasParticleInstanceOffset(offset)
+        ? getParticleInstanceOffsetMatrix(Mat4(), offset)
+        : void 0;
+    return data.particles.map(particle => getRelionParticleTransform(Mat4(), particle, positionScale, offsetMatrix));
 }
 
 export function getRelionParticleAxisParams(data: ParticleList): RelionParticleAxisParams {

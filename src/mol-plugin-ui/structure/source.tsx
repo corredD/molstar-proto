@@ -9,7 +9,7 @@ import { Model } from '../../mol-model/structure';
 import { ModelRef, StructureHierarchyRef, TrajectoryRef } from '../../mol-plugin-state/manager/structure/hierarchy-state';
 import { RelionStarParticleListObject } from '../../mol-plugin-state/objects/relion';
 import { StateTransforms } from '../../mol-plugin-state/transforms';
-import { applyStructureInstances, clearStructureInstances, getRelionParticleTransforms } from '../../mol-plugin-state/helpers/relion-star';
+import { applyStructureInstances, clearStructureInstances, getDefaultParticleInstanceOffset, getParticleInstanceOffsetParams, getRelionParticleTransforms, ParticleInstanceOffset } from '../../mol-plugin-state/helpers/relion-star';
 import { StateSelection } from '../../mol-state';
 import { CollapsableControls, CollapsableState } from '../base';
 import { ActionMenu } from '../controls/action-menu';
@@ -21,11 +21,14 @@ import { StructureFocusControls } from './focus';
 import { StructureSelectionStatsControls } from './selection';
 import { ParamDefinition as PD } from '../../mol-util/param-definition';
 
+type ParticleValues = { particleListRef: string, particleScale: number } & ParticleInstanceOffset
+
 interface StructureSourceControlState extends CollapsableState {
     isBusy: boolean,
     show?: 'hierarchy' | 'presets',
     particleListRef?: string,
-    particleScale?: number
+    particleScale?: number,
+    particleOffset?: ParticleInstanceOffset
 }
 
 export class StructureSourceControls extends CollapsableControls<{}, StructureSourceControlState> {
@@ -324,10 +327,11 @@ export class StructureSourceControls extends CollapsableControls<{}, StructureSo
         return {
             particleListRef: validRef ?? '',
             particleScale: this.state.particleListRef === validRef ? (this.state.particleScale ?? suggestedScale) : suggestedScale,
+            ...(this.state.particleOffset ?? getDefaultParticleInstanceOffset()),
         };
     }
 
-    private updateParticleParams = (values: { particleListRef: string, particleScale: number }, prev: { particleListRef: string, particleScale: number }) => {
+    private updateParticleParams = (values: ParticleValues, prev: ParticleValues) => {
         const particleLists = this.particleLists;
         const selected = particleLists.find(p => p.transform.ref === values.particleListRef);
         const resetScale = values.particleListRef !== prev.particleListRef;
@@ -335,6 +339,8 @@ export class StructureSourceControls extends CollapsableControls<{}, StructureSo
         this.setState({
             particleListRef: values.particleListRef,
             particleScale: resetScale ? (selected?.obj?.data.suggestedScale ?? 1) : values.particleScale,
+            // unlike the scale, the offset corrects the model's own frame, so it survives a list switch
+            particleOffset: { offsetPosition: values.offsetPosition, offsetRotation: values.offsetRotation },
         });
     };
 
@@ -346,7 +352,7 @@ export class StructureSourceControls extends CollapsableControls<{}, StructureSo
         const particleList = this.particleLists.find(p => p.transform.ref === values.particleListRef)?.obj?.data;
         if (!particleList) return;
 
-        const transforms = getRelionParticleTransforms(particleList, values.particleScale);
+        const transforms = getRelionParticleTransforms(particleList, values.particleScale, values);
         const builder = this.plugin.state.data.build();
         applyStructureInstances(builder, this.plugin.state.data.tree, target.cell.transform.ref, transforms);
         await builder.commit({ canUndo: 'Apply Particle Instances' });
@@ -372,7 +378,8 @@ export class StructureSourceControls extends CollapsableControls<{}, StructureSo
         const selected = particleLists.find(p => p.transform.ref === values.particleListRef);
         const params = {
             particleListRef: PD.Select(values.particleListRef, particleLists.map(p => [p.transform.ref, `${p.obj?.label || p.transform.ref} (${p.obj?.data.particles.length})`] as [string, string]), { label: 'Particle List' }),
-            particleScale: PD.Numeric(values.particleScale, { min: 0.01, max: 100, step: 0.5 }, { label: 'Position Scale', description: 'Applied to coordinates and pixel-space origin shifts.' })
+            particleScale: PD.Numeric(values.particleScale, { min: 0.01, max: 100, step: 0.5 }, { label: 'Position Scale', description: 'Applied to coordinates and pixel-space origin shifts.' }),
+            ...getParticleInstanceOffsetParams(),
         };
 
         return <ExpandGroup header='Particle Instances' initiallyExpanded={true}>

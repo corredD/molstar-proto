@@ -39,8 +39,8 @@ namespace Euler {
 
     export function set(out: Euler, x: number, y: number, z: number) {
         out[0] = x;
-        out[0] = y;
-        out[0] = z;
+        out[1] = y;
+        out[2] = z;
         return out;
     }
 

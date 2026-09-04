@@ -20,6 +20,7 @@ import { CustomPropertyDescriptor } from '../../custom-property';
 import { atom_site_operator_mapping } from './categories/atom_site_operator_mapping';
 import { MmcifFormat } from '../../../mol-model-formats/structure/mmcif';
 import { molstar_bond_site } from './categories/molstar_bond_site';
+import { InstanceAssemblyData, instanceAssemblyCategories } from './categories/instance_assembly';
 
 export interface CifExportContext {
     structures: Structure[],
@@ -58,7 +59,7 @@ function isWithoutOperator(structure: Structure) {
     return isWithoutSymmetry(structure) && structure.units.every(u => !u.conformation.operator.assembly && !u.conformation.operator.suffix);
 }
 
-const Categories = (options?: { keepAtomSiteId?: boolean }) => [
+const Categories = (options?: { keepAtomSiteId?: boolean, instanceAssembly?: InstanceAssemblyData }) => [
     // Basics
     copy_mmCif_category('entry'),
     copy_mmCif_category('exptl'),
@@ -69,9 +70,14 @@ const Categories = (options?: { keepAtomSiteId?: boolean }) => [
     copy_mmCif_category('symmetry', isWithoutSymmetry),
 
     // Assemblies
-    copy_mmCif_category('pdbx_struct_assembly', isWithoutOperator),
-    copy_mmCif_category('pdbx_struct_assembly_gen', isWithoutOperator),
-    copy_mmCif_category('pdbx_struct_oper_list', isWithoutOperator),
+    // Synthesized from instance transforms when provided, otherwise copied from the source file.
+    ...(options?.instanceAssembly
+        ? instanceAssemblyCategories(options.instanceAssembly)
+        : [
+            copy_mmCif_category('pdbx_struct_assembly', isWithoutOperator),
+            copy_mmCif_category('pdbx_struct_assembly_gen', isWithoutOperator),
+            copy_mmCif_category('pdbx_struct_oper_list', isWithoutOperator),
+        ]),
 
     // Secondary structure
     _struct_conf,
@@ -153,6 +159,12 @@ type encode_mmCIF_categories_Params = {
     doNotReindexAtomSiteId?: boolean,
     /** List of custom properties to include */
     customProperties?: CustomPropertyDescriptor[],
+    /**
+     * If set, emit pdbx_struct_assembly/_gen/_oper_list describing these transforms instead of
+     * copying the source assemblies. The structure passed to the encoder provides the single copy
+     * of coordinates the operators are applied to.
+     */
+    instanceAssembly?: InstanceAssemblyData,
 
     extensions?: {
         /**
@@ -183,7 +195,8 @@ function encode_mmCIF_categories_default(encoder: CifWriter.Encoder, ctx: CifExp
     const includedCategories = new Set<string>();
 
     for (const cat of Categories({
-        keepAtomSiteId: params?.extensions?.molstar_bond_site || params?.doNotReindexAtomSiteId
+        keepAtomSiteId: params?.extensions?.molstar_bond_site || params?.doNotReindexAtomSiteId,
+        instanceAssembly: params?.instanceAssembly
     })) {
         if (includedCategories.has(cat.name)) continue;
         includedCategories.add(cat.name);
@@ -241,7 +254,8 @@ function encode_mmCIF_categories_copyAll(encoder: CifWriter.Encoder, ctx: CifExp
     const providedCategories = new Map<string, CifExportCategoryInfo>();
 
     for (const cat of Categories({
-        keepAtomSiteId: params?.extensions?.molstar_bond_site || params?.doNotReindexAtomSiteId
+        keepAtomSiteId: params?.extensions?.molstar_bond_site || params?.doNotReindexAtomSiteId,
+        instanceAssembly: params?.instanceAssembly
     })) {
         providedCategories.set(cat.name, [cat, ctx]);
     }
