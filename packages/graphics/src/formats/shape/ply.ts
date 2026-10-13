@@ -22,6 +22,7 @@ import { deepClone } from '@molstar/core/util/object';
 import { stringToWords } from '@molstar/core/util/string';
 import { ValueCell } from '@molstar/core/util/value-cell';
 import type { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
+import { ShapeWireframeParams, wireframeShapeGetter } from './common.js';
 
 // TODO support 'edge' element, see https://www.mathworks.com/help/vision/ug/the-ply-format.html
 // TODO support missing face element
@@ -87,6 +88,7 @@ function createPlyShapeParams(plyFile?: PlyFile) {
 
   return {
     ...Mesh.Params,
+    ...ShapeWireframeParams,
 
     coloring: PD.MappedStatic(defaultColoring, {
       vertex: PD.Group(
@@ -339,12 +341,14 @@ function makeShapeGetter() {
 
 export function shapeFromPly(source: PlyFile, params?: { transforms?: Mat4[] }) {
   return Task.create<ShapeProvider<PlyData, Mesh, PlyShapeParams>>('Shape Provider', async (ctx) => {
+    const getShape = makeShapeGetter();
     return {
       label: 'Mesh',
       data: { source, transforms: params?.transforms },
       params: createPlyShapeParams(source),
-      getShape: makeShapeGetter(),
+      getShape,
       geometryUtils: Mesh.Utils,
+      getWireframeShape: wireframeShapeGetter(getShape),
     };
   });
 }

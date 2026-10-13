@@ -10,8 +10,20 @@ import type { PluginContext } from '@molstar/plugin/context';
 import { BaseGeometry } from '@molstar/graphics/geo/geometry/base';
 import { Task } from '@molstar/core/task';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
-import { ShapeRepresentation } from '@molstar/graphics/repr/shape/representation';
+import { ShapeMultiRepresentation, ShapeRepresentation } from '@molstar/graphics/repr/shape/representation';
+import type { ShapeProvider } from '@molstar/graphics/geo/shape/provider';
+import { Lines } from '@molstar/graphics/geo/geometry/lines/lines';
 import { StateTransformer } from '@molstar/core/state';
+
+/** A provider offering a wireframe gets both visuals, switched by the `visuals` param; one that
+ * does not keeps the plain single-geometry representation. */
+function createShapeRepr(provider: ShapeProvider<any, any, any>) {
+  if (!provider.getWireframeShape) return ShapeRepresentation(provider.getShape, provider.geometryUtils);
+  return ShapeMultiRepresentation(provider.label, provider.params, {
+    mesh: ShapeRepresentation(provider.getShape, provider.geometryUtils),
+    wireframe: ShapeRepresentation(provider.getWireframeShape, Lines.Utils),
+  });
+}
 
 export { ShapeRepresentation3D };
 type ShapeRepresentation3D = typeof ShapeRepresentation3D;
@@ -30,7 +42,7 @@ const ShapeRepresentation3D = PluginStateTransform.BuiltIn({
   apply({ a, params }) {
     return Task.create('Shape Representation', async (ctx) => {
       const props = { ...PD.getDefaultValues(a.data.params), ...params };
-      const repr = ShapeRepresentation(a.data.getShape, a.data.geometryUtils);
+      const repr = createShapeRepr(a.data);
       await repr.createOrUpdate(props, a.data.data).runInContext(ctx);
       return new SO.Shape.Representation3D({ repr, sourceData: a.data }, { label: a.data.label });
     });

@@ -17,6 +17,7 @@ here.
 - Fix the cross-link restraint representation's default color theme name (`cross-link`); it fell back to the first
   registered theme
 - Fix the `state-docs` CLI crashing on parameters that need data, and create its output folder
+- Add a wireframe visual to `vtp`, `ply` and `obj` shapes
 
 ## [v5.13.1] - 2026-10-08
 

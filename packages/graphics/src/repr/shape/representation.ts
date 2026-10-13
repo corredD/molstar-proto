@@ -7,11 +7,13 @@ import * as ShapeUtils from '@molstar/graphics/geo/shape/shape';
 
 import { Geometry, type GeometryUtils } from '@molstar/graphics/geo/geometry/geometry';
 import { resolveInstanceGranularity } from '@molstar/graphics/geo/geometry/base';
-import { Representation } from '../representation.js';
+import { Representation, type RepresentationContext } from '../representation.js';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { Subject } from 'rxjs';
 import { getNextMaterialId, createRenderObject, type GraphicsRenderObject } from '@molstar/graphics/gl/render-object';
 import { Theme } from '@molstar/graphics/theme/theme';
+import { ColorTheme } from '@molstar/graphics/theme/color';
+import { SizeTheme } from '@molstar/graphics/theme/size';
 import type { LocationIterator } from '@molstar/graphics/geo/util/location-iterator';
 import { type LocationCallback, VisualUpdateState } from '../util.js';
 import { createMarkers } from '@molstar/graphics/geo/geometry/marker-data';
@@ -27,8 +29,10 @@ import { type RuntimeContext, Task } from '@molstar/core/task';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { isDebugMode } from '@molstar/core/util/debug';
 
-export interface ShapeRepresentation<D, G extends Geometry, P extends Geometry.Params<G>>
-  extends Representation<D, P> {}
+export interface ShapeRepresentation<D, G extends Geometry, P extends Geometry.Params<G>> extends Representation<D, P> {
+  /** The shape the representation was last built from, absent before the first update */
+  readonly shape?: Shape<G>;
+}
 
 export type ShapeGetter<D, G extends Geometry, P extends Geometry.Params<G>> = (
   ctx: RuntimeContext,
@@ -242,6 +246,9 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
 
   return {
     label: 'Shape geometry',
+    get shape(): Shape<G> | undefined {
+      return _shape;
+    },
     get groupCount() {
       return locationIt ? locationIt.count : 0;
     },
@@ -335,6 +342,80 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
       }
     },
   };
+}
+
+/** Combines several `ShapeRepresentation`s of the same data into one, picking which of them are
+ * shown from the `visuals` prop. Built on `Representation.createMulti`; on top of it, marking one
+ * visual marks all of them, and the theme is the one of the first visible visual (shape visuals fix
+ * their own theme, so the composed one would otherwise stay empty). */
+export function ShapeMultiRepresentation<D, P extends PD.Params>(
+  label: string,
+  params: P,
+  reprs: { [name: string]: ShapeRepresentation<D, Geometry, any> },
+): Representation<D, P> {
+  const names = Object.keys(reprs);
+  const defs: Representation.Def<D, P> = {};
+  for (const name of names) defs[name] = () => reprs[name];
+  // the visuals are built already and take their themes from the shape, so the factories need no registries
+  const ctx: RepresentationContext = {
+    colorThemeRegistry: ColorTheme.createRegistry(),
+    sizeThemeRegistry: SizeTheme.createRegistry(),
+  };
+  const multi = Representation.createMulti(label, ctx, () => params, Representation.StateBuilder, defs);
+
+  return {
+    label,
+    updated: multi.updated,
+    get groupCount() {
+      return multi.groupCount;
+    },
+    get renderObjects() {
+      return multi.renderObjects;
+    },
+    get geometryVersion() {
+      return multi.geometryVersion;
+    },
+    get props() {
+      return multi.props;
+    },
+    get params() {
+      return multi.params;
+    },
+    get state() {
+      return multi.state;
+    },
+    get theme() {
+      const visuals = multi.props?.visuals as string[] | undefined;
+      const name = names.find((n) => !visuals || visuals.includes(n));
+      return reprs[name ?? names[0]].theme;
+    },
+    createOrUpdate: multi.createOrUpdate,
+    getLoci: multi.getLoci,
+    getAllLoci: multi.getAllLoci,
+    eachLocation: multi.eachLocation,
+    mark(loci: Loci, action: MarkerAction) {
+      let marked = false;
+      for (const name of names) {
+        const repr = reprs[name];
+        marked = repr.mark(retargetLoci(loci, repr.shape), action) || marked;
+      }
+      return marked;
+    },
+    setState: multi.setState,
+    setTheme: multi.setTheme,
+    destroy: multi.destroy,
+  };
+}
+
+/** Each visual owns a separate `Shape` and only marks loci pointing at that one. The visuals are
+ * built from the same geometry and so share group ids, which makes re-pointing a loci at another
+ * visual's shape exact -- and picking one visual then highlights all of them, as it does when
+ * structure visuals share a `Structure`. */
+function retargetLoci(loci: Loci, shape: Shape | undefined): Loci {
+  if (!shape) return loci;
+  if (Shape.isLoci(loci)) return loci.shape === shape ? loci : Shape.Loci(shape);
+  if (ShapeGroup.isLoci(loci)) return loci.shape === shape ? loci : ShapeGroup.Loci(shape, loci.groups);
+  return loci;
 }
 
 function eachShapeGroup(loci: Loci, shape: Shape, apply: (interval: Interval) => boolean) {
