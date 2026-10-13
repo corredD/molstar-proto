@@ -20,6 +20,7 @@ import { ColorListOptionsScale, type ColorListName } from '@molstar/core/util/co
 import { ValueCell } from '@molstar/core/util/value-cell';
 import { deepClone } from '@molstar/core/util/object';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
+import { ShapeWireframeParams, wireframeShapeGetter } from './common.js';
 
 export interface VtpData {
   source: VtpFile;
@@ -127,6 +128,7 @@ export function createVtpShapeParams(vtpFile?: VtpFile, getStats?: () => string)
 
   return {
     ...Mesh.Params,
+    ...ShapeWireframeParams,
     doubleSided: { ...Mesh.Params.doubleSided, defaultValue: true },
     interior: { ...Mesh.Params.interior, defaultValue: { ...Mesh.Params.interior.defaultValue, colorStrength: 0 } },
     colorTheme: PD.MappedStatic(
@@ -459,6 +461,7 @@ export function shapeFromVtp(source: VtpFile, params?: { transforms?: Mat4[] }) 
       params: createVtpShapeParams(source, () => getter.getStats().text),
       getShape: getter.getShape,
       geometryUtils: Mesh.Utils,
+      getWireframeShape: wireframeShapeGetter(getter.getShape),
     };
     return provider;
   });

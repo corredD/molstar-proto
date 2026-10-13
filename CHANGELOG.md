@@ -52,6 +52,7 @@ here.
 - MessagePack: extension types, JSON's rules for non-finite numbers (nil), large integers (float 64) and `undefined`
   object values (left out, so BinaryCIF files no longer carry a nil `mask` key), and checks of the lengths in untrusted
   input
+- Add a wireframe visual to `vtp`, `ply` and `obj` shapes
 
 ## [v5.13.1] - 2026-10-08
 

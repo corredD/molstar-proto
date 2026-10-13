@@ -19,6 +19,7 @@ import type { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ValueCell } from '@molstar/core/util';
 import { isDebugMode } from '@molstar/core/util/debug';
+import { ShapeWireframeParams, wireframeShapeGetter } from './common.js';
 
 export type ObjData = {
   source: ObjFile;
@@ -77,6 +78,7 @@ export function createObjShapeParams(objFile?: ObjFile, mtl?: MtlFile) {
 
   return {
     ...Mesh.Params,
+    ...ShapeWireframeParams,
     coloring: PD.MappedStatic(defaultColoring, coloringOptions),
   };
 }
@@ -406,12 +408,14 @@ function makeShapeGetter() {
 
 export function shapeFromObj(source: ObjFile, params?: { transforms?: Mat4[]; mtl?: MtlFile }) {
   return Task.create<ShapeProvider<ObjData, Mesh, ObjShapeParams>>('Shape Provider', async (_ctx) => {
+    const getShape = makeShapeGetter();
     return {
       label: 'Mesh',
       data: { source, transforms: params?.transforms, mtl: params?.mtl },
       params: createObjShapeParams(source, params?.mtl),
-      getShape: makeShapeGetter(),
+      getShape,
       geometryUtils: Mesh.Utils,
+      getWireframeShape: wireframeShapeGetter(getShape),
     };
   });
 }
