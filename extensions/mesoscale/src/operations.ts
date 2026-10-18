@@ -367,7 +367,10 @@ let examples: Promise<MesoscaleExample[]> | undefined;
 export function mesoscaleExamples(base = ExamplesBase): Promise<MesoscaleExample[]> {
   examples ??= fetch(new URL('list.json', base))
     .then((r) => (r.ok ? r.json() : []))
-    .then((list: MesoscaleExample[]) => list.map((e) => ({ ...e, url: new URL(e.url, base).href })))
+    // the classic explorer's sessions (molx, molj) need its own transforms (its groups, its cellPACK assembly)
+    .then((list: MesoscaleExample[]) =>
+      list.filter((e) => e.type !== 'molx' && e.type !== 'molj').map((e) => ({ ...e, url: new URL(e.url, base).href })),
+    )
     .catch(() => {
       examples = undefined;
       return [];

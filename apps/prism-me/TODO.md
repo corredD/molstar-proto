@@ -16,3 +16,9 @@ commit that builds it).
 - Dragging a cut's guide on the canvas (Stories Untold's `PreviewClip`); keys on cuts.
 - Upstream (Prism): Home counts particles as loaded; `particles.representation` on decorated lists; shapes in the scene
   tree.
+- Storybook stories for the Entities tab, the Decorations and Slice rows, the Segmentations tab and the stage menu,
+  checked in the light and dark themes (Prism's AGENTS.md asks one for each view a user sees).
+- Deploy: a `prism-me/` prefix in `scripts/deploy.js` (and the distribution, if it ships there).
+- The classic Mesoscale Explorer's sessions (`.molx` with its own transforms): a reader that maps them to prism-me's.
+- Before upstream PRs: squash `Particles: targets that reference objects in the state` with its fix
+  (`a target ref is any cell`), and check each library commit builds and passes its tests on its own (`git rebase -x`).

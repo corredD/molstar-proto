@@ -2,7 +2,6 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Ludovic Autin <autin@scripps.edu>
- * @author David Sehnal <david.sehnal@gmail.com>
  */
 
 import type { Sphere3D } from '@molstar/core/math/geometry';
@@ -15,8 +14,8 @@ import { MeshBuilder } from '@molstar/graphics/geo/geometry/mesh/mesh-builder';
 import { Box } from '@molstar/graphics/geo/primitive/box';
 import { Circle } from '@molstar/graphics/geo/primitive/circle';
 
-// Cuts (apps/prism-me/_spec/features.md, "Stage tools"; Stories Untold's `designs/clip-guides`, its `Clip` and
-// `cut-guides.ts`, by David Sehnal and Ludovic Autin): a plane, a sphere or a box that cuts what a target draws, as
+// Cuts (apps/prism-me/_spec/features.md, "Stage tools"), after the design of Stories Untold's cuts and their guides
+// (`designs/clip-guides`, David Sehnal and Ludovic Autin; written anew here, no code copied): a plane, a sphere or a box that cuts what a target draws, as
 // Mol*'s clip objects on its representations; where a new one goes (facing the camera, a window on the near side);
 // and its guide, the shape drawn so the cut can be seen.
 
