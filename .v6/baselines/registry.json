@@ -411,6 +411,7 @@
             "ms-plugin.particle-trajectory-from-simularium",
             "ms-plugin.particle-list-from-trajectory",
             "ms-plugin.particle-list-with-targets",
+            "ms-plugin.particle-list-targets-from-attribute",
             "ms-plugin.particle-list-unitcell-3d",
             "ms-plugin.particles-representation-3d"
           ],
@@ -512,6 +513,7 @@
             ],
             "Particle List": [
               "ms-plugin.particle-list-with-targets",
+              "ms-plugin.particle-list-targets-from-attribute",
               "ms-plugin.particle-list-unitcell-3d",
               "ms-plugin.particles-representation-3d"
             ]
@@ -1014,6 +1016,7 @@
             "ms-plugin.particle-trajectory-from-simularium",
             "ms-plugin.particle-list-from-trajectory",
             "ms-plugin.particle-list-with-targets",
+            "ms-plugin.particle-list-targets-from-attribute",
             "ms-plugin.particle-list-unitcell-3d",
             "ms-plugin.particles-representation-3d",
             "action:Assembly Symmetry",
@@ -1122,6 +1125,7 @@
             ],
             "Particle List": [
               "ms-plugin.particle-list-with-targets",
+              "ms-plugin.particle-list-targets-from-attribute",
               "ms-plugin.particle-list-unitcell-3d",
               "ms-plugin.particles-representation-3d"
             ],

@@ -56,7 +56,11 @@ import {
 } from '@molstar/plugin/state/transforms/data/fetch';
 import { ImportJson, ParseJson } from '@molstar/plugin/state/transforms/data/json';
 import { CreateGroup } from '@molstar/plugin/state/transforms/misc/group';
-import { ParticleListFromTrajectory, ParticleListWithTargets } from '@molstar/plugin/state/transforms/particles/ops';
+import {
+  ParticleListFromTrajectory,
+  ParticleListTargetsFromAttribute,
+  ParticleListWithTargets,
+} from '@molstar/plugin/state/transforms/particles/ops';
 import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import { ParticleListUnitcell3D } from '@molstar/plugin/state/transforms/particles/unitcell';
 import { BoxShape3D, getBoxMesh } from '@molstar/plugin/state/transforms/shape/box';
@@ -218,6 +222,7 @@ export const StateTransforms = {
     ParticleListFromTrajectory,
     ParticlesRepresentation3D,
     ParticleListWithTargets,
+    ParticleListTargetsFromAttribute,
     ParticleListUnitcell3D,
   },
   Volume: {

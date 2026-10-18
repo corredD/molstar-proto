@@ -62,6 +62,38 @@ const ParticleListFromTrajectory = PluginStateTransform.BuiltIn({
   },
 });
 
+export { ParticleListTargetsFromAttribute };
+type ParticleListTargetsFromAttribute = typeof ParticleListTargetsFromAttribute;
+const ParticleListTargetsFromAttribute = PluginStateTransform.BuiltIn({
+  name: 'particle-list-targets-from-attribute',
+  display: {
+    name: 'Particle Targets from Attribute',
+    description:
+      'Give each distinct value of an attribute (e.g. the class) its own target ID, so each can be decorated with its own object.',
+  },
+  isDecorator: true,
+  from: SO.Particle.List,
+  to: SO.Particle.List,
+  params: (a) => {
+    const keys = a?.data.attributes ? Array.from(a.data.attributes.keys()) : [];
+    const options = keys.map((k) => [k, a!.data.attributes!.get(k)!.label] as [string, string]);
+    return {
+      attribute: PD.Select(keys.includes('class') ? 'class' : (keys[0] ?? ''), options, {
+        description: 'The attribute whose values become the target IDs.',
+      }),
+    };
+  },
+})({
+  isApplicable: (a) => !!a.data.attributes?.size,
+  apply({ a, params }) {
+    const data = Particle.withTargetsFromAttribute(a.data, params.attribute);
+    return new SO.Particle.List(data, {
+      label: a.label,
+      description: `${a.description ? `${a.description} · ` : ''}${data.targetInfo.size} targets by ${a.data.attributes!.get(params.attribute)!.label.toLowerCase()}`,
+    });
+  },
+});
+
 /** The structures, shapes and volumes in the state a target can reference. */
 function targetObjectOptions(plugin: PluginContext): [string, string][] {
   const cells = plugin.state.data.select(

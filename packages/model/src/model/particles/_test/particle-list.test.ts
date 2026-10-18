@@ -7,7 +7,8 @@
 import { describe, expect, it } from 'vitest';
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { CustomProperties } from '../../custom-property.js';
-import { getParticleTransforms, ParticleList } from '../particle-list.js';
+import { Column } from '@molstar/core/data/db';
+import { getParticleTargetGroups, getParticleTransforms, Particle, ParticleList } from '../particle-list.js';
 
 function createParticles(coordinates: Float32Array, rotations?: Float32Array): ParticleList {
   const count = coordinates.length / 3;
@@ -74,5 +75,47 @@ describe('getParticleTransforms', () => {
   it('caches the result on the particle list', () => {
     const particles = createParticles(new Float32Array([1, 2, 3]));
     expect(getParticleTransforms(particles)).toBe(getParticleTransforms(particles));
+  });
+});
+
+describe('Particle.withTargetsFromAttribute', () => {
+  function withClasses(classes: (number | undefined)[]) {
+    const particles = createParticles(new Float32Array(classes.length * 3));
+    const column = Column.ofArray({
+      array: classes.map((c) => c ?? 0),
+      schema: Column.Schema.float,
+      valueKind: (i) => (classes[i] === undefined ? Column.ValueKinds.NotPresent : Column.ValueKinds.Present),
+    });
+    return { ...particles, attributes: new Map([['class', { column, label: 'Class', min: 0, max: 9 }]]) };
+  }
+
+  it('makes one target per value, in ascending order, and one for the particles without a value', () => {
+    const particles = withClasses([3, 1, 3, undefined, 2]);
+    const out = Particle.withTargetsFromAttribute(particles, 'class');
+    expect(Array.from(out.targets)).toEqual([2, 0, 2, 3, 1]);
+    expect(Array.from(out.targetInfo)).toEqual([
+      [0, { name: 'Class 1' }],
+      [1, { name: 'Class 2' }],
+      [2, { name: 'Class 3' }],
+      [3, { name: 'No class' }],
+    ]);
+  });
+
+  it('drops the reference objects and the target groups computed for the old targets', () => {
+    const particles = withClasses([1, 2, 1]);
+    const groups = getParticleTargetGroups(particles);
+    expect(Array.from(groups.targetIds)).toEqual([0]);
+    const out = Particle.withTargetsFromAttribute(
+      { ...particles, targetMapping: new Map([[0, { kind: 'shape' } as any]]) },
+      'class',
+    );
+    expect(out.targetMapping).toBeUndefined();
+    expect(Array.from(getParticleTargetGroups(out).targetIds)).toEqual([0, 1]);
+    // the source list keeps its own
+    expect(getParticleTargetGroups(particles)).toBe(groups);
+  });
+
+  it('fails for an attribute the list does not have', () => {
+    expect(() => Particle.withTargetsFromAttribute(withClasses([1]), 'score')).toThrow(/no attribute 'score'/);
   });
 });

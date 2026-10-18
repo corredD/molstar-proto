@@ -124,7 +124,11 @@ import { ParticleListFromCryoEtDataPortalNdjson } from '@molstar/plugin/state/fo
 import { ParticleListFromArtiatomiEm } from '@molstar/plugin/state/formats/particles/em';
 import { ParticleListFromMmcifAssembly } from '@molstar/plugin/state/formats/particles/mmcif-assembly';
 import { ParticleTrajectoryFromSimularium } from '@molstar/plugin/state/formats/particles/simularium';
-import { ParticleListFromTrajectory, ParticleListWithTargets } from '@molstar/plugin/state/transforms/particles/ops';
+import {
+  ParticleListFromTrajectory,
+  ParticleListTargetsFromAttribute,
+  ParticleListWithTargets,
+} from '@molstar/plugin/state/transforms/particles/ops';
 import { ParticleListUnitcell3D } from '@molstar/plugin/state/transforms/particles/unitcell';
 import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import {
@@ -262,6 +266,7 @@ export const DefaultActions: PluginRegistryEntry = {
     ParticleTrajectoryFromSimularium,
     ParticleListFromTrajectory,
     ParticleListWithTargets,
+    ParticleListTargetsFromAttribute,
     ParticleListUnitcell3D,
     ParticlesRepresentation3D,
   ],

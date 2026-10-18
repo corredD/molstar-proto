@@ -15,7 +15,8 @@ import {
   CryoEtDataPortalNdjsonParticles,
   CryoEtDataPortalNdjsonParticlesProvider,
 } from '../../../formats/particles/ndjson.js';
-import { ParticleListWithTargets } from '../ops.js';
+import { RelionStarParticles, RelionStarParticlesProvider } from '../../../formats/particles/star.js';
+import { ParticleListTargetsFromAttribute, ParticleListWithTargets } from '../ops.js';
 
 /** An n³ map of one value as MRC bytes */
 function mapBytes(n: number, value: number) {
@@ -44,7 +45,10 @@ const ndjson = [0, 1, 2]
   .join('\n');
 
 async function setup() {
-  const plugin = new PluginContext({ behaviors: [], registry: [Ccp4, CryoEtDataPortalNdjsonParticles] });
+  const plugin = new PluginContext({
+    behaviors: [],
+    registry: [Ccp4, CryoEtDataPortalNdjsonParticles, RelionStarParticles],
+  });
   await plugin.init();
   const listData = await plugin.builders.data.rawData({ data: ndjson, label: 'particles.ndjson' });
   const { list } = await CryoEtDataPortalNdjsonParticlesProvider.parse(plugin, listData);
@@ -122,5 +126,42 @@ describe('ParticleListWithTargets', () => {
     const target = (decorated.cell!.obj as SO.Particle.List).data.targetMapping!.get(0)!;
     const current = plugin.state.data.cells.get(vol.ref)!.obj!.data;
     expect(target.kind === 'volume' && target.volume).toBe(current);
+  });
+});
+
+const star = `data_particles
+
+loop_
+_rlnCoordinateX #1
+_rlnCoordinateY #2
+_rlnCoordinateZ #3
+_rlnClassNumber #4
+10 0 0 2
+20 0 0 1
+30 0 0 2
+`;
+
+describe('ParticleListTargetsFromAttribute', () => {
+  it('decorates each class of a RELION list with its own object', async () => {
+    const { plugin, volume } = await setup();
+    const data = await plugin.builders.data.rawData({ data: star, label: 'particles.star' });
+    const { list } = await RelionStarParticlesProvider.parse(plugin, data);
+    const [one, two] = [await volume(4), await volume(5)];
+    const decorated = await plugin
+      .build()
+      .to(list)
+      .apply(ParticleListTargetsFromAttribute, { attribute: 'class' })
+      .apply(ParticleListWithTargets, {
+        targets: [
+          { targetId: 0, source: ref(one.ref) },
+          { targetId: 1, source: ref(two.ref) },
+        ],
+      })
+      .commit();
+    const { targets, targetInfo, targetMapping } = (decorated.obj as SO.Particle.List).data;
+    expect(Array.from(targets)).toEqual([1, 0, 1]);
+    expect(Array.from(targetInfo.values()).map((t) => t.name)).toEqual(['Class 1', 'Class 2']);
+    const second = targetMapping!.get(1)!;
+    expect(second.kind === 'volume' && second.volume).toBe(two.obj!.data);
   });
 });

@@ -217,7 +217,7 @@ describe('the default spec', () => {
       'built-in.animate-state-interpolation',
       'built-in.animate-time',
     ]);
-    expect(c.dataActions).toBe(58);
+    expect(c.dataActions).toBe(59);
     expect(c.lociLabelProviders).toBe(5);
     plugin.dispose();
   });

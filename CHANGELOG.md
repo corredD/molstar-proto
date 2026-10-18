@@ -53,6 +53,8 @@ here.
   object values (left out, so BinaryCIF files no longer carry a nil `mask` key), and checks of the lengths in untrusted
   input
 - Add a wireframe visual to `vtp`, `ply` and `obj` shapes
+- Particles: `ParticleListTargetsFromAttribute` gives each value of a particle attribute (e.g. the RELION or Dynamo
+  class) its own target ID, so each class can be decorated with its own object (`Particle.withTargetsFromAttribute`)
 - Particles: a target of `ParticleListWithTargets` can be a structure, shape or volume already in the state (source
   `ref`); the list depends on it and follows its changes
 - Particles: changing the targets of `ParticleListWithTargets` updates the list in place and loads only the sources that

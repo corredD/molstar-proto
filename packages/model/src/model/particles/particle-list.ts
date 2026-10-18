@@ -6,12 +6,12 @@
  */
 
 import { OrderedSet } from '@molstar/core/data/int';
-import type { Column } from '@molstar/core/data/db';
+import { Column } from '@molstar/core/data/db';
 import { Vec3 } from '@molstar/core/math/linear-algebra';
 import { Sphere3D } from '@molstar/core/math/geometry';
 import { BoundaryHelper } from '@molstar/core/math/geometry/boundary-helper';
 import type { ModelFormat } from '@molstar/model/formats/format';
-import { type CustomProperties, CustomPropertyDescriptor } from '../custom-property.js';
+import { CustomProperties, CustomPropertyDescriptor } from '../custom-property.js';
 import type { Boundary } from '@molstar/core/math/geometry/boundary';
 import { fillIdentityTransform } from '@molstar/core/math/linear-algebra/3d/transform-array';
 import type { Cell } from '@molstar/core/math/geometry/spacegroup/cell';
@@ -521,6 +521,49 @@ export namespace Particle {
     targetMapping: ReadonlyMap<number, ParticleTarget>,
   ): ParticleList {
     return { ...particles, targetMapping };
+  }
+
+  /**
+   * The particles with one target per distinct value of the attribute `key` (e.g. a class number), in ascending order
+   * of value: target ids 0, 1, …, named after the attribute and its value. Particles without a value get the last
+   * target. The reference objects (`targetMapping`) are dropped, as the ids changed; so are the computed properties
+   * (a fresh `_propertyData`), as they depend on the targets.
+   */
+  export function withTargetsFromAttribute(particles: ParticleList, key: string): ParticleList {
+    const attribute = particles.attributes?.get(key);
+    if (!attribute) throw new Error(`The particle list has no attribute '${key}'.`);
+    const { column, label } = attribute;
+    const { count } = particles;
+    const isPresent = (i: number) => column.valueKind(i) === Column.ValueKinds.Present;
+
+    const values = new Set<number>();
+    let missing = false;
+    for (let i = 0; i < count; ++i) {
+      if (isPresent(i)) values.add(column.value(i));
+      else missing = true;
+    }
+    const sorted = Array.from(values).sort((x, y) => x - y);
+    const targetOfValue = new Map<number, number>();
+    const targetInfo = new Map<number, ParticleTargetInfo>();
+    for (let t = 0; t < sorted.length; ++t) {
+      targetOfValue.set(sorted[t], t);
+      targetInfo.set(t, { name: `${label} ${sorted[t]}` });
+    }
+    const none = sorted.length;
+    if (missing) targetInfo.set(none, { name: `No ${label.toLowerCase()}` });
+
+    const targets = new Int32Array(count);
+    for (let i = 0; i < count; ++i) {
+      targets[i] = isPresent(i) ? targetOfValue.get(column.value(i))! : none;
+    }
+    return {
+      ...particles,
+      targets,
+      targetInfo,
+      targetMapping: undefined,
+      customProperties: new CustomProperties(),
+      _propertyData: Object.create(null),
+    };
   }
 
   export const BoundaryDescriptor: CustomPropertyDescriptor<Boundary> = CustomPropertyDescriptor({
