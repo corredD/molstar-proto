@@ -15,12 +15,11 @@ import {
   type ParticleTargetSource,
   matchParticleTargetFiles,
   loadParticleTarget,
-  isParticleTargetObject,
   particleTargetFromObject,
 } from '@molstar/plugin/state/helpers/particle-targets';
 import { Asset } from '@molstar/core/util/assets';
 import { type ParticleList, type ParticleTarget, Particle } from '@molstar/model/model/particles/particle-list';
-import { type StateObject, StateSelection, type StateTransform, StateTransformer } from '@molstar/core/state';
+import { type StateObject, type StateTransform, StateTransformer } from '@molstar/core/state';
 
 const plus1 = (v: number) => v + 1,
   minus1 = (v: number) => v - 1;
@@ -94,14 +93,6 @@ const ParticleListTargetsFromAttribute = PluginStateTransform.BuiltIn({
   },
 });
 
-/** The structures, shapes and volumes in the state a target can reference. */
-function targetObjectOptions(plugin: PluginContext): [string, string][] {
-  const cells = plugin.state.data.select(
-    StateSelection.Generators.root.subtree().filter((cell) => isParticleTargetObject(cell.obj)),
-  );
-  return cells.map((c) => [c.transform.ref, c.obj!.label] as [string, string]);
-}
-
 function ParticleListWithTargetsParams(a: SO.Particle.List | undefined, plugin: PluginContext) {
   const targetIds = a ? Array.from(a.data.targetInfo.keys()).sort((x, y) => x - y) : [];
   const targetIdDescription =
@@ -109,7 +100,6 @@ function ParticleListWithTargetsParams(a: SO.Particle.List | undefined, plugin: 
       ? `Target ID in the particle list this object maps to. Available IDs: ${targetIds.slice(0, 32).join(', ')}${targetIds.length > 32 ? ', …' : ''}.`
       : 'Target ID in the particle list this object maps to (matches ParticleList.targets).';
   const formatOptions = particleTargetFormatOptions(plugin);
-  const objectOptions = targetObjectOptions(plugin);
 
   return {
     files: PD.FileList({
@@ -143,13 +133,8 @@ function ParticleListWithTargetsParams(a: SO.Particle.List | undefined, plugin: 
             ),
             ref: PD.Group(
               {
-                ref:
-                  objectOptions.length > 0
-                    ? PD.Select(objectOptions[0][0], objectOptions, { label: 'Object' })
-                    : PD.Text('', {
-                        label: 'Object',
-                        description: 'Ref of a structure, shape or volume in the state.',
-                      }),
+                // any cell: a select would replace a ref it does not offer (`particleTargetObjectCells` lists them)
+                ref: PD.Text('', { label: 'Object', description: 'Ref of a structure, shape or volume in the state.' }),
               },
               { isFlat: true },
             ),

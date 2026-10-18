@@ -16,6 +16,7 @@ import {
   CryoEtDataPortalNdjsonParticlesProvider,
 } from '../../../formats/particles/ndjson.js';
 import { RelionStarParticles, RelionStarParticlesProvider } from '../../../formats/particles/star.js';
+import { particleTargetObjectCells } from '../../../helpers/particle-targets.js';
 import { ParticleListTargetsFromAttribute, ParticleListWithTargets } from '../ops.js';
 
 /** An n³ map of one value as MRC bytes */
@@ -109,6 +110,25 @@ describe('ParticleListWithTargets', () => {
     const swapped = after.data.targetMapping!.get(1)!;
     expect(swapped.kind === 'volume' && swapped.volume).toBe(c.obj!.data);
     expect(decorated.cell!.dependencies.dependsOn.map((x) => x.transform.ref).sort()).toEqual([a.ref, c.ref].sort());
+  });
+
+  it('lists each object of the state once, not its decorators too', async () => {
+    const { plugin, volume } = await setup();
+    const [a, b] = [await volume(4), await volume(5)];
+    // the volumes' own cells, not their custom properties
+    const own = (ref: string) => plugin.state.data.tree.transforms.get(ref)!.parent;
+    expect(particleTargetObjectCells(plugin.state.data).map((c) => c.transform.ref)).toEqual([own(a.ref), own(b.ref)]);
+  });
+
+  it('keeps a ref it would not list (a decorated cell)', async () => {
+    const { plugin, list, volume } = await setup();
+    const vol = await volume(4);
+    const decorated = await plugin
+      .build()
+      .to(list)
+      .apply(ParticleListWithTargets, { targets: [{ targetId: 0, source: ref(vol.ref) }] })
+      .commit();
+    expect((decorated.cell!.transform.params as any).targets[0].source.params.ref).toBe(vol.ref);
   });
 
   it('follows a referenced object that changes', async () => {

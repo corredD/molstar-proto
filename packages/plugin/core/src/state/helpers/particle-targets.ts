@@ -16,7 +16,7 @@ import { getFileNameInfo } from '@molstar/core/util/file-info';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { rawDataObject } from '../formats/provider.js';
 import { PluginStateObject as SO } from '../objects.js';
-import type { StateObject } from '@molstar/core/state';
+import type { State, StateObject, StateObjectCell } from '@molstar/core/state';
 
 /** The registered formats that can be loaded as a reference object for a particle target. */
 function targetFormatProviders(plugin: PluginContext) {
@@ -202,6 +202,20 @@ export async function loadParticleTarget(
 /** The state objects a particle target can reference: structures, shapes and volumes. */
 export function isParticleTargetObject(obj: StateObject | undefined): boolean {
   return obj instanceof SO.Molecule.Structure || obj instanceof SO.Volume.Data || obj instanceof SO.Shape.Provider;
+}
+
+/**
+ * The cells of `state` a particle target can reference: structures, shapes and volumes, each once (its own cell, not
+ * the decorators on it: a volume and its custom properties are one object).
+ */
+export function particleTargetObjectCells(state: State): StateObjectCell[] {
+  const out: StateObjectCell[] = [];
+  for (const cell of state.cells.values()) {
+    if (cell.state.isGhost || !isParticleTargetObject(cell.obj)) continue;
+    if (cell.transform.transformer.definition.isDecorator) continue;
+    out.push(cell);
+  }
+  return out;
 }
 
 /** The reference object of a particle target from a structure, shape or volume already in the state. */
