@@ -223,6 +223,12 @@
       "private": false
     },
     {
+      "name": "@molstar/cryoet-extension",
+      "path": "extensions/cryoet",
+      "kind": "extension",
+      "private": true
+    },
+    {
       "name": "@molstar/debug-helpers-extension",
       "path": "extensions/debug-helpers",
       "kind": "extension",
@@ -271,6 +277,12 @@
       "private": false
     },
     {
+      "name": "@molstar/mesoscale-extension",
+      "path": "extensions/mesoscale",
+      "kind": "extension",
+      "private": true
+    },
+    {
       "name": "@molstar/model-archive-extension",
       "path": "extensions/model-archive",
       "kind": "extension",
@@ -281,6 +293,12 @@
       "path": "extensions/model-export",
       "kind": "extension",
       "private": false
+    },
+    {
+      "name": "@molstar/stage-tools-extension",
+      "path": "extensions/stage-tools",
+      "kind": "extension",
+      "private": true
     },
     {
       "name": "@molstar/video-export-extension",

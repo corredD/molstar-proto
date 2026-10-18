@@ -619,6 +619,12 @@ importers:
       '@molstar/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@molstar/cryoet-extension':
+        specifier: workspace:*
+        version: link:../../extensions/cryoet
+      '@molstar/mesoscale-extension':
+        specifier: workspace:*
+        version: link:../../extensions/mesoscale
       '@molstar/plugin':
         specifier: workspace:*
         version: link:../../packages/plugin/core
@@ -631,6 +637,9 @@ importers:
       '@molstar/prism-viewer-app':
         specifier: workspace:*
         version: link:../prism-viewer
+      '@molstar/stage-tools-extension':
+        specifier: workspace:*
+        version: link:../../extensions/stage-tools
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -1845,6 +1854,40 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  extensions/cryoet:
+    dependencies:
+      '@molstar/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@molstar/graphics':
+        specifier: workspace:*
+        version: link:../../packages/graphics
+      '@molstar/model':
+        specifier: workspace:*
+        version: link:../../packages/model
+      '@molstar/plugin':
+        specifier: workspace:*
+        version: link:../../packages/plugin/core
+      '@molstar/prism-ui':
+        specifier: workspace:*
+        version: link:../../packages/prism/ui
+      '@molstar/prism-viewer':
+        specifier: workspace:*
+        version: link:../../packages/prism/viewer
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.1
+        version: 22.20.1
+      '@types/webxr':
+        specifier: 'catalog:'
+        version: 0.5.24
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   extensions/debug-helpers:
     dependencies:
       '@molstar/core':
@@ -2111,6 +2154,40 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  extensions/mesoscale:
+    dependencies:
+      '@molstar/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@molstar/graphics':
+        specifier: workspace:*
+        version: link:../../packages/graphics
+      '@molstar/model':
+        specifier: workspace:*
+        version: link:../../packages/model
+      '@molstar/plugin':
+        specifier: workspace:*
+        version: link:../../packages/plugin/core
+      '@molstar/prism-ui':
+        specifier: workspace:*
+        version: link:../../packages/prism/ui
+      '@molstar/prism-viewer':
+        specifier: workspace:*
+        version: link:../../packages/prism/viewer
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.1
+        version: 22.20.1
+      '@types/webxr':
+        specifier: 'catalog:'
+        version: 0.5.24
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   extensions/model-archive:
     dependencies:
       '@molstar/core':
@@ -2328,6 +2405,40 @@ importers:
       '@molstar/plugin':
         specifier: workspace:*
         version: link:../../packages/plugin/core
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.1
+        version: 22.20.1
+      '@types/webxr':
+        specifier: 'catalog:'
+        version: 0.5.24
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
+  extensions/stage-tools:
+    dependencies:
+      '@molstar/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@molstar/graphics':
+        specifier: workspace:*
+        version: link:../../packages/graphics
+      '@molstar/model':
+        specifier: workspace:*
+        version: link:../../packages/model
+      '@molstar/plugin':
+        specifier: workspace:*
+        version: link:../../packages/plugin/core
+      '@molstar/prism-ui':
+        specifier: workspace:*
+        version: link:../../packages/prism/ui
+      '@molstar/prism-viewer':
+        specifier: workspace:*
+        version: link:../../packages/prism/viewer
       tslib:
         specifier: 'catalog:'
         version: 2.8.1

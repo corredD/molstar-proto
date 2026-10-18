@@ -23,10 +23,13 @@
   },
   "dependencies": {
     "@molstar/core": "workspace:*",
+    "@molstar/cryoet-extension": "workspace:*",
+    "@molstar/mesoscale-extension": "workspace:*",
     "@molstar/plugin": "workspace:*",
     "@molstar/prism-assistant": "workspace:*",
     "@molstar/prism-viewer": "workspace:*",
     "@molstar/prism-viewer-app": "workspace:*",
+    "@molstar/stage-tools-extension": "workspace:*",
     "tslib": "catalog:"
   },
   "devDependencies": {

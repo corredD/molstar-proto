@@ -104,6 +104,15 @@
       "path": "./extensions/anvil"
     },
     {
+      "path": "./extensions/stage-tools"
+    },
+    {
+      "path": "./extensions/mesoscale"
+    },
+    {
+      "path": "./extensions/cryoet"
+    },
+    {
       "path": "./extensions/assembly-symmetry"
     },
     {

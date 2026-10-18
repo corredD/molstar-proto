@@ -23,6 +23,15 @@
     },
     {
       "path": "../prism-viewer"
+    },
+    {
+      "path": "../../extensions/cryoet"
+    },
+    {
+      "path": "../../extensions/mesoscale"
+    },
+    {
+      "path": "../../extensions/stage-tools"
     }
   ]
 }
