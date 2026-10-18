@@ -31,6 +31,8 @@ export const CryoetSkill: ViewerSkill = {
     'label: instant to swap), with pdb (a PDB id or a URL) or with none (spheres), for some targets or all;',
     'targets_by_class gives each class (or another attribute: cc, score) its own target, to decorate classes apart.',
     'slice_tomogram shows a gray slice of a tomogram or tilt series (axis z steps through its images; contrast in σ).',
+    'get_meshes lists the segmentation meshes (OBJ, PLY, VTP); style_mesh shows, hides, fades or colors one and draws',
+    'it as a surface, a wireframe or both.',
   ].join('\n'),
   tools: [
     {
@@ -75,6 +77,12 @@ export const CryoetExtension: ViewerExtension = {
         category,
         icon: 'scan',
         alias: ['tomogram', 'tilt series', 'slice', 'section', 'mrc slice'],
+      }),
+      operationCommand(api, c.mesh, {
+        category,
+        icon: 'box',
+        alias: ['segmentation', 'mesh', 'wireframe', 'obj', 'vtp', 'ply'],
+        action: 'Apply',
       }),
       operationCommand(api, c.decorations, { category, icon: 'info', alias: ['decorations', 'targets'] }),
     ];

@@ -4,7 +4,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { StateObjectCell, StateTransform } from '@molstar/core/state';
+import { type StateObjectCell, StateTransform } from '@molstar/core/state';
+import { Color } from '@molstar/core/util/color';
+import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { Volume } from '@molstar/model/model/volume';
@@ -64,6 +66,20 @@ export interface SliceInfo {
   readonly shown?: { readonly axis: 'x' | 'y' | 'z'; readonly index: number; readonly contrast?: number };
 }
 
+/** A segmentation mesh loaded from a file (OBJ, PLY, VTP…), as the Segmentations tab shows it */
+export interface MeshInfo {
+  /** The state ref of its representation */
+  readonly ref: string;
+  /** The file it came from */
+  readonly label: string;
+  readonly visible: boolean;
+  readonly visuals: readonly ('mesh' | 'wireframe')[];
+  /** Opacity, 0 to 1 */
+  readonly opacity: number;
+  /** Its uniform color, when it has one */
+  readonly color?: number;
+}
+
 const ListParam = () =>
   PD.Text('', { description: 'A particle list by label or state ref; empty: the only one loaded' });
 
@@ -95,6 +111,93 @@ export class CryoetApi extends ApiArea {
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
   }
+
+  /** The segmentation meshes, following the state tree while watched: a read for views */
+  meshesState(): ReadonlyState<readonly MeshInfo[]> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => meshes({ plugin }),
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  readonly meshes = this.operation({
+    id: 'cryoet.meshes',
+    title: 'Describe the segmentation meshes',
+    params: {},
+    read: true,
+    async run(_, ctx) {
+      const list = meshes(ctx);
+      if (!list.length) return ApiResult.ok('No meshes are loaded.', {}, { value: list });
+      const lines = list.map(
+        (m) => `${m.label} (${m.ref}): ${m.visible ? m.visuals.join(' + ') : 'hidden'}, opacity ${m.opacity}`,
+      );
+      return ApiResult.ok(lines.join('\n'), {}, { value: list });
+    },
+  });
+
+  readonly mesh = this.operation({
+    id: 'cryoet.mesh',
+    title: 'Show a segmentation mesh as…',
+    params: {
+      mesh: PD.Text('', { description: 'A mesh by file name or state ref; empty: every mesh' }),
+      visible: OptionalParam(PD.Boolean(true)),
+      visuals: OptionalParam(
+        PD.Select<'mesh' | 'wireframe' | 'both'>('mesh', [
+          ['mesh', 'Surface'],
+          ['wireframe', 'Wireframe'],
+          ['both', 'Both'],
+        ]),
+      ),
+      opacity: OptionalParam(PD.Numeric(1, { min: 0, max: 1, step: 0.01 })),
+      color: OptionalParam(PD.Text('', { description: 'A CSS color (#ffcc00, tomato); one color for the whole mesh' })),
+    },
+    async run(values, ctx) {
+      const { mesh, visible, visuals, opacity, color } = values as typeof values & {
+        visible?: boolean;
+        visuals?: 'mesh' | 'wireframe' | 'both';
+        opacity?: number;
+        color?: string;
+      };
+      const all = meshes(ctx);
+      const n = mesh.trim().toLowerCase();
+      const picked = n ? all.filter((m) => m.ref === mesh.trim() || m.label.toLowerCase() === n) : all;
+      if (!picked.length) {
+        return ApiResult.fail(
+          'not-found',
+          all.length ? `There is no mesh '${mesh}'.` : 'No meshes are loaded.',
+          all.length ? `Meshes: ${all.map((m) => m.label).join(', ')}.` : 'Open an OBJ, PLY or VTP file.',
+        );
+      }
+      const parsed = color ? cssColor(color) : undefined;
+      if (color && parsed === undefined)
+        return ApiResult.fail('invalid', `'${color}' is not a color.`, 'Give #rrggbb or a name.');
+      const b = ctx.plugin.state.data.build();
+      const nodes: string[] = [];
+      for (const m of picked) {
+        const cell = ctx.plugin.state.data.cells.get(m.ref)!;
+        const old = cell.transform.params as any;
+        const next = {
+          ...old,
+          ...(visuals ? { visuals: visuals === 'both' ? ['mesh', 'wireframe'] : [visuals] } : {}),
+          ...(opacity !== undefined ? { alpha: opacity } : {}),
+          ...(parsed !== undefined && old.coloring ? { coloring: { name: 'uniform', params: { color: parsed } } } : {}),
+        };
+        if (JSON.stringify(next) !== JSON.stringify(old)) {
+          b.to(cell).update(next);
+          nodes.push(m.ref);
+        }
+        if (visible !== undefined && visible === !!cell.state.isHidden) {
+          ctx.plugin.state.data.updateCellState(m.ref, { isHidden: !visible });
+          nodes.push(m.ref);
+        }
+      }
+      if (!nodes.length) return ApiResult.already('The meshes already look so.');
+      await b.commit();
+      return ApiResult.ok(`Updated ${picked.length === 1 ? picked[0].label : `${picked.length} meshes`}.`, { nodes });
+    },
+  });
 
   readonly decorations = this.operation({
     id: 'cryoet.decorations',
@@ -424,6 +527,40 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Decorati
   };
 }
 
+/** The shape representations of meshes loaded from files (not the guides and shapes the viewer makes itself) */
+function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
+  const { cells, tree } = ctx.plugin.state.data;
+  const out: MeshInfo[] = [];
+  for (const cell of cells.values()) {
+    if (cell.state.isGhost || !SO.Shape.Representation3D.is(cell.obj)) continue;
+    let root = cell.transform.ref;
+    for (;;) {
+      const parent = tree.transforms.get(root)?.parent;
+      if (!parent || parent === StateTransform.RootRef) break;
+      root = parent;
+    }
+    const data = cells.get(root)?.obj;
+    if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data)) continue;
+    const p = cell.transform.params as any;
+    out.push({
+      ref: cell.transform.ref,
+      label: data.label,
+      visible: !cell.state.isHidden,
+      visuals: Array.isArray(p?.visuals) ? p.visuals : ['mesh'],
+      opacity: p?.alpha ?? 1,
+      ...(p?.coloring?.name === 'uniform' ? { color: p.coloring.params.color } : {}),
+    });
+  }
+  return out;
+}
+
+/** A CSS color name or #rrggbb */
+function cssColor(text: string): Color | undefined {
+  const c = text.trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(c)) return Color.fromHexStyle(c);
+  return (ColorNames as Record<string, Color>)[c.replace(/[\s-]/g, '')];
+}
+
 function describeTarget(t: ParticleTarget): string {
   return t.kind === 'structure' ? 'its structure' : t.kind === 'volume' ? 'its volume' : 'its shape';
 }
@@ -437,9 +574,21 @@ function sceneObjects(ctx: Pick<ApiContext, 'plugin'>) {
   for (const s of loadedStructures(ctx)) out.push({ ref: s.cell.transform.ref, label: structureLabel(ctx, s) });
   for (const c of particleTargetObjectCells(ctx.plugin.state.data)) {
     if (SO.Molecule.Structure.is(c.obj)) continue;
-    out.push({ ref: c.transform.ref, label: c.obj!.label });
+    out.push({ ref: c.transform.ref, label: entryLabel(ctx, c) });
   }
   return out;
+}
+
+/** A volume's or shape's name: the file (or address) it came from, its entry's label; else its own */
+function entryLabel(ctx: Pick<ApiContext, 'plugin'>, cell: StateObjectCell): string {
+  const { tree, cells } = ctx.plugin.state.data;
+  let ref = cell.transform.ref;
+  for (;;) {
+    const parent = tree.transforms.get(ref)?.parent;
+    if (!parent || parent === StateTransform.RootRef) break;
+    ref = parent;
+  }
+  return cells.get(ref)?.obj?.label || cell.obj!.label;
 }
 
 function pickObject(ctx: ApiContext, name: string): StateObjectCell | ApiFailure {

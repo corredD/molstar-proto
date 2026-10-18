@@ -6,20 +6,21 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Button, Choices, domView, For, onCleanup, Select, Show, TextInput } from '@molstar/prism-ui';
+import { Button, Choices, domView, For, Icon, onCleanup, Select, Show, TextInput } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { SceneNode } from '@molstar/prism-viewer';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import { SceneRow } from '@molstar/prism-viewer/views/structure/scene-row';
-import type { CryoetApi, DecorationsInfo, TargetDecoration } from './operations.js';
+import type { CryoetApi, DecorationsInfo, MeshInfo, TargetDecoration } from './operations.js';
 
 // The cryo-ET rows of the scene tree (apps/prism-me/_spec/features.md, "CryoET"): under a particle list, Decorations
 // (the targets by class, and for each target or all of them what decorates it: an object of the scene, a PDB id or URL,
 // or spheres); under a volume, Slice (the axis, the slice, the contrast). They read the `cryoet` area and act through it.
 
 export const DecorationsRow = 'cryoet.row.decorations';
+export const SegmentationsTab = 'cryoet.tab.segmentations';
 export const SliceRow = 'cryoet.row.slice';
 
 const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
@@ -29,6 +30,15 @@ export function cryoetUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const area = ctx.api.cryoet;
   if (!area) return {};
   return {
+    tabs: [
+      {
+        id: SegmentationsTab,
+        title: 'Segmentations',
+        icon: 'box',
+        order: 16,
+        render: domView(() => <Segmentations area={area} />),
+      },
+    ],
     rows: [
       {
         id: DecorationsRow,
@@ -233,6 +243,88 @@ function Slice(props: { area: CryoetApi; volume: string }) {
           </Button>
         )}
       </Show>
+    </div>
+  );
+}
+
+/** The segmentation meshes (OBJ, PLY, VTP), each with its eye, surface or wireframe, opacity and color */
+function Segmentations(props: { area: CryoetApi }) {
+  const { area } = props;
+  const list = area.meshesState();
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-3); padding: var(--msp-space-3)">
+      <Show
+        when={mapState(list, (l) => l.length > 0)}
+        fallback={() => (
+          <p style={`margin: 0; ${Muted}`}>
+            Drop segmentation meshes (OBJ, PLY, VTP) on the viewer: they show here, as a surface, a wireframe or both.
+          </p>
+        )}
+      >
+        {() => (
+          <For each={list} by={(m) => m.ref}>
+            {(m) => <MeshControls area={area} mesh={m} list={list} />}
+          </For>
+        )}
+      </Show>
+    </div>
+  );
+}
+
+function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: ReadonlyState<readonly MeshInfo[]> }) {
+  const { area } = props;
+  const ref = props.mesh.ref;
+  const mesh = mapState(props.list, (l) => l.find((m) => m.ref === ref));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(timer));
+  const set = (values: Record<string, unknown>, delay = 0) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => void area.mesh({ mesh: ref, ...values } as never), delay);
+  };
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+      <div style={Line}>
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Show or hide"
+          icon={
+            <Show when={mapState(mesh, (m) => m?.visible ?? true)} fallback={() => <Icon name="eye-off" />}>
+              {() => <Icon name="eye" />}
+            </Show>
+          }
+          onClick={() => set({ visible: !(mesh.value?.visible ?? true) })}
+        />
+        <strong style="flex: 1; overflow: hidden; white-space: nowrap">{props.mesh.label}</strong>
+        <input
+          type="color"
+          aria-label="Color"
+          value={mapState(mesh, (m) => `#${(m?.color ?? 0xcccccc).toString(16).padStart(6, '0')}`)}
+          onInput={(e) => set({ color: (e.target as HTMLInputElement).value }, 120)}
+        />
+      </div>
+      <Choices
+        choices={[
+          { id: 'mesh', label: 'Surface' },
+          { id: 'wireframe', label: 'Wireframe' },
+          { id: 'both', label: 'Both' },
+        ]}
+        active={mapState(mesh, (m) => (m && m.visuals.length > 1 ? 'both' : (m?.visuals[0] ?? 'mesh')))}
+        onPick={(visuals) => set({ visuals })}
+      />
+      <div style={Line}>
+        <span style="width: 64px">Opacity</span>
+        <input
+          type="range"
+          min="0.05"
+          max="1"
+          step="0.01"
+          style="flex: 1"
+          aria-label="Opacity"
+          value={mapState(mesh, (m) => String(m?.opacity ?? 1))}
+          onInput={(e) => set({ opacity: Number((e.target as HTMLInputElement).value) }, 80)}
+        />
+      </div>
     </div>
   );
 }

@@ -13,7 +13,7 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import type { DecorationsInfo, SliceInfo } from '../operations.js';
+import type { DecorationsInfo, MeshInfo, SliceInfo } from '../operations.js';
 import { CryoetExtension } from '../prism-viewer.js';
 
 // The `cryoet` area on a headless viewer: a RELION list of four particles in classes 1, 2, 1, 3 and two small maps
@@ -124,6 +124,24 @@ describe('cryoet', () => {
     const list = v.plugin.managers.particles.hierarchy.current.lists[0];
     const target = list.representations[0].cell.obj!.data.sourceData.targetMapping?.get(0);
     expect(target?.kind).toBe('structure');
+  });
+
+  it('styles a segmentation mesh: wireframe, opacity, color, hidden', async () => {
+    const v = await viewer();
+    const obj = 'v 0 0 0\nv 10 0 0\nv 0 10 0\nv 0 0 10\nf 1 2 3\nf 1 2 4\nf 1 3 4\nf 2 3 4\n';
+    expectOk(await v.api.load.files({ files: [new File([obj], 'membrane.obj')] }));
+    const c = v.api.cryoet!;
+    const read = async () => {
+      const r = await c.meshes({});
+      expectOk(r);
+      return (r.value as MeshInfo[])[0];
+    };
+    expect(await read()).toMatchObject({ label: 'membrane.obj', visible: true, visuals: ['mesh'], opacity: 1 });
+    expectOk(await c.mesh({ mesh: 'membrane.obj', visuals: 'both', opacity: 0.5, color: 'tomato' } as never));
+    expect(await read()).toMatchObject({ visuals: ['mesh', 'wireframe'], opacity: 0.5, color: 0xff6347 });
+    expectOk(await c.mesh({ visible: false } as never));
+    expect((await read()).visible).toBe(false);
+    expect(await c.mesh({ mesh: 'nope', visible: true } as never)).toMatchObject({ ok: false, code: 'not-found' });
   });
 
   it('goes back to the targets of the file', async () => {
