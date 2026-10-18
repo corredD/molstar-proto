@@ -47,24 +47,31 @@ export function SyncRepresentationToCanvas(ctx: PluginContext) {
   });
 }
 
+/** The representation states of structures and particles (their layers: overpaint, transparency, …) */
+function isRepresentation3DState(
+  obj: unknown,
+): obj is SO.Molecule.Structure.Representation3DState | SO.Particle.Representation3DState {
+  return SO.Molecule.Structure.Representation3DState.is(obj as any) || SO.Particle.Representation3DState.is(obj as any);
+}
+
 export function SyncStructureRepresentation3DState(ctx: PluginContext) {
   // TODO: figure out how to do transform composition here?
   const events = ctx.state.data.events;
   events.object.created.subscribe((e) => {
-    if (!SO.Molecule.Structure.Representation3DState.is(e.obj)) return;
-    const data = e.obj.data as SO.Molecule.Structure.Representation3DStateData;
+    if (!isRepresentation3DState(e.obj)) return;
+    const data = e.obj.data;
     data.repr.setState(data.state);
     ctx.canvas3d?.update(data.repr);
   });
   events.object.updated.subscribe((e) => {
-    if (!SO.Molecule.Structure.Representation3DState.is(e.obj)) return;
-    const data = e.obj.data as SO.Molecule.Structure.Representation3DStateData;
+    if (!isRepresentation3DState(e.obj)) return;
+    const data = e.obj.data;
     data.repr.setState(data.state);
     ctx.canvas3d?.update(data.repr);
   });
   events.object.removed.subscribe((e) => {
-    if (!SO.Molecule.Structure.Representation3DState.is(e.obj)) return;
-    const data = e.obj.data as SO.Molecule.Structure.Representation3DStateData;
+    if (!isRepresentation3DState(e.obj)) return;
+    const data = e.obj.data;
     data.repr.setState(data.initialState);
     ctx.canvas3d?.update(data.repr);
   });

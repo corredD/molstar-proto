@@ -53,6 +53,9 @@ here.
   object values (left out, so BinaryCIF files no longer carry a nil `mask` key), and checks of the lengths in untrusted
   input
 - Add a wireframe visual to `vtp`, `ply` and `obj` shapes
+- Particles: `ParticleRepresentation3DLayers` colors, hides, makes transparent or emissive the particles of a
+  representation by entity, compartment or target (`Particle.selectLoci`), through a new
+  `PluginStateObject.Particle.Representation3DState` synced as the structure one
 - Particles: `ParticleListTargetsFromAttribute` gives each value of a particle attribute (e.g. the RELION or Dynamo
   class) its own target ID, so each class can be decorated with its own object (`Particle.withTargetsFromAttribute`)
 - Particles: a target of `ParticleListWithTargets` can be a structure, shape or volume already in the state (source

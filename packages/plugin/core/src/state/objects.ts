@@ -212,6 +212,18 @@ export namespace PluginStateObject {
     export class Representation3D extends CreateRepresentation3D<ParticleRepresentation<any>, ParticleList>({
       name: 'Particle 3D',
     }) {}
+
+    export interface Representation3DStateData {
+      repr: ParticleRepresentation<any>;
+      /** used to restore state when the obj is removed */
+      initialState: Partial<Representation.State>;
+      state: Partial<Representation.State>;
+      info?: unknown;
+    }
+    export class Representation3DState extends Create<Representation3DStateData>({
+      name: 'Particle 3D State',
+      typeClass: 'Object',
+    }) {}
   }
 }
 

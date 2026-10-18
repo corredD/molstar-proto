@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { CustomProperties } from '../../custom-property.js';
+import { OrderedSet } from '@molstar/core/data/int';
 import { Column } from '@molstar/core/data/db';
 import { getParticleTargetGroups, getParticleTransforms, Particle, ParticleList } from '../particle-list.js';
 
@@ -117,5 +118,36 @@ describe('Particle.withTargetsFromAttribute', () => {
 
   it('fails for an attribute the list does not have', () => {
     expect(() => Particle.withTargetsFromAttribute(withClasses([1]), 'score')).toThrow(/no attribute 'score'/);
+  });
+});
+
+describe('Particle.selectLoci', () => {
+  // four particles: targets 0, 1, 1, 2; target 1 is entity 5, particle 3 has its own entity 7; compartments 0, 0, 1, -1
+  const particles: ParticleList = {
+    ...createParticles(new Float32Array(12)),
+    targets: Int32Array.from([0, 1, 1, 2]),
+    targetInfo: new Map([
+      [0, {}],
+      [1, { entity: 5 }],
+      [2, {}],
+    ]),
+    compartments: Int32Array.from([0, 0, 1, -1]),
+  };
+  const select = (selector: Particle.Selector) => OrderedSet.toArray(Particle.selectLoci(particles, selector).indices);
+
+  it('picks every particle without criteria', () => {
+    expect(select({})).toEqual([0, 1, 2, 3]);
+  });
+
+  it('picks by target, by compartment, and by entity through the target', () => {
+    expect(select({ targets: [1, 2] })).toEqual([1, 2, 3]);
+    expect(select({ compartments: [0] })).toEqual([0, 1]);
+    expect(select({ entities: [5] })).toEqual([1, 2]);
+  });
+
+  it('prefers a particle own entity, and intersects the criteria', () => {
+    const own = { ...particles, entities: Int32Array.from([-1, 5, 7, 7]) };
+    expect(OrderedSet.toArray(Particle.selectLoci(own, { entities: [7] }).indices)).toEqual([2, 3]);
+    expect(select({ entities: [5], compartments: [1] })).toEqual([2]);
   });
 });

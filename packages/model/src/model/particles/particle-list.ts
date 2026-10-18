@@ -447,6 +447,40 @@ export namespace Particle {
   export function lociSize(loci: Loci) {
     return OrderedSet.size(loci.indices);
   }
+  /** Which particles of a list: the ones in all the given sets of ids (none given: every particle) */
+  export interface Selector {
+    /** Entity indices (`entityInfo`); a particle's entity is `entities[i]`, else its target's (`targetInfo`) */
+    readonly entities?: ReadonlyArray<number>;
+    /** Compartment indices (`compartmentInfo`) */
+    readonly compartments?: ReadonlyArray<number>;
+    /** Target ids (`targetInfo`) */
+    readonly targets?: ReadonlyArray<number>;
+  }
+
+  /** The particle of `index`'s entity index: its own (`entities`), else its target's, else -1 */
+  export function entityOf(particles: ParticleList, index: number): number {
+    const own = particles.entities?.[index];
+    if (own !== undefined) return own;
+    return particles.targetInfo.get(particles.targets[index])?.entity ?? -1;
+  }
+
+  /** The loci of the particles `selector` picks */
+  export function selectLoci(particles: ParticleList, selector: Selector): Loci {
+    const { count, targets, compartments } = particles;
+    const entities = selector.entities?.length ? new Set(selector.entities) : undefined;
+    const comps = selector.compartments?.length ? new Set(selector.compartments) : undefined;
+    const targetIds = selector.targets?.length ? new Set(selector.targets) : undefined;
+    if (!entities && !comps && !targetIds) return Loci(particles, OrderedSet.ofBounds(0, count));
+    const indices: number[] = [];
+    for (let i = 0; i < count; ++i) {
+      if (targetIds && !targetIds.has(targets[i])) continue;
+      if (comps && !comps.has(compartments ? compartments[i] : -1)) continue;
+      if (entities && !entities.has(entityOf(particles, i))) continue;
+      indices.push(i);
+    }
+    return Loci(particles, OrderedSet.ofSortedArray(indices));
+  }
+
   /** Remap a loci to a new `ParticleList`; indices outside the new range are dropped. */
   export function remapLoci(loci: Loci, particles: ParticleList): Loci {
     if (loci.particles === particles) return loci;
