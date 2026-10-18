@@ -129,6 +129,16 @@ export async function readCcp4Slices(
     for (let j = 0, jl = length; j < jl; ++j) {
       buffer.values[j] = b1 * int8[j] + b0;
     }
+  } else if (header.MODE === 12) {
+    // MODE 12 is 16-bit floats, written as float32: read to the last half of the read buffer, then widen in order
+    // (value j is read before it overwrites the halves it lands on, which are at most j)
+    const count = length / 2;
+    const valueByteOffset = length;
+    await file.readBuffer(byteOffset, buffer.readBuffer, length, valueByteOffset);
+    const bytes = new DataView(buffer.readBuffer.buffer, buffer.readBuffer.byteOffset + valueByteOffset, length);
+    for (let j = 0; j < count; ++j) {
+      buffer.values[j] = halfToFloat(bytes.getUint16(2 * j, littleEndian));
+    }
   } else {
     await readTypedArray(buffer, file, byteOffset, length, 0, littleEndian);
   }
@@ -147,7 +157,10 @@ function getCcp4DataType(mode: number) {
     case 4:
       throw new Error('mode 4 unsupported, complex 32-bit reals');
     case 6:
-      TypedArrayValueType.Uint16;
+      return TypedArrayValueType.Uint16;
+    case 12:
+      // read as 16-bit words, see `readCcp4Slices`
+      return TypedArrayValueType.Uint16;
     case 16:
       throw new Error('mode 16 unsupported, unsigned char * 3 (for rgb data, non-standard)');
   }
@@ -160,7 +173,17 @@ function isMapmode2to0(header: Ccp4Header) {
 }
 
 export function getCcp4ValueType(header: Ccp4Header) {
-  return isMapmode2to0(header) ? TypedArrayValueType.Float32 : getCcp4DataType(header.MODE);
+  return isMapmode2to0(header) || header.MODE === 12 ? TypedArrayValueType.Float32 : getCcp4DataType(header.MODE);
+}
+
+/** The value of an IEEE 754 half-precision float given as its 16 bits */
+function halfToFloat(h: number) {
+  const exponent = (h >> 10) & 0x1f;
+  const fraction = h & 0x3ff;
+  const sign = h & 0x8000 ? -1 : 1;
+  if (exponent === 0) return sign * fraction * 2 ** -24;
+  if (exponent === 0x1f) return fraction ? NaN : sign * Infinity;
+  return sign * (1024 + fraction) * 2 ** (exponent - 25);
 }
 
 export function getCcp4DataOffset(header: Ccp4Header) {
@@ -180,7 +203,7 @@ async function parseInternal(file: FileHandle, size: number, ctx: RuntimeContext
   const byteCount = count * elementByteSize;
 
   const buffer = createTypedArrayBufferContext(count, valueType);
-  readCcp4Slices(header, buffer, file, offset, byteCount, littleEndian);
+  await readCcp4Slices(header, buffer, file, offset, byteCount, littleEndian);
 
   const result: Ccp4File = { header, values: buffer.values, name: file.name };
   return result;

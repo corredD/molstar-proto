@@ -13,6 +13,8 @@ import type { Ccp4Header } from '@molstar/io/reader/ccp4/schema';
 
 async function readHeader(name: string, file: FileHandle) {
   const { header: ccp4Header, littleEndian } = await readCcp4Header(file);
+  // slices are read by output bytes here, `readCcp4Slices` widens MODE 12 from its file bytes
+  if (ccp4Header.MODE === 12) throw new Error('MODE 12 (16-bit floats) is not supported by the volume server');
 
   const header: Header = {
     name,
