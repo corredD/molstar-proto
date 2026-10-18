@@ -30,11 +30,12 @@
   "dependencies": {
     "tslib": "catalog:",
     "@molstar/core": "workspace:*",
-    "@molstar/model": "workspace:*",
     "@molstar/graphics": "workspace:*",
+    "@molstar/model": "workspace:*",
     "@molstar/plugin": "workspace:*",
+    "@molstar/prism-ui": "workspace:*",
     "@molstar/prism-viewer": "workspace:*",
-    "@molstar/prism-ui": "workspace:*"
+    "rxjs": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:",
