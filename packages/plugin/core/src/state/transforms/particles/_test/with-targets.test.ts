@@ -120,7 +120,17 @@ describe('ParticleListWithTargets', () => {
     expect(particleTargetObjectCells(plugin.state.data).map((c) => c.transform.ref)).toEqual([own(a.ref), own(b.ref)]);
   });
 
-  it('keeps a ref it would not list (a decorated cell)', async () => {
+  it('offers every loaded object, its own cell first, so a ref is never replaced', async () => {
+    const { plugin, list, volume } = await setup();
+    const vol = await volume(4);
+    const own = plugin.state.data.tree.transforms.get(vol.ref)!.parent;
+    const params = ParticleListWithTargets.definition.params!(list.obj as SO.Particle.List, plugin) as any;
+    const options = params.targets.element.source.map('ref').params.ref.options as [string, string][];
+    expect(options.map((o) => o[0])).toEqual([own, vol.ref]);
+    expect(options[0][1]).toBe(plugin.state.data.cells.get(own)!.obj!.label);
+  });
+
+  it('keeps the ref of a decorated cell', async () => {
     const { plugin, list, volume } = await setup();
     const vol = await volume(4);
     const decorated = await plugin

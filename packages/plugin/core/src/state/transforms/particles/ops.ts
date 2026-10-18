@@ -11,6 +11,7 @@ import { type RuntimeContext, Task } from '@molstar/core/task';
 import type { PluginContext } from '@molstar/plugin/context';
 import {
   particleTargetFormatOptions,
+  particleTargetObjectOptions,
   particleTargetFileExtensions,
   type ParticleTargetSource,
   matchParticleTargetFiles,
@@ -100,6 +101,7 @@ function ParticleListWithTargetsParams(a: SO.Particle.List | undefined, plugin: 
       ? `Target ID in the particle list this object maps to. Available IDs: ${targetIds.slice(0, 32).join(', ')}${targetIds.length > 32 ? ', …' : ''}.`
       : 'Target ID in the particle list this object maps to (matches ParticleList.targets).';
   const formatOptions = particleTargetFormatOptions(plugin);
+  const objectOptions = particleTargetObjectOptions(plugin.state.data);
 
   return {
     files: PD.FileList({
@@ -133,8 +135,16 @@ function ParticleListWithTargetsParams(a: SO.Particle.List | undefined, plugin: 
             ),
             ref: PD.Group(
               {
-                // any cell: a select would replace a ref it does not offer (`particleTargetObjectCells` lists them)
-                ref: PD.Text('', { label: 'Object', description: 'Ref of a structure, shape or volume in the state.' }),
+                ref:
+                  objectOptions.length > 0
+                    ? PD.Select(objectOptions[0][0], objectOptions, {
+                        label: 'Object',
+                        description: 'A structure, shape or volume already loaded.',
+                      })
+                    : PD.Text('', {
+                        label: 'Object',
+                        description: 'Load a structure, shape or volume to pick it here.',
+                      }),
               },
               { isFlat: true },
             ),

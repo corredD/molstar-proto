@@ -218,6 +218,23 @@ export function particleTargetObjectCells(state: State): StateObjectCell[] {
   return out;
 }
 
+/**
+ * Options for picking a particle target among the objects of `state`: every structure, shape and volume, its own cell
+ * first, then the decorators on it (named after them). Every cell a ref can name is offered, so a select of them never
+ * replaces a ref given by a script (params normalization drops a value a select does not offer).
+ */
+export function particleTargetObjectOptions(state: State): [string, string][] {
+  const own: [string, string][] = [];
+  const decorated: [string, string][] = [];
+  for (const cell of state.cells.values()) {
+    if (cell.state.isGhost || !isParticleTargetObject(cell.obj)) continue;
+    const def = cell.transform.transformer.definition;
+    if (def.isDecorator) decorated.push([cell.transform.ref, `${cell.obj!.label} (${def.display.name})`]);
+    else own.push([cell.transform.ref, cell.obj!.label]);
+  }
+  return [...own, ...decorated];
+}
+
 /** The reference object of a particle target from a structure, shape or volume already in the state. */
 export async function particleTargetFromObject(ctx: RuntimeContext, obj: StateObject): Promise<ParticleTarget> {
   if (obj instanceof SO.Molecule.Structure) return { kind: 'structure', structure: obj.data };
