@@ -29,7 +29,9 @@ export const MesoscaleSkill: ViewerSkill = {
     'molecule type) is instanced at many particles, entities are grouped by compartment (root.envelope.surface) or',
     'function. get_mesoscale_entities lists them; style_mesoscale_entities shows, hides, colors, fades or lights',
     'entities picked by name or by group (reset brings them back); color_mesoscale_entities generates colors (a hue',
-    'per group), one uniform color, or goes back to the color theme; set_mesoscale_graphics trades detail for speed.',
+    'per group), one uniform color, or goes back to the color theme; set_mesoscale_graphics trades detail for speed;',
+    'move_mesoscale_particles wiggles the atoms and tumbles the particles (0 stops); open_mesoscale_example opens one of',
+    "the Mesoscale Explorer's examples by id (petworld-hiv, cellpack-hiv1, …).",
   ].join('\n'),
   tools: [
     {
@@ -46,6 +48,16 @@ export const MesoscaleSkill: ViewerSkill = {
       id: 'color_mesoscale_entities',
       operation: 'mesoscale.colors',
       description: "Colors a mesoscale model's entities: generated per group, uniform, or the color theme.",
+    },
+    {
+      id: 'move_mesoscale_particles',
+      operation: 'mesoscale.motion',
+      description: 'Wiggles the atoms and tumbles the particles of a mesoscale model.',
+    },
+    {
+      id: 'open_mesoscale_example',
+      operation: 'mesoscale.example',
+      description: "Opens one of the Mesoscale Explorer's examples by id.",
     },
     {
       id: 'set_mesoscale_graphics',
@@ -81,6 +93,17 @@ export const MesoscaleExtension: ViewerExtension = {
         icon: 'gauge',
         alias: ['graphics mode', 'performance', 'quality', 'level of detail', 'lod'],
         action: 'Apply',
+      }),
+      operationCommand(api, m.motion, {
+        category,
+        icon: 'sparkles',
+        alias: ['wiggle', 'tumble', 'procedural animation', 'motion'],
+        action: 'Apply',
+      }),
+      operationCommand(api, m.example, {
+        category,
+        icon: 'folder-open',
+        alias: ['example', 'mesoscale example', 'cellpack', 'petworld'],
       }),
       operationCommand(api, m.entities, { category, icon: 'info', alias: ['mesoscale entities', 'compartments'] }),
     ];

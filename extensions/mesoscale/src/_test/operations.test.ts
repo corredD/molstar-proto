@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Color } from '@molstar/core/util/color';
 import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
@@ -95,6 +95,36 @@ describe('mesoscale', () => {
     expect(await m.style({ group: 'root.nowhere', visible: false })).toMatchObject({ ok: false, code: 'not-found' });
     expect(await m.style({ entities: 'CA', color: 'not a color' })).toMatchObject({ ok: false, code: 'invalid' });
     expect(await m.style({ entities: 'CA' })).toMatchObject({ ok: false, code: 'invalid' });
+  });
+
+  it('wiggles and tumbles the particles, and stops', async () => {
+    const v = await viewer();
+    const animation = () =>
+      (v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.transform.params as any).type
+        .params.animation;
+    expectOk(await v.api.mesoscale!.motion({ wiggle: 1.5, tumble: 4 } as never));
+    expect(animation()).toMatchObject({ wiggleAmplitude: 1.5, tumbleAmplitude: 4 });
+    expectOk(await v.api.mesoscale!.motion({ tumble: 0 } as never));
+    expect(animation()).toMatchObject({ wiggleAmplitude: 1.5, tumbleAmplitude: 0 });
+    expect(await v.api.mesoscale!.motion({} as never)).toMatchObject({ ok: false, code: 'invalid' });
+  });
+
+  it('opens an example of the list, by id, from its absolute address', async () => {
+    const v = await viewer();
+    const list = [{ id: 'tiny', label: 'Tiny', url: '../examples/tiny.bcif', type: 'bcif' }];
+    const asked: string[] = [];
+    vi.stubGlobal('fetch', async (url: string | URL) => {
+      asked.push(String(url));
+      return String(url).endsWith('list.json') ? new Response(JSON.stringify(list)) : new Response('', { status: 404 });
+    });
+    try {
+      expect(await v.api.mesoscale!.example({ id: 'nope' })).toMatchObject({ ok: false, code: 'not-found' });
+      await v.api.mesoscale!.example({ id: 'tiny' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(asked).toContain('https://molstar.org/me/examples/list.json');
+    expect(asked).toContain('https://molstar.org/me/examples/tiny.bcif');
   });
 
   it('undoes a style in one step', async () => {

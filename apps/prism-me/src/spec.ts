@@ -16,6 +16,7 @@ import type { PrismViewerSpec } from '@molstar/prism-viewer/spec';
 import { FullPrismViewerSpec } from '@molstar/prism-viewer-app/full-spec';
 import { optionsFromUrl } from '@molstar/prism-viewer-app/url';
 import { MesoscaleExplorerExtensions } from './extensions.js';
+import { withMesoscaleLook } from './look.js';
 
 /**
  * The spec of the Mesoscale Explorer (viewer-spec.md §5): the Prism viewer with Mol*'s extensions, the explorer's
@@ -25,7 +26,7 @@ import { MesoscaleExplorerExtensions } from './extensions.js';
 export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
   const base = FullPrismViewerSpec();
   const params = parseSearch(search);
-  const loads = LoadUrlParameters.some((p) => params.has(p));
+  const loads = LoadUrlParameters.some((p) => params.has(p)) || params.has('example');
   const options = optionsFromUrl(search);
   return {
     ...base,
@@ -41,7 +42,7 @@ export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
       preferences: webStore('local', { prefix: 'prism-me', version: PLUGIN_VERSION, budget: 64 * 1024 }),
     },
     agent: { ...(base.agent || {}), assistant: assistant() },
-    finalize: (spec) => withoutRightClickFocus(base.finalize ? base.finalize(spec) : spec),
+    finalize: (spec) => withMesoscaleLook(withoutRightClickFocus(base.finalize ? base.finalize(spec) : spec)),
   };
 }
 

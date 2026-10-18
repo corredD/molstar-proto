@@ -212,6 +212,71 @@ export class MesoscaleApi extends ApiArea {
     },
   });
 
+  readonly motion = this.operation({
+    id: 'mesoscale.motion',
+    title: 'Wiggle and tumble the particles',
+    params: {
+      wiggle: OptionalParam(
+        PD.Numeric(0, { min: 0, max: 5, step: 0.1 }, { description: 'Wiggle of the atoms, Å; 0: off' }),
+      ),
+      tumble: OptionalParam(
+        PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, { description: 'Tumble of each particle, Å of surface; 0: off' }),
+      ),
+    },
+    async run(values, ctx) {
+      const { wiggle, tumble } = values as { wiggle?: number; tumble?: number };
+      if (wiggle === undefined && tumble === undefined) {
+        return ApiResult.fail('invalid', 'Nothing to change.', 'Give wiggle or tumble (0 stops it).');
+      }
+      const reps = lists(ctx).flatMap((l) => l.representations);
+      if (!reps.length) return ApiResult.fail('not-found', 'No particles are shown.', 'Open a mesoscale model first.');
+      const b = ctx.plugin.state.data.build();
+      const nodes: string[] = [];
+      for (const r of reps) {
+        const old = r.cell.transform.params as any;
+        const next = { ...old, type: { ...old.type, params: withMotion(old.type.params, wiggle, tumble) } };
+        if (JSON.stringify(next) === JSON.stringify(old)) continue;
+        b.to(r.cell).update(next);
+        nodes.push(r.cell.transform.ref);
+      }
+      if (!nodes.length) return ApiResult.already('The particles already move so.');
+      await b.commit();
+      const parts = [
+        wiggle !== undefined ? (wiggle ? `wiggle ${wiggle} Å` : 'no wiggle') : undefined,
+        tumble !== undefined ? (tumble ? `tumble ${tumble} Å` : 'no tumble') : undefined,
+      ].filter((x) => x);
+      return ApiResult.ok(`The particles move: ${parts.join(', ')}.`, { nodes });
+    },
+  });
+
+  readonly example = this.operation({
+    id: 'mesoscale.example',
+    title: 'Open a mesoscale example',
+    params: {
+      id: PD.Text('', { description: 'An example of the Mesoscale Explorer (petworld-hiv, cellpack-hiv1, …)' }),
+    },
+    modules: ['network'],
+    async run({ id }, ctx) {
+      const list = await mesoscaleExamples();
+      if (!list.length)
+        return ApiResult.fail('unavailable', 'The examples could not be fetched.', `From ${ExamplesBase}.`);
+      const e = list.find((x) => x.id === id.trim());
+      if (!e) {
+        return ApiResult.fail(
+          'not-found',
+          `There is no example '${id}'.`,
+          `Examples: ${list.map((x) => x.id).join(', ')}.`,
+        );
+      }
+      const r =
+        e.type === 'molx' || e.type === 'molj'
+          ? await ctx.api.run('load.snapshot', { url: e.url, type: e.type })
+          : await ctx.api.run('load.url', { url: e.url, format: 'mmcif_particles', binary: e.type === 'bcif' });
+      if (!r.ok) return r;
+      return ApiResult.ok(`Opened the example ${e.label}.`, r.changed);
+    },
+  });
+
   readonly graphics = this.operation({
     id: 'mesoscale.graphics',
     title: 'Set the graphics mode',
@@ -254,6 +319,49 @@ export class MesoscaleApi extends ApiArea {
       return ApiResult.ok(`Graphics set to ${mode}.`, { nodes: updates.map((r) => r.cell.transform.ref), view: true });
     },
   });
+}
+
+/** Sets `wiggleAmplitude` and `tumbleAmplitude` of every `animation` group in a representation's params */
+function withMotion(params: unknown, wiggle: number | undefined, tumble: number | undefined): unknown {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return params;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(params as Record<string, unknown>)) {
+    if (k === 'animation' && v && typeof v === 'object') {
+      out[k] = {
+        ...v,
+        ...(wiggle !== undefined ? { wiggleAmplitude: wiggle } : {}),
+        ...(tumble !== undefined ? { tumbleAmplitude: tumble } : {}),
+      };
+    } else {
+      out[k] = withMotion(v, wiggle, tumble);
+    }
+  }
+  return out;
+}
+
+/** The Mesoscale Explorer's examples (its deployed list): cellPACK and PetWorld models, sessions */
+export const ExamplesBase = 'https://molstar.org/me/examples/';
+
+export interface MesoscaleExample {
+  readonly id: string;
+  readonly label: string;
+  readonly url: string;
+  readonly type: string;
+  readonly description?: string;
+}
+
+let examples: Promise<MesoscaleExample[]> | undefined;
+
+/** The examples, fetched once from the explorer's list; their addresses made absolute */
+export function mesoscaleExamples(base = ExamplesBase): Promise<MesoscaleExample[]> {
+  examples ??= fetch(new URL('list.json', base))
+    .then((r) => (r.ok ? r.json() : []))
+    .then((list: MesoscaleExample[]) => list.map((e) => ({ ...e, url: new URL(e.url, base).href })))
+    .catch(() => {
+      examples = undefined;
+      return [];
+    });
+  return examples;
 }
 
 // --- the particle lists -------------------------------------------------------------------------------------------

@@ -32,6 +32,12 @@ async function main() {
   if (LoadUrlParameters.some((p) => params.has(p)) && viewer.api.describe('load.entry')) {
     runUrlLoads(viewer.api, search).catch((e: unknown) => console.error(e));
   }
+  // The Mesoscale Explorer's own: `?example=petworld-hiv`, `?graphics-mode=performance`
+  const own = parseSearch(location.search);
+  const example = own.get('example');
+  if (example) viewer.api.run('mesoscale.example', { id: example }).catch((e: unknown) => console.error(e));
+  const graphics = own.get('graphics-mode');
+  if (graphics) viewer.api.run('mesoscale.graphics', { mode: graphics }).catch((e: unknown) => console.error(e));
 }
 
 main().catch((e) => {

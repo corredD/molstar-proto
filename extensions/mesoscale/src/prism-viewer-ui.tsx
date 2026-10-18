@@ -7,14 +7,21 @@
  */
 
 import { Color } from '@molstar/core/util/color';
-import { Button, Choices, ColorPicker, domView, For, Icon, Show, TextInput } from '@molstar/prism-ui';
+import { Button, Choices, ColorPicker, domView, For, Icon, onCleanup, Show, TextInput } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import { type MesoGroup, groupEntities } from './model.js';
-import type { EntityInfo, GraphicsMode, MesoscaleApi, MesoscaleInfo } from './operations.js';
+import {
+  type EntityInfo,
+  type GraphicsMode,
+  type MesoscaleApi,
+  type MesoscaleExample,
+  type MesoscaleInfo,
+  mesoscaleExamples,
+} from './operations.js';
 
 // The Entities tab (apps/prism-me/_spec/features.md, "Mesoscale"; v5's `apps/mesoscale-explorer/src/ui/entities.tsx`):
 // the graphics mode, the colors, a filter, and the entities of the particle list in their groups (compartments or
@@ -22,11 +29,49 @@ import type { EntityInfo, GraphicsMode, MesoscaleApi, MesoscaleInfo } from './op
 // operations, so the history, the record and the agent see every change.
 
 export const EntitiesTab = 'mesoscale.tab.entities';
+export const ExamplesSection = 'mesoscale.section.examples';
+
+/** The Mesoscale Explorer's examples, each a button that opens it (`mesoscale.example`) */
+function Examples(props: { area: MesoscaleApi }) {
+  const list = observableState<readonly MesoscaleExample[] | undefined>(undefined);
+  void mesoscaleExamples().then((l) => list.set(l));
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+      <Show when={list} fallback={() => <span style={Muted}>Fetching the examples…</span>}>
+        {(l) => (
+          <For each={l} by={(e) => e.id}>
+            {(e) => (
+              <Button
+                size="sm"
+                variant="ghost"
+                title={e.description}
+                onClick={() => void props.area.example({ id: e.id })}
+              >
+                {e.label}
+              </Button>
+            )}
+          </For>
+        )}
+      </Show>
+    </div>
+  );
+}
 
 export function mesoscaleUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const area = ctx.api.mesoscale;
   if (!area) return {};
   return {
+    sections: [
+      {
+        id: ExamplesSection,
+        slot: 'home.import',
+        title: 'Mesoscale examples',
+        icon: 'book-open',
+        order: 1,
+        keywords: ['example', 'cellpack', 'petworld', 'mesoscale', 'hiv', 'sars-cov-2'],
+        render: domView(() => <Examples area={area} />),
+      },
+    ],
     tabs: [
       {
         id: EntitiesTab,
@@ -116,6 +161,7 @@ function Entities(props: { area: MesoscaleApi; info: ReadonlyState<MesoscaleInfo
           Reset
         </Button>
       </div>
+      <Motion area={area} />
       <TextInput
         search
         size="sm"
@@ -304,4 +350,35 @@ function EntityRow(props: {
 function swatch(e: EntityInfo | undefined) {
   if (!e || e.color === undefined) return 'transparent';
   return Color.toHexStyle(e.color);
+}
+
+/** Wiggle and tumble sliders (the Mesoscale Explorer's procedural animation) */
+function Motion(props: { area: MesoscaleApi }) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(timer));
+  const set = (values: { wiggle?: number; tumble?: number }) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => void props.area.motion(values as never), 120);
+  };
+  const slider = (label: string, max: number, key: 'wiggle' | 'tumble') => (
+    <div style="display: flex; align-items: center; gap: var(--msp-space-2)">
+      <span style="width: 56px">{label}</span>
+      <input
+        type="range"
+        min="0"
+        max={String(max)}
+        step="0.1"
+        value="0"
+        style="flex: 1"
+        aria-label={label}
+        onInput={(e) => set({ [key]: Number((e.target as HTMLInputElement).value) })}
+      />
+    </div>
+  );
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+      {slider('Wiggle', 5, 'wiggle')}
+      {slider('Tumble', 10, 'tumble')}
+    </div>
+  );
 }

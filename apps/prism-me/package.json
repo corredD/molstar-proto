@@ -24,6 +24,7 @@
   "dependencies": {
     "@molstar/core": "workspace:*",
     "@molstar/cryoet-extension": "workspace:*",
+    "@molstar/graphics": "workspace:*",
     "@molstar/mesoscale-extension": "workspace:*",
     "@molstar/plugin": "workspace:*",
     "@molstar/prism-assistant": "workspace:*",

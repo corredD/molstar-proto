@@ -622,6 +622,9 @@ importers:
       '@molstar/cryoet-extension':
         specifier: workspace:*
         version: link:../../extensions/cryoet
+      '@molstar/graphics':
+        specifier: workspace:*
+        version: link:../../packages/graphics
       '@molstar/mesoscale-extension':
         specifier: workspace:*
         version: link:../../extensions/mesoscale
