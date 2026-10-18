@@ -31,6 +31,12 @@
       "private": false
     },
     {
+      "name": "@molstar/prism-me-app",
+      "path": "apps/prism-me",
+      "kind": "app",
+      "private": true
+    },
+    {
       "name": "@molstar/prism-viewer-app",
       "path": "apps/prism-viewer",
       "kind": "app",

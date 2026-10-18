@@ -14,6 +14,9 @@
       "path": "./apps/viewer"
     },
     {
+      "path": "./apps/prism-me"
+    },
+    {
       "path": "./apps/prism-viewer"
     },
     {
