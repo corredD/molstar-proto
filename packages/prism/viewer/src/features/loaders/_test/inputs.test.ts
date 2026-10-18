@@ -108,7 +108,8 @@ describe('the format, told', () => {
     expect(await pick('1abc.bcif', 'auto', Structures)).toEqual({ format: 'mmcif', binary: true });
     expect(await pick('a.pdb', 'auto', Structures)).toEqual({ format: 'pdb', binary: false });
     expect(await pick('a.gro', 'auto', Structures)).toEqual({ format: 'gro', binary: false });
-    for (const ext of ['map', 'mrc', 'ccp4']) {
+    // with the cryo-ET names of MRC files: tomograms (.rec), tilt series (.st, .ali) and particle stacks (.mrcs)
+    for (const ext of ['map', 'mrc', 'ccp4', 'rec', 'st', 'ali', 'mrcs']) {
       expect(await pick(`emd.${ext}`, 'auto', Volumes)).toEqual({ format: 'ccp4', binary: true });
     }
     expect(await pick('x.dsn6', 'auto', Volumes)).toEqual({ format: 'dsn6', binary: true });

@@ -53,6 +53,8 @@ here.
   object values (left out, so BinaryCIF files no longer carry a nil `mask` key), and checks of the lengths in untrusted
   input
 - Add a wireframe visual to `vtp`, `ply` and `obj` shapes
+- CCP4/MRC: open the cryo-ET names of MRC files, `.rec` (tomograms), `.st` and `.ali` (tilt series) and `.mrcs`
+  (particle stacks)
 - CCP4/MRC: read MODE 6 (unsigned 16-bit integers; it fell through to the MODE 16 error) and MODE 12 (16-bit floats, as
   written by Warp and AreTomo), and wait for the values to be read before returning the parsed file
 

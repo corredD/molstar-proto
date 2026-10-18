@@ -73,7 +73,8 @@ export const Ccp4Provider = DataFormatProvider({
   label: 'CCP4/MRC/MAP',
   description: 'CCP4/MRC/MAP',
   category: VolumeFormatCategory,
-  binaryExtensions: ['ccp4', 'mrc', 'map'],
+  // with the cryo-ET names of MRC files: tomograms (rec), tilt series (st, ali) and particle stacks (mrcs)
+  binaryExtensions: ['ccp4', 'mrc', 'map', 'rec', 'st', 'ali', 'mrcs'],
   parse: async (plugin, data, params?: VolumeFormatParams) => {
     const format = plugin
       .build()
