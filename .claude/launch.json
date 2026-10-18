@@ -26,6 +26,12 @@
       "port": 1340
     },
     {
+      "name": "prism-me",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/esbuild/app.mjs", "apps/prism-me", "--dev", "--port", "1343"],
+      "port": 1343
+    },
+    {
       "name": "minimal-prism-viewer",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["-C", "examples/minimal-prism-viewer", "dev", "--port", "5180", "--strictPort"],
