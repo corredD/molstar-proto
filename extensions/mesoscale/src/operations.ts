@@ -97,6 +97,17 @@ export class MesoscaleApi extends ApiArea {
     );
   }
 
+  /** The particle lists (state ref and label), following the state tree while watched: a read for views */
+  listsState(): ReadonlyState<readonly { readonly ref: string; readonly label: string }[]> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () =>
+        lists({ plugin }).map((l) => ({ ref: l.cell.transform.ref, label: l.cell.obj?.label ?? l.cell.transform.ref })),
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
   readonly entities = this.operation({
     id: 'mesoscale.entities',
     title: 'Describe the entities',
@@ -458,8 +469,11 @@ function readStyles(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Map<nu
   if (!r) return styles;
   const t = layersCell(ctx, r);
   for (const layer of (t?.params?.layers ?? []) as ParticleLayerProps[]) {
-    if (layer.entities.length !== 1) continue;
-    styles.set(layer.entities[0], {
+    // an entity's layer, or a target's on a list without entities (`toLayers`)
+    const id =
+      layer.entities.length === 1 ? layer.entities[0] : layer.targets.length === 1 ? layer.targets[0] : undefined;
+    if (id === undefined) continue;
+    styles.set(id, {
       visible: layer.visible,
       ...(layer.color !== null ? { color: layer.color } : {}),
       ...(layer.transparency !== null ? { transparency: layer.transparency } : {}),
@@ -469,14 +483,15 @@ function readStyles(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Map<nu
   return styles;
 }
 
-function toLayers(styles: ReadonlyMap<number, EntityStyle>): ParticleLayerProps[] {
+/** The layers of the styles: by entity, or by target on a list without entities (whose entities are its targets) */
+function toLayers(styles: ReadonlyMap<number, EntityStyle>, byTarget: boolean): ParticleLayerProps[] {
   const layers: ParticleLayerProps[] = [];
   for (const [id, s] of Array.from(styles).sort((a, b) => a[0] - b[0])) {
     if (s.visible && s.color === undefined && s.transparency === undefined && s.emissive === undefined) continue;
     layers.push({
-      entities: [id],
+      entities: byTarget ? [] : [id],
       compartments: [],
-      targets: [],
+      targets: byTarget ? [id] : [],
       visible: s.visible,
       color: s.color ?? null,
       transparency: s.transparency ?? null,
@@ -492,7 +507,7 @@ async function writeStyles(
   l: ParticleListRef,
   styles: ReadonlyMap<number, EntityStyle>,
 ): Promise<string[] | undefined> {
-  const layers = toLayers(styles);
+  const layers = toLayers(styles, !dataOf(l)?.entityInfo);
   const b = ctx.plugin.state.data.build();
   const changed: string[] = [];
   for (const r of l.representations) {

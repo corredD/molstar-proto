@@ -36,8 +36,19 @@ export interface MesoGroup {
 
 export type MesoGroupBy = 'compartment' | 'function';
 
-/** The entities of `particles`, in the order of their ids; a list without `entityInfo` has one per target */
+const entitiesOf = new WeakMap<ParticleList, MesoEntity[]>();
+
+/**
+ * The entities of `particles`, in the order of their ids; a list without `entityInfo` has one per target (its ids the
+ * target ids). Computed once per list: it reads every particle.
+ */
 export function mesoEntities(particles: ParticleList): MesoEntity[] {
+  let entities = entitiesOf.get(particles);
+  if (!entities) entitiesOf.set(particles, (entities = computeEntities(particles)));
+  return entities;
+}
+
+function computeEntities(particles: ParticleList): MesoEntity[] {
   const { count, entityInfo, compartments, targetInfo } = particles;
   const counts = new Map<number, number>();
   const compartmentCounts = new Map<number, Map<number, number>>();
@@ -74,7 +85,8 @@ export function mesoEntities(particles: ParticleList): MesoEntity[] {
 
 /**
  * The groups of `entities`: by compartment, the tree of their dotted names (each name part a level; entities without a
- * compartment at the root), or by function, one group per function (entities without one in "unknown function").
+ * compartment at the root), or by function, one group per function (entities without one in "unknown function";
+ * none with a function: flat).
  */
 export function mesoGroups(particles: ParticleList, entities: readonly MesoEntity[], by: MesoGroupBy): MesoGroup {
   interface Mutable {
@@ -95,8 +107,12 @@ export function mesoGroups(particles: ParticleList, entities: readonly MesoEntit
     byPath.set(path, g);
     return g;
   };
+  // without any function, grouping by function would be one group of everything: the entities are listed flat
+  const flat = by === 'function' && entities.every((e) => !e.function);
   for (const e of entities) {
-    if (by === 'function') {
+    if (flat) {
+      root.entities.push(e.id);
+    } else if (by === 'function') {
       const name = e.function ?? 'unknown function';
       let g = byPath.get(`function:${name}`);
       if (!g) {

@@ -7,7 +7,18 @@
  */
 
 import { Color } from '@molstar/core/util/color';
-import { Button, Choices, ColorPicker, domView, For, Icon, onCleanup, Show, TextInput } from '@molstar/prism-ui';
+import {
+  Button,
+  Choices,
+  ColorPicker,
+  domView,
+  For,
+  Icon,
+  onCleanup,
+  Select,
+  Show,
+  TextInput,
+} from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
@@ -88,19 +99,44 @@ const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-siz
 
 function EntitiesView(props: { area: MesoscaleApi }) {
   const { area } = props;
-  const info = area.infoState();
+  const lists = area.listsState();
+  // the list shown: picked among several, else the only one
+  const picked = observableState('');
+  const current = derive([lists, picked.asReadonly], (l, p) => (l.some((x) => x.ref === p) ? p : (l[0]?.ref ?? '')));
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-3); padding: var(--msp-space-3)">
-      <Show
-        when={info}
-        fallback={() => (
-          <p style={`margin: 0; ${Muted}`}>
-            Open a cellPACK or PetWorld model (mmCIF, BinaryCIF) or a particle list to see its entities.
-          </p>
+      <Show when={mapState(lists, (l) => l.length > 1)}>
+        {() => (
+          <For each={mapState(lists, (l) => [JSON.stringify(l)])} by={(k) => k}>
+            {() => (
+              <Select
+                size="sm"
+                aria-label="Particle list"
+                options={lists.value.map((l) => [l.ref, l.label] as [string, string])}
+                value={current}
+                onChange={(ref) => picked.set(ref)}
+              />
+            )}
+          </For>
         )}
-      >
-        {() => <Entities area={area} info={info as ReadonlyState<MesoscaleInfo>} />}
       </Show>
+      <For each={mapState(current, (c) => [c])} by={(c) => c}>
+        {(ref) => {
+          const info = area.infoState(ref);
+          return (
+            <Show
+              when={info}
+              fallback={() => (
+                <p style={`margin: 0; ${Muted}`}>
+                  Open a cellPACK or PetWorld model (mmCIF, BinaryCIF) or a particle list to see its entities.
+                </p>
+              )}
+            >
+              {() => <Entities area={area} info={info as ReadonlyState<MesoscaleInfo>} />}
+            </Show>
+          );
+        }}
+      </For>
     </div>
   );
 }

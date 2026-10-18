@@ -64,7 +64,7 @@ export type StagePick =
   | {
       readonly kind: 'target';
       readonly target: StageTarget;
-      /** The picked particle's target id and entity index (a particle list) */
+      /** The picked particle's target id and entity index (its target id on a list without entities) */
       readonly particle?: { readonly target: number; readonly entity: number; readonly name: string };
     };
 
@@ -267,7 +267,8 @@ function pickOf(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StagePick {
       if (!datas.includes(loci.particles)) continue;
       const i = OrderedSet.getAt(loci.indices, 0);
       const target = loci.particles.targets[i];
-      const entity = Particle.entityOf(loci.particles, i);
+      // a list without entities has one per target (as the mesoscale area counts them)
+      const entity = loci.particles.entityInfo ? Particle.entityOf(loci.particles, i) : target;
       const name =
         loci.particles.entityInfo?.get(entity)?.name ??
         loci.particles.targetInfo.get(target)?.name ??

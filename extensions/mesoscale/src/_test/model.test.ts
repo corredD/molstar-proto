@@ -54,6 +54,20 @@ describe('mesoscale model', () => {
     ]);
   });
 
+  it('lists the entities flat when none has a function', () => {
+    const list = {
+      ...cellpackLike(),
+      entityInfo: new Map([
+        [0, { name: 'a' }],
+        [1, { name: 'b' }],
+        [2, { name: 'c' }],
+        [3, { name: 'd' }],
+      ]),
+    };
+    const root = mesoGroups(list, mesoEntities(list), 'function');
+    expect([root.groups.length, root.entities]).toEqual([0, [0, 1, 2, 3]]);
+  });
+
   it('colors every entity, the members of a group alike, and the same way each time', () => {
     const list = cellpackLike();
     const root = mesoGroups(list, mesoEntities(list), 'compartment');

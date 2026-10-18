@@ -6,7 +6,9 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Color } from '@molstar/core/util/color';
+import { OrderedSet } from '@molstar/core/data/int';
 import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
+import { ParticleListTargetsFromAttribute } from '@molstar/plugin/state/transforms/particles/ops';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -125,6 +127,27 @@ describe('mesoscale', () => {
     }
     expect(asked).toContain('https://molstar.org/me/examples/list.json');
     expect(asked).toContain('https://molstar.org/me/examples/tiny.bcif');
+  });
+
+  it('styles the targets of a list without entities (a RELION list by class)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const star =
+      'data_particles\n\nloop_\n_rlnCoordinateX #1\n_rlnCoordinateY #2\n_rlnCoordinateZ #3\n_rlnClassNumber #4\n10 0 0 1\n20 0 0 2\n30 0 0 1\n';
+    expectOk(await v.api.load.files({ files: [new File([star], 'particles.star')] }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0];
+    await v.plugin.build().to(list.cell).apply(ParticleListTargetsFromAttribute, { attribute: 'class' }).commit();
+    expectOk(await v.api.mesoscale!.style({ entities: 'Class 2', visible: false }));
+    expect((await info(v)).entities.map((e) => [e.name, e.visible])).toEqual([
+      ['Class 1', true],
+      ['Class 2', false],
+    ]);
+    const r = v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.obj!.data.repr;
+    const hidden = r.state.transparency!.layers.map((l: any) => OrderedSet.toArray(l.loci.indices));
+    expect(hidden).toEqual([[1]]);
   });
 
   it('undoes a style in one step', async () => {
