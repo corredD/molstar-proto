@@ -65,6 +65,7 @@ import {
 import { VolumeIsosurfaceParams } from '../../../volume/isosurface.js';
 import { BlobSurfaceCoreParams } from '../../../structure/visual/util/blob-surface.js';
 import { getQualityProps } from '../../../util.js';
+import type { Representation } from '../../../representation.js';
 
 // ---- Params ----------------------------------------------------------------
 
@@ -492,6 +493,8 @@ export interface TargetVisual {
     target: ParticleTarget,
   ): Promise<void>;
   mark(loci: ModelLoci, action: MarkerAction): boolean;
+  /** Applies the layers of a representation state (overpaint, transparency, emissive, substance, clipping) */
+  setLayers(state: Partial<Representation.State>): void;
   destroy(): void;
 }
 
@@ -701,43 +704,55 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     currentParticleIndices = particleIndices;
   }
 
+  /** Applies `apply` to the instances of this visual's particles that `loci` covers, in runs */
+  function lociApply(loci: ModelLoci, apply: (interval: Interval) => boolean, _isMarking: boolean): boolean {
+    const particleIndices = currentParticleIndices;
+    if (!particleIndices) return false;
+    const instanceCount = OrderedSet.size(particleIndices);
+    // Fast path: whole visual selected
+    if (isEveryLoci(loci)) {
+      return apply(Interval.ofBounds(0, instanceCount));
+    }
+    if (!Particle.isLoci(loci) || Particle.isLociEmpty(loci)) return false;
+    // Intersect loci indices with this visual's particle indices
+    const intersection = OrderedSet.intersect(loci.indices, particleIndices);
+    const intersectionSize = OrderedSet.size(intersection);
+    if (intersectionSize === 0) return false;
+    // Fast path: all instances in this target are covered
+    if (intersectionSize === instanceCount) {
+      return apply(Interval.ofBounds(0, instanceCount));
+    }
+    // Iterate intersection in order; indexOf gives monotonically increasing instance indices → merge runs
+    let changed = false;
+    let start = -1,
+      end = -1;
+    OrderedSet.forEach(intersection, (particleIdx) => {
+      const instanceIdx = OrderedSet.indexOf(particleIndices, particleIdx);
+      if (start === -1) {
+        start = end = instanceIdx;
+      } else if (instanceIdx === end + 1) {
+        end = instanceIdx;
+      } else {
+        if (apply(Interval.ofBounds(start, end + 1))) changed = true;
+        start = end = instanceIdx;
+      }
+    });
+    if (start !== -1 && apply(Interval.ofBounds(start, end + 1))) changed = true;
+    return changed;
+  }
+
   function mark(loci: ModelLoci, action: MarkerAction): boolean {
     if (!renderObject || !currentParticleIndices) return false;
-    const instanceCount = OrderedSet.size(currentParticleIndices);
-    const particleIndices = currentParticleIndices;
-    function lociApply(loci: ModelLoci, apply: (interval: Interval) => boolean, _isMarking: boolean): boolean {
-      // Fast path: whole visual selected
-      if (isEveryLoci(loci)) {
-        return apply(Interval.ofBounds(0, instanceCount));
-      }
-      if (!Particle.isLoci(loci) || Particle.isLociEmpty(loci)) return false;
-      // Intersect loci indices with this visual's particle indices
-      const intersection = OrderedSet.intersect(loci.indices, particleIndices);
-      const intersectionSize = OrderedSet.size(intersection);
-      if (intersectionSize === 0) return false;
-      // Fast path: all instances in this target are covered
-      if (intersectionSize === instanceCount) {
-        return apply(Interval.ofBounds(0, instanceCount));
-      }
-      // Iterate intersection in order; indexOf gives monotonically increasing instance indices → merge runs
-      let changed = false;
-      let start = -1,
-        end = -1;
-      OrderedSet.forEach(intersection, (particleIdx) => {
-        const instanceIdx = OrderedSet.indexOf(particleIndices, particleIdx);
-        if (start === -1) {
-          start = end = instanceIdx;
-        } else if (instanceIdx === end + 1) {
-          end = instanceIdx;
-        } else {
-          if (apply(Interval.ofBounds(start, end + 1))) changed = true;
-          start = end = instanceIdx;
-        }
-      });
-      if (start !== -1 && apply(Interval.ofBounds(start, end + 1))) changed = true;
-      return changed;
-    }
     return Visual.mark(renderObject, loci, action, lociApply);
+  }
+
+  function setLayers(state: Partial<Representation.State>) {
+    if (!renderObject || !currentParticleIndices) return;
+    if (state.overpaint !== undefined) Visual.setOverpaint(renderObject, state.overpaint, lociApply, true);
+    if (state.transparency !== undefined) Visual.setTransparency(renderObject, state.transparency, lociApply, true);
+    if (state.emissive !== undefined) Visual.setEmissive(renderObject, state.emissive, lociApply, true);
+    if (state.substance !== undefined) Visual.setSubstance(renderObject, state.substance, lociApply, true);
+    if (state.clipping !== undefined) Visual.setClipping(renderObject, state.clipping, lociApply, true);
   }
 
   function destroy() {
@@ -763,6 +778,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     },
     createOrUpdate,
     mark,
+    setLayers,
     destroy,
   };
 }

@@ -122,8 +122,9 @@ export function ParticleTargetRepresentation(
         await visual.createOrUpdate({ graphics, runtime }, _theme, targetProps(target), particles, indices, target);
 
         if (visual.renderObject) {
-          // Render objects can be created here, so they need the current state applied.
+          // Render objects can be created here, so they need the current state applied, with its layers.
           applyState(visual.renderObject, _state);
+          visual.setLayers(_state);
           entries.push({ visual, renderObject: visual.renderObject });
           geometryState.add(visual.renderObject.id, visual.geometryVersion);
         }
@@ -159,6 +160,7 @@ export function ParticleTargetRepresentation(
     // aliases its first member's state, so looping renderObjects would miss the other members
     for (const visual of targetVisuals.values()) {
       if (visual.renderObject) applyState(visual.renderObject, state);
+      visual.setLayers(state);
     }
   }
 

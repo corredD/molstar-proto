@@ -53,6 +53,8 @@ here.
   object values (left out, so BinaryCIF files no longer carry a nil `mask` key), and checks of the lengths in untrusted
   input
 - Add a wireframe visual to `vtp`, `ply` and `obj` shapes
+- Particles: the target representation applies overpaint, transparency, emissive, substance and clipping layers to its
+  instances (it applied only visibility, alpha and pickability), also to the render objects it makes later
 - Particles: `ParticleRepresentation3DLayers` colors, hides, makes transparent or emissive the particles of a
   representation by entity, compartment or target (`Particle.selectLoci`), through a new
   `PluginStateObject.Particle.Representation3DState` synced as the structure one
