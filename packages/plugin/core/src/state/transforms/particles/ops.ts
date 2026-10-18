@@ -324,7 +324,14 @@ const ParticleListWithTargets = PluginStateTransform.BuiltIn({
       !PD.areEqual(ParticleListWithTargetsParams(a, plugin), oldParams, newParams) ||
       refsChanged(newParams, transformCache, dependencies)
     ) {
-      return StateTransformer.UpdateResult.Recreate;
+      // only the sources that changed are loaded, see `loadTargets`
+      return Task.create('Particle List with Targets', async (ctx) => {
+        const targetMapping = await loadTargets(plugin, ctx, a, newParams, transformCache, dependencies);
+        b.data = Particle.withTargets(a.data, targetMapping);
+        b.label = a.label;
+        b.description = a.description;
+        return StateTransformer.UpdateResult.Updated;
+      });
     }
 
     b.data = Particle.withTargets(a.data, b.data.targetMapping);

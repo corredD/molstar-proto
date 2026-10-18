@@ -55,6 +55,8 @@ here.
 - Add a wireframe visual to `vtp`, `ply` and `obj` shapes
 - Particles: a target of `ParticleListWithTargets` can be a structure, shape or volume already in the state (source
   `ref`); the list depends on it and follows its changes
+- Particles: changing the targets of `ParticleListWithTargets` updates the list in place and loads only the sources that
+  changed, so swapping the object that decorates a particle list keeps the others and their representations
 - MVS: a plane clip whose normal points against up (0, −1, 0) cuts the right half again; it was given no turn, so the
   other half was cut away
 - CCP4/MRC: open the cryo-ET names of MRC files, `.rec` (tomograms), `.st` and `.ali` (tilt series) and `.mrcs`

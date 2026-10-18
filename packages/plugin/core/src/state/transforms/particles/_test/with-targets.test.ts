@@ -72,6 +72,41 @@ describe('ParticleListWithTargets', () => {
     expect(decorated.cell!.dependencies.dependsOn.map((c) => c.transform.ref)).toEqual([vol.ref]);
   });
 
+  it('swaps one target in place and keeps the others', async () => {
+    const { plugin, list, volume } = await setup();
+    const [a, b, c] = [await volume(4), await volume(5), await volume(6)];
+    const decorated = await plugin
+      .build()
+      .to(list)
+      .apply(ParticleListWithTargets, {
+        targets: [
+          { targetId: 0, source: ref(a.ref) },
+          { targetId: 1, source: ref(b.ref) },
+        ],
+      })
+      .commit();
+    const before = decorated.obj as SO.Particle.List;
+    const kept = before.data.targetMapping!.get(0);
+
+    await plugin
+      .build()
+      .to(decorated)
+      .update({
+        targets: [
+          { targetId: 0, source: ref(a.ref) },
+          { targetId: 1, source: ref(c.ref) },
+        ],
+      })
+      .commit();
+    const after = decorated.cell!.obj as SO.Particle.List;
+    // updated, not recreated: the same state object, its representations updated in place
+    expect(after).toBe(before);
+    expect(after.data.targetMapping!.get(0)).toBe(kept);
+    const swapped = after.data.targetMapping!.get(1)!;
+    expect(swapped.kind === 'volume' && swapped.volume).toBe(c.obj!.data);
+    expect(decorated.cell!.dependencies.dependsOn.map((x) => x.transform.ref).sort()).toEqual([a.ref, c.ref].sort());
+  });
+
   it('follows a referenced object that changes', async () => {
     const { plugin, list, volume } = await setup();
     const vol = await volume(4);
