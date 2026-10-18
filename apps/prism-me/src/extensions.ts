@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { CryoetExtension } from '@molstar/cryoet-extension/prism-viewer';
 import { MesoscaleExtension } from '@molstar/mesoscale-extension/prism-viewer';
 import type { LazyViewerExtension, ViewerExtension } from '@molstar/prism-viewer/spec';
 
@@ -11,4 +12,4 @@ import type { LazyViewerExtension, ViewerExtension } from '@molstar/prism-viewer
  * The extensions the Mesoscale Explorer adds to the Prism viewer with Mol*'s extensions (`FullPrismViewerSpec`):
  * mesoscale models, cryo-ET data and the stage tools (_spec/README.md).
  */
-export const MesoscaleExplorerExtensions: readonly (ViewerExtension | LazyViewerExtension)[] = [MesoscaleExtension];
+export const MesoscaleExplorerExtensions: readonly (ViewerExtension | LazyViewerExtension)[] = [MesoscaleExtension, CryoetExtension];
