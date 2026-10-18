@@ -146,7 +146,13 @@ describe('Particle.selectLoci', () => {
   });
 
   it('prefers a particle own entity, and intersects the criteria', () => {
-    const own = { ...particles, entities: Int32Array.from([-1, 5, 7, 7]) };
+    // a list of its own: its computed properties (the entity groups) are its own
+    const own = {
+      ...particles,
+      entities: Int32Array.from([-1, 5, 7, 7]),
+      customProperties: new CustomProperties(),
+      _propertyData: Object.create(null),
+    };
     expect(OrderedSet.toArray(Particle.selectLoci(own, { entities: [7] }).indices)).toEqual([2, 3]);
     expect(select({ entities: [5], compartments: [1] })).toEqual([2]);
   });

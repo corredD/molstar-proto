@@ -248,6 +248,30 @@ export function getParticleTransforms(data: ParticleList): Float32Array {
   return cached;
 }
 
+const ParticleEntityGroupsDescriptor = CustomPropertyDescriptor({ name: 'particle-entity-groups' });
+
+/**
+ * The particles of a `ParticleList` by entity (`Particle.entityOf`: their own, else their target's; -1 for none), as
+ * indices into the list. Computed once and cached on the `ParticleList`.
+ */
+export function getParticleEntityGroups(data: ParticleList): ReadonlyMap<number, OrderedSet<number>> {
+  let cached = data._propertyData[ParticleEntityGroupsDescriptor.name] as Map<number, OrderedSet<number>> | undefined;
+  if (!cached) {
+    const lists = new Map<number, number[]>();
+    for (let i = 0; i < data.count; ++i) {
+      const e = Particle.entityOf(data, i);
+      let list = lists.get(e);
+      if (!list) lists.set(e, (list = []));
+      list.push(i);
+    }
+    cached = new Map();
+    for (const [e, list] of lists) cached.set(e, OrderedSet.ofSortedArray(list));
+    data.customProperties.add(ParticleEntityGroupsDescriptor);
+    data._propertyData[ParticleEntityGroupsDescriptor.name] = cached;
+  }
+  return cached;
+}
+
 const ParticleTargetGroupsDescriptor = CustomPropertyDescriptor({ name: 'particle-target-groups' });
 
 /** The particles of a `ParticleList` grouped by their target id. */
@@ -467,10 +491,22 @@ export namespace Particle {
   /** The loci of the particles `selector` picks */
   export function selectLoci(particles: ParticleList, selector: Selector): Loci {
     const { count, targets, compartments } = particles;
-    const entities = selector.entities?.length ? new Set(selector.entities) : undefined;
-    const comps = selector.compartments?.length ? new Set(selector.compartments) : undefined;
-    const targetIds = selector.targets?.length ? new Set(selector.targets) : undefined;
-    if (!entities && !comps && !targetIds) return Loci(particles, OrderedSet.ofBounds(0, count));
+    const byEntity = !!selector.entities?.length;
+    const byCompartment = !!selector.compartments?.length;
+    const byTarget = !!selector.targets?.length;
+    if (!byEntity && !byCompartment && !byTarget) return Loci(particles, OrderedSet.ofBounds(0, count));
+    // one kind of ids: the union of their groups, computed once per list (a mesoscale model has millions of particles)
+    if (byTarget && !byEntity && !byCompartment) {
+      const { sets, groupOfTarget } = getParticleTargetGroups(particles);
+      return Loci(particles, unionOf(selector.targets!.map((t) => sets[groupOfTarget.get(t) ?? -1])));
+    }
+    if (byEntity && !byTarget && !byCompartment) {
+      const groups = getParticleEntityGroups(particles);
+      return Loci(particles, unionOf(selector.entities!.map((e) => groups.get(e))));
+    }
+    const entities = byEntity ? new Set(selector.entities) : undefined;
+    const comps = byCompartment ? new Set(selector.compartments) : undefined;
+    const targetIds = byTarget ? new Set(selector.targets) : undefined;
     const indices: number[] = [];
     for (let i = 0; i < count; ++i) {
       if (targetIds && !targetIds.has(targets[i])) continue;
@@ -479,6 +515,12 @@ export namespace Particle {
       indices.push(i);
     }
     return Loci(particles, OrderedSet.ofSortedArray(indices));
+  }
+
+  function unionOf(sets: (OrderedSet<number> | undefined)[]): OrderedSet<number> {
+    let out: OrderedSet<number> = OrderedSet.Empty;
+    for (const set of sets) if (set) out = OrderedSet.isEmpty(out) ? set : OrderedSet.union(out, set);
+    return out;
   }
 
   /** Remap a loci to a new `ParticleList`; indices outside the new range are dropped. */
