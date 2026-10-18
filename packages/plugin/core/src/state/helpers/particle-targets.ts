@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { SimulariumGeometryResolver } from '@molstar/model/formats/particles/simularium';
@@ -14,6 +15,8 @@ import { Asset } from '@molstar/core/util/assets';
 import { getFileNameInfo } from '@molstar/core/util/file-info';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { rawDataObject } from '../formats/provider.js';
+import { PluginStateObject as SO } from '../objects.js';
+import type { StateObject } from '@molstar/core/state';
 
 /** The registered formats that can be loaded as a reference object for a particle target. */
 function targetFormatProviders(plugin: PluginContext) {
@@ -122,6 +125,12 @@ export function matchParticleTargetFiles(
   return { matches, warnings };
 }
 
+/** The shape a shape provider makes with its default params. */
+async function shapeTarget(ctx: RuntimeContext, provider: any): Promise<ParticleTarget> {
+  const shape = await provider.getShape(ctx, provider.data, PD.getDefaultValues(provider.params));
+  return { kind: 'shape', shape };
+}
+
 /** Turn a parsed data object into the reference object of a particle target. */
 async function particleTargetFromParsed(
   plugin: PluginContext,
@@ -132,11 +141,7 @@ async function particleTargetFromParsed(
   const volume = parsed.volume ?? parsed.volumes?.[0];
   if (volume) return { kind: 'volume', volume };
 
-  if (parsed.shape) {
-    const provider = parsed.shape;
-    const shape = await provider.getShape(ctx, provider.data, PD.getDefaultValues(provider.params));
-    return { kind: 'shape', shape };
-  }
+  if (parsed.shape) return shapeTarget(ctx, parsed.shape);
 
   if (parsed.structure) {
     return { kind: 'structure', structure: parsed.structure };
@@ -192,6 +197,19 @@ export async function loadParticleTarget(
   } finally {
     if (!keepAsset) wrapper.dispose();
   }
+}
+
+/** The state objects a particle target can reference: structures, shapes and volumes. */
+export function isParticleTargetObject(obj: StateObject | undefined): boolean {
+  return obj instanceof SO.Molecule.Structure || obj instanceof SO.Volume.Data || obj instanceof SO.Shape.Provider;
+}
+
+/** The reference object of a particle target from a structure, shape or volume already in the state. */
+export async function particleTargetFromObject(ctx: RuntimeContext, obj: StateObject): Promise<ParticleTarget> {
+  if (obj instanceof SO.Molecule.Structure) return { kind: 'structure', structure: obj.data };
+  if (obj instanceof SO.Volume.Data) return { kind: 'volume', volume: obj.data };
+  if (obj instanceof SO.Shape.Provider) return shapeTarget(ctx, obj.data);
+  throw new Error(`'${obj.label}' is not a structure, shape, or volume.`);
 }
 
 /** Load the reference objects of several targets, skipping the ones that fail with a warning. */

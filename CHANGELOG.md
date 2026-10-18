@@ -53,6 +53,8 @@ here.
   object values (left out, so BinaryCIF files no longer carry a nil `mask` key), and checks of the lengths in untrusted
   input
 - Add a wireframe visual to `vtp`, `ply` and `obj` shapes
+- Particles: a target of `ParticleListWithTargets` can be a structure, shape or volume already in the state (source
+  `ref`); the list depends on it and follows its changes
 - MVS: a plane clip whose normal points against up (0, −1, 0) cuts the right half again; it was given no turn, so the
   other half was cut away
 - CCP4/MRC: open the cryo-ET names of MRC files, `.rec` (tomograms), `.st` and `.ali` (tilt series) and `.mrcs`
