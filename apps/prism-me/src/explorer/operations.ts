@@ -159,7 +159,7 @@ export class ExplorerApi extends ApiArea {
           [];
         return reprs.map((r) => ({
           ref: r.cell.transform.ref,
-          label: r.cell.obj?.label ?? 'Representation',
+          label: reprLabel(r.cell),
           type: typeOf(r.cell.transform.params),
           visible: !r.cell.state.isHidden,
         }));
@@ -252,7 +252,7 @@ function sceneObjects(plugin: PluginContext): SceneObject[] {
       visible: !v.cell.state.isHidden,
       representations: v.representations.map((r) => ({
         ref: r.cell.transform.ref,
-        label: r.cell.obj?.label ?? 'Representation',
+        label: reprLabel(r.cell),
         type: typeOf(r.cell.transform.params),
         visible: !r.cell.state.isHidden,
       })),
@@ -260,6 +260,14 @@ function sceneObjects(plugin: PluginContext): SceneObject[] {
   }
   for (const m of meshes(plugin)) out.push(m);
   return out;
+}
+
+/** A representation's name: a slice's with its axis (Slice X), else its own */
+function reprLabel(cell: { obj?: { label: string }; transform: { params?: unknown } }): string {
+  const p = cell.transform.params as { type?: { name?: string; params?: { dimension?: { name?: string } } } };
+  const axis = p?.type?.name === 'slice' ? p.type.params?.dimension?.name : undefined;
+  if (axis && 'xyz'.includes(axis)) return `Slice ${axis.toUpperCase()}`;
+  return cell.obj?.label ?? 'Representation';
 }
 
 /** A representation's type (its params' `type.name`) */

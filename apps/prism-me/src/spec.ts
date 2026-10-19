@@ -16,6 +16,7 @@ import { FullPrismViewerSpec } from '@molstar/prism-viewer-app/full-spec';
 import { optionsFromUrl } from '@molstar/prism-viewer-app/url';
 import { MesoscaleExplorerExtensions } from './extensions.js';
 import { withMesoscaleLook } from './look.js';
+import { withTomogramSlices } from './tomograms.js';
 
 /**
  * The spec of the Mesoscale Explorer (viewer-spec.md §5): the Prism viewer with Mol*'s extensions, the explorer's
@@ -50,7 +51,8 @@ export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
       preferences: webStore('local', { prefix: 'prism-me', version: PLUGIN_VERSION, budget: 64 * 1024 }),
     },
     agent: { ...(base.agent || {}), assistant: assistant() },
-    finalize: (spec) => withMesoscaleLook(withoutRightClickFocus(base.finalize ? base.finalize(spec) : spec)),
+    finalize: (spec) =>
+      withTomogramSlices(withMesoscaleLook(withoutRightClickFocus(base.finalize ? base.finalize(spec) : spec))),
   };
 }
 

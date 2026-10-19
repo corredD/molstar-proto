@@ -65,9 +65,7 @@ export function cryoetUI(ctx: ViewerUIContext): ViewerExtensionUI {
           const volume = (view.subject as SceneNode).id;
           const slice = area.sliceState(volume);
           const description = mapState(slice, (s) =>
-            s?.shown
-              ? `${s.shown.axis} ${s.shown.index + 1} of ${s.dimensions[{ x: 0, y: 1, z: 2 }[s.shown.axis]]}`
-              : 'Off',
+            s?.slices.length ? s.slices.map((x) => `${x.axis} ${x.index + 1}`).join(' · ') : 'Off',
           );
           return (
             <SceneRow label="Slice" description={description} body={() => <Slice area={area} volume={volume} />} />

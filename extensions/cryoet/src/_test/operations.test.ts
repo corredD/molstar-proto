@@ -18,7 +18,7 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import type { DecorationsInfo, MeshInfo, SliceInfo } from '../operations.js';
+import { type DecorationsInfo, type MeshInfo, type SliceInfo, sliceVisuals } from '../operations.js';
 import { CryoetExtension } from '../prism-viewer.js';
 
 // The `cryoet` area on a headless viewer: a RELION list of four particles in classes 1, 2, 1, 3 and two small maps
@@ -240,18 +240,61 @@ describe('cryoet', () => {
     });
   });
 
-  it('shows a gray slice of a volume, the middle one by default, and steps through it', async () => {
+  it('shows a gray slice per axis, the middle one by default, and steps through each apart', async () => {
     const v = await viewer();
     const c = v.api.cryoet!;
+    const read = () => (c.sliceState(volumeRef(v, 'ribosome.mrc')).value as SliceInfo).slices;
     expectOk(await c.slice({ volume: 'ribosome.mrc' } as never));
-    const state = c.sliceState('');
-    const read = () => (c.sliceState(volumeRef(v, 'ribosome.mrc')).value as SliceInfo).shown;
-    expect(read()).toEqual({ axis: 'z', index: 6, contrast: 3 });
+    expect(read()).toMatchObject([{ axis: 'z', index: 6, contrast: 3, visible: true }]);
     expectOk(await c.slice({ volume: 'ribosome.mrc', index: 2, contrast: 1.5 } as never));
-    expect(read()).toEqual({ axis: 'z', index: 2, contrast: 1.5 });
+    expect(read()).toMatchObject([{ axis: 'z', index: 2, contrast: 1.5 }]);
+    // another axis: its own slice, the z one kept
     expectOk(await c.slice({ volume: 'ribosome.mrc', axis: 'x', index: 99 } as never));
-    expect(read()).toMatchObject({ axis: 'x', index: 11 });
-    expect(state).toBeDefined();
+    expect(read().map((x) => [x.axis, x.index])).toEqual([
+      ['x', 11],
+      ['z', 2],
+    ]);
+    expect(await c.slice({ volume: 'ribosome.mrc', axis: 'x', index: 11 } as never)).toMatchObject({ unchanged: true });
+  });
+
+  it('shows the three slices, the isosurfaces hidden; a slice keeps its form-set look when moved', async () => {
+    const v = await viewer();
+    const c = v.api.cryoet!;
+    const ref = volumeRef(v, 'ribosome.mrc');
+    expectOk(await c.slices({ volume: 'ribosome.mrc' } as never));
+    expect((c.sliceState(ref).value as SliceInfo).slices.map((x) => [x.axis, x.index])).toEqual([
+      ['x', 6],
+      ['y', 6],
+      ['z', 6],
+    ]);
+    const vol = v.plugin.managers.volume.hierarchy.current.volumes.find((x) => x.cell.transform.ref === ref)!;
+    const iso = vol.representations.filter((r) => (r.cell.transform.params as any).type.name === 'isosurface');
+    expect(iso.length).toBeGreaterThan(0);
+    expect(iso.every((r) => r.cell.state.isHidden)).toBe(true);
+    expect(await c.slices({ volume: 'ribosome.mrc' } as never)).toMatchObject({ unchanged: true });
+    // its opacity set in the form stays when the slice moves
+    const z = (c.sliceState(ref).value as SliceInfo).slices[2].ref;
+    await v.plugin
+      .build()
+      .to(z)
+      .update((p: any) => ({ ...p, type: { ...p.type, params: { ...p.type.params, alpha: 0.4 } } }))
+      .commit();
+    expectOk(await c.slice({ volume: 'ribosome.mrc', axis: 'z', index: 3 } as never));
+    expect((v.plugin.state.data.cells.get(z)!.transform.params as any).type.params.alpha).toBe(0.4);
+  });
+
+  it('gives a volume format three slices as its visuals (a tomogram dropped), no isosurface', async () => {
+    const v = await viewer();
+    const c = v.api.cryoet!;
+    const vol = v.plugin.managers.volume.hierarchy.current.volumes.find((x) => x.cell.obj?.label === 'proteasome.mrc')!;
+    const before = vol.representations.length;
+    await sliceVisuals(v.plugin, { volume: { ref: vol.cell.transform.ref, cell: vol.cell } as never });
+    const after = (c.sliceState(vol.cell.transform.ref).value as SliceInfo).slices;
+    expect(after.map((x) => x.axis)).toEqual(['x', 'y', 'z']);
+    const fresh = v.plugin.managers.volume.hierarchy.current.volumes.find(
+      (x) => x.cell.obj?.label === 'proteasome.mrc',
+    )!;
+    expect(fresh.representations.length).toBe(before + 3);
   });
 });
 

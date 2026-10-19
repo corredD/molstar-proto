@@ -8,9 +8,10 @@
 
 import { Button, Choices, For, Icon, onCleanup, Select, type SelectOption, Show, TextInput } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
+import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
-import type { CryoetApi, DecorationsInfo, MeshInfo, TargetDecoration } from './operations.js';
+import type { CryoetApi, DecorationsInfo, MeshInfo, SliceAxis, TargetDecoration } from './operations.js';
 
 // The cryo-ET controls, shown by the extension's own rows and tab and by a host's panels (prism-me's properties):
 // what decorates a list's targets, a volume's slice, a segmentation mesh's look. They read the `cryoet` area and act
@@ -126,68 +127,92 @@ function common(info: DecorationsInfo): string {
   return o === '*' ? '' : o;
 }
 
-export function Slice(props: { area: CryoetApi; volume: string }) {
+/**
+ * A volume's slice along `axis` (one per axis): its position and its gray window; without `axis`, a choice of the axis
+ * first (the slice it shows is edited), and the three slices at a click
+ */
+export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis }) {
   const { area, volume } = props;
-  const slice = area.sliceState(volume);
-  const axis = mapState(slice, (s) => s?.shown?.axis ?? 'z');
-  const index = mapState(slice, (s) => s?.shown?.index);
-  const count = mapState(slice, (s) => (s ? s.dimensions[{ x: 0, y: 1, z: 2 }[s.shown?.axis ?? 'z']] : 1));
-  const contrast = mapState(slice, (s) => s?.shown?.contrast ?? 3);
+  const info = area.sliceState(volume);
+  const picked = observableState<SliceAxis>(props.axis ?? 'z');
+  const axis = props.axis ? undefined : picked;
+  const current = () => props.axis ?? picked.value;
+  const slice = derive([info, picked.asReadonly], (s, a) => s?.slices.find((x) => x.axis === (props.axis ?? a)));
+  const index = mapState(slice, (s) => s?.index);
+  const count = derive([info, picked.asReadonly], (s, a) =>
+    s ? s.dimensions[{ x: 0, y: 1, z: 2 }[props.axis ?? a]] : 1,
+  );
+  const contrast = mapState(slice, (s) => s?.contrast ?? 3);
   let timer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => clearTimeout(timer));
   // The sliders change at pointer rate: one call a moment after the last.
-  const run = (values: { axis?: string; index?: number; contrast?: number }, delay = 60) => {
+  const run = (values: { index?: number; contrast?: number }, delay = 60) => {
     clearTimeout(timer);
-    timer = setTimeout(() => void area.slice({ volume, axis: axis.value, ...values } as never), delay);
+    timer = setTimeout(() => void area.slice({ volume, axis: current(), ...values } as never), delay);
   };
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
-      <Choices
-        label="Axis"
-        choices={[
-          { id: 'x', label: 'X' },
-          { id: 'y', label: 'Y' },
-          { id: 'z', label: 'Z (images)' },
-        ]}
-        active={axis}
-        onPick={(id) => run({ axis: id }, 0)}
-      />
-      <div style={Line}>
-        <span style="width: 64px">Slice</span>
-        <input
-          type="range"
-          min="0"
-          max={mapState(count, (n) => String(Math.max(0, n - 1)))}
-          value={mapState(index, (i) => String(i ?? 0))}
-          style="flex: 1"
-          aria-label="Slice"
-          onInput={(e) => run({ index: Number((e.target as HTMLInputElement).value) })}
+      {axis ? (
+        <Choices
+          label="Axis"
+          choices={[
+            { id: 'x', label: 'X' },
+            { id: 'y', label: 'Y' },
+            { id: 'z', label: 'Z (images)' },
+          ]}
+          active={axis.asReadonly}
+          onPick={(id) => axis.set(id as SliceAxis)}
         />
-        <span style={Muted}>
-          {derive([index, count], (i, n) => (i === undefined ? `– / ${n}` : `${i + 1} / ${n}`))}
-        </span>
-      </div>
-      <div style={Line}>
-        <span style="width: 64px">Contrast</span>
-        <input
-          type="range"
-          min="0.5"
-          max="10"
-          step="0.1"
-          value={mapState(contrast, String)}
-          style="flex: 1"
-          aria-label="Contrast"
-          onInput={(e) => run({ contrast: Number((e.target as HTMLInputElement).value) })}
-        />
-        <span style={Muted}>{mapState(contrast, (c) => `±${c}σ`)}</span>
-      </div>
-      <Show when={mapState(index, (i) => i === undefined)}>
-        {() => (
+      ) : null}
+      <Show
+        when={mapState(slice, (s) => !!s)}
+        fallback={() => (
           <Button size="sm" onClick={() => run({}, 0)}>
-            Show a slice
+            {mapState(picked.asReadonly, (a) => `Show slice ${(props.axis ?? a).toUpperCase()}`)}
           </Button>
         )}
+      >
+        {() => (
+          <>
+            <div style={Line}>
+              <span style="width: 64px">Slice</span>
+              <input
+                type="range"
+                min="0"
+                max={mapState(count, (n) => String(Math.max(0, n - 1)))}
+                value={mapState(index, (i) => String(i ?? 0))}
+                style="flex: 1"
+                aria-label="Slice"
+                onInput={(e) => run({ index: Number((e.target as HTMLInputElement).value) })}
+              />
+              <span style={Muted}>{derive([index, count], (i, n) => `${(i ?? 0) + 1} / ${n}`)}</span>
+            </div>
+            <div style={Line}>
+              <span style="width: 64px">Contrast</span>
+              <input
+                type="range"
+                min="0.5"
+                max="10"
+                step="0.1"
+                value={mapState(contrast, String)}
+                style="flex: 1"
+                aria-label="Contrast"
+                onInput={(e) => run({ contrast: Number((e.target as HTMLInputElement).value) })}
+              />
+              <span style={Muted}>{mapState(contrast, (c) => `±${c}σ`)}</span>
+            </div>
+          </>
+        )}
       </Show>
+      {axis ? (
+        <Show when={mapState(info, (s) => (s?.slices.length ?? 0) < 3)}>
+          {() => (
+            <Button size="sm" variant="ghost" onClick={() => void area.slices({ volume } as never)}>
+              Show the three slices
+            </Button>
+          )}
+        </Show>
+      ) : null}
     </div>
   );
 }

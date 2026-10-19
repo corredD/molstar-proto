@@ -120,6 +120,12 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
     object, the entity's structure; a dependency, as `ref`).
   - A mesh: Scale (a slider by powers of ten and a field; a mesh in pixels: the pixel size), about the file's origin;
     `cryoet.mesh` `scale` (the shape's instance transform), read back in `MeshInfo.scale`.
+- Volumes (2026-10-18, Ludovic's test): a volume dropped opens as its three slices, X, Y, Z (the middle ones), no
+  isosurface (`withTomogramSlices`: the CCP4 / MRC provider's visuals in the app's plugin spec, `sliceVisuals`). The
+  tree: the volume, then Slice X, Slice Y, Slice Z and any isosurface. Properties: the volume, a section per slice
+  (position, contrast), Isosurface (its form, or Add an isosurface); a slice, its position and contrast then its whole
+  form; an isosurface, its form. `cryoet.slice` acts on the slice of its axis (made if missing; a moved slice keeps what
+  its form set); `cryoet.slices` shows the three (and hides the isosurfaces unless asked not to).
 - Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a
   structure entity's or chain's eye (Prism hides representations, not parts); a color dot only where a color was set;
   the mesh section repeats the mesh's eye and name.

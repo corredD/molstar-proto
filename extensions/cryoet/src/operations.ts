@@ -5,7 +5,7 @@
  */
 
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
-import { type StateObjectCell, StateTransform } from '@molstar/core/state';
+import { type StateObjectCell, type StateObjectSelector, StateTransform } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
 import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -64,10 +64,23 @@ export interface DecorationsInfo {
   readonly objects: readonly { readonly ref: string; readonly label: string; readonly group?: string }[];
 }
 
-/** A volume's dimensions and the slice shown, if any */
+export type SliceAxis = 'x' | 'y' | 'z';
+
+/** One slice of a volume: its axis (one slice per axis), its index, its gray window */
+export interface SliceView {
+  readonly axis: SliceAxis;
+  readonly index: number;
+  /** ± this many σ about the mean (a window set so) */
+  readonly contrast?: number;
+  /** The state ref of its representation */
+  readonly ref: string;
+  readonly visible: boolean;
+}
+
+/** A volume's dimensions and its slices (x, y, z: at most one each) */
 export interface SliceInfo {
   readonly dimensions: readonly [number, number, number];
-  readonly shown?: { readonly axis: 'x' | 'y' | 'z'; readonly index: number; readonly contrast?: number };
+  readonly slices: readonly SliceView[];
 }
 
 /** A segmentation mesh loaded from a file (OBJ, PLY, VTP…), as the Segmentations tab shows it */
@@ -105,7 +118,7 @@ export class CryoetApi extends ApiArea {
     );
   }
 
-  /** The slice of a volume (by state ref) as shown, following the state tree while watched: a read for views */
+  /** The slices of a volume (by state ref), following the state tree while watched: a read for views */
   sliceState(volume: string): ReadonlyState<SliceInfo | undefined> {
     const plugin = this.ctx.plugin;
     return watchedState(
@@ -393,35 +406,15 @@ export class CryoetApi extends ApiArea {
       if (isFailure(v)) return v;
       const data = v.cell.obj?.data;
       if (!data) return ApiResult.fail('not-found', 'The volume is not loaded yet.');
-      const dims = data.grid.cells.space.dimensions;
-      const n = dims[axis === 'x' ? 0 : axis === 'y' ? 1 : 2];
-      const existing = v.representations.find(
-        (r) => (r.cell.transform.params as { type?: { name?: string } })?.type?.name === 'slice',
-      );
+      const n = data.grid.cells.space.dimensions[AxisIndex[axis]];
+      // the slice of this axis (one per axis): moved, or made
+      const existing = sliceRepresentation(v, axis);
       const old = existing?.cell.transform.params as any;
-      const oldIndex = old?.type?.params?.dimension?.name === axis ? old.type.params.dimension.params : undefined;
-      const i = Math.max(0, Math.min(n - 1, Math.round(index ?? oldIndex ?? (n - 1) / 2)));
-      const { mean, sigma } = data.grid.stats;
+      const i = Math.max(0, Math.min(n - 1, Math.round(index ?? old?.type?.params?.dimension?.params ?? (n - 1) / 2)));
       const k = contrast ?? (old?.colorTheme?.params?.domain?.name === 'custom' ? undefined : 3);
-      const domain: [number, number] =
-        k !== undefined ? [mean - k * sigma, mean + k * sigma] : old.colorTheme.params.domain.params;
-      const params = createVolumeRepresentationParams(ctx.plugin, data, {
-        type: 'slice',
-        typeParams: { dimension: { name: axis, params: i }, isoValue: Volume.IsoValue.relative(-1000) } as any,
-        color: 'volume-value',
-        colorParams: {
-          domain: { name: 'custom', params: domain },
-          colorList: {
-            kind: 'interpolate',
-            colors: [
-              [0x000000, 0],
-              [0xffffff, 1],
-            ],
-          },
-        } as any,
-      });
+      const params = sliceParams(ctx.plugin, data, axis, i, k ?? old.colorTheme.params.domain.params, old);
       if (existing && JSON.stringify(old) === JSON.stringify(params)) {
-        return ApiResult.already(`Already at ${axis} ${i} of ${n}.`);
+        return ApiResult.already(`Already at ${axis} ${i + 1} of ${n}.`);
       }
       const b = ctx.plugin.state.data.build();
       if (existing) b.to(existing.cell).update(params);
@@ -432,33 +425,129 @@ export class CryoetApi extends ApiArea {
       });
     },
   });
+
+  readonly slices = this.operation({
+    id: 'cryoet.slices',
+    title: 'Show the three slices of a tomogram',
+    params: {
+      volume: PD.Text('', { description: 'A volume by label or state ref; empty: the only one loaded' }),
+      isosurface: PD.Boolean(false, { description: 'Keep its isosurfaces shown (else they are hidden)' }),
+    },
+    async run({ volume, isosurface }, ctx) {
+      const v = oneVolume(ctx, volume || undefined);
+      if (isFailure(v)) return v;
+      const data = v.cell.obj?.data;
+      if (!data) return ApiResult.fail('not-found', 'The volume is not loaded yet.');
+      const b = ctx.plugin.state.data.build();
+      let made = 0;
+      for (const axis of Axes) {
+        if (sliceRepresentation(v, axis)) continue;
+        const n = data.grid.cells.space.dimensions[AxisIndex[axis]];
+        b.to(v.cell).apply(VolumeRepresentation3D, sliceParams(ctx.plugin, data, axis, Math.round((n - 1) / 2), 3));
+        made++;
+      }
+      const hide = isosurface
+        ? []
+        : v.representations.filter((r) => typeOf(r.cell.transform.params) !== 'slice' && !r.cell.state.isHidden);
+      if (!made && !hide.length) return ApiResult.already('The three slices are shown.');
+      await b.commit();
+      for (const r of hide) ctx.plugin.state.data.updateCellState(r.cell.transform.ref, { isHidden: true });
+      return ApiResult.ok(`Showing the x, y and z slices of ${v.cell.obj?.label ?? 'the volume'}.`, {
+        nodes: [v.cell.transform.ref],
+      });
+    },
+  });
+}
+
+const Axes: readonly SliceAxis[] = ['x', 'y', 'z'];
+const AxisIndex = { x: 0, y: 1, z: 2 } as const;
+
+const typeOf = (params: unknown) => (params as { type?: { name?: string } } | undefined)?.type?.name;
+
+/** A volume's slice of one axis, if it has one */
+function sliceRepresentation(v: VolumeRef, axis: SliceAxis) {
+  return v.representations.find((r) => {
+    const p = r.cell.transform.params as { type?: { name?: string; params?: { dimension?: { name?: string } } } };
+    return p?.type?.name === 'slice' && p.type.params?.dimension?.name === axis;
+  });
+}
+
+/**
+ * A slice's representation params: gray, `window` ± this many σ about the mean (or a [min, max]); kept from `old` what
+ * its type and its look were set to (the form's params), only the slice and the window changed
+ */
+function sliceParams(
+  plugin: ApiContext['plugin'],
+  data: Volume,
+  axis: SliceAxis,
+  index: number,
+  window: number | [number, number],
+  old?: any,
+) {
+  const { mean, sigma } = data.grid.stats;
+  const domain: [number, number] = typeof window === 'number' ? [mean - window * sigma, mean + window * sigma] : window;
+  const fresh = createVolumeRepresentationParams(plugin, data, {
+    type: 'slice',
+    typeParams: { dimension: { name: axis, params: index }, isoValue: Volume.IsoValue.relative(-1000) } as any,
+    color: 'volume-value',
+    colorParams: {
+      domain: { name: 'custom', params: domain },
+      colorList: {
+        kind: 'interpolate',
+        colors: [
+          [0x000000, 0],
+          [0xffffff, 1],
+        ],
+      },
+    } as any,
+  }) as any;
+  if (!old) return fresh;
+  return {
+    ...old,
+    type: { ...old.type, params: { ...old.type.params, dimension: { name: axis, params: index } } },
+    colorTheme:
+      old.colorTheme?.name === 'volume-value'
+        ? { ...old.colorTheme, params: { ...old.colorTheme.params, domain: { name: 'custom', params: domain } } }
+        : old.colorTheme,
+  };
+}
+
+/** A volume format's visuals for tomograms: its three slices (x, y, z, the middle ones), no isosurface */
+export async function sliceVisuals(plugin: ApiContext['plugin'], data: { volume?: StateObjectSelector }) {
+  const volume = data.volume;
+  const v = volume?.cell?.obj?.data as Volume | undefined;
+  if (!volume || !v) return [];
+  const b = plugin.build();
+  for (const axis of Axes) {
+    const n = v.grid.cells.space.dimensions[AxisIndex[axis]];
+    b.to(volume).apply(VolumeRepresentation3D, sliceParams(plugin, v, axis, Math.round((n - 1) / 2), 3));
+  }
+  await b.commit();
+  return [];
 }
 
 function sliceOf(v: VolumeRef): SliceInfo | undefined {
   const data = v.cell.obj?.data;
   if (!data) return;
   const [x, y, z] = data.grid.cells.space.dimensions;
-  const r = v.representations.find(
-    (r) => (r.cell.transform.params as { type?: { name?: string } })?.type?.name === 'slice',
-  );
-  const p = r?.cell.transform.params as any;
-  const dim = p?.type?.params?.dimension;
-  const domain = p?.colorTheme?.params?.domain;
   const { mean, sigma } = data.grid.stats;
-  return {
-    dimensions: [x, y, z],
-    ...(dim && ['x', 'y', 'z'].includes(dim.name)
-      ? {
-          shown: {
-            axis: dim.name,
-            index: dim.params,
-            ...(domain?.name === 'custom' && sigma > 0
-              ? { contrast: Math.round(((domain.params[1] - mean) / sigma) * 10) / 10 }
-              : {}),
-          },
-        }
-      : {}),
-  };
+  const slices: SliceView[] = [];
+  for (const axis of Axes) {
+    const r = sliceRepresentation(v, axis);
+    if (!r) continue;
+    const p = r.cell.transform.params as any;
+    const domain = p?.colorTheme?.params?.domain;
+    slices.push({
+      axis,
+      index: p.type.params.dimension.params,
+      ...(domain?.name === 'custom' && sigma > 0
+        ? { contrast: Math.round(((domain.params[1] - mean) / sigma) * 10) / 10 }
+        : {}),
+      ref: r.cell.transform.ref,
+      visible: !r.cell.state.isHidden,
+    });
+  }
+  return { dimensions: [x, y, z], slices };
 }
 
 // --- the particle lists and their decorations -----------------------------------------------------------------------

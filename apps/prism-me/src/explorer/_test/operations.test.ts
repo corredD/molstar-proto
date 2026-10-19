@@ -14,6 +14,7 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
+import { withTomogramSlices } from '../../tomograms.js';
 import { rowsOf, stableRows, toggleVisible } from '../rows.js';
 
 // The `explorer` area on a headless viewer: 1CRN (crambin, with its unit cell), a RELION list and an OBJ mesh.
@@ -175,6 +176,34 @@ describe('explorer', () => {
     const reprRows = rows.filter((r) => r.depth === 2);
     expect(reprRows.map((r) => r.kind).sort()).toEqual(['isosurface', 'slice']);
     for (const r of reprRows) expect(area.representationForm(r.representation!)).toBeDefined();
+  });
+
+  it("opens a dropped MRC as its three slices, no isosurface (the explorer's visuals), each its own row", async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: {
+        ...base,
+        extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions],
+        finalize: (spec) => withTomogramSlices(base.finalize ? base.finalize(spec) : spec),
+      },
+    });
+    viewers.push(v);
+    const n = 8;
+    const space = Tensor.Space([n, n, n], [2, 1, 0], Float32Array);
+    const data = new Float32Array(n * n * n).map((_, i) => i % 5);
+    const grid: Grid = {
+      transform: { kind: 'matrix', matrix: Mat4.identity() },
+      cells: Tensor.create(space, Tensor.Data1(data)),
+      stats: { min: 0, max: 4, mean: 2, sigma: 1 },
+    };
+    expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, data)], 'tomo.rec')] }));
+    const area = v.api.explorer!;
+    const volume = area.objectsState().value.find((o) => o.kind === 'volume')!;
+    expect(volume.representations!.map((r) => [r.type, r.label])).toEqual([
+      ['slice', 'Slice X'],
+      ['slice', 'Slice Y'],
+      ['slice', 'Slice Z'],
+    ]);
   });
 
   it('keeps unchanged rows as the same objects', () => {

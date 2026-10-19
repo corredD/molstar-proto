@@ -118,11 +118,11 @@ function sectionsOf(
           {() => <Representations api={api} area={area} owner={node.ref} operation="particles.update" />}
         </Section>,
       ];
-    // a volume: its slice and its isosurfaces (and other representations); a slice's row, the slice; another's, its own
-    case 'volume': {
-      const out: JSX.Element[] = [];
-      if (api.cryoet) out.push(<Section title="Slice">{() => <Slice area={api.cryoet!} volume={node.ref} />}</Section>);
-      out.push(
+    // a volume: each of its slices (x, y, z) and its isosurfaces; a slice's row, that slice (its position and window,
+    // then its whole form); another's, its own form
+    case 'volume':
+      return [
+        <VolumeSlices api={api} volume={node.ref} />,
         <Section title="Isosurface">
           {() => (
             <Representations
@@ -142,13 +142,27 @@ function sectionsOf(
             />
           )}
         </Section>,
-      );
-      return out;
+      ];
+    case 'slice': {
+      // its axis: the slice of this representation
+      const axis = api.cryoet?.sliceState(node.ref).value?.slices.find((x) => x.ref === picked.representation)?.axis;
+      return [
+        ...(api.cryoet && axis
+          ? [<Section title="Slice">{() => <Slice area={api.cryoet!} volume={node.ref} axis={axis} />}</Section>]
+          : []),
+        <Section title="Representation">
+          {() => (
+            <Representations
+              api={api}
+              area={area}
+              owner={node.ref}
+              operation="volume.update"
+              only={(r) => r.ref === picked.representation}
+            />
+          )}
+        </Section>,
+      ];
     }
-    case 'slice':
-      return api.cryoet
-        ? [<Section title="Slice">{() => <Slice area={api.cryoet!} volume={node.ref} />}</Section>]
-        : [];
     case 'isosurface':
     case 'volume representation':
       return [
@@ -482,6 +496,31 @@ function Representations(props: {
         </For>
       )}
     </Show>
+  );
+}
+
+/** A volume's slices, a section each (Slice X, Y, Z: position and window), and the three at a click if some are missing */
+function VolumeSlices(props: { api: ViewerApi; volume: string }) {
+  const cryoet = props.api.cryoet;
+  if (!cryoet) return <span />;
+  const info = cryoet.sliceState(props.volume);
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+      <For each={mapState(info, (i) => i?.slices.map((x) => x.axis) ?? [])} by={(a) => a}>
+        {(axis) => (
+          <Section title={`Slice ${axis.toUpperCase()}`}>
+            {() => <Slice area={cryoet} volume={props.volume} axis={axis} />}
+          </Section>
+        )}
+      </For>
+      <Show when={mapState(info, (i) => (i?.slices.length ?? 0) < 3)}>
+        {() => (
+          <Button size="sm" onClick={() => void cryoet.slices({ volume: props.volume, isosurface: true } as never)}>
+            Show the three slices
+          </Button>
+        )}
+      </Show>
+    </div>
   );
 }
 
