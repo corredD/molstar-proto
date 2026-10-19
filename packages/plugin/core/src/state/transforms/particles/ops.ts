@@ -102,6 +102,7 @@ function ParticleListWithTargetsParams(a: SO.Particle.List | undefined, plugin: 
       : 'Target ID in the particle list this object maps to (matches ParticleList.targets).';
   const formatOptions = particleTargetFormatOptions(plugin);
   const objectOptions = particleTargetObjectOptions(plugin.state.data);
+  const listOptions = particleListOptions(plugin.state.data);
 
   return {
     files: PD.FileList({
@@ -148,13 +149,27 @@ function ParticleListWithTargetsParams(a: SO.Particle.List | undefined, plugin: 
               },
               { isFlat: true },
             ),
+            target: PD.Group(
+              {
+                list:
+                  listOptions.length > 0
+                    ? PD.Select(listOptions[0][0], listOptions, {
+                        label: 'Particle list',
+                        description: 'A particle list whose target is used (a cellPACK or PetWorld entity).',
+                      })
+                    : PD.Text('', { label: 'Particle list', description: 'Load a particle list to pick it here.' }),
+                target: PD.Numeric(0, { min: 0, step: 1 }, { description: 'The target ID in that list.' }),
+              },
+              { isFlat: true },
+            ),
           },
           {
             options: [
               ['file', 'File'],
               ['url', 'URL'],
               ['ref', 'Object in the scene'],
-            ] as ['url' | 'file' | 'ref', string][],
+              ['target', 'Target of a particle list'],
+            ] as ['url' | 'file' | 'ref' | 'target', string][],
           },
         ),
       },
@@ -198,7 +213,32 @@ function sourceKey(source: TargetSourceProps): string | undefined {
     }
     case 'ref':
       return source.params.ref ? `ref:${source.params.ref}` : undefined;
+    case 'target':
+      return source.params.list ? `target:${source.params.list}:${source.params.target}` : undefined;
   }
+}
+
+/** The state ref a source key reads (`ref:<ref>`, `target:<list>:<id>`), if any */
+function refOfKey(key: string) {
+  if (key.startsWith('ref:')) return key.slice(4);
+  if (key.startsWith('target:')) return key.slice(7, key.lastIndexOf(':'));
+  return '';
+}
+
+/**
+ * Options for picking a particle list among the cells of `state`, its own cell first, then the decorators on it (named
+ * after them): every cell a list ref can name is offered, so a select of them never replaces one given by a script.
+ */
+function particleListOptions(state: PluginContext['state']['data']): [string, string][] {
+  const own: [string, string][] = [];
+  const decorated: [string, string][] = [];
+  for (const cell of state.cells.values()) {
+    if (cell.state.isGhost || !(cell.obj instanceof SO.Particle.List)) continue;
+    const def = cell.transform.transformer.definition;
+    if (def.isDecorator) decorated.push([cell.transform.ref, `${cell.obj.label} (${def.display.name})`]);
+    else own.push([cell.transform.ref, cell.obj.label]);
+  }
+  return [...own, ...decorated];
 }
 
 function targetSource(source: TargetSourceProps): ParticleTargetSource | undefined {
@@ -215,6 +255,7 @@ function targetRefs(params: ParticleListWithTargetsProps) {
   const refs: StateTransform.Ref[] = [];
   for (const { source } of params.targets ?? []) {
     if (source.name === 'ref' && source.params.ref) refs.push(source.params.ref as StateTransform.Ref);
+    if (source.name === 'target' && source.params.list) refs.push(source.params.list as StateTransform.Ref);
   }
   return refs;
 }
@@ -250,11 +291,11 @@ async function loadTargets(
   for (const ref of targetRefs(params)) {
     const data = dependencies?.[ref]?.data;
     refData.set(ref, data);
-    if (cache.refData?.get(ref) !== data) changedRefs.add(`ref:${ref}`);
+    if (cache.refData?.get(ref) !== data) changedRefs.add(ref);
   }
 
   const load = async (key: string, run: (assets: Asset.Wrapper[]) => Promise<ParticleTarget>) => {
-    const kept = loaded.get(key) ?? (changedRefs.has(key) ? undefined : previous.get(key));
+    const kept = loaded.get(key) ?? (changedRefs.has(refOfKey(key)) ? undefined : previous.get(key));
     if (kept) {
       loaded.set(key, kept);
       return kept.target;
@@ -294,6 +335,13 @@ async function loadTargets(
           const obj = dependencies?.[source.params.ref];
           if (!obj) throw new Error(`The object '${source.params.ref}' is not in the state.`);
           return particleTargetFromObject(ctx, obj);
+        }
+        if (source.name === 'target') {
+          const obj = dependencies?.[source.params.list];
+          if (!(obj instanceof SO.Particle.List)) throw new Error(`'${source.params.list}' is not a particle list.`);
+          const target = obj.data.targetMapping?.get(source.params.target);
+          if (!target) throw new Error(`'${obj.label}' has no reference object for target ${source.params.target}.`);
+          return target;
         }
         return loadParticleTarget(plugin, ctx, targetSource(source)!, assets);
       });

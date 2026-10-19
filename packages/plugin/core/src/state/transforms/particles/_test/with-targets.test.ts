@@ -77,6 +77,29 @@ describe('ParticleListWithTargets', () => {
     expect(decorated.cell!.dependencies.dependsOn.map((c) => c.transform.ref)).toEqual([vol.ref]);
   });
 
+  it("references a target of another particle list (a model's entity), and depends on that list", async () => {
+    const { plugin, list, volume } = await setup();
+    const vol = await volume(4);
+    // the "model": a list whose target 0 is the map
+    const modelData = await plugin.builders.data.rawData({ data: ndjson, label: 'model.ndjson' });
+    const { list: model } = await CryoEtDataPortalNdjsonParticlesProvider.parse(plugin, modelData);
+    const withMap = await plugin
+      .build()
+      .to(model)
+      .apply(ParticleListWithTargets, { targets: [{ targetId: 0, source: ref(vol.ref) }] })
+      .commit();
+    const decorated = await plugin
+      .build()
+      .to(list)
+      .apply(ParticleListWithTargets, {
+        targets: [{ targetId: 0, source: { name: 'target', params: { list: withMap.ref, target: 0 } } }],
+      })
+      .commit();
+    const target = (decorated.obj as SO.Particle.List).data.targetMapping!.get(0)!;
+    expect(target.kind === 'volume' && target.volume).toBe(vol.obj!.data);
+    expect(decorated.cell!.dependencies.dependsOn.map((c) => c.transform.ref)).toEqual([withMap.ref]);
+  });
+
   it('swaps one target in place and keeps the others', async () => {
     const { plugin, list, volume } = await setup();
     const [a, b, c] = [await volume(4), await volume(5), await volume(6)];
