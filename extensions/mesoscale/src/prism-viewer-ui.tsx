@@ -20,12 +20,13 @@ import {
   TextInput,
 } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
-import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import { type MesoGroup, groupEntities } from './model.js';
 import {
+  type EntityCut,
   type EntityInfo,
   type GraphicsMode,
   type MesoscaleApi,
@@ -292,35 +293,50 @@ function GroupRow(props: {
   const shown = mapState(info, (i) => i.entities.some((e) => members.includes(e.id) && e.visible));
   const hidden = derive([props.open, info], (o, i) => folded(row, o, i));
   const isOpen = mapState(props.open, (o) => o.has(row.group.path));
+  const clipping = observableState(false);
   return (
     <Show when={mapState(hidden, (h) => !h)}>
       {() => (
-        <div style={rowStyle(row.depth)}>
-          <Button
-            size="xs"
-            variant="ghost"
-            title={mapState(isOpen, (o) => (o ? 'Fold' : 'Unfold'))}
-            icon={
-              <Show when={isOpen} fallback={() => <Icon name="chevron-right" />}>
-                {() => <Icon name="chevron-down" />}
-              </Show>
-            }
-            onClick={() => props.onToggleOpen(row.group.path)}
-          />
-          <Eye
-            title={`Show or hide ${row.group.label}`}
-            shown={shown}
-            onToggle={() =>
-              void area.style({
-                group: row.group.path,
-                visible: !shown.value,
-                particles: info.value.particles,
-              } as never)
-            }
-          />
-          <span style="flex: 1; overflow: hidden; white-space: nowrap">{row.group.label}</span>
-          <span style={Muted}>{members.length}</span>
-        </div>
+        <>
+          <div style={rowStyle(row.depth)}>
+            <Button
+              size="xs"
+              variant="ghost"
+              title={mapState(isOpen, (o) => (o ? 'Fold' : 'Unfold'))}
+              icon={
+                <Show when={isOpen} fallback={() => <Icon name="chevron-right" />}>
+                  {() => <Icon name="chevron-down" />}
+                </Show>
+              }
+              onClick={() => props.onToggleOpen(row.group.path)}
+            />
+            <Eye
+              title={`Show or hide ${row.group.label}`}
+              shown={shown}
+              onToggle={() =>
+                void area.style({
+                  group: row.group.path,
+                  visible: !shown.value,
+                  particles: info.value.particles,
+                } as never)
+              }
+            />
+            <span style="flex: 1; overflow: hidden; white-space: nowrap">{row.group.label}</span>
+            <ClipButton info={info} entities={members} open={clipping} />
+            <span style={Muted}>{members.length}</span>
+          </div>
+          <Show when={clipping}>
+            {() => (
+              <ClipControls
+                area={area}
+                info={info}
+                entities={members}
+                selection={{ group: row.group.path }}
+                depth={row.depth + 1}
+              />
+            )}
+          </Show>
+        </>
       )}
     </Show>
   );
@@ -336,6 +352,7 @@ function EntityRow(props: {
   const entity = mapState(info, (i) => i.entities.find((e) => e.id === row.id));
   const hidden = derive([props.open, info], (o, i) => folded(row, o, i));
   const picking = observableState(false);
+  const clipping = observableState(false);
   const style = (patch: Record<string, unknown>) =>
     void area.style({ entities: String(row.id), particles: info.value.particles, ...patch } as never);
   return (
@@ -365,8 +382,20 @@ function EntityRow(props: {
             >
               {mapState(entity, (e) => e?.name ?? '')}
             </span>
+            <ClipButton info={info} entities={[row.id]} open={clipping} />
             <span style={Muted}>{mapState(entity, (e) => (e?.count ?? 0).toLocaleString('en'))}</span>
           </div>
+          <Show when={clipping}>
+            {() => (
+              <ClipControls
+                area={area}
+                info={info}
+                entities={[row.id]}
+                selection={{ entities: String(row.id) }}
+                depth={row.depth + 2}
+              />
+            )}
+          </Show>
           <Show when={picking}>
             {() => (
               <div style={`padding-left: calc(${row.depth + 2} * var(--msp-space-3))`}>
@@ -415,6 +444,133 @@ function Motion(props: { area: MesoscaleApi }) {
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
       {slider('Wiggle', 5, 'wiggle')}
       {slider('Tumble', 10, 'tumble')}
+    </div>
+  );
+}
+
+const sameIds = (a: readonly number[], b: readonly number[]) =>
+  a.length === b.length && [...a].sort((x, y) => x - y).every((x, i) => x === [...b].sort((p, q) => p - q)[i]);
+
+/** The cut of exactly these entities, if any */
+function cutFor(info: MesoscaleInfo, entities: readonly number[]): EntityCut | undefined {
+  return info.cuts.find((c) => sameIds(c.entities, entities))?.cut;
+}
+
+/** The clip button of a row: lit when the row's entities have a cut; opens its controls */
+function ClipButton(props: {
+  info: ReadonlyState<MesoscaleInfo>;
+  entities: readonly number[];
+  open: ObservableState<boolean>;
+}) {
+  const cut = mapState(props.info, (i) => !!cutFor(i, props.entities));
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      title="Clip"
+      pressed={derive([cut, props.open.asReadonly], (c, o) => c || o)}
+      icon={<Icon name="crop" />}
+      onClick={() => props.open.set(!props.open.value)}
+    />
+  );
+}
+
+/**
+ * A cut of a group's or an entity's particles, as the Mesoscale Explorer set one: its type, inside or outside, where it
+ * is (x, y, z from the model's center, in % of its radius), turned about an axis, its size (in % of the diameter)
+ */
+function ClipControls(props: {
+  area: MesoscaleApi;
+  info: ReadonlyState<MesoscaleInfo>;
+  entities: readonly number[];
+  selection: { group?: string; entities?: string };
+  depth: number;
+}) {
+  const { area, info } = props;
+  const cut = mapState(info, (i) => cutFor(i, props.entities));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(timer));
+  const set = (values: Record<string, unknown>, delay = 0) => {
+    clearTimeout(timer);
+    timer = setTimeout(
+      () =>
+        void area.clip({
+          ...props.selection,
+          type: cut.value?.type ?? 'plane',
+          particles: info.value.particles,
+          ...values,
+        } as never),
+      delay,
+    );
+  };
+  const slider = (label: string, key: string, min: number, max: number, read: (c: EntityCut) => number) => (
+    <div style="display: flex; align-items: center; gap: var(--msp-space-2)">
+      <span style="width: 64px">{label}</span>
+      <input
+        type="range"
+        min={String(min)}
+        max={String(max)}
+        step="1"
+        style="flex: 1"
+        aria-label={label}
+        value={mapState(cut, (c) => String(c ? read(c) : 0))}
+        onInput={(e) => set({ [key]: Number((e.target as HTMLInputElement).value) }, 60)}
+      />
+      <span style={`${Muted}; width: 32px; text-align: right`}>{mapState(cut, (c) => (c ? String(read(c)) : ''))}</span>
+    </div>
+  );
+  return (
+    <div
+      style={`display: flex; flex-direction: column; gap: var(--msp-space-1); padding-left: calc(${props.depth} * var(--msp-space-3)); padding-bottom: var(--msp-space-2)`}
+    >
+      <Choices
+        choices={[
+          { id: 'none', label: 'None' },
+          { id: 'plane', label: 'Plane' },
+          { id: 'sphere', label: 'Sphere' },
+          { id: 'cube', label: 'Box' },
+          { id: 'cylinder', label: 'Cylinder' },
+        ]}
+        active={mapState(cut, (c) => c?.type ?? 'none')}
+        onPick={(type) => set({ type })}
+      />
+      <Show when={mapState(cut, (c) => !!c)}>
+        {() => (
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              pressed={mapState(cut, (c) => !!c?.invert)}
+              onClick={() => set({ invert: !cut.value?.invert })}
+            >
+              Invert
+            </Button>
+            <Choices
+              label="Turn about"
+              choices={[
+                { id: 'x', label: 'X' },
+                { id: 'y', label: 'Y' },
+                { id: 'z', label: 'Z' },
+              ]}
+              active={mapState(cut, (c) => c?.axis ?? 'x')}
+              onPick={(axis) => set({ axis })}
+            />
+            {slider('Angle', 'angle', -180, 180, (c) => c.angle)}
+            {slider('Position X', 'x', -100, 100, (c) => c.position[0])}
+            {slider('Position Y', 'y', -100, 100, (c) => c.position[1])}
+            {slider('Position Z', 'z', -100, 100, (c) => c.position[2])}
+            <Show when={mapState(cut, (c) => c?.type !== 'plane')}>
+              {() => (
+                <>
+                  {slider('Size X', 'sx', 0, 100, (c) => c.scale[0])}
+                  {slider('Size Y', 'sy', 0, 100, (c) => c.scale[1])}
+                  {slider('Size Z', 'sz', 0, 100, (c) => c.scale[2])}
+                </>
+              )}
+            </Show>
+          </>
+        )}
+      </Show>
     </div>
   );
 }

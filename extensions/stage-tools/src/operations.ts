@@ -11,6 +11,7 @@ import type { Clip } from '@molstar/core/util/clip';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 import { Grid, Volume } from '@molstar/model/model/volume';
+import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
 import { OrderedSet } from '@molstar/core/data/int';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
@@ -371,6 +372,20 @@ function clipOf(cell: StateObjectCell): Clip.Props | undefined {
   return (cell.transform.params as any)?.type?.params?.clip;
 }
 
+/**
+ * How many of a representation's first clip objects are cuts of some of its particles (the layers' `cuts`, the
+ * mesoscale extension's per-entity cuts): the stage's cut of the whole object comes after them.
+ */
+function partialCuts(ctx: Pick<ApiContext, 'plugin'>, cell: StateObjectCell): number {
+  const { tree } = ctx.plugin.state.data;
+  for (const child of tree.children.get(cell.transform.ref).toArray()) {
+    const t = tree.transforms.get(child);
+    if (t?.transformer === ParticleRepresentation3DLayers)
+      return ((t.params as { cuts?: unknown[] })?.cuts ?? []).length;
+  }
+  return 0;
+}
+
 function describe(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): CutInfo {
   const bounds = boundsOf(ctx, t);
   const reach = Math.max(bounds?.radius ?? 1, 1);
@@ -392,10 +407,12 @@ function guideCells(ctx: Pick<ApiContext, 'plugin'>): StateObjectCell[] {
 
 /** Puts the cut (none: removes it) on every representation of the target and its guide; the refs changed */
 async function setCut(ctx: ApiContext, t: StageTarget, cut: Cut | undefined): Promise<string[]> {
-  const clip: Clip.Props = { variant: 'pixel', objects: cut ? [clipObjectOf(cut)] : [] };
   const b = ctx.plugin.state.data.build();
   const nodes: string[] = [];
   for (const cell of representationCells(ctx, t)) {
+    // the cuts of some particles stay first (`partialCuts`)
+    const kept = (clipOf(cell)?.objects ?? []).slice(0, partialCuts(ctx, cell));
+    const clip: Clip.Props = { variant: 'pixel', objects: [...kept, ...(cut ? [clipObjectOf(cut)] : [])] };
     b.to(cell).update((old: any) => ({ ...old, type: { ...old.type, params: { ...old.type.params, clip } } }));
     nodes.push(cell.transform.ref);
   }

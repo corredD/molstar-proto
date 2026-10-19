@@ -150,6 +150,47 @@ describe('mesoscale', () => {
     expect(hidden).toEqual([[1]]);
   });
 
+  it('clips a group with its own clip object, which the other entities ignore, and keeps a cut of the whole', async () => {
+    const v = await viewer();
+    const m = v.api.mesoscale!;
+    const repr = () => v.plugin.managers.particles.hierarchy.current.lists[0].representations[0];
+    expectOk(await m.style({ entities: 'lipids', color: 'tomato' }));
+    expectOk(await m.clip({ group: 'root.envelope.capsid', type: 'sphere', x: 10, sx: 50 } as never));
+    let i = await info(v);
+    expect(i.cuts).toHaveLength(1);
+    expect(i.cuts[0].entities).toEqual([1, 2]);
+    expect(i.cuts[0].cut).toMatchObject({ type: 'sphere', position: [10, 0, 0], scale: [50, 100, 100] });
+    // the style is kept beside the cut
+    expect(i.entities.find((e) => e.name === 'lipids')!.color).toBe(Color(0xff6347));
+    expect((repr().cell.transform.params as any).type.params.clip.objects).toHaveLength(1);
+    // a cut of the whole object comes after it, the entity's cut stays first
+    const params = repr().cell.transform.params as any;
+    await v.plugin
+      .build()
+      .to(repr().cell)
+      .update({
+        ...params,
+        type: {
+          ...params.type,
+          params: {
+            ...params.type.params,
+            clip: {
+              variant: 'pixel',
+              objects: [...params.type.params.clip.objects, { ...params.type.params.clip.objects[0], type: 'plane' }],
+            },
+          },
+        },
+      })
+      .commit();
+    expectOk(await m.clip({ group: 'root.envelope.capsid', type: 'sphere', x: -20 } as never));
+    const objects = (repr().cell.transform.params as any).type.params.clip.objects;
+    expect(objects.map((o: any) => o.type)).toEqual(['sphere', 'plane']);
+    expectOk(await m.clip({ group: 'root.envelope.capsid', type: 'none' } as never));
+    i = await info(v);
+    expect(i.cuts).toHaveLength(0);
+    expect((repr().cell.transform.params as any).type.params.clip.objects.map((o: any) => o.type)).toEqual(['plane']);
+  });
+
   it('undoes a style in one step', async () => {
     const v = await viewer();
     expectOk(await v.api.mesoscale!.style({ entities: 'CA', visible: false }));

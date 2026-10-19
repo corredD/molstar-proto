@@ -8,12 +8,17 @@ import { Color } from '@molstar/core/util/color';
 import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
-import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
+import { Sphere3D } from '@molstar/core/math/geometry';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import type { Clip } from '@molstar/core/util/clip';
 import type {
   ParticleListRef,
   ParticleRepresentationRef,
 } from '@molstar/plugin/state/manager/particles/hierarchy-state';
 import {
+  MaxParticleCuts,
+  type ParticleCutProps,
   type ParticleLayerProps,
   ParticleRepresentation3DLayers,
 } from '@molstar/plugin/state/transforms/particles/layers';
@@ -53,6 +58,28 @@ export interface EntityStyle {
 
 export interface EntityInfo extends MesoEntity, EntityStyle {}
 
+export const CutTypes = ['plane', 'sphere', 'cube', 'cylinder'] as const;
+export type CutType = (typeof CutTypes)[number];
+
+/**
+ * A cut of some entities, as the Mesoscale Explorer set one (its group and entity Clip): a shape, where it is from the
+ * model's center (x, y, z in % of its radius), turned about an axis, its size (x, y, z in % of its diameter)
+ */
+export interface EntityCut {
+  readonly type: CutType;
+  readonly invert: boolean;
+  readonly position: readonly [number, number, number];
+  readonly axis: 'x' | 'y' | 'z';
+  readonly angle: number;
+  readonly scale: readonly [number, number, number];
+}
+
+/** A cut and the entities it is for */
+export interface EntityCutInfo {
+  readonly entities: readonly number[];
+  readonly cut: EntityCut;
+}
+
 /** What `entities` says of a particle list */
 export interface MesoscaleInfo {
   readonly particles: string;
@@ -62,6 +89,8 @@ export interface MesoscaleInfo {
   /** By compartment when the list has compartments, else by function */
   readonly groups: MesoGroup;
   readonly groupBy: MesoGroupBy;
+  /** The cuts of entities and groups (at most 8) */
+  readonly cuts: readonly EntityCutInfo[];
 }
 
 const ListParam = () =>
@@ -288,6 +317,88 @@ export class MesoscaleApi extends ApiArea {
     },
   });
 
+  readonly clip = this.operation({
+    id: 'mesoscale.clip',
+    title: 'Clip entities',
+    params: {
+      ...SelectionParams,
+      type: PD.Select<CutType | 'none'>('plane', [
+        ['none', 'None (remove the cut)'],
+        ['plane', 'Plane'],
+        ['sphere', 'Sphere'],
+        ['cube', 'Box'],
+        ['cylinder', 'Cylinder'],
+      ]),
+      invert: OptionalParam(PD.Boolean(false, { description: 'Keep what is inside (sphere, box) or the other side' })),
+      x: OptionalParam(
+        PD.Numeric(0, { min: -100, max: 100, step: 1 }, { description: 'From the center, % of the radius' }),
+      ),
+      y: OptionalParam(PD.Numeric(0, { min: -100, max: 100, step: 1 })),
+      z: OptionalParam(PD.Numeric(0, { min: -100, max: 100, step: 1 })),
+      axis: OptionalParam(
+        PD.Select<'x' | 'y' | 'z'>('x', [
+          ['x', 'x'],
+          ['y', 'y'],
+          ['z', 'z'],
+        ]),
+      ),
+      angle: OptionalParam(PD.Numeric(0, { min: -180, max: 180, step: 1 }, { description: 'Degrees about the axis' })),
+      sx: OptionalParam(PD.Numeric(100, { min: 0, max: 100, step: 1 }, { description: 'Size, % of the diameter' })),
+      sy: OptionalParam(PD.Numeric(100, { min: 0, max: 100, step: 1 })),
+      sz: OptionalParam(PD.Numeric(100, { min: 0, max: 100, step: 1 })),
+      particles: ListParam(),
+    },
+    async run(values, ctx) {
+      const v = values as typeof values &
+        Partial<Record<'x' | 'y' | 'z' | 'angle' | 'sx' | 'sy' | 'sz', number>> & {
+          invert?: boolean;
+          axis?: 'x' | 'y' | 'z';
+        };
+      const l = oneList(ctx, v.particles || undefined);
+      if (isFailure(l)) return l;
+      const ids = selectEntities(ctx, l, v.entities, v.group);
+      if (isFailure(ids)) return ids;
+      const key = [...ids].sort((a, b) => a - b).join(',');
+      const cuts = readCuts(ctx, l).filter((c) => [...c.entities].sort((a, b) => a - b).join(',') !== key);
+      const old = readCuts(ctx, l).find((c) => [...c.entities].sort((a, b) => a - b).join(',') === key)?.cut;
+      if (v.type !== 'none') {
+        const base: EntityCut = old ?? {
+          type: v.type,
+          invert: false,
+          position: [0, 0, 0],
+          axis: 'x',
+          angle: 0,
+          scale: [100, 100, 100],
+        };
+        cuts.push({
+          entities: ids,
+          cut: {
+            type: v.type,
+            invert: v.invert ?? base.invert,
+            position: [v.x ?? base.position[0], v.y ?? base.position[1], v.z ?? base.position[2]],
+            axis: v.axis ?? base.axis,
+            angle: v.angle ?? base.angle,
+            scale: [v.sx ?? base.scale[0], v.sy ?? base.scale[1], v.sz ?? base.scale[2]],
+          },
+        });
+      } else if (!old) {
+        return ApiResult.already('They are not clipped.');
+      }
+      if (cuts.length > MaxParticleCuts) {
+        return ApiResult.fail(
+          'blocked',
+          `At most ${MaxParticleCuts} cuts.`,
+          'Remove one (type: none) or clip a whole group.',
+        );
+      }
+      const changed = await writeLayers(ctx, l, { cuts });
+      if (!changed) return ApiResult.already('They are already clipped so.');
+      return ApiResult.ok(`${v.type === 'none' ? 'Removed the cut of' : 'Clipped'} ${describeSelection(l, ids)}.`, {
+        nodes: changed,
+      });
+    },
+  });
+
   readonly graphics = this.operation({
     id: 'mesoscale.graphics',
     title: 'Set the graphics mode',
@@ -405,6 +516,7 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Mesoscal
     entities: entities.map((e) => ({ ...e, visible: true, ...styles.get(e.id) })),
     groups: mesoGroups(data, entities, groupBy),
     groupBy,
+    cuts: readCuts(ctx, l),
   };
 }
 
@@ -505,23 +617,124 @@ function toLayers(styles: ReadonlyMap<number, EntityStyle>, byTarget: boolean): 
 }
 
 /** Writes the styles as the layers of every representation of the list; the refs changed, none when already so */
-async function writeStyles(
+function writeStyles(ctx: ApiContext, l: ParticleListRef, styles: ReadonlyMap<number, EntityStyle>) {
+  return writeLayers(ctx, l, { styles });
+}
+
+/** The selector of some entities: by entity, or by target on a list without entities */
+function selectorOf(l: ParticleListRef, ids: readonly number[]): ParticleCutProps {
+  const byTarget = !dataOf(l)?.entityInfo;
+  return { entities: byTarget ? [] : [...ids], compartments: [], targets: byTarget ? [...ids] : [] };
+}
+
+/** The model's bounds the cuts are placed in */
+function boundsOf(l: ParticleListRef) {
+  const data = dataOf(l);
+  if (!data) return Sphere3D.create(Vec3.zero(), 1);
+  const { center, radius } = Particle.getBoundary(data).sphere;
+  // a model of one point still has room for a cut
+  return Sphere3D.create(center, Math.max(radius, 1));
+}
+
+const AxisVectors = { x: Vec3.create(1, 0, 0), y: Vec3.create(0, 1, 0), z: Vec3.create(0, 0, 1) };
+
+/** The clip object of a cut, placed in the model's bounds (as the Mesoscale Explorer's `getClipObjects`) */
+function clipObjectOf(cut: EntityCut, bounds: Sphere3D): Clip.Props['objects'][number] {
+  const { center, radius } = bounds;
+  const position = Vec3.create(
+    center[0] + (radius * cut.position[0]) / 100,
+    center[1] + (radius * cut.position[1]) / 100,
+    center[2] + (radius * cut.position[2]) / 100,
+  );
+  const scale = Vec3.scale(Vec3(), Vec3.create(...cut.scale), (2 * radius) / 100);
+  return {
+    type: cut.type,
+    invert: cut.invert,
+    position,
+    rotation: { axis: Vec3.clone(AxisVectors[cut.axis]), angle: cut.angle },
+    scale,
+    transform: Mat4.identity(),
+  };
+}
+
+function cutOf(o: Clip.Props['objects'][number], bounds: Sphere3D): EntityCut {
+  const { center, radius } = bounds;
+  const r = (x: number) => Math.round(x);
+  const a = o.rotation.axis;
+  const axis =
+    Math.abs(a[1]) > Math.abs(a[0]) && Math.abs(a[1]) >= Math.abs(a[2])
+      ? 'y'
+      : Math.abs(a[2]) > Math.abs(a[0])
+        ? 'z'
+        : 'x';
+  return {
+    type: (CutTypes as readonly string[]).includes(o.type) ? (o.type as CutType) : 'plane',
+    invert: o.invert,
+    position: [0, 1, 2].map((i) => r(((o.position[i] - center[i]) / radius) * 100)) as [number, number, number],
+    axis,
+    angle: o.rotation.angle,
+    scale: [0, 1, 2].map((i) => r((o.scale[i] / (2 * radius)) * 100)) as [number, number, number],
+  };
+}
+
+/** The cuts of a list: its first representation's layer cuts and their clip objects */
+function readCuts(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): EntityCutInfo[] {
+  const r = l.representations[0];
+  if (!r) return [];
+  const t = layersCell(ctx, r);
+  const cuts = (t?.params?.cuts ?? []) as ParticleCutProps[];
+  const objects = ((r.cell.transform.params as any)?.type?.params?.clip?.objects ?? []) as Clip.Props['objects'];
+  const bounds = boundsOf(l);
+  const out: EntityCutInfo[] = [];
+  cuts.forEach((c, i) => {
+    if (objects[i]) out.push({ entities: c.entities.length ? c.entities : c.targets, cut: cutOf(objects[i], bounds) });
+  });
+  return out;
+}
+
+/**
+ * Writes the styles (layers) or the cuts of a list on every representation: the layers and cuts in its layers cell,
+ * the cuts' clip objects first in the representation's clip objects (a cut of the whole representation, after them,
+ * is kept). The refs changed, none when already so.
+ */
+async function writeLayers(
   ctx: ApiContext,
   l: ParticleListRef,
-  styles: ReadonlyMap<number, EntityStyle>,
+  patch: { styles?: ReadonlyMap<number, EntityStyle>; cuts?: readonly EntityCutInfo[] },
 ): Promise<string[] | undefined> {
-  const layers = toLayers(styles, !dataOf(l)?.entityInfo);
+  const byTarget = !dataOf(l)?.entityInfo;
+  const bounds = boundsOf(l);
   const b = ctx.plugin.state.data.build();
   const changed: string[] = [];
   for (const r of l.representations) {
     const t = layersCell(ctx, r);
+    const oldLayers = (t?.params?.layers ?? []) as ParticleLayerProps[];
+    const oldCuts = (t?.params?.cuts ?? []) as ParticleCutProps[];
+    const layers = patch.styles ? toLayers(patch.styles, byTarget) : oldLayers;
+    const cuts = patch.cuts ? patch.cuts.map((c) => selectorOf(l, c.entities)) : oldCuts;
+    if (patch.cuts) {
+      const params = r.cell.transform.params as any;
+      const clip = params?.type?.params?.clip;
+      if (clip) {
+        const rest = (clip.objects ?? []).slice(oldCuts.length);
+        const objects = [...patch.cuts.map((c) => clipObjectOf(c.cut, bounds)), ...rest];
+        if (JSON.stringify(objects) !== JSON.stringify(clip.objects)) {
+          b.to(r.cell).update((old: any) => ({
+            ...old,
+            type: { ...old.type, params: { ...old.type.params, clip: { ...old.type.params.clip, objects } } },
+          }));
+          changed.push(r.cell.transform.ref);
+        }
+      }
+    }
+    if (JSON.stringify(layers) === JSON.stringify(oldLayers) && JSON.stringify(cuts) === JSON.stringify(oldCuts))
+      continue;
     if (t) {
-      if (JSON.stringify(t.params?.layers) === JSON.stringify(layers)) continue;
-      if (layers.length) b.to(t.ref).update({ layers });
+      if (layers.length || cuts.length) b.to(t.ref).update((old: any) => ({ ...old, layers, cuts }));
       else b.delete(t.ref);
       changed.push(t.ref);
-    } else if (layers.length) {
-      b.to(r.cell).apply(ParticleRepresentation3DLayers, { layers });
+    } else if (layers.length || cuts.length) {
+      b.to(r.cell).apply(ParticleRepresentation3DLayers, { layers, cuts });
       changed.push(r.cell.transform.ref);
     }
   }

@@ -44,7 +44,7 @@ export function cellpackLike(): ParticleList {
       [1, { name: 'root.envelope.capsid.surface' }],
       [2, { name: 'root.envelope.capsid.interior' }],
     ]),
-    coordinates: new Float32Array(count * 3),
+    coordinates: Float32Array.from({ length: count * 3 }, (_, i) => (i % 3 === 0 ? (i / 3) * 10 : 0)),
     getParticleLabel: (i) => `${i}`,
     sourceData: { kind: 'test', name: 'test', data: {} },
     customProperties: new CustomProperties(),
