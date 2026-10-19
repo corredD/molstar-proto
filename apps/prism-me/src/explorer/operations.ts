@@ -73,7 +73,8 @@ export class ExplorerApi extends ApiArea {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => sceneObjects(plugin),
-      () => plugin.state.data.events.changed,
+      // a visibility change is a cell's state, not the tree's
+      () => [plugin.state.data.events.changed, plugin.state.data.events.cell.stateUpdated],
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
   }

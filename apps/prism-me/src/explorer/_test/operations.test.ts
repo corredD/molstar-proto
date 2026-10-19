@@ -10,7 +10,8 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { ExplorerExtension } from '../extension.js';
+import { MesoscaleExplorerExtensions } from '../../extensions.js';
+import { rowsOf, stableRows, toggleVisible } from '../rows.js';
 
 // The `explorer` area on a headless viewer: 1CRN (crambin, with its unit cell), a RELION list and an OBJ mesh.
 
@@ -38,7 +39,7 @@ function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: 
 async function viewer() {
   const base = DefaultPrismViewerSpec();
   const v = await createPrismViewerHeadless({
-    spec: { ...base, extensions: [...(base.extensions ?? []), ExplorerExtension] },
+    spec: { ...base, extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions] },
   });
   viewers.push(v);
   const crn = new File([readFileSync(new URL('../../../../../data/examples/1crn.cif', import.meta.url))], '1crn.cif');
@@ -78,5 +79,39 @@ describe('explorer', () => {
       expect(() => area.focus(node)).not.toThrow();
     }
     area.highlight(undefined);
+  });
+
+  it("flips each object's eye, and the watched read follows (a visibility change is a cell's state)", async () => {
+    const v = await viewer();
+    const state = v.api.explorer!.objectsState();
+    const seen: boolean[][] = [];
+    const sub = state.subscribe((o) => seen.push(o.map((x) => x.visible)));
+    const rows = () => rowsOf(state.value, new Map(), new Set(['c:structures', 'c:particles', 'c:meshes']), '');
+    for (const kind of ['structure', 'particle list', 'mesh']) {
+      const row = rows().find((r) => r.kind === kind)!;
+      expect(row.visible).toBe(true);
+      const r = await toggleVisible(v.api, row);
+      expectOk(r!);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(rows().find((x) => x.key === row.key)!.visible).toBe(false);
+      expectOk((await toggleVisible(v.api, { ...row, visible: false }))!);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    sub.unsubscribe();
+    expect(seen.some((s) => s[0] === false)).toBe(true);
+    expect(seen.some((s) => s[1] === false)).toBe(true);
+    expect(seen.some((s) => s[2] === false)).toBe(true);
+    expect(seen.at(-1)).toEqual([true, true, true]);
+  });
+
+  it('keeps unchanged rows as the same objects', () => {
+    const stable = stableRows();
+    const a = { key: 'a', depth: 1, label: 'A', kind: 'entity', hasChildren: false, visible: true };
+    const b = { key: 'b', depth: 1, label: 'B', kind: 'entity', hasChildren: false, visible: true };
+    const [a1, b1] = stable([a, b]);
+    const [a2, b2] = stable([{ ...a }, { ...b, visible: false }]);
+    expect(a2).toBe(a1);
+    expect(b2).not.toBe(b1);
+    expect(b2.visible).toBe(false);
   });
 });
