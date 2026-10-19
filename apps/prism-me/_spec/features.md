@@ -62,18 +62,17 @@ agent run (one undo step each); the command menu (⌘K) has each.
 
 ## Stage tools (Stories Untold)
 
-| Feature                                                                                           | Status   | Operation / where                                                    |
-| ------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------- |
-| Cut with a plane (through the center, facing the camera)                                          | Done     | `stage.cut`; Cut row; right-click                                    |
-| Cut with a sphere or a box (a window on the near side)                                            | Done     | `stage.cut`                                                          |
-| Move along the normal, size, flip                                                                 | Done     | `stage.adjust`; Cut row sliders                                      |
-| Remove a cut                                                                                      | Done     | `stage.uncut`                                                        |
-| Guides: the cut's shape drawn translucent, shown or hidden                                        | Done     | `stage.guides`                                                       |
-| Right-click menu on what was picked: focus, cut, flip, remove, hide or color the entity, decorate | Done     | the canvas (prism-me frees the right button from the camera's focus) |
-| Menu on a guide (flip, remove)                                                                    | Partial  | picking the guide works by its shape; not tried in the browser       |
-| Drag a cut's guide on the canvas, live (Stories Untold's `PreviewClip`)                           | Deferred | sliders instead                                                      |
-| Keys on cuts (animation)                                                                          | Deferred |                                                                      |
-| Commands for the agent and ⌘K                                                                     | Done     | the three areas' commands and skills                                 |
+| Feature                                                                                                                                         | Status   | Operation / where                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
+| Cut with a plane (through the center, facing the camera)                                                                                        | Done     | `stage.cut`; Cut row; right-click                                                       |
+| Cut with a sphere or a box (a window on the near side)                                                                                          | Done     | `stage.cut`                                                                             |
+| Move along the normal, size, flip                                                                                                               | Done     | `stage.adjust`; Cut row sliders                                                         |
+| Remove a cut                                                                                                                                    | Done     | `stage.uncut`                                                                           |
+| Guides of every cut (an object's and its entities'): faint faces and an opaque rim, shown or hidden in one go                                   | Done     | `stage.guides`; the canvas toolbar's crop button; the cut controls of the Entities tree |
+| Right-click menu on what was picked: focus, cut, flip, remove, hide or color the entity, decorate                                               | Done     | the canvas (prism-me frees the right button from the camera's focus)                    |
+| Right-click a guide's rim: move, turn, size (drag in 3D: live, one step on release, Esc cancels), keep the inside or cut the other side, remove | Done     | `stage.object`; tried in Chrome on 1CRN and on an entity cut of HIV                     |
+| Keys on cuts (animation)                                                                                                                        | Deferred |                                                                                         |
+| Commands for the agent and ⌘K                                                                                                                   | Done     | the three areas' commands and skills                                                    |
 
 ## Known issues found on the way (Prism, upstream)
 

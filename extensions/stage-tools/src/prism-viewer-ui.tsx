@@ -13,6 +13,8 @@ import type { SceneNode } from '@molstar/prism-viewer';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import { SceneRow } from '@molstar/prism-viewer/views/structure/scene-row';
+import type { DragMode } from './cuts.js';
+import { startDrag } from './drag.js';
 import type { CutInfo, StageApi, StageMenuRequest } from './operations.js';
 
 // The stage tools' views (apps/prism-me/_spec/features.md, "Stage tools"; Stories Untold's stage menu and cut
@@ -21,6 +23,7 @@ import type { CutInfo, StageApi, StageMenuRequest } from './operations.js';
 // flip, the guides). They act through the API as the person, so each choice is one step of the history.
 
 export const CutRow = 'stage-tools.row.cut';
+export const GuidesButton = 'stage-tools.toolbar.guides';
 
 const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
 const Line = 'display: flex; align-items: center; gap: var(--msp-space-2); min-height: 28px';
@@ -36,7 +39,18 @@ export function stageToolsUI(ctx: ViewerUIContext): ViewerExtensionUI {
     if (!items.length) return;
     close = openContextMenu(rootOf(request), { x: request.x, y: request.y }, items);
   });
+  const shown = area.guidesState();
   return {
+    toolbar: [
+      {
+        id: GuidesButton,
+        icon: 'crop',
+        title: 'Show or hide the cuts',
+        place: 'canvas',
+        visible: area.anyCutState(),
+        run: () => void area.guides({ visible: !shown.value }),
+      },
+    ],
     rows: [
       {
         id: CutRow,
@@ -147,7 +161,33 @@ export async function menuItems(api: ViewerApi, area: StageApi, request: StageMe
         });
       }
     }
-    if (cut) {
+    if (pick.kind === 'guide') {
+      // a cut's guide: move, turn or size it by dragging, flip or remove it
+      const { index } = pick;
+      const object = area.clipObject(t.ref, index);
+      const partial = area.isPartialCut(t.ref, index);
+      const drag = (mode: DragMode) => () => startDrag(area, rootOf(request), request.anchor, t.ref, index, mode);
+      items.push({ id: 'move', label: 'Move the cut', icon: 'move-3d', run: drag('move') });
+      items.push({ id: 'rotate', label: 'Turn the cut', icon: 'rotate-ccw', run: drag('rotate') });
+      if (object && object.type !== 'plane') {
+        items.push({ id: 'scale', label: 'Size the cut', icon: 'maximize-2', run: drag('scale') });
+      }
+      items.push({
+        id: 'flip',
+        label: object?.type === 'plane' ? 'Cut the other side' : 'Keep the inside',
+        icon: 'refresh-cw',
+        run: () => void area.object({ target: t.ref, index, invert: !object?.invert } as never),
+      });
+      items.push({
+        id: 'uncut',
+        label: 'Remove the cut',
+        icon: 'x',
+        run: () =>
+          void (partial
+            ? api.run('mesoscale.clip', { entities: partial.entities.join(','), type: 'none', particles: t.ref })
+            : area.uncut({ target: t.ref })),
+      });
+    } else if (cut) {
       items.push({
         id: 'flip',
         label: 'Flip the cut',

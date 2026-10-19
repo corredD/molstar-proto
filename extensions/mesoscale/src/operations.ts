@@ -69,7 +69,9 @@ export interface EntityCut {
   readonly type: CutType;
   readonly invert: boolean;
   readonly position: readonly [number, number, number];
-  readonly axis: 'x' | 'y' | 'z';
+  /** Turned about x, y or z, or about another axis (`axisVector`: a cut turned by hand in 3D) */
+  readonly axis: 'x' | 'y' | 'z' | 'free';
+  readonly axisVector?: readonly [number, number, number];
   readonly angle: number;
   readonly scale: readonly [number, number, number];
 }
@@ -377,6 +379,7 @@ export class MesoscaleApi extends ApiArea {
             invert: v.invert ?? base.invert,
             position: [v.x ?? base.position[0], v.y ?? base.position[1], v.z ?? base.position[2]],
             axis: v.axis ?? base.axis,
+            ...(v.axis === undefined && base.axisVector ? { axisVector: base.axisVector } : {}),
             angle: v.angle ?? base.angle,
             scale: [v.sx ?? base.scale[0], v.sy ?? base.scale[1], v.sz ?? base.scale[2]],
           },
@@ -651,7 +654,13 @@ function clipObjectOf(cut: EntityCut, bounds: Sphere3D): Clip.Props['objects'][n
     type: cut.type,
     invert: cut.invert,
     position,
-    rotation: { axis: Vec3.clone(AxisVectors[cut.axis]), angle: cut.angle },
+    rotation: {
+      axis:
+        cut.axis === 'free' && cut.axisVector
+          ? Vec3.create(...cut.axisVector)
+          : Vec3.clone(AxisVectors[cut.axis === 'free' ? 'x' : cut.axis]),
+      angle: cut.angle,
+    },
     scale,
     transform: Mat4.identity(),
   };
@@ -660,8 +669,9 @@ function clipObjectOf(cut: EntityCut, bounds: Sphere3D): Clip.Props['objects'][n
 function cutOf(o: Clip.Props['objects'][number], bounds: Sphere3D): EntityCut {
   const { center, radius } = bounds;
   const r = (x: number) => Math.round(x);
-  const a = o.rotation.axis;
-  const axis =
+  const a = Vec3.normalize(Vec3(), o.rotation.axis);
+  const aligned = [0, 1, 2].some((i) => Math.abs(Math.abs(a[i]) - 1) < 1e-4);
+  const nearest =
     Math.abs(a[1]) > Math.abs(a[0]) && Math.abs(a[1]) >= Math.abs(a[2])
       ? 'y'
       : Math.abs(a[2]) > Math.abs(a[0])
@@ -671,8 +681,10 @@ function cutOf(o: Clip.Props['objects'][number], bounds: Sphere3D): EntityCut {
     type: (CutTypes as readonly string[]).includes(o.type) ? (o.type as CutType) : 'plane',
     invert: o.invert,
     position: [0, 1, 2].map((i) => r(((o.position[i] - center[i]) / radius) * 100)) as [number, number, number],
-    axis,
-    angle: o.rotation.angle,
+    // about x, y or z (against it: the angle negated), else about the axis as it is
+    ...(aligned
+      ? { axis: nearest, angle: a[{ x: 0, y: 1, z: 2 }[nearest]] < 0 ? -o.rotation.angle : o.rotation.angle }
+      : { axis: 'free' as const, axisVector: [a[0], a[1], a[2]] as [number, number, number], angle: o.rotation.angle }),
     scale: [0, 1, 2].map((i) => r((o.scale[i] / (2 * radius)) * 100)) as [number, number, number],
   };
 }

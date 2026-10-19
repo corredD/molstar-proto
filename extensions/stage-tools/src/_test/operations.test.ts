@@ -10,8 +10,7 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { CutGuideShape } from '../guide.js';
-import type { CutInfo } from '../operations.js';
+import { type CutInfo, desiredGuides } from '../operations.js';
 import { menuItems } from '../prism-viewer-ui.js';
 import { StageToolsExtension } from '../prism-viewer.js';
 
@@ -48,8 +47,7 @@ const cutOf = async (v: PrismViewer) => {
   return (r.value as CutInfo[])[0];
 };
 
-const guides = (v: PrismViewer) =>
-  Array.from(v.plugin.state.data.cells.values()).filter((c) => c.transform.transformer === CutGuideShape);
+const guides = (v: PrismViewer) => desiredGuides({ plugin: v.plugin });
 
 describe('stage', () => {
   it('cuts every representation of a structure with a plane through its center, and draws its guide', async () => {
@@ -86,8 +84,10 @@ describe('stage', () => {
     const s = v.api.stage!;
     expectOk(await s.cut({ shape: 'box', target: '' }));
     expectOk(await s.guides({ visible: false }));
-    expect(guides(v).every((c) => c.state.isHidden)).toBe(true);
     expect(s.guidesState().value).toBe(false);
+    expect(s.guideVisuals.visible).toBe(false);
+    // a view aid, not the scene's: the guide is still there, hidden, and nothing was a step of the history
+    expect(guides(v)).toHaveLength(1);
   });
 
   it('undoes a cut in one step', async () => {
@@ -95,6 +95,43 @@ describe('stage', () => {
     expectOk(await v.api.stage!.cut({ shape: 'plane', target: '' }));
     expectOk(await v.api.history.undo({}));
     expect(clips(v).every((n) => n === 0)).toBe(true);
+  });
+
+  it('moves, turns, sizes and inverts one cut, in one step', async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    expectOk(await s.cut({ shape: 'box', target: '' }));
+    expectOk(
+      await s.object({
+        target: '',
+        index: 0,
+        x: 1,
+        y: 2,
+        z: 3,
+        axisX: 0,
+        axisY: 0,
+        axisZ: 1,
+        angle: 30,
+        sx: 5,
+        sy: 6,
+        sz: 7,
+        invert: true,
+      } as never),
+    );
+    const o = s.clipObject(v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref, 0)!;
+    expect([
+      Array.from(o.position),
+      Array.from(o.rotation.axis),
+      o.rotation.angle,
+      Array.from(o.scale),
+      o.invert,
+    ]).toEqual([[1, 2, 3], [0, 0, 1], 30, [5, 6, 7], true]);
+    expect(guides(v)[0].object.invert).toBe(true);
+    expectOk(await v.api.history.undo({}));
+    expect(
+      s.clipObject(v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref, 0)!.invert,
+    ).toBe(false);
+    expect(await s.object({ target: '', index: 3, x: 0 } as never)).toMatchObject({ ok: false, code: 'not-found' });
   });
 
   it('offers what fits the pick in its menu', async () => {
@@ -119,6 +156,7 @@ describe('stage', () => {
       'uncut',
       'guides',
     ]);
-    expect(await ids({ kind: 'guide', target })).toEqual(['flip', 'uncut', 'guides']);
+    // a plane's guide: move, turn, the other side, remove (no size: a plane has none)
+    expect(await ids({ kind: 'guide', target, index: 0 })).toEqual(['move', 'rotate', 'flip', 'uncut', 'guides']);
   });
 });

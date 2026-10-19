@@ -13,7 +13,7 @@ commit that builds it).
 - Snapshot descriptions' links: `#key`, `i<names>`, `g<group>.<names>`.
 - Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms.
 - Decorating by a string column (a tomogram name).
-- Dragging a cut's guide on the canvas (Stories Untold's `PreviewClip`); keys on cuts.
+- Keys on cuts (animation).
 - Upstream (Prism): Home counts particles as loaded; `particles.representation` on decorated lists; shapes in the scene
   tree.
 - Storybook stories for the Entities tab, the Decorations and Slice rows, the Segmentations tab and the stage menu,

@@ -14,7 +14,9 @@ import type { PluginSpec } from '@molstar/plugin/spec';
 
 export const MesoscaleCanvasLook: Partial<Canvas3DProps> = {
   multiSample: { mode: 'off' } as Canvas3DProps['multiSample'],
-  cameraClipping: { far: false, minNear: 50 } as Canvas3DProps['cameraClipping'],
+  // no far clipping (a whole cell); the near plane as Mol*'s default: the explorer's 50 Å minimum clipped small
+  // structures and the cuts' guides near the camera
+  cameraClipping: { far: false } as Canvas3DProps['cameraClipping'],
   sceneRadiusFactor: 2,
   marking: {
     enabled: true,

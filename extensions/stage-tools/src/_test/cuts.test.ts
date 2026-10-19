@@ -7,7 +7,17 @@
 import { describe, expect, it } from 'vitest';
 import { Sphere3D } from '@molstar/core/math/geometry';
 import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
-import { clipObjectOf, cutGuideMesh, cutOf, defaultCut, flipCut, rotationTo, slideCut } from '../cuts.js';
+import {
+  clipGuideMesh,
+  clipObjectOf,
+  cutGuideMesh,
+  cutOf,
+  defaultCut,
+  dragClipObject,
+  flipCut,
+  rotationTo,
+  slideCut,
+} from '../cuts.js';
 
 const turnUp = (normal: Vec3) => {
   const r = rotationTo(normal);
@@ -62,5 +72,26 @@ describe('cuts', () => {
       const mesh = cutGuideMesh(defaultCut(shape, Sphere3D.create(Vec3.create(0, 0, 0), 5), Vec3.create(0, 0, -1)));
       expect(mesh.triangleCount).toBeGreaterThan(10);
     }
+  });
+});
+
+describe('dragging a cut', () => {
+  const frame = { right: Vec3.create(1, 0, 0), up: Vec3.create(0, 1, 0), pixel: 0.5 };
+  const box = clipObjectOf(defaultCut('box', Sphere3D.create(Vec3.create(0, 0, 0), 10), Vec3.create(0, 0, -1)));
+
+  it('moves in the screen plane (screen y down is world up)', () => {
+    const moved = dragClipObject(box, 'move', 10, -20, frame);
+    expect(Array.from(moved.position)).toEqual([box.position[0] + 5, box.position[1] + 10, box.position[2]]);
+  });
+
+  it('turns about the screen axes, and scales up when dragged up', () => {
+    const turned = dragClipObject(box, 'rotate', 157, 0, frame);
+    expect(turned.rotation.angle).not.toBe(box.rotation.angle);
+    const bigger = dragClipObject(box, 'scale', 0, -100, frame);
+    expect(bigger.scale[0]).toBeGreaterThan(box.scale[0]);
+  });
+
+  it('draws a guide for a cylinder too', () => {
+    expect(clipGuideMesh({ ...box, type: 'cylinder' }, 10).triangleCount).toBeGreaterThan(10);
   });
 });
