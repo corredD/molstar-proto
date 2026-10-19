@@ -48,6 +48,13 @@ import {
 export const GraphicsModes = ['ultra', 'quality', 'balanced', 'performance'] as const;
 export type GraphicsMode = (typeof GraphicsModes)[number];
 
+/** The particles' graphics: their mode (none when their levels of detail are not one of the modes'), their motion */
+export interface GraphicsInfo {
+  readonly mode?: GraphicsMode;
+  readonly wiggle: number;
+  readonly tumble: number;
+}
+
 /** How an entity looks: what its layer sets */
 export interface EntityStyle {
   readonly visible: boolean;
@@ -125,6 +132,32 @@ export class MesoscaleApi extends ApiArea {
       },
       () => plugin.state.data.events.changed,
       { compare: (a, b) => a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b)) },
+    );
+  }
+
+  /**
+   * The graphics mode and the motion as the particles' representations have them (the first one's), following the state
+   * tree while watched: a read for views; undefined without particles
+   */
+  graphicsState(): ReadonlyState<GraphicsInfo | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => {
+        const params = lists({ plugin }).flatMap((l) => l.representations)[0]?.cell.transform.params as
+          | { type?: { params?: Record<string, unknown> } }
+          | undefined;
+        const type = params?.type?.params;
+        if (!type) return undefined;
+        const lod = JSON.stringify(type.lodLevels);
+        const animation = findAnimation(type);
+        return {
+          mode: GraphicsModes.find((m) => JSON.stringify(Spheres.LodLevelsPresets[m]) === lod),
+          wiggle: animation?.wiggleAmplitude ?? 0,
+          tumble: animation?.tumbleAmplitude ?? 0,
+        };
+      },
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
   }
 
@@ -447,6 +480,17 @@ export class MesoscaleApi extends ApiArea {
 }
 
 /** Sets `wiggleAmplitude` and `tumbleAmplitude` of every `animation` group in a representation's params */
+/** The first `animation` params found in a representation's params (where `withMotion` writes) */
+function findAnimation(params: unknown): { wiggleAmplitude?: number; tumbleAmplitude?: number } | undefined {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return undefined;
+  for (const [k, v] of Object.entries(params as Record<string, unknown>)) {
+    if (k === 'animation' && v && typeof v === 'object') return v as { wiggleAmplitude?: number };
+    const found = findAnimation(v);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 function withMotion(params: unknown, wiggle: number | undefined, tumble: number | undefined): unknown {
   if (!params || typeof params !== 'object' || Array.isArray(params)) return params;
   const out: Record<string, unknown> = {};

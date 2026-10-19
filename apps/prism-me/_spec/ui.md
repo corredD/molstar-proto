@@ -94,5 +94,20 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   representations; eyes, counts, filter; click picks (highlight), double click focuses. + Open: files, an entry,
   examples, a session. Objects are named by their file. Properties: the picked row's name only (step 2). Code:
   `src/explorer/` (`operations.ts`: the `explorer` area; `ui.tsx`: the panel), test `src/explorer/_test/`.
-- Not yet: the drag split between tree and properties; the tree following a pick in 3D; a color dot only where a
-  color was set.
+- Step 1 fixes (2026-10-18): an eye flips at once (the operation runs after the frame is painted; on MG it was
+  0.1â€“0.6 s, now one frame) and follows visibility changes (the scene read listens to cells' state); unchanged rows are
+  kept (a change remakes only its rows); the row under the pointer is lit, in the tree and in 3D.
+- Step 2 (2026-10-18): the properties, under the tree, a drag line between them (the tree as tall as it is, the
+  properties in the rest). Sections that fold, by what is picked:
+  - a structure, an entity, a chain: Look (color, opacity, glow, as its layers make it now: the last layer that covers
+    all of it; a structure also: Color by a theme, Reset); a structure: Representation (a preset). Entities and chains
+    are targeted by their label ids (`{ loci }`), not author chains.
+  - a model, a group, an entity of a model: Look (color, opacity, glow; mixed when its entities differ; Generate colors,
+    Reset); a model: Graphics (mode, wiggle, tumble, as the representations have them).
+  - a particle list or a target: Decoration (the cryo-ET Decorations control). A volume: Slice. A mesh: its look.
+  - Shared controls moved to exported modules: `@molstar/cryoet-extension/controls` (Decorations, Slice, MeshControls),
+    `@molstar/mesoscale-extension/controls` (GraphicsMode, Motion; the motion read from the representations, new
+    `mesoscale.graphicsState`). A slider acts once released (one step).
+- Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a
+  structure entity's or chain's eye (Prism hides representations, not parts); a color dot only where a color was set;
+  the mesh section repeats the mesh's eye and name.

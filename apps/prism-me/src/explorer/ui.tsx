@@ -27,7 +27,8 @@ import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import type { Subscription } from 'rxjs';
-import type { ExplorerApi, NodeRef } from './operations.js';
+import type { ExplorerApi } from './operations.js';
+import { type Picked, Properties } from './properties.js';
 import { Categories, type Parts, type Row, rowsOf, stableRows, toggleVisible } from './rows.js';
 
 // The explorer's panel (apps/prism-me/_spec/ui.md §1–4): + Open, a filter, the tree of the scene in four categories,
@@ -56,13 +57,6 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
 const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
 
 /** The person's picked row */
-interface Picked {
-  readonly key: string;
-  readonly label: string;
-  readonly kind: string;
-  readonly node?: NodeRef;
-}
-
 function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi }) {
   const { ctx, area } = props;
   const api = ctx.api;
@@ -98,6 +92,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi }) {
   const open = observableState<ReadonlySet<string>>(new Set(Categories.map((c) => `c:${c.id}`)));
   const filter = observableState('');
   const picked = observableState<Picked | undefined>(undefined);
+  const split = splitter(240);
   const stable = stableRows();
   const rows = derive([objects, parts.asReadonly, open.asReadonly, filter.asReadonly], (o, p, op, f) =>
     stable(rowsOf(o, p, op, f)),
@@ -121,7 +116,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi }) {
   onCleanup(() => area.highlight(undefined));
 
   return (
-    <div style="display: flex; flex-direction: column; height: 100%; min-height: 0">
+    <div style="flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden">
       <div style="display: flex; gap: var(--msp-space-2); align-items: center; padding: var(--msp-space-2) var(--msp-space-3)">
         <Button size="sm" icon={<Icon name="plus" />} onClick={(e) => openMenu(e, openItems(ctx))}>
           Open
@@ -136,7 +131,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi }) {
           />
         </div>
       </div>
-      <div style="flex: 1 1 60%; min-height: 120px; overflow: auto; padding: 0 var(--msp-space-2)">
+      <div style="flex: 0 1 auto; min-height: 60px; overflow: auto; padding: 0 var(--msp-space-2)">
         <Show
           when={mapState(objects, (o) => o.length > 0)}
           fallback={() => (
@@ -165,17 +160,29 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi }) {
           )}
         </Show>
       </div>
-      <div style="flex: 1 1 40%; min-height: 80px; overflow: auto; border-top: 1px solid var(--msp-color-border); padding: var(--msp-space-3)">
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Drag to size the properties"
+        style="flex: none; height: 7px; cursor: row-resize; display: flex; align-items: center; touch-action: none"
+        onPointerDown={split.down}
+        onPointerMove={split.move}
+        onPointerUp={split.up}
+      >
+        <div style="flex: 1; height: 1px; background: var(--msp-color-border)" />
+      </div>
+      {/* the tree as tall as it is, the properties under it in the rest, never less than their height (dragged) */}
+      <div
+        style={mapState(
+          split.height,
+          (h) => `flex: 1 0 ${h}px; min-height: ${h}px; overflow: auto; padding: var(--msp-space-2) var(--msp-space-3)`,
+        )}
+      >
         <Show
           when={mapState(picked.asReadonly, (p) => !!p)}
           fallback={() => <p style={`margin: 0; ${Muted}`}>Pick a row to see its properties.</p>}
         >
-          {() => (
-            <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-              <strong>{mapState(picked.asReadonly, (p) => p?.label ?? '')}</strong>
-              <span style={Muted}>{mapState(picked.asReadonly, (p) => p?.kind ?? '')}</span>
-            </div>
-          )}
+          {() => <Properties api={api} area={area} picked={picked.asReadonly} parts={parts.asReadonly} />}
         </Show>
       </div>
     </div>
@@ -197,6 +204,7 @@ function TreeRow(props: {
   const isOpen = mapState(props.open, (o) => o.has(row.key));
   const isPicked = mapState(props.picked, (p) => p?.key === row.key);
   const isHovered = mapState(props.hovered, (h) => h === row.key);
+  const shown = observableState(row.visible ?? false);
   const category = row.kind === 'category';
   return (
     <div
@@ -233,10 +241,25 @@ function TreeRow(props: {
           size="xs"
           variant="ghost"
           title="Show or hide"
-          icon={<Icon name={row.visible ? 'eye' : 'eye-off'} />}
+          icon={
+            <Show when={shown} fallback={() => <Icon name="eye-off" />}>
+              {() => <Icon name="eye" />}
+            </Show>
+          }
           onClick={(e) => {
             e.stopPropagation();
-            void toggleVisible(props.api, row);
+            // flipped at once, the operation after the next frame (on a large model it takes a moment): the row is made
+            // again from the scene when it is done, and goes back if it failed
+            const was = shown.value;
+            shown.set(!was);
+            // after the frame is painted (a frame callback runs before it)
+            requestAnimationFrame(() =>
+              setTimeout(() => {
+                void toggleVisible(props.api, row)?.then((r) => {
+                  if (r && !r.ok) shown.set(was);
+                });
+              }),
+            );
           }}
         />
       ) : null}
@@ -253,6 +276,27 @@ function TreeRow(props: {
       {row.count ? <span style={`flex: none; ${Muted}`}>{row.count}</span> : null}
     </div>
   );
+}
+
+// --- the split between the tree and the properties ----------------------------------------------------------------
+
+/** The properties' least height, dragged on the line above them (the pointer captured while dragging) */
+function splitter(initial: number) {
+  const height = observableState(initial);
+  let start: { y: number; h: number } | undefined;
+  return {
+    height: height.asReadonly,
+    down(e: PointerEvent) {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      start = { y: e.clientY, h: height.value };
+    },
+    move(e: PointerEvent) {
+      if (start) height.set(Math.max(60, Math.min(window.innerHeight - 160, start.h - (e.clientY - start.y))));
+    },
+    up() {
+      start = undefined;
+    },
+  };
 }
 
 // --- + Open ----------------------------------------------------------------------------------------------------------

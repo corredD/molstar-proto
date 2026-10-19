@@ -7,7 +7,10 @@
 import { OrderedSet } from '@molstar/core/data/int';
 import { EmptyLoci, type Loci } from '@molstar/model/model/loci';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
-import { Structure, StructureSelection } from '@molstar/model/model/structure';
+import { Structure, StructureElement, StructureSelection } from '@molstar/model/model/structure';
+import { EmissiveStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/emissive';
+import { OverpaintStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/overpaint';
+import { TransparencyStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/transparency';
 import { Grid, Volume } from '@molstar/model/model/volume';
 import { Script } from '@molstar/model/script/script';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
@@ -48,6 +51,16 @@ export interface StructureEntity {
   readonly chains: readonly string[];
 }
 
+/** How a structure node looks: what the style layers on its representations make of all of it */
+export interface StructureLook {
+  /** The color painted on all of it, if one is */
+  readonly color?: number;
+  /** 0: opaque, 1: hidden */
+  readonly transparency: number;
+  /** 0: none, 1: full glow */
+  readonly emissive: number;
+}
+
 /** A node of the tree as the 3D side needs it: its object, and which part of it */
 export type NodeRef =
   | { readonly ref: string }
@@ -77,6 +90,31 @@ export class ExplorerApi extends ApiArea {
       () => [plugin.state.data.events.changed, plugin.state.data.events.cell.stateUpdated],
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
+  }
+
+  /** What a node stands for in 3D (empty when nothing) */
+  loci(node: NodeRef): Loci {
+    return lociOf(this.ctx.plugin, node);
+  }
+
+  /** How a structure node looks (undefined: not a structure's), following the state tree while watched */
+  structureLookState(node: NodeRef): ReadonlyState<StructureLook | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => structureLook(plugin, node),
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /** The representation presets that apply to a structure: [id, name] */
+  presets(ref: string): [string, string][] {
+    const plugin = this.ctx.plugin;
+    const obj = plugin.state.data.cells.get(ref)?.obj;
+    if (!SO.Molecule.Structure.is(obj)) return [];
+    return plugin.builders.structure.representation
+      .getPresets(obj)
+      .map((p) => [p.id, p.display.name] as [string, string]);
   }
 
   /** Highlights a node in 3D (none: clears) */
@@ -214,6 +252,43 @@ function entitiesOf(structure: Structure): StructureEntity[] {
     out.push({ id, label: description || `Entity ${id}`, chains: chainIds });
   }
   return out;
+}
+
+// --- a structure's look ----------------------------------------------------------------------------------------------
+
+/**
+ * A structure node's color, transparency and emissive: on its representations, the last layer of each kind that
+ * covers all of the node (a later layer paints over an earlier one; one that covers only part of it does not say how
+ * all of it looks)
+ */
+function structureLook(plugin: PluginContext, node: NodeRef): StructureLook | undefined {
+  const s = plugin.managers.structure.hierarchy.current.structures.find((x) => x.cell.transform.ref === node.ref);
+  const structure = s?.cell.obj?.data;
+  if (!s || !structure) return undefined;
+  const loci = lociOf(plugin, node);
+  if (!StructureElement.Loci.is(loci) || StructureElement.Loci.isEmpty(loci)) return undefined;
+  let color: number | undefined;
+  let transparency = 0;
+  let emissive = 0;
+  const { cells, tree } = plugin.state.data;
+  const covers = (bundle: StructureElement.Bundle) =>
+    StructureElement.Loci.isSubset(StructureElement.Bundle.toLoci(bundle, structure), loci);
+  // every representation (a ligand is in its own component): their layers, in order
+  for (const repr of s.components.flatMap((c) => c.representations)) {
+    for (const ref of tree.children.get(repr.cell.transform.ref).toArray()) {
+      const t = cells.get(ref)?.transform;
+      if (!t) continue;
+      const layers = (t.params as { layers?: readonly Record<string, any>[] } | undefined)?.layers ?? [];
+      for (const layer of layers) {
+        if (!covers(layer.bundle)) continue;
+        if (t.transformer === OverpaintStructureRepresentation3DFromBundle)
+          color = layer.clear ? undefined : layer.color;
+        else if (t.transformer === TransparencyStructureRepresentation3DFromBundle) transparency = layer.value;
+        else if (t.transformer === EmissiveStructureRepresentation3DFromBundle) emissive = layer.value;
+      }
+    }
+  }
+  return { ...(color !== undefined ? { color } : {}), transparency, emissive };
 }
 
 // --- the 3D side ----------------------------------------------------------------------------------------------------

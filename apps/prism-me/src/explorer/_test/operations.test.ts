@@ -104,6 +104,34 @@ describe('explorer', () => {
     expect(seen.at(-1)).toEqual([true, true, true]);
   });
 
+  it("paints a structure entity by its label ids, and reads back each node's look", async () => {
+    const v = await viewer();
+    const cbs = new File(
+      [readFileSync(new URL('../../../../../data/examples/1cbs_updated.cif', import.meta.url))],
+      '1cbs.cif',
+    );
+    expectOk(await v.api.load.files({ files: [cbs] }));
+    const area = v.api.explorer!;
+    const ref = area.objectsState().value.find((o) => o.label === '1CBS')!.ref;
+    // the retinoic acid: entity 2, label chain B (its author chain is A, the protein's)
+    const rea = { ref, entity: '2' };
+    const look = (node: object) => area.structureLookState(node as never).value;
+    expectOk(
+      await v.api.run('representation.color', { target: { loci: area.loci(rea) }, color: '#ff0000', structure: ref }),
+    );
+    expectOk(
+      await v.api.run('representation.transparency', { target: { loci: area.loci(rea) }, alpha: 0.4, structure: ref }),
+    );
+    expectOk(
+      await v.api.run('representation.emissive', { target: { loci: area.loci(rea) }, strength: 0.7, structure: ref }),
+    );
+    expect(look(rea)).toEqual({ color: 0xff0000, transparency: 0.4, emissive: 0.7 });
+    expect(look({ ref, entity: '2', chain: 'B' })).toEqual({ color: 0xff0000, transparency: 0.4, emissive: 0.7 });
+    // the protein is untouched, and the whole structure is not all red
+    expect(look({ ref, entity: '1' })).toEqual({ transparency: 0, emissive: 0 });
+    expect(look({ ref })).toEqual({ transparency: 0, emissive: 0 });
+  });
+
   it('keeps unchanged rows as the same objects', () => {
     const stable = stableRows();
     const a = { key: 'a', depth: 1, label: 'A', kind: 'entity', hasChildren: false, visible: true };

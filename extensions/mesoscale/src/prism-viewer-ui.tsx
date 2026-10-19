@@ -21,6 +21,7 @@ import {
 } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
+import { Motion } from './controls.js';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
@@ -449,37 +450,6 @@ function EntityRow(props: {
 function swatch(e: EntityInfo | undefined) {
   if (!e || e.color === undefined) return 'transparent';
   return Color.toHexStyle(e.color);
-}
-
-/** Wiggle and tumble sliders (the Mesoscale Explorer's procedural animation) */
-function Motion(props: { area: MesoscaleApi }) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => clearTimeout(timer));
-  const set = (values: { wiggle?: number; tumble?: number }) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => void props.area.motion(values as never), 120);
-  };
-  const slider = (label: string, max: number, key: 'wiggle' | 'tumble') => (
-    <div style="display: flex; align-items: center; gap: var(--msp-space-2)">
-      <span style="width: 56px">{label}</span>
-      <input
-        type="range"
-        min="0"
-        max={String(max)}
-        step="0.1"
-        value="0"
-        style="flex: 1"
-        aria-label={label}
-        onInput={(e) => set({ [key]: Number((e.target as HTMLInputElement).value) })}
-      />
-    </div>
-  );
-  return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-      {slider('Wiggle', 5, 'wiggle')}
-      {slider('Tumble', 10, 'tumble')}
-    </div>
-  );
 }
 
 const sameIds = (a: readonly number[], b: readonly number[]) =>

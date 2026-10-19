@@ -9,6 +9,11 @@
     "node": ">=22.13.0"
   },
   "exports": {
+    "./controls": {
+      "molstar-src": "./src/controls.tsx",
+      "types": "./lib/controls.d.ts",
+      "import": "./lib/controls.js"
+    },
     "./*": {
       "molstar-src": "./src/*.ts",
       "types": "./lib/*.d.ts",
