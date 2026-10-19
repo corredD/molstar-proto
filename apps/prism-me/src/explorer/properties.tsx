@@ -18,7 +18,7 @@ import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
-import type { ExplorerApi, NodeRef } from './operations.js';
+import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
 import type { Parts } from './rows.js';
 
 // The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name, then sections that fold, only
@@ -32,6 +32,8 @@ export interface Picked {
   readonly label: string;
   readonly kind: string;
   readonly node?: NodeRef;
+  /** A representation's row: its state ref */
+  readonly representation?: string;
 }
 
 const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
@@ -61,7 +63,7 @@ function NodeProperties(props: { api: ViewerApi; area: ExplorerApi; picked: Pick
         <strong style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{picked.label}</strong>
         <span style={Muted}>{picked.kind}</span>
       </div>
-      {node ? sectionsOf(api, area, picked.kind, node, props.parts) : null}
+      {node ? sectionsOf(api, area, picked, node, props.parts) : null}
     </div>
   );
 }
@@ -69,17 +71,20 @@ function NodeProperties(props: { api: ViewerApi; area: ExplorerApi; picked: Pick
 function sectionsOf(
   api: ViewerApi,
   area: ExplorerApi,
-  kind: string,
+  picked: Picked,
   node: NodeRef,
   parts: ReadonlyState<Parts>,
 ): JSX.Element[] {
+  const kind = picked.kind;
   if ('particles' in node || kind === 'mesoscale model') {
     if (kind === 'target')
       return [<Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>];
     const out = [<Section title="Look">{() => <ParticleLook api={api} node={node} parts={parts} />}</Section>];
     if (kind === 'mesoscale model') {
       out.push(
-        <Section title="Representation">{() => <ParticleRepresentations api={api} area={area} node={node} />}</Section>,
+        <Section title="Representation">
+          {() => <Representations api={api} area={area} owner={node.ref} operation="particles.update" />}
+        </Section>,
       );
     }
     if (kind === 'mesoscale model' && api.mesoscale) {
@@ -109,13 +114,56 @@ function sectionsOf(
     case 'particle list':
       return [
         <Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>,
-        <Section title="Representation">{() => <ParticleRepresentations api={api} area={area} node={node} />}</Section>,
+        <Section title="Representation">
+          {() => <Representations api={api} area={area} owner={node.ref} operation="particles.update" />}
+        </Section>,
       ];
-    case 'volume':
-    case 'volume representation':
+    // a volume: its slice and its isosurfaces (and other representations); a slice's row, the slice; another's, its own
+    case 'volume': {
+      const out: JSX.Element[] = [];
+      if (api.cryoet) out.push(<Section title="Slice">{() => <Slice area={api.cryoet!} volume={node.ref} />}</Section>);
+      out.push(
+        <Section title="Isosurface">
+          {() => (
+            <Representations
+              api={api}
+              area={area}
+              owner={node.ref}
+              operation="volume.update"
+              only={(r) => r.type !== 'slice'}
+              none={() => (
+                <Button
+                  size="sm"
+                  onClick={() => void api.run('volume.representation', { type: 'isosurface', volume: node.ref })}
+                >
+                  Add an isosurface
+                </Button>
+              )}
+            />
+          )}
+        </Section>,
+      );
+      return out;
+    }
+    case 'slice':
       return api.cryoet
         ? [<Section title="Slice">{() => <Slice area={api.cryoet!} volume={node.ref} />}</Section>]
         : [];
+    case 'isosurface':
+    case 'volume representation':
+      return [
+        <Section title={kind === 'isosurface' ? 'Isosurface' : 'Representation'}>
+          {() => (
+            <Representations
+              api={api}
+              area={area}
+              owner={node.ref}
+              operation="volume.update"
+              only={(r) => r.ref === picked.representation}
+            />
+          )}
+        </Section>,
+      ];
     case 'mesh':
       return [<Section title="Look">{() => <MeshLook api={api} node={node} />}</Section>];
   }
@@ -377,14 +425,26 @@ function ListDecoration(props: { api: ViewerApi; node: NodeRef }) {
 }
 
 /**
- * A particle list's representations, each with its whole form (the type: spheres, orientation, the targets…, then its
- * params), as Prism's inspector shows one; a change acts a moment after the last (sliders change at pointer rate)
+ * The representations of a particle list or a volume (`owner`; those `only` keeps), each with its eye and whole form
+ * (the type: spheres, orientation, the targets; isosurface…, then its params), as Prism's inspector shows one; a change
+ * runs `operation` a moment after the last (sliders change at pointer rate)
  */
-function ParticleRepresentations(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef }) {
+function Representations(props: {
+  api: ViewerApi;
+  area: ExplorerApi;
+  owner: string;
+  operation: 'particles.update' | 'volume.update';
+  only?: (r: RepresentationInfo) => boolean;
+  none?: () => JSX.Element;
+}) {
   const { api, area } = props;
-  const reprs = area.particleRepresentationsState(props.node.ref);
+  const all = area.representationsState(props.owner);
+  const reprs = mapState(all, (rs) => (props.only ? rs.filter(props.only) : rs));
   return (
-    <Show when={mapState(reprs, (r) => r.length > 0)} fallback={() => <span style={Muted}>Not shown.</span>}>
+    <Show
+      when={mapState(reprs, (r) => r.length > 0)}
+      fallback={() => (props.none ? props.none() : <span style={Muted}>Not shown.</span>)}
+    >
       {() => (
         // made again when a representation's type changes (its form is another), or it is shown or hidden
         <For each={reprs} by={(r) => `${r.ref}:${r.type}:${r.visible}`}>
@@ -396,9 +456,11 @@ function ParticleRepresentations(props: { api: ViewerApi; area: ExplorerApi; nod
             const model = new ParamsFormModel(form.params, form.values, {
               onChange: (values) => {
                 clearTimeout(timer);
-                timer = setTimeout(() => void api.run('particles.update', { node: r.ref, params: values }), 150);
+                timer = setTimeout(() => void api.run(props.operation, { node: r.ref, params: values }), 150);
               },
             });
+            // the type's own params open (the iso level, the spheres' size): what is changed most
+            model.fold('/type#params', true);
             return (
               <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
                 <div style={Line}>

@@ -36,6 +36,8 @@ export interface Row {
   readonly hasChildren: boolean;
   /** What it stands for in 3D (none for a category) */
   readonly node?: NodeRef;
+  /** A representation's row: its state ref */
+  readonly representation?: string;
 }
 
 // --- the rows ---------------------------------------------------------------------------------------------------------
@@ -176,10 +178,11 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
             key: `r:${r.ref}`,
             depth: 2,
             label: r.label,
-            kind: 'volume representation',
+            kind: r.type === 'slice' || r.type === 'isosurface' ? r.type : 'volume representation',
             visible: r.visible,
             hasChildren: false,
             node: { ref: o.ref },
+            representation: r.ref,
           },
           () => {},
         );
@@ -214,8 +217,10 @@ export function toggleVisible(api: ViewerApi, row: Row) {
       return;
     case 'volume':
       return api.run('volume.visibility', { volume: node.ref, visible });
+    case 'slice':
+    case 'isosurface':
     case 'volume representation':
-      return api.run('volume.visibility', { node: row.key.slice(2), visible });
+      return api.run('volume.visibility', { node: row.representation!, visible });
     case 'mesh':
       return api.run('cryoet.mesh', { mesh: node.ref, visible });
   }

@@ -43,7 +43,13 @@ export interface SceneObject {
   /** A structure's entities, with their chains */
   readonly entities?: readonly StructureEntity[];
   /** A volume's representations */
-  readonly representations?: readonly { readonly ref: string; readonly label: string; readonly visible: boolean }[];
+  readonly representations?: readonly {
+    readonly ref: string;
+    readonly label: string;
+    /** isosurface, slice, direct-volume… */
+    readonly type: string;
+    readonly visible: boolean;
+  }[];
 }
 
 export interface StructureEntity {
@@ -63,11 +69,11 @@ export interface StructureLook {
   readonly emissive: number;
 }
 
-/** A particle list's representation, as the properties list them */
-export interface ParticleRepresentationInfo {
+/** A particle list's or a volume's representation, as the properties list them */
+export interface RepresentationInfo {
   readonly ref: string;
   readonly label: string;
-  /** spacefill, orientation, target… */
+  /** spacefill, orientation, target…; isosurface, slice… */
   readonly type: string;
   readonly visible: boolean;
 }
@@ -138,20 +144,26 @@ export class ExplorerApi extends ApiArea {
     },
   });
 
-  /** A particle list's representations (spheres, orientation, its targets…), following the state tree while watched */
-  particleRepresentationsState(ref: string): ReadonlyState<readonly ParticleRepresentationInfo[]> {
+  /**
+   * The representations of a particle list or a volume (spheres, orientation, its targets; slice, isosurface…), following
+   * the state tree while watched
+   */
+  representationsState(ref: string): ReadonlyState<readonly RepresentationInfo[]> {
     const plugin = this.ctx.plugin;
     return watchedState(
-      () =>
-        (
+      () => {
+        const reprs =
           plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref)
-            ?.representations ?? []
-        ).map((r) => ({
+            ?.representations ??
+          plugin.managers.volume.hierarchy.current.volumes.find((v) => v.cell.transform.ref === ref)?.representations ??
+          [];
+        return reprs.map((r) => ({
           ref: r.cell.transform.ref,
           label: r.cell.obj?.label ?? 'Representation',
-          type: (r.cell.transform.params as { type?: { name?: string } } | undefined)?.type?.name ?? '',
+          type: typeOf(r.cell.transform.params),
           visible: !r.cell.state.isHidden,
-        })),
+        }));
+      },
       () => [plugin.state.data.events.changed, plugin.state.data.events.cell.stateUpdated],
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
@@ -241,12 +253,18 @@ function sceneObjects(plugin: PluginContext): SceneObject[] {
       representations: v.representations.map((r) => ({
         ref: r.cell.transform.ref,
         label: r.cell.obj?.label ?? 'Representation',
+        type: typeOf(r.cell.transform.params),
         visible: !r.cell.state.isHidden,
       })),
     });
   }
   for (const m of meshes(plugin)) out.push(m);
   return out;
+}
+
+/** A representation's type (its params' `type.name`) */
+function typeOf(params: unknown): string {
+  return (params as { type?: { name?: string } } | undefined)?.type?.name ?? '';
 }
 
 /** The name of the file or entry an object came from: its root data's label */

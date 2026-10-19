@@ -101,7 +101,8 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi }) {
   const hovered = observableState<string | undefined>(undefined);
   const hover = (row: Row | undefined) => {
     hovered.set(row?.key);
-    area.highlight(row ? row.node : picked.value?.node);
+    const p = picked.value;
+    area.highlight(row ? row.node : p && lastingHighlight(p) ? p.node : undefined);
   };
   const toggleOpen = (key: string) => {
     const next = new Set(open.value);
@@ -110,8 +111,14 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi }) {
     open.set(next);
   };
   const pick = (row: Row) => {
-    picked.set({ key: row.key, label: row.label, kind: row.kind, ...(row.node ? { node: row.node } : {}) });
-    area.highlight(row.node);
+    picked.set({
+      key: row.key,
+      label: row.label,
+      kind: row.kind,
+      ...(row.node ? { node: row.node } : {}),
+      ...(row.representation ? { representation: row.representation } : {}),
+    });
+    area.highlight(lastingHighlight(row) ? row.node : undefined);
   };
   onCleanup(() => area.highlight(undefined));
 
@@ -276,6 +283,11 @@ function TreeRow(props: {
       {row.count ? <span style={`flex: none; ${Muted}`}>{row.count}</span> : null}
     </div>
   );
+}
+
+/** Whether a picked row stays lit in 3D: not a volume's (its light would cover the slice's image) */
+function lastingHighlight(row: { readonly kind: string }) {
+  return !['volume', 'slice', 'isosurface', 'volume representation'].includes(row.kind);
 }
 
 // --- the split between the tree and the properties ----------------------------------------------------------------
