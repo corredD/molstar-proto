@@ -74,8 +74,9 @@ on a tree row, the same menu:
 - **Focus**
 - **Move** and **Rotate**: drag in 3D (live, one undo step on release, Esc cancels). On an object: the object itself. On
   a part (an entity, a chain): **[to decide]** the whole object it belongs to, or only that part.
-- **Add label**: a text at that place, for that node; it becomes a row under the node.
+- **Add label**: plain text at that place, for that node (Ludovic, 2026-10-18); it becomes a row under the node.
 - **Add clip**: a plane, sphere or box for that node (only its particles or atoms are cut); it becomes a row under it.
+  Several per node (Ludovic, 2026-10-18; up to 8 per particle list).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit
 text**), **Hide**, **Remove**.
@@ -83,10 +84,3 @@ text**), **Hide**, **Remove**.
 ## 6. Not now
 
 Snapshots and stories, the sequence view, measurements, export: reachable from ⌘K, not on screen. Added when needed.
-
-## Open questions
-
-1. Move/Rotate on a part (an entity of a cellPACK model, a chain): the whole object, or only that part (its copies moved
-   in place)?
-2. A label's look: plain text with a leader line to what it names (as Stories Untold), or text only?
-3. Several clips at one node: allowed (up to 8 per particle list), or one per node to keep it simple?
