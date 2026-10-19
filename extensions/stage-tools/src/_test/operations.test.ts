@@ -6,12 +6,13 @@
 
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
+import { EmptyLoci } from '@molstar/model/model/loci';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { type CutInfo, desiredGuides } from '../operations.js';
-import { menuItems } from '../prism-viewer-ui.js';
+import { menuItems } from '../menu.js';
 import { StageToolsExtension } from '../prism-viewer.js';
 
 // The `stage` area on a headless viewer with 1CRN (crambin), from the repository's example data.
@@ -143,7 +144,7 @@ describe('stage', () => {
       kind: 'structure' as const,
     };
     const ids = async (pick: Parameters<typeof menuItems>[2]['pick']) =>
-      (await menuItems(v.api, s, { x: 0, y: 0, pick, focus: () => {} })).map((i) => i.id);
+      (await menuItems(v.api, s, { x: 0, y: 0, pick, loci: EmptyLoci, focus: () => {} })).map((i) => i.id);
     expect(await ids({ kind: 'nothing' })).toEqual(['reset-camera']);
     expect(await ids({ kind: 'target', target })).toEqual(['focus', 'cut-plane', 'cut-sphere', 'cut-box']);
     expectOk(await s.cut({ shape: 'plane', target: '' }));

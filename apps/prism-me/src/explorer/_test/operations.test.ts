@@ -15,7 +15,10 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { withTomogramSlices } from '../../tomograms.js';
-import { rowsOf, stableRows, toggleVisible } from '../rows.js';
+import { ancestorKeys, rowsOf, stableRows, toggleVisible } from '../rows.js';
+import { nodeMenuItems } from '../menu.js';
+import { OrderedSet } from '@molstar/core/data/int';
+import { Particle } from '@molstar/model/model/particles/particle-list';
 
 // The `explorer` area on a headless viewer: 1CRN (crambin, with its unit cell), a RELION list and an OBJ mesh.
 
@@ -204,6 +207,35 @@ describe('explorer', () => {
       ['slice', 'Slice Y'],
       ['slice', 'Slice Z'],
     ]);
+  });
+
+  it('maps a 3D pick to its row at the selection granularity, and its menu', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const [crn, list] = area.objectsState().value;
+    const setGranularity = (granularity: string) =>
+      v.plugin.managers.interactivity.setProps({ granularity: granularity as never });
+    const atoms = area.loci({ ref: crn.ref, entity: '1' });
+    setGranularity('chain');
+    // one chain: its entity's row
+    expect(area.pickedOf(atoms)).toMatchObject({ key: `e:${crn.ref}:1`, kind: 'entity', label: 'CRAMBIN' });
+    setGranularity('structure');
+    expect(area.pickedOf(atoms)).toMatchObject({ key: `o:${crn.ref}`, kind: 'structure', label: '1CRN' });
+    setGranularity('chain');
+    const data = v.plugin.managers.particles.hierarchy.current.lists[0].cell.obj!.data;
+    const particle = Particle.Loci(data, OrderedSet.ofSingleton(1 as never));
+    expect(area.pickedOf(particle)).toMatchObject({ key: `t:${list.ref}:0`, kind: 'target', label: 'Target 0' });
+    expect(area.pickedOf({ kind: 'empty-loci' })).toBeUndefined();
+    // the way to a row: its object, its category
+    expect(ancestorKeys(area.objectsState().value, new Map(), `e:${crn.ref}:1`)).toEqual([
+      `o:${crn.ref}`,
+      'c:structures',
+    ]);
+    // the menu: focus, and hide where it hides
+    const picked = area.pickedOf(particle)!;
+    expect(nodeMenuItems(v.api, area, picked).map((i) => i.id)).toEqual(['focus', 'hide']);
+    expect(nodeMenuItems(v.api, area, area.pickedOf(atoms)).map((i) => i.id)).toEqual(['focus']);
+    expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);
   });
 
   it('keeps unchanged rows as the same objects', () => {

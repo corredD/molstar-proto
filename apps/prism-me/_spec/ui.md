@@ -126,6 +126,14 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   (position, contrast), Isosurface (its form, or Add an isosurface); a slice, its position and contrast then its whole
   form; an isosurface, its form. `cryoet.slice` acts on the slice of its axis (made if missing; a moved slice keeps what
   its form set); `cryoet.slices` shows the three (and hides the isosurfaces unless asked not to).
+- Step 3a (2026-10-18): one right-click menu, on the canvas and on a tree row, at the level of what is picked (the
+  selection's granularity: a structure, an entity, a chain; a model, an entity; a list, a target; a volume; a mesh):
+  Focus, Hide (where an eye hides it), and for now the stage's cuts (until Add clip, 3b); on a cut's guide, the stage's
+  own items (move, turn, size, flip, remove). The tree follows a pick in 3D (a left- or right-click): its row picked,
+  the way to it unfolded, brought into view. `explorer.pickedOf(loci)`, `menu.ts`; stage-tools lets a host open the menu
+  (`menuHosted`, the request's `loci`; its items in `@molstar/stage-tools-extension/menu`).
+- Next: 3b Add clip (several per node, each a row with its own menu), 3c Add label (plain text), 3d Move and Rotate (at
+  the level of the selection; a part's move spiked first).
 - Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a
   structure entity's or chain's eye (Prism hides representations, not parts); a color dot only where a color was set;
   the mesh section repeats the mesh's eye and name.

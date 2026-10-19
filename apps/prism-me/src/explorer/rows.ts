@@ -205,6 +205,15 @@ export function toggleVisible(api: ViewerApi, row: Row) {
     case 'mesoscale model':
     case 'particle list':
       return api.run('particles.visibility', { particles: node.ref, visible });
+    case 'target':
+      if ('particles' in node) {
+        return api.run('mesoscale.style', {
+          particles: node.ref,
+          entities: (node.particles.targets ?? []).join(','),
+          visible,
+        });
+      }
+      return;
     case 'group':
     case 'entity':
       if ('particles' in node) {
@@ -224,6 +233,25 @@ export function toggleVisible(api: ViewerApi, row: Row) {
     case 'mesh':
       return api.run('cryoet.mesh', { mesh: node.ref, visible });
   }
+}
+
+/** Every row open: all of the tree */
+const AllOpen: ReadonlySet<string> = { has: () => true } as unknown as ReadonlySet<string>;
+
+/** The keys of the rows above `key` (its category, its object, its groups), to unfold the way to it; none if absent */
+export function ancestorKeys(objects: readonly SceneObject[], parts: Parts, key: string): string[] | undefined {
+  const rows = rowsOf(objects, parts, AllOpen, '');
+  const i = rows.findIndex((r) => r.key === key);
+  if (i < 0) return undefined;
+  const out: string[] = [];
+  let depth = rows[i].depth;
+  for (let j = i - 1; j >= 0 && depth > 0; j--) {
+    if (rows[j].depth < depth) {
+      out.push(rows[j].key);
+      depth = rows[j].depth;
+    }
+  }
+  return out;
 }
 
 /**

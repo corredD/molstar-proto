@@ -5,9 +5,12 @@
  */
 
 import { OrderedSet } from '@molstar/core/data/int';
+import { ButtonsType } from '@molstar/core/util/input/input-observer';
+import { type Observable, Subject } from 'rxjs';
 import { EmptyLoci, type Loci } from '@molstar/model/model/loci';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
-import { Structure, StructureElement, StructureSelection } from '@molstar/model/model/structure';
+import { Structure, StructureElement, StructureProperties, StructureSelection } from '@molstar/model/model/structure';
+import { ShapeGroup } from '@molstar/model/model/shape';
 import { EmissiveStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/emissive';
 import { OverpaintStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/overpaint';
 import { TransparencyStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/transparency';
@@ -78,6 +81,14 @@ export interface RepresentationInfo {
   readonly visible: boolean;
 }
 
+/** A 3D pick as a row of the tree */
+export interface PickedNode {
+  readonly key: string;
+  readonly label: string;
+  readonly kind: string;
+  readonly node: NodeRef;
+}
+
 /** A node of the tree as the 3D side needs it: its object, and which part of it */
 export type NodeRef =
   | { readonly ref: string }
@@ -94,8 +105,15 @@ export type NodeRef =
 export class ExplorerApi extends ApiArea {
   readonly id = 'explorer';
 
+  private readonly picks = new Subject<Loci>();
+  /** The left-clicks on the canvas, what they picked (the tree follows them) */
+  readonly clicks: Observable<Loci> = this.picks.asObservable();
+
   constructor(ctx: ApiAreaContext) {
     super(ctx);
+    ctx.plugin.behaviors.interaction.click.subscribe((e) => {
+      if (e.button === ButtonsType.Flag.Primary) this.picks.next(e.current.loci);
+    });
   }
 
   /** The objects of the scene by category, following the state tree while watched: a read for views */
@@ -189,6 +207,14 @@ export class ExplorerApi extends ApiArea {
     return plugin.builders.structure.representation
       .getPresets(obj)
       .map((p) => [p.id, p.display.name] as [string, string]);
+  }
+
+  /**
+   * What a 3D pick is in the tree, at the selection's granularity (a structure, an entity, a chain; a model, an entity;
+   * a list, a target; a volume; a mesh): its row's key, name, kind and node; undefined when it is none of them
+   */
+  pickedOf(loci: Loci): PickedNode | undefined {
+    return pickedOf(this.ctx.plugin, loci);
   }
 
   /** Highlights a node in 3D (none: clears) */
@@ -340,6 +366,101 @@ function entitiesOf(structure: Structure): StructureEntity[] {
     out.push({ id, label: description || `Entity ${id}`, chains: chainIds });
   }
   return out;
+}
+
+// --- a 3D pick in the tree ------------------------------------------------------------------------------------------
+
+function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
+  if (loci.kind === 'empty-loci') return undefined;
+  const granularity = plugin.managers.interactivity.props.granularity;
+  const whole = granularity === 'structure' || granularity === 'model' || granularity === 'operator';
+  if (StructureElement.Loci.is(loci) && !StructureElement.Loci.isEmpty(loci)) {
+    // the structure's cell may have decorators on it (custom properties): up to the structure the tree lists
+    const structures = plugin.managers.structure.hierarchy.current.structures;
+    const tree = plugin.state.data.tree;
+    let ref: string | undefined = plugin.helpers.substructureParent.get(loci.structure)?.transform.ref;
+    let s = undefined as (typeof structures)[number] | undefined;
+    while (ref && !(s = structures.find((x) => x.cell.transform.ref === ref))) ref = tree.transforms.get(ref)?.parent;
+    const structure = s?.cell.obj?.data;
+    if (!s || !structure) return undefined;
+    ref = s.cell.transform.ref;
+    const label = labelOf({ plugin }, s);
+    if (whole) return { key: `o:${ref}`, label, kind: 'structure', node: { ref } };
+    // its first element: the entity and the chain it is in (label ids, as the tree's rows)
+    const e = loci.elements[0];
+    const loc = StructureElement.Location.create(
+      loci.structure,
+      e.unit,
+      e.unit.elements[OrderedSet.getAt(e.indices, 0)],
+    );
+    const entity = StructureProperties.entity.id(loc);
+    const chain = StructureProperties.chain.label_asym_id(loc);
+    const info = entitiesOf(structure).find((x) => x.id === entity);
+    if (!info) return { key: `o:${ref}`, label, kind: 'structure', node: { ref } };
+    if (granularity === 'entity' || info.chains.length < 2) {
+      return { key: `e:${ref}:${entity}`, label: info.label, kind: 'entity', node: { ref, entity } };
+    }
+    return {
+      key: `ch:${ref}:${entity}:${chain}`,
+      label: `Chain ${chain}`,
+      kind: 'chain',
+      node: { ref, entity, chain },
+    };
+  }
+  if (Particle.isLoci(loci)) {
+    for (const l of plugin.managers.particles.hierarchy.current.lists) {
+      const datas = [l.cell.obj?.data, ...l.representations.map((r) => r.cell.obj?.data.sourceData)];
+      if (!datas.includes(loci.particles)) continue;
+      const ref = l.cell.transform.ref;
+      const data = l.cell.obj!.data;
+      const model = !!(data.entityInfo?.size || data.compartmentInfo?.size);
+      const label = fileLabel(plugin, ref) ?? l.cell.obj!.label;
+      const kind = model ? 'mesoscale model' : 'particle list';
+      if (whole) return { key: `o:${ref}`, label, kind, node: { ref } };
+      const i = OrderedSet.getAt(loci.indices, 0);
+      const target = loci.particles.targets[i];
+      if (model) {
+        const entity = Particle.entityOf(loci.particles, i);
+        const name = data.entityInfo?.get(entity)?.name ?? `Entity ${entity}`;
+        return {
+          key: `me:${ref}:${entity}`,
+          label: name,
+          kind: 'entity',
+          node: { ref, particles: { entities: [entity] } },
+        };
+      }
+      const name = loci.particles.targetInfo.get(target)?.name ?? `Target ${target}`;
+      return {
+        key: `t:${ref}:${target}`,
+        label: name,
+        kind: 'target',
+        node: { ref, particles: { targets: [target] } },
+      };
+    }
+    return undefined;
+  }
+  if (
+    Volume.isLoci(loci) ||
+    Volume.Isosurface.isLoci(loci) ||
+    Volume.Cell.isLoci(loci) ||
+    Volume.Segment.isLoci(loci)
+  ) {
+    const v = plugin.managers.volume.hierarchy.current.volumes.find((x) => x.cell.obj?.data === loci.volume);
+    if (!v) return undefined;
+    const ref = v.cell.transform.ref;
+    return { key: `o:${ref}`, label: v.cell.obj?.label ?? ref, kind: 'volume', node: { ref } };
+  }
+  if (ShapeGroup.isLoci(loci)) {
+    const mesh = meshes(plugin).find((m) => {
+      const obj = plugin.state.data.cells.get(m.ref)?.obj;
+      return (
+        SO.Shape.Representation3D.is(obj) &&
+        obj.data.repr.getAllLoci().some((l) => ShapeGroup.isLoci(l) && l.shape === loci.shape)
+      );
+    });
+    if (mesh) return { key: `o:${mesh.ref}`, label: mesh.label, kind: 'mesh', node: { ref: mesh.ref } };
+  }
+  return undefined;
 }
 
 // --- a structure's look ----------------------------------------------------------------------------------------------

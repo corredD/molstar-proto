@@ -21,15 +21,17 @@ import {
   TextInput,
 } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
-import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import type { Subscription } from 'rxjs';
-import type { ExplorerApi } from './operations.js';
+import { menuItems as stageMenuItems } from '@molstar/stage-tools-extension/menu';
+import { nodeMenuItems } from './menu.js';
+import type { ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
-import { Categories, type Parts, type Row, rowsOf, stableRows, toggleVisible } from './rows.js';
+import { ancestorKeys, Categories, type Parts, type Row, rowsOf, stableRows, toggleVisible } from './rows.js';
 
 // The explorer's panel (apps/prism-me/_spec/ui.md §1–4): + Open, a filter, the tree of the scene in four categories,
 // and under it the properties of the row picked. Rows act through the API as the person (one step each): their eyes run
@@ -41,6 +43,34 @@ export const SceneTab = 'explorer.tab.scene';
 export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const area = ctx.api.explorer;
   if (!area) return {};
+  const model = sceneModel(area);
+  // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
+  area.clicks.subscribe((loci) => {
+    const p = area.pickedOf(loci);
+    if (p) model.reveal(p);
+  });
+  // the canvas's right-click opens the explorer's menu, at the level of what it picked (the stage's own is not opened)
+  const stage = ctx.api.stage;
+  if (stage) {
+    stage.menuHosted = true;
+    let close: (() => void) | undefined;
+    stage.menuRequests.subscribe(async (request) => {
+      close?.();
+      const root = rootOf(request.anchor);
+      let items: ContextMenuItem[];
+      if (request.pick.kind === 'guide') {
+        items = await stageMenuItems(ctx.api, stage, request);
+      } else {
+        const p = area.pickedOf(request.loci);
+        if (p) model.reveal(p);
+        items = nodeMenuItems(ctx.api, area, p);
+        // the cuts, as the stage has them, until Add clip (step 3b)
+        const cuts = await stageMenuItems(ctx.api, stage, request);
+        items.push(...cuts.filter((i) => /^(cut-|flip$|uncut$|guides$)/.test(i.id)));
+      }
+      close = openContextMenu(root, { x: request.x, y: request.y }, items);
+    });
+  }
   return {
     tabs: [
       {
@@ -48,21 +78,53 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
         title: 'Scene',
         icon: 'list-tree',
         order: 0,
-        render: domView(() => <ScenePanel ctx={ctx} area={area} />),
+        render: domView(() => <ScenePanel ctx={ctx} area={area} model={model} />),
       },
     ],
+  };
+}
+
+/** The tree's state, kept for the viewer's life (the menu and the 3D picks act on it while the panel is closed) */
+interface SceneModel {
+  readonly open: ObservableState<ReadonlySet<string>>;
+  readonly filter: ObservableState<string>;
+  readonly picked: ObservableState<Picked | undefined>;
+  readonly parts: ObservableState<Parts>;
+  /** The row to bring into view (a pick in 3D) */
+  readonly scrollTo: ObservableState<string | undefined>;
+  /** Picks a node's row, unfolding the way to it */
+  reveal(p: PickedNode): void;
+}
+
+function sceneModel(area: ExplorerApi): SceneModel {
+  const open = observableState<ReadonlySet<string>>(new Set(Categories.map((c) => `c:${c.id}`)));
+  const picked = observableState<Picked | undefined>(undefined);
+  const parts = observableState<Parts>(new Map());
+  const scrollTo = observableState<string | undefined>(undefined);
+  return {
+    open,
+    filter: observableState(''),
+    picked,
+    parts,
+    scrollTo,
+    reveal(p) {
+      const above = ancestorKeys(area.objectsState().value, parts.value, p.key) ?? [];
+      if (above.some((k) => !open.value.has(k))) open.set(new Set([...open.value, ...above]));
+      picked.set(p);
+      scrollTo.set(p.key);
+    },
   };
 }
 
 const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
 
 /** The person's picked row */
-function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi }) {
-  const { ctx, area } = props;
+function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: SceneModel }) {
+  const { ctx, area, model } = props;
   const api = ctx.api;
   const objects = area.objectsState();
   // the parts of particle models and lists, from the mesoscale and cryo-ET areas (one read per object, kept while shown)
-  const parts = observableState<Parts>(new Map());
+  const parts = model.parts;
   const partStates = new Map<string, { state: ReadonlyState<unknown>; sub: Subscription }>();
   const objectsSub = objects.subscribe((list) => {
     const wanted = new Set(list.filter((o) => o.category === 'particles').map((o) => o.ref));
@@ -89,9 +151,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi }) {
     for (const { sub } of partStates.values()) sub.unsubscribe();
   });
 
-  const open = observableState<ReadonlySet<string>>(new Set(Categories.map((c) => `c:${c.id}`)));
-  const filter = observableState('');
-  const picked = observableState<Picked | undefined>(undefined);
+  const { open, filter, picked } = model;
   const split = splitter(240);
   const stable = stableRows();
   const rows = derive([objects, parts.asReadonly, open.asReadonly, filter.asReadonly], (o, p, op, f) =>
@@ -121,6 +181,18 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi }) {
     area.highlight(lastingHighlight(row) ? row.node : undefined);
   };
   onCleanup(() => area.highlight(undefined));
+  // a row's right-click: it is picked, and the menu of what it stands for opens at the pointer
+  const menu = (row: Row, e: MouseEvent) => {
+    if (!row.node) return;
+    e.preventDefault();
+    pick(row);
+    const root = rootOf(e.currentTarget as Element);
+    openContextMenu(
+      root,
+      { x: e.clientX, y: e.clientY },
+      nodeMenuItems(api, area, { key: row.key, label: row.label, kind: row.kind, node: row.node }),
+    );
+  };
 
   return (
     <div style="flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden">
@@ -158,6 +230,8 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi }) {
                   open={open.asReadonly}
                   picked={picked.asReadonly}
                   hovered={hovered.asReadonly}
+                  scrollTo={model.scrollTo}
+                  onMenu={menu}
                   onToggleOpen={toggleOpen}
                   onPick={pick}
                   onHover={hover}
@@ -203,6 +277,8 @@ function TreeRow(props: {
   open: ReadonlyState<ReadonlySet<string>>;
   picked: ReadonlyState<Picked | undefined>;
   hovered: ReadonlyState<string | undefined>;
+  scrollTo: ObservableState<string | undefined>;
+  onMenu(row: Row, e: MouseEvent): void;
   onToggleOpen(key: string): void;
   onPick(row: Row): void;
   onHover(row: Row | undefined): void;
@@ -213,8 +289,26 @@ function TreeRow(props: {
   const isHovered = mapState(props.hovered, (h) => h === row.key);
   const shown = observableState(row.visible ?? false);
   const category = row.kind === 'category';
+  // brought into view when picked in 3D (once: the request is cleared)
+  let el: HTMLElement | undefined;
+  const sub = props.scrollTo.asReadonly.subscribe((key) => {
+    if (key !== row.key || !el) return;
+    el.scrollIntoView({ block: 'nearest' });
+    props.scrollTo.set(undefined);
+  });
+  onCleanup(() => sub.unsubscribe());
   return (
     <div
+      ref={(e: HTMLElement) => {
+        el = e;
+        // a row made by the reveal itself (its way unfolded): into view once laid out
+        if (props.scrollTo.value === row.key) {
+          requestAnimationFrame(() => {
+            e.scrollIntoView({ block: 'nearest' });
+            props.scrollTo.set(undefined);
+          });
+        }
+      }}
       style={derive(
         [isPicked, isHovered],
         (p, h) =>
@@ -224,6 +318,7 @@ function TreeRow(props: {
       onDblClick={() => row.node && props.area.focus(row.node)}
       onMouseEnter={() => !category && props.onHover(row)}
       onMouseLeave={() => !category && props.onHover(undefined)}
+      onContextMenu={(e) => !category && props.onMenu(row, e)}
     >
       {row.hasChildren ? (
         <Button
@@ -313,9 +408,14 @@ function splitter(initial: number) {
 
 // --- + Open ----------------------------------------------------------------------------------------------------------
 
+/** The app's root around an element (its tokens and styles apply in it) */
+function rootOf(el: Element | undefined | null): HTMLElement {
+  return el?.closest<HTMLElement>('.msp-root') ?? document.body;
+}
+
 function openMenu(e: MouseEvent, items: ContextMenuItem[]) {
   const button = e.currentTarget as HTMLElement;
-  const root = button.closest<HTMLElement>('.msp-root') ?? document.body;
+  const root = rootOf(button);
   const r = button.getBoundingClientRect();
   openContextMenu(root, { x: r.left, y: r.bottom }, items);
 }

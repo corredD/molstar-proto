@@ -78,6 +78,8 @@ export interface StageMenuRequest {
   readonly x: number;
   readonly y: number;
   readonly pick: StagePick;
+  /** What the click picked, as Mol* has it (a host's menu reads its own level from it) */
+  readonly loci: Loci;
   /** Centers the camera on what was picked */
   readonly focus: () => void;
   /** The canvas: the menu opens in the app's root around it (which may be in a shadow root) */
@@ -90,6 +92,9 @@ export class StageApi extends ApiArea {
   private readonly requests = new Subject<StageMenuRequest>();
   /** The right-clicks on the canvas (the stage's menu opens on them) */
   readonly menuRequests: Observable<StageMenuRequest> = this.requests.asObservable();
+
+  /** A host opens its own menu on the right-clicks (the stage's then opens none) */
+  menuHosted = false;
 
   /** The cuts' guides on the canvas, following the state */
   readonly guideVisuals: CutGuides;
@@ -116,6 +121,7 @@ export class StageApi extends ApiArea {
         x: e.page[0] - window.scrollX,
         y: e.page[1] - window.scrollY,
         pick: pickOf({ plugin }, loci),
+        loci,
         focus: () => {
           if (!isEmptyLoci(loci)) plugin.managers.camera.focusLoci(loci);
         },
