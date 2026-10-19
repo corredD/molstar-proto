@@ -51,7 +51,7 @@ export function cryoetUI(ctx: ViewerUIContext): ViewerExtensionUI {
               label="Decorations"
               description={mapState(info, describe)}
               body={() => (
-                <Show when={info}>
+                <Show when={mapState(info, (i) => !!i)}>
                   {() => <Decorations area={area} info={info as ReadonlyState<DecorationsInfo>} />}
                 </Show>
               )}

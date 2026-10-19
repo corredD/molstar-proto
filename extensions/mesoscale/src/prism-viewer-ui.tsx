@@ -125,7 +125,7 @@ function EntitiesView(props: { area: MesoscaleApi }) {
           const info = area.infoState(ref);
           return (
             <Show
-              when={info}
+              when={mapState(info, (i) => !!i)}
               fallback={() => (
                 <p style={`margin: 0; ${Muted}`}>
                   Open a cellPACK or PetWorld model (mmCIF, BinaryCIF) or a particle list to see its entities.
