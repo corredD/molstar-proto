@@ -8,7 +8,12 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
+import { CustomProperties } from '@molstar/model/model/custom-property';
+import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { Structure } from '@molstar/model/model/structure';
 import type { Grid } from '@molstar/model/model/volume';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -75,7 +80,57 @@ const decorations = async (v: PrismViewer) => {
   return r.value as DecorationsInfo;
 };
 
+/** A cellPACK-like model: two particles of one entity, "crambin", whose structure is given */
+const TestModel = PluginStateTransform.BuiltIn({
+  name: 'cryoet-test-model',
+  display: { name: 'Test Model' },
+  from: SO.Root,
+  to: SO.Particle.List,
+  params: { structure: PD.Value<Structure | undefined>(undefined) },
+})({
+  apply({ params }) {
+    const list: ParticleList = {
+      label: 'model',
+      count: 2,
+      keys: Int32Array.of(0, 1),
+      targets: Int32Array.of(0, 0),
+      targetInfo: new Map([[0, { entity: 0 }]]),
+      entityInfo: new Map([[0, { name: 'crambin' }]]),
+      targetMapping: new Map([[0, { kind: 'structure', structure: params.structure! }]]),
+      coordinates: Float32Array.of(0, 0, 0, 50, 0, 0),
+      getParticleLabel: (i) => `${i}`,
+      sourceData: { kind: 'test', name: 'test', data: {} },
+      customProperties: new CustomProperties(),
+      _propertyData: Object.create(null),
+    };
+    return new SO.Particle.List(list, { label: 'model' });
+  },
+});
+
 describe('cryoet', () => {
+  it("decorates with an entity of a model (its own structure), and lists the models' entities", async () => {
+    const v = await viewer();
+    const crn = new File([readFileSync(new URL('../../../../data/examples/1crn.cif', import.meta.url))], '1crn.cif');
+    expectOk(await v.api.load.files({ files: [crn] }));
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data;
+    await v.plugin.build().toRoot().apply(TestModel, { structure }).commit();
+    const [star, model] = v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref);
+    const r = await v.api.cryoet!.decorations({ particles: star } as never);
+    expectOk(r);
+    const entity = (r.value as DecorationsInfo).objects.find((o) => o.group);
+    expect(entity).toEqual({ ref: `target:${model}:0`, label: 'model › crambin', group: 'model' });
+    expectOk(await v.api.cryoet!.decorate({ with: 'entity', entity: 'crambin', particles: star } as never));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0];
+    const target = list.representations[0].cell.obj!.data.sourceData.targetMapping?.get(0);
+    expect(target?.kind === 'structure' && target.structure).toBe(structure);
+    const after = await v.api.cryoet!.decorations({ particles: star } as never);
+    expectOk(after);
+    expect((after.value as DecorationsInfo).targets[0]).toMatchObject({
+      with: 'model › crambin',
+      object: `target:${model}:0`,
+    });
+  });
+
   it('decorates every target with an object of the scene, and shows them with a target representation', async () => {
     const v = await viewer();
     expectOk(await v.api.cryoet!.decorate({ with: 'object', object: 'ribosome.mrc' } as never));
@@ -142,6 +197,25 @@ describe('cryoet', () => {
     expectOk(await c.mesh({ visible: false } as never));
     expect((await read()).visible).toBe(false);
     expect(await c.mesh({ mesh: 'nope', visible: true } as never)).toMatchObject({ ok: false, code: 'not-found' });
+  });
+
+  it('scales a segmentation mesh (a mesh in pixels: by the pixel size)', async () => {
+    const v = await viewer();
+    const obj = 'v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n';
+    expectOk(await v.api.load.files({ files: [new File([obj], 'seg.obj')] }));
+    const c = v.api.cryoet!;
+    const read = async () => {
+      const r = await c.meshes({});
+      expectOk(r);
+      return (r.value as MeshInfo[])[0];
+    };
+    expect((await read()).scale).toBe(1);
+    expectOk(await c.mesh({ mesh: 'seg.obj', scale: 8 } as never));
+    expect((await read()).scale).toBeCloseTo(8);
+    // the shape drawn is 8 times larger: its instance transform
+    const shape = Array.from(v.plugin.state.data.cells.values()).find((x) => SO.Shape.Provider.is(x.obj))!;
+    expect((shape.obj!.data as { data: { transforms: number[][] } }).data.transforms[0][0]).toBeCloseTo(8);
+    expect(await c.mesh({ mesh: 'seg.obj', scale: 8 } as never)).toMatchObject({ ok: true, unchanged: true });
   });
 
   it('goes back to the targets of the file', async () => {

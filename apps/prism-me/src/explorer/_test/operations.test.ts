@@ -132,6 +132,26 @@ describe('explorer', () => {
     expect(look({ ref })).toEqual({ transparency: 0, emissive: 0 });
   });
 
+  it("lists a particle list's representations, gives their form, and shows or hides one", async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const list = area.objectsState().value.find((o) => o.kind === 'list')!;
+    const [r] = area.particleRepresentationsState(list.ref).value;
+    expect(r).toMatchObject({ type: 'spacefill', visible: true });
+    const form = area.representationForm(r.ref)!;
+    expect(Object.keys(form.params)).toEqual(expect.arrayContaining(['type', 'colorTheme', 'sizeTheme']));
+    expect((form.values.type as { name: string }).name).toBe('spacefill');
+    expectOk(await v.api.run('explorer.representationVisibility', { node: r.ref, visible: false }));
+    expect(area.particleRepresentationsState(list.ref).value[0].visible).toBe(false);
+    expect(await v.api.run('explorer.representationVisibility', { node: r.ref, visible: false })).toMatchObject({
+      ok: true,
+      unchanged: true,
+    });
+    expect(await v.api.run('explorer.representationVisibility', { node: 'nope', visible: true })).toMatchObject({
+      ok: false,
+    });
+  });
+
   it('keeps unchanged rows as the same objects', () => {
     const stable = stableRows();
     const a = { key: 'a', depth: 1, label: 'A', kind: 'entity', hasChildren: false, visible: true };

@@ -6,7 +6,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Button, Choices, For, Icon, onCleanup, Select, Show, TextInput } from '@molstar/prism-ui';
+import { Button, Choices, For, Icon, onCleanup, Select, type SelectOption, Show, TextInput } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
@@ -19,6 +19,9 @@ import type { CryoetApi, DecorationsInfo, MeshInfo, TargetDecoration } from './o
 const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
 const Line = 'display: flex; align-items: center; gap: var(--msp-space-2); min-height: 28px';
 
+/** A scale as shown: 3 significant digits */
+const round = (v: number) => Number(v.toPrecision(3));
+
 /** Spheres: no decoration (the select's value) */
 const Spheres = '';
 
@@ -29,7 +32,11 @@ export function Decorations(props: { area: CryoetApi; info: ReadonlyState<Decora
     void area.decorate({
       particles: particles(),
       targets,
-      ...(value === Spheres ? { with: 'none' } : { with: 'object', object: value }),
+      ...(value === Spheres
+        ? { with: 'none' }
+        : value.startsWith('target:')
+          ? { with: 'entity', entity: value }
+          : { with: 'object', object: value }),
     } as never);
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
@@ -98,10 +105,13 @@ function TargetLine(props: {
   );
 }
 
-function options(info: DecorationsInfo, target?: TargetDecoration): [string, string][] {
-  const out: [string, string][] = [
+function options(info: DecorationsInfo, target?: TargetDecoration): SelectOption[] {
+  const out: SelectOption[] = [
     [Spheres, 'Spheres'],
-    ...info.objects.map((o) => [o.ref, o.label] as [string, string]),
+    // a model's entities under its name, its label the entity's
+    ...info.objects.map((o) =>
+      o.group ? ([o.ref, o.label.slice(o.group.length + 3), o.group] as const) : ([o.ref, o.label] as const),
+    ),
   ];
   // a decoration that is not an object of the scene (a PDB id, the file's own): shown, not picked again
   if (target?.with && !target.object) out.push(['*', target.with]);
@@ -234,6 +244,32 @@ export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: Rea
           aria-label="Opacity"
           value={mapState(mesh, (m) => String(m?.opacity ?? 1))}
           onInput={(e) => set({ opacity: Number((e.target as HTMLInputElement).value) }, 80)}
+        />
+      </div>
+      {/* a mesh in pixels (a segmentation of a tomogram): its scale is the pixel size; the slider goes by powers */}
+      <div style={Line}>
+        <span style="width: 64px">Scale</span>
+        <input
+          type="range"
+          min="-2"
+          max="2"
+          step="0.01"
+          style="flex: 1"
+          aria-label="Scale"
+          value={mapState(mesh, (m) => String(Math.log10(m?.scale ?? 1)))}
+          onChange={(e) => set({ scale: round(10 ** Number((e.target as HTMLInputElement).value)) })}
+        />
+        <input
+          type="number"
+          min="0.01"
+          step="0.01"
+          style="width: 64px"
+          aria-label="Scale factor"
+          value={mapState(mesh, (m) => String(round(m?.scale ?? 1)))}
+          onChange={(e) => {
+            const v = Number((e.target as HTMLInputElement).value);
+            if (v > 0) set({ scale: v });
+          }}
         />
       </div>
     </div>

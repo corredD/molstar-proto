@@ -87,16 +87,16 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
 
 ## Status
 
-- Step 1 (2026-10-18): the panel and the tree. The Scene tab opens at start (`view.open` after creation: an
-  extension's tab registers after the shell starts, so `ui.layout.start` cannot name it); Prism's other tabs, the
-  sequence band, the animation and export buttons are hidden (`overrides`, `showSequence: false`). Tree: four
-  categories; a structure's entities and chains, a model's groups and entities, a list's targets, a volume's
-  representations; eyes, counts, filter; click picks (highlight), double click focuses. + Open: files, an entry,
-  examples, a session. Objects are named by their file. Properties: the picked row's name only (step 2). Code:
-  `src/explorer/` (`operations.ts`: the `explorer` area; `ui.tsx`: the panel), test `src/explorer/_test/`.
-- Step 1 fixes (2026-10-18): an eye flips at once (the operation runs after the frame is painted; on MG it was
-  0.1–0.6 s, now one frame) and follows visibility changes (the scene read listens to cells' state); unchanged rows are
-  kept (a change remakes only its rows); the row under the pointer is lit, in the tree and in 3D.
+- Step 1 (2026-10-18): the panel and the tree. The Scene tab opens at start (`view.open` after creation: an extension's
+  tab registers after the shell starts, so `ui.layout.start` cannot name it); Prism's other tabs, the sequence band, the
+  animation and export buttons are hidden (`overrides`, `showSequence: false`). Tree: four categories; a structure's
+  entities and chains, a model's groups and entities, a list's targets, a volume's representations; eyes, counts,
+  filter; click picks (highlight), double click focuses. + Open: files, an entry, examples, a session. Objects are named
+  by their file. Properties: the picked row's name only (step 2). Code: `src/explorer/` (`operations.ts`: the `explorer`
+  area; `ui.tsx`: the panel), test `src/explorer/_test/`.
+- Step 1 fixes (2026-10-18): an eye flips at once (the operation runs after the frame is painted; on MG it was 0.1–0.6
+  s, now one frame) and follows visibility changes (the scene read listens to cells' state); unchanged rows are kept (a
+  change remakes only its rows); the row under the pointer is lit, in the tree and in 3D.
 - Step 2 (2026-10-18): the properties, under the tree, a drag line between them (the tree as tall as it is, the
   properties in the rest). Sections that fold, by what is picked:
   - a structure, an entity, a chain: Look (color, opacity, glow, as its layers make it now: the last layer that covers
@@ -108,6 +108,18 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
   - Shared controls moved to exported modules: `@molstar/cryoet-extension/controls` (Decorations, Slice, MeshControls),
     `@molstar/mesoscale-extension/controls` (GraphicsMode, Motion; the motion read from the representations, new
     `mesoscale.graphicsState`). A slider acts once released (one step).
+- Step 2 additions (2026-10-18, Ludovic's test):
+  - A particle list (and a model, a target): Representation, each of its representations with an eye
+    (`explorer.representationVisibility`) and its whole form, as Prism's inspector has it (`ParamsFormModel` on the
+    transform's params): the type (spheres, orientation, the targets…) and its params, the color and size themes; a
+    change acts a moment after the last (`particles.update`). A type change rebuilds a large list's glyphs (a few
+    seconds).
+  - Decoration with an entity of a model: the decoration selects list, under each cellPACK or PetWorld model, its
+    entities; `cryoet.decorate` `with: entity` (`entity: "motor.bcif › 8WIW"` or the name alone). Library:
+    `ParticleListWithTargets` takes a `target` source (a particle list and its target id: that list's own reference
+    object, the entity's structure; a dependency, as `ref`).
+  - A mesh: Scale (a slider by powers of ten and a field; a mesh in pixels: the pixel size), about the file's origin;
+    `cryoet.mesh` `scale` (the shape's instance transform), read back in `MeshInfo.scale`.
 - Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a
   structure entity's or chain's eye (Prism hides representations, not parts); a color dot only where a color was set;
   the mesh section repeats the mesh's eye and name.

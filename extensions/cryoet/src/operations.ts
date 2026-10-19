@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { type StateObjectCell, StateTransform } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
 import { ColorNames } from '@molstar/core/util/color/names';
@@ -43,7 +44,7 @@ export interface TargetDecoration {
   readonly count: number;
   /** What it is decorated with: the object's label, the PDB id or URL, or undefined (spheres only) */
   readonly with?: string;
-  /** The state ref of the object of the scene it is decorated with */
+  /** What it is decorated with, as `objects` names it: an object's state ref, or a model entity's `target:<list>:<id>` */
   readonly object?: string;
 }
 
@@ -56,8 +57,11 @@ export interface DecorationsInfo {
   /** The attributes of the list (class, cc, score, …) */
   readonly attributes: readonly { readonly key: string; readonly label: string }[];
   readonly targets: readonly TargetDecoration[];
-  /** The objects of the scene a target can be decorated with */
-  readonly objects: readonly { readonly ref: string; readonly label: string }[];
+  /**
+   * What a target can be decorated with: the objects of the scene (by state ref), then the entities of the other
+   * particle lists that have one (cellPACK, PetWorld: `target:<list ref>:<target id>`, grouped by their model)
+   */
+  readonly objects: readonly { readonly ref: string; readonly label: string; readonly group?: string }[];
 }
 
 /** A volume's dimensions and the slice shown, if any */
@@ -78,6 +82,8 @@ export interface MeshInfo {
   readonly opacity: number;
   /** Its uniform color, when it has one */
   readonly color?: number;
+  /** Its scale (1: as in the file; a mesh in pixels: the pixel size, Å) */
+  readonly scale: number;
 }
 
 const ListParam = () =>
@@ -152,9 +158,19 @@ export class CryoetApi extends ApiArea {
       ),
       opacity: OptionalParam(PD.Numeric(1, { min: 0, max: 1, step: 0.01 })),
       color: OptionalParam(PD.Text('', { description: 'A CSS color (#ffcc00, tomato); one color for the whole mesh' })),
+      scale: OptionalParam(
+        PD.Numeric(
+          1,
+          { min: 0.01, max: 100, step: 0.01 },
+          {
+            description: 'Scales it about the origin: 1 as in the file; a mesh in pixels, the pixel size (Å)',
+          },
+        ),
+      ),
     },
     async run(values, ctx) {
-      const { mesh, visible, visuals, opacity, color } = values as typeof values & {
+      const { mesh, visible, visuals, opacity, color, scale } = values as typeof values & {
+        scale?: number;
         visible?: boolean;
         visuals?: 'mesh' | 'wireframe' | 'both';
         opacity?: number;
@@ -187,6 +203,15 @@ export class CryoetApi extends ApiArea {
         if (JSON.stringify(next) !== JSON.stringify(old)) {
           b.to(cell).update(next);
           nodes.push(m.ref);
+        }
+        // the scale is the shape's: its instance transform (OBJ, PLY, VTP shapes have one)
+        const shape = shapeCellOf(ctx, m.ref);
+        if (scale !== undefined && shape && scale > 0 && Math.abs(scaleOf(shape) - scale) > 1e-6) {
+          b.to(shape).update((p: any) => ({
+            ...p,
+            transforms: [Mat4.fromScaling(Mat4(), Vec3.create(scale, scale, scale))],
+          }));
+          nodes.push(shape.transform.ref);
         }
         if (visible !== undefined && visible === !!cell.state.isHidden) {
           ctx.plugin.state.data.updateCellState(m.ref, { isHidden: !visible });
@@ -226,8 +251,12 @@ export class CryoetApi extends ApiArea {
       with: PD.Select('object', [
         ['object', 'An object of the scene (structure, shape, volume)'],
         ['pdb', 'A PDB id or a URL'],
+        ['entity', 'An entity of a model (cellPACK, PetWorld)'],
         ['none', 'Nothing (spheres)'],
       ] as const),
+      entity: PD.Text('', {
+        description: 'An entity of another particle list: "mg.bcif › MG_001_MONOMER", or its name alone (with: entity)',
+      }),
       object: PD.Text('', { description: 'An object of the scene by label or state ref (with: object)' }),
       id: PD.Text('', { description: 'A PDB id (1crn) or the URL of a structure, shape or volume (with: pdb)' }),
       targets: PD.Text('', {
@@ -235,7 +264,7 @@ export class CryoetApi extends ApiArea {
       }),
       particles: ListParam(),
     },
-    async run({ with: kind, object, id, targets, particles }, ctx) {
+    async run({ with: kind, object, id, entity, targets, particles }, ctx) {
       const l = oneList(ctx, particles || undefined);
       if (isFailure(l)) return l;
       const data = dataOf(ctx, l);
@@ -250,6 +279,12 @@ export class CryoetApi extends ApiArea {
         if (isFailure(obj)) return obj;
         source = { name: 'ref', params: { ref: obj.transform.ref } };
         what = obj.obj?.label ?? obj.transform.ref;
+      } else if (kind === 'entity') {
+        const e = pickEntity(ctx, l, entity);
+        if (isFailure(e)) return e;
+        const [, list, target] = /^target:(.+):(\d+)$/.exec(e.ref)!;
+        source = { name: 'target', params: { list, target: Number(target) } };
+        what = e.label;
       } else if (kind === 'pdb') {
         if (!id.trim()) return ApiResult.fail('invalid', 'No PDB id or URL.', 'Give id: 1crn, or a URL.');
         const s = particleTargetSourceFromPdbIdOrUrl(ctx.plugin, id);
@@ -430,7 +465,8 @@ function sliceOf(v: VolumeRef): SliceInfo | undefined {
 
 type TargetSourceValue =
   | { name: 'ref'; params: { ref: string } }
-  | { name: 'url'; params: { url: string; format: string; isBinary?: boolean } };
+  | { name: 'url'; params: { url: string; format: string; isBinary?: boolean } }
+  | { name: 'target'; params: { list: string; target: number } };
 type TargetEntry = { targetId: number; source: TargetSourceValue };
 
 function lists(ctx: Pick<ApiContext, 'plugin'>): readonly ParticleListRef[] {
@@ -493,7 +529,7 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Decorati
       (t) => [t.targetId, t] as const,
     ),
   );
-  const objects = sceneObjects(ctx);
+  const objects = [...sceneObjects(ctx), ...modelEntities(ctx, l)];
   const labelOfRef = new Map(objects.map((o) => [o.ref, o.label]));
   const attributes = l.cell.obj?.data.attributes;
   const classes = decoratorCell(ctx, l, ParticleListTargetsFromAttribute)?.transform.params?.attribute as
@@ -508,10 +544,11 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Decorati
     targets: Array.from(data.targetInfo, ([id, info]) => {
       const entry = entries.get(id);
       const target = data.targetMapping?.get(id);
+      const object = entry ? objectOf(entry.source) : undefined;
       const w = entry
-        ? entry.source.name === 'ref'
-          ? (labelOfRef.get(entry.source.params.ref) ?? entry.source.params.ref)
-          : entry.source.params.url
+        ? object
+          ? (labelOfRef.get(object) ?? object)
+          : (entry.source as { params: { url: string } }).params.url
         : target
           ? describeTarget(target)
           : undefined;
@@ -520,7 +557,7 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Decorati
         name: info.name ?? data.entityInfo?.get(info.entity ?? -1)?.name ?? `Target ${id}`,
         count: counts.get(id) ?? 0,
         ...(w ? { with: w } : {}),
-        ...(entry?.source.name === 'ref' ? { object: entry.source.params.ref } : {}),
+        ...(object ? { object } : {}),
       };
     }),
     objects,
@@ -549,9 +586,23 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
       visuals: Array.isArray(p?.visuals) ? p.visuals : ['mesh'],
       opacity: p?.alpha ?? 1,
       ...(p?.coloring?.name === 'uniform' ? { color: p.coloring.params.color } : {}),
+      scale: scaleOf(shapeCellOf(ctx, cell.transform.ref)),
     });
   }
   return out;
+}
+
+/** The shape a mesh representation draws (its `transforms` param: the OBJ, PLY, VTP shapes') */
+function shapeCellOf(ctx: Pick<ApiContext, 'plugin'>, repr: string): StateObjectCell | undefined {
+  const { cells, tree } = ctx.plugin.state.data;
+  const parent = cells.get(tree.transforms.get(repr)?.parent ?? '');
+  return parent && SO.Shape.Provider.is(parent.obj) ? parent : undefined;
+}
+
+/** A shape's scale: of its first instance transform (1 when none) */
+function scaleOf(shape: StateObjectCell | undefined): number {
+  const m = (shape?.transform.params as { transforms?: Mat4[] } | undefined)?.transforms?.[0];
+  return m ? Mat4.getMaxScaleOnAxis(m) : 1;
 }
 
 /** A CSS color name or #rrggbb */
@@ -579,6 +630,34 @@ function sceneObjects(ctx: Pick<ApiContext, 'plugin'>) {
   return out;
 }
 
+/** How `objects` names what a source decorates with: an object's state ref, a model entity's `target:<list>:<id>` */
+function objectOf(source: TargetSourceValue): string | undefined {
+  if (source.name === 'ref') return source.params.ref;
+  if (source.name === 'target') return `target:${source.params.list}:${source.params.target}`;
+  return undefined;
+}
+
+/**
+ * The entities of the particle lists other than `except` that bring their own (a cellPACK or PetWorld model: a
+ * structure per target), named "model › entity"
+ */
+function modelEntities(ctx: Pick<ApiContext, 'plugin'>, except?: ParticleListRef) {
+  const out: { ref: string; label: string; group: string }[] = [];
+  for (const l of lists(ctx)) {
+    if (l === except || !l.cell.obj) continue;
+    const data = l.cell.obj.data;
+    if (!data.targetMapping?.size) continue;
+    const model = entryLabel(ctx, l.cell);
+    for (const [id, target] of data.targetMapping) {
+      if (target.kind !== 'structure') continue;
+      const info = data.targetInfo.get(id);
+      const name = info?.name ?? data.entityInfo?.get(info?.entity ?? -1)?.name ?? `Target ${id}`;
+      out.push({ ref: `target:${l.cell.transform.ref}:${id}`, label: `${model} › ${name}`, group: model });
+    }
+  }
+  return out;
+}
+
 /** A volume's or shape's name: the file (or address) it came from, its entry's label; else its own */
 function entryLabel(ctx: Pick<ApiContext, 'plugin'>, cell: StateObjectCell): string {
   const { tree, cells } = ctx.plugin.state.data;
@@ -589,6 +668,26 @@ function entryLabel(ctx: Pick<ApiContext, 'plugin'>, cell: StateObjectCell): str
     ref = parent;
   }
   return cells.get(ref)?.obj?.label || cell.obj!.label;
+}
+
+function pickEntity(ctx: ApiContext, l: ParticleListRef, name: string) {
+  const entities = modelEntities(ctx, l);
+  if (!entities.length) {
+    return ApiResult.fail('not-found', 'No model with entities is open.', 'Open a cellPACK or PetWorld model first.');
+  }
+  const n = name.trim().toLowerCase();
+  const found = entities.filter(
+    (e) => e.ref.toLowerCase() === n || e.label.toLowerCase() === n || e.label.toLowerCase().endsWith(` › ${n}`),
+  );
+  if (found.length === 1) return found[0];
+  return ApiResult.fail(
+    found.length ? 'ambiguous' : 'not-found',
+    `${found.length ? 'Several entities are' : 'No entity is'} named '${name}'.`,
+    `Name it as "model › entity": ${entities
+      .slice(0, 8)
+      .map((e) => e.label)
+      .join(', ')}${entities.length > 8 ? ', …' : ''}.`,
+  );
 }
 
 function pickObject(ctx: ApiContext, name: string): StateObjectCell | ApiFailure {

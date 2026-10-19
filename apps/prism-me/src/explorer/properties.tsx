@@ -11,7 +11,8 @@ import { Decorations, MeshControls, Slice } from '@molstar/cryoet-extension/cont
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import { GraphicsMode, Motion } from '@molstar/mesoscale-extension/controls';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
-import { Button, ColorPicker, For, Icon, onCleanup, Select, Show } from '@molstar/prism-ui';
+import { Button, ColorPicker, For, Icon, onCleanup, ParamsForm, Select, Show } from '@molstar/prism-ui';
+import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
@@ -76,6 +77,11 @@ function sectionsOf(
     if (kind === 'target')
       return [<Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>];
     const out = [<Section title="Look">{() => <ParticleLook api={api} node={node} parts={parts} />}</Section>];
+    if (kind === 'mesoscale model') {
+      out.push(
+        <Section title="Representation">{() => <ParticleRepresentations api={api} area={area} node={node} />}</Section>,
+      );
+    }
     if (kind === 'mesoscale model' && api.mesoscale) {
       const mesoscale = api.mesoscale;
       out.push(
@@ -101,7 +107,10 @@ function sectionsOf(
     case 'chain':
       return [<Section title="Look">{() => <StructureLook api={api} area={area} node={node} />}</Section>];
     case 'particle list':
-      return [<Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>];
+      return [
+        <Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>,
+        <Section title="Representation">{() => <ParticleRepresentations api={api} area={area} node={node} />}</Section>,
+      ];
     case 'volume':
     case 'volume representation':
       return api.cryoet
@@ -363,6 +372,53 @@ function ListDecoration(props: { api: ViewerApi; node: NodeRef }) {
   return (
     <Show when={mapState(info, (i) => !!i)}>
       {() => <Decorations area={cryoet} info={info as ReadonlyState<DecorationsInfo>} />}
+    </Show>
+  );
+}
+
+/**
+ * A particle list's representations, each with its whole form (the type: spheres, orientation, the targets…, then its
+ * params), as Prism's inspector shows one; a change acts a moment after the last (sliders change at pointer rate)
+ */
+function ParticleRepresentations(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef }) {
+  const { api, area } = props;
+  const reprs = area.particleRepresentationsState(props.node.ref);
+  return (
+    <Show when={mapState(reprs, (r) => r.length > 0)} fallback={() => <span style={Muted}>Not shown.</span>}>
+      {() => (
+        // made again when a representation's type changes (its form is another), or it is shown or hidden
+        <For each={reprs} by={(r) => `${r.ref}:${r.type}:${r.visible}`}>
+          {(r) => {
+            const form = area.representationForm(r.ref);
+            if (!form) return <span style={Muted}>{r.label}</span>;
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            onCleanup(() => clearTimeout(timer));
+            const model = new ParamsFormModel(form.params, form.values, {
+              onChange: (values) => {
+                clearTimeout(timer);
+                timer = setTimeout(() => void api.run('particles.update', { node: r.ref, params: values }), 150);
+              },
+            });
+            return (
+              <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+                <div style={Line}>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    title="Show or hide"
+                    icon={<Icon name={r.visible ? 'eye' : 'eye-off'} />}
+                    onClick={() =>
+                      void api.run('explorer.representationVisibility', { node: r.ref, visible: !r.visible })
+                    }
+                  />
+                  <span style={Muted}>{r.label}</span>
+                </div>
+                <ParamsForm form={model} />
+              </div>
+            );
+          }}
+        </For>
+      )}
     </Show>
   );
 }

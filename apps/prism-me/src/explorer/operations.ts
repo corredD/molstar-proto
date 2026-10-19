@@ -16,7 +16,9 @@ import { Script } from '@molstar/model/script/script';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import type { PluginContext } from '@molstar/plugin/context';
 import { StateTransform } from '@molstar/core/state';
-import { type ApiAreaContext, ApiArea } from '@molstar/prism-viewer/api/area';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { setSubtreeVisibility } from '@molstar/plugin/behavior/static/state';
+import { type ApiAreaContext, ApiArea, ApiResult } from '@molstar/prism-viewer/api/area';
 import { labelOf, loadedStructures } from '@molstar/prism-viewer/api/scope';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
@@ -59,6 +61,15 @@ export interface StructureLook {
   readonly transparency: number;
   /** 0: none, 1: full glow */
   readonly emissive: number;
+}
+
+/** A particle list's representation, as the properties list them */
+export interface ParticleRepresentationInfo {
+  readonly ref: string;
+  readonly label: string;
+  /** spacefill, orientation, target… */
+  readonly type: string;
+  readonly visible: boolean;
 }
 
 /** A node of the tree as the 3D side needs it: its object, and which part of it */
@@ -105,6 +116,57 @@ export class ExplorerApi extends ApiArea {
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
+  }
+
+  /** Shows or hides one representation of any kind (Prism's `representation.visibility` takes a structure's) */
+  readonly representationVisibility = this.operation({
+    id: 'explorer.representationVisibility',
+    title: 'Show or hide a representation',
+    params: {
+      node: PD.Text('', { description: 'The state ref of the representation' }),
+      visible: PD.Boolean(true),
+    },
+    async run({ node, visible }, ctx) {
+      const cell = ctx.plugin.state.data.cells.get(node);
+      if (!cell?.obj || !SO.isRepresentation3D(cell.obj)) {
+        return ApiResult.fail('not-found', `There is no representation '${node}'.`);
+      }
+      if (!!cell.state.isHidden === !visible)
+        return ApiResult.already(`It is already ${visible ? 'shown' : 'hidden'}.`);
+      setSubtreeVisibility(ctx.plugin.state.data, node, !visible);
+      return ApiResult.ok(`${visible ? 'Showed' : 'Hid'} ${cell.obj.label}.`, { nodes: [node] });
+    },
+  });
+
+  /** A particle list's representations (spheres, orientation, its targets…), following the state tree while watched */
+  particleRepresentationsState(ref: string): ReadonlyState<readonly ParticleRepresentationInfo[]> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () =>
+        (
+          plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref)
+            ?.representations ?? []
+        ).map((r) => ({
+          ref: r.cell.transform.ref,
+          label: r.cell.obj?.label ?? 'Representation',
+          type: (r.cell.transform.params as { type?: { name?: string } } | undefined)?.type?.name ?? '',
+          visible: !r.cell.state.isHidden,
+        })),
+      () => [plugin.state.data.events.changed, plugin.state.data.events.cell.stateUpdated],
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /** A representation's params as its transform defines them, and their values: for a form */
+  representationForm(ref: string): { readonly params: PD.Params; readonly values: PD.Values<PD.Params> } | undefined {
+    const { cells } = this.ctx.plugin.state.data;
+    const cell = cells.get(ref);
+    if (!cell) return undefined;
+    const parent = cells.get(cell.transform.parent);
+    const params = cell.transform.transformer.definition.params?.(parent?.obj as never, this.ctx.plugin) as
+      | PD.Params
+      | undefined;
+    return params ? { params, values: cell.transform.params as PD.Values<PD.Params> } : undefined;
   }
 
   /** The representation presets that apply to a structure: [id, name] */
