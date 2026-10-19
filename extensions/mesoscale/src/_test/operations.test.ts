@@ -197,4 +197,19 @@ describe('mesoscale', () => {
     expectOk(await v.api.history.undo({}));
     expect((await info(v)).entities.every((e) => e.visible)).toBe(true);
   });
+
+  it('keeps several cuts of the same entities, each changed or removed by its place', async () => {
+    const v = await viewer();
+    const m = v.api.mesoscale!;
+    const cutsOf = async () => (await info(v)).cuts.filter((c) => c.entities.join() === '1').map((c) => c.cut.type);
+    expectOk(await m.clip({ entities: 'CA', type: 'plane' } as never));
+    expectOk(await m.clip({ entities: 'CA', type: 'sphere', add: true } as never));
+    expect(await cutsOf()).toEqual(['plane', 'sphere']);
+    // the second one changed, the first kept
+    expectOk(await m.clip({ entities: 'CA', type: 'cube', cut: 1 } as never));
+    expect(await cutsOf()).toEqual(['plane', 'cube']);
+    // the first removed: the second is the first now
+    expectOk(await m.clip({ entities: 'CA', type: 'none', cut: 0 } as never));
+    expect(await cutsOf()).toEqual(['cube']);
+  });
 });

@@ -381,11 +381,15 @@ export class MesoscaleApi extends ApiArea {
       sx: OptionalParam(PD.Numeric(100, { min: 0, max: 100, step: 1 }, { description: 'Size, % of the diameter' })),
       sy: OptionalParam(PD.Numeric(100, { min: 0, max: 100, step: 1 })),
       sz: OptionalParam(PD.Numeric(100, { min: 0, max: 100, step: 1 })),
+      cut: OptionalParam(
+        PD.Numeric(0, { min: 0, step: 1 }, { description: "Which of these entities' cuts (0: the first)" }),
+      ),
+      add: PD.Boolean(false, { description: 'A new cut of these entities, besides their others' }),
       particles: ListParam(),
     },
     async run(values, ctx) {
       const v = values as typeof values &
-        Partial<Record<'x' | 'y' | 'z' | 'angle' | 'sx' | 'sy' | 'sz', number>> & {
+        Partial<Record<'x' | 'y' | 'z' | 'angle' | 'sx' | 'sy' | 'sz' | 'cut', number>> & {
           invert?: boolean;
           axis?: 'x' | 'y' | 'z';
         };
@@ -393,9 +397,13 @@ export class MesoscaleApi extends ApiArea {
       if (isFailure(l)) return l;
       const ids = selectEntities(ctx, l, v.entities, v.group);
       if (isFailure(ids)) return ids;
+      // these entities' cuts (several), by their place among all the list's cuts: one is changed in place, added or
+      // removed (the others keep their order, so their guides stay theirs)
       const key = [...ids].sort((a, b) => a - b).join(',');
-      const cuts = readCuts(ctx, l).filter((c) => [...c.entities].sort((a, b) => a - b).join(',') !== key);
-      const old = readCuts(ctx, l).find((c) => [...c.entities].sort((a, b) => a - b).join(',') === key)?.cut;
+      const cuts = readCuts(ctx, l);
+      const mine = cuts.flatMap((c, i) => ([...c.entities].sort((a, b) => a - b).join(',') === key ? [i] : []));
+      const at = v.add ? -1 : (mine[v.cut ?? 0] ?? -1);
+      const old = at >= 0 ? cuts[at].cut : undefined;
       if (v.type !== 'none') {
         const base: EntityCut = old ?? {
           type: v.type,
@@ -405,7 +413,7 @@ export class MesoscaleApi extends ApiArea {
           angle: 0,
           scale: [100, 100, 100],
         };
-        cuts.push({
+        const next: EntityCutInfo = {
           entities: ids,
           cut: {
             type: v.type,
@@ -416,8 +424,12 @@ export class MesoscaleApi extends ApiArea {
             angle: v.angle ?? base.angle,
             scale: [v.sx ?? base.scale[0], v.sy ?? base.scale[1], v.sz ?? base.scale[2]],
           },
-        });
-      } else if (!old) {
+        };
+        if (at >= 0) cuts[at] = next;
+        else cuts.push(next);
+      } else if (at >= 0) {
+        cuts.splice(at, 1);
+      } else {
         return ApiResult.already('They are not clipped.');
       }
       if (cuts.length > MaxParticleCuts) {

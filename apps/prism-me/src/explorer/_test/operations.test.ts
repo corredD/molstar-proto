@@ -16,7 +16,7 @@ import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { withTomogramSlices } from '../../tomograms.js';
 import { ancestorKeys, rowsOf, stableRows, toggleVisible } from '../rows.js';
-import { nodeMenuItems } from '../menu.js';
+import { clipItems, colorItems, nodeMenuItems } from '../menu.js';
 import { OrderedSet } from '@molstar/core/data/int';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 
@@ -236,6 +236,35 @@ describe('explorer', () => {
     expect(nodeMenuItems(v.api, area, picked).map((i) => i.id)).toEqual(['focus', 'hide']);
     expect(nodeMenuItems(v.api, area, area.pickedOf(atoms)).map((i) => i.id)).toEqual(['focus']);
     expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);
+  });
+
+  it("adds several clips at a row's level (the object's, a target's) and colors a target", async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const list = area.objectsState().value.find((o) => o.kind === 'list')!;
+    const object = { key: `o:${list.ref}`, label: list.label, kind: 'particle list', node: { ref: list.ref } };
+    const run = async (items: { id: string; run(): void }[], id: string) => {
+      items.find((i) => i.id === id)!.run();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    };
+    // the whole list: the stage's cuts, added one after the other
+    await run(clipItems(v.api, object), 'clip-plane');
+    await run(clipItems(v.api, object), 'clip-sphere');
+    expect(v.api.stage!.wholeCutsState(list.ref).value.map((c) => c.object.type)).toEqual(['plane', 'sphere']);
+    // a target: its particles' cuts
+    const target = {
+      key: `t:${list.ref}:0`,
+      label: 'Target 0',
+      kind: 'target',
+      node: { ref: list.ref, particles: { targets: [0] } },
+    };
+    await run(clipItems(v.api, target), 'clip-cube');
+    await run(clipItems(v.api, target), 'clip-cylinder');
+    const info = v.api.mesoscale!.infoState(list.ref).value!;
+    expect(info.cuts.map((c) => c.cut.type)).toEqual(['cube', 'cylinder']);
+    // its color, by the brush
+    await run(colorItems(v.api, area, target), 'color-tomato');
+    expect(v.api.mesoscale!.infoState(list.ref).value!.entities[0].color).toBe(0xff6347);
   });
 
   it('keeps unchanged rows as the same objects', () => {

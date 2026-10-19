@@ -132,6 +132,14 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
   own items (move, turn, size, flip, remove). The tree follows a pick in 3D (a left- or right-click): its row picked,
   the way to it unfolded, brought into view. `explorer.pickedOf(loci)`, `menu.ts`; stage-tools lets a host open the menu
   (`menuHosted`, the request's `loci`; its items in `@molstar/stage-tools-extension/menu`).
+- Step 3b (2026-10-19, as the Mesoscale Explorer's rows): a row's tools at its right end, the brush (a color for all of
+  it: swatches; a model's or group's Generate colors) and the scissors (a clip: plane, sphere, box; a part's also
+  cylinder), beside its eye. Several clips at each level: an object's (structure, model, list, volume) cut all of it
+  (`stage.cut add`, `stage.uncut index`), a part's (group, entity, target) its particles (`mesoscale.clip add`, `cut`:
+  which). The properties' Clips: each clip, its name, Move / Turn / Size in 3D, its shape's eye (`setGuideShown`, a view
+  aid), remove; an object's clip, its side; a part's, its type and placement. The right-click: Color…, Add a clip…. A
+  structure's entities and chains, meshes and slices have no scissors yet (their clipping is Prism's, by groups). The
+  scissors icon is added to Prism UI's icon set.
 - Next: 3b Add clip (several per node, each a row with its own menu), 3c Add label (plain text), 3d Move and Rotate (at
   the level of the selection; a part's move spiked first).
 - Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a

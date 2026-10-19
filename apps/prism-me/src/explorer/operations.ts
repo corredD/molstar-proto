@@ -217,6 +217,11 @@ export class ExplorerApi extends ApiArea {
     return pickedOf(this.ctx.plugin, loci);
   }
 
+  /** The canvas element (a drag in 3D is measured on it) */
+  canvasElement(): HTMLElement | undefined {
+    return this.ctx.plugin.canvas3dContext?.canvas ?? undefined;
+  }
+
   /** Highlights a node in 3D (none: clears) */
   highlight(node: NodeRef | undefined) {
     const plugin = this.ctx.plugin;

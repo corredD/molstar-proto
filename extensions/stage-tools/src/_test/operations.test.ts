@@ -160,4 +160,23 @@ describe('stage', () => {
     // a plane's guide: move, turn, the other side, remove (no size: a plane has none)
     expect(await ids({ kind: 'guide', target, index: 0 })).toEqual(['move', 'rotate', 'flip', 'uncut', 'guides']);
   });
+
+  it('adds a cut besides the others, removes one by its index, and hides one guide', async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const ref = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    expectOk(await s.cut({ shape: 'plane', target: '' }));
+    expectOk(await s.cut({ shape: 'sphere', add: true, target: '' } as never));
+    const cuts = () => s.wholeCutsState(ref).value.map((c) => [c.index, c.object.type]);
+    expect(cuts()).toEqual([
+      [0, 'plane'],
+      [1, 'sphere'],
+    ]);
+    expect(clips(v).every((n) => n === 2)).toBe(true);
+    s.setGuideShown(ref, 1, false);
+    expect(s.guideShownState(ref, 1).value).toBe(false);
+    expect(desiredGuides({ plugin: v.plugin }, new Set([`${ref}:1`])).map((g) => g.index)).toEqual([0]);
+    expectOk(await s.uncut({ index: 0, target: '' } as never));
+    expect(cuts()).toEqual([[0, 'sphere']]);
+  });
 });

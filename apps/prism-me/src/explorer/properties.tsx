@@ -9,15 +9,28 @@
 import { Color } from '@molstar/core/util/color';
 import { Decorations, MeshControls, Slice } from '@molstar/cryoet-extension/controls';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
-import { GraphicsMode, Motion } from '@molstar/mesoscale-extension/controls';
+import { ClipControls, cutIndexOf, cutsFor, GraphicsMode, Motion } from '@molstar/mesoscale-extension/controls';
+import { startDrag } from '@molstar/stage-tools-extension/drag';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
-import { Button, ColorPicker, For, Icon, onCleanup, ParamsForm, Select, Show } from '@molstar/prism-ui';
+import {
+  Button,
+  ColorPicker,
+  For,
+  Icon,
+  onCleanup,
+  openContextMenu,
+  ParamsForm,
+  Select,
+  Show,
+} from '@molstar/prism-ui';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
+import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
+import { clipItems, clippable, clipsWhole } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
 import type { Parts } from './rows.js';
 
@@ -64,6 +77,9 @@ function NodeProperties(props: { api: ViewerApi; area: ExplorerApi; picked: Pick
         <span style={Muted}>{picked.kind}</span>
       </div>
       {node ? sectionsOf(api, area, picked, node, props.parts) : null}
+      {node && clippable(picked.kind, node) ? (
+        <Section title="Clips">{() => <Clips api={api} area={area} kind={picked.kind} node={node} />}</Section>
+      ) : null}
     </div>
   );
 }
@@ -522,6 +538,164 @@ function VolumeSlices(props: { api: ViewerApi; volume: string }) {
       </Show>
     </div>
   );
+}
+
+// --- clips -----------------------------------------------------------------------------------------------------------
+
+const ClipNames: Record<string, string> = {
+  plane: 'Plane',
+  sphere: 'Sphere',
+  cube: 'Box',
+  cylinder: 'Cylinder',
+  infiniteCone: 'Cone',
+};
+
+/**
+ * The clips at a node's level, each: its name, its guide's eye, remove; moved, turned or sized in 3D (a drag on the
+ * canvas, one step); a part's clip also its type, invert and placement by sliders
+ */
+function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: NodeRef }) {
+  const { api, area, node } = props;
+  const stage = api.stage;
+  if (!stage) return <span style={Muted}>The stage tools are not loaded.</span>;
+  const add = (e: MouseEvent) => {
+    const button = e.currentTarget as HTMLElement;
+    const r = button.getBoundingClientRect();
+    const picked = { key: '', label: '', kind: props.kind, node };
+    openContextMenu(rootOf(button), { x: r.left, y: r.bottom }, clipItems(api, picked));
+  };
+  const addButton = (
+    <Button size="sm" icon={<Icon name="scissors" />} onClick={add}>
+      Add a clip
+    </Button>
+  );
+  // the line of one clip: its name, Move / Turn / Size in 3D, its guide's eye, remove
+  const line = (
+    index: () => number,
+    name: ReadonlyState<string>,
+    round: ReadonlyState<boolean>,
+    remove: () => void,
+  ) => {
+    const drag = (mode: 'move' | 'rotate' | 'scale') => (e: MouseEvent) =>
+      startDrag(stage, rootOf(e.currentTarget as Element), area.canvasElement(), node.ref, index(), mode);
+    const shown = stage.guideShownState(node.ref, index());
+    return (
+      <div style={Line}>
+        <strong style="flex: 1">{name}</strong>
+        <Button size="xs" variant="ghost" title="Move it in 3D" icon={<Icon name="move-3d" />} onClick={drag('move')} />
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Turn it in 3D"
+          icon={<Icon name="rotate-ccw" />}
+          onClick={drag('rotate')}
+        />
+        <Show when={round}>
+          {() => (
+            <Button
+              size="xs"
+              variant="ghost"
+              title="Size it in 3D"
+              icon={<Icon name="maximize-2" />}
+              onClick={drag('scale')}
+            />
+          )}
+        </Show>
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Show or hide its shape"
+          icon={
+            <Show when={shown} fallback={() => <Icon name="eye-off" />}>
+              {() => <Icon name="eye" />}
+            </Show>
+          }
+          onClick={() => stage.setGuideShown(node.ref, index(), !shown.value)}
+        />
+        <Button size="xs" variant="ghost" title="Remove it" icon={<Icon name="x" />} onClick={remove} />
+      </div>
+    );
+  };
+  if (clipsWhole(props.kind)) {
+    const list = stage.wholeCutsState(node.ref);
+    return (
+      <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+        <For each={mapState(list, (l) => l.map((c) => c.index))} by={(i) => i}>
+          {(index) => {
+            const object = mapState(list, (l) => l.find((c) => c.index === index)?.object);
+            const n = mapState(list, (l) => l.findIndex((c) => c.index === index) + 1);
+            return (
+              <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+                {line(
+                  () => index,
+                  derive([object, n], (o, k) => `${ClipNames[o?.type ?? 'plane'] ?? o?.type} ${k}`),
+                  mapState(object, (o) => o?.type !== 'plane'),
+                  () => void api.run('stage.uncut', { index, target: node.ref }),
+                )}
+                <div style={Line}>
+                  <span style={Label} />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    pressed={mapState(object, (o) => !!o?.invert)}
+                    onClick={() =>
+                      void api.run('stage.object', { target: node.ref, index, invert: !object.value?.invert })
+                    }
+                  >
+                    {mapState(object, (o) => (o?.type === 'plane' ? 'Cut the other side' : 'Keep the inside'))}
+                  </Button>
+                </div>
+              </div>
+            );
+          }}
+        </For>
+        {addButton}
+      </div>
+    );
+  }
+  const mesoscale = api.mesoscale;
+  if (!mesoscale || !('particles' in node)) return addButton;
+  const ids = node.particles.entities ?? node.particles.targets ?? [];
+  const info = mesoscale.infoState(node.ref);
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+      <For each={mapState(info, (i) => (i ? cutsFor(i, ids).map((_, k) => k) : []))} by={(k) => k}>
+        {(k) => {
+          const cut = mapState(info, (i) => (i ? cutsFor(i, ids)[k] : undefined));
+          return (
+            <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+              {line(
+                () => (info.value ? cutIndexOf(info.value, ids, k) : -1),
+                mapState(cut, (c) => `${ClipNames[c?.type ?? 'plane'] ?? c?.type} ${k + 1}`),
+                mapState(cut, (c) => c?.type !== 'plane'),
+                () =>
+                  void api.run('mesoscale.clip', {
+                    particles: node.ref,
+                    entities: ids.join(','),
+                    type: 'none',
+                    cut: k,
+                  }),
+              )}
+              <ClipControls
+                area={mesoscale}
+                info={info as ReadonlyState<MesoscaleInfo>}
+                entities={ids}
+                selection={{ entities: ids.join(',') }}
+                depth={0}
+                cut={k}
+              />
+            </div>
+          );
+        }}
+      </For>
+      {addButton}
+    </div>
+  );
+}
+
+/** The app's root around an element (its tokens and styles apply in it) */
+function rootOf(el: Element | null): HTMLElement {
+  return el?.closest<HTMLElement>('.msp-root') ?? document.body;
 }
 
 // --- meshes ----------------------------------------------------------------------------------------------------------

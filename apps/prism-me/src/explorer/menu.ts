@@ -6,17 +6,133 @@
 
 import type { ContextMenuItem } from '@molstar/prism-ui';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
-import type { ExplorerApi, PickedNode } from './operations.js';
+import type { ExplorerApi, NodeRef, PickedNode } from './operations.js';
 import { toggleVisible } from './rows.js';
 
-// The explorer's right-click menu (_spec/ui.md §5): the same on the canvas and on a tree row, at the level of what is
-// picked (an object, a group, an entity, a chain, a target). Step 3a: Focus, Hide; the clips, labels and moves come next.
+// The explorer's menus (_spec/ui.md §3, §5), at the level of what is picked (an object, a group, an entity, a chain, a
+// target): the right-click's (on the canvas and on a tree row), and the row tools' (Mesoscale Explorer's brush and
+// scissors beside the eye): a color for all of it, a clip of it (several at each level, each listed in its Clips).
 
 /** Kinds whose eye hides them (a structure's entities and chains have none: Prism hides representations) */
 const Hideable = new Set(['structure', 'mesoscale model', 'particle list', 'group', 'target', 'volume', 'mesh']);
 
-/** The items for a node; nothing picked: the camera's */
-export function nodeMenuItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode | undefined): ContextMenuItem[] {
+/** Whole objects: their clips cut all of them (the stage's cuts) */
+const WholeClips = new Set(['structure', 'mesoscale model', 'particle list', 'volume']);
+
+/** The swatches of the brush */
+export const Swatches: readonly [string, string][] = [
+  ['tomato', 'Red'],
+  ['orange', 'Orange'],
+  ['gold', 'Yellow'],
+  ['mediumseagreen', 'Green'],
+  ['dodgerblue', 'Blue'],
+  ['mediumpurple', 'Purple'],
+  ['white', 'White'],
+  ['gray', 'Gray'],
+];
+
+/** The particles a part's clip or color acts on: an entity's or a group's entities, a target (lists by target) */
+function partOf(node: NodeRef): { particles: string; entities: string } | undefined {
+  if (!('particles' in node)) return undefined;
+  const ids = node.particles.entities ?? node.particles.targets ?? [];
+  return { particles: node.ref, entities: ids.join(',') };
+}
+
+/** Whether a node can be colored for all of it (a structure, its parts; a model, its parts; a target; a mesh) */
+export function colorable(kind: string, node: NodeRef | undefined): boolean {
+  if (!node) return false;
+  return ['structure', 'entity', 'chain', 'mesoscale model', 'group', 'target', 'mesh'].includes(kind);
+}
+
+/** Whether a node can be clipped: an object (all of it) or a part of particles (a group, an entity, a target) */
+export function clippable(kind: string, node: NodeRef | undefined): boolean {
+  if (!node) return false;
+  return WholeClips.has(kind) || ('particles' in node && ['group', 'entity', 'target'].includes(kind));
+}
+
+/** Whether a node's clips are the whole object's (the stage's), else its particles' (the mesoscale area's) */
+export function clipsWhole(kind: string) {
+  return WholeClips.has(kind);
+}
+
+/** The brush's items: a color for all of the node; a model's or group's generated colors */
+export function colorItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
+  const { node, kind } = picked;
+  const paint = (color: string) => {
+    if (kind === 'mesh') return api.run('cryoet.mesh', { mesh: node.ref, color });
+    const part = partOf(node);
+    if (part || kind === 'mesoscale model') {
+      return api.run('mesoscale.style', { particles: node.ref, ...(part ? { entities: part.entities } : {}), color });
+    }
+    return api.run('representation.color', { target: { loci: area.loci(node) }, structure: node.ref, color });
+  };
+  const items: ContextMenuItem[] = Swatches.map(([color, label]) => ({
+    id: `color-${color}`,
+    label,
+    icon: 'palette',
+    run: () => void paint(color),
+  }));
+  if (kind === 'mesoscale model' || kind === 'group') {
+    const part = partOf(node);
+    items.unshift({
+      id: 'generate',
+      label: 'Generate colors',
+      icon: 'sparkles',
+      run: () =>
+        void api.run('mesoscale.colors', {
+          scheme: 'generate',
+          particles: node.ref,
+          ...(part ? { entities: part.entities } : {}),
+        }),
+    });
+  }
+  return items;
+}
+
+/** The scissors' items: a clip of the node (added to its others), by shape */
+export function clipItems(api: ViewerApi, picked: PickedNode): ContextMenuItem[] {
+  const { node, kind } = picked;
+  if (clipsWhole(kind)) {
+    return (
+      [
+        ['plane', 'Plane'],
+        ['sphere', 'Sphere'],
+        ['box', 'Box'],
+      ] as const
+    ).map(([shape, label]) => ({
+      id: `clip-${shape}`,
+      label,
+      icon: 'scissors',
+      run: () => void api.run('stage.cut', { shape, add: true, target: node.ref }),
+    }));
+  }
+  const part = partOf(node);
+  if (!part) return [];
+  return (
+    [
+      ['plane', 'Plane'],
+      ['sphere', 'Sphere'],
+      ['cube', 'Box'],
+      ['cylinder', 'Cylinder'],
+    ] as const
+  ).map(([type, label]) => ({
+    id: `clip-${type}`,
+    label,
+    icon: 'scissors',
+    run: () => void api.run('mesoscale.clip', { ...part, type, add: true }),
+  }));
+}
+
+/**
+ * The right-click's items for a node; nothing picked: the camera's. `open(items)` opens a sub-menu at the same place
+ * (Color…, Add clip…)
+ */
+export function nodeMenuItems(
+  api: ViewerApi,
+  area: ExplorerApi,
+  picked: PickedNode | undefined,
+  open?: (items: ContextMenuItem[]) => void,
+): ContextMenuItem[] {
   if (!picked) {
     return [
       { id: 'reset-camera', label: 'Reset the camera', icon: 'scan', run: () => void api.run('camera.reset', {}) },
@@ -36,6 +152,12 @@ export function nodeMenuItems(api: ViewerApi, area: ExplorerApi, picked: PickedN
       run: () =>
         void toggleVisible(api, { key: picked.key, depth: 0, label, kind, hasChildren: false, visible: true, node }),
     });
+  }
+  if (open && colorable(kind, node)) {
+    items.push({ id: 'color', label: 'Color…', icon: 'palette', run: () => open(colorItems(api, area, picked)) });
+  }
+  if (open && clippable(kind, node)) {
+    items.push({ id: 'clip', label: 'Add a clip…', icon: 'scissors', run: () => open(clipItems(api, picked)) });
   }
   if (api.describe('assistant.ask')) {
     items.push({

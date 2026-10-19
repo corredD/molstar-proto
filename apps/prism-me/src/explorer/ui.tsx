@@ -28,7 +28,7 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import type { Subscription } from 'rxjs';
 import { menuItems as stageMenuItems } from '@molstar/stage-tools-extension/menu';
-import { nodeMenuItems } from './menu.js';
+import { clipItems, clippable, colorable, colorItems, nodeMenuItems } from './menu.js';
 import type { ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
 import { ancestorKeys, Categories, type Parts, type Row, rowsOf, stableRows, toggleVisible } from './rows.js';
@@ -63,10 +63,12 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       } else {
         const p = area.pickedOf(request.loci);
         if (p) model.reveal(p);
-        items = nodeMenuItems(ctx.api, area, p);
-        // the cuts, as the stage has them, until Add clip (step 3b)
+        items = nodeMenuItems(ctx.api, area, p, (sub) => {
+          close = openContextMenu(root, { x: request.x, y: request.y }, sub);
+        });
+        // all the cuts' shapes shown or hidden, as the stage has it
         const cuts = await stageMenuItems(ctx.api, stage, request);
-        items.push(...cuts.filter((i) => /^(cut-|flip$|uncut$|guides$)/.test(i.id)));
+        items.push(...cuts.filter((i) => i.id === 'guides'));
       }
       close = openContextMenu(root, { x: request.x, y: request.y }, items);
     });
@@ -181,16 +183,32 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     area.highlight(lastingHighlight(row) ? row.node : undefined);
   };
   onCleanup(() => area.highlight(undefined));
+  // a row tool (the brush, the scissors): the row picked, its menu under the button
+  const tool = (row: Row, e: MouseEvent, which: 'color' | 'clip') => {
+    if (!row.node) return;
+    e.stopPropagation();
+    pick(row);
+    const button = e.currentTarget as HTMLElement;
+    const r = button.getBoundingClientRect();
+    const picked = { key: row.key, label: row.label, kind: row.kind, node: row.node };
+    openContextMenu(
+      rootOf(button),
+      { x: r.left, y: r.bottom },
+      which === 'color' ? colorItems(api, area, picked) : clipItems(api, picked),
+    );
+  };
   // a row's right-click: it is picked, and the menu of what it stands for opens at the pointer
   const menu = (row: Row, e: MouseEvent) => {
     if (!row.node) return;
     e.preventDefault();
     pick(row);
     const root = rootOf(e.currentTarget as Element);
+    const at = { x: e.clientX, y: e.clientY };
+    const picked = { key: row.key, label: row.label, kind: row.kind, node: row.node };
     openContextMenu(
       root,
-      { x: e.clientX, y: e.clientY },
-      nodeMenuItems(api, area, { key: row.key, label: row.label, kind: row.kind, node: row.node }),
+      at,
+      nodeMenuItems(api, area, picked, (sub) => openContextMenu(root, at, sub)),
     );
   };
 
@@ -232,6 +250,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
                   hovered={hovered.asReadonly}
                   scrollTo={model.scrollTo}
                   onMenu={menu}
+                  onTool={tool}
                   onToggleOpen={toggleOpen}
                   onPick={pick}
                   onHover={hover}
@@ -279,6 +298,7 @@ function TreeRow(props: {
   hovered: ReadonlyState<string | undefined>;
   scrollTo: ObservableState<string | undefined>;
   onMenu(row: Row, e: MouseEvent): void;
+  onTool(row: Row, e: MouseEvent, which: 'color' | 'clip'): void;
   onToggleOpen(key: string): void;
   onPick(row: Row): void;
   onHover(row: Row | undefined): void;
@@ -376,6 +396,24 @@ function TreeRow(props: {
         {row.label}
       </span>
       {row.count ? <span style={`flex: none; ${Muted}`}>{row.count}</span> : null}
+      {colorable(row.kind, row.node) ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Color all of it"
+          icon={<Icon name="paintbrush" />}
+          onClick={(e) => props.onTool(row, e, 'color')}
+        />
+      ) : null}
+      {clippable(row.kind, row.node) ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Add a clip"
+          icon={<Icon name="scissors" />}
+          onClick={(e) => props.onTool(row, e, 'clip')}
+        />
+      ) : null}
     </div>
   );
 }

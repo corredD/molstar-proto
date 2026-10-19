@@ -7,21 +7,10 @@
  */
 
 import { Color } from '@molstar/core/util/color';
-import {
-  Button,
-  Choices,
-  ColorPicker,
-  domView,
-  For,
-  Icon,
-  onCleanup,
-  Select,
-  Show,
-  TextInput,
-} from '@molstar/prism-ui';
+import { Button, Choices, ColorPicker, domView, For, Icon, Select, Show, TextInput } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
-import { Motion } from './controls.js';
+import { ClipControls, cutsFor, Motion } from './controls.js';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
@@ -452,12 +441,9 @@ function swatch(e: EntityInfo | undefined) {
   return Color.toHexStyle(e.color);
 }
 
-const sameIds = (a: readonly number[], b: readonly number[]) =>
-  a.length === b.length && [...a].sort((x, y) => x - y).every((x, i) => x === [...b].sort((p, q) => p - q)[i]);
-
 /** The cut of exactly these entities, if any */
 function cutFor(info: MesoscaleInfo, entities: readonly number[]): EntityCut | undefined {
-  return info.cuts.find((c) => sameIds(c.entities, entities))?.cut;
+  return cutsFor(info, entities)[0];
 }
 
 /** The clip button of a row: lit when the row's entities have a cut; opens its controls */
@@ -483,104 +469,3 @@ function ClipButton(props: {
  * A cut of a group's or an entity's particles, as the Mesoscale Explorer set one: its type, inside or outside, where it
  * is (x, y, z from the model's center, in % of its radius), turned about an axis, its size (in % of the diameter)
  */
-function ClipControls(props: {
-  area: MesoscaleApi;
-  info: ReadonlyState<MesoscaleInfo>;
-  entities: readonly number[];
-  selection: { group?: string; entities?: string };
-  depth: number;
-  toggleGuides?: () => void;
-}) {
-  const { area, info } = props;
-  const cut = mapState(info, (i) => cutFor(i, props.entities));
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => clearTimeout(timer));
-  const set = (values: Record<string, unknown>, delay = 0) => {
-    clearTimeout(timer);
-    timer = setTimeout(
-      () =>
-        void area.clip({
-          ...props.selection,
-          type: cut.value?.type ?? 'plane',
-          particles: info.value.particles,
-          ...values,
-        } as never),
-      delay,
-    );
-  };
-  const slider = (label: string, key: string, min: number, max: number, read: (c: EntityCut) => number) => (
-    <div style="display: flex; align-items: center; gap: var(--msp-space-2)">
-      <span style="width: 64px">{label}</span>
-      <input
-        type="range"
-        min={String(min)}
-        max={String(max)}
-        step="1"
-        style="flex: 1"
-        aria-label={label}
-        value={mapState(cut, (c) => String(c ? read(c) : 0))}
-        onInput={(e) => set({ [key]: Number((e.target as HTMLInputElement).value) }, 60)}
-      />
-      <span style={`${Muted}; width: 32px; text-align: right`}>{mapState(cut, (c) => (c ? String(read(c)) : ''))}</span>
-    </div>
-  );
-  return (
-    <div
-      style={`display: flex; flex-direction: column; gap: var(--msp-space-1); padding-left: calc(${props.depth} * var(--msp-space-3)); padding-bottom: var(--msp-space-2)`}
-    >
-      <Choices
-        choices={[
-          { id: 'none', label: 'None' },
-          { id: 'plane', label: 'Plane' },
-          { id: 'sphere', label: 'Sphere' },
-          { id: 'cube', label: 'Box' },
-          { id: 'cylinder', label: 'Cylinder' },
-        ]}
-        active={mapState(cut, (c) => c?.type ?? 'none')}
-        onPick={(type) => set({ type })}
-      />
-      <Show when={mapState(cut, (c) => !!c)}>
-        {() => (
-          <>
-            <Button
-              size="sm"
-              variant="ghost"
-              pressed={mapState(cut, (c) => !!c?.invert)}
-              onClick={() => set({ invert: !cut.value?.invert })}
-            >
-              Invert
-            </Button>
-            <Choices
-              label="Turn about"
-              choices={[
-                { id: 'x', label: 'X' },
-                { id: 'y', label: 'Y' },
-                { id: 'z', label: 'Z' },
-              ]}
-              active={mapState(cut, (c) => c?.axis ?? 'x')}
-              onPick={(axis) => set({ axis })}
-            />
-            {props.toggleGuides ? (
-              <Button size="sm" variant="ghost" icon={<Icon name="crop" />} onClick={props.toggleGuides}>
-                Show or hide the cuts (right-click one to move, turn or size it)
-              </Button>
-            ) : null}
-            {slider('Angle', 'angle', -180, 180, (c) => c.angle)}
-            {slider('Position X', 'x', -100, 100, (c) => c.position[0])}
-            {slider('Position Y', 'y', -100, 100, (c) => c.position[1])}
-            {slider('Position Z', 'z', -100, 100, (c) => c.position[2])}
-            <Show when={mapState(cut, (c) => c?.type !== 'plane')}>
-              {() => (
-                <>
-                  {slider('Size X', 'sx', 0, 100, (c) => c.scale[0])}
-                  {slider('Size Y', 'sy', 0, 100, (c) => c.scale[1])}
-                  {slider('Size Z', 'sz', 0, 100, (c) => c.scale[2])}
-                </>
-              )}
-            </Show>
-          </>
-        )}
-      </Show>
-    </div>
-  );
-}
