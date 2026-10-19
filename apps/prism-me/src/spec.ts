@@ -36,7 +36,15 @@ export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
       canvas: { background: '#101010', ...options.canvas },
       ui: { homeWhenEmpty: !loads, showRemoteStates: true, ...options.ui },
     },
-    ui: { ...base.ui, theme: base.ui?.theme ?? 'dark' },
+    ui: {
+      ...base.ui,
+      theme: base.ui?.theme ?? 'dark',
+      // The panels stay open beside the canvas: their sliders (cuts, slices, motion) are used while watching the scene
+      layout: {
+        ...base.ui?.layout,
+        docks: { ...base.ui?.layout?.docks, right: { ...base.ui?.layout?.docks?.right, pinned: true } },
+      },
+    },
     persist: {
       key: 'prism-me',
       preferences: webStore('local', { prefix: 'prism-me', version: PLUGIN_VERSION, budget: 64 * 1024 }),

@@ -147,6 +147,7 @@ function Entities(props: { area: MesoscaleApi; info: ReadonlyState<MesoscaleInfo
   const filter = observableState('');
   const mode = observableState<GraphicsMode>('quality');
   const open = observableState<ReadonlySet<string>>(new Set(['']));
+  const rowCache = new Map<string, Row>();
   const particles = () => info.value.particles;
   const toggleOpen = (path: string) => {
     const next = new Set(open.value);
@@ -206,7 +207,7 @@ function Entities(props: { area: MesoscaleApi; info: ReadonlyState<MesoscaleInfo
         aria-label="Filter entities"
         onInput={(v) => filter.set(v)}
       />
-      <For each={derive([info, filter.asReadonly], (i, f) => rowsOf(i, f))} by={(r) => r.key}>
+      <For each={derive([info, filter.asReadonly], (i, f) => rowsOf(i, f, rowCache))} by={(r) => r.key}>
         {(row) =>
           row.kind === 'group' ? (
             <GroupRow area={area} info={info} row={row} open={open.asReadonly} onToggleOpen={toggleOpen} />
@@ -223,8 +224,12 @@ type Row =
   | { kind: 'group'; key: string; group: MesoGroup; depth: number }
   | { kind: 'entity'; key: string; id: number; depth: number };
 
-/** The rows of the tree: the groups, then their entities, those the filter keeps (a filter opens every group) */
-function rowsOf(info: MesoscaleInfo, filter: string): Row[] {
+/**
+ * The rows of the tree: the groups, then their entities, those the filter keeps (a filter opens every group). A row is
+ * the same object as long as it stands for the same thing (`cache`): `For` makes a row anew when its item changes, which
+ * would drop its open controls (a cut's, a color picker) at every change of the model.
+ */
+function rowsOf(info: MesoscaleInfo, filter: string, cache: Map<string, Row>): Row[] {
   const f = filter.trim().toLowerCase();
   const byId = new Map(info.entities.map((e) => [e.id, e]));
   const keep = (id: number) => !f || (byId.get(id)?.name.toLowerCase().includes(f) ?? false);
@@ -232,13 +237,22 @@ function rowsOf(info: MesoscaleInfo, filter: string): Row[] {
   const walk = (g: MesoGroup, depth: number) => {
     for (const child of g.groups) {
       if (!groupEntities(child).some(keep)) continue;
-      rows.push({ kind: 'group', key: `g:${child.path}`, group: child, depth });
+      rows.push(same(cache, { kind: 'group', key: `g:${child.path}`, group: child, depth }));
       walk(child, depth + 1);
     }
-    for (const id of g.entities) if (keep(id)) rows.push({ kind: 'entity', key: `e:${id}`, id, depth });
+    for (const id of g.entities) if (keep(id)) rows.push(same(cache, { kind: 'entity', key: `e:${id}`, id, depth }));
   };
   walk(info.groups, 0);
   return rows;
+}
+
+/** The cached row of the same key, depth and members, else this one (cached) */
+function same(cache: Map<string, Row>, row: Row): Row {
+  const old = cache.get(row.key);
+  const members = (r: Row) => (r.kind === 'group' ? groupEntities(r.group).join(',') : String(r.id));
+  if (old && old.depth === row.depth && members(old) === members(row)) return old;
+  cache.set(row.key, row);
+  return row;
 }
 
 /** Hidden when one of its ancestors is folded */
