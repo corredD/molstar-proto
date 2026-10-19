@@ -35,6 +35,12 @@
     },
     {
       "path": "../../extensions/stage-tools"
+    },
+    {
+      "path": "../../packages/model"
+    },
+    {
+      "path": "../../packages/prism/ui"
     }
   ]
 }

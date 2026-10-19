@@ -26,11 +26,14 @@
     "@molstar/cryoet-extension": "workspace:*",
     "@molstar/graphics": "workspace:*",
     "@molstar/mesoscale-extension": "workspace:*",
+    "@molstar/model": "workspace:*",
     "@molstar/plugin": "workspace:*",
     "@molstar/prism-assistant": "workspace:*",
+    "@molstar/prism-ui": "workspace:*",
     "@molstar/prism-viewer": "workspace:*",
     "@molstar/prism-viewer-app": "workspace:*",
     "@molstar/stage-tools-extension": "workspace:*",
+    "rxjs": "catalog:",
     "tslib": "catalog:"
   },
   "devDependencies": {

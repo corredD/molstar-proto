@@ -628,12 +628,18 @@ importers:
       '@molstar/mesoscale-extension':
         specifier: workspace:*
         version: link:../../extensions/mesoscale
+      '@molstar/model':
+        specifier: workspace:*
+        version: link:../../packages/model
       '@molstar/plugin':
         specifier: workspace:*
         version: link:../../packages/plugin/core
       '@molstar/prism-assistant':
         specifier: workspace:*
         version: link:../../packages/prism/assistant
+      '@molstar/prism-ui':
+        specifier: workspace:*
+        version: link:../../packages/prism/ui
       '@molstar/prism-viewer':
         specifier: workspace:*
         version: link:../../packages/prism/viewer
@@ -643,6 +649,9 @@ importers:
       '@molstar/stage-tools-extension':
         specifier: workspace:*
         version: link:../../extensions/stage-tools
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
       tslib:
         specifier: 'catalog:'
         version: 2.8.1

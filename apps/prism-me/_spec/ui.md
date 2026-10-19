@@ -84,3 +84,15 @@ text**), **Hide**, **Remove**.
 ## 6. Not now
 
 Snapshots and stories, the sequence view, measurements, export: reachable from ⌘K, not on screen. Added when needed.
+
+## Status
+
+- Step 1 (2026-10-18): the panel and the tree. The Scene tab opens at start (`view.open` after creation: an
+  extension's tab registers after the shell starts, so `ui.layout.start` cannot name it); Prism's other tabs, the
+  sequence band, the animation and export buttons are hidden (`overrides`, `showSequence: false`). Tree: four
+  categories; a structure's entities and chains, a model's groups and entities, a list's targets, a volume's
+  representations; eyes, counts, filter; click picks (highlight), double click focuses. + Open: files, an entry,
+  examples, a session. Objects are named by their file. Properties: the picked row's name only (step 2). Code:
+  `src/explorer/` (`operations.ts`: the `explorer` area; `ui.tsx`: the panel), test `src/explorer/_test/`.
+- Not yet: the drag split between tree and properties; the tree following a pick in 3D; a color dot only where a
+  color was set.

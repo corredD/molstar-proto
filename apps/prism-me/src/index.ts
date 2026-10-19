@@ -10,6 +10,7 @@ import { setDebugMode, setTimingMode } from '@molstar/core/util/debug';
 import { LoadUrlParameters, parseSearch, runUrlLoads } from '@molstar/prism-viewer/features/loaders';
 import { createPrismViewer } from '@molstar/prism-viewer/page';
 import { modesFromUrl, unknownUrlParameters } from '@molstar/prism-viewer-app/url';
+import { SceneTab } from './explorer/ui.js';
 import { createMesoscaleExplorerSpec } from './spec.js';
 import { MesoscaleUrlParameters, toLoaderSearch } from './url.js';
 
@@ -25,6 +26,9 @@ async function main() {
   const search = toLoaderSearch(location.search);
   const viewer = await createPrismViewer({ target, spec: createMesoscaleExplorerSpec(search) });
   (window as unknown as { molstar: unknown }).molstar = { viewer, api: viewer.api };
+  // The explorer's panel open at start (_spec/ui.md §1); an extension's tab registers after the shell starts, so the
+  // spec's `ui.layout.start` cannot name it
+  void viewer.api.view.open({ tab: SceneTab });
 
   const unknown = unknownUrlParameters(location.search, [...LoadUrlParameters, ...MesoscaleUrlParameters]);
   if (unknown.length) console.info(`Ignored URL parameters (not known to the explorer): ${unknown.join(', ')}`);

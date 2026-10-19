@@ -10,7 +10,6 @@ import { FocusLoci as CameraFocusLoci } from '@molstar/plugin/behavior/dynamic/c
 import { PluginSpec } from '@molstar/plugin/spec';
 import { PLUGIN_VERSION } from '@molstar/plugin/version';
 import { assistant } from '@molstar/prism-assistant/spec';
-import { LoadUrlParameters, parseSearch } from '@molstar/prism-viewer/features/loaders';
 import { webStore } from '@molstar/prism-viewer/persist/stores';
 import type { PrismViewerSpec } from '@molstar/prism-viewer/spec';
 import { FullPrismViewerSpec } from '@molstar/prism-viewer-app/full-spec';
@@ -25,16 +24,17 @@ import { withMesoscaleLook } from './look.js';
  */
 export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
   const base = FullPrismViewerSpec();
-  const params = parseSearch(search);
-  const loads = LoadUrlParameters.some((p) => params.has(p)) || params.has('example');
   const options = optionsFromUrl(search);
   return {
     ...base,
     extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions],
+    // One panel (_spec/ui.md §1): the explorer's tree and properties; the others stay reachable from ⌘K
+    overrides: { ...base.overrides, ...Object.fromEntries(HiddenParts.map((id) => [id, null])) },
     options: {
       ...options,
       canvas: { background: '#101010', ...options.canvas },
-      ui: { homeWhenEmpty: !loads, showRemoteStates: true, ...options.ui },
+      // Not now (_spec/ui.md §6): the sequence band (its API stays)
+      ui: { homeWhenEmpty: false, showSequence: false, showRemoteStates: true, ...options.ui },
     },
     ui: {
       ...base.ui,
@@ -53,6 +53,21 @@ export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
     finalize: (spec) => withMesoscaleLook(withoutRightClickFocus(base.finalize ? base.finalize(spec) : spec)),
   };
 }
+
+/** The parts the explorer's panel replaces (_spec/ui.md §1): their operations stay, for ⌘K and the assistant */
+const HiddenParts = [
+  'core.tab.home',
+  'core.tab.structure',
+  'core.tab.selection',
+  'core.tab.history',
+  'core.tab.help',
+  'snapshots.tab.snapshots',
+  'state-tree.tab.tree',
+  'mesoscale.tab.entities',
+  'cryoet.tab.segmentations',
+  'animation.toolbar.animation',
+  'core.toolbar.export',
+];
 
 const B = ButtonsType;
 const M = ModifiersKeys;

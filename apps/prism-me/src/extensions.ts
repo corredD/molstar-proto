@@ -6,6 +6,7 @@
 
 import { CryoetExtension } from '@molstar/cryoet-extension/prism-viewer';
 import { MesoscaleExtension } from '@molstar/mesoscale-extension/prism-viewer';
+import { ExplorerExtension } from './explorer/extension.js';
 import type { LazyViewerExtension, ViewerExtension } from '@molstar/prism-viewer/spec';
 import { StageToolsExtension } from '@molstar/stage-tools-extension/prism-viewer';
 
@@ -17,4 +18,5 @@ export const MesoscaleExplorerExtensions: readonly (ViewerExtension | LazyViewer
   MesoscaleExtension,
   CryoetExtension,
   StageToolsExtension,
+  ExplorerExtension,
 ];
