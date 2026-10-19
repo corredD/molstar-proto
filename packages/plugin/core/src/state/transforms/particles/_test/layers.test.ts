@@ -49,6 +49,8 @@ async function setup() {
   return { plugin, repr };
 }
 
+const none = { entities: [] as number[], compartments: [] as number[], targets: [] as number[] };
+
 const layer = (l: Partial<ParticleLayerProps>): ParticleLayerProps => ({
   entities: [],
   compartments: [],
@@ -169,5 +171,42 @@ describe('ParticleRepresentation3DLayers on the target representation', () => {
       { overpaint: true, firstColor: [0, 0, 0, 0], instances: 1, transparent: [0] },
       { overpaint: true, firstColor: [0, 0, 0, 0], instances: 1, transparent: [255] },
     ]);
+  });
+});
+
+describe('ParticleRepresentation3DLayers cuts', () => {
+  it('lets a cut clip only its particles: the others ignore its clip object', async () => {
+    const { plugin, repr } = await setup();
+    await plugin
+      .build()
+      .to(repr)
+      .apply(ParticleRepresentation3DLayers, {
+        layers: [],
+        cuts: [
+          { ...none, targets: [0] },
+          { ...none, targets: [2] },
+        ],
+      })
+      .commit();
+    const clipping = (repr.obj as SO.Particle.Representation3D).data.repr.state.clipping!;
+    // particles 0 and 2 (target 0) ignore cut 2 (bit 2), particle 3 (target 2) cut 1 (bit 1), particle 1 both (3)
+    const masks = clipping.layers
+      .map((l) => [indices(l.loci), l.groups] as [number[], number])
+      .sort((a, b) => a[0][0] - b[0][0]);
+    expect(masks).toEqual([
+      [[0, 2], 2],
+      [[1], 3],
+      [[3], 1],
+    ]);
+  });
+
+  it('has no clipping layers without cuts', async () => {
+    const { plugin, repr } = await setup();
+    await plugin
+      .build()
+      .to(repr)
+      .apply(ParticleRepresentation3DLayers, { layers: [layer({ targets: [0], visible: false })] })
+      .commit();
+    expect((repr.obj as SO.Particle.Representation3D).data.repr.state.clipping!.layers).toEqual([]);
   });
 });

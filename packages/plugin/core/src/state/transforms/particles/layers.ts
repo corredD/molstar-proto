@@ -7,6 +7,8 @@
 import { StateTransformer } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { OrderedSet } from '@molstar/core/data/int';
+import { Clipping } from '@molstar/graphics/theme/clipping';
 import { Emissive } from '@molstar/graphics/theme/emissive';
 import { Overpaint } from '@molstar/graphics/theme/overpaint';
 import { Transparency } from '@molstar/graphics/theme/transparency';
@@ -33,6 +35,17 @@ const LayerParams = {
 };
 export type ParticleLayerProps = PD.Values<typeof LayerParams>;
 
+/**
+ * A cut of some particles: the representation's clip object of the cut's index (its first clip objects are the cuts,
+ * in order) applies to them only; the other particles ignore it (Mol*'s clipping groups). Further clip objects (a cut
+ * of the whole representation) apply to every particle.
+ */
+const CutParams = { ...SelectorParams };
+export type ParticleCutProps = PD.Values<typeof CutParams>;
+
+/** At most this many cuts: a particle's clipping groups are 8 bits */
+export const MaxParticleCuts = 8;
+
 const describe = (l: ParticleLayerProps) =>
   [
     l.visible ? undefined : 'hidden',
@@ -42,6 +55,36 @@ const describe = (l: ParticleLayerProps) =>
   ]
     .filter((s) => s)
     .join(', ') || 'No change';
+
+/**
+ * The clipping groups of `cuts`: each particle ignores the clip objects of the cuts it is not in (as one layer per
+ * distinct set of ignored objects)
+ */
+export function particleCutClipping(cuts: ReadonlyArray<ParticleCutProps>, particles: ParticleList): Clipping {
+  const n = Math.min(cuts.length, MaxParticleCuts);
+  if (n === 0) return Clipping.Empty;
+  const all = (1 << n) - 1;
+  const ignored = new Uint8Array(particles.count).fill(all);
+  for (let i = 0; i < n; ++i) {
+    const bit = 1 << i;
+    OrderedSet.forEach(Particle.selectLoci(particles, cuts[i]).indices, (j) => {
+      ignored[j] &= ~bit;
+    });
+  }
+  const byMask = new Map<number, number[]>();
+  for (let j = 0; j < ignored.length; ++j) {
+    const m = ignored[j];
+    if (m === 0) continue;
+    let list = byMask.get(m);
+    if (!list) byMask.set(m, (list = []));
+    list.push(j);
+  }
+  const layers: Clipping.Layer[] = [];
+  for (const [m, list] of byMask) {
+    layers.push({ loci: Particle.Loci(particles, OrderedSet.ofSortedArray(list)), groups: Clipping.Groups.create(m) });
+  }
+  return { kind: 'element-loci', layers } as Clipping;
+}
 
 /** The overpaint, transparency and emissive of `layers` over `particles`, later layers over earlier ones */
 export function particleLayerState(layers: ReadonlyArray<ParticleLayerProps>, particles: ParticleList) {
@@ -63,7 +106,12 @@ export function particleLayerState(layers: ReadonlyArray<ParticleLayerProps>, pa
   };
 }
 
-const Initial = { overpaint: Overpaint.Empty, transparency: Transparency.Empty, emissive: Emissive.Empty };
+const Initial = {
+  overpaint: Overpaint.Empty,
+  transparency: Transparency.Empty,
+  emissive: Emissive.Empty,
+  clipping: Clipping.Empty,
+};
 
 export { ParticleRepresentation3DLayers };
 type ParticleRepresentation3DLayers = typeof ParticleRepresentation3DLayers;
@@ -81,6 +129,14 @@ const ParticleRepresentation3DLayers = PluginStateTransform.BuiltIn({
   to: SO.Particle.Representation3DState,
   params: () => ({
     layers: PD.ObjectList(LayerParams, describe, { defaultValue: [] }),
+    cuts: PD.ObjectList<ParticleCutProps>(
+      CutParams,
+      (c) => `Cut of ${c.entities.length + c.compartments.length + c.targets.length} groups`,
+      {
+        defaultValue: [],
+        description: 'Cuts of some particles: the first clip objects of the representation, one per cut.',
+      },
+    ),
   }),
 })({
   canAutoUpdate() {
@@ -88,7 +144,10 @@ const ParticleRepresentation3DLayers = PluginStateTransform.BuiltIn({
   },
   apply({ a, params }) {
     const particles = a.data.sourceData;
-    const state = particleLayerState(params.layers, particles);
+    const state = {
+      ...particleLayerState(params.layers, particles),
+      clipping: particleCutClipping(params.cuts ?? [], particles),
+    };
     return new SO.Particle.Representation3DState(
       { state, initialState: Initial, info: particles, repr: a.data.repr },
       { label: `Layers (${params.layers.length})` },
@@ -97,13 +156,17 @@ const ParticleRepresentation3DLayers = PluginStateTransform.BuiltIn({
   update({ a, b, newParams }) {
     if (a.data.repr !== b.data.repr) return StateTransformer.UpdateResult.Recreate;
     const particles = a.data.sourceData;
-    const state = particleLayerState(newParams.layers, particles);
+    const state = {
+      ...particleLayerState(newParams.layers, particles),
+      clipping: particleCutClipping(newParams.cuts ?? [], particles),
+    };
     const old = b.data.state;
     if (
       b.data.info === particles &&
       Overpaint.areEqual(old.overpaint!, state.overpaint) &&
       Transparency.areEqual(old.transparency!, state.transparency) &&
-      Emissive.areEqual(old.emissive!, state.emissive)
+      Emissive.areEqual(old.emissive!, state.emissive) &&
+      Clipping.areEqual(old.clipping!, state.clipping)
     ) {
       return StateTransformer.UpdateResult.Unchanged;
     }
