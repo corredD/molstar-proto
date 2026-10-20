@@ -21,7 +21,7 @@ import { createEmptyOverpaint } from '../overpaint-data.js';
 import { createEmptyTransparency } from '../transparency-data.js';
 import type { TextureMeshValues } from '@molstar/graphics/gl/renderable/texture-mesh';
 import { calculateTransformBoundingSphere } from '@molstar/graphics/gl/renderable/util';
-import { createNullTexture, type Texture } from '@molstar/graphics/gl/texture';
+import { createNullTexture, isNullTexture, type Texture } from '@molstar/graphics/gl/texture';
 import { Vec2, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
 import { createEmptyClipping } from '../clipping-data.js';
 import { NullLocation } from '@molstar/model/model/location';
@@ -125,6 +125,12 @@ export namespace TextureMesh {
       return this.textures[this.index];
     }
 
+    /** Forgets the textures (the mesh filled into the vertex arena instead): of the previous context, not destroyed */
+    dropTextures() {
+      this.textures = [];
+      this.index = 0;
+    }
+
     set(vertex: Texture, group: Texture, normal: Texture) {
       this.textures[this.index] = Object.assign(this.textures[this.index] || {}, {
         vertex,
@@ -173,6 +179,14 @@ export namespace TextureMesh {
       ValueCell.update(textureMesh.groupTexture, groupTexture);
       ValueCell.update(textureMesh.normalTexture, normalTexture);
       textureMesh.doubleBuffer.set(vertexTexture, groupTexture, normalTexture);
+      // last filled into the vertex arena (before a switch to WebGL, or emptied): the textures now; a surface kept in
+      // the arena is reused (`getChunks`) or destroyed with the mesh
+      if (textureMesh.isoChunks.ref.value) {
+        ValueCell.update(textureMesh.isoChunks, false);
+        ValueCell.update(textureMesh.isoTable, undefined);
+        ValueCell.update(textureMesh.isoPositions, undefined);
+        ValueCell.update(textureMesh.isoNormals, undefined);
+      }
       Sphere3D.copy(textureMesh.boundingSphere, boundingSphere);
       return textureMesh;
     } else {
@@ -221,6 +235,14 @@ export namespace TextureMesh {
       ValueCell.updateIfChanged(mesh.vertexCountCell, vertexCount);
       ValueCell.updateIfChanged(mesh.drawIndirect, drawIndirect);
       Sphere3D.copy(mesh.boundingSphere, boundingSphere);
+      // last filled into textures (before a switch from WebGL): of the previous context, not destroyed (it does it)
+      if (!isNullTexture(mesh.vertexTexture.ref.value)) {
+        const nullTexture = createNullTexture();
+        ValueCell.update(mesh.vertexTexture, nullTexture);
+        ValueCell.update(mesh.groupTexture, nullTexture);
+        ValueCell.update(mesh.normalTexture, nullTexture);
+        mesh.doubleBuffer.dropTextures();
+      }
     } else {
       const nullTexture = createNullTexture();
       mesh = create(
@@ -289,6 +311,18 @@ export namespace TextureMesh {
       vertices: vertices.array as Float32Array,
       normals: normals.array as Float32Array,
     };
+  }
+
+  /**
+   * The vertex count of a mesh of the vertex arena, read back after its extraction, into its draw arguments: drawn
+   * directly with it from then on, until the next extraction draws indirectly again (`createChunked`). An indirect draw
+   * costs far more GPU time than a direct one in Chrome; with hundreds of surfaces, several passes a frame, they took
+   * most of it (3j3q, 1356 surfaces: 105–540 ms a frame against 25 ms drawn directly). `vertexCount` stays the upper
+   * bound (the stride of vertex-instance data).
+   */
+  export function setDrawnVertexCount(textureMesh: TextureMesh, count: number) {
+    const args = textureMesh.drawIndirect.ref.value;
+    if (args && args.count !== count) ValueCell.update(textureMesh.drawIndirect, { ...args, count });
   }
 
   /** Updates the vertex count (an upper bound with `drawIndirect`) after the textures were resized */

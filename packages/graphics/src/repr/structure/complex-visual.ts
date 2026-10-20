@@ -16,7 +16,7 @@ import {
   createRenderObject,
   type GraphicsRenderObject,
   type RenderObjectValues,
-  hasForeignTextures,
+  hasForeignResources,
 } from '@molstar/graphics/gl/render-object';
 import { PickingId } from '@molstar/graphics/geo/geometry/picking';
 import { type Loci, isEveryLoci, EmptyLoci } from '@molstar/model/model/loci';
@@ -60,6 +60,7 @@ import type { Wiggle } from '@molstar/graphics/theme/wiggle';
 import { Points } from '@molstar/graphics/geo/geometry/points/points';
 import { Image } from '@molstar/graphics/geo/geometry/image/image';
 import { getGeometrySignatures, type SignatureContext, type SignatureDefines } from '@molstar/graphics/repr/signatures';
+import { isWholeStructureLoci } from './visual/util/loci-index.js';
 
 export interface ComplexVisual<P extends StructureParams> extends Visual<Structure, P> {}
 
@@ -170,9 +171,9 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
 
     setUpdateState(updateState, newProps, currentProps, newTheme, currentTheme, newStructure, currentStructure);
 
-    // after a backend switch: textures of the previous context are rendered or computed again, geometry relying on what
-    // the new context lacks (`GeometryUtils.isCompatible`) is created again, for the new context
-    if (graphics && renderObject && hasForeignTextures(renderObject, graphics)) updateState.createGeometry = true;
+    // after a backend switch or restore: textures and buffers of the previous context are rendered or computed again,
+    // geometry relying on what the new context lacks (`GeometryUtils.isCompatible`) is created again, for the new context
+    if (graphics && renderObject && hasForeignResources(renderObject, graphics)) updateState.createGeometry = true;
     if (graphics && geometry && builder.geometryUtils.isCompatible?.(geometry, graphics) === false) {
       updateState.createGeometry = true;
     }
@@ -290,7 +291,7 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
     if (isEveryLoci(loci)) return true;
     if (Structure.isLoci(loci) && Structure.areRootsEquivalent(loci.structure, currentStructure)) return true;
     if (StructureElement.Loci.is(loci) && Structure.areRootsEquivalent(loci.structure, currentStructure)) {
-      if (StructureElement.Loci.isWholeStructure(loci)) return true;
+      if (isWholeStructureLoci(loci)) return true;
     }
     return false;
   }

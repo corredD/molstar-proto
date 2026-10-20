@@ -367,6 +367,8 @@ The `preferWebgl1` option and the `prefer-webgl1` URL parameter of the Viewer an
 `graphicsBackend: 'webgl1'` (`graphics-backend=webgl1`) asks for WebGL1. The default is `graphicsBackend: 'auto'`
 (WebGPU where it has the features of WebGL2, else WebGL2, then WebGL1), which does not read
 `PluginConfig.General.PreferWebGl1`. The Prism viewer keeps `prefer-webgl1` as `graphics-backend=webgl1`.
+`PluginFeatureDetection.preferWebGl1` is removed (iOS and Safari 15.1–15.3 no longer default to WebGL1);
+`PluginConfig.General.PreferWebGl1` is off by default and still selects WebGL1 (the `webgl` set) when set.
 
 ## Picking results
 
@@ -1071,3 +1073,30 @@ MVS-loaded transform versions (`VirtualStateBuilder`) are `jsonHash` of the para
 load is redone without `subtreeMemo`; `subtreeMemo` is used only with it (`MolstarLoadingContext.reset` for the MVS
 loader).
 
+## Mesh primitives are typed arrays
+
+`Primitive` (`@molstar/graphics/geo/primitive/primitive`) has `vertices: Float32Array`, `normals: Float32Array` and
+`indices: Uint32Array` instead of `ArrayLike<number>`, so `MeshBuilder.addPrimitive` reads one array kind per vertex.
+Every built-in producer (`PrimitiveBuilder`, `Polyhedron`, the shapes in `geo/primitive/`) already returned them; a
+primitive made of plain arrays wraps them (`new Float32Array(vertices)`, `new Uint32Array(indices)`).
+
+## Cage vertices and mesh fan/strip vertices are Float32Array
+
+`Cage.vertices` (`@molstar/graphics/geo/primitive/cage`) is a `Float32Array` instead of `ArrayLike<number>`, and the
+`vertices` of `MeshBuilder.addTriangleStrip`, `addTriangleFan` and `addTriangleFanWithNormal` are `Float32Array`, so
+their loops read one array kind through `Vec3.fromFloat32Array`. `createCage` still takes any array and copies a
+non-Float32Array one; a cage object literal goes through `createCage`, and fan or strip vertices are wrapped
+(`new Float32Array(vertices)`).
+
+## Unit props are read-only; units know their parent
+
+`unit.props` (`@molstar/model/model/structure`, `Unit.Atomic`, `Unit.Spheres`, `Unit.Gaussians`) is typed `Readonly`:
+the static props are shared by symmetry copies and filled only by the units' own getters
+(`packages/model/_spec/unit.md` §1). Code that wrote a prop (`unit.props.bonds = ...`) passes it to `Unit.create`
+instead. `Unit.Base.parent` is new: the root unit a child was made from (§2). `remapModel` drops `rings` and
+`resonance` when it drops `bonds` (§3).
+
+## Empty sequence alignment module removed
+
+`@molstar/model/model/sequence/alignment` was an empty module (as `mol-model/sequence/alignment.ts` was in v5) and is
+gone; `align` and `AlignSequences` are in `@molstar/model/model/sequence/alignment/alignment` and `.../sequence`.

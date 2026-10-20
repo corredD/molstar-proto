@@ -118,10 +118,12 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
     }
   }
 
+  /** updates one after another, see `Representation.createUpdateQueue` */
+  const serialize = Representation.createUpdateQueue();
   function createOrUpdate(props: Partial<PD.Values<P>> = {}, data?: D) {
     if (builder.modifyProps) props = builder.modifyProps(props);
 
-    return Task.create('ShapeRepresentation.create', async (runtime) => {
+    const task = Task.create('ShapeRepresentation.create', async (runtime) => {
       const newProps = Object.assign(currentProps, props);
       const shape = data ? await getShape(runtime, data, newProps, _shape) : undefined;
 
@@ -228,6 +230,7 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
       // increment version
       updated.next(version++);
     });
+    return serialize(task);
   }
 
   function eachInstance(loci: Loci, shape: Shape, apply: (interval: Interval) => boolean) {

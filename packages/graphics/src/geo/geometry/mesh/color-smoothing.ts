@@ -2,6 +2,7 @@
  * Copyright (c) 2021-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author David Sehnal <david.sehnal@gmail.com>
  */
 
 import { setColorType } from '../color-data.js';
@@ -15,9 +16,8 @@ import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import type { Texture } from '@molstar/graphics/gl/texture';
 import { Box3D, type Sphere3D } from '@molstar/core/math/geometry';
 import { lerp } from '@molstar/core/math/interpolate';
-import { Vec2, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Vec2, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
 import { getVolumeTexture2dLayout } from '@molstar/graphics/repr/volume/util';
-import { getFittingResolution } from '../texture-mesh/color-smoothing.js';
 import { ValueCell } from '@molstar/core/util';
 
 interface ColorSmoothingInput {
@@ -40,6 +40,376 @@ export type ColorSmoothingOptions = {
   stride: number;
 };
 
+/**
+ * Grow-only scratch for the accumulators of `calcMeshColorSmoothing` (`data` with up to 4 values per cell, `count`),
+ * all-zero between calls: the normalization clears what the splat wrote. The calculation is synchronous, so one set
+ * serves every call; grids above `MaxScratchCells` (20 MB) get their own arrays so a rare large grid is not retained.
+ */
+const MaxScratchCells = 1 << 20;
+const Scratch = { data: new Float32Array(0), count: new Float32Array(0), dirty: false };
+
+function getAccumulators(cellCount: number, itemSize: number) {
+  if (cellCount > MaxScratchCells)
+    return { data: new Float32Array(cellCount * itemSize), count: new Float32Array(cellCount) };
+  if (Scratch.count.length < cellCount) {
+    const n = Math.min(MaxScratchCells, Math.max(cellCount, 2 * Scratch.count.length));
+    Scratch.data = new Float32Array(n * 4);
+    Scratch.count = new Float32Array(n);
+  } else if (Scratch.dirty) {
+    // a previous call threw before clearing
+    Scratch.data.fill(0);
+    Scratch.count.fill(0);
+  }
+  Scratch.dirty = true;
+  return { data: Scratch.data, count: Scratch.count };
+}
+
+function releaseAccumulators(data: Float32Array) {
+  if (data === Scratch.data) Scratch.dirty = false;
+}
+
+function getTextureSide(gridDim: Vec3) {
+  const { width, height } = getVolumeTexture2dLayout(gridDim);
+  return Math.max(width, height);
+}
+
+/**
+ * Grid of the smoothing: `box` expanded by `1 + resolution`, two extra cells per axis, on the cell lattice of
+ * `latticeBox` (the bounding-sphere box) expanded alike. A cell then has the same position and value, up to rounding,
+ * as on the grid of `latticeBox`: its value depends only on the vertices within 2 cells of it, which are splatted
+ * wherever the grid ends, and the vertices, which are what is interpolated, lie in `box` (as far as `latticeBox` holds
+ * them). With `box` equal to `latticeBox`, this is the grid of `latticeBox` (as `getGridDim` in
+ * `texture-mesh/color-smoothing.ts`). Vertex animation (wiggle, tumble) gets no slack beyond the padding, as on the
+ * faces where the vertices touch `latticeBox`.
+ */
+function getGrid(latticeBox: Box3D, box: Box3D, resolution: number) {
+  const pad = 1 + resolution;
+  const scaleFactor = 1 / resolution;
+  const min = Vec3();
+  const gridDim = Vec3();
+  for (let k = 0; k < 3; ++k) {
+    const latticeMin = latticeBox.min[k] - pad;
+    min[k] = latticeMin + Math.floor((box.min[k] - latticeBox.min[k]) * scaleFactor) * resolution;
+    gridDim[k] = Math.ceil((box.max[k] + pad) * scaleFactor - min[k] * scaleFactor) + 2;
+  }
+  return { min, gridDim };
+}
+
+const tmpTransform = Mat4();
+const tmpBox = Box3D();
+
+/**
+ * Box of the vertices (of all instances for instance types, from the transformed corners of the untransformed box
+ * `vertexBox`), within `bound`; `bound` when there are no vertices
+ */
+function getVertexBox(
+  input: ColorSmoothingInput,
+  vertexBox: Box3D | undefined,
+  instanceCount: number,
+  isInstanceType: boolean,
+  bound: Box3D,
+) {
+  if (!vertexBox) return Box3D.clone(bound);
+
+  let box = Box3D.clone(vertexBox);
+  if (isInstanceType) {
+    const instances = Box3D.setEmpty(Box3D());
+    for (let i = 0; i < instanceCount; ++i) {
+      Mat4.fromArray(tmpTransform, input.transformBuffer, i * 16);
+      Box3D.addBox3D(instances, Box3D.transform(tmpBox, box, tmpTransform));
+    }
+    box = instances;
+  }
+
+  // both boxes hold the vertices: take the smaller extent per axis (an empty intersection means `bound` misses
+  // vertices, where the former grid cut them off too)
+  Box3D.intersect(box, box, bound);
+  return Box3D.isEmpty(box) ? Box3D.clone(bound) : box;
+}
+
+/** Splat radius, in cells */
+const SplatRadius = 2;
+
+/**
+ * Cells each instance's vertices can splat into or are read from, 6 numbers per instance (min x, y, z and the
+ * exclusive max x, y, z), not clamped to the grid: the transformed corners of `vertexBox` on the grid, the splat
+ * radius beyond, and one more cell each side, since the corners and the vertices are transformed separately and may
+ * round differently
+ */
+function getInstanceCells(
+  input: ColorSmoothingInput,
+  vertexBox: Box3D,
+  instanceCount: number,
+  isInstanceType: boolean,
+  min: Vec3,
+  scaleFactor: number,
+) {
+  const cells = new Float64Array(instanceCount * 6);
+  for (let i = 0; i < instanceCount; ++i) {
+    let box = vertexBox;
+    if (isInstanceType) {
+      Mat4.fromArray(tmpTransform, input.transformBuffer, i * 16);
+      box = Box3D.transform(tmpBox, vertexBox, tmpTransform);
+    }
+    for (let k = 0; k < 3; ++k) {
+      cells[i * 6 + k] = Math.floor((box.min[k] - min[k]) * scaleFactor) - SplatRadius - 1;
+      cells[i * 6 + 3 + k] = Math.floor((box.max[k] - min[k]) * scaleFactor) + SplatRadius + 3;
+    }
+  }
+  return cells;
+}
+
+/** Whether a vertex of a group in `groupBuffer` reads past the colors of its instance */
+function hasGroupOutOfRange(groupBuffer: Float32Array, vertexCount: number, groupCount: number) {
+  for (let j = 0; j < vertexCount; ++j) {
+    const g = groupBuffer[j];
+    if (!(g >= 0 && g < groupCount)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether any value of instance row `row` is non-zero, read 4 bytes at a time through `words` (a view of `colors`)
+ * when given; a row (partly) beyond `colors` counts as non-zero
+ */
+function isRowReached(
+  colors: Uint8Array,
+  words: Uint32Array | undefined,
+  row: number,
+  groupCount: number,
+  itemSize: number,
+) {
+  const start = row * groupCount * itemSize;
+  const end = start + groupCount * itemSize;
+  if (!(start >= 0 && end <= colors.length)) return true;
+  let k = start;
+  if (words) {
+    for (; k < end && k % 4 !== 0; ++k) if (colors[k] !== 0) return true;
+    const wordEnd = end >> 2;
+    for (let w = k >> 2; w < wordEnd; ++w) if (words[w] !== 0) return true;
+    k = Math.max(k, wordEnd * 4);
+  }
+  for (; k < end; ++k) if (colors[k] !== 0) return true;
+  return false;
+}
+
+/** Whether the cells of instance `i` overlap the box at `o` of `boxes` (6 numbers per box, as `cells`) */
+function overlaps(cells: Float64Array, i: number, boxes: Float64Array, o: number) {
+  const c = i * 6;
+  return (
+    cells[c] < boxes[o + 3] &&
+    cells[c + 3] > boxes[o] &&
+    cells[c + 1] < boxes[o + 4] &&
+    cells[c + 4] > boxes[o + 1] &&
+    cells[c + 2] < boxes[o + 5] &&
+    cells[c + 5] > boxes[o + 2]
+  );
+}
+
+/** Above this many reached instances, the others are tested against the region only, not each reached instance */
+const MaxReachedTests = 256;
+
+/**
+ * The instances to splat (perf-audit 13/P1, `.v6/perf-audit/13-large-scale.md`): an instance whose layer is non-zero
+ * ("reached"), and an instance whose cells overlap the cells of a reached one. The region, where the accumulators
+ * are, is the box of the reached instances' cells, clamped to the grid.
+ *
+ * Exact: only cells of reached instances can become non-zero, and every vertex that adds to such a cell is splatted
+ * in the former order, so these cells are bit-identical to splatting every instance; every other cell gets zeros or
+ * nothing, so it is 0, as before. A reached instance with non-finite cells (a degenerate transform) splats every
+ * instance over the whole grid, as before.
+ *
+ * `read` (the CPU path only): the instances to interpolate, those splatted and those whose vertices are not within the
+ * grid (they read cells of other slices, as before); the others read only cells of their own, which are 0.
+ */
+function getSplatInstances(
+  input: ColorSmoothingInput,
+  vertexBox: Box3D,
+  instanceCount: number,
+  isInstanceType: boolean,
+  instanceRow: (i: number) => number,
+  gridDim: Vec3,
+  min: Vec3,
+  scaleFactor: number,
+  withRead: boolean,
+) {
+  const { groupCount, groupBuffer, vertexCount, itemSize } = input;
+  const colors = input.colorData.array;
+  const cells = getInstanceCells(input, vertexBox, instanceCount, isInstanceType, min, scaleFactor);
+  const allReached = hasGroupOutOfRange(groupBuffer, vertexCount, groupCount);
+  const words =
+    colors.byteOffset % 4 === 0 ? new Uint32Array(colors.buffer, colors.byteOffset, colors.length >> 2) : undefined;
+
+  const splat = new Uint8Array(instanceCount);
+  const reached: number[] = [];
+  let finite = true;
+  for (let i = 0; i < instanceCount; ++i) {
+    if (!allReached && !isRowReached(colors, words, instanceRow(i), groupCount, itemSize)) continue;
+    splat[i] = 1;
+    reached.push(i);
+    for (let k = 0; k < 6; ++k) if (!Number.isFinite(cells[i * 6 + k])) finite = false;
+  }
+
+  const region = new Float64Array([0, 0, 0, gridDim[0], gridDim[1], gridDim[2]]);
+  if (!finite) {
+    splat.fill(1);
+    return { region, splat, read: withRead ? splat : undefined };
+  }
+  if (reached.length === 0) return { region: undefined, splat, read: withRead ? splat : undefined };
+
+  region.set([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
+  for (const i of reached) {
+    for (let k = 0; k < 3; ++k) {
+      region[k] = Math.min(region[k], cells[i * 6 + k]);
+      region[3 + k] = Math.max(region[3 + k], cells[i * 6 + 3 + k]);
+    }
+  }
+  for (let k = 0; k < 3; ++k) {
+    region[k] = Math.max(0, region[k]);
+    region[3 + k] = Math.min(gridDim[k], region[3 + k]);
+  }
+  const isEmpty = !(region[0] < region[3] && region[1] < region[4] && region[2] < region[5]);
+  if (isEmpty) return { region: undefined, splat: splat.fill(0), read: withRead ? splat : undefined };
+
+  // the neighbours: the region first, then the reached instances (unless there are many, the region alone)
+  const testEach = reached.length <= MaxReachedTests;
+  for (let i = 0; i < instanceCount; ++i) {
+    if (splat[i] || !overlaps(cells, i, region, 0)) continue;
+    if (!testEach) {
+      splat[i] = 1;
+      continue;
+    }
+    for (const r of reached) {
+      if (overlaps(cells, i, cells, r * 6)) {
+        splat[i] = 1;
+        break;
+      }
+    }
+  }
+  if (!withRead) return { region, splat, read: undefined };
+
+  const read = new Uint8Array(instanceCount);
+  for (let i = 0; i < instanceCount; ++i) {
+    // the cells read (the trilinear neighbours) are the instance's cells without the splat radius
+    const o = i * 6;
+    const r = SplatRadius;
+    const inGrid =
+      cells[o] + r >= 0 &&
+      cells[o + 1] + r >= 0 &&
+      cells[o + 2] + r >= 0 &&
+      cells[o + 3] - r <= gridDim[0] &&
+      cells[o + 4] - r <= gridDim[1] &&
+      cells[o + 5] - r <= gridDim[2];
+    read[i] = splat[i] || !inGrid ? 1 : 0;
+  }
+  return { region, splat, read };
+}
+
+interface SplatContext {
+  positionBuffer: Float32Array;
+  transformBuffer: Float32Array;
+  groupBuffer: Float32Array;
+  colors: Uint8Array;
+  isInstanceType: boolean;
+  groupCount: number;
+  itemSize: number;
+  min: Vec3;
+  scaleFactor: number;
+  /** the cells of the accumulators (min x, y, z, exclusive max x, y, z), x fastest */
+  region: Float64Array;
+  data: Float32Array;
+  count: Float32Array;
+  v: Vec3;
+}
+
+/**
+ * Splats vertex `j` of instance `i` (colors of row `instanceIndex`) into the accumulators within the region. A
+ * function of its own, called per vertex, so that V8 optimizes it early: as part of the caller, which runs once per
+ * smoothing, the loops ran on on-stack-replaced code (a cold one-chain overpaint on 1tup ×864 at `high`: 42 → 31 ms,
+ * 50 → 25 MB of JS heap allocated)
+ */
+function splatVertex(ctx: SplatContext, i: number, instanceIndex: number, j: number) {
+  const { colors, itemSize, region, data, count, v } = ctx;
+  Vec3.fromArray(v, ctx.positionBuffer, j * 3);
+  if (ctx.isInstanceType) Vec3.transformMat4Offset(v, v, ctx.transformBuffer, 0, 0, i * 16);
+  Vec3.sub(v, v, ctx.min);
+  Vec3.scale(v, v, ctx.scaleFactor);
+  const vx = v[0];
+  const vy = v[1];
+  const vz = v[2];
+
+  // vertex mapped to grid
+  const x = Math.floor(vx);
+  const y = Math.floor(vy);
+  const z = Math.floor(vz);
+
+  const p = SplatRadius;
+  const p2 = p * p;
+  const rx0 = region[0];
+  const ry0 = region[1];
+  const rz0 = region[2];
+  const rx = region[3] - rx0;
+  const ry = region[4] - ry0;
+
+  // Extents of grid to consider for this atom, within the region
+  const begX = Math.max(rx0, x - p);
+  const begY = Math.max(ry0, y - p);
+  const begZ = Math.max(rz0, z - p);
+
+  // Add two to these points:
+  // - x, y, z are floor'd values so this ensures coverage
+  // - these are loop limits (exclusive)
+  const endX = Math.min(region[3], x + p + 2);
+  const endY = Math.min(region[4], y + p + 2);
+  const endZ = Math.min(region[5], z + p + 2);
+  if (begX >= endX || begY >= endY || begZ >= endZ) return;
+
+  // group colors
+  const ci = (instanceIndex * ctx.groupCount + ctx.groupBuffer[j]) * itemSize;
+  const c0 = colors[ci];
+  const c1 = itemSize === 4 ? colors[ci + 1] : 0;
+  const c2 = itemSize === 4 ? colors[ci + 2] : 0;
+  const c3 = itemSize === 4 ? colors[ci + 3] : 0;
+
+  // z/y/x with x innermost; each cell gets at most one contribution per vertex, so the per-cell summation order is
+  // unchanged. `dz2 > p2` and `dy2 + dz2 > p2` only skip cells whose distance below exceeds p as well (rounded addition
+  // of non-negative terms is monotone), and `d2` keeps the original association so `d` is bit-identical; cells at
+  // `s == 0` (`d2 > p2` or `d == p`) would add 0, which changes nothing for finite colors. Skipping them also keeps the
+  // scratch clean: every write makes `count` > 0, so the normalization clears it, even for a non-finite color (an
+  // out-of-range group or instance).
+  for (let zi = begZ; zi < endZ; ++zi) {
+    const dz = zi - vz;
+    const dz2 = dz * dz;
+    if (dz2 > p2) continue;
+    const zo = (zi - rz0) * ry;
+    for (let yi = begY; yi < endY; ++yi) {
+      const dy = yi - vy;
+      const dy2 = dy * dy;
+      if (dy2 + dz2 > p2) continue;
+      const yo = (zo + yi - ry0) * rx - rx0;
+      for (let xi = begX; xi < endX; ++xi) {
+        const dx = xi - vx;
+        const d2 = dx * dx + dy2 + dz2;
+        if (d2 > p2) continue;
+
+        const s = p - Math.sqrt(d2);
+        if (s === 0) continue;
+        const c = yo + xi;
+        if (itemSize === 4) {
+          const index = c * 4;
+          data[index] += c0 * s;
+          data[index + 1] += c1 * s;
+          data[index + 2] += c2 * s;
+          data[index + 3] += c3 * s;
+        } else {
+          data[c] += c0 * s;
+        }
+        count[c] += s;
+      }
+    }
+  }
+}
+
 export function calcMeshColorSmoothing(
   input: ColorSmoothingInput,
   options: ColorSmoothingOptions,
@@ -53,105 +423,115 @@ export function calcMeshColorSmoothing(
   const { stride } = options;
 
   const isInstanceType = colorType.endsWith('Instance');
-  const box = Box3D.fromSphere3D(Box3D(), isInstanceType ? input.boundingSphere : input.invariantBoundingSphere);
-  // the grid is uploaded into a texture with a graphics context
-  const resolution = graphics
-    ? getFittingResolution(box, options.resolution, graphics.resources.limits.maxTextureSize, (gridDim) => {
-        const { width, height } = getVolumeTexture2dLayout(gridDim);
-        return Math.max(width, height);
-      })
-    : options.resolution;
-  const pad = 1 + resolution;
-  const expandedBox = Box3D.expand(Box3D(), box, Vec3.create(pad, pad, pad));
-
+  const instanceCount = isInstanceType ? input.instanceCount : 1;
+  const sphereBox = Box3D.fromSphere3D(Box3D(), isInstanceType ? input.boundingSphere : input.invariantBoundingSphere);
+  const vertexBox = vertexCount > 0 ? Box3D.fromPositionArray(Box3D(), positionBuffer, vertexCount) : undefined;
+  const box = getVertexBox(input, vertexBox, instanceCount, isInstanceType, sphereBox);
+  // the grid is uploaded into a texture with a graphics context: coarsen as `getFittingResolution`, on this grid
+  let resolution = options.resolution;
+  if (graphics) {
+    const { maxTextureSize } = graphics.resources.limits;
+    while (getTextureSide(getGrid(sphereBox, box, resolution).gridDim) > maxTextureSize) resolution *= 1.1;
+  }
+  // the grid spans every instance, also where the layer is zero: the shaders read it without a bounds check
+  // (`texture3dFrom2dLinear` in WebGL and WebGPU), so a point beyond a smaller grid would read another slice
+  const { min, gridDim } = getGrid(sphereBox, box, resolution);
   const scaleFactor = 1 / resolution;
-  const scaledBox = Box3D.scale(Box3D(), expandedBox, scaleFactor);
-  const gridDim = Box3D.size(Vec3(), scaledBox);
-  Vec3.ceil(gridDim, gridDim);
-  Vec3.add(gridDim, gridDim, Vec3.create(2, 2, 2));
-  const { min } = expandedBox;
 
-  const [xn, yn] = gridDim;
   const { width, height } = getVolumeTexture2dLayout(gridDim);
-
-  const data = new Float32Array(width * height * itemSize);
-  const count = new Float32Array(width * height);
 
   const grid = new Uint8Array(width * height * itemSize);
   const textureImage: TextureImage<Uint8Array> = { array: grid, width, height, filter: 'linear' };
 
-  const instanceCount = isInstanceType ? input.instanceCount : 1;
   const colors = input.colorData.array;
 
-  function getIndex(x: number, y: number, z: number) {
-    const column = Math.floor(((z * xn) % width) / xn);
-    const row = Math.floor((z * xn) / width);
-    const px = column * xn + x;
-    return itemSize * (row * yn * width + y * width + px);
-  }
+  const zOff = getSliceOffsets(gridDim, width);
 
-  const p = 2;
-  const [dimX, dimY, dimZ] = gridDim;
-  const v = Vec3();
+  // - use reordered index for access from GPU
+  // - use serial index for access from CPU
+  const instanceRow = (i: number) => (graphics && isInstanceType ? instanceBuffer[i] : i);
+  const instances = vertexBox
+    ? getSplatInstances(
+        input,
+        vertexBox,
+        instanceCount,
+        isInstanceType,
+        instanceRow,
+        gridDim,
+        min,
+        scaleFactor,
+        !graphics,
+      )
+    : undefined;
 
-  for (let i = 0; i < instanceCount; ++i) {
-    // - use reordered index for access from GPU
-    // - use serial index for access from CPU
-    const instanceIndex = graphics && isInstanceType ? instanceBuffer[i] : i;
-    for (let j = 0; j < vertexCount; j += stride) {
-      Vec3.fromArray(v, positionBuffer, j * 3);
-      if (isInstanceType) Vec3.transformMat4Offset(v, v, transformBuffer, 0, 0, i * 16);
-      Vec3.sub(v, v, min);
-      Vec3.scale(v, v, scaleFactor);
-      const [vx, vy, vz] = v;
+  /** the instances splatted (perf-audit 13/P1) */
+  let splatCount = 0;
+  if (instances?.region) {
+    const { region, splat } = instances;
+    // the accumulators span the region only, x fastest
+    const [rx0, ry0, rz0] = region;
+    const rx = region[3] - rx0;
+    const ry = region[4] - ry0;
+    const rz = region[5] - rz0;
+    const cellCount = rx * ry * rz;
+    const { data, count } = getAccumulators(cellCount, itemSize);
 
-      // vertex mapped to grid
-      const x = Math.floor(vx);
-      const y = Math.floor(vy);
-      const z = Math.floor(vz);
+    const ctx: SplatContext = {
+      positionBuffer,
+      transformBuffer,
+      groupBuffer,
+      colors,
+      isInstanceType,
+      groupCount,
+      itemSize,
+      min,
+      scaleFactor,
+      region,
+      data,
+      count,
+      v: Vec3(),
+    };
+    for (let i = 0; i < instanceCount; ++i) {
+      if (!splat[i]) continue;
+      splatCount += 1;
+      const instanceIndex = instanceRow(i);
+      for (let j = 0; j < vertexCount; j += stride) splatVertex(ctx, i, instanceIndex, j);
+    }
 
-      // group colors
-      const ci = (instanceIndex * groupCount + groupBuffer[j]) * itemSize;
-
-      // Extents of grid to consider for this atom
-      const begX = Math.max(0, x - p);
-      const begY = Math.max(0, y - p);
-      const begZ = Math.max(0, z - p);
-
-      // Add two to these points:
-      // - x, y, z are floor'd values so this ensures coverage
-      // - these are loop limits (exclusive)
-      const endX = Math.min(dimX, x + p + 2);
-      const endY = Math.min(dimY, y + p + 2);
-      const endZ = Math.min(dimZ, z + p + 2);
-
-      for (let xi = begX; xi < endX; ++xi) {
-        const dx = xi - vx;
-        for (let yi = begY; yi < endY; ++yi) {
-          const dy = yi - vy;
-          for (let zi = begZ; zi < endZ; ++zi) {
-            const dz = zi - vz;
-            const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            if (d > p) continue;
-
-            const s = p - d;
-            const index = getIndex(xi, yi, zi);
-            for (let k = 0; k < itemSize; ++k) {
-              data[index + k] += colors[ci + k] * s;
-            }
-            count[index / itemSize] += s;
+    const rxEnd = region[3];
+    const ryEnd = region[4];
+    const rzEnd = region[5];
+    // cells without a contribution stay 0 in `grid` (formerly `Math.round(0 / 0)`, also 0 in a Uint8Array); a cell
+    // with `data` > 0 has `count` > 0, so clearing the counted cells leaves the accumulators all-zero for the next call
+    for (let zi = rz0; zi < rzEnd; ++zi) {
+      for (let yi = ry0; yi < ryEnd; ++yi) {
+        const l0 = ((zi - rz0) * ry + yi - ry0) * rx - rx0;
+        const g0 = zOff[zi] + yi * width;
+        for (let xi = rx0; xi < rxEnd; ++xi) {
+          const l = l0 + xi;
+          const c = count[l];
+          if (c === 0) continue;
+          const g = g0 + xi;
+          if (itemSize === 4) {
+            const ls = l * 4;
+            const gs = g * 4;
+            grid[gs] = Math.round(data[ls] / c);
+            grid[gs + 1] = Math.round(data[ls + 1] / c);
+            grid[gs + 2] = Math.round(data[ls + 2] / c);
+            grid[gs + 3] = Math.round(data[ls + 3] / c);
+            data[ls] = 0;
+            data[ls + 1] = 0;
+            data[ls + 2] = 0;
+            data[ls + 3] = 0;
+          } else {
+            grid[g] = Math.round(data[l] / c);
+            data[l] = 0;
           }
+          count[l] = 0;
         }
       }
     }
-  }
-
-  for (let i = 0, il = count.length; i < il; ++i) {
-    const is = i * itemSize;
-    const c = count[i];
-    for (let k = 0; k < itemSize; ++k) {
-      grid[is + k] = Math.round(data[is + k] / c);
-    }
+    releaseAccumulators(data);
   }
 
   const gridTexDim = Vec2.create(width, height);
@@ -165,7 +545,7 @@ export function calcMeshColorSmoothing(
     }
     texture.load(textureImage);
 
-    return { kind: 'volume' as const, texture, gridTexDim, gridDim, gridTransform, type };
+    return { kind: 'volume' as const, texture, gridTexDim, gridDim, gridTransform, type, splatCount };
   } else {
     const interpolated = getTrilinearlyInterpolated({
       vertexCount,
@@ -180,15 +560,32 @@ export function calcMeshColorSmoothing(
       vertexStride: 3,
       colorStride: itemSize,
       outputStride: itemSize,
+      instances: instances?.read,
     });
 
     return {
       kind: 'vertex' as const,
+      splatCount,
       texture: interpolated,
       texDim: Vec2.create(interpolated.width, interpolated.height),
       type: isInstanceType ? 'vertexInstance' : 'vertex',
     };
   }
+}
+
+/**
+ * Offset of slice `z` in the 2d layout of a grid (`getVolumeTexture2dLayout`), in cells: cell (x, y, z) is at
+ * `offsets[z] + y * width + x`
+ */
+function getSliceOffsets(gridDim: Vec3, width: number) {
+  const [xn, yn, zn] = gridDim;
+  const offsets = new Float64Array(zn);
+  for (let z = 0; z < zn; ++z) {
+    const column = Math.floor(((z * xn) % width) / xn);
+    const row = Math.floor((z * xn) / width);
+    offsets[z] = row * yn * width + column * xn;
+  }
+  return offsets;
 }
 
 //
@@ -207,6 +604,8 @@ interface ColorInterpolationInput {
   colorStride: 1 | 3 | 4;
   outputStride: 1 | 3 | 4;
   itemOffset?: 0 | 1 | 2 | 3;
+  /** the instances to interpolate (non-zero), the others stay 0; all when not given */
+  instances?: Uint8Array;
 }
 
 export function getTrilinearlyInterpolated(input: ColorInterpolationInput): TextureImage<Uint8Array> {
@@ -233,16 +632,17 @@ export function getTrilinearlyInterpolated(input: ColorInterpolationInput): Text
   const image = createTextureImage(Math.max(1, instanceCount * vertexCount), outputStride, Uint8Array);
   const { array } = image;
 
-  const [xn, yn] = gridDim;
+  const [xn, yn, zn] = gridDim;
   const width = gridTexDim[0];
   const min = Vec3.fromArray(Vec3(), gridTransform, 0);
   const scaleFactor = gridTransform[3];
 
+  const zOff = getSliceOffsets(gridDim, width);
   function getIndex(x: number, y: number, z: number) {
-    const column = Math.floor(((z * xn) % width) / xn);
-    const row = Math.floor((z * xn) / width);
-    const px = column * xn + x;
-    return colorStride * (row * yn * width + y * width + px);
+    // vertices outside the grid (not expected) keep their former, layout-derived index
+    const zo =
+      z >= 0 && z < zn ? zOff[z] : Math.floor(((z * xn) % width) / xn) * xn + Math.floor((z * xn) / width) * yn * width;
+    return colorStride * (zo + y * width + x);
   }
 
   const v = Vec3();
@@ -250,7 +650,9 @@ export function getTrilinearlyInterpolated(input: ColorInterpolationInput): Text
   const v1 = Vec3();
   const vd = Vec3();
 
+  const { instances } = input;
   for (let i = 0; i < instanceCount; ++i) {
+    if (instances && !instances[i]) continue;
     for (let j = 0; j < vertexCount; ++j) {
       Vec3.fromArray(v, positionBuffer, j * vertexStride);
       if (isInstanceType) Vec3.transformMat4Offset(v, v, transformBuffer, 0, 0, i * 16);

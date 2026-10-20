@@ -417,6 +417,7 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
     const args = (values.drawIndirect as ValueCell<DrawIndirect | undefined> | undefined)?.ref.value;
     if (!args) return undefined;
     if (indexBuffer) notSupported('indirect draws of indexed geometry');
+    if (args.count !== undefined) return args;
     if (indirectWritten?.args !== args || indirectWritten.instanceCount !== instanceCount) {
       args.buffer.write(new Uint32Array([instanceCount]), args.byteOffset + 4);
       indirectWritten = { args, instanceCount };
@@ -658,7 +659,10 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
 
       const pipeline = ctx.getPipeline(program, drawMode);
       // compiling in the background, drawn once ready
-      if (!pipeline) return;
+      if (!pipeline) {
+        stats.skippedDraws += 1;
+        return;
+      }
       const state = ctx.getPassState();
       const pass = state.encoder;
       state.setPipeline(pipeline);
@@ -705,7 +709,9 @@ export function createWebGPURenderItem<T extends ProgramVariant>(
         const object = getBindGroup(program, 2, objectBlock, textures, drawBlock);
         state.setBindGroup(2, object.group, object.offsets);
         const indirect = getDrawIndirect();
-        if (indirect) pass.drawIndirect(asWebGPUStorageBuffer(indirect.buffer).getGPUBuffer(), indirect.byteOffset);
+        if (indirect?.count !== undefined) pass.draw(indirect.count, instanceCount);
+        else if (indirect)
+          pass.drawIndirect(asWebGPUStorageBuffer(indirect.buffer).getGPUBuffer(), indirect.byteOffset);
         else if (indexBuffer) pass.drawIndexed(drawCount, instanceCount);
         else pass.draw(drawCount, instanceCount);
         stats.calls.drawInstanced += 1;

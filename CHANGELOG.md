@@ -10,6 +10,15 @@ here.
 
 ## [Unreleased]
 
+- Fix state builders that remove a node writing into the state's tree before they commit: a node added under, updated or
+  depended on by a node whose ref hashes like the removed one's (common for generated refs) appeared in the current
+  tree, and the next update could fail with "Cannot read properties of undefined (reading 'ref')". Also keep the nodes
+  added to the root in the same builder after the root was cleared
+- Kinemage: a `@group` ends the previous group's `@subgroup` (its lists were put in that subgroup and hidden with its
+  group), and only the animate groups after the first start hidden, not every group after it
+- Fix highlighting and selecting cross-link restraints (`CrossLinkRestraint.isLoci` tested the tag of interactions)
+- Fix `Bond.remapLoci`, which kept the old structure on the remapped bond locations, and `Bond.areLocationsEqual`, which
+  compared structures by label
 - MVS: an animated color with no start value (no `start`, and no value at the target, e.g. a key its color map does not
   have) leaves the property as it is again, instead of failing the load with "Missing start value for color
   interpolation" (a regression of split coloring)
@@ -52,6 +61,18 @@ here.
 - MessagePack: extension types, JSON's rules for non-finite numbers (nil), large integers (float 64) and `undefined`
   object values (left out, so BinaryCIF files no longer carry a nil `mask` key), and checks of the lengths in untrusted
   input
+- Fix state flags (e.g. visibility) set while a state builder is outstanding being lost from the state tree, and so from
+  saved sessions, undo and `setSnapshot`; a builder can be edited again after `getTree()`
+- Fix models 2..N of multi-model mmCIF/PDB files having no assemblies, spacegroup or `_molstar_bond_site` bonds, and
+  attaching a dynamic custom model property to one model disposing another model's assets
+- Fix accessible surface area values on assemblies, symmetry mates and multi-model structures
+- Fix the vertex groups of volume isosurfaces with floodfill `inside`: the cell ids were read through the filled values,
+  so ids below the iso value inside the surface became twice the iso value (wrong cell picked and colored)
+- Fix order-of-rendering issue with Kinemage reader to render objects described later in the file on top of earlier ones
+- Removing Kinemage GUI buttons for masters that have no object linked to them
+- Fixed Kinemage handling of files with multiple same-named subgroups so it behaves like KiNG
+- Sets the viewer background to black when loading a Kinemage, to match the default color scheme
+- Handle Kinemage triangle normals separately from ribbon normals so that each renders as expected
 - Add a wireframe visual to `vtp`, `ply` and `obj` shapes
 - Particles: the target representation applies overpaint, transparency, emissive, substance and clipping layers to its
   instances (it applied only visibility, alpha and pickability), also to the render objects it makes later

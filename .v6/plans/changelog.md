@@ -64,6 +64,9 @@ the [API change ledger](breaking-v6-changes.md).
   (`renderer.graphicsBackend`, `graphics-backend`, `auto` by default) and keeps v5's `prefer-webgl1` (`webgl1`)
 - [Breaking] The `preferWebgl1` option and `prefer-webgl1` URL parameter of the Viewer and the Mesoscale Explorer are
   removed: `graphicsBackend: 'webgl1'` (`graphics-backend=webgl1`)
+- [Breaking] `PluginFeatureDetection.preferWebGl1` is removed: iOS and Safari 15.1–15.3 no longer default to WebGL1
+  (WebGL2 works there in current versions); `PluginConfig.General.PreferWebGl1` is off by default and still selects
+  WebGL1 when set
 - Graphics backend switching at runtime, keeping the scene (render objects, markers, camera, props):
   `Canvas3DContext.setBackend` (a new canvas element takes the place of the old one), `Canvas3D.contextChanged`,
   `Representation.setGraphics`; in the plugin `PluginContext.setGraphicsBackends` and a Graphics Backend setting in the
@@ -77,6 +80,9 @@ the [API change ledger](breaking-v6-changes.md).
   types another, and the instance granularity selects the marker and layer data's index at runtime (the object uniform
   `uInstanceGranularity`), so changing it compiles nothing; custom renderables and shaders follow, see the
   [API change ledger](breaking-v6-changes.md)
+- Gaussian surfaces on WebGPU choose the GPU or the CPU by their size instead of the resolution: large structures are
+  computed on the GPU at coarse resolutions too (on an integrated GPU 30k atoms at 2 Å in 11 ms instead of 30 ms),
+  small ones on the CPU, where they are faster; WebGL keeps the resolution cutoff
 - Fix images and direct volumes with instance granularity: markers were read per group instance, and direct volumes
   ignored overpaint
 
@@ -829,3 +835,15 @@ the [API change ledger](breaking-v6-changes.md).
   frames' memos, and color fades repeated with the same maps share one plan
 - MVS tree validation checks known value types without io-ts contexts (a sound fast path; `decode` still reports the
   errors): 1 s → 0.25 s on the 118 MB story
+
+## State
+
+- Fix: a node below a Null object that is evaluated again because a dependency changed no longer fails the update
+  (`Cannot set properties of undefined`) when it has children added in the same update; they get cells
+- Fix: a dependency with no cell (below a Null object, or deleted while a dependency derived from params kept its
+  dependent) no longer fails the update or leaves the dependent with an object made from a disposed one: the dependent
+  is evaluated again and is in error (`Unresolved dependency.`) until a cell of that ref exists, then it is linked and
+  evaluated again, in the same update
+- Fix: a dependency that has no object after this pass (below a new Null object or an error, or evaluated below a
+  Null object) no longer stalls its dependent and fails the whole update (`Unresolved dependency: … (waiting on: …)`);
+  the dependent alone is in error
