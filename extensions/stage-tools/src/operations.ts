@@ -6,6 +6,10 @@
 
 import { Sphere3D } from '@molstar/core/math/geometry';
 import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { Color } from '@molstar/core/util/color';
+import { ColorNames } from '@molstar/core/util/color/names';
+import { setSubtreeVisibility } from '@molstar/plugin/behavior/static/state';
+import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
 import type { StateObjectCell } from '@molstar/core/state';
 import { Clip } from '@molstar/core/util/clip';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -35,6 +39,7 @@ import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import { StageLabel, type StageLabelProps } from './label.js';
 import { type Cut, type CutShape, clipObjectOf, cutOf, defaultCut, flipCut, type ScreenFrame } from './cuts.js';
 import { type CutGuideData, CutGuides, isCutGuideData } from './guide.js';
 
@@ -376,6 +381,111 @@ export class StageApi extends ApiArea {
     },
   });
 
+  /** The labels of the stage, following the state tree while watched: a read for views */
+  labelsState(): ReadonlyState<readonly LabelInfo[]> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => labelsOf({ plugin }),
+      () => [plugin.state.data.events.changed, plugin.state.data.events.cell.stateUpdated],
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  readonly label = this.operation({
+    id: 'stage.label',
+    title: 'Add a label',
+    params: {
+      text: PD.Text('Label', { description: 'What it says (plain text)' }),
+      target: PD.Text('', { description: 'The object it names, by state ref (its place: in front of it)' }),
+      x: OptionalParam(PD.Numeric(0, {}, { description: 'Where (Å); absent: in front of its target' })),
+      y: OptionalParam(PD.Numeric(0)),
+      z: OptionalParam(PD.Numeric(0)),
+      depth: OptionalParam(PD.Numeric(0, { min: 0 }, { description: 'Brought toward the camera by this much (Å)' })),
+      size: OptionalParam(PD.Numeric(4, { min: 0.5, max: 100 }, { description: 'Its height (Å)' })),
+      color: OptionalParam(PD.Text('white', { description: 'A CSS color' })),
+      node: PD.Text('', { description: "The explorer's row it is listed under (its key)" }),
+    },
+    async run(values, ctx) {
+      const v = values as typeof values &
+        Partial<Record<'x' | 'y' | 'z' | 'depth' | 'size', number>> & { color?: string };
+      const t = stageTargets(ctx).find((x) => x.ref === v.target);
+      const bounds = t ? boundsOf(ctx, t) : undefined;
+      if (v.x === undefined && !bounds) {
+        return ApiResult.fail('invalid', 'Where?', 'Give x, y, z, or a target (a structure, particle list or volume).');
+      }
+      const radius = Math.max(bounds?.radius ?? 10, 1);
+      const position = Vec3.create(v.x ?? bounds!.center[0], v.y ?? bounds!.center[1], v.z ?? bounds!.center[2]);
+      const color = v.color ? cssColor(v.color) : Color(0xffffff);
+      if (color === undefined) return ApiResult.fail('invalid', `'${v.color}' is not a color.`);
+      const b = ctx.plugin.state.data.build();
+      const label = b.toRoot().apply(StageLabel, {
+        text: v.text || 'Label',
+        position,
+        depth: v.depth ?? (v.x === undefined ? radius : 0),
+        size: v.size ?? Math.min(100, Math.max(2, radius / 12)),
+        color,
+        target: v.target,
+        node: v.node,
+      });
+      label.apply(ShapeRepresentation3D, {});
+      await b.commit();
+      return ApiResult.ok(`Added the label "${v.text}".`, { nodes: [label.ref] });
+    },
+  });
+
+  readonly editLabel = this.operation({
+    id: 'stage.editLabel',
+    title: 'Change a label',
+    params: {
+      label: PD.Text('', { description: 'The label, by state ref (stage labels lists them)' }),
+      text: OptionalParam(PD.Text('', { description: 'What it says' })),
+      size: OptionalParam(PD.Numeric(4, { min: 0.5, max: 100 }, { description: 'Its height (Å)' })),
+      color: OptionalParam(PD.Text('white', { description: 'A CSS color' })),
+      x: OptionalParam(PD.Numeric(0, {}, { description: 'Where (Å)' })),
+      y: OptionalParam(PD.Numeric(0)),
+      z: OptionalParam(PD.Numeric(0)),
+      visible: OptionalParam(PD.Boolean(true)),
+      remove: PD.Boolean(false, { description: 'Remove it' }),
+    },
+    async run(values, ctx) {
+      const v = values as typeof values &
+        Partial<Record<'x' | 'y' | 'z' | 'size', number>> & { text?: string; color?: string; visible?: boolean };
+      const cell = ctx.plugin.state.data.cells.get(v.label);
+      if (!cell || cell.transform.transformer !== StageLabel) {
+        return ApiResult.fail('not-found', `There is no label '${v.label}'.`);
+      }
+      const name = (cell.transform.params as StageLabelProps).text;
+      if (v.remove) {
+        await ctx.plugin.state.data.build().delete(v.label).commit();
+        return ApiResult.ok(`Removed the label "${name}".`, { nodes: [v.label] });
+      }
+      const color = v.color ? cssColor(v.color) : undefined;
+      if (v.color && color === undefined) return ApiResult.fail('invalid', `'${v.color}' is not a color.`);
+      const old = cell.transform.params as StageLabelProps;
+      const next: StageLabelProps = {
+        ...old,
+        ...(v.text !== undefined ? { text: v.text } : {}),
+        ...(v.size !== undefined ? { size: v.size } : {}),
+        ...(color !== undefined ? { color } : {}),
+        position:
+          v.x !== undefined || v.y !== undefined || v.z !== undefined
+            ? Vec3.create(v.x ?? old.position[0], v.y ?? old.position[1], v.z ?? old.position[2])
+            : old.position,
+      };
+      const nodes: string[] = [];
+      if (JSON.stringify(next) !== JSON.stringify(old)) {
+        await ctx.plugin.state.data.build().to(cell).update(next).commit();
+        nodes.push(v.label);
+      }
+      if (v.visible !== undefined && v.visible === !!cell.state.isHidden) {
+        setSubtreeVisibility(ctx.plugin.state.data, v.label, !v.visible);
+        nodes.push(v.label);
+      }
+      if (!nodes.length) return ApiResult.already('The label is already so.');
+      return ApiResult.ok(`Changed the label "${next.text}".`, { nodes });
+    },
+  });
+
   readonly guides = this.operation({
     id: 'stage.guides',
     title: 'Show or hide the cuts',
@@ -558,6 +668,45 @@ function representationCells(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): S
   }
   const v = p.volume.hierarchy.current.volumes.find((x) => x.cell.transform.ref === t.ref);
   return v ? v.representations.map((r) => r.cell) : [];
+}
+
+/** A label of the stage, as views list it */
+export interface LabelInfo {
+  readonly ref: string;
+  readonly text: string;
+  readonly size: number;
+  readonly color: number;
+  readonly position: readonly [number, number, number];
+  readonly target: string;
+  readonly node: string;
+  readonly visible: boolean;
+}
+
+function labelsOf(ctx: Pick<ApiContext, 'plugin'>): LabelInfo[] {
+  const out: LabelInfo[] = [];
+  for (const cell of ctx.plugin.state.data.cells.values()) {
+    if (cell.transform.transformer !== StageLabel) continue;
+    const p = cell.transform.params as StageLabelProps;
+    out.push({
+      ref: cell.transform.ref,
+      text: p.text,
+      size: p.size,
+      color: p.color,
+      position: [p.position[0], p.position[1], p.position[2]],
+      target: p.target,
+      node: p.node,
+      visible: !cell.state.isHidden,
+    });
+  }
+  return out;
+}
+
+/** A CSS color name or #rrggbb */
+function cssColor(text: string): Color | undefined {
+  const c = text.trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(c)) return Color(parseInt(c.slice(1), 16));
+  const named = (ColorNames as Record<string, Color | undefined>)[c];
+  return named;
 }
 
 function boundsOf(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): Sphere3D | undefined {

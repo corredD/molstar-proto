@@ -8,6 +8,7 @@ import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import { groupEntities, type MesoGroup } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import type { LabelInfo } from '@molstar/stage-tools-extension/operations';
 import type { Category, NodeRef, SceneObject } from './operations.js';
 
 // The rows of the explorer's tree (_spec/ui.md §3), flat, from the scene's objects and the parts the mesoscale and
@@ -47,12 +48,35 @@ export function rowsOf(
   parts: Parts,
   open: ReadonlySet<string>,
   filter: string,
+  labels: readonly LabelInfo[] = [],
 ): Row[] {
   const f = filter.trim().toLowerCase();
   const rows: Row[] = [];
-  const push = (r: Row, children: () => void) => {
+  // the labels under the row they were made at (after its own children)
+  const byNode = new Map<string, LabelInfo[]>();
+  for (const l of labels) {
+    const list = byNode.get(l.node);
+    if (list) list.push(l);
+    else byNode.set(l.node, [l]);
+  }
+  const push = (r0: Row, children: () => void) => {
+    const own = byNode.get(r0.key);
+    const r = own && !r0.hasChildren ? { ...r0, hasChildren: true } : r0;
     rows.push(r);
-    if (r.hasChildren && (open.has(r.key) || f)) children();
+    if (!r.hasChildren || !(open.has(r.key) || f)) return;
+    // its own children (none when only its labels made it a parent)
+    if (r0.hasChildren) children();
+    for (const l of own ?? []) {
+      rows.push({
+        key: `l:${l.ref}`,
+        depth: r.depth + 1,
+        label: l.text,
+        kind: 'label',
+        visible: l.visible,
+        hasChildren: false,
+        node: { ref: l.ref },
+      });
+    }
   };
   for (const c of Categories) {
     const items = objects.filter((o) => o.category === c.id);
@@ -232,6 +256,8 @@ export function toggleVisible(api: ViewerApi, row: Row) {
       return api.run('volume.visibility', { node: row.representation!, visible });
     case 'mesh':
       return api.run('cryoet.mesh', { mesh: node.ref, visible });
+    case 'label':
+      return api.run('stage.editLabel', { label: node.ref, visible });
   }
 }
 
@@ -239,8 +265,13 @@ export function toggleVisible(api: ViewerApi, row: Row) {
 const AllOpen: ReadonlySet<string> = { has: () => true } as unknown as ReadonlySet<string>;
 
 /** The keys of the rows above `key` (its category, its object, its groups), to unfold the way to it; none if absent */
-export function ancestorKeys(objects: readonly SceneObject[], parts: Parts, key: string): string[] | undefined {
-  const rows = rowsOf(objects, parts, AllOpen, '');
+export function ancestorKeys(
+  objects: readonly SceneObject[],
+  parts: Parts,
+  key: string,
+  labels: readonly LabelInfo[] = [],
+): string[] | undefined {
+  const rows = rowsOf(objects, parts, AllOpen, '', labels);
   const i = rows.findIndex((r) => r.key === key);
   if (i < 0) return undefined;
   const out: string[] = [];

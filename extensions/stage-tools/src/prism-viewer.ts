@@ -29,7 +29,8 @@ export const StageSkill: ViewerSkill = {
     'cut away), or a sphere or a box, a window on its near side; one cut per object, a new one replaces the old.',
     'adjust_cut moves it along its normal (offset −1 to 1 of the radius), sizes a sphere or box (size, in radii) and',
     'flips it (a plane cuts the other side; a sphere or box keeps its inside). remove_cut removes it; get_cuts lists',
-    'them; show_cuts shows or hides their translucent shapes.',
+    'them; show_cuts shows or hides their translucent shapes. add_label puts plain text in front of an object',
+    '(target: its state ref), change_label edits its text, size, color or place, hides or removes it.',
   ].join('\n'),
   tools: [
     { id: 'cut_open', operation: 'stage.cut', description: 'Cuts a structure, particle list or volume open.' },
@@ -37,6 +38,8 @@ export const StageSkill: ViewerSkill = {
     { id: 'remove_cut', operation: 'stage.uncut', description: 'Removes a cut.' },
     { id: 'get_cuts', operation: 'stage.cuts', description: 'Lists the cuts.' },
     { id: 'show_cuts', operation: 'stage.guides', description: 'Shows or hides the shapes of the cuts.' },
+    { id: 'add_label', operation: 'stage.label', description: 'Adds a plain-text label in front of an object.' },
+    { id: 'change_label', operation: 'stage.editLabel', description: 'Changes, hides or removes a label.' },
   ],
 };
 
@@ -67,6 +70,8 @@ export const StageToolsExtension: ViewerExtension = {
         action: 'Apply',
       }),
       operationCommand(api, s.cuts, { category, icon: 'info', alias: ['cuts', 'clips'] }),
+      operationCommand(api, s.label, { category: 'Labels', icon: 'type', alias: ['label', 'add label', 'annotate'] }),
+      operationCommand(api, s.editLabel, { category: 'Labels', icon: 'type', alias: ['edit label', 'remove label'] }),
     ];
   },
   skills: [StageSkill],

@@ -140,8 +140,13 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
   aid), remove; an object's clip, its side; a part's, its type and placement. The right-click: Color…, Add a clip…. A
   structure's entities and chains, meshes and slices have no scissors yet (their clipping is Prism's, by groups). The
   scissors icon is added to Prism UI's icon set.
-- Next: 3b Add clip (several per node, each a row with its own menu), 3c Add label (plain text), 3d Move and Rotate (at
-  the level of the selection; a part's move spiked first).
+- Step 3c (2026-10-19): labels, plain text. The right-click's Add a label puts one in front of the node (its sphere's
+  center, brought toward the camera by its radius; sized to its object), named after it, and picks its row: it is listed
+  under the row it was made at, its text edited in its properties (as typed), its size and color, removed. A label's
+  right-click: Focus, Edit the text, Hide, Remove; picked in 3D, its row. A state transform of the stage tools
+  (`StageLabel`: saved in a session, undone), drawn as text by a shape representation under it; `stage.label`,
+  `stage.editLabel`, `labelsState`. Its move comes with 3d.
+- Next: 3d Move and Rotate (at the level of the selection; a part's move spiked first; clips and labels follow).
 - Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a
   structure entity's or chain's eye (Prism hides representations, not parts); a color dot only where a color was set;
   the mesh section repeats the mesh's eye and name.

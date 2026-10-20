@@ -28,6 +28,7 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import type { Subscription } from 'rxjs';
 import { menuItems as stageMenuItems } from '@molstar/stage-tools-extension/menu';
+import type { LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { clipItems, clippable, colorable, colorItems, nodeMenuItems } from './menu.js';
 import type { ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
@@ -43,7 +44,7 @@ export const SceneTab = 'explorer.tab.scene';
 export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const area = ctx.api.explorer;
   if (!area) return {};
-  const model = sceneModel(area);
+  const model = sceneModel(area, ctx.api.stage);
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
   area.clicks.subscribe((loci) => {
     const p = area.pickedOf(loci);
@@ -63,8 +64,11 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       } else {
         const p = area.pickedOf(request.loci);
         if (p) model.reveal(p);
-        items = nodeMenuItems(ctx.api, area, p, (sub) => {
-          close = openContextMenu(root, { x: request.x, y: request.y }, sub);
+        items = nodeMenuItems(ctx.api, area, p, {
+          open: (sub) => {
+            close = openContextMenu(root, { x: request.x, y: request.y }, sub);
+          },
+          reveal: model.reveal,
         });
         // all the cuts' shapes shown or hidden, as the stage has it
         const cuts = await stageMenuItems(ctx.api, stage, request);
@@ -98,7 +102,7 @@ interface SceneModel {
   reveal(p: PickedNode): void;
 }
 
-function sceneModel(area: ExplorerApi): SceneModel {
+function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
   const open = observableState<ReadonlySet<string>>(new Set(Categories.map((c) => `c:${c.id}`)));
   const picked = observableState<Picked | undefined>(undefined);
   const parts = observableState<Parts>(new Map());
@@ -110,7 +114,8 @@ function sceneModel(area: ExplorerApi): SceneModel {
     parts,
     scrollTo,
     reveal(p) {
-      const above = ancestorKeys(area.objectsState().value, parts.value, p.key) ?? [];
+      const labels = stage?.labelsState().value ?? [];
+      const above = ancestorKeys(area.objectsState().value, parts.value, p.key, labels) ?? [];
       if (above.some((k) => !open.value.has(k))) open.set(new Set([...open.value, ...above]));
       picked.set(p);
       scrollTo.set(p.key);
@@ -156,8 +161,10 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   const { open, filter, picked } = model;
   const split = splitter(240);
   const stable = stableRows();
-  const rows = derive([objects, parts.asReadonly, open.asReadonly, filter.asReadonly], (o, p, op, f) =>
-    stable(rowsOf(o, p, op, f)),
+  // the stage's labels, each under the row it was made at
+  const labels = api.stage?.labelsState() ?? observableState<readonly LabelInfo[]>([]).asReadonly;
+  const rows = derive([objects, parts.asReadonly, open.asReadonly, filter.asReadonly, labels], (o, p, op, f, l) =>
+    stable(rowsOf(o, p, op, f, l)),
   );
   // the row under the pointer: lit in the tree and in 3D (the picked row's highlight comes back when it leaves)
   const hovered = observableState<string | undefined>(undefined);
@@ -208,7 +215,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     openContextMenu(
       root,
       at,
-      nodeMenuItems(api, area, picked, (sub) => openContextMenu(root, at, sub)),
+      nodeMenuItems(api, area, picked, { open: (sub) => openContextMenu(root, at, sub), reveal: model.reveal }),
     );
   };
 

@@ -7,7 +7,8 @@
 import { OrderedSet } from '@molstar/core/data/int';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { type Observable, Subject } from 'rxjs';
-import { EmptyLoci, type Loci } from '@molstar/model/model/loci';
+import { EmptyLoci, Loci } from '@molstar/model/model/loci';
+import { isStageLabelData } from '@molstar/stage-tools-extension/label';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import { Structure, StructureElement, StructureProperties, StructureSelection } from '@molstar/model/model/structure';
 import { ShapeGroup } from '@molstar/model/model/shape';
@@ -215,6 +216,14 @@ export class ExplorerApi extends ApiArea {
    */
   pickedOf(loci: Loci): PickedNode | undefined {
     return pickedOf(this.ctx.plugin, loci);
+  }
+
+  /** Where a node is: the sphere around it (a label is put in front of it) */
+  boundsOf(node: NodeRef): { readonly center: [number, number, number]; readonly radius: number } | undefined {
+    const loci = lociOf(this.ctx.plugin, node);
+    const sphere = loci.kind === 'empty-loci' ? undefined : Loci.getBoundingSphere(loci);
+    if (!sphere) return undefined;
+    return { center: [sphere.center[0], sphere.center[1], sphere.center[2]], radius: sphere.radius };
   }
 
   /** The canvas element (a drag in 3D is measured on it) */
@@ -455,6 +464,16 @@ function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
     const ref = v.cell.transform.ref;
     return { key: `o:${ref}`, label: v.cell.obj?.label ?? ref, kind: 'volume', node: { ref } };
   }
+  // a label of the stage: its row (under the node it was made at)
+  if (ShapeGroup.isLoci(loci) && isStageLabelData(loci.shape.sourceData)) {
+    for (const cell of plugin.state.data.cells.values()) {
+      const obj = cell.obj;
+      if (!SO.Shape.Provider.is(obj) || obj.data.data !== loci.shape.sourceData) continue;
+      const ref = cell.transform.ref;
+      return { key: `l:${ref}`, label: loci.shape.sourceData.text, kind: 'label', node: { ref } };
+    }
+    return undefined;
+  }
   if (ShapeGroup.isLoci(loci)) {
     const mesh = meshes(plugin).find((m) => {
       const obj = plugin.state.data.cells.get(m.ref)?.obj;
@@ -537,5 +556,12 @@ function lociOf(plugin: PluginContext, node: NodeRef): Loci {
   }
   if (SO.Volume.Data.is(obj)) return Volume.Loci(obj.data, OrderedSet.ofSingleton(0 as never));
   if (SO.Shape.Representation3D.is(obj)) return obj.data.repr.getAllLoci()[0] ?? EmptyLoci;
+  // a label: its shape's (the representation under it)
+  if (SO.Shape.Provider.is(obj)) {
+    for (const child of plugin.state.data.tree.children.get(node.ref).toArray()) {
+      const c = plugin.state.data.cells.get(child)?.obj;
+      if (SO.Shape.Representation3D.is(c)) return c.data.repr.getAllLoci()[0] ?? EmptyLoci;
+    }
+  }
   return EmptyLoci;
 }

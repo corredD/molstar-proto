@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EmptyLoci } from '@molstar/model/model/loci';
+import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -178,5 +179,30 @@ describe('stage', () => {
     expect(desiredGuides({ plugin: v.plugin }, new Set([`${ref}:1`])).map((g) => g.index)).toEqual([0]);
     expectOk(await s.uncut({ index: 0, target: '' } as never));
     expect(cuts()).toEqual([[0, 'sphere']]);
+  });
+
+  it('adds a label in front of an object, changes, hides and removes it (a state transform: saved, undone)', async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const ref = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    expectOk(await s.label({ text: 'crambin', target: ref, node: `o:${ref}` } as never));
+    const read = () => s.labelsState().value;
+    expect(read()).toMatchObject([{ text: 'crambin', target: ref, node: `o:${ref}`, visible: true }]);
+    const label = read()[0].ref;
+    // drawn by a shape representation under it (its text is drawn in a page: headless has no canvas for the font)
+    const reprs = v.plugin.state.data.tree.children.get(label).toArray();
+    expect(reprs.map((r) => v.plugin.state.data.cells.get(r)!.transform.transformer.id)).toEqual([
+      ShapeRepresentation3D.id,
+    ]);
+    expectOk(await s.editLabel({ label, text: 'plant seed protein', size: 8 } as never));
+    expect(read()[0]).toMatchObject({ text: 'plant seed protein', size: 8 });
+    expectOk(await s.editLabel({ label, visible: false } as never));
+    expect(read()[0].visible).toBe(false);
+    expect(await s.editLabel({ label, visible: false } as never)).toMatchObject({ unchanged: true });
+    expectOk(await v.api.run('history.undo', {}));
+    expect(read()[0].visible).toBe(true);
+    expectOk(await s.editLabel({ label, remove: true } as never));
+    expect(read()).toEqual([]);
+    expect(await s.label({ text: 'nowhere' } as never)).toMatchObject({ ok: false, code: 'invalid' });
   });
 });

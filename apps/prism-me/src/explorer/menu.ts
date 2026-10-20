@@ -10,11 +10,20 @@ import type { ExplorerApi, NodeRef, PickedNode } from './operations.js';
 import { toggleVisible } from './rows.js';
 
 // The explorer's menus (_spec/ui.md §3, §5), at the level of what is picked (an object, a group, an entity, a chain, a
-// target): the right-click's (on the canvas and on a tree row), and the row tools' (Mesoscale Explorer's brush and
+// target): the right-click's (on the canvas and on a tree row; a label's: edit, hide, remove), and the row tools' (Mesoscale Explorer's brush and
 // scissors beside the eye): a color for all of it, a clip of it (several at each level, each listed in its Clips).
 
 /** Kinds whose eye hides them (a structure's entities and chains have none: Prism hides representations) */
-const Hideable = new Set(['structure', 'mesoscale model', 'particle list', 'group', 'target', 'volume', 'mesh']);
+const Hideable = new Set([
+  'structure',
+  'mesoscale model',
+  'particle list',
+  'group',
+  'target',
+  'volume',
+  'mesh',
+  'label',
+]);
 
 /** Whole objects: their clips cut all of them (the stage's cuts) */
 const WholeClips = new Set(['structure', 'mesoscale model', 'particle list', 'volume']);
@@ -123,15 +132,48 @@ export function clipItems(api: ViewerApi, picked: PickedNode): ContextMenuItem[]
   }));
 }
 
-/**
- * The right-click's items for a node; nothing picked: the camera's. `open(items)` opens a sub-menu at the same place
- * (Color…, Add clip…)
- */
+/** What the menu asks of the panel: a sub-menu at the same place (Color…, Add a clip…), a row to pick (a new label) */
+export interface MenuActions {
+  open?(items: ContextMenuItem[]): void;
+  reveal?(picked: PickedNode): void;
+}
+
+/** Adds a label in front of a node, named after it, and picks its row (its text is edited in the properties) */
+export async function addLabel(
+  api: ViewerApi,
+  area: ExplorerApi,
+  picked: PickedNode,
+  reveal?: (p: PickedNode) => void,
+) {
+  const bounds = area.boundsOf(picked.node);
+  // readable at the object's scale: half the node's size, at least a 15th of its object's, in half-Å steps
+  const object = area.boundsOf({ ref: picked.node.ref }) ?? bounds;
+  const size =
+    bounds && object ? Math.round(Math.min(100, Math.max(2, bounds.radius / 2, object.radius / 15)) * 2) / 2 : 4;
+  const r = await api.run('stage.label', {
+    text: picked.label,
+    target: picked.node.ref,
+    node: picked.key,
+    ...(bounds
+      ? {
+          x: bounds.center[0],
+          y: bounds.center[1],
+          z: bounds.center[2],
+          depth: bounds.radius,
+          size,
+        }
+      : {}),
+  });
+  const ref = r.ok ? r.changed.nodes?.[0] : undefined;
+  if (ref && reveal) reveal({ key: `l:${ref}`, label: picked.label, kind: 'label', node: { ref } });
+}
+
+/** The right-click's items for a node; nothing picked: the camera's */
 export function nodeMenuItems(
   api: ViewerApi,
   area: ExplorerApi,
   picked: PickedNode | undefined,
-  open?: (items: ContextMenuItem[]) => void,
+  actions: MenuActions = {},
 ): ContextMenuItem[] {
   if (!picked) {
     return [
@@ -142,6 +184,12 @@ export function nodeMenuItems(
   const items: ContextMenuItem[] = [
     { id: 'focus', label: `Focus on ${label}`, icon: 'scan', run: () => area.focus(node) },
   ];
+  if (kind === 'label') {
+    if (actions.reveal) {
+      const reveal = actions.reveal;
+      items.push({ id: 'edit-label', label: 'Edit the text', icon: 'type', run: () => reveal(picked) });
+    }
+  }
   // an entity of a model hides as a group does (its style); a structure's entity or chain cannot yet
   const hideable = Hideable.has(kind) || (kind === 'entity' && 'particles' in node);
   if (hideable) {
@@ -153,12 +201,28 @@ export function nodeMenuItems(
         void toggleVisible(api, { key: picked.key, depth: 0, label, kind, hasChildren: false, visible: true, node }),
     });
   }
+  if (kind === 'label') {
+    items.push({
+      id: 'remove-label',
+      label: 'Remove the label',
+      icon: 'x',
+      run: () => void api.run('stage.editLabel', { label: node.ref, remove: true }),
+    });
+    return items;
+  }
+  const open = actions.open;
   if (open && colorable(kind, node)) {
     items.push({ id: 'color', label: 'Color…', icon: 'palette', run: () => open(colorItems(api, area, picked)) });
   }
   if (open && clippable(kind, node)) {
     items.push({ id: 'clip', label: 'Add a clip…', icon: 'scissors', run: () => open(clipItems(api, picked)) });
   }
+  items.push({
+    id: 'label',
+    label: 'Add a label',
+    icon: 'type',
+    run: () => void addLabel(api, area, picked, actions.reveal),
+  });
   if (api.describe('assistant.ask')) {
     items.push({
       id: 'ask',

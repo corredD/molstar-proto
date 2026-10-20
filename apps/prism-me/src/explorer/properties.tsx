@@ -22,6 +22,7 @@ import {
   ParamsForm,
   Select,
   Show,
+  TextInput,
 } from '@molstar/prism-ui';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
@@ -73,7 +74,11 @@ function NodeProperties(props: { api: ViewerApi; area: ExplorerApi; picked: Pick
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
       <div style="display: flex; align-items: baseline; gap: var(--msp-space-2); min-width: 0">
-        <strong style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{picked.label}</strong>
+        <strong style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+          {picked.kind === 'label' && api.stage
+            ? mapState(api.stage.labelsState(), (l) => l.find((x) => x.ref === node?.ref)?.text ?? picked.label)
+            : picked.label}
+        </strong>
         <span style={Muted}>{picked.kind}</span>
       </div>
       {node ? sectionsOf(api, area, picked, node, props.parts) : null}
@@ -196,6 +201,8 @@ function sectionsOf(
       ];
     case 'mesh':
       return [<Section title="Look">{() => <MeshLook api={api} node={node} />}</Section>];
+    case 'label':
+      return [<Section title="Label">{() => <LabelProps api={api} node={node} />}</Section>];
   }
   return [];
 }
@@ -536,6 +543,59 @@ function VolumeSlices(props: { api: ViewerApi; volume: string }) {
           </Button>
         )}
       </Show>
+    </div>
+  );
+}
+
+// --- labels ----------------------------------------------------------------------------------------------------------
+
+/** A label's text (changed as typed, a moment after the last key), size, color; remove */
+function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
+  const { api } = props;
+  const stage = api.stage;
+  if (!stage) return <span style={Muted}>The stage tools are not loaded.</span>;
+  const ref = props.node.ref;
+  const label = mapState(stage.labelsState(), (l) => l.find((x) => x.ref === ref));
+  const edit = (values: Record<string, unknown>) => void api.run('stage.editLabel', { label: ref, ...values });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(timer));
+  const text = (value: string) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => edit({ text: value }), 400);
+  };
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+      <div style={Line}>
+        <span style={Label}>Text</span>
+        <div style="flex: 1">
+          <TextInput
+            size="sm"
+            aria-label="The label's text"
+            value={label.value?.text ?? ''}
+            onInput={text}
+            onSubmit={(v) => {
+              clearTimeout(timer);
+              edit({ text: v });
+            }}
+          />
+        </div>
+      </div>
+      <SliderField
+        label="Size"
+        value={mapState(label, (l) => l?.size ?? 4)}
+        min={0.5}
+        max={100}
+        step={0.5}
+        format={(v) => `${Math.round(v * 10) / 10} Å`}
+        onCommit={(size) => edit({ size })}
+      />
+      <ColorField value={mapState(label, (l) => l?.color)} none="white" onPick={(color) => edit({ color })} />
+      <div style={Line}>
+        <span style={Label} />
+        <Button size="sm" variant="ghost" icon={<Icon name="x" />} onClick={() => edit({ remove: true })}>
+          Remove the label
+        </Button>
+      </div>
     </div>
   );
 }

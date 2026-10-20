@@ -16,7 +16,7 @@ import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { withTomogramSlices } from '../../tomograms.js';
 import { ancestorKeys, rowsOf, stableRows, toggleVisible } from '../rows.js';
-import { clipItems, colorItems, nodeMenuItems } from '../menu.js';
+import { addLabel, clipItems, colorItems, nodeMenuItems } from '../menu.js';
 import { OrderedSet } from '@molstar/core/data/int';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 
@@ -233,8 +233,8 @@ describe('explorer', () => {
     ]);
     // the menu: focus, and hide where it hides
     const picked = area.pickedOf(particle)!;
-    expect(nodeMenuItems(v.api, area, picked).map((i) => i.id)).toEqual(['focus', 'hide']);
-    expect(nodeMenuItems(v.api, area, area.pickedOf(atoms)).map((i) => i.id)).toEqual(['focus']);
+    expect(nodeMenuItems(v.api, area, picked).map((i) => i.id)).toEqual(['focus', 'hide', 'label']);
+    expect(nodeMenuItems(v.api, area, area.pickedOf(atoms)).map((i) => i.id)).toEqual(['focus', 'label']);
     expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);
   });
 
@@ -265,6 +265,41 @@ describe('explorer', () => {
     // its color, by the brush
     await run(colorItems(v.api, area, target), 'color-tomato');
     expect(v.api.mesoscale!.infoState(list.ref).value!.entities[0].color).toBe(0xff6347);
+  });
+
+  it('adds a label at a row, listed under it, with its own menu', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const [crn] = area.objectsState().value;
+    const entity = { key: `e:${crn.ref}:1`, label: 'CRAMBIN', kind: 'entity', node: { ref: crn.ref, entity: '1' } };
+    let revealed: { key: string } | undefined;
+    await addLabel(v.api, area, entity, (p) => (revealed = p));
+    const labels = v.api.stage!.labelsState().value;
+    expect(labels).toMatchObject([{ text: 'CRAMBIN', node: entity.key, target: crn.ref }]);
+    expect(revealed?.key).toBe(`l:${labels[0].ref}`);
+    // its row: under the entity's
+    const rows = rowsOf(
+      area.objectsState().value,
+      new Map(),
+      new Set(['c:structures', `o:${crn.ref}`, entity.key]),
+      '',
+      labels,
+    );
+    const i = rows.findIndex((r) => r.key === entity.key);
+    expect(rows[i + 1]).toMatchObject({ key: `l:${labels[0].ref}`, kind: 'label', depth: rows[i].depth + 1 });
+    expect(ancestorKeys(area.objectsState().value, new Map(), `l:${labels[0].ref}`, labels)).toEqual([
+      entity.key,
+      `o:${crn.ref}`,
+      'c:structures',
+    ]);
+    const label = { key: `l:${labels[0].ref}`, label: 'CRAMBIN', kind: 'label', node: { ref: labels[0].ref } };
+    expect(nodeMenuItems(v.api, area, label, { reveal: () => {} }).map((x) => x.id)).toEqual([
+      'focus',
+      'edit-label',
+      'hide',
+      'remove-label',
+    ]);
+    expect(nodeMenuItems(v.api, area, entity).map((x) => x.id)).toContain('label');
   });
 
   it('keeps unchanged rows as the same objects', () => {
