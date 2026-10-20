@@ -6,6 +6,7 @@
 
 import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension, ViewerSkill } from '@molstar/prism-viewer/spec';
+import { StageLabel } from './label.js';
 import { StageApi } from './operations.js';
 
 declare module '@molstar/prism-viewer/api' {
@@ -46,6 +47,8 @@ export const StageSkill: ViewerSkill = {
 export const StageToolsExtension: ViewerExtension = {
   id: 'stage-tools',
   title: 'Stage tools',
+  // its labels are state transforms: registered, so a session that has them opens
+  plugin: { registry: [{ actions: [StageLabel] }] },
   api: { stage: (ctx) => new StageApi(ctx) },
   commands: (api) => {
     const s = api.stage;

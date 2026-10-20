@@ -9,6 +9,7 @@ import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { type Observable, Subject } from 'rxjs';
 import { EmptyLoci, Loci } from '@molstar/model/model/loci';
 import { isStageLabelData } from '@molstar/stage-tools-extension/label';
+import { drawnObject } from '@molstar/stage-tools-extension/operations';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import { Structure, StructureElement, StructureProperties, StructureSelection } from '@molstar/model/model/structure';
 import { ShapeGroup } from '@molstar/model/model/shape';
@@ -245,7 +246,10 @@ export class ExplorerApi extends ApiArea {
     const plugin = this.ctx.plugin;
     const cell = plugin.state.data.cells.get(node.ref);
     if (SO.Volume.Data.is(cell?.obj)) {
-      plugin.managers.camera.focusSphere(Grid.getBoundingSphere(cell.obj.data.grid));
+      const drawn = drawnObject({ plugin }, node.ref);
+      plugin.managers.camera.focusSphere(
+        Grid.getBoundingSphere((SO.Volume.Data.is(drawn) ? drawn : cell.obj).data.grid),
+      );
       return;
     }
     const loci = lociOf(plugin, node);
@@ -531,7 +535,10 @@ function lociOf(plugin: PluginContext, node: NodeRef): Loci {
   const cell = plugin.state.data.cells.get(node.ref);
   const obj = cell?.obj;
   if (SO.Molecule.Structure.is(obj)) {
-    const structure = obj.data;
+    // the structure as drawn: moved by its transform, if it has one
+    const moved = plugin.managers.structure.hierarchy.current.structures.find((x) => x.cell.transform.ref === node.ref)
+      ?.transform?.cell.obj?.data;
+    const structure = moved ?? obj.data;
     if ('entity' in node) {
       const selection = Script.getStructureSelection(
         (Q) =>
@@ -554,7 +561,12 @@ function lociOf(plugin: PluginContext, node: NodeRef): Loci {
     if ('particles' in node) return Particle.selectLoci(data, node.particles);
     return Particle.Loci(data, OrderedSet.ofBounds(0, data.count));
   }
-  if (SO.Volume.Data.is(obj)) return Volume.Loci(obj.data, OrderedSet.ofSingleton(0 as never));
+  if (SO.Volume.Data.is(obj)) {
+    // the volume as drawn (moved by its transform, if any)
+    const drawn = drawnObject({ plugin }, node.ref);
+    const volume = SO.Volume.Data.is(drawn) ? drawn.data : obj.data;
+    return Volume.Loci(volume, OrderedSet.ofSingleton(0 as never));
+  }
   if (SO.Shape.Representation3D.is(obj)) return obj.data.repr.getAllLoci()[0] ?? EmptyLoci;
   // a label: its shape's (the representation under it)
   if (SO.Shape.Provider.is(obj)) {

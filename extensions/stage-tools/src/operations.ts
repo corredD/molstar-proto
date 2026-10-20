@@ -5,12 +5,16 @@
  */
 
 import { Sphere3D } from '@molstar/core/math/geometry';
-import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { ParticleListTransform } from '@molstar/plugin/state/transforms/particles/ops';
+import { VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
+import { movedClipObject, movedPoint } from './move.js';
 import { Color } from '@molstar/core/util/color';
 import { ColorNames } from '@molstar/core/util/color/names';
 import { setSubtreeVisibility } from '@molstar/plugin/behavior/static/state';
 import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
-import type { StateObjectCell } from '@molstar/core/state';
+import { type StateObjectCell, StateTransform } from '@molstar/core/state';
 import { Clip } from '@molstar/core/util/clip';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Particle } from '@molstar/model/model/particles/particle-list';
@@ -22,7 +26,7 @@ import {
 import { ValueCell } from '@molstar/core/util/value-cell';
 import { OrderedSet } from '@molstar/core/data/int';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
-import { isEmptyLoci, type Loci } from '@molstar/model/model/loci';
+import { isEmptyLoci, Loci } from '@molstar/model/model/loci';
 import { ShapeGroup } from '@molstar/model/model/shape';
 import { Bond, StructureElement } from '@molstar/model/model/structure';
 import { Observable, Subject } from 'rxjs';
@@ -381,6 +385,115 @@ export class StageApi extends ApiArea {
     },
   });
 
+  /** Where an object is (its center, its radius): a structure, a particle list, a volume, a mesh's representation */
+  objectBounds(target: string): Sphere3D | undefined {
+    const plugin = this.ctx.plugin;
+    const t = stageTargets({ plugin }).find((x) => x.ref === target);
+    if (t) return boundsOf({ plugin }, t);
+    const obj = plugin.state.data.cells.get(target)?.obj;
+    if (!SO.Shape.Representation3D.is(obj)) return undefined;
+    const loci = obj.data.repr.getAllLoci()[0];
+    return loci ? Loci.getBoundingSphere(loci) : undefined;
+  }
+
+  /**
+   * An object drawn moved by `m` (the drawing only, the state unchanged): its representations and its labels', as a drag
+   * goes; the identity puts them back
+   */
+  previewMove(target: string, m: Mat4) {
+    const plugin = this.ctx.plugin;
+    const { cells, tree } = plugin.state.data;
+    const reprs: string[] = [];
+    const walk = (ref: string) => {
+      const obj = cells.get(ref)?.obj;
+      if (SO.isRepresentation3D(obj)) reprs.push(ref);
+      for (const child of tree.children.get(ref).toArray()) walk(child);
+    };
+    walk(target);
+    for (const l of labelsOf({ plugin })) if (l.target === target) walk(l.ref);
+    for (const ref of reprs) {
+      const obj = cells.get(ref)?.obj as { data: { repr: { setState(s: { transform: Mat4 }): void } } } | undefined;
+      obj?.data.repr.setState({ transform: m });
+    }
+    plugin.canvas3d?.requestDraw();
+  }
+
+  readonly move = this.operation({
+    id: 'stage.move',
+    title: 'Move or turn an object',
+    params: {
+      target: PD.Text('', { description: 'A structure, particle list, volume or mesh, by state ref' }),
+      matrix: PD.Value<number[]>(Array.from(Mat4.identity()), {
+        description: 'A rigid transform (16 numbers, column-major), applied after where it is now',
+      }),
+    },
+    async run({ target, matrix }, ctx) {
+      const m = Mat4.fromArray(Mat4(), matrix, 0);
+      if (Mat4.isIdentity(m)) return ApiResult.already('Not moved.');
+      const plugin = ctx.plugin;
+      const { cells, tree } = plugin.state.data;
+      const cell = cells.get(target);
+      if (!cell) return ApiResult.fail('not-found', `There is no object '${target}'.`);
+      const t = stageTargets(ctx).find((x) => x.ref === target);
+      const b = plugin.state.data.build();
+      const decoratorUnder = (ref: string, transformer: unknown) =>
+        tree.children
+          .get(ref)
+          .toArray()
+          .map((c) => cells.get(c))
+          .find((c) => c?.transform.transformer === transformer);
+      const name = rootLabel(ctx, target) ?? cell.obj?.label ?? target;
+      if (t?.kind === 'structure') {
+        // the structure's own transform (Prism's, as its Move does), on top of where it is
+        const r = await ctx.api.run('structure.transform', { structure: target, matrix: m, compose: true });
+        if (!r.ok) return r;
+      } else if (t?.kind === 'particles') {
+        const l = plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === target)!;
+        const old = decoratorUnder(l.cell.transform.ref, ParticleListTransform);
+        if (old) {
+          const prev = (old.transform.params as { transform: Mat4 }).transform;
+          b.to(old).update({ transform: Mat4.mul(Mat4(), m, prev) });
+        } else {
+          b.to(l.cell).insert(ParticleListTransform, { transform: m });
+        }
+      } else if (t?.kind === 'volume') {
+        const old = decoratorUnder(target, VolumeTransform);
+        const prev = old ? volumeMatrixOf(old) : Mat4.identity();
+        const transform = { name: 'matrix' as const, params: { data: Mat4.mul(Mat4(), m, prev), transpose: false } };
+        if (old) b.to(old).update({ transform });
+        else b.to(cell).insert(VolumeTransform, { transform });
+      } else if (SO.Shape.Representation3D.is(cell.obj)) {
+        // a mesh: its shape's instance transform (its scale kept)
+        const shape = cells.get(cell.transform.parent);
+        if (!shape || !SO.Shape.Provider.is(shape.obj)) return ApiResult.fail('blocked', `${name} cannot be moved.`);
+        b.to(shape).update((p: any) => {
+          const prev: Mat4 = p.transforms?.[0] ?? Mat4.identity();
+          return { ...p, transforms: [Mat4.mul(Mat4(), m, prev)] };
+        });
+      } else {
+        return ApiResult.fail('invalid', `${name} is not a structure, particle list, volume or mesh.`);
+      }
+      // what is placed with it: its clip objects and its labels
+      if (t) {
+        for (const r of representationCells(ctx, t)) {
+          const clip = clipOf(r);
+          if (!clip?.objects.length) continue;
+          const objects = clip.objects.map((o) => movedClipObject(o, m));
+          b.to(r).update((old: any) => ({
+            ...old,
+            type: { ...old.type, params: { ...old.type.params, clip: { ...old.type.params.clip, objects } } },
+          }));
+        }
+      }
+      for (const l of labelsOf(ctx)) {
+        if (l.target !== target) continue;
+        b.to(l.ref).update((p: StageLabelProps) => ({ ...p, position: movedPoint(Vec3.create(...l.position), m) }));
+      }
+      await b.commit();
+      return ApiResult.ok(`Moved ${name}.`, { nodes: [target] });
+    },
+  });
+
   /** The labels of the stage, following the state tree while watched: a read for views */
   labelsState(): ReadonlyState<readonly LabelInfo[]> {
     const plugin = this.ctx.plugin;
@@ -682,6 +795,34 @@ export interface LabelInfo {
   readonly visible: boolean;
 }
 
+/** The name of the file or entry an object came from: its root data's label */
+function rootLabel(ctx: Pick<ApiContext, 'plugin'>, ref: string): string | undefined {
+  const { cells, tree } = ctx.plugin.state.data;
+  let root = ref;
+  for (;;) {
+    const parent = tree.transforms.get(root)?.parent;
+    if (!parent || parent === StateTransform.RootRef) break;
+    root = parent;
+  }
+  const obj = cells.get(root)?.obj;
+  return SO.Data.String.is(obj) || SO.Data.Binary.is(obj) ? obj.label : undefined;
+}
+
+/** A volume's transform as a matrix (its decorator's: a matrix, or its parts about the origin) */
+function volumeMatrixOf(cell: StateObjectCell): Mat4 {
+  const t = (cell.transform.params as { transform?: { name: string; params: any } }).transform;
+  if (t?.name === 'matrix') {
+    const m = Mat4.clone(t.params.data);
+    return t.params.transpose ? Mat4.transpose(m, m) : m;
+  }
+  if (t?.name === 'components') {
+    const { translation, axis, angle } = t.params;
+    const r = Mat4.fromRotation(Mat4(), (angle * Math.PI) / 180, axis);
+    return Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), translation), r);
+  }
+  return Mat4.identity();
+}
+
 function labelsOf(ctx: Pick<ApiContext, 'plugin'>): LabelInfo[] {
   const out: LabelInfo[] = [];
   for (const cell of ctx.plugin.state.data.cells.values()) {
@@ -710,12 +851,27 @@ function cssColor(text: string): Color | undefined {
 }
 
 function boundsOf(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): Sphere3D | undefined {
-  const cell = ctx.plugin.state.data.cells.get(t.ref);
-  const obj = cell?.obj?.data as any;
+  // where it is drawn: down its decorators (a transform moves it; custom properties keep it)
+  const obj = drawnObject(ctx, t.ref)?.data as any;
   if (!obj) return;
   if (t.kind === 'structure') return obj.boundary.sphere;
   if (t.kind === 'particles') return Particle.getBoundary(obj).sphere;
   return Grid.getBoundingSphere(obj.grid);
+}
+
+/** An object as drawn: the last of the decorators on it (a transform, custom properties), else itself */
+export function drawnObject(ctx: Pick<ApiContext, 'plugin'>, ref: string) {
+  const { cells, tree } = ctx.plugin.state.data;
+  let cell = cells.get(ref);
+  for (;;) {
+    const next = tree.children
+      .get(cell?.transform.ref ?? '')
+      .toArray()
+      .map((c) => cells.get(c))
+      .find((c) => c?.transform.transformer.definition.isDecorator && c.obj);
+    if (!next) return cell?.obj;
+    cell = next;
+  }
 }
 
 /** From the camera to its target; down −z without a canvas */

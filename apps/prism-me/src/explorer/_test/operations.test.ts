@@ -233,8 +233,17 @@ describe('explorer', () => {
     ]);
     // the menu: focus, and hide where it hides
     const picked = area.pickedOf(particle)!;
-    expect(nodeMenuItems(v.api, area, picked).map((i) => i.id)).toEqual(['focus', 'hide', 'label']);
-    expect(nodeMenuItems(v.api, area, area.pickedOf(atoms)).map((i) => i.id)).toEqual(['focus', 'label']);
+    // a target is a part: its Move greyed (a part's move: not yet)
+    const items = nodeMenuItems(v.api, area, picked);
+    expect(items.map((i) => i.id)).toEqual(['focus', 'move', 'hide', 'label']);
+    expect(items[1].disabled).toBeTruthy();
+    expect(nodeMenuItems(v.api, area, area.pickedOf(atoms)).map((i) => i.id)).toEqual(['focus', 'move', 'label']);
+    // a whole structure moves and turns
+    setGranularity('structure');
+    const whole = nodeMenuItems(v.api, area, area.pickedOf(atoms));
+    expect(whole.map((i) => i.id)).toEqual(['focus', 'move', 'rotate', 'hide', 'label']);
+    expect(whole[1].disabled).toBeUndefined();
+    setGranularity('chain');
     expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);
   });
 
@@ -295,6 +304,7 @@ describe('explorer', () => {
     const label = { key: `l:${labels[0].ref}`, label: 'CRAMBIN', kind: 'label', node: { ref: labels[0].ref } };
     expect(nodeMenuItems(v.api, area, label, { reveal: () => {} }).map((x) => x.id)).toEqual([
       'focus',
+      'move',
       'edit-label',
       'hide',
       'remove-label',

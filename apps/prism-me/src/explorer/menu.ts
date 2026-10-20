@@ -6,6 +6,7 @@
 
 import type { ContextMenuItem } from '@molstar/prism-ui';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import { startMoveDrag } from '@molstar/stage-tools-extension/drag';
 import type { ExplorerApi, NodeRef, PickedNode } from './operations.js';
 import { toggleVisible } from './rows.js';
 
@@ -27,6 +28,59 @@ const Hideable = new Set([
 
 /** Whole objects: their clips cut all of them (the stage's cuts) */
 const WholeClips = new Set(['structure', 'mesoscale model', 'particle list', 'volume']);
+
+/** Objects that move as a whole (their own transform) */
+const Movable = new Set(['structure', 'mesoscale model', 'particle list', 'volume', 'mesh']);
+
+/** The app's root around the canvas (the drag's layer goes over it) */
+function rootAround(el: Element | undefined): HTMLElement {
+  return el?.closest<HTMLElement>('.msp-root') ?? document.body;
+}
+
+/** Move and Turn by dragging on the canvas: an object, a label (moved only); a part's: not yet (greyed, why) */
+function moveItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
+  const stage = api.stage;
+  if (!stage) return [];
+  const canvas = area.canvasElement();
+  const { node, kind } = picked;
+  if (kind === 'label') {
+    const label = stage.labelsState().value.find((l) => l.ref === node.ref);
+    if (!label) return [];
+    return [
+      {
+        id: 'move',
+        label: 'Move',
+        icon: 'move-3d',
+        run: () => startMoveDrag(stage, rootAround(canvas), canvas, node.ref, 'move', label),
+      },
+    ];
+  }
+  if (Movable.has(kind)) {
+    return [
+      {
+        id: 'move',
+        label: 'Move',
+        icon: 'move-3d',
+        run: () => startMoveDrag(stage, rootAround(canvas), canvas, node.ref, 'move'),
+      },
+      {
+        id: 'rotate',
+        label: 'Turn',
+        icon: 'rotate-ccw',
+        run: () => startMoveDrag(stage, rootAround(canvas), canvas, node.ref, 'rotate'),
+      },
+    ];
+  }
+  return [
+    {
+      id: 'move',
+      label: 'Move',
+      icon: 'move-3d',
+      disabled: 'Moving a part (an entity, a chain, a group) is not there yet: move its object',
+      run: () => {},
+    },
+  ];
+}
 
 /** The swatches of the brush */
 export const Swatches: readonly [string, string][] = [
@@ -184,6 +238,7 @@ export function nodeMenuItems(
   const items: ContextMenuItem[] = [
     { id: 'focus', label: `Focus on ${label}`, icon: 'scan', run: () => area.focus(node) },
   ];
+  items.push(...moveItems(api, area, picked));
   if (kind === 'label') {
     if (actions.reveal) {
       const reveal = actions.reveal;

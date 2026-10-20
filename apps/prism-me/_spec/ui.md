@@ -146,7 +146,15 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   right-click: Focus, Edit the text, Hide, Remove; picked in 3D, its row. A state transform of the stage tools
   (`StageLabel`: saved in a session, undone), drawn as text by a shape representation under it; `stage.label`,
   `stage.editLabel`, `labelsState`. Its move comes with 3d.
-- Next: 3d Move and Rotate (at the level of the selection; a part's move spiked first; clips and labels follow).
+- Step 3d (2026-10-19): Move and Turn, by dragging on the canvas (a layer takes the pointer; the drawing follows,
+  `previewMove`, the state unchanged; released: one step, `stage.move`; Esc: back, no step), for a whole object: a
+  structure (its transform, Prism's), a particle list (`ParticleListTransform`, a new decorator), a volume
+  (`VolumeTransform`), a mesh (its shape's transform, its scale kept); a label is moved too. Its clips and labels move
+  with it, in the same step. What reads where an object is reads it as drawn, down its decorators (`drawnObject`).
+  Library: the particles' target representation takes a representation's transform (it ignored it).
+- A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
+  is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
+  out of the others, with a transform under it (presets would undo it). Ludovic to choose.
 - Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a
   structure entity's or chain's eye (Prism hides representations, not parts); a color dot only where a color was set;
   the mesh section repeats the mesh's eye and name.
