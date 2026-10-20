@@ -88,6 +88,7 @@ const ICONS = [
   'palette',
   'paintbrush',
   'scissors',
+  'type',
   'box',
   'crosshair',
   'focus',
