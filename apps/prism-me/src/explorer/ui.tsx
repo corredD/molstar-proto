@@ -415,6 +415,15 @@ function TreeRow(props: {
       <span
         style={`flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${category ? 'font-weight: 600; text-transform: none' : ''}`}
       >
+        {/* a label: told apart from the objects (its kind, before its text) */}
+        {row.kind === 'label' ? (
+          <span
+            style={`${Muted}; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; margin-right: var(--msp-space-1)`}
+          >
+            <Icon name="type" size={12} />
+            Label
+          </span>
+        ) : null}
         {row.label}
       </span>
       {row.count ? <span style={`flex: none; ${Muted}`}>{row.count}</span> : null}

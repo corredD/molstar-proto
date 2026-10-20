@@ -22,8 +22,8 @@ export const StageLabelParams = {
   text: PD.Text('Label', { description: 'What it says' }),
   position: PD.Vec3(Vec3(), {}, { description: 'Where it is (Å)' }),
   /** Brought toward the camera by this much (Å), so it sits in front of what it names */
-  depth: PD.Numeric(0, { min: 0, max: 10000, step: 1 }),
-  size: PD.Numeric(4, { min: 0.5, max: 100, step: 0.5 }, { description: 'Its height (Å)' }),
+  depth: PD.Numeric(0, { min: 0, max: 1e6, step: 1 }),
+  size: PD.Numeric(4, { min: 0.1, max: 10000, step: 0.1 }, { description: 'Its height (Å)' }),
   color: PD.Color(Color(0xffffff)),
   background: PD.Boolean(true, { description: 'A plate behind the text' }),
   backgroundColor: PD.Color(Color(0x202020)),

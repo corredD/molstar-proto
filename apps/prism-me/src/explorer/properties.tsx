@@ -304,6 +304,53 @@ function SliderField(props: {
   );
 }
 
+/**
+ * A size over decades (a label's: an atom's to a cell's): the slider goes by powers of ten, a field takes any value;
+ * it acts once released or entered
+ */
+function LogSliderField(props: {
+  label: string;
+  value: ReadonlyState<number>;
+  min: number;
+  max: number;
+  unit: string;
+  onCommit(v: number): void;
+}) {
+  const shown = observableState(props.value.value);
+  const sub = props.value.subscribe((v) => shown.set(v));
+  onCleanup(() => sub.unsubscribe());
+  const round = (v: number) => Number(v.toPrecision(v < 10 ? 2 : 3));
+  return (
+    <div style={Line}>
+      <span style={Label}>{props.label}</span>
+      <input
+        type="range"
+        min={String(Math.log10(props.min))}
+        max={String(Math.log10(props.max))}
+        step="0.01"
+        style="flex: 1; min-width: 0"
+        aria-label={props.label}
+        value={mapState(shown.asReadonly, (v) => String(Math.log10(Math.max(props.min, v))))}
+        onInput={(e) => shown.set(round(10 ** Number((e.target as HTMLInputElement).value)))}
+        onChange={(e) => props.onCommit(round(10 ** Number((e.target as HTMLInputElement).value)))}
+      />
+      <input
+        type="number"
+        min="0.1"
+        step="any"
+        style="width: 64px"
+        aria-label={`${props.label} (${props.unit})`}
+        value={mapState(shown.asReadonly, (v) => String(round(v)))}
+        onChange={(e) => {
+          const v = Number((e.target as HTMLInputElement).value);
+          if (v > 0) props.onCommit(v);
+        }}
+      />
+      <span style={Muted}>{props.unit}</span>
+    </div>
+  );
+}
+
 const percent = (v: number) => `${Math.round(v * 100)}%`;
 
 // --- structures ------------------------------------------------------------------------------------------------------
@@ -586,13 +633,12 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
           />
         </div>
       </div>
-      <SliderField
+      <LogSliderField
         label="Size"
         value={mapState(label, (l) => l?.size ?? 4)}
         min={0.5}
-        max={100}
-        step={0.5}
-        format={(v) => `${Math.round(v * 10) / 10} Å`}
+        max={5000}
+        unit="Å"
         onCommit={(size) => edit({ size })}
       />
       <ColorField value={mapState(label, (l) => l?.color)} none="white" onPick={(color) => edit({ color })} />

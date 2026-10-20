@@ -214,7 +214,7 @@ export async function addLabel(
   // readable at the object's scale: about the node's own size, at least a 15th of its object's, in half-Å steps
   const object = area.boundsOf({ ref: picked.node.ref });
   const own = anchor?.radius ?? object?.radius ?? 10;
-  const size = Math.round(Math.min(100, Math.max(2, own / 2, (object?.radius ?? own) / 15)) * 2) / 2;
+  const size = Math.round(Math.max(2, own / 2, (object?.radius ?? own) / 15) * 2) / 2;
   const r = await api.run('stage.label', {
     text: picked.label,
     target: picked.node.ref,
