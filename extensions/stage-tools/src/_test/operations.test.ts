@@ -313,4 +313,35 @@ describe('stage', () => {
     expect(Mat4.getMaxScaleOnAxis(m)).toBeCloseTo(2);
     expect(m[12]).toBeCloseTo(5);
   });
+
+  it("sets a label's plate and tether, on its representation too (a text's plate is drawn by its props)", async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const ref = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    expectOk(await s.label({ text: 'crambin', target: ref } as never));
+    const label = s.labelsState().value[0].ref;
+    expect(s.labelsState().value[0]).toMatchObject({ background: true, tether: false });
+    expectOk(
+      await s.editLabel({
+        label,
+        background: true,
+        backgroundColor: '#336699',
+        backgroundOpacity: 0.3,
+        tether: true,
+        tetherLength: 2,
+      } as never),
+    );
+    expect(s.labelsState().value[0]).toMatchObject({
+      backgroundColor: 0x336699,
+      backgroundOpacity: 0.3,
+      tether: true,
+      tetherLength: 2,
+    });
+    const repr = v.plugin.state.data.tree.children.get(label).toArray()[0];
+    const props = v.plugin.state.data.cells.get(repr)!.transform.params as any;
+    expect(props).toMatchObject({ backgroundColor: 0x336699, backgroundOpacity: 0.3, tether: true, tetherLength: 2 });
+    expect(props.attachment).toBe('bottom-left');
+    expectOk(await s.editLabel({ label, background: false } as never));
+    expect((v.plugin.state.data.cells.get(repr)!.transform.params as any).background).toBe(false);
+  });
 });

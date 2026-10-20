@@ -29,6 +29,7 @@ import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/s
 import type { Subscription } from 'rxjs';
 import { menuItems as stageMenuItems } from '@molstar/stage-tools-extension/menu';
 import type { LabelInfo } from '@molstar/stage-tools-extension/operations';
+import { editInline } from './inline-edit.js';
 import { clipItems, clippable, colorable, colorItems, nodeMenuItems } from './menu.js';
 import type { ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
@@ -46,10 +47,17 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   if (!area) return {};
   const model = sceneModel(area, ctx.api.stage);
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
-  area.clicks.subscribe((loci) => {
-    const p = area.pickedOf(loci);
+  area.clicks.subscribe((click) => {
+    const p = labelPicked(click.x, click.y) ?? area.pickedOf(click.loci);
     if (p) model.reveal(p);
   });
+  // a label under the pointer (a text is drawn, not picked by Mol*: the stage measures its box)
+  const labelPicked = (x: number | undefined, y: number | undefined): PickedNode | undefined => {
+    if (x === undefined || y === undefined) return undefined;
+    const ref = ctx.api.stage?.labelAt(x, y);
+    const label = ref ? ctx.api.stage?.labelsState().value.find((l) => l.ref === ref) : undefined;
+    return label ? { key: `l:${label.ref}`, label: label.text, kind: 'label', node: { ref: label.ref } } : undefined;
+  };
   // the canvas's right-click opens the explorer's menu, at the level of what it picked (the stage's own is not opened)
   const stage = ctx.api.stage;
   if (stage) {
@@ -62,13 +70,16 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       if (request.pick.kind === 'guide') {
         items = await stageMenuItems(ctx.api, stage, request);
       } else {
-        const p = area.pickedOf(request.loci);
+        const at = { x: request.x, y: request.y };
+        const p = labelPicked(request.x, request.y) ?? area.pickedOf(request.loci);
         if (p) model.reveal(p);
         items = nodeMenuItems(ctx.api, area, p, {
           open: (sub) => {
-            close = openContextMenu(root, { x: request.x, y: request.y }, sub);
+            close = openContextMenu(root, at, sub);
           },
           reveal: model.reveal,
+          editText: (text, keep) => editInline(root, at, text, keep),
+          ...(request.position ? { at: [request.position[0], request.position[1], request.position[2]] as const } : {}),
         });
         // all the cuts' shapes shown or hidden, as the stage has it
         const cuts = await stageMenuItems(ctx.api, stage, request);
@@ -215,7 +226,11 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     openContextMenu(
       root,
       at,
-      nodeMenuItems(api, area, picked, { open: (sub) => openContextMenu(root, at, sub), reveal: model.reveal }),
+      nodeMenuItems(api, area, picked, {
+        open: (sub) => openContextMenu(root, at, sub),
+        reveal: model.reveal,
+        editText: (text, keep) => editInline(root, at, text, keep),
+      }),
     );
   };
 

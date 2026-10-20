@@ -25,6 +25,13 @@ export const StageLabelParams = {
   depth: PD.Numeric(0, { min: 0, max: 10000, step: 1 }),
   size: PD.Numeric(4, { min: 0.5, max: 100, step: 0.5 }, { description: 'Its height (Å)' }),
   color: PD.Color(Color(0xffffff)),
+  background: PD.Boolean(true, { description: 'A plate behind the text' }),
+  backgroundColor: PD.Color(Color(0x202020)),
+  backgroundOpacity: PD.Numeric(0.7, { min: 0, max: 1, step: 0.01 }),
+  /** A line from the place it names to the text, set off up and to the right */
+  tether: PD.Boolean(false, { description: 'A line from the place to the text, set off from it' }),
+  /** The line's length, in the text's heights */
+  tetherLength: PD.Numeric(1, { min: 0.1, max: 10, step: 0.1 }),
   /** The object it names (a state ref) */
   target: PD.Text('', { isHidden: true }),
   /** The tree's row it was made at (its key), where it is listed */
@@ -41,14 +48,20 @@ export function isStageLabelData(x: unknown): x is StageLabelData {
   return !!x && (x as StageLabelData).kind === 'stage-tools-label';
 }
 
-/** Its text drawn: white on a dark plate, the size given */
-const LabelLook = {
-  ...PD.getDefaultValues(Text.Params),
-  background: true,
-  backgroundColor: Color(0x202020),
-  backgroundOpacity: 0.7,
-  backgroundMargin: 0.3,
-};
+/** How its text is drawn: its plate and its line as its params say */
+export function labelLook(p: StageLabelProps) {
+  return {
+    ...PD.getDefaultValues(Text.Params),
+    background: p.background,
+    backgroundColor: p.backgroundColor,
+    backgroundOpacity: p.backgroundOpacity,
+    backgroundMargin: 0.3,
+    tether: p.tether,
+    tetherLength: p.tetherLength,
+    // a tethered label sits up and to the right of its place, its line from the corner
+    attachment: p.tether ? ('bottom-left' as const) : ('middle-center' as const),
+  };
+}
 
 export type StageLabel = typeof StageLabel;
 export const StageLabel = PluginStateTransform.BuiltIn({
@@ -66,7 +79,7 @@ export const StageLabel = PluginStateTransform.BuiltIn({
         data,
         params: Text.Params,
         getShape: (_, d, props, shape) => {
-          const builder = TextBuilder.create({ ...props, ...LabelLook }, 16, 16, shape?.geometry);
+          const builder = TextBuilder.create({ ...props, ...labelLook(d) }, 16, 16, shape?.geometry);
           builder.add(d.text, d.position[0], d.position[1], d.position[2], d.depth, d.size, 0);
           return ShapeUtils.create(
             d.text,

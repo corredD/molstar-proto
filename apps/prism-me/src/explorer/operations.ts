@@ -83,6 +83,13 @@ export interface RepresentationInfo {
   readonly visible: boolean;
 }
 
+/** A left-click on the canvas: what it picked, where on the page (client px) */
+export interface CanvasClick {
+  readonly loci: Loci;
+  readonly x?: number;
+  readonly y?: number;
+}
+
 /** A 3D pick as a row of the tree */
 export interface PickedNode {
   readonly key: string;
@@ -107,15 +114,55 @@ export type NodeRef =
 export class ExplorerApi extends ApiArea {
   readonly id = 'explorer';
 
-  private readonly picks = new Subject<Loci>();
-  /** The left-clicks on the canvas, what they picked (the tree follows them) */
-  readonly clicks: Observable<Loci> = this.picks.asObservable();
+  private readonly picks = new Subject<CanvasClick>();
+  /** The left-clicks on the canvas, what they picked and where (the tree follows them) */
+  readonly clicks: Observable<CanvasClick> = this.picks.asObservable();
 
   constructor(ctx: ApiAreaContext) {
     super(ctx);
     ctx.plugin.behaviors.interaction.click.subscribe((e) => {
-      if (e.button === ButtonsType.Flag.Primary) this.picks.next(e.current.loci);
+      if (e.button !== ButtonsType.Flag.Primary) return;
+      this.picks.next({
+        loci: e.current.loci,
+        ...(e.page ? { x: e.page[0] - window.scrollX, y: e.page[1] - window.scrollY } : {}),
+      });
     });
+  }
+
+  /**
+   * Where a label of a node goes, made from the tree: on the node; for a part of many particles (an entity's copies,
+   * a group), on its particle nearest the camera (their center may be none of them); its radius, to stand in front
+   */
+  anchorOf(node: NodeRef): { readonly position: [number, number, number]; readonly radius: number } | undefined {
+    const plugin = this.ctx.plugin;
+    const loci = lociOf(plugin, node);
+    if (Particle.isLoci(loci) && 'particles' in node) {
+      const camera = plugin.canvas3d?.camera.state.position;
+      const { coordinates, radii } = loci.particles;
+      let best = -1;
+      let bestD = Infinity;
+      OrderedSet.forEach(loci.indices, (i) => {
+        const d = camera
+          ? (coordinates[3 * i] - camera[0]) ** 2 +
+            (coordinates[3 * i + 1] - camera[1]) ** 2 +
+            (coordinates[3 * i + 2] - camera[2]) ** 2
+          : 0;
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      });
+      if (best < 0) return undefined;
+      // its size: its own radius, else its object's (an entity's structure), else a few Å
+      const target = loci.particles.targetMapping?.get(loci.particles.targets[best]);
+      const objectRadius = target?.kind === 'structure' ? target.structure.boundary.sphere.radius : undefined;
+      return {
+        position: [coordinates[3 * best], coordinates[3 * best + 1], coordinates[3 * best + 2]],
+        radius: radii?.[best] || objectRadius || 5,
+      };
+    }
+    const b = this.boundsOf(node);
+    return b ? { position: b.center, radius: b.radius } : undefined;
   }
 
   /** The objects of the scene by category, following the state tree while watched: a read for views */

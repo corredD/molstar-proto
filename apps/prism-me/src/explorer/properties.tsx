@@ -230,7 +230,13 @@ function Section(props: { title: string; children: () => JSX.Element }) {
 }
 
 /** A color: its swatch and value; a click opens the picker under it. `value` undefined: no color of its own */
-function ColorField(props: { value: ReadonlyState<number | undefined>; none: string; onPick(color: string): void }) {
+function ColorField(props: {
+  value: ReadonlyState<number | undefined>;
+  none: string;
+  onPick(color: string): void;
+  /** Its name ('Color') */
+  label?: string;
+}) {
   const picking = observableState(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => clearTimeout(timer));
@@ -242,10 +248,10 @@ function ColorField(props: { value: ReadonlyState<number | undefined>; none: str
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
       <div style={Line}>
-        <span style={Label}>Color</span>
+        <span style={Label}>{props.label ?? 'Color'}</span>
         <button
           type="button"
-          aria-label="Pick a color"
+          aria-label={`Pick a ${(props.label ?? 'color').toLowerCase()}`}
           style={mapState(
             props.value,
             (c) =>
@@ -571,7 +577,7 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
           <TextInput
             size="sm"
             aria-label="The label's text"
-            value={label.value?.text ?? ''}
+            value={mapState(label, (l) => l?.text ?? '')}
             onInput={text}
             onSubmit={(v) => {
               clearTimeout(timer);
@@ -590,6 +596,62 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
         onCommit={(size) => edit({ size })}
       />
       <ColorField value={mapState(label, (l) => l?.color)} none="white" onPick={(color) => edit({ color })} />
+      <div style={Line}>
+        <span style={Label}>Plate</span>
+        <Button
+          size="sm"
+          variant="ghost"
+          pressed={mapState(label, (l) => !!l?.background)}
+          onClick={() => edit({ background: !label.value?.background })}
+        >
+          {mapState(label, (l) => (l?.background ? 'Shown' : 'Hidden'))}
+        </Button>
+      </div>
+      <Show when={mapState(label, (l) => !!l?.background)}>
+        {() => (
+          <>
+            <ColorField
+              label="Plate color"
+              value={mapState(label, (l) => l?.backgroundColor)}
+              none="dark"
+              onPick={(color) => edit({ backgroundColor: color })}
+            />
+            <SliderField
+              label="Opacity"
+              value={mapState(label, (l) => l?.backgroundOpacity ?? 0.7)}
+              min={0}
+              max={1}
+              step={0.01}
+              format={percent}
+              onCommit={(backgroundOpacity) => edit({ backgroundOpacity })}
+            />
+          </>
+        )}
+      </Show>
+      <div style={Line}>
+        <span style={Label}>Tether</span>
+        <Button
+          size="sm"
+          variant="ghost"
+          pressed={mapState(label, (l) => !!l?.tether)}
+          onClick={() => edit({ tether: !label.value?.tether })}
+        >
+          {mapState(label, (l) => (l?.tether ? 'On' : 'Off'))}
+        </Button>
+      </div>
+      <Show when={mapState(label, (l) => !!l?.tether)}>
+        {() => (
+          <SliderField
+            label="Length"
+            value={mapState(label, (l) => l?.tetherLength ?? 1)}
+            min={0.1}
+            max={10}
+            step={0.1}
+            format={(v) => `${Math.round(v * 10) / 10}×`}
+            onCommit={(tetherLength) => edit({ tetherLength })}
+          />
+        )}
+      </Show>
       <div style={Line}>
         <span style={Label} />
         <Button size="sm" variant="ghost" icon={<Icon name="x" />} onClick={() => edit({ remove: true })}>

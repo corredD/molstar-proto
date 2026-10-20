@@ -303,13 +303,23 @@ describe('explorer', () => {
     ]);
     const label = { key: `l:${labels[0].ref}`, label: 'CRAMBIN', kind: 'label', node: { ref: labels[0].ref } };
     expect(nodeMenuItems(v.api, area, label, { reveal: () => {} }).map((x) => x.id)).toEqual([
-      'focus',
-      'move',
       'edit-label',
+      'move',
+      'focus',
       'hide',
       'remove-label',
     ]);
     expect(nodeMenuItems(v.api, area, entity).map((x) => x.id)).toContain('label');
+  });
+
+  it("puts a part's label on one of its particles, not their center (an entity's copies around a model)", async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const list = area.objectsState().value.find((o) => o.kind === 'list')!;
+    // the list's particles (x 10, 20, 30): the label goes on one of them
+    const anchor = area.anchorOf({ ref: list.ref, particles: { targets: [0] } })!;
+    expect([10, 20, 30]).toContain(anchor.position[0]);
+    expect(anchor.radius).toBeGreaterThan(0);
   });
 
   it('keeps unchanged rows as the same objects', () => {

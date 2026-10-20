@@ -5,7 +5,7 @@
  */
 
 import { Sphere3D } from '@molstar/core/math/geometry';
-import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { ParticleListTransform } from '@molstar/plugin/state/transforms/particles/ops';
 import { VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
@@ -43,7 +43,7 @@ import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
-import { StageLabel, type StageLabelProps } from './label.js';
+import { labelLook, StageLabel, StageLabelParams, type StageLabelProps } from './label.js';
 import { type Cut, type CutShape, clipObjectOf, cutOf, defaultCut, flipCut, type ScreenFrame } from './cuts.js';
 import { type CutGuideData, CutGuides, isCutGuideData } from './guide.js';
 
@@ -90,6 +90,8 @@ export interface StageMenuRequest {
   readonly pick: StagePick;
   /** What the click picked, as Mol* has it (a host's menu reads its own level from it) */
   readonly loci: Loci;
+  /** Where it was clicked in 3D (on what it picked), if on something */
+  readonly position?: Vec3;
   /** Centers the camera on what was picked */
   readonly focus: () => void;
   /** The canvas: the menu opens in the app's root around it (which may be in a shadow root) */
@@ -171,6 +173,7 @@ export class StageApi extends ApiArea {
         y: e.page[1] - window.scrollY,
         pick: pickOf({ plugin }, loci),
         loci,
+        ...(e.position ? { position: Vec3.clone(e.position) } : {}),
         focus: () => {
           if (!isEmptyLoci(loci)) plugin.managers.camera.focusLoci(loci);
         },
@@ -494,6 +497,46 @@ export class StageApi extends ApiArea {
     },
   });
 
+  /**
+   * The label under a point of the page (client px), if any: a text is drawn but not picked by Mol*, so its box on the
+   * screen is measured (its place brought toward the camera, its height, its text's length; set off when tethered)
+   */
+  labelAt(x: number, y: number): string | undefined {
+    const plugin = this.ctx.plugin;
+    const camera = plugin.canvas3d?.camera;
+    const canvas = plugin.canvas3dContext?.canvas;
+    if (!camera || !canvas) return undefined;
+    const rect = canvas.getBoundingClientRect();
+    // window px (the drawing buffer's) per client px
+    const ratio = camera.viewport.width / Math.max(1, rect.width);
+    const toCamera = Vec3();
+    const p = Vec3();
+    const out = Vec4();
+    let best: { ref: string; z: number } | undefined;
+    for (const l of labelsOf({ plugin })) {
+      if (!l.visible) continue;
+      Vec3.normalize(toCamera, Vec3.sub(toCamera, camera.state.position, Vec3.create(...l.position)));
+      Vec3.scaleAndAdd(p, Vec3.create(...l.position), toCamera, l.depth);
+      camera.project(out, p);
+      if (out[3] <= 0) continue;
+      const pixel = camera.getPixelSize(p) * ratio;
+      if (!(pixel > 0)) continue;
+      // its box, in client px: about 0.6 of its height per character, a margin around
+      const h = (l.size * 1.4) / pixel;
+      const w = (l.size * (0.6 * Math.max(1, l.text.length) + 0.6)) / pixel;
+      let cx = rect.left + out[0] / ratio;
+      let cy = rect.top + out[1] / ratio;
+      if (l.tether) {
+        const off = (l.tetherLength * l.size) / pixel;
+        cx += off + w / 2;
+        cy -= off + h / 2;
+      }
+      if (Math.abs(x - cx) > w / 2 || Math.abs(y - cy) > h / 2) continue;
+      if (!best || out[2] < best.z) best = { ref: l.ref, z: out[2] };
+    }
+    return best?.ref;
+  }
+
   /** The labels of the stage, following the state tree while watched: a read for views */
   labelsState(): ReadonlyState<readonly LabelInfo[]> {
     const plugin = this.ctx.plugin;
@@ -516,11 +559,12 @@ export class StageApi extends ApiArea {
       depth: OptionalParam(PD.Numeric(0, { min: 0 }, { description: 'Brought toward the camera by this much (Å)' })),
       size: OptionalParam(PD.Numeric(4, { min: 0.5, max: 100 }, { description: 'Its height (Å)' })),
       color: OptionalParam(PD.Text('white', { description: 'A CSS color' })),
+      tether: OptionalParam(PD.Boolean(false, { description: 'A line from the place to the text, set off from it' })),
       node: PD.Text('', { description: "The explorer's row it is listed under (its key)" }),
     },
     async run(values, ctx) {
       const v = values as typeof values &
-        Partial<Record<'x' | 'y' | 'z' | 'depth' | 'size', number>> & { color?: string };
+        Partial<Record<'x' | 'y' | 'z' | 'depth' | 'size', number>> & { color?: string; tether?: boolean };
       const t = stageTargets(ctx).find((x) => x.ref === v.target);
       const bounds = t ? boundsOf(ctx, t) : undefined;
       if (v.x === undefined && !bounds) {
@@ -531,7 +575,7 @@ export class StageApi extends ApiArea {
       const color = v.color ? cssColor(v.color) : Color(0xffffff);
       if (color === undefined) return ApiResult.fail('invalid', `'${v.color}' is not a color.`);
       const b = ctx.plugin.state.data.build();
-      const label = b.toRoot().apply(StageLabel, {
+      const labelParams = {
         text: v.text || 'Label',
         position,
         depth: v.depth ?? (v.x === undefined ? radius : 0),
@@ -539,8 +583,14 @@ export class StageApi extends ApiArea {
         color,
         target: v.target,
         node: v.node,
-      });
-      label.apply(ShapeRepresentation3D, {});
+        ...(v.tether !== undefined ? { tether: v.tether } : {}),
+      };
+      const label = b.toRoot().apply(StageLabel, labelParams);
+      // its look on the representation too (a text's plate color and opacity are its props, not its geometry's)
+      label.apply(
+        ShapeRepresentation3D,
+        labelLook({ ...PD.getDefaultValues(StageLabelParams), ...labelParams }) as never,
+      );
       await b.commit();
       return ApiResult.ok(`Added the label "${v.text}".`, { nodes: [label.ref] });
     },
@@ -558,11 +608,25 @@ export class StageApi extends ApiArea {
       y: OptionalParam(PD.Numeric(0)),
       z: OptionalParam(PD.Numeric(0)),
       visible: OptionalParam(PD.Boolean(true)),
+      background: OptionalParam(PD.Boolean(true, { description: 'A plate behind the text' })),
+      backgroundColor: OptionalParam(PD.Text('#202020', { description: "The plate's CSS color" })),
+      backgroundOpacity: OptionalParam(PD.Numeric(0.7, { min: 0, max: 1, step: 0.01 })),
+      tether: OptionalParam(PD.Boolean(false, { description: 'A line from the place to the text, set off from it' })),
+      tetherLength: OptionalParam(
+        PD.Numeric(1, { min: 0.1, max: 10, step: 0.1 }, { description: "In the text's heights" }),
+      ),
       remove: PD.Boolean(false, { description: 'Remove it' }),
     },
     async run(values, ctx) {
       const v = values as typeof values &
-        Partial<Record<'x' | 'y' | 'z' | 'size', number>> & { text?: string; color?: string; visible?: boolean };
+        Partial<Record<'x' | 'y' | 'z' | 'size' | 'backgroundOpacity' | 'tetherLength', number>> & {
+          text?: string;
+          color?: string;
+          visible?: boolean;
+          background?: boolean;
+          backgroundColor?: string;
+          tether?: boolean;
+        };
       const cell = ctx.plugin.state.data.cells.get(v.label);
       if (!cell || cell.transform.transformer !== StageLabel) {
         return ApiResult.fail('not-found', `There is no label '${v.label}'.`);
@@ -574,12 +638,21 @@ export class StageApi extends ApiArea {
       }
       const color = v.color ? cssColor(v.color) : undefined;
       if (v.color && color === undefined) return ApiResult.fail('invalid', `'${v.color}' is not a color.`);
-      const old = cell.transform.params as StageLabelProps;
+      const backgroundColor = v.backgroundColor ? cssColor(v.backgroundColor) : undefined;
+      if (v.backgroundColor && backgroundColor === undefined) {
+        return ApiResult.fail('invalid', `'${v.backgroundColor}' is not a color.`);
+      }
+      const old = { ...PD.getDefaultValues(StageLabelParams), ...(cell.transform.params as StageLabelProps) };
       const next: StageLabelProps = {
         ...old,
         ...(v.text !== undefined ? { text: v.text } : {}),
         ...(v.size !== undefined ? { size: v.size } : {}),
         ...(color !== undefined ? { color } : {}),
+        ...(v.background !== undefined ? { background: v.background } : {}),
+        ...(backgroundColor !== undefined ? { backgroundColor } : {}),
+        ...(v.backgroundOpacity !== undefined ? { backgroundOpacity: v.backgroundOpacity } : {}),
+        ...(v.tether !== undefined ? { tether: v.tether } : {}),
+        ...(v.tetherLength !== undefined ? { tetherLength: v.tetherLength } : {}),
         position:
           v.x !== undefined || v.y !== undefined || v.z !== undefined
             ? Vec3.create(v.x ?? old.position[0], v.y ?? old.position[1], v.z ?? old.position[2])
@@ -587,7 +660,14 @@ export class StageApi extends ApiArea {
       };
       const nodes: string[] = [];
       if (JSON.stringify(next) !== JSON.stringify(old)) {
-        await ctx.plugin.state.data.build().to(cell).update(next).commit();
+        const b = ctx.plugin.state.data.build().to(cell).update(next);
+        // its look on its representation too
+        for (const child of ctx.plugin.state.data.tree.children.get(v.label).toArray()) {
+          if (ctx.plugin.state.data.cells.get(child)?.transform.transformer === ShapeRepresentation3D) {
+            b.to(child).update(labelLook(next) as never);
+          }
+        }
+        await b.commit();
         nodes.push(v.label);
       }
       if (v.visible !== undefined && v.visible === !!cell.state.isHidden) {
@@ -793,6 +873,13 @@ export interface LabelInfo {
   readonly target: string;
   readonly node: string;
   readonly visible: boolean;
+  readonly background: boolean;
+  readonly backgroundColor: number;
+  readonly backgroundOpacity: number;
+  readonly tether: boolean;
+  readonly tetherLength: number;
+  /** Brought toward the camera by this much (Å) */
+  readonly depth: number;
 }
 
 /** The name of the file or entry an object came from: its root data's label */
@@ -827,7 +914,7 @@ function labelsOf(ctx: Pick<ApiContext, 'plugin'>): LabelInfo[] {
   const out: LabelInfo[] = [];
   for (const cell of ctx.plugin.state.data.cells.values()) {
     if (cell.transform.transformer !== StageLabel) continue;
-    const p = cell.transform.params as StageLabelProps;
+    const p = { ...PD.getDefaultValues(StageLabelParams), ...(cell.transform.params as StageLabelProps) };
     out.push({
       ref: cell.transform.ref,
       text: p.text,
@@ -837,6 +924,12 @@ function labelsOf(ctx: Pick<ApiContext, 'plugin'>): LabelInfo[] {
       target: p.target,
       node: p.node,
       visible: !cell.state.isHidden,
+      background: p.background,
+      backgroundColor: p.backgroundColor,
+      backgroundOpacity: p.backgroundOpacity,
+      tether: p.tether,
+      tetherLength: p.tetherLength,
+      depth: p.depth,
     });
   }
   return out;

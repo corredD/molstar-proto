@@ -186,34 +186,46 @@ export function clipItems(api: ViewerApi, picked: PickedNode): ContextMenuItem[]
   }));
 }
 
-/** What the menu asks of the panel: a sub-menu at the same place (Color…, Add a clip…), a row to pick (a new label) */
+/**
+ * What the menu asks of the panel: a sub-menu at the same place (Color…, Add a clip…), a row to pick (a new label), a
+ * text edited where the menu was (a label's); and where it was opened in 3D (a label goes there)
+ */
 export interface MenuActions {
   open?(items: ContextMenuItem[]): void;
   reveal?(picked: PickedNode): void;
+  editText?(text: string, keep: (text: string) => void): void;
+  /** The point clicked on what was picked (Å) */
+  at?: readonly [number, number, number];
 }
 
-/** Adds a label in front of a node, named after it, and picks its row (its text is edited in the properties) */
+/**
+ * Adds a label of a node, named after it, and picks its row (its text is edited in the properties): where it was
+ * clicked, else on the node (a part of many particles: its particle nearest the camera), in front of it
+ */
 export async function addLabel(
   api: ViewerApi,
   area: ExplorerApi,
   picked: PickedNode,
   reveal?: (p: PickedNode) => void,
+  at?: readonly [number, number, number],
 ) {
-  const bounds = area.boundsOf(picked.node);
-  // readable at the object's scale: half the node's size, at least a 15th of its object's, in half-Å steps
-  const object = area.boundsOf({ ref: picked.node.ref }) ?? bounds;
-  const size =
-    bounds && object ? Math.round(Math.min(100, Math.max(2, bounds.radius / 2, object.radius / 15)) * 2) / 2 : 4;
+  const anchor = area.anchorOf(picked.node);
+  const position = at ?? anchor?.position;
+  // readable at the object's scale: about the node's own size, at least a 15th of its object's, in half-Å steps
+  const object = area.boundsOf({ ref: picked.node.ref });
+  const own = anchor?.radius ?? object?.radius ?? 10;
+  const size = Math.round(Math.min(100, Math.max(2, own / 2, (object?.radius ?? own) / 15)) * 2) / 2;
   const r = await api.run('stage.label', {
     text: picked.label,
     target: picked.node.ref,
     node: picked.key,
-    ...(bounds
+    ...(position
       ? {
-          x: bounds.center[0],
-          y: bounds.center[1],
-          z: bounds.center[2],
-          depth: bounds.radius,
+          x: position[0],
+          y: position[1],
+          z: position[2],
+          // in front of the surface clicked; else of the node's middle
+          depth: at ? size : own,
           size,
         }
       : {}),
@@ -235,15 +247,27 @@ export function nodeMenuItems(
     ];
   }
   const { node, kind, label } = picked;
-  const items: ContextMenuItem[] = [
-    { id: 'focus', label: `Focus on ${label}`, icon: 'scan', run: () => area.focus(node) },
-  ];
-  items.push(...moveItems(api, area, picked));
+  const items: ContextMenuItem[] = [];
   if (kind === 'label') {
-    if (actions.reveal) {
+    // a label's: its text, its place first
+    const editText = actions.editText;
+    const info = api.stage?.labelsState().value.find((l) => l.ref === node.ref);
+    if (editText && info) {
+      items.push({
+        id: 'edit-label',
+        label: 'Edit the text…',
+        icon: 'type',
+        run: () => editText(info.text, (text) => void api.run('stage.editLabel', { label: node.ref, text })),
+      });
+    } else if (actions.reveal) {
       const reveal = actions.reveal;
       items.push({ id: 'edit-label', label: 'Edit the text', icon: 'type', run: () => reveal(picked) });
     }
+    items.push(...moveItems(api, area, picked));
+    items.push({ id: 'focus', label: `Focus on ${info?.text ?? label}`, icon: 'scan', run: () => area.focus(node) });
+  } else {
+    items.push({ id: 'focus', label: `Focus on ${picked.label}`, icon: 'scan', run: () => area.focus(node) });
+    items.push(...moveItems(api, area, picked));
   }
   // an entity of a model hides as a group does (its style); a structure's entity or chain cannot yet
   const hideable = Hideable.has(kind) || (kind === 'entity' && 'particles' in node);
@@ -276,7 +300,7 @@ export function nodeMenuItems(
     id: 'label',
     label: 'Add a label',
     icon: 'type',
-    run: () => void addLabel(api, area, picked, actions.reveal),
+    run: () => void addLabel(api, area, picked, actions.reveal, actions.at),
   });
   if (api.describe('assistant.ask')) {
     items.push({
