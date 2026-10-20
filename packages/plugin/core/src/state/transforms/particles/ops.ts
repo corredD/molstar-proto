@@ -19,6 +19,7 @@ import {
   particleTargetFromObject,
 } from '@molstar/plugin/state/helpers/particle-targets';
 import { Asset } from '@molstar/core/util/assets';
+import { Mat3, Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { type ParticleList, type ParticleTarget, Particle } from '@molstar/model/model/particles/particle-list';
 import { type StateObject, type StateTransform, StateTransformer } from '@molstar/core/state';
 
@@ -421,3 +422,60 @@ const ParticleListWithTargets = PluginStateTransform.BuiltIn({
     }
   },
 });
+
+export { ParticleListTransform };
+type ParticleListTransform = typeof ParticleListTransform;
+/**
+ * Moves and turns a particle list as a rigid body: its positions by the matrix, its orientations by its rotation (the
+ * rotation itself for a list without orientations). A decorator: what is under it takes the moved list.
+ */
+const ParticleListTransform = PluginStateTransform.BuiltIn({
+  name: 'particle-list-transform',
+  display: { name: 'Transform', description: 'Move and turn the particles as one rigid body.' },
+  isDecorator: true,
+  from: SO.Particle.List,
+  to: SO.Particle.List,
+  params: {
+    transform: PD.Mat4(Mat4.identity(), { description: 'A rigid transform: a rotation, then a translation (Å)' }),
+  },
+})({
+  apply({ a, params }) {
+    return new SO.Particle.List(transformParticles(a.data, params.transform), {
+      label: a.label,
+      description: a.description,
+    });
+  },
+  update({ a, b, newParams, oldParams }) {
+    if (Mat4.areEqual(newParams.transform, oldParams.transform, 1e-9) && b.data.sourceData === a.data.sourceData) {
+      return StateTransformer.UpdateResult.Unchanged;
+    }
+    b.data = transformParticles(a.data, newParams.transform);
+    b.label = a.label;
+    return StateTransformer.UpdateResult.Updated;
+  },
+});
+
+function transformParticles(list: ParticleList, m: Mat4): ParticleList {
+  if (Mat4.isIdentity(m)) return list;
+  const n = list.count;
+  const coordinates = new Float32Array(n * 3);
+  const p = Vec3();
+  for (let i = 0; i < n; ++i) {
+    Vec3.fromArray(p, list.coordinates, i * 3);
+    Vec3.transformMat4(p, p, m);
+    Vec3.toArray(p, coordinates, i * 3);
+  }
+  // the turn: the matrix's rotation, as a unit quaternion
+  const turn = Quat.normalize(Quat(), Quat.fromMat3(Quat(), Mat3.fromMat4(Mat3(), m)));
+  const rotations = new Float32Array(n * 4);
+  const q = Quat();
+  for (let i = 0; i < n; ++i) {
+    if (list.rotations) Quat.fromArray(q, list.rotations, i * 4);
+    else Quat.setIdentity(q);
+    Quat.multiply(q, turn, q);
+    Quat.toArray(q, rotations, i * 4);
+  }
+  // its simulation box, if any, no longer bounds it
+  const { cell: _, ...rest } = list;
+  return { ...rest, coordinates, rotations, _propertyData: Object.create(null) };
+}

@@ -17,7 +17,8 @@ import {
 } from '../../../formats/particles/ndjson.js';
 import { RelionStarParticles, RelionStarParticlesProvider } from '../../../formats/particles/star.js';
 import { particleTargetObjectCells } from '../../../helpers/particle-targets.js';
-import { ParticleListTargetsFromAttribute, ParticleListWithTargets } from '../ops.js';
+import { ParticleListTargetsFromAttribute, ParticleListTransform, ParticleListWithTargets } from '../ops.js';
+import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 
 /** An n³ map of one value as MRC bytes */
 function mapBytes(n: number, value: number) {
@@ -216,5 +217,26 @@ describe('ParticleListTargetsFromAttribute', () => {
     expect(Array.from(targetInfo.values()).map((t) => t.name)).toEqual(['Class 1', 'Class 2']);
     const second = targetMapping!.get(1)!;
     expect(second.kind === 'volume' && second.volume).toBe(two.obj!.data);
+  });
+});
+
+describe('ParticleListTransform', () => {
+  it('moves and turns the particles (their positions and orientations), the rest kept', async () => {
+    const { plugin, list } = await setup();
+    const turn = Mat4.fromRotation(Mat4(), Math.PI / 2, Vec3.create(0, 0, 1));
+    const matrix = Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 5)), turn);
+    const moved = await plugin.build().to(list).insert(ParticleListTransform, { transform: matrix }).commit();
+    const data = (moved.obj as SO.Particle.List).data;
+    const source = (list.obj as SO.Particle.List).data;
+    // the second particle (10, 0, 0): turned a quarter about z, then up 5
+    expect(Array.from(data.coordinates.slice(3, 6)).map((x) => Math.round(x * 1e4) / 1e4)).toEqual([0, 10, 5]);
+    // its orientation turned so (it had none: the turn itself)
+    const q = Quat.fromArray(Quat(), data.rotations!, 4);
+    const expected = Quat.setAxisAngle(Quat(), Vec3.create(0, 0, 1), Math.PI / 2);
+    expect(Math.abs(Quat.dot(q, expected))).toBeCloseTo(1, 5);
+    expect(data.count).toBe(source.count);
+    expect(data.targets).toBe(source.targets);
+    // a decorator: what is under it now takes the moved list
+    expect(moved.cell!.transform.transformer.definition.isDecorator).toBe(true);
   });
 });
