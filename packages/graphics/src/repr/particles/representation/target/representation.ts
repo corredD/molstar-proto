@@ -21,6 +21,8 @@ import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import { Theme } from '@molstar/graphics/theme/theme';
 import { type GraphicsRenderObject, getNextMaterialId } from '@molstar/graphics/gl/render-object';
 import { Subject } from 'rxjs';
+import { Mat4 } from '@molstar/core/math/linear-algebra';
+import { Visual } from '../../../visual.js';
 import { Task } from '@molstar/core/task';
 import { type Loci as ModelLoci, EmptyLoci, isEveryLoci, EveryLoci } from '@molstar/model/model/loci';
 import { type MarkerAction, MarkerActions } from '@molstar/core/util/marker-action';
@@ -139,6 +141,8 @@ export function ParticleTargetRepresentation(
       }
 
       updateRenderObjectList(entries);
+      // made or merged again: they take the representation's transform
+      if (!Mat4.isIdentity(_state.transform)) applyTransform(_state.transform);
       geometryState.snapshot();
       updated.next(version++);
     });
@@ -154,8 +158,25 @@ export function ParticleTargetRepresentation(
     if (state.pickable !== undefined) renderObject.state.pickable = state.pickable;
   }
 
+  /**
+   * The representation's transform on what it draws: each target's visual and the merged render objects (each has its
+   * own model matrix; a merged one is drawn instead of its members)
+   */
+  function applyTransform(transform: Mat4) {
+    const done = new Set<GraphicsRenderObject>();
+    for (const visual of targetVisuals.values()) {
+      if (visual.renderObject) {
+        Visual.setTransform(visual.renderObject, transform);
+        done.add(visual.renderObject);
+      }
+    }
+    for (const ro of renderObjects) if (!done.has(ro)) Visual.setTransform(ro, transform);
+  }
+
   function setState(state: Partial<Representation.State>) {
+    const moved = state.transform !== undefined && !Mat4.areEqual(state.transform, _state.transform, 1e-9);
     Representation.updateState(_state, state);
+    if (moved) applyTransform(_state.transform);
     // apply per visual, not per (possibly merged) renderObject: a merged render object only
     // aliases its first member's state, so looping renderObjects would miss the other members
     for (const visual of targetVisuals.values()) {
