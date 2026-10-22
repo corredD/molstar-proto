@@ -774,9 +774,7 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
             <div style={Line}>
               <strong style="flex: 1">
                 {mapState(cut, (c) =>
-                  c
-                    ? `${ClipNames[c.object.type] ?? c.object.type} ${c.index}${c.kept && c.atoms && !('entity' in node) ? ` · ${c.atoms.label}` : ''}`
-                    : '',
+                  c ? `${ClipNames[c.object.type] ?? c.object.type} ${c.index}${partOf(c, node)}` : '',
                 )}
               </strong>
               <Button
@@ -808,6 +806,13 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
       </Button>
     </div>
   );
+}
+
+/** A part's cut, at its object's row: its part, named (" · CRAMBIN"); else nothing */
+function partOf(c: { kept?: unknown; atoms?: { label: string }; particles?: { label: string } }, node: NodeRef) {
+  if ('entity' in node || 'particles' in node) return '';
+  if (c.particles) return ` · ${c.particles.label}`;
+  return c.kept && c.atoms ? ` · ${c.atoms.label}` : '';
 }
 
 /** The app's root around an element (its tokens and styles apply in it) */

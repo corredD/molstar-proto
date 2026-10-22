@@ -276,7 +276,7 @@ describe('explorer', () => {
     expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);
   });
 
-  it("adds several clips to an object (Prism's), none to a part of it, and colors a target", async () => {
+  it("adds several clips to an object and one to a target (Prism's), each listed at its row, and colors a target", async () => {
     const v = await viewer();
     const area = v.api.explorer!;
     const list = area.objectsState().value.find((o) => o.kind === 'list')!;
@@ -291,15 +291,19 @@ describe('explorer', () => {
     const ofList = () => v.api.clipping.cuts.value.filter((c) => c.targets.some((t) => area.isUnder(t.ref, list.ref)));
     expect(ofList().map((c) => c.object.type)).toEqual(['plane', 'sphere']);
     expect(ofList().every((c) => !!c.object.tag)).toBe(true);
-    // a target: no clips of its own (only Prism's, of whole objects); a color, by the brush
+    // a target: Prism's cut of only its particles, listed at its row (and its object's)
     const target = {
       key: `t:${list.ref}:0`,
       label: 'Target 0',
       kind: 'target',
       node: { ref: list.ref, particles: { targets: [0] } },
     };
-    expect(clippable(target.kind, target.node)).toBe(false);
-    expect(clipItems(v.api, area, target)).toEqual([]);
+    expect(clippable(target.kind, target.node)).toBe(true);
+    await run(clipItems(v.api, area, target), 'clip-cube');
+    const ofTarget = area.cutsOf(v.api.clipping.cuts.value, target.node);
+    expect(ofTarget.map((c) => [c.object.type, c.particles?.selector.targets])).toEqual([['cube', [0]]]);
+    expect(ofList().map((c) => c.object.type)).toEqual(['plane', 'sphere', 'cube']);
+    // a color, by the brush
     await run(colorItems(v.api, area, target), 'color-tomato');
     expect(v.api.mesoscale!.infoState(list.ref).value!.entities[0].color).toBe(0xff6347);
   });

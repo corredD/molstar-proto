@@ -309,10 +309,24 @@ export class ExplorerApi extends ApiArea {
 
   /**
    * Of Prism's cuts, those a row lists: an object's, every cut through its representations (a part's too); a
-   * structure entity's or chain's, the cuts of its atoms and no others (`clipping.add` `only`)
+   * structure entity's or chain's, the cuts of its atoms and no others (`clipping.add` `only`); a model's or list's
+   * group's, entity's or target's, the cuts of exactly its particles (`clipping.add` `particles`)
    */
   cutsOf(cuts: readonly Cut[], node: NodeRef): Cut[] {
     const under = cuts.filter((c) => c.object.tag && c.targets.some((t) => this.isUnder(t.ref, node.ref)));
+    if ('particles' in node) {
+      const ids = (a: readonly number[] | undefined) => [...(a ?? [])].sort((x, y) => x - y).join(',');
+      const p = node.particles;
+      return under.filter((c) => {
+        const s = c.particles?.selector;
+        return (
+          !!s &&
+          ids(s.entities) === ids(p.entities) &&
+          ids(s.compartments) === ids(p.compartments) &&
+          ids(s.targets) === ids(p.targets)
+        );
+      });
+    }
     if (!('entity' in node)) return under;
     const loci = this.loci(node);
     if (!StructureElement.Loci.is(loci)) return [];

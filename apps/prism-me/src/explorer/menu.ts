@@ -137,9 +137,15 @@ export function colorable(kind: string, node: NodeRef | undefined): boolean {
   return ['structure', 'entity', 'chain', 'mesoscale model', 'group', 'target', 'mesh'].includes(kind);
 }
 
-/** Whether a node can be clipped (Prism's clipping): an object, all of it; a structure's entity or chain, only it */
+/**
+ * Whether a node can be clipped (Prism's clipping): an object, all of it; a part, only it (a structure's entity or
+ * chain; a model's or list's group, entity or target)
+ */
 export function clippable(kind: string, node: NodeRef | undefined): boolean {
-  return !!node && (WholeClips.has(kind) || ((kind === 'entity' || kind === 'chain') && 'entity' in node));
+  if (!node) return false;
+  if (WholeClips.has(kind)) return true;
+  if ('entity' in node) return kind === 'entity' || kind === 'chain';
+  return 'particles' in node && ['group', 'entity', 'target'].includes(kind);
 }
 
 /** Whether a node is a loaded object (it can be removed from the scene, with all of it) */
@@ -199,13 +205,16 @@ export function colorItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode
 
 /**
  * Adds Prism's cut of a node, and shows its handles (to move, turn and size it in 3D): all of an object, or only a
- * structure's entity or chain (the rest of what its representations draw kept whole)
+ * part: a structure's entity or chain (the rest its representations draw kept whole), a model's or list's group,
+ * entity or target (the other particles left whole)
  */
 export async function addClip(api: ViewerApi, area: ExplorerApi, node: NodeRef, shape: string) {
   const r =
     'entity' in node
       ? await api.run('clipping.add', { shape, target: { loci: area.loci(node) }, only: true })
-      : await api.run('clipping.add', { shape, node: `#${node.ref}` });
+      : 'particles' in node
+        ? await api.run('clipping.add', { shape, node: `#${node.ref}`, particles: node.particles })
+        : await api.run('clipping.add', { shape, node: `#${node.ref}` });
   const cut = (r as { value?: { index: number } }).value;
   if (!r.ok || !cut || !api.clipping) return;
   showClipHandles(api, cut.index);

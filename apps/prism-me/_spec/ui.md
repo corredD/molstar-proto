@@ -185,8 +185,10 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
 - Parts cut by Prism (2026-10-22, Ludovic: "Prism clipping should cut every level"). Step 1, a structure's entity or
   chain: its scissors add Prism's cut of only its atoms (`clipping.add` `only`, a library change: the rest its
   representations draw kept whole by Mol\*'s clipping groups); its Clips list the cuts of exactly its atoms (a cut's
-  `atoms`, read back), its object's list all of them, a part's named by its part. Next: a model's or list's groups,
-  entities and targets (particles), then shapes.
+  `atoms`, read back), its object's list all of them, a part's named by its part. Step 2, a model's or list's group,
+  entity or target: its scissors add Prism's cut of only its particles (`clipping.add` `particles`, by node: the others
+  ignore it, recorded by the cut's tag in the representation's layers); its Clips list the cuts of exactly its
+  particles. `mesoscale.clip` (the explorer's own sliders, by place) is gone. Next: shapes.
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,
