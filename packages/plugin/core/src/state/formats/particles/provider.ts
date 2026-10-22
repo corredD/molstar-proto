@@ -16,6 +16,8 @@ import { ParticleSpacefill } from '@molstar/plugin/registry/particles/spacefill'
 import { ParticleFibers } from '@molstar/plugin/registry/particles/fibers';
 import { ParticleTarget } from '@molstar/plugin/registry/particles/target';
 import { SpacefillParticlesRepresentationProvider } from '@molstar/graphics/repr/particles/representation/spacefill';
+import { OrientationParticlesRepresentationProvider } from '@molstar/graphics/repr/particles/representation/orientation';
+import { PluginConfig } from '@molstar/plugin/config';
 import { FibersRepresentationProvider } from '@molstar/graphics/repr/particles/representation/fibers';
 import { ParticleTargetRepresentationProvider } from '@molstar/graphics/repr/particles/representation/target/representation';
 import { ParticleIndexColorThemeProvider } from '@molstar/graphics/theme/color/particle-index';
@@ -100,6 +102,14 @@ export function simpleVisuals(plugin: PluginContext, data: ParticleFormatData) {
   builder
     .to(data.list)
     .apply(ParticlesRepresentation3D, { type: { name: SpacefillParticlesRepresentationProvider.name, params: {} } });
+
+  // its orientations as axes too, where the app asks (`PluginConfig.Particles.ShowOrientations`) and it has them
+  const list = StateObjectRef.resolveAndCheck(plugin.state.data, data.list)?.obj?.data;
+  const axes = OrientationParticlesRepresentationProvider.name;
+  const registered = plugin.representation.particles.registry.has(axes);
+  if (plugin.config.get(PluginConfig.Particles.ShowOrientations) && list?.rotations && registered) {
+    builder.to(data.list).apply(ParticlesRepresentation3D, { type: { name: axes, params: {} } });
+  }
 
   builder.to(data.list).apply(ParticleListUnitcell3D, { attachment: 'center' });
 

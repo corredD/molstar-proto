@@ -98,6 +98,10 @@ export const PluginConfig = {
     DefaultPdbProvider: item<PdbDownloadProvider>('download.default-pdb-provider', 'pdbe'),
     DefaultEmdbProvider: item<EmdbDownloadProvider>('download.default-emdb-provider', 'pdbe'),
   },
+  Particles: {
+    /** A particle list's default visuals add its orientations as axes, when it has them (an app's choice: off) */
+    ShowOrientations: item('particles.show-orientations', false),
+  },
   Structure: {
     SizeThresholds: item('structure.size-thresholds', Structure.DefaultSizeThresholds),
     DefaultHierarchyPreset: item<string>('structure.default-hierarchy-preset', 'preset-trajectory-default'),
