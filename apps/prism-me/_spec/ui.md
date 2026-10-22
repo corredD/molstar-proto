@@ -172,6 +172,11 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   list's, a volume's or a mesh's the stage's on the same library (`ObjectMoveGizmos`, committing `stage.move`; a mesh's
   scale kept under the turn); one object's handles at a time; the properties' Position shows or hides them. A label
   keeps its drag (Move: nothing to turn).
+- Particle lists (2026-10-22, Ludovic's test): one with orientations opens as its spheres and its axes, both shown
+  (`PluginConfig.Particles.ShowOrientations`, on in the app's spec; a library option, off by default); each has its eye
+  in Representation. What stands for the particles follows their decoration: the objects while any target is decorated,
+  else the spheres and axes; a target representation made before (or hidden) is shown again, not made twice
+  (`ensureTargetRepresentation`). Before, back to Spheres left the list drawn by nothing.
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.

@@ -834,31 +834,38 @@ function pickTargets(data: ParticleList, names: string): number[] | ApiFailure {
  */
 async function ensureTargetRepresentation(ctx: ApiContext, l: ParticleListRef): Promise<string[]> {
   const fresh = lists(ctx).find((x) => x.cell.transform.ref === l.cell.transform.ref) ?? l;
-  const has = fresh.representations.some(
-    (r) => (r.cell.transform.params as { type?: { name?: string } })?.type?.name === 'target',
-  );
+  const isTarget = (r: ParticleListRef['representations'][number]) =>
+    (r.cell.transform.params as { type?: { name?: string } })?.type?.name === 'target';
   const data = dataOf(ctx, fresh);
+  const decorated = !!data?.targetMapping?.size;
   const { registry, themes } = ctx.plugin.representation.particles;
-  if (has || !data?.targetMapping?.size || !registry.has('target')) return [];
-  const provider = registry.get('target');
-  const dataCtx = { particles: data };
-  const color = themes.colorThemeRegistry.get(provider.defaultColorTheme.name);
-  const size = themes.sizeThemeRegistry.get(provider.defaultSizeTheme.name);
-  const b = ctx.plugin.state.data.build();
-  const repr = b.to(fresh.cell).apply(ParticlesRepresentation3D, {
-    type: { name: 'target', params: PD.getDefaultValues(provider.getParams(themes, data)) },
-    colorTheme: {
-      name: color.name,
-      params: { ...PD.getDefaultValues(color.getParams(dataCtx)), ...provider.defaultColorTheme.props },
-    },
-    sizeTheme: {
-      name: size.name,
-      params: { ...PD.getDefaultValues(size.getParams(dataCtx)), ...provider.defaultSizeTheme.props },
-    },
-  } as never);
-  await b.commit();
-  // the spheres stood for the particles until now: the objects take their place
-  const shown = fresh.representations.filter((r) => !r.cell.state.isHidden);
-  ctx.plugin.managers.particles.hierarchy.toggleVisibility(shown, 'hide');
-  return [repr.ref, ...shown.map((r) => r.cell.transform.ref)];
+  const made: string[] = [];
+  if (decorated && !fresh.representations.some(isTarget) && registry.has('target')) {
+    const provider = registry.get('target');
+    const dataCtx = { particles: data! };
+    const color = themes.colorThemeRegistry.get(provider.defaultColorTheme.name);
+    const size = themes.sizeThemeRegistry.get(provider.defaultSizeTheme.name);
+    const b = ctx.plugin.state.data.build();
+    const repr = b.to(fresh.cell).apply(ParticlesRepresentation3D, {
+      type: { name: 'target', params: PD.getDefaultValues(provider.getParams(themes, data!)) },
+      colorTheme: {
+        name: color.name,
+        params: { ...PD.getDefaultValues(color.getParams(dataCtx)), ...provider.defaultColorTheme.props },
+      },
+      sizeTheme: {
+        name: size.name,
+        params: { ...PD.getDefaultValues(size.getParams(dataCtx)), ...provider.defaultSizeTheme.props },
+      },
+    } as never);
+    await b.commit();
+    made.push(repr.ref);
+  }
+  // what stands for the particles follows what decorates them: the objects when any target has one, else the spheres
+  // and axes (and a target representation made before, or hidden, is shown again with a decoration)
+  const now = lists(ctx).find((x) => x.cell.transform.ref === l.cell.transform.ref) ?? fresh;
+  const show = now.representations.filter((r) => isTarget(r) === decorated && r.cell.state.isHidden);
+  const hide = now.representations.filter((r) => isTarget(r) !== decorated && !r.cell.state.isHidden);
+  ctx.plugin.managers.particles.hierarchy.toggleVisibility(show, 'show');
+  ctx.plugin.managers.particles.hierarchy.toggleVisibility(hide, 'hide');
+  return [...made, ...show.map((r) => r.cell.transform.ref), ...hide.map((r) => r.cell.transform.ref)];
 }

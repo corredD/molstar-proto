@@ -296,6 +296,31 @@ describe('cryoet', () => {
     )!;
     expect(fresh.representations.length).toBe(before + 3);
   });
+
+  it('shows the objects while any target is decorated, else the spheres again (a target representation reused)', async () => {
+    const v = await viewer();
+    const c = v.api.cryoet!;
+    const crn = new File([readFileSync(new URL('../../../../data/examples/1crn.cif', import.meta.url))], '1crn.cif');
+    expectOk(await v.api.load.files({ files: [crn] }));
+    const list = () => v.plugin.managers.particles.hierarchy.current.lists[0];
+    const shown = () =>
+      list()
+        .representations.filter((r) => !r.cell.state.isHidden)
+        .map((r) => (r.cell.transform.params as any).type.name)
+        .sort();
+    expect(shown()).toEqual(['spacefill']);
+    expectOk(await c.decorate({ with: 'object', object: '1crn' } as never));
+    expect(shown()).toEqual(['target']);
+    // back to spheres: the spheres again, the (now empty) objects hidden
+    expectOk(await c.decorate({ with: 'none' } as never));
+    expect(shown()).toEqual(['spacefill']);
+    // decorated again: the same target representation shown again, not another
+    expectOk(await c.decorate({ with: 'object', object: '1crn' } as never));
+    expect(shown()).toEqual(['target']);
+    expect(list().representations.filter((r) => (r.cell.transform.params as any).type.name === 'target')).toHaveLength(
+      1,
+    );
+  });
 });
 
 function volumeRef(v: PrismViewer, label: string) {

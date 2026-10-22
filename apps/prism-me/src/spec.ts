@@ -7,6 +7,7 @@
 import { Binding } from '@molstar/core/util/binding';
 import { ButtonsType, ModifiersKeys } from '@molstar/core/util/input/input-observer';
 import { FocusLoci as CameraFocusLoci } from '@molstar/plugin/behavior/dynamic/camera';
+import { PluginConfig } from '@molstar/plugin/config';
 import { PluginSpec } from '@molstar/plugin/spec';
 import { PLUGIN_VERSION } from '@molstar/plugin/version';
 import { assistant } from '@molstar/prism-assistant/spec';
@@ -28,6 +29,11 @@ export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
   const options = optionsFromUrl(search);
   return {
     ...base,
+    // A particle list with orientations opens as its spheres and its axes (Ludovic, 2026-10-22)
+    plugin: {
+      ...base.plugin,
+      config: [...(base.plugin.config ?? []), [PluginConfig.Particles.ShowOrientations, true]],
+    },
     extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions],
     // One panel (_spec/ui.md §1): the explorer's tree and properties; the others stay reachable from ⌘K
     overrides: { ...base.overrides, ...Object.fromEntries(HiddenParts.map((id) => [id, null])) },
