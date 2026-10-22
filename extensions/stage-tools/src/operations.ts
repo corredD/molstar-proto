@@ -105,6 +105,18 @@ export class StageApi extends ApiArea {
   /** The right-clicks on the canvas (the stage's menu opens on them) */
   readonly menuRequests: Observable<StageMenuRequest> = this.requests.asObservable();
 
+  /** What opens on a right-click: a host's menu if one is set (prism-me's), else the stage's own */
+  private menus: { own?: (request: StageMenuRequest) => void; host?: (request: StageMenuRequest) => void } = {};
+
+  /**
+   * Sets what opens on the canvas's right-clicks: the stage's own menu (`host: false`), or a host's, which then opens
+   * instead (the stage's own opens none); for the viewer's life (the area holds the one subscription)
+   */
+  setMenu(open: (request: StageMenuRequest) => void, host = false) {
+    if (host) this.menus.host = open;
+    else this.menus.own = open;
+  }
+
   /** The guides hidden one by one (`target:index`), a view aid of the canvas */
   private readonly hiddenGuides = observableState<ReadonlySet<string>>(new Set());
 
@@ -144,9 +156,6 @@ export class StageApi extends ApiArea {
     );
   }
 
-  /** A host opens its own menu on the right-clicks (the stage's then opens none) */
-  menuHosted = false;
-
   /** The cuts' guides on the canvas, following the state */
   readonly guideVisuals: CutGuides;
   private readonly guidesShown = observableState(true);
@@ -165,6 +174,7 @@ export class StageApi extends ApiArea {
         void this.guideVisuals.sync(desiredGuides({ plugin }, this.hiddenGuides.value));
       }, 0);
     });
+    this.requests.subscribe((request) => (this.menus.host ?? this.menus.own)?.(request));
     plugin.behaviors.interaction.click.subscribe((e) => {
       if (e.button !== ButtonsType.Flag.Secondary || !e.page) return;
       const loci = e.current.loci;

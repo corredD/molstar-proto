@@ -117,9 +117,16 @@ export class ExplorerApi extends ApiArea {
   private readonly picks = new Subject<CanvasClick>();
   /** The left-clicks on the canvas, what they picked and where (the tree follows them) */
   readonly clicks: Observable<CanvasClick> = this.picks.asObservable();
+  private onClick?: (click: CanvasClick) => void;
+
+  /** What a left-click on the canvas does (the tree follows it), for the viewer's life */
+  setOnClick(on: (click: CanvasClick) => void) {
+    this.onClick = on;
+  }
 
   constructor(ctx: ApiAreaContext) {
     super(ctx);
+    this.picks.subscribe((click) => this.onClick?.(click));
     ctx.plugin.behaviors.interaction.click.subscribe((e) => {
       if (e.button !== ButtonsType.Flag.Primary) return;
       this.picks.next({

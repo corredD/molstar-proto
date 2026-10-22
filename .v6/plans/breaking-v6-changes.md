@@ -1100,3 +1100,31 @@ instead. `Unit.Base.parent` is new: the root unit a child was made from (§2). `
 
 `@molstar/model/model/sequence/alignment` was an empty module (as `mol-model/sequence/alignment.ts` was in v5) and is
 gone; `align` and `AlignSequences` are in `@molstar/model/model/sequence/alignment/alignment` and `.../sequence`.
+
+## AssetManager is an interface
+
+`AssetManager` (`@molstar/core/util/assets`) is an interface, implemented by `DefaultAssetManager` (the former class,
+same behavior), so a plugin can take another one from `PluginSpec.assetManager`. Code that constructs one writes
+`new DefaultAssetManager()`; code that only takes or calls one is unchanged. `get` and `assets` return
+`AssetManager.Entry` (`asset`, `file`, `isStatic`, `tag`), without the reference count; `urlCacheSize` is on
+`DefaultAssetManager` only.
+
+## Particles are opt-in: `ParticlesRegistry`
+
+`DefaultRegistry` (`@molstar/plugin/default-registry`) no longer holds particles: no particle formats, transformers,
+representations, `particles` theme scope or particle trajectory animation, and its structure and volume scopes no
+longer list the `particle-*` color and size themes. `DefaultParticleRepresentations` is gone (now
+`ParticleRepresentations`). `@molstar/plugin/state/transforms/catalog` no longer imports the particle transformers.
+An application that reads particles composes `[...DefaultRegistry, ...ParticlesRegistry]`
+(`@molstar/plugin/particles-registry`), whose import also registers the particle transformers a session needs. The
+classic viewer (`apps/viewer`) composes it, so it reads particles as 5.12 did. Prism loads it with its lazy particles feature when a particle file,
+an mmCIF holding particles or a session with particles needs it. `looksLikeMmcifParticles` moved to
+`@molstar/model/formats/particles/mmcif-sniff` (still re-exported by `.../mmcif`).
+
+## The component manager's `clipObjects` no longer replace a representation's clip
+
+`StructureComponentManager` options' `clipObjects` are the clip objects the manager puts on every structure
+representation: an options change replaces the objects it put there before with the new ones and keeps the others (a
+representation's own, from a clipping editor or code; `RepresentationClip.replaceOwned`,
+`@molstar/plugin/state/helpers/representation-clip`). It used to overwrite `type.params.clip` whole, `variant`
+included; a representation with objects of its own now keeps its `variant`.

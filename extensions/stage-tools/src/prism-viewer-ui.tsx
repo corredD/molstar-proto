@@ -31,8 +31,7 @@ export function stageToolsUI(ctx: ViewerUIContext): ViewerExtensionUI {
   if (!area) return {};
   // The menu follows the canvas's right-clicks for as long as the viewer lives.
   let close: (() => void) | undefined;
-  area.menuRequests.subscribe(async (request) => {
-    if (area.menuHosted) return;
+  area.setMenu(async (request) => {
     close?.();
     const items = await menuItems(ctx.api, area, request);
     if (!items.length) return;

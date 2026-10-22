@@ -47,7 +47,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   if (!area) return {};
   const model = sceneModel(area, ctx.api.stage);
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
-  area.clicks.subscribe((click) => {
+  area.setOnClick((click) => {
     const p = labelPicked(click.x, click.y) ?? area.pickedOf(click.loci);
     if (p) model.reveal(p);
   });
@@ -61,9 +61,8 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   // the canvas's right-click opens the explorer's menu, at the level of what it picked (the stage's own is not opened)
   const stage = ctx.api.stage;
   if (stage) {
-    stage.menuHosted = true;
     let close: (() => void) | undefined;
-    stage.menuRequests.subscribe(async (request) => {
+    stage.setMenu(async (request) => {
       close?.();
       const root = rootOf(request.anchor);
       let items: ContextMenuItem[];
@@ -86,7 +85,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
         items.push(...cuts.filter((i) => i.id === 'guides'));
       }
       close = openContextMenu(root, { x: request.x, y: request.y }, items);
-    });
+    }, true);
   }
   return {
     tabs: [
