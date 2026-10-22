@@ -27,7 +27,6 @@ import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import type { Subscription } from 'rxjs';
-import { menuItems as stageMenuItems } from '@molstar/stage-tools-extension/menu';
 import type { LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { editInline } from './inline-edit.js';
 import { clipItems, clippable, colorable, colorItems, nodeMenuItems } from './menu.js';
@@ -62,28 +61,20 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const stage = ctx.api.stage;
   if (stage) {
     let close: (() => void) | undefined;
-    stage.setMenu(async (request) => {
+    stage.setMenu((request) => {
       close?.();
       const root = rootOf(request.anchor);
-      let items: ContextMenuItem[];
-      if (request.pick.kind === 'guide') {
-        items = await stageMenuItems(ctx.api, stage, request);
-      } else {
-        const at = { x: request.x, y: request.y };
-        const p = labelPicked(request.x, request.y) ?? area.pickedOf(request.loci);
-        if (p) model.reveal(p);
-        items = nodeMenuItems(ctx.api, area, p, {
-          open: (sub) => {
-            close = openContextMenu(root, at, sub);
-          },
-          reveal: model.reveal,
-          editText: (text, keep) => editInline(root, at, text, keep),
-          ...(request.position ? { at: [request.position[0], request.position[1], request.position[2]] as const } : {}),
-        });
-        // all the cuts' shapes shown or hidden, as the stage has it
-        const cuts = await stageMenuItems(ctx.api, stage, request);
-        items.push(...cuts.filter((i) => i.id === 'guides'));
-      }
+      const at = { x: request.x, y: request.y };
+      const p = labelPicked(request.x, request.y) ?? area.pickedOf(request.loci);
+      if (p) model.reveal(p);
+      const items = nodeMenuItems(ctx.api, area, p, {
+        open: (sub) => {
+          close = openContextMenu(root, at, sub);
+        },
+        reveal: model.reveal,
+        editText: (text, keep) => editInline(root, at, text, keep),
+        ...(request.position ? { at: [request.position[0], request.position[1], request.position[2]] as const } : {}),
+      });
       close = openContextMenu(root, { x: request.x, y: request.y }, items);
     }, true);
   }

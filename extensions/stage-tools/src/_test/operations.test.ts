@@ -16,7 +16,6 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { type CutInfo, desiredGuides } from '../operations.js';
 import { menuItems } from '../menu.js';
 import { StageToolsExtension } from '../prism-viewer.js';
 
@@ -42,21 +41,8 @@ async function viewer() {
   return v;
 }
 
-const clips = (v: PrismViewer) =>
-  v.plugin.managers.structure.hierarchy.current.structures[0].components.flatMap((c) =>
-    c.representations.map((r) => (r.cell.transform.params as any).type.params.clip.objects.length as number),
-  );
-
-const cutOf = async (v: PrismViewer) => {
-  const r = await v.api.stage!.cuts({});
-  expectOk(r);
-  return (r.value as CutInfo[])[0];
-};
-
-const guides = (v: PrismViewer) => desiredGuides({ plugin: v.plugin });
-
 describe('stage', () => {
-  it("offers what fits the pick in its menu; a whole object's cut is Prism's, without a stage guide", async () => {
+  it("offers what fits the pick in its menu; a cut (Prism's) adds nothing to it", async () => {
     const v = await viewer();
     const s = v.api.stage!;
     const target = {
@@ -68,10 +54,9 @@ describe('stage', () => {
       (await menuItems(v.api, s, { x: 0, y: 0, pick, loci: EmptyLoci, focus: () => {} })).map((i) => i.id);
     expect(await ids({ kind: 'nothing' })).toEqual(['reset-camera']);
     expect(await ids({ kind: 'target', target })).toEqual(['focus']);
-    // Prism's cut of the structure: drawn by Prism (its handles, its drawing), not a stage guide
     expectOk(await v.api.run('clipping.add', { shape: 'plane', node: `#${target.ref}` }));
     expect(v.api.clipping.cuts.value).toHaveLength(1);
-    expect(desiredGuides({ plugin: v.plugin })).toEqual([]);
+    expect(await ids({ kind: 'nothing' })).toEqual(['reset-camera']);
     expect(await ids({ kind: 'target', target })).toEqual(['focus']);
   });
 

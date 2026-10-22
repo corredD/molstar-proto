@@ -177,6 +177,11 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   in Representation. What stands for the particles follows their decoration: the objects while any target is decorated,
   else the spheres and axes; a target representation made before (or hidden) is shown again, not made twice
   (`ensureTargetRepresentation`). Before, back to Spheres left the list drawn by nothing.
+- One clip system, Prism's (2026-10-22, Ludovic): the scissors are on whole objects only (a structure, a model, a list,
+  a volume, a mesh); a group's, an entity's or a target's are gone, and so are the stage tools' guides (their drawing,
+  eye, drag and menu items, `stage.guides`, `stage.object`). An object's Clips list Prism's cuts of it, each: its name,
+  its handles (shown or hidden: move, turn and size it in 3D), remove; and Add a clip. Its shape, side and drawing are
+  Prism's handles' and Clipping's, not repeated here.
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.

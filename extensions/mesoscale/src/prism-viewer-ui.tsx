@@ -62,14 +62,6 @@ function Examples(props: { area: MesoscaleApi }) {
 export function mesoscaleUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const area = ctx.api.mesoscale;
   if (!area) return {};
-  // the cuts' shapes are the stage tools' guides: shown or hidden through their operation, when the viewer has it
-  let guidesShown = true;
-  const toggleGuides = ctx.api.describe('stage.guides')
-    ? () => {
-        guidesShown = !guidesShown;
-        void ctx.api.run('stage.guides', { visible: guidesShown });
-      }
-    : undefined;
   return {
     sections: [
       {
@@ -88,7 +80,7 @@ export function mesoscaleUI(ctx: ViewerUIContext): ViewerExtensionUI {
         title: 'Entities',
         icon: 'shapes',
         order: 15,
-        render: domView(() => <EntitiesView area={area} toggleGuides={toggleGuides} />),
+        render: domView(() => <EntitiesView area={area} />),
       },
     ],
   };
@@ -96,7 +88,7 @@ export function mesoscaleUI(ctx: ViewerUIContext): ViewerExtensionUI {
 
 const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
 
-function EntitiesView(props: { area: MesoscaleApi; toggleGuides?: () => void }) {
+function EntitiesView(props: { area: MesoscaleApi }) {
   const { area } = props;
   const lists = area.listsState();
   // the list shown: picked among several, else the only one
@@ -131,9 +123,7 @@ function EntitiesView(props: { area: MesoscaleApi; toggleGuides?: () => void }) 
                 </p>
               )}
             >
-              {() => (
-                <Entities area={area} info={info as ReadonlyState<MesoscaleInfo>} toggleGuides={props.toggleGuides} />
-              )}
+              {() => <Entities area={area} info={info as ReadonlyState<MesoscaleInfo>} />}
             </Show>
           );
         }}
@@ -142,7 +132,7 @@ function EntitiesView(props: { area: MesoscaleApi; toggleGuides?: () => void }) 
   );
 }
 
-function Entities(props: { area: MesoscaleApi; info: ReadonlyState<MesoscaleInfo>; toggleGuides?: () => void }) {
+function Entities(props: { area: MesoscaleApi; info: ReadonlyState<MesoscaleInfo> }) {
   const { area, info } = props;
   const filter = observableState('');
   const mode = observableState<GraphicsMode>('quality');
@@ -210,16 +200,9 @@ function Entities(props: { area: MesoscaleApi; info: ReadonlyState<MesoscaleInfo
       <For each={derive([info, filter.asReadonly], (i, f) => rowsOf(i, f, rowCache))} by={(r) => r.key}>
         {(row) =>
           row.kind === 'group' ? (
-            <GroupRow
-              area={area}
-              info={info}
-              row={row}
-              open={open.asReadonly}
-              onToggleOpen={toggleOpen}
-              toggleGuides={props.toggleGuides}
-            />
+            <GroupRow area={area} info={info} row={row} open={open.asReadonly} onToggleOpen={toggleOpen} />
           ) : (
-            <EntityRow area={area} info={info} row={row} open={open.asReadonly} toggleGuides={props.toggleGuides} />
+            <EntityRow area={area} info={info} row={row} open={open.asReadonly} />
           )
         }
       </For>
@@ -308,7 +291,6 @@ function GroupRow(props: {
   row: Extract<Row, { kind: 'group' }>;
   open: ReadonlyState<ReadonlySet<string>>;
   onToggleOpen(path: string): void;
-  toggleGuides?: () => void;
 }) {
   const { area, info, row } = props;
   const members = groupEntities(row.group);
@@ -369,7 +351,6 @@ function EntityRow(props: {
   info: ReadonlyState<MesoscaleInfo>;
   row: Extract<Row, { kind: 'entity' }>;
   open: ReadonlyState<ReadonlySet<string>>;
-  toggleGuides?: () => void;
 }) {
   const { area, info, row } = props;
   const entity = mapState(info, (i) => i.entities.find((e) => e.id === row.id));
@@ -416,7 +397,6 @@ function EntityRow(props: {
                 entities={[row.id]}
                 selection={{ entities: String(row.id) }}
                 depth={row.depth + 2}
-                toggleGuides={props.toggleGuides}
               />
             )}
           </Show>

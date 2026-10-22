@@ -398,7 +398,7 @@ export class MesoscaleApi extends ApiArea {
       const ids = selectEntities(ctx, l, v.entities, v.group);
       if (isFailure(ids)) return ids;
       // these entities' cuts (several), by their place among all the list's cuts: one is changed in place, added or
-      // removed (the others keep their order, so their guides stay theirs)
+      // removed (the others keep their order)
       const key = [...ids].sort((a, b) => a - b).join(',');
       const cuts = readCuts(ctx, l);
       const mine = cuts.flatMap((c, i) => ([...c.entities].sort((a, b) => a - b).join(',') === key ? [i] : []));

@@ -10,32 +10,29 @@ import { StageLabel } from './label.js';
 import { StageApi } from './operations.js';
 
 declare module '@molstar/prism-viewer/api' {
-  // The `stage` area: cuts on what the scene shows, their guides, and the canvas's menu.
+  // The `stage` area: the canvas's menu, labels, objects moved by hand.
   interface ExtensionApis {
     stage: StageApi;
   }
 }
 
-// The stage tools in the Prism viewer (apps/prism-me/_spec/features.md, "Stage tools"; Stories Untold's stage menu
-// and cut guides): the canvas's right-click menu on what was picked, labels, moves, and the guides of the entities' cuts
-// (a whole object's cuts are Prism's clipping). A host that keeps the camera's
-// right-click focus (Mol*'s default) gets both: prism-me drops it (its spec's `finalize`).
+// The stage tools in the Prism viewer (apps/prism-me/_spec/features.md, "Stage tools"; Stories Untold's stage menu):
+// the canvas's right-click menu on what was picked, labels and moves (cuts are Prism's clipping). A host that keeps the
+// camera's right-click focus (Mol*'s default) gets both: prism-me drops it (its spec's `finalize`).
 
 export const StageSkill: ViewerSkill = {
   id: 'stage',
   title: 'Labels and moves',
-  summary: 'put plain-text labels in the scene, move objects; show the shapes of the entities cuts',
+  summary: 'put plain-text labels in the scene, move objects',
   guidance: [
     'Skill stage: add_label puts plain text in front of an object (target: its state ref), change_label edits its',
     'text, size, color, plate or tether, moves, hides or removes it. move_object moves or turns a structure, particle',
-    "list, volume or mesh by a matrix, after where it is. show_cuts shows or hides the shapes of the entities' cuts",
-    "(the mesoscale clips); a whole object's cuts are the clipping skill's.",
+    "list, volume or mesh by a matrix, after where it is. Cuts are the clipping skill's.",
   ].join('\n'),
   tools: [
     { id: 'add_label', operation: 'stage.label', description: 'Adds a plain-text label in front of an object.' },
     { id: 'change_label', operation: 'stage.editLabel', description: 'Changes, hides or removes a label.' },
     { id: 'move_object', operation: 'stage.move', description: 'Moves or turns an object by a matrix.' },
-    { id: 'show_cuts', operation: 'stage.guides', description: "Shows or hides the shapes of the entities' cuts." },
   ],
 };
 
@@ -49,12 +46,6 @@ export const StageToolsExtension: ViewerExtension = {
     const s = api.stage;
     if (!s) return [];
     return [
-      operationCommand(api, s.guides, {
-        category: 'Cuts',
-        icon: 'eye',
-        alias: ['show cuts', 'hide cuts', 'cut guides'],
-        action: 'Apply',
-      }),
       operationCommand(api, s.label, { category: 'Labels', icon: 'type', alias: ['label', 'add label', 'annotate'] }),
       operationCommand(api, s.editLabel, { category: 'Labels', icon: 'type', alias: ['edit label', 'remove label'] }),
     ];

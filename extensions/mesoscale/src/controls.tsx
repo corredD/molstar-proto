@@ -6,7 +6,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Button, Choices, Icon, onCleanup, Show } from '@molstar/prism-ui';
+import { Button, Choices, onCleanup, Show } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import type { EntityCut, GraphicsMode, MesoscaleApi, MesoscaleInfo } from './operations.js';
@@ -84,7 +84,6 @@ export function ClipControls(props: {
   entities: readonly number[];
   selection: { group?: string; entities?: string };
   depth: number;
-  toggleGuides?: () => void;
   /** Which of these entities' cuts (0: the first) */
   cut?: number;
   /** Without the type's choices (a host shows the type itself) */
@@ -163,11 +162,6 @@ export function ClipControls(props: {
               active={mapState(cut, (c) => c?.axis ?? 'x')}
               onPick={(axis) => set({ axis })}
             />
-            {props.toggleGuides ? (
-              <Button size="sm" variant="ghost" icon={<Icon name="crop" />} onClick={props.toggleGuides}>
-                Show or hide the cuts (right-click one to move, turn or size it)
-              </Button>
-            ) : null}
             {slider('Angle', 'angle', -180, 180, (c) => c.angle)}
             {slider('Position X', 'x', -100, 100, (c) => c.position[0])}
             {slider('Position Y', 'y', -100, 100, (c) => c.position[1])}

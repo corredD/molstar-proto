@@ -6,12 +6,19 @@
 
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { Clip } from '@molstar/core/util/clip';
-import type { ScreenFrame } from './cuts.js';
 
 // An object moved or turned on the canvas (apps/prism-me/_spec/ui.md §5, step 3d): the matrix of a drag, and what it
 // does to what is placed in the scene's space with the object (its clip objects, its labels).
 
 export type MoveMode = 'move' | 'rotate';
+
+/** The camera, as a drag on the screen needs it: its right and up in world space, the world size of a pixel there */
+export interface ScreenFrame {
+  readonly right: Vec3;
+  readonly up: Vec3;
+  /** Å per pixel at the depth of what is dragged */
+  readonly pixel: number;
+}
 
 /** Degrees turned per pixel dragged */
 const TurnPerPixel = 0.5;

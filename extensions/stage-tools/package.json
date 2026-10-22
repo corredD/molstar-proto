@@ -3,7 +3,7 @@
   "version": "6.0.0-dev.0",
   "private": true,
   "type": "module",
-  "description": "Mol* stage-tools-extension: the canvas context menu and clip objects with guides in the Prism viewer",
+  "description": "Mol* stage-tools-extension: the canvas context menu, labels and moves in the Prism viewer",
   "license": "MIT",
   "engines": {
     "node": ">=22.13.0"

@@ -16,7 +16,7 @@ import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { withTomogramSlices } from '../../tomograms.js';
 import { ancestorKeys, rowsOf, stableRows, toggleVisible } from '../rows.js';
-import { addLabel, clipItems, colorItems, nodeMenuItems } from '../menu.js';
+import { addLabel, clipItems, clippable, colorItems, nodeMenuItems } from '../menu.js';
 import { OrderedSet } from '@molstar/core/data/int';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 
@@ -247,7 +247,7 @@ describe('explorer', () => {
     expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);
   });
 
-  it("adds several clips at a row's level (the object's, a target's) and colors a target", async () => {
+  it("adds several clips to an object (Prism's), none to a part of it, and colors a target", async () => {
     const v = await viewer();
     const area = v.api.explorer!;
     const list = area.objectsState().value.find((o) => o.kind === 'list')!;
@@ -262,18 +262,15 @@ describe('explorer', () => {
     const ofList = () => v.api.clipping.cuts.value.filter((c) => c.targets.some((t) => area.isUnder(t.ref, list.ref)));
     expect(ofList().map((c) => c.object.type)).toEqual(['plane', 'sphere']);
     expect(ofList().every((c) => !!c.object.tag)).toBe(true);
-    // a target: its particles' cuts
+    // a target: no clips of its own (only Prism's, of whole objects); a color, by the brush
     const target = {
       key: `t:${list.ref}:0`,
       label: 'Target 0',
       kind: 'target',
       node: { ref: list.ref, particles: { targets: [0] } },
     };
-    await run(clipItems(v.api, target), 'clip-cube');
-    await run(clipItems(v.api, target), 'clip-cylinder');
-    const info = v.api.mesoscale!.infoState(list.ref).value!;
-    expect(info.cuts.map((c) => c.cut.type)).toEqual(['cube', 'cylinder']);
-    // its color, by the brush
+    expect(clippable(target.kind, target.node)).toBe(false);
+    expect(clipItems(v.api, target)).toEqual([]);
     await run(colorItems(v.api, area, target), 'color-tomato');
     expect(v.api.mesoscale!.infoState(list.ref).value!.entities[0].color).toBe(0xff6347);
   });

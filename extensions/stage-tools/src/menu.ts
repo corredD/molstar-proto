@@ -6,12 +6,10 @@
 
 import { type ContextMenuItem, openContextMenu } from '@molstar/prism-ui';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
-import type { DragMode } from './cuts.js';
-import { startDrag } from './drag.js';
 import type { StageApi, StageMenuRequest } from './operations.js';
 
 // The stage's right-click menu (Stories Untold's stage menu): its items for what was picked, shared by the extension's
-// own menu and a host's (prism-me's), which takes the cut guides' items from here.
+// own menu; a host (prism-me) opens its own instead.
 
 /** The app's root around the canvas (its tokens and styles apply in it) */
 export function rootOf(request: StageMenuRequest): HTMLElement {
@@ -38,7 +36,6 @@ export async function menuItems(api: ViewerApi, area: StageApi, request: StageMe
   const again = (sub: ContextMenuItem[]) => () => {
     openContextMenu(rootOf(request), { x: request.x, y: request.y }, sub);
   };
-  const anyCut = area.guidesState();
   if (pick.kind === 'nothing') {
     items.push({
       id: 'reset-camera',
@@ -92,43 +89,6 @@ export async function menuItems(api: ViewerApi, area: StageApi, request: StageMe
         });
       }
     }
-    if (pick.kind === 'guide') {
-      // a cut's guide: move, turn or size it by dragging, flip or remove it
-      const { index } = pick;
-      const object = area.clipObject(t.ref, index);
-      const partial = area.isPartialCut(t.ref, index);
-      const drag = (mode: DragMode) => () => startDrag(area, rootOf(request), request.anchor, t.ref, index, mode);
-      items.push({ id: 'move', label: 'Move the cut', icon: 'move-3d', run: drag('move') });
-      items.push({ id: 'rotate', label: 'Turn the cut', icon: 'rotate-ccw', run: drag('rotate') });
-      if (object && object.type !== 'plane') {
-        items.push({ id: 'scale', label: 'Size the cut', icon: 'maximize-2', run: drag('scale') });
-      }
-      items.push({
-        id: 'flip',
-        label: object?.type === 'plane' ? 'Cut the other side' : 'Keep the inside',
-        icon: 'refresh-cw',
-        run: () => void area.object({ target: t.ref, index, invert: !object?.invert } as never),
-      });
-      items.push({
-        id: 'uncut',
-        label: 'Remove the cut',
-        icon: 'x',
-        run: () =>
-          void (
-            partial &&
-            api.run('mesoscale.clip', { entities: partial.entities.join(','), type: 'none', particles: t.ref })
-          ),
-      });
-    }
-  }
-  if (pick.kind === 'guide' || area.hasCuts()) {
-    const shown = anyCut.value;
-    items.push({
-      id: 'guides',
-      label: shown ? 'Hide the cuts' : 'Show the cuts',
-      icon: shown ? 'eye-off' : 'eye',
-      run: () => void area.guides({ visible: !shown }),
-    });
   }
   if (api.describe('assistant.ask')) {
     items.push({

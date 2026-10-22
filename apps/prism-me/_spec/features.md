@@ -24,25 +24,25 @@ agent run (one undo step each); the command menu (⌘K) has each.
 
 ## Mesoscale (the Mesoscale Explorer's features)
 
-| Feature                                                                                                            | Status   | Operation / where                                                                                                       |
-| ------------------------------------------------------------------------------------------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Entities, by compartment tree (cellPACK) or function, with counts                                                  | Done     | `mesoscale.entities`; Entities tab                                                                                      |
-| Show, hide an entity or a whole group                                                                              | Done     | `mesoscale.style` (`visible`); the eyes                                                                                 |
-| Color an entity (picker), generate colors (a hue per compartment, its entities around it), theme colors, reset     | Done     | `mesoscale.style`, `mesoscale.colors`                                                                                   |
-| Opacity, emissive of entities                                                                                      | Done     | `mesoscale.style` (`transparency`, `emissive`)                                                                          |
-| Filter the entities by name                                                                                        | Done     | Entities tab                                                                                                            |
-| Graphics modes: ultra, quality, balanced, performance (level of detail, pixel scale, sharpening)                   | Done     | `mesoscale.graphics`; `?graphics-mode=`                                                                                 |
-| Wiggle and tumble                                                                                                  | Partial  | `mesoscale.motion`: for all particles; the explorer tumbled all but membranes                                           |
-| The explorer's look: multiscale occlusion, shadows, outlines, edges                                                | Done     | the app's canvas defaults (`look.ts`)                                                                                   |
-| Group by function                                                                                                  | Partial  | `mesoscale.colors` `groupBy`; no switch in the tab                                                                      |
-| Lightness, pattern, illustrative and cel shading per entity                                                        | Deferred | need particle layers beyond color, transparency, emissive                                                               |
-| Level of detail per entity                                                                                         | Partial  | one level for all (graphics mode)                                                                                       |
-| Clip per entity or group: plane, sphere, box, cylinder; invert; position, rotation, size (the explorer's settings) | Done     | `mesoscale.clip`; the crop button of each row (at most 8 cuts per list; a stage cut of the whole list comes after them) |
-| Quick styles (Default, Celshading, Illustrative, Shiny, Stylized, DOF)                                             | Deferred | Prism's quick styles are structure presets                                                                              |
-| Color file import (JSON)                                                                                           | Deferred |                                                                                                                         |
-| Snapshot descriptions' links `#key`, `i<names>`, `g<group>.<names>`                                                | Deferred | Prism's markdown host claims only `!command` links                                                                      |
-| The guided tour (driver.js)                                                                                        | Deferred | Prism has its own help                                                                                                  |
-| Selection list, focus info, measurements                                                                           | Partial  | Prism's own Selection tab, inspector and measurements, not the explorer's panels                                        |
+| Feature                                                                                                            | Status          | Operation / where                                                                 |
+| ------------------------------------------------------------------------------------------------------------------ | --------------- | --------------------------------------------------------------------------------- |
+| Entities, by compartment tree (cellPACK) or function, with counts                                                  | Done            | `mesoscale.entities`; Entities tab                                                |
+| Show, hide an entity or a whole group                                                                              | Done            | `mesoscale.style` (`visible`); the eyes                                           |
+| Color an entity (picker), generate colors (a hue per compartment, its entities around it), theme colors, reset     | Done            | `mesoscale.style`, `mesoscale.colors`                                             |
+| Opacity, emissive of entities                                                                                      | Done            | `mesoscale.style` (`transparency`, `emissive`)                                    |
+| Filter the entities by name                                                                                        | Done            | Entities tab                                                                      |
+| Graphics modes: ultra, quality, balanced, performance (level of detail, pixel scale, sharpening)                   | Done            | `mesoscale.graphics`; `?graphics-mode=`                                           |
+| Wiggle and tumble                                                                                                  | Partial         | `mesoscale.motion`: for all particles; the explorer tumbled all but membranes     |
+| The explorer's look: multiscale occlusion, shadows, outlines, edges                                                | Done            | the app's canvas defaults (`look.ts`)                                             |
+| Group by function                                                                                                  | Partial         | `mesoscale.colors` `groupBy`; no switch in the tab                                |
+| Lightness, pattern, illustrative and cel shading per entity                                                        | Deferred        | need particle layers beyond color, transparency, emissive                         |
+| Level of detail per entity                                                                                         | Partial         | one level for all (graphics mode)                                                 |
+| Clip per entity or group: plane, sphere, box, cylinder; invert; position, rotation, size (the explorer's settings) | Not in prism-me | `mesoscale.clip`, the Entities tab (hidden in prism-me: one clip system, Prism's) |
+| Quick styles (Default, Celshading, Illustrative, Shiny, Stylized, DOF)                                             | Deferred        | Prism's quick styles are structure presets                                        |
+| Color file import (JSON)                                                                                           | Deferred        |                                                                                   |
+| Snapshot descriptions' links `#key`, `i<names>`, `g<group>.<names>`                                                | Deferred        | Prism's markdown host claims only `!command` links                                |
+| The guided tour (driver.js)                                                                                        | Deferred        | Prism has its own help                                                            |
+| Selection list, focus info, measurements                                                                           | Partial         | Prism's own Selection tab, inspector and measurements, not the explorer's panels  |
 
 ## Cryo-ET
 
@@ -62,17 +62,12 @@ agent run (one undo step each); the command menu (⌘K) has each.
 
 ## Stage tools (Stories Untold)
 
-| Feature                                                                                                                                         | Status   | Operation / where                                                                       |
-| ----------------------------------------------------------------------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
-| Cut with a plane (through the center, facing the camera)                                                                                        | Done     | `stage.cut`; Cut row; right-click                                                       |
-| Cut with a sphere or a box (a window on the near side)                                                                                          | Done     | `stage.cut`                                                                             |
-| Move along the normal, size, flip                                                                                                               | Done     | `stage.adjust`; Cut row sliders                                                         |
-| Remove a cut                                                                                                                                    | Done     | `stage.uncut`                                                                           |
-| Guides of every cut (an object's and its entities'): faint faces and an opaque rim, shown or hidden in one go                                   | Done     | `stage.guides`; the canvas toolbar's crop button; the cut controls of the Entities tree |
-| Right-click menu on what was picked: focus, cut, flip, remove, hide or color the entity, decorate                                               | Done     | the canvas (prism-me frees the right button from the camera's focus)                    |
-| Right-click a guide's rim: move, turn, size (drag in 3D: live, one step on release, Esc cancels), keep the inside or cut the other side, remove | Done     | `stage.object`; tried in Chrome on 1CRN and on an entity cut of HIV                     |
-| Keys on cuts (animation)                                                                                                                        | Deferred |                                                                                         |
-| Commands for the agent and ⌘K                                                                                                                   | Done     | the three areas' commands and skills                                                    |
+| Feature                                                                                                   | Status   | Operation / where                                                    |
+| --------------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------- |
+| Clip an object (plane, sphere, box, cylinder, cone): Prism's cuts, moved, turned and sized by its handles | Done     | `clipping.*` (Prism); the tree's scissors; Clips in the properties   |
+| Right-click menu on what was picked: focus, hide or color the entity, decorate                            | Done     | the canvas (prism-me frees the right button from the camera's focus) |
+| Keys on cuts (animation)                                                                                  | Deferred |                                                                      |
+| Commands for the agent and ⌘K                                                                             | Done     | the three areas' commands and skills                                 |
 
 ## Known issues found on the way (Prism, upstream)
 

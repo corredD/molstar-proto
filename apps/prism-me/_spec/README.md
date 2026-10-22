@@ -12,8 +12,7 @@ names).
   - Everything mesoscale is the particles model (`ParticleList`, Alexander Rose's): cellPACK and PetWorld load through
     the plugin's `mmcif_particles`, so a mesoscale model and a cryo-ET particle list are the same thing, decorated by
     objects. The Mesoscale Explorer's group tree and per-entity controls work on particle entities and compartments.
-  - From Stories Untold: the canvas's right-click menu, cuts with their guides, and the commands. Not its story
-    authoring.
+  - From Stories Untold: the canvas's right-click menu, the commands. Not its story authoring.
   - Tomograms: loading (MRC modes 6 and 12, the cryo-ET file names), gray slices with a contrast window, a tilt series
     stepped image by image along z. Binning large tomograms is deferred.
 
@@ -24,7 +23,7 @@ names).
 | The app     | `apps/prism-me` (`@molstar/prism-me-app`) | the page, the spec (the explorer's canvas look, the right button freed for the menu), the Mesoscale Explorer's URL                                                                     |
 | Mesoscale   | `extensions/mesoscale`                    | the `mesoscale` area: entities and groups, their look, colors, motion, graphics modes, examples; the Entities tab, Home's examples                                                     |
 | Cryo-ET     | `extensions/cryoet`                       | the `cryoet` area: decorations (what each target of a particle list is drawn as), targets by class, slices, segmentation meshes; the Decorations and Slice rows, the Segmentations tab |
-| Stage tools | `extensions/stage-tools`                  | the `stage` area: cuts (plane, sphere, box) with guides; the canvas's right-click menu; the Cut row                                                                                    |
+| Stage tools | `extensions/stage-tools`                  | the `stage` area: the canvas's right-click menu, labels, moves (clips are Prism's)                                                                                                     |
 
 Each extension is a `ViewerExtension` (viewer-spec.md §2): an API area whose operations are the only way its views, its
 commands and the agent's tools change anything (one history step each), a skill for the agent, and lazy views. An

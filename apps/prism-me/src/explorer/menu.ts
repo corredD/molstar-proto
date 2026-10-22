@@ -124,7 +124,7 @@ export const Swatches: readonly [string, string][] = [
   ['gray', 'Gray'],
 ];
 
-/** The particles a part's clip or color acts on: an entity's or a group's entities, a target (lists by target) */
+/** The particles a part's color acts on: an entity's or a group's entities, a target (lists by target) */
 function partOf(node: NodeRef): { particles: string; entities: string } | undefined {
   if (!('particles' in node)) return undefined;
   const ids = node.particles.entities ?? node.particles.targets ?? [];
@@ -137,15 +137,9 @@ export function colorable(kind: string, node: NodeRef | undefined): boolean {
   return ['structure', 'entity', 'chain', 'mesoscale model', 'group', 'target', 'mesh'].includes(kind);
 }
 
-/** Whether a node can be clipped: an object (all of it) or a part of particles (a group, an entity, a target) */
+/** Whether a node can be clipped: an object, all of it (Prism's clipping) */
 export function clippable(kind: string, node: NodeRef | undefined): boolean {
-  if (!node) return false;
-  return WholeClips.has(kind) || ('particles' in node && ['group', 'entity', 'target'].includes(kind));
-}
-
-/** Whether a node's clips are the whole object's (the stage's), else its particles' (the mesoscale area's) */
-export function clipsWhole(kind: string) {
-  return WholeClips.has(kind);
+  return !!node && WholeClips.has(kind);
 }
 
 /** The brush's items: a color for all of the node; a model's or group's generated colors */
@@ -201,37 +195,21 @@ export function showClipHandles(api: ViewerApi, index: number) {
 /** The scissors' items: a clip of the node (added to its others), by shape */
 export function clipItems(api: ViewerApi, picked: PickedNode): ContextMenuItem[] {
   const { node, kind } = picked;
-  if (clipsWhole(kind)) {
-    // Prism's cut of all of it (its representations), its handles shown on it
-    return (
-      [
-        ['plane', 'Plane'],
-        ['sphere', 'Sphere'],
-        ['cube', 'Box'],
-        ['cylinder', 'Cylinder'],
-        ['infiniteCone', 'Cone'],
-      ] as const
-    ).map(([shape, label]) => ({
-      id: `clip-${shape}`,
-      label,
-      icon: 'scissors',
-      run: () => void addWholeClip(api, node.ref, shape),
-    }));
-  }
-  const part = partOf(node);
-  if (!part) return [];
+  if (!clippable(kind, node)) return [];
+  // Prism's cut of all of it (its representations), its handles shown on it
   return (
     [
       ['plane', 'Plane'],
       ['sphere', 'Sphere'],
       ['cube', 'Box'],
       ['cylinder', 'Cylinder'],
+      ['infiniteCone', 'Cone'],
     ] as const
-  ).map(([type, label]) => ({
-    id: `clip-${type}`,
+  ).map(([shape, label]) => ({
+    id: `clip-${shape}`,
     label,
     icon: 'scissors',
-    run: () => void api.run('mesoscale.clip', { ...part, type, add: true }),
+    run: () => void addWholeClip(api, node.ref, shape),
   }));
 }
 
