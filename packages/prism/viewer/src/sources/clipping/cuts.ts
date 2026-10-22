@@ -49,6 +49,11 @@ export interface Cut {
   readonly drawing?: string;
   /** The atoms it keeps whole (clipping.md §5: its representations' clipping layers), if any: how many, in words */
   readonly kept?: { readonly count: number; readonly label: string };
+  /**
+   * The atoms it cuts (on structures): what its structure representations draw, less what it keeps whole (a cut of a
+   * part, `clipping.add` `only`, keeps the rest), on their structures' roots
+   */
+  readonly atoms?: { readonly count: number; readonly label: string; readonly loci: readonly StructureElement.Loci[] };
 }
 
 /** The representations whose geometry can be clipped, in tree order (a walk from the root) */
@@ -116,18 +121,29 @@ export function findCuts(plugin: PluginContext): Cut[] {
   }
   return cuts.map((c, i) => {
     const drawing = c.object.tag ? drawings.get(clipVolumeTag(c.object.tag)) : undefined;
-    const kept = keptBy(state, c.object, c.targets);
-    return { index: i + 1, ...c, ...(drawing ? { drawing } : {}), ...(kept ? { kept } : {}) };
+    const { kept, atoms } = keptBy(state, c.object, c.targets);
+    return {
+      index: i + 1,
+      ...c,
+      ...(drawing ? { drawing } : {}),
+      ...(kept ? { kept } : {}),
+      ...(atoms ? { atoms } : {}),
+    };
   });
 }
 
 /**
  * What a cut keeps whole: the atoms whose flags have its bit (its object's index there) on each structure
  * representation it is on, in words; the count summed over its structures (the same atoms on several representations
- * of one structure count once)
+ * of one structure count once). And what it cuts: the rest of what those representations draw.
  */
 function keptBy(state: State, object: CutObject, targets: readonly CutTarget[]) {
-  const byStructure = new Map<Structure, StructureElement.Loci>();
+  const kept = new Map<Structure, StructureElement.Loci>();
+  const cut = new Map<Structure, StructureElement.Loci>();
+  const add = (into: Map<Structure, StructureElement.Loci>, root: Structure, loci: StructureElement.Loci) => {
+    const had = into.get(root);
+    into.set(root, had ? StructureElement.Loci.union(had, loci) : loci);
+  };
   for (const t of targets) {
     const cell = state.cells.get(t.ref);
     const structure = cell && structureOf(cell);
@@ -135,15 +151,22 @@ function keptBy(state: State, object: CutObject, targets: readonly CutTarget[]) 
     const index =
       RepresentationClip.get(cell.transform.params)?.objects.findIndex((o) => RepresentationClip.sameCut(o, object)) ??
       -1;
-    if (index < 0 || index > MaxKeptIndex) continue;
-    const loci = keptLoci(cachedLayer(state, cell), 1 << index);
-    if (!loci) continue;
+    if (index < 0) continue;
     const root = structure.root;
-    const had = byStructure.get(root);
-    byStructure.set(root, had ? StructureElement.Loci.union(had, loci) : loci);
+    const drawn = StructureElement.Loci.remap(Structure.toStructureElementLoci(structure), root);
+    const loci = index > MaxKeptIndex ? undefined : keptLoci(cachedLayer(state, cell), 1 << index);
+    if (loci) add(kept, root, loci);
+    const rest = loci ? StructureElement.Loci.subtract(drawn, loci) : drawn;
+    if (!StructureElement.Loci.isEmpty(rest)) add(cut, root, rest);
   }
-  if (!byStructure.size) return undefined;
-  const all = [...byStructure.values()];
+  return {
+    kept: kept.size ? inWords([...kept.values()]) : undefined,
+    atoms: cut.size ? { ...inWords([...cut.values()]), loci: [...cut.values()] } : undefined,
+  };
+}
+
+/** Atoms on one or more structures, how many and in words */
+function inWords(all: readonly StructureElement.Loci[]) {
   const count = all.reduce((n, l) => n + StructureElement.Loci.size(l), 0);
   return { count, label: all.length === 1 ? keptLabel(all[0]) : `${count} atoms` };
 }

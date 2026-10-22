@@ -185,12 +185,24 @@ export class ClippingApi extends ApiArea {
       keepWhole: OptionalParam(
         PD.Boolean(false, { description: 'Keep the target atoms whole: the cut goes around them (structures only)' }),
       ),
+      only: OptionalParam(
+        PD.Boolean(false, {
+          description:
+            'Cut only the target atoms (an entity, a chain): the rest its representations draw is kept whole',
+        }),
+      ),
       types: PD.Value<readonly string[]>([], {
         description: 'Only these representation types (molecular-surface, cartoon, isosurface, …); empty: every one',
       }),
       invert: PD.Boolean(false, { description: 'Remove the other side (a plane) or the outside (a closed shape)' }),
     },
-    async run({ shape, target, node, everything, keepWhole, types, invert }, ctx) {
+    async run({ shape, target, node, everything, keepWhole, only, types, invert }, ctx) {
+      if (only && (everything || node || keepWhole)) {
+        return ApiResult.fail(
+          'invalid',
+          'A cut of only its target needs atoms (target), not a node selector or everything, and keeps the rest whole.',
+        );
+      }
       const around: { sphere?: Sphere3D } = {};
       const cells = everything ? allCells(ctx, types) : await targetCells(ctx, target, node, types, around);
       if (ApiResult.isFailure(cells)) return cells;
@@ -203,6 +215,19 @@ export class ClippingApi extends ApiArea {
           `${representationLabel(ctx.plugin.state.data, full[0])} has ${Clip.MaxObjectCount} clip objects already.`,
           'Remove a cut first.',
         );
+      }
+      // a cut of a part keeps the rest whole by its object's group: only the first ones have one (clipping.md §5)
+      if (only) {
+        const past = cells.find(
+          (c) => structureOf(c) && RepresentationClip.get(c.transform.params)!.objects.length > MaxKeptIndex,
+        );
+        if (past) {
+          return ApiResult.fail(
+            'blocked',
+            `Only the first ${MaxKeptIndex + 1} cuts on a representation can cut a part of it: ${representationLabel(ctx.plugin.state.data, past)} has ${RepresentationClip.get(past.transform.params)!.objects.length}.`,
+            'Remove a cut from it first.',
+          );
+        }
       }
       // centered on what was targeted (its atoms), else on what the representations draw (a volume's, a shape's)
       const drawn = representationsSphere(cells);
@@ -225,6 +250,14 @@ export class ClippingApi extends ApiArea {
       const warnings: string[] = [];
       if (keepWhole && (everything || node)) {
         warnings.push('Nothing is kept whole: keepWhole keeps the target atoms, not a node selector or everything.');
+      } else if (only && cut) {
+        const r = await keepRest(ctx, cut, target);
+        if (!r.ok) {
+          // not a cut of the part: none at all (it would cut everything its representations draw)
+          await commit(ctx, cellsOf(ctx, cut), cut.object, undefined);
+          return r;
+        }
+        cut = findCuts(ctx.plugin).find((c) => RepresentationClip.sameCut(c.object, object));
       } else if (keepWhole && cut) {
         const r = await keepAtoms(ctx, cut.index, target, object.tag);
         if (r.ok) cut = findCuts(ctx.plugin).find((c) => RepresentationClip.sameCut(c.object, object));
@@ -771,6 +804,26 @@ async function keepAtoms(ctx: ApiContext, index: number, target: unknown, tag?: 
   const kept = oneCut(ctx, cut.index, cut.object.tag);
   const label = ApiResult.isFailure(kept) ? '' : (kept.kept?.label ?? '');
   return ApiResult.ok(`Cut ${cut.index} keeps ${label || 'them'} whole.`, { nodes: cut.targets.map((t) => t.ref) });
+}
+
+/** What cut `cut`'s representations draw beside the target's atoms, kept whole by it: it cuts the target only */
+async function keepRest(ctx: ApiContext, cut: Cut, target: unknown): Promise<ApiResult<unknown>> {
+  const atoms = await targetAtoms(ctx, target);
+  if (ApiResult.isFailure(atoms)) return atoms;
+  const state = ctx.plugin.state.data;
+  const b = state.build();
+  for (const cell of cellsOf(ctx, cut)) {
+    const structure = structureOf(cell);
+    const at = objectIndex(cell, cut.object);
+    if (!structure || at < 0 || at > MaxKeptIndex) continue;
+    const drawn = StructureElement.Loci.remap(Structure.toStructureElementLoci(structure), structure.root);
+    const part = atomsOn(atoms, structure.root);
+    const rest = part ? StructureElement.Loci.subtract(drawn, part) : drawn;
+    if (StructureElement.Loci.isEmpty(rest)) continue;
+    writeLayer(state, b, cell, withKept(layerOf(state, cell), rest, 1 << at));
+  }
+  await ctx.plugin.runTask(state.updateTree(b));
+  return ApiResult.ok(`Cut ${cut.index} cuts only its target.`, { nodes: cut.targets.map((t) => t.ref) });
 }
 
 /** A cut object's index on a representation (its group bit in the clipping layer) */

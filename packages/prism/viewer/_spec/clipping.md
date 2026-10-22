@@ -13,21 +13,21 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
 - **One cut, several representations.** The feature tags its objects (`Clip` objects' hidden `tag`, `clip-<uuid>`, kept
   through edits): a tagged cut is the objects sharing its tag; an untagged one, those equal in every value
   (`RepresentationClip.sameCut`). Two cuts alike stay two when tagged.
-- **Numbered in tree order** (`findCuts`): `Cut { index, object, targets, drawing?, kept? }`. The component manager's
-  canvas-wide objects are not cuts; the cuts' drawings (§6) are never cut.
+- **Numbered in tree order** (`findCuts`): `Cut { index, object, targets, drawing?, kept?, atoms? }`. The component
+  manager's canvas-wide objects are not cuts; the cuts' drawings (§6) are never cut.
 - **Per representation, not per atom** (D2): a cut applies to whole representations; atoms are left whole by §5.
 
 ## 2. The `clipping` area
 
 - `list`; `add` (`shape`; `target` atoms, the selection by default, or `node` (volumes, shapes), or `everything`;
-  `types`; `invert`; `keepWhole`); `update` (`shape`, `position`, `normal` or `rotation`, `scale`, `invert`: only what
-  is given); `apply` (one or several representations on or off, one step; never the last off); `keep` / `release` (§5);
-  `show` (§6); `remove`; `clear`. Each a person's step, each a command, in the `clipping` skill.
+  `types`; `invert`; `keepWhole`; `only`); `update` (`shape`, `position`, `normal` or `rotation`, `scale`, `invert`:
+  only what is given); `apply` (one or several representations on or off, one step; never the last off); `keep` /
+  `release` (§5); `show` (§6); `remove`; `clear`. Each a person's step, each a command, in the `clipping` skill.
 - **A cut by its number or its tag** (`cut`, `tag`): the views and the gizmos send the tag. Why: runs wait their turn,
   so a number read at a click can name another cut by the time the run starts (a double click's second remove).
 - **Params checked**: vectors are three finite numbers (a size positive), an angle finite, drawing options the drawing's
   own (name, kind, range). `keepWhole` keeps atoms: with `node` or `everything` the cut is made and a warning says
-  nothing was kept.
+  nothing was kept. `only` needs atoms: with `node`, `everything` or `keepWhole` it is refused.
 - **A new direction** (`normal`) turns the cut from where its axis points now (`turnedTo`): a box's twist is kept.
 - **A new cut** is placed by its target's atoms (`placeCut`): a sphere or a box around a small target, with room; a
   window toward the viewer into a large one (one centered inside would show nothing); a plane through the center facing
@@ -80,6 +80,13 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
   (`afterRemoval`); the component manager replaces its own objects in place (`replaceOwned`), fewer of them leaving a
   `none` object (clipping nothing, never a cut) to hold a place before one of the representation's own. Why: an index is
   what a group means.
+
+- **A cut of a part** (`add` `only`: an entity, a chain): the cut goes through the representations drawing the target,
+  and keeps whole the rest of what they draw (§5's bits), in the same run; past the sixth object on a representation it
+  is refused before anything is added, and a keep that fails takes the cut away (it would cut all of them). A cut reads
+  back what it cuts (`atoms`: what its structure representations draw, less what it keeps; `count`, `label`, `loci` on
+  the roots), so an app lists a part's cuts at the part. Why: Mol\* clips per representation (D2), and a component holds
+  many entities; the groups are how one is cut alone.
 
 ## 6. Drawn in the scene
 

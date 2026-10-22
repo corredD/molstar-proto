@@ -321,6 +321,44 @@ describe('the clipping area', () => {
     expect(cut.kept?.count).toBeGreaterThan(0);
   });
 
+  it('cuts only its target: the rest its representations draw is kept whole, and the cut says what it cuts', async () => {
+    const v = await create(cbs());
+    const { clipping } = v.api;
+    // what a cut keeping A:10-20 whole keeps is what a cut of A:10-20 only cuts
+    const around = ok<Cut>(await clipping.add({ shape: 'sphere', target: 'A:10-20', keepWhole: true }));
+    ok(await clipping.remove({ tag: around.object.tag }));
+    const cut = ok<Cut>(await clipping.add({ shape: 'sphere', target: 'A:10-20', only: true }));
+    expect(cut.atoms).toMatchObject({ count: around.kept!.count, label: around.kept!.label });
+    expect(cut.kept!.count).toBeGreaterThan(0);
+    // a cut of all of it cuts all its representations draw, and keeps nothing
+    const whole = ok<Cut>(await clipping.add({ shape: 'plane', target: 'polymer' }));
+    expect(whole.kept).toBeUndefined();
+    expect(whole.atoms!.count).toBe(cut.atoms!.count + cut.kept!.count);
+  });
+
+  it('keeps a part cut on its part when an earlier cut goes', async () => {
+    const v = await create(cbs());
+    const { clipping } = v.api;
+    ok(await clipping.add({ shape: 'sphere', target: 'A:10-20', only: true }));
+    const second = ok<Cut>(await clipping.add({ shape: 'cube', target: 'A:30-40', only: true }));
+    ok(await clipping.remove({ cut: 1 }));
+    expect(findCuts(v.plugin)).toHaveLength(1);
+    expect(findCuts(v.plugin)[0].atoms).toEqual(second.atoms);
+  });
+
+  it('refuses a part cut past the cuts that can keep atoms whole, and adds nothing', async () => {
+    const v = await create(cbs());
+    const { clipping } = v.api;
+    for (const shape of ['plane', 'sphere', 'cube', 'cylinder', 'infiniteCone'] as const) {
+      ok(await clipping.add({ shape, target: 'polymer' }));
+    }
+    ok(await clipping.add({ shape: 'plane', target: 'polymer', invert: true }));
+    const n = findCuts(v.plugin).length;
+    const r = await clipping.add({ shape: 'sphere', target: 'A:10-20', only: true });
+    expect(r).toMatchObject({ ok: false, code: 'blocked' });
+    expect(findCuts(v.plugin)).toHaveLength(n);
+  });
+
   it('finds a cut by its tag: a run after another that renumbered the cuts changes the cut it meant', async () => {
     const v = await create(cbs());
     const { clipping } = v.api;
