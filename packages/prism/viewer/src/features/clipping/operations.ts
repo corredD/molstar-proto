@@ -10,6 +10,7 @@ import type { State, StateBuilder, StateObjectCell } from '@molstar/core/state';
 import { Clip } from '@molstar/core/util/clip';
 import { UUID } from '@molstar/core/util/uuid';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { Particle } from '@molstar/model/model/particles/particle-list';
 import { Structure, StructureElement } from '@molstar/model/model/structure';
 import { RepresentationClip } from '@molstar/plugin/state/helpers/representation-clip';
 import {
@@ -50,6 +51,14 @@ import {
   withObject,
 } from '../../sources/clipping/cuts.js';
 import { rotationOf } from '../../sources/clipping/gizmo/binding.js';
+import {
+  addParticleCut,
+  MaxParticleCutIndex,
+  type ParticleSelector,
+  particleSelector,
+  particlesOf,
+  removeParticleCut,
+} from '../../sources/clipping/particles.js';
 import {
   afterRemoval,
   layerCell,
@@ -191,12 +200,21 @@ export class ClippingApi extends ApiArea {
             'Cut only the target atoms (an entity, a chain): the rest its representations draw is kept whole',
         }),
       ),
+      particles: OptionalParam(
+        PD.Value<Particle.Selector>(
+          {},
+          {
+            description:
+              "Cut only these particles of a particle list's representations (node): entities, compartments, targets",
+          },
+        ),
+      ),
       types: PD.Value<readonly string[]>([], {
         description: 'Only these representation types (molecular-surface, cartoon, isosurface, …); empty: every one',
       }),
       invert: PD.Boolean(false, { description: 'Remove the other side (a plane) or the outside (a closed shape)' }),
     },
-    async run({ shape, target, node, everything, keepWhole, only, types, invert }, ctx) {
+    async run({ shape, target, node, everything, keepWhole, only, particles, types, invert }, ctx) {
       if (only && (everything || node || keepWhole)) {
         return ApiResult.fail(
           'invalid',
@@ -204,8 +222,11 @@ export class ClippingApi extends ApiArea {
         );
       }
       const around: { sphere?: Sphere3D } = {};
-      const cells = everything ? allCells(ctx, types) : await targetCells(ctx, target, node, types, around);
-      if (ApiResult.isFailure(cells)) return cells;
+      const reached = everything ? allCells(ctx, types) : await targetCells(ctx, target, node, types, around);
+      if (ApiResult.isFailure(reached)) return reached;
+      // of some particles: only the particle representations (not a list's unit cell)
+      const some = particles ? particleSelector(particles) : undefined;
+      const cells = some ? reached.filter((c) => !!particlesOf(c)) : reached;
       const full = cells.filter(
         (c) => RepresentationClip.get(c.transform.params)!.objects.length >= Clip.MaxObjectCount,
       );
@@ -215,6 +236,29 @@ export class ClippingApi extends ApiArea {
           `${representationLabel(ctx.plugin.state.data, full[0])} has ${Clip.MaxObjectCount} clip objects already.`,
           'Remove a cut first.',
         );
+      }
+      // of some particles: a particle list's representations (by node), each with its particles' group free
+      if (some) {
+        if (!node || !cells.length) {
+          return ApiResult.fail(
+            'invalid',
+            'A cut of some particles is of particle representations.',
+            "Give the list's or its representations' node (node: '#ref').",
+          );
+        }
+        const past = cells.find(
+          (c) => RepresentationClip.get(c.transform.params)!.objects.length > MaxParticleCutIndex,
+        );
+        if (past) {
+          return ApiResult.fail(
+            'blocked',
+            `Only the first ${MaxParticleCutIndex + 1} cuts on a representation can cut some of its particles: ${representationLabel(ctx.plugin.state.data, past)} has ${RepresentationClip.get(past.transform.params)!.objects.length}.`,
+            'Remove a cut from it first.',
+          );
+        }
+        // centered on those particles
+        const list = particlesOf(cells[0])!;
+        around.sphere = Particle.getBoundingSphere(Particle.selectLoci(list, some));
       }
       // a cut of a part keeps the rest whole by its object's group: only the first ones have one (clipping.md §5)
       if (only) {
@@ -244,7 +288,7 @@ export class ClippingApi extends ApiArea {
           nearlyEqual(c.object, object) && cells.some((cell) => c.targets.some((t) => t.ref === cell.transform.ref)),
       );
       if (same) return ApiResult.already(`Cut ${same.index} is that cut already.`, { value: same });
-      await commit(ctx, cells, undefined, object);
+      await commit(ctx, cells, undefined, object, some);
       let cut = findCuts(ctx.plugin).find((c) => RepresentationClip.sameCut(c.object, object));
       // and the target kept whole by it (its atoms: not by a node selector, not everything); not done: said
       const warnings: string[] = [];
@@ -628,10 +672,15 @@ async function commit(
   cells: readonly StateObjectCell[],
   previous: CutObject | undefined,
   next: CutObject | undefined,
+  /** A new cut of only these particles (its particle representations' layers, clipping.md §5) */
+  particles?: ParticleSelector,
 ) {
   const state = ctx.plugin.state.data;
   const b = state.build();
   for (const cell of cells) {
+    // of some particles: their record in its layers, in the same step (added, or gone with the cut)
+    if (particles && next?.tag && !previous) addParticleCut(state, b, cell, next.tag, particles);
+    if (previous?.tag && !next) removeParticleCut(state, b, cell, previous.tag);
     // removed from it: its kept atoms' layer remapped in the same step (the objects after it moved up a place)
     if (previous && !next) {
       const at =

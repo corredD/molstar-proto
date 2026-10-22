@@ -12,6 +12,7 @@ import type { PluginContext } from '@molstar/plugin/context';
 import { RepresentationClip } from '@molstar/plugin/state/helpers/representation-clip';
 import { ClipVolumesShape3D, ClipVolumesTag, clipVolumeTag } from '@molstar/plugin/state/transforms/shape/clip-volumes';
 import { Structure, StructureElement } from '@molstar/model/model/structure';
+import { type ParticleSelector, particleCutOf, particlesInWords, particlesOf } from './particles.js';
 import { keptLabel, keptLoci, layerCell, layerOf, MaxKeptIndex, structureOf } from './kept.js';
 
 // Cuts (clipping.md §1): the clip objects of the representations, read from the state tree (its record of what is
@@ -54,6 +55,8 @@ export interface Cut {
    * part, `clipping.add` `only`, keeps the rest), on their structures' roots
    */
   readonly atoms?: { readonly count: number; readonly label: string; readonly loci: readonly StructureElement.Loci[] };
+  /** The particles it cuts, when of some only (`clipping.add` `particles`): which, how many, in words */
+  readonly particles?: { readonly selector: ParticleSelector; readonly count: number; readonly label: string };
 }
 
 /** The representations whose geometry can be clipped, in tree order (a walk from the root) */
@@ -122,12 +125,14 @@ export function findCuts(plugin: PluginContext): Cut[] {
   return cuts.map((c, i) => {
     const drawing = c.object.tag ? drawings.get(clipVolumeTag(c.object.tag)) : undefined;
     const { kept, atoms } = keptBy(state, c.object, c.targets);
+    const particles = c.object.tag ? particlesCutBy(state, c.object.tag, c.targets) : undefined;
     return {
       index: i + 1,
       ...c,
       ...(drawing ? { drawing } : {}),
       ...(kept ? { kept } : {}),
       ...(atoms ? { atoms } : {}),
+      ...(particles ? { particles } : {}),
     };
   });
 }
@@ -163,6 +168,18 @@ function keptBy(state: State, object: CutObject, targets: readonly CutTarget[]) 
     kept: kept.size ? inWords([...kept.values()]) : undefined,
     atoms: cut.size ? { ...inWords([...cut.values()]), loci: [...cut.values()] } : undefined,
   };
+}
+
+/** The particles a cut cuts, when of some only: read on the first particle representation it is on */
+function particlesCutBy(state: State, tag: string, targets: readonly CutTarget[]) {
+  for (const t of targets) {
+    const cell = state.cells.get(t.ref);
+    const list = cell && particlesOf(cell);
+    if (!cell || !list) continue;
+    const selector = particleCutOf(state, cell, tag);
+    return selector ? { selector, ...particlesInWords(list, selector) } : undefined;
+  }
+  return undefined;
 }
 
 /** Atoms on one or more structures, how many and in words */

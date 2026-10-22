@@ -4,8 +4,12 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
+import { readFileSync } from 'node:fs';
+import { OrderedSet } from '@molstar/core/data/int';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { StateSelection } from '@molstar/core/state';
 import { RepresentationClip } from '@molstar/plugin/state/helpers/representation-clip';
+import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import { DefaultPrismViewerSpec } from '../../../default-spec.js';
 import { createPrismViewerHeadless } from '../../../headless.js';
 import type { PrismViewer } from '../../../viewer.js';
@@ -15,6 +19,21 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { type Cut, findCuts } from '../../../sources/clipping/cuts.js';
 
 // The `clipping` area over a headless viewer: cuts written into the representations' params and read back from them.
+
+const simularium = () =>
+  new File(
+    [readFileSync(new URL('../../../../../../../data/examples/particles/small.simularium', import.meta.url))],
+    'small.simularium',
+  );
+
+/** A particle list's representation: the particles that ignore each clip object (by its bit), as its layers set */
+const ignoring = (v: PrismViewer) => {
+  const r = v.plugin.managers.particles.hierarchy.current.lists[0].representations[0];
+  const clipping = (r.cell.obj as any).data.repr.state.clipping;
+  return clipping.layers
+    .map((l: any) => [Array.from(OrderedSet.toArray(l.loci.indices)), l.groups])
+    .sort((a: any, b: any) => a[0][0] - b[0][0]);
+};
 
 const triangle = () => new File(['v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n'], 'triangle.obj');
 
@@ -357,6 +376,49 @@ describe('the clipping area', () => {
     const r = await clipping.add({ shape: 'sphere', target: 'A:10-20', only: true });
     expect(r).toMatchObject({ ok: false, code: 'blocked' });
     expect(findCuts(v.plugin)).toHaveLength(n);
+  });
+
+  it('cuts only some particles of a list: the others ignore the cut, and the cut says which', async () => {
+    const v = await create(simularium());
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0];
+    const data = list.cell.obj!.data;
+    const inTarget1 = Array.from(data.targets).flatMap((t, i) => (t === 1 ? [i] : []));
+    const others = Array.from(data.targets).flatMap((t, i) => (t === 1 ? [] : [i]));
+    const node = `#${list.cell.transform.ref}`;
+    const cut = ok<Cut>(await v.api.clipping.add({ shape: 'sphere', node, particles: { targets: [1] } }));
+    expect(cut.particles).toMatchObject({ selector: { targets: [1] }, count: inTarget1.length });
+    // the first clip object: bit 1
+    expect(ignoring(v)).toEqual([[others, 1]]);
+    // undone in one step: no cut, no layer
+    ok(await v.api.run('history.undo', {}));
+    expect(findCuts(v.plugin)).toEqual([]);
+    expect(ignoring(v)).toEqual([]);
+  });
+
+  it('keeps a particle cut on its particles when an earlier cut goes, and drops it with its cut', async () => {
+    const v = await create(simularium());
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0];
+    const data = list.cell.obj!.data;
+    const others = Array.from(data.targets).flatMap((t, i) => (t === 1 ? [] : [i]));
+    const node = `#${list.cell.transform.ref}`;
+    ok(await v.api.clipping.add({ shape: 'plane', node }));
+    ok(await v.api.clipping.add({ shape: 'sphere', node, particles: { targets: [1] } }));
+    // the second object: bit 2
+    expect(ignoring(v)).toEqual([[others, 2]]);
+    ok(await v.api.clipping.remove({ cut: 1 }));
+    expect(findCuts(v.plugin)[0].particles?.selector).toMatchObject({ targets: [1] });
+    expect(ignoring(v)).toEqual([[others, 1]]);
+    ok(await v.api.clipping.remove({ cut: 1 }));
+    expect(ignoring(v)).toEqual([]);
+    const layers = v.plugin.state.data.select(StateSelection.Generators.ofTransformer(ParticleRepresentation3DLayers));
+    expect(layers.every((c) => !(c.transform.params as any).cuts?.length)).toBe(true);
+  });
+
+  it('needs a particle list for a particle cut', async () => {
+    const v = await create(cbs());
+    const r = await v.api.clipping.add({ shape: 'sphere', target: 'polymer', particles: { targets: [1] } });
+    expect(r).toMatchObject({ ok: false, code: 'invalid' });
+    expect(findCuts(v.plugin)).toEqual([]);
   });
 
   it('finds a cut by its tag: a run after another that renumbered the cuts changes the cut it meant', async () => {

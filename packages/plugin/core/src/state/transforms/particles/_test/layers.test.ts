@@ -10,7 +10,8 @@ import { Color } from '@molstar/core/util/color';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 import { PluginContext } from '@molstar/plugin/context';
 import type { PluginStateObject as SO } from '@molstar/plugin/state/objects';
-import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
+import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
+import { RepresentationClip } from '../../../helpers/representation-clip.js';
 import type { Grid } from '@molstar/model/model/volume';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import { isMergedRenderObject } from '@molstar/graphics/gl/render-object';
@@ -63,6 +64,30 @@ const layer = (l: Partial<ParticleLayerProps>): ParticleLayerProps => ({
 });
 
 const indices = (loci: unknown) => OrderedSet.toArray((loci as Particle.Loci).indices);
+
+/** The representation's clip objects: planes tagged `tags`, in order */
+async function setObjects(plugin: PluginContext, repr: Awaited<ReturnType<typeof setup>>['repr'], tags: string[]) {
+  const objects = tags.map((tag) => ({
+    type: 'plane' as const,
+    invert: false,
+    position: Vec3(),
+    rotation: { axis: Vec3.create(1, 0, 0), angle: 0 },
+    scale: Vec3.create(1, 1, 1),
+    transform: Mat4.identity(),
+    tag,
+  }));
+  await plugin
+    .build()
+    .to(repr)
+    .update((p: any) => RepresentationClip.set(p, { ...RepresentationClip.get(p)!, objects }))
+    .commit();
+}
+
+/** The clipping layers of a representation: each layer's particles and the objects they ignore (bits) */
+const masks = (repr: { obj?: unknown }) =>
+  (repr.obj as SO.Particle.Representation3D).data.repr.state
+    .clipping!.layers.map((l) => [indices(l.loci), l.groups] as [number[], number])
+    .sort((a, b) => a[0][0] - b[0][0]);
 
 describe('ParticleRepresentation3DLayers', () => {
   it('colors, hides and lights particles by target on the representation', async () => {
@@ -175,29 +200,46 @@ describe('ParticleRepresentation3DLayers on the target representation', () => {
 });
 
 describe('ParticleRepresentation3DLayers cuts', () => {
-  it('lets a cut clip only its particles: the others ignore its clip object', async () => {
+  it("lets a cut clip only its particles, by its clip object's tag: the others ignore that object", async () => {
     const { plugin, repr } = await setup();
+    await setObjects(plugin, repr, ['a', 'b']);
     await plugin
       .build()
       .to(repr)
       .apply(ParticleRepresentation3DLayers, {
         layers: [],
         cuts: [
-          { ...none, targets: [0] },
-          { ...none, targets: [2] },
+          { ...none, tag: 'b', targets: [0] },
+          { ...none, tag: 'a', targets: [2] },
         ],
       })
       .commit();
-    const clipping = (repr.obj as SO.Particle.Representation3D).data.repr.state.clipping!;
-    // particles 0 and 2 (target 0) ignore cut 2 (bit 2), particle 3 (target 2) cut 1 (bit 1), particle 1 both (3)
-    const masks = clipping.layers
-      .map((l) => [indices(l.loci), l.groups] as [number[], number])
-      .sort((a, b) => a[0][0] - b[0][0]);
-    expect(masks).toEqual([
-      [[0, 2], 2],
+    // object a is bit 1, b bit 2: particles 0 and 2 (target 0) ignore a, particle 3 (target 2) b, particle 1 both
+    expect(masks(repr)).toEqual([
+      [[0, 2], 1],
       [[1], 3],
-      [[3], 1],
+      [[3], 2],
     ]);
+    // a removed: b is the first object now (bit 1), and its particles are still the ones it cuts
+    await setObjects(plugin, repr, ['b']);
+    expect(masks(repr)).toEqual([[[1, 3], 1]]);
+  });
+
+  it('ignores a cut whose object is not on the representation, or past the sixth', async () => {
+    const { plugin, repr } = await setup();
+    await setObjects(plugin, repr, ['a', 'b', 'c', 'd', 'e', 'f', 'g']);
+    await plugin
+      .build()
+      .to(repr)
+      .apply(ParticleRepresentation3DLayers, {
+        layers: [],
+        cuts: [
+          { ...none, tag: 'gone', targets: [0] },
+          { ...none, tag: 'g', targets: [0] },
+        ],
+      })
+      .commit();
+    expect(masks(repr)).toEqual([]);
   });
 
   it('has no clipping layers without cuts', async () => {

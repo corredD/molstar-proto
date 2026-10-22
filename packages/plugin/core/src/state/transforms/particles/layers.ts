@@ -36,15 +36,15 @@ const LayerParams = {
 export type ParticleLayerProps = PD.Values<typeof LayerParams>;
 
 /**
- * A cut of some particles: the representation's clip object of the cut's index (its first clip objects are the cuts,
- * in order) applies to them only; the other particles ignore it (Mol*'s clipping groups). Further clip objects (a cut
- * of the whole representation) apply to every particle.
+ * A cut of some particles: the representation's clip object tagged `tag` applies to them only; the other particles
+ * ignore it (Mol*'s clipping groups). By its tag, not its place: the objects before it may come and go. Other clip
+ * objects (a cut of the whole representation) apply to every particle.
  */
-const CutParams = { ...SelectorParams };
+const CutParams = { ...SelectorParams, tag: PD.Text('', { isHidden: true }) };
 export type ParticleCutProps = PD.Values<typeof CutParams>;
 
-/** At most this many cuts: a particle's clipping groups are 8 bits */
-export const MaxParticleCuts = 8;
+/** Clip objects past this place have no group (Mol*'s groups one to six): their cuts cannot be of some particles */
+export const MaxParticleCutIndex = 5;
 
 const describe = (l: ParticleLayerProps) =>
   [
@@ -57,17 +57,25 @@ const describe = (l: ParticleLayerProps) =>
     .join(', ') || 'No change';
 
 /**
- * The clipping groups of `cuts`: each particle ignores the clip objects of the cuts it is not in (as one layer per
- * distinct set of ignored objects)
+ * The clipping groups of `cuts` on a representation clipped by `objects`: each particle ignores the objects of the
+ * cuts it is not in (as one layer per distinct set of ignored objects); a cut whose object is not there, or past
+ * `MaxParticleCutIndex`, is left out
  */
-export function particleCutClipping(cuts: ReadonlyArray<ParticleCutProps>, particles: ParticleList): Clipping {
-  const n = Math.min(cuts.length, MaxParticleCuts);
-  if (n === 0) return Clipping.Empty;
-  const all = (1 << n) - 1;
+export function particleCutClipping(
+  cuts: ReadonlyArray<ParticleCutProps>,
+  particles: ParticleList,
+  objects: ReadonlyArray<{ readonly tag?: string }>,
+): Clipping {
+  const bits: { bit: number; cut: ParticleCutProps }[] = [];
+  for (const cut of cuts) {
+    const index = cut.tag ? objects.findIndex((o) => o.tag === cut.tag) : -1;
+    if (index >= 0 && index <= MaxParticleCutIndex) bits.push({ bit: 1 << index, cut });
+  }
+  if (!bits.length) return Clipping.Empty;
+  const all = bits.reduce((m, b) => m | b.bit, 0);
   const ignored = new Uint8Array(particles.count).fill(all);
-  for (let i = 0; i < n; ++i) {
-    const bit = 1 << i;
-    OrderedSet.forEach(Particle.selectLoci(particles, cuts[i]).indices, (j) => {
+  for (const { bit, cut } of bits) {
+    OrderedSet.forEach(Particle.selectLoci(particles, cut).indices, (j) => {
       ignored[j] &= ~bit;
     });
   }
@@ -85,6 +93,10 @@ export function particleCutClipping(cuts: ReadonlyArray<ParticleCutProps>, parti
   }
   return { kind: 'element-loci', layers } as Clipping;
 }
+
+/** The clip objects a particle representation draws with */
+const clipObjectsOf = (repr: { props: { clip?: { objects: ReadonlyArray<{ tag?: string }> } } }) =>
+  repr.props.clip?.objects ?? [];
 
 /** The overpaint, transparency and emissive of `layers` over `particles`, later layers over earlier ones */
 export function particleLayerState(layers: ReadonlyArray<ParticleLayerProps>, particles: ParticleList) {
@@ -134,7 +146,8 @@ const ParticleRepresentation3DLayers = PluginStateTransform.BuiltIn({
       (c) => `Cut of ${c.entities.length + c.compartments.length + c.targets.length} groups`,
       {
         defaultValue: [],
-        description: 'Cuts of some particles: the first clip objects of the representation, one per cut.',
+        description:
+          "Cuts of some particles: each the representation's clip object of its tag, on those particles only.",
       },
     ),
   }),
@@ -146,7 +159,7 @@ const ParticleRepresentation3DLayers = PluginStateTransform.BuiltIn({
     const particles = a.data.sourceData;
     const state = {
       ...particleLayerState(params.layers, particles),
-      clipping: particleCutClipping(params.cuts ?? [], particles),
+      clipping: particleCutClipping(params.cuts ?? [], particles, clipObjectsOf(a.data.repr)),
     };
     return new SO.Particle.Representation3DState(
       { state, initialState: Initial, info: particles, repr: a.data.repr },
@@ -158,7 +171,7 @@ const ParticleRepresentation3DLayers = PluginStateTransform.BuiltIn({
     const particles = a.data.sourceData;
     const state = {
       ...particleLayerState(newParams.layers, particles),
-      clipping: particleCutClipping(newParams.cuts ?? [], particles),
+      clipping: particleCutClipping(newParams.cuts ?? [], particles, clipObjectsOf(a.data.repr)),
     };
     const old = b.data.state;
     if (

@@ -30,8 +30,7 @@ export const MesoscaleSkill: ViewerSkill = {
     'function. get_mesoscale_entities lists them; style_mesoscale_entities shows, hides, colors, fades or lights',
     'entities picked by name or by group (reset brings them back); color_mesoscale_entities generates colors (a hue',
     'per group), one uniform color, or goes back to the color theme; set_mesoscale_graphics trades detail for speed;',
-    'clip_mesoscale_entities cuts entities or a group with a plane, sphere, box or cylinder placed from the model',
-    'center (x, y, z in % of its radius), turned about an axis, sized (% of the diameter); type none removes it.',
+    "Their cuts are the clipping skill's (clipping.add with particles: a group's, an entity's or a target's).",
     'move_mesoscale_particles wiggles the atoms and tumbles the particles (0 stops); open_mesoscale_example opens one of',
     "the Mesoscale Explorer's examples by id (petworld-hiv, cellpack-hiv1, …).",
   ].join('\n'),
@@ -50,11 +49,6 @@ export const MesoscaleSkill: ViewerSkill = {
       id: 'color_mesoscale_entities',
       operation: 'mesoscale.colors',
       description: "Colors a mesoscale model's entities: generated per group, uniform, or the color theme.",
-    },
-    {
-      id: 'clip_mesoscale_entities',
-      operation: 'mesoscale.clip',
-      description: 'Clips entities or a group of a mesoscale model with a plane, sphere, box or cylinder.',
     },
     {
       id: 'move_mesoscale_particles',
@@ -99,12 +93,6 @@ export const MesoscaleExtension: ViewerExtension = {
         category,
         icon: 'gauge',
         alias: ['graphics mode', 'performance', 'quality', 'level of detail', 'lod'],
-        action: 'Apply',
-      }),
-      operationCommand(api, m.clip, {
-        category,
-        icon: 'crop',
-        alias: ['clip entity', 'cut entity', 'clip group'],
         action: 'Apply',
       }),
       operationCommand(api, m.motion, {

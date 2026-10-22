@@ -9,14 +9,13 @@
 import { Color } from '@molstar/core/util/color';
 import { Button, Choices, ColorPicker, domView, For, Icon, Select, Show, TextInput } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
-import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
-import { ClipControls, cutsFor, Motion } from './controls.js';
+import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import { Motion } from './controls.js';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import { type MesoGroup, groupEntities } from './model.js';
 import {
-  type EntityCut,
   type EntityInfo,
   type GraphicsMode,
   type MesoscaleApi,
@@ -297,7 +296,6 @@ function GroupRow(props: {
   const shown = mapState(info, (i) => i.entities.some((e) => members.includes(e.id) && e.visible));
   const hidden = derive([props.open, info], (o, i) => folded(row, o, i));
   const isOpen = mapState(props.open, (o) => o.has(row.group.path));
-  const clipping = observableState(false);
   return (
     <Show when={mapState(hidden, (h) => !h)}>
       {() => (
@@ -326,20 +324,8 @@ function GroupRow(props: {
               }
             />
             <span style="flex: 1; overflow: hidden; white-space: nowrap">{row.group.label}</span>
-            <ClipButton info={info} entities={members} open={clipping} />
             <span style={Muted}>{members.length}</span>
           </div>
-          <Show when={clipping}>
-            {() => (
-              <ClipControls
-                area={area}
-                info={info}
-                entities={members}
-                selection={{ group: row.group.path }}
-                depth={row.depth + 1}
-              />
-            )}
-          </Show>
         </>
       )}
     </Show>
@@ -356,7 +342,6 @@ function EntityRow(props: {
   const entity = mapState(info, (i) => i.entities.find((e) => e.id === row.id));
   const hidden = derive([props.open, info], (o, i) => folded(row, o, i));
   const picking = observableState(false);
-  const clipping = observableState(false);
   const style = (patch: Record<string, unknown>) =>
     void area.style({ entities: String(row.id), particles: info.value.particles, ...patch } as never);
   return (
@@ -386,20 +371,8 @@ function EntityRow(props: {
             >
               {mapState(entity, (e) => e?.name ?? '')}
             </span>
-            <ClipButton info={info} entities={[row.id]} open={clipping} />
             <span style={Muted}>{mapState(entity, (e) => (e?.count ?? 0).toLocaleString('en'))}</span>
           </div>
-          <Show when={clipping}>
-            {() => (
-              <ClipControls
-                area={area}
-                info={info}
-                entities={[row.id]}
-                selection={{ entities: String(row.id) }}
-                depth={row.depth + 2}
-              />
-            )}
-          </Show>
           <Show when={picking}>
             {() => (
               <div style={`padding-left: calc(${row.depth + 2} * var(--msp-space-3))`}>
@@ -420,32 +393,3 @@ function swatch(e: EntityInfo | undefined) {
   if (!e || e.color === undefined) return 'transparent';
   return Color.toHexStyle(e.color);
 }
-
-/** The cut of exactly these entities, if any */
-function cutFor(info: MesoscaleInfo, entities: readonly number[]): EntityCut | undefined {
-  return cutsFor(info, entities)[0];
-}
-
-/** The clip button of a row: lit when the row's entities have a cut; opens its controls */
-function ClipButton(props: {
-  info: ReadonlyState<MesoscaleInfo>;
-  entities: readonly number[];
-  open: ObservableState<boolean>;
-}) {
-  const cut = mapState(props.info, (i) => !!cutFor(i, props.entities));
-  return (
-    <Button
-      size="xs"
-      variant="ghost"
-      title="Clip"
-      pressed={derive([cut, props.open.asReadonly], (c, o) => c || o)}
-      icon={<Icon name="crop" />}
-      onClick={() => props.open.set(!props.open.value)}
-    />
-  );
-}
-
-/**
- * A cut of a group's or an entity's particles, as the Mesoscale Explorer set one: its type, inside or outside, where it
- * is (x, y, z from the model's center, in % of its radius), turned about an axis, its size (in % of the diameter)
- */
