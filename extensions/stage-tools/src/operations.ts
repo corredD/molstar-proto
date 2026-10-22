@@ -17,7 +17,7 @@ import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/re
 import { type StateObjectCell, StateTransform } from '@molstar/core/state';
 import { Clip } from '@molstar/core/util/clip';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
-import { Particle } from '@molstar/model/model/particles/particle-list';
+import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import { Grid, Volume } from '@molstar/model/model/volume';
 import {
   type ParticleCutProps,
@@ -43,6 +43,7 @@ import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import { ObjectMoveGizmos } from './move-gizmos.js';
 import { labelLook, StageLabel, StageLabelParams, type StageLabelProps } from './label.js';
 import { type Cut, cutOf, type ScreenFrame } from './cuts.js';
 import { type CutGuideData, CutGuides, isCutGuideData } from './guide.js';
@@ -135,6 +136,9 @@ export class StageApi extends ApiArea {
     void this.guideVisuals.sync(desiredGuides({ plugin: this.ctx.plugin }, next));
   }
 
+  /** The handles that move a particle list, a volume or a mesh by hand (a structure's are Prism's, `api.move`) */
+  readonly moveGizmos: ObjectMoveGizmos;
+
   /** The cuts' guides on the canvas, following the state */
   readonly guideVisuals: CutGuides;
   private readonly guidesShown = observableState(true);
@@ -143,6 +147,7 @@ export class StageApi extends ApiArea {
     super(ctx);
     const plugin = ctx.plugin;
     this.guideVisuals = new CutGuides(plugin);
+    this.moveGizmos = new ObjectMoveGizmos(plugin, this);
     // the guides follow the cuts: synced once after each change of the state
     let queued = false;
     plugin.state.data.events.changed.subscribe(() => {
@@ -263,6 +268,54 @@ export class StageApi extends ApiArea {
   }
 
   /**
+   * Where an object is placed (a particle list, a volume, a mesh): its transform on top of where it was loaded, its
+   * center there, its reach; for the handles that move it (`ObjectMoveGizmos`)
+   */
+  placementOf(target: string): ObjectPlacement | undefined {
+    const plugin = this.ctx.plugin;
+    const ctx = { plugin };
+    const { cells } = plugin.state.data;
+    const cell = cells.get(target);
+    if (!cell) return undefined;
+    const t = stageTargets(ctx).find((x) => x.ref === target);
+    if (t?.kind === 'particles') {
+      const data = cell.obj?.data as ParticleList | undefined;
+      if (!data) return undefined;
+      const old = decoratorUnder(ctx, target, ParticleListTransform);
+      const sphere = Particle.getBoundary(data).sphere;
+      return {
+        matrix: old ? Mat4.clone((old.transform.params as { transform: Mat4 }).transform) : Mat4.identity(),
+        center: Vec3.clone(sphere.center),
+        radius: Math.max(sphere.radius, 1),
+      };
+    }
+    if (t?.kind === 'volume') {
+      const data = cell.obj?.data as Volume | undefined;
+      if (!data) return undefined;
+      const old = decoratorUnder(ctx, target, VolumeTransform);
+      const sphere = Grid.getBoundingSphere(data.grid);
+      return {
+        matrix: old ? volumeMatrixOf(old) : Mat4.identity(),
+        center: Vec3.clone(sphere.center),
+        radius: Math.max(sphere.radius, 1),
+      };
+    }
+    if (SO.Shape.Representation3D.is(cell.obj)) {
+      const shape = cells.get(cell.transform.parent);
+      if (!shape || !SO.Shape.Provider.is(shape.obj)) return undefined;
+      const matrix: Mat4 = Mat4.clone(
+        (shape.transform.params as { transforms?: Mat4[] }).transforms?.[0] ?? Mat4.identity(),
+      );
+      const drawn = this.objectBounds(target);
+      if (!drawn) return undefined;
+      // its center as loaded: where it is drawn, the transform undone
+      const center = Vec3.transformMat4(Vec3(), drawn.center, Mat4.invert(Mat4(), matrix));
+      return { matrix, center, radius: Math.max(drawn.radius, 1) };
+    }
+    return undefined;
+  }
+
+  /**
    * An object drawn moved by `m` (the drawing only, the state unchanged): its representations and its labels', as a drag
    * goes; the identity puts them back
    */
@@ -297,17 +350,11 @@ export class StageApi extends ApiArea {
       const m = Mat4.fromArray(Mat4(), matrix, 0);
       if (Mat4.isIdentity(m)) return ApiResult.already('Not moved.');
       const plugin = ctx.plugin;
-      const { cells, tree } = plugin.state.data;
+      const { cells } = plugin.state.data;
       const cell = cells.get(target);
       if (!cell) return ApiResult.fail('not-found', `There is no object '${target}'.`);
       const t = stageTargets(ctx).find((x) => x.ref === target);
       const b = plugin.state.data.build();
-      const decoratorUnder = (ref: string, transformer: unknown) =>
-        tree.children
-          .get(ref)
-          .toArray()
-          .map((c) => cells.get(c))
-          .find((c) => c?.transform.transformer === transformer);
       const name = rootLabel(ctx, target) ?? cell.obj?.label ?? target;
       if (t?.kind === 'structure') {
         // the structure's own transform (Prism's, as its Move does), on top of where it is
@@ -315,7 +362,7 @@ export class StageApi extends ApiArea {
         if (!r.ok) return r;
       } else if (t?.kind === 'particles') {
         const l = plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === target)!;
-        const old = decoratorUnder(l.cell.transform.ref, ParticleListTransform);
+        const old = decoratorUnder(ctx, l.cell.transform.ref, ParticleListTransform);
         if (old) {
           const prev = (old.transform.params as { transform: Mat4 }).transform;
           b.to(old).update({ transform: Mat4.mul(Mat4(), m, prev) });
@@ -323,7 +370,7 @@ export class StageApi extends ApiArea {
           b.to(l.cell).insert(ParticleListTransform, { transform: m });
         }
       } else if (t?.kind === 'volume') {
-        const old = decoratorUnder(target, VolumeTransform);
+        const old = decoratorUnder(ctx, target, VolumeTransform);
         const prev = old ? volumeMatrixOf(old) : Mat4.identity();
         const transform = { name: 'matrix' as const, params: { data: Mat4.mul(Mat4(), m, prev), transpose: false } };
         if (old) b.to(old).update({ transform });
@@ -738,6 +785,25 @@ function rootLabel(ctx: Pick<ApiContext, 'plugin'>, ref: string): string | undef
   }
   const obj = cells.get(root)?.obj;
   return SO.Data.String.is(obj) || SO.Data.Binary.is(obj) ? obj.label : undefined;
+}
+
+/** An object's placement, as its handles take it */
+export interface ObjectPlacement {
+  /** Its transform on top of where it was loaded */
+  readonly matrix: Mat4;
+  /** Its center where it was loaded */
+  readonly center: Vec3;
+  readonly radius: number;
+}
+
+/** The decorator of a transformer right under a cell (a particle list's or a volume's transform), if any */
+function decoratorUnder(ctx: Pick<ApiContext, 'plugin'>, ref: string, transformer: unknown) {
+  const { cells, tree } = ctx.plugin.state.data;
+  return tree.children
+    .get(ref)
+    .toArray()
+    .map((c) => cells.get(c))
+    .find((c) => c?.transform.transformer === transformer);
 }
 
 /** A volume's transform as a matrix (its decorator's: a matrix, or its parts about the origin) */

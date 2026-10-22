@@ -133,6 +133,13 @@ describe('stage', () => {
     expectOk(await s.move({ target: list, matrix: up } as never));
     const twice = v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.obj!.data.sourceData;
     expect(twice.coordinates[2]).toBe(200);
+    // where its handles take it: the transform so far, its center as loaded
+    const placed = s.placementOf(list)!;
+    expect(placed.matrix[14]).toBeCloseTo(200);
+    // (its bounds' center: about the middle of its two particles)
+    expect(placed.center[0]).toBeGreaterThan(10);
+    expect(placed.center[0]).toBeLessThan(20);
+    expect(placed.center[2]).toBeCloseTo(0, 3);
   });
 
   it('draws a decorated list moved while dragged (the target representation takes the transform), then back', async () => {

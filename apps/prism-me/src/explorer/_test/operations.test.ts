@@ -241,7 +241,7 @@ describe('explorer', () => {
     // a whole structure moves and turns
     setGranularity('structure');
     const whole = nodeMenuItems(v.api, area, area.pickedOf(atoms));
-    expect(whole.map((i) => i.id)).toEqual(['focus', 'move', 'rotate', 'hide', 'label']);
+    expect(whole.map((i) => i.id)).toEqual(['focus', 'move', 'hide', 'label']);
     expect(whole[1].disabled).toBeUndefined();
     setGranularity('chain');
     expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);

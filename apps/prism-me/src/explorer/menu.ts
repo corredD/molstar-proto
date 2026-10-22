@@ -7,6 +7,7 @@
 import type { ContextMenuItem } from '@molstar/prism-ui';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type {} from '@molstar/prism-viewer/features/clipping';
+import type {} from '@molstar/prism-viewer/features/structure-move';
 import { startMoveDrag } from '@molstar/stage-tools-extension/drag';
 import type { ExplorerApi, NodeRef, PickedNode } from './operations.js';
 import { toggleVisible } from './rows.js';
@@ -33,12 +34,21 @@ const WholeClips = new Set(['structure', 'mesoscale model', 'particle list', 'vo
 /** Objects that move as a whole (their own transform) */
 const Movable = new Set(['structure', 'mesoscale model', 'particle list', 'volume', 'mesh']);
 
+/** Whether a node moves as a whole object (by its handles) */
+export function movable(kind: string) {
+  return Movable.has(kind);
+}
+
 /** The app's root around the canvas (the drag's layer goes over it) */
 function rootAround(el: Element | undefined): HTMLElement {
   return el?.closest<HTMLElement>('.msp-root') ?? document.body;
 }
 
-/** Move and Turn by dragging on the canvas: an object, a label (moved only); a part's: not yet (greyed, why) */
+/**
+ * Move by hand: Prism's handles (its gizmo library) on an object, to move and turn it in 3D, one step a release: a
+ * structure's Prism's own (`api.move`), a particle list's, a volume's or a mesh's the stage's on the same library; a
+ * label, a drag on the canvas. A part's: not yet (greyed, why)
+ */
 function moveItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
   const stage = api.stage;
   if (!stage) return [];
@@ -57,19 +67,12 @@ function moveItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): Conte
     ];
   }
   if (Movable.has(kind)) {
+    const on = handlesOn(api);
+    if (on === node.ref) {
+      return [{ id: 'hide-handles', label: 'Hide the handles', icon: 'move-3d', run: () => hideHandles(api) }];
+    }
     return [
-      {
-        id: 'move',
-        label: 'Move',
-        icon: 'move-3d',
-        run: () => startMoveDrag(stage, rootAround(canvas), canvas, node.ref, 'move'),
-      },
-      {
-        id: 'rotate',
-        label: 'Turn',
-        icon: 'rotate-ccw',
-        run: () => startMoveDrag(stage, rootAround(canvas), canvas, node.ref, 'rotate'),
-      },
+      { id: 'move', label: 'Move and turn (handles)', icon: 'move-3d', run: () => showHandles(api, node.ref, kind) },
     ];
   }
   return [
@@ -81,6 +84,32 @@ function moveItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): Conte
       run: () => {},
     },
   ];
+}
+
+/** The object the move handles are on, if shown */
+export function handlesOn(api: ViewerApi): string | undefined {
+  if (api.move?.gizmos.shown.value) return api.move.gizmos.target.value;
+  if (api.stage?.moveGizmos.shown.value) return api.stage.moveGizmos.target.value;
+  return undefined;
+}
+
+/** Shows the move handles on an object (one object at a time: the others' go) */
+export function showHandles(api: ViewerApi, ref: string, kind: string) {
+  hideHandles(api);
+  if (kind === 'structure' && api.move) {
+    api.move.gizmos.setTarget(ref);
+    api.move.showGizmos(api);
+    return;
+  }
+  const gizmos = api.stage?.moveGizmos;
+  if (!gizmos) return;
+  gizmos.setTarget(ref);
+  gizmos.show();
+}
+
+export function hideHandles(api: ViewerApi) {
+  api.move?.gizmos.hide();
+  api.stage?.moveGizmos.hide();
 }
 
 /** The swatches of the brush */

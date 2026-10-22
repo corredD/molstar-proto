@@ -31,7 +31,7 @@ import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
-import { clipItems, clippable, clipsWhole, showClipHandles } from './menu.js';
+import { clipItems, clippable, clipsWhole, hideHandles, movable, showClipHandles, showHandles } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
 import type { Parts } from './rows.js';
 
@@ -82,6 +82,9 @@ function NodeProperties(props: { api: ViewerApi; area: ExplorerApi; picked: Pick
         <span style={Muted}>{picked.kind}</span>
       </div>
       {node ? sectionsOf(api, area, picked, node, props.parts) : null}
+      {node && movable(picked.kind) ? (
+        <Section title="Position">{() => <Position api={api} kind={picked.kind} node={node} />}</Section>
+      ) : null}
       {node && clippable(picked.kind, node) ? (
         <Section title="Clips">{() => <Clips api={api} area={area} kind={picked.kind} node={node} />}</Section>
       ) : null}
@@ -704,6 +707,35 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
           Remove the label
         </Button>
       </div>
+    </div>
+  );
+}
+
+// --- position ----------------------------------------------------------------------------------------------------------
+
+/** An object's position: Prism's handles on it, to move and turn it in 3D (each release one step) */
+function Position(props: { api: ViewerApi; kind: string; node: NodeRef }) {
+  const { api, node } = props;
+  const shownOn = derive(
+    [
+      api.move?.gizmos.shown ?? observableState(false).asReadonly,
+      api.move?.gizmos.target ?? observableState<string | undefined>(undefined).asReadonly,
+      api.stage?.moveGizmos.shown ?? observableState(false).asReadonly,
+      api.stage?.moveGizmos.target ?? observableState<string | undefined>(undefined).asReadonly,
+    ],
+    (a, ta, b, tb) => (a && ta === node.ref) || (b && tb === node.ref),
+  );
+  return (
+    <div style={Line}>
+      <span style={Label}>Handles</span>
+      <Button
+        size="sm"
+        icon={<Icon name="move-3d" />}
+        pressed={shownOn}
+        onClick={() => (shownOn.value ? hideHandles(api) : showHandles(api, node.ref, props.kind))}
+      >
+        {mapState(shownOn, (on) => (on ? 'Hide' : 'Move and turn'))}
+      </Button>
     </div>
   );
 }

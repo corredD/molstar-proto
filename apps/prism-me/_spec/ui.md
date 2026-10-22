@@ -167,6 +167,11 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   its shape and side, remove. A cut's drawing is not a mesh. An entity's or group's clips stay ours (the mesoscale cuts:
   Prism cuts whole representations), with their guides. The stage tools' whole-object cuts (`stage.cut`, `adjust`,
   `uncut`, `cuts`, their tree row) are gone.
+- Moving is Prism's too (2026-10-21): Move and turn shows Prism's handles (its gizmo library) on the object, a drag
+  previewed, each release one step: a structure's are Prism's own (`api.move`, its structure-move feature), a particle
+  list's, a volume's or a mesh's the stage's on the same library (`ObjectMoveGizmos`, committing `stage.move`; a mesh's
+  scale kept under the turn); one object's handles at a time; the properties' Position shows or hides them. A label
+  keeps its drag (Move: nothing to turn).
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.

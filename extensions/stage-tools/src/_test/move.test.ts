@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { dragMatrix, movedClipObject } from '../move.js';
+import { dragPlacement, moveBetween } from '../move-gizmos.js';
 
 const frame = { right: Vec3.create(1, 0, 0), up: Vec3.create(0, 1, 0), pixel: 2 };
 
@@ -42,5 +43,22 @@ describe('move', () => {
     expect(Math.abs(turned.rotation.axis[2])).toBeCloseTo(1, 4);
     const moved = movedClipObject(o, Mat4.fromTranslation(Mat4(), Vec3.create(0, 5, 0)));
     expect(Array.from(moved.position)).toEqual([0, 5, 0]);
+  });
+});
+
+describe('move gizmos', () => {
+  it("drags a placement rigidly, a mesh's scale kept under the turn; the move between two placements", () => {
+    const from = { matrix: Mat4.fromScaling(Mat4(), Vec3.create(2, 2, 2)), center: Vec3.create(1, 0, 0), radius: 5 };
+    // the move handle (in the screen's plane): 10 px right at 1 Å a px
+    const handle = { kind: 'move' } as const;
+    const frame = { right: Vec3.create(1, 0, 0), up: Vec3.create(0, 1, 0), perPixel: 1 };
+    const next = dragPlacement(from, handle, frame, 10, 0);
+    // the scale stays
+    expect(Mat4.getMaxScaleOnAxis(next.matrix)).toBeCloseTo(2, 6);
+    const m = moveBetween(from, next);
+    // the move is rigid (no scale of its own)
+    expect(Mat4.getMaxScaleOnAxis(m)).toBeCloseTo(1, 6);
+    // and makes `next` of `from`
+    expect(Mat4.areEqual(Mat4.mul(Mat4(), m, from.matrix), next.matrix, 1e-6)).toBe(true);
   });
 });
