@@ -659,12 +659,16 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
   const out: MeshInfo[] = [];
   for (const cell of cells.values()) {
     if (cell.state.isGhost || !SO.Shape.Representation3D.is(cell.obj)) continue;
+    // a file's mesh: its root is the file's data, no representation on the way (a cut's drawing is a representation's)
     let root = cell.transform.ref;
+    let drawing = false;
     for (;;) {
       const parent = tree.transforms.get(root)?.parent;
       if (!parent || parent === StateTransform.RootRef) break;
       root = parent;
+      if (SO.isRepresentation3D(cells.get(root)?.obj)) drawing = true;
     }
+    if (drawing) continue;
     const data = cells.get(root)?.obj;
     if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data)) continue;
     const p = cell.transform.params as any;

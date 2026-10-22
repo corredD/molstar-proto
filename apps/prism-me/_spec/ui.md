@@ -160,6 +160,13 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   (`VolumeTransform`), a mesh (its shape's transform, its scale kept); a label is moved too. Its clips and labels move
   with it, in the same step. What reads where an object is reads it as drawn, down its decorators (`drawnObject`).
   Library: the particles' target representation takes a representation's transform (it ignored it).
+- Prism first (Ludovic, 2026-10-21): upstream main and v6 Prism have priority over this branch's own code. Clipping is
+  Prism's (#2021, its `clipping.*` and its handles): an object's scissors (a structure, a model, a list, a volume, a
+  mesh) add Prism's cut of all of it (`clipping.add` by node), its handles shown on it; its Clips list Prism's cuts
+  through its representations, each: its handles (move, turn, size in 3D), its drawing in the scene (`clipping.show`),
+  its shape and side, remove. A cut's drawing is not a mesh. An entity's or group's clips stay ours (the mesoscale cuts:
+  Prism cuts whole representations), with their guides. The stage tools' whole-object cuts (`stage.cut`, `adjust`,
+  `uncut`, `cuts`, their tree row) are gone.
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.

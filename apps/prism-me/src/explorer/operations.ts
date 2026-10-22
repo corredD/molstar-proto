@@ -281,6 +281,16 @@ export class ExplorerApi extends ApiArea {
     return { center: [sphere.center[0], sphere.center[1], sphere.center[2]], radius: sphere.radius };
   }
 
+  /** Whether a cell is under another in the state tree (one of an object's representations) */
+  isUnder(ref: string, ancestor: string): boolean {
+    const { tree } = this.ctx.plugin.state.data;
+    for (let r: string | undefined = ref; r; r = tree.transforms.get(r)?.parent) {
+      if (r === ancestor) return true;
+      if (r === StateTransform.RootRef) return false;
+    }
+    return false;
+  }
+
   /** The canvas element (a drag in 3D is measured on it) */
   canvasElement(): HTMLElement | undefined {
     return this.ctx.plugin.canvas3dContext?.canvas ?? undefined;
@@ -399,7 +409,9 @@ function meshes(plugin: PluginContext): SceneObject[] {
       const parent = tree.transforms.get(root)?.parent;
       if (!parent || parent === StateTransform.RootRef) break;
       root = parent;
-      if (SO.Molecule.Model.is(cells.get(root)?.obj)) ofModel = true;
+      // a model's shape (a unit cell), or a representation's (a cut's drawing, Prism's clip volumes)
+      const up = cells.get(root)?.obj;
+      if (SO.Molecule.Model.is(up) || SO.isRepresentation3D(up)) ofModel = true;
     }
     if (ofModel) continue;
     const data = cells.get(root)?.obj;

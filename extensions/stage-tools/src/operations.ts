@@ -44,7 +44,7 @@ import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { labelLook, StageLabel, StageLabelParams, type StageLabelProps } from './label.js';
-import { type Cut, type CutShape, clipObjectOf, cutOf, defaultCut, flipCut, type ScreenFrame } from './cuts.js';
+import { type Cut, cutOf, type ScreenFrame } from './cuts.js';
 import { type CutGuideData, CutGuides, isCutGuideData } from './guide.js';
 
 // The `stage` area (apps/prism-me/_spec/features.md, "Stage tools"; Stories Untold's cuts): a cut on what the scene
@@ -135,27 +135,6 @@ export class StageApi extends ApiArea {
     void this.guideVisuals.sync(desiredGuides({ plugin: this.ctx.plugin }, next));
   }
 
-  /**
-   * A target's cuts of the whole object (after the cuts of some of its particles), with their index among its clip
-   * objects, following the state tree while watched
-   */
-  wholeCutsState(
-    target: string,
-  ): ReadonlyState<readonly { readonly index: number; readonly object: Clip.Props['objects'][number] }[]> {
-    const plugin = this.ctx.plugin;
-    return watchedState(
-      () => {
-        const t = stageTargets({ plugin }).find((x) => x.ref === target);
-        const cell = t && representationCells({ plugin }, t)[0];
-        if (!cell) return [];
-        const partial = partialCuts({ plugin }, cell);
-        return (clipOf(cell)?.objects ?? []).flatMap((object, index) => (index >= partial ? [{ index, object }] : []));
-      },
-      () => plugin.state.data.events.changed,
-      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
-    );
-  }
-
   /** The cuts' guides on the canvas, following the state */
   readonly guideVisuals: CutGuides;
   private readonly guidesShown = observableState(true);
@@ -190,19 +169,6 @@ export class StageApi extends ApiArea {
         anchor: plugin.canvas3dContext?.canvas ?? undefined,
       });
     });
-  }
-
-  /** A target's cut as shown, following the state tree while watched: a read for views */
-  cutState(target: string): ReadonlyState<CutInfo | undefined> {
-    const plugin = this.ctx.plugin;
-    return watchedState(
-      () => {
-        const t = stageTargets({ plugin }).find((x) => x.ref === target);
-        return t ? describe({ plugin }, t) : undefined;
-      },
-      () => plugin.state.data.events.changed,
-      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
-    );
   }
 
   /** Whether anything is cut (a cut of a whole object or of some of its entities) */
@@ -284,119 +250,6 @@ export class StageApi extends ApiArea {
     const height = this.ctx.plugin.canvas3dContext?.canvas?.clientHeight || camera.viewport.height || 1;
     return { right, up: screenUp, pixel: (2 * depth * Math.tan(fov / 2)) / height };
   }
-
-  readonly cuts = this.operation({
-    id: 'stage.cuts',
-    title: 'Describe the cuts',
-    params: {},
-    read: true,
-    async run(_, ctx) {
-      const infos = stageTargets(ctx).map((t) => describe(ctx, t));
-      const cut = infos.filter((i) => i.cut);
-      const lines = cut.map((i) => `${i.label}: ${i.cut!.shape}${i.cut!.invert ? ' (inside kept)' : ''}`);
-      return ApiResult.ok(cut.length ? lines.join('\n') : 'Nothing is cut.', {}, { value: infos });
-    },
-  });
-
-  readonly cut = this.operation({
-    id: 'stage.cut',
-    title: 'Cut open…',
-    params: {
-      shape: PD.Select<CutShape>('plane', [
-        ['plane', 'A plane facing the camera, through the center'],
-        ['sphere', 'A sphere, a window on the near side'],
-        ['box', 'A box, a window on the near side'],
-      ]),
-      add: PD.Boolean(false, { description: 'A cut besides its others (else it replaces them)' }),
-      target: TargetParam(),
-    },
-    async run({ shape, add, target }, ctx) {
-      const targets = pickTargets(ctx, target);
-      if (isFailure(targets)) return targets;
-      const view = viewDirection(ctx);
-      const nodes: string[] = [];
-      for (const t of targets) {
-        const cut = defaultCut(shape, boundsOf(ctx, t)!, view);
-        nodes.push(...(await setCut(ctx, t, cut, add ? 'add' : 'replace')));
-      }
-      return ApiResult.ok(`Cut ${names(targets)} open with a ${shape}.`, { nodes });
-    },
-  });
-
-  readonly adjust = this.operation({
-    id: 'stage.adjust',
-    title: 'Adjust a cut',
-    params: {
-      offset: OptionalParam(
-        PD.Numeric(
-          0,
-          { min: -1, max: 1, step: 0.01 },
-          { description: 'Along its normal, from the center: −1 to 1 radius' },
-        ),
-      ),
-      size: OptionalParam(
-        PD.Numeric(
-          0.6,
-          { min: 0.05, max: 2, step: 0.01 },
-          { description: "A sphere's or box's size, in the target's radius" },
-        ),
-      ),
-      flip: PD.Boolean(false, { description: 'Cut the other side (a plane), keep the inside (a sphere, a box)' }),
-      target: TargetParam(),
-    },
-    async run(values, ctx) {
-      const { flip, target } = values;
-      const { offset, size } = values as typeof values & { offset?: number; size?: number };
-      const targets = pickTargets(ctx, target, true);
-      if (isFailure(targets)) return targets;
-      const nodes: string[] = [];
-      for (const t of targets) {
-        const info = describe(ctx, t);
-        if (!info.cut) continue;
-        const bounds = boundsOf(ctx, t)!;
-        let cut = info.cut;
-        if (offset !== undefined) {
-          const n = Vec3.normalize(Vec3(), Vec3.create(...cut.normal));
-          const c = Vec3.scaleAndAdd(Vec3(), bounds.center, n, offset * info.reach);
-          cut = { ...cut, center: [c[0], c[1], c[2]] };
-        }
-        if (size !== undefined && cut.shape !== 'plane') {
-          const s = size * info.reach;
-          cut = { ...cut, radius: s, size: [s, s, s] };
-        }
-        if (flip) cut = flipCut(cut);
-        nodes.push(...(await setCut(ctx, t, cut)));
-      }
-      if (!nodes.length) return ApiResult.already('Nothing to adjust: it is not cut.');
-      return ApiResult.ok(`Adjusted the cut of ${names(targets)}.`, { nodes });
-    },
-  });
-
-  readonly uncut = this.operation({
-    id: 'stage.uncut',
-    title: 'Remove a cut',
-    params: {
-      index: OptionalParam(
-        PD.Numeric(
-          0,
-          { min: 0, max: 15, step: 1 },
-          { description: 'Only this cut (stage.cuts lists them); absent: all' },
-        ),
-      ),
-      target: TargetParam(),
-    },
-    async run(values, ctx) {
-      const { target } = values;
-      const { index } = values as typeof values & { index?: number };
-      const targets = pickTargets(ctx, target, true);
-      if (isFailure(targets)) return targets;
-      const cut = targets.filter((t) => describe(ctx, t).cut);
-      if (!cut.length) return ApiResult.already('Nothing is cut.');
-      const nodes: string[] = [];
-      for (const t of cut) nodes.push(...(await setCut(ctx, t, undefined, index === undefined ? 'replace' : index)));
-      return ApiResult.ok(`Removed the cut of ${names(cut)}.`, { nodes });
-    },
-  });
 
   /** Where an object is (its center, its radius): a structure, a particle list, a volume, a mesh's representation */
   objectBounds(target: string): Sphere3D | undefined {
@@ -855,24 +708,6 @@ function pickTargets(ctx: ApiContext, name: string, cutOnly = false): StageTarge
   return found;
 }
 
-const names = (targets: readonly StageTarget[]) =>
-  targets.length <= 3 ? targets.map((t) => t.label).join(', ') : `${targets.length} objects`;
-
-/** The representations that draw a target */
-function representationCells(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): StateObjectCell[] {
-  const p = ctx.plugin.managers;
-  if (t.kind === 'structure') {
-    const s = p.structure.hierarchy.current.structures.find((x) => x.cell.transform.ref === t.ref);
-    return s ? s.components.flatMap((c) => c.representations.map((r) => r.cell)) : [];
-  }
-  if (t.kind === 'particles') {
-    const l = p.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === t.ref);
-    return l ? l.representations.map((r) => r.cell) : [];
-  }
-  const v = p.volume.hierarchy.current.volumes.find((x) => x.cell.transform.ref === t.ref);
-  return v ? v.representations.map((r) => r.cell) : [];
-}
-
 /** A label of the stage, as views list it */
 export interface LabelInfo {
   readonly ref: string;
@@ -977,11 +812,19 @@ export function drawnObject(ctx: Pick<ApiContext, 'plugin'>, ref: string) {
   }
 }
 
-/** From the camera to its target; down −z without a canvas */
-function viewDirection(ctx: Pick<ApiContext, 'plugin'>): Vec3 {
-  const camera = ctx.plugin.canvas3d?.camera;
-  if (!camera) return Vec3.create(0, 0, -1);
-  return Vec3.normalize(Vec3(), Vec3.sub(Vec3(), camera.state.target, camera.state.position));
+/** The representations that draw a target */
+function representationCells(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): StateObjectCell[] {
+  const p = ctx.plugin.managers;
+  if (t.kind === 'structure') {
+    const s = p.structure.hierarchy.current.structures.find((x) => x.cell.transform.ref === t.ref);
+    return s ? s.components.flatMap((c) => c.representations.map((r) => r.cell)) : [];
+  }
+  if (t.kind === 'particles') {
+    const l = p.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === t.ref);
+    return l ? l.representations.map((r) => r.cell) : [];
+  }
+  const v = p.volume.hierarchy.current.volumes.find((x) => x.cell.transform.ref === t.ref);
+  return v ? v.representations.map((r) => r.cell) : [];
 }
 
 function clipOf(cell: StateObjectCell): Clip.Props | undefined {
@@ -1014,8 +857,10 @@ export function desiredGuides(ctx: Pick<ApiContext, 'plugin'>, hidden?: Readonly
     const objects = cell ? (clipOf(cell)?.objects ?? []) : [];
     if (!objects.length) continue;
     const reach = Math.max(boundsOf(ctx, t)?.radius ?? 1, 1);
+    // the guides of the entities' cuts (the mesoscale clips, first): a whole object's cuts are Prism's, drawn by it
+    const partial = partialCuts(ctx, cell!);
     objects.forEach((object, index) => {
-      if (object.type === 'infiniteCone' || hidden?.has(`${t.ref}:${index}`)) return;
+      if (index >= partial || object.type === 'infiniteCone' || hidden?.has(`${t.ref}:${index}`)) return;
       out.push({ kind: 'stage-tools-cut-guide', target: t.ref, index, object, reach });
     });
   }
@@ -1049,34 +894,4 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): CutInfo {
     offset = Math.round((Vec3.dot(d, Vec3.normalize(Vec3(), Vec3.create(...cut.normal))) / reach) * 100) / 100;
   }
   return { ...t, reach, ...(cut ? { cut } : {}), ...(offset !== undefined ? { offset } : {}) };
-}
-
-/** Puts the cut (none: removes it) on every representation of the target and its guide; the refs changed */
-/**
- * Sets a target's cuts of the whole object (after the cuts of some of its particles, kept first): `cut` replaces them,
- * or is added after them; an index removes that one (its place among all the clip objects)
- */
-async function setCut(
-  ctx: ApiContext,
-  t: StageTarget,
-  cut: Cut | undefined,
-  mode: 'replace' | 'add' | number = 'replace',
-): Promise<string[]> {
-  const b = ctx.plugin.state.data.build();
-  const nodes: string[] = [];
-  for (const cell of representationCells(ctx, t)) {
-    const all = clipOf(cell)?.objects ?? [];
-    const partial = partialCuts(ctx, cell);
-    const kept =
-      mode === 'add'
-        ? all
-        : typeof mode === 'number'
-          ? all.filter((_, i) => i !== mode || i < partial)
-          : all.slice(0, partial);
-    const clip: Clip.Props = { variant: 'pixel', objects: [...kept, ...(cut ? [clipObjectOf(cut)] : [])] };
-    b.to(cell).update((old: any) => ({ ...old, type: { ...old.type, params: { ...old.type.params, clip } } }));
-    nodes.push(cell.transform.ref);
-  }
-  await b.commit();
-  return nodes;
 }

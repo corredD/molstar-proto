@@ -56,91 +56,7 @@ const cutOf = async (v: PrismViewer) => {
 const guides = (v: PrismViewer) => desiredGuides({ plugin: v.plugin });
 
 describe('stage', () => {
-  it('cuts every representation of a structure with a plane through its center, and draws its guide', async () => {
-    const v = await viewer();
-    expectOk(await v.api.stage!.cut({ shape: 'plane', target: '' }));
-    expect(clips(v).every((n) => n === 1)).toBe(true);
-    const info = await cutOf(v);
-    expect(info.cut?.shape).toBe('plane');
-    expect(info.offset).toBeCloseTo(0, 2);
-    expect(guides(v)).toHaveLength(1);
-  });
-
-  it('slides, sizes and flips a cut, and removes it with its guide', async () => {
-    const v = await viewer();
-    const s = v.api.stage!;
-    expectOk(await s.cut({ shape: 'sphere', target: '1CRN' }));
-    expectOk(await s.adjust({ offset: -0.5, size: 0.3 } as never));
-    let info = await cutOf(v);
-    expect(info.offset).toBeCloseTo(-0.5, 2);
-    expect(info.cut!.radius / info.reach).toBeCloseTo(0.3, 2);
-    expectOk(await s.adjust({ flip: true } as never));
-    info = await cutOf(v);
-    expect(info.cut!.invert).toBe(true);
-    expectOk(await s.uncut({ target: '' }));
-    expect(clips(v).every((n) => n === 0)).toBe(true);
-    expect(guides(v)).toHaveLength(0);
-    const again = await s.uncut({ target: '' });
-    expectOk(again);
-    expect(again.unchanged).toBe(true);
-  });
-
-  it('shows and hides the guides', async () => {
-    const v = await viewer();
-    const s = v.api.stage!;
-    expectOk(await s.cut({ shape: 'box', target: '' }));
-    expectOk(await s.guides({ visible: false }));
-    expect(s.guidesState().value).toBe(false);
-    expect(s.guideVisuals.visible).toBe(false);
-    // a view aid, not the scene's: the guide is still there, hidden, and nothing was a step of the history
-    expect(guides(v)).toHaveLength(1);
-  });
-
-  it('undoes a cut in one step', async () => {
-    const v = await viewer();
-    expectOk(await v.api.stage!.cut({ shape: 'plane', target: '' }));
-    expectOk(await v.api.history.undo({}));
-    expect(clips(v).every((n) => n === 0)).toBe(true);
-  });
-
-  it('moves, turns, sizes and inverts one cut, in one step', async () => {
-    const v = await viewer();
-    const s = v.api.stage!;
-    expectOk(await s.cut({ shape: 'box', target: '' }));
-    expectOk(
-      await s.object({
-        target: '',
-        index: 0,
-        x: 1,
-        y: 2,
-        z: 3,
-        axisX: 0,
-        axisY: 0,
-        axisZ: 1,
-        angle: 30,
-        sx: 5,
-        sy: 6,
-        sz: 7,
-        invert: true,
-      } as never),
-    );
-    const o = s.clipObject(v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref, 0)!;
-    expect([
-      Array.from(o.position),
-      Array.from(o.rotation.axis),
-      o.rotation.angle,
-      Array.from(o.scale),
-      o.invert,
-    ]).toEqual([[1, 2, 3], [0, 0, 1], 30, [5, 6, 7], true]);
-    expect(guides(v)[0].object.invert).toBe(true);
-    expectOk(await v.api.history.undo({}));
-    expect(
-      s.clipObject(v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref, 0)!.invert,
-    ).toBe(false);
-    expect(await s.object({ target: '', index: 3, x: 0 } as never)).toMatchObject({ ok: false, code: 'not-found' });
-  });
-
-  it('offers what fits the pick in its menu', async () => {
+  it("offers what fits the pick in its menu; a whole object's cut is Prism's, without a stage guide", async () => {
     const v = await viewer();
     const s = v.api.stage!;
     const target = {
@@ -151,38 +67,12 @@ describe('stage', () => {
     const ids = async (pick: Parameters<typeof menuItems>[2]['pick']) =>
       (await menuItems(v.api, s, { x: 0, y: 0, pick, loci: EmptyLoci, focus: () => {} })).map((i) => i.id);
     expect(await ids({ kind: 'nothing' })).toEqual(['reset-camera']);
-    expect(await ids({ kind: 'target', target })).toEqual(['focus', 'cut-plane', 'cut-sphere', 'cut-box']);
-    expectOk(await s.cut({ shape: 'plane', target: '' }));
-    expect(await ids({ kind: 'target', target })).toEqual([
-      'focus',
-      'cut-plane',
-      'cut-sphere',
-      'cut-box',
-      'flip',
-      'uncut',
-      'guides',
-    ]);
-    // a plane's guide: move, turn, the other side, remove (no size: a plane has none)
-    expect(await ids({ kind: 'guide', target, index: 0 })).toEqual(['move', 'rotate', 'flip', 'uncut', 'guides']);
-  });
-
-  it('adds a cut besides the others, removes one by its index, and hides one guide', async () => {
-    const v = await viewer();
-    const s = v.api.stage!;
-    const ref = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
-    expectOk(await s.cut({ shape: 'plane', target: '' }));
-    expectOk(await s.cut({ shape: 'sphere', add: true, target: '' } as never));
-    const cuts = () => s.wholeCutsState(ref).value.map((c) => [c.index, c.object.type]);
-    expect(cuts()).toEqual([
-      [0, 'plane'],
-      [1, 'sphere'],
-    ]);
-    expect(clips(v).every((n) => n === 2)).toBe(true);
-    s.setGuideShown(ref, 1, false);
-    expect(s.guideShownState(ref, 1).value).toBe(false);
-    expect(desiredGuides({ plugin: v.plugin }, new Set([`${ref}:1`])).map((g) => g.index)).toEqual([0]);
-    expectOk(await s.uncut({ index: 0, target: '' } as never));
-    expect(cuts()).toEqual([[0, 'sphere']]);
+    expect(await ids({ kind: 'target', target })).toEqual(['focus']);
+    // Prism's cut of the structure: drawn by Prism (its handles, its drawing), not a stage guide
+    expectOk(await v.api.run('clipping.add', { shape: 'plane', node: `#${target.ref}` }));
+    expect(v.api.clipping.cuts.value).toHaveLength(1);
+    expect(desiredGuides({ plugin: v.plugin })).toEqual([]);
+    expect(await ids({ kind: 'target', target })).toEqual(['focus']);
   });
 
   it('adds a label in front of an object, changes, hides and removes it (a state transform: saved, undone)', async () => {
@@ -225,9 +115,9 @@ describe('stage', () => {
     const moved = v.plugin.managers.structure.hierarchy.current.structures[0].transform!.cell.obj!.data;
     expect(moved.boundary.sphere.center[2]).toBeCloseTo(z0 + 100, 3);
     // the list, with a cut of it and a label of it
-    expectOk(await s.cut({ shape: 'plane', target: list }));
+    expectOk(await v.api.run('clipping.add', { shape: 'plane', node: `#${list}` }));
     expectOk(await s.label({ text: 'here', target: list, x: 15, y: 0, z: 0 } as never));
-    const cutZ = () => s.wholeCutsState(list).value[0].object.position[2];
+    const cutZ = () => v.api.clipping.cuts.value[0].object.position[2];
     const before = cutZ();
     expectOk(await s.move({ target: list, matrix: up } as never));
     const data = v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.obj!.data.sourceData;

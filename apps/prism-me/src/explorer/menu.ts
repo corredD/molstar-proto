@@ -6,6 +6,7 @@
 
 import type { ContextMenuItem } from '@molstar/prism-ui';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import type {} from '@molstar/prism-viewer/features/clipping';
 import { startMoveDrag } from '@molstar/stage-tools-extension/drag';
 import type { ExplorerApi, NodeRef, PickedNode } from './operations.js';
 import { toggleVisible } from './rows.js';
@@ -26,8 +27,8 @@ const Hideable = new Set([
   'label',
 ]);
 
-/** Whole objects: their clips cut all of them (the stage's cuts) */
-const WholeClips = new Set(['structure', 'mesoscale model', 'particle list', 'volume']);
+/** Whole objects: their clips cut all of them (Prism's clipping) */
+const WholeClips = new Set(['structure', 'mesoscale model', 'particle list', 'volume', 'mesh']);
 
 /** Objects that move as a whole (their own transform) */
 const Movable = new Set(['structure', 'mesoscale model', 'particle list', 'volume', 'mesh']);
@@ -152,21 +153,40 @@ export function colorItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode
   return items;
 }
 
+/** Adds Prism's cut of all of an object, and shows its handles (to move, turn and size it in 3D) */
+export async function addWholeClip(api: ViewerApi, ref: string, shape: string) {
+  const r = await api.run('clipping.add', { shape, node: `#${ref}` });
+  const cut = (r as { value?: { index: number } }).value;
+  if (!r.ok || !cut || !api.clipping) return;
+  showClipHandles(api, cut.index);
+}
+
+/** Prism's handles on one cut (its number), in the canvas */
+export function showClipHandles(api: ViewerApi, index: number) {
+  const clipping = api.clipping;
+  if (!clipping) return;
+  if (!clipping.gizmos.shown.value) clipping.showGizmos(api);
+  clipping.gizmos.handleOnly(index);
+}
+
 /** The scissors' items: a clip of the node (added to its others), by shape */
 export function clipItems(api: ViewerApi, picked: PickedNode): ContextMenuItem[] {
   const { node, kind } = picked;
   if (clipsWhole(kind)) {
+    // Prism's cut of all of it (its representations), its handles shown on it
     return (
       [
         ['plane', 'Plane'],
         ['sphere', 'Sphere'],
-        ['box', 'Box'],
+        ['cube', 'Box'],
+        ['cylinder', 'Cylinder'],
+        ['infiniteCone', 'Cone'],
       ] as const
     ).map(([shape, label]) => ({
       id: `clip-${shape}`,
       label,
       icon: 'scissors',
-      run: () => void api.run('stage.cut', { shape, add: true, target: node.ref }),
+      run: () => void addWholeClip(api, node.ref, shape),
     }));
   }
   const part = partOf(node);

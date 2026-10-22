@@ -48,7 +48,6 @@ export async function menuItems(api: ViewerApi, area: StageApi, request: StageMe
     });
   } else {
     const t = pick.target;
-    const cut = area.cutState(t.ref).value?.cut;
     if (pick.kind === 'target') {
       items.push({
         id: 'focus',
@@ -92,14 +91,6 @@ export async function menuItems(api: ViewerApi, area: StageApi, request: StageMe
           ]),
         });
       }
-      for (const shape of ['plane', 'sphere', 'box'] as const) {
-        items.push({
-          id: `cut-${shape}`,
-          label: `Cut with a ${shape}`,
-          icon: 'crop',
-          run: () => void area.cut({ shape, target: t.ref }),
-        });
-      }
     }
     if (pick.kind === 'guide') {
       // a cut's guide: move, turn or size it by dragging, flip or remove it
@@ -123,18 +114,11 @@ export async function menuItems(api: ViewerApi, area: StageApi, request: StageMe
         label: 'Remove the cut',
         icon: 'x',
         run: () =>
-          void (partial
-            ? api.run('mesoscale.clip', { entities: partial.entities.join(','), type: 'none', particles: t.ref })
-            : area.uncut({ target: t.ref })),
+          void (
+            partial &&
+            api.run('mesoscale.clip', { entities: partial.entities.join(','), type: 'none', particles: t.ref })
+          ),
       });
-    } else if (cut) {
-      items.push({
-        id: 'flip',
-        label: 'Flip the cut',
-        icon: 'rotate-ccw',
-        run: () => void area.adjust({ flip: true, target: t.ref } as never),
-      });
-      items.push({ id: 'uncut', label: 'Remove the cut', icon: 'x', run: () => void area.uncut({ target: t.ref }) });
     }
   }
   if (pick.kind === 'guide' || area.hasCuts()) {

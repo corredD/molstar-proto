@@ -256,10 +256,12 @@ describe('explorer', () => {
       items.find((i) => i.id === id)!.run();
       await new Promise((resolve) => setTimeout(resolve, 300));
     };
-    // the whole list: the stage's cuts, added one after the other
+    // the whole list: Prism's cuts (its clipping), added one after the other
     await run(clipItems(v.api, object), 'clip-plane');
     await run(clipItems(v.api, object), 'clip-sphere');
-    expect(v.api.stage!.wholeCutsState(list.ref).value.map((c) => c.object.type)).toEqual(['plane', 'sphere']);
+    const ofList = () => v.api.clipping.cuts.value.filter((c) => c.targets.some((t) => area.isUnder(t.ref, list.ref)));
+    expect(ofList().map((c) => c.object.type)).toEqual(['plane', 'sphere']);
+    expect(ofList().every((c) => !!c.object.tag)).toBe(true);
     // a target: its particles' cuts
     const target = {
       key: `t:${list.ref}:0`,
@@ -320,6 +322,23 @@ describe('explorer', () => {
     const anchor = area.anchorOf({ ref: list.ref, particles: { targets: [0] } })!;
     expect([10, 20, 30]).toContain(anchor.position[0]);
     expect(anchor.radius).toBeGreaterThan(0);
+  });
+
+  it("does not list a cut's drawing (Prism's clip volumes, a shape of a representation) as a mesh", async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const crn = area.objectsState().value.find((o) => o.kind === 'structure')!;
+    const meshes = () =>
+      area
+        .objectsState()
+        .value.filter((o) => o.category === 'meshes')
+        .map((o) => o.label);
+    expect(meshes()).toEqual(['membrane.obj']);
+    expectOk(await v.api.run('clipping.add', { shape: 'sphere', node: `#${crn.ref}` }));
+    const cut = v.api.clipping.cuts.value[0];
+    expectOk(await v.api.run('clipping.show', { tag: cut.object.tag, on: true }));
+    expect(v.api.clipping.cuts.value[0].drawing).toBeDefined();
+    expect(meshes()).toEqual(['membrane.obj']);
   });
 
   it('keeps unchanged rows as the same objects', () => {

@@ -31,7 +31,7 @@ import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
-import { clipItems, clippable, clipsWhole } from './menu.js';
+import { clipItems, clippable, clipsWhole, showClipHandles } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
 import type { Parts } from './rows.js';
 
@@ -784,43 +784,7 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
       </div>
     );
   };
-  if (clipsWhole(props.kind)) {
-    const list = stage.wholeCutsState(node.ref);
-    return (
-      <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
-        <For each={mapState(list, (l) => l.map((c) => c.index))} by={(i) => i}>
-          {(index) => {
-            const object = mapState(list, (l) => l.find((c) => c.index === index)?.object);
-            const n = mapState(list, (l) => l.findIndex((c) => c.index === index) + 1);
-            return (
-              <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-                {line(
-                  () => index,
-                  derive([object, n], (o, k) => `${ClipNames[o?.type ?? 'plane'] ?? o?.type} ${k}`),
-                  mapState(object, (o) => o?.type !== 'plane'),
-                  () => void api.run('stage.uncut', { index, target: node.ref }),
-                )}
-                <div style={Line}>
-                  <span style={Label} />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    pressed={mapState(object, (o) => !!o?.invert)}
-                    onClick={() =>
-                      void api.run('stage.object', { target: node.ref, index, invert: !object.value?.invert })
-                    }
-                  >
-                    {mapState(object, (o) => (o?.type === 'plane' ? 'Cut the other side' : 'Keep the inside'))}
-                  </Button>
-                </div>
-              </div>
-            );
-          }}
-        </For>
-        {addButton}
-      </div>
-    );
-  }
+  if (clipsWhole(props.kind)) return <ObjectClips api={api} area={area} node={node} add={addButton} />;
   const mesoscale = api.mesoscale;
   if (!mesoscale || !('particles' in node)) return addButton;
   const ids = node.particles.entities ?? node.particles.targets ?? [];
@@ -857,6 +821,89 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
         }}
       </For>
       {addButton}
+    </div>
+  );
+}
+
+/**
+ * An object's cuts, Prism's (its clipping: the cuts through its representations): each, its shape, its handles to
+ * move, turn and size it in 3D, its drawing in the scene, its side, remove
+ */
+function ObjectClips(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef; add: JSX.Element }) {
+  const { api, area, node } = props;
+  const clipping = api.clipping;
+  const cuts = mapState(clipping.cuts, (all) =>
+    all.filter((c) => c.object.tag && c.targets.some((t) => area.isUnder(t.ref, node.ref))),
+  );
+  const handled = derive([clipping.gizmos.shown, clipping.gizmos.handled], (shown, h) => (shown ? h : []));
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+      <For each={mapState(cuts, (l) => l.map((c) => c.object.tag!))} by={(tag) => tag}>
+        {(tag) => {
+          const cut = mapState(cuts, (l) => l.find((c) => c.object.tag === tag));
+          const run = (id: string, values: Record<string, unknown>) => void api.run(id, { tag, ...values });
+          const handles = derive([cut, handled], (c, h) => !!c && h.includes(c.index));
+          return (
+            <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+              <div style={Line}>
+                <strong style="flex: 1">
+                  {mapState(cut, (c) => (c ? `${ClipNames[c.object.type] ?? c.object.type} ${c.index}` : ''))}
+                </strong>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  title="Its handles: move, turn and size it in 3D"
+                  pressed={handles}
+                  icon={<Icon name="move-3d" />}
+                  onClick={() => {
+                    const c = cut.value;
+                    if (!c) return;
+                    if (handles.value) clipping.gizmos.hide();
+                    else showClipHandles(api, c.index);
+                  }}
+                />
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  title="Show or hide its shape in the scene"
+                  icon={
+                    <Show when={mapState(cut, (c) => !!c?.drawing)} fallback={() => <Icon name="eye-off" />}>
+                      {() => <Icon name="eye" />}
+                    </Show>
+                  }
+                  onClick={() => run('clipping.show', { on: !cut.value?.drawing })}
+                />
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  title="Remove it"
+                  icon={<Icon name="x" />}
+                  onClick={() => run('clipping.remove', {})}
+                />
+              </div>
+              <div style={Line}>
+                <span style={Label}>Shape</span>
+                <Select
+                  size="sm"
+                  aria-label="Its shape"
+                  options={Object.entries(ClipNames) as [string, string][]}
+                  value={mapState(cut, (c) => c?.object.type ?? 'plane')}
+                  onChange={(shape) => shape !== cut.value?.object.type && run('clipping.update', { shape })}
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  pressed={mapState(cut, (c) => !!c?.object.invert)}
+                  onClick={() => run('clipping.update', { invert: !cut.value?.object.invert })}
+                >
+                  {mapState(cut, (c) => (c?.object.type === 'plane' ? 'Other side' : 'Keep inside'))}
+                </Button>
+              </div>
+            </div>
+          );
+        }}
+      </For>
+      {props.add}
     </div>
   );
 }
