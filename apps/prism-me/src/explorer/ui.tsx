@@ -29,7 +29,7 @@ import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/s
 import type { Subscription } from 'rxjs';
 import type { LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { editInline } from './inline-edit.js';
-import { clipItems, clippable, colorable, colorItems, nodeMenuItems } from './menu.js';
+import { clipItems, clippable, colorable, colorItems, nodeMenuItems, removable, removeObject } from './menu.js';
 import type { ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
 import { ancestorKeys, Categories, type Parts, type Row, rowsOf, stableRows, toggleVisible } from './rows.js';
@@ -433,6 +433,18 @@ function TreeRow(props: {
           title="Add a clip"
           icon={<Icon name="scissors" />}
           onClick={(e) => props.onTool(row, e, 'clip')}
+        />
+      ) : null}
+      {removable(row.kind, row.node) ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Remove it from the scene"
+          icon={<Icon name="trash-2" />}
+          onClick={(e) => {
+            e.stopPropagation();
+            void removeObject(props.api, props.area, row.kind, row.node!.ref);
+          }}
         />
       ) : null}
     </div>

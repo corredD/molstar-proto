@@ -291,6 +291,17 @@ export class ExplorerApi extends ApiArea {
     return false;
   }
 
+  /** The file or entry an object came from: its root cell (removing it removes the object) */
+  entryOf(ref: string): string {
+    const { tree } = this.ctx.plugin.state.data;
+    let root = ref;
+    for (;;) {
+      const parent = tree.transforms.get(root)?.parent;
+      if (!parent || parent === StateTransform.RootRef) return root;
+      root = parent;
+    }
+  }
+
   /** The canvas element (a drag in 3D is measured on it) */
   canvasElement(): HTMLElement | undefined {
     return this.ctx.plugin.canvas3dContext?.canvas ?? undefined;

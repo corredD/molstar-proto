@@ -16,7 +16,7 @@ import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { withTomogramSlices } from '../../tomograms.js';
 import { ancestorKeys, rowsOf, stableRows, toggleVisible } from '../rows.js';
-import { addLabel, clipItems, clippable, colorItems, nodeMenuItems } from '../menu.js';
+import { addLabel, clipItems, clippable, colorItems, nodeMenuItems, removable, removeObject } from '../menu.js';
 import { OrderedSet } from '@molstar/core/data/int';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 
@@ -70,6 +70,35 @@ describe('explorer', () => {
     ]);
     expect(objects[0].entities).toEqual([{ id: '1', label: 'CRAMBIN', chains: ['A'] }]);
     expect(objects[1].count).toBe('3 particles');
+  });
+
+  it('removes loaded objects from the scene, with their files and labels; not their parts', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const [crn, list, mesh] = area.objectsState().value;
+    expectOk(await v.api.stage!.label({ text: 'here', target: list.ref, x: 0, y: 0, z: 0 } as never));
+    expect(removable('entity', { ref: crn.ref, entity: '1' })).toBe(false);
+    expect(
+      nodeMenuItems(v.api, area, { key: '', label: '1CRN', kind: 'structure', node: { ref: crn.ref } }).map(
+        (i) => i.id,
+      ),
+    ).toContain('remove');
+    await removeObject(v.api, area, 'particle list', list.ref);
+    await removeObject(v.api, area, 'mesh', mesh.ref);
+    // its own step: undone at once (the list's was before it)
+    expectOk(await v.api.run('history.undo', {}));
+    expect(area.objectsState().value.map((o) => o.label)).toEqual(['1CRN', 'membrane.obj']);
+    await removeObject(v.api, area, 'mesh', mesh.ref);
+    expect(area.objectsState().value.map((o) => o.label)).toEqual(['1CRN']);
+    expect(v.api.stage!.labelsState().value).toEqual([]);
+    await removeObject(v.api, area, 'structure', crn.ref);
+    expect(area.objectsState().value).toEqual([]);
+    // nothing of them is left in the state (their files went too)
+    const left = v.plugin.state.data.tree.children
+      .get('-=root=-')
+      .toArray()
+      .map((r) => v.plugin.state.data.cells.get(r)!.obj?.label);
+    expect(left).toEqual([]);
   });
 
   it('highlights and focuses a structure entity, a list and a mesh', async () => {
@@ -241,7 +270,7 @@ describe('explorer', () => {
     // a whole structure moves and turns
     setGranularity('structure');
     const whole = nodeMenuItems(v.api, area, area.pickedOf(atoms));
-    expect(whole.map((i) => i.id)).toEqual(['focus', 'move', 'hide', 'label']);
+    expect(whole.map((i) => i.id)).toEqual(['focus', 'move', 'hide', 'label', 'remove']);
     expect(whole[1].disabled).toBeUndefined();
     setGranularity('chain');
     expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);

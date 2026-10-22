@@ -142,6 +142,27 @@ export function clippable(kind: string, node: NodeRef | undefined): boolean {
   return !!node && WholeClips.has(kind);
 }
 
+/** Whether a node is a loaded object (it can be removed from the scene, with all of it) */
+export function removable(kind: string, node: NodeRef | undefined): boolean {
+  return !!node && WholeClips.has(kind);
+}
+
+/**
+ * Removes a loaded object from the scene, and its labels: its file with it (all it holds: a model's unit cell) unless
+ * the file holds another listed object (then Prism's remove of the object alone)
+ */
+export async function removeObject(api: ViewerApi, area: ExplorerApi, kind: string, ref: string) {
+  const labels = api.stage?.labelsState().value.filter((l) => l.target === ref || area.isUnder(l.target, ref)) ?? [];
+  const entry = area.entryOf(ref);
+  const shared = area.objectsState().value.some((o) => o.ref !== ref && area.entryOf(o.ref) === entry);
+  if (!shared) await api.run('state.remove', { node: `#${entry}` });
+  else if (kind === 'structure') await api.run('structure.remove', { structure: ref });
+  else if (kind === 'volume') await api.run('volume.remove', { volume: ref });
+  else if (kind === 'mesh') await api.run('state.remove', { node: `#${ref}` });
+  else await api.run('particles.remove', { particles: ref });
+  for (const l of labels) await api.run('stage.editLabel', { label: l.ref, remove: true });
+}
+
 /** The brush's items: a color for all of the node; a model's or group's generated colors */
 export function colorItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
   const { node, kind } = picked;
@@ -329,6 +350,14 @@ export function nodeMenuItems(
     icon: 'type',
     run: () => void addLabel(api, area, picked, actions.reveal, actions.at),
   });
+  if (removable(kind, node)) {
+    items.push({
+      id: 'remove',
+      label: `Remove ${label}`,
+      icon: 'trash-2',
+      run: () => void removeObject(api, area, kind, node.ref),
+    });
+  }
   if (api.describe('assistant.ask')) {
     items.push({
       id: 'ask',
