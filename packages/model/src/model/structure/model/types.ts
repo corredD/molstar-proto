@@ -14,27 +14,20 @@ import { LipidNames } from './types/lipids.js';
 import { IonNames } from './types/ions.js';
 import type { mmCIF_chemComp_schema } from '@molstar/io/reader/cif/schema/mmcif-extras';
 
-const _esCache = (function () {
-  const cache = Object.create(null);
-  const letters: string[] = [];
-  for (let i = 'A'.charCodeAt(0); i <= 'Z'.charCodeAt(0); i++) letters[letters.length] = String.fromCharCode(i);
-  for (let i = 'a'.charCodeAt(0); i <= 'z'.charCodeAt(0); i++) letters[letters.length] = String.fromCharCode(i);
-  for (let i = '0'.charCodeAt(0); i <= '9'.charCodeAt(0); i++) letters[letters.length] = String.fromCharCode(i);
-
-  for (const k of letters) {
-    cache[k] = k.toUpperCase();
-    for (const l of letters) {
-      cache[k + l] = (k + l).toUpperCase();
-      for (const m of letters) {
-        cache[k + l + m] = (k + l + m).toUpperCase();
-      }
-    }
-  }
-  return cache;
-})();
+// Upper-cased symbols as read, memoized lazily: a file has ~100 distinct ones. The memo stops growing at 4096 entries
+// (hostile input); past that a symbol is upper-cased per call. Was a table of every 1-3 character string over [A-Za-z0-9]
+// built at module load: 242k keys, 50-75 ms and 21.5 MB in every realm (perf audit 2, 12/P1).
+const _esCache = new Map<string, ElementSymbol>();
+const _esCacheMax = 4096;
 export type ElementSymbol = string & { '@type': 'element-symbol' };
 export function ElementSymbol(s: string): ElementSymbol {
-  return _esCache[s] || s.toUpperCase();
+  let e = _esCache.get(s);
+  if (e === undefined) {
+    // `String`: a MolScript literal may be a number (`(struct.type.elementSymbol 6)`), which the table took as '6'
+    e = String(s).toUpperCase() as ElementSymbol;
+    if (_esCache.size < _esCacheMax) _esCache.set(s, e);
+  }
+  return e;
 }
 
 const _elementByAtomicNumber = new Map(
@@ -874,6 +867,8 @@ export namespace BondType {
     Disulfide = 0x8,
     Aromatic = 0x10,
     Computed = 0x20,
+    /** A covalent bond whose order the source did not state: 1, to be perceived (bond-providers plan §2). */
+    OrderUnknown = 0x40,
     // currently at most 16 flags are supported!!
   }
 
@@ -885,6 +880,7 @@ export namespace BondType {
     return (flags & BondType.Flag.Covalent) !== 0;
   }
 
+  /** Every bond type of `Names` (`OrderUnknown` is a property of a bond, not a type to select). */
   export function isAll(flags: BondType.Flag) {
     return flags === Math.pow(2, 6) - 1;
   }

@@ -46,6 +46,12 @@ section); an entry leaves when it is done (its spec section says so then). The s
 
 ## Missing: the viewer
 
+- **The Bonds field follows the registry live** (David, 2026-10-20): the structure's "Bonds" field (`sources/scene.ts`,
+  `sourceForm`; [bond-providers plan §4.1](../../.v6/plans/bond-providers.md)) reads `plugin.bondProviders` when the
+  form is built. A provider added or removed while the inspector is open shows after the next pick. Needs a change event
+  on the plugin's registries (none has one today); the representation and theme selects would follow from the same
+  event.
+
 - **Split viewports** (David, 2026-10-17): one Prism instance hosting several plugin contexts side by side (one shell,
   command menu, history and assistant over several canvases): comparing structures or states, linked cameras and
   selections, a 3D view beside a 2D one, a detail view of a pocket next to the whole. Today a viewer is one plugin
@@ -64,7 +70,7 @@ section); an entry leaves when it is done (its spec section says so then). The s
   ([nodes.md §5](viewer/_spec/nodes.md)).
 - Themes and presets that fetch as they apply carry no addresses (only known services today;
   `viewer/src/agent/policies.ts`); the pLDDT track reads B-factors where the 3D theme reads ModelCIF scores
-  (`extensions/model-archive/src/prism-viewer.ts`).
+  (`packages/extensions/model-archive/src/prism-viewer.ts`).
 - Mol*'s first framing of a scene (on load) frames it in the whole canvas, partly under the sequence band; resets frame
   below it (`viewer/src/sources/framing.ts`, [README](viewer/_spec/README.md) decision 28). Needs a reset hook in the
   graphics package's camera reset, after the WebGPU work.
@@ -148,7 +154,7 @@ section); an entry leaves when it is done (its spec section says so then). The s
 ## Missing: the agent and the assistant
 
 - **Tool and skill definitions need a redesign** (David, 2026-10-17; do separately). A skill's `guidance` restates its
-  tools' ids and descriptions (`extensions/kinemage/src/prism-viewer.ts`: `KinemageSkill` names `get_kinemage`,
+  tools' ids and descriptions (`packages/extensions/kinemage/src/prism-viewer.ts`: `KinemageSkill` names `get_kinemage`,
   `show_kinemage_part`… in prose and again in `tools`), so the model reads them twice. `OperationToolSpec`
   (`viewer/src/agent/skills.ts`) is a second vocabulary beside the operation's own definition: a model-facing id, a
   description that repeats the operation's title, `fields`, `fixed` and `formats` per tool. Wanted: tools derived from

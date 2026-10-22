@@ -28,13 +28,13 @@
       "path": "../prism-viewer"
     },
     {
-      "path": "../../extensions/cryoet"
+      "path": "../../packages/extensions/cryoet"
     },
     {
-      "path": "../../extensions/mesoscale"
+      "path": "../../packages/extensions/mesoscale"
     },
     {
-      "path": "../../extensions/stage-tools"
+      "path": "../../packages/extensions/stage-tools"
     },
     {
       "path": "../../packages/model"
