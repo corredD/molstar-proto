@@ -86,17 +86,24 @@ const TestModel = PluginStateTransform.BuiltIn({
   display: { name: 'Test Model' },
   from: SO.Root,
   to: SO.Particle.List,
-  params: { structure: PD.Value<Structure | undefined>(undefined) },
+  params: {
+    structure: PD.Value<Structure | undefined>(undefined),
+    /** Its entities' names, a target each (the last one's two particles) */
+    names: PD.Value<string[]>(['crambin']),
+  },
 })({
   apply({ params }) {
+    const last = params.names.length - 1;
     const list: ParticleList = {
       label: 'model',
       count: 2,
       keys: Int32Array.of(0, 1),
-      targets: Int32Array.of(0, 0),
-      targetInfo: new Map([[0, { entity: 0 }]]),
-      entityInfo: new Map([[0, { name: 'crambin' }]]),
-      targetMapping: new Map([[0, { kind: 'structure', structure: params.structure! }]]),
+      targets: Int32Array.of(last, last),
+      targetInfo: new Map(params.names.map((_, i) => [i, { entity: i }])),
+      entityInfo: new Map(params.names.map((name, i) => [i, { name }])),
+      targetMapping: new Map(
+        params.names.map((_, i) => [i, { kind: 'structure' as const, structure: params.structure! }]),
+      ),
       coordinates: Float32Array.of(0, 0, 0, 50, 0, 0),
       getParticleLabel: (i) => `${i}`,
       sourceData: { kind: 'test', name: 'test', data: {} },
@@ -147,6 +154,28 @@ describe('cryoet', () => {
     expect(hidden).toEqual(['spacefill']);
   });
 
+  it('switches what is drawn only when decorated or no longer: the eyes set between are kept, spheres come back', async () => {
+    const v = await viewer();
+    const c = v.api.cryoet!;
+    const reprs = () => v.plugin.managers.particles.hierarchy.current.lists[0].representations;
+    const shown = () =>
+      reprs()
+        .filter((r) => !r.cell.state.isHidden)
+        .map((r) => (r.cell.transform.params as any).type.name)
+        .sort();
+    expectOk(await c.decorate({ with: 'object', object: 'ribosome.mrc' } as never));
+    expect(shown()).toEqual(['target']);
+    // the spheres shown again by hand: a swap of the object keeps them
+    const spheres = reprs().find((r) => (r.cell.transform.params as any).type.name === 'spacefill')!;
+    expectOk(await v.api.run('particles.visibility', { node: `#${spheres.cell.transform.ref}`, visible: true }));
+    expectOk(await c.decorate({ with: 'object', object: 'proteasome.mrc' } as never));
+    expect(shown()).toEqual(['spacefill', 'target']);
+    // the spheres removed, then no decoration left: spheres again (nothing would draw the particles)
+    expectOk(await v.api.run('particles.remove', { node: `#${spheres.cell.transform.ref}` }));
+    expectOk(await c.decorate({ with: 'none' } as never));
+    expect(shown()).toEqual(['spacefill']);
+  });
+
   it('splits the targets by class and decorates each class apart, swapping one without touching the others', async () => {
     const v = await viewer();
     const c = v.api.cryoet!;
@@ -168,6 +197,23 @@ describe('cryoet', () => {
     const same = await c.decorate({ with: 'none', targets: '2' } as never);
     expectOk(same);
     expect(same.unchanged).toBe(true);
+  });
+
+  it('picks an entity by its name as written, before names that differ in case only', async () => {
+    const v = await viewer();
+    const crn = new File([readFileSync(new URL('../../../../data/examples/1crn.cif', import.meta.url))], '1crn.cif');
+    expectOk(await v.api.load.files({ files: [crn] }));
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data;
+    await v.plugin
+      .build()
+      .toRoot()
+      .apply(TestModel, { structure, names: ['7CGOA', '7CGOa'] })
+      .commit();
+    const [star] = v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref);
+    expectOk(await v.api.cryoet!.decorate({ with: 'entity', entity: '7CGOa', particles: star } as never));
+    const after = await v.api.cryoet!.decorations({ particles: star } as never);
+    expectOk(after);
+    expect((after.value as DecorationsInfo).targets[0].with).toBe('model › 7CGOa');
   });
 
   it('decorates with a structure of the scene, named as the viewer names it', async () => {

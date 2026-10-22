@@ -189,6 +189,12 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   entity or target: its scissors add Prism's cut of only its particles (`clipping.add` `particles`, by node: the others
   ignore it, recorded by the cut's tag in the representation's layers); its Clips list the cuts of exactly its
   particles. `mesoscale.clip` (the explorer's own sliders, by place) is gone. Next: shapes.
+- A list's representations (2026-10-22, Ludovic: "I lost the default representation and can't bring it back"): each in
+  Representation has its eye, its form and a remove (Prism's `particles.remove`), named Spheres, Axes, Objects (the
+  decoration); Add a representation lists the kinds not shown (Prism's `particles.representation`), and Spheres and axes
+  at once when both are gone. A decoration switches what is drawn only when the list becomes decorated (the objects
+  shown, spheres and axes hidden) or no longer (the spheres back, made again if removed); between, the eyes are the
+  person's. An entity is picked by its name as written before names that differ in case only (7CGOA, 7CGOa).
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,

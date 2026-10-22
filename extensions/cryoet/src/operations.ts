@@ -313,6 +313,7 @@ export class CryoetApi extends ApiArea {
 
       const cell = decoratorCell(ctx, l, ParticleListWithTargets);
       const old = (cell?.transform.params?.targets ?? []) as TargetEntry[];
+      const wasDecorated = !!dataOf(ctx, l)?.targetMapping?.size;
       const kept = old.filter((t) => !ids.includes(t.targetId));
       const next: TargetEntry[] = source ? [...kept, ...ids.map((targetId) => ({ targetId, source: source! }))] : kept;
       next.sort((a, b) => a.targetId - b.targetId);
@@ -327,7 +328,7 @@ export class CryoetApi extends ApiArea {
         b.to(parent).apply(ParticleListWithTargets, { files: [], targets: next, includeParent: true });
       }
       await b.commit();
-      const shown = await ensureTargetRepresentation(ctx, l);
+      const shown = await ensureTargetRepresentation(ctx, l, wasDecorated);
       return ApiResult.ok(
         `Decorated ${ids.length === data.targetInfo.size ? 'every target' : `${ids.length} target${ids.length > 1 ? 's' : ''}`} of ${labelOf(l)} with ${what}.`,
         { nodes: [l.cell.transform.ref, ...shown] },
@@ -768,10 +769,14 @@ function pickEntity(ctx: ApiContext, l: ParticleListRef, name: string) {
   if (!entities.length) {
     return ApiResult.fail('not-found', 'No model with entities is open.', 'Open a cellPACK or PetWorld model first.');
   }
-  const n = name.trim().toLowerCase();
-  const found = entities.filter(
-    (e) => e.ref.toLowerCase() === n || e.label.toLowerCase() === n || e.label.toLowerCase().endsWith(` › ${n}`),
-  );
+  // as written first (entities may differ by case only: 7CGOA, 7CGOa), else in any case
+  const matches = (exact: boolean) => {
+    const f = (x: string) => (exact ? x : x.toLowerCase());
+    const n = f(name.trim());
+    return entities.filter((e) => f(e.ref) === n || f(e.label) === n || f(e.label).endsWith(` › ${n}`));
+  };
+  const exact = matches(true);
+  const found = exact.length ? exact : matches(false);
   if (found.length === 1) return found[0];
   return ApiResult.fail(
     found.length ? 'ambiguous' : 'not-found',
@@ -832,40 +837,56 @@ function pickTargets(data: ParticleList, names: string): number[] | ApiFailure {
  * The list shows its decorations: a `target` representation, added under its decorations when it has none (built from
  * the decorated list: `particles.representation` checks the types against the list as loaded); the refs added.
  */
-async function ensureTargetRepresentation(ctx: ApiContext, l: ParticleListRef): Promise<string[]> {
+async function ensureTargetRepresentation(
+  ctx: ApiContext,
+  l: ParticleListRef,
+  wasDecorated: boolean,
+): Promise<string[]> {
   const fresh = lists(ctx).find((x) => x.cell.transform.ref === l.cell.transform.ref) ?? l;
   const isTarget = (r: ParticleListRef['representations'][number]) =>
     (r.cell.transform.params as { type?: { name?: string } })?.type?.name === 'target';
   const data = dataOf(ctx, fresh);
   const decorated = !!data?.targetMapping?.size;
-  const { registry, themes } = ctx.plugin.representation.particles;
   const made: string[] = [];
-  if (decorated && !fresh.representations.some(isTarget) && registry.has('target')) {
-    const provider = registry.get('target');
-    const dataCtx = { particles: data! };
-    const color = themes.colorThemeRegistry.get(provider.defaultColorTheme.name);
-    const size = themes.sizeThemeRegistry.get(provider.defaultSizeTheme.name);
-    const b = ctx.plugin.state.data.build();
-    const repr = b.to(fresh.cell).apply(ParticlesRepresentation3D, {
-      type: { name: 'target', params: PD.getDefaultValues(provider.getParams(themes, data!)) },
-      colorTheme: {
-        name: color.name,
-        params: { ...PD.getDefaultValues(color.getParams(dataCtx)), ...provider.defaultColorTheme.props },
-      },
-      sizeTheme: {
-        name: size.name,
-        params: { ...PD.getDefaultValues(size.getParams(dataCtx)), ...provider.defaultSizeTheme.props },
-      },
-    } as never);
-    await b.commit();
-    made.push(repr.ref);
+  // what draws the decorations: a target representation, made once
+  if (decorated && !fresh.representations.some(isTarget)) made.push(...(await addRepresentation(ctx, fresh, 'target')));
+  // what stands for the particles switches only when they become decorated (the objects) or no longer (the spheres);
+  // between, the eyes are the person's
+  if (decorated === wasDecorated) return made;
+  let now = lists(ctx).find((x) => x.cell.transform.ref === l.cell.transform.ref) ?? fresh;
+  // no longer decorated and nothing else to draw them (the spheres removed): the spheres again
+  if (!decorated && !now.representations.some((r) => !isTarget(r))) {
+    made.push(...(await addRepresentation(ctx, now, 'spacefill')));
+    now = lists(ctx).find((x) => x.cell.transform.ref === l.cell.transform.ref) ?? now;
   }
-  // what stands for the particles follows what decorates them: the objects when any target has one, else the spheres
-  // and axes (and a target representation made before, or hidden, is shown again with a decoration)
-  const now = lists(ctx).find((x) => x.cell.transform.ref === l.cell.transform.ref) ?? fresh;
   const show = now.representations.filter((r) => isTarget(r) === decorated && r.cell.state.isHidden);
   const hide = now.representations.filter((r) => isTarget(r) !== decorated && !r.cell.state.isHidden);
   ctx.plugin.managers.particles.hierarchy.toggleVisibility(show, 'show');
   ctx.plugin.managers.particles.hierarchy.toggleVisibility(hide, 'hide');
   return [...made, ...show.map((r) => r.cell.transform.ref), ...hide.map((r) => r.cell.transform.ref)];
+}
+
+/** A representation of `type` added to a list, with its type's defaults and default themes: its ref, none if no type */
+async function addRepresentation(ctx: ApiContext, l: ParticleListRef, type: string): Promise<string[]> {
+  const data = dataOf(ctx, l);
+  const { registry, themes } = ctx.plugin.representation.particles;
+  if (!data || !registry.has(type)) return [];
+  const provider = registry.get(type);
+  const dataCtx = { particles: data };
+  const color = themes.colorThemeRegistry.get(provider.defaultColorTheme.name);
+  const size = themes.sizeThemeRegistry.get(provider.defaultSizeTheme.name);
+  const b = ctx.plugin.state.data.build();
+  const repr = b.to(l.cell).apply(ParticlesRepresentation3D, {
+    type: { name: type, params: PD.getDefaultValues(provider.getParams(themes, data)) },
+    colorTheme: {
+      name: color.name,
+      params: { ...PD.getDefaultValues(color.getParams(dataCtx)), ...provider.defaultColorTheme.props },
+    },
+    sizeTheme: {
+      name: size.name,
+      params: { ...PD.getDefaultValues(size.getParams(dataCtx)), ...provider.defaultSizeTheme.props },
+    },
+  } as never);
+  await b.commit();
+  return [repr.ref];
 }

@@ -113,6 +113,13 @@ export type NodeRef =
       };
     };
 
+/** The particle representation types as the explorer names them (the others by their own label) */
+export const ParticleTypeLabels: Readonly<Record<string, string>> = {
+  spacefill: 'Spheres',
+  orientation: 'Axes',
+  target: 'Objects (the decoration)',
+};
+
 /** A cut of Prism's clipping, as `api.clipping.cuts` lists it */
 type Cut = ViewerApi['clipping']['cuts']['value'][number];
 
@@ -231,14 +238,15 @@ export class ExplorerApi extends ApiArea {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => {
+        const list = plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
         const reprs =
-          plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref)
-            ?.representations ??
+          list?.representations ??
           plugin.managers.volume.hierarchy.current.volumes.find((v) => v.cell.transform.ref === ref)?.representations ??
           [];
         return reprs.map((r) => ({
           ref: r.cell.transform.ref,
-          label: reprLabel(r.cell),
+          // a list's as the explorer names them (Spheres, Axes, Objects)
+          label: (list && ParticleTypeLabels[typeOf(r.cell.transform.params)]) || reprLabel(r.cell),
           type: typeOf(r.cell.transform.params),
           visible: !r.cell.state.isHidden,
         }));
@@ -246,6 +254,20 @@ export class ExplorerApi extends ApiArea {
       () => [plugin.state.data.events.changed, plugin.state.data.events.cell.stateUpdated],
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
+  }
+
+  /**
+   * What a particle list can be drawn as (its representation types, applicable to it), named as the explorer names
+   * them: spheres, axes, the decorations' objects, …
+   */
+  particleTypes(ref: string): readonly { readonly type: string; readonly label: string }[] {
+    const plugin = this.ctx.plugin;
+    // the list as drawn (decorated: its objects can be drawn)
+    const data = drawnObject({ plugin }, ref)?.data as ParticleList | undefined;
+    if (!data) return [];
+    return plugin.representation.particles.registry
+      .getApplicableTypes(data)
+      .map(([type, label]) => ({ type, label: ParticleTypeLabels[type] ?? label }));
   }
 
   /** A representation's params as its transform defines them, and their values: for a form */

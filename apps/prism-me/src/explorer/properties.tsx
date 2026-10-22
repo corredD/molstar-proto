@@ -14,6 +14,7 @@ import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
   Button,
   ColorPicker,
+  type ContextMenuItem,
   For,
   Icon,
   onCleanup,
@@ -532,7 +533,7 @@ function Representations(props: {
   const { api, area } = props;
   const all = area.representationsState(props.owner);
   const reprs = mapState(all, (rs) => (props.only ? rs.filter(props.only) : rs));
-  return (
+  const list = (
     <Show
       when={mapState(reprs, (r) => r.length > 0)}
       fallback={() => (props.none ? props.none() : <span style={Muted}>Not shown.</span>)}
@@ -565,7 +566,16 @@ function Representations(props: {
                       void api.run('explorer.representationVisibility', { node: r.ref, visible: !r.visible })
                     }
                   />
-                  <span style={Muted}>{r.label}</span>
+                  <span style={`flex: 1; ${Muted}`}>{r.label}</span>
+                  {props.operation === 'particles.update' ? (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      title="Remove this representation"
+                      icon={<Icon name="x" />}
+                      onClick={() => void api.run('particles.remove', { node: `#${r.ref}` })}
+                    />
+                  ) : null}
                 </div>
                 <ParamsForm form={model} />
               </div>
@@ -574,6 +584,55 @@ function Representations(props: {
         </For>
       )}
     </Show>
+  );
+  if (props.operation !== 'particles.update') return list;
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+      {list}
+      <AddParticleRepresentation api={api} area={area} list={props.owner} present={all} />
+    </div>
+  );
+}
+
+/**
+ * Adds a representation to a particle list (Prism's `particles.representation`, one of a type): spheres, axes, the
+ * decorations' objects, …; and the default spheres and axes at once when both are gone
+ */
+function AddParticleRepresentation(props: {
+  api: ViewerApi;
+  area: ExplorerApi;
+  list: string;
+  present: ReadonlyState<readonly RepresentationInfo[]>;
+}) {
+  const { api, area, list } = props;
+  const add = (type: string) => api.run('particles.representation', { type, particles: list });
+  const open = (e: MouseEvent) => {
+    const button = e.currentTarget as HTMLElement;
+    const r = button.getBoundingClientRect();
+    const present = new Set(props.present.value.map((x) => x.type));
+    const missing = area.particleTypes(list).filter((t) => !present.has(t.type));
+    const items: ContextMenuItem[] = missing.map((t) => ({
+      id: `add-${t.type}`,
+      label: t.label,
+      icon: 'plus',
+      run: () => void add(t.type),
+    }));
+    if (!present.has('spacefill') && !present.has('orientation') && missing.some((t) => t.type === 'orientation')) {
+      items.unshift({
+        id: 'add-defaults',
+        label: 'Spheres and axes',
+        icon: 'plus',
+        run: () => void add('spacefill').then(() => add('orientation')),
+      });
+    }
+    if (!items.length)
+      items.push({ id: 'none', label: 'Nothing to add', disabled: 'Every kind is shown already', run: () => {} });
+    openContextMenu(rootOf(button), { x: r.left, y: r.bottom }, items);
+  };
+  return (
+    <Button size="sm" icon={<Icon name="plus" />} onClick={open}>
+      Add a representation
+    </Button>
   );
 }
 

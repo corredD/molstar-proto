@@ -328,6 +328,20 @@ describe('explorer', () => {
     expect(area.cutsOf(v.api.clipping.cuts.value, entity.node)).toHaveLength(1);
   });
 
+  it("names what a list can be drawn as, and gets its spheres back once removed (Prism's add and remove)", async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const list = area.objectsState().value.find((o) => o.kind === 'list')!;
+    const types = area.particleTypes(list.ref);
+    expect(types.find((t) => t.type === 'spacefill')?.label).toBe('Spheres');
+    const reprs = () => area.representationsState(list.ref).value.map((r) => r.type);
+    const spheres = area.representationsState(list.ref).value.find((r) => r.type === 'spacefill')!;
+    expectOk(await v.api.run('particles.remove', { node: `#${spheres.ref}` }));
+    expect(reprs()).not.toContain('spacefill');
+    expectOk(await v.api.run('particles.representation', { type: 'spacefill', particles: list.ref }));
+    expect(reprs()).toContain('spacefill');
+  });
+
   it('adds a label at a row, listed under it, with its own menu', async () => {
     const v = await viewer();
     const area = v.api.explorer!;
