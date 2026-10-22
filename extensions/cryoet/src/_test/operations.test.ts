@@ -264,6 +264,28 @@ describe('cryoet', () => {
     expect(await c.mesh({ mesh: 'seg.obj', scale: 8 } as never)).toMatchObject({ ok: true, unchanged: true });
   });
 
+  it('keeps drawing the particles through targets by class and back to the file', async () => {
+    const v = await viewer();
+    const c = v.api.cryoet!;
+    const list = () => v.plugin.managers.particles.hierarchy.current.lists[0];
+    const drawn = () =>
+      list()
+        .representations.filter((r) => !r.cell.state.isHidden && r.cell.obj)
+        .map((r) => (r.cell.transform.params as any).type.name)
+        .sort();
+    expect(drawn()).toEqual(['spacefill']);
+    expectOk(await c.classes({ attribute: 'class' } as never));
+    expect(drawn()).toEqual(['spacefill']);
+    expectOk(await c.classes({ attribute: '' } as never));
+    expect(drawn()).toEqual(['spacefill']);
+    // decorated by class, then back to the file: the classes' decorations go with them, the spheres come back
+    expectOk(await c.classes({ attribute: 'class' } as never));
+    expectOk(await c.decorate({ with: 'object', object: 'ribosome.mrc' } as never));
+    expect(drawn()).toEqual(['target']);
+    expectOk(await c.classes({ attribute: '' } as never));
+    expect(drawn()).toEqual(['spacefill']);
+  });
+
   it('goes back to the targets of the file', async () => {
     const v = await viewer();
     expectOk(await v.api.cryoet!.classes({ attribute: 'class' } as never));

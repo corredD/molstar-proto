@@ -364,11 +364,18 @@ export class CryoetApi extends ApiArea {
       const current = cell?.transform.params?.attribute as string | undefined;
       if ((current ?? '') === key)
         return ApiResult.already(key ? `The targets are already by ${key}.` : 'The targets are the file’s.');
+      // the decorator kept (back to the file: none), not deleted: the representations under it go with a delete
+      const wasDecorated = !!dataOf(ctx, l)?.targetMapping?.size;
+      const decorations = decoratorCell(ctx, l, ParticleListWithTargets);
       const b = ctx.plugin.state.data.build();
-      if (!key) b.delete(cell!.transform.ref);
-      else if (cell) b.to(cell).update({ attribute: key });
+      if (cell) b.to(cell).update({ attribute: key });
       else b.to(l.cell).apply(ParticleListTargetsFromAttribute, { attribute: key });
+      // the decorations were of the other targets' ids: they go (the targets are others now)
+      if (decorations && (decorations.transform.params?.targets ?? []).length) {
+        b.to(decorations).update((p: any) => ({ ...p, targets: [] }));
+      }
       await b.commit();
+      await ensureTargetRepresentation(ctx, l, wasDecorated);
       const n = dataOf(ctx, l)?.targetInfo.size ?? 0;
       return ApiResult.ok(
         key ? `${labelOf(l)} has ${n} targets by ${key}.` : `${labelOf(l)} has the targets of its file again.`,

@@ -45,7 +45,19 @@ export function Decorations(props: { area: CryoetApi; info: ReadonlyState<Decora
         {() => (
           <Choices
             label="Targets"
-            choices={[{ id: '', label: 'File' }, ...info.value.attributes.map((a) => ({ id: a.key, label: a.label }))]}
+            choices={[
+              {
+                id: '',
+                label: 'File',
+                title:
+                  "The targets the file gives (one for all, or the file's own), each decorated apart; switching clears the decorations",
+              },
+              ...info.value.attributes.map((a) => ({
+                id: a.key,
+                label: a.label,
+                title: `Targets by ${a.label}: each of its values a target, decorated apart; switching clears the decorations`,
+              })),
+            ]}
             active={mapState(info, (i) => i.classes ?? '')}
             onPick={(attribute) => void area.classes({ attribute, particles: particles() })}
           />

@@ -79,14 +79,16 @@ const ParticleListTargetsFromAttribute = PluginStateTransform.BuiltIn({
     const keys = a?.data.attributes ? Array.from(a.data.attributes.keys()) : [];
     const options = keys.map((k) => [k, a!.data.attributes!.get(k)!.label] as [string, string]);
     return {
-      attribute: PD.Select(keys.includes('class') ? 'class' : (keys[0] ?? ''), options, {
-        description: 'The attribute whose values become the target IDs.',
+      attribute: PD.Select(keys.includes('class') ? 'class' : (keys[0] ?? ''), [['', 'File'], ...options], {
+        description: "The attribute whose values become the target IDs; none: the file's targets.",
       }),
     };
   },
 })({
   isApplicable: (a) => !!a.data.attributes?.size,
   apply({ a, params }) {
+    // none: the file's targets, the list as it is (the decorator stays: what is under it is kept)
+    if (!params.attribute) return new SO.Particle.List(a.data, { label: a.label, description: a.description });
     const data = Particle.withTargetsFromAttribute(a.data, params.attribute);
     return new SO.Particle.List(data, {
       label: a.label,
