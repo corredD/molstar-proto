@@ -202,7 +202,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     openContextMenu(
       rootOf(button),
       { x: r.left, y: r.bottom },
-      which === 'color' ? colorItems(api, area, picked) : clipItems(api, picked),
+      which === 'color' ? colorItems(api, area, picked) : clipItems(api, area, picked),
     );
   };
   // a row's right-click: it is picked, and the menu of what it stands for opens at the pointer

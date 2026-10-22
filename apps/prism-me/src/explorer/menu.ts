@@ -137,9 +137,9 @@ export function colorable(kind: string, node: NodeRef | undefined): boolean {
   return ['structure', 'entity', 'chain', 'mesoscale model', 'group', 'target', 'mesh'].includes(kind);
 }
 
-/** Whether a node can be clipped: an object, all of it (Prism's clipping) */
+/** Whether a node can be clipped (Prism's clipping): an object, all of it; a structure's entity or chain, only it */
 export function clippable(kind: string, node: NodeRef | undefined): boolean {
-  return !!node && WholeClips.has(kind);
+  return !!node && (WholeClips.has(kind) || ((kind === 'entity' || kind === 'chain') && 'entity' in node));
 }
 
 /** Whether a node is a loaded object (it can be removed from the scene, with all of it) */
@@ -197,9 +197,15 @@ export function colorItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode
   return items;
 }
 
-/** Adds Prism's cut of all of an object, and shows its handles (to move, turn and size it in 3D) */
-export async function addWholeClip(api: ViewerApi, ref: string, shape: string) {
-  const r = await api.run('clipping.add', { shape, node: `#${ref}` });
+/**
+ * Adds Prism's cut of a node, and shows its handles (to move, turn and size it in 3D): all of an object, or only a
+ * structure's entity or chain (the rest of what its representations draw kept whole)
+ */
+export async function addClip(api: ViewerApi, area: ExplorerApi, node: NodeRef, shape: string) {
+  const r =
+    'entity' in node
+      ? await api.run('clipping.add', { shape, target: { loci: area.loci(node) }, only: true })
+      : await api.run('clipping.add', { shape, node: `#${node.ref}` });
   const cut = (r as { value?: { index: number } }).value;
   if (!r.ok || !cut || !api.clipping) return;
   showClipHandles(api, cut.index);
@@ -214,10 +220,10 @@ export function showClipHandles(api: ViewerApi, index: number) {
 }
 
 /** The scissors' items: a clip of the node (added to its others), by shape */
-export function clipItems(api: ViewerApi, picked: PickedNode): ContextMenuItem[] {
+export function clipItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
   const { node, kind } = picked;
   if (!clippable(kind, node)) return [];
-  // Prism's cut of all of it (its representations), its handles shown on it
+  // Prism's cut of all of it (its representations), or of only its atoms; its handles shown on it
   return (
     [
       ['plane', 'Plane'],
@@ -230,7 +236,7 @@ export function clipItems(api: ViewerApi, picked: PickedNode): ContextMenuItem[]
     id: `clip-${shape}`,
     label,
     icon: 'scissors',
-    run: () => void addWholeClip(api, node.ref, shape),
+    run: () => void addClip(api, area, node, shape),
   }));
 }
 
@@ -342,7 +348,7 @@ export function nodeMenuItems(
     items.push({ id: 'color', label: 'Color…', icon: 'palette', run: () => open(colorItems(api, area, picked)) });
   }
   if (open && clippable(kind, node)) {
-    items.push({ id: 'clip', label: 'Add a clip…', icon: 'scissors', run: () => open(clipItems(api, picked)) });
+    items.push({ id: 'clip', label: 'Add a clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
   }
   items.push({
     id: 'label',

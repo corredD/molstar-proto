@@ -25,6 +25,8 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { setSubtreeVisibility } from '@molstar/plugin/behavior/static/state';
 import { type ApiAreaContext, ApiArea, ApiResult } from '@molstar/prism-viewer/api/area';
 import { labelOf, loadedStructures } from '@molstar/prism-viewer/api/scope';
+import type { ViewerApi } from '@molstar/prism-viewer/api';
+import type {} from '@molstar/prism-viewer/features/clipping';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 
@@ -110,6 +112,9 @@ export type NodeRef =
         readonly targets?: number[];
       };
     };
+
+/** A cut of Prism's clipping, as `api.clipping.cuts` lists it */
+type Cut = ViewerApi['clipping']['cuts']['value'][number];
 
 export class ExplorerApi extends ApiArea {
   readonly id = 'explorer';
@@ -300,6 +305,24 @@ export class ExplorerApi extends ApiArea {
       if (!parent || parent === StateTransform.RootRef) return root;
       root = parent;
     }
+  }
+
+  /**
+   * Of Prism's cuts, those a row lists: an object's, every cut through its representations (a part's too); a
+   * structure entity's or chain's, the cuts of its atoms and no others (`clipping.add` `only`)
+   */
+  cutsOf(cuts: readonly Cut[], node: NodeRef): Cut[] {
+    const under = cuts.filter((c) => c.object.tag && c.targets.some((t) => this.isUnder(t.ref, node.ref)));
+    if (!('entity' in node)) return under;
+    const loci = this.loci(node);
+    if (!StructureElement.Loci.is(loci)) return [];
+    const part = StructureElement.Loci.remap(loci, loci.structure.root);
+    return under.filter(
+      (c) =>
+        c.atoms?.loci.length === 1 &&
+        c.atoms.loci[0].structure === part.structure &&
+        StructureElement.Loci.areEqual(c.atoms.loci[0], part),
+    );
   }
 
   /** The canvas element (a drag in 3D is measured on it) */

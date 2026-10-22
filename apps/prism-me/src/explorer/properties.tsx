@@ -760,11 +760,9 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
     const button = e.currentTarget as HTMLElement;
     const r = button.getBoundingClientRect();
     const picked = { key: '', label: '', kind: props.kind, node };
-    openContextMenu(rootOf(button), { x: r.left, y: r.bottom }, clipItems(api, picked));
+    openContextMenu(rootOf(button), { x: r.left, y: r.bottom }, clipItems(api, area, picked));
   };
-  const cuts = mapState(clipping.cuts, (all) =>
-    all.filter((c) => c.object.tag && c.targets.some((t) => area.isUnder(t.ref, node.ref))),
-  );
+  const cuts = mapState(clipping.cuts, (all) => area.cutsOf(all, node));
   const handled = derive([clipping.gizmos.shown, clipping.gizmos.handled], (shown, h) => (shown ? h : []));
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
@@ -775,7 +773,11 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
           return (
             <div style={Line}>
               <strong style="flex: 1">
-                {mapState(cut, (c) => (c ? `${ClipNames[c.object.type] ?? c.object.type} ${c.index}` : ''))}
+                {mapState(cut, (c) =>
+                  c
+                    ? `${ClipNames[c.object.type] ?? c.object.type} ${c.index}${c.kept && c.atoms && !('entity' in node) ? ` · ${c.atoms.label}` : ''}`
+                    : '',
+                )}
               </strong>
               <Button
                 size="xs"

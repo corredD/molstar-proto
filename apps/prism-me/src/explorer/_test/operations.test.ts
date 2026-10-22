@@ -286,8 +286,8 @@ describe('explorer', () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
     };
     // the whole list: Prism's cuts (its clipping), added one after the other
-    await run(clipItems(v.api, object), 'clip-plane');
-    await run(clipItems(v.api, object), 'clip-sphere');
+    await run(clipItems(v.api, area, object), 'clip-plane');
+    await run(clipItems(v.api, area, object), 'clip-sphere');
     const ofList = () => v.api.clipping.cuts.value.filter((c) => c.targets.some((t) => area.isUnder(t.ref, list.ref)));
     expect(ofList().map((c) => c.object.type)).toEqual(['plane', 'sphere']);
     expect(ofList().every((c) => !!c.object.tag)).toBe(true);
@@ -299,9 +299,29 @@ describe('explorer', () => {
       node: { ref: list.ref, particles: { targets: [0] } },
     };
     expect(clippable(target.kind, target.node)).toBe(false);
-    expect(clipItems(v.api, target)).toEqual([]);
+    expect(clipItems(v.api, area, target)).toEqual([]);
     await run(colorItems(v.api, area, target), 'color-tomato');
     expect(v.api.mesoscale!.infoState(list.ref).value!.entities[0].color).toBe(0xff6347);
+  });
+
+  it("cuts a structure's entity with Prism's clipping, listed at its row and its object's", async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const [crn] = area.objectsState().value;
+    const entity = { key: `e:${crn.ref}:1`, label: 'CRAMBIN', kind: 'entity', node: { ref: crn.ref, entity: '1' } };
+    expect(clippable(entity.kind, entity.node)).toBe(true);
+    clipItems(v.api, area, entity)
+      .find((i) => i.id === 'clip-sphere')!
+      .run();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const cuts = v.api.clipping.cuts.value;
+    expect(cuts).toHaveLength(1);
+    expect(area.cutsOf(cuts, entity.node).map((c) => c.object.type)).toEqual(['sphere']);
+    expect(area.cutsOf(cuts, { ref: crn.ref })).toHaveLength(1);
+    // a whole-object cut of another object is not this entity's
+    const list = area.objectsState().value.find((o) => o.kind === 'list')!;
+    expectOk(await v.api.run('clipping.add', { shape: 'plane', node: `#${list.ref}` }));
+    expect(area.cutsOf(v.api.clipping.cuts.value, entity.node)).toHaveLength(1);
   });
 
   it('adds a label at a row, listed under it, with its own menu', async () => {
