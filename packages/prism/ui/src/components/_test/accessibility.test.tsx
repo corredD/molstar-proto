@@ -149,12 +149,16 @@ describe('components have no accessibility violations (axe)', () => {
       <Choices
         label="Style"
         choices={[
-          { id: 'a', label: 'Cartoon' },
+          { id: 'a', label: 'Cartoon', title: 'Ribbons along the chains' },
           { id: 'b', label: 'Surface' },
         ]}
         onPick={() => {}}
       />
     ));
+    // a choice's title is the app's tooltip (data-tip), as a button's: not a native title
+    const first = t.container.querySelector('button')!;
+    expect(first.getAttribute('data-tip')).toBe('Ribbons along the chains');
+    expect(first.hasAttribute('title')).toBe(false);
     await expectNoAxeViolations(t.container);
     t.dispose();
   });

@@ -39,7 +39,7 @@ export function Choices(props: {
           <button
             type="button"
             class={classes.choice}
-            title={c.title}
+            data-tip={c.title}
             aria-pressed={active && derive(active, (a) => a === c.id)}
             onClick={() => props.onPick(c.id)}
           >
