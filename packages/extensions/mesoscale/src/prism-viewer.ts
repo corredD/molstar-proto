@@ -31,7 +31,7 @@ export const MesoscaleSkill: ViewerSkill = {
     'entities picked by name or by group (reset brings them back); color_mesoscale_entities generates colors (a hue',
     'per group), one uniform color, or goes back to the color theme; set_mesoscale_graphics trades detail for speed;',
     "Their cuts are the clipping skill's (clipping.add with particles: a group's, an entity's or a target's).",
-    'move_mesoscale_particles wiggles the atoms and tumbles the particles (0 stops); open_mesoscale_example opens one of',
+    'move_mesoscale_particles wiggles the atoms and tumbles the particles of one model (particles; empty: every one; 0 stops); open_mesoscale_example opens one of',
     "the Mesoscale Explorer's examples by id (petworld-hiv, cellpack-hiv1, …).",
   ].join('\n'),
   tools: [

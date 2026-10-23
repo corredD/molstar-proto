@@ -16,7 +16,16 @@ import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { withTomogramSlices } from '../../tomograms.js';
 import { ancestorKeys, rowsOf, stableRows, toggleVisible } from '../rows.js';
-import { addLabel, clipItems, clippable, colorItems, nodeMenuItems, removable, removeObject } from '../menu.js';
+import {
+  addLabel,
+  clipItems,
+  clippable,
+  colorItems,
+  nodeMenuItems,
+  removable,
+  removeObject,
+  showTheme,
+} from '../menu.js';
 import { OrderedSet } from '@molstar/core/data/int';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 
@@ -369,6 +378,18 @@ describe('explorer', () => {
     // one step each
     expectOk(await v.api.run('history.undo', {}));
     expect(params().clip.variant).toBe('instance');
+  });
+
+  it("shows a representation's color theme over the colors set in Look, once asked for (they are cleared)", async () => {
+    const v = await viewer();
+    const list = v.api.explorer!.objectsState().value.find((o) => o.kind === 'list')!;
+    const colors = () => v.api.mesoscale!.infoState(list.ref).value!.entities.map((e) => e.color);
+    // nothing set: nothing to clear
+    expect(await showTheme(v.api, list.ref)).toBe(false);
+    expectOk(await v.api.run('mesoscale.colors', { scheme: 'uniform', color: 'tomato', particles: list.ref }));
+    expect(colors()).toEqual([0xff6347]);
+    expect(await showTheme(v.api, list.ref)).toBe(true);
+    expect(colors()).toEqual([undefined]);
   });
 
   it('adds a label at a row, listed under it, with its own menu', async () => {

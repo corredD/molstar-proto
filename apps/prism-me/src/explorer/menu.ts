@@ -169,6 +169,17 @@ export async function removeObject(api: ViewerApi, area: ExplorerApi, kind: stri
   for (const l of labels) await api.run('stage.editLabel', { label: l.ref, remove: true });
 }
 
+/**
+ * A particle list's representation color theme shown: the colors set in Look (the mesoscale area's, painted over the
+ * theme) cleared, back to the theme. Whether there were some.
+ */
+export async function showTheme(api: ViewerApi, list: string): Promise<boolean> {
+  const info = api.mesoscale?.infoState(list).value;
+  if (!info?.entities.some((e) => e.color !== undefined)) return false;
+  const r = await api.run('mesoscale.colors', { scheme: 'theme', particles: list });
+  return r.ok;
+}
+
 /** The brush's items: a color for all of the node; a model's or group's generated colors */
 export function colorItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
   const { node, kind } = picked;

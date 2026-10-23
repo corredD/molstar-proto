@@ -20,6 +20,7 @@ import {
   type GraphicsMode,
   type MesoscaleApi,
   type MesoscaleExample,
+  type MesoscaleExampleId,
   type MesoscaleInfo,
   mesoscaleExamples,
 } from './operations.js';
@@ -46,7 +47,7 @@ function Examples(props: { area: MesoscaleApi }) {
                 size="sm"
                 variant="ghost"
                 title={e.description}
-                onClick={() => void props.area.example({ id: e.id })}
+                onClick={() => void props.area.example({ id: e.id as MesoscaleExampleId })}
               >
                 {e.label}
               </Button>

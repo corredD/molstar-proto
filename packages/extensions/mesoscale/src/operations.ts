@@ -109,11 +109,14 @@ export class MesoscaleApi extends ApiArea {
    * The graphics mode and the motion as the particles' representations have them (the first one's), following the state
    * tree while watched: a read for views; undefined without particles
    */
-  graphicsState(): ReadonlyState<GraphicsInfo | undefined> {
+  graphicsState(particles?: string): ReadonlyState<GraphicsInfo | undefined> {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => {
-        const params = lists({ plugin }).flatMap((l) => l.representations)[0]?.cell.transform.params as
+        // one list's (a model's), else the first shown
+        const all = lists({ plugin });
+        const of = particles ? all.filter((l) => l.cell.transform.ref === particles) : all;
+        const params = of.flatMap((l) => l.representations)[0]?.cell.transform.params as
           | { type?: { params?: Record<string, unknown> } }
           | undefined;
         const type = params?.type?.params;
@@ -267,13 +270,17 @@ export class MesoscaleApi extends ApiArea {
       tumble: OptionalParam(
         PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, { description: 'Tumble of each particle, Å of surface; 0: off' }),
       ),
+      particles: PD.Text('', { description: 'A particle list (a model) by label or state ref; empty: every one' }),
     },
     async run(values, ctx) {
-      const { wiggle, tumble } = values as { wiggle?: number; tumble?: number };
+      const { wiggle, tumble, particles } = values as { wiggle?: number; tumble?: number; particles: string };
       if (wiggle === undefined && tumble === undefined) {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give wiggle or tumble (0 stops it).');
       }
-      const reps = lists(ctx).flatMap((l) => l.representations);
+      // one model's particles when it is given, not the rest of the scene's
+      const one = particles.trim() ? oneList(ctx, particles) : undefined;
+      if (isFailure(one)) return one;
+      const reps = (one ? [one] : lists(ctx)).flatMap((l) => l.representations);
       if (!reps.length) return ApiResult.fail('not-found', 'No particles are shown.', 'Open a mesoscale model first.');
       const b = ctx.plugin.state.data.build();
       const nodes: string[] = [];
@@ -298,14 +305,20 @@ export class MesoscaleApi extends ApiArea {
     id: 'mesoscale.example',
     title: 'Open a mesoscale example',
     params: {
-      id: PD.Text('', { description: 'An example of the Mesoscale Explorer (petworld-hiv, cellpack-hiv1, …)' }),
+      id: PD.Select<MesoscaleExampleId>(
+        'petworld-hiv',
+        MesoscaleExampleChoices as unknown as [MesoscaleExampleId, string][],
+        {
+          description: 'An example of the Mesoscale Explorer',
+        },
+      ),
     },
     modules: ['network'],
     async run({ id }, ctx) {
       const list = await mesoscaleExamples();
       if (!list.length)
         return ApiResult.fail('unavailable', 'The examples could not be fetched.', `From ${ExamplesBase}.`);
-      const e = list.find((x) => x.id === id.trim());
+      const e = list.find((x) => x.id === id);
       if (!e) {
         return ApiResult.fail(
           'not-found',
@@ -397,6 +410,28 @@ function withMotion(params: unknown, wiggle: number | undefined, tumble: number 
 
 /** The Mesoscale Explorer's examples (its deployed list): cellPACK and PetWorld models, sessions */
 export const ExamplesBase = 'https://molstar.org/me/examples/';
+
+/**
+ * The examples the explorer can open, as molstar.org/me/examples lists them (2026-10; its sessions, molx, left out):
+ * the choices of `mesoscale.example`. The list is fetched when one is opened: one it no longer has is said so.
+ */
+export const MesoscaleExampleChoices = [
+  ['petworld-hiv', 'Petworld HIV'],
+  ['petworld-sarscov2', 'Petworld SARS-CoV-2'],
+  ['petworld-flagellarmotor', 'Petworld Flagellar Motor'],
+  ['petworld-t7phage', 'Petworld T7 phage'],
+  ['petworld-postsynmushroom', 'Petworld mushroom-type postsynapse'],
+  ['petworld-postsynstubby', 'Petworld stubby-type postsynapse'],
+  ['petworld-presynapse', 'Petworld presynaptic bouton'],
+  ['petworld-syngap', 'Petworld synaptic gap'],
+  ['petworld-synvesicle', 'Petworld synaptic vesicle'],
+  ['machineryoflife', 'Machinery Of Life'],
+  ['cellpack-hiv1', 'CellPack HIV'],
+  ['cellpack-exosome', 'CellPack Exosome'],
+  ['cellpack-mg', 'CellPack MG'],
+] as const;
+export type MesoscaleExampleId = (typeof MesoscaleExampleChoices)[number][0];
+export const MesoscaleExampleIds: readonly MesoscaleExampleId[] = MesoscaleExampleChoices.map(([id]) => id);
 
 export interface MesoscaleExample {
   readonly id: string;

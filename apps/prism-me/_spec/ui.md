@@ -214,6 +214,11 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   (their layers' `hidden`, a library param: fully transparent), so a class drawn as objects is not drawn twice and the
   others still show. The objects are shown when the list becomes decorated and hidden when no longer (they draw nothing
   then); the spheres are made again if removed. This replaces hiding the spheres as a whole.
+- Three fixes (2026-10-22, Ludovic's test). Open a mesoscale example offers its examples by name (the 13 of
+  molstar.org/me/examples it can open; its molx sessions left out), not a free id; one the live list no longer has is
+  said so. A list's color theme changed in its form clears the colors set in Look (Generate colors, painted over the
+  theme, hid any change of it). Wiggle and Tumble move the model they are shown for (`mesoscale.motion` `particles`),
+  not every list of the scene; the graphics mode stays the scene's (a performance setting).
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,

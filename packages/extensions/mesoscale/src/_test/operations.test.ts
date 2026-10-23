@@ -13,7 +13,7 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import type { MesoscaleInfo } from '../operations.js';
+import { type MesoscaleInfo, MesoscaleExampleIds } from '../operations.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { TestParticleList } from './fixtures.js';
 
@@ -111,17 +111,41 @@ describe('mesoscale', () => {
     expect(await v.api.mesoscale!.motion({} as never)).toMatchObject({ ok: false, code: 'invalid' });
   });
 
-  it('opens an example of the list, by id, from its absolute address', async () => {
+  it('moves the particles of one model only when it is given, the others still', async () => {
     const v = await viewer();
-    const list = [{ id: 'tiny', label: 'Tiny', url: '../examples/tiny.bcif', type: 'bcif' }];
+    // a second list in the scene
+    await v.plugin.build().toRoot().apply(TestParticleList).commit();
+    const [a, b] = v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref);
+    expectOk(await v.api.run('particles.representation', { type: 'spacefill', particles: b }));
+    const wiggleOf = (ref: string) => {
+      const l = v.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === ref)!;
+      return (l.representations[0].cell.transform.params as any).type.params.animation?.wiggleAmplitude ?? 0;
+    };
+    expectOk(await v.api.mesoscale!.motion({ wiggle: 2, particles: a } as never));
+    expect([wiggleOf(a), wiggleOf(b)]).toEqual([2, 0]);
+    expect(v.api.mesoscale!.graphicsState(a).value?.wiggle).toBe(2);
+    expect(v.api.mesoscale!.graphicsState(b).value?.wiggle).toBe(0);
+  });
+
+  it('offers the examples it can open by name, and opens one of the list, from its absolute address', async () => {
+    const v = await viewer();
+    // the form's choices: the explorer's examples (its sessions, molx, are not opened)
+    const id = v.api.describe('mesoscale.example')!.params.id as { options?: readonly [string, string][] };
+    expect(id.options?.map(([k]) => k)).toEqual([...MesoscaleExampleIds]);
+    expect(id.options?.find(([k]) => k === 'cellpack-mg')?.[1]).toBe('CellPack MG');
+    const list = [{ id: 'cellpack-mg', label: 'CellPack MG', url: '../examples/tiny.bcif', type: 'bcif' }];
     const asked: string[] = [];
     vi.stubGlobal('fetch', async (url: string | URL) => {
       asked.push(String(url));
       return String(url).endsWith('list.json') ? new Response(JSON.stringify(list)) : new Response('', { status: 404 });
     });
     try {
-      expect(await v.api.mesoscale!.example({ id: 'nope' })).toMatchObject({ ok: false, code: 'not-found' });
-      await v.api.mesoscale!.example({ id: 'tiny' });
+      // one the list no longer has: said so
+      expect(await v.api.mesoscale!.example({ id: 'petworld-hiv' } as never)).toMatchObject({
+        ok: false,
+        code: 'not-found',
+      });
+      await v.api.mesoscale!.example({ id: 'cellpack-mg' } as never);
     } finally {
       vi.unstubAllGlobals();
     }

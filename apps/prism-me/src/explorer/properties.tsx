@@ -32,7 +32,7 @@ import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
-import { clipItems, clippable, hideHandles, movable, showClipHandles, showHandles } from './menu.js';
+import { clipItems, clippable, hideHandles, movable, showClipHandles, showHandles, showTheme } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
 import type { Parts } from './rows.js';
 
@@ -119,7 +119,7 @@ function sectionsOf(
           {() => (
             <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
               <GraphicsMode area={mesoscale} />
-              <Motion area={mesoscale} />
+              <Motion area={mesoscale} particles={node.ref} />
             </div>
           )}
         </Section>,
@@ -547,10 +547,17 @@ function Representations(props: {
             if (!form) return <span style={Muted}>{r.label}</span>;
             let timer: ReturnType<typeof setTimeout> | undefined;
             onCleanup(() => clearTimeout(timer));
+            // a list's color theme changed: the colors set in Look (painted over it) cleared, so it shows
+            let theme = JSON.stringify((form.values as { colorTheme?: unknown }).colorTheme);
             const model = new ParamsFormModel(form.params, form.values, {
               onChange: (values) => {
                 clearTimeout(timer);
-                timer = setTimeout(() => void api.run(props.operation, { node: r.ref, params: values }), 150);
+                timer = setTimeout(async () => {
+                  await api.run(props.operation, { node: r.ref, params: values });
+                  const next = JSON.stringify((values as { colorTheme?: unknown }).colorTheme);
+                  if (props.operation === 'particles.update' && next !== theme) await showTheme(api, props.owner);
+                  theme = next;
+                }, 150);
               },
             });
             // the type's own params open (the iso level, the spheres' size): what is changed most

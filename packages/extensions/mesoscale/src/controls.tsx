@@ -35,8 +35,10 @@ export function GraphicsMode(props: { area: MesoscaleApi }) {
 }
 
 /** Wiggle and tumble sliders (the Mesoscale Explorer's procedural animation) */
-export function Motion(props: { area: MesoscaleApi }) {
-  const graphics = props.area.graphicsState();
+/** The particles' wiggle and tumble: one model's when it is given (a host's properties), else every list's */
+export function Motion(props: { area: MesoscaleApi; particles?: string }) {
+  const graphics = props.area.graphicsState(props.particles);
+  const of = props.particles ? { particles: props.particles } : {};
   const slider = (label: string, max: number, key: 'wiggle' | 'tumble') => (
     <div style={Line}>
       <span style="width: 56px">{label}</span>
@@ -48,7 +50,9 @@ export function Motion(props: { area: MesoscaleApi }) {
         value={mapState(graphics, (g) => String(g?.[key] ?? 0))}
         style="flex: 1"
         aria-label={label}
-        onChange={(e) => void props.area.motion({ [key]: Number((e.target as HTMLInputElement).value) } as never)}
+        onChange={(e) =>
+          void props.area.motion({ [key]: Number((e.target as HTMLInputElement).value), ...of } as never)
+        }
       />
       <span style={`width: 40px; text-align: right; ${Muted}`}>
         {mapState(graphics, (g) => `${(g?.[key] ?? 0).toFixed(1)} Å`)}
