@@ -239,4 +239,20 @@ describe('ParticleListTransform', () => {
     // a decorator: what is under it now takes the moved list
     expect(moved.cell!.transform.transformer.definition.isDecorator).toBe(true);
   });
+
+  it('scales the positions about the origin (Å per unit, a pixel size), then moves and turns them; orientations kept', async () => {
+    const { plugin, list } = await setup();
+    const up = Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 5));
+    const scaled = await plugin.build().to(list).insert(ParticleListTransform, { transform: up, scale: 4 }).commit();
+    const data = (scaled.obj as SO.Particle.List).data;
+    // the second particle (10, 0, 0): 4 times as far from the origin, then up 5
+    expect(Array.from(data.coordinates.slice(3, 6)).map((x) => Math.round(x * 1e4) / 1e4)).toEqual([40, 0, 5]);
+    // no turn: the orientation is the identity still
+    const q = Quat.fromArray(Quat(), data.rotations!, 4);
+    expect(Math.abs(Quat.dot(q, Quat.identity()))).toBeCloseTo(1, 5);
+    // scale 1 and no move: the list as it is
+    await plugin.build().to(scaled).update({ transform: Mat4.identity(), scale: 1 }).commit();
+    const same = plugin.state.data.cells.get(scaled.ref)!.obj as SO.Particle.List;
+    expect(same.data.coordinates).toBe((list.obj as SO.Particle.List).data.coordinates);
+  });
 });

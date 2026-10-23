@@ -433,37 +433,54 @@ type ParticleListTransform = typeof ParticleListTransform;
  */
 const ParticleListTransform = PluginStateTransform.BuiltIn({
   name: 'particle-list-transform',
-  display: { name: 'Transform', description: 'Move and turn the particles as one rigid body.' },
+  display: {
+    name: 'Transform',
+    description: 'Scale the positions, then move and turn the particles as one rigid body.',
+  },
   isDecorator: true,
   from: SO.Particle.List,
   to: SO.Particle.List,
   params: {
     transform: PD.Mat4(Mat4.identity(), { description: 'A rigid transform: a rotation, then a translation (Å)' }),
+    scale: PD.Numeric(
+      1,
+      { min: 1e-6, max: 1e6, step: 0.01 },
+      {
+        description:
+          "The positions' scale about the origin, before the transform: Å per unit of the file (a tomogram's pixel size)",
+      },
+    ),
   },
 })({
   apply({ a, params }) {
-    return new SO.Particle.List(transformParticles(a.data, params.transform), {
+    return new SO.Particle.List(transformParticles(a.data, params.transform, params.scale ?? 1), {
       label: a.label,
       description: a.description,
     });
   },
   update({ a, b, newParams, oldParams }) {
-    if (Mat4.areEqual(newParams.transform, oldParams.transform, 1e-9) && b.data.sourceData === a.data.sourceData) {
+    if (
+      Mat4.areEqual(newParams.transform, oldParams.transform, 1e-9) &&
+      (newParams.scale ?? 1) === (oldParams.scale ?? 1) &&
+      b.data.sourceData === a.data.sourceData
+    ) {
       return StateTransformer.UpdateResult.Unchanged;
     }
-    b.data = transformParticles(a.data, newParams.transform);
+    b.data = transformParticles(a.data, newParams.transform, newParams.scale ?? 1);
     b.label = a.label;
     return StateTransformer.UpdateResult.Updated;
   },
 });
 
-function transformParticles(list: ParticleList, m: Mat4): ParticleList {
-  if (Mat4.isIdentity(m)) return list;
+/** The particles' positions scaled by `scale` about the origin, then moved and turned by `m` (orientations turned) */
+function transformParticles(list: ParticleList, m: Mat4, scale = 1): ParticleList {
+  if (Mat4.isIdentity(m) && scale === 1) return list;
   const n = list.count;
   const coordinates = new Float32Array(n * 3);
   const p = Vec3();
   for (let i = 0; i < n; ++i) {
     Vec3.fromArray(p, list.coordinates, i * 3);
+    Vec3.scale(p, p, scale);
     Vec3.transformMat4(p, p, m);
     Vec3.toArray(p, coordinates, i * 3);
   }
