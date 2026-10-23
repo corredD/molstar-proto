@@ -332,6 +332,25 @@ describe('cryoet', () => {
     expect(coords()).toEqual([10, 0, 0, 20, 0, 0, 30, 0, 0, 40, 0, 0]);
   });
 
+  it('offsets one instance alone (its own shift and turn), kept beside its target offset, cleared at zero', async () => {
+    const v = await viewer();
+    const c = v.api.cryoet!;
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    const coords = () =>
+      Array.from(
+        v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.obj!.data.sourceData.coordinates,
+      ).map((x) => Math.round(x * 100) / 100);
+    expectOk(await c.offset({ targets: '', z: 1 } as never));
+    expectOk(await c.instance({ particles: list, index: 2, y: 3 } as never));
+    expect(coords()).toEqual([10, 0, 1, 20, 0, 1, 30, 3, 1, 40, 0, 1]);
+    expect(c.instanceOf(list, 2)).toMatchObject({ translation: [0, 3, 0], euler: [0, 0, 0] });
+    expect(c.instanceOf(list, 1)).toBeUndefined();
+    expect(await c.instance({ particles: list, index: 2, y: 3 } as never)).toMatchObject({ unchanged: true });
+    expectOk(await c.instance({ particles: list, index: 2, y: 0 } as never));
+    expect(c.instanceOf(list, 2)).toBeUndefined();
+    expect(await c.instance({ particles: list, index: 99, y: 1 } as never)).toMatchObject({ ok: false });
+  });
+
   it('goes back to the targets of the file', async () => {
     const v = await viewer();
     expectOk(await v.api.cryoet!.classes({ attribute: 'class' } as never));

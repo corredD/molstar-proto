@@ -22,6 +22,7 @@ import type { VolumeRef } from '@molstar/plugin/state/manager/volume/hierarchy-s
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import {
   ParticleListOffsets,
+  type ParticleInstanceOffsetProps,
   type ParticleOffsetProps,
   ParticleListTargetsFromAttribute,
   ParticleListWithTargets,
@@ -419,6 +420,78 @@ export class CryoetApi extends ApiArea {
       await b.commit();
       const what = ids.length ? `${ids.length} target${ids.length > 1 ? 's' : ''}` : 'every target';
       return ApiResult.ok(`Offset ${what} of ${labelOf(l)}.`, { nodes: [l.cell.transform.ref] });
+    },
+  });
+
+  /** One instance's own offset (by its index), if any */
+  instanceOf(particles: string, index: number): { translation: number[]; euler: number[] } | undefined {
+    const l = lists(this.ctx).find((x) => x.cell.transform.ref === particles);
+    const cell = l && decoratorCell(this.ctx, l, ParticleListOffsets);
+    const o = ((cell?.transform.params?.instances ?? []) as ParticleInstanceOffsetProps[]).find(
+      (x) => x.index === index,
+    );
+    return o ? { translation: Array.from(o.translation), euler: Array.from(o.euler) } : undefined;
+  }
+
+  /** One instance's own offset, following the state tree while watched */
+  instanceState(
+    particles: string,
+    index: number,
+  ): ReadonlyState<{ translation: number[]; euler: number[] } | undefined> {
+    return watchedState(
+      () => this.instanceOf(particles, index),
+      () => this.ctx.plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  readonly instance = this.operation({
+    id: 'cryoet.instance',
+    title: 'Offset one instance alone (in its own frame)',
+    params: {
+      particles: ListParam(),
+      index: PD.Numeric(0, { min: 0, step: 1 }, { description: 'The particle, by its index in the list' }),
+      x: OptionalParam(PD.Numeric(0, {}, { description: 'A shift along its own X (Å); absent: as it is' })),
+      y: OptionalParam(PD.Numeric(0)),
+      z: OptionalParam(PD.Numeric(0)),
+      ex: OptionalParam(
+        PD.Numeric(0, { min: -180, max: 180 }, { description: 'A turn about its own X (°), then Y, then Z' }),
+      ),
+      ey: OptionalParam(PD.Numeric(0, { min: -180, max: 180 })),
+      ez: OptionalParam(PD.Numeric(0, { min: -180, max: 180 })),
+    },
+    async run(values, ctx) {
+      const v = values as { particles: string; index: number } & Partial<
+        Record<'x' | 'y' | 'z' | 'ex' | 'ey' | 'ez', number>
+      >;
+      const l = oneList(ctx, v.particles || undefined);
+      if (isFailure(l)) return l;
+      const data = dataOf(ctx, l);
+      if (!data || v.index < 0 || v.index >= data.count) {
+        return ApiResult.fail('not-found', `There is no particle ${v.index}.`, `From 0 to ${(data?.count ?? 1) - 1}.`);
+      }
+      const cell = decoratorCell(ctx, l, ParticleListOffsets);
+      const old = (cell?.transform.params?.instances ?? []) as ParticleInstanceOffsetProps[];
+      const at = old.findIndex((o) => o.index === v.index);
+      const t = at >= 0 ? old[at].translation : Vec3();
+      const e = at >= 0 ? old[at].euler : Vec3();
+      const next: ParticleInstanceOffsetProps = {
+        index: v.index,
+        translation: Vec3.create(v.x ?? t[0], v.y ?? t[1], v.z ?? t[2]),
+        euler: Vec3.create(v.ex ?? e[0], v.ey ?? e[1], v.ez ?? e[2]),
+      };
+      const zero = Vec3.isZero(next.translation) && Vec3.isZero(next.euler);
+      const instances = old.slice();
+      if (at >= 0) {
+        if (zero) instances.splice(at, 1);
+        else instances[at] = next;
+      } else if (!zero) instances.push(next);
+      if (JSON.stringify(instances) === JSON.stringify(old)) return ApiResult.already('The instance is already so.');
+      const b = ctx.plugin.state.data.build();
+      if (cell) b.to(cell).update((p: any) => ({ ...p, instances }));
+      else b.to(lastDecorator(ctx, l)).apply(ParticleListOffsets, { offsets: [], instances });
+      await b.commit();
+      return ApiResult.ok(`Offset particle ${v.index} of ${labelOf(l)}.`, { nodes: [l.cell.transform.ref] });
     },
   });
 
