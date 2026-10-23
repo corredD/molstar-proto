@@ -235,6 +235,12 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
   its number. A slider shows the object as it goes (`previewPose`) and its release is one step (`stage.pose`: the change
   as a move after where it is, its clips and labels with it; a list's scale kept); the handles show the same pose, and a
   handle's drag sets the numbers. For a structure, a list, a volume, a mesh (`placementOf`, a structure's now too).
+- Decoration offset (2026-10-23, step 3): in Decoration, All targets and each target (a class when split by one) have an
+  options button: six sliders, X, Y, Z (Å, along each particle's own axes) and Turn X, Y, Z (°, about them, X then Y
+  then Z), each released one step (`cryoet.offset`); lit while an offset is set. The particles of those targets are
+  placed so (a library decorator, `ParticleListOffsets`, the last of the list's: its classes and decorations known), so
+  what decorates them follows; all targets' offset and a target's add up. A switch of classes clears them (they were of
+  the other targets' ids).
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,

@@ -306,6 +306,32 @@ describe('cryoet', () => {
     expect(hiddenTargets(v, spheres.cell.transform.ref)).toEqual([]);
   });
 
+  it("offsets a class's particles (in their own frames), or all of them; cleared by a switch of classes", async () => {
+    const v = await viewer();
+    const c = v.api.cryoet!;
+    expectOk(await c.classes({ attribute: 'class' } as never));
+    const coords = () =>
+      Array.from(
+        v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.obj!.data.sourceData.coordinates,
+      ).map((x) => Math.round(x * 100) / 100);
+    // the file's particles: (10, 0, 0), (20, 0, 0), (30, 0, 0), (40, 0, 0), classes 1, 2, 1, 3 (targets 0, 1, 0, 2)
+    expectOk(await c.offset({ targets: '1', z: 5 } as never));
+    expect(coords()).toEqual([10, 0, 0, 20, 0, 5, 30, 0, 0, 40, 0, 0]);
+    expect(c.offsetOf(v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref, '1')).toMatchObject({
+      translation: [0, 0, 5],
+      euler: [0, 0, 0],
+    });
+    // every target, besides: added after it
+    expectOk(await c.offset({ targets: '', x: 1 } as never));
+    expect(coords()).toEqual([11, 0, 0, 21, 0, 5, 31, 0, 0, 41, 0, 0]);
+    // its own again: replaced, not added
+    expectOk(await c.offset({ targets: '1', z: 0 } as never));
+    expect(coords()).toEqual([11, 0, 0, 21, 0, 0, 31, 0, 0, 41, 0, 0]);
+    // the classes switched: the offsets were of their ids, they go
+    expectOk(await c.classes({ attribute: '' } as never));
+    expect(coords()).toEqual([10, 0, 0, 20, 0, 0, 30, 0, 0, 40, 0, 0]);
+  });
+
   it('goes back to the targets of the file', async () => {
     const v = await viewer();
     expectOk(await v.api.cryoet!.classes({ attribute: 'class' } as never));

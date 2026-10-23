@@ -21,6 +21,8 @@ import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hi
 import type { VolumeRef } from '@molstar/plugin/state/manager/volume/hierarchy-state';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import {
+  ParticleListOffsets,
+  type ParticleOffsetProps,
   ParticleListTargetsFromAttribute,
   ParticleListWithTargets,
 } from '@molstar/plugin/state/transforms/particles/ops';
@@ -338,6 +340,88 @@ export class CryoetApi extends ApiArea {
     },
   });
 
+  /** The offset of some targets (by their ids, '1,2'; '': every target), if any */
+  offsetOf(particles: string, targets: string): { translation: number[]; euler: number[] } | undefined {
+    const l = lists(this.ctx).find((x) => x.cell.transform.ref === particles);
+    const cell = l && decoratorCell(this.ctx, l, ParticleListOffsets);
+    const key = targetsKey(
+      targets
+        .split(',')
+        .filter((t) => t.trim())
+        .map(Number),
+    );
+    const o = ((cell?.transform.params?.offsets ?? []) as ParticleOffsetProps[]).find(
+      (x) => targetsKey(x.targets) === key,
+    );
+    return o ? { translation: Array.from(o.translation), euler: Array.from(o.euler) } : undefined;
+  }
+
+  /** The offset of some targets, following the state tree while watched */
+  offsetState(
+    particles: string,
+    targets: string,
+  ): ReadonlyState<{ translation: number[]; euler: number[] } | undefined> {
+    return watchedState(
+      () => this.offsetOf(particles, targets),
+      () => this.ctx.plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  readonly offset = this.operation({
+    id: 'cryoet.offset',
+    title: 'Offset what decorates some particles (in their own frames)',
+    params: {
+      particles: ListParam(),
+      targets: PD.Text('', { description: "The targets by name or id ('Class 2', '1,2'); empty: every target" }),
+      x: OptionalParam(PD.Numeric(0, {}, { description: "A shift along each particle's own X (Å); absent: as it is" })),
+      y: OptionalParam(PD.Numeric(0)),
+      z: OptionalParam(PD.Numeric(0)),
+      ex: OptionalParam(
+        PD.Numeric(0, { min: -180, max: 180 }, { description: 'A turn about its own X (°), then Y, then Z' }),
+      ),
+      ey: OptionalParam(PD.Numeric(0, { min: -180, max: 180 })),
+      ez: OptionalParam(PD.Numeric(0, { min: -180, max: 180 })),
+    },
+    async run(values, ctx) {
+      const v = values as { particles: string; targets: string } & Partial<
+        Record<'x' | 'y' | 'z' | 'ex' | 'ey' | 'ez', number>
+      >;
+      const l = oneList(ctx, v.particles || undefined);
+      if (isFailure(l)) return l;
+      const data = dataOf(ctx, l);
+      if (!data) return ApiResult.fail('not-found', 'The list has no particles yet.');
+      const ids = v.targets.trim() ? pickTargets(data, v.targets) : [];
+      if (isFailure(ids)) return ids;
+      const key = targetsKey(ids);
+      const cell = decoratorCell(ctx, l, ParticleListOffsets);
+      const old = (cell?.transform.params?.offsets ?? []) as ParticleOffsetProps[];
+      const at = old.findIndex((o) => targetsKey(o.targets) === key);
+      const was = at >= 0 ? old[at] : undefined;
+      const t = was?.translation ?? Vec3();
+      const e = was?.euler ?? Vec3();
+      const next: ParticleOffsetProps = {
+        targets: [...ids].sort((a, b) => a - b),
+        translation: Vec3.create(v.x ?? t[0], v.y ?? t[1], v.z ?? t[2]),
+        euler: Vec3.create(v.ex ?? e[0], v.ey ?? e[1], v.ez ?? e[2]),
+      };
+      const zero = Vec3.isZero(next.translation) && Vec3.isZero(next.euler);
+      const offsets = old.slice();
+      if (at >= 0) {
+        if (zero) offsets.splice(at, 1);
+        else offsets[at] = next;
+      } else if (!zero) offsets.push(next);
+      if (JSON.stringify(offsets) === JSON.stringify(old)) return ApiResult.already('The offset is already so.');
+      const b = ctx.plugin.state.data.build();
+      if (cell) b.to(cell).update((p: any) => ({ ...p, offsets }));
+      // the last decorator: after the classes' targets and the decorations
+      else b.to(lastDecorator(ctx, l)).apply(ParticleListOffsets, { offsets });
+      await b.commit();
+      const what = ids.length ? `${ids.length} target${ids.length > 1 ? 's' : ''}` : 'every target';
+      return ApiResult.ok(`Offset ${what} of ${labelOf(l)}.`, { nodes: [l.cell.transform.ref] });
+    },
+  });
+
   readonly classes = this.operation({
     id: 'cryoet.classes',
     title: 'Targets by class',
@@ -375,6 +459,11 @@ export class CryoetApi extends ApiArea {
       // the decorations were of the other targets' ids: they go (the targets are others now)
       if (decorations && (decorations.transform.params?.targets ?? []).length) {
         b.to(decorations).update((p: any) => ({ ...p, targets: [] }));
+      }
+      // so were the offsets
+      const offsets = decoratorCell(ctx, l, ParticleListOffsets);
+      if (offsets && (offsets.transform.params?.offsets ?? []).length) {
+        b.to(offsets).update((p: any) => ({ ...p, offsets: [] }));
       }
       await b.commit();
       await ensureTargetRepresentation(ctx, l, wasDecorated);
@@ -593,10 +682,28 @@ function oneVolume(ctx: Pick<ApiContext, 'plugin'>, name: string | undefined): V
 const labelOf = (l: ParticleListRef) => l.cell.obj?.label ?? l.cell.transform.ref;
 
 /** The decorator of `transformer` in the chain of decorators under the list, if any */
+/** The last of a list's decorators (what its representations take), else the list itself */
+function lastDecorator(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): StateObjectCell {
+  const { tree, cells } = ctx.plugin.state.data;
+  let cell = l.cell as StateObjectCell;
+  for (;;) {
+    const next = tree.children
+      .get(cell.transform.ref)
+      .toArray()
+      .map((c) => cells.get(c))
+      .find((c) => c?.transform.transformer.definition.isDecorator);
+    if (!next) return cell;
+    cell = next;
+  }
+}
+
+/** The ids of some targets, sorted: their offset's key ('': every target) */
+const targetsKey = (ids: readonly number[]) => [...ids].sort((a, b) => a - b).join(',');
+
 function decoratorCell(
   ctx: Pick<ApiContext, 'plugin'>,
   l: ParticleListRef,
-  transformer: typeof ParticleListWithTargets | typeof ParticleListTargetsFromAttribute,
+  transformer: typeof ParticleListWithTargets | typeof ParticleListTargetsFromAttribute | typeof ParticleListOffsets,
 ): StateObjectCell | undefined {
   const { tree, cells } = ctx.plugin.state.data;
   let ref: StateTransform.Ref = l.cell.transform.ref;

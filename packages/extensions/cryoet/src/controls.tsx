@@ -11,6 +11,7 @@ import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
+import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
 import type { CryoetApi, DecorationsInfo, MeshInfo, SliceAxis, TargetDecoration } from './operations.js';
 
 // The cryo-ET controls, shown by the extension's own rows and tab and by a host's panels (prism-me's properties):
@@ -75,8 +76,7 @@ export function Decorations(props: { area: CryoetApi; info: ReadonlyState<Decora
       <For each={mapState(info, (i) => [JSON.stringify(i.objects)])} by={(k) => k}>
         {() => (
           <>
-            <div style={Line}>
-              <span style="flex: 1">All targets</span>
+            <OffsetLine area={area} particles={particles()} targets="" label="All targets">
               <Select
                 size="sm"
                 aria-label="Decorate every target with"
@@ -84,9 +84,9 @@ export function Decorations(props: { area: CryoetApi; info: ReadonlyState<Decora
                 value={mapState(info, common)}
                 onChange={(v) => decorate('', v)}
               />
-            </div>
+            </OffsetLine>
             <For each={mapState(info, (i) => i.targets)} by={(t) => t.id}>
-              {(t) => <TargetLine info={info} target={t} onPick={(v) => decorate(String(t.id), v)} />}
+              {(t) => <TargetLine area={area} info={info} target={t} onPick={(v) => decorate(String(t.id), v)} />}
             </For>
           </>
         )}
@@ -105,6 +105,7 @@ export function Decorations(props: { area: CryoetApi; info: ReadonlyState<Decora
 }
 
 function TargetLine(props: {
+  area: CryoetApi;
   info: ReadonlyState<DecorationsInfo>;
   target: TargetDecoration;
   onPick(v: string): void;
@@ -112,8 +113,7 @@ function TargetLine(props: {
   const { info, target } = props;
   const current = mapState(info, (i) => i.targets.find((t) => t.id === target.id));
   return (
-    <div style={Line}>
-      <span style="flex: 1; overflow: hidden; white-space: nowrap">{target.name}</span>
+    <OffsetLine area={props.area} particles={info.value.particles} targets={String(target.id)} label={target.name}>
       <span style={Muted}>{mapState(current, (t) => (t?.count ?? 0).toLocaleString('en'))}</span>
       <Select
         size="sm"
@@ -122,6 +122,86 @@ function TargetLine(props: {
         value={mapState(current, (t) => t?.object ?? (t?.with ? '*' : Spheres))}
         onChange={(v) => v !== '*' && props.onPick(v)}
       />
+    </OffsetLine>
+  );
+}
+
+const OffsetAxes = [
+  { key: 'x', label: 'X', unit: 'Å', of: 'translation', i: 0 },
+  { key: 'y', label: 'Y', unit: 'Å', of: 'translation', i: 1 },
+  { key: 'z', label: 'Z', unit: 'Å', of: 'translation', i: 2 },
+  { key: 'ex', label: 'Turn X', unit: '°', of: 'euler', i: 0 },
+  { key: 'ey', label: 'Turn Y', unit: '°', of: 'euler', i: 1 },
+  { key: 'ez', label: 'Turn Z', unit: '°', of: 'euler', i: 2 },
+] as const;
+
+/**
+ * A row of some targets (every one: '') with its offset by numbers on demand: the options button opens six sliders,
+ * X, Y, Z (Å, along each particle's own axes) and Turn X, Y, Z (°, about them), each released one step
+ * (`cryoet.offset`); lit while an offset is set
+ */
+function OffsetLine(props: {
+  area: CryoetApi;
+  particles: string;
+  targets: string;
+  label: string;
+  children: JSX.Element | JSX.Element[];
+}) {
+  const { area, particles, targets } = props;
+  const offset = area.offsetState(particles, targets);
+  const open = observableState(false);
+  const set = (key: string, v: number) => void area.offset({ particles, targets, [key]: v } as never);
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+      <div style={Line}>
+        <span style="flex: 1; overflow: hidden; white-space: nowrap">{props.label}</span>
+        {props.children}
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Its offset: placed off each particle, in its own frame"
+          pressed={derive([open.asReadonly, offset], (o, off) => o || !!off)}
+          icon={<Icon name="sliders-horizontal" />}
+          onClick={() => open.set(!open.value)}
+        />
+      </div>
+      <Show when={open.asReadonly}>
+        {() => (
+          <div style="display: flex; flex-direction: column; gap: var(--msp-space-1); padding-left: var(--msp-space-3)">
+            {OffsetAxes.map((a) => {
+              const value = mapState(offset, (o) => o?.[a.of][a.i] ?? 0);
+              const range = a.unit === 'Å' ? 200 : 180;
+              return (
+                <div style={Line}>
+                  <span style="width: 56px">{a.label}</span>
+                  <input
+                    type="range"
+                    min={String(-range)}
+                    max={String(range)}
+                    step={a.unit === 'Å' ? '0.5' : '1'}
+                    style="flex: 1; min-width: 0"
+                    aria-label={`${props.label} offset ${a.label}`}
+                    value={mapState(value, String)}
+                    onChange={(e) => set(a.key, Number((e.target as HTMLInputElement).value))}
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    style="width: 56px"
+                    aria-label={`${props.label} offset ${a.label} (${a.unit})`}
+                    value={mapState(value, (v) => String(Math.round(v * 10) / 10))}
+                    onChange={(e) => {
+                      const v = Number((e.target as HTMLInputElement).value);
+                      if (Number.isFinite(v)) set(a.key, v);
+                    }}
+                  />
+                  <span style={Muted}>{a.unit}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Show>
     </div>
   );
 }
