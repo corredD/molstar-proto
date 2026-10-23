@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
-import { dragMatrix, movedClipObject } from '../move.js';
+import { dragMatrix, movedClipObject, placementWith, poseOf } from '../move.js';
 import { dragPlacement, moveBetween } from '../move-gizmos.js';
 
 const frame = { right: Vec3.create(1, 0, 0), up: Vec3.create(0, 1, 0), pixel: 2 };
@@ -60,5 +60,31 @@ describe('move gizmos', () => {
     expect(Mat4.getMaxScaleOnAxis(m)).toBeCloseTo(1, 6);
     // and makes `next` of `from`
     expect(Mat4.areEqual(Mat4.mul(Mat4(), m, from.matrix), next.matrix, 1e-6)).toBe(true);
+  });
+
+  it("reads an object's pose (its center where it is, its Euler turn) and makes a placement from one, a list's scale kept", () => {
+    const center = Vec3.create(10, 0, 0);
+    // turned 90° about z about the origin, then up 5, the positions scaled by 2 first
+    const scale = 2;
+    const rigid = Mat4.mul(
+      Mat4(),
+      Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 5)),
+      Mat4.fromRotation(Mat4(), Math.PI / 2, Vec3.create(0, 0, 1)),
+    );
+    const placement = { matrix: Mat4.mul(Mat4(), rigid, Mat4.fromUniformScaling(Mat4(), scale)), center, radius: 1 };
+    const pose = poseOf(placement);
+    // the center (10, 0, 0) scaled to (20, 0, 0), turned to (0, 20, 0), up 5
+    pose.position.forEach((x, i) => expect(x).toBeCloseTo([0, 20, 5][i], 5));
+    pose.euler.forEach((x, i) => expect(x).toBeCloseTo([0, 0, 90][i], 5));
+    // the same pose back: the same matrix
+    const back = placementWith(placement, pose);
+    for (let i = 0; i < 16; i++) expect(back[i]).toBeCloseTo(placement.matrix[i], 5);
+    // another: its center there, its turn that, its scale kept
+    const next = placementWith(placement, { position: [1, 2, 3], euler: [30, -45, 120] });
+    const c = Vec3.transformMat4(Vec3(), center, next);
+    c.forEach((x, i) => expect(x).toBeCloseTo([1, 2, 3][i], 5));
+    expect(Mat4.getMaxScaleOnAxis(next)).toBeCloseTo(scale, 5);
+    const again = poseOf({ ...placement, matrix: next });
+    again.euler.forEach((x, i) => expect(x).toBeCloseTo([30, -45, 120][i], 4));
   });
 });

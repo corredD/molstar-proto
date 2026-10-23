@@ -62,3 +62,64 @@ export function movedClipObject(o: Clip.Props['objects'][number], m: Mat4): Clip
 export function movedPoint(p: Vec3, m: Mat4): Vec3 {
   return Vec3.transformMat4(Vec3(), p, m);
 }
+
+/** An object's pose: where its center is (Å, the scene's) and its turn (Euler angles, degrees: X, then Y, then Z) */
+export interface ObjectPose {
+  readonly position: readonly [number, number, number];
+  readonly euler: readonly [number, number, number];
+}
+
+/** What a pose is read from: the object's matrix (on top of where it was loaded, a list's scale in it) and center */
+export interface PlacedObject {
+  readonly matrix: Mat4;
+  readonly center: Vec3;
+}
+
+const Deg = 180 / Math.PI;
+
+/** An object's pose: its center where the matrix puts it, the matrix's turn as Euler angles (X, then Y, then Z) */
+export function poseOf(p: PlacedObject): ObjectPose {
+  const c = Vec3.transformMat4(Vec3(), p.center, p.matrix);
+  const s = Mat4.getMaxScaleOnAxis(p.matrix) || 1;
+  // the turn's entries (row r, column k; the matrix column-major), the scale taken out
+  const r = (row: number, col: number) => p.matrix[col * 4 + row] / s;
+  // R = Rz Ry Rx: r20 = -sin y; r21 = cos y sin x; r22 = cos y cos x; r10 = sin z cos y; r00 = cos z cos y
+  const sy = Math.max(-1, Math.min(1, -r(2, 0)));
+  const y = Math.asin(sy);
+  let x: number;
+  let z: number;
+  if (Math.abs(sy) < 1 - 1e-9) {
+    x = Math.atan2(r(2, 1), r(2, 2));
+    z = Math.atan2(r(1, 0), r(0, 0));
+  } else {
+    // straight up or down: x and z turn about the same axis, all of it in z
+    x = 0;
+    z = Math.atan2(-r(0, 1), r(1, 1));
+  }
+  return { position: [c[0], c[1], c[2]], euler: [x * Deg, y * Deg, z * Deg] };
+}
+
+/**
+ * The matrix of an object at `pose`: turned (Euler X, then Y, then Z) about its center, its center there, the scale
+ * of its matrix kept (a particle list's positions)
+ */
+export function placementWith(p: PlacedObject, pose: ObjectPose): Mat4 {
+  const s = Mat4.getMaxScaleOnAxis(p.matrix) || 1;
+  const [x, y, z] = pose.euler.map((a) => a / Deg);
+  const turn = Mat4.mul(
+    Mat4(),
+    Mat4.fromRotation(Mat4(), z, Vec3.create(0, 0, 1)),
+    Mat4.mul(
+      Mat4(),
+      Mat4.fromRotation(Mat4(), y, Vec3.create(0, 1, 0)),
+      Mat4.fromRotation(Mat4(), x, Vec3.create(1, 0, 0)),
+    ),
+  );
+  // the center (as scaled) to the origin, turned, to the pose's place; the scale first
+  const scaled = Vec3.scale(Vec3(), p.center, s);
+  const m = Mat4.fromUniformScaling(Mat4(), s);
+  Mat4.mul(m, Mat4.fromTranslation(Mat4(), Vec3.negate(Vec3(), scaled)), m);
+  Mat4.mul(m, turn, m);
+  Mat4.mul(m, Mat4.fromTranslation(Mat4(), Vec3.create(...pose.position)), m);
+  return m;
+}

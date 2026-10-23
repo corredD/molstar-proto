@@ -230,6 +230,11 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
   keeps it, and the move handles sit on the list as scaled. Next (agreed): the handle's options (six sliders, its place
   and turn), a decoration's offset per list or target, its local handle (All on: the offset of the group; off: the
   picked instance itself).
+- Place by numbers (2026-10-23, step 2): Position's handle row has an options button (sliders): six sliders, X, Y, Z
+  (where the object's center is, Å, within twice its size of it) and Turn X, Y, Z (Euler, X then Y then Z, °), each with
+  its number. A slider shows the object as it goes (`previewPose`) and its release is one step (`stage.pose`: the change
+  as a move after where it is, its clips and labels with it; a list's scale kept); the handles show the same pose, and a
+  handle's drag sets the numbers. For a structure, a list, a volume, a mesh (`placementOf`, a structure's now too).
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,

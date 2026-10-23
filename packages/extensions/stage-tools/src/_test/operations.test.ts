@@ -258,4 +258,24 @@ describe('stage', () => {
     const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
     expect(await s.scale({ target: crn, scale: 2 } as never)).toMatchObject({ ok: false });
   });
+
+  it('places a structure and a scaled particle list at a pose (center, Euler turn), read back, one step each', async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const star = 'data_particles\n\nloop_\n_rlnCoordinateX\n_rlnCoordinateY\n_rlnCoordinateZ\n10 0 0\n20 0 0\n';
+    expectOk(await v.api.load.files({ files: [new File([star], 'p.star')] }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    expectOk(await s.scale({ target: list, scale: 2 } as never));
+    for (const target of [crn, list]) {
+      expectOk(await s.pose({ target, x: 1, y: 2, z: 3, ex: 30, ey: -45, ez: 120 } as never));
+      const pose = s.poseState(target).value!;
+      pose.position.forEach((x, i) => expect(x).toBeCloseTo([1, 2, 3][i], 3));
+      pose.euler.forEach((x, i) => expect(x).toBeCloseTo([30, -45, 120][i], 3));
+    }
+    // the list's scale kept; its pose undone at once
+    expect(s.scaleOf(list)).toBe(2);
+    expectOk(await v.api.run('history.undo', {}));
+    s.poseState(list).value!.euler.forEach((x) => expect(x).toBeCloseTo(0, 3));
+  });
 });

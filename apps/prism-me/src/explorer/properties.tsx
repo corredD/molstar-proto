@@ -6,7 +6,10 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Color } from '@molstar/core/util/color';
+import type { ObjectPose } from '@molstar/stage-tools-extension/move';
+import type { StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, Slice } from '@molstar/cryoet-extension/controls';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import { GraphicsMode, Motion } from '@molstar/mesoscale-extension/controls';
@@ -782,6 +785,8 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
 /** An object's position: Prism's handles on it, to move and turn it in 3D (each release one step) */
 function Position(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: NodeRef }) {
   const { api, node } = props;
+  // the six numbers of its place and turn, shown on demand (the handles' twin: both move it)
+  const exact = observableState(false);
   const shownOn = derive(
     [
       api.move?.gizmos.shown ?? observableState(false).asReadonly,
@@ -803,7 +808,20 @@ function Position(props: { api: ViewerApi; area: ExplorerApi; kind: string; node
         >
           {mapState(shownOn, (on) => (on ? 'Hide' : 'Move and turn'))}
         </Button>
+        {api.stage ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            title="Its place and turn, by numbers"
+            pressed={exact.asReadonly}
+            icon={<Icon name="sliders-horizontal" />}
+            onClick={() => exact.set(!exact.value)}
+          />
+        ) : null}
       </div>
+      {api.stage ? (
+        <Show when={exact.asReadonly}>{() => <PoseSliders stage={api.stage!} api={api} target={node.ref} />}</Show>
+      ) : null}
       <HandleLook area={props.area} />
       {/* a particle list's positions in Å: its file's unit times this (a tomogram's pixel size) */}
       {(props.kind === 'particle list' || props.kind === 'mesoscale model') && api.stage ? (
@@ -816,6 +834,81 @@ function Position(props: { api: ViewerApi; area: ExplorerApi; kind: string; node
           onCommit={(scale) => void api.run('stage.scale', { target: node.ref, scale })}
         />
       ) : null}
+    </div>
+  );
+}
+
+const PoseAxes = [
+  { key: 'x', label: 'X', unit: 'Å' },
+  { key: 'y', label: 'Y', unit: 'Å' },
+  { key: 'z', label: 'Z', unit: 'Å' },
+  { key: 'ex', label: 'Turn X', unit: '°' },
+  { key: 'ey', label: 'Turn Y', unit: '°' },
+  { key: 'ez', label: 'Turn Z', unit: '°' },
+] as const;
+
+/**
+ * An object's place and turn by numbers, the handles' twin: where its center is (X, Y, Z, Å, within its size of where
+ * it was loaded) and its Euler turn (X, then Y, then Z, °); a slider shows the object as it goes, and its release is
+ * one step (`stage.pose`); the handles show the same pose
+ */
+function PoseSliders(props: { api: ViewerApi; stage: StageApi; target: string }) {
+  const { api, stage, target } = props;
+  const pose = stage.poseState(target);
+  const placement = stage.placementOf(target);
+  const reach = Math.max(placement?.radius ?? 100, 10) * 2;
+  const home = placement ? Vec3.transformMat4(Vec3(), placement.center, placement.matrix) : Vec3();
+  const valueOf = (p: ObjectPose | undefined, i: number) => (p ? (i < 3 ? p.position[i] : p.euler[i - 3]) : 0);
+  const withValue = (p: ObjectPose, i: number, v: number): ObjectPose => {
+    const position = [...p.position] as [number, number, number];
+    const euler = [...p.euler] as [number, number, number];
+    if (i < 3) position[i] = v;
+    else euler[i - 3] = v;
+    return { position, euler };
+  };
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+      {PoseAxes.map((axis, i) => {
+        const min = i < 3 ? home[i] - reach : -180;
+        const max = i < 3 ? home[i] + reach : 180;
+        const value = mapState(pose, (p) => valueOf(p, i));
+        // committed, then the drawing back to the state's (now moved): else the preview's move would stay on it
+        const commit = async (v: number) => {
+          await api.run('stage.pose', { target, [axis.key]: v });
+          stage.previewMove(target, Mat4.identity());
+        };
+        return (
+          <div style={Line}>
+            <span style={Label}>{axis.label}</span>
+            <input
+              type="range"
+              min={String(min)}
+              max={String(max)}
+              step={i < 3 ? 'any' : '1'}
+              style="flex: 1; min-width: 0"
+              aria-label={axis.label}
+              value={mapState(value, (v) => String(v))}
+              onInput={(e) => {
+                const p = pose.value;
+                if (p) stage.previewPose(target, withValue(p, i, Number((e.target as HTMLInputElement).value)));
+              }}
+              onChange={(e) => void commit(Number((e.target as HTMLInputElement).value))}
+            />
+            <input
+              type="number"
+              step="any"
+              style="width: 64px"
+              aria-label={`${axis.label} (${axis.unit})`}
+              value={mapState(value, (v) => String(Math.round(v * 10) / 10))}
+              onChange={(e) => {
+                const v = Number((e.target as HTMLInputElement).value);
+                if (Number.isFinite(v)) void commit(v);
+              }}
+            />
+            <span style={Muted}>{axis.unit}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

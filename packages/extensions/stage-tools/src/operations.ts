@@ -9,7 +9,8 @@ import { Mat4, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { ParticleListTransform } from '@molstar/plugin/state/transforms/particles/ops';
 import { VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
-import { movedClipObject, movedPoint, type ScreenFrame } from './move.js';
+import { movedClipObject, movedPoint, type ObjectPose, placementWith, poseOf, type ScreenFrame } from './move.js';
+import { getTransformFromParams, type TransformParam } from '@molstar/plugin/state/transforms/helpers';
 import { Color } from '@molstar/core/util/color';
 import { ColorNames } from '@molstar/core/util/color/names';
 import { setSubtreeVisibility } from '@molstar/plugin/behavior/static/state';
@@ -146,6 +147,19 @@ export class StageApi extends ApiArea {
     const cell = cells.get(target);
     if (!cell) return undefined;
     const t = stageTargets(ctx).find((x) => x.ref === target);
+    if (t?.kind === 'structure') {
+      // its transform (Prism's, a decorator on it) on top of the structure as loaded
+      const s = plugin.managers.structure.hierarchy.current.structures.find((x) => x.cell.transform.ref === target);
+      const data = s?.cell.obj?.data;
+      if (!s || !data) return undefined;
+      const sphere = data.boundary.sphere;
+      const param = (s.transform?.cell.transform.params as { transform?: TransformParam } | undefined)?.transform;
+      return {
+        matrix: param ? getTransformFromParams(param, sphere.center) : Mat4.identity(),
+        center: Vec3.clone(sphere.center),
+        radius: Math.max(sphere.radius, 1),
+      };
+    }
     if (t?.kind === 'particles') {
       const data = cell.obj?.data as ParticleList | undefined;
       if (!data) return undefined;
@@ -212,6 +226,55 @@ export class StageApi extends ApiArea {
   scaleOf(target: string): number {
     return listScale({ plugin: this.ctx.plugin }, target);
   }
+
+  /** An object's pose (its center, its Euler turn: `ObjectPose`), following the state tree while watched */
+  poseState(target: string): ReadonlyState<ObjectPose | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => {
+        const p = this.placementOf(target);
+        return p ? poseOf(p) : undefined;
+      },
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /** An object drawn at `pose` (the drawing only, as a slider moves); its own pose puts it back */
+  previewPose(target: string, pose: ObjectPose) {
+    const p = this.placementOf(target);
+    if (!p) return;
+    this.previewMove(target, Mat4.mul(Mat4(), placementWith(p, pose), Mat4.invert(Mat4(), p.matrix)));
+  }
+
+  readonly pose = this.operation({
+    id: 'stage.pose',
+    title: 'Place an object (its center, its turn)',
+    params: {
+      target: PD.Text('', { description: 'A structure, particle list, volume or mesh, by state ref' }),
+      x: OptionalParam(PD.Numeric(0, {}, { description: 'Where its center is (Å); absent: where it is' })),
+      y: OptionalParam(PD.Numeric(0)),
+      z: OptionalParam(PD.Numeric(0)),
+      ex: OptionalParam(PD.Numeric(0, { min: -180, max: 180 }, { description: 'Turned about X (°), then Y, then Z' })),
+      ey: OptionalParam(PD.Numeric(0, { min: -180, max: 180 })),
+      ez: OptionalParam(PD.Numeric(0, { min: -180, max: 180 })),
+    },
+    async run(values, ctx) {
+      const v = values as { target: string } & Partial<Record<'x' | 'y' | 'z' | 'ex' | 'ey' | 'ez', number>>;
+      const area = ctx.api.stage!;
+      const p = area.placementOf(v.target);
+      if (!p)
+        return ApiResult.fail('not-found', `'${v.target}' cannot be placed.`, 'A structure, list, volume or mesh.');
+      const now = poseOf(p);
+      const pose: ObjectPose = {
+        position: [v.x ?? now.position[0], v.y ?? now.position[1], v.z ?? now.position[2]],
+        euler: [v.ex ?? now.euler[0], v.ey ?? now.euler[1], v.ez ?? now.euler[2]],
+      };
+      // the change as a move after where it is: one step, its clips and labels with it
+      const m = Mat4.mul(Mat4(), placementWith(p, pose), Mat4.invert(Mat4(), p.matrix));
+      return ctx.api.run('stage.move', { target: v.target, matrix: Array.from(m) });
+    },
+  });
 
   /** A particle list's scale, following the state tree while watched: a read for views */
   scaleState(target: string): ReadonlyState<number> {
