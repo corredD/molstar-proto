@@ -14,6 +14,7 @@ import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
   Button,
   ColorPicker,
+  Choices,
   type ContextMenuItem,
   For,
   Icon,
@@ -823,8 +824,34 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
   };
   const cuts = mapState(clipping.cuts, (all) => area.cutsOf(all, node));
   const handled = derive([clipping.gizmos.shown, clipping.gizmos.handled], (shown, h) => (shown ? h : []));
+  // a model's or list's objects: clipped whole (proteins) or by their elements (atoms), when it draws objects
+  const whole =
+    props.kind === 'mesoscale model' || props.kind === 'particle list' ? area.clipWholeState(node.ref) : undefined;
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+      {whole ? (
+        <Show when={mapState(whole, (w) => w !== undefined)}>
+          {() => (
+            <Choices
+              label="Clip whole"
+              choices={[
+                {
+                  id: 'instance',
+                  label: 'Proteins',
+                  title: 'A cut takes whole objects (proteins): one whose center is cut goes, the others stay whole',
+                },
+                {
+                  id: 'element',
+                  label: 'Atoms',
+                  title: 'A cut takes whole atoms: each whose center is cut goes, the objects are carved',
+                },
+              ]}
+              active={whole}
+              onPick={(w) => void api.run('explorer.clipWhole', { particles: node.ref, whole: w })}
+            />
+          )}
+        </Show>
+      ) : null}
       <For each={mapState(cuts, (l) => l.map((c) => c.object.tag!))} by={(tag) => tag}>
         {(tag) => {
           const cut = mapState(cuts, (l) => l.find((c) => c.object.tag === tag));

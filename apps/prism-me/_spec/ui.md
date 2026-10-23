@@ -204,6 +204,11 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   child, Left closes an open row or picks its parent (`treeKey`); the picked row comes into view. Not while typing in a
   field. The Decoration's Targets row is always there: File alone, and why, when the file has no columns (CC, class,
   score) to split its targets by (an NDJSON list).
+- Clip whole (2026-10-22, Ludovic: "on a cellPACK model we either clip the atoms or the proteins"): a model's or a
+  list's Clips, while it draws objects, has Clip whole: Proteins (Mol\*'s `instance` variant: an object whose center is
+  cut goes, the others stay whole) or Atoms (`pixel` with the spheres' `clipPrimitive`: each atom whose center is cut
+  goes, the objects carved); as made, neither (cut through). On its target representations, one step
+  (`explorer.clipWhole`); a cut of a part (an entity) keeps to its part either way.
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,
