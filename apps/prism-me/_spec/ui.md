@@ -219,6 +219,10 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   said so. A list's color theme changed in its form clears the colors set in Look (Generate colors, painted over the
   theme, hid any change of it). Wiggle and Tumble move the model they are shown for (`mesoscale.motion` `particles`),
   not every list of the scene; the graphics mode stays the scene's (a performance setting).
+- Handle size (2026-10-22, Ludovic): Position and Clips have a Handle size slider (25â€“400%), one setting for every
+  handle on the canvas (Prism's clip and move handles, the stage's), from the gizmo library's `GizmoAppearance` (a
+  library change): the handles sized about their center, live; a cut's body as it is. X-ray (handles seen through what
+  is in front): to come, a renderer change.
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,

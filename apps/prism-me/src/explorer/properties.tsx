@@ -84,7 +84,7 @@ function NodeProperties(props: { api: ViewerApi; area: ExplorerApi; picked: Pick
       </div>
       {node ? sectionsOf(api, area, picked, node, props.parts) : null}
       {node && movable(picked.kind) ? (
-        <Section title="Position">{() => <Position api={api} kind={picked.kind} node={node} />}</Section>
+        <Section title="Position">{() => <Position api={api} area={area} kind={picked.kind} node={node} />}</Section>
       ) : null}
       {node && clippable(picked.kind, node) ? (
         <Section title="Clips">{() => <Clips api={api} area={area} kind={picked.kind} node={node} />}</Section>
@@ -780,7 +780,7 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
 // --- position ----------------------------------------------------------------------------------------------------------
 
 /** An object's position: Prism's handles on it, to move and turn it in 3D (each release one step) */
-function Position(props: { api: ViewerApi; kind: string; node: NodeRef }) {
+function Position(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: NodeRef }) {
   const { api, node } = props;
   const shownOn = derive(
     [
@@ -792,17 +792,36 @@ function Position(props: { api: ViewerApi; kind: string; node: NodeRef }) {
     (a, ta, b, tb) => (a && ta === node.ref) || (b && tb === node.ref),
   );
   return (
-    <div style={Line}>
-      <span style={Label}>Handles</span>
-      <Button
-        size="sm"
-        icon={<Icon name="move-3d" />}
-        pressed={shownOn}
-        onClick={() => (shownOn.value ? hideHandles(api) : showHandles(api, node.ref, props.kind))}
-      >
-        {mapState(shownOn, (on) => (on ? 'Hide' : 'Move and turn'))}
-      </Button>
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+      <div style={Line}>
+        <span style={Label}>Handles</span>
+        <Button
+          size="sm"
+          icon={<Icon name="move-3d" />}
+          pressed={shownOn}
+          onClick={() => (shownOn.value ? hideHandles(api) : showHandles(api, node.ref, props.kind))}
+        >
+          {mapState(shownOn, (on) => (on ? 'Hide' : 'Move and turn'))}
+        </Button>
+      </div>
+      <HandleLook area={props.area} />
     </div>
+  );
+}
+
+/** How every handle on the canvas is drawn (the move's and the clips' alike): its size */
+function HandleLook(props: { area: ExplorerApi }) {
+  const look = props.area.handleLookState();
+  return (
+    <SliderField
+      label="Handle size"
+      value={mapState(look, (l) => l.scale)}
+      min={0.25}
+      max={4}
+      step={0.05}
+      format={(v) => `${Math.round(v * 100)}%`}
+      onCommit={(scale) => props.area.setHandleLook({ scale })}
+    />
   );
 }
 
@@ -897,6 +916,7 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
       <Button size="sm" icon={<Icon name="scissors" />} onClick={add}>
         Add a clip
       </Button>
+      <HandleLook area={area} />
     </div>
   );
 }

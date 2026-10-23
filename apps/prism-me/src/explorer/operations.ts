@@ -28,7 +28,9 @@ import { labelOf, loadedStructures } from '@molstar/prism-viewer/api/scope';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type {} from '@molstar/prism-viewer/features/clipping';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
+import { GizmoAppearance, type GizmoLook } from '@molstar/graphics/util/gizmo/controller';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
+import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 
 // The `explorer` area (apps/prism-me/_spec/ui.md §3): what the scene holds, as the explorer's tree shows it: four
 // categories (structures, particles, volumes, meshes), each object with its parts; and the 3D side of a row (its
@@ -420,6 +422,22 @@ export class ExplorerApi extends ApiArea {
         c.atoms.loci[0].structure === part.structure &&
         StructureElement.Loci.areEqual(c.atoms.loci[0], part),
     );
+  }
+
+  /** How the handles are drawn on the canvas (all of them: Prism's and the stage's), following changes */
+  handleLookState(): ReadonlyState<GizmoLook> {
+    const canvas = this.ctx.plugin.canvas3d;
+    if (!canvas) return observableState(GizmoAppearance.Default).asReadonly;
+    return watchedState(
+      () => GizmoAppearance.of(canvas),
+      () => GizmoAppearance.state(canvas),
+    );
+  }
+
+  /** The handles drawn bigger or smaller (their scale), every set of them on the canvas */
+  setHandleLook(look: Partial<GizmoLook>) {
+    const canvas = this.ctx.plugin.canvas3d;
+    if (canvas) GizmoAppearance.set(canvas, look);
   }
 
   /** The canvas element (a drag in 3D is measured on it) */
