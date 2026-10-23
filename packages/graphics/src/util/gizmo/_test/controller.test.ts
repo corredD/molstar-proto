@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Canvas3D } from '../../../canvas3d/canvas3d.js';
 import type { GraphicsContext } from '../../../gl/context.js';
 import type { Representation } from '../../../repr/representation.js';
-import { type GizmoBinding, GizmoController, type GizmoItem } from '../controller.js';
+import { GizmoAppearance, type GizmoBinding, GizmoController, type GizmoItem } from '../controller.js';
 import { transformHandles } from '../transform.js';
 
 // The gizmo controller's lifecycle on a fake canvas: hover takes the trackball's drags and gives them back, a drag
@@ -224,6 +224,28 @@ describe('GizmoController', () => {
     fake.fake.input.interactionEnd.next();
     await settle();
     expect(binding.commit).not.toHaveBeenCalled();
+    c.dispose();
+  });
+
+  it("draws the handles at the canvas's scale, the body as it is, and follows a change of it", async () => {
+    const fake = fakeCanvas();
+    const binding = fakeBinding();
+    // a body: the cut's own volume (never scaled)
+    const layout = binding.layout();
+    binding.layout = () => ({ ...layout, body: layout.handles });
+    GizmoAppearance.set(fake.canvas, { scale: 2 });
+    const c = new GizmoController(fake.canvas, binding);
+    await settle();
+    // the body is not picked (what is behind it is), the handles are
+    const body = fake.added.find((r) => !r.state.pickable)!;
+    const handles = fake.added.find((r) => r.state.pickable)!;
+    const scaleOf = (r: Representation.Any) => Mat4.getMaxScaleOnAxis(r.state.transform);
+    expect(scaleOf(handles)).toBeCloseTo(2);
+    expect(scaleOf(body)).toBeCloseTo(1);
+    GizmoAppearance.set(fake.canvas, { scale: 0.5 });
+    expect(scaleOf(handles)).toBeCloseTo(0.5);
+    expect(scaleOf(body)).toBeCloseTo(1);
+    expect(GizmoAppearance.of(fake.canvas)).toMatchObject({ scale: 0.5, xray: false });
     c.dispose();
   });
 });

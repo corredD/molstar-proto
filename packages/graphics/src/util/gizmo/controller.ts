@@ -68,6 +68,37 @@ const TrackballDrags = {
 };
 
 /** An item a binding shows a gizmo for: its key (stable through edits), its value, its name */
+/** How the gizmos of a canvas are drawn, whichever controller draws them (an app's setting for all its handles) */
+export interface GizmoLook {
+  /** The handles' size, times their own (the bodies stay: they are what is edited, a cut's volume) */
+  readonly scale: number;
+  /** The handles drawn over what is in front of them, so they can be seen and grabbed through it */
+  readonly xray: boolean;
+}
+
+/**
+ * The gizmos' look, per canvas (`GizmoLook`): every controller on a canvas follows it, so one setting (an app's) changes
+ * all its handles, Prism's and an extension's alike
+ */
+export const GizmoAppearance = {
+  Default: { scale: 1, xray: false } as GizmoLook,
+  looks: new WeakMap<Canvas3D, BehaviorSubject<GizmoLook>>(),
+  /** The look's state on a canvas, made at its default */
+  state(canvas: Canvas3D): BehaviorSubject<GizmoLook> {
+    let s = this.looks.get(canvas);
+    if (!s) this.looks.set(canvas, (s = new BehaviorSubject(this.Default)));
+    return s;
+  },
+  of(canvas: Canvas3D): GizmoLook {
+    return this.state(canvas).value;
+  },
+  set(canvas: Canvas3D, look: Partial<GizmoLook>) {
+    const s = this.state(canvas);
+    const next = { ...s.value, ...look };
+    if (next.scale !== s.value.scale || next.xray !== s.value.xray) s.next(next);
+  },
+};
+
 export interface GizmoItem<T> {
   readonly key: string;
   readonly value: T;
@@ -171,6 +202,11 @@ export class GizmoController<T> {
         if (e.key === 'Escape' && this.#drag) this.cancel();
       }),
       canvas.didDraw.subscribe(() => this.#faceCamera()),
+      // the canvas's look: the handles resized in place (their meshes the same)
+      GizmoAppearance.state(canvas).subscribe(() => {
+        for (const g of this.#gizmos.values()) this.#setFrame(g);
+        canvas.requestDraw();
+      }),
     );
     if (binding.invalidated) {
       this.#subs.push(
@@ -335,7 +371,10 @@ export class GizmoController<T> {
   #setFrame(g: Gizmo<T>) {
     const t = this.#frameOf(g.layout);
     if (g.body) this.#set.setTransform(g.body, t);
-    this.#set.setTransform(g.handles, t);
+    // the handles at the canvas's scale, about the gizmo's own center (its frame's origin)
+    const { scale } = GizmoAppearance.of(this.#canvas);
+    const h = scale === 1 ? t : Mat4.mul(Mat4(), t, Mat4.fromUniformScaling(Mat4(), scale));
+    this.#set.setTransform(g.handles, h);
   }
 
   /** A gizmo moved and turned as a whole (its meshes the same) */

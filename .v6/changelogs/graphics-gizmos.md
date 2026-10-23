@@ -9,5 +9,8 @@
   clipping gizmos are built on it.
 - Gizmo controllers on one canvas share the trackball's drags (saved once, put back by the last); a commit that fails
   or is refused cancels its own drag; no drag starts while a commit runs; a ring turns by the point grabbed on it.
+- `GizmoAppearance`: how a canvas's gizmos are drawn, whichever controller draws them (`GizmoLook`): `scale` sizes the
+  handles about their center (the bodies stay: a cut's volume is what is edited), live, their meshes the same; `xray`
+  is declared for the handles drawn through what is in front of them (not drawn yet).
 - `Canvas3D.holdFrames(until, maxMs)`: frames wait (the last one shown) until a change made in steps is whole.
 - A clip object's drawing honours its `transform` (`clipObjectFrame`).
