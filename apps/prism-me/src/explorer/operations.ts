@@ -12,7 +12,7 @@ import { isStageLabelData } from '@molstar/stage-tools-extension/label';
 import { drawnObject } from '@molstar/stage-tools-extension/operations';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import { Structure, StructureElement, StructureProperties, StructureSelection } from '@molstar/model/model/structure';
-import { ShapeGroup } from '@molstar/model/model/shape';
+import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { EmissiveStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/emissive';
 import { OverpaintStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/overpaint';
 import { TransparencyStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/transparency';
@@ -720,12 +720,13 @@ function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
     }
     return undefined;
   }
-  if (ShapeGroup.isLoci(loci)) {
+  // a mesh's shape, picked in a group or whole (its visuals' loci are whole: `Shape.Loci`, its surface's or wireframe's)
+  if (ShapeGroup.isLoci(loci) || Shape.isLoci(loci)) {
     const mesh = meshes(plugin).find((m) => {
       const obj = plugin.state.data.cells.get(m.ref)?.obj;
       return (
         SO.Shape.Representation3D.is(obj) &&
-        obj.data.repr.getAllLoci().some((l) => ShapeGroup.isLoci(l) && l.shape === loci.shape)
+        obj.data.repr.getAllLoci().some((l) => (Shape.isLoci(l) || ShapeGroup.isLoci(l)) && l.shape === loci.shape)
       );
     });
     if (mesh) return { key: `o:${mesh.ref}`, label: mesh.label, kind: 'mesh', node: { ref: mesh.ref } };

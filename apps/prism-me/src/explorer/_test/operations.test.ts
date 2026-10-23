@@ -28,6 +28,7 @@ import {
 } from '../menu.js';
 import { OrderedSet } from '@molstar/core/data/int';
 import { Particle } from '@molstar/model/model/particles/particle-list';
+import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 
 // The `explorer` area on a headless viewer: 1CRN (crambin, with its unit cell), a RELION list and an OBJ mesh.
 
@@ -299,6 +300,18 @@ describe('explorer', () => {
     expect(whole[1].disabled).toBeUndefined();
     setGranularity('chain');
     expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);
+  });
+
+  it('maps a pick on a mesh, in a group or whole, to its row; its menu: color, move, clip, label', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const mesh = area.objectsState().value.find((o) => o.kind === 'mesh')!;
+    const shape = (v.plugin.state.data.cells.get(mesh.ref)!.obj!.data as any).repr.getAllLoci()[0].shape;
+    const row = { key: `o:${mesh.ref}`, kind: 'mesh', label: 'membrane.obj' };
+    expect(area.pickedOf(Shape.Loci(shape))).toMatchObject(row);
+    expect(area.pickedOf(ShapeGroup.Loci(shape, [{ ids: OrderedSet.ofSingleton(0), instance: 0 }]))).toMatchObject(row);
+    const ids = nodeMenuItems(v.api, area, area.pickedOf(Shape.Loci(shape)), { open: () => {} }).map((i) => i.id);
+    expect(ids).toEqual(['focus', 'move', 'hide', 'color', 'clip', 'label', 'remove']);
   });
 
   it("adds several clips to an object and one to a target (Prism's), each listed at its row, and colors a target", async () => {
