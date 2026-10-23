@@ -222,7 +222,8 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,
-  `volume.remove` of the one object). One step of the history (its labels, if any, a step after it).
+  `volume.remove` of the one object). One step of the history (its labels, if any, a step after it). The entry is given
+  to `state.remove` by its ref alone: an example's (a download, loaded by address) is no kind a `#ref` selector reaches.
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.

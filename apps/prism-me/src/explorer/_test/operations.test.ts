@@ -110,6 +110,22 @@ describe('explorer', () => {
     expect(left).toEqual([]);
   });
 
+  it('removes an object loaded from an address (its entry a download), as one dropped', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const url = `data:text/plain;base64,${Buffer.from(star).toString('base64')}`;
+    expectOk(await v.api.run('load.url', { url, format: 'relion_star_particles' }));
+    const loaded = area.objectsState().value.filter((o) => o.kind === 'list');
+    expect(loaded).toHaveLength(2);
+    const fromUrl = loaded.find((o) => {
+      const entry = v.plugin.state.data.cells.get(area.entryOf(o.ref))!;
+      return entry.transform.transformer.id.endsWith('download');
+    })!;
+    expect(fromUrl).toBeDefined();
+    await removeObject(v.api, area, 'particle list', fromUrl.ref);
+    expect(area.objectsState().value.filter((o) => o.kind === 'list')).toHaveLength(1);
+  });
+
   it('highlights and focuses a structure entity, a list and a mesh', async () => {
     const v = await viewer();
     const area = v.api.explorer!;
