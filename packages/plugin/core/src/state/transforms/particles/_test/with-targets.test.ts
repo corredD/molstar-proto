@@ -300,4 +300,27 @@ describe('ParticleListOffsets', () => {
     const all = (plugin.state.data.cells.get(other.ref)!.obj as SO.Particle.List).data;
     expect(Array.from(all.coordinates.slice(3, 6)).map((x) => Math.round(x * 1e4) / 1e4)).toEqual([0, 11, 0]);
   });
+
+  it("offsets one instance alone (by its index), after its target's offset", async () => {
+    const { plugin, list } = await setup();
+    const offset = await plugin
+      .build()
+      .to(list)
+      .apply(ParticleListOffsets, {
+        offsets: [{ targets: [], translation: Vec3.create(0, 0, 1), euler: Vec3.create(0, 0, 0) }],
+        instances: [{ index: 2, translation: Vec3.create(0, 2, 0), euler: Vec3.create(0, 0, 90) }],
+      })
+      .commit();
+    const data = (offset.obj as SO.Particle.List).data;
+    const at = (i: number) =>
+      Array.from(data.coordinates.slice(i * 3, i * 3 + 3)).map((x) => Math.round(x * 1e4) / 1e4);
+    // every particle up 1; the third besides 2 along its own y, and turned about its own z
+    expect(at(1)).toEqual([10, 0, 1]);
+    expect(at(2)).toEqual([20, 2, 1]);
+    const q = Quat.fromArray(Quat(), data.rotations!, 8);
+    const quarter = Quat.setAxisAngle(Quat(), Vec3.create(0, 0, 1), Math.PI / 2);
+    expect(Math.abs(Quat.dot(q, quarter))).toBeCloseTo(1, 5);
+    // the others not turned
+    expect(Math.abs(Quat.dot(Quat.fromArray(Quat(), data.rotations!, 4), Quat.identity()))).toBeCloseTo(1, 5);
+  });
 });

@@ -482,6 +482,13 @@ const OffsetParams = {
 };
 export type ParticleOffsetProps = PD.Values<typeof OffsetParams>;
 
+const InstanceOffsetParams = {
+  index: PD.Numeric(0, { min: 0, step: 1 }, { description: 'The particle, by its index in the list' }),
+  translation: PD.Vec3(Vec3(), {}, { description: "A shift in the particle's own frame (Å)" }),
+  euler: PD.Vec3(Vec3(), {}, { description: "A turn in the particle's own frame: about X, then Y, then Z (°)" }),
+};
+export type ParticleInstanceOffsetProps = PD.Values<typeof InstanceOffsetParams>;
+
 /**
  * Offsets of the particles of some targets in their own frames (what decorates them placed off the particle: an
  * object on a surface turned about its own axis): each shifted along its own axes and turned about them, after
@@ -501,10 +508,18 @@ const ParticleListOffsets = PluginStateTransform.BuiltIn({
         defaultValue: [],
       },
     ),
+    instances: PD.ObjectList<ParticleInstanceOffsetProps>(
+      InstanceOffsetParams,
+      (o) => `Offset of particle ${o.index}`,
+      {
+        defaultValue: [],
+        description: "Offsets of one particle each (an instance edited alone), after its targets' offsets",
+      },
+    ),
   },
 })({
   apply({ a, params }) {
-    return new SO.Particle.List(offsetParticles(a.data, params.offsets), {
+    return new SO.Particle.List(offsetParticles(a.data, params.offsets, params.instances ?? []), {
       label: a.label,
       description: a.description,
     });
@@ -512,11 +527,12 @@ const ParticleListOffsets = PluginStateTransform.BuiltIn({
   update({ a, b, newParams, oldParams }) {
     if (
       JSON.stringify(newParams.offsets) === JSON.stringify(oldParams.offsets) &&
+      JSON.stringify(newParams.instances ?? []) === JSON.stringify(oldParams.instances ?? []) &&
       b.data.sourceData === a.data.sourceData
     ) {
       return StateTransformer.UpdateResult.Unchanged;
     }
-    b.data = offsetParticles(a.data, newParams.offsets);
+    b.data = offsetParticles(a.data, newParams.offsets, newParams.instances ?? []);
     b.label = a.label;
     return StateTransformer.UpdateResult.Updated;
   },
@@ -531,33 +547,47 @@ function eulerQuat(euler: Vec3): Quat {
   return Quat.multiply(Quat(), qz, Quat.multiply(Quat(), qy, qx));
 }
 
-/** The particles with `offsets` applied, each in its own frame; the list as it is when none reaches a particle */
-function offsetParticles(list: ParticleList, offsets: ReadonlyArray<ParticleOffsetProps>): ParticleList {
-  const active = offsets.filter((o) => !Vec3.isZero(o.translation) || !Vec3.isZero(o.euler));
-  if (!active.length) return list;
-  const all = new Set<number>();
+/**
+ * The particles with `offsets` applied, each in its own frame, then `instances` (one particle's each); the list as it
+ * is when none reaches a particle
+ */
+function offsetParticles(
+  list: ParticleList,
+  offsets: ReadonlyArray<ParticleOffsetProps>,
+  instances: ReadonlyArray<ParticleInstanceOffsetProps> = [],
+): ParticleList {
+  const moves = (o: { translation: Vec3; euler: Vec3 }) => !Vec3.isZero(o.translation) || !Vec3.isZero(o.euler);
+  const active = offsets.filter(moves);
+  const one = new Map<number, { o: ParticleInstanceOffsetProps; turn: Quat }>();
+  for (const o of instances)
+    if (moves(o) && o.index >= 0 && o.index < list.count) one.set(o.index, { o, turn: eulerQuat(o.euler) });
   const byTarget = active.map((o) => ({ o, targets: new Set(o.targets), turn: eulerQuat(o.euler) }));
-  for (const t of list.targetInfo.keys()) if (byTarget.some((b) => !b.targets.size || b.targets.has(t))) all.add(t);
-  if (!all.size) return list;
+  const reached = new Set<number>();
+  for (const t of list.targetInfo.keys()) if (byTarget.some((b) => !b.targets.size || b.targets.has(t))) reached.add(t);
+  if (!reached.size && !one.size) return list;
   const n = list.count;
   const coordinates = Float32Array.from(list.coordinates);
   const rotations = new Float32Array(n * 4);
   const p = Vec3();
   const q = Quat();
   const shift = Vec3();
+  // along its own axes, then turned about them
+  const apply = (o: { translation: Vec3 }, turn: Quat) => {
+    Vec3.transformQuat(shift, o.translation, q);
+    Vec3.add(p, p, shift);
+    Quat.multiply(q, q, turn);
+  };
   for (let i = 0; i < n; ++i) {
     if (list.rotations) Quat.fromArray(q, list.rotations, i * 4);
     else Quat.setIdentity(q);
     const target = list.targets[i];
-    if (all.has(target)) {
+    const alone = one.get(i);
+    if (reached.has(target) || alone) {
       Vec3.fromArray(p, coordinates, i * 3);
-      for (const b of byTarget) {
-        if (b.targets.size && !b.targets.has(target)) continue;
-        // along its own axes, then turned about them
-        Vec3.transformQuat(shift, b.o.translation, q);
-        Vec3.add(p, p, shift);
-        Quat.multiply(q, q, b.turn);
+      if (reached.has(target)) {
+        for (const b of byTarget) if (!b.targets.size || b.targets.has(target)) apply(b.o, b.turn);
       }
+      if (alone) apply(alone.o, alone.turn);
       Vec3.toArray(p, coordinates, i * 3);
     }
     Quat.toArray(q, rotations, i * 4);
