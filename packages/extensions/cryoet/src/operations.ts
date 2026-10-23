@@ -9,6 +9,7 @@ import { type StateObjectCell, type StateObjectSelector, StateTransform } from '
 import { Color } from '@molstar/core/util/color';
 import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { StateSelection } from '@molstar/core/state';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { Volume } from '@molstar/model/model/volume';
 import {
@@ -23,6 +24,7 @@ import {
   ParticleListTargetsFromAttribute,
   ParticleListWithTargets,
 } from '@molstar/plugin/state/transforms/particles/ops';
+import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import { VolumeRepresentation3D } from '@molstar/plugin/state/transforms/volume/representation';
 import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
@@ -855,22 +857,57 @@ async function ensureTargetRepresentation(
   const data = dataOf(ctx, fresh);
   const decorated = !!data?.targetMapping?.size;
   const made: string[] = [];
-  // what draws the decorations: a target representation, made once
+  // what draws the decorations: a target representation, made once, shown when the list becomes decorated
   if (decorated && !fresh.representations.some(isTarget)) made.push(...(await addRepresentation(ctx, fresh, 'target')));
-  // what stands for the particles switches only when they become decorated (the objects) or no longer (the spheres);
-  // between, the eyes are the person's
-  if (decorated === wasDecorated) return made;
   let now = lists(ctx).find((x) => x.cell.transform.ref === l.cell.transform.ref) ?? fresh;
   // no longer decorated and nothing else to draw them (the spheres removed): the spheres again
-  if (!decorated && !now.representations.some((r) => !isTarget(r))) {
+  if (!decorated && wasDecorated && !now.representations.some((r) => !isTarget(r))) {
     made.push(...(await addRepresentation(ctx, now, 'spacefill')));
     now = lists(ctx).find((x) => x.cell.transform.ref === l.cell.transform.ref) ?? now;
   }
-  const show = now.representations.filter((r) => isTarget(r) === decorated && r.cell.state.isHidden);
-  const hide = now.representations.filter((r) => isTarget(r) !== decorated && !r.cell.state.isHidden);
-  ctx.plugin.managers.particles.hierarchy.toggleVisibility(show, 'show');
-  ctx.plugin.managers.particles.hierarchy.toggleVisibility(hide, 'hide');
-  return [...made, ...show.map((r) => r.cell.transform.ref), ...hide.map((r) => r.cell.transform.ref)];
+  // the objects shown when the list becomes decorated, hidden when no longer (they draw nothing then)
+  if (decorated !== wasDecorated) {
+    const turn = now.representations.filter((r) => isTarget(r) && !!r.cell.state.isHidden === decorated);
+    ctx.plugin.managers.particles.hierarchy.toggleVisibility(turn, decorated ? 'show' : 'hide');
+    made.push(...turn.map((r) => r.cell.transform.ref));
+  }
+  // the spheres, axes and others draw the targets not decorated: the decorated ones left out of them
+  const hidden = data?.targetMapping ? [...data.targetMapping.keys()].sort((x, y) => x - y) : [];
+  made.push(
+    ...(await leaveOut(
+      ctx,
+      now.representations.filter((r) => !isTarget(r)),
+      hidden,
+    )),
+  );
+  return made;
+}
+
+/** The representations' layers leave out these targets (drawn by the decorations' objects): their refs changed */
+async function leaveOut(
+  ctx: ApiContext,
+  reprs: readonly ParticleListRef['representations'][number][],
+  hidden: readonly number[],
+): Promise<string[]> {
+  const state = ctx.plugin.state.data;
+  const b = state.build();
+  const changed: string[] = [];
+  for (const r of reprs) {
+    const cell = state.select(
+      StateSelection.Generators.ofTransformer(ParticleRepresentation3DLayers, r.cell.transform.ref),
+    )[0];
+    const p = (cell?.transform.params ?? {}) as { layers?: unknown[]; cuts?: unknown[]; hidden?: number[] };
+    if (JSON.stringify(p.hidden ?? []) === JSON.stringify(hidden)) continue;
+    if (cell) {
+      if (!hidden.length && !p.layers?.length && !p.cuts?.length) b.delete(cell.transform.ref);
+      else b.to(cell).update((old: any) => ({ ...old, hidden: [...hidden] }));
+    } else {
+      b.to(r.cell).apply(ParticleRepresentation3DLayers, { layers: [], cuts: [], hidden: [...hidden] });
+    }
+    changed.push(r.cell.transform.ref);
+  }
+  if (changed.length) await b.commit();
+  return changed;
 }
 
 /** A representation of `type` added to a list, with its type's defaults and default themes: its ref, none if no type */

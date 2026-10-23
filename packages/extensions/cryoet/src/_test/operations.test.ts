@@ -6,6 +6,8 @@
 
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
+import { StateSelection } from '@molstar/core/state';
+import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import { CustomProperties } from '@molstar/model/model/custom-property';
@@ -73,6 +75,14 @@ async function viewer() {
   }
   return v;
 }
+
+/** The targets a representation leaves out (its layers' `hidden`: drawn by the decorations' objects) */
+const hiddenTargets = (v: PrismViewer, repr: string) => {
+  const layers = v.plugin.state.data.select(
+    StateSelection.Generators.ofTransformer(ParticleRepresentation3DLayers, repr),
+  )[0];
+  return [...((layers?.transform.params as { hidden?: number[] } | undefined)?.hidden ?? [])];
+};
 
 const decorations = async (v: PrismViewer) => {
   const r = await v.api.cryoet!.decorations({});
@@ -147,31 +157,38 @@ describe('cryoet', () => {
       (r) => (r.cell.transform.params as any).type.name,
     );
     expect(types).toContain('target');
-    // the spheres are hidden: the objects stand for the particles
-    const hidden = v.plugin.managers.particles.hierarchy.current.lists[0].representations
-      .filter((r) => r.cell.state.isHidden)
-      .map((r) => (r.cell.transform.params as any).type.name);
-    expect(hidden).toEqual(['spacefill']);
+    // the spheres stay, without the decorated targets (their objects stand for them): here, every target
+    const spheres = v.plugin.managers.particles.hierarchy.current.lists[0].representations.find(
+      (r) => (r.cell.transform.params as any).type.name === 'spacefill',
+    )!;
+    expect(spheres.cell.state.isHidden).toBeFalsy();
+    expect(hiddenTargets(v, spheres.cell.transform.ref)).toEqual([0]);
   });
 
-  it('switches what is drawn only when decorated or no longer: the eyes set between are kept, spheres come back', async () => {
+  it('draws the targets not decorated as spheres and axes: a decorated class is left out of them, not the others', async () => {
     const v = await viewer();
     const c = v.api.cryoet!;
     const reprs = () => v.plugin.managers.particles.hierarchy.current.lists[0].representations;
+    const ofType = (t: string) => reprs().find((r) => (r.cell.transform.params as any).type.name === t)!;
     const shown = () =>
       reprs()
         .filter((r) => !r.cell.state.isHidden)
         .map((r) => (r.cell.transform.params as any).type.name)
         .sort();
-    expectOk(await c.decorate({ with: 'object', object: 'ribosome.mrc' } as never));
-    expect(shown()).toEqual(['target']);
-    // the spheres shown again by hand: a swap of the object keeps them
-    const spheres = reprs().find((r) => (r.cell.transform.params as any).type.name === 'spacefill')!;
-    expectOk(await v.api.run('particles.visibility', { node: `#${spheres.cell.transform.ref}`, visible: true }));
-    expectOk(await c.decorate({ with: 'object', object: 'proteasome.mrc' } as never));
+    // three classes (targets 0, 1, 2); only the second decorated
+    expectOk(await c.classes({ attribute: 'class' } as never));
+    expectOk(await c.decorate({ with: 'object', object: 'ribosome.mrc', targets: '1' } as never));
     expect(shown()).toEqual(['spacefill', 'target']);
+    expect(hiddenTargets(v, ofType('spacefill').cell.transform.ref)).toEqual([1]);
+    // a second class: both left out
+    expectOk(await c.decorate({ with: 'object', object: 'proteasome.mrc', targets: '2' } as never));
+    expect(hiddenTargets(v, ofType('spacefill').cell.transform.ref)).toEqual([1, 2]);
+    // back to spheres: nothing left out
+    expectOk(await c.decorate({ with: 'none' } as never));
+    expect(hiddenTargets(v, ofType('spacefill').cell.transform.ref)).toEqual([]);
     // the spheres removed, then no decoration left: spheres again (nothing would draw the particles)
-    expectOk(await v.api.run('particles.remove', { node: `#${spheres.cell.transform.ref}` }));
+    expectOk(await c.decorate({ with: 'object', object: 'ribosome.mrc' } as never));
+    expectOk(await v.api.run('particles.remove', { node: `#${ofType('spacefill').cell.transform.ref}` }));
     expectOk(await c.decorate({ with: 'none' } as never));
     expect(shown()).toEqual(['spacefill']);
   });
@@ -278,12 +295,15 @@ describe('cryoet', () => {
     expect(drawn()).toEqual(['spacefill']);
     expectOk(await c.classes({ attribute: '' } as never));
     expect(drawn()).toEqual(['spacefill']);
-    // decorated by class, then back to the file: the classes' decorations go with them, the spheres come back
+    // decorated by class, then back to the file: the classes' decorations go with them, the spheres leave none out
     expectOk(await c.classes({ attribute: 'class' } as never));
     expectOk(await c.decorate({ with: 'object', object: 'ribosome.mrc' } as never));
-    expect(drawn()).toEqual(['target']);
+    expect(drawn()).toEqual(['spacefill', 'target']);
+    const spheres = list().representations.find((r) => (r.cell.transform.params as any).type.name === 'spacefill')!;
+    expect(hiddenTargets(v, spheres.cell.transform.ref)).toEqual([0, 1, 2]);
     expectOk(await c.classes({ attribute: '' } as never));
     expect(drawn()).toEqual(['spacefill']);
+    expect(hiddenTargets(v, spheres.cell.transform.ref)).toEqual([]);
   });
 
   it('goes back to the targets of the file', async () => {
@@ -365,7 +385,7 @@ describe('cryoet', () => {
     expect(fresh.representations.length).toBe(before + 3);
   });
 
-  it('shows the objects while any target is decorated, else the spheres again (a target representation reused)', async () => {
+  it('shows the objects while any target is decorated, hidden when none is (a target representation reused)', async () => {
     const v = await viewer();
     const c = v.api.cryoet!;
     const crn = new File([readFileSync(new URL('../../../../../data/examples/1crn.cif', import.meta.url))], '1crn.cif');
@@ -378,13 +398,13 @@ describe('cryoet', () => {
         .sort();
     expect(shown()).toEqual(['spacefill']);
     expectOk(await c.decorate({ with: 'object', object: '1crn' } as never));
-    expect(shown()).toEqual(['target']);
-    // back to spheres: the spheres again, the (now empty) objects hidden
+    expect(shown()).toEqual(['spacefill', 'target']);
+    // back to spheres: the (now empty) objects hidden
     expectOk(await c.decorate({ with: 'none' } as never));
     expect(shown()).toEqual(['spacefill']);
     // decorated again: the same target representation shown again, not another
     expectOk(await c.decorate({ with: 'object', object: '1crn' } as never));
-    expect(shown()).toEqual(['target']);
+    expect(shown()).toEqual(['spacefill', 'target']);
     expect(list().representations.filter((r) => (r.cell.transform.params as any).type.name === 'target')).toHaveLength(
       1,
     );

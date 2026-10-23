@@ -209,6 +209,11 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   cut goes, the others stay whole) or Atoms (`pixel` with the spheres' `clipPrimitive`: each atom whose center is cut
   goes, the objects carved); as made, neither (cut through). On its target representations, one step
   (`explorer.clipWhole`); a cut of a part (an entity) keeps to its part either way.
+- Some targets decorated (2026-10-22, Ludovic's test: a class decorated, everything else gone): the spheres, axes and
+  other representations of a list stay and draw the targets not decorated; the decorated ones are left out of them
+  (their layers' `hidden`, a library param: fully transparent), so a class drawn as objects is not drawn twice and the
+  others still show. The objects are shown when the list becomes decorated and hidden when no longer (they draw nothing
+  then); the spheres are made again if removed. This replaces hiding the spheres as a whole.
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,
