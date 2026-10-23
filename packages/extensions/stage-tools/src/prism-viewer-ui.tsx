@@ -17,6 +17,8 @@ import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/s
 export function stageToolsUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const area = ctx.api.stage;
   if (!area) return {};
+  // a particle's local handle: it runs the cryo-ET area's offsets by id, as the viewer has them
+  area.useParticleHandles(ctx.api);
   // The menu follows the canvas's right-clicks for as long as the viewer lives.
   let close: (() => void) | undefined;
   area.setMenu(async (request) => {

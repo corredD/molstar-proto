@@ -1,0 +1,345 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+import { Mat3, Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
+import type { StateObjectCell } from '@molstar/core/state';
+import { type GizmoBinding, GizmoController, type GizmoItem } from '@molstar/graphics/util/gizmo/controller';
+import { type DragFrame, type GizmoPose, poseGesture } from '@molstar/graphics/util/gizmo/gestures';
+import type { Handle } from '@molstar/graphics/util/gizmo/handle';
+import { transformHandles } from '@molstar/graphics/util/gizmo/transform';
+import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { PluginContext } from '@molstar/plugin/context';
+import {
+  offsetParticles,
+  ParticleListOffsets,
+  type ParticleInstanceOffsetProps,
+  type ParticleOffsetProps,
+} from '@molstar/plugin/state/transforms/particles/ops';
+import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
+import type { ViewerApi } from '@molstar/prism-viewer/api';
+import { BehaviorSubject, type Observable, Subject } from 'rxjs';
+import { placementWith, poseOf } from './move.js';
+
+// A particle's local handle (apps/prism-me/_spec/ui.md, step 4): Prism's gizmo library on one particle, in its own
+// frame, that edits an offset of what decorates the particles (`ParticleListOffsets`): with All on, its target's (its
+// class, its kind: every particle like it) or the list's; with All off, its own alone (`instances`). A drag shows the
+// particles offset as drawn only (the list's representations given the offset particles: the state, and its history,
+// untouched), its release is one step (`cryoet.offset` or `cryoet.instance`).
+
+/** What a particle's handle edits: one particle's own offset, or some targets' ('': every particle) */
+export type HandleEdit = { readonly kind: 'instance' } | { readonly kind: 'offset'; readonly targets: string };
+
+/** The particle the handle is on, and what it edits */
+export interface ParticleHandleTarget {
+  /** The particle list (its state ref) */
+  readonly list: string;
+  readonly index: number;
+  readonly edit: HandleEdit;
+}
+
+/** An offset as a matrix in the particle's frame: `T(translation) R(euler)` (X, then Y, then Z) */
+export function offsetMatrix(translation: ArrayLike<number>, euler: ArrayLike<number>): Mat4 {
+  const pose = {
+    position: [translation[0], translation[1], translation[2]] as const,
+    euler: [euler[0], euler[1], euler[2]] as const,
+  };
+  return placementWith({ matrix: Mat4.identity(), center: Vec3() }, pose);
+}
+
+/** A particle's frame in a list: `T(position) R(orientation)` */
+export function particleFrame(list: ParticleList, index: number): Mat4 {
+  const q = list.rotations ? Quat.fromArray(Quat(), list.rotations, index * 4) : Quat.identity();
+  const m = Mat4.fromQuat(Mat4(), q);
+  m[12] = list.coordinates[index * 3];
+  m[13] = list.coordinates[index * 3 + 1];
+  m[14] = list.coordinates[index * 3 + 2];
+  return m;
+}
+
+const key = (ids: readonly number[]) => [...ids].sort((a, b) => a - b).join(',');
+
+/** A list's offsets decorator, if any (the last of its decorators) */
+function offsetsCell(plugin: PluginContext, list: string): StateObjectCell | undefined {
+  const { tree, cells } = plugin.state.data;
+  let ref = list;
+  for (;;) {
+    const next = tree.children
+      .get(ref)
+      .toArray()
+      .map((c) => cells.get(c))
+      .find((c) => c?.transform.transformer.definition.isDecorator);
+    if (!next) return undefined;
+    if (next.transform.transformer === ParticleListOffsets) return next;
+    ref = next.transform.ref;
+  }
+}
+
+/** What a drag works on: the particle's frame now, and what the edited offset sits between */
+export interface HandleValue {
+  /** The particle's frame as drawn */
+  readonly frame: Mat4;
+  readonly size: number;
+}
+
+/** A particle's offsets, as the handle edits one of them */
+interface Stack {
+  /** The particles before the offsets (the decorator's input; the list as drawn without one) */
+  readonly input: ParticleList;
+  readonly offsets: readonly ParticleOffsetProps[];
+  readonly instances: readonly ParticleInstanceOffsetProps[];
+}
+
+function stackOf(plugin: PluginContext, list: string): Stack | undefined {
+  const cell = offsetsCell(plugin, list);
+  const parent = cell && plugin.state.data.cells.get(cell.transform.parent);
+  const drawn = plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === list);
+  const input = (parent?.obj?.data ?? drawn?.representations[0]?.cell.obj?.data.sourceData ?? drawn?.cell.obj?.data) as
+    | ParticleList
+    | undefined;
+  if (!input) return undefined;
+  const p = (cell?.transform.params ?? {}) as {
+    offsets?: ParticleOffsetProps[];
+    instances?: ParticleInstanceOffsetProps[];
+  };
+  return { input, offsets: p.offsets ?? [], instances: p.instances ?? [] };
+}
+
+/**
+ * The edited offset for a particle's frame `next`: the particle's base frame, what applies before the edited offset and
+ * after it, solved for it (`(base · before)⁻¹ · next · after⁻¹`); with the stack it is set in
+ */
+export function solveEdit(
+  stack: Stack,
+  index: number,
+  edit: HandleEdit,
+  next: Mat4,
+): { translation: [number, number, number]; euler: [number, number, number]; stack: Stack } {
+  const target = stack.input.targets[index];
+  const applies = (o: ParticleOffsetProps) => !o.targets.length || o.targets.includes(target);
+  const editKey = edit.kind === 'offset' ? edit.targets : undefined;
+  const at = editKey !== undefined ? stack.offsets.findIndex((o) => key(o.targets) === editKey) : -1;
+  const before = Mat4.identity();
+  const after = Mat4.identity();
+  stack.offsets.forEach((o, i) => {
+    if (!applies(o)) return;
+    const m = offsetMatrix(o.translation, o.euler);
+    // the edited one, or (not set yet: added last) every one before it
+    if (edit.kind === 'instance' || at < 0 || i < at) Mat4.mul(before, before, m);
+    else if (i > at) Mat4.mul(after, after, m);
+  });
+  const own = stack.instances.find((o) => o.index === index);
+  if (edit.kind === 'offset' && own) Mat4.mul(after, after, offsetMatrix(own.translation, own.euler));
+  const base = Mat4.mul(Mat4(), particleFrame(stack.input, index), before);
+  const edited = Mat4.mul(Mat4(), Mat4.invert(Mat4(), base), next);
+  Mat4.mul(edited, edited, Mat4.invert(Mat4(), after));
+  const pose = poseOf({ matrix: edited, center: Vec3() });
+  const translation = [pose.position[0], pose.position[1], pose.position[2]] as [number, number, number];
+  const euler = [pose.euler[0], pose.euler[1], pose.euler[2]] as [number, number, number];
+  // the stack with it
+  const offsets = stack.offsets.slice();
+  const instances = stack.instances.slice();
+  if (edit.kind === 'instance') {
+    const i = instances.findIndex((o) => o.index === index);
+    const o = { index, translation: Vec3.create(...translation), euler: Vec3.create(...euler) };
+    if (i >= 0) instances[i] = o;
+    else instances.push(o);
+  } else {
+    const ids = edit.targets ? edit.targets.split(',').map(Number) : [];
+    const o = { targets: ids, translation: Vec3.create(...translation), euler: Vec3.create(...euler) };
+    if (at >= 0) offsets[at] = o;
+    else offsets.push(o);
+  }
+  return { translation, euler, stack: { ...stack, offsets, instances } };
+}
+
+/** The pose of a frame, as the gizmo gestures take it */
+function framePose(m: Mat4): GizmoPose {
+  const r = Mat3.fromMat4(Mat3(), m);
+  return {
+    position: Vec3.create(m[12], m[13], m[14]),
+    rotation: Quat.normalize(Quat(), Quat.fromMat3(Quat(), r)),
+    scale: Vec3.create(1, 1, 1),
+  };
+}
+
+function poseFrame(pose: GizmoPose): Mat4 {
+  const m = Mat4.fromQuat(Mat4(), pose.rotation);
+  m[12] = pose.position[0];
+  m[13] = pose.position[1];
+  m[14] = pose.position[2];
+  return m;
+}
+
+/** The longest a commit holds the canvas's frames (ms) */
+const MaxCommitHoldMs = 3000;
+
+class ParticleHandleBinding implements GizmoBinding<HandleValue> {
+  readonly #invalidated = new Subject<string>();
+
+  constructor(
+    private readonly plugin: PluginContext,
+    private readonly api: ViewerApi,
+    private readonly target: () => ParticleHandleTarget | undefined,
+    readonly items: Observable<readonly GizmoItem<HandleValue>[]>,
+  ) {}
+
+  get invalidated(): Observable<string> {
+    return this.#invalidated;
+  }
+
+  layout(item: GizmoItem<HandleValue>) {
+    return { ...transformHandles(item.value.size), frame: item.value.frame };
+  }
+
+  sameGeometry(a: HandleValue, b: HandleValue) {
+    return a.size === b.size;
+  }
+
+  equal(a: HandleValue, b: HandleValue) {
+    return Mat4.areEqual(a.frame, b.frame, 1e-6);
+  }
+
+  apply(from: HandleValue, handle: Handle, frame: DragFrame, dx: number, dy: number): HandleValue {
+    const pose = poseGesture(framePose(from.frame), handle, frame, dx, dy);
+    return pose ? { ...from, frame: poseFrame(pose) } : from;
+  }
+
+  /** The list's representations given these particles (the drawing only) */
+  async #draw(particles: ParticleList | undefined) {
+    const t = this.target();
+    const l = t && this.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === t.list);
+    if (!l) return;
+    for (const r of l.representations) {
+      const repr = (r.cell.obj?.data as { repr?: { createOrUpdate(p: object, d?: ParticleList): any } } | undefined)
+        ?.repr;
+      const data = particles ?? (r.cell.obj?.data as { sourceData?: ParticleList } | undefined)?.sourceData;
+      if (repr && data) await this.plugin.runTask(repr.createOrUpdate({}, data));
+    }
+    this.plugin.canvas3d?.requestDraw();
+  }
+
+  async preview(_key: string, _from: HandleValue, next: HandleValue) {
+    const t = this.target();
+    const stack = t && stackOf(this.plugin, t.list);
+    if (!t || !stack) return;
+    const solved = solveEdit(stack, t.index, t.edit, next.frame);
+    await this.#draw(offsetParticles(stack.input, solved.stack.offsets, solved.stack.instances));
+  }
+
+  async commit(_key: string, _from: HandleValue, next: HandleValue) {
+    const t = this.target();
+    const stack = t && stackOf(this.plugin, t.list);
+    if (!t || !stack) return false;
+    const {
+      translation: [x, y, z],
+      euler: [ex, ey, ez],
+    } = solveEdit(stack, t.index, t.edit, next.frame);
+    const done = (async () => {
+      const r =
+        t.edit.kind === 'instance'
+          ? await this.api.run('cryoet.instance', { particles: t.list, index: t.index, x, y, z, ex, ey, ez })
+          : await this.api.run('cryoet.offset', { particles: t.list, targets: t.edit.targets, x, y, z, ex, ey, ez });
+      // drawn as the state has it now (offset, or not)
+      if (!r.ok || r.unchanged) await this.#draw(undefined);
+      return r.ok;
+    })();
+    this.plugin.canvas3d?.holdFrames(done, MaxCommitHoldMs);
+    return done;
+  }
+
+  cancel() {
+    void this.#draw(undefined);
+  }
+
+  dispose() {
+    this.#invalidated.complete();
+  }
+}
+
+/** The local handle on a particle while shown: its list, the particle, what it edits */
+export class ParticleHandles {
+  readonly #target = observableState<ParticleHandleTarget | undefined>(undefined);
+  readonly #items = new BehaviorSubject<readonly GizmoItem<HandleValue>[]>([]);
+  #controller: GizmoController<HandleValue> | undefined;
+  #binding: ParticleHandleBinding | undefined;
+  #release: (() => void) | undefined;
+  #sub: { unsubscribe(): void } | undefined;
+
+  constructor(
+    private readonly plugin: PluginContext,
+    private readonly api: ViewerApi,
+  ) {}
+
+  /** The particle the handle is on and what it edits, while shown */
+  get target(): ReadonlyState<ParticleHandleTarget | undefined> {
+    return this.#target.asReadonly;
+  }
+
+  /** The handle on a particle, editing an offset (All on: its target's, or `targets`'), or its own (All off) */
+  show(target: ParticleHandleTarget): boolean {
+    const canvas = this.plugin.canvas3d;
+    if (!canvas) return false;
+    this.#target.set(target);
+    if (!this.#controller) {
+      const binding = new ParticleHandleBinding(this.plugin, this.api, () => this.#target.value, this.#items);
+      const controller = new GizmoController(canvas, binding);
+      this.#binding = binding;
+      this.#controller = controller;
+      this.#release = this.plugin.managers.interactivity.clickOwners.claim((r) => controller.owns(r));
+      this.#sub = this.plugin.state.data.events.changed.subscribe(() => this.#publish());
+    }
+    this.#publish();
+    return true;
+  }
+
+  /** All on: the offset of the particle's kind (its target); off: the particle alone */
+  setAll(all: boolean) {
+    const t = this.#target.value;
+    if (!t) return;
+    const list = this.#particles(t.list);
+    const kind = list ? String(list.targets[t.index]) : '';
+    this.show({ ...t, edit: all ? { kind: 'offset', targets: kind } : { kind: 'instance' } });
+  }
+
+  hide() {
+    this.#target.set(undefined);
+    if (!this.#controller) return;
+    this.#sub?.unsubscribe();
+    this.#release?.();
+    this.#controller.dispose();
+    this.#binding?.dispose();
+    this.#controller = undefined;
+    this.#binding = undefined;
+  }
+
+  /** The particles of a list as drawn */
+  #particles(list: string): ParticleList | undefined {
+    const l = this.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === list);
+    return (l?.representations[0]?.cell.obj?.data.sourceData ?? l?.cell.obj?.data) as ParticleList | undefined;
+  }
+
+  /** The particle as an item: its frame as drawn, a size of its own (its radius, or that of what decorates it) */
+  #publish() {
+    const t = this.#target.value;
+    const data = t ? this.#particles(t.list) : undefined;
+    if (!t || !data || t.index >= data.count) {
+      this.#items.next([]);
+      return;
+    }
+    const r = data.radii?.[t.index] ?? 0;
+    const target = data.targetMapping?.get(data.targets[t.index]);
+    const objectRadius = target?.kind === 'structure' ? target.structure.boundary.sphere.radius : target ? 30 : 0;
+    const size = Math.max(r * 2, objectRadius * 0.8, 15);
+    this.#items.next([
+      {
+        key: `${t.list}:${t.index}`,
+        value: { frame: particleFrame(data, t.index), size },
+        label: `Particle ${t.index}`,
+      },
+    ]);
+  }
+}

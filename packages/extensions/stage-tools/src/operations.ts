@@ -27,10 +27,12 @@ import { Bond, StructureElement } from '@molstar/model/model/structure';
 import { Observable, Subject } from 'rxjs';
 import { type ApiAreaContext, type ApiContext, ApiArea, ApiResult } from '@molstar/prism-viewer/api/area';
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
+import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { labelOf as structureLabel, loadedStructures } from '@molstar/prism-viewer/api/scope';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { ObjectMoveGizmos } from './move-gizmos.js';
+import { ParticleHandles } from './particle-handle.js';
 import { labelLook, StageLabel, StageLabelParams, type StageLabelProps } from './label.js';
 
 // The `stage` area (apps/prism-me/_spec/features.md, "Stage tools"): the canvas's right-click menu, objects moved by
@@ -89,6 +91,15 @@ export class StageApi extends ApiArea {
 
   /** The handles that move a particle list, a volume or a mesh by hand (a structure's are Prism's, `api.move`) */
   readonly moveGizmos: ObjectMoveGizmos;
+
+  /** A particle's local handle (its offsets, or itself), once the stage's views gave it the viewer's API */
+  particleHandles: ParticleHandles | undefined;
+
+  /** The particle handle, made with the viewer's API (it runs the cryo-ET area's offsets by id) */
+  useParticleHandles(api: ViewerApi): ParticleHandles {
+    this.particleHandles ??= new ParticleHandles(this.ctx.plugin, api);
+    return this.particleHandles;
+  }
 
   constructor(ctx: ApiAreaContext) {
     super(ctx);

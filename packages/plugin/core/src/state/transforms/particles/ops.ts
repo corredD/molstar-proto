@@ -551,7 +551,7 @@ function eulerQuat(euler: Vec3): Quat {
  * The particles with `offsets` applied, each in its own frame, then `instances` (one particle's each); the list as it
  * is when none reaches a particle
  */
-function offsetParticles(
+export function offsetParticles(
   list: ParticleList,
   offsets: ReadonlyArray<ParticleOffsetProps>,
   instances: ReadonlyArray<ParticleInstanceOffsetProps> = [],

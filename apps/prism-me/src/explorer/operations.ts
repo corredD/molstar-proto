@@ -440,6 +440,25 @@ export class ExplorerApi extends ApiArea {
     if (canvas) GizmoAppearance.set(canvas, look);
   }
 
+  /** The particle a pick is on: its list (state ref) and its index there; none for anything else */
+  particleOf(loci: Loci): { readonly list: string; readonly index: number } | undefined {
+    if (!Particle.isLoci(loci) || OrderedSet.size(loci.indices) === 0) return undefined;
+    const lists = this.ctx.plugin.managers.particles.hierarchy.current.lists;
+    const l = lists.find(
+      (x) =>
+        x.cell.obj?.data === loci.particles ||
+        x.representations.some((r) => r.cell.obj?.data.sourceData === loci.particles),
+    );
+    return l ? { list: l.cell.transform.ref, index: OrderedSet.getAt(loci.indices, 0) } : undefined;
+  }
+
+  /** A particle's kind: its target's id as drawn (its class, its entity's target), as offsets key it */
+  particleKind(list: string, index: number): string {
+    const l = this.ctx.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === list);
+    const data = l?.representations[0]?.cell.obj?.data.sourceData ?? l?.cell.obj?.data;
+    return data && index < data.count ? String(data.targets[index]) : '';
+  }
+
   /** The canvas element (a drag in 3D is measured on it) */
   canvasElement(): HTMLElement | undefined {
     return this.ctx.plugin.canvas3dContext?.canvas ?? undefined;

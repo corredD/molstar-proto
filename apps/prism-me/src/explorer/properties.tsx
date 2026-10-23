@@ -823,6 +823,9 @@ function Position(props: { api: ViewerApi; area: ExplorerApi; kind: string; node
         <Show when={exact.asReadonly}>{() => <PoseSliders stage={api.stage!} api={api} target={node.ref} />}</Show>
       ) : null}
       <HandleLook area={props.area} />
+      {(props.kind === 'particle list' || props.kind === 'mesoscale model') && api.stage && api.cryoet ? (
+        <LocalHandle api={api} stage={api.stage} list={node.ref} />
+      ) : null}
       {/* a particle list's positions in Å: its file's unit times this (a tomogram's pixel size) */}
       {(props.kind === 'particle list' || props.kind === 'mesoscale model') && api.stage ? (
         <LogSliderField
@@ -910,6 +913,94 @@ function PoseSliders(props: { api: ViewerApi; stage: StageApi; target: string })
         );
       })}
     </div>
+  );
+}
+
+/**
+ * A particle's local handle on this list, while shown (a right-click on a particle opens it): what it edits, All on (the
+ * offset of its kind: every particle like it) or off (it alone), hidden; and that offset by numbers, X, Y, Z along the
+ * particle's own axes and Turn X, Y, Z about them, each released one step
+ */
+function LocalHandle(props: { api: ViewerApi; stage: StageApi; list: string }) {
+  const { api, stage, list } = props;
+  const handles = stage.useParticleHandles(api);
+  const here = mapState(handles.target, (t) => (t?.list === list ? t : undefined));
+  return (
+    <For
+      each={mapState(here, (t) =>
+        t ? [`${t.index}:${t.edit.kind}:${'targets' in t.edit ? t.edit.targets : ''}`] : [],
+      )}
+      by={(k) => k}
+    >
+      {() => {
+        const t = here.value!;
+        const all = t.edit.kind === 'offset';
+        const targets = t.edit.kind === 'offset' ? t.edit.targets : '';
+        const cryoet = api.cryoet!;
+        const offset = all ? cryoet.offsetState(list, targets) : cryoet.instanceState(list, t.index);
+        const set = (key: string, v: number) =>
+          void (all
+            ? api.run('cryoet.offset', { particles: list, targets, [key]: v })
+            : api.run('cryoet.instance', { particles: list, index: t.index, [key]: v }));
+        return (
+          <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+            <div style={Line}>
+              <span style={Label}>Local handle</span>
+              <span style={`flex: 1; ${Muted}`}>
+                {all ? `particle ${t.index}: all like it` : `particle ${t.index} alone`}
+              </span>
+              <Button
+                size="xs"
+                variant="ghost"
+                pressed={all}
+                title="All on: the offset of every particle like it (its kind); off: this particle alone"
+                onClick={() => handles.setAll(!all)}
+              >
+                All
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
+                title="Hide the handle"
+                icon={<Icon name="x" />}
+                onClick={() => handles.hide()}
+              />
+            </div>
+            {PoseAxes.map((axis, i) => {
+              const value = mapState(offset, (o) => (o ? (i < 3 ? o.translation[i] : o.euler[i - 3]) : 0));
+              const range = i < 3 ? 200 : 180;
+              return (
+                <div style={Line}>
+                  <span style={Label}>{axis.label}</span>
+                  <input
+                    type="range"
+                    min={String(-range)}
+                    max={String(range)}
+                    step={i < 3 ? '0.5' : '1'}
+                    style="flex: 1; min-width: 0"
+                    aria-label={`Local ${axis.label}`}
+                    value={mapState(value, String)}
+                    onChange={(e) => set(axis.key, Number((e.target as HTMLInputElement).value))}
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    style="width: 64px"
+                    aria-label={`Local ${axis.label} (${axis.unit})`}
+                    value={mapState(value, (v) => String(Math.round(v * 10) / 10))}
+                    onChange={(e) => {
+                      const v = Number((e.target as HTMLInputElement).value);
+                      if (Number.isFinite(v)) set(axis.key, v);
+                    }}
+                  />
+                  <span style={Muted}>{axis.unit}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      }}
+    </For>
   );
 }
 

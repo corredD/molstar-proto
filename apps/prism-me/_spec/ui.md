@@ -241,6 +241,13 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   placed so (a library decorator, `ParticleListOffsets`, the last of the list's: its classes and decorations known), so
   what decorates them follows; all targets' offset and a target's add up. A switch of classes clears them (they were of
   the other targets' ids).
+- Local handle (2026-10-23, step 4): a right-click on a particle offers Move this instance (handle) and Offset all like
+  it (handle): Prism's gizmo handles on that particle, in its own frame. All off edits the particle alone (the offsets'
+  `instances`, by index: one protein of a cellPACK model moved and turned); All on edits the offset of its kind (its
+  target: its class, its entity). A drag draws the list's representations with the particles offset (the state, and its
+  history, untouched: Prism's watcher would make the steps before unsafe), its release is one step (`cryoet.instance` or
+  `cryoet.offset`); the edited offset solved so the particle is where the handle took it, the other offsets around it
+  kept. Position shows, while it is on the list: Local handle, the particle, All, hide, and the offset by numbers.
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,

@@ -67,7 +67,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       const at = { x: request.x, y: request.y };
       const p = labelPicked(request.x, request.y) ?? area.pickedOf(request.loci);
       if (p) model.reveal(p);
-      const items = nodeMenuItems(ctx.api, area, p, {
+      const items: ContextMenuItem[] = nodeMenuItems(ctx.api, area, p, {
         open: (sub) => {
           close = openContextMenu(root, at, sub);
         },
@@ -75,6 +75,28 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
         editText: (text, keep) => editInline(root, at, text, keep),
         ...(request.position ? { at: [request.position[0], request.position[1], request.position[2]] as const } : {}),
       });
+      // a particle picked: its local handle, on it alone (All off) or on its kind's offset (All on)
+      const particle = area.particleOf(request.loci);
+      const handles = stage.useParticleHandles(ctx.api);
+      if (particle) {
+        const kind = area.particleKind(particle.list, particle.index);
+        const local: ContextMenuItem[] = [
+          {
+            id: 'move-instance',
+            label: 'Move this instance (handle)',
+            icon: 'move-3d',
+            run: () => void handles.show({ ...particle, edit: { kind: 'instance' } }),
+          },
+          {
+            id: 'offset-kind',
+            label: 'Offset all like it (handle)',
+            icon: 'move-3d',
+            run: () => void handles.show({ ...particle, edit: { kind: 'offset', targets: kind } }),
+          },
+        ];
+        // the part's own move is not there: these are
+        items.splice(0, items.length, ...local, ...items.filter((i) => i.id !== 'move'));
+      }
       close = openContextMenu(root, { x: request.x, y: request.y }, items);
     }, true);
   }
