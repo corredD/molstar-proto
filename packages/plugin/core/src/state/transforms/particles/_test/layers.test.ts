@@ -199,6 +199,23 @@ describe('ParticleRepresentation3DLayers on the target representation', () => {
   });
 });
 
+describe('ParticleRepresentation3DLayers hidden', () => {
+  it('leaves the hidden targets out (fully transparent), over the layers', async () => {
+    const { plugin, repr } = await setup();
+    await plugin
+      .build()
+      .to(repr)
+      .apply(ParticleRepresentation3DLayers, { layers: [layer({ targets: [2], transparency: 0.5 })], hidden: [0, 2] })
+      .commit();
+    const t = (repr.obj as SO.Particle.Representation3D).data.repr.state.transparency!;
+    // the layer's, then the hidden targets' (0: particles 0 and 2; 2: particle 3), over it
+    expect(t.layers.map((l) => [indices(l.loci), l.value])).toEqual([
+      [[3], 0.5],
+      [[0, 2, 3], 1],
+    ]);
+  });
+});
+
 describe('ParticleRepresentation3DLayers cuts', () => {
   it("lets a cut clip only its particles, by its clip object's tag: the others ignore that object", async () => {
     const { plugin, repr } = await setup();

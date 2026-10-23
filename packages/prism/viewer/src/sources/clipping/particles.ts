@@ -69,8 +69,8 @@ export function removeParticleCut(state: State, b: StateBuilder.Root, repr: Stat
   const cuts = cutsIn(cell);
   if (!cell || !cuts.some((c) => c.tag === tag)) return;
   const rest = cuts.filter((c) => c.tag !== tag);
-  const layers = (cell.transform.params as { layers?: unknown[] }).layers ?? [];
-  if (!rest.length && !layers.length) b.delete(cell.transform.ref);
+  const { layers = [], hidden = [] } = cell.transform.params as { layers?: unknown[]; hidden?: number[] };
+  if (!rest.length && !layers.length && !hidden.length) b.delete(cell.transform.ref);
   else b.to(cell.transform.ref).update((p: any) => ({ ...p, cuts: rest }));
 }
 

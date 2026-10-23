@@ -573,7 +573,8 @@ async function writeLayers(
     const layers = toLayers(patch.styles, byTarget);
     if (JSON.stringify(layers) === JSON.stringify(oldLayers)) continue;
     if (t) {
-      if (layers.length || cuts.length) b.to(t.ref).update((old: any) => ({ ...old, layers }));
+      const hidden = (t.params?.hidden ?? []) as number[];
+      if (layers.length || cuts.length || hidden.length) b.to(t.ref).update((old: any) => ({ ...old, layers }));
       else b.delete(t.ref);
       changed.push(t.ref);
     } else if (layers.length) {
