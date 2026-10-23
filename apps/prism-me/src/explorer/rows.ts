@@ -304,3 +304,46 @@ export function stableRows() {
     return out;
   };
 }
+
+// --- keys ------------------------------------------------------------------------------------------------------------
+
+/**
+ * What a key does in the tree (a tree view's keys), over its rows as shown and the picked row: Up and Down pick the row
+ * before or after (past the categories, which are not picked); Right opens a closed row, else picks its first child;
+ * Left closes an open row, else picks its parent. Undefined: nothing to do (an end, another key).
+ */
+export function treeKey(
+  rows: readonly Row[],
+  open: ReadonlySet<string>,
+  picked: string | undefined,
+  key: string,
+): { readonly pick: string } | { readonly toggle: string } | undefined {
+  const pickable = (r: Row) => r.kind !== 'category';
+  const at = picked === undefined ? -1 : rows.findIndex((r) => r.key === picked);
+  if (key === 'ArrowDown') {
+    const next = rows.slice(at + 1).find(pickable);
+    return next ? { pick: next.key } : undefined;
+  }
+  if (key === 'ArrowUp') {
+    if (at < 0) return undefined;
+    const prev = rows.slice(0, at).reverse().find(pickable);
+    return prev ? { pick: prev.key } : undefined;
+  }
+  if (at < 0) return undefined;
+  const row = rows[at];
+  const isOpen = row.hasChildren && open.has(row.key);
+  if (key === 'ArrowRight') {
+    if (row.hasChildren && !isOpen) return { toggle: row.key };
+    const child = rows[at + 1];
+    return isOpen && child && child.depth > row.depth ? { pick: child.key } : undefined;
+  }
+  if (key === 'ArrowLeft') {
+    if (isOpen) return { toggle: row.key };
+    const parent = rows
+      .slice(0, at)
+      .reverse()
+      .find((r) => r.depth < row.depth);
+    return parent && pickable(parent) ? { pick: parent.key } : undefined;
+  }
+  return undefined;
+}

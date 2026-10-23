@@ -41,28 +41,36 @@ export function Decorations(props: { area: CryoetApi; info: ReadonlyState<Decora
     } as never);
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
-      <Show when={mapState(info, (i) => i.attributes.length > 0)}>
+      {/* always shown: File alone, and why, when the file has no columns to split its targets by */}
+      <For each={mapState(info, (i) => [i.attributes.map((a) => a.key).join(',')])} by={(k) => k}>
         {() => (
-          <Choices
-            label="Targets"
-            choices={[
-              {
-                id: '',
-                label: 'File',
-                title:
-                  "The targets the file gives (one for all, or the file's own), each decorated apart; switching clears the decorations",
-              },
-              ...info.value.attributes.map((a) => ({
-                id: a.key,
-                label: a.label,
-                title: `Targets by ${a.label}: each of its values a target, decorated apart; switching clears the decorations`,
-              })),
-            ]}
-            active={mapState(info, (i) => i.classes ?? '')}
-            onPick={(attribute) => void area.classes({ attribute, particles: particles() })}
-          />
+          <>
+            <Choices
+              label="Targets"
+              choices={[
+                {
+                  id: '',
+                  label: 'File',
+                  title:
+                    "The targets the file gives (one for all, or the file's own), each decorated apart; switching clears the decorations",
+                },
+                ...info.value.attributes.map((a) => ({
+                  id: a.key,
+                  label: a.label,
+                  title: `Targets by ${a.label}: each of its values a target, decorated apart; switching clears the decorations`,
+                })),
+              ]}
+              active={mapState(info, (i) => i.classes ?? '')}
+              onPick={(attribute) => void area.classes({ attribute, particles: particles() })}
+            />
+            {info.value.attributes.length ? null : (
+              <p style={`margin: 0; ${Muted}`}>
+                This file has no columns (CC, class, score) to split its targets by: its targets are the file's.
+              </p>
+            )}
+          </>
         )}
-      </Show>
+      </For>
       {/* the options follow the objects of the scene: the rows are made again when they change */}
       <For each={mapState(info, (i) => [JSON.stringify(i.objects)])} by={(k) => k}>
         {() => (

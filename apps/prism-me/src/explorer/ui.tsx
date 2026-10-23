@@ -32,7 +32,7 @@ import { editInline } from './inline-edit.js';
 import { clipItems, clippable, colorable, colorItems, nodeMenuItems, removable, removeObject } from './menu.js';
 import type { ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
-import { ancestorKeys, Categories, type Parts, type Row, rowsOf, stableRows, toggleVisible } from './rows.js';
+import { ancestorKeys, Categories, type Parts, type Row, rowsOf, stableRows, toggleVisible, treeKey } from './rows.js';
 
 // The explorer's panel (apps/prism-me/_spec/ui.md §1–4): + Open, a filter, the tree of the scene in four categories,
 // and under it the properties of the row picked. Rows act through the API as the person (one step each): their eyes run
@@ -191,6 +191,19 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     area.highlight(lastingHighlight(row) ? row.node : undefined);
   };
   onCleanup(() => area.highlight(undefined));
+  // the tree's keys: a row picked (and into view), or opened or closed; not while typing in a field
+  const keys = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('input, textarea, select, [contenteditable]')) return;
+    const what = treeKey(rows.value, open.value, picked.value?.key, e.key);
+    if (!what) return;
+    e.preventDefault();
+    if ('toggle' in what) return toggleOpen(what.toggle);
+    const row = rows.value.find((r) => r.key === what.pick);
+    if (!row) return;
+    pick(row);
+    model.scrollTo.set(row.key);
+  };
   // a row tool (the brush, the scissors): the row picked, its menu under the button
   const tool = (row: Row, e: MouseEvent, which: 'color' | 'clip') => {
     if (!row.node) return;
@@ -240,7 +253,14 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
           />
         </div>
       </div>
-      <div style="flex: 0 1 auto; min-height: 60px; overflow: auto; padding: 0 var(--msp-space-2)">
+      {/* focused by a click on a row: Up and Down pick, Left and Right close and open (a tree view's keys) */}
+      <div
+        role="tree"
+        aria-label="The scene"
+        tabIndex={0}
+        style="flex: 0 1 auto; min-height: 60px; overflow: auto; padding: 0 var(--msp-space-2); outline: none"
+        onKeyDown={keys}
+      >
         <Show
           when={mapState(objects, (o) => o.length > 0)}
           fallback={() => (
@@ -346,6 +366,10 @@ function TreeRow(props: {
         (p, h) =>
           `display: flex; align-items: center; gap: var(--msp-space-1); min-height: 26px; padding-left: calc(${row.depth} * var(--msp-space-3)); border-radius: var(--msp-radius-sm, 4px); cursor: default; ${p ? 'background: var(--msp-color-selected, rgba(120, 160, 255, 0.18));' : h ? 'background: var(--msp-color-hover, rgba(255, 255, 255, 0.06));' : ''}`,
       )}
+      role="treeitem"
+      aria-level={row.depth + 1}
+      aria-selected={mapState(isPicked, String)}
+      aria-expanded={row.hasChildren ? mapState(isOpen, String) : undefined}
       onClick={() => !category && props.onPick(row)}
       onDblClick={() => row.node && props.area.focus(row.node)}
       onMouseEnter={() => !category && props.onHover(row)}

@@ -199,6 +199,11 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   decorator (no attribute: the list as it is), as deleting it took the representations under it; a switch clears the
   decorations (they were of the other targets' ids) and switches what is drawn as a decoration does. File, Class, Scoreâ€¦
   have a tooltip (Prism UI's Choices: the app's `data-tip`, as its buttons, not a native title).
+- Keys in the tree (2026-10-22, Ludovic): a click on a row focuses the tree (a `tree` of `treeitem`s: level, selected,
+  expanded); Up and Down pick the row before or after (past the categories), Right opens a closed row or picks its first
+  child, Left closes an open row or picks its parent (`treeKey`); the picked row comes into view. Not while typing in a
+  field. The Decoration's Targets row is always there: File alone, and why, when the file has no columns (CC, class,
+  score) to split its targets by (an NDJSON list).
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,
