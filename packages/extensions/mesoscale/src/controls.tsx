@@ -6,7 +6,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Choices } from '@molstar/prism-ui';
+import { Choices, Slider } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { GraphicsMode, MesoscaleApi } from './operations.js';
 
@@ -15,7 +15,6 @@ import type { GraphicsMode, MesoscaleApi } from './operations.js';
 // a slider once released (one step).
 
 const Line = 'display: flex; align-items: center; gap: var(--msp-space-2); min-height: 28px';
-const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
 
 /** The graphics mode (the particles' level of detail and the canvas's resolution) */
 export function GraphicsMode(props: { area: MesoscaleApi }) {
@@ -42,21 +41,17 @@ export function Motion(props: { area: MesoscaleApi; particles?: string }) {
   const slider = (label: string, max: number, key: 'wiggle' | 'tumble') => (
     <div style={Line}>
       <span style="width: 56px">{label}</span>
-      <input
-        type="range"
-        min="0"
-        max={String(max)}
-        step="0.1"
-        value={mapState(graphics, (g) => String(g?.[key] ?? 0))}
-        style="flex: 1"
-        aria-label={label}
-        onChange={(e) =>
-          void props.area.motion({ [key]: Number((e.target as HTMLInputElement).value), ...of } as never)
-        }
-      />
-      <span style={`width: 40px; text-align: right; ${Muted}`}>
-        {mapState(graphics, (g) => `${(g?.[key] ?? 0).toFixed(1)} Å`)}
-      </span>
+      <div style="flex: 1; min-width: 0">
+        <Slider
+          aria-label={label}
+          value={mapState(graphics, (g) => g?.[key] ?? 0)}
+          min={0}
+          max={max}
+          step={0.1}
+          unit="Å"
+          onCommit={(v) => void props.area.motion({ [key]: v, ...of } as never)}
+        />
+      </div>
     </div>
   );
   return (

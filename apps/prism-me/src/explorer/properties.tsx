@@ -26,6 +26,8 @@ import {
   ParamsForm,
   Select,
   Show,
+  Slider,
+  type SliderProps,
   TextInput,
 } from '@molstar/prism-ui';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
@@ -277,88 +279,33 @@ function ColorField(props: {
   );
 }
 
-/** A slider whose value is what the node shows; it acts once released. `undefined`: mixed */
-function SliderField(props: {
-  label: string;
-  value: ReadonlyState<number | undefined>;
-  min: number;
-  max: number;
-  step: number;
-  format(v: number): string;
-  onCommit(v: number): void;
-}) {
-  const shown = observableState<number | undefined>(props.value.value);
-  const sub = props.value.subscribe((v) => shown.set(v));
-  onCleanup(() => sub.unsubscribe());
-  return (
-    <div style={Line}>
-      <span style={Label}>{props.label}</span>
-      <input
-        type="range"
-        min={String(props.min)}
-        max={String(props.max)}
-        step={String(props.step)}
-        style="flex: 1; min-width: 0"
-        aria-label={props.label}
-        value={mapState(shown.asReadonly, (v) => String(v ?? props.min))}
-        onInput={(e) => shown.set(Number((e.target as HTMLInputElement).value))}
-        onChange={(e) => props.onCommit(Number((e.target as HTMLInputElement).value))}
-      />
-      <span style={`width: 44px; text-align: right; ${Muted}`}>
-        {mapState(shown.asReadonly, (v) => (v === undefined ? 'mixed' : props.format(v)))}
-      </span>
-    </div>
-  );
-}
-
 /**
- * A size over decades (a label's: an atom's to a cell's): the slider goes by powers of ten, a field takes any value;
- * it acts once released or entered
+ * A slider in a row, Prism's (ParamsForm's) with its label: its value is what the node shows (`undefined`: mixed); it
+ * acts once released or typed, `onPreview` as it goes. A size over decades (a label's: an atom's to a cell's) is
+ * `scale: 'log'`, its box taking any value (`clamp: false`)
  */
-function LogSliderField(props: {
-  label: string;
-  value: ReadonlyState<number>;
-  min: number;
-  max: number;
-  unit: string;
-  onCommit(v: number): void;
-}) {
-  const shown = observableState(props.value.value);
-  const sub = props.value.subscribe((v) => shown.set(v));
-  onCleanup(() => sub.unsubscribe());
-  const round = (v: number) => Number(v.toPrecision(v < 10 ? 2 : 3));
+function SliderField(props: SliderProps & { label: string }) {
+  const { label, ...slider } = props;
   return (
     <div style={Line}>
-      <span style={Label}>{props.label}</span>
-      <input
-        type="range"
-        min={String(Math.log10(props.min))}
-        max={String(Math.log10(props.max))}
-        step="0.01"
-        style="flex: 1; min-width: 0"
-        aria-label={props.label}
-        value={mapState(shown.asReadonly, (v) => String(Math.log10(Math.max(props.min, v))))}
-        onInput={(e) => shown.set(round(10 ** Number((e.target as HTMLInputElement).value)))}
-        onChange={(e) => props.onCommit(round(10 ** Number((e.target as HTMLInputElement).value)))}
-      />
-      <input
-        type="number"
-        min={String(props.min)}
-        step="any"
-        style="width: 64px"
-        aria-label={`${props.label} (${props.unit})`}
-        value={mapState(shown.asReadonly, (v) => String(round(v)))}
-        onChange={(e) => {
-          const v = Number((e.target as HTMLInputElement).value);
-          if (v > 0) props.onCommit(v);
-        }}
-      />
-      <span style={Muted}>{props.unit}</span>
+      <span style={Label}>{label}</span>
+      <div style="flex: 1; min-width: 0">
+        <Slider aria-label={label} {...slider} />
+      </div>
     </div>
   );
 }
 
-const percent = (v: number) => `${Math.round(v * 100)}%`;
+/** A fraction shown as a percent: the box reads and takes 50 for 0.5 */
+const Percent = {
+  format: (v: number) => String(Math.round(v * 100)),
+  // "50", "50%", "0,5" (a comma as the decimal point)
+  parse: (text: string) => Number.parseFloat(text.replace(',', '.')) / 100,
+  unit: '%',
+} as const;
+
+/** A place or a turn: to a tenth */
+const tenths = (v: number) => String(Math.round(v * 10) / 10);
 
 // --- structures ------------------------------------------------------------------------------------------------------
 
@@ -402,7 +349,7 @@ function StructureLook(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef
         min={0}
         max={1}
         step={0.01}
-        format={percent}
+        {...Percent}
         onCommit={(v) => void api.run('representation.transparency', { ...at(), alpha: 1 - v })}
       />
       <SliderField
@@ -411,7 +358,7 @@ function StructureLook(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef
         min={0}
         max={1}
         step={0.01}
-        format={percent}
+        {...Percent}
         onCommit={(strength) => void api.run('representation.emissive', { ...at(), strength })}
       />
       {props.whole ? (
@@ -479,7 +426,7 @@ function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlySta
         min={0}
         max={1}
         step={0.01}
-        format={percent}
+        {...Percent}
         onCommit={(v) => style({ transparency: 1 - v })}
       />
       <SliderField
@@ -488,7 +435,7 @@ function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlySta
         min={0}
         max={1}
         step={0.01}
-        format={percent}
+        {...Percent}
         onCommit={(emissive) => style({ emissive })}
       />
       {!ids || ids.length > 1 ? (
@@ -705,11 +652,13 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
           />
         </div>
       </div>
-      <LogSliderField
+      <SliderField
         label="Size"
         value={mapState(label, (l) => l?.size ?? 4)}
         min={0.5}
         max={5000}
+        scale="log"
+        clamp={false}
         unit="Å"
         onCommit={(size) => edit({ size })}
       />
@@ -740,7 +689,7 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
               min={0}
               max={1}
               step={0.01}
-              format={percent}
+              {...Percent}
               onCommit={(backgroundOpacity) => edit({ backgroundOpacity })}
             />
           </>
@@ -765,7 +714,7 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
             min={0.1}
             max={10}
             step={0.1}
-            format={(v) => `${Math.round(v * 10) / 10}×`}
+            unit="×"
             onCommit={(tetherLength) => edit({ tetherLength })}
           />
         )}
@@ -828,11 +777,13 @@ function Position(props: { api: ViewerApi; area: ExplorerApi; kind: string; node
       ) : null}
       {/* a particle list's positions in Å: its file's unit times this (a tomogram's pixel size) */}
       {(props.kind === 'particle list' || props.kind === 'mesoscale model') && api.stage ? (
-        <LogSliderField
+        <SliderField
           label="Scale"
           value={api.stage.scaleState(node.ref)}
           min={0.01}
           max={100}
+          scale="log"
+          clamp={false}
           unit="Å/unit"
           onCommit={(scale) => void api.run('stage.scale', { target: node.ref, scale })}
         />
@@ -881,35 +832,21 @@ function PoseSliders(props: { api: ViewerApi; stage: StageApi; target: string })
           stage.previewMove(target, Mat4.identity());
         };
         return (
-          <div style={Line}>
-            <span style={Label}>{axis.label}</span>
-            <input
-              type="range"
-              min={String(min)}
-              max={String(max)}
-              step={i < 3 ? 'any' : '1'}
-              style="flex: 1; min-width: 0"
-              aria-label={axis.label}
-              value={mapState(value, (v) => String(v))}
-              onInput={(e) => {
-                const p = pose.value;
-                if (p) stage.previewPose(target, withValue(p, i, Number((e.target as HTMLInputElement).value)));
-              }}
-              onChange={(e) => void commit(Number((e.target as HTMLInputElement).value))}
-            />
-            <input
-              type="number"
-              step="any"
-              style="width: 64px"
-              aria-label={`${axis.label} (${axis.unit})`}
-              value={mapState(value, (v) => String(Math.round(v * 10) / 10))}
-              onChange={(e) => {
-                const v = Number((e.target as HTMLInputElement).value);
-                if (Number.isFinite(v)) void commit(v);
-              }}
-            />
-            <span style={Muted}>{axis.unit}</span>
-          </div>
+          <SliderField
+            label={axis.label}
+            value={value}
+            min={min}
+            max={max}
+            step={i < 3 ? 'any' : 1}
+            clamp={false}
+            format={tenths}
+            unit={axis.unit}
+            onPreview={(v) => {
+              const p = pose.value;
+              if (p) stage.previewPose(target, withValue(p, i, v));
+            }}
+            onCommit={(v) => void commit(v)}
+          />
         );
       })}
     </div>
@@ -970,31 +907,18 @@ function LocalHandle(props: { api: ViewerApi; stage: StageApi; list: string }) {
               const value = mapState(offset, (o) => (o ? (i < 3 ? o.translation[i] : o.euler[i - 3]) : 0));
               const range = i < 3 ? 200 : 180;
               return (
-                <div style={Line}>
-                  <span style={Label}>{axis.label}</span>
-                  <input
-                    type="range"
-                    min={String(-range)}
-                    max={String(range)}
-                    step={i < 3 ? '0.5' : '1'}
-                    style="flex: 1; min-width: 0"
-                    aria-label={`Local ${axis.label}`}
-                    value={mapState(value, String)}
-                    onChange={(e) => set(axis.key, Number((e.target as HTMLInputElement).value))}
-                  />
-                  <input
-                    type="number"
-                    step="any"
-                    style="width: 64px"
-                    aria-label={`Local ${axis.label} (${axis.unit})`}
-                    value={mapState(value, (v) => String(Math.round(v * 10) / 10))}
-                    onChange={(e) => {
-                      const v = Number((e.target as HTMLInputElement).value);
-                      if (Number.isFinite(v)) set(axis.key, v);
-                    }}
-                  />
-                  <span style={Muted}>{axis.unit}</span>
-                </div>
+                <SliderField
+                  label={axis.label}
+                  aria-label={`Local ${axis.label}`}
+                  value={value}
+                  min={-range}
+                  max={range}
+                  step={i < 3 ? 0.5 : 1}
+                  clamp={false}
+                  format={tenths}
+                  unit={axis.unit}
+                  onCommit={(v) => set(axis.key, v)}
+                />
               );
             })}
           </div>
@@ -1014,7 +938,7 @@ function HandleLook(props: { area: ExplorerApi }) {
       min={0.25}
       max={4}
       step={0.05}
-      format={(v) => `${Math.round(v * 100)}%`}
+      {...Percent}
       onCommit={(scale) => props.area.setHandleLook({ scale })}
     />
   );

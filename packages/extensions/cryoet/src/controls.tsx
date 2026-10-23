@@ -6,7 +6,18 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Button, Choices, For, Icon, onCleanup, Select, type SelectOption, Show, TextInput } from '@molstar/prism-ui';
+import {
+  Button,
+  Choices,
+  For,
+  Icon,
+  onCleanup,
+  Select,
+  type SelectOption,
+  Show,
+  Slider,
+  TextInput,
+} from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
@@ -20,9 +31,6 @@ import type { CryoetApi, DecorationsInfo, MeshInfo, SliceAxis, TargetDecoration 
 
 const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
 const Line = 'display: flex; align-items: center; gap: var(--msp-space-2); min-height: 28px';
-
-/** A scale as shown: 3 significant digits */
-const round = (v: number) => Number(v.toPrecision(3));
 
 /** Spheres: no decoration (the select's value) */
 const Spheres = '';
@@ -174,28 +182,19 @@ function OffsetLine(props: {
               return (
                 <div style={Line}>
                   <span style="width: 56px">{a.label}</span>
-                  <input
-                    type="range"
-                    min={String(-range)}
-                    max={String(range)}
-                    step={a.unit === 'Å' ? '0.5' : '1'}
-                    style="flex: 1; min-width: 0"
-                    aria-label={`${props.label} offset ${a.label}`}
-                    value={mapState(value, String)}
-                    onChange={(e) => set(a.key, Number((e.target as HTMLInputElement).value))}
-                  />
-                  <input
-                    type="number"
-                    step="any"
-                    style="width: 56px"
-                    aria-label={`${props.label} offset ${a.label} (${a.unit})`}
-                    value={mapState(value, (v) => String(Math.round(v * 10) / 10))}
-                    onChange={(e) => {
-                      const v = Number((e.target as HTMLInputElement).value);
-                      if (Number.isFinite(v)) set(a.key, v);
-                    }}
-                  />
-                  <span style={Muted}>{a.unit}</span>
+                  <div style="flex: 1; min-width: 0">
+                    <Slider
+                      aria-label={`${props.label} offset ${a.label}`}
+                      value={value}
+                      min={-range}
+                      max={range}
+                      step={a.unit === 'Å' ? 0.5 : 1}
+                      clamp={false}
+                      format={(v) => String(Math.round(v * 10) / 10)}
+                      unit={a.unit}
+                      onCommit={(v) => set(a.key, v)}
+                    />
+                  </div>
                 </div>
               );
             })}
@@ -276,30 +275,36 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
           <>
             <div style={Line}>
               <span style="width: 64px">Slice</span>
-              <input
-                type="range"
-                min="0"
-                max={mapState(count, (n) => String(Math.max(0, n - 1)))}
-                value={mapState(index, (i) => String(i ?? 0))}
-                style="flex: 1"
-                aria-label="Slice"
-                onInput={(e) => run({ index: Number((e.target as HTMLInputElement).value) })}
-              />
-              <span style={Muted}>{derive([index, count], (i, n) => `${(i ?? 0) + 1} / ${n}`)}</span>
+              <div style="flex: 1; min-width: 0">
+                {/* the box counts from 1, of the count */}
+                <Slider
+                  aria-label="Slice"
+                  value={mapState(index, (i) => i ?? 0)}
+                  min={0}
+                  max={mapState(count, (n) => Math.max(0, n - 1))}
+                  step={1}
+                  format={(i) => String(i + 1)}
+                  parse={(text) => Math.round(Number.parseFloat(text)) - 1}
+                  unit={mapState(count, (n) => `/ ${n}`)}
+                  onPreview={(i) => run({ index: i })}
+                  onCommit={(i) => run({ index: i })}
+                />
+              </div>
             </div>
             <div style={Line}>
               <span style="width: 64px">Contrast</span>
-              <input
-                type="range"
-                min="0.5"
-                max="10"
-                step="0.1"
-                value={mapState(contrast, String)}
-                style="flex: 1"
-                aria-label="Contrast"
-                onInput={(e) => run({ contrast: Number((e.target as HTMLInputElement).value) })}
-              />
-              <span style={Muted}>{mapState(contrast, (c) => `±${c}σ`)}</span>
+              <div style="flex: 1; min-width: 0">
+                <Slider
+                  aria-label="Contrast"
+                  value={contrast}
+                  min={0.5}
+                  max={10}
+                  step={0.1}
+                  unit="±σ"
+                  onPreview={(c) => run({ contrast: c })}
+                  onCommit={(c) => run({ contrast: c })}
+                />
+              </div>
             </div>
           </>
         )}
@@ -360,42 +365,32 @@ export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: Rea
       />
       <div style={Line}>
         <span style="width: 64px">Opacity</span>
-        <input
-          type="range"
-          min="0.05"
-          max="1"
-          step="0.01"
-          style="flex: 1"
-          aria-label="Opacity"
-          value={mapState(mesh, (m) => String(m?.opacity ?? 1))}
-          onInput={(e) => set({ opacity: Number((e.target as HTMLInputElement).value) }, 80)}
-        />
+        <div style="flex: 1; min-width: 0">
+          <Slider
+            aria-label="Opacity"
+            value={mapState(mesh, (m) => m?.opacity ?? 1)}
+            min={0.05}
+            max={1}
+            step={0.01}
+            onPreview={(opacity) => set({ opacity }, 80)}
+            onCommit={(opacity) => set({ opacity })}
+          />
+        </div>
       </div>
       {/* a mesh in pixels (a segmentation of a tomogram): its scale is the pixel size; the slider goes by powers */}
       <div style={Line}>
         <span style="width: 64px">Scale</span>
-        <input
-          type="range"
-          min="-2"
-          max="2"
-          step="0.01"
-          style="flex: 1"
-          aria-label="Scale"
-          value={mapState(mesh, (m) => String(Math.log10(m?.scale ?? 1)))}
-          onChange={(e) => set({ scale: round(10 ** Number((e.target as HTMLInputElement).value)) })}
-        />
-        <input
-          type="number"
-          min="0.01"
-          step="0.01"
-          style="width: 64px"
-          aria-label="Scale factor"
-          value={mapState(mesh, (m) => String(round(m?.scale ?? 1)))}
-          onChange={(e) => {
-            const v = Number((e.target as HTMLInputElement).value);
-            if (v > 0) set({ scale: v });
-          }}
-        />
+        <div style="flex: 1; min-width: 0">
+          <Slider
+            aria-label="Scale"
+            value={mapState(mesh, (m) => m?.scale ?? 1)}
+            min={0.01}
+            max={100}
+            scale="log"
+            clamp={false}
+            onCommit={(scale) => set({ scale })}
+          />
+        </div>
       </div>
     </div>
   );
