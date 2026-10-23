@@ -223,6 +223,13 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
   handle on the canvas (Prism's clip and move handles, the stage's), from the gizmo library's `GizmoAppearance` (a
   library change): the handles sized about their center, live; a cut's body as it is. X-ray (handles seen through what
   is in front): to come, a renderer change.
+- Particle scale (2026-10-23, Ludovic: "important for tomograms and Simularium"): a list's or model's Position has Scale
+  (Å per unit of its file, 0.01–100 on the slider, any value typed): its positions scaled about the file's origin,
+  before its move and turn (the list transform's `scale`, a library param), so particles in a tomogram's pixels line up
+  with it; the objects drawn at them keep their size. One step (`stage.scale`, the agent's `scale_particles`); a move
+  keeps it, and the move handles sit on the list as scaled. Next (agreed): the handle's options (six sliders, its place
+  and turn), a decoration's offset per list or target, its local handle (All on: the offset of the group; off: the
+  picked instance itself).
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,

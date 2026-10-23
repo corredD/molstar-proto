@@ -226,4 +226,36 @@ describe('stage', () => {
     expectOk(await s.editLabel({ label, background: false } as never));
     expect((v.plugin.state.data.cells.get(repr)!.transform.params as any).background).toBe(false);
   });
+
+  it("scales a particle list's positions (Å per unit), kept by a move, one step each", async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const star = 'data_particles\n\nloop_\n_rlnCoordinateX\n_rlnCoordinateY\n_rlnCoordinateZ\n10 0 0\n20 0 0\n';
+    expectOk(await v.api.load.files({ files: [new File([star], 'p.star')] }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    const first = () =>
+      Array.from(
+        v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.obj!.data.sourceData.coordinates.slice(
+          0,
+          3,
+        ),
+      ).map((x) => Math.round(x * 1e3) / 1e3);
+    expectOk(await s.scale({ target: list, scale: 4 } as never));
+    expect(first()).toEqual([40, 0, 0]);
+    expect(s.scaleOf(list)).toBe(4);
+    expect(await s.scale({ target: list, scale: 4 } as never)).toMatchObject({ unchanged: true });
+    // a move after it keeps it
+    const up = Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 100)));
+    expectOk(await s.move({ target: list, matrix: up } as never));
+    expect(first()).toEqual([40, 0, 100]);
+    expect(s.scaleOf(list)).toBe(4);
+    // the move undone, then the scale
+    expectOk(await v.api.run('history.undo', {}));
+    expect(first()).toEqual([40, 0, 0]);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(first()).toEqual([10, 0, 0]);
+    // not a list: refused
+    const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    expect(await s.scale({ target: crn, scale: 2 } as never)).toMatchObject({ ok: false });
+  });
 });

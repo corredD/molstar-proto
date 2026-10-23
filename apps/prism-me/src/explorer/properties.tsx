@@ -340,7 +340,7 @@ function LogSliderField(props: {
       />
       <input
         type="number"
-        min="0.1"
+        min={String(props.min)}
         step="any"
         style="width: 64px"
         aria-label={`${props.label} (${props.unit})`}
@@ -805,6 +805,17 @@ function Position(props: { api: ViewerApi; area: ExplorerApi; kind: string; node
         </Button>
       </div>
       <HandleLook area={props.area} />
+      {/* a particle list's positions in Å: its file's unit times this (a tomogram's pixel size) */}
+      {(props.kind === 'particle list' || props.kind === 'mesoscale model') && api.stage ? (
+        <LogSliderField
+          label="Scale"
+          value={api.stage.scaleState(node.ref)}
+          min={0.01}
+          max={100}
+          unit="Å/unit"
+          onCommit={(scale) => void api.run('stage.scale', { target: node.ref, scale })}
+        />
+      ) : null}
     </div>
   );
 }

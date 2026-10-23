@@ -151,10 +151,13 @@ export class StageApi extends ApiArea {
       if (!data) return undefined;
       const old = decoratorUnder(ctx, target, ParticleListTransform);
       const sphere = Particle.getBoundary(data).sphere;
+      // as drawn: its positions scaled about the origin, then moved (a move between two placements: the scale cancels)
+      const scale = this.scaleOf(target);
+      const moved = old ? Mat4.clone((old.transform.params as { transform: Mat4 }).transform) : Mat4.identity();
       return {
-        matrix: old ? Mat4.clone((old.transform.params as { transform: Mat4 }).transform) : Mat4.identity(),
+        matrix: scale === 1 ? moved : Mat4.mul(Mat4(), moved, Mat4.fromUniformScaling(Mat4(), scale)),
         center: Vec3.clone(sphere.center),
-        radius: Math.max(sphere.radius, 1),
+        radius: Math.max(sphere.radius * scale, 1),
       };
     }
     if (t?.kind === 'volume') {
@@ -205,6 +208,48 @@ export class StageApi extends ApiArea {
     plugin.canvas3d?.requestDraw();
   }
 
+  /** A particle list's scale (Å per unit of its file), 1 when not scaled */
+  scaleOf(target: string): number {
+    return listScale({ plugin: this.ctx.plugin }, target);
+  }
+
+  /** A particle list's scale, following the state tree while watched: a read for views */
+  scaleState(target: string): ReadonlyState<number> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => listScale({ plugin }, target),
+      () => plugin.state.data.events.changed,
+    );
+  }
+
+  readonly scale = this.operation({
+    id: 'stage.scale',
+    title: "Scale a particle list's positions",
+    params: {
+      target: PD.Text('', { description: 'A particle list by state ref' }),
+      scale: PD.Numeric(
+        1,
+        { min: 1e-6, max: 1e6, step: 0.01 },
+        { description: "Å per unit of the file (a tomogram's pixel size): the positions scaled about the origin" },
+      ),
+    },
+    async run({ target, scale }, ctx) {
+      const plugin = ctx.plugin;
+      const l = plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === target);
+      if (!l) return ApiResult.fail('not-found', `'${target}' is not a particle list.`, 'Only particles are scaled.');
+      if (!(scale > 0)) return ApiResult.fail('invalid', 'A scale is more than 0.');
+      if (listScale(ctx, target) === scale) return ApiResult.already(`Its scale is ${scale} already.`);
+      const old = decoratorUnder(ctx, target, ParticleListTransform);
+      const b = plugin.state.data.build();
+      if (old) b.to(old).update((p: any) => ({ ...p, scale }));
+      else b.to(l.cell).insert(ParticleListTransform, { transform: Mat4.identity(), scale });
+      await b.commit();
+      return ApiResult.ok(`Scaled ${rootLabel(ctx, target) ?? l.cell.obj?.label ?? target} to ${scale} Å per unit.`, {
+        nodes: [target],
+      });
+    },
+  });
+
   readonly move = this.operation({
     id: 'stage.move',
     title: 'Move or turn an object',
@@ -233,7 +278,8 @@ export class StageApi extends ApiArea {
         const old = decoratorUnder(ctx, l.cell.transform.ref, ParticleListTransform);
         if (old) {
           const prev = (old.transform.params as { transform: Mat4 }).transform;
-          b.to(old).update({ transform: Mat4.mul(Mat4(), m, prev) });
+          // its scale (and any other param) kept
+          b.to(old).update((p: any) => ({ ...p, transform: Mat4.mul(Mat4(), m, prev) }));
         } else {
           b.to(l.cell).insert(ParticleListTransform, { transform: m });
         }
@@ -554,6 +600,12 @@ export interface ObjectPlacement {
   /** Its center where it was loaded */
   readonly center: Vec3;
   readonly radius: number;
+}
+
+/** A particle list's scale (its transform's: Å per unit of its file), 1 when not scaled */
+function listScale(ctx: Pick<ApiContext, 'plugin'>, target: string): number {
+  const old = decoratorUnder(ctx, target, ParticleListTransform);
+  return (old?.transform.params as { scale?: number } | undefined)?.scale ?? 1;
 }
 
 /** The decorator of a transformer right under a cell (a particle list's or a volume's transform), if any */

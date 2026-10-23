@@ -27,12 +27,18 @@ export const StageSkill: ViewerSkill = {
   guidance: [
     'Skill stage: add_label puts plain text in front of an object (target: its state ref), change_label edits its',
     'text, size, color, plate or tether, moves, hides or removes it. move_object moves or turns a structure, particle',
-    "list, volume or mesh by a matrix, after where it is. Cuts are the clipping skill's.",
+    'list, volume or mesh by a matrix, after where it is. scale_particles sets the Å per unit of a particle list (its',
+    "positions in a tomogram's pixels: the pixel size). Cuts are the clipping skill's.",
   ].join('\n'),
   tools: [
     { id: 'add_label', operation: 'stage.label', description: 'Adds a plain-text label in front of an object.' },
     { id: 'change_label', operation: 'stage.editLabel', description: 'Changes, hides or removes a label.' },
     { id: 'move_object', operation: 'stage.move', description: 'Moves or turns an object by a matrix.' },
+    {
+      id: 'scale_particles',
+      operation: 'stage.scale',
+      description: "Scales a particle list's positions: Å per unit of its file (a tomogram's pixel size).",
+    },
   ],
 };
 
