@@ -166,6 +166,7 @@ const ParticleTransformers = [
   'particle-list-with-targets',
   'particle-list-targets-from-attribute',
   'particle-list-transform',
+  'particle-list-offsets',
   'particles-representation-3d',
   'particle-list-unitcell-3d',
 ].map((name) => `ms-plugin.${name}`);

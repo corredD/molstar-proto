@@ -23,6 +23,7 @@ import { ParticleTrajectoryFromSimularium } from '@molstar/plugin/state/formats/
 import {
   ParticleListFromTrajectory,
   ParticleListTargetsFromAttribute,
+  ParticleListOffsets,
   ParticleListTransform,
   ParticleListWithTargets,
 } from '@molstar/plugin/state/transforms/particles/ops';
@@ -80,6 +81,7 @@ export const ParticleActions: PluginRegistryEntry = {
     ParticleListWithTargets,
     ParticleListTargetsFromAttribute,
     ParticleListTransform,
+    ParticleListOffsets,
     ParticleListUnitcell3D,
     ParticlesRepresentation3D,
   ],

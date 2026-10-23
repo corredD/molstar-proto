@@ -17,7 +17,12 @@ import {
 } from '../../../formats/particles/ndjson.js';
 import { RelionStarParticles, RelionStarParticlesProvider } from '../../../formats/particles/star.js';
 import { particleTargetObjectCells } from '../../../helpers/particle-targets.js';
-import { ParticleListTargetsFromAttribute, ParticleListTransform, ParticleListWithTargets } from '../ops.js';
+import {
+  ParticleListOffsets,
+  ParticleListTargetsFromAttribute,
+  ParticleListTransform,
+  ParticleListWithTargets,
+} from '../ops.js';
 import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 
 /** An n³ map of one value as MRC bytes */
@@ -254,5 +259,45 @@ describe('ParticleListTransform', () => {
     await plugin.build().to(scaled).update({ transform: Mat4.identity(), scale: 1 }).commit();
     const same = plugin.state.data.cells.get(scaled.ref)!.obj as SO.Particle.List;
     expect(same.data.coordinates).toBe((list.obj as SO.Particle.List).data.coordinates);
+  });
+});
+
+describe('ParticleListOffsets', () => {
+  it("shifts and turns a target's particles in their own frame; others, and no offset, leave them as they are", async () => {
+    const { plugin, list } = await setup();
+    // every particle turned a quarter about z (its frame: x along the world's y)
+    const turn = Mat4.fromRotation(Mat4(), Math.PI / 2, Vec3.create(0, 0, 1));
+    const turned = await plugin.build().to(list).insert(ParticleListTransform, { transform: turn }).commit();
+    const before = (turned.obj as SO.Particle.List).data;
+    // another target's offset: nothing moves
+    const other = await plugin
+      .build()
+      .to(turned)
+      .apply(ParticleListOffsets, {
+        offsets: [{ targets: [7], translation: Vec3.create(1, 0, 0), euler: Vec3.create(0, 0, 0) }],
+      })
+      .commit();
+    expect((other.obj as SO.Particle.List).data.coordinates).toBe(before.coordinates);
+    // target 0's (every particle's here): 1 Å along its own x, a quarter more about its own z
+    await plugin
+      .build()
+      .to(other)
+      .update({ offsets: [{ targets: [0], translation: Vec3.create(1, 0, 0), euler: Vec3.create(0, 0, 90) }] })
+      .commit();
+    const data = (plugin.state.data.cells.get(other.ref)!.obj as SO.Particle.List).data;
+    // the second particle, (10, 0, 0) turned to (0, 10, 0): its x is the world's y, so up to (0, 11, 0)
+    expect(Array.from(data.coordinates.slice(3, 6)).map((x) => Math.round(x * 1e4) / 1e4)).toEqual([0, 11, 0]);
+    // its orientation: half a turn about z now
+    const q = Quat.fromArray(Quat(), data.rotations!, 4);
+    const half = Quat.setAxisAngle(Quat(), Vec3.create(0, 0, 1), Math.PI);
+    expect(Math.abs(Quat.dot(q, half))).toBeCloseTo(1, 5);
+    // an offset for every target (no targets): the same here
+    await plugin
+      .build()
+      .to(other)
+      .update({ offsets: [{ targets: [], translation: Vec3.create(1, 0, 0), euler: Vec3.create(0, 0, 90) }] })
+      .commit();
+    const all = (plugin.state.data.cells.get(other.ref)!.obj as SO.Particle.List).data;
+    expect(Array.from(all.coordinates.slice(3, 6)).map((x) => Math.round(x * 1e4) / 1e4)).toEqual([0, 11, 0]);
   });
 });

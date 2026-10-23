@@ -472,6 +472,99 @@ const ParticleListTransform = PluginStateTransform.BuiltIn({
   },
 });
 
+export { ParticleListOffsets };
+type ParticleListOffsets = typeof ParticleListOffsets;
+
+const OffsetParams = {
+  targets: PD.Value<number[]>([], { description: 'The targets offset; none: every particle' }),
+  translation: PD.Vec3(Vec3(), {}, { description: "A shift in each particle's own frame (Å)" }),
+  euler: PD.Vec3(Vec3(), {}, { description: "A turn in each particle's own frame: about X, then Y, then Z (°)" }),
+};
+export type ParticleOffsetProps = PD.Values<typeof OffsetParams>;
+
+/**
+ * Offsets of the particles of some targets in their own frames (what decorates them placed off the particle: an
+ * object on a surface turned about its own axis): each shifted along its own axes and turned about them, after
+ * everything else (the end of the list's decorators, its classes' targets known). Offsets apply in their order.
+ */
+const ParticleListOffsets = PluginStateTransform.BuiltIn({
+  name: 'particle-list-offsets',
+  display: { name: 'Offsets', description: 'Shift and turn the particles of some targets in their own frames.' },
+  isDecorator: true,
+  from: SO.Particle.List,
+  to: SO.Particle.List,
+  params: {
+    offsets: PD.ObjectList<ParticleOffsetProps>(
+      OffsetParams,
+      (o) => `Offset of ${o.targets.length || 'every'} target(s)`,
+      {
+        defaultValue: [],
+      },
+    ),
+  },
+})({
+  apply({ a, params }) {
+    return new SO.Particle.List(offsetParticles(a.data, params.offsets), {
+      label: a.label,
+      description: a.description,
+    });
+  },
+  update({ a, b, newParams, oldParams }) {
+    if (
+      JSON.stringify(newParams.offsets) === JSON.stringify(oldParams.offsets) &&
+      b.data.sourceData === a.data.sourceData
+    ) {
+      return StateTransformer.UpdateResult.Unchanged;
+    }
+    b.data = offsetParticles(a.data, newParams.offsets);
+    b.label = a.label;
+    return StateTransformer.UpdateResult.Updated;
+  },
+});
+
+/** A local turn as a quaternion: about X, then Y, then Z (degrees) */
+function eulerQuat(euler: Vec3): Quat {
+  const d = Math.PI / 180;
+  const qx = Quat.setAxisAngle(Quat(), Vec3.create(1, 0, 0), euler[0] * d);
+  const qy = Quat.setAxisAngle(Quat(), Vec3.create(0, 1, 0), euler[1] * d);
+  const qz = Quat.setAxisAngle(Quat(), Vec3.create(0, 0, 1), euler[2] * d);
+  return Quat.multiply(Quat(), qz, Quat.multiply(Quat(), qy, qx));
+}
+
+/** The particles with `offsets` applied, each in its own frame; the list as it is when none reaches a particle */
+function offsetParticles(list: ParticleList, offsets: ReadonlyArray<ParticleOffsetProps>): ParticleList {
+  const active = offsets.filter((o) => !Vec3.isZero(o.translation) || !Vec3.isZero(o.euler));
+  if (!active.length) return list;
+  const all = new Set<number>();
+  const byTarget = active.map((o) => ({ o, targets: new Set(o.targets), turn: eulerQuat(o.euler) }));
+  for (const t of list.targetInfo.keys()) if (byTarget.some((b) => !b.targets.size || b.targets.has(t))) all.add(t);
+  if (!all.size) return list;
+  const n = list.count;
+  const coordinates = Float32Array.from(list.coordinates);
+  const rotations = new Float32Array(n * 4);
+  const p = Vec3();
+  const q = Quat();
+  const shift = Vec3();
+  for (let i = 0; i < n; ++i) {
+    if (list.rotations) Quat.fromArray(q, list.rotations, i * 4);
+    else Quat.setIdentity(q);
+    const target = list.targets[i];
+    if (all.has(target)) {
+      Vec3.fromArray(p, coordinates, i * 3);
+      for (const b of byTarget) {
+        if (b.targets.size && !b.targets.has(target)) continue;
+        // along its own axes, then turned about them
+        Vec3.transformQuat(shift, b.o.translation, q);
+        Vec3.add(p, p, shift);
+        Quat.multiply(q, q, b.turn);
+      }
+      Vec3.toArray(p, coordinates, i * 3);
+    }
+    Quat.toArray(q, rotations, i * 4);
+  }
+  return { ...list, coordinates, rotations, _propertyData: Object.create(null) };
+}
+
 /** The particles' positions scaled by `scale` about the origin, then moved and turned by `m` (orientations turned) */
 function transformParticles(list: ParticleList, m: Mat4, scale = 1): ParticleList {
   if (Mat4.isIdentity(m) && scale === 1) return list;
