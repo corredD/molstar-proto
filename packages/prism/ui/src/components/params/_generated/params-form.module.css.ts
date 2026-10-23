@@ -51,7 +51,9 @@ export const classes = {
   'swatch': 'msp-params-params-form-swatch',
   'switch': 'msp-params-params-form-switch',
   'textarea': 'msp-params-params-form-textarea',
+  'unit': 'msp-params-params-form-unit',
   'unsupported': 'msp-params-params-form-unsupported',
+  'withUnit': 'msp-params-params-form-withUnit',
 } as const;
 
 defineStyles('components/params/params-form.module.css', `@layer msp.components {
@@ -141,6 +143,15 @@ defineStyles('components/params/params-form.module.css', `@layer msp.components 
   grid-template-columns: minmax(0, 1fr) 52px;
   width: 100%;
   display: grid;
+}
+
+.msp-params-params-form-withUnit {
+  grid-template-columns: minmax(0, 1fr) 52px auto;
+}
+
+.msp-params-params-form-unit {
+  color: var(--msp-color-text-muted);
+  font-size: var(--msp-font-size-xs);
 }
 
 .msp-params-params-form-range {

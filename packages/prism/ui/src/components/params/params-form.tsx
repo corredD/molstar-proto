@@ -14,7 +14,7 @@ import { camelCaseToWords } from '@molstar/core/util/string';
 import { For, Show } from '../../dom/control-flow.js';
 import type { Child } from '../../dom/jsx-types.js';
 import { uniqueId } from '../../dom/focus.js';
-import { effect, frameState, type WatchSource, watch } from '../../dom/scope.js';
+import { effect, type WatchSource, watch } from '../../dom/scope.js';
 import { setAttr, setStyle, setText } from '../../dom/writes.js';
 import { type ParamSection, ParamsFormModel, paramSections } from '../../forms/params-form.js';
 import { type ObservableState, observableState } from '../../reactive/observable-state.js';
@@ -35,6 +35,9 @@ import {
 import type { FieldBinding } from './field-binding.js';
 import { helpOf, withHelp } from './help.js';
 import { PresetsButton, PresetsList, presetIndex } from './presets.js';
+import { formatNumber, parseNumber, Slider } from './slider.js';
+
+export { parseNumber };
 
 import { derive } from '../../reactive/state.js';
 /** A field's value as a control sees it: a stream, the current value, and how to change it. */
@@ -548,71 +551,28 @@ function NumberControl(props: { param: PD.Numeric; binding: FieldBinding; labelI
         onChange={(e) => {
           const v = parseNumber(e.currentTarget.value);
           if (Number.isFinite(v)) binding.set(v);
-          e.currentTarget.value = format(Number.isFinite(v) ? v : (binding.get() as number), param.step);
+          e.currentTarget.value = formatNumber(Number.isFinite(v) ? v : (binding.get() as number), param.step);
         }}
       />
     ) as HTMLInputElement;
-    watch([binding.value], () => setValue(input, format(binding.get() as number, param.step)));
+    watch([binding.value], () => setValue(input, formatNumber(binding.get() as number, param.step)));
     return input;
   }
-  const min = param.min;
-  const max = param.max;
-  // A drag in the frame lane (rendering.md §2.3): input events come several a frame, the field is set once a frame (it
-  // may update a structure's representation).
-  const dragged = frameState(Number.NaN, (a, b) => Object.is(a, b));
-  effect(dragged, (v) => {
-    if (!Number.isNaN(v)) binding.set(v);
-  });
-  let range!: HTMLInputElement;
-  let number!: HTMLInputElement;
-  const el = (
-    <div class={classes.slider}>
-      <input
-        class={classes.range}
-        type="range"
-        aria-labelledby={labelId}
-        min={String(min)}
-        max={String(max)}
-        step={String(param.step ?? (max - min) / 100)}
-        ref={(e: HTMLInputElement) => (range = e)}
-        onInput={(e) => dragged.offer(Number(e.currentTarget.value))}
-      />
-      <input
-        class={classes.number}
-        aria-labelledby={labelId}
-        ref={(e: HTMLInputElement) => (number = e)}
-        onChange={(e) => {
-          const v = parseNumber(e.currentTarget.value);
-          const shown = Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : (binding.get() as number);
-          if (Number.isFinite(v)) binding.set(shown);
-          // The box says what holds, whether or not the value changed (a clamp to the same value, text that is no number).
-          e.currentTarget.value = format(shown, param.step);
-        }}
-      />
-    </div>
+  // The field is set once a frame while the knob goes (it may update a structure's representation), and at the release.
+  const set = (v: number) => {
+    if (!Object.is(v, binding.get())) binding.set(v);
+  };
+  return (
+    <Slider
+      value={binding.value}
+      min={param.min}
+      max={param.max}
+      step={param.step}
+      labelId={labelId}
+      onPreview={set}
+      onCommit={set}
+    />
   );
-  watch([binding.value], () => {
-    const v = binding.get() as number;
-    setValue(range, v);
-    // The filled part of the track, for the quiet styling (no native accent fill).
-    setStyle(range, '--msp-progress', `${(100 * (v - min)) / (max - min || 1)}%`);
-    setValue(number, format(v, param.step));
-  });
-  return el;
-}
-
-function format(v: number, step?: number) {
-  if (!Number.isFinite(v)) return '';
-  // No step: the value as it is (at most 4 decimals), not rounded to a whole number.
-  if (step === undefined) return String(Number(v.toFixed(4)));
-  const digits = step < 1 ? Math.min(4, Math.ceil(-Math.log10(step))) : 0;
-  return v.toFixed(digits);
-}
-
-/** A typed number: "0.5", "0,5" (a comma as the decimal point), " -1 "; NaN when it is not one. */
-export function parseNumber(text: string): number {
-  const t = text.trim().replace(',', '.');
-  return t === '' ? Number.NaN : Number(t);
 }
 
 /**

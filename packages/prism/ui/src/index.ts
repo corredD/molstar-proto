@@ -68,6 +68,7 @@ export { Markdown, type MarkdownHost, type MarkdownLinkEvent } from './component
 export { ParamsForm } from './components/params/params-form.js';
 export { PresetsButton, PresetsList, presetIndex } from './components/params/presets.js';
 export { ScrollArea, type ScrollAreaProps } from './components/scroll-area/scroll-area.js';
+export { Slider, type SliderProps } from './components/params/slider.js';
 export {
   Floating,
   MenuPopover,

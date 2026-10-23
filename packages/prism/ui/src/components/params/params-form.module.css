@@ -100,6 +100,16 @@
   width: 100%;
 }
 
+/* A slider with a unit after its box (Å, °). */
+.withUnit {
+  grid-template-columns: minmax(0, 1fr) 52px auto;
+}
+
+.unit {
+  color: var(--msp-color-text-muted);
+  font-size: var(--msp-font-size-xs);
+}
+
 /* A quiet slider, like the trajectory scrubber: a thin track, its filled part in muted text, a small knob in the text
    color (no accent: a slider is not the action). */
 .range {
