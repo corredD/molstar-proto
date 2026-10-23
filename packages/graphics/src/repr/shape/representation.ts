@@ -420,6 +420,10 @@ export function ShapeMultiRepresentation<D, P extends PD.Params>(
     getAllLoci: multi.getAllLoci,
     eachLocation: multi.eachLocation,
     mark(loci: Loci, action: MarkerAction) {
+      // a loci on another representation's shape (another mesh file) is not ours: only our own visuals' are re-pointed
+      if ((Shape.isLoci(loci) || ShapeGroup.isLoci(loci)) && !names.some((n) => reprs[n].shape === loci.shape)) {
+        return false;
+      }
       let marked = false;
       for (const name of names) {
         const repr = reprs[name];

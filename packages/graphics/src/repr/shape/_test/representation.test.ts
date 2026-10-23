@@ -10,7 +10,7 @@ import { OrderedSet } from '@molstar/core/data/int';
 import { Lines } from '@molstar/graphics/geo/geometry/lines/lines';
 import { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
 import { MeshBuilder } from '@molstar/graphics/geo/geometry/mesh/mesh-builder';
-import { ShapeGroup } from '@molstar/model/model/shape';
+import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import * as ShapeUtils from '@molstar/graphics/geo/shape/shape';
 import { MarkerAction } from '@molstar/core/util/marker-action';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -86,6 +86,26 @@ describe('ShapeMultiRepresentation', () => {
     const marked = markerAverages(repr);
     expect(marked.lines).toBeGreaterThan(0);
     expect(marked.mesh).toBeGreaterThan(0);
+  });
+
+  it("leaves another representation's shape unmarked (one mesh file hovered, not every one)", async () => {
+    const a = makeRepr();
+    const b = makeRepr();
+    for (const { repr } of [a, b]) {
+      await repr.createOrUpdate({ ...PD.getDefaultValues(Params), visuals: ['mesh', 'wireframe'] }, {}).run();
+    }
+
+    expect(b.repr.mark(Shape.Loci(a.meshShape), MarkerAction.Highlight)).toBe(false);
+    expect(
+      b.repr.mark(
+        ShapeGroup.Loci(a.linesShape, [{ ids: OrderedSet.ofSingleton(1), instance: 0 }]),
+        MarkerAction.Highlight,
+      ),
+    ).toBe(false);
+    expect(markerAverages(b.repr)).toEqual({ mesh: 0, lines: 0 });
+
+    expect(a.repr.mark(Shape.Loci(a.meshShape), MarkerAction.Highlight)).toBe(true);
+    expect(markerAverages(a.repr).lines).toBeGreaterThan(0);
   });
 
   it('reports the theme of the first visible visual, not of a visual that was never built', async () => {
