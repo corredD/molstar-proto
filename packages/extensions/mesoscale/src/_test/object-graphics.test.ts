@@ -196,4 +196,19 @@ describe('graphics and motion per object', () => {
     expect(two.api.mesoscale!.graphicsState(refs.b).value).toMatchObject({ wiggle: 2 });
     expect(two.api.mesoscale!.graphicsState(refs.a).value).toMatchObject({ wiggle: 0 });
   });
+  // An object's graphics read from every representation: one added later (with its own defaults) makes them mixed, and
+  // a mixed object lights no mode and shows its motion off
+  it('reads a mixed object as no mode and no motion', async () => {
+    const v = await viewer(['crn.cif']);
+    const m = v.api.mesoscale!;
+    const s = v.plugin.managers.structure.hierarchy.current.structures[0];
+    const ref = s.cell.transform.ref;
+    expectOk(await m.motion({ wiggle: 1.5, object: ref } as never));
+    expectOk(await m.graphics({ mode: 'ultra', object: ref } as never));
+    expect(m.graphicsState(ref).value).toEqual({ mode: 'ultra', wiggle: 1.5, tumble: 0 });
+    await v.plugin.builders.structure.representation.addRepresentation(s.components[0].cell, {
+      type: 'ball-and-stick',
+    });
+    expect(m.graphicsState(ref).value).toEqual({ wiggle: 0, tumble: 0 });
+  });
 });

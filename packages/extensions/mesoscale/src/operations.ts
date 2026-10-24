@@ -164,7 +164,7 @@ export class MesoscaleApi extends ApiArea {
 
   /**
    * The graphics mode and the motion of an object (a structure, a particle list, a volume; by state ref) as its
-   * representations have them (the first one's), else of the first particle list shown; following the state tree while
+   * representations have them (every one; mixed: no mode, no motion), else of the first particle list shown; following the state tree while
    * watched: a read for views; undefined without such an object
    */
   graphicsState(object?: string): ReadonlyState<GraphicsInfo | undefined> {
@@ -607,21 +607,30 @@ function withMode(
   return next;
 }
 
-/** An object's mode and motion as its first representation has them; a volume's mode only */
+/**
+ * An object's mode and motion as its representations have them, every one: a value they differ on is mixed, read as no
+ * mode and the motion off (a representation added later, or a preset, has its own); a volume's mode only
+ */
 function graphicsOf(o: GraphicsObject): GraphicsInfo | undefined {
-  const type = (o.representations[0]?.transform.params as { type?: { params?: Record<string, unknown> } } | undefined)
-    ?.type?.params;
-  if (!type) return undefined;
-  const mode =
+  const types = o.representations
+    .map((r) => (r.transform.params as { type?: { params?: Record<string, unknown> } } | undefined)?.type?.params)
+    .filter((t): t is Record<string, unknown> => !!t);
+  if (!types.length) return undefined;
+  // the one value every representation has, else undefined (mixed)
+  const common = <T>(of: (t: Record<string, unknown>) => T): T | undefined => {
+    const first = JSON.stringify(of(types[0]));
+    return types.every((t) => JSON.stringify(of(t)) === first) ? of(types[0]) : undefined;
+  };
+  const modeOf = (t: Record<string, unknown>) =>
     o.kind === 'particles'
-      ? GraphicsModes.find((m) => JSON.stringify(Spheres.LodLevelsPresets[m]) === JSON.stringify(type.lodLevels))
-      : GraphicsModes.find((m) => ModeSettings[m].quality === type.quality);
+      ? GraphicsModes.find((m) => JSON.stringify(Spheres.LodLevelsPresets[m]) === JSON.stringify(t.lodLevels))
+      : GraphicsModes.find((m) => ModeSettings[m].quality === t.quality);
+  const mode = common(modeOf);
   if (o.kind === 'volume') return mode ? { mode } : {};
-  const animation = findAnimation(type);
   return {
     ...(mode ? { mode } : {}),
-    wiggle: animation?.wiggleAmplitude ?? 0,
-    tumble: animation?.tumbleAmplitude ?? 0,
+    wiggle: common((t) => findAnimation(t)?.wiggleAmplitude ?? 0) ?? 0,
+    tumble: common((t) => findAnimation(t)?.tumbleAmplitude ?? 0) ?? 0,
   };
 }
 

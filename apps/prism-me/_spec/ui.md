@@ -86,8 +86,9 @@ Graphics & Motion (Ludovic, 2026-10-24: on every object, what does not apply lef
 One object's mode leaves the canvas alone; without `object` (⌘K, `?graphics-mode=`, the agent) every object and the
 canvas resolution (pixel scale, sharpening) change, in one step. Motion writes the `animation` params of that object's
 representations (per structure, where Mol\*'s component options are scene-wide). A structure's mode reads as none until
-one is picked (`auto` is not a mode). Limit: the scene-wide structure options (component options, quick styles) put
-theirs back on every structure (TODO.md).
+one is picked (`auto` is not a mode). Limits (TODO.md): the scene-wide structure options (component options, quick
+styles) put theirs back on every structure, and a structure's own Representation preset and a representation added later
+bring their defaults; the object then reads as mixed (every representation read: no mode lit, the motion off).
 
 ## 5. Right-click
 
