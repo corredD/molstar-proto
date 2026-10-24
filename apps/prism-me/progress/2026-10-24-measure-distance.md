@@ -34,10 +34,16 @@ features.md: a new Stage tools row, Done. Spec: `_spec/ui.md` §7.
 
 ## Checked in the app
 
-Playwright on the dev server (port 1344), `?example=cellpack-hiv1` plus 1CRN from `data/examples`, real Ctrl+mouse
-clicks: two CA atoms give "5.96 Å" under CRAMBIN, drawn as a dashed line with its value; two SerumAlbumin particles give
-a distance under SerumAlbumin; text size 3 and opacity 50% applied; one undo reverts the edit, the next removes the
-distance; no context menu showed after a Ctrl+click (screenshots).
+Playwright on the dev server (port 1344), with `?example=cellpack-hiv1` and 1CRN from `data/examples`, using real
+Ctrl+mouse clicks:
+
+- Two CA atoms give "5.96 Å" (PRO 5 to GLY 31, residue granularity) under CRAMBIN, drawn as a dashed line with its
+  value. After the second click, with the pointer off, no mark is left and the structure selection is empty.
+- Two SerumAlbumin particles give a distance under SerumAlbumin.
+- In the properties panel (Distance unfolded), typing 3 in Text size and 50 in Opacity gives `textSize` 3 and `opacity`
+  0.5. The From and To buttons pick the points' row (CRAMBIN). Three undos revert both edits and remove the distance.
+- The `role="menu"` count stays at its baseline (1, before any click) after a plain click and both Ctrl+clicks: no
+  context menu opened.
 
 ## Learned
 

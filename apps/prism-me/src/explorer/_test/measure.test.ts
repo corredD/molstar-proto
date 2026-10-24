@@ -13,6 +13,8 @@ import { Particle } from '@molstar/model/model/particles/particle-list';
 import { type Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { StructureSelection } from '@molstar/model/model/structure';
 import { Script } from '@molstar/model/script/script';
+import { FocusLoci as CameraFocusLoci } from '@molstar/plugin/behavior/dynamic/camera';
+import { FocusLoci as RepresentationFocusLoci } from '@molstar/plugin/behavior/dynamic/representation';
 import type { PluginSpec } from '@molstar/plugin/spec';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
@@ -194,6 +196,10 @@ describe("the app's bindings", () => {
   it('leave Ctrl+click (and ⌘+click) to the distance: no camera or representation focus on it', () => {
     const spec = createMesoscaleExplorerSpec('');
     const plugin = spec.finalize ? spec.finalize(spec.plugin as PluginSpec) : (spec.plugin as PluginSpec);
+    // both focus behaviors are there (else the test checks nothing of them), with bindings
+    const ids = plugin.behaviors.map((b) => b.transformer.id);
+    expect(ids).toContain(CameraFocusLoci.id);
+    expect(ids).toContain(RepresentationFocusLoci.id);
     const taken: string[] = [];
     for (const b of plugin.behaviors) {
       const bindings = (b.defaultParams as { bindings?: Record<string, Binding> } | undefined)?.bindings;
