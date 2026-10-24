@@ -39,7 +39,7 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | Level of detail per entity                                                                                     | Partial  | one level for all (graphics mode)                                                                                            |
 | Clip per entity, group or target: plane, sphere, box, cylinder, cone; moved, turned and sized by handles       | Done     | `clipping.add` `particles` (Prism); the row's scissors; Clips in the properties                                              |
 | Quick styles (Default, Celshading, Illustrative, Shiny, Stylized, DOF)                                         | Deferred | Prism's quick styles are structure presets                                                                                   |
-| Color file import (JSON)                                                                                       | Deferred |                                                                                                                              |
+| Color file import (JSON), x, y, z or CSS: by full name, else the entity name (last dotted part)                | Done     | `mesoscale.importColors`; a model's Look: Import colors…                                                                     |
 | Snapshot descriptions' links `#key`, `i<names>`, `g<group>.<names>`                                            | Deferred | Prism's markdown host claims only `!command` links                                                                           |
 | The guided tour (driver.js)                                                                                    | Deferred | Prism has its own help                                                                                                       |
 | Selection list, focus info, measurements                                                                       | Partial  | Prism's own Selection tab, inspector and measurements, not the explorer's panels                                             |
@@ -85,7 +85,10 @@ Start: `node scripts/esbuild/app.mjs apps/prism-me --dev --port 1343`, open
 
 1. The panel's Open › Mesoscale examples… › CellPack HIV (or `?example=cellpack-hiv1`). In the Scene tree, pick the
    model: Look › Generate colors; Group by: Function, then Compartment; fold and unfold its groups; hide `membrane`;
-   color one entity; Graphics: Fast, then Quality; Wiggle, Tumble.
+   color one entity; Graphics: Fast, then Quality; Wiggle, Tumble. The model's Look: Import colors…,
+   `data/examples/mesoscale/cellpack-hiv1-colors.json` (one name not found is said, and the entities the file names
+   twice, in two compartments: one entity per name, the last color kept; a key matches by full name, else by the entity
+   name, the last dotted part: the compartment path is not checked); Undo once brings the colors back.
 2. Right-click a protein: Hide it, Color it…; Cut with a plane; Cut row: Position, Flip; right-click again: Remove the
    cut. Try the sphere and the box.
 3. Drop a RELION `.star` with classes. Structure tab › its Decorations row: Targets: Class; drop or load a structure

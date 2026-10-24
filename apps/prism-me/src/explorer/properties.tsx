@@ -12,7 +12,7 @@ import type { ObjectPose } from '@molstar/stage-tools-extension/move';
 import type { StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, ObliqueSlice, Slice } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
-import { GraphicsMode, Motion } from '@molstar/mesoscale-extension/controls';
+import { GraphicsMode, ImportColors, Motion } from '@molstar/mesoscale-extension/controls';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
@@ -545,6 +545,7 @@ function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlySta
           <Button size="sm" variant="ghost" onClick={() => style({ reset: true })}>
             Reset
           </Button>
+          {!ids && api.mesoscale ? <ImportColors area={api.mesoscale} particles={node.ref} /> : null}
         </div>
       ) : null}
     </div>
