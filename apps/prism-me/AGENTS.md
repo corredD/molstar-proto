@@ -17,9 +17,10 @@ The Mesoscale Explorer on Prism. The repository's rules ([../../AGENTS.md](../..
   `data/examples`, never the network.
 - **The explorer's four places** (Ludovic, 2026-10-24): Mesoscale and Cryo-ET UI goes in the explorer's four places, the
   scene tree, its properties, its right-click menu and + Open ([_spec/ui.md](_spec/ui.md)), never in an extension's tab,
-  because prism-me hides those tabs (`HiddenParts` in src/spec.ts) and one panel is the layout. Guarded by
-  `src/_test/hidden-parts.test.ts` (every tab of the app's extensions but the Scene is hidden; every hidden part of
-  theirs exists).
+  because prism-me hides those tabs (`HiddenParts` in src/spec.ts) and one panel is the layout.
+  `src/_test/hidden-parts.test.ts` checks only this much: no tab of the app's extensions is visible but the Scene, and
+  their hidden ids are real parts (it fails on a lazy extension, whose parts it cannot read). It cannot see UI added
+  inside a tab already hidden: that is the review's.
 
 ## How we work (Ludovic, 2026-10-24)
 

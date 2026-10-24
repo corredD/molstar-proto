@@ -19,9 +19,9 @@ import { HiddenParts } from '../spec.js';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 
 // The rule of apps/prism-me/AGENTS.md (Ludovic, 2026-10-24): the app's UI goes in the explorer's four places (the
-// tree, its properties, its right-click menu, + Open), never in an extension's tab, which the app hides. So every tab
-// the app's extensions register is hidden but the explorer's Scene, and every hidden part of theirs exists (a renamed
-// tab would show again, and a stale id would hide nothing).
+// tree, its properties, its right-click menu, + Open), never in an extension's tab, which the app hides. What this
+// checks of it: every tab the app's extensions register is hidden but the explorer's Scene, and every hidden part of
+// theirs exists (a renamed tab would show again, a stale id would hide nothing). Not UI added inside a hidden tab.
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
