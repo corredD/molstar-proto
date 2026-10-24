@@ -4,10 +4,10 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Mat3, Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { StateObjectCell } from '@molstar/core/state';
 import { type GizmoBinding, GizmoController, type GizmoItem } from '@molstar/graphics/util/gizmo/controller';
-import { type DragFrame, type GizmoPose, poseGesture } from '@molstar/graphics/util/gizmo/gestures';
+import { type DragFrame, frameOfPose, poseGesture, poseOfFrame } from '@molstar/graphics/util/gizmo/gestures';
 import type { Handle } from '@molstar/graphics/util/gizmo/handle';
 import { transformHandles } from '@molstar/graphics/util/gizmo/transform';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
@@ -157,24 +157,6 @@ export function solveEdit(
   return { translation, euler, stack: { ...stack, offsets, instances } };
 }
 
-/** The pose of a frame, as the gizmo gestures take it */
-function framePose(m: Mat4): GizmoPose {
-  const r = Mat3.fromMat4(Mat3(), m);
-  return {
-    position: Vec3.create(m[12], m[13], m[14]),
-    rotation: Quat.normalize(Quat(), Quat.fromMat3(Quat(), r)),
-    scale: Vec3.create(1, 1, 1),
-  };
-}
-
-function poseFrame(pose: GizmoPose): Mat4 {
-  const m = Mat4.fromQuat(Mat4(), pose.rotation);
-  m[12] = pose.position[0];
-  m[13] = pose.position[1];
-  m[14] = pose.position[2];
-  return m;
-}
-
 /** How long the camera takes to aim at a particle (ms) */
 const AimMs = 250;
 
@@ -220,8 +202,8 @@ class ParticleHandleBinding implements GizmoBinding<HandleValue> {
   }
 
   apply(from: HandleValue, handle: Handle, frame: DragFrame, dx: number, dy: number): HandleValue {
-    const pose = poseGesture(framePose(from.frame), handle, frame, dx, dy);
-    return pose ? { ...from, frame: poseFrame(pose) } : from;
+    const pose = poseGesture(poseOfFrame(from.frame), handle, frame, dx, dy);
+    return pose ? { ...from, frame: frameOfPose(pose) } : from;
   }
 
   /** The list's representations given these particles (the drawing only) */

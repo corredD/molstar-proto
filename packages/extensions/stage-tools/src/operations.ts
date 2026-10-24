@@ -9,14 +9,20 @@ import { Mat4, Vec3, Vec4 } from '@molstar/core/math/linear-algebra';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { ParticleListTransform } from '@molstar/plugin/state/transforms/particles/ops';
 import { VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
-import { movedClipObject, movedPoint, type ObjectPose, placementWith, poseOf, type ScreenFrame } from './move.js';
+import {
+  movedPoint,
+  movedRepresentationParams,
+  type ObjectPose,
+  placementWith,
+  poseOf,
+  type ScreenFrame,
+} from './move.js';
 import { getTransformFromParams, type TransformParam } from '@molstar/plugin/state/transforms/helpers';
 import { Color } from '@molstar/core/util/color';
 import { ColorNames } from '@molstar/core/util/color/names';
 import { setSubtreeVisibility } from '@molstar/plugin/behavior/static/state';
 import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
 import { type StateObjectCell, StateTransform } from '@molstar/core/state';
-import { Clip } from '@molstar/core/util/clip';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import { Grid, Volume } from '@molstar/model/model/volume';
@@ -377,16 +383,11 @@ export class StageApi extends ApiArea {
       } else {
         return ApiResult.fail('invalid', `${name} is not a structure, particle list, volume or mesh.`);
       }
-      // what is placed with it: its clip objects and its labels
+      // what is placed with it: its clip objects, a volume's plane slices, its labels
       if (t) {
         for (const r of representationCells(ctx, t)) {
-          const clip = clipOf(r);
-          if (!clip?.objects.length) continue;
-          const objects = clip.objects.map((o) => movedClipObject(o, m));
-          b.to(r).update((old: any) => ({
-            ...old,
-            type: { ...old.type, params: { ...old.type.params, clip: { ...old.type.params.clip, objects } } },
-          }));
+          const moved = movedRepresentationParams(r.transform.params as { type?: { params?: object } }, m);
+          if (moved) b.to(r).update(moved);
         }
       }
       for (const l of labelsOf(ctx)) {
@@ -780,8 +781,4 @@ function representationCells(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): S
   }
   const v = p.volume.hierarchy.current.volumes.find((x) => x.cell.transform.ref === t.ref);
   return v ? v.representations.map((r) => r.cell) : [];
-}
-
-function clipOf(cell: StateObjectCell): Clip.Props | undefined {
-  return (cell.transform.params as any)?.type?.params?.clip;
 }

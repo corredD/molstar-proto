@@ -58,6 +58,41 @@ export function movedClipObject(o: Clip.Props['objects'][number], m: Mat4): Clip
   };
 }
 
+/** A volume slice's plane (`mode: 'plane'`), as its params hold it: in the scene's space, not the volume's grid */
+interface SlicePlane {
+  readonly point: Vec3;
+  readonly normal: Vec3;
+}
+
+/**
+ * A representation's params with what it places in the scene's space moved by `m`: its clip objects, a volume slice's
+ * plane (a grid or frame slice is in its volume's grid, moved with it); undefined when it places nothing
+ */
+export function movedRepresentationParams<P extends { type?: { name?: string; params?: object } }>(
+  params: P,
+  m: Mat4,
+): P | undefined {
+  const type = params.type?.params as
+    | { clip?: Clip.Props; mode?: string; plane?: SlicePlane; [k: string]: unknown }
+    | undefined;
+  if (!type) return undefined;
+  const clip = type.clip?.objects.length
+    ? { ...type.clip, objects: type.clip.objects.map((o) => movedClipObject(o, m)) }
+    : undefined;
+  const plane =
+    params.type?.name === 'slice' && type.mode === 'plane' && type.plane
+      ? {
+          point: Vec3.transformMat4(Vec3(), type.plane.point, m),
+          normal: Vec3.transformDirection(Vec3(), type.plane.normal, m),
+        }
+      : undefined;
+  if (!clip && !plane) return undefined;
+  return {
+    ...params,
+    type: { ...params.type, params: { ...type, ...(clip ? { clip } : {}), ...(plane ? { plane } : {}) } },
+  };
+}
+
 /** A point placed by `m` */
 export function movedPoint(p: Vec3, m: Mat4): Vec3 {
   return Vec3.transformMat4(Vec3(), p, m);

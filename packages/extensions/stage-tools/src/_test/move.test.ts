@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
-import { dragMatrix, movedClipObject, placementWith, poseOf } from '../move.js';
+import { dragMatrix, movedClipObject, movedRepresentationParams, placementWith, poseOf } from '../move.js';
 import { dragPlacement, moveBetween } from '../move-gizmos.js';
 
 const frame = { right: Vec3.create(1, 0, 0), up: Vec3.create(0, 1, 0), pixel: 2 };
@@ -86,5 +86,19 @@ describe('move gizmos', () => {
     expect(Mat4.getMaxScaleOnAxis(next)).toBeCloseTo(scale, 5);
     const again = poseOf({ ...placement, matrix: next });
     again.euler.forEach((x, i) => expect(x).toBeCloseTo([30, -45, 120][i], 4));
+  });
+
+  it("moves what a representation places in the scene's space: its clips, a volume slice's plane", () => {
+    // a quarter turn about z, then 10 along x
+    const m = Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), Vec3.create(10, 0, 0)), Mat4.rotZ90);
+    const plane = { point: Vec3.create(1, 0, 0), normal: Vec3.create(1, 0, 0) };
+    const slice = { type: { name: 'slice', params: { mode: 'plane', plane, clip: { objects: [] } } } };
+    const moved = movedRepresentationParams(slice, m)!;
+    const p = moved.type.params.plane;
+    expect(Array.from(p.point).map((x: number) => +x.toFixed(6) + 0)).toEqual([10, 1, 0]);
+    expect(Array.from(p.normal).map((x: number) => +x.toFixed(6) + 0)).toEqual([0, 1, 0]);
+    // a grid slice is in the volume's grid: nothing to move
+    const grid = { type: { name: 'slice', params: { mode: 'grid', plane, clip: { objects: [] } } } };
+    expect(movedRepresentationParams(grid, m)).toBeUndefined();
   });
 });
