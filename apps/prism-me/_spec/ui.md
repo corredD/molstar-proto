@@ -275,8 +275,11 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   axes), so they stay as the volume moves; the plane the slice is given is in the scene's Ã…, and the stage's move of a
   volume moves it in the same step (`movedRepresentationParams`, with the clip objects). A drag shows the slice cut
   where the handle is (its representation given the plane, the state untouched); the release is one step
-  (`cryoet.oblique`). Outside the volume it is not drawn (the slice's box trim). Its menu: Move and tilt it. The x, y
-  and z slices are grid slices only (`mode: 'grid'`): `cryoet.slice` never takes the oblique slice for one.
+  (`cryoet.oblique`); the handle keeps the turn about the normal it was released at while the plane is unchanged (a turn
+  about its own Y tilts and twists it; the twist is not the plane's, so the handle does not spin back on release; an
+  undo, a reload or the numbers show the plane's own frame). Outside the volume it is not drawn (the slice's box trim).
+  Its menu: Move and tilt it. The x, y and z slices are grid slices only (`mode: 'grid'`): `cryoet.slice` never takes
+  the oblique slice for one.
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.
