@@ -1,7 +1,6 @@
 # Graphics quality and motion on every object (2026-10-24, lane `me/quality-motion`)
 
-TODO Next's "Graphics quality and procedural animation on every object" (Ludovic, 2026-10-24). PR not opened yet: the
-review gate comes first.
+TODO Next's "Graphics quality and procedural animation on every object" (Ludovic, 2026-10-24).
 
 ## Built
 
@@ -39,7 +38,18 @@ review gate comes first.
   per cell show.
 - The canvas resolution is off screen now (⌘K, `?graphics-mode=`, the agent).
 - Parts and meshes have no Graphics & Motion; a structure's `auto` quality lights no mode.
-- The message names the object by its cell label (`CIF File (assembly 1)` for PetWorld HIV), not the tree's name.
+
+## Review (Opus reviewer and skeptic)
+
+- S1: `object` found by the tree's name (a structure's entry, a file's name) and said in the message (`09ea8bd9c`).
+- S2: graphics read from every representation, mixed as no mode and no motion; the structure preset and later
+  representations added to the limit (`6dc2ecd68`).
+- S3: the canvas decision tested on a stand-in canvas, failing with the guard removed (`8f00301f7`).
+- S4: the known-limit test asserts its precondition (`fe45d0b67`).
+- N8: an object with nothing drawn fails with a fitting hint (`52f87ad9e`). N6, N7, N9: ui.md §4 (`c626d9a6c`). N5
+  refuted.
+- Rechecked in the app (port 1345): `mesoscale.motion {object: '1CRN'}` wiggles 1CRN ("Motion of 1CRN: wiggle 2 Å."),
+  `mesoscale.graphics {object: 'hiv_2-no_bonds.bcif'}` sets the model alone, its message naming the file.
 
 ## Learned
 
