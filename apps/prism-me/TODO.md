@@ -1,7 +1,25 @@
 # prism-me: what is not built
 
 The deferred and partial features of [_spec/features.md](_spec/features.md), as work items (an entry leaves in the
-commit that builds it).
+commit that builds it). How a lane takes one: [AGENTS.md](AGENTS.md), How we work.
+
+## Next
+
+Ludovic's briefs, in the order to build them: one item a lane. Each says what he wants to see and how he checks it in
+the app, in his words; the lane turns it into spec and tests.
+
+<!-- - **Title**: what I want to see. Check: what I do in the app and what I expect. -->
+
+## Library fixes ready for upstream
+
+Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only when Ludovic says so.
+
+- Periodic volume slices drawn half a box away (`5affa6d17`).
+- Plane slice sized in voxels used as Å (`ea7dc5d3e`).
+- Gizmo: `rotate` axes option, `poseOfFrame`/`frameOfPose` (`ded144e8d`).
+- MRC reader: mode 6, mode 12 (float16), `.rec`/`.st`/`.mrcs`/`.ali` (`33dbca0c5`, `59ef5aa38`).
+
+## Backlog
 
 - The Mesoscale Explorer's generic zip (`manifest.json`) and Martini `instanced_structure.json`, read to a particle
   list.
