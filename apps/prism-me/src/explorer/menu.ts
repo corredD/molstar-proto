@@ -33,6 +33,8 @@ const WholeClips = new Set(['structure', 'mesoscale model', 'particle list', 'vo
 
 /** Objects that move as a whole (their own transform) */
 const Movable = new Set(['structure', 'mesoscale model', 'particle list', 'volume', 'mesh']);
+/** A volume's representations: drawn in its frame, moved with it */
+const VolumeParts = new Set(['slice', 'isosurface', 'volume representation']);
 
 /** Whether a node moves as a whole object (by its handles) */
 export function movable(kind: string) {
@@ -66,13 +68,21 @@ function moveItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): Conte
       },
     ];
   }
-  if (Movable.has(kind)) {
+  // a volume's slice or isosurface has no place of its own: its volume's handles move it (a slice moves through the
+  // volume by its index)
+  const of = VolumeParts.has(kind) ? 'volume' : kind;
+  if (Movable.has(of)) {
     const on = handlesOn(api);
     if (on === node.ref) {
       return [{ id: 'hide-handles', label: 'Hide the handles', icon: 'move-3d', run: () => hideHandles(api) }];
     }
     return [
-      { id: 'move', label: 'Move and turn (handles)', icon: 'move-3d', run: () => showHandles(api, node.ref, kind) },
+      {
+        id: 'move',
+        label: of === kind ? 'Move and turn (handles)' : 'Move and turn its volume (handles)',
+        icon: 'move-3d',
+        run: () => showHandles(api, node.ref, of),
+      },
     ];
   }
   return [

@@ -261,6 +261,11 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,
   `volume.remove` of the one object). One step of the history (its labels, if any, a step after it). The entry is given
   to `state.remove` by its ref alone: an example's (a download, loaded by address) is no kind a `#ref` selector reaches.
+- A volume moves as one (2026-10-24, Ludovic: "the volume, the parent, this should move everything, not jump"): its
+  slices and isosurfaces are drawn in its frame and have no place of their own: no Position, and their menu's move
+  shows their volume's handles ("Move and turn its volume"); a grid slice moves through the volume by its index only.
+  A whole-cell map (an EMDB map centered on 0) had its slices drawn half a box from the volume (a library fix,
+  `createPeriodicVolume` keeping the grid's origin): the handles, on the volume's center, turned them about a corner.
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.
