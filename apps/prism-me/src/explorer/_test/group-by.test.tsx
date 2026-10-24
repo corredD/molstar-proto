@@ -17,7 +17,8 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
-import { explorerUI } from '../ui.js';
+import { removeObject } from '../menu.js';
+import { explorerUI, sceneModelOf } from '../ui.js';
 
 // The Group by switch in a model's properties (_spec/ui.md §4) and the tree following it (§3), over a headless viewer
 // in jsdom, with two cellPACK-like models made in memory: lipids (function "membrane") in the membrane, CA and NC in
@@ -73,6 +74,7 @@ const TestModel = PluginStateTransform.BuiltIn({
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
   for (const v of viewers.splice(0)) await v.dispose();
+  persons.clear();
   document.body.innerHTML = '';
 });
 
@@ -99,8 +101,13 @@ async function until(check: () => boolean, ms = 10000) {
   }
 }
 
+/** The person's API each viewer's scene was mounted with (its explorer area keys the scene's state) */
+const persons = new Map<PrismViewer, ReturnType<PrismViewer['api']['as']>>();
+
 function mountScene(v: PrismViewer) {
-  const ui = explorerUI({ api: v.api.as({ kind: 'person' }), sources: v.sources, managers: v.managers });
+  const api = v.api.as({ kind: 'person' });
+  persons.set(v, api);
+  const ui = explorerUI({ api, sources: v.sources, managers: v.managers });
   const host = document.createElement('div');
   document.body.append(host);
   ui.tabs![0].render.mount(host, { shell: new ShellModel() } as never, undefined as never);
@@ -179,5 +186,23 @@ describe("a model's Group by", () => {
     await until(() => hidden(hiv.ref).length > 0);
     expect(hidden(hiv.ref)).toEqual(['CA', 'NC', 'loose']);
     expect(hidden(other.ref)).toEqual([]);
+  });
+
+  it("forgets a removed model's grouping and parts", async () => {
+    const v = await viewer();
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!choice(host, 'Function'));
+    choice(host, 'Function')!.click();
+    const person = persons.get(v)!;
+    const scene = sceneModelOf(person.explorer!)!;
+    const [hiv] = v.api.explorer!.objectsState().value.filter((o) => o.kind === 'model');
+    await until(() => scene.groupings.get(hiv.ref) === 'function' && !!scene.parts.value.get(hiv.ref));
+    const r = await removeObject(person, person.explorer!, 'mesoscale model', hiv.ref);
+    expect(r?.ok).toBe(true);
+    await until(() => !rowOf(host, 'HIV'));
+    expect(scene.groupings.values.has(hiv.ref)).toBe(false);
+    expect(scene.parts.value.has(hiv.ref)).toBe(false);
   });
 });

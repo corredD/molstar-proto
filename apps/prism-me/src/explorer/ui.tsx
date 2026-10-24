@@ -47,6 +47,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const area = ctx.api.explorer;
   if (!area) return {};
   const model = sceneModel(area, ctx.api.stage);
+  scenes.set(area, model);
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
   area.setOnClick((click) => {
     const p = labelPicked(click.x, click.y) ?? area.pickedOf(click.loci);
@@ -115,8 +116,12 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   };
 }
 
+/** The tree's state of each explorer area (its viewer's): for tests */
+const scenes = new WeakMap<ExplorerApi, SceneModel>();
+export const sceneModelOf = (area: ExplorerApi): SceneModel | undefined => scenes.get(area);
+
 /** The tree's state, kept for the viewer's life (the menu and the 3D picks act on it while the panel is closed) */
-interface SceneModel {
+export interface SceneModel {
   readonly open: ObservableState<ReadonlySet<string>>;
   readonly filter: ObservableState<string>;
   readonly picked: ObservableState<Picked | undefined>;
@@ -172,6 +177,15 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
       sub.unsubscribe();
       partStates.delete(ref);
     }
+    // what the model keeps of an object gone (its parts, its grouping), also of one gone while the panel was not
+    // shown: a ref used again starts afresh
+    const gone = [...parts.value.keys()].filter((ref) => !wanted.has(ref));
+    if (gone.length) {
+      const next = new Map(parts.value);
+      for (const ref of gone) next.delete(ref);
+      parts.set(next);
+    }
+    for (const ref of [...model.groupings.values.keys()]) if (!wanted.has(ref)) model.groupings.delete(ref);
     for (const o of list) {
       if (o.category !== 'particles' || partStates.has(o.ref)) continue;
       const state: ReadonlyState<unknown> | undefined =
