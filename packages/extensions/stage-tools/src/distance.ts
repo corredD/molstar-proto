@@ -88,9 +88,9 @@ export function particleRadius(list: ParticleList, i: number): number {
 
 /** The distance between two points' centers (Å), as Mol* measures it: the centers of the spheres around them */
 export function distanceOf(a: Loci, b: Loci): number {
-  const ca = Loci.getCenter(a);
-  const cb = Loci.getCenter(b);
-  return ca && cb ? Vec3.distance(ca, cb) : NaN;
+  const sa = Loci.getBoundingSphere(a);
+  const sb = Loci.getBoundingSphere(b);
+  return sa && sb ? Vec3.distance(sa.center, sb.center) : NaN;
 }
 
 /**
