@@ -67,13 +67,22 @@ export interface MesoscaleInfo {
   readonly label: string;
   readonly count: number;
   readonly entities: readonly EntityInfo[];
-  /** By compartment when the list has compartments, else by function */
+  /** By the grouping asked; none asked: by compartment when the list has compartments, else by function */
   readonly groups: MesoGroup;
+  /** The grouping of `groups` */
   readonly groupBy: MesoGroupBy;
+  /** Whether the list has compartments (else grouping by compartment lists every entity flat) */
+  readonly hasCompartments: boolean;
 }
 
 const ListParam = () =>
   PD.Text('', { description: 'A particle list by label or state ref; empty: the only one loaded' });
+
+const GroupByParam = () =>
+  PD.Select('compartment', [
+    ['compartment', 'Compartment'],
+    ['function', 'Function'],
+  ] as const);
 
 const SelectionParams = {
   entities: PD.Text('', {
@@ -85,22 +94,35 @@ const SelectionParams = {
   }),
 };
 
+/** The grouping `style`'s `group` is read in (colors' `groupBy` groups its generated colors only) */
+const SelectionGroupByParam = () =>
+  OptionalParam(
+    PD.Select('compartment', GroupByParam().options, {
+      description:
+        'The grouping the group is read in; absent: by compartment when the list has compartments (a function also works), else by function',
+    }),
+  );
+
 export class MesoscaleApi extends ApiArea {
   readonly id = 'mesoscale';
 
   /**
-   * What the Entities view shows of a list (by state ref, the only one when empty), following the state tree while
-   * watched: a read for views; undefined when there is no list.
+   * What the Entities view shows of a list (by state ref, the only one when empty), its groups by `groupBy` (the view's
+   * switch; absent or undefined: the default grouping), following the state tree and the grouping while watched: a read
+   * for views; undefined when there is no list.
    */
-  infoState(particles = ''): ReadonlyState<MesoscaleInfo | undefined> {
+  infoState(
+    particles = '',
+    groupBy?: ReadonlyState<MesoGroupBy | undefined>,
+  ): ReadonlyState<MesoscaleInfo | undefined> {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => {
         const ctx = { plugin };
         const l = oneList(ctx, particles || undefined);
-        return isFailure(l) ? undefined : describe(ctx, l);
+        return isFailure(l) ? undefined : describe(ctx, l, groupBy?.value);
       },
-      () => plugin.state.data.events.changed,
+      () => (groupBy ? [plugin.state.data.events.changed, groupBy] : plugin.state.data.events.changed),
       { compare: (a, b) => a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b)) },
     );
   }
@@ -148,12 +170,21 @@ export class MesoscaleApi extends ApiArea {
   readonly entities = this.operation({
     id: 'mesoscale.entities',
     title: 'Describe the entities',
-    params: { particles: ListParam() },
+    params: {
+      particles: ListParam(),
+      groupBy: OptionalParam(
+        PD.Select('compartment', GroupByParam().options, {
+          description:
+            'How to group the entities; absent: by compartment when the list has compartments, else by function',
+        }),
+      ),
+    },
     read: true,
-    async run({ particles }, ctx) {
+    async run(values, ctx) {
+      const { particles, groupBy } = values as typeof values & { groupBy?: MesoGroupBy };
       const l = oneList(ctx, particles || undefined);
       if (isFailure(l)) return l;
-      const info = describe(ctx, l);
+      const info = describe(ctx, l, groupBy);
       const lines = info.entities.map(
         (e) =>
           `${e.name} (${e.id}): ${e.count.toLocaleString('en')}${e.visible ? '' : ', hidden'}${e.color !== undefined ? `, ${Color.toHexStyle(e.color)}` : ''}`,
@@ -171,6 +202,7 @@ export class MesoscaleApi extends ApiArea {
     title: 'Style entities',
     params: {
       ...SelectionParams,
+      groupBy: SelectionGroupByParam(),
       visible: OptionalParam(PD.Boolean(true, { description: 'Show or hide them' })),
       color: OptionalParam(PD.Text('', { description: 'A CSS color (tomato, #ff6347)' })),
       transparency: OptionalParam(
@@ -181,7 +213,8 @@ export class MesoscaleApi extends ApiArea {
       particles: ListParam(),
     },
     async run(values, ctx) {
-      const { visible, color, transparency, emissive, reset, particles } = values as typeof values & {
+      const { visible, color, transparency, emissive, reset, particles, groupBy } = values as typeof values & {
+        groupBy?: MesoGroupBy;
         visible?: boolean;
         color?: string;
         transparency?: number;
@@ -189,7 +222,7 @@ export class MesoscaleApi extends ApiArea {
       };
       const l = oneList(ctx, particles || undefined);
       if (isFailure(l)) return l;
-      const ids = selectEntities(ctx, l, values.entities, values.group);
+      const ids = selectEntities(ctx, l, values.entities, values.group, groupBy);
       if (isFailure(ids)) return ids;
       const parsed = color ? cssColor(color) : undefined;
       if (color && parsed === undefined) {
@@ -224,10 +257,9 @@ export class MesoscaleApi extends ApiArea {
         ['uniform', 'Uniform: one color'],
         ['theme', "The representation's color theme"],
       ] as const),
-      groupBy: PD.Select('compartment', [
-        ['compartment', 'Compartment'],
-        ['function', 'Function'],
-      ] as const),
+      groupBy: PD.Select('compartment', GroupByParam().options, {
+        description: 'The groups of the generated colors (a hue each)',
+      }),
       variability: PD.Numeric(20, { min: 1, max: 180, step: 1 }, { description: 'Hue spread within a group, °' }),
       shift: PD.Numeric(0, { min: 0, max: 100, step: 1 }, { description: 'Rotates the generated colors' }),
       color: PD.Text('white', { description: 'The uniform color' }),
@@ -473,10 +505,15 @@ function dataOf(l: ParticleListRef): ParticleList | undefined {
   return l.representations[0]?.cell.obj?.data.sourceData ?? l.cell.obj?.data;
 }
 
-function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): MesoscaleInfo {
+/** The grouping by default: by compartment when the list has compartments, else by function */
+function defaultGroupBy(data: ParticleList): MesoGroupBy {
+  return data.compartmentInfo?.size ? 'compartment' : 'function';
+}
+
+function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef, asked?: MesoGroupBy): MesoscaleInfo {
   const data = dataOf(l)!;
   const entities = mesoEntities(data);
-  const groupBy: MesoGroupBy = data.compartmentInfo?.size ? 'compartment' : 'function';
+  const groupBy = asked ?? defaultGroupBy(data);
   const styles = readStyles(ctx, l);
   return {
     particles: l.cell.transform.ref,
@@ -485,18 +522,31 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Mesoscal
     entities: entities.map((e) => ({ ...e, visible: true, ...styles.get(e.id) })),
     groups: mesoGroups(data, entities, groupBy),
     groupBy,
+    hasCompartments: !!data.compartmentInfo?.size,
   };
 }
 
-function selectEntities(ctx: ApiContext, l: ParticleListRef, names: string, group: string): number[] | ApiFailure {
+/**
+ * The entities by name and in a group: the group read in the grouping asked, none asked: in the default grouping, then
+ * among the functions
+ */
+function selectEntities(
+  ctx: ApiContext,
+  l: ParticleListRef,
+  names: string,
+  group: string,
+  groupBy?: MesoGroupBy,
+): number[] | ApiFailure {
   const data = dataOf(l);
   if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
   const entities = mesoEntities(data);
   let ids: number[] | undefined;
   if (group.trim()) {
-    const groupBy: MesoGroupBy = data.compartmentInfo?.size ? 'compartment' : 'function';
-    const root = mesoGroups(data, entities, groupBy);
-    const g = findGroup(root, group.trim()) ?? findGroup(mesoGroups(data, entities, 'function'), group.trim());
+    const path = group.trim();
+    const g = groupBy
+      ? findGroup(mesoGroups(data, entities, groupBy), path)
+      : (findGroup(mesoGroups(data, entities, defaultGroupBy(data)), path) ??
+        findGroup(mesoGroups(data, entities, 'function'), path));
     if (!g)
       return ApiResult.fail('not-found', `There is no group '${group}'.`, 'Read the groups with mesoscale.entities.');
     ids = groupEntities(g);

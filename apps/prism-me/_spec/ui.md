@@ -280,6 +280,14 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
   undo, a reload or the numbers show the plane's own frame). Outside the volume it is not drawn (the slice's box trim).
   Its menu: Move and tilt it. The x, y and z slices are grid slices only (`mode: 'grid'`): `cryoet.slice` never takes
   the oblique slice for one.
+- Group by (2026-10-24): the Entities tab's header has a Compartment / Function switch (Prism's `Choices`), shown when
+  the list has compartments; it regroups the rows. The grouping is the tab's view state (it changes nothing in the
+  scene, so no operation and no history step): the read groups by it (`infoState(ref, groupBy)`), and what the tab runs
+  on a group is told it (`mesoscale.style` `groupBy` on a group's eye, `mesoscale.colors` `groupBy` on Generate colors).
+  `mesoscale.entities` takes `groupBy` (absent: by compartment when the list has compartments, else by function);
+  `mesoscale.style` reads its `group` in the grouping given (absent: the default one, then the functions). The Entities
+  tab is not on screen in prism-me (§1): there the grouping is ⌘K's and the agent's; the tree (§3) keeps the default
+  grouping.
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.
