@@ -14,8 +14,10 @@ import type { MesoEntity } from './model.js';
 //   full cellPACK name, `<compartment path>.<entity>` (`root.HIVenvelop_mature.HIV_capsid.surface.proteins.HIV1_CA_mono_0_1_0`),
 //   the value `{ "x": r, "y": g, "z": b }` in 0-255 (`Color.fromRgb`, as v5 reads it);
 // - a plain map: the key the entity's name, the value a CSS color (`#rrggbb`, `#rgb`, a color name).
-// A key is the entity's name as the particle list has it, else its last dotted part: the particle model names a cellPACK
-// entity by that part alone (one entity for a name found in several compartments, so the last key for it wins).
+// A key is the entity's name as the particle list has it, else its last dotted part (the compartment path is not
+// checked): the particle model names a cellPACK entity by that part alone, one entity for a name found in several
+// compartments. Two keys for one entity (its copies in two compartments, which v5 colored apart): the last color is
+// kept and the entity is reported (`overridden`).
 
 /** A CSS color name or #rrggbb (#rgb) */
 export function cssColor(text: string): Color | undefined {
@@ -62,6 +64,8 @@ export interface ColorFileMatch {
   readonly unmatched: readonly string[];
   /** The keys whose value is not a color */
   readonly invalid: readonly string[];
+  /** The entities two keys or more name, by name, in the list's order: the last key's color kept */
+  readonly overridden: readonly string[];
 }
 
 /** The colors of the file on `entities`: the names indexed once, each key looked up (bulk operations are one change) */
@@ -71,6 +75,7 @@ export function matchColors(entities: readonly MesoEntity[], file: Readonly<Reco
   const colors = new Map<number, Color>();
   const unmatched: string[] = [];
   const invalid: string[] = [];
+  const twice = new Set<number>();
   for (const key of Object.keys(file)) {
     const color = colorOfValue(file[key]);
     if (color === undefined) {
@@ -83,9 +88,16 @@ export function matchColors(entities: readonly MesoEntity[], file: Readonly<Reco
       if (dot >= 0) id = byName.get(key.slice(dot + 1));
     }
     if (id === undefined) unmatched.push(key);
-    else colors.set(id, color);
+    else {
+      if (colors.has(id)) twice.add(id);
+      colors.set(id, color);
+    }
   }
   const matched: string[] = [];
-  for (const e of entities) if (colors.has(e.id)) matched.push(e.name);
-  return { colors, matched, unmatched, invalid };
+  const overridden: string[] = [];
+  for (const e of entities) {
+    if (colors.has(e.id)) matched.push(e.name);
+    if (twice.has(e.id)) overridden.push(e.name);
+  }
+  return { colors, matched, unmatched, invalid, overridden };
 }

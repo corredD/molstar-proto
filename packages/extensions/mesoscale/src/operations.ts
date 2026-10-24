@@ -49,6 +49,8 @@ export interface ImportColorsResult {
   readonly matched: readonly string[];
   readonly unmatched: readonly string[];
   readonly invalid: readonly string[];
+  /** The entities the file names twice or more (one entity per name across compartments): the last color kept */
+  readonly overridden: readonly string[];
 }
 
 /** The particles' graphics: their mode (none when their levels of detail are not one of the modes'), their motion */
@@ -291,8 +293,8 @@ export class MesoscaleApi extends ApiArea {
       const data = dataOf(l);
       if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
       const entities = mesoEntities(data);
-      const { colors, matched, unmatched, invalid } = matchColors(entities, file);
-      const value: ImportColorsResult = { matched, unmatched, invalid };
+      const { colors, matched, unmatched, invalid, overridden } = matchColors(entities, file);
+      const value: ImportColorsResult = { matched, unmatched, invalid, overridden };
       if (!colors.size) {
         return ApiResult.fail(
           'not-found',
@@ -307,6 +309,9 @@ export class MesoscaleApi extends ApiArea {
       const missed = [
         unmatched.length ? `not found: ${namesOf(unmatched)}` : '',
         invalid.length ? `not colors: ${namesOf(invalid)}` : '',
+        overridden.length
+          ? `${overridden.length} ${overridden.length === 1 ? 'entity' : 'entities'} named twice, last color kept: ${namesOf(overridden)}`
+          : '',
       ]
         .filter((x) => x)
         .join('; ');

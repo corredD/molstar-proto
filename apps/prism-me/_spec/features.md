@@ -85,7 +85,8 @@ Start: `node scripts/esbuild/app.mjs apps/prism-me --dev --port 1343`, open
 
 1. Home › Mesoscale examples › CellPack HIV. Entities tab: Generate colors; fold and unfold the compartments; hide
    `membrane`; color one entity; Graphics: Fast, then Quality; Wiggle, Tumble. The model's Look: Import colors…,
-   `data/examples/mesoscale/cellpack-hiv1-colors.json` (one name not found is said); Undo once brings the colors back.
+   `data/examples/mesoscale/cellpack-hiv1-colors.json` (one name not found is said, and the entities the file names
+   twice, in two compartments: one entity per name, the last color kept); Undo once brings the colors back.
 2. Right-click a protein: Hide it, Color it…; Cut with a plane; Cut row: Position, Flip; right-click again: Remove the
    cut. Try the sphere and the box.
 3. Drop a RELION `.star` with classes. Structure tab › its Decorations row: Targets: Class; drop or load a structure

@@ -81,6 +81,21 @@ describe('the color file', () => {
     expect(m.colors.size).toBe(0);
     expect(m.invalid).toEqual(['CA', 'NC']);
   });
+
+  it('reports the entities two keys name (one entity per name across compartments): the last color kept', () => {
+    const file = parseColorFile(
+      JSON.stringify({
+        'root.envelope.capsid.surface.NC': '#ff0000',
+        'root.envelope.capsid.interior.NC': '#00ff00',
+        NC: '#0000ff',
+        CA: '#ffffff',
+      }),
+    );
+    if (typeof file === 'string') expect.fail(file);
+    const m = matchColors(mesoEntities(cellpackLike()), file);
+    expect(Color.toHexStyle(m.colors.get(2)!)).toBe('#0000ff');
+    expect(m.overridden).toEqual(['NC']);
+  });
 });
 
 describe('mesoscale.importColors', () => {
@@ -108,6 +123,17 @@ describe('mesoscale.importColors', () => {
     expect(value.matched).toEqual(['CA']);
     expect(value.unmatched).toEqual(['root.elsewhere.GAG', 'Ghost']);
     expect(r.did).toContain('Ghost');
+  });
+
+  it('says which entities were named twice, and that the last color is kept', async () => {
+    const v = await viewer();
+    const r = await v.api.mesoscale!.importColors({
+      json: JSON.stringify({ 'root.envelope.capsid.surface.NC': 'red', 'root.envelope.capsid.interior.NC': 'blue' }),
+    });
+    expectOk(r);
+    expect((r.value as ImportColorsResult).overridden).toEqual(['NC']);
+    expect(r.did).toContain('1 entity named twice, last color kept: NC');
+    expect((await colorsOf(v)).NC).toBe('#0000ff');
   });
 
   it('is one undo step for the whole file', async () => {
