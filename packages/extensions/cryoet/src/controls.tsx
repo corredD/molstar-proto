@@ -23,7 +23,8 @@ import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
-import type { CryoetApi, DecorationsInfo, MeshInfo, SliceAxis, TargetDecoration } from './operations.js';
+import type { ViewerApi } from '@molstar/prism-viewer/api';
+import type { CryoetApi, DecorationsInfo, MeshInfo, ObliqueView, SliceAxis, TargetDecoration } from './operations.js';
 
 // The cryo-ET controls, shown by the extension's own rows and tab and by a host's panels (prism-me's properties):
 // what decorates a list's targets, a volume's slice, a segmentation mesh's look. They read the `cryoet` area and act
@@ -247,6 +248,80 @@ function common(info: DecorationsInfo): string {
   if (objects.size !== 1) return '';
   const [o] = objects;
   return o === '*' ? '' : o;
+}
+
+/**
+ * An oblique slice: its handle (moved anywhere, tilted about X and Y), its point and tilt by numbers in the volume's
+ * frame (its center, its axes: they stay as the volume moves), its contrast
+ */
+export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: string; slice: string }) {
+  const { api, area, volume, slice } = props;
+  const info = area.sliceState(volume);
+  const view = mapState(info, (s) => s?.obliques.find((o) => o.ref === slice));
+  const radius = mapState(info, (s) => Math.ceil(s?.radius ?? 100));
+  const handles = area.useObliqueHandles(api);
+  const on = mapState(handles.target, (t) => t?.slice === slice);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(timer));
+  // The sliders change at pointer rate: one call a moment after the last.
+  const run = (values: Partial<Record<'x' | 'y' | 'z' | 'ex' | 'ey' | 'contrast', number>>, delay = 60) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => void area.oblique({ volume, slice, ...values } as never), delay);
+  };
+  const number = (
+    label: string,
+    read: (o: ObliqueView) => number,
+    key: 'x' | 'y' | 'z' | 'ex' | 'ey',
+    range: { min: ReadonlyState<number> | number; max: ReadonlyState<number> | number; unit: string },
+  ) => (
+    <div style={Line}>
+      <span style="width: 64px">{label}</span>
+      <div style="flex: 1; min-width: 0">
+        <Slider
+          aria-label={label}
+          value={mapState(view, (o) => (o ? Math.round(read(o) * 10) / 10 : 0))}
+          min={range.min}
+          max={range.max}
+          step={0.1}
+          unit={range.unit}
+          onPreview={(v) => run({ [key]: v })}
+          onCommit={(v) => run({ [key]: v })}
+        />
+      </div>
+    </div>
+  );
+  const across = { min: mapState(radius, (r) => -r), max: radius, unit: 'Å' };
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+      <div style={Line}>
+        <span style="width: 64px">Handle</span>
+        <Button size="sm" variant="ghost" onClick={() => (on.value ? handles.hide() : handles.show({ volume, slice }))}>
+          {mapState(on, (o) => (o ? 'Hide the handle' : 'Show the handle'))}
+        </Button>
+      </div>
+      <span style={Muted}>In the volume's frame: from its center, along its axes (they stay as the volume moves).</span>
+      {number('X', (o) => o.position[0], 'x', across)}
+      {number('Y', (o) => o.position[1], 'y', across)}
+      {number('Z', (o) => o.position[2], 'z', across)}
+      {number('Tilt X', (o) => o.tilt[0], 'ex', { min: -90, max: 90, unit: '°' })}
+      {number('Tilt Y', (o) => o.tilt[1], 'ey', { min: -180, max: 180, unit: '°' })}
+      <div style={Line}>
+        <span style="width: 64px">Contrast</span>
+        <div style="flex: 1; min-width: 0">
+          <Slider
+            aria-label="Contrast"
+            value={mapState(view, (o) => o?.contrast ?? 3)}
+            min={0.5}
+            max={10}
+            step={0.1}
+            unit="±σ"
+            onPreview={(c) => run({ contrast: c })}
+            onCommit={(c) => run({ contrast: c })}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**

@@ -57,6 +57,7 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | Color particles by attribute (cc, class, score)                                                         | Done     | Prism's particle color themes (`particles.representation`)                      |
 | Tomogram slice along x, y, z, its position, a gray window in σ                                          | Done     | `cryoet.slice`; Slice row                                                       |
 | Tilt series stepped image by image                                                                      | Done     | `cryoet.slice` along z                                                          |
+| Oblique slice: a plane through a volume, its handle and numbers in the volume's frame, moved with it    | Done     | `cryoet.oblique`; Oblique slice row                                             |
 | Segmentation meshes: show, hide, surface, wireframe, both, opacity, color                               | Done     | `cryoet.meshes`, `cryoet.mesh`; Segmentations tab                               |
 | A class's decoration chosen from a column of the file other than an attribute (a tomogram name)         | Deferred | string columns are not particle attributes                                      |
 
@@ -89,7 +90,8 @@ Start: `node scripts/esbuild/app.mjs apps/prism-me --dev --port 1343`, open
 3. Drop a RELION `.star` with classes. Structure tab › its Decorations row: Targets: Class; drop or load a structure
    (1CRN) and a mesh (OBJ); pick them per class; type a PDB id and Enter. Right-click a particle › Decorate with….
 4. Drop a tomogram (`.mrc` or `.rec`): its Slice row: Show a slice, move it, change the contrast, axis Z for a tilt
-   series.
+   series. Add an oblique slice: drag its handle (move, tilt), push it half out of the volume (not drawn outside); move
+   the volume by its handles: the oblique slice goes with it, its numbers kept.
 5. Drop OBJ, PLY and VTP meshes: Segmentations tab: Surface, Wireframe, Both; opacity; color.
 6. Undo (⌘Z) after each step: one step each (tried on CellPack MG, 2.1 million particles: about 0.3 s). ⌘K: type "cut",
    "decorate", "entities".

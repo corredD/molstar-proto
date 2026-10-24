@@ -68,6 +68,25 @@ function moveItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): Conte
       },
     ];
   }
+  // an oblique slice: its own handle (moved anywhere, tilted), in its volume's frame
+  if (kind === 'oblique slice' && api.cryoet && picked.representation) {
+    const handles = api.cryoet.useObliqueHandles(api);
+    const slice = picked.representation;
+    if (handles.target.value?.slice === slice) {
+      return [{ id: 'hide-handles', label: 'Hide the handle', icon: 'move-3d', run: () => handles.hide() }];
+    }
+    return [
+      {
+        id: 'move',
+        label: 'Move and tilt it (handle)',
+        icon: 'move-3d',
+        run: () => {
+          hideHandles(api);
+          handles.show({ volume: node.ref, slice });
+        },
+      },
+    ];
+  }
   // a volume's slice or isosurface has no place of its own: its volume's handles move it (a slice moves through the
   // volume by its index)
   const of = VolumeParts.has(kind) ? 'volume' : kind;
@@ -120,6 +139,7 @@ export function showHandles(api: ViewerApi, ref: string, kind: string) {
 export function hideHandles(api: ViewerApi) {
   api.move?.gizmos.hide();
   api.stage?.moveGizmos.hide();
+  api.cryoet?.obliqueHandles?.hide();
 }
 
 /** The swatches of the brush */

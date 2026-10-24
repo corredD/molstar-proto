@@ -202,7 +202,7 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
             key: `r:${r.ref}`,
             depth: 2,
             label: r.label,
-            kind: r.type === 'slice' || r.type === 'isosurface' ? r.type : 'volume representation',
+            kind: VolumeRowKinds.has(r.type) ? r.type : 'volume representation',
             visible: r.visible,
             hasChildren: false,
             node: { ref: o.ref },
@@ -217,6 +217,9 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
   push({ ...base, key: `o:${o.ref}`, kind: 'mesh', hasChildren: false }, () => {});
   void f;
 }
+
+/** A volume's representations with rows of their own kind (others: 'volume representation') */
+const VolumeRowKinds: ReadonlySet<string> = new Set(['slice', 'oblique slice', 'isosurface']);
 
 /** A row's eye: the visibility operation of what it stands for */
 export function toggleVisible(api: ViewerApi, row: Row) {
@@ -251,6 +254,7 @@ export function toggleVisible(api: ViewerApi, row: Row) {
     case 'volume':
       return api.run('volume.visibility', { volume: node.ref, visible });
     case 'slice':
+    case 'oblique slice':
     case 'isosurface':
     case 'volume representation':
       return api.run('volume.visibility', { node: row.representation!, visible });

@@ -56,7 +56,7 @@ export interface SceneObject {
   readonly representations?: readonly {
     readonly ref: string;
     readonly label: string;
-    /** isosurface, slice, direct-volume… */
+    /** isosurface, slice, oblique slice (a slice on a plane), direct-volume… */
     readonly type: string;
     readonly visible: boolean;
   }[];
@@ -101,6 +101,8 @@ export interface PickedNode {
   readonly label: string;
   readonly kind: string;
   readonly node: NodeRef;
+  /** A volume's representation (a slice, an isosurface): its state ref, the node its volume */
+  readonly representation?: string;
 }
 
 /** A node of the tree as the 3D side needs it: its object, and which part of it */
@@ -558,7 +560,7 @@ function sceneObjects(plugin: PluginContext): SceneObject[] {
       representations: v.representations.map((r) => ({
         ref: r.cell.transform.ref,
         label: reprLabel(r.cell),
-        type: typeOf(r.cell.transform.params),
+        type: isOblique(r.cell.transform.params) ? 'oblique slice' : typeOf(r.cell.transform.params),
         visible: !r.cell.state.isHidden,
       })),
     });
@@ -567,8 +569,15 @@ function sceneObjects(plugin: PluginContext): SceneObject[] {
   return out;
 }
 
-/** A representation's name: a slice's with its axis (Slice X), else its own */
+/** A slice on a plane (an oblique slice), not along the grid */
+function isOblique(params: unknown): boolean {
+  const p = params as { type?: { name?: string; params?: { mode?: string } } } | undefined;
+  return p?.type?.name === 'slice' && p.type.params?.mode === 'plane';
+}
+
+/** A representation's name: a slice's with its axis (Slice X), an oblique slice's, else its own */
 function reprLabel(cell: { obj?: { label: string }; transform: { params?: unknown } }): string {
+  if (isOblique(cell.transform.params)) return 'Oblique slice';
   const p = cell.transform.params as { type?: { name?: string; params?: { dimension?: { name?: string } } } };
   const axis = p?.type?.name === 'slice' ? p.type.params?.dimension?.name : undefined;
   if (axis && 'xyz'.includes(axis)) return `Slice ${axis.toUpperCase()}`;

@@ -35,6 +35,11 @@ import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import { isFailure, labelOf as structureLabel, loadedStructures, pickOne } from '@molstar/prism-viewer/api/scope';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
+import { type ObliquePose, obliquePlane, obliquePoseOfPlane, type SlicePlane } from './oblique.js';
+import { ObliqueHandles } from './oblique-handle.js';
+import type { ViewerApi } from '@molstar/prism-viewer/api';
+import { ButtonsType } from '@molstar/core/util/input/input-observer';
+import { isEmptyLoci } from '@molstar/model/model/loci';
 
 // The `cryoet` area (apps/prism-me/_spec/features.md, "CryoET"): what decorates a particle list and how the particles
 // map to targets (`decorations`, `decorate`, `classes`), and the slices of a tomogram or a tilt series (`slice`).
@@ -85,9 +90,21 @@ export interface SliceView {
 }
 
 /** A volume's dimensions and its slices (x, y, z: at most one each) */
+/** An oblique slice: a plane through the volume placed by its handle (its pose in the volume's frame) */
+export interface ObliqueView extends ObliquePose {
+  /** ± this many σ about the mean (a window set so) */
+  readonly contrast?: number;
+  /** The state ref of its representation */
+  readonly ref: string;
+  readonly visible: boolean;
+}
+
 export interface SliceInfo {
   readonly dimensions: readonly [number, number, number];
   readonly slices: readonly SliceView[];
+  readonly obliques: readonly ObliqueView[];
+  /** The volume's radius (Å): how far an oblique slice's point goes from its center */
+  readonly radius: number;
 }
 
 /** A segmentation mesh loaded from a file (OBJ, PLY, VTP…), as the Segmentations tab shows it */
@@ -112,6 +129,22 @@ const ListParam = () =>
 export class CryoetApi extends ApiArea {
   readonly id = 'cryoet';
 
+  /** An oblique slice's handle, once the views gave it the viewer's API (it runs `cryoet.oblique`) */
+  obliqueHandles: ObliqueHandles | undefined;
+
+  /** The oblique slice's handle, made with the viewer's API */
+  useObliqueHandles(api: ViewerApi): ObliqueHandles {
+    if (!this.obliqueHandles) {
+      const handles = new ObliqueHandles(this.ctx.plugin, api);
+      // a click on the background (not a drag's end) resets the view: the handle goes with it
+      this.ctx.plugin.behaviors.interaction.click.subscribe((e) => {
+        if (e.button === ButtonsType.Flag.Primary && isEmptyLoci(e.current.loci)) handles.hide();
+      });
+      this.obliqueHandles = handles;
+    }
+    return this.obliqueHandles;
+  }
+
   /** What the decorate row shows of a list, following the state tree while watched: a read for views */
   decorationsState(particles: string): ReadonlyState<DecorationsInfo | undefined> {
     const plugin = this.ctx.plugin;
@@ -131,7 +164,7 @@ export class CryoetApi extends ApiArea {
     return watchedState(
       () => {
         const v = oneVolume({ plugin }, volume || undefined);
-        return isFailure(v) ? undefined : sliceOf(v);
+        return isFailure(v) ? undefined : sliceOf({ plugin }, v);
       },
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
@@ -586,7 +619,7 @@ export class CryoetApi extends ApiArea {
       const old = existing?.cell.transform.params as any;
       const i = Math.max(0, Math.min(n - 1, Math.round(index ?? old?.type?.params?.dimension?.params ?? (n - 1) / 2)));
       const k = contrast ?? (old?.colorTheme?.params?.domain?.name === 'custom' ? undefined : 3);
-      const params = sliceParams(ctx.plugin, data, axis, i, k ?? old.colorTheme.params.domain.params, old);
+      const params = sliceParams(ctx.plugin, data, { axis, index: i }, k ?? old.colorTheme.params.domain.params, old);
       if (existing && JSON.stringify(old) === JSON.stringify(params)) {
         return ApiResult.already(`Already at ${axis} ${i + 1} of ${n}.`);
       }
@@ -617,7 +650,10 @@ export class CryoetApi extends ApiArea {
       for (const axis of Axes) {
         if (sliceRepresentation(v, axis)) continue;
         const n = data.grid.cells.space.dimensions[AxisIndex[axis]];
-        b.to(v.cell).apply(VolumeRepresentation3D, sliceParams(ctx.plugin, data, axis, Math.round((n - 1) / 2), 3));
+        b.to(v.cell).apply(
+          VolumeRepresentation3D,
+          sliceParams(ctx.plugin, data, { axis, index: Math.round((n - 1) / 2) }, 3),
+        );
         made++;
       }
       const hide = isosurface
@@ -631,18 +667,99 @@ export class CryoetApi extends ApiArea {
       });
     },
   });
+
+  readonly oblique = this.operation({
+    id: 'cryoet.oblique',
+    title: 'Slice a volume on any plane (an oblique slice)',
+    params: {
+      volume: PD.Text('', { description: 'A volume by label or state ref; empty: the only one loaded' }),
+      slice: PD.Text('', { description: 'The oblique slice to place, by state ref; empty: a new one' }),
+      x: OptionalParam(
+        PD.Numeric(0, {}, { description: "Its point, Å from the volume's center along its axes; absent: where it is" }),
+      ),
+      y: OptionalParam(PD.Numeric(0)),
+      z: OptionalParam(PD.Numeric(0)),
+      ex: OptionalParam(
+        PD.Numeric(0, { min: -90, max: 90 }, { description: "Its tilt about the volume's X (°), then about its Y" }),
+      ),
+      ey: OptionalParam(PD.Numeric(0, { min: -180, max: 180 })),
+      contrast: OptionalParam(
+        PD.Numeric(
+          3,
+          { min: 0.1, max: 20, step: 0.1 },
+          { description: 'The gray window, ± this many σ about the mean' },
+        ),
+      ),
+    },
+    async run(values, ctx) {
+      const { volume, slice } = values;
+      const v = values as typeof values & Partial<Record<'x' | 'y' | 'z' | 'ex' | 'ey' | 'contrast', number>>;
+      const ref = oneVolume(ctx, volume || undefined);
+      if (isFailure(ref)) return ref;
+      const data = ref.cell.obj?.data;
+      if (!data) return ApiResult.fail('not-found', 'The volume is not loaded yet.');
+      const existing = slice ? obliqueRepresentations(ref).find((r) => r.cell.transform.ref === slice) : undefined;
+      if (slice && !existing) return ApiResult.fail('not-found', `'${slice}' is not an oblique slice of this volume.`);
+      const old = existing?.cell.transform.params as any;
+      // in the grid the slice takes (a moved volume's)
+      const grid = drawnGrid(ctx, ref) ?? data.grid;
+      const now: ObliquePose = old
+        ? obliquePoseOfPlane(grid, old.type.params.plane)
+        : { position: [0, 0, 0], tilt: NewObliqueTilt };
+      const pose: ObliquePose = {
+        position: [v.x ?? now.position[0], v.y ?? now.position[1], v.z ?? now.position[2]],
+        tilt: [v.ex ?? now.tilt[0], v.ey ?? now.tilt[1]],
+      };
+      const k = v.contrast ?? (old?.colorTheme?.params?.domain?.name === 'custom' ? undefined : 3);
+      const plane = obliquePlane(grid, pose);
+      const params = sliceParams(ctx.plugin, data, { plane }, k ?? old.colorTheme.params.domain.params, old);
+      if (existing && JSON.stringify(old) === JSON.stringify(params)) return ApiResult.already('Already there.');
+      const b = ctx.plugin.state.data.build();
+      let made = existing?.cell.transform.ref;
+      if (existing) b.to(existing.cell).update(params);
+      else made = b.to(ref.cell).apply(VolumeRepresentation3D, params).ref;
+      await b.commit();
+      const name = ref.cell.obj?.label ?? 'the volume';
+      return ApiResult.ok(
+        existing ? `Placed the oblique slice of ${name}.` : `Added an oblique slice to ${name}.`,
+        { nodes: [ref.cell.transform.ref] },
+        { value: { slice: made } },
+      );
+    },
+  });
 }
 
 const Axes: readonly SliceAxis[] = ['x', 'y', 'z'];
+
+/** A new oblique slice's tilt (°, about X then Y): through the middle, visibly not a grid slice */
+const NewObliqueTilt: readonly [number, number] = [30, 30];
 const AxisIndex = { x: 0, y: 1, z: 2 } as const;
 
 const typeOf = (params: unknown) => (params as { type?: { name?: string } } | undefined)?.type?.name;
 
+/** The grid a volume's representations take: its last decorator's (a moved volume's), else its own */
+function drawnGrid(ctx: Pick<ApiContext, 'plugin'>, v: VolumeRef): Grid | undefined {
+  return ((lastDecorator(ctx, v).obj?.data as Volume | undefined) ?? v.cell.obj?.data)?.grid;
+}
+
+/** A slice along the grid (x, y or z): not a frame's or a plane's (`mode`, grid by default) */
+const isGridSlice = (p: { mode?: string } | undefined) => (p?.mode ?? 'grid') === 'grid';
+
+/** A volume's oblique slices: its slices on a plane */
+function obliqueRepresentations(v: VolumeRef) {
+  return v.representations.filter((r) => {
+    const p = r.cell.transform.params as { type?: { name?: string; params?: { mode?: string } } };
+    return p?.type?.name === 'slice' && p.type.params?.mode === 'plane';
+  });
+}
+
 /** A volume's slice of one axis, if it has one */
 function sliceRepresentation(v: VolumeRef, axis: SliceAxis) {
   return v.representations.find((r) => {
-    const p = r.cell.transform.params as { type?: { name?: string; params?: { dimension?: { name?: string } } } };
-    return p?.type?.name === 'slice' && p.type.params?.dimension?.name === axis;
+    const p = r.cell.transform.params as {
+      type?: { name?: string; params?: { mode?: string; dimension?: { name?: string } } };
+    };
+    return p?.type?.name === 'slice' && isGridSlice(p.type.params) && p.type.params?.dimension?.name === axis;
   });
 }
 
@@ -653,16 +770,19 @@ function sliceRepresentation(v: VolumeRef, axis: SliceAxis) {
 function sliceParams(
   plugin: ApiContext['plugin'],
   data: Volume,
-  axis: SliceAxis,
-  index: number,
+  at: { axis: SliceAxis; index: number } | { plane: SlicePlane },
   window: number | [number, number],
   old?: any,
 ) {
+  const where =
+    'plane' in at
+      ? { mode: 'plane', plane: { point: Vec3.clone(at.plane.point), normal: Vec3.clone(at.plane.normal) } }
+      : { mode: 'grid', dimension: { name: at.axis, params: at.index } };
   const { mean, sigma } = data.grid.stats;
   const domain: [number, number] = typeof window === 'number' ? [mean - window * sigma, mean + window * sigma] : window;
   const fresh = createVolumeRepresentationParams(plugin, data, {
     type: 'slice',
-    typeParams: { dimension: { name: axis, params: index }, isoValue: Volume.IsoValue.relative(-1000) } as any,
+    typeParams: { ...where, isoValue: Volume.IsoValue.relative(-1000) } as any,
     color: 'volume-value',
     colorParams: {
       domain: { name: 'custom', params: domain },
@@ -678,7 +798,7 @@ function sliceParams(
   if (!old) return fresh;
   return {
     ...old,
-    type: { ...old.type, params: { ...old.type.params, dimension: { name: axis, params: index } } },
+    type: { ...old.type, params: { ...old.type.params, ...where } },
     colorTheme:
       old.colorTheme?.name === 'volume-value'
         ? { ...old.colorTheme, params: { ...old.colorTheme.params, domain: { name: 'custom', params: domain } } }
@@ -698,7 +818,7 @@ export async function sliceVisuals(plugin: ApiContext['plugin'], data: { volume?
   const b = plugin.build();
   for (const axis of Axes) {
     const n = v.grid.cells.space.dimensions[AxisIndex[axis]];
-    b.to(volume).apply(VolumeRepresentation3D, sliceParams(plugin, v, axis, Math.round((n - 1) / 2), 3), {
+    b.to(volume).apply(VolumeRepresentation3D, sliceParams(plugin, v, { axis, index: Math.round((n - 1) / 2) }, 3), {
       state: { isHidden: axis !== 'z' },
     });
   }
@@ -723,7 +843,7 @@ function lookDownZ(plugin: ApiContext['plugin'], v: Volume) {
   );
 }
 
-function sliceOf(v: VolumeRef): SliceInfo | undefined {
+function sliceOf(ctx: Pick<ApiContext, 'plugin'>, v: VolumeRef): SliceInfo | undefined {
   const data = v.cell.obj?.data;
   if (!data) return;
   const [x, y, z] = data.grid.cells.space.dimensions;
@@ -744,7 +864,21 @@ function sliceOf(v: VolumeRef): SliceInfo | undefined {
       visible: !r.cell.state.isHidden,
     });
   }
-  return { dimensions: [x, y, z], slices };
+  // in the grid the slices take (a moved volume's: its last decorator's)
+  const drawn = drawnGrid(ctx, v) ?? data.grid;
+  const obliques = obliqueRepresentations(v).map((r): ObliqueView => {
+    const p = r.cell.transform.params as any;
+    const domain = p?.colorTheme?.params?.domain;
+    return {
+      ...obliquePoseOfPlane(drawn, p.type.params.plane as SlicePlane),
+      ...(domain?.name === 'custom' && sigma > 0
+        ? { contrast: Math.round(((domain.params[1] - mean) / sigma) * 10) / 10 }
+        : {}),
+      ref: r.cell.transform.ref,
+      visible: !r.cell.state.isHidden,
+    };
+  });
+  return { dimensions: [x, y, z], slices, obliques, radius: Grid.getBoundingSphere(data.grid).radius };
 }
 
 // --- the particle lists and their decorations -----------------------------------------------------------------------
@@ -779,9 +913,8 @@ function oneVolume(ctx: Pick<ApiContext, 'plugin'>, name: string | undefined): V
 
 const labelOf = (l: ParticleListRef) => l.cell.obj?.label ?? l.cell.transform.ref;
 
-/** The decorator of `transformer` in the chain of decorators under the list, if any */
-/** The last of a list's decorators (what its representations take), else the list itself */
-function lastDecorator(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): StateObjectCell {
+/** The last of a list's or a volume's decorators (what its representations take: a moved volume's grid), else itself */
+function lastDecorator(ctx: Pick<ApiContext, 'plugin'>, l: { readonly cell: StateObjectCell }): StateObjectCell {
   const { tree, cells } = ctx.plugin.state.data;
   let cell = l.cell as StateObjectCell;
   for (;;) {
@@ -798,6 +931,7 @@ function lastDecorator(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Sta
 /** The ids of some targets, sorted: their offset's key ('': every target) */
 const targetsKey = (ids: readonly number[]) => [...ids].sort((a, b) => a - b).join(',');
 
+/** The decorator of `transformer` in the chain of decorators under the list, if any */
 function decoratorCell(
   ctx: Pick<ApiContext, 'plugin'>,
   l: ParticleListRef,

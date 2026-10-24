@@ -262,10 +262,21 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
   `volume.remove` of the one object). One step of the history (its labels, if any, a step after it). The entry is given
   to `state.remove` by its ref alone: an example's (a download, loaded by address) is no kind a `#ref` selector reaches.
 - A volume moves as one (2026-10-24, Ludovic: "the volume, the parent, this should move everything, not jump"): its
-  slices and isosurfaces are drawn in its frame and have no place of their own: no Position, and their menu's move
-  shows their volume's handles ("Move and turn its volume"); a grid slice moves through the volume by its index only.
-  A whole-cell map (an EMDB map centered on 0) had its slices drawn half a box from the volume (a library fix,
+  slices and isosurfaces are drawn in its frame and have no place of their own: no Position, and their menu's move shows
+  their volume's handles ("Move and turn its volume"); a grid slice moves through the volume by its index only. A
+  whole-cell map (an EMDB map centered on 0) had its slices drawn half a box from the volume (a library fix,
   `createPeriodicVolume` keeping the grid's origin): the handles, on the volume's center, turned them about a corner.
+- The oblique slice (2026-10-24, Ludovic: "a special slice … that use its position to get the volume value"): a volume's
+  slice on any plane (Mol*'s slice `mode: 'plane'`), "Add an oblique slice" in the volume's properties (a new one
+  through the middle, tilted 30° about X and Y, its handle shown). Its row (Oblique slice) and section: a handle
+  (Prism's gizmo library at its point, its Z the plane's normal: moved anywhere, tilted about X and Y; no ring about its
+  normal, which a point and a normal cannot hold), its point (X, Y, Z: Å from the volume's center along its axes) and
+  tilt (about X, then Y) by numbers, its contrast; Remove. The numbers are in the volume's frame (its grid's center and
+  axes), so they stay as the volume moves; the plane the slice is given is in the scene's Å, and the stage's move of a
+  volume moves it in the same step (`movedRepresentationParams`, with the clip objects). A drag shows the slice cut
+  where the handle is (its representation given the plane, the state untouched); the release is one step
+  (`cryoet.oblique`). Outside the volume it is not drawn (the slice's box trim). Its menu: Move and tilt it. The x, y
+  and z slices are grid slices only (`mode: 'grid'`): `cryoet.slice` never takes the oblique slice for one.
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.

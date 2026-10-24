@@ -233,7 +233,13 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     pick(row);
     const button = e.currentTarget as HTMLElement;
     const r = button.getBoundingClientRect();
-    const picked = { key: row.key, label: row.label, kind: row.kind, node: row.node };
+    const picked = {
+      key: row.key,
+      label: row.label,
+      kind: row.kind,
+      node: row.node,
+      ...(row.representation ? { representation: row.representation } : {}),
+    };
     openContextMenu(
       rootOf(button),
       { x: r.left, y: r.bottom },
@@ -499,7 +505,7 @@ function TreeRow(props: {
 
 /** Whether a picked row stays lit in 3D: not a volume's (its light would cover the slice's image) */
 function lastingHighlight(row: { readonly kind: string }) {
-  return !['volume', 'slice', 'isosurface', 'volume representation'].includes(row.kind);
+  return !['volume', 'slice', 'oblique slice', 'isosurface', 'volume representation'].includes(row.kind);
 }
 
 // --- the split between the tree and the properties ----------------------------------------------------------------

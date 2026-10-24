@@ -10,8 +10,8 @@ import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Color } from '@molstar/core/util/color';
 import type { ObjectPose } from '@molstar/stage-tools-extension/move';
 import type { StageApi } from '@molstar/stage-tools-extension/operations';
-import { Decorations, MeshControls, Slice } from '@molstar/cryoet-extension/controls';
-import type { DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
+import { Decorations, MeshControls, ObliqueSlice, Slice } from '@molstar/cryoet-extension/controls';
+import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
 import { GraphicsMode, Motion } from '@molstar/mesoscale-extension/controls';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
@@ -199,6 +199,37 @@ function sectionsOf(
         </Section>,
       ];
     }
+    case 'oblique slice':
+      // its place (its handle, its numbers in the volume's frame) and contrast, then its whole form
+      return [
+        ...(api.cryoet
+          ? [
+              <Section title="Oblique slice">
+                {() => <ObliqueSlice api={api} area={api.cryoet!} volume={node.ref} slice={picked.representation!} />}
+              </Section>,
+            ]
+          : []),
+        <Section title="Representation">
+          {() => (
+            <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+              <Representations
+                api={api}
+                area={area}
+                owner={node.ref}
+                operation="volume.update"
+                only={(r) => r.ref === picked.representation}
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void api.run('volume.remove', { node: picked.representation! })}
+              >
+                Remove the oblique slice
+              </Button>
+            </div>
+          )}
+        </Section>,
+      ];
     case 'isosurface':
     case 'volume representation':
       return [
@@ -615,6 +646,15 @@ function AddParticleRepresentation(props: {
 }
 
 /** A volume's slices, a section each (Slice X, Y, Z: position and window), and the three at a click if some are missing */
+/** A new oblique slice through the volume's middle, its handle shown on it */
+async function addOblique(api: ViewerApi, cryoet: CryoetApi, volume: string) {
+  const r = await cryoet.oblique({ volume } as never);
+  const slice = r.ok ? (r as { value?: { slice?: string } }).value?.slice : undefined;
+  if (!slice) return;
+  hideHandles(api);
+  cryoet.useObliqueHandles(api).show({ volume, slice });
+}
+
 function VolumeSlices(props: { api: ViewerApi; volume: string }) {
   const cryoet = props.api.cryoet;
   if (!cryoet) return <span />;
@@ -635,6 +675,16 @@ function VolumeSlices(props: { api: ViewerApi; volume: string }) {
           </Button>
         )}
       </Show>
+      <For each={mapState(info, (i) => i?.obliques.map((o) => o.ref) ?? [])} by={(r) => r}>
+        {(slice) => (
+          <Section title="Oblique slice">
+            {() => <ObliqueSlice api={props.api} area={cryoet} volume={props.volume} slice={slice} />}
+          </Section>
+        )}
+      </For>
+      <Button size="sm" variant="ghost" onClick={() => void addOblique(props.api, cryoet, props.volume)}>
+        Add an oblique slice
+      </Button>
     </div>
   );
 }

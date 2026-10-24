@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { StateSelection } from '@molstar/core/state';
 import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
-import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
+import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
@@ -16,6 +16,7 @@ import type { Structure } from '@molstar/model/model/structure';
 import type { Grid } from '@molstar/model/model/volume';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
+import { VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -414,6 +415,61 @@ describe('cryoet', () => {
       .commit();
     expectOk(await c.slice({ volume: 'ribosome.mrc', axis: 'z', index: 3 } as never));
     expect((v.plugin.state.data.cells.get(z)!.transform.params as any).type.params.alpha).toBe(0.4);
+  });
+
+  it('adds an oblique slice and places it in the volume, apart from the x, y and z slices', async () => {
+    const v = await viewer();
+    const c = v.api.cryoet!;
+    const ref = volumeRef(v, 'ribosome.mrc');
+    const read = () => c.sliceState(ref).value as SliceInfo;
+    const added = await c.oblique({ volume: 'ribosome.mrc' } as never);
+    expectOk(added);
+    const slice = (added as { value: { slice: string } }).value.slice;
+    // through the middle, tilted; no grid slice
+    expect(read().slices).toEqual([]);
+    expect(read().obliques).toHaveLength(1);
+    expect(read().obliques[0]).toMatchObject({ ref: slice, contrast: 3, visible: true });
+    expect(read().obliques[0].tilt.map(Math.round)).toEqual([30, 30]);
+    // placed by its numbers, in the volume's frame
+    expectOk(await c.oblique({ volume: 'ribosome.mrc', slice, x: 2, z: -3, ex: 10, ey: -20 } as never));
+    const o = read().obliques[0];
+    expect(o.position.map((x) => Math.round(x * 1000) / 1000)).toEqual([2, 0, -3]);
+    expect(o.tilt.map((x) => Math.round(x * 1000) / 1000)).toEqual([10, -20]);
+    // the x slice is its own, made beside it: the oblique one is not taken for it
+    expectOk(await c.slice({ volume: 'ribosome.mrc', axis: 'x' } as never));
+    expect(read().slices.map((x) => x.axis)).toEqual(['x']);
+    expect(read().obliques.map((x) => x.ref)).toEqual([slice]);
+    expect(await c.oblique({ volume: 'ribosome.mrc', slice: 'nope' } as never)).toMatchObject({
+      ok: false,
+      code: 'not-found',
+    });
+    // the volume moved (a turn and a shift, as the stage's move does it: its grid, and the plane with it): the slice's
+    // numbers stay, in the volume's frame
+    const m = Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), Vec3.create(50, 0, 0)), Mat4.rotZ90);
+    const vol = v.plugin.managers.volume.hierarchy.current.volumes.find((x) => x.cell.transform.ref === ref)!;
+    const plane = (v.plugin.state.data.cells.get(slice)!.transform.params as any).type.params.plane;
+    const b = v.plugin.state.data.build();
+    b.to(vol.cell).insert(VolumeTransform, { transform: { name: 'matrix', params: { data: m, transpose: false } } });
+    b.to(slice).update((p: any) => ({
+      ...p,
+      type: {
+        ...p.type,
+        params: {
+          ...p.type.params,
+          plane: {
+            point: Vec3.transformMat4(Vec3(), plane.point, m),
+            normal: Vec3.transformDirection(Vec3(), plane.normal, m),
+          },
+        },
+      },
+    }));
+    await b.commit();
+    const kept = read().obliques[0];
+    expect(kept.position.map((x) => Math.round(x * 1000) / 1000)).toEqual([2, 0, -3]);
+    expect(kept.tilt.map((x) => Math.round(x * 1000) / 1000)).toEqual([10, -20]);
+    // placed again by a number: in the moved frame
+    expectOk(await c.oblique({ volume: 'ribosome.mrc', slice, x: 4 } as never));
+    expect(read().obliques[0].position.map((x) => Math.round(x * 1000) / 1000)).toEqual([4, 0, -3]);
   });
 
   it('gives a volume format three slices as its visuals (a tomogram dropped), no isosurface', async () => {
