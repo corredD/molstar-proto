@@ -398,7 +398,10 @@ export class MesoscaleApi extends ApiArea {
       ),
       particles: PD.Text('', { description: 'A particle list (a model) by label or state ref; empty: every one' }),
       object: OptionalParam(
-        PD.Text('', { description: 'A structure or a particle list by label or state ref (in place of particles)' }),
+        PD.Text('', {
+          description:
+            'A structure or a particle list by its name (as the tree shows it) or state ref (in place of particles)',
+        }),
       ),
     },
     async run(values, ctx) {
@@ -431,7 +434,11 @@ export class MesoscaleApi extends ApiArea {
         if (isFailure(one)) return one;
         reps = (one ? [one] : lists(ctx)).flatMap((l) => l.representations.map((r) => r.cell));
       }
-      if (!reps.length) return ApiResult.fail('not-found', 'Nothing of it is shown.', 'Open a mesoscale model first.');
+      if (!reps.length) {
+        return of
+          ? ApiResult.fail('not-found', `Nothing${of} is drawn.`, 'Give it a representation first.')
+          : ApiResult.fail('not-found', 'No particles are shown.', 'Open a mesoscale model first.');
+      }
       const b = ctx.plugin.state.data.build();
       const nodes: string[] = [];
       for (const r of reps) {
@@ -497,7 +504,7 @@ export class MesoscaleApi extends ApiArea {
       object: OptionalParam(
         PD.Text('', {
           description:
-            'A structure, a particle list or a volume by label or state ref: its quality alone; absent: every object, and the canvas resolution',
+            'A structure, a particle list or a volume by its name (as the tree shows it) or state ref: its quality alone; absent: every object, and the canvas resolution',
         }),
       ),
     },
@@ -505,6 +512,9 @@ export class MesoscaleApi extends ApiArea {
       const { mode, object } = values as { mode: GraphicsMode; object?: string };
       const one = object?.trim() ? oneObject(ctx, object) : undefined;
       if (isFailure(one)) return one;
+      if (one && !one.representations.length) {
+        return ApiResult.fail('not-found', `Nothing of ${one.name} is drawn.`, 'Give it a representation first.');
+      }
       // one commit for every representation of every object (bulk is one change)
       const b = ctx.plugin.state.data.build();
       const nodes: string[] = [];

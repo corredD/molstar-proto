@@ -233,4 +233,21 @@ describe('graphics and motion per object', () => {
       plugin.canvas3dContext = undefined;
     }
   });
+  it('fails, not already, for an object with nothing drawn', async () => {
+    const v = await viewer(['crn.cif']);
+    const s = v.plugin.managers.structure.hierarchy.current.structures[0];
+    const b = v.plugin.build();
+    for (const r of s.components.flatMap((c) => c.representations)) b.delete(r.cell.transform.ref);
+    await b.commit();
+    const ref = s.cell.transform.ref;
+    expect(await v.api.mesoscale!.graphics({ mode: 'ultra', object: ref } as never)).toMatchObject({
+      ok: false,
+      code: 'not-found',
+    });
+    expect(await v.api.mesoscale!.motion({ wiggle: 1, object: ref } as never)).toMatchObject({
+      ok: false,
+      code: 'not-found',
+      hint: 'Give it a representation first.',
+    });
+  });
 });
