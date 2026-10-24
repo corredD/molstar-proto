@@ -39,8 +39,8 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
   put their quality and motion back on every structure, losing one structure's own; so do the structure's own
   Representation preset (`structure.preset`) and a representation added later (its defaults: the object reads mixed). A
   plugin-core change, a lane of its own; pinned in `mesoscale/src/_test/object-graphics.test.ts`.
-- Graphics & Motion on parts (entities, chains, groups, targets) and meshes; a structure's `auto` quality shown (no mode
-  lit until one is picked).
+- Graphics & Motion on parts (entities, chains, groups, targets) and meshes; the starting state shown (no mode lit until
+  one is picked: `auto` quality, a list's default levels of detail).
 - The canvas resolution (pixel scale, sharpening) on screen: only ⌘K, `?graphics-mode=` and the agent set it now.
 - A volume's quality: Mol\*'s `quality` barely changes a slice or an isosurface; a stronger setting per volume
   (resolution, a smoother surface).
