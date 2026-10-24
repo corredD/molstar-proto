@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Grid, Volume } from '@molstar/model/model/volume';
@@ -498,12 +499,11 @@ export function createPeriodicVolume(volume: Volume, min: Vec3, max: Vec3): Volu
     dataOffset: _dataOffset,
   };
 
+  // the grid starts `min` cells from the volume's own: its origin (a centered map's half cell) kept
   const matrix = Grid.getGridToCartesianTransform(volume.grid);
-
-  const t = Mat4.getScaling(Vec3(), matrix);
-  Vec3.mul(t, t, space.dimensions as Vec3);
-  const s = Vec3.mul(Vec3(), min, t);
-  Mat4.setTranslation(matrix, s);
+  const start = Vec3.mul(Vec3(), min, space.dimensions as Vec3);
+  Vec3.transformMat4(start, start, matrix);
+  Mat4.setTranslation(matrix, start);
 
   const _transform: Grid.Transform = { kind: 'matrix', matrix };
 

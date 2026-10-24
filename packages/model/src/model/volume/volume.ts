@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Grid } from './grid.js';
@@ -502,14 +503,20 @@ export namespace Volume {
   };
 
   type PeriodicRange = { min: Vec3; max: Vec3 };
+  /** The size of a cell in Å: the grid's extent, without its origin */
+  function cellSize(grid: Grid) {
+    const gridToCartn = Grid.getGridToCartesianTransform(grid);
+    const size = Vec3.fromArray(Vec3(), grid.cells.space.dimensions, 0);
+    Vec3.transformMat4(size, size, gridToCartn);
+    return Vec3.sub(size, size, Mat4.getTranslation(Vec3(), gridToCartn));
+  }
+
   export function getPeriodicRange(volume: Volume): PeriodicRange | undefined {
     if (!isPeriodic(volume)) return;
 
     const v = volume.parent || volume;
     if (!v._localPropertyData['__periodicRange__']) {
-      const dim = Vec3.fromArray(Vec3(), v.grid.cells.space.dimensions, 0);
-      const gridToCartn = Grid.getGridToCartesianTransform(v.grid);
-      Vec3.transformMat4(dim, dim, gridToCartn);
+      const dim = cellSize(v.grid);
       const min = Vec3.create(Infinity, Infinity, Infinity);
       const max = Vec3.create(-Infinity, -Infinity, -Infinity);
       const tg = Vec3();
@@ -535,9 +542,7 @@ export namespace Volume {
     const v = volume.parent || volume;
     if (!v._localPropertyData['__periodicInstanceMapping__']) {
       const map = new Map<number, InstanceIndex>();
-      const dim = Vec3.fromArray(Vec3(), v.grid.cells.space.dimensions, 0);
-      const gridToCartn = Grid.getGridToCartesianTransform(v.grid);
-      Vec3.transformMat4(dim, dim, gridToCartn);
+      const dim = cellSize(v.grid);
       const { min } = getPeriodicRange(v)!;
       const tg = Vec3();
       for (let i = 0, il = v.instances.length; i < il; i++) {
