@@ -150,6 +150,18 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(posted.at(-1)).toMatch(/Ctrl\+click one/);
   });
 
+  it('lets the first point go when its object is removed: the next Ctrl+click is a new first point, and says why', async () => {
+    const v = await viewer();
+    const { p, posted } = picker(v);
+    await p.click({ loci: particle(v, 0), measure: true });
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expectOk(await v.api.run('particles.remove', { particles: list }));
+    expect(await p.click({ loci: atom(v, 1, 'CA'), measure: true })).toBe(true);
+    expect(distances(v)).toHaveLength(0);
+    expect(p.pending.value?.picked.kind).toBe('entity');
+    expect(posted.some((t) => /removed/.test(t))).toBe(true);
+  });
+
   it('takes a bond as a point (normalized to its atoms first)', async () => {
     const v = await viewer();
     const { p } = picker(v);

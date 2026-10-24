@@ -57,11 +57,16 @@ export function distancePicker(
         return true;
       }
       const first = pending.value;
-      if (!first) {
+      // its object removed since (its row gone with it): let go, this point is a new first one
+      const gone = first && !area.objectsState().value.some((o) => o.ref === first.picked.node.ref);
+      if (!first || gone) {
+        cancel();
         pending.set({ loci, picked });
         area.markPoint(loci);
         options.reveal?.(picked);
-        options.post?.(`Distance from ${picked.label}: Ctrl+click the second point (Esc cancels).`);
+        options.post?.(
+          `${gone ? "The first point's object was removed. " : ''}Distance from ${picked.label}: Ctrl+click the second point (Esc cancels).`,
+        );
         return true;
       }
       cancel();
