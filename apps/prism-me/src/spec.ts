@@ -63,7 +63,7 @@ export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
 }
 
 /** The parts the explorer's panel replaces (_spec/ui.md §1): their operations stay, for ⌘K and the assistant */
-const HiddenParts = [
+export const HiddenParts = [
   'core.tab.home',
   'core.tab.structure',
   'core.tab.selection',

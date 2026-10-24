@@ -24,25 +24,25 @@ agent run (one undo step each); the command menu (⌘K) has each.
 
 ## Mesoscale (the Mesoscale Explorer's features)
 
-| Feature                                                                                                        | Status   | Operation / where                                                                |
-| -------------------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------- |
-| Entities, by compartment tree (cellPACK) or function, with counts                                              | Done     | `mesoscale.entities`; Entities tab                                               |
-| Show, hide an entity or a whole group                                                                          | Done     | `mesoscale.style` (`visible`); the eyes                                          |
-| Color an entity (picker), generate colors (a hue per compartment, its entities around it), theme colors, reset | Done     | `mesoscale.style`, `mesoscale.colors`                                            |
-| Opacity, emissive of entities                                                                                  | Done     | `mesoscale.style` (`transparency`, `emissive`)                                   |
-| Filter the entities by name                                                                                    | Done     | Entities tab                                                                     |
-| Graphics modes: ultra, quality, balanced, performance (level of detail, pixel scale, sharpening)               | Done     | `mesoscale.graphics`; `?graphics-mode=`                                          |
-| Wiggle and tumble                                                                                              | Partial  | `mesoscale.motion`: for all particles; the explorer tumbled all but membranes    |
-| The explorer's look: multiscale occlusion, shadows, outlines, edges                                            | Done     | the app's canvas defaults (`look.ts`)                                            |
-| Group by function                                                                                              | Partial  | `mesoscale.colors` `groupBy`; no switch in the tab                               |
-| Lightness, pattern, illustrative and cel shading per entity                                                    | Deferred | need particle layers beyond color, transparency, emissive                        |
-| Level of detail per entity                                                                                     | Partial  | one level for all (graphics mode)                                                |
-| Clip per entity, group or target: plane, sphere, box, cylinder, cone; moved, turned and sized by handles       | Done     | `clipping.add` `particles` (Prism); the row's scissors; Clips in the properties  |
-| Quick styles (Default, Celshading, Illustrative, Shiny, Stylized, DOF)                                         | Deferred | Prism's quick styles are structure presets                                       |
-| Color file import (JSON)                                                                                       | Deferred |                                                                                  |
-| Snapshot descriptions' links `#key`, `i<names>`, `g<group>.<names>`                                            | Deferred | Prism's markdown host claims only `!command` links                               |
-| The guided tour (driver.js)                                                                                    | Deferred | Prism has its own help                                                           |
-| Selection list, focus info, measurements                                                                       | Partial  | Prism's own Selection tab, inspector and measurements, not the explorer's panels |
+| Feature                                                                                                        | Status   | Operation / where                                                                                                            |
+| -------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Entities, by compartment tree (cellPACK) or function, with counts                                              | Done     | `mesoscale.entities`; the Scene tree (a model's groups, then entities; its Group by in its properties)                       |
+| Show, hide an entity or a whole group                                                                          | Done     | `mesoscale.style` (`visible`); the eyes                                                                                      |
+| Color an entity (picker), generate colors (a hue per compartment, its entities around it), theme colors, reset | Done     | `mesoscale.style`, `mesoscale.colors`                                                                                        |
+| Opacity, emissive of entities                                                                                  | Done     | `mesoscale.style` (`transparency`, `emissive`)                                                                               |
+| Filter the entities by name                                                                                    | Done     | the Scene tree's filter                                                                                                      |
+| Graphics modes: ultra, quality, balanced, performance (level of detail, pixel scale, sharpening)               | Done     | `mesoscale.graphics`; `?graphics-mode=`                                                                                      |
+| Wiggle and tumble                                                                                              | Partial  | `mesoscale.motion`: for all particles; the explorer tumbled all but membranes                                                |
+| The explorer's look: multiscale occlusion, shadows, outlines, edges                                            | Done     | the app's canvas defaults (`look.ts`)                                                                                        |
+| Group by function                                                                                              | Done     | a model's Group by (its properties), the tree follows; `mesoscale.entities`, `mesoscale.style`, `mesoscale.colors` `groupBy` |
+| Lightness, pattern, illustrative and cel shading per entity                                                    | Deferred | need particle layers beyond color, transparency, emissive                                                                    |
+| Level of detail per entity                                                                                     | Partial  | one level for all (graphics mode)                                                                                            |
+| Clip per entity, group or target: plane, sphere, box, cylinder, cone; moved, turned and sized by handles       | Done     | `clipping.add` `particles` (Prism); the row's scissors; Clips in the properties                                              |
+| Quick styles (Default, Celshading, Illustrative, Shiny, Stylized, DOF)                                         | Deferred | Prism's quick styles are structure presets                                                                                   |
+| Color file import (JSON)                                                                                       | Deferred |                                                                                                                              |
+| Snapshot descriptions' links `#key`, `i<names>`, `g<group>.<names>`                                            | Deferred | Prism's markdown host claims only `!command` links                                                                           |
+| The guided tour (driver.js)                                                                                    | Deferred | Prism has its own help                                                                                                       |
+| Selection list, focus info, measurements                                                                       | Partial  | Prism's own Selection tab, inspector and measurements, not the explorer's panels                                             |
 
 ## Cryo-ET
 
@@ -83,8 +83,9 @@ agent run (one undo step each); the command menu (⌘K) has each.
 Start: `node scripts/esbuild/app.mjs apps/prism-me --dev --port 1343`, open
 `http://localhost:1343/apps/prism-me/build/`.
 
-1. Home › Mesoscale examples › CellPack HIV. Entities tab: Generate colors; fold and unfold the compartments; hide
-   `membrane`; color one entity; Graphics: Fast, then Quality; Wiggle, Tumble.
+1. The panel's Open › Mesoscale examples… › CellPack HIV (or `?example=cellpack-hiv1`). In the Scene tree, pick the
+   model: Look › Generate colors; Group by: Function, then Compartment; fold and unfold its groups; hide `membrane`;
+   color one entity; Graphics: Fast, then Quality; Wiggle, Tumble.
 2. Right-click a protein: Hide it, Color it…; Cut with a plane; Cut row: Position, Flip; right-click again: Remove the
    cut. Try the sphere and the box.
 3. Drop a RELION `.star` with classes. Structure tab › its Decorations row: Targets: Class; drop or load a structure

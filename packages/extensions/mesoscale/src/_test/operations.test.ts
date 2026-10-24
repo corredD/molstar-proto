@@ -64,6 +64,71 @@ describe('mesoscale', () => {
     expect(i.groupBy).toBe('compartment');
   });
 
+  it('describes the same list by compartment and by function, as different group trees', async () => {
+    const v = await viewer();
+    const m = v.api.mesoscale!;
+    const tree = (g: MesoscaleInfo['groups']): unknown => [g.label, g.entities, g.groups.map(tree)];
+    const byCompartment = await m.entities({ groupBy: 'compartment' });
+    const byFunction = await m.entities({ groupBy: 'function' });
+    expectOk(byCompartment);
+    expectOk(byFunction);
+    const c = byCompartment.value as MesoscaleInfo;
+    const f = byFunction.value as MesoscaleInfo;
+    expect([c.groupBy, c.hasCompartments]).toEqual(['compartment', true]);
+    expect([f.groupBy, f.hasCompartments]).toEqual(['function', true]);
+    expect(tree(c.groups)).toEqual([
+      'HIV',
+      [3],
+      [
+        [
+          'root',
+          [],
+          [
+            [
+              'envelope',
+              [],
+              [
+                ['membrane', [0], []],
+                ['capsid', [], [['surface', [1, 2], []]]],
+              ],
+            ],
+          ],
+        ],
+      ],
+    ]);
+    expect(tree(f.groups)).toEqual([
+      'HIV',
+      [],
+      [
+        ['membrane', [0], []],
+        ['unknown function', [1, 2, 3], []],
+      ],
+    ]);
+    // no grouping asked: by compartment, the list has some
+    expect((await info(v)).groupBy).toBe('compartment');
+  });
+
+  it('resolves a group under the grouping asked, else the default one with functions as a fallback', async () => {
+    const v = await viewer();
+    const m = v.api.mesoscale!;
+    const hidden = async () =>
+      (await info(v)).entities
+        .filter((e) => !e.visible)
+        .map((e) => e.name)
+        .sort();
+    expectOk(await m.style({ group: 'unknown function', groupBy: 'function', visible: false }));
+    expect(await hidden()).toEqual(['CA', 'NC', 'loose']);
+    expectOk(await m.style({ reset: true }));
+    expectOk(await m.style({ group: 'root.envelope.capsid', groupBy: 'compartment', visible: false }));
+    expect(await hidden()).toEqual(['CA', 'NC']);
+    expectOk(await m.style({ reset: true }));
+    // asked by function, a compartment is not a group
+    expect((await m.style({ group: 'root.envelope.capsid', groupBy: 'function', visible: false })).ok).toBe(false);
+    // none asked: compartments, then functions
+    expectOk(await m.style({ group: 'membrane', visible: false }));
+    expect(await hidden()).toEqual(['lipids']);
+  });
+
   it('hides a group and colors an entity, as layers on the representation, and says when nothing changes', async () => {
     const v = await viewer();
     const m = v.api.mesoscale!;

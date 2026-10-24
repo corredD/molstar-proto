@@ -26,7 +26,6 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - Lightness, pattern, illustrative and cel shading per entity (particle layers beyond color, transparency, emissive);
   the explorer's quick styles for particles.
 - Level of detail per entity; tumble except membranes.
-- A group-by switch (compartment, function) in the Entities tab.
 - Color file import (JSON, by entity name).
 - Snapshot descriptions' links: `#key`, `i<names>`, `g<group>.<names>`.
 - Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms.

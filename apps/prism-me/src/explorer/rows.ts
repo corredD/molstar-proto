@@ -52,12 +52,16 @@ export function rowsOf(
 ): Row[] {
   const f = filter.trim().toLowerCase();
   const rows: Row[] = [];
-  // the labels under the row they were made at (after its own children)
+  // the labels under the row they were made at (after its own children); one made at a model's group the model's
+  // grouping does not show now: under the model (§3), back under its group when that grouping is shown again
+  const shownGroups = groupRowsOf(objects, parts);
   const byNode = new Map<string, LabelInfo[]>();
   for (const l of labels) {
-    const list = byNode.get(l.node);
+    const node =
+      l.node.startsWith('g:') && !shownGroups.keys.has(l.node) ? modelOf(l.node, shownGroups.models) : l.node;
+    const list = byNode.get(node);
     if (list) list.push(l);
-    else byNode.set(l.node, [l]);
+    else byNode.set(node, [l]);
   }
   const push = (r0: Row, children: () => void) => {
     const own = byNode.get(r0.key);
@@ -133,13 +137,14 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
     push({ ...base, key: `o:${o.ref}`, kind: 'mesoscale model', hasChildren: !!info?.entities.length }, () => {
       if (!info) return;
       const byId = new Map(info.entities.map((e) => [e.id, e]));
+      const groupKey = (path: string) => groupKeyOf(o.ref, info, path);
       const walk = (g: MesoGroup, depth: number) => {
         for (const child of g.groups) {
           const members = groupEntities(child);
           const shown = members.some((id) => byId.get(id)?.visible);
           push(
             {
-              key: `g:${o.ref}:${child.path}`,
+              key: groupKey(child.path),
               depth,
               label: child.label,
               kind: 'group',
@@ -216,6 +221,40 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
   }
   push({ ...base, key: `o:${o.ref}`, kind: 'mesh', hasChildren: false }, () => {});
   void f;
+}
+
+/**
+ * A model's group row's key: a function's keyed apart from a compartment of the same name (the grouping is the model's,
+ * §3); a model without compartments has only functions: its keys stay those of sessions saved before (a label's row)
+ */
+function groupKeyOf(ref: string, info: MesoscaleInfo, path: string): string {
+  return `g:${ref}:${info.groupBy === 'function' && info.hasCompartments ? 'fn:' : ''}${path}`;
+}
+
+/** The group rows the models' groupings make (their keys), and the models' refs */
+function groupRowsOf(objects: readonly SceneObject[], parts: Parts) {
+  const keys = new Set<string>();
+  const models: string[] = [];
+  for (const o of objects) {
+    if (o.kind !== 'model') continue;
+    models.push(o.ref);
+    const info = parts.get(o.ref) as MesoscaleInfo | undefined;
+    if (!info) continue;
+    const walk = (g: MesoGroup) => {
+      for (const child of g.groups) {
+        keys.add(groupKeyOf(o.ref, info, child.path));
+        walk(child);
+      }
+    };
+    walk(info.groups);
+  }
+  return { keys, models };
+}
+
+/** The model row of a group row's key (`g:<ref>:<path>`), else the key itself */
+function modelOf(key: string, models: readonly string[]): string {
+  const ref = models.find((m) => key.startsWith(`g:${m}:`));
+  return ref === undefined ? key : `o:${ref}`;
 }
 
 /** A volume's representations with rows of their own kind (others: 'volume representation') */

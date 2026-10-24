@@ -8,6 +8,7 @@
 
 import { Color } from '@molstar/core/util/color';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
+import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
   Button,
@@ -21,6 +22,7 @@ import {
   TextInput,
 } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
+import { type KeyedState, keyedState } from '@molstar/prism-ui/reactive/keyed-state';
 import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
@@ -45,6 +47,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const area = ctx.api.explorer;
   if (!area) return {};
   const model = sceneModel(area, ctx.api.stage);
+  scenes.set(area, model);
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
   area.setOnClick((click) => {
     const p = labelPicked(click.x, click.y) ?? area.pickedOf(click.loci);
@@ -72,6 +75,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
           close = openContextMenu(root, at, sub);
         },
         reveal: model.reveal,
+        groupBy: model.groupByOf,
         editText: (text, keep) => editInline(root, at, text, keep),
         ...(request.position ? { at: [request.position[0], request.position[1], request.position[2]] as const } : {}),
       });
@@ -113,29 +117,43 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   };
 }
 
+/** The tree's state of each explorer area (its viewer's): for tests */
+const scenes = new WeakMap<ExplorerApi, SceneModel>();
+export const sceneModelOf = (area: ExplorerApi): SceneModel | undefined => scenes.get(area);
+
 /** The tree's state, kept for the viewer's life (the menu and the 3D picks act on it while the panel is closed) */
-interface SceneModel {
+export interface SceneModel {
   readonly open: ObservableState<ReadonlySet<string>>;
   readonly filter: ObservableState<string>;
   readonly picked: ObservableState<Picked | undefined>;
   readonly parts: ObservableState<Parts>;
+  /**
+   * Each model's grouping by its ref, picked in its properties (none: the default one): view state, no operation, no
+   * history step (_spec/ui.md §4). Its read follows its own key only, so a switch remakes that model's rows alone.
+   */
+  readonly groupings: KeyedState<string, MesoGroupBy>;
   /** The row to bring into view (a pick in 3D) */
   readonly scrollTo: ObservableState<string | undefined>;
   /** Picks a node's row, unfolding the way to it */
   reveal(p: PickedNode): void;
+  /** A model's grouping as its rows show it (its info's), for what acts on its groups */
+  groupByOf(model: string): MesoGroupBy | undefined;
 }
 
 function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
   const open = observableState<ReadonlySet<string>>(new Set(Categories.map((c) => `c:${c.id}`)));
   const picked = observableState<Picked | undefined>(undefined);
   const parts = observableState<Parts>(new Map());
+  const groupings = keyedState<string, MesoGroupBy>();
   const scrollTo = observableState<string | undefined>(undefined);
   return {
     open,
     filter: observableState(''),
     picked,
     parts,
+    groupings,
     scrollTo,
+    groupByOf: (ref) => (parts.value.get(ref) as MesoscaleInfo | undefined)?.groupBy,
     reveal(p) {
       const labels = stage?.labelsState().value ?? [];
       const above = ancestorKeys(area.objectsState().value, parts.value, p.key, labels) ?? [];
@@ -163,10 +181,21 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
       sub.unsubscribe();
       partStates.delete(ref);
     }
+    // what the model keeps of an object gone (its parts, its grouping), also of one gone while the panel was not
+    // shown: a ref used again starts afresh
+    const gone = [...parts.value.keys()].filter((ref) => !wanted.has(ref));
+    if (gone.length) {
+      const next = new Map(parts.value);
+      for (const ref of gone) next.delete(ref);
+      parts.set(next);
+    }
+    for (const ref of [...model.groupings.values.keys()]) if (!wanted.has(ref)) model.groupings.delete(ref);
     for (const o of list) {
       if (o.category !== 'particles' || partStates.has(o.ref)) continue;
       const state: ReadonlyState<unknown> | undefined =
-        o.kind === 'model' ? api.mesoscale?.infoState(o.ref) : api.cryoet?.decorationsState(o.ref);
+        o.kind === 'model'
+          ? api.mesoscale?.infoState(o.ref, model.groupings.key(o.ref))
+          : api.cryoet?.decorationsState(o.ref);
       if (!state) continue;
       const sub = state.subscribe((value) => {
         const next = new Map(parts.value);
@@ -243,7 +272,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     openContextMenu(
       rootOf(button),
       { x: r.left, y: r.bottom },
-      which === 'color' ? colorItems(api, area, picked) : clipItems(api, area, picked),
+      which === 'color' ? colorItems(api, area, picked, model.groupByOf) : clipItems(api, area, picked),
     );
   };
   // a row's right-click: it is picked, and the menu of what it stands for opens at the pointer
@@ -260,6 +289,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
       nodeMenuItems(api, area, picked, {
         open: (sub) => openContextMenu(root, at, sub),
         reveal: model.reveal,
+        groupBy: model.groupByOf,
         editText: (text, keep) => editInline(root, at, text, keep),
       }),
     );
@@ -342,7 +372,15 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
           when={mapState(picked.asReadonly, (p) => !!p)}
           fallback={() => <p style={`margin: 0; ${Muted}`}>Pick a row to see its properties.</p>}
         >
-          {() => <Properties api={api} area={area} picked={picked.asReadonly} parts={parts.asReadonly} />}
+          {() => (
+            <Properties
+              api={api}
+              area={area}
+              picked={picked.asReadonly}
+              parts={parts.asReadonly}
+              groupings={model.groupings}
+            />
+          )}
         </Show>
       </div>
     </div>

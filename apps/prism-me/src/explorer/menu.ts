@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { ContextMenuItem } from '@molstar/prism-ui';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type {} from '@molstar/prism-viewer/features/clipping';
@@ -217,8 +218,16 @@ export async function showTheme(api: ViewerApi, list: string): Promise<boolean> 
   return r.ok;
 }
 
-/** The brush's items: a color for all of the node; a model's or group's generated colors */
-export function colorItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
+/**
+ * The brush's items: a color for all of the node; a model's or group's generated colors, a hue per group as the tree
+ * groups the model (`groupBy`: the explorer's grouping of a model, by ref)
+ */
+export function colorItems(
+  api: ViewerApi,
+  area: ExplorerApi,
+  picked: PickedNode,
+  groupBy?: (model: string) => MesoGroupBy | undefined,
+): ContextMenuItem[] {
   const { node, kind } = picked;
   const paint = (color: string) => {
     if (kind === 'mesh') return api.run('cryoet.mesh', { mesh: node.ref, color });
@@ -236,6 +245,7 @@ export function colorItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode
   }));
   if (kind === 'mesoscale model' || kind === 'group') {
     const part = partOf(node);
+    const by = groupBy?.(node.ref);
     items.unshift({
       id: 'generate',
       label: 'Generate colors',
@@ -244,6 +254,7 @@ export function colorItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode
         void api.run('mesoscale.colors', {
           scheme: 'generate',
           particles: node.ref,
+          ...(by ? { groupBy: by } : {}),
           ...(part ? { entities: part.entities } : {}),
         }),
     });
@@ -307,6 +318,8 @@ export interface MenuActions {
   editText?(text: string, keep: (text: string) => void): void;
   /** The point clicked on what was picked (Å) */
   at?: readonly [number, number, number];
+  /** A model's grouping in the tree (the explorer's), for its generated colors */
+  groupBy?(model: string): MesoGroupBy | undefined;
 }
 
 /**
@@ -402,7 +415,12 @@ export function nodeMenuItems(
   }
   const open = actions.open;
   if (open && colorable(kind, node)) {
-    items.push({ id: 'color', label: 'Color…', icon: 'palette', run: () => open(colorItems(api, area, picked)) });
+    items.push({
+      id: 'color',
+      label: 'Color…',
+      icon: 'palette',
+      run: () => open(colorItems(api, area, picked, actions.groupBy)),
+    });
   }
   if (open && clippable(kind, node)) {
     items.push({ id: 'clip', label: 'Add a clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
