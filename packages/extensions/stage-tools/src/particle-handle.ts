@@ -10,7 +10,8 @@ import { type GizmoBinding, GizmoController, type GizmoItem } from '@molstar/gra
 import { type DragFrame, type GizmoPose, poseGesture } from '@molstar/graphics/util/gizmo/gestures';
 import type { Handle } from '@molstar/graphics/util/gizmo/handle';
 import { transformHandles } from '@molstar/graphics/util/gizmo/transform';
-import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
+import { Grid } from '@molstar/model/model/volume';
 import type { PluginContext } from '@molstar/plugin/context';
 import {
   offsetParticles,
@@ -174,6 +175,18 @@ function poseFrame(pose: GizmoPose): Mat4 {
   return m;
 }
 
+/** The smallest a particle's handle is (Å), what it moves however small */
+const MinHandleSize = 20;
+
+/** The radius of what is drawn on a particle (its decoration's), 0 for none */
+function objectRadius(target: ParticleTarget | undefined): number {
+  if (!target) return 0;
+  if (target.kind === 'structure') return target.structure.boundary.sphere.radius;
+  if (target.kind === 'volume') return Grid.getBoundingSphere(target.volume.grid).radius;
+  const sphere = (target.shape.geometry as { boundingSphere?: { radius: number } }).boundingSphere;
+  return sphere?.radius ?? 0;
+}
+
 /** The longest a commit holds the canvas's frames (ms) */
 const MaxCommitHoldMs = 3000;
 
@@ -330,10 +343,9 @@ export class ParticleHandles {
       this.#items.next([]);
       return;
     }
+    // at least as big as what it moves: past the object drawn on the particle (its radius), else the particle's own
     const r = data.radii?.[t.index] ?? 0;
-    const target = data.targetMapping?.get(data.targets[t.index]);
-    const objectRadius = target?.kind === 'structure' ? target.structure.boundary.sphere.radius : target ? 30 : 0;
-    const size = Math.max(r * 2, objectRadius * 0.8, 15);
+    const size = Math.max(objectRadius(data.targetMapping?.get(data.targets[t.index])) * 1.6, r * 3, MinHandleSize);
     this.#items.next([
       {
         key: `${t.list}:${t.index}`,
