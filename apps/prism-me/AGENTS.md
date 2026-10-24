@@ -45,6 +45,27 @@ and tries the app. Why: one long session serializes everything and buries upstre
 - **Corrections become rules:** when Ludovic corrects a choice that should hold, add it above as "(Ludovic, date) rule,
   because …", with a test that guards it where one can.
 
+### As David runs Seq\* (stories-untold `seq-view-spec-proto`, read 2026-10-24)
+
+- **Written state, not memory.** A session starts by reading [progress/current.md](progress/current.md) (one line per
+  lane in flight) and ends by writing its lane's `progress/<yyyy-mm-dd>-<slug>.md`: what was built, what was decided
+  (and by whom), what was learned, the size against the brief's. A dated slug, not a number: parallel lanes would take
+  the same number. Only the coordinating session (the main checkout) edits `current.md`: it adds a lane when it starts
+  one and removes it when Ludovic merges.
+- **A brief before code.** The coordinator turns Ludovic's item into a brief: the spec section it changes, the tests
+  that prove it, what Ludovic checks in the app, a size in production lines, and the model of each step. Over the size:
+  record it and what took the room in the progress file and keep going; stop and report when the work turns out
+  different from the brief.
+- **Models by step** (David's rule): mechanical work (copying, renames, running checks and tests, measuring) to Sonnet
+  subagents; design, the author step on hot paths, and every review to Opus.
+- **The review gate before the PR.** A lane's last steps: an Opus reviewer, read-only, reads the lane's diff against its
+  brief and the specs and lists findings (must-fix, should-fix, nit; each with file:line and a failure scenario); a
+  second, a skeptic, re-runs or re-reads each and tries to refute it; each confirmed must-fix and should-fix gets a test
+  that fails first, then its fix in a commit of its own. The PR body gains a `Review` section: the findings, refuted or
+  fixed (by commit), or left open (to TODO.md). Why: the review is what lets Ludovic merge on the body.
+- **Small commits, one cause each**, the cause in the message; a wrong commit is fixed forward, never amended once
+  pushed. A lane commits only its own files (`git diff -- <file>` shows only its hunks before `git add`).
+
 ## Commands
 
 `pnpm test:unit packages/extensions/mesoscale packages/extensions/cryoet packages/extensions/stage-tools`;
