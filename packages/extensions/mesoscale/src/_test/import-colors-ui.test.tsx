@@ -19,7 +19,7 @@ import { TestParticleList } from './fixtures.js';
 
 // Import colors… (`controls.tsx`, a model's Look in prism-me) over a headless viewer with two models, in jsdom: the file
 // picked runs `mesoscale.importColors` on the model the control was made for, the input is emptied (the same file can
-// be picked again). No network.
+// be picked again), and a file that cannot be read is said. No network.
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
@@ -88,5 +88,17 @@ describe('Import colors…', () => {
     expect(await colorOf(v, refs[1], 'CA')).toBe(0xff0000);
     expect(await colorOf(v, refs[0], 'CA')).toBeUndefined();
     expect(values).toEqual(['']);
+  });
+
+  it('says a file that cannot be read', async () => {
+    const { v, refs } = await twoModels();
+    const { pick } = mount(v, refs[0]);
+    const file = new File(['{}'], 'broken.json');
+    Object.defineProperty(file, 'text', { value: () => Promise.reject(new Error('NotReadableError')) });
+    pick(file);
+    await until(() => v.managers.notifications.history.value.length > 0);
+    const [m] = v.managers.notifications.history.value;
+    expect(m.text).toContain('broken.json could not be read');
+    expect(m.kind).toBe('error');
   });
 });

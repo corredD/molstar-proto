@@ -64,7 +64,8 @@ export function Motion(props: { area: MesoscaleApi; particles?: string }) {
 
 /**
  * Import colors…: a JSON color file picked, its colors put on the entities it names (`mesoscale.importColors`, one
- * step). The result, with the names not found, is the run's message (the status line), as for every person's run.
+ * step). The result, with the names not found, is the run's message (the status line), as for every person's run; a
+ * file that cannot be read is said there too (`fileUnreadable`).
  */
 export function ImportColors(props: { area: MesoscaleApi; particles?: string }) {
   const input = (
@@ -76,7 +77,10 @@ export function ImportColors(props: { area: MesoscaleApi; particles?: string }) 
         const picked = e.currentTarget.files?.[0];
         e.currentTarget.value = '';
         if (!picked) return;
-        void picked.text().then((json) => props.area.importColors({ json, particles: props.particles ?? '' }));
+        picked.text().then(
+          (json) => void props.area.importColors({ json, particles: props.particles ?? '' }),
+          (err) => props.area.fileUnreadable(picked.name, err),
+        );
       }}
     />
   ) as HTMLInputElement;

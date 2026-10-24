@@ -154,6 +154,11 @@ export class MesoscaleApi extends ApiArea {
     );
   }
 
+  /** Says a file a view picked could not be read: on the status line, as the plugin's errors are (it stays shown) */
+  fileUnreadable(name: string, e: unknown): void {
+    this.ctx.plugin.log.error(`${name} could not be read: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   readonly entities = this.operation({
     id: 'mesoscale.entities',
     title: 'Describe the entities',
