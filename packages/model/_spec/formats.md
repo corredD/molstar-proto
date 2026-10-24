@@ -33,16 +33,18 @@ registry from `ModelFormat.kind` to an `obtain(model)`.
 | Provider                  | Bag                 | From                                                                         |
 | ------------------------- | ------------------- | ---------------------------------------------------------------------------- |
 | `ModelSymmetry`           | dynamic, per format | mmCIF (assemblies, spacegroup, NCS); `fromCell` by other readers, frames     |
+| `Model.PeriodicBox`       | dynamic             | frames with a cell or `Frame.box`; GRO; LAMMPS; NAMD `.xsc` (`namd-xsc.ts`)  |
 | `ModelSecondaryStructure` | static              | mmCIF `struct_conf`, `struct_sheet_range`                                    |
 | `StructConn`              | static              | mmCIF `struct_conn`                                                          |
 | `ComponentBond`           | static, per format  | mmCIF `chem_comp_bond`; set by CCD                                           |
 | `IndexPairBonds`          | dynamic             | mmCIF `molstar_bond_site`; set by MOL/SDF/MOL2, CIF core, LAMMPS, topologies |
-| `AtomSiteAnisotrop`       | static              | mmCIF, CIF core                                                              |
+| `AtomSiteAnisotrop`       | dynamic             | mmCIF (by each model's atom ids), CIF core (by atom label)                   |
 | `AtomPartialCharge`       | static              | set by PDBQT, MOL2, LAMMPS                                                   |
 
 `IndexPairBonds` index atoms by source index (`atomSourceIndex`); `maxDistance` (default -1: an element-based threshold;
 `Infinity`: trust the table; a per-bond `distance` takes precedence), `cacheable`, and operators per bond (assemblies
-written with operator ids).
+written with operator ids). The frames of `trajectoryFromModelAndCoordinates` share the model's value: no format
+provider gives a value a reader set.
 
 ## 3. Volumes and particles
 

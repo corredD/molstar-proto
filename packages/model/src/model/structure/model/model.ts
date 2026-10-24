@@ -16,6 +16,7 @@ import type { SaccharideComponentMap } from '../structure/carbohydrates/constant
 import type { ModelFormat } from '@molstar/model/formats/format';
 import { calcModelCenter, getAsymIdCount } from './util.js';
 import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { PeriodicBox as PeriodicBoxData } from '@molstar/core/math/geometry/periodic-box';
 import { Coordinates, type Frame } from '../coordinates.js';
 import type { Topology } from '../topology.js';
 import { Task } from '@molstar/core/task';
@@ -111,6 +112,9 @@ export namespace Model {
     const elementCount = model.atomicHierarchy.atoms._rowCount;
     // fall back to the symmetry of the model if a frame has no cell
     const symmetry = ModelSymmetry.Provider.get(model);
+    // the frames have the model's topology: its explicit bonds, also ones set with `Provider.set` (no format provider
+    // gives them again: SDF, MOL, MOL2, CIF core, LAMMPS), obtained once for every frame
+    const indexPairBonds = IndexPairBonds.Provider.get(model);
 
     for (let i = 0, il = frames.length; i < il; ++i) {
       const f = frames[i];
@@ -129,9 +133,19 @@ export namespace Model {
 
       if (f.cell) {
         ModelSymmetry.Provider.set(m, ModelSymmetry.fromCell(f.cell.size, f.cell.anglesInRadians));
+        // a frame's cell is its simulation box, not a crystal's (model.md §4 "Periodic frames")
+        const box = f.box ?? PeriodicBoxData.fromCell(f.cell);
+        if (PeriodicBoxData.isValid(box)) PeriodicBox.set(m, box);
+        // the file's unwrapped coordinates, in the model's atom order as the frame's, made when first asked
+        const { unwrapped } = f;
+        if (unwrapped) {
+          let made: AtomicConformation | undefined;
+          UnwrappedConformation.set(m, () => (made ??= getAtomicConformationFromFrame(model, { ...f, ...unwrapped })));
+        }
       } else if (symmetry) {
         ModelSymmetry.Provider.set(m, symmetry);
       }
+      if (indexPairBonds) IndexPairBonds.Provider.set(m, indexPairBonds);
 
       TrajectoryInfo.set(m, { index: i, size: frames.length });
       CoarseGrained.set(m, coarseGrained);
@@ -244,6 +258,54 @@ export namespace Model {
       return (model._dynamicPropertyData[TrajectoryInfoProp] = trajectoryInfo);
     },
   };
+
+  const UnwrappedConformationProp = '__UnwrappedConformation__';
+  /**
+   * A frame's coordinates as the atoms moved, not wrapped into the box, when its file gives them beside the wrapped
+   * ones (LAMMPS image flags): a frame made whole or without jumps uses them (`ModelPeriodicity`). Made when first asked.
+   */
+  export const UnwrappedConformation = {
+    get(model: Model): AtomicConformation | undefined {
+      return (model._dynamicPropertyData[UnwrappedConformationProp] as (() => AtomicConformation) | undefined)?.();
+    },
+    set(model: Model, get: () => AtomicConformation) {
+      model._dynamicPropertyData[UnwrappedConformationProp] = get;
+    },
+  };
+
+  const PeriodicBoxProp = '__PeriodicBox__';
+  /**
+   * A frame's simulation box, set by the readers of simulation output (frames from coordinates with a cell, GRO):
+   * what the frame's coordinates repeat on. Not a crystal's cell (`ModelSymmetry`), which is never made whole.
+   */
+  export const PeriodicBox = {
+    get(model: Model): PeriodicBoxData | undefined {
+      return model._dynamicPropertyData[PeriodicBoxProp];
+    },
+    set(model: Model, box: PeriodicBoxData) {
+      return (model._dynamicPropertyData[PeriodicBoxProp] = box);
+    },
+  };
+
+  /**
+   * The frame with other atomic coordinates (and ranges, when given): a new model with the frame's topology and what
+   * its reader set (trajectory info, symmetry, box, index pair bonds), without what was computed from its coordinates.
+   */
+  export function withAtomicConformation(
+    model: Model,
+    conformation: AtomicConformation,
+    atomicRanges?: AtomicRanges,
+  ): Model {
+    const dynamic = Object.assign(Object.create(null), model._dynamicPropertyData);
+    delete dynamic[CenterProp];
+    return {
+      ...model,
+      id: UUID.create22(),
+      atomicConformation: conformation,
+      atomicRanges: atomicRanges ?? model.atomicRanges,
+      _dynamicPropertyData: dynamic,
+    };
+  }
 
   const AsymIdCountProp = '__AsymIdCount__';
   export type AsymIdCount = { readonly auth: number; readonly label: number };
