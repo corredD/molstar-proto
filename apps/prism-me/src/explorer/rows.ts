@@ -56,16 +56,19 @@ export function rowsOf(
   // the labels and the distances under the row they were made at (after its own children; a distance at its first
   // point's); one made at a model's group the model's grouping does not show now: under the model (§3), back under its
   // group when that grouping is shown again
+  // one whose row is not there (a part gone, a key from elsewhere): under its object's row
   const shownGroups = groupRowsOf(objects, parts);
+  const known = rowKeysOf(objects, parts, shownGroups.keys);
   const byNode = new Map<string, Row[]>();
-  const under = (key: string, row: Omit<Row, 'depth'>) => {
-    const node = key.startsWith('g:') && !shownGroups.keys.has(key) ? modelOf(key, shownGroups.models) : key;
+  const under = (key: string, object: string, row: Omit<Row, 'depth'>) => {
+    const shown = key.startsWith('g:') && !shownGroups.keys.has(key) ? modelOf(key, shownGroups.models) : key;
+    const node = known(shown) ? shown : `o:${object}`;
     const list = byNode.get(node);
     if (list) list.push(row as Row);
     else byNode.set(node, [row as Row]);
   };
   for (const l of labels) {
-    under(l.node, {
+    under(l.node, l.target, {
       key: `l:${l.ref}`,
       label: l.text,
       kind: 'label',
@@ -75,7 +78,7 @@ export function rowsOf(
     });
   }
   for (const d of distances) {
-    under(d.node, {
+    under(d.node, d.a.ref, {
       key: `d:${d.ref}`,
       label: d.label,
       kind: 'distance',
@@ -260,6 +263,29 @@ function groupRowsOf(objects: readonly SceneObject[], parts: Parts) {
     walk(info.groups);
   }
   return { keys, models };
+}
+
+/**
+ * Whether a key is a row's of these objects, shown or folded: an object's, a structure's entity or chain, a model's
+ * group shown or entity, a list's target, a volume's representation. A model whose parts are not read yet: any key of it.
+ */
+function rowKeysOf(objects: readonly SceneObject[], parts: Parts, groups: ReadonlySet<string>) {
+  const keys = new Set<string>(groups);
+  const unread: string[] = [];
+  for (const o of objects) {
+    keys.add(`o:${o.ref}`);
+    for (const e of o.entities ?? []) {
+      keys.add(`e:${o.ref}:${e.id}`);
+      if (e.chains.length > 1) for (const ch of e.chains) keys.add(`ch:${o.ref}:${e.id}:${ch}`);
+    }
+    for (const r of o.representations ?? []) keys.add(`r:${r.ref}`);
+    if (o.category !== 'particles') continue;
+    const part = parts.get(o.ref);
+    if (!part) unread.push(o.ref);
+    else if (o.kind === 'model') for (const e of (part as MesoscaleInfo).entities) keys.add(`me:${o.ref}:${e.id}`);
+    else for (const t of (part as DecorationsInfo).targets) keys.add(`t:${o.ref}:${t.id}`);
+  }
+  return (key: string) => keys.has(key) || unread.some((ref) => key.split(':')[1] === ref);
 }
 
 /** The model row of a group row's key (`g:<ref>:<path>`), else the key itself */
