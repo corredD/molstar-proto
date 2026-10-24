@@ -80,7 +80,11 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   });
   // a distance by two Ctrl+clicks (_spec/ui.md §7); Esc or a plain click lets its first point go
   const picker = distancePicker(ctx.api, area, {
-    post: (text) => ctx.managers.notifications.post(text),
+    // a person's run is posted by the viewer already (its failures, its "already"): not twice
+    post: (text) => {
+      const notifications = ctx.managers.notifications;
+      if (notifications.current.value?.text !== text) notifications.post(text);
+    },
     reveal: model.reveal,
   });
   area.escaped.subscribe(() => picker.cancel());

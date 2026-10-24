@@ -638,7 +638,11 @@ export class StageApi extends ApiArea {
       const same = distancesOf(ctx).find(
         (d) => d.node === node && JSON.stringify([d.a, d.b]) === JSON.stringify([brief(a), brief(b)]),
       );
-      if (same && !ctx.copy) return ApiResult.already(`It is already measured: ${same.label}.`);
+      if (same && !ctx.copy) {
+        return ApiResult.already(`It is already measured: ${same.label}.`, {
+          value: { ref: same.ref, distance: same.distance },
+        });
+      }
       const build = ctx.plugin.state.data.build();
       const dependsOn = a.ref === b.ref ? [a.ref] : [a.ref, b.ref];
       const made = build.toRoot().apply(StageDistance, { a, b, node }, { dependsOn });

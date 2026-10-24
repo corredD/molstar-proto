@@ -76,6 +76,9 @@ export function distancePicker(
         node: first.picked.key,
         nodeB: picked.key,
       });
+      // made, or measured already: its row picked; a failure or "already" said
+      if (!r.ok) options.post?.(r.message);
+      else if (r.unchanged) options.post?.(r.did);
       const value = r.ok ? (r.value as { ref?: string } | undefined) : undefined;
       if (value?.ref) {
         const ref = value.ref;

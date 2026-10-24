@@ -17,7 +17,7 @@ import { Script } from '@molstar/model/script/script';
 import { FocusLoci as CameraFocusLoci } from '@molstar/plugin/behavior/dynamic/camera';
 import { FocusLoci as RepresentationFocusLoci } from '@molstar/plugin/behavior/dynamic/representation';
 import type { PluginSpec } from '@molstar/plugin/spec';
-import type { ApiResult } from '@molstar/prism-viewer/api/area';
+import { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
@@ -160,6 +160,32 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(distances(v)).toHaveLength(0);
     expect(p.pending.value?.picked.kind).toBe('entity');
     expect(posted.some((t) => /removed/.test(t))).toBe(true);
+  });
+
+  it('a distance measured already: says so and picks its row; a failure: says why', async () => {
+    const v = await viewer();
+    const { p, posted, revealed } = picker(v);
+    for (let i = 0; i < 2; i++) {
+      await p.click({ loci: atom(v, 1, 'CA'), measure: true });
+      await p.click({ loci: particle(v, 1), measure: true });
+    }
+    const [d] = distances(v);
+    expect(distances(v)).toHaveLength(1);
+    expect(posted.at(-1)).toMatch(/already measured/);
+    expect(revealed.at(-1)).toMatchObject({ key: `d:${d.ref}`, kind: 'distance' });
+    // a run that fails: its message said, nothing picked
+    const failing = new Proxy(v.api, {
+      get: (t, k) => (k === 'run' ? async () => ApiResult.fail('invalid', 'No can do.') : Reflect.get(t, k)),
+    });
+    const f = distancePicker(failing, v.api.explorer!, {
+      post: (t) => posted.push(t),
+      reveal: (n) => revealed.push(n),
+    });
+    const before = revealed.length;
+    await f.click({ loci: atom(v, 1, 'CA'), measure: true });
+    await f.click({ loci: particle(v, 0), measure: true });
+    expect(posted.at(-1)).toBe('No can do.');
+    expect(revealed.length).toBe(before + 1);
   });
 
   it('takes a bond as a point (normalized to its atoms first)', async () => {
