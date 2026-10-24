@@ -475,10 +475,21 @@ export class ExplorerApi extends ApiArea {
     return Loci.normalize(loci, this.ctx.plugin.managers.interactivity.props.granularity, true);
   }
 
-  /** Marks a distance's first point in 3D as selected, the one marked before unmarked (none: unmarks) */
+  /**
+   * Marks a distance's first point in 3D as selected, the one marked before unmarked (none: unmarks). The selection
+   * manager is not told (the person's selection stays as it is); what the unmark took of a structure's selection is
+   * marked again. A particle selection is marks only (no state to put back): one under the point loses its mark.
+   */
   markPoint(loci: Loci | undefined) {
-    const canvas = this.ctx.plugin.canvas3d;
-    if (canvas && !isEmptyLoci(this.marked)) canvas.mark({ loci: this.marked }, MarkerAction.Deselect);
+    const plugin = this.ctx.plugin;
+    const canvas = plugin.canvas3d;
+    if (canvas && !isEmptyLoci(this.marked)) {
+      canvas.mark({ loci: this.marked }, MarkerAction.Deselect);
+      if (StructureElement.Loci.is(this.marked)) {
+        const selected = plugin.managers.structure.selection.getLoci(this.marked.structure);
+        if (!isEmptyLoci(selected)) canvas.mark({ loci: selected }, MarkerAction.Select);
+      }
+    }
     this.marked = loci ?? EmptyLoci;
     if (canvas && loci && !isEmptyLoci(loci)) canvas.mark({ loci }, MarkerAction.Select);
   }

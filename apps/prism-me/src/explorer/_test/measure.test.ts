@@ -9,7 +9,9 @@ import { OrderedSet } from '@molstar/core/data/int';
 import { Binding } from '@molstar/core/util/binding';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { ButtonsType, EmptyKeyInput, ModifiersKeys } from '@molstar/core/util/input/input-observer';
+import { MarkerAction } from '@molstar/core/util/marker-action';
 import { clearFontAtlasCache, setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
+import type { Loci } from '@molstar/model/model/loci';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 import { type Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { Bond, StructureElement, StructureSelection } from '@molstar/model/model/structure';
@@ -199,6 +201,30 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(await p.click({ loci: bond, measure: true })).toBe(true);
     expect(p.pending.value?.picked.kind).toBe('entity');
     expect(StructureElement.Loci.is(p.pending.value?.loci)).toBe(true);
+  });
+
+  it("unmarks the first point without unmarking the person's selection (its marks put back)", async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    // no canvas headless: a stand-in that records the marks
+    const marks: [string, number][] = [];
+    const mark = (r: { loci: Loci }, action: number) => {
+      marks.push([r.loci.kind, action]);
+      return true;
+    };
+    Object.defineProperty(v.plugin, 'canvas3d', { value: { mark }, configurable: true });
+    const a = area.measurePoint(atom(v, 1, 'CA'));
+    v.plugin.managers.structure.selection.fromLoci('set', a);
+    marks.length = 0;
+    area.markPoint(a);
+    area.markPoint(undefined);
+    expect(marks).toEqual([
+      ['element-loci', MarkerAction.Select],
+      ['element-loci', MarkerAction.Deselect],
+      ['element-loci', MarkerAction.Select],
+    ]);
+    // the stand-in goes before the viewer is disposed (it would dispose it)
+    Object.defineProperty(v.plugin, 'canvas3d', { value: undefined, configurable: true });
   });
 
   it('Esc on the canvas is told (the explorer lets the first point go)', async () => {
