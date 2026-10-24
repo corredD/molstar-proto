@@ -133,8 +133,10 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
     push({ ...base, key: `o:${o.ref}`, kind: 'mesoscale model', hasChildren: !!info?.entities.length }, () => {
       if (!info) return;
       const byId = new Map(info.entities.map((e) => [e.id, e]));
-      // a function's group keyed apart from a compartment of the same name (the grouping is the model's, §3)
-      const groupKey = (path: string) => `g:${o.ref}:${info.groupBy === 'function' ? 'fn:' : ''}${path}`;
+      // a function's group keyed apart from a compartment of the same name (the grouping is the model's, §3); a model
+      // without compartments has only functions: its keys stay those of sessions saved before (a label's row)
+      const groupKey = (path: string) =>
+        `g:${o.ref}:${info.groupBy === 'function' && info.hasCompartments ? 'fn:' : ''}${path}`;
       const walk = (g: MesoGroup, depth: number) => {
         for (const child of g.groups) {
           const members = groupEntities(child);
