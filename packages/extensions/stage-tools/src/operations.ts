@@ -29,7 +29,7 @@ import { Grid, Volume } from '@molstar/model/model/volume';
 import { OrderedSet } from '@molstar/core/data/int';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { isEmptyLoci, Loci } from '@molstar/model/model/loci';
-import { Bond, type Structure, StructureElement, StructureProperties } from '@molstar/model/model/structure';
+import { Bond, type Structure, StructureElement, StructureProperties, Unit } from '@molstar/model/model/structure';
 import { Observable, Subject } from 'rxjs';
 import {
   type ApiAreaContext,
@@ -978,14 +978,21 @@ async function distancePoint(
   return point ?? ApiResult.fail('invalid', `The ${which} point is not on a structure or a particle list.`);
 }
 
-/** A point's short name: "THR 1 CA (A)" for an atom, else the condensed loci label */
+/** A point's short name: "THR 1 CA (A)" for an atom, "LYS 120 (A)" for a residue, else the condensed loci label */
 function pointName(loci: Loci): string {
-  if (StructureElement.Loci.is(loci) && StructureElement.Loci.size(loci) === 1) {
-    const l = StructureElement.Loci.getFirstLocation(loci)!;
-    const P = StructureProperties;
-    return `${P.atom.label_comp_id(l)} ${P.residue.auth_seq_id(l)} ${P.atom.label_atom_id(l)} (${P.chain.auth_asym_id(l)})`;
+  if (StructureElement.Loci.is(loci) && loci.elements.length === 1) {
+    const { unit, indices } = loci.elements[0];
+    const first = unit.elements[OrderedSet.getAt(indices, 0)];
+    const last = unit.elements[OrderedSet.getAt(indices, OrderedSet.size(indices) - 1)];
+    const residue = unit.model.atomicHierarchy.residueAtomSegments.index;
+    if (Unit.isAtomic(unit) && residue[first] === residue[last]) {
+      const l = StructureElement.Location.create(loci.structure, unit, first);
+      const P = StructureProperties;
+      const atom = OrderedSet.size(indices) === 1 ? ` ${P.atom.label_atom_id(l)}` : '';
+      return `${P.atom.label_comp_id(l)} ${P.residue.auth_seq_id(l)}${atom} (${P.chain.auth_asym_id(l)})`;
+    }
   }
-  return lociLabel(loci, { htmlStyling: false, condensed: true });
+  return lociLabel(loci, { htmlStyling: false, condensed: true }).trim();
 }
 
 /** What a point is (its object and its elements or particle), not its name or row: a distance's identity */

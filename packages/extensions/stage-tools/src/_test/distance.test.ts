@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { OrderedSet } from '@molstar/core/data/int';
 import { Vec3 } from '@molstar/core/math/linear-algebra';
 import { clearFontAtlasCache, setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
+import { Loci } from '@molstar/model/model/loci';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 import { StructureElement, StructureProperties, StructureSelection } from '@molstar/model/model/structure';
 import { Script } from '@molstar/model/script/script';
@@ -136,6 +137,16 @@ describe('stage.distance', () => {
     // an index past the list's end is said
     const bad = await s.distance({ a: `${list}#0`, b: `${list}#7` } as never);
     expect(bad.ok).toBe(false);
+  });
+
+  it("names a residue point as an atom's: its residue, author number and chain", async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const r1 = Loci.normalize(atom(v, 1, 'CA').loci, 'residue');
+    const r10 = Loci.normalize(atom(v, 10, 'CA').loci, 'residue');
+    expectOk(await s.distance({ a: { loci: r1 }, b: { loci: r10 } } as never));
+    const [d] = s.distancesState().value;
+    expect([d.a.label, d.b.label]).toEqual(['THR 1 (A)', 'ARG 10 (A)']);
   });
 
   it('measures from all of a multi-particle pick (a fiber): its middle, not its first bead', async () => {
