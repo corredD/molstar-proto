@@ -18,8 +18,8 @@ features.md: a new Stage tools row, Done. Spec: `_spec/ui.md` §7.
   marked in 3D, said on the status line, and its row is picked. Esc on the canvas (the plugin's key stream) or a plain
   click lets it go. The point is normalized to the selection granularity, so it matches the row the pick reveals.
 - A distance row under its first point's row (`rows.ts`: labels and distances share the by-node fallback), its eye, its
-  right-click (Focus, Hide, Remove), a click on its line or text picks it, its properties in `distance-properties.tsx`
-  (points that pick their rows, text size, line width, opacity).
+  right-click (Focus, Hide, Remove), a click on its line picks it (its text is not pickable), its properties in
+  `distance-properties.tsx` (points that pick their rows, text size, line width, opacity).
 - `spec.ts`: the camera's Ctrl+click focus triggers and the representation focus's `clickFocusAdd` (Ctrl and ⌘) are
   dropped; a test checks that no behavior of the finalized spec answers Primary with Ctrl or ⌘.
 

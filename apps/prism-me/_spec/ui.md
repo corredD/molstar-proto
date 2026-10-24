@@ -110,8 +110,8 @@ reveals) and particles (Ludovic, 2026-10-24).
   proteins of a model reads at the model's scale. Its value is between the centers of the spheres around the points, as
   Mol*'s text says it.
 - **Its row** is under the first point's row (its `node`: the row key at the time; a model's group not shown now: under
-  the model, as a label), its kind told before its value ("Distance 12.34 Å"), with its eye. A click on its line or its
-  text in 3D picks the row.
+  the model, as a label), its kind told before its value ("Distance 12.34 Å"), with its eye. A click on its line in 3D
+  picks the row (its text is not pickable: Mol*'s text geometry sets `pickable: false`).
 - **Its properties** (Distance): the value, its two points (a click picks the point's row), text size and line width
   (times its own, 0.1–10), opacity; one step a release.
 - **Its right-click** (on the row or on the line): Focus (the camera on its two points), Hide, Remove.

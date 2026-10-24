@@ -802,7 +802,7 @@ function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
     const ref = v.cell.transform.ref;
     return { key: `o:${ref}`, label: v.cell.obj?.label ?? ref, kind: 'volume', node: { ref } };
   }
-  // a distance of the stage, its line or its text: its row (under its first point's)
+  // a distance of the stage, its line (its text is not pickable): its row (under its first point's)
   if (ShapeGroup.isLoci(loci) && isStageDistanceData(loci.shape.sourceData)) {
     for (const cell of plugin.state.data.cells.values()) {
       const obj = cell.obj;
