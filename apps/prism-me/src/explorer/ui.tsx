@@ -75,6 +75,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
           close = openContextMenu(root, at, sub);
         },
         reveal: model.reveal,
+        groupBy: model.groupByOf,
         editText: (text, keep) => editInline(root, at, text, keep),
         ...(request.position ? { at: [request.position[0], request.position[1], request.position[2]] as const } : {}),
       });
@@ -135,6 +136,8 @@ export interface SceneModel {
   readonly scrollTo: ObservableState<string | undefined>;
   /** Picks a node's row, unfolding the way to it */
   reveal(p: PickedNode): void;
+  /** A model's grouping as its rows show it (its info's), for what acts on its groups */
+  groupByOf(model: string): MesoGroupBy | undefined;
 }
 
 function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
@@ -150,6 +153,7 @@ function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
     parts,
     groupings,
     scrollTo,
+    groupByOf: (ref) => (parts.value.get(ref) as MesoscaleInfo | undefined)?.groupBy,
     reveal(p) {
       const labels = stage?.labelsState().value ?? [];
       const above = ancestorKeys(area.objectsState().value, parts.value, p.key, labels) ?? [];
@@ -268,7 +272,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     openContextMenu(
       rootOf(button),
       { x: r.left, y: r.bottom },
-      which === 'color' ? colorItems(api, area, picked) : clipItems(api, area, picked),
+      which === 'color' ? colorItems(api, area, picked, model.groupByOf) : clipItems(api, area, picked),
     );
   };
   // a row's right-click: it is picked, and the menu of what it stands for opens at the pointer
@@ -285,6 +289,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
       nodeMenuItems(api, area, picked, {
         open: (sub) => openContextMenu(root, at, sub),
         reveal: model.reveal,
+        groupBy: model.groupByOf,
         editText: (text, keep) => editInline(root, at, text, keep),
       }),
     );

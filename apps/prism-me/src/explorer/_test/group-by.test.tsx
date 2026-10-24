@@ -205,4 +205,40 @@ describe("a model's Group by", () => {
     expect(scene.groupings.values.has(hiv.ref)).toBe(false);
     expect(scene.parts.value.has(hiv.ref)).toBe(false);
   });
+
+  it("generates the colors by the model's grouping from the right-click menu", async () => {
+    const v = await viewer();
+    const host = mountScene(v);
+    await until(() => !!rowOf(host, 'HIV'));
+    rowOf(host, 'HIV')!.click();
+    await until(() => !!choice(host, 'Function'));
+    choice(host, 'Function')!.click();
+    const [hiv, other] = v.api.explorer!.objectsState().value.filter((o) => o.kind === 'model');
+    await until(
+      () =>
+        (sceneModelOf(persons.get(v)!.explorer!)!.parts.value.get(hiv.ref) as never as { groupBy: string })?.groupBy ===
+        'function',
+    );
+    // the right-click: Color…, then Generate colors
+    const menuItem = (label: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]')).find((m) => m.textContent?.includes(label));
+    rowOf(host, 'HIV')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    await until(() => !!menuItem('Color'));
+    menuItem('Color')!.click();
+    await until(() => !!menuItem('Generate colors'));
+    menuItem('Generate colors')!.click();
+    const colors = (ref: string) => v.api.mesoscale!.infoState(ref).value!.entities.map((e) => e.color);
+    await until(() => colors(hiv.ref).every((c) => c !== undefined));
+    // the same model data colored by function directly: the same colors
+    const r = await v.api.mesoscale!.colors({ scheme: 'generate', groupBy: 'function', particles: other.ref });
+    expect(r.ok).toBe(true);
+    expect(colors(hiv.ref)).toEqual(colors(other.ref));
+    const byCompartment = await v.api.mesoscale!.colors({
+      scheme: 'generate',
+      groupBy: 'compartment',
+      particles: other.ref,
+    });
+    expect(byCompartment.ok).toBe(true);
+    expect(colors(hiv.ref)).not.toEqual(colors(other.ref));
+  });
 });
