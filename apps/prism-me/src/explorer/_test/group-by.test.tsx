@@ -148,13 +148,18 @@ describe("a model's Group by", () => {
     const others = childrenOf(host, 'Other');
     expect(outline(others)).toEqual(['3:cell', '3:loose']);
 
+    const transforms = v.plugin.state.data.tree.transforms.size;
     // the model picked: its properties have the switch, by compartment
     rowOf(host, 'HIV')!.click();
     await until(() => !!choice(host, 'Function'));
     expect(choice(host, 'Compartment')!.getAttribute('aria-pressed')).toBe('true');
 
+    const steps = v.api.history.steps.value.length;
     choice(host, 'Function')!.click();
     await until(() => outline(childrenOf(host, 'HIV')).includes('3:membrane'));
+    // view state: no history step
+    expect(v.api.history.steps.value.length).toBe(steps);
+    expect(v.plugin.state.data.tree.transforms.size).toBe(transforms);
     expect(outline(childrenOf(host, 'HIV'))).toEqual(['3:membrane', '3:unknown function']);
     expect(choice(host, 'Function')!.getAttribute('aria-pressed')).toBe('true');
     // the other model's rows: the same elements, not made again
