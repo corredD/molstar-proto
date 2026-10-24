@@ -12,7 +12,8 @@ import type { MesoEntity } from './model.js';
 // told apart per value:
 // - the Mesoscale Explorer's (v5 `apps/mesoscale-explorer/src/ui/states.tsx`, `loadColors`): the key the entity's
 //   full cellPACK name, `<compartment path>.<entity>` (`root.HIVenvelop_mature.HIV_capsid.surface.proteins.HIV1_CA_mono_0_1_0`),
-//   the value `{ "x": r, "y": g, "z": b }` in 0-255 (`Color.fromRgb`, as v5 reads it);
+//   the value `{ "x": r, "y": g, "z": b }`, integers in 0-255 (`Color.fromRgb`, as v5 reads it). Unlike v5, a value
+//   with a fraction (a 0-1 color) is not a color here (reported in `invalid`), where v5 drew it near black;
 // - a plain map: the key the entity's name, the value a CSS color (`#rrggbb`, `#rgb`, a color name).
 // A key is the entity's name as the particle list has it, else its last dotted part (the compartment path is not
 // checked): the particle model names a cellPACK entity by that part alone, one entity for a name found in several
@@ -42,17 +43,17 @@ export function parseColorFile(text: string): Record<string, unknown> | string {
   return data as Record<string, unknown>;
 }
 
-/** A value of the file as a color: a CSS color, or the explorer's `{ x, y, z }` (0-255) */
+/** A value of the file as a color: a CSS color, or the explorer's `{ x, y, z }` (integers, 0-255) */
 export function colorOfValue(value: unknown): Color | undefined {
   if (typeof value === 'string') return cssColor(value);
   if (!value || typeof value !== 'object') return undefined;
   const { x, y, z } = value as { x?: unknown; y?: unknown; z?: unknown };
   if (!isChannel(x) || !isChannel(y) || !isChannel(z)) return undefined;
-  return Color.fromRgb(Math.round(x), Math.round(y), Math.round(z));
+  return Color.fromRgb(x, y, z);
 }
 
 function isChannel(v: unknown): v is number {
-  return typeof v === 'number' && v >= 0 && v <= 255;
+  return Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 255;
 }
 
 export interface ColorFileMatch {

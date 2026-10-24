@@ -82,6 +82,14 @@ describe('the color file', () => {
     expect(m.invalid).toEqual(['CA', 'NC']);
   });
 
+  it('takes x, y, z as 0-255 integers only: 0-1 values are not colors (v5 read them as near black)', () => {
+    const file = parseColorFile('{"CA": {"x": 0.5, "y": 0.2, "z": 1}, "NC": {"x": 255, "y": 0, "z": 1}}');
+    if (typeof file === 'string') expect.fail(file);
+    const m = matchColors(mesoEntities(cellpackLike()), file);
+    expect(m.invalid).toEqual(['CA']);
+    expect(m.matched).toEqual(['NC']);
+  });
+
   it('reports the entities two keys name (one entity per name across compartments): the last color kept', () => {
     const file = parseColorFile(
       JSON.stringify({
