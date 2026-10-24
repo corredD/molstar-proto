@@ -26,11 +26,11 @@ agent run (one undo step each); the command menu (⌘K) has each.
 
 | Feature                                                                                                        | Status   | Operation / where                                                                                                            |
 | -------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Entities, by compartment tree (cellPACK) or function, with counts                                              | Done     | `mesoscale.entities`; Entities tab                                                                                           |
+| Entities, by compartment tree (cellPACK) or function, with counts                                              | Done     | `mesoscale.entities`; the Scene tree (a model's groups, then entities; its Group by in its properties)                       |
 | Show, hide an entity or a whole group                                                                          | Done     | `mesoscale.style` (`visible`); the eyes                                                                                      |
 | Color an entity (picker), generate colors (a hue per compartment, its entities around it), theme colors, reset | Done     | `mesoscale.style`, `mesoscale.colors`                                                                                        |
 | Opacity, emissive of entities                                                                                  | Done     | `mesoscale.style` (`transparency`, `emissive`)                                                                               |
-| Filter the entities by name                                                                                    | Done     | Entities tab                                                                                                                 |
+| Filter the entities by name                                                                                    | Done     | the Scene tree's filter                                                                                                      |
 | Graphics modes: ultra, quality, balanced, performance (level of detail, pixel scale, sharpening)               | Done     | `mesoscale.graphics`; `?graphics-mode=`                                                                                      |
 | Wiggle and tumble                                                                                              | Partial  | `mesoscale.motion`: for all particles; the explorer tumbled all but membranes                                                |
 | The explorer's look: multiscale occlusion, shadows, outlines, edges                                            | Done     | the app's canvas defaults (`look.ts`)                                                                                        |
@@ -83,8 +83,9 @@ agent run (one undo step each); the command menu (⌘K) has each.
 Start: `node scripts/esbuild/app.mjs apps/prism-me --dev --port 1343`, open
 `http://localhost:1343/apps/prism-me/build/`.
 
-1. Home › Mesoscale examples › CellPack HIV. Entities tab: Generate colors; fold and unfold the compartments; hide
-   `membrane`; color one entity; Graphics: Fast, then Quality; Wiggle, Tumble.
+1. The panel's Open › Mesoscale examples… › CellPack HIV (or `?example=cellpack-hiv1`). In the Scene tree, pick the
+   model: Look › Generate colors; Group by: Function, then Compartment; fold and unfold its groups; hide `membrane`;
+   color one entity; Graphics: Fast, then Quality; Wiggle, Tumble.
 2. Right-click a protein: Hide it, Color it…; Cut with a plane; Cut row: Position, Flip; right-click again: Remove the
    cut. Try the sphere and the box.
 3. Drop a RELION `.star` with classes. Structure tab › its Decorations row: Targets: Class; drop or load a structure
