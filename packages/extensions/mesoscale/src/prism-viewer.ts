@@ -51,6 +51,12 @@ export const MesoscaleSkill: ViewerSkill = {
       description: "Colors a mesoscale model's entities: generated per group, uniform, or the color theme.",
     },
     {
+      id: 'import_mesoscale_colors',
+      operation: 'mesoscale.importColors',
+      description:
+        "Colors a mesoscale model's entities from a JSON color file (by entity name), the Mesoscale Explorer's or a plain name-to-color map.",
+    },
+    {
       id: 'move_mesoscale_particles',
       operation: 'mesoscale.motion',
       description: 'Wiggles the atoms and tumbles the particles of a mesoscale model.',
@@ -88,6 +94,12 @@ export const MesoscaleExtension: ViewerExtension = {
         icon: 'palette',
         alias: ['color entities', 'generate colors', 'mesoscale colors'],
         action: 'Apply',
+      }),
+      operationCommand(api, m.importColors, {
+        category,
+        icon: 'upload',
+        alias: ['import colors', 'color file', 'load colors', 'colors json'],
+        action: 'Import',
       }),
       operationCommand(api, m.graphics, {
         category,

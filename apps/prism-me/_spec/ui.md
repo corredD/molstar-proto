@@ -103,7 +103,8 @@ Snapshots and stories, the sequence view, measurements, export: reachable from â
     all of it; a structure also: Color by a theme, Reset); a structure: Representation (a preset). Entities and chains
     are targeted by their label ids (`{ loci }`), not author chains.
   - a model, a group, an entity of a model: Look (color, opacity, glow; mixed when its entities differ; Generate colors,
-    Reset); a model: Graphics (mode, wiggle, tumble, as the representations have them).
+    Reset; a model also Import colorsâ€¦: a JSON color file, `mesoscale.importColors`, one step, the names it did not find
+    said in the run's message); a model: Graphics (mode, wiggle, tumble, as the representations have them).
   - a particle list or a target: Decoration (the cryo-ET Decorations control). A volume: Slice. A mesh: its look.
   - Shared controls moved to exported modules: `@molstar/cryoet-extension/controls` (Decorations, Slice, MeshControls),
     `@molstar/mesoscale-extension/controls` (GraphicsMode, Motion; the motion read from the representations, new

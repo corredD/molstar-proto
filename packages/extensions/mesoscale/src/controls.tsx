@@ -6,13 +6,13 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Choices, Slider } from '@molstar/prism-ui';
+import { Button, Choices, Icon, Slider } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { GraphicsMode, MesoscaleApi } from './operations.js';
 
 // The mesoscale controls, shown by the extension's Entities tab and by a host's panels (prism-me's properties): the
-// graphics mode and the particles' motion, as the representations have them. They act through the `mesoscale` area:
-// a slider once released (one step).
+// graphics mode and the particles' motion, as the representations have them, and the color file import. They act
+// through the `mesoscale` area: a slider once released (one step).
 
 const Line = 'display: flex; align-items: center; gap: var(--msp-space-2); min-height: 28px';
 
@@ -59,5 +59,39 @@ export function Motion(props: { area: MesoscaleApi; particles?: string }) {
       {slider('Wiggle', 5, 'wiggle')}
       {slider('Tumble', 10, 'tumble')}
     </div>
+  );
+}
+
+/**
+ * Import colors…: a JSON color file picked, its colors put on the entities it names (`mesoscale.importColors`, one
+ * step). The result, with the names not found, is the run's message (the status line), as for every person's run.
+ */
+export function ImportColors(props: { area: MesoscaleApi; particles?: string }) {
+  const input = (
+    <input
+      type="file"
+      accept=".json,application/json"
+      hidden
+      onChange={(e) => {
+        const picked = e.currentTarget.files?.[0];
+        e.currentTarget.value = '';
+        if (!picked) return;
+        void picked.text().then((json) => props.area.importColors({ json, particles: props.particles ?? '' }));
+      }}
+    />
+  ) as HTMLInputElement;
+  return (
+    <>
+      {input}
+      <Button
+        size="sm"
+        variant="ghost"
+        icon={<Icon name="upload" />}
+        title="Color the entities from a JSON file: the Mesoscale Explorer's, or entity names to colors"
+        onClick={() => input.click()}
+      >
+        Import colors…
+      </Button>
+    </>
   );
 }

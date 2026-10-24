@@ -5,7 +5,6 @@
  */
 
 import { Color } from '@molstar/core/util/color';
-import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
@@ -23,6 +22,7 @@ import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import { isFailure, pickOne } from '@molstar/prism-viewer/api/scope';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
+import { cssColor, matchColors, parseColorFile } from './color-file.js';
 import {
   findGroup,
   generateColors,
@@ -43,6 +43,13 @@ import {
 /** Graphics modes: the level of detail of the particles and the canvas's resolution (the Mesoscale Explorer's). */
 export const GraphicsModes = ['ultra', 'quality', 'balanced', 'performance'] as const;
 export type GraphicsMode = (typeof GraphicsModes)[number];
+
+/** What `importColors` did with a color file: the entities colored, the keys that name none, the values not colors */
+export interface ImportColorsResult {
+  readonly matched: readonly string[];
+  readonly unmatched: readonly string[];
+  readonly invalid: readonly string[];
+}
 
 /** The particles' graphics: their mode (none when their levels of detail are not one of the modes'), their motion */
 export interface GraphicsInfo {
@@ -257,6 +264,59 @@ export class MesoscaleApi extends ApiArea {
       const changed = await writeStyles(ctx, l, styles);
       if (!changed) return ApiResult.already('They are already colored so.');
       return ApiResult.ok(`Colored ${describeSelection(l, ids)} (${scheme}).`, { nodes: changed });
+    },
+  });
+
+  readonly importColors = this.operation({
+    id: 'mesoscale.importColors',
+    title: 'Import entity colors',
+    params: {
+      json: PD.Text('', {
+        description:
+          'A JSON object of colors by entity name: {"HIV1_CA_mono_0_1_0": "#ff6347"}, or the Mesoscale Explorer\'s color file ({"root.HIVenvelop_mature.HIV_capsid.surface.proteins.HIV1_CA_mono_0_1_0": {"x": 255, "y": 99, "z": 71}}, 0-255)',
+      }),
+      particles: ListParam(),
+    },
+    async run({ json, particles }, ctx) {
+      const file = parseColorFile(json);
+      if (typeof file === 'string') {
+        return ApiResult.fail(
+          'invalid',
+          file,
+          'Give {"<entity name>": "#rrggbb"} or the Mesoscale Explorer\'s color file.',
+        );
+      }
+      const l = oneList(ctx, particles || undefined);
+      if (isFailure(l)) return l;
+      const data = dataOf(l);
+      if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
+      const entities = mesoEntities(data);
+      const { colors, matched, unmatched, invalid } = matchColors(entities, file);
+      const value: ImportColorsResult = { matched, unmatched, invalid };
+      if (!colors.size) {
+        return ApiResult.fail(
+          'not-found',
+          `No entity of ${l.cell.obj?.label ?? 'the list'} is named in the colors${invalid.length ? ` (${invalid.length} not colors)` : ''}.`,
+          `Entities: ${namesOf(entities.map((e) => e.name))}.`,
+        );
+      }
+      // one read, one write: one commit, one history step, whatever the number of entities
+      const styles = readStyles(ctx, l);
+      for (const [id, color] of colors) styles.set(id, { ...(styles.get(id) ?? { visible: true }), color });
+      const changed = await writeStyles(ctx, l, styles);
+      const missed = [
+        unmatched.length ? `not found: ${namesOf(unmatched)}` : '',
+        invalid.length ? `not colors: ${namesOf(invalid)}` : '',
+      ]
+        .filter((x) => x)
+        .join('; ');
+      if (!changed)
+        return ApiResult.already(`The entities are already colored so${missed ? `; ${missed}` : ''}.`, { value });
+      return ApiResult.ok(
+        `Colored ${matched.length} ${matched.length === 1 ? 'entity' : 'entities'} from the file${missed ? `; ${missed}` : ''}.`,
+        { nodes: changed },
+        { value },
+      );
     },
   });
 
@@ -534,6 +594,12 @@ function describeSelection(l: ParticleListRef, ids: readonly number[]): string {
   return names.length <= 3 ? names.join(', ') : `${names.length} entities`;
 }
 
+/** A few names, then how many more */
+function namesOf(names: readonly string[], max = 5): string {
+  const shown = names.slice(0, max).join(', ');
+  return names.length > max ? `${shown} and ${names.length - max} more` : shown;
+}
+
 // --- the styles, as layers ------------------------------------------------------------------------------------------
 
 /** The layers cell of a representation, if any */
@@ -622,11 +688,4 @@ async function writeLayers(
   return changed;
 }
 
-/** A CSS color name or #rrggbb */
-export function cssColor(text: string): Color | undefined {
-  const c = text.trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/.test(c)) return Color.fromHexStyle(c);
-  if (/^#[0-9a-f]{3}$/.test(c)) return Color.fromHexStyle(`#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}`);
-  const named = (ColorNames as Record<string, Color>)[c.replace(/[\s-]/g, '')];
-  return named;
-}
+export { cssColor };

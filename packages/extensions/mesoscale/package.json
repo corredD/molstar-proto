@@ -30,7 +30,8 @@
   ],
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test:scaling": "vitest run --config vitest.scaling.config.ts"
   },
   "dependencies": {
     "tslib": "catalog:",
@@ -44,6 +45,7 @@
   "devDependencies": {
     "typescript": "catalog:",
     "@types/node": "catalog:",
-    "@types/webxr": "catalog:"
+    "@types/webxr": "catalog:",
+    "vitest": "catalog:"
   }
 }
