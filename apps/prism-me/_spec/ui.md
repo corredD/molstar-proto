@@ -47,7 +47,9 @@ loaded when first opened (thousands of entities cost nothing until looked at).
 
 A model's groups follow its Group by (§4), a model's own choice: compartments (the dotted names' tree) by default when
 it has some, else functions; switching remakes that model's rows only. A group row stands for its entities (their ids),
-so its eye, Look, clips and picks are the same under both groupings.
+so its eye, Look, clips and picks are the same under both groupings. A label made at a group the model's grouping does
+not show now is a row under the model (picked, hidden, edited and revealed there), back under its group when that
+grouping is shown again (a default, to confirm).
 
 Every row: an eye (show, hide, at its level), a color dot where it has one color, its name, a count (atoms, particles,
 entities) faint at the end. Clips and labels made at a node are rows under it (§5), with their own eye.

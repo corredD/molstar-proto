@@ -94,3 +94,21 @@ describe("a model's group rows", () => {
     expect(keysOf(infoOf('compartment', true))).toContain('3:g:m:root.membrane');
   });
 });
+
+describe("a label on a model's group row", () => {
+  const label = (node: string) => ({ ref: 'lab', text: 'capsid', node, visible: true }) as LabelInfo;
+  it('stays under its model while the group is not shown (another grouping), and goes back under it after', () => {
+    const labels = [label('g:m:root.capsid')];
+    const byCompartment = keysOf(infoOf('compartment', true), labels);
+    expect(byCompartment.slice(byCompartment.indexOf('3:g:m:root.capsid'))).toEqual([
+      '3:g:m:root.capsid',
+      '4:me:m:1',
+      '4:l:lab',
+    ]);
+    const byFunction = keysOf(infoOf('function', true), labels);
+    // under the model: after its own children, one level below it
+    expect(byFunction).toContain('2:l:lab');
+    expect(byFunction.indexOf('2:l:lab')).toBe(byFunction.length - 1);
+    expect(byFunction[byFunction.indexOf('1:o:m')]).toBe('1:o:m');
+  });
+});
