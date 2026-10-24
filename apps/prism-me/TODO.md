@@ -10,12 +10,6 @@ the app, in his words; the lane turns it into spec and tests.
 
 <!-- - **Title**: what I want to see. Check: what I do in the app and what I expect. -->
 
-- **Measure a distance, structures and particles** (Ludovic, 2026-10-24): like in the Mesoscale Explorer, click two
-  points and have the distance labeled, with a line (Mol\*'s). Ctrl+click one, Ctrl+click two: the distance label
-  appears as a child in the tree below the first selection. The line and the label are proportional to the object
-  measured. Between atoms, residues, chains, instances and particle positions. Its options in the UI: text size, line
-  width, opacity, and a ref to the two selections. Check: load CellPack HIV and 1CRN; Ctrl+click two atoms, then two
-  particles; each label appears under its first pick's row; change the text size and opacity; undo once removes it.
 - **Measure a distance, volumes** (after the first): the same between a volume and a volume pixel (voxel) and the
   targets above. Check: Ctrl+click a volume's voxel and an atom; the distance appears under the first pick.
 - **Graphics quality and procedural animation on every object** (Ludovic, 2026-10-24): these options are only on
@@ -46,6 +40,7 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms.
 - Decorating by a string column (a tomogram name).
 - Keys on cuts (animation).
+- A distance follows its objects' later moves (a moved structure, a particle handle) only when it is re-evaluated.
 - Upstream (Prism): Home counts particles as loaded; `particles.representation` on decorated lists; shapes in the scene
   tree.
 - Storybook stories for the Entities tab, the Decorations and Slice rows, the Segmentations tab and the stage menu,

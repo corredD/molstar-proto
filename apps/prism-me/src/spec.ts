@@ -87,7 +87,7 @@ const M = ModifiersKeys;
 /**
  * The camera's focus on click without its right-button triggers: the right button opens the stage's menu (the
  * stage-tools extension), whose Focus item does what the right-click did; and without its Ctrl+click ones: Ctrl+click
- * picks a distance's points (_spec/ui.md, Measurements).
+ * picks a distance's points (_spec/ui.md §7).
  */
 const LeftClickFocusBindings = {
   clickCenterFocus: Binding(

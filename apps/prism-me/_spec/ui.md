@@ -52,7 +52,8 @@ not show now is a row under the model (picked, hidden, edited and revealed there
 grouping is shown again (a default, to confirm).
 
 Every row: an eye (show, hide, at its level), a color dot where it has one color, its name, a count (atoms, particles,
-entities) faint at the end. Clips and labels made at a node are rows under it (§5), with their own eye.
+entities) faint at the end. Clips and labels made at a node are rows under it (§5), and distances under their first
+point's row (§7), each with its own eye.
 
 A click on a row picks it: highlighted in 3D, its properties below. A double click focuses the camera on it. The tree
 follows what is picked in 3D (a click on a particle picks its entity's row and opens the way to it).
@@ -90,7 +91,32 @@ text**), **Hide**, **Remove**.
 
 ## 6. Not now
 
-Snapshots and stories, the sequence view, measurements, export: reachable from ⌘K, not on screen. Added when needed.
+Snapshots and stories, the sequence view, angles and other measurements than distances, export: reachable from ⌘K, not
+on screen. Added when needed.
+
+## 7. Measurements
+
+A distance between two points: atoms, residues, chains, instances (at the selection granularity, as the row a pick
+reveals) and particles (Ludovic, 2026-10-24).
+
+- **Ctrl+click** (or ⌘+click) a first point: it is marked in 3D (as selected) and said on the status line; its row is
+  picked. Ctrl+click a second: the distance is made (`stage.distance`, one step) and its row picked. Esc on the canvas,
+  or a plain click, lets the first point go. Ctrl+click on nothing, a label, a distance or a volume says what can be
+  measured and keeps the first point. Why Ctrl: the Mesoscale Explorer's gesture; the app drops the camera's and the
+  representation's Ctrl+click and ⌘+click focus (`spec.ts`), so nothing else answers it.
+- Drawn by Mol*'s `DistanceRepresentation` (a dashed line and its value), one cell from the root that depends on both
+  objects: removing either removes the distance in the same step. Its text and line are scaled by the larger of the two
+  things measured (an atom: Mol*'s own size; a particle: its radius, else its decoration's), so a distance between two
+  proteins of a model reads at the model's scale. Its value is between the centers of the spheres around the points, as
+  Mol*'s text says it.
+- **Its row** is under the first point's row (its `node`: the row key at the time; a model's group not shown now: under
+  the model, as a label), its kind told before its value ("Distance 12.34 Å"), with its eye. A click on its line or its
+  text in 3D picks the row.
+- **Its properties** (Distance): the value, its two points (a click picks the point's row), text size and line width
+  (times its own, 0.1–10), opacity; one step a release.
+- **Its right-click** (on the row or on the line): Focus (the camera on its two points), Hide, Remove.
+- ⌘K and the agent: `stage.distance` takes a point as a pick (`{ loci }`), a structure target (`A:10@CA`) or a particle
+  (`<list ref>#<index>`); `stage.editDistance` changes or removes one.
 
 ## Status
 

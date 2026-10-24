@@ -11,7 +11,7 @@ import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ExplorerApi, NodeRef } from './operations.js';
 
-// A distance's properties (_spec/ui.md, Measurements): its two points (a click picks the point's row), its text size,
+// A distance's properties (_spec/ui.md §7): its two points (a click picks the point's row), its text size,
 // line width and opacity (`stage.editDistance`, one step a release).
 
 const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';

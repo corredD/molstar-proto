@@ -95,7 +95,7 @@ export interface CanvasClick {
   readonly loci: Loci;
   readonly x?: number;
   readonly y?: number;
-  /** With Ctrl (or ⌘): a point of a distance (_spec/ui.md, Measurements) */
+  /** With Ctrl (or ⌘): a point of a distance (_spec/ui.md §7) */
   readonly measure?: boolean;
 }
 

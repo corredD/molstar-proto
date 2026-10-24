@@ -10,7 +10,7 @@ import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 
-// A distance by two Ctrl+clicks on the canvas (_spec/ui.md, Measurements): the first point is kept (marked in 3D, said
+// A distance by two Ctrl+clicks on the canvas (_spec/ui.md §7): the first point is kept (marked in 3D, said
 // on the status line), the second measures it (`stage.distance`, one step), listed under the first point's row. Esc or
 // a plain click lets the first point go.
 

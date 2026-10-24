@@ -78,7 +78,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       });
     }
   });
-  // a distance by two Ctrl+clicks (_spec/ui.md, Measurements); Esc or a plain click lets its first point go
+  // a distance by two Ctrl+clicks (_spec/ui.md §7); Esc or a plain click lets its first point go
   const picker = distancePicker(ctx.api, area, {
     post: (text) => ctx.managers.notifications.post(text),
     reveal: model.reveal,

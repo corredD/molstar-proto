@@ -28,7 +28,7 @@ import { nodeMenuItems, removeObject } from '../menu.js';
 import type { PickedNode } from '../operations.js';
 import { ancestorKeys, rowsOf, toggleVisible } from '../rows.js';
 
-// A distance by two Ctrl+clicks in the explorer (_spec/ui.md, Measurements), on a headless viewer: 1CRN and a RELION
+// A distance by two Ctrl+clicks in the explorer (_spec/ui.md §7), on a headless viewer: 1CRN and a RELION
 // list made in memory.
 
 // A distance's text is drawn into a font atlas, which Node has no canvas for: a stand-in context that draws nothing.
