@@ -6,7 +6,10 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-None: both lanes of 2026-10-24 merged (#2 group-by switch, #3 color file import; their progress files beside this one).
+- **Measure a distance, structures and particles** (`me/measure-distance`, `~/prism-me-lanes/measure-distance`, port
+  1344): Ctrl+click two points, a distance row under the first pick.
+- **Graphics quality and motion on every object** (`me/quality-motion`, `~/prism-me-lanes/quality-motion`, port 1345):
+  quality, wiggle, tumble in each object's properties.
 
 ## Waiting on Ludovic
 
