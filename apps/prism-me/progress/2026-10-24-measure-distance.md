@@ -45,6 +45,30 @@ Ctrl+mouse clicks:
 - The `role="menu"` count stays at its baseline (1, before any click) after a plain click and both Ctrl+clicks: no
   context menu opened.
 
+## Review gate (reviewer and skeptic), fixed
+
+Each fix has its own commit, with a test that failed first where one could be written:
+
+- M1: the bindings test reads a behavior's own defaults, so it now fails without the representation focus override.
+- M2: both distance tests clear the font atlas cache after the canvas stand-in.
+- S3: only the line picks the row (Mol*'s text sets `pickable: false`).
+- S4: a bond is a point (normalized before its row is read).
+- S5: when the first point's object is removed, the next Ctrl+click is a new first point (said).
+- A: the same pair again, or a failure, says so; an existing distance's row is picked.
+- S6: the identity is the two points, either way round, from any row.
+- S7: the undos are checked step by step.
+- S8: a label or distance whose row is not there goes under its object's row.
+- S9: a Ctrl+click on a label is refused. Not tested headless, because `labelAt` needs the canvas.
+- S10: unmarking the first point puts back the structure selection's marks. Tested on a stand-in canvas. A particle
+  selection under the point loses its mark (it has no state to put back).
+- N15: a multi-particle point is measured from all its particles.
+- B: a residue is named "LYS 120 (A)".
+- N16: the value is stored once on the data.
+- Nits: test names, an unused variable, Ctrl+click on nothing keeps the first point.
+
+With Ludovic: whether a point is an atom or follows the granularity; ⌘+click on a Mac (and the status line saying ⌘);
+the selection-mode camera focus removed in `spec.ts`.
+
 ## Learned
 
 - Between particles of a dense model, the line and its text are often hidden inside the model: a chord between two
