@@ -420,7 +420,9 @@ async function createPlaneImage(
   const resolution = Math.max(a, b, c) / Math.max(mx, my, mz);
   const scaleFactor = 1 / resolution;
 
+  // a pixel a voxel along the grid's diagonal, the image as wide as the volume (in Å): any plane's cut fits in it
   const s = Vec3.distance(Vec3.create(0, 0, 0), Vec3.create(a, b, c));
+  const extent = 2 * Grid.getBoundingSphere(volume.grid).radius;
 
   // Get center on plane
   const center = Vec3.create(a / 2, b / 2, c / 2);
@@ -432,7 +434,7 @@ async function createPlaneImage(
   // Center image on volume (within plane)
   const m = Mat4.fromPlane(Mat4(), nn, centerOnPlane);
 
-  const size = Vec3.set(Vec3(), s, s, s);
+  const size = Vec3.set(Vec3(), extent, extent, extent);
   Mat4.scale(m, m, size);
 
   const width = Math.floor(s * scaleFactor);

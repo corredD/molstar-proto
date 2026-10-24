@@ -123,4 +123,21 @@ describe('slice of a periodic volume', () => {
     // where the isosurface and the volume's bounds are
     for (const c of image.boundingSphere.center) expect(c).toBeCloseTo(0);
   });
+
+  it('as a plane, covers the volume in Å, not in voxels', async () => {
+    const volume = centeredCell();
+    const theme = { color: { granularity: 'uniform', color: () => 0xffffff }, size: {} } as any;
+    const plane = { point: Vec3.create(0, 0, 5), normal: Vec3.create(0, 0, 1) };
+    const props = { ...PD.getDefaultValues(SliceParams), mode: 'plane', plane } as any;
+    const image = await createImage({} as any, volume, 0, theme, props);
+    // the plane z = 5 Å, as wide as the cell (40 Å, its voxels 10 Å) or wider, not 4 voxels' worth
+    const corners = Array.from(image.cornerBuffer.ref.value);
+    const xs = corners.filter((_, i) => i % 3 === 0);
+    const ys = corners.filter((_, i) => i % 3 === 1);
+    expect(Math.min(...xs)).toBeLessThanOrEqual(-20);
+    expect(Math.max(...xs)).toBeGreaterThanOrEqual(20);
+    expect(Math.min(...ys)).toBeLessThanOrEqual(-20);
+    expect(Math.max(...ys)).toBeGreaterThanOrEqual(20);
+    for (const z of corners.filter((_, i) => i % 3 === 2)) expect(z).toBeCloseTo(5);
+  });
 });
