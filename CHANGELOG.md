@@ -10,6 +10,9 @@ here.
 
 ## [Unreleased]
 
+- Fix slices of a volume covering a whole unit cell (periodic, e.g. an EMDB map centered on its origin) drawn half a box
+  away from the volume: `createPeriodicVolume` keeps the grid's origin, and periodic copies are counted in cells
+- Fix a `plane` slice sized by the grid's diagonal in voxels used as Å: it is as wide as the volume
 - Fix the structure hierarchy for a trajectory below a model (MolViewSpec's structure with `coordinates_ref`): its
   structure's model is the one it is built from, so the trajectory's frames are listed and played
 - Fix LAMMPS triclinic boxes: the tilt factors are read, a dump's bounding-box bounds are corrected, and scaled
