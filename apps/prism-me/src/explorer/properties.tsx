@@ -270,13 +270,17 @@ function sectionsOf(
 }
 
 /**
- * A model's grouping in the tree: by compartment or by function, shown when it has compartments (_spec/ui.md §4). It
- * reads the model's own info (what the tree shows) and sets the model's key of the explorer's groupings.
+ * A model's grouping in the tree: by compartment or by function, shown when it has compartments (_spec/ui.md §4). Its
+ * narrowest sources: whether the model has compartments (a boolean of its own info), and the model's key of the
+ * explorer's groupings for the choice (none set: by compartment, the default of a model with compartments).
  */
 function GroupBy(props: { model: string; parts: ReadonlyState<Parts>; groupings: KeyedState<string, MesoGroupBy> }) {
-  const info = mapState(props.parts, (p) => p.get(props.model) as MesoscaleInfo | undefined);
+  const hasCompartments = mapState(
+    props.parts,
+    (p) => !!(p.get(props.model) as MesoscaleInfo | undefined)?.hasCompartments,
+  );
   return (
-    <Show when={mapState(info, (i) => !!i?.hasCompartments)}>
+    <Show when={hasCompartments}>
       {() => (
         <Choices
           label="Group by"
@@ -284,7 +288,7 @@ function GroupBy(props: { model: string; parts: ReadonlyState<Parts>; groupings:
             { id: 'compartment', label: 'Compartment' },
             { id: 'function', label: 'Function' },
           ]}
-          active={mapState(info, (i) => i?.groupBy)}
+          active={mapState(props.groupings.key(props.model), (g) => g ?? 'compartment')}
           onPick={(id) => props.groupings.set(props.model, id as MesoGroupBy)}
         />
       )}
