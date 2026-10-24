@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { OrderedSet } from '@molstar/core/data/int';
 import { Vec3 } from '@molstar/core/math/linear-algebra';
-import { setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
+import { clearFontAtlasCache, setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 import { StructureElement, StructureProperties, StructureSelection } from '@molstar/model/model/structure';
 import { Script } from '@molstar/model/script/script';
@@ -35,7 +35,10 @@ beforeAll(() => {
   };
   setCanvasModule({ createCanvas: () => ({ getContext: () => context }) });
 });
-afterAll(() => setCanvasModule(undefined));
+afterAll(() => {
+  setCanvasModule(undefined);
+  clearFontAtlasCache();
+});
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {

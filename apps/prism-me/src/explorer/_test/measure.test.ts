@@ -9,7 +9,7 @@ import { OrderedSet } from '@molstar/core/data/int';
 import { Binding } from '@molstar/core/util/binding';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { ButtonsType, EmptyKeyInput, ModifiersKeys } from '@molstar/core/util/input/input-observer';
-import { setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
+import { clearFontAtlasCache, setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 import { type Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { StructureSelection } from '@molstar/model/model/structure';
@@ -44,7 +44,10 @@ beforeAll(() => {
   };
   setCanvasModule({ createCanvas: () => ({ getContext: () => context }) });
 });
-afterAll(() => setCanvasModule(undefined));
+afterAll(() => {
+  setCanvasModule(undefined);
+  clearFontAtlasCache();
+});
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
