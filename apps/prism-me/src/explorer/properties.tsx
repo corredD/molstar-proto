@@ -111,6 +111,8 @@ function sectionsOf(
       return [<Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>];
     const out = [<Section title="Look">{() => <ParticleLook api={api} node={node} parts={parts} />}</Section>];
     if (kind === 'mesoscale model') {
+      // what each target is drawn as (a Simularium agent, a cellPACK entity): another object of the scene
+      out.push(<Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>);
       out.push(
         <Section title="Representation">
           {() => <Representations api={api} area={area} owner={node.ref} operation="particles.update" />}

@@ -10,6 +10,7 @@ import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import type { Grid } from '@molstar/model/model/volume';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
+import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
@@ -125,6 +126,24 @@ describe('explorer', () => {
     expect(fromUrl).toBeDefined();
     await removeObject(v.api, area, 'particle list', fromUrl.ref);
     expect(area.objectsState().value.filter((o) => o.kind === 'list')).toHaveLength(1);
+  });
+
+  it('lists a Simularium file once (a model: its box is not a mesh), and decorates one of its agents', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const sim = new File(
+      [readFileSync(new URL('../../../../../data/examples/particles/small.simularium', import.meta.url))],
+      'small.simularium',
+    );
+    expectOk(await v.api.load.files({ files: [sim] }));
+    const mine = area.objectsState().value.filter((o) => o.label === 'small.simularium');
+    expect(mine.map((o) => o.kind)).toEqual(['model']);
+    expectOk(
+      await v.api.run('cryoet.decorate', { particles: mine[0].ref, with: 'object', object: '1crn', targets: '0' }),
+    );
+    const d = await v.api.run('cryoet.decorations', { particles: mine[0].ref });
+    expectOk(d);
+    expect((d.value as DecorationsInfo).targets[0].with).toBe('1CRN');
   });
 
   it('highlights and focuses a structure entity, a list and a mesh', async () => {

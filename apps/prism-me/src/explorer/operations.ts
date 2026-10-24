@@ -622,9 +622,10 @@ function meshes(plugin: PluginContext): SceneObject[] {
       const parent = tree.transforms.get(root)?.parent;
       if (!parent || parent === StateTransform.RootRef) break;
       root = parent;
-      // a model's shape (a unit cell), or a representation's (a cut's drawing, Prism's clip volumes)
+      // a model's shape (a unit cell), a particle list's (its simulation box), or a representation's (a cut's drawing,
+      // Prism's clip volumes)
       const up = cells.get(root)?.obj;
-      if (SO.Molecule.Model.is(up) || SO.isRepresentation3D(up)) ofModel = true;
+      if (SO.Molecule.Model.is(up) || SO.Particle.List.is(up) || SO.isRepresentation3D(up)) ofModel = true;
     }
     if (ofModel) continue;
     const data = cells.get(root)?.obj;
