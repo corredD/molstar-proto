@@ -107,6 +107,9 @@ export class StageApi extends ApiArea {
     this.moveGizmos = new ObjectMoveGizmos(plugin, this);
     this.requests.subscribe((request) => (this.menus.host ?? this.menus.own)?.(request));
     plugin.behaviors.interaction.click.subscribe((e) => {
+      // a click on the background (a click, not a drag's end: Mol*'s clicks are only those) resets the view: the
+      // particle's handle goes with it
+      if (e.button === ButtonsType.Flag.Primary && isEmptyLoci(e.current.loci)) this.particleHandles?.hide();
       if (e.button !== ButtonsType.Flag.Secondary || !e.page) return;
       const loci = e.current.loci;
       this.requests.next({
