@@ -38,6 +38,8 @@ export interface DistancePoint {
   readonly bundle?: StructureElement.Bundle;
   /** A particle list's particle */
   readonly particle?: number;
+  /** A particle list's particles, when the pick was several (a fiber): measured from their middle */
+  readonly particles?: readonly number[];
 }
 
 export const StageDistanceParams = {
@@ -68,10 +70,13 @@ export function pointLoci(plugin: PluginContext, p: DistancePoint): { loci: Loci
     if (StructureElement.Loci.isEmpty(loci)) return undefined;
     return { loci, radius: StructureElement.Loci.getBoundingSphere(loci).radius };
   }
-  if (p.particle !== undefined && SO.Particle.List.is(obj)) {
+  const indices = p.particles ?? (p.particle !== undefined ? [p.particle] : undefined);
+  if (indices?.length && SO.Particle.List.is(obj)) {
     const list = obj.data as ParticleList;
-    if (p.particle < 0 || p.particle >= list.count) return undefined;
-    return { loci: Particle.Loci(list, OrderedSet.ofSingleton(p.particle)), radius: particleRadius(list, p.particle) };
+    if (indices.some((i) => i < 0 || i >= list.count)) return undefined;
+    let radius = 0;
+    for (const i of indices) radius = Math.max(radius, particleRadius(list, i));
+    return { loci: Particle.Loci(list, OrderedSet.ofSortedArray([...indices].sort((a, b) => a - b))), radius };
   }
   return undefined;
 }
@@ -164,7 +169,8 @@ export function pointOf(
     return { ...object, bundle: StructureElement.Bundle.fromLoci(loci) };
   }
   if (Particle.isLoci(loci) && !Particle.isLociEmpty(loci)) {
-    return { ...object, particle: OrderedSet.getAt(loci.indices, 0) };
+    if (OrderedSet.size(loci.indices) === 1) return { ...object, particle: OrderedSet.getAt(loci.indices, 0) };
+    return { ...object, particles: OrderedSet.toArray(loci.indices) };
   }
   return undefined;
 }

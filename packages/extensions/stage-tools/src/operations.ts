@@ -967,7 +967,13 @@ async function distancePoint(
     return ApiResult.fail('invalid', `The ${which} point is not on a structure or a particle list.`);
   }
   const what = pointName(loci);
-  const label = pick.particle ? `${pick.particle.name} #${OrderedSet.getAt((loci as Particle.Loci).indices, 0)}` : what;
+  const indices = Particle.isLoci(loci) ? loci.indices : undefined;
+  const label =
+    pick.particle && indices
+      ? OrderedSet.size(indices) > 1
+        ? `${pick.particle.name} (${OrderedSet.size(indices)} particles)`
+        : `${pick.particle.name} #${OrderedSet.getAt(indices, 0)}`
+      : what;
   const point = pointOf(loci, { ref: pick.target.ref, label: label || pick.target.label, key });
   return point ?? ApiResult.fail('invalid', `The ${which} point is not on a structure or a particle list.`);
 }
@@ -983,7 +989,8 @@ function pointName(loci: Loci): string {
 }
 
 /** What a point is (its object and its elements or particle), not its name or row: a distance's identity */
-const pointId = (p: DistancePoint) => JSON.stringify([p.ref, p.particle ?? null, p.bundle ?? null]);
+const pointId = (p: DistancePoint) =>
+  JSON.stringify([p.ref, p.particle ?? null, p.particles ?? null, p.bundle ?? null]);
 
 /** A point as views list it: its object, name and row */
 const brief = (p: DistancePoint) => ({ ref: p.ref, label: p.label, key: p.key });

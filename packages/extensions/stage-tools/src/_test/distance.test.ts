@@ -138,6 +138,18 @@ describe('stage.distance', () => {
     expect(bad.ok).toBe(false);
   });
 
+  it('measures from all of a multi-particle pick (a fiber): its middle, not its first bead', async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    expectOk(await v.api.load.files({ files: [new File([star('0 0 0\n10 0 0\n5 10 0\n')], 'p.star')] }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell;
+    const both = Particle.Loci(list.obj!.data, OrderedSet.ofSortedArray([0, 1]));
+    expectOk(await s.distance({ a: { loci: both }, b: `${list.transform.ref}#2` } as never));
+    // from the middle of the two (Mol*'s sphere around them, about it), not from the first (11.18 Å)
+    expect(s.distancesState().value[0].distance).toBeCloseTo(10, 1);
+    expect(s.distancesState().value[0].a.label).toMatch(/2 particles/);
+  });
+
   it('sizes its text and line to what it measures, times its options; one step each, one undo removes it', async () => {
     const v = await viewer();
     const s = v.api.stage!;
