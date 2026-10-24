@@ -14,7 +14,7 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { TestParticleList } from './fixtures.js';
 
@@ -160,7 +160,6 @@ describe('graphics and motion per object', () => {
     const lod = JSON.stringify(Spheres.LodLevelsPresets.performance);
     expect(after.list.every((p) => JSON.stringify(p.lodLevels) === lod)).toBe(true);
     expect([...after.a, ...after.b, ...after.volume].every((p) => p.quality === 'low')).toBe(true);
-    expect(v.plugin.canvas3dContext?.props.pixelScale ?? 0.5).toBe(0.5);
   });
 
   // A known limit (apps/prism-me/TODO.md): the scene-wide structure options (component.options, the quick styles) put
@@ -210,5 +209,27 @@ describe('graphics and motion per object', () => {
       type: 'ball-and-stick',
     });
     expect(m.graphicsState(ref).value).toEqual({ wiggle: 0, tumble: 0 });
+  });
+  // The canvas resolution is the scene's: one object's mode never touches it; the mode of every object does. Headless has
+  // no canvas, so a stand-in records what is set.
+  it("sets the canvas resolution with every object's mode only", async () => {
+    const v = await viewer();
+    const { refs } = objects(v);
+    const setProps = vi.fn();
+    const plugin = v.plugin as unknown as { canvas3dContext: unknown };
+    plugin.canvas3dContext = { props: { pixelScale: 1 }, setProps };
+    try {
+      const m = v.api.mesoscale!;
+      expectOk(await m.graphics({ mode: 'performance', object: refs.list } as never));
+      expect(await m.graphics({ mode: 'performance', object: refs.list } as never)).toMatchObject({
+        ok: true,
+        unchanged: true,
+      });
+      expect(setProps).not.toHaveBeenCalled();
+      expectOk(await m.graphics({ mode: 'performance' }));
+      expect(setProps).toHaveBeenCalledWith({ pixelScale: 0.5 });
+    } finally {
+      plugin.canvas3dContext = undefined;
+    }
   });
 });
