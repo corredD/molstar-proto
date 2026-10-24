@@ -11,7 +11,7 @@ import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { StateSelection } from '@molstar/core/state';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
-import { Volume } from '@molstar/model/model/volume';
+import { Grid, Volume } from '@molstar/model/model/volume';
 import {
   particleTargetObjectCells,
   particleTargetSourceFromPdbIdOrUrl,
@@ -684,7 +684,11 @@ function sliceParams(
   };
 }
 
-/** A volume format's visuals for tomograms: its three slices (x, y, z, the middle ones), no isosurface */
+/**
+ * A volume format's visuals for tomograms, as IMOD's 3dmod opens one: its middle XY slice (along z) shown, grayscale
+ * at mean ± 3σ, seen straight down z (x right, y up) and framed to it; the x and y slices made too, hidden (their eyes
+ * show them). No isosurface.
+ */
 export async function sliceVisuals(plugin: ApiContext['plugin'], data: { volume?: StateObjectSelector }) {
   const volume = data.volume;
   const v = volume?.cell?.obj?.data as Volume | undefined;
@@ -692,10 +696,29 @@ export async function sliceVisuals(plugin: ApiContext['plugin'], data: { volume?
   const b = plugin.build();
   for (const axis of Axes) {
     const n = v.grid.cells.space.dimensions[AxisIndex[axis]];
-    b.to(volume).apply(VolumeRepresentation3D, sliceParams(plugin, v, axis, Math.round((n - 1) / 2), 3));
+    b.to(volume).apply(VolumeRepresentation3D, sliceParams(plugin, v, axis, Math.round((n - 1) / 2), 3), {
+      state: { isHidden: axis !== 'z' },
+    });
   }
   await b.commit();
+  lookDownZ(plugin, v);
   return [];
+}
+
+/** The camera looking straight down z at a volume's middle (x right, y up), framed to its XY extent */
+function lookDownZ(plugin: ApiContext['plugin'], v: Volume) {
+  const camera = plugin.canvas3d?.camera;
+  if (!camera) return;
+  const box = Grid.getBoundingSphere(v.grid);
+  // the XY slice's half-diagonal: the box's, over its full diagonal, times its XY one
+  const [nx, ny, nz] = v.grid.cells.space.dimensions;
+  const radius = Math.max((box.radius * Math.hypot(nx, ny)) / Math.max(Math.hypot(nx, ny, nz), 1), 1);
+  const distance = camera.getTargetDistance(radius);
+  const target = Vec3.clone(box.center);
+  camera.setState(
+    { target, position: Vec3.add(Vec3(), target, Vec3.create(0, 0, distance)), up: Vec3.create(0, 1, 0), radius },
+    0,
+  );
 }
 
 function sliceOf(v: VolumeRef): SliceInfo | undefined {
