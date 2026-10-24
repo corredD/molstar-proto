@@ -13,6 +13,7 @@ import type { StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, ObliqueSlice, Slice } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
 import { GraphicsMode, ImportColors, Motion } from '@molstar/mesoscale-extension/controls';
+import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
   Button,
@@ -31,6 +32,7 @@ import {
   TextInput,
 } from '@molstar/prism-ui';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
+import type { KeyedState } from '@molstar/prism-ui/reactive/keyed-state';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
@@ -43,7 +45,8 @@ import type { Parts } from './rows.js';
 
 // The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name, then sections that fold, only
 // those that apply: Look (color, opacity, glow; what the node shows now), Representation (a structure's preset),
-// Decoration (a particle list's targets), Slice (a volume), the mesh's look, Graphics (a model's mode and motion).
+// Decoration (a particle list's targets), Slice (a volume), the mesh's look, Graphics (a model's mode and motion). A
+// model with compartments also has its Group by switch, above them (the tree's grouping of its rows: view state).
 // They act through the API as the person; a slider once released (one step).
 
 /** The row picked: its key in the tree, what it is, what it stands for */
@@ -65,16 +68,26 @@ export function Properties(props: {
   area: ExplorerApi;
   picked: ReadonlyState<Picked | undefined>;
   parts: ReadonlyState<Parts>;
+  /** Each model's grouping in the tree, by ref (the explorer's view state) */
+  groupings: KeyedState<string, MesoGroupBy>;
 }) {
   // made again for each pick
   return (
     <For each={mapState(props.picked, (p) => (p ? [p] : []))} by={(p) => p.key}>
-      {(p) => <NodeProperties api={props.api} area={props.area} picked={p} parts={props.parts} />}
+      {(p) => (
+        <NodeProperties api={props.api} area={props.area} picked={p} parts={props.parts} groupings={props.groupings} />
+      )}
     </For>
   );
 }
 
-function NodeProperties(props: { api: ViewerApi; area: ExplorerApi; picked: Picked; parts: ReadonlyState<Parts> }) {
+function NodeProperties(props: {
+  api: ViewerApi;
+  area: ExplorerApi;
+  picked: Picked;
+  parts: ReadonlyState<Parts>;
+  groupings: KeyedState<string, MesoGroupBy>;
+}) {
   const { api, area, picked } = props;
   const node = picked.node;
   return (
@@ -87,6 +100,9 @@ function NodeProperties(props: { api: ViewerApi; area: ExplorerApi; picked: Pick
         </strong>
         <span style={Muted}>{picked.kind}</span>
       </div>
+      {node && picked.kind === 'mesoscale model' ? (
+        <GroupBy model={node.ref} parts={props.parts} groupings={props.groupings} />
+      ) : null}
       {node ? sectionsOf(api, area, picked, node, props.parts) : null}
       {node && movable(picked.kind) ? (
         <Section title="Position">{() => <Position api={api} area={area} kind={picked.kind} node={node} />}</Section>
@@ -251,6 +267,33 @@ function sectionsOf(
       return [<Section title="Label">{() => <LabelProps api={api} node={node} />}</Section>];
   }
   return [];
+}
+
+/**
+ * A model's grouping in the tree: by compartment or by function, shown when it has compartments (_spec/ui.md §4). Its
+ * narrowest sources: whether the model has compartments (a boolean of its own info), and the model's key of the
+ * explorer's groupings for the choice (none set: by compartment, the default of a model with compartments).
+ */
+function GroupBy(props: { model: string; parts: ReadonlyState<Parts>; groupings: KeyedState<string, MesoGroupBy> }) {
+  const hasCompartments = mapState(
+    props.parts,
+    (p) => !!(p.get(props.model) as MesoscaleInfo | undefined)?.hasCompartments,
+  );
+  return (
+    <Show when={hasCompartments}>
+      {() => (
+        <Choices
+          label="Group by"
+          choices={[
+            { id: 'compartment', label: 'Compartment' },
+            { id: 'function', label: 'Function' },
+          ]}
+          active={mapState(props.groupings.key(props.model), (g) => g ?? 'compartment')}
+          onPick={(id) => props.groupings.set(props.model, id as MesoGroupBy)}
+        />
+      )}
+    </Show>
+  );
 }
 
 // --- sections --------------------------------------------------------------------------------------------------------
@@ -486,7 +529,16 @@ function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlySta
           <Button
             size="sm"
             icon={<Icon name="palette" />}
-            onClick={() => void api.run('mesoscale.colors', { scheme: 'generate', particles: node.ref, ...selection })}
+            onClick={() => {
+              // a hue per group as the tree groups them
+              const groupBy = (props.parts.value.get(node.ref) as MesoscaleInfo | undefined)?.groupBy;
+              void api.run('mesoscale.colors', {
+                scheme: 'generate',
+                particles: node.ref,
+                ...(groupBy ? { groupBy } : {}),
+                ...selection,
+              });
+            }}
           >
             Generate colors
           </Button>

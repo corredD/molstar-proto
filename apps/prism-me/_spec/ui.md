@@ -38,12 +38,18 @@ them.
 Four categories, shown when they hold something. Under each, what was opened, then its parts; the parts' parts are
 loaded when first opened (thousands of entities cost nothing until looked at).
 
-| Category   | An item                                                                                | Its children                                                                                                                        |
-| ---------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Structures | a PDB / mmCIF / other structure file or entry (1CRN)                                   | its entities, then chains                                                                                                           |
-| Particles  | a cellPACK or PetWorld model; a particle list (RELION, Dynamo, EM, NDJSON, Simularium) | a model: its compartments (groups), then entities. A list: its targets (a class each when by class), each showing what decorates it |
-| Volumes    | a map, tomogram, tilt series (MRC…)                                                    | its representations (slice, isosurface)                                                                                             |
-| Meshes     | a mesh file (OBJ, PLY, VTP)                                                            | its segments, when it has several                                                                                                   |
+| Category   | An item                                                                                | Its children                                                                                                                                                      |
+| ---------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Structures | a PDB / mmCIF / other structure file or entry (1CRN)                                   | its entities, then chains                                                                                                                                         |
+| Particles  | a cellPACK or PetWorld model; a particle list (RELION, Dynamo, EM, NDJSON, Simularium) | a model: its groups (compartments, or functions by its Group by), then entities. A list: its targets (a class each when by class), each showing what decorates it |
+| Volumes    | a map, tomogram, tilt series (MRC…)                                                    | its representations (slice, isosurface)                                                                                                                           |
+| Meshes     | a mesh file (OBJ, PLY, VTP)                                                            | its segments, when it has several                                                                                                                                 |
+
+A model's groups follow its Group by (§4), a model's own choice: compartments (the dotted names' tree) by default when
+it has some, else functions; switching remakes that model's rows only. A group row stands for its entities (their ids),
+so its eye, Look, clips and picks are the same under both groupings. A label made at a group the model's grouping does
+not show now is a row under the model (picked, hidden, edited and revealed there), back under its group when that
+grouping is shown again (a default, to confirm).
 
 Every row: an eye (show, hide, at its level), a color dot where it has one color, its name, a count (atoms, particles,
 entities) faint at the end. Clips and labels made at a node are rows under it (§5), with their own eye.
@@ -65,6 +71,7 @@ The properties of the picked row, in sections that fold. Only what applies to it
 | Clips          | every node                                            | its clips (§5), each: shape, invert, position, rotation, size, remove                                                                      |
 | Labels         | every node                                            | its labels (§5), each: text, size, remove                                                                                                  |
 | Graphics       | a model (cellPACK, PetWorld)                          | quality (ultra… fast), wiggle, tumble                                                                                                      |
+| Group by       | a model with compartments                             | Compartment or Function: how the tree groups its entities; above the sections, not folded; view state (no operation, no step)              |
 
 ## 5. Right-click
 
@@ -283,6 +290,13 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
   undo, a reload or the numbers show the plane's own frame). Outside the volume it is not drawn (the slice's box trim).
   Its menu: Move and tilt it. The x, y and z slices are grid slices only (`mode: 'grid'`): `cryoet.slice` never takes
   the oblique slice for one.
+- Group by (2026-10-24, Ludovic: in the tree, not the Entities tab): a model with compartments has a Compartment /
+  Function switch (Prism's `Choices`) in its properties, above the sections; its tree rows follow it. The grouping is
+  the explorer's view state by model ref (`SceneModel.groupings`, a `keyedState`; no operation, no history step), read
+  through `infoState(ref, groupings.key(ref))`, so a switch re-reads and remakes that model's rows alone. A function's
+  group row is keyed apart from a compartment's (`g:<ref>:fn:<name>`). Group rows act by entity ids, so eyes, Look,
+  clips and picks need no grouping; Look's Generate colors passes the model's grouping (`mesoscale.colors` `groupBy`).
+  `mesoscale.entities` and `mesoscale.style` take `groupBy` for ⌘K and the agent.
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.

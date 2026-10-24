@@ -26,7 +26,6 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - Lightness, pattern, illustrative and cel shading per entity (particle layers beyond color, transparency, emissive);
   the explorer's quick styles for particles.
 - Level of detail per entity; tumble except membranes.
-- A group-by switch (compartment, function) in the Entities tab.
 - Color import per compartment (v5 parity): one entity per name across compartments; per-compartment layers
   (`ParticleLayerProps.compartments`) would restore it.
 - Snapshot descriptions' links: `#key`, `i<names>`, `g<group>.<names>`.

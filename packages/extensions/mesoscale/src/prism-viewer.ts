@@ -27,8 +27,9 @@ export const MesoscaleSkill: ViewerSkill = {
   guidance: [
     'Skill mesoscale: a cellPACK or PetWorld model (mmCIF, BinaryCIF) loads as a particle list: each entity (a',
     'molecule type) is instanced at many particles, entities are grouped by compartment (root.envelope.surface) or',
-    'function. get_mesoscale_entities lists them; style_mesoscale_entities shows, hides, colors, fades or lights',
-    'entities picked by name or by group (reset brings them back); color_mesoscale_entities generates colors (a hue',
+    'function. get_mesoscale_entities lists them (groupBy: compartment or function; absent: by compartment when the',
+    'model has compartments); style_mesoscale_entities shows, hides, colors, fades or lights entities picked by name or',
+    'by group (groupBy: the grouping the group is read in; reset brings them back); color_mesoscale_entities generates colors (a hue',
     'per group), one uniform color, or goes back to the color theme; set_mesoscale_graphics trades detail for speed;',
     "Their cuts are the clipping skill's (clipping.add with particles: a group's, an entity's or a target's).",
     'move_mesoscale_particles wiggles the atoms and tumbles the particles of one model (particles; empty: every one; 0 stops); open_mesoscale_example opens one of',
@@ -38,7 +39,7 @@ export const MesoscaleSkill: ViewerSkill = {
     {
       id: 'get_mesoscale_entities',
       operation: 'mesoscale.entities',
-      description: "Lists a mesoscale model's entities, groups and their look.",
+      description: "Lists a mesoscale model's entities, their groups (by compartment or function) and their look.",
     },
     {
       id: 'style_mesoscale_entities',
