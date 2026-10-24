@@ -11,7 +11,7 @@ import { Color } from '@molstar/core/util/color';
 import type { ObjectPose } from '@molstar/stage-tools-extension/move';
 import type { StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, Slice } from '@molstar/cryoet-extension/controls';
-import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
+import type { DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
 import { GraphicsMode, Motion } from '@molstar/mesoscale-extension/controls';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
@@ -110,6 +110,10 @@ function sectionsOf(
     if (kind === 'target')
       return [<Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>];
     const out = [<Section title="Look">{() => <ParticleLook api={api} node={node} parts={parts} />}</Section>];
+    // a part's own decoration (an entity's, a group's): its targets' rows alone
+    if ('particles' in node && (kind === 'entity' || kind === 'group')) {
+      out.push(<Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>);
+    }
     if (kind === 'mesoscale model') {
       // what each target is drawn as (a Simularium agent, a cellPACK entity): another object of the scene
       out.push(<Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>);
@@ -225,7 +229,7 @@ const OpenSections = new Set<string>();
 
 function Section(props: { title: string; children: () => JSX.Element }) {
   const open = observableState(OpenSections.has(props.title));
-  const sub = open.subscribe((o) => (o ? OpenSections.add(props.title) : OpenSections.delete(props.title)));
+  const sub = open.asReadonly.subscribe((o) => (o ? OpenSections.add(props.title) : OpenSections.delete(props.title)));
   onCleanup(() => sub.unsubscribe());
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
@@ -464,13 +468,22 @@ function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlySta
   );
 }
 
+/**
+ * What decorates a list's targets: all of them for the list or model; a part's (a target, an entity, a group of
+ * entities) only its own targets' rows
+ */
 function ListDecoration(props: { api: ViewerApi; node: NodeRef }) {
   const cryoet = props.api.cryoet;
   if (!cryoet) return <span style={Muted}>The cryo-ET extension is not loaded.</span>;
   const info = cryoet.decorationsState(props.node.ref);
+  const part = 'particles' in props.node ? props.node.particles : undefined;
+  const only = part
+    ? (t: TargetDecoration) =>
+        !!part.targets?.includes(t.id) || (t.entity !== undefined && !!part.entities?.includes(t.entity))
+    : undefined;
   return (
     <Show when={mapState(info, (i) => !!i)}>
-      {() => <Decorations area={cryoet} info={info as ReadonlyState<DecorationsInfo>} />}
+      {() => <Decorations area={cryoet} info={info as ReadonlyState<DecorationsInfo>} {...(only ? { only } : {})} />}
     </Show>
   );
 }

@@ -35,7 +35,15 @@ const Line = 'display: flex; align-items: center; gap: var(--msp-space-2); min-h
 /** Spheres: no decoration (the select's value) */
 const Spheres = '';
 
-export function Decorations(props: { area: CryoetApi; info: ReadonlyState<DecorationsInfo> }) {
+/**
+ * What decorates a list's targets: all of them (its Targets and All targets rows, every target), or some (`only`: a
+ * part's row, its targets alone)
+ */
+export function Decorations(props: {
+  area: CryoetApi;
+  info: ReadonlyState<DecorationsInfo>;
+  only?: (t: TargetDecoration) => boolean;
+}) {
   const { area, info } = props;
   const particles = () => info.value.particles;
   const decorate = (targets: string, value: string) =>
@@ -48,6 +56,21 @@ export function Decorations(props: { area: CryoetApi; info: ReadonlyState<Decora
           ? { with: 'entity', entity: value }
           : { with: 'object', object: value }),
     } as never);
+  // a part's: its targets' rows alone (what each is drawn as, its offset)
+  const only = props.only;
+  if (only) {
+    return (
+      <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+        <For each={mapState(info, (i) => [JSON.stringify(i.objects)])} by={(k) => k}>
+          {() => (
+            <For each={mapState(info, (i) => i.targets.filter(only))} by={(t) => t.id}>
+              {(t) => <TargetLine area={area} info={info} target={t} onPick={(v) => decorate(String(t.id), v)} />}
+            </For>
+          )}
+        </For>
+      </div>
+    );
+  }
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
       {/* always shown: File alone, and why, when the file has no columns to split its targets by */}

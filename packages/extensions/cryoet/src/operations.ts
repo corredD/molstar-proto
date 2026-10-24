@@ -51,6 +51,8 @@ export interface TargetDecoration {
   readonly with?: string;
   /** What it is decorated with, as `objects` names it: an object's state ref, or a model entity's `target:<list>:<id>` */
   readonly object?: string;
+  /** The entity it stands for, on a list with entities (a cellPACK or Simularium model) */
+  readonly entity?: number;
 }
 
 export interface DecorationsInfo {
@@ -860,6 +862,7 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Decorati
         count: counts.get(id) ?? 0,
         ...(w ? { with: w } : {}),
         ...(object ? { object } : {}),
+        ...(info.entity !== undefined ? { entity: info.entity } : {}),
       };
     }),
     objects,
