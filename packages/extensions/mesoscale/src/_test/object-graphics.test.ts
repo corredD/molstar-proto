@@ -171,6 +171,7 @@ describe('graphics and motion per object', () => {
     const m = v.api.mesoscale!;
     expectOk(await m.motion({ wiggle: 1.5, object: refs.a } as never));
     expectOk(await m.graphics({ mode: 'ultra', object: refs.a } as never));
+    expect(objects(v).a.every((p) => p.quality === 'highest' && p.animation.wiggleAmplitude === 1.5)).toBe(true);
     expectOk(await v.api.run('component.options', { quality: 'low' }));
     const after = objects(v);
     expect(after.a.every((p) => p.quality === 'low' && p.animation.wiggleAmplitude === 0)).toBe(true);
