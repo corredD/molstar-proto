@@ -18,11 +18,6 @@ the app, in his words; the lane turns it into spec and tests.
   particles; each label appears under its first pick's row; change the text size and opacity; undo once removes it.
 - **Measure a distance, volumes** (after the first): the same between a volume and a volume pixel (voxel) and the
   targets above. Check: Ctrl+click a volume's voxel and an atom; the distance appears under the first pick.
-- **Graphics quality and procedural animation on every object** (Ludovic, 2026-10-24): these options are only on
-  cellPACK right now. They should be on every object in the tree: I can enable the wiggle (and tumble, and quality) on
-  any tree entry; what does not apply to an object type is left out (e.g. wiggle on a volume). Check: load 1CRN,
-  PetWorld HIV and a volume; wiggle 1CRN alone; set the PetWorld model's quality to performance and 1CRN is unchanged;
-  the volume shows quality only.
 
 ## Library fixes ready for upstream
 
@@ -40,6 +35,14 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - Lightness, pattern, illustrative and cel shading per entity (particle layers beyond color, transparency, emissive);
   the explorer's quick styles for particles.
 - Level of detail per entity; tumble except membranes.
+- Graphics & Motion: the scene-wide structure options (Prism's quick styles, `component.options`, `animation.wiggle`)
+  put their quality and motion back on every structure, losing one structure's own (a plugin-core change, a lane of its
+  own; pinned in `mesoscale/src/_test/object-graphics.test.ts`).
+- Graphics & Motion on parts (entities, chains, groups, targets) and meshes; a structure's `auto` quality shown (no mode
+  lit until one is picked).
+- The canvas resolution (pixel scale, sharpening) on screen: only ⌘K, `?graphics-mode=` and the agent set it now.
+- A volume's quality: Mol\*'s `quality` barely changes a slice or an isosurface; a stronger setting per volume
+  (resolution, a smoother surface).
 - Color import per compartment (v5 parity): one entity per name across compartments; per-compartment layers
   (`ParticleLayerProps.compartments`) would restore it.
 - Snapshot descriptions' links: `#key`, `i<names>`, `g<group>.<names>`.
