@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Mat4 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { type GizmoBinding, GizmoController, type GizmoItem } from '@molstar/graphics/util/gizmo/controller';
 import { type DragFrame, frameOfPose, poseGesture, poseOfFrame } from '@molstar/graphics/util/gizmo/gestures';
 import type { Handle } from '@molstar/graphics/util/gizmo/handle';
@@ -57,6 +57,16 @@ function statePlane(plugin: PluginContext, slice: string): SlicePlane | undefine
   return p?.type?.params?.mode === 'plane' ? p.type.params.plane : undefined;
 }
 
+/** A frame's plane: its point, its Z */
+function planeOfFrame(m: Mat4): SlicePlane {
+  return { point: Mat4.getTranslation(Vec3(), m), normal: Vec3.normalize(Vec3(), Vec3.create(m[8], m[9], m[10])) };
+}
+
+/** The same plane, as the state rounds it (Å, a normal's components) */
+function samePlane(a: SlicePlane, b: SlicePlane) {
+  return Vec3.distance(a.point, b.point) < 1e-3 && Vec3.distance(a.normal, Vec3.normalize(Vec3(), b.normal)) < 1e-6;
+}
+
 class ObliqueHandleBinding implements GizmoBinding<HandleValue> {
   readonly #invalidated = new Subject<string>();
 
@@ -65,6 +75,8 @@ class ObliqueHandleBinding implements GizmoBinding<HandleValue> {
     private readonly api: ViewerApi,
     private readonly target: () => ObliqueHandleTarget | undefined,
     readonly items: Observable<readonly GizmoItem<HandleValue>[]>,
+    /** A frame released at, its turn about the normal kept for the handle (the plane cannot hold it) */
+    private readonly released: (slice: string, frame: Mat4) => void,
   ) {}
 
   get invalidated(): Observable<string> {
@@ -121,6 +133,7 @@ class ObliqueHandleBinding implements GizmoBinding<HandleValue> {
       tilt: [ex, ey],
     } = obliquePoseOf(grid, next.frame);
     const done = (async () => {
+      this.released(t.slice, next.frame);
       const r = await this.api.run('cryoet.oblique', { volume: t.volume, slice: t.slice, x, y, z, ex, ey });
       // drawn as the state has it now (placed, or not)
       if (!r.ok || r.unchanged) await this.#draw(undefined);
@@ -143,6 +156,8 @@ class ObliqueHandleBinding implements GizmoBinding<HandleValue> {
 export class ObliqueHandles {
   readonly #target = observableState<ObliqueHandleTarget | undefined>(undefined);
   readonly #items = new BehaviorSubject<readonly GizmoItem<HandleValue>[]>([]);
+  /** The frame the handle was last released at, by slice: shown while the slice's plane is that frame's */
+  readonly #released = new Map<string, Mat4>();
   #controller: GizmoController<HandleValue> | undefined;
   #binding: ObliqueHandleBinding | undefined;
   #release: (() => void) | undefined;
@@ -163,7 +178,13 @@ export class ObliqueHandles {
     if (!canvas) return false;
     this.#target.set(target);
     if (!this.#controller) {
-      const binding = new ObliqueHandleBinding(this.plugin, this.api, () => this.#target.value, this.#items);
+      const binding = new ObliqueHandleBinding(
+        this.plugin,
+        this.api,
+        () => this.#target.value,
+        this.#items,
+        (slice, frame) => this.#released.set(slice, frame),
+      );
       const controller = new GizmoController(canvas, binding);
       this.#binding = binding;
       this.#controller = controller;
@@ -197,10 +218,14 @@ export class ObliqueHandles {
       return;
     }
     const size = Math.max(Grid.getBoundingSphere(grid).radius * 0.5, MinHandleSize);
+    // as released (a turn about the normal kept: no spin on release) while the plane is its; else the plane's own
+    const released = this.#released.get(t.slice);
+    const frame = released && samePlane(planeOfFrame(released), plane) ? released : undefined;
+    if (!frame) this.#released.delete(t.slice);
     this.#items.next([
       {
         key: t.slice,
-        value: { frame: obliqueFrame(grid, obliquePoseOfPlane(grid, plane)), size },
+        value: { frame: frame ?? obliqueFrame(grid, obliquePoseOfPlane(grid, plane)), size },
         label: 'Oblique slice',
       },
     ]);
