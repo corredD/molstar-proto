@@ -112,6 +112,15 @@ describe('stage.distance', () => {
     } as never);
     expect(again.ok && again.unchanged).toBe(true);
     expect(distances(v)).toHaveLength(1);
+    // the same two points the other way round, from the other row: the same distance
+    const swapped = await s.distance({
+      a: { loci: b.loci },
+      b: { loci: a.loci },
+      node: 'e:x:2',
+      nodeB: 'e:x:1',
+    } as never);
+    expect(swapped.ok && swapped.unchanged).toBe(true);
+    expect(distances(v)).toHaveLength(1);
   });
 
   it("measures two particles by '<list ref>#<index>' (the agent's form), under the list when no row is given", async () => {

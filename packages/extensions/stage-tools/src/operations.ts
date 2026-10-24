@@ -635,9 +635,14 @@ export class StageApi extends ApiArea {
       if (!la || !lb) return ApiResult.fail('invalid', 'A point selects nothing.');
       const value = distanceOf(la.loci, lb.loci);
       const node = v.node || `o:${a.ref}`;
-      const same = distancesOf(ctx).find(
-        (d) => d.node === node && JSON.stringify([d.a, d.b]) === JSON.stringify([brief(a), brief(b)]),
-      );
+      // the same two points, either way round, from any row: the same distance
+      const pair = [pointId(a), pointId(b)].sort().join('\n');
+      const sameRef = [...ctx.plugin.state.data.cells.values()].find((c) => {
+        if (c.transform.transformer !== StageDistance) return false;
+        const p = c.transform.params as StageDistanceProps;
+        return [pointId(p.a), pointId(p.b)].sort().join('\n') === pair;
+      })?.transform.ref;
+      const same = sameRef ? distancesOf(ctx).find((d) => d.ref === sameRef) : undefined;
       if (same && !ctx.copy) {
         return ApiResult.already(`It is already measured: ${same.label}.`, {
           value: { ref: same.ref, distance: same.distance },
@@ -976,6 +981,9 @@ function pointName(loci: Loci): string {
   }
   return lociLabel(loci, { htmlStyling: false, condensed: true });
 }
+
+/** What a point is (its object and its elements or particle), not its name or row: a distance's identity */
+const pointId = (p: DistancePoint) => JSON.stringify([p.ref, p.particle ?? null, p.bundle ?? null]);
 
 /** A point as views list it: its object, name and row */
 const brief = (p: DistancePoint) => ({ ref: p.ref, label: p.label, key: p.key });
