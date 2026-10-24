@@ -252,6 +252,10 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
   mesh.
+- IMOD's look (2026-10-23, Ludovic): a dropped MRC opens as 3dmod opens a tomogram: its middle XY slice (along z) shown,
+  grayscale at mean ± 3σ, the camera straight down z (x right, y up) framed to the slice; the x and y slices made too,
+  hidden (their eyes show them). The properties' sections all start closed; one opened stays open from row to row this
+  session.
 - Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
   after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
   its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,

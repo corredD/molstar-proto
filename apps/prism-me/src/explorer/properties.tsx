@@ -220,8 +220,13 @@ function sectionsOf(
 
 // --- sections --------------------------------------------------------------------------------------------------------
 
+/** The sections opened (by title) this session: every section starts closed, one opened stays so from row to row */
+const OpenSections = new Set<string>();
+
 function Section(props: { title: string; children: () => JSX.Element }) {
-  const open = observableState(true);
+  const open = observableState(OpenSections.has(props.title));
+  const sub = open.subscribe((o) => (o ? OpenSections.add(props.title) : OpenSections.delete(props.title)));
+  onCleanup(() => sub.unsubscribe());
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
       <button
