@@ -6,6 +6,7 @@
 
 import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension, ViewerSkill } from '@molstar/prism-viewer/spec';
+import { StageDistance } from './distance.js';
 import { StageLabel } from './label.js';
 import { StageApi } from './operations.js';
 
@@ -22,18 +23,26 @@ declare module '@molstar/prism-viewer/api' {
 
 export const StageSkill: ViewerSkill = {
   id: 'stage',
-  title: 'Labels and moves',
-  summary: 'put plain-text labels in the scene, move objects',
+  title: 'Labels, distances and moves',
+  summary: 'put plain-text labels and distances in the scene, move objects',
   guidance: [
     'Skill stage: add_label puts plain text in front of an object (target: its state ref), change_label edits its',
     'text, size, color, plate or tether, moves, hides or removes it. move_object moves or turns a structure, particle',
     'list, volume or mesh by a matrix, after where it is. scale_particles sets the Å per unit of a particle list (its',
-    "positions in a tomogram's pixels: the pixel size). Cuts are the clipping skill's.",
+    "positions in a tomogram's pixels: the pixel size). measure_distance draws the distance between two points (an",
+    "atom or a residue of a structure, A:10@CA; a particle, '<list ref>#<index>'); change_distance sizes, hides or",
+    "removes one. Cuts are the clipping skill's.",
   ].join('\n'),
   tools: [
     { id: 'add_label', operation: 'stage.label', description: 'Adds a plain-text label in front of an object.' },
     { id: 'change_label', operation: 'stage.editLabel', description: 'Changes, hides or removes a label.' },
     { id: 'move_object', operation: 'stage.move', description: 'Moves or turns an object by a matrix.' },
+    {
+      id: 'measure_distance',
+      operation: 'stage.distance',
+      description: 'Measures and draws the distance between two points: atoms, residues, chains or particles.',
+    },
+    { id: 'change_distance', operation: 'stage.editDistance', description: 'Sizes, hides or removes a distance.' },
     {
       id: 'scale_particles',
       operation: 'stage.scale',
@@ -45,8 +54,8 @@ export const StageSkill: ViewerSkill = {
 export const StageToolsExtension: ViewerExtension = {
   id: 'stage-tools',
   title: 'Stage tools',
-  // its labels are state transforms: registered, so a session that has them opens
-  plugin: { registry: [{ actions: [StageLabel] }] },
+  // its labels and distances are state transforms: registered, so a session that has them opens
+  plugin: { registry: [{ actions: [StageLabel, StageDistance] }] },
   api: { stage: (ctx) => new StageApi(ctx) },
   commands: (api) => {
     const s = api.stage;
@@ -54,6 +63,18 @@ export const StageToolsExtension: ViewerExtension = {
     return [
       operationCommand(api, s.label, { category: 'Labels', icon: 'type', alias: ['label', 'add label', 'annotate'] }),
       operationCommand(api, s.editLabel, { category: 'Labels', icon: 'type', alias: ['edit label', 'remove label'] }),
+      operationCommand(api, s.distance, {
+        category: 'Measure',
+        icon: 'measure-distance',
+        title: 'Measure a distance between two points…',
+        alias: ['distance', 'measure', 'ruler'],
+        action: 'Measure',
+      }),
+      operationCommand(api, s.editDistance, {
+        category: 'Measure',
+        icon: 'measure-distance',
+        alias: ['edit distance', 'remove distance'],
+      }),
     ];
   },
   skills: [StageSkill],
