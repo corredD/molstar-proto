@@ -14,7 +14,7 @@ import { Motion } from './controls.js';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
-import { type MesoGroup, type MesoGroupBy, groupEntities } from './model.js';
+import { type MesoGroup, groupEntities } from './model.js';
 import {
   type EntityInfo,
   type GraphicsMode,
@@ -27,10 +27,8 @@ import {
 
 // The Entities tab (apps/prism-me/_spec/features.md, "Mesoscale"; v5's `apps/mesoscale-explorer/src/ui/entities.tsx`):
 // the graphics mode, the colors, a filter, and the entities of the particle list in their groups (compartments or
-// functions, a switch between the two when the list has compartments), each with its eye, its color and its count. It
-// reads the `mesoscale` area's state and acts through its operations, so the history, the record and the agent see
-// every change. The grouping is the tab's view state (it changes nothing in the scene): the read groups by it, and the
-// operations the tab runs on a group are told it.
+// functions), each with its eye, its color and its count. It reads the `mesoscale` area's state and acts through its
+// operations, so the history, the record and the agent see every change.
 
 export const EntitiesTab = 'mesoscale.tab.entities';
 export const ExamplesSection = 'mesoscale.section.examples';
@@ -115,9 +113,7 @@ function EntitiesView(props: { area: MesoscaleApi }) {
       </Show>
       <For each={mapState(current, (c) => [c])} by={(c) => c}>
         {(ref) => {
-          // the switch's grouping, per list shown; undefined: the default one
-          const groupBy = observableState<MesoGroupBy | undefined>(undefined);
-          const info = area.infoState(ref, groupBy.asReadonly);
+          const info = area.infoState(ref);
           return (
             <Show
               when={mapState(info, (i) => !!i)}
@@ -127,9 +123,7 @@ function EntitiesView(props: { area: MesoscaleApi }) {
                 </p>
               )}
             >
-              {() => (
-                <Entities area={area} info={info as ReadonlyState<MesoscaleInfo>} onGroupBy={(by) => groupBy.set(by)} />
-              )}
+              {() => <Entities area={area} info={info as ReadonlyState<MesoscaleInfo>} />}
             </Show>
           );
         }}
@@ -138,7 +132,7 @@ function EntitiesView(props: { area: MesoscaleApi }) {
   );
 }
 
-function Entities(props: { area: MesoscaleApi; info: ReadonlyState<MesoscaleInfo>; onGroupBy(by: MesoGroupBy): void }) {
+function Entities(props: { area: MesoscaleApi; info: ReadonlyState<MesoscaleInfo> }) {
   const { area, info } = props;
   const filter = observableState('');
   const mode = observableState<GraphicsMode>('quality');
@@ -158,24 +152,10 @@ function Entities(props: { area: MesoscaleApi; info: ReadonlyState<MesoscaleInfo
         <span style={Muted}>
           {mapState(
             info,
-            (i) =>
-              `${i.count.toLocaleString('en')} particles · ${i.entities.length} entities${i.hasCompartments ? '' : ` · by ${i.groupBy}`}`,
+            (i) => `${i.count.toLocaleString('en')} particles · ${i.entities.length} entities · by ${i.groupBy}`,
           )}
         </span>
       </div>
-      <Show when={mapState(info, (i) => i.hasCompartments)}>
-        {() => (
-          <Choices
-            label="Group by"
-            choices={[
-              { id: 'compartment', label: 'Compartment' },
-              { id: 'function', label: 'Function' },
-            ]}
-            active={mapState(info, (i) => i.groupBy)}
-            onPick={(id) => props.onGroupBy(id as MesoGroupBy)}
-          />
-        )}
-      </Show>
       <Choices
         label="Graphics"
         choices={[
@@ -194,7 +174,7 @@ function Entities(props: { area: MesoscaleApi; info: ReadonlyState<MesoscaleInfo
         <Button
           size="sm"
           icon={<Icon name="palette" />}
-          onClick={() => void area.colors({ scheme: 'generate', groupBy: info.value.groupBy, particles: particles() })}
+          onClick={() => void area.colors({ scheme: 'generate', particles: particles() })}
         >
           Generate colors
         </Button>
@@ -339,7 +319,6 @@ function GroupRow(props: {
               onToggle={() =>
                 void area.style({
                   group: row.group.path,
-                  groupBy: info.value.groupBy,
                   visible: !shown.value,
                   particles: info.value.particles,
                 } as never)

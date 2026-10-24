@@ -8,6 +8,7 @@
 
 import { Color } from '@molstar/core/util/color';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
+import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
   Button,
@@ -21,6 +22,7 @@ import {
   TextInput,
 } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
+import { type KeyedState, keyedState } from '@molstar/prism-ui/reactive/keyed-state';
 import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
@@ -119,6 +121,11 @@ interface SceneModel {
   readonly filter: ObservableState<string>;
   readonly picked: ObservableState<Picked | undefined>;
   readonly parts: ObservableState<Parts>;
+  /**
+   * Each model's grouping by its ref, picked in its properties (none: the default one): view state, no operation, no
+   * history step (_spec/ui.md §4). Its read follows its own key only, so a switch remakes that model's rows alone.
+   */
+  readonly groupings: KeyedState<string, MesoGroupBy>;
   /** The row to bring into view (a pick in 3D) */
   readonly scrollTo: ObservableState<string | undefined>;
   /** Picks a node's row, unfolding the way to it */
@@ -129,12 +136,14 @@ function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
   const open = observableState<ReadonlySet<string>>(new Set(Categories.map((c) => `c:${c.id}`)));
   const picked = observableState<Picked | undefined>(undefined);
   const parts = observableState<Parts>(new Map());
+  const groupings = keyedState<string, MesoGroupBy>();
   const scrollTo = observableState<string | undefined>(undefined);
   return {
     open,
     filter: observableState(''),
     picked,
     parts,
+    groupings,
     scrollTo,
     reveal(p) {
       const labels = stage?.labelsState().value ?? [];
@@ -166,7 +175,9 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     for (const o of list) {
       if (o.category !== 'particles' || partStates.has(o.ref)) continue;
       const state: ReadonlyState<unknown> | undefined =
-        o.kind === 'model' ? api.mesoscale?.infoState(o.ref) : api.cryoet?.decorationsState(o.ref);
+        o.kind === 'model'
+          ? api.mesoscale?.infoState(o.ref, model.groupings.key(o.ref))
+          : api.cryoet?.decorationsState(o.ref);
       if (!state) continue;
       const sub = state.subscribe((value) => {
         const next = new Map(parts.value);
@@ -342,7 +353,15 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
           when={mapState(picked.asReadonly, (p) => !!p)}
           fallback={() => <p style={`margin: 0; ${Muted}`}>Pick a row to see its properties.</p>}
         >
-          {() => <Properties api={api} area={area} picked={picked.asReadonly} parts={parts.asReadonly} />}
+          {() => (
+            <Properties
+              api={api}
+              area={area}
+              picked={picked.asReadonly}
+              parts={parts.asReadonly}
+              groupings={model.groupings}
+            />
+          )}
         </Show>
       </div>
     </div>

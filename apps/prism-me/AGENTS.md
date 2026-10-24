@@ -15,6 +15,11 @@ The Mesoscale Explorer on Prism. The repository's rules ([../../AGENTS.md](../..
   looks are particle layers (`ParticleRepresentation3DLayers`), never one representation per entity.
 - **Tests:** each extension's `_test/` on a headless viewer (`createPrismViewerHeadless`); data made in memory or from
   `data/examples`, never the network.
+- **The explorer's four places** (Ludovic, 2026-10-24): Mesoscale and Cryo-ET UI goes in the explorer's four places, the
+  scene tree, its properties, its right-click menu and + Open ([_spec/ui.md](_spec/ui.md)), never in an extension's tab,
+  because prism-me hides those tabs (`HiddenParts` in src/spec.ts) and one panel is the layout. Guarded by
+  `src/_test/hidden-parts.test.ts` (every tab of the app's extensions but the Scene is hidden; every hidden part of
+  theirs exists).
 
 ## How we work (Ludovic, 2026-10-24)
 

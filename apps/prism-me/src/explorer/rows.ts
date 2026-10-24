@@ -133,13 +133,15 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
     push({ ...base, key: `o:${o.ref}`, kind: 'mesoscale model', hasChildren: !!info?.entities.length }, () => {
       if (!info) return;
       const byId = new Map(info.entities.map((e) => [e.id, e]));
+      // a function's group keyed apart from a compartment of the same name (the grouping is the model's, §3)
+      const groupKey = (path: string) => `g:${o.ref}:${info.groupBy === 'function' ? 'fn:' : ''}${path}`;
       const walk = (g: MesoGroup, depth: number) => {
         for (const child of g.groups) {
           const members = groupEntities(child);
           const shown = members.some((id) => byId.get(id)?.visible);
           push(
             {
-              key: `g:${o.ref}:${child.path}`,
+              key: groupKey(child.path),
               depth,
               label: child.label,
               kind: 'group',
