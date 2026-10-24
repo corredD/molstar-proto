@@ -51,7 +51,7 @@ function mapFile(name: string, n: number) {
 const crn = (name: string) =>
   new File([readFileSync(new URL('../../../../../data/examples/1crn.cif', import.meta.url))], name);
 
-async function viewer() {
+async function viewer(structures = ['a.cif', 'b.cif']) {
   const base = DefaultPrismViewerSpec();
   const v = await createPrismViewerHeadless({
     spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
@@ -59,8 +59,9 @@ async function viewer() {
   viewers.push(v);
   await v.plugin.build().toRoot().apply(TestParticleList).commit();
   expectOk(await v.api.particles.representation({ type: 'spacefill' }));
-  for (const f of [crn('a.cif'), crn('b.cif'), mapFile('map.mrc', 10)])
+  for (const f of [...structures.map((n) => crn(n)), mapFile('map.mrc', 10)]) {
     expectOk(await v.api.load.files({ files: [f] }));
+  }
   if (!v.plugin.managers.volume.hierarchy.current.volumes[0]?.representations.length) {
     expectOk(await v.api.run('volume.representation', { type: 'isosurface' }));
   }
@@ -174,5 +175,25 @@ describe('graphics and motion per object', () => {
     expectOk(await v.api.run('component.options', { quality: 'low' }));
     const after = objects(v);
     expect(after.a.every((p) => p.quality === 'low' && p.animation.wiggleAmplitude === 0)).toBe(true);
+  });
+  // ⌘K and the agent name an object as the tree does: a structure by its entry, any object by its file
+  it('finds an object by its name in the tree and says it', async () => {
+    const one = await viewer(['crn.cif']);
+    const r = await one.api.mesoscale!.motion({ wiggle: 1, object: '1CRN' } as never);
+    expectOk(r);
+    expect(r.did).toContain('1CRN');
+    const s = one.plugin.managers.structure.hierarchy.current.structures[0];
+    const wiggles = s.components
+      .flatMap((c) => c.representations)
+      .map((x) => paramsOf(x.cell).animation.wiggleAmplitude);
+    expect(wiggles.every((w) => w === 1)).toBe(true);
+    const g = await one.api.mesoscale!.graphics({ mode: 'performance', object: 'map.mrc' } as never);
+    expectOk(g);
+    expect(g.did).toContain('map.mrc');
+    const two = await viewer();
+    const { refs } = objects(two);
+    expectOk(await two.api.mesoscale!.motion({ wiggle: 2, object: 'b.cif' } as never));
+    expect(two.api.mesoscale!.graphicsState(refs.b).value).toMatchObject({ wiggle: 2 });
+    expect(two.api.mesoscale!.graphicsState(refs.a).value).toMatchObject({ wiggle: 0 });
   });
 });

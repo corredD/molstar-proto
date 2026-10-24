@@ -9,7 +9,8 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { VisualQuality } from '@molstar/graphics/geo/geometry/base';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
-import type { StateObjectCell } from '@molstar/core/state';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { type StateObjectCell, StateTransform } from '@molstar/core/state';
 import type {
   ParticleListRef,
   ParticleRepresentationRef,
@@ -21,7 +22,7 @@ import {
 } from '@molstar/plugin/state/transforms/particles/layers';
 import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
-import { isFailure, pickOne } from '@molstar/prism-viewer/api/scope';
+import { isFailure, labelOf, pickNamed, pickOne } from '@molstar/prism-viewer/api/scope';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { cssColor, matchColors, parseColorFile } from './color-file.js';
@@ -73,10 +74,15 @@ const ModeSettings: Record<GraphicsMode, { readonly quality: VisualQuality; read
   performance: { quality: 'low', stepsPerCell: 1 },
 };
 
-/** An object with graphics: a structure, a particle list (a model) or a volume, and the representations drawing it */
+/**
+ * An object with graphics: a structure, a particle list (a model) or a volume, its name as prism-me's tree shows it (a
+ * structure's entry, else the file's name), the other names it is found by, and the representations drawing it
+ */
 interface GraphicsObject {
   readonly kind: 'structure' | 'particles' | 'volume';
   readonly cell: StateObjectCell;
+  readonly name: string;
+  readonly names: readonly (string | undefined)[];
   readonly representations: readonly StateObjectCell[];
 }
 
@@ -407,6 +413,7 @@ export class MesoscaleApi extends ApiArea {
       }
       // one object's representations when it is given (a model, a structure), not the rest of the scene's
       let reps: readonly StateObjectCell[];
+      let of = '';
       if (object?.trim()) {
         const o = oneObject(ctx, object);
         if (isFailure(o)) return o;
@@ -418,6 +425,7 @@ export class MesoscaleApi extends ApiArea {
           );
         }
         reps = o.representations;
+        of = ` of ${o.name}`;
       } else {
         const one = particles.trim() ? oneList(ctx, particles) : undefined;
         if (isFailure(one)) return one;
@@ -439,7 +447,7 @@ export class MesoscaleApi extends ApiArea {
         wiggle !== undefined ? (wiggle ? `wiggle ${wiggle} Å` : 'no wiggle') : undefined,
         tumble !== undefined ? (tumble ? `tumble ${tumble} Å` : 'no tumble') : undefined,
       ].filter((x) => x);
-      return ApiResult.ok(`Motion: ${parts.join(', ')}.`, { nodes });
+      return ApiResult.ok(`Motion${of}: ${parts.join(', ')}.`, { nodes });
     },
   });
 
@@ -525,7 +533,7 @@ export class MesoscaleApi extends ApiArea {
           },
         });
       }
-      const of = one ? ` for ${one.cell.obj?.label ?? one.cell.transform.ref}` : '';
+      const of = one ? ` for ${one.name}` : '';
       return ApiResult.ok(`Graphics set to ${mode}${of}.`, { nodes, view: !one });
     },
   });
@@ -533,28 +541,54 @@ export class MesoscaleApi extends ApiArea {
 
 /** The objects with graphics: structures, particle lists, volumes */
 function graphicsObjects(ctx: Pick<ApiContext, 'plugin'>): GraphicsObject[] {
-  const { structure, particles, volume } = ctx.plugin.managers;
+  const { plugin } = ctx;
+  const { structure, particles, volume } = plugin.managers;
+  const named = (cell: StateObjectCell, name?: string) => {
+    const file = fileLabel(plugin, cell.transform.ref);
+    const shown = name ?? file ?? cell.obj?.label ?? cell.transform.ref;
+    return { cell, name: shown, names: [shown, file, cell.obj?.label] };
+  };
   return [
     ...structure.hierarchy.current.structures.map((s) => ({
       kind: 'structure' as const,
-      cell: s.cell,
+      ...named(s.cell, labelOf(ctx, s)),
       representations: s.components.flatMap((c) => c.representations.map((r) => r.cell)),
     })),
     ...particles.hierarchy.current.lists.map((l) => ({
       kind: 'particles' as const,
-      cell: l.cell,
+      ...named(l.cell),
       representations: l.representations.map((r) => r.cell),
     })),
     ...volume.hierarchy.current.volumes.map((v) => ({
       kind: 'volume' as const,
-      cell: v.cell,
+      ...named(v.cell),
       representations: v.representations.map((r) => r.cell),
     })),
   ];
 }
 
+/** The name of the file an object came from: its root data's label (as prism-me's tree names it) */
+function fileLabel(plugin: ApiContext['plugin'], ref: string): string | undefined {
+  const { cells, tree } = plugin.state.data;
+  let root = ref;
+  for (;;) {
+    const parent = tree.transforms.get(root)?.parent;
+    if (!parent || parent === StateTransform.RootRef) break;
+    root = parent;
+  }
+  const data = cells.get(root)?.obj;
+  return SO.Data.String.is(data) || SO.Data.Binary.is(data) || SO.Data.Response.is(data) ? data.label : undefined;
+}
+
+/** One object by state ref, its tree name (a structure's entry, a file's name) or the plugin's label */
 function oneObject(ctx: Pick<ApiContext, 'plugin'>, name: string): GraphicsObject | ApiFailure {
-  return pickOne(graphicsObjects(ctx), name, 'object', 'Open a structure, a mesoscale model or a volume first.');
+  return pickNamed(graphicsObjects(ctx), name, {
+    what: 'object',
+    ids: (o) => [o.cell.transform.ref],
+    names: (o) => o.names,
+    describe: (o) => `${o.name} (${o.cell.transform.ref})`,
+    none: { message: 'Nothing is loaded.', hint: 'Open a structure, a mesoscale model or a volume first.' },
+  });
 }
 
 /**
