@@ -133,6 +133,13 @@ describe('mesoscale.importColors', () => {
     expect(r.did).toContain('Ghost');
   });
 
+  it('fails as invalid when no value of the file is a color', async () => {
+    const v = await viewer();
+    const r = await v.api.mesoscale!.importColors({ json: '{"CA": "nope", "NC": {"x": 0.5, "y": 0, "z": 0}}' });
+    expect(r).toMatchObject({ ok: false, code: 'invalid' });
+    if (!r.ok) expect(r.message).toMatch(/not colors/);
+  });
+
   it('says which entities were named twice, and that the last color is kept', async () => {
     const v = await viewer();
     const r = await v.api.mesoscale!.importColors({

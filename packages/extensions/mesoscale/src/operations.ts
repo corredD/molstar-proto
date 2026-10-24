@@ -295,6 +295,13 @@ export class MesoscaleApi extends ApiArea {
       const entities = mesoEntities(data);
       const { colors, matched, unmatched, invalid, overridden } = matchColors(entities, file);
       const value: ImportColorsResult = { matched, unmatched, invalid, overridden };
+      if (!colors.size && invalid.length && !unmatched.length) {
+        return ApiResult.fail(
+          'invalid',
+          `The values of the colors are not colors: ${namesOf(invalid)}.`,
+          'Give a CSS color ("#ff6347", "tomato") or {"x": r, "y": g, "z": b}, integers in 0-255.',
+        );
+      }
       if (!colors.size) {
         return ApiResult.fail(
           'not-found',
