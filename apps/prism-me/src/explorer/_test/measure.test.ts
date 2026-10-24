@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { OrderedSet } from '@molstar/core/data/int';
 import { Binding } from '@molstar/core/util/binding';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { ButtonsType, EmptyKeyInput, ModifiersKeys } from '@molstar/core/util/input/input-observer';
 import { setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
 import { Particle } from '@molstar/model/model/particles/particle-list';
@@ -192,6 +193,15 @@ describe('a distance by two Ctrl+clicks', () => {
   });
 });
 
+/** A behavior's own param defaults; none when its params need a plugin (a representation's: no click bindings) */
+function defaultsOf(t: PluginSpec['behaviors'][number]['transformer']) {
+  try {
+    return t.definition.params?.(undefined as never, undefined);
+  } catch {
+    return undefined;
+  }
+}
+
 describe("the app's bindings", () => {
   it('leave Ctrl+click (and ⌘+click) to the distance: no camera or representation focus on it', () => {
     const spec = createMesoscaleExplorerSpec('');
@@ -202,7 +212,11 @@ describe("the app's bindings", () => {
     expect(ids).toContain(RepresentationFocusLoci.id);
     const taken: string[] = [];
     for (const b of plugin.behaviors) {
-      const bindings = (b.defaultParams as { bindings?: Record<string, Binding> } | undefined)?.bindings;
+      // its params as the spec gives them, else the behavior's own defaults (a behavior listed without params)
+      const own = (b.defaultParams as { bindings?: Record<string, Binding> } | undefined)?.bindings;
+      const defs = defaultsOf(b.transformer);
+      const bindings =
+        own ?? (defs ? (PD.getDefaultValues(defs) as { bindings?: Record<string, Binding> }).bindings : undefined);
       for (const [name, binding] of Object.entries(bindings ?? {})) {
         for (const m of [ModifiersKeys.create({ control: true }), ModifiersKeys.create({ meta: true })]) {
           if (Binding.match(binding, ButtonsType.Flag.Primary, m)) taken.push(`${b.transformer.id}.${name}`);
