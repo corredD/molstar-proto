@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
@@ -20,7 +21,8 @@ export interface TransformHandlesOptions {
   /** Which parts (all but `scale` by default) */
   readonly move?: boolean;
   readonly planes?: boolean;
-  readonly rotate?: boolean;
+  /** The rings: every axis's, or those of these axes (a plane's tilts: no turn about its normal) */
+  readonly rotate?: boolean | readonly (0 | 1 | 2)[];
   readonly scale?: boolean;
 }
 
@@ -67,7 +69,7 @@ export function transformHandles(
   if (rotate) {
     // a ring around axis i: around +Y as built, turned onto X (about Z) and Z (about X)
     const onto = [Mat4.rotZ90 as Mat4, Mat4.identity(), Mat4.rotX90 as Mat4];
-    for (let i = 0; i < 3; i++) {
+    for (const i of rotate === true ? [0, 1, 2] : rotate) {
       group({ kind: 'rotate', axis: Axes[i] }, `Drag to turn it about ${Names[i]}`, AxisColors[i]);
       ring(state, size * 0.8, shaft * 0.8, 0, Mat4.mul(Mat4(), onto[i], Mat4.rotX90 as Mat4));
     }

@@ -4,16 +4,18 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
-import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { describe, expect, it } from 'vitest';
 import {
   type DragFrame,
   type GizmoPose,
+  frameOfPose,
   MaxSlideGain,
   MinExtent,
   inPlane,
   move,
   poseGesture,
+  poseOfFrame,
   rotateAbout,
   resize,
   scaled,
@@ -165,5 +167,15 @@ describe('gizmo gestures', () => {
       Math.sign(angleAbout(rotateAbout(box(), axis, { ...frame, grabPoint }, d, 0), axis)),
     );
     expect(new Set(signs).size).toBe(1);
+  });
+});
+
+describe('gizmo pose of a frame', () => {
+  it('is the frame again, a rigid one', () => {
+    const turn = Mat4.fromRotation(Mat4(), 0.7, Vec3.normalize(Vec3(), Vec3.create(1, 2, 3)));
+    const m = Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), Vec3.create(4, -5, 6)), turn);
+    const pose = poseOfFrame(m);
+    expect(Array.from(pose.scale)).toEqual([1, 1, 1]);
+    expect(Mat4.areEqual(frameOfPose(pose), m, 1e-6)).toBe(true);
   });
 });

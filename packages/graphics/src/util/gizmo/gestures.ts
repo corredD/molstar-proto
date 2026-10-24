@@ -2,9 +2,10 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat3, Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { Face, Handle } from './handle.js';
 
 // What a drag on a handle does to an item's pose, as pure functions of the drag: pixels moved, the camera's axes and how
@@ -17,6 +18,21 @@ export interface GizmoPose {
   readonly position: Vec3;
   readonly rotation: Quat;
   readonly scale: Vec3;
+}
+
+/** The pose of a rigid frame (its scale 1): what a handle on an object's frame starts a drag from */
+export function poseOfFrame(m: Mat4): GizmoPose {
+  return {
+    position: Mat4.getTranslation(Vec3(), m),
+    rotation: Quat.normalize(Quat(), Quat.fromMat3(Quat(), Mat3.fromMat4(Mat3(), m))),
+    scale: Vec3.create(1, 1, 1),
+  };
+}
+
+/** The rigid frame of a pose (its scale left out) */
+export function frameOfPose(pose: GizmoPose): Mat4 {
+  const m = Mat4.fromQuat(Mat4(), pose.rotation);
+  return Mat4.setTranslation(m, pose.position);
 }
 
 export interface DragFrame {
