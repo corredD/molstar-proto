@@ -8,7 +8,9 @@ import { OrderedSet } from '@molstar/core/data/int';
 import { Sphere3D } from '@molstar/core/math/geometry';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { type Observable, Subject } from 'rxjs';
-import { EmptyLoci, Loci } from '@molstar/model/model/loci';
+import { EmptyLoci, isEmptyLoci, Loci } from '@molstar/model/model/loci';
+import { MarkerAction } from '@molstar/core/util/marker-action';
+import { isStageDistanceData } from '@molstar/stage-tools-extension/distance';
 import { isStageLabelData } from '@molstar/stage-tools-extension/label';
 import { drawnObject } from '@molstar/stage-tools-extension/operations';
 import { Particle, type ParticleList, type ParticleTarget } from '@molstar/model/model/particles/particle-list';
@@ -93,6 +95,8 @@ export interface CanvasClick {
   readonly loci: Loci;
   readonly x?: number;
   readonly y?: number;
+  /** With Ctrl (or ⌘): a point of a distance (_spec/ui.md, Measurements) */
+  readonly measure?: boolean;
 }
 
 /** A 3D pick as a row of the tree */
@@ -135,10 +139,26 @@ export class ExplorerApi extends ApiArea {
   /** The left-clicks on the canvas, what they picked and where (the tree follows them) */
   readonly clicks: Observable<CanvasClick> = this.picks.asObservable();
   private onClick?: (click: CanvasClick) => void;
+  private readonly escapes = new Subject<void>();
+  /** Esc pressed on the canvas (a distance's first point is let go) */
+  readonly escaped: Observable<void> = this.escapes.asObservable();
+  private onReveal?: (key: string) => void;
+  /** The point of a distance on show in 3D (marked as selected), until the second is picked */
+  private marked: Loci = EmptyLoci;
 
   /** What a left-click on the canvas does (the tree follows it), for the viewer's life */
   setOnClick(on: (click: CanvasClick) => void) {
     this.onClick = on;
+  }
+
+  /** What `revealRow` does (the tree picks a row by its key, unfolding the way to it), for the viewer's life */
+  setOnReveal(on: (key: string) => void) {
+    this.onReveal = on;
+  }
+
+  /** Picks a row of the tree by its key, unfolding the way to it (a distance's properties go to its points' rows) */
+  revealRow(key: string) {
+    this.onReveal?.(key);
   }
 
   constructor(ctx: ApiAreaContext) {
@@ -149,7 +169,11 @@ export class ExplorerApi extends ApiArea {
       this.picks.next({
         loci: e.current.loci,
         ...(e.page ? { x: e.page[0] - window.scrollX, y: e.page[1] - window.scrollY } : {}),
+        ...(e.modifiers.control || e.modifiers.meta ? { measure: true } : {}),
       });
+    });
+    ctx.plugin.behaviors.interaction.key.subscribe((e) => {
+      if (e.code === 'Escape') this.escapes.next();
     });
   }
 
@@ -443,6 +467,22 @@ export class ExplorerApi extends ApiArea {
     if (canvas) GizmoAppearance.set(canvas, look);
   }
 
+  /**
+   * A distance's point from a pick, at the selection's granularity (an atom, a residue, a chain, an instance; a
+   * particle), as the row it is listed under (`pickedOf`)
+   */
+  measurePoint(loci: Loci): Loci {
+    return Loci.normalize(loci, this.ctx.plugin.managers.interactivity.props.granularity);
+  }
+
+  /** Marks a distance's first point in 3D as selected, the one marked before unmarked (none: unmarks) */
+  markPoint(loci: Loci | undefined) {
+    const canvas = this.ctx.plugin.canvas3d;
+    if (canvas && !isEmptyLoci(this.marked)) canvas.mark({ loci: this.marked }, MarkerAction.Deselect);
+    this.marked = loci ?? EmptyLoci;
+    if (canvas && loci && !isEmptyLoci(loci)) canvas.mark({ loci }, MarkerAction.Select);
+  }
+
   /** The particle a pick is on: its list (state ref) and its index there; none for anything else */
   particleOf(loci: Loci): { readonly list: string; readonly index: number } | undefined {
     if (!Particle.isLoci(loci) || OrderedSet.size(loci.indices) === 0) return undefined;
@@ -480,6 +520,11 @@ export class ExplorerApi extends ApiArea {
   focus(node: NodeRef) {
     const plugin = this.ctx.plugin;
     const cell = plugin.state.data.cells.get(node.ref);
+    // a distance: its two points
+    if (SO.Shape.Representation3D.is(cell?.obj) && isStageDistanceData(cell.obj.data.sourceData)) {
+      plugin.managers.camera.focusLoci([...cell.obj.data.sourceData.pairs[0].loci]);
+      return;
+    }
     if (SO.Volume.Data.is(cell?.obj)) {
       const drawn = drawnObject({ plugin }, node.ref);
       plugin.managers.camera.focusSphere(
@@ -756,6 +801,15 @@ function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
     if (!v) return undefined;
     const ref = v.cell.transform.ref;
     return { key: `o:${ref}`, label: v.cell.obj?.label ?? ref, kind: 'volume', node: { ref } };
+  }
+  // a distance of the stage, its line or its text: its row (under its first point's)
+  if (ShapeGroup.isLoci(loci) && isStageDistanceData(loci.shape.sourceData)) {
+    for (const cell of plugin.state.data.cells.values()) {
+      const obj = cell.obj;
+      if (!SO.Shape.Representation3D.is(obj) || obj.data.sourceData !== loci.shape.sourceData) continue;
+      return { key: `d:${cell.transform.ref}`, label: obj.label, kind: 'distance', node: { ref: cell.transform.ref } };
+    }
+    return undefined;
   }
   // a label of the stage: its row (under the node it was made at)
   if (ShapeGroup.isLoci(loci) && isStageLabelData(loci.shape.sourceData)) {

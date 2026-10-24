@@ -7,6 +7,10 @@
 import { Binding } from '@molstar/core/util/binding';
 import { ButtonsType, ModifiersKeys } from '@molstar/core/util/input/input-observer';
 import { FocusLoci as CameraFocusLoci } from '@molstar/plugin/behavior/dynamic/camera';
+import {
+  DefaultFocusLociBindings,
+  FocusLoci as RepresentationFocusLoci,
+} from '@molstar/plugin/behavior/dynamic/representation';
 import { PluginConfig } from '@molstar/plugin/config';
 import { PluginSpec } from '@molstar/plugin/spec';
 import { PLUGIN_VERSION } from '@molstar/plugin/version';
@@ -82,37 +86,36 @@ const M = ModifiersKeys;
 
 /**
  * The camera's focus on click without its right-button triggers: the right button opens the stage's menu (the
- * stage-tools extension), whose Focus item does what the right-click did.
+ * stage-tools extension), whose Focus item does what the right-click did; and without its Ctrl+click ones: Ctrl+click
+ * picks a distance's points (_spec/ui.md, Measurements).
  */
 const LeftClickFocusBindings = {
   clickCenterFocus: Binding(
-    [
-      Binding.Trigger(B.Flag.Primary, M.create()),
-      Binding.Trigger(B.Flag.Primary, M.create({ control: true })),
-      Binding.Trigger(B.Flag.Trigger),
-    ],
+    [Binding.Trigger(B.Flag.Primary, M.create()), Binding.Trigger(B.Flag.Trigger)],
     'Camera center and focus',
     'Click element using ${triggers}',
   ),
   clickCenterFocusSelectMode: Binding(
-    [Binding.Trigger(B.Flag.Primary, M.create({ control: true }))],
+    [],
     'Camera center and focus (Selection Mode)',
     'Click element using ${triggers}',
   ),
   clickResetCameraOnEmpty: Binding(
-    [
-      Binding.Trigger(B.Flag.Primary, M.create()),
-      Binding.Trigger(B.Flag.Primary, M.create({ control: true })),
-      Binding.Trigger(B.Flag.Trigger),
-    ],
+    [Binding.Trigger(B.Flag.Primary, M.create()), Binding.Trigger(B.Flag.Trigger)],
     'Reset camera focus',
     'Click on nothing using ${triggers}',
   ),
   clickResetCameraOnEmptySelectMode: Binding(
-    [Binding.Trigger(B.Flag.Primary, M.create({ control: true }))],
+    [],
     'Reset camera focus (Selection Mode)',
     'Click on nothing using ${triggers}',
   ),
+};
+
+/** The representation's focus without its Ctrl+click (and ⌘+click) add: those pick a distance's points */
+const FocusBindingsWithoutAdd = {
+  ...DefaultFocusLociBindings,
+  clickFocusAdd: Binding([], 'Representation Focus Add', 'Click element using ${triggers}'),
 };
 
 function withoutRightClickFocus(spec: PluginSpec): PluginSpec {
@@ -121,7 +124,9 @@ function withoutRightClickFocus(spec: PluginSpec): PluginSpec {
     behaviors: spec.behaviors.map((b) =>
       b.transformer === CameraFocusLoci
         ? PluginSpec.Behavior(CameraFocusLoci, { ...b.defaultParams, bindings: LeftClickFocusBindings })
-        : b,
+        : b.transformer === RepresentationFocusLoci
+          ? PluginSpec.Behavior(RepresentationFocusLoci, { ...b.defaultParams, bindings: FocusBindingsWithoutAdd })
+          : b,
     ),
   };
 }

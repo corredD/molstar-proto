@@ -14,7 +14,7 @@ import type { ExplorerApi, NodeRef, PickedNode } from './operations.js';
 import { toggleVisible } from './rows.js';
 
 // The explorer's menus (_spec/ui.md §3, §5), at the level of what is picked (an object, a group, an entity, a chain, a
-// target): the right-click's (on the canvas and on a tree row; a label's: edit, hide, remove), and the row tools' (Mesoscale Explorer's brush and
+// target): the right-click's (on the canvas and on a tree row; a label's: edit, hide, remove; a distance's: focus, hide, remove), and the row tools' (Mesoscale Explorer's brush and
 // scissors beside the eye): a color for all of it, a clip of it (several at each level, each listed in its Clips).
 
 /** Kinds whose eye hides them (a structure's entities and chains have none: Prism hides representations) */
@@ -27,6 +27,7 @@ const Hideable = new Set([
   'volume',
   'mesh',
   'label',
+  'distance',
 ]);
 
 /** Whole objects: their clips cut all of them (Prism's clipping) */
@@ -358,6 +359,27 @@ export async function addLabel(
   if (ref && reveal) reveal({ key: `l:${ref}`, label: picked.label, kind: 'label', node: { ref } });
 }
 
+/** A distance's right-click: the camera on its two points, hide, remove */
+function distanceItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
+  const { node, label } = picked;
+  const name = api.stage?.distancesState().value.find((d) => d.ref === node.ref)?.label ?? label;
+  return [
+    { id: 'focus', label: `Focus on the distance ${name}`, icon: 'scan', run: () => area.focus(node) },
+    {
+      id: 'hide',
+      label: 'Hide the distance',
+      icon: 'eye-off',
+      run: () => void api.run('stage.editDistance', { distance: node.ref, visible: false }),
+    },
+    {
+      id: 'remove-distance',
+      label: 'Remove the distance',
+      icon: 'x',
+      run: () => void api.run('stage.editDistance', { distance: node.ref, remove: true }),
+    },
+  ];
+}
+
 /** The right-click's items for a node; nothing picked: the camera's */
 export function nodeMenuItems(
   api: ViewerApi,
@@ -372,6 +394,7 @@ export function nodeMenuItems(
   }
   const { node, kind, label } = picked;
   const items: ContextMenuItem[] = [];
+  if (kind === 'distance') return distanceItems(api, area, picked);
   if (kind === 'label') {
     // a label's: its text, its place first
     const editText = actions.editText;
