@@ -13,6 +13,10 @@ here.
 - Fix slices of a volume covering a whole unit cell (periodic, e.g. an EMDB map centered on its origin) drawn half a box
   away from the volume: `createPeriodicVolume` keeps the grid's origin, and periodic copies are counted in cells
 - Fix a `plane` slice sized by the grid's diagonal in voxels used as Å: it is as wide as the volume
+- Fix an ASCII PLY whose last list row (a face) has no line break hanging the parser
+- Fix the CSV reader to follow RFC 4180: spaces in fields are kept, doubled quotes read as one, empty fields (also the
+  last of a record) keep the columns aligned, the last record counts without a final line break, `.` and `?` are values,
+  and comments (off by default) start only at the start of a line
 - Fix the structure hierarchy for a trajectory below a model (MolViewSpec's structure with `coordinates_ref`): its
   structure's model is the one it is built from, so the trajectory's frames are listed and played
 - Fix LAMMPS triclinic boxes: the tilt factors are read, a dump's bounding-box bounds are corrected, and scaled
