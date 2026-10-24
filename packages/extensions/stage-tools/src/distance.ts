@@ -56,6 +56,8 @@ export type StageDistanceProps = PD.Values<typeof StageDistanceParams>;
 /** What a distance's shapes stand for: Mol*'s distance data, and the kind a pick tells it by */
 export interface StageDistanceData extends DistanceData {
   readonly kind: 'stage-tools-distance';
+  /** Its value (Å), measured once when made or updated */
+  readonly value: number;
 }
 
 export function isStageDistanceData(x: unknown): x is StageDistanceData {
@@ -122,8 +124,9 @@ function dataOf(plugin: PluginContext, params: StageDistanceProps) {
   const a = pointLoci(plugin, params.a);
   const b = pointLoci(plugin, params.b);
   if (!a || !b) throw new Error('A point of the distance is gone.');
-  const data: StageDistanceData = { pairs: [{ loci: [a.loci, b.loci] }], kind: 'stage-tools-distance' };
-  return { data, props: distanceProps(params, a, b), value: distanceOf(a.loci, b.loci) };
+  const value = distanceOf(a.loci, b.loci);
+  const data: StageDistanceData = { pairs: [{ loci: [a.loci, b.loci] }], kind: 'stage-tools-distance', value };
+  return { data, props: distanceProps(params, a, b), value };
 }
 
 export type StageDistance = typeof StageDistance;

@@ -1025,8 +1025,8 @@ function distancesOf(ctx: Pick<ApiContext, 'plugin'>): DistanceInfo[] {
     if (cell.transform.transformer !== StageDistance) continue;
     const p = cell.transform.params as StageDistanceProps;
     const data = cell.obj?.data.sourceData;
-    const pair = isStageDistanceData(data) ? data.pairs[0] : undefined;
-    const distance = pair ? distanceOf(pair.loci[0], pair.loci[1]) : NaN;
+    // measured once by the transform, not at every read
+    const distance = isStageDistanceData(data) ? data.value : NaN;
     out.push({
       ref: cell.transform.ref,
       node: p.node,
