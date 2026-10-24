@@ -5,12 +5,13 @@
  */
 
 import { OrderedSet } from '@molstar/core/data/int';
+import { Sphere3D } from '@molstar/core/math/geometry';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { type Observable, Subject } from 'rxjs';
 import { EmptyLoci, Loci } from '@molstar/model/model/loci';
 import { isStageLabelData } from '@molstar/stage-tools-extension/label';
 import { drawnObject } from '@molstar/stage-tools-extension/operations';
-import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
+import { Particle, type ParticleList, type ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { Structure, StructureElement, StructureProperties, StructureSelection } from '@molstar/model/model/structure';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { EmissiveStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/emissive';
@@ -484,8 +485,36 @@ export class ExplorerApi extends ApiArea {
       );
       return;
     }
+    const sphere = this.focusSphereOf(node);
+    if (sphere) {
+      plugin.managers.camera.focusSphere(sphere);
+      return;
+    }
     const loci = lociOf(plugin, node);
     if (loci.kind !== 'empty-loci') plugin.managers.camera.focusLoci(loci);
+  }
+
+  /**
+   * What a focus on particles frames: their points' sphere grown by the largest object drawn on them (a particle is a
+   * point; a crambin on it is not: framed as points, the camera comes in too close and the objects are cut); undefined
+   * for anything else (its loci's own bounds)
+   */
+  focusSphereOf(node: NodeRef): Sphere3D | undefined {
+    const loci = lociOf(this.ctx.plugin, node);
+    if (!Particle.isLoci(loci) || Particle.isLociEmpty(loci)) return undefined;
+    const points = Particle.getBoundingSphere(loci);
+    const mapping = loci.particles.targetMapping;
+    let reach = 0;
+    if (mapping) {
+      const seen = new Set<number>();
+      OrderedSet.forEach(loci.indices, (i) => {
+        const t = loci.particles.targets[i];
+        if (seen.has(t)) return;
+        seen.add(t);
+        reach = Math.max(reach, decorationRadius(mapping.get(t)));
+      });
+    }
+    return Sphere3D.create(points.center, points.radius + reach);
   }
 }
 
@@ -549,6 +578,14 @@ function reprLabel(cell: { obj?: { label: string }; transform: { params?: unknow
 /** A representation's type (its params' `type.name`) */
 function typeOf(params: unknown): string {
   return (params as { type?: { name?: string } } | undefined)?.type?.name ?? '';
+}
+
+/** The radius of what decorates a target (its structure's, volume's, shape's), 0 for none */
+function decorationRadius(target: ParticleTarget | undefined): number {
+  if (!target) return 0;
+  if (target.kind === 'structure') return target.structure.boundary.sphere.radius;
+  if (target.kind === 'volume') return Grid.getBoundingSphere(target.volume.grid).radius;
+  return (target.shape.geometry as { boundingSphere?: { radius: number } }).boundingSphere?.radius ?? 0;
 }
 
 /** A particle list's target representations (what draws its decorations' objects) */

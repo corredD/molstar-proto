@@ -143,6 +143,19 @@ describe('explorer', () => {
     area.highlight(undefined);
   });
 
+  it('frames a decorated part with room for what is drawn on it (a particle is a point, its object is not)', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const list = area.objectsState().value.find((o) => o.kind === 'list')!;
+    const target = { ref: list.ref, particles: { targets: [0] } };
+    const bare = area.focusSphereOf(target)!;
+    expectOk(await v.api.run('cryoet.decorate', { particles: list.ref, with: 'object', object: '1crn' }));
+    const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data.boundary.sphere.radius;
+    const decorated = area.focusSphereOf(target)!;
+    // the points' sphere grown by the crambin drawn on each
+    expect(decorated.radius).toBeCloseTo(bare.radius + crn, 3);
+  });
+
   it("flips each object's eye, and the watched read follows (a visibility change is a cell's state)", async () => {
     const v = await viewer();
     const state = v.api.explorer!.objectsState();
