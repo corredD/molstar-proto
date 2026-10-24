@@ -6,10 +6,7 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-- **Color file import** (`me/color-file-import`, `~/prism-me-lanes/color-file-import`): entity colors from a JSON file
-  (`mesoscale.importColors`).
-- **Group by function** (`me/group-by-switch`, `~/prism-me-lanes/group-by-switch`): a Compartment / Function switch in
-  the Entities tab.
+None: both lanes of 2026-10-24 merged (#2 group-by switch, #3 color file import; their progress files beside this one).
 
 ## Waiting on Ludovic
 
