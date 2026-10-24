@@ -469,10 +469,10 @@ export class ExplorerApi extends ApiArea {
 
   /**
    * A distance's point from a pick, at the selection's granularity (an atom, a residue, a chain, an instance; a
-   * particle), as the row it is listed under (`pickedOf`)
+   * particle; a bond: its atoms), as the row it is listed under (`pickedOf`)
    */
   measurePoint(loci: Loci): Loci {
-    return Loci.normalize(loci, this.ctx.plugin.managers.interactivity.props.granularity);
+    return Loci.normalize(loci, this.ctx.plugin.managers.interactivity.props.granularity, true);
   }
 
   /** Marks a distance's first point in 3D as selected, the one marked before unmarked (none: unmarks) */

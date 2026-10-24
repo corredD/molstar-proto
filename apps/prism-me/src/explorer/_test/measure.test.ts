@@ -12,7 +12,7 @@ import { ButtonsType, EmptyKeyInput, ModifiersKeys } from '@molstar/core/util/in
 import { clearFontAtlasCache, setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 import { type Shape, ShapeGroup } from '@molstar/model/model/shape';
-import { StructureSelection } from '@molstar/model/model/structure';
+import { Bond, StructureElement, StructureSelection } from '@molstar/model/model/structure';
 import { Script } from '@molstar/model/script/script';
 import { FocusLoci as CameraFocusLoci } from '@molstar/plugin/behavior/dynamic/camera';
 import { FocusLoci as RepresentationFocusLoci } from '@molstar/plugin/behavior/dynamic/representation';
@@ -148,6 +148,19 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(await p.click({ loci: { kind: 'empty-loci' }, measure: true })).toBe(true);
     expect(p.pending.value).toBeUndefined();
     expect(posted.at(-1)).toMatch(/Ctrl\+click one/);
+  });
+
+  it('takes a bond as a point (normalized to its atoms first)', async () => {
+    const v = await viewer();
+    const { p } = picker(v);
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data;
+    const unit = structure.units[0];
+    const bond = Bond.Loci(structure, [
+      Bond.Location(structure, unit, 0 as StructureElement.UnitIndex, structure, unit, 1 as StructureElement.UnitIndex),
+    ]);
+    expect(await p.click({ loci: bond, measure: true })).toBe(true);
+    expect(p.pending.value?.picked.kind).toBe('entity');
+    expect(StructureElement.Loci.is(p.pending.value?.loci)).toBe(true);
   });
 
   it('Esc on the canvas is told (the explorer lets the first point go)', async () => {

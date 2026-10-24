@@ -49,12 +49,13 @@ export function distancePicker(
         cancel();
         return false;
       }
-      const picked = isEmptyLoci(click.loci) ? undefined : area.pickedOf(click.loci);
+      // normalized first (a bond: its atoms; the selection granularity), so its row is the point's
+      const loci = isEmptyLoci(click.loci) ? click.loci : area.measurePoint(click.loci);
+      const picked = isEmptyLoci(loci) ? undefined : area.pickedOf(loci);
       if (!picked || picked.kind === 'distance' || picked.kind === 'label' || picked.kind === 'volume') {
         options.post?.('A distance is measured between atoms, residues, chains and particles: Ctrl+click one.');
         return true;
       }
-      const loci = area.measurePoint(click.loci);
       const first = pending.value;
       if (!first) {
         pending.set({ loci, picked });
