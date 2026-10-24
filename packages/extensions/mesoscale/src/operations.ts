@@ -6,8 +6,10 @@
 
 import { Color } from '@molstar/core/util/color';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import type { VisualQuality } from '@molstar/graphics/geo/geometry/base';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { StateObjectCell } from '@molstar/core/state';
 import type {
   ParticleListRef,
   ParticleRepresentationRef,
@@ -53,11 +55,29 @@ export interface ImportColorsResult {
   readonly overridden: readonly string[];
 }
 
-/** The particles' graphics: their mode (none when their levels of detail are not one of the modes'), their motion */
+/**
+ * An object's graphics: its mode (none when its settings are not one of the modes'), its motion (none for a volume,
+ * which does not move: wiggle and tumble do not apply)
+ */
 export interface GraphicsInfo {
   readonly mode?: GraphicsMode;
-  readonly wiggle: number;
-  readonly tumble: number;
+  readonly wiggle?: number;
+  readonly tumble?: number;
+}
+
+/** What a graphics mode sets on each kind of object (apps/prism-me/_spec/ui.md §4, Graphics & Motion) */
+const ModeSettings: Record<GraphicsMode, { readonly quality: VisualQuality; readonly stepsPerCell: number }> = {
+  ultra: { quality: 'highest', stepsPerCell: 5 },
+  quality: { quality: 'high', stepsPerCell: 3 },
+  balanced: { quality: 'medium', stepsPerCell: 2 },
+  performance: { quality: 'low', stepsPerCell: 1 },
+};
+
+/** An object with graphics: a structure, a particle list (a model) or a volume, and the representations drawing it */
+interface GraphicsObject {
+  readonly kind: 'structure' | 'particles' | 'volume';
+  readonly cell: StateObjectCell;
+  readonly representations: readonly StateObjectCell[];
 }
 
 /** How an entity looks: what its layer sets */
@@ -137,28 +157,19 @@ export class MesoscaleApi extends ApiArea {
   }
 
   /**
-   * The graphics mode and the motion as the particles' representations have them (the first one's), following the state
-   * tree while watched: a read for views; undefined without particles
+   * The graphics mode and the motion of an object (a structure, a particle list, a volume; by state ref) as its
+   * representations have them (the first one's), else of the first particle list shown; following the state tree while
+   * watched: a read for views; undefined without such an object
    */
-  graphicsState(particles?: string): ReadonlyState<GraphicsInfo | undefined> {
+  graphicsState(object?: string): ReadonlyState<GraphicsInfo | undefined> {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => {
-        // one list's (a model's), else the first shown
-        const all = lists({ plugin });
-        const of = particles ? all.filter((l) => l.cell.transform.ref === particles) : all;
-        const params = of.flatMap((l) => l.representations)[0]?.cell.transform.params as
-          | { type?: { params?: Record<string, unknown> } }
-          | undefined;
-        const type = params?.type?.params;
-        if (!type) return undefined;
-        const lod = JSON.stringify(type.lodLevels);
-        const animation = findAnimation(type);
-        return {
-          mode: GraphicsModes.find((m) => JSON.stringify(Spheres.LodLevelsPresets[m]) === lod),
-          wiggle: animation?.wiggleAmplitude ?? 0,
-          tumble: animation?.tumbleAmplitude ?? 0,
-        };
+        const all = graphicsObjects({ plugin });
+        const o = object
+          ? all.find((x) => x.cell.transform.ref === object)
+          : all.find((x) => x.kind === 'particles' && x.representations.length);
+        return o && graphicsOf(o);
       },
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
@@ -371,7 +382,7 @@ export class MesoscaleApi extends ApiArea {
 
   readonly motion = this.operation({
     id: 'mesoscale.motion',
-    title: 'Wiggle and tumble the particles',
+    title: 'Wiggle and tumble an object',
     params: {
       wiggle: OptionalParam(
         PD.Numeric(0, { min: 0, max: 5, step: 0.1 }, { description: 'Wiggle of the atoms, Å; 0: off' }),
@@ -380,33 +391,55 @@ export class MesoscaleApi extends ApiArea {
         PD.Numeric(0, { min: 0, max: 10, step: 0.1 }, { description: 'Tumble of each particle, Å of surface; 0: off' }),
       ),
       particles: PD.Text('', { description: 'A particle list (a model) by label or state ref; empty: every one' }),
+      object: OptionalParam(
+        PD.Text('', { description: 'A structure or a particle list by label or state ref (in place of particles)' }),
+      ),
     },
     async run(values, ctx) {
-      const { wiggle, tumble, particles } = values as { wiggle?: number; tumble?: number; particles: string };
+      const { wiggle, tumble, particles, object } = values as {
+        wiggle?: number;
+        tumble?: number;
+        particles: string;
+        object?: string;
+      };
       if (wiggle === undefined && tumble === undefined) {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give wiggle or tumble (0 stops it).');
       }
-      // one model's particles when it is given, not the rest of the scene's
-      const one = particles.trim() ? oneList(ctx, particles) : undefined;
-      if (isFailure(one)) return one;
-      const reps = (one ? [one] : lists(ctx)).flatMap((l) => l.representations);
-      if (!reps.length) return ApiResult.fail('not-found', 'No particles are shown.', 'Open a mesoscale model first.');
+      // one object's representations when it is given (a model, a structure), not the rest of the scene's
+      let reps: readonly StateObjectCell[];
+      if (object?.trim()) {
+        const o = oneObject(ctx, object);
+        if (isFailure(o)) return o;
+        if (o.kind === 'volume') {
+          return ApiResult.fail(
+            'invalid',
+            'A volume does not wiggle or tumble.',
+            'Give a structure or a particle list.',
+          );
+        }
+        reps = o.representations;
+      } else {
+        const one = particles.trim() ? oneList(ctx, particles) : undefined;
+        if (isFailure(one)) return one;
+        reps = (one ? [one] : lists(ctx)).flatMap((l) => l.representations.map((r) => r.cell));
+      }
+      if (!reps.length) return ApiResult.fail('not-found', 'Nothing of it is shown.', 'Open a mesoscale model first.');
       const b = ctx.plugin.state.data.build();
       const nodes: string[] = [];
       for (const r of reps) {
-        const old = r.cell.transform.params as any;
+        const old = r.transform.params as any;
         const next = { ...old, type: { ...old.type, params: withMotion(old.type.params, wiggle, tumble) } };
         if (JSON.stringify(next) === JSON.stringify(old)) continue;
-        b.to(r.cell).update(next);
-        nodes.push(r.cell.transform.ref);
+        b.to(r).update(next);
+        nodes.push(r.transform.ref);
       }
-      if (!nodes.length) return ApiResult.already('The particles already move so.');
+      if (!nodes.length) return ApiResult.already('It already moves so.');
       await b.commit();
       const parts = [
         wiggle !== undefined ? (wiggle ? `wiggle ${wiggle} Å` : 'no wiggle') : undefined,
         tumble !== undefined ? (tumble ? `tumble ${tumble} Å` : 'no tumble') : undefined,
       ].filter((x) => x);
-      return ApiResult.ok(`The particles move: ${parts.join(', ')}.`, { nodes });
+      return ApiResult.ok(`Motion: ${parts.join(', ')}.`, { nodes });
     },
   });
 
@@ -453,27 +486,36 @@ export class MesoscaleApi extends ApiArea {
         GraphicsModes.map((m) => [m, m] as [GraphicsMode, string]),
         { description: 'ultra and quality draw every particle near; balanced and performance draw fewer, faster' },
       ),
+      object: OptionalParam(
+        PD.Text('', {
+          description:
+            'A structure, a particle list or a volume by label or state ref: its quality alone; absent: every object, and the canvas resolution',
+        }),
+      ),
     },
-    async run({ mode }, ctx) {
-      const reps = lists(ctx).flatMap((l) => l.representations);
-      const lodLevels = Spheres.LodLevelsPresets[mode];
-      const updates = reps.filter((r) => {
-        const params = (r.cell.transform.params as { type?: { params?: { lodLevels?: unknown } } })?.type?.params;
-        return params && 'lodLevels' in params && JSON.stringify(params.lodLevels) !== JSON.stringify(lodLevels);
-      });
-      const pixelScale = mode === 'balanced' ? 0.75 : mode === 'performance' ? 0.5 : 1;
-      const canvasChanged = ctx.plugin.canvas3dContext?.props.pixelScale !== pixelScale;
-      if (!updates.length && !canvasChanged) return ApiResult.already(`The graphics are already ${mode}.`);
-      if (updates.length) {
-        const b = ctx.plugin.state.data.build();
-        for (const r of updates) {
-          b.to(r.cell).update((old: any) => ({
-            ...old,
-            type: { ...old.type, params: { ...old.type.params, lodLevels } },
-          }));
+    async run(values, ctx) {
+      const { mode, object } = values as { mode: GraphicsMode; object?: string };
+      const one = object?.trim() ? oneObject(ctx, object) : undefined;
+      if (isFailure(one)) return one;
+      // one commit for every representation of every object (bulk is one change)
+      const b = ctx.plugin.state.data.build();
+      const nodes: string[] = [];
+      for (const o of one ? [one] : graphicsObjects(ctx)) {
+        for (const r of o.representations) {
+          const old = r.transform.params as { type?: { params?: Record<string, unknown> } };
+          const params = old?.type?.params;
+          if (!params) continue;
+          const next = withMode(o.kind, params, mode);
+          if (JSON.stringify(next) === JSON.stringify(params)) continue;
+          b.to(r).update({ ...old, type: { ...old.type, params: next } });
+          nodes.push(r.transform.ref);
         }
-        await b.commit();
       }
+      // the canvas's resolution is the scene's: set by the mode of every object only
+      const pixelScale = mode === 'balanced' ? 0.75 : mode === 'performance' ? 0.5 : 1;
+      const canvasChanged = !one && ctx.plugin.canvas3dContext?.props.pixelScale !== pixelScale;
+      if (!nodes.length && !canvasChanged) return ApiResult.already(`The graphics are already ${mode}.`);
+      if (nodes.length) await b.commit();
       if (canvasChanged) {
         ctx.plugin.canvas3dContext?.setProps({ pixelScale });
         ctx.plugin.canvas3d?.setProps({
@@ -483,9 +525,70 @@ export class MesoscaleApi extends ApiArea {
           },
         });
       }
-      return ApiResult.ok(`Graphics set to ${mode}.`, { nodes: updates.map((r) => r.cell.transform.ref), view: true });
+      const of = one ? ` for ${one.cell.obj?.label ?? one.cell.transform.ref}` : '';
+      return ApiResult.ok(`Graphics set to ${mode}${of}.`, { nodes, view: !one });
     },
   });
+}
+
+/** The objects with graphics: structures, particle lists, volumes */
+function graphicsObjects(ctx: Pick<ApiContext, 'plugin'>): GraphicsObject[] {
+  const { structure, particles, volume } = ctx.plugin.managers;
+  return [
+    ...structure.hierarchy.current.structures.map((s) => ({
+      kind: 'structure' as const,
+      cell: s.cell,
+      representations: s.components.flatMap((c) => c.representations.map((r) => r.cell)),
+    })),
+    ...particles.hierarchy.current.lists.map((l) => ({
+      kind: 'particles' as const,
+      cell: l.cell,
+      representations: l.representations.map((r) => r.cell),
+    })),
+    ...volume.hierarchy.current.volumes.map((v) => ({
+      kind: 'volume' as const,
+      cell: v.cell,
+      representations: v.representations.map((r) => r.cell),
+    })),
+  ];
+}
+
+function oneObject(ctx: Pick<ApiContext, 'plugin'>, name: string): GraphicsObject | ApiFailure {
+  return pickOne(graphicsObjects(ctx), name, 'object', 'Open a structure, a mesoscale model or a volume first.');
+}
+
+/**
+ * A representation's params in a graphics mode, by its object's kind: a particle list's levels of detail; a structure's
+ * quality and levels of detail (its spheres'); a volume's quality and ray-marching steps (a direct volume's)
+ */
+function withMode(
+  kind: GraphicsObject['kind'],
+  params: Record<string, unknown>,
+  mode: GraphicsMode,
+): Record<string, unknown> {
+  const next = { ...params };
+  if (kind !== 'volume' && 'lodLevels' in params) next.lodLevels = Spheres.LodLevelsPresets[mode];
+  if (kind !== 'particles') next.quality = ModeSettings[mode].quality;
+  if (kind === 'volume' && 'stepsPerCell' in params) next.stepsPerCell = ModeSettings[mode].stepsPerCell;
+  return next;
+}
+
+/** An object's mode and motion as its first representation has them; a volume's mode only */
+function graphicsOf(o: GraphicsObject): GraphicsInfo | undefined {
+  const type = (o.representations[0]?.transform.params as { type?: { params?: Record<string, unknown> } } | undefined)
+    ?.type?.params;
+  if (!type) return undefined;
+  const mode =
+    o.kind === 'particles'
+      ? GraphicsModes.find((m) => JSON.stringify(Spheres.LodLevelsPresets[m]) === JSON.stringify(type.lodLevels))
+      : GraphicsModes.find((m) => ModeSettings[m].quality === type.quality);
+  if (o.kind === 'volume') return mode ? { mode } : {};
+  const animation = findAnimation(type);
+  return {
+    ...(mode ? { mode } : {}),
+    wiggle: animation?.wiggleAmplitude ?? 0,
+    tumble: animation?.tumbleAmplitude ?? 0,
+  };
 }
 
 /** Sets `wiggleAmplitude` and `tumbleAmplitude` of every `animation` group in a representation's params */
