@@ -7,6 +7,7 @@
  */
 
 import { Color } from '@molstar/core/util/color';
+import { EmptyLoci } from '@molstar/model/model/loci';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
@@ -91,7 +92,8 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
   area.setOnClick((click) => {
     if (click.measure) {
-      void picker.click(click);
+      // a label under the pointer (drawn, not picked by Mol*): no point of a distance, as nothing is (ui.md §7)
+      void picker.click(labelPicked(click.x, click.y) ? { ...click, loci: EmptyLoci } : click);
       return;
     }
     picker.cancel();
