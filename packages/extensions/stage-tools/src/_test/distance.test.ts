@@ -131,7 +131,6 @@ describe('stage.distance', () => {
     const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
     expectOk(await s.distance({ a: `${list}#0`, b: `${list}#1` } as never));
     const [d] = s.distancesState().value;
-    const c = distances(v)[0];
     expect(d.distance).toBeCloseTo(5, 5);
     expect(d.node).toBe(`o:${list}`);
     // an index past the list's end is said
@@ -161,7 +160,7 @@ describe('stage.distance', () => {
     expect(s.distancesState().value[0].a.label).toMatch(/2 particles/);
   });
 
-  it('sizes its text and line to what it measures, times its options; one step each, one undo removes it', async () => {
+  it('sizes its text and line to what it measures, times its options; each change one step, undone step by step', async () => {
     const v = await viewer();
     const s = v.api.stage!;
     const a = atom(v, 1, 'CA');
@@ -209,7 +208,7 @@ describe('stage.distance', () => {
     expect(distances(v)[0].transform.ref).toBe(ref);
   });
 
-  it('goes with either of its objects, in the same step (its dependency); undone, it is back', async () => {
+  it('goes with either of its objects, in the same step (its dependency); that step undone, it is back', async () => {
     const v = await viewer();
     const s = v.api.stage!;
     expectOk(await v.api.load.files({ files: [new File([star('10 0 0\n13 4 0\n')], 'p.star')] }));

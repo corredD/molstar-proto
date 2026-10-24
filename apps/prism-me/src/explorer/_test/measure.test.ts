@@ -136,7 +136,7 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(distances(v)).toHaveLength(0);
   });
 
-  it('a plain click, or a pick that is no point, lets nothing be measured; a plain click is not taken', async () => {
+  it('a plain click lets the first point go and is not taken; Esc (cancel) too; nothing under the pointer is refused', async () => {
     const v = await viewer();
     const { p, posted } = picker(v);
     await p.click({ loci: atom(v, 1, 'CA'), measure: true });
@@ -150,6 +150,19 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(await p.click({ loci: { kind: 'empty-loci' }, measure: true })).toBe(true);
     expect(p.pending.value).toBeUndefined();
     expect(posted.at(-1)).toMatch(/Ctrl\+click one/);
+  });
+
+  it('keeps the first point through a Ctrl+click on nothing (said), and measures at the next point', async () => {
+    const v = await viewer();
+    const { p, posted } = picker(v);
+    await p.click({ loci: atom(v, 1, 'CA'), measure: true });
+    const first = p.pending.value;
+    expect(await p.click({ loci: { kind: 'empty-loci' }, measure: true })).toBe(true);
+    expect(posted.at(-1)).toMatch(/Ctrl\+click one/);
+    expect(p.pending.value).toBe(first);
+    await p.click({ loci: particle(v, 1), measure: true });
+    expect(distances(v)).toHaveLength(1);
+    expect(distances(v)[0].node).toBe(first!.picked.key);
   });
 
   it('lets the first point go when its object is removed: the next Ctrl+click is a new first point, and says why', async () => {
@@ -227,7 +240,7 @@ describe('a distance by two Ctrl+clicks', () => {
     Object.defineProperty(v.plugin, 'canvas3d', { value: undefined, configurable: true });
   });
 
-  it('Esc on the canvas is told (the explorer lets the first point go)', async () => {
+  it('Esc on the canvas is told to the explorer (which lets the first point go: explorerUI)', async () => {
     const v = await viewer();
     let escaped = 0;
     const sub = v.api.explorer!.escaped.subscribe(() => escaped++);
@@ -283,7 +296,7 @@ function defaultsOf(t: PluginSpec['behaviors'][number]['transformer']) {
 }
 
 describe("the app's bindings", () => {
-  it('leave Ctrl+click (and ⌘+click) to the distance: no camera or representation focus on it', () => {
+  it('leave Ctrl+click and ⌘+click to the distance: no behavior answers them', () => {
     const spec = createMesoscaleExplorerSpec('');
     const plugin = spec.finalize ? spec.finalize(spec.plugin as PluginSpec) : (spec.plugin as PluginSpec);
     // both focus behaviors are there (else the test checks nothing of them), with bindings
