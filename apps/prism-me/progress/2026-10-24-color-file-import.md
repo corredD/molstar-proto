@@ -30,8 +30,8 @@ The TODO Backlog's "Color file import (JSON, by entity name)", taken from Deferr
 ## Learned
 
 - The particle model has one entity per name across compartments (`entityNameToIdx` in the particle mmCIF reader): in
-  the HIV model RT, NC 1f6u, NC 1a1t, IN and TAT are each one entity for two compartments. A v5 color file colors them
-  per compartment.
+  the HIV model RT, NC 1f6u, NC 1a1t and IN are each one entity for two compartments. A v5 color file colors them per
+  compartment. (TAT is named twice in the sample only because it also has a plain-format entry.)
 - A global gitignore rule `Data` (`~/.gitignore_global`) matches `data/` on macOS's case-insensitive disk: a new file
   under `data/examples` has to be force-added.
 - A scaling case over a real viewer needs n large enough for the viewer's fixed cost not to hide a quadratic: a per-key
