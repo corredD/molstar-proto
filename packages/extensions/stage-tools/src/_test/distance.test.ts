@@ -174,13 +174,16 @@ describe('stage.distance', () => {
     expect(props().alpha).toBe(0.5);
     expectOk(await v.api.run('history.undo', {}));
     expect(props().alpha).toBe(1);
-    // hidden and shown
+    // hidden: one step
     expectOk(await s.editDistance({ distance: ref, visible: false } as never));
     expect(s.distancesState().value[0].visible).toBe(false);
-    // the second distance made: one undo removes it (and the hide stays)
+    // undone step by step: the hide (shown again, both still there), then the second distance's making
     expectOk(await v.api.run('history.undo', {}));
+    expect(s.distancesState().value[0].visible).toBe(true);
+    expect(distances(v)).toHaveLength(2);
     expectOk(await v.api.run('history.undo', {}));
     expect(distances(v)).toHaveLength(1);
+    expect(distances(v)[0].transform.ref).toBe(ref);
   });
 
   it('goes with either of its objects, in the same step (its dependency); undone, it is back', async () => {
