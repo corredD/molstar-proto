@@ -175,6 +175,9 @@ function poseFrame(pose: GizmoPose): Mat4 {
   return m;
 }
 
+/** How long the camera takes to aim at a particle (ms) */
+const AimMs = 250;
+
 /** The smallest a particle's handle is (Å), what it moves however small */
 const MinHandleSize = 20;
 
@@ -296,7 +299,11 @@ export class ParticleHandles {
   show(target: ParticleHandleTarget): boolean {
     const canvas = this.plugin.canvas3d;
     if (!canvas) return false;
+    const before = this.#target.value;
     this.#target.set(target);
+    // another particle: the camera aimed at it (the same distance and angle), so a zoom goes toward it, not the scene's
+    // middle (empty between a list and what else is open)
+    if (before?.list !== target.list || before?.index !== target.index) this.#aimAt(target);
     if (!this.#controller) {
       const binding = new ParticleHandleBinding(this.plugin, this.api, () => this.#target.value, this.#items);
       const controller = new GizmoController(canvas, binding);
@@ -327,6 +334,16 @@ export class ParticleHandles {
     this.#binding?.dispose();
     this.#controller = undefined;
     this.#binding = undefined;
+  }
+
+  /** The camera's target moved to a particle, its offset kept (one short move) */
+  #aimAt(target: ParticleHandleTarget) {
+    const camera = this.plugin.canvas3d?.camera;
+    const data = this.#particles(target.list);
+    if (!camera || !data || target.index >= data.count) return;
+    const at = Vec3.fromArray(Vec3(), data.coordinates, target.index * 3);
+    const offset = Vec3.sub(Vec3(), camera.state.position, camera.state.target);
+    camera.setState({ target: at, position: Vec3.add(Vec3(), at, offset) }, AimMs);
   }
 
   /** The particles of a list as drawn */
