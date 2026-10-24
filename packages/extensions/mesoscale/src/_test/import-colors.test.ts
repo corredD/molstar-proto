@@ -52,7 +52,7 @@ const colorsOf = async (v: PrismViewer) => {
 };
 
 describe('the color file', () => {
-  it('reads both formats: a CSS color by name, the explorer’s x, y, z (0-255) by compartment path', () => {
+  it('reads both formats in one file: a CSS color by entity name, x, y, z (0-255) by full name or last dotted part', () => {
     const file = parseColorFile(
       JSON.stringify({
         lipids: '#ff0000',
@@ -160,7 +160,7 @@ describe('mesoscale.importColors', () => {
     expect(await colorsOf(v)).toEqual(before);
   });
 
-  it('fails cleanly on a file that is not JSON, names nothing it knows, or changes nothing', async () => {
+  it('fails as invalid on bad JSON or a non-object, as not-found when no key names an entity; already when unchanged', async () => {
     const v = await viewer();
     const m = v.api.mesoscale!;
     expect(await m.importColors({ json: '{ "CA": ' })).toMatchObject({ ok: false, code: 'invalid' });
