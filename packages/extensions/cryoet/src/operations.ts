@@ -1020,7 +1020,7 @@ function meshes(ctx: Pick<ApiContext, 'plugin'>): MeshInfo[] {
     }
     if (drawing) continue;
     const data = cells.get(root)?.obj;
-    if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data)) continue;
+    if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data) && !SO.Data.Response.is(data)) continue;
     const p = cell.transform.params as any;
     out.push({
       ref: cell.transform.ref,

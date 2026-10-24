@@ -668,7 +668,7 @@ function rootLabel(ctx: Pick<ApiContext, 'plugin'>, ref: string): string | undef
     root = parent;
   }
   const obj = cells.get(root)?.obj;
-  return SO.Data.String.is(obj) || SO.Data.Binary.is(obj) ? obj.label : undefined;
+  return SO.Data.String.is(obj) || SO.Data.Binary.is(obj) || SO.Data.Response.is(obj) ? obj.label : undefined;
 }
 
 /** An object's placement, as its handles take it */

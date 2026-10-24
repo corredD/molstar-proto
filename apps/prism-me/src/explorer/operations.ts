@@ -615,7 +615,7 @@ function fileLabel(plugin: PluginContext, ref: string): string | undefined {
     root = parent;
   }
   const data = cells.get(root)?.obj;
-  return SO.Data.String.is(data) || SO.Data.Binary.is(data) ? data.label : undefined;
+  return SO.Data.String.is(data) || SO.Data.Binary.is(data) || SO.Data.Response.is(data) ? data.label : undefined;
 }
 
 /** The shape representations of meshes loaded from files (not the shapes the viewer makes itself) */
@@ -638,7 +638,7 @@ function meshes(plugin: PluginContext): SceneObject[] {
     }
     if (ofModel) continue;
     const data = cells.get(root)?.obj;
-    if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data)) continue;
+    if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data) && !SO.Data.Response.is(data)) continue;
     out.push({
       ref: cell.transform.ref,
       category: 'meshes',
