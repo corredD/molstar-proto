@@ -18,11 +18,7 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - Plane slice sized in voxels used as Å (`ea7dc5d3e`).
 - Gizmo: `rotate` axes option, `poseOfFrame`/`frameOfPose` (`ded144e8d`).
 - MRC reader: mode 6, mode 12 (float16), `.rec`/`.st`/`.mrcs`/`.ali` (`33dbca0c5`, `59ef5aa38`).
-- Needed, not built yet: `Particle.getBoundingSphere` (`packages/model/src/model/particles/particle-list.ts`, the
-  whole-list branch) calls `Sphere3D.copy(sphere, boundingSphere)` against `copy(out, a)`. A loci of all of a list's
-  particles given an output sphere (Mol*'s distance representation does) returns that sphere unchanged and writes it
-  into the list's cached boundary: a distance to a one-particle list (or a fiber that is its whole list) reads a wrong
-  value, and the list's bounds break. Found by the distance review (2026-10-25).
+- A whole particle list's bounding sphere filled the wrong way (`me/particle-bounds`, `0927c892b`; in 5.x too).
 
 ## Backlog
 

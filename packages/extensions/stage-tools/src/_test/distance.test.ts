@@ -140,6 +140,19 @@ describe('stage.distance', () => {
     expect(bad.ok).toBe(false);
   });
 
+  it('measures from a one-particle list (its whole list) at that particle, again and again', async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    expectOk(await v.api.load.files({ files: [new File([star('10 0 0\n')], 'one.star')] }));
+    expectOk(await v.api.load.files({ files: [new File([star('0 0 0\n0 6 0\n')], 'two.star')] }));
+    const [one, two] = v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref);
+    expectOk(await s.distance({ a: `${one}#0`, b: `${two}#0` } as never));
+    expectOk(await s.distance({ a: `${one}#0`, b: `${two}#1` } as never));
+    const [d0, d1] = s.distancesState().value;
+    expect(d0.distance).toBeCloseTo(10, 5);
+    expect(d1.distance).toBeCloseTo(Math.hypot(10, 6), 5);
+  });
+
   it("names a residue point as an atom's: its residue, author number and chain", async () => {
     const v = await viewer();
     const s = v.api.stage!;
