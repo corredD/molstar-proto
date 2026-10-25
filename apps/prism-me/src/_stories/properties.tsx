@@ -14,6 +14,7 @@ import {
   Choices,
   domView,
   For,
+  Icon,
   observableState,
   ParamsForm,
   type ReadonlyState,
@@ -21,6 +22,7 @@ import {
   Select,
   ShellModel,
   type ShellViewContext,
+  Show,
   Slider,
   TextInput,
 } from '@molstar/prism-ui';
@@ -166,19 +168,7 @@ function sections(shell: ShellModel) {
       slot: Slot,
       title: 'Position',
       when: object,
-      render: view(() => (
-        <div class={classes.stack}>
-          {form({
-            x: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
-            y: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
-            z: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
-            turnX: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
-            turnY: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
-            turnZ: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
-          })()}
-          <Button size="sm">Reset</Button>
-        </div>
-      )),
+      render: view((n) => <Position node={n} />),
     },
     { id: 'clips', slot: Slot, title: 'Clips', when: part, render: view((n) => <Clips node={n} />) },
     { id: 'labels', slot: Slot, title: 'Labels', when: part, render: view((n) => <Labels node={n} />) },
@@ -250,11 +240,80 @@ function Decoration() {
   );
 }
 
-/** A node's clips (ui.md §4, §5): each its form and Remove; Add clip (its shapes in the right-click) */
-function Clips(props: { node: MockNode }) {
-  const one = props.node.kind === 'model';
+/**
+ * An object's position (ui.md Status 2026-10-21 to 10-23): its handles shown or hidden (move and turn it in 3D, one step
+ * a release; one object's at a time), its place and turn by numbers on demand (the handles' twin), the handle size (every
+ * handle on the canvas), a list's or model's scale
+ */
+function Position(props: { node: MockNode }) {
+  const handles = observableState(false);
+  const numbers = observableState(false);
+  const scaled = props.node.kind === 'list' || props.node.kind === 'model';
   return (
     <div class={classes.stack}>
+      <div class={classes.line}>
+        <span class={classes.lineLabel}>Handles</span>
+        <span class={classes.actions}>
+        <Button
+          size="sm"
+          icon={<Icon name="move-3d" />}
+          pressed={handles.asReadonly}
+          onClick={() => handles.set(!handles.value)}
+        >
+          {derive(handles.asReadonly, (on) => (on ? 'Hide' : 'Move and turn'))}
+        </Button>
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Its place and turn, by numbers"
+          pressed={numbers.asReadonly}
+          icon={<Icon name="sliders-horizontal" />}
+          onClick={() => numbers.set(!numbers.value)}
+        />
+        </span>
+      </div>
+      <Show when={numbers.asReadonly}>
+        {() =>
+          form({
+            x: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
+            y: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
+            z: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
+            turnX: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
+            turnY: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
+            turnZ: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
+          })()
+        }
+      </Show>
+      {form({
+        handleSize: PD.Numeric(100, { min: 25, max: 400, step: 5 }, { label: 'Handle size (%)' }),
+        ...(scaled ? { scale: PD.Numeric(1, { min: 0.01, max: 100, step: 0.01 }, { label: 'Scale (Å/unit)' }) } : {}),
+      })()}
+      <Button size="sm">Reset</Button>
+    </div>
+  );
+}
+
+/** A node's clips (ui.md §4, §5): each its handles (move, turn, size it in 3D), its form, Remove; Add clip (right-click) */
+function Clips(props: { node: MockNode }) {
+  const one = props.node.kind === 'model';
+  const handles = observableState(false);
+  return (
+    <div class={classes.stack}>
+      {one ? (
+        <div class={classes.line}>
+          <span class={classes.lineLabel}>Plane clip</span>
+          <span class={classes.actions}>
+          <Button
+            size="sm"
+            icon={<Icon name="move-3d" />}
+            pressed={handles.asReadonly}
+            onClick={() => handles.set(!handles.value)}
+          >
+            {derive(handles.asReadonly, (on) => (on ? 'Hide handles' : 'Handles'))}
+          </Button>
+          </span>
+        </div>
+      ) : null}
       {one ? clipForm() : <span class={classes.hint}>No clips. Add one from the right-click.</span>}
       {one ? (
         <Button size="sm" variant="ghost">
