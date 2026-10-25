@@ -127,11 +127,6 @@ function sections(shell: ShellModel) {
         return form({
           type: PD.Select(n.kind === 'isosurface' ? 'isosurface' : types[0][0], types),
           size: PD.Numeric(1, { min: 0.1, max: 4, step: 0.1 }),
-          quality: PD.Select('auto', [
-            ['auto', 'Auto'],
-            ['high', 'High'],
-            ['low', 'Low'],
-          ]),
         })();
       }),
     },
