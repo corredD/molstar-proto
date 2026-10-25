@@ -8,8 +8,7 @@ import { OrderedSet } from '@molstar/core/data/int';
 import { Sphere3D } from '@molstar/core/math/geometry';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { type Observable, Subject } from 'rxjs';
-import { EmptyLoci, isEmptyLoci, Loci } from '@molstar/model/model/loci';
-import { MarkerAction } from '@molstar/core/util/marker-action';
+import { EmptyLoci, Loci } from '@molstar/model/model/loci';
 import { isStageDistanceData } from '@molstar/stage-tools-extension/distance';
 import { isStageLabelData } from '@molstar/stage-tools-extension/label';
 import { drawnObject } from '@molstar/stage-tools-extension/operations';
@@ -149,8 +148,6 @@ export class ExplorerApi extends ApiArea {
   /** Esc pressed on the canvas, or selection mode left (a distance's first point is let go) */
   readonly escaped: Observable<void> = this.escapes.asObservable();
   private onReveal?: (key: string) => void;
-  /** The point of a distance on show in 3D (marked as selected), until the second is picked */
-  private marked: Loci = EmptyLoci;
 
   /** What a left-click on the canvas does (the tree follows it), for the viewer's life */
   setOnClick(on: (click: CanvasClick) => void) {
@@ -490,25 +487,6 @@ export class ExplorerApi extends ApiArea {
   /** Whether the canvas is in selection mode (its button under the 3D view): where Ctrl or ⌘ + click measures */
   get selectionMode(): boolean {
     return this.ctx.plugin.selectionMode;
-  }
-
-  /**
-   * Marks a distance's first point in 3D as selected, the one marked before unmarked (none: unmarks). The selection
-   * manager is not told (the person's selection stays as it is); what the unmark took of a structure's selection is
-   * marked again. A particle selection is marks only (no state to put back): one under the point loses its mark.
-   */
-  markPoint(loci: Loci | undefined) {
-    const plugin = this.ctx.plugin;
-    const canvas = plugin.canvas3d;
-    if (canvas && !isEmptyLoci(this.marked)) {
-      canvas.mark({ loci: this.marked }, MarkerAction.Deselect);
-      if (StructureElement.Loci.is(this.marked)) {
-        const selected = plugin.managers.structure.selection.getLoci(this.marked.structure);
-        if (!isEmptyLoci(selected)) canvas.mark({ loci: selected }, MarkerAction.Select);
-      }
-    }
-    this.marked = loci ?? EmptyLoci;
-    if (canvas && loci && !isEmptyLoci(loci)) canvas.mark({ loci }, MarkerAction.Select);
   }
 
   /** The particle a pick is on: its list (state ref) and its index there; none for anything else */

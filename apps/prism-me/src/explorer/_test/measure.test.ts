@@ -107,7 +107,7 @@ function picker(v: PrismViewer) {
 }
 
 describe('a distance by two Ctrl+clicks', () => {
-  it('keeps the first point (said, marked), measures at the second, listed under the first row; one undo removes it', async () => {
+  it('keeps the first point (said), measures at the second, listed under the first row; one undo removes it', async () => {
     const v = await viewer();
     const area = v.api.explorer!;
     const { p, posted, revealed } = picker(v);
@@ -312,30 +312,6 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(StructureElement.Loci.is(p.pending.value?.loci)).toBe(true);
   });
 
-  it("unmarks the first point without unmarking the person's selection (its marks put back)", async () => {
-    const v = await viewer();
-    const area = v.api.explorer!;
-    // no canvas headless: a stand-in that records the marks
-    const marks: [string, number][] = [];
-    const mark = (r: { loci: Loci }, action: number) => {
-      marks.push([r.loci.kind, action]);
-      return true;
-    };
-    Object.defineProperty(v.plugin, 'canvas3d', { value: { mark }, configurable: true });
-    const a = area.measurePoint(atom(v, 1, 'CA'));
-    v.plugin.managers.structure.selection.fromLoci('set', a);
-    marks.length = 0;
-    area.markPoint(a);
-    area.markPoint(undefined);
-    expect(marks).toEqual([
-      ['element-loci', MarkerAction.Select],
-      ['element-loci', MarkerAction.Deselect],
-      ['element-loci', MarkerAction.Select],
-    ]);
-    // the stand-in goes before the viewer is disposed (it would dispose it)
-    Object.defineProperty(v.plugin, 'canvas3d', { value: undefined, configurable: true });
-  });
-
   it('Esc on the canvas is told to the explorer (which lets the first point go: explorerUI)', async () => {
     const v = await viewer();
     let escaped = 0;
@@ -436,6 +412,11 @@ describe('in selection mode, a modifier click selects as a plain click does (Lud
         expect(marks.some(([kind, action]) => kind === 'particle-loci' && action === MarkerAction.Toggle)).toBe(true);
         await Promise.all(runs);
         expect(distances(v).length).toBe(before + 1);
+        // the selection shows the points: nothing of the picker's own unmarks them after (a particle's mark stays);
+        // Mol*'s selection re-marks a structure whole (a structure-loci deselect, then its selection)
+        expect(marks.filter(([kind, action]) => action === MarkerAction.Deselect && kind !== 'structure-loci')).toEqual(
+          [],
+        );
       }
     } finally {
       sub.unsubscribe();

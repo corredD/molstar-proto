@@ -11,7 +11,7 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 
 // A distance by two ⌘+clicks on a Mac, Ctrl+clicks elsewhere, in selection mode (_spec/ui.md §7): the first point is
-// kept (marked in 3D, said on the status line), the second measures it (`stage.distance`, one step), listed under the
+// kept (selected, as the click selects in that mode; said on the status line), the second measures it (`stage.distance`, one step), listed under the
 // first point's row. Esc, a plain click or leaving selection mode lets the first point go.
 
 /** A distance's first point, waiting for the second */
@@ -44,7 +44,6 @@ export function distancePicker(
   const pending = observableState<PendingPoint | undefined>(undefined);
   const cancel = () => {
     if (!pending.value) return;
-    area.markPoint(undefined);
     pending.set(undefined);
   };
   return {
@@ -69,7 +68,6 @@ export function distancePicker(
       if (!first || gone) {
         cancel();
         pending.set({ loci, picked });
-        area.markPoint(loci);
         options.reveal?.(picked);
         options.post?.(
           `${gone ? "The first point's object was removed. " : ''}Distance from ${picked.label}: ${gesture()} the second point (Esc cancels).`,
