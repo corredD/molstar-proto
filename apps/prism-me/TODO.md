@@ -10,15 +10,6 @@ the app, in his words; the lane turns it into spec and tests.
 
 <!-- - **Title**: what I want to see. Check: what I do in the app and what I expect. -->
 
-- **Measure a distance, structures and particles** (Ludovic, 2026-10-24): like in the Mesoscale Explorer, click two
-  points and have the distance labeled, with a line (Mol\*'s). Ctrl+click one, Ctrl+click two: the distance label
-  appears as a child in the tree below the first selection. The line and the label are proportional to the object
-  measured. Between atoms, residues, chains, instances and particle positions. Its options in the UI: text size, line
-  width, opacity, and a ref to the two selections. Check: load CellPack HIV and 1CRN; Ctrl+click two atoms, then two
-  particles; each label appears under its first pick's row; change the text size and opacity; undo once removes it.
-- **Measure a distance, volumes** (after the first): the same between a volume and a volume pixel (voxel) and the
-  targets above. Check: Ctrl+click a volume's voxel and an atom; the distance appears under the first pick.
-
 ## Library fixes ready for upstream
 
 Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only when Ludovic says so.
@@ -27,6 +18,7 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - Plane slice sized in voxels used as Å (`ea7dc5d3e`).
 - Gizmo: `rotate` axes option, `poseOfFrame`/`frameOfPose` (`ded144e8d`).
 - MRC reader: mode 6, mode 12 (float16), `.rec`/`.st`/`.mrcs`/`.ali` (`33dbca0c5`, `59ef5aa38`).
+- A whole particle list's bounding sphere filled the wrong way (`me/particle-bounds`, `0927c892b`; in 5.x too).
 
 ## Backlog
 
@@ -50,6 +42,12 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms.
 - Decorating by a string column (a tomogram name).
 - Keys on cuts (animation).
+- A distance follows its objects' later moves (a moved structure, list or volume, a particle handle) only when it is
+  re-evaluated: the move is a decorator under the object, which its dependency does not see (review K1, 2026-10-25).
+- Distances, left open by the review: a hint that measuring needs selection mode (a ⌘/Ctrl+click outside it says
+  nothing); tests for the explorer's click routing (`ui.tsx`: a modifier click outside selection mode reveals its row; a
+  Ctrl+click on a label is refused), which need `explorerUI` mounted with canvas clicks and `labelAt`; a volume point
+  keeps one instance (a volume of several, from MVS, would be measured from its first).
 - Upstream (Prism): Home counts particles as loaded; `particles.representation` on decorated lists; shapes in the scene
   tree.
 - Storybook stories for the Entities tab, the Decorations and Slice rows, the Segmentations tab and the stage menu,

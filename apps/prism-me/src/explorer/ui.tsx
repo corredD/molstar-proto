@@ -7,6 +7,7 @@
  */
 
 import { Color } from '@molstar/core/util/color';
+import { EmptyLoci } from '@molstar/model/model/loci';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
@@ -29,12 +30,23 @@ import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import type { Subscription } from 'rxjs';
-import type { LabelInfo } from '@molstar/stage-tools-extension/operations';
+import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { editInline } from './inline-edit.js';
+import { distancePicker } from './measure.js';
 import { clipItems, clippable, colorable, colorItems, nodeMenuItems, removable, removeObject } from './menu.js';
 import type { ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
-import { ancestorKeys, Categories, type Parts, type Row, rowsOf, stableRows, toggleVisible, treeKey } from './rows.js';
+import {
+  ancestorKeys,
+  Categories,
+  type Parts,
+  type Row,
+  rowOf,
+  rowsOf,
+  stableRows,
+  toggleVisible,
+  treeKey,
+} from './rows.js';
 
 // The explorer's panel (apps/prism-me/_spec/ui.md §1–4): + Open, a filter, the tree of the scene in four categories,
 // and under it the properties of the row picked. Rows act through the API as the person (one step each): their eyes run
@@ -48,8 +60,45 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   if (!area) return {};
   const model = sceneModel(area, ctx.api.stage);
   scenes.set(area, model);
+  area.setOnReveal((key) => {
+    const stage = ctx.api.stage;
+    const row = rowOf(
+      area.objectsState().value,
+      model.parts.value,
+      key,
+      stage?.labelsState().value,
+      stage?.distancesState().value,
+    );
+    if (row?.node) {
+      model.reveal({
+        key,
+        label: row.label,
+        kind: row.kind,
+        node: row.node,
+        ...(row.representation ? { representation: row.representation } : {}),
+      });
+    }
+  });
+  // a distance by two ⌘/Ctrl+clicks in selection mode (_spec/ui.md §7); Esc, a plain click or leaving the mode lets
+  // its first point go
+  const picker = distancePicker(ctx.api, area, {
+    // a person's run is posted by the viewer already (its failures, its "already"): not twice
+    post: (text) => {
+      const notifications = ctx.managers.notifications;
+      if (notifications.current.value?.text !== text) notifications.post(text);
+    },
+    reveal: model.reveal,
+  });
+  area.escaped.subscribe(() => picker.cancel());
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
   area.setOnClick((click) => {
+    // a distance's point: Ctrl or ⌘ + click in selection mode; else the click picks a row as any other
+    if (click.measure && area.selectionMode) {
+      // a label under the pointer (drawn, not picked by Mol*): no point of a distance, as nothing is (ui.md §7)
+      void picker.click(labelPicked(click.x, click.y) ? { ...click, loci: EmptyLoci } : click);
+      return;
+    }
+    picker.cancel();
     const p = labelPicked(click.x, click.y) ?? area.pickedOf(click.loci);
     if (p) model.reveal(p);
   });
@@ -156,7 +205,8 @@ function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
     groupByOf: (ref) => (parts.value.get(ref) as MesoscaleInfo | undefined)?.groupBy,
     reveal(p) {
       const labels = stage?.labelsState().value ?? [];
-      const above = ancestorKeys(area.objectsState().value, parts.value, p.key, labels) ?? [];
+      const distances = stage?.distancesState().value ?? [];
+      const above = ancestorKeys(area.objectsState().value, parts.value, p.key, labels, distances) ?? [];
       if (above.some((k) => !open.value.has(k))) open.set(new Set([...open.value, ...above]));
       picked.set(p);
       scrollTo.set(p.key);
@@ -215,8 +265,11 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   const stable = stableRows();
   // the stage's labels, each under the row it was made at
   const labels = api.stage?.labelsState() ?? observableState<readonly LabelInfo[]>([]).asReadonly;
-  const rows = derive([objects, parts.asReadonly, open.asReadonly, filter.asReadonly, labels], (o, p, op, f, l) =>
-    stable(rowsOf(o, p, op, f, l)),
+  // and its distances, each under its first point's row
+  const distances = api.stage?.distancesState() ?? observableState<readonly DistanceInfo[]>([]).asReadonly;
+  const rows = derive(
+    [objects, parts.asReadonly, open.asReadonly, filter.asReadonly, labels, distances],
+    (o, p, op, f, l, d) => stable(rowsOf(o, p, op, f, l, d)),
   );
   // the row under the pointer: lit in the tree and in 3D (the picked row's highlight comes back when it leaves)
   const hovered = observableState<string | undefined>(undefined);
@@ -502,6 +555,13 @@ function TreeRow(props: {
           >
             <Icon name="type" size={12} />
             Label
+          </span>
+        ) : row.kind === 'distance' ? (
+          <span
+            style={`${Muted}; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; margin-right: var(--msp-space-1)`}
+          >
+            <Icon name="ruler" size={12} />
+            Distance
           </span>
         ) : null}
         {row.label}

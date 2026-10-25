@@ -9,6 +9,7 @@ import { Sphere3D } from '@molstar/core/math/geometry';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { type Observable, Subject } from 'rxjs';
 import { EmptyLoci, Loci } from '@molstar/model/model/loci';
+import { isStageDistanceData } from '@molstar/stage-tools-extension/distance';
 import { isStageLabelData } from '@molstar/stage-tools-extension/label';
 import { drawnObject } from '@molstar/stage-tools-extension/operations';
 import { Particle, type ParticleList, type ParticleTarget } from '@molstar/model/model/particles/particle-list';
@@ -32,6 +33,7 @@ import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import { GizmoAppearance, type GizmoLook } from '@molstar/graphics/util/gizmo/controller';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import { isMac } from '@molstar/prism-ui/commands/keys';
 
 // The `explorer` area (apps/prism-me/_spec/ui.md §3): what the scene holds, as the explorer's tree shows it: four
 // categories (structures, particles, volumes, meshes), each object with its parts; and the 3D side of a row (its
@@ -93,6 +95,8 @@ export interface CanvasClick {
   readonly loci: Loci;
   readonly x?: number;
   readonly y?: number;
+  /** With ⌘ on a Mac, Ctrl elsewhere: a point of a distance, in selection mode (_spec/ui.md §7) */
+  readonly measure?: boolean;
 }
 
 /** A 3D pick as a row of the tree */
@@ -135,10 +139,29 @@ export class ExplorerApi extends ApiArea {
   /** The left-clicks on the canvas, what they picked and where (the tree follows them) */
   readonly clicks: Observable<CanvasClick> = this.picks.asObservable();
   private onClick?: (click: CanvasClick) => void;
+  /**
+   * An Apple platform: a distance's points are ⌘+clicks (Ctrl+click is a right-click there); elsewhere Ctrl+clicks.
+   * The one place it is decided (the picker's messages read it); set by tests to check both.
+   */
+  mac = isMac();
+  private readonly escapes = new Subject<void>();
+  /** Esc pressed on the canvas, or selection mode left (a distance's first point is let go) */
+  readonly escaped: Observable<void> = this.escapes.asObservable();
+  private onReveal?: (key: string) => void;
 
   /** What a left-click on the canvas does (the tree follows it), for the viewer's life */
   setOnClick(on: (click: CanvasClick) => void) {
     this.onClick = on;
+  }
+
+  /** What `revealRow` does (the tree picks a row by its key, unfolding the way to it), for the viewer's life */
+  setOnReveal(on: (key: string) => void) {
+    this.onReveal = on;
+  }
+
+  /** Picks a row of the tree by its key, unfolding the way to it (a distance's properties go to its points' rows) */
+  revealRow(key: string) {
+    this.onReveal?.(key);
   }
 
   constructor(ctx: ApiAreaContext) {
@@ -149,7 +172,17 @@ export class ExplorerApi extends ApiArea {
       this.picks.next({
         loci: e.current.loci,
         ...(e.page ? { x: e.page[0] - window.scrollX, y: e.page[1] - window.scrollY } : {}),
+        // ⌘ on a Mac (Ctrl+click is a right-click there), Ctrl elsewhere (Ludovic, 2026-10-24)
+        ...((this.mac ? e.modifiers.meta : e.modifiers.control) ? { measure: true } : {}),
       });
+    });
+    ctx.plugin.behaviors.interaction.key.subscribe((e) => {
+      if (e.code === 'Escape') this.escapes.next();
+    });
+    let selecting = ctx.plugin.selectionMode;
+    ctx.plugin.behaviors.interaction.selectionMode.subscribe((on) => {
+      if (selecting && !on) this.escapes.next();
+      selecting = on;
     });
   }
 
@@ -443,6 +476,19 @@ export class ExplorerApi extends ApiArea {
     if (canvas) GizmoAppearance.set(canvas, look);
   }
 
+  /**
+   * A distance's point from a pick, at the selection's granularity (an atom, a residue, a chain, an instance; a
+   * particle; a bond: its atoms), as the row it is listed under (`pickedOf`)
+   */
+  measurePoint(loci: Loci): Loci {
+    return Loci.normalize(loci, this.ctx.plugin.managers.interactivity.props.granularity, true);
+  }
+
+  /** Whether the canvas is in selection mode (its button under the 3D view): where Ctrl or ⌘ + click measures */
+  get selectionMode(): boolean {
+    return this.ctx.plugin.selectionMode;
+  }
+
   /** The particle a pick is on: its list (state ref) and its index there; none for anything else */
   particleOf(loci: Loci): { readonly list: string; readonly index: number } | undefined {
     if (!Particle.isLoci(loci) || OrderedSet.size(loci.indices) === 0) return undefined;
@@ -480,6 +526,11 @@ export class ExplorerApi extends ApiArea {
   focus(node: NodeRef) {
     const plugin = this.ctx.plugin;
     const cell = plugin.state.data.cells.get(node.ref);
+    // a distance: its two points
+    if (SO.Shape.Representation3D.is(cell?.obj) && isStageDistanceData(cell.obj.data.sourceData)) {
+      plugin.managers.camera.focusLoci([...cell.obj.data.sourceData.pairs[0].loci]);
+      return;
+    }
     if (SO.Volume.Data.is(cell?.obj)) {
       const drawn = drawnObject({ plugin }, node.ref);
       plugin.managers.camera.focusSphere(
@@ -752,10 +803,23 @@ function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
     Volume.Cell.isLoci(loci) ||
     Volume.Segment.isLoci(loci)
   ) {
-    const v = plugin.managers.volume.hierarchy.current.volumes.find((x) => x.cell.obj?.data === loci.volume);
+    // as loaded, or as its representations draw it (moved: a decorator's new volume)
+    const v = plugin.managers.volume.hierarchy.current.volumes.find(
+      (x) =>
+        x.cell.obj?.data === loci.volume || x.representations.some((r) => r.cell.obj?.data.sourceData === loci.volume),
+    );
     if (!v) return undefined;
     const ref = v.cell.transform.ref;
     return { key: `o:${ref}`, label: v.cell.obj?.label ?? ref, kind: 'volume', node: { ref } };
+  }
+  // a distance of the stage, its line (its text is not pickable): its row (under its first point's)
+  if (ShapeGroup.isLoci(loci) && isStageDistanceData(loci.shape.sourceData)) {
+    for (const cell of plugin.state.data.cells.values()) {
+      const obj = cell.obj;
+      if (!SO.Shape.Representation3D.is(obj) || obj.data.sourceData !== loci.shape.sourceData) continue;
+      return { key: `d:${cell.transform.ref}`, label: obj.label, kind: 'distance', node: { ref: cell.transform.ref } };
+    }
+    return undefined;
   }
   // a label of the stage: its row (under the node it was made at)
   if (ShapeGroup.isLoci(loci) && isStageLabelData(loci.shape.sourceData)) {

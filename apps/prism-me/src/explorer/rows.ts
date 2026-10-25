@@ -8,7 +8,7 @@ import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import { groupEntities, type MesoGroup } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
-import type { LabelInfo } from '@molstar/stage-tools-extension/operations';
+import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import type { Category, NodeRef, SceneObject } from './operations.js';
 
 // The rows of the explorer's tree (_spec/ui.md §3), flat, from the scene's objects and the parts the mesoscale and
@@ -49,19 +49,43 @@ export function rowsOf(
   open: ReadonlySet<string>,
   filter: string,
   labels: readonly LabelInfo[] = [],
+  distances: readonly DistanceInfo[] = [],
 ): Row[] {
   const f = filter.trim().toLowerCase();
   const rows: Row[] = [];
-  // the labels under the row they were made at (after its own children); one made at a model's group the model's
-  // grouping does not show now: under the model (§3), back under its group when that grouping is shown again
+  // the labels and the distances under the row they were made at (after its own children; a distance at its first
+  // point's); one made at a model's group the model's grouping does not show now: under the model (§3), back under its
+  // group when that grouping is shown again
+  // one whose row is not there (a part gone, a key from elsewhere): under its object's row
   const shownGroups = groupRowsOf(objects, parts);
-  const byNode = new Map<string, LabelInfo[]>();
-  for (const l of labels) {
-    const node =
-      l.node.startsWith('g:') && !shownGroups.keys.has(l.node) ? modelOf(l.node, shownGroups.models) : l.node;
+  const known = rowKeysOf(objects, parts, shownGroups.keys);
+  const byNode = new Map<string, Row[]>();
+  const under = (key: string, object: string, row: Omit<Row, 'depth'>) => {
+    const shown = key.startsWith('g:') && !shownGroups.keys.has(key) ? modelOf(key, shownGroups.models) : key;
+    const node = known(shown) ? shown : `o:${object}`;
     const list = byNode.get(node);
-    if (list) list.push(l);
-    else byNode.set(node, [l]);
+    if (list) list.push(row as Row);
+    else byNode.set(node, [row as Row]);
+  };
+  for (const l of labels) {
+    under(l.node, l.target, {
+      key: `l:${l.ref}`,
+      label: l.text,
+      kind: 'label',
+      visible: l.visible,
+      hasChildren: false,
+      node: { ref: l.ref },
+    });
+  }
+  for (const d of distances) {
+    under(d.node, d.a.ref, {
+      key: `d:${d.ref}`,
+      label: d.label,
+      kind: 'distance',
+      visible: d.visible,
+      hasChildren: false,
+      node: { ref: d.ref },
+    });
   }
   const push = (r0: Row, children: () => void) => {
     const own = byNode.get(r0.key);
@@ -70,17 +94,7 @@ export function rowsOf(
     if (!r.hasChildren || !(open.has(r.key) || f)) return;
     // its own children (none when only its labels made it a parent)
     if (r0.hasChildren) children();
-    for (const l of own ?? []) {
-      rows.push({
-        key: `l:${l.ref}`,
-        depth: r.depth + 1,
-        label: l.text,
-        kind: 'label',
-        visible: l.visible,
-        hasChildren: false,
-        node: { ref: l.ref },
-      });
-    }
+    for (const l of own ?? []) rows.push({ ...l, depth: r.depth + 1 });
   };
   for (const c of Categories) {
     const items = objects.filter((o) => o.category === c.id);
@@ -251,6 +265,29 @@ function groupRowsOf(objects: readonly SceneObject[], parts: Parts) {
   return { keys, models };
 }
 
+/**
+ * Whether a key is a row's of these objects, shown or folded: an object's, a structure's entity or chain, a model's
+ * group shown or entity, a list's target, a volume's representation. A model whose parts are not read yet: any key of it.
+ */
+function rowKeysOf(objects: readonly SceneObject[], parts: Parts, groups: ReadonlySet<string>) {
+  const keys = new Set<string>(groups);
+  const unread: string[] = [];
+  for (const o of objects) {
+    keys.add(`o:${o.ref}`);
+    for (const e of o.entities ?? []) {
+      keys.add(`e:${o.ref}:${e.id}`);
+      if (e.chains.length > 1) for (const ch of e.chains) keys.add(`ch:${o.ref}:${e.id}:${ch}`);
+    }
+    for (const r of o.representations ?? []) keys.add(`r:${r.ref}`);
+    if (o.category !== 'particles') continue;
+    const part = parts.get(o.ref);
+    if (!part) unread.push(o.ref);
+    else if (o.kind === 'model') for (const e of (part as MesoscaleInfo).entities) keys.add(`me:${o.ref}:${e.id}`);
+    else for (const t of (part as DecorationsInfo).targets) keys.add(`t:${o.ref}:${t.id}`);
+  }
+  return (key: string) => keys.has(key) || unread.some((ref) => key.split(':')[1] === ref);
+}
+
 /** The model row of a group row's key (`g:<ref>:<path>`), else the key itself */
 function modelOf(key: string, models: readonly string[]): string {
   const ref = models.find((m) => key.startsWith(`g:${m}:`));
@@ -301,11 +338,24 @@ export function toggleVisible(api: ViewerApi, row: Row) {
       return api.run('cryoet.mesh', { mesh: node.ref, visible });
     case 'label':
       return api.run('stage.editLabel', { label: node.ref, visible });
+    case 'distance':
+      return api.run('stage.editDistance', { distance: node.ref, visible });
   }
 }
 
 /** Every row open: all of the tree */
 const AllOpen: ReadonlySet<string> = { has: () => true } as unknown as ReadonlySet<string>;
+
+/** The row of a key, all of the tree unfolded; none if absent */
+export function rowOf(
+  objects: readonly SceneObject[],
+  parts: Parts,
+  key: string,
+  labels: readonly LabelInfo[] = [],
+  distances: readonly DistanceInfo[] = [],
+): Row | undefined {
+  return rowsOf(objects, parts, AllOpen, '', labels, distances).find((r) => r.key === key);
+}
 
 /** The keys of the rows above `key` (its category, its object, its groups), to unfold the way to it; none if absent */
 export function ancestorKeys(
@@ -313,8 +363,9 @@ export function ancestorKeys(
   parts: Parts,
   key: string,
   labels: readonly LabelInfo[] = [],
+  distances: readonly DistanceInfo[] = [],
 ): string[] | undefined {
-  const rows = rowsOf(objects, parts, AllOpen, '', labels);
+  const rows = rowsOf(objects, parts, AllOpen, '', labels, distances);
   const i = rows.findIndex((r) => r.key === key);
   if (i < 0) return undefined;
   const out: string[] = [];

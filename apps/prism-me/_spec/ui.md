@@ -52,7 +52,8 @@ not show now is a row under the model (picked, hidden, edited and revealed there
 grouping is shown again (a default, to confirm).
 
 Every row: an eye (show, hide, at its level), a color dot where it has one color, its name, a count (atoms, particles,
-entities) faint at the end. Clips and labels made at a node are rows under it (§5), with their own eye.
+entities) faint at the end. Clips and labels made at a node are rows under it (§5), and distances under their first
+point's row (§7), each with its own eye.
 
 A click on a row picks it: highlighted in 3D, its properties below. A double click focuses the camera on it. The tree
 follows what is picked in 3D (a click on a particle picks its entity's row and opens the way to it).
@@ -109,7 +110,56 @@ text**), **Hide**, **Remove**.
 
 ## 6. Not now
 
-Snapshots and stories, the sequence view, measurements, export: reachable from ⌘K, not on screen. Added when needed.
+Snapshots and stories, the sequence view, angles and other measurements than distances, export: reachable from ⌘K, not
+on screen. Added when needed.
+
+## 7. Measurements
+
+A distance between two points: atoms, residues, chains, instances and particles (one, or all of a multi-particle pick
+such as a fiber, from their middle) (Ludovic, 2026-10-24), and volumes (Ludovic, 2026-10-25): a volume point is the
+voxel under the click, on an isosurface or a slice ("map.mrc voxel (i, j, k)"); at a coarse pick granularity (Mol*'s
+`structure`, which takes a volume whole) it is the whole volume's center ("map.mrc (center)"), following "the
+granularity of what is selected". Its position is Mol*'s (the voxel's or the grid's sphere, in the volume's frame). A
+direct volume rendering is not picked at all (Mol*'s pick pass draws only the scene's primitives, not its direct
+volumes): a voxel is picked on an isosurface or a slice. A segment of a segmentation counts as the whole volume.
+
+- **In selection mode** (its button under the 3D view) (Ludovic, 2026-10-24): that mode already selects everything in
+  the scene; there, two ⌘+clicks on a Mac, two Ctrl+clicks elsewhere, also make a distance. A modifier click selects
+  exactly as a plain click does (Ludovic, 2026-10-25: the distance is added, the selection not replaced; `spec.ts` gives
+  Mol*'s selection-mode click toggle Ctrl and ⌘ triggers), on a structure, a particle or a volume. Outside it, nothing
+  measures and the canvas's Ctrl+click and ⌘+click do what Mol* does (focus; `spec.ts` keeps them), with no hint about
+  measuring. In selection mode, Mol*'s camera bindings still answer a Ctrl+click (off a Mac): each point clicked
+  recenters the camera on it (`clickCenterFocusSelectMode`), and a Ctrl+click on nothing resets the camera
+  (`clickResetCameraOnEmptySelectMode`) while the first point is kept. ⌘+click (on a Mac) is bound to nothing else
+  there: the camera stays. Leaving selection mode lets a first point go.
+- **A point follows the pick granularity** (Ludovic, 2026-10-24): residues by default, so CA 1 to CA 10 of 1CRN reads
+  10.67 Å between the residues' centers, and 12.60 Å at atom granularity; a chain, an instance at theirs; a bond: its
+  atoms. The point is the row its pick reveals.
+- **⌘ on a Mac, Ctrl elsewhere** (Ludovic, 2026-10-24): Ctrl+click is a right-click on a Mac. The status line names the
+  platform's gesture.
+
+- **⌘/Ctrl+click** a first point: it is selected (as the click selects) and said on the status line; its row is picked.
+  ⌘/Ctrl+click a second: the distance is made (`stage.distance`, one step) and its row picked. Esc on the canvas, or a
+  plain click, lets the first point go. ⌘/Ctrl+click on nothing, a label or a distance says what can be measured and
+  keeps the first point. When the first point's object is removed, the next ⌘/Ctrl+click is a new first point (said).
+  The same two points again, either way round: no second distance; the first one's row is picked and the status line
+  says so; a failure says why.
+- Drawn by Mol*'s `DistanceRepresentation` (a dashed line and its value), one cell from the root that depends on both
+  objects: removing either removes the distance in the same step. Its text and line are scaled by the larger of the two
+  things measured (an atom: Mol*'s own size; a particle: its radius, else its decoration's), so a distance between two
+  proteins of a model reads at the model's scale. Its value is between the centers of the spheres around the points, as
+  Mol*'s text says it.
+- **Its row** is under the first point's row (its `node`: the row key at the time; a model's group not shown now: under
+  the model, as a label; a key no row has: under its first object's row), its kind told before its value ("Distance
+  12.34 Å"), with its eye. A click on its line in 3D picks the row (its text is not pickable: Mol*'s text geometry sets
+  `pickable: false`).
+- **Its properties** (Distance): the value, its two points (a click picks the point's row), text size and line width
+  (times its own, 0.1–100: readable at a volume's scale; Ludovic, 2026-10-25), opacity; a log slider and its number box;
+  one step a release.
+- **Its right-click** (on the row or on the line): Focus (the camera on its two points), Hide, Remove.
+- ⌘K and the agent: `stage.distance` takes a point as a pick (`{ loci }`), a structure target (`A:10@CA`) or a particle
+  (`<list ref>#<index>`); `stage.editDistance` changes or removes one. A point is named "THR 1 CA (A)" (an atom), "LYS
+  120 (A)" (a residue: author number and chain), "SerumAlbumin #12" or "Fiber (8 particles)".
 
 ## Status
 

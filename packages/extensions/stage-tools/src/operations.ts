@@ -29,9 +29,16 @@ import { Grid, Volume } from '@molstar/model/model/volume';
 import { OrderedSet } from '@molstar/core/data/int';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { isEmptyLoci, Loci } from '@molstar/model/model/loci';
-import { Bond, StructureElement } from '@molstar/model/model/structure';
+import { Bond, type Structure, StructureElement, StructureProperties, Unit } from '@molstar/model/model/structure';
 import { Observable, Subject } from 'rxjs';
-import { type ApiAreaContext, type ApiContext, ApiArea, ApiResult } from '@molstar/prism-viewer/api/area';
+import {
+  type ApiAreaContext,
+  type ApiContext,
+  type ApiFailure,
+  ApiArea,
+  ApiResult,
+} from '@molstar/prism-viewer/api/area';
+import { lociLabel } from '@molstar/model/model/label';
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { labelOf as structureLabel, loadedStructures } from '@molstar/prism-viewer/api/scope';
@@ -39,6 +46,16 @@ import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { ObjectMoveGizmos } from './move-gizmos.js';
 import { ParticleHandles } from './particle-handle.js';
+import { drawnObject } from './drawn.js';
+import {
+  type DistancePoint,
+  distanceOf,
+  isStageDistanceData,
+  pointLoci,
+  pointOf,
+  StageDistance,
+  type StageDistanceProps,
+} from './distance.js';
 import { labelLook, StageLabel, StageLabelParams, type StageLabelProps } from './label.js';
 
 // The `stage` area (apps/prism-me/_spec/features.md, "Stage tools"): the canvas's right-click menu, objects moved by
@@ -580,7 +597,122 @@ export class StageApi extends ApiArea {
       return ApiResult.ok(`Changed the label "${next.text}".`, { nodes });
     },
   });
+
+  /** The distances of the stage, following the state tree while watched: a read for views */
+  distancesState(): ReadonlyState<readonly DistanceInfo[]> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => distancesOf({ plugin }),
+      () => [plugin.state.data.events.changed, plugin.state.data.events.cell.stateUpdated],
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  readonly distance = this.operation({
+    id: 'stage.distance',
+    title: 'Measure a distance',
+    params: {
+      a: PD.Value<DistanceTarget>('', {
+        description:
+          "The first point: an atom, a residue, a chain (A:10@CA, A:10, chain A) on a structure, or a particle as '<list ref>#<index>'",
+      }),
+      b: PD.Value<DistanceTarget>('', { description: 'The second point, as the first' }),
+      structure: PD.Text('', {
+        description: 'The structure of a text point (by label or state ref); empty: the only one',
+      }),
+      node: PD.Text('', {
+        description: "The explorer's row it is listed under (its key); empty: the first point's object",
+      }),
+      nodeB: PD.Text('', { description: "The explorer's row of the second point (its key)" }),
+    },
+    async run(v, ctx) {
+      const a = await distancePoint(ctx, v.a, v.structure, v.node, 'first');
+      if (ApiResult.isFailure(a)) return a;
+      const b = await distancePoint(ctx, v.b, v.structure, v.nodeB, 'second');
+      if (ApiResult.isFailure(b)) return b;
+      const la = pointLoci(ctx.plugin, a);
+      const lb = pointLoci(ctx.plugin, b);
+      if (!la || !lb) return ApiResult.fail('invalid', 'A point selects nothing.');
+      const value = distanceOf(la.loci, lb.loci);
+      const node = v.node || `o:${a.ref}`;
+      // the same two points, either way round, from any row: the same distance
+      const pair = [pointId(a), pointId(b)].sort().join('\n');
+      const sameRef = [...ctx.plugin.state.data.cells.values()].find((c) => {
+        if (c.transform.transformer !== StageDistance) return false;
+        const p = c.transform.params as StageDistanceProps;
+        return [pointId(p.a), pointId(p.b)].sort().join('\n') === pair;
+      })?.transform.ref;
+      const same = sameRef ? distancesOf(ctx).find((d) => d.ref === sameRef) : undefined;
+      if (same && !ctx.copy) {
+        return ApiResult.already(`It is already measured: ${same.label}.`, {
+          value: { ref: same.ref, distance: same.distance },
+        });
+      }
+      const build = ctx.plugin.state.data.build();
+      const dependsOn = a.ref === b.ref ? [a.ref] : [a.ref, b.ref];
+      const made = build.toRoot().apply(StageDistance, { a, b, node }, { dependsOn });
+      await build.commit();
+      return ApiResult.ok(
+        `Measured ${value.toFixed(2)} Å between ${a.label} and ${b.label}.`,
+        { nodes: [made.ref] },
+        { value: { ref: made.ref, distance: value } },
+      );
+    },
+  });
+
+  readonly editDistance = this.operation({
+    id: 'stage.editDistance',
+    title: 'Change a distance',
+    params: {
+      distance: PD.Text('', { description: 'The distance, by state ref' }),
+      textSize: OptionalParam(PD.Numeric(1, { min: 0.1, max: 100 }, { description: "Its text's size, times its own" })),
+      lineWidth: OptionalParam(
+        PD.Numeric(1, { min: 0.1, max: 100 }, { description: "Its line's width, times its own" }),
+      ),
+      opacity: OptionalParam(PD.Numeric(1, { min: 0, max: 1 })),
+      visible: OptionalParam(PD.Boolean(true)),
+      remove: PD.Boolean(false, { description: 'Remove it' }),
+    },
+    async run(values, ctx) {
+      const v = values as typeof values & {
+        textSize?: number;
+        lineWidth?: number;
+        opacity?: number;
+        visible?: boolean;
+      };
+      const state = ctx.plugin.state.data;
+      const cell = state.cells.get(v.distance);
+      if (!cell || cell.transform.transformer !== StageDistance) {
+        return ApiResult.fail('not-found', `There is no distance '${v.distance}'.`);
+      }
+      const name = cell.obj?.label ?? 'distance';
+      if (v.remove) {
+        await state.build().delete(v.distance).commit();
+        return ApiResult.ok(`Removed the distance ${name}.`, { nodes: [v.distance] });
+      }
+      const old = cell.transform.params as StageDistanceProps;
+      const next: StageDistanceProps = {
+        ...old,
+        ...(v.textSize !== undefined ? { textSize: v.textSize } : {}),
+        ...(v.lineWidth !== undefined ? { lineWidth: v.lineWidth } : {}),
+        ...(v.opacity !== undefined ? { opacity: v.opacity } : {}),
+      };
+      const nodes: string[] = [];
+      if (next.textSize !== old.textSize || next.lineWidth !== old.lineWidth || next.opacity !== old.opacity) {
+        await state.build().to(cell).update(next).commit();
+        nodes.push(v.distance);
+      }
+      if (v.visible !== undefined && v.visible === !!cell.state.isHidden) {
+        setSubtreeVisibility(state, v.distance, !v.visible);
+        nodes.push(v.distance);
+      }
+      if (!nodes.length) return ApiResult.already('The distance is already so.');
+      return ApiResult.ok(`Changed the distance ${name}.`, { nodes });
+    },
+  });
 }
+
+export { drawnObject };
 
 // --- picks ---------------------------------------------------------------------------------------------------------
 
@@ -590,8 +722,8 @@ function pickOf(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StagePick {
   const targets = stageTargets(ctx);
   const cells = ctx.plugin.state.data.cells;
   if (StructureElement.Loci.is(loci) || Bond.isLoci(loci)) {
-    const root = ctx.plugin.helpers.substructureParent.get(loci.structure);
-    const t = targets.find((x) => x.ref === root?.transform.ref);
+    const refs = structureRefsOf(ctx, loci.structure);
+    const t = targets.find((x) => refs.has(x.ref));
     if (t) return { kind: 'target', target: t };
   }
   if (Particle.isLoci(loci)) {
@@ -617,7 +749,14 @@ function pickOf(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StagePick {
     Volume.Cell.isLoci(loci) ||
     Volume.Segment.isLoci(loci)
   ) {
-    const t = targets.find((x) => x.kind === 'volume' && cells.get(x.ref)?.obj?.data === loci.volume);
+    // the volume as loaded, or as its representations draw it (moved: a decorator's new volume)
+    const volumes = ctx.plugin.managers.volume.hierarchy.current.volumes;
+    const t = targets.find((x) => {
+      if (x.kind !== 'volume') return false;
+      if (cells.get(x.ref)?.obj?.data === loci.volume) return true;
+      const v = volumes.find((y) => y.cell.transform.ref === x.ref);
+      return !!v?.representations.some((r) => r.cell.obj?.data.sourceData === loci.volume);
+    });
     if (t) return { kind: 'target', target: t };
   }
   return { kind: 'nothing' };
@@ -753,19 +892,28 @@ function boundsOf(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): Sphere3D | u
   return Grid.getBoundingSphere(obj.grid);
 }
 
-/** An object as drawn: the last of the decorators on it (a transform, custom properties), else itself */
-export function drawnObject(ctx: Pick<ApiContext, 'plugin'>, ref: string) {
+/**
+ * The cells a picked structure may belong to: its root (decorators skipped: a moved structure), the last decorator on
+ * it, and the cell holding the structure itself with its ancestors (a pick on the root structure's own drawing)
+ */
+function structureRefsOf(ctx: Pick<ApiContext, 'plugin'>, structure: Structure): Set<string> {
+  const helper = ctx.plugin.helpers.substructureParent;
+  const refs = new Set<string>();
+  for (const c of [helper.get(structure, true), helper.get(structure)]) if (c) refs.add(c.transform.ref);
   const { cells, tree } = ctx.plugin.state.data;
-  let cell = cells.get(ref);
-  for (;;) {
-    const next = tree.children
-      .get(cell?.transform.ref ?? '')
-      .toArray()
-      .map((c) => cells.get(c))
-      .find((c) => c?.transform.transformer.definition.isDecorator && c.obj);
-    if (!next) return cell?.obj;
-    cell = next;
+  for (const s of [structure, structure.root]) {
+    for (const cell of cells.values()) {
+      if (cell.obj?.data !== s) continue;
+      for (
+        let ref = cell.transform.ref;
+        ref && ref !== StateTransform.RootRef;
+        ref = tree.transforms.get(ref)?.parent
+      ) {
+        refs.add(ref);
+      }
+    }
   }
+  return refs;
 }
 
 /** The representations that draw a target */
@@ -781,4 +929,140 @@ function representationCells(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): S
   }
   const v = p.volume.hierarchy.current.volumes.find((x) => x.cell.transform.ref === t.ref);
   return v ? v.representations.map((r) => r.cell) : [];
+}
+
+// --- distances -----------------------------------------------------------------------------------------------------
+
+/** A point of `stage.distance`: what a pick gave (`{ loci }`), or a text (a structure's target, `<list ref>#<index>`) */
+export type DistanceTarget = string | { readonly loci: Loci };
+
+/** A distance's point: its object, the point on it, its name and its row */
+async function distancePoint(
+  ctx: ApiContext,
+  target: DistanceTarget,
+  structure: string,
+  key: string,
+  which: string,
+): Promise<DistancePoint | ApiFailure> {
+  let loci: Loci | undefined;
+  if (typeof target === 'object' && target && 'loci' in target) loci = target.loci;
+  else if (typeof target === 'string' && target.trim()) {
+    const particle = /^(.+)#(\d+)$/.exec(target.trim());
+    const list = particle ? drawnObject(ctx, particle[1]) : undefined;
+    if (particle && SO.Particle.List.is(list)) {
+      const i = Number(particle[2]);
+      if (i >= list.data.count)
+        return ApiResult.fail('invalid', `The ${which} point: the list has ${list.data.count} particles.`);
+      loci = Particle.Loci(list.data, OrderedSet.ofSingleton(i));
+    } else {
+      const resolved = await ctx.targets.resolve(target, structure ? { structure } : {});
+      if (ApiResult.isFailure(resolved)) return resolved;
+      const parts = resolved.parts.filter((p) => p.selected.atoms > 0);
+      if (parts.length !== 1) {
+        return ApiResult.fail(
+          parts.length ? 'ambiguous' : 'invalid',
+          parts.length ? `The ${which} point is on ${parts.length} structures.` : `The ${which} point selects nothing.`,
+          parts.length ? 'Name the structure.' : 'Name an atom or a residue that exists, e.g. A:10@CA.',
+        );
+      }
+      loci = parts[0].loci;
+    }
+  }
+  if (!loci || isEmptyLoci(loci)) return ApiResult.fail('invalid', `The ${which} point is missing.`);
+  const pick = pickOf(ctx, loci);
+  if (pick.kind !== 'target') {
+    return ApiResult.fail('invalid', `The ${which} point is not on a structure, a particle list or a volume.`);
+  }
+  const what = pointName(loci);
+  const indices = Particle.isLoci(loci) ? loci.indices : undefined;
+  const label =
+    pick.particle && indices
+      ? OrderedSet.size(indices) > 1
+        ? `${pick.particle.name} (${OrderedSet.size(indices)} particles)`
+        : `${pick.particle.name} #${OrderedSet.getAt(indices, 0)}`
+      : pick.target.kind === 'volume'
+        ? `${pick.target.label} ${voxelName(loci)}`
+        : what;
+  const point = pointOf(loci, { ref: pick.target.ref, label: label || pick.target.label, key });
+  return point ?? ApiResult.fail('invalid', `The ${which} point is not on a structure, a particle list or a volume.`);
+}
+
+/** A volume point's name: "voxel (i, j, k)" (its grid coordinates, the first of several), else "(center)" */
+function voxelName(loci: Loci): string {
+  if (!Volume.Cell.isLoci(loci) || !loci.elements.length || OrderedSet.size(loci.elements[0].indices) === 0) {
+    return '(center)';
+  }
+  const ijk = loci.volume.grid.cells.space.getCoords(OrderedSet.getAt(loci.elements[0].indices, 0), [0, 0, 0]);
+  return `voxel (${ijk.join(', ')})`;
+}
+
+/** A point's short name: "THR 1 CA (A)" for an atom, "LYS 120 (A)" for a residue, else the condensed loci label */
+function pointName(loci: Loci): string {
+  if (StructureElement.Loci.is(loci) && loci.elements.length === 1) {
+    const { unit, indices } = loci.elements[0];
+    const first = unit.elements[OrderedSet.getAt(indices, 0)];
+    const last = unit.elements[OrderedSet.getAt(indices, OrderedSet.size(indices) - 1)];
+    const residue = unit.model.atomicHierarchy.residueAtomSegments.index;
+    if (Unit.isAtomic(unit) && residue[first] === residue[last]) {
+      const l = StructureElement.Location.create(loci.structure, unit, first);
+      const P = StructureProperties;
+      const atom = OrderedSet.size(indices) === 1 ? ` ${P.atom.label_atom_id(l)}` : '';
+      return `${P.atom.label_comp_id(l)} ${P.residue.auth_seq_id(l)}${atom} (${P.chain.auth_asym_id(l)})`;
+    }
+  }
+  return lociLabel(loci, { htmlStyling: false, condensed: true }).trim();
+}
+
+/** What a point is (its object and its elements or particle), not its name or row: a distance's identity */
+const pointId = (p: DistancePoint) =>
+  JSON.stringify([
+    p.ref,
+    p.particle ?? null,
+    p.particles ?? null,
+    p.bundle ?? null,
+    p.volume ? [p.voxels ?? null, p.instance ?? 0] : null,
+  ]);
+
+/** A point as views list it: its object, name and row */
+const brief = (p: DistancePoint) => ({ ref: p.ref, label: p.label, key: p.key });
+
+/** A distance of the stage, as views list it */
+export interface DistanceInfo {
+  readonly ref: string;
+  /** The explorer's row it is listed under (its key) */
+  readonly node: string;
+  /** Its value (Å) */
+  readonly distance: number;
+  /** "12.34 Å" */
+  readonly label: string;
+  readonly a: { readonly ref: string; readonly label: string; readonly key: string };
+  readonly b: { readonly ref: string; readonly label: string; readonly key: string };
+  readonly textSize: number;
+  readonly lineWidth: number;
+  readonly opacity: number;
+  readonly visible: boolean;
+}
+
+function distancesOf(ctx: Pick<ApiContext, 'plugin'>): DistanceInfo[] {
+  const out: DistanceInfo[] = [];
+  for (const cell of ctx.plugin.state.data.cells.values()) {
+    if (cell.transform.transformer !== StageDistance) continue;
+    const p = cell.transform.params as StageDistanceProps;
+    const data = cell.obj?.data.sourceData;
+    // measured once by the transform, not at every read
+    const distance = isStageDistanceData(data) ? data.value : NaN;
+    out.push({
+      ref: cell.transform.ref,
+      node: p.node,
+      distance,
+      label: Number.isFinite(distance) ? `${distance.toFixed(2)} Å` : 'Distance',
+      a: brief(p.a),
+      b: brief(p.b),
+      textSize: p.textSize,
+      lineWidth: p.lineWidth,
+      opacity: p.opacity,
+      visible: !cell.state.isHidden,
+    });
+  }
+  return out;
 }

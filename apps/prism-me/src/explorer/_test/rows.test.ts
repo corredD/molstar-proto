@@ -6,7 +6,7 @@
 
 import type { MesoGroup } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
-import type { LabelInfo } from '@molstar/stage-tools-extension/operations';
+import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { describe, expect, it } from 'vitest';
 import type { SceneObject } from '../operations.js';
 import { type Row, rowsOf, treeKey } from '../rows.js';
@@ -110,5 +110,24 @@ describe("a label on a model's group row", () => {
     expect(byFunction).toContain('2:l:lab');
     expect(byFunction.indexOf('2:l:lab')).toBe(byFunction.length - 1);
     expect(byFunction[byFunction.indexOf('1:o:m')]).toBe('1:o:m');
+  });
+});
+
+describe('a label or a distance whose row is not there', () => {
+  it("goes under its (first) object's row", () => {
+    const label = { ref: 'lab', text: 'here', node: 'me:m:99', target: 'm', visible: true } as LabelInfo;
+    const distance = {
+      ref: 'dist',
+      node: 'e:gone:1',
+      label: '5.00 Å',
+      a: { ref: 'm', label: 'a', key: 'e:gone:1' },
+      b: { ref: 'm', label: 'b', key: '' },
+      visible: true,
+    } as unknown as DistanceInfo;
+    const keys = rowsOf([model], new Map([['m', infoOf('compartment', true)]]), AllOpen, '', [label], [distance]).map(
+      (r) => `${r.depth}:${r.key}`,
+    );
+    expect(keys).toContain('2:l:lab');
+    expect(keys).toContain('2:d:dist');
   });
 });

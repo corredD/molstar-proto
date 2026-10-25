@@ -42,7 +42,7 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | Color file import (JSON), x, y, z or CSS: by full name, else the entity name (last dotted part)                | Done     | `mesoscale.importColors`; a model's Look: Import colors…                                                                     |
 | Snapshot descriptions' links `#key`, `i<names>`, `g<group>.<names>`                                            | Deferred | Prism's markdown host claims only `!command` links                                                                           |
 | The guided tour (driver.js)                                                                                    | Deferred | Prism has its own help                                                                                                       |
-| Selection list, focus info, measurements                                                                       | Partial  | Prism's own Selection tab, inspector and measurements, not the explorer's panels                                             |
+| Selection list, focus info, measurements                                                                       | Partial  | distances in the explorer (Stage tools); the rest Prism's own Selection tab, inspector and measurements                      |
 
 ## Cryo-ET
 
@@ -63,12 +63,13 @@ agent run (one undo step each); the command menu (⌘K) has each.
 
 ## Stage tools (Stories Untold)
 
-| Feature                                                                                                   | Status   | Operation / where                                                    |
-| --------------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------- |
-| Clip an object (plane, sphere, box, cylinder, cone): Prism's cuts, moved, turned and sized by its handles | Done     | `clipping.*` (Prism); the tree's scissors; Clips in the properties   |
-| Right-click menu on what was picked: focus, hide or color the entity, decorate                            | Done     | the canvas (prism-me frees the right button from the camera's focus) |
-| Keys on cuts (animation)                                                                                  | Deferred |                                                                      |
-| Commands for the agent and ⌘K                                                                             | Done     | the three areas' commands and skills                                 |
+| Feature                                                                                                                             | Status   | Operation / where                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------- |
+| Clip an object (plane, sphere, box, cylinder, cone): Prism's cuts, moved, turned and sized by its handles                           | Done     | `clipping.*` (Prism); the tree's scissors; Clips in the properties   |
+| Right-click menu on what was picked: focus, hide or color the entity, decorate                                                      | Done     | the canvas (prism-me frees the right button from the camera's focus) |
+| Keys on cuts (animation)                                                                                                            | Deferred |                                                                      |
+| Measure a distance between atoms, residues, chains, instances, particles, volume voxels: in selection mode, ⌘/Ctrl+click two points | Done     | `stage.distance`, `stage.editDistance`; a row under the first point  |
+| Commands for the agent and ⌘K                                                                                                       | Done     | the three areas' commands and skills                                 |
 
 ## Known issues found on the way (Prism, upstream)
 

@@ -39,6 +39,7 @@ import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
+import { DistanceProps } from './distance-properties.js';
 import { clipItems, clippable, hideHandles, movable, showClipHandles, showHandles, showTheme } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
 import type { Parts } from './rows.js';
@@ -253,6 +254,8 @@ function sectionsOf(
       return [<Section title="Look">{() => <MeshLook api={api} node={node} />}</Section>];
     case 'label':
       return [<Section title="Label">{() => <LabelProps api={api} node={node} />}</Section>];
+    case 'distance':
+      return [<Section title="Distance">{() => <DistanceProps api={api} area={area} node={node} />}</Section>];
   }
   return [];
 }
