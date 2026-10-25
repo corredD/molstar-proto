@@ -228,13 +228,24 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(distances(v)).toHaveLength(1);
   });
 
-  it('lets the first point go when selection mode is left', async () => {
-    const v = await viewer();
+  it('lets the first point go when selection mode is left (and only then: entering it, or leaving twice, is not told)', async () => {
+    const v = await viewer(false);
+    const { p } = picker(v);
     let escaped = 0;
-    const sub = v.api.explorer!.escaped.subscribe(() => escaped++);
+    // as explorerUI wires it
+    const sub = v.api.explorer!.escaped.subscribe(() => {
+      escaped++;
+      p.cancel();
+    });
+    v.plugin.selectionMode = true;
+    expect(escaped).toBe(0);
+    await p.click({ loci: atom(v, 1, 'CA'), measure: true });
+    expect(p.pending.value).toBeDefined();
+    v.plugin.selectionMode = false;
     v.plugin.selectionMode = false;
     sub.unsubscribe();
     expect(escaped).toBe(1);
+    expect(p.pending.value).toBeUndefined();
   });
 
   it('keeps the first point through a Ctrl+click on nothing (said), and measures at the next point', async () => {
