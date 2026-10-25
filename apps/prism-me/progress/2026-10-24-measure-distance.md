@@ -66,8 +66,26 @@ Each fix has its own commit, with a test that failed first where one could be wr
 - N16: the value is stored once on the data.
 - Nits: test names, an unused variable, Ctrl+click on nothing keeps the first point.
 
-With Ludovic: whether a point is an atom or follows the granularity; ⌘+click on a Mac (and the status line saying ⌘);
-the selection-mode camera focus removed in `spec.ts`.
+## Ludovic's decisions (2026-10-24)
+
+1. A point follows the pick granularity (residue by default): CA 1 to CA 10 of 1CRN reads 10.67 Å by residues and 12.60
+   Å at atoms. The code already did this; a test now holds it.
+2. ⌘+click on a Mac, Ctrl+click elsewhere. The status line names the platform's gesture. The platform is decided once,
+   on the explorer area (`ExplorerApi.mac`).
+3. The gesture lives in selection mode: "This mode already let us do selection of everything in the scene. The only
+   difference is that if ctrl or apple modifier is used on two click we automatically create the distance label."
+   `spec.ts` is back to prism-me's (the canvas's Ctrl and ⌘ focus restored). Outside selection mode nothing measures;
+   leaving it lets a first point go. Off a Mac, Mol*'s selection-mode camera bindings still answer a Ctrl+click
+   (recenter on a point, reset on nothing); ⌘ on a Mac leaves the camera still.
+
+A second review (reviewer and skeptic) of these commits: the platform flag is tested through canvas clicks and decided
+once (35a43a9fa); the selection-mode test checks the pending point clears (260c49d94); ui.md §7 states the camera's
+Ctrl+click effects (65f4d8f3f). Left open in TODO.md (57da93248): a hint outside selection mode, tests of the explorer's
+click routing (including S9's label refusal), the particle selection's mark (S10).
+
+Rechecked in the app (port 1344, 1CRN and cellpack-hiv1, real ⌘+clicks): outside selection mode two ⌘+clicks make
+nothing; in it, 5.96 Å between PRO 5 (A) and GLY 31 (A), the status line saying "⌘+click the second point", and a
+distance between two SerumAlbumin particles; text size and opacity typed in the properties, three undos.
 
 ## Learned
 
