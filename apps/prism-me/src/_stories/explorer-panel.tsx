@@ -123,10 +123,10 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
   // menus open in the frame around the panel (its theme's tokens), not inside it (its containment would clip them)
   let panelEl: HTMLElement | undefined;
   const menuRoot = () => panelEl?.closest<HTMLElement>('[data-msp-theme]') ?? document.body;
-  const menuAt = (at: { x: number; y: number }, node: MockNode) => {
+  const menuAt = (at: { x: number; y: number }, node: MockNode, onClose?: () => void) => {
     pick(node);
     const items = (): ContextMenuItem[] => menuOf(node, () => openContextMenu(menuRoot(), at, ClipShapes));
-    openContextMenu(menuRoot(), at, items());
+    openContextMenu(menuRoot(), at, items(), onClose);
   };
   if (props.picked) {
     const key = props.picked;
@@ -201,7 +201,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
                 onToggle={() => toggle(row.key)}
                 onPick={() => pick(row.node)}
                 onEye={() => hidden.set(row.key, !(hidden.get(row.key) ?? row.node.visible === false))}
-                onMenu={(at) => menuAt(at, row.node)}
+                onMenu={(at, onClose) => menuAt(at, row.node, onClose)}
               />
             )}
           </VirtualList>
@@ -273,7 +273,7 @@ function TreeRow(props: {
   onToggle(): void;
   onPick(): void;
   onEye(): void;
-  onMenu(at: { x: number; y: number }): void;
+  onMenu(at: { x: number; y: number }, onClose?: () => void): void;
 }) {
   const { node, depth } = props.row;
   const category = node.kind === 'category';
@@ -336,8 +336,10 @@ function RowActions(props: {
   node: MockNode;
   off: ReadonlyState<boolean>;
   onEye(): void;
-  onMenu(at: { x: number; y: number }): void;
+  onMenu(at: { x: number; y: number }, onClose?: () => void): void;
 }): Child {
+  // its ⋯ stays shown while its menu is open (styling.md §4)
+  const menuOpen = observableState(false);
   return (
     <span class={classes.actions}>
       {props.node.visible !== undefined ? (
@@ -360,13 +362,16 @@ function RowActions(props: {
       <button
         type="button"
         class={classes.action}
+        classList={{ [classes.keep]: menuOpen.asReadonly }}
         data-tip="More"
         aria-label="More"
         aria-haspopup="menu"
+        aria-expanded={derive(menuOpen.asReadonly, String)}
         onClick={(e) => {
           e.stopPropagation();
           const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-          props.onMenu({ x: r.left, y: r.bottom });
+          menuOpen.set(true);
+          props.onMenu({ x: r.left, y: r.bottom }, () => menuOpen.set(false));
         }}
       >
         <Icon name="ellipsis" size={14} />
