@@ -79,7 +79,8 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       });
     }
   });
-  // a distance by two Ctrl+clicks (_spec/ui.md §7); Esc or a plain click lets its first point go
+  // a distance by two ⌘/Ctrl+clicks in selection mode (_spec/ui.md §7); Esc, a plain click or leaving the mode lets
+  // its first point go
   const picker = distancePicker(ctx.api, area, {
     // a person's run is posted by the viewer already (its failures, its "already"): not twice
     post: (text) => {

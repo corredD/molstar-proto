@@ -96,18 +96,27 @@ on screen. Added when needed.
 
 ## 7. Measurements
 
-A distance between two points: atoms, residues, chains, instances (at the selection granularity, as the row a pick
-reveals; a bond: its atoms) and particles (one, or all of a multi-particle pick such as a fiber, from their middle)
-(Ludovic, 2026-10-24).
+A distance between two points: atoms, residues, chains, instances and particles (one, or all of a multi-particle pick
+such as a fiber, from their middle) (Ludovic, 2026-10-24).
 
-- **Ctrl+click** (or ⌘+click) a first point: it is marked in 3D (as selected) and said on the status line; its row is
-  picked. Ctrl+click a second: the distance is made (`stage.distance`, one step) and its row picked. Esc on the canvas,
-  or a plain click, lets the first point go. Ctrl+click on nothing, a label, a distance or a volume says what can be
-  measured and keeps the first point. When the first point's object is removed, the next Ctrl+click is a new first point
-  (said). The same two points again, either way round: no second distance; the first one's row is picked and the status
-  line says so; a failure says why. The first point's mark does not touch the selection manager; its unmark puts back a
-  structure selection's marks. Why Ctrl: the Mesoscale Explorer's gesture; the app drops the camera's and the
-  representation's Ctrl+click and ⌘+click focus (`spec.ts`), so nothing else answers it.
+- **In selection mode** (its button under the 3D view) (Ludovic, 2026-10-24): that mode already selects everything in
+  the scene; there, two ⌘+clicks on a Mac, two Ctrl+clicks elsewhere, also make a distance. Outside it, nothing measures
+  and the canvas's Ctrl+click and ⌘+click do what Mol* does (focus; `spec.ts` keeps them). In selection mode, a
+  Ctrl+click still also does what Mol*'s selection mode binds to it (the camera's center and focus); ⌘+click is bound to
+  nothing else there. Leaving selection mode lets a first point go.
+- **A point follows the pick granularity** (Ludovic, 2026-10-24): residues by default, so CA 1 to CA 10 of 1CRN reads
+  10.67 Å between the residues' centers, and 12.60 Å at atom granularity; a chain, an instance at theirs; a bond: its
+  atoms. The point is the row its pick reveals.
+- **⌘ on a Mac, Ctrl elsewhere** (Ludovic, 2026-10-24): Ctrl+click is a right-click on a Mac. The status line names the
+  platform's gesture.
+
+- **⌘/Ctrl+click** a first point: it is marked in 3D (as selected) and said on the status line; its row is picked.
+  ⌘/Ctrl+click a second: the distance is made (`stage.distance`, one step) and its row picked. Esc on the canvas, or a
+  plain click, lets the first point go. ⌘/Ctrl+click on nothing, a label, a distance or a volume says what can be
+  measured and keeps the first point. When the first point's object is removed, the next ⌘/Ctrl+click is a new first
+  point (said). The same two points again, either way round: no second distance; the first one's row is picked and the
+  status line says so; a failure says why. The first point's mark does not touch the selection manager; its unmark puts
+  back a structure selection's marks.
 - Drawn by Mol*'s `DistanceRepresentation` (a dashed line and its value), one cell from the root that depends on both
   objects: removing either removes the distance in the same step. Its text and line are scaled by the larger of the two
   things measured (an atom: Mol*'s own size; a particle: its radius, else its decoration's), so a distance between two

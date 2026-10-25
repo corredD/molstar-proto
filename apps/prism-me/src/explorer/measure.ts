@@ -11,9 +11,9 @@ import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 
-// A distance by two ⌘+clicks on a Mac, Ctrl+clicks elsewhere, in selection mode (_spec/ui.md §7): the first point is kept (marked in 3D, said
-// on the status line), the second measures it (`stage.distance`, one step), listed under the first point's row. Esc or
-// a plain click lets the first point go.
+// A distance by two ⌘+clicks on a Mac, Ctrl+clicks elsewhere, in selection mode (_spec/ui.md §7): the first point is
+// kept (marked in 3D, said on the status line), the second measures it (`stage.distance`, one step), listed under the
+// first point's row. Esc, a plain click or leaving selection mode lets the first point go.
 
 /** A distance's first point, waiting for the second */
 export interface PendingPoint {
