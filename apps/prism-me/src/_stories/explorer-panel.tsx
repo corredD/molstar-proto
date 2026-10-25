@@ -204,7 +204,8 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
                   const off = !(hidden.get(row.key) ?? row.node.visible === false);
                   hidden.set(row.key, off);
                   // a category's eye: every object under it
-                  if (row.node.kind === 'category') for (const o of row.node.children?.('compartment') ?? []) hidden.set(o.key, off);
+                  if (row.node.kind === 'category')
+                    for (const o of row.node.children?.('compartment') ?? []) hidden.set(o.key, off);
                 }}
                 onTool={(at, which, onClose) => {
                   pick(row.node);
@@ -398,23 +399,23 @@ function RowActions(props: {
         </button>
       ) : null}
       {category ? null : (
-      <button
-        type="button"
-        class={classes.action}
-        classList={{ [classes.keep]: menuOpen.asReadonly }}
-        data-tip="More"
-        aria-label="More"
-        aria-haspopup="menu"
-        aria-expanded={derive(menuOpen.asReadonly, String)}
-        onClick={(e) => {
-          e.stopPropagation();
-          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-          menuOpen.set(true);
-          props.onMenu({ x: r.left, y: r.bottom }, () => menuOpen.set(false));
-        }}
-      >
-        <Icon name="ellipsis" size={14} />
-      </button>
+        <button
+          type="button"
+          class={classes.action}
+          classList={{ [classes.keep]: menuOpen.asReadonly }}
+          data-tip="More"
+          aria-label="More"
+          aria-haspopup="menu"
+          aria-expanded={derive(menuOpen.asReadonly, String)}
+          onClick={(e) => {
+            e.stopPropagation();
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            menuOpen.set(true);
+            props.onMenu({ x: r.left, y: r.bottom }, () => menuOpen.set(false));
+          }}
+        >
+          <Icon name="ellipsis" size={14} />
+        </button>
       )}
     </span>
   );

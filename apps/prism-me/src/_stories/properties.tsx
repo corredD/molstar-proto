@@ -118,15 +118,15 @@ function sections(shell: ShellModel) {
             theme: PD.Select('object', CategoryThemes, { label: 'Color theme', description: 'Every object under it' }),
           })()
         ) : (
-        <div class={classes.stack}>
-          {form({
-            visible: PD.Boolean(n.visible !== false),
-            color: PD.Color(Color(n.color ?? 0x8a8f98)),
-            opacity: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }),
-            glow: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }),
-          })()}
-          {n.kind === 'model' || n.kind === 'group' ? <Button size="sm">Generate colors</Button> : null}
-        </div>
+          <div class={classes.stack}>
+            {form({
+              visible: PD.Boolean(n.visible !== false),
+              color: PD.Color(Color(n.color ?? 0x8a8f98)),
+              opacity: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }),
+              glow: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }),
+            })()}
+            {n.kind === 'model' || n.kind === 'group' ? <Button size="sm">Generate colors</Button> : null}
+          </div>
         ),
       ),
     },
@@ -258,22 +258,22 @@ function Position(props: { node: MockNode }) {
       <div class={classes.line}>
         <span class={classes.lineLabel}>Handles</span>
         <span class={classes.actions}>
-        <Button
-          size="sm"
-          icon={<Icon name="move-3d" />}
-          pressed={handles.asReadonly}
-          onClick={() => handles.set(!handles.value)}
-        >
-          {derive(handles.asReadonly, (on) => (on ? 'Hide' : 'Move and turn'))}
-        </Button>
-        <Button
-          size="xs"
-          variant="ghost"
-          title="Its place and turn, by numbers"
-          pressed={numbers.asReadonly}
-          icon={<Icon name="sliders-horizontal" />}
-          onClick={() => numbers.set(!numbers.value)}
-        />
+          <Button
+            size="sm"
+            icon={<Icon name="move-3d" />}
+            pressed={handles.asReadonly}
+            onClick={() => handles.set(!handles.value)}
+          >
+            {derive(handles.asReadonly, (on) => (on ? 'Hide' : 'Move and turn'))}
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            title="Its place and turn, by numbers"
+            pressed={numbers.asReadonly}
+            icon={<Icon name="sliders-horizontal" />}
+            onClick={() => numbers.set(!numbers.value)}
+          />
         </span>
       </div>
       <Show when={numbers.asReadonly}>
@@ -307,14 +307,14 @@ function Clips(props: { node: MockNode }) {
         <div class={classes.line}>
           <span class={classes.lineLabel}>Plane clip</span>
           <span class={classes.actions}>
-          <Button
-            size="sm"
-            icon={<Icon name="move-3d" />}
-            pressed={handles.asReadonly}
-            onClick={() => handles.set(!handles.value)}
-          >
-            {derive(handles.asReadonly, (on) => (on ? 'Hide handles' : 'Handles'))}
-          </Button>
+            <Button
+              size="sm"
+              icon={<Icon name="move-3d" />}
+              pressed={handles.asReadonly}
+              onClick={() => handles.set(!handles.value)}
+            >
+              {derive(handles.asReadonly, (on) => (on ? 'Hide handles' : 'Handles'))}
+            </Button>
           </span>
         </div>
       ) : null}

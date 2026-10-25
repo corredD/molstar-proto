@@ -56,7 +56,9 @@ export const colorable = (node: MockNode) =>
 
 /** Whether a row has the scissors (a clip), as the app's `clippable`: an object all of it, a part only it */
 export const clippable = (node: MockNode) =>
-  ['category', 'structure', 'model', 'list', 'volume', 'entity', 'chain', 'group', 'model entity', 'target'].includes(node.kind);
+  ['category', 'structure', 'model', 'list', 'volume', 'entity', 'chain', 'group', 'model entity', 'target'].includes(
+    node.kind,
+  );
 
 /**
  * The right-click of a node (ui.md §5): Focus, Move and turn, Add label, Add clip; on a clip or a label its own; on a
