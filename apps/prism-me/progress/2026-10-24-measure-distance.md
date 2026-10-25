@@ -109,3 +109,32 @@ marks its first point itself (272b7c360), which also closes the particle-selecti
 selects it and says volumes are not measured yet (9284b34ea; before, it gave the generic message). Rechecked on port
 1344: ⌘+clicks on two 1CRN residues select them ("2 residues", 11 atoms) and make the distance; two SerumAlbumin
 particles show selected.
+
+## Volume points (Ludovic, 2026-10-25)
+
+The TODO brief "Measure a distance, volumes" was merged into this PR. A volume point is the voxel under the click, on an
+isosurface or a slice ("emd_1181.map voxel (i, j, k)"). At Mol*'s coarse granularity (`structure`, which takes a volume
+whole) it is the volume's center ("(center)"). Positions come from Mol*'s Volume spheres, and the size from the grid's
+spacing. The distance depends on the volume. About 60 production lines, against the 150 to 250 estimated: the stage's
+point model took particles and structures already.
+
+Built: 264ccc3e1 (stage-tools), 4244653f0 (the explorer's picker; a modifier click selects the voxel as the others),
+673a9fe30 (docs). Review (reviewer, then skeptic):
+
+- M1, a moved volume (or an MVS-transformed one) was refused, because the representation draws a decorator's new volume:
+  fixed in 591d655fa.
+- S1, the voxel size was the lane's own formula: fixed in f81548e8a (Mol*'s spacing).
+- M2, N1, N5 (docs): fixed in 1fa270fc9.
+- S3, a Mol* bug in `Particle.getBoundingSphere` gives a wrong distance to a one-particle list. It is real and reachable
+  in this PR, but it is a library fix (its own lane from master): recorded in TODO.md and left open.
+- K1, a distance stays where its objects were before a later move. It predates this work and applies to structures and
+  lists too: in TODO.md.
+- S2 (one instance kept) and N2–N6 are not reachable from the UI: noted, S2 in TODO.md.
+
+Checked in the app (port 1344, cellpack-hiv1, 1CRN, emd_1181.map, real ⌘+clicks in selection mode):
+
+- On the isosurface, a voxel then ILE 34 give 72.19 Å, under emd_1181.map. The isosurface was hidden after the voxel's
+  pick, because it covers 1CRN.
+- On a slice, a voxel then GLY 37 give 95.43 Å, also under emd_1181.map, with the voxel and the residues selected.
+- A direct volume rendering gave no volume pick anywhere on a grid of the canvas: not pickable, as Mol*'s pick pass
+  shows.

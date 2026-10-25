@@ -46,7 +46,8 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms.
 - Decorating by a string column (a tomogram name).
 - Keys on cuts (animation).
-- A distance follows its objects' later moves (a moved structure, a particle handle) only when it is re-evaluated.
+- A distance follows its objects' later moves (a moved structure, list or volume, a particle handle) only when it is
+  re-evaluated: the move is a decorator under the object, which its dependency does not see (review K1, 2026-10-25).
 - Distances, left open by the review: a hint that measuring needs selection mode (a ⌘/Ctrl+click outside it says
   nothing); tests for the explorer's click routing (`ui.tsx`: a modifier click outside selection mode reveals its row; a
   Ctrl+click on a label is refused), which need `explorerUI` mounted with canvas clicks and `labelAt`; a volume point
