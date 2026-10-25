@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Preview } from '@storybook/web-components-vite';
@@ -54,6 +55,8 @@ const preview: Preview = {
             'Internals',
             ['Runtime', 'Runtime performance', 'State tree performance', 'React and Preact'],
           ],
+          'prism-me',
+          ['Explorer', ['Layout', 'Opening', 'Tree', 'Properties', 'Right-click', 'Distances']],
           // Seq*: the docs pages first (in reading order), then the cases, then the topics.
           'Seq*',
           [
