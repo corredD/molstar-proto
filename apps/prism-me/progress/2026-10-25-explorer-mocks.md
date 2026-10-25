@@ -116,7 +116,8 @@ CSS.
 - Properties stories open every section to show it; Layout keeps them folded, as the app starts.
 - Only `Look` has a visible toggle besides the eye; ui.md §4 lists "visible" under Look.
 - Touched beyond the brief's list, for the wiring: `storybook/.storybook/preview.ts` (the sidebar order),
-  `apps/prism-me/tsconfig.storybook.json` (the stories' typecheck), `pnpm-lock.yaml` (the Storybook devDependency).
+  `apps/prism-me/tsconfig.storybook.json` (the stories' typecheck), `pnpm-lock.yaml` (the Storybook devDependency),
+  `apps/prism-me/TODO.md` (two open items from the review).
 
 ## Learned
 
