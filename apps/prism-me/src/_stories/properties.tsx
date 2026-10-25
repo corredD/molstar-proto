@@ -96,7 +96,7 @@ const RepresentationTypes: Partial<Record<MockKind, [string, string][]>> = {
 };
 RepresentationTypes.entity = RepresentationTypes.structure;
 RepresentationTypes.model = RepresentationTypes.list;
-RepresentationTypes.isosurface = RepresentationTypes.volume;
+RepresentationTypes.isosurface = [['isosurface', 'Isosurface']];
 
 function sections(shell: ShellModel) {
   shell.registerSections([
@@ -125,7 +125,7 @@ function sections(shell: ShellModel) {
       render: view((n) => {
         const types = RepresentationTypes[n.kind]!;
         return form({
-          type: PD.Select(n.kind === 'isosurface' ? 'isosurface' : types[0][0], types),
+          type: PD.Select(types[0][0], types),
           size: PD.Numeric(1, { min: 0.1, max: 4, step: 0.1 }),
         })();
       }),
