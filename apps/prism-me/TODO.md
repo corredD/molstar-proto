@@ -41,6 +41,10 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - Decorating by a string column (a tomogram name).
 - Keys on cuts (animation).
 - A distance follows its objects' later moves (a moved structure, a particle handle) only when it is re-evaluated.
+- Distances, left open by the review: a hint that measuring needs selection mode (a ⌘/Ctrl+click outside it says
+  nothing); tests for the explorer's click routing (`ui.tsx`: a modifier click outside selection mode reveals its row; a
+  Ctrl+click on a label is refused), which need `explorerUI` mounted with canvas clicks and `labelAt`; a particle
+  selection under a first point loses its mark when the point is let go (particle selections are marks only).
 - Upstream (Prism): Home counts particles as loaded; `particles.representation` on decorated lists; shapes in the scene
   tree.
 - Storybook stories for the Entities tab, the Decorations and Slice rows, the Segmentations tab and the stage menu,
