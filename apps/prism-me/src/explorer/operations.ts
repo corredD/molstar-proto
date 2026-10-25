@@ -140,7 +140,7 @@ export class ExplorerApi extends ApiArea {
   readonly clicks: Observable<CanvasClick> = this.picks.asObservable();
   private onClick?: (click: CanvasClick) => void;
   private readonly escapes = new Subject<void>();
-  /** Esc pressed on the canvas (a distance's first point is let go) */
+  /** Esc pressed on the canvas, or selection mode left (a distance's first point is let go) */
   readonly escaped: Observable<void> = this.escapes.asObservable();
   private onReveal?: (key: string) => void;
   /** The point of a distance on show in 3D (marked as selected), until the second is picked */
@@ -174,6 +174,11 @@ export class ExplorerApi extends ApiArea {
     });
     ctx.plugin.behaviors.interaction.key.subscribe((e) => {
       if (e.code === 'Escape') this.escapes.next();
+    });
+    let selecting = ctx.plugin.selectionMode;
+    ctx.plugin.behaviors.interaction.selectionMode.subscribe((on) => {
+      if (selecting && !on) this.escapes.next();
+      selecting = on;
     });
   }
 
@@ -473,6 +478,11 @@ export class ExplorerApi extends ApiArea {
    */
   measurePoint(loci: Loci): Loci {
     return Loci.normalize(loci, this.ctx.plugin.managers.interactivity.props.granularity, true);
+  }
+
+  /** Whether the canvas is in selection mode (its button under the 3D view): where Ctrl or ⌘ + click measures */
+  get selectionMode(): boolean {
+    return this.ctx.plugin.selectionMode;
   }
 
   /**

@@ -45,7 +45,8 @@ export function distancePicker(
     pending: pending.asReadonly,
     cancel,
     async click(click) {
-      if (!click.measure) {
+      // a distance is measured in selection mode only (Ludovic, 2026-10-24): elsewhere a click is the canvas's own
+      if (!click.measure || !area.selectionMode) {
         cancel();
         return false;
       }

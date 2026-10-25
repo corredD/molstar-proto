@@ -62,7 +62,8 @@ function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: 
 
 const star = 'data_particles\n\nloop_\n_rlnCoordinateX\n_rlnCoordinateY\n_rlnCoordinateZ\n10 0 0\n13 4 0\n';
 
-async function viewer() {
+/** A viewer with 1CRN and a list; in selection mode (where Ctrl or ⌘ + click measures) unless said otherwise */
+async function viewer(selectionMode = true) {
   const base = DefaultPrismViewerSpec();
   const v = await createPrismViewerHeadless({
     spec: { ...base, extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions] },
@@ -70,6 +71,7 @@ async function viewer() {
   viewers.push(v);
   const crn = new File([readFileSync(new URL('../../../../../data/examples/1crn.cif', import.meta.url))], '1crn.cif');
   for (const f of [crn, new File([star], 'p.star')]) expectOk(await v.api.load.files({ files: [f] }));
+  v.plugin.selectionMode = selectionMode;
   return v;
 }
 
@@ -150,6 +152,29 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(await p.click({ loci: { kind: 'empty-loci' }, measure: true })).toBe(true);
     expect(p.pending.value).toBeUndefined();
     expect(posted.at(-1)).toMatch(/Ctrl\+click one/);
+  });
+
+  it('measures only in selection mode: outside it, two Ctrl+clicks are not taken and make nothing', async () => {
+    const v = await viewer(false);
+    const { p } = picker(v);
+    expect(await p.click({ loci: atom(v, 1, 'CA'), measure: true })).toBe(false);
+    expect(await p.click({ loci: particle(v, 1), measure: true })).toBe(false);
+    expect(p.pending.value).toBeUndefined();
+    expect(distances(v)).toHaveLength(0);
+    // in selection mode, the same two clicks make one
+    v.plugin.selectionMode = true;
+    await p.click({ loci: atom(v, 1, 'CA'), measure: true });
+    await p.click({ loci: particle(v, 1), measure: true });
+    expect(distances(v)).toHaveLength(1);
+  });
+
+  it('lets the first point go when selection mode is left', async () => {
+    const v = await viewer();
+    let escaped = 0;
+    const sub = v.api.explorer!.escaped.subscribe(() => escaped++);
+    v.plugin.selectionMode = false;
+    sub.unsubscribe();
+    expect(escaped).toBe(1);
   });
 
   it('keeps the first point through a Ctrl+click on nothing (said), and measures at the next point', async () => {

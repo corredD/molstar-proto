@@ -91,7 +91,8 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   area.escaped.subscribe(() => picker.cancel());
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
   area.setOnClick((click) => {
-    if (click.measure) {
+    // a distance's point: Ctrl or ⌘ + click in selection mode; else the click picks a row as any other
+    if (click.measure && area.selectionMode) {
       // a label under the pointer (drawn, not picked by Mol*): no point of a distance, as nothing is (ui.md §7)
       void picker.click(labelPicked(click.x, click.y) ? { ...click, loci: EmptyLoci } : click);
       return;
