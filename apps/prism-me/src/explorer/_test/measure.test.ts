@@ -185,6 +185,35 @@ describe('a distance by two Ctrl+clicks', () => {
     }
   });
 
+  it('takes ⌘+click on a Mac and Ctrl+click elsewhere from the canvas, and the picker says the same gesture', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const seen: (boolean | undefined)[] = [];
+    const sub = area.clicks.subscribe((c) => seen.push(c.measure));
+    const click = (modifiers: Partial<ModifiersKeys>) =>
+      v.plugin.behaviors.interaction.click.next({
+        current: { loci: atom(v, 1, 'CA') },
+        buttons: ButtonsType.Flag.Primary,
+        button: ButtonsType.Flag.Primary,
+        modifiers: ModifiersKeys.create(modifiers),
+      });
+    for (const mac of [true, false]) {
+      area.mac = mac;
+      seen.length = 0;
+      click({ meta: true });
+      click({ control: true });
+      click({});
+      expect(seen).toEqual(mac ? [true, undefined, undefined] : [undefined, true, undefined]);
+      // the picker follows the area's platform when not told
+      const posted: string[] = [];
+      const p = distancePicker(v.api, area, { post: (t) => posted.push(t) });
+      await p.click({ loci: atom(v, 1, 'CA'), measure: true });
+      expect(posted[0]).toContain(mac ? '⌘+click' : 'Ctrl+click');
+      p.cancel();
+    }
+    sub.unsubscribe();
+  });
+
   it('measures only in selection mode: outside it, two Ctrl+clicks are not taken and make nothing', async () => {
     const v = await viewer(false);
     const { p } = picker(v);

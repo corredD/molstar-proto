@@ -140,8 +140,11 @@ export class ExplorerApi extends ApiArea {
   /** The left-clicks on the canvas, what they picked and where (the tree follows them) */
   readonly clicks: Observable<CanvasClick> = this.picks.asObservable();
   private onClick?: (click: CanvasClick) => void;
-  /** An Apple platform: a distance's points are ⌘+clicks; elsewhere Ctrl+clicks */
-  private readonly mac = isMac();
+  /**
+   * An Apple platform: a distance's points are ⌘+clicks (Ctrl+click is a right-click there); elsewhere Ctrl+clicks.
+   * The one place it is decided (the picker's messages read it); set by tests to check both.
+   */
+  mac = isMac();
   private readonly escapes = new Subject<void>();
   /** Esc pressed on the canvas, or selection mode left (a distance's first point is let go) */
   readonly escaped: Observable<void> = this.escapes.asObservable();
