@@ -21,7 +21,7 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { StageDistance } from '../distance.js';
+import { pointLoci, StageDistance } from '../distance.js';
 import { StageToolsExtension } from '../prism-viewer.js';
 
 // `stage.distance` on a headless viewer: 1CRN (crambin) from the repository's example data, and particle lists made
@@ -310,6 +310,21 @@ describe('stage.distance, volume points', () => {
     expectOk(await s.distance({ a: { loci: voxel(drawn, 0, 0, 0) }, b: { loci: a.loci } } as never));
     expect(s.distancesState().value[0].distance).toBeCloseTo(Vec3.distance(Vec3.create(0, 0, 10), a.at), 3);
     expect(s.distancesState().value[0].node).toBe(`o:${map.cell.transform.ref}`);
+  });
+
+  it("sizes a voxel point by the grid's spacing (Mol*'s), whatever the grid's shape", async () => {
+    const v = await viewer();
+    // a slab: 16×16×2 voxels of 10 Å
+    const data = new Float32Array(16 * 16 * 2).map((_, i) => i % 5);
+    const grid: Grid = {
+      transform: { kind: 'matrix', matrix: Mat4.fromScaling(Mat4(), Vec3.create(10, 10, 10)) },
+      cells: Tensor.create(Tensor.Space([16, 16, 2], [0, 1, 2], Float32Array), Tensor.Data1(data)),
+      stats: { min: 0, max: 4, mean: 2, sigma: 1 },
+    };
+    expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, data)], 'slab.mrc')] }));
+    const map = v.plugin.managers.volume.hierarchy.current.volumes[0];
+    const point = { ref: map.cell.transform.ref, label: '', key: '', volume: true as const, voxels: [0], instance: 0 };
+    expect(pointLoci(v.plugin, point)?.radius).toBeCloseTo(10, 4);
   });
 
   it('goes with its volume, in the same step', async () => {

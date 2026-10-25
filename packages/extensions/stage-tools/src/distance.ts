@@ -6,7 +6,7 @@
 
 import { OrderedSet } from '@molstar/core/data/int';
 import { Sphere3D } from '@molstar/core/math/geometry';
-import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { StateTransformer } from '@molstar/core/state';
 import { Task } from '@molstar/core/task';
 import { Color } from '@molstar/core/util/color';
@@ -88,8 +88,8 @@ export function pointLoci(plugin: PluginContext, p: DistancePoint): { loci: Loci
     const loci: Loci = p.voxels?.length
       ? Volume.Cell.Loci(volume, [{ indices: OrderedSet.ofSortedArray(sorted(p.voxels)) as never, instances }])
       : Volume.Loci(volume, instances);
-    // its size: a voxel's own (the grid's spacing), else the volume's
-    const size = p.voxels?.length ? Grid.getBoundingSphere(volume.grid).radius / Math.cbrt(cells) : undefined;
+    // its size: a voxel's (the grid's spacing, as Mol*'s Volume.Cell sphere takes it), else the volume's
+    const size = p.voxels?.length ? Mat4.getMaxScaleOnAxis(Grid.getGridToCartesianTransform(volume.grid)) : undefined;
     return { loci, radius: size ?? Loci.getBoundingSphere(loci)?.radius ?? 5 };
   }
   const indices = p.particles ?? (p.particle !== undefined ? [p.particle] : undefined);
