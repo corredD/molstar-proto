@@ -6,8 +6,10 @@
 
 import { readFileSync } from 'node:fs';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { OrderedSet } from '@molstar/core/data/int';
-import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { Interval, OrderedSet } from '@molstar/core/data/int';
+import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
+import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
+import { type Grid, Volume } from '@molstar/model/model/volume';
 import { clearFontAtlasCache, setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
 import { Loci } from '@molstar/model/model/loci';
 import { Particle } from '@molstar/model/model/particles/particle-list';
@@ -222,6 +224,92 @@ describe('stage.distance', () => {
     expect(distances(v)).toHaveLength(1);
     const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
     expectOk(await v.api.run('structure.remove', { structure }));
+    expect(distances(v)).toHaveLength(0);
+  });
+});
+
+// Volume points (apps/prism-me/_spec/ui.md §7, Ludovic, 2026-10-25): a voxel picked, or the whole volume at a coarse
+// granularity. A 6×6×6 map of 1 Å voxels from the origin, made in memory: voxel (i, j, k) is at (i, j, k) Å.
+describe('stage.distance, volume points', () => {
+  const N = 6;
+  async function withMap(v: PrismViewer, name = 'map.mrc') {
+    const data = new Float32Array(N * N * N).map((_, i) => i % 5);
+    const grid: Grid = {
+      transform: { kind: 'matrix', matrix: Mat4.identity() },
+      cells: Tensor.create(Tensor.Space([N, N, N], [0, 1, 2], Float32Array), Tensor.Data1(data)),
+      stats: { min: 0, max: 4, mean: 2, sigma: 1 },
+    };
+    expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, data)], name)] }));
+    const volumes = v.plugin.managers.volume.hierarchy.current.volumes;
+    return volumes[volumes.length - 1];
+  }
+  /** The voxel (i, j, k) of a loaded volume, as a pick gives it */
+  const voxel = (volume: Volume, i: number, j: number, k: number) =>
+    Volume.Cell.Loci(volume, [
+      {
+        indices: Interval.ofSingleton(volume.grid.cells.space.dataOffset(i, j, k) as Volume.CellIndex),
+        instances: Interval.ofSingleton(0 as Volume.InstanceIndex),
+      },
+    ]);
+
+  it('measures a voxel to an atom, to a particle, and to a voxel of another volume; one undo each', async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    // a list of two particles: a pick of all of a list's particles meets a Mol* bug (Particle.getBoundingSphere copies
+    // its sphere the wrong way round, zeroing the list's cached boundary)
+    expectOk(await v.api.load.files({ files: [new File([star('10 0 0\n30 0 0\n')], 'p.star')] }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    const map = await withMap(v);
+    const volume = map.cell.obj!.data;
+    // to an atom: 1CRN's CA 1, from the voxel (1, 2, 3)
+    const a = atom(v, 1, 'CA');
+    expectOk(await s.distance({ a: { loci: voxel(volume, 1, 2, 3) }, b: { loci: a.loci } } as never));
+    expect(s.distancesState().value[0].distance).toBeCloseTo(Vec3.distance(Vec3.create(1, 2, 3), a.at), 4);
+    expect(s.distancesState().value[0].a.label).toBe('map.mrc voxel (1, 2, 3)');
+    expect(s.distancesState().value[0].node).toBe(`o:${map.cell.transform.ref}`);
+    // to a particle at (10, 0, 0), from the voxel (2, 0, 0)
+    expectOk(await s.distance({ a: { loci: voxel(volume, 2, 0, 0) }, b: `${list}#0` } as never));
+    expect(s.distancesState().value[1].distance).toBeCloseTo(8, 4);
+    // to a voxel of a second volume: (0, 0, 0) to (3, 4, 0)
+    const other = (await withMap(v, 'other.mrc')).cell.obj!.data;
+    expectOk(await s.distance({ a: { loci: voxel(volume, 0, 0, 0) }, b: { loci: voxel(other, 3, 4, 0) } } as never));
+    expect(s.distancesState().value[2].distance).toBeCloseTo(5, 4);
+    // one step each: the third, then (past the second map's load) the second, then the first
+    expectOk(await v.api.run('history.undo', {}));
+    expect(distances(v)).toHaveLength(2);
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await v.api.run('history.undo', {}));
+    expect(distances(v)).toHaveLength(1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(distances(v)).toHaveLength(0);
+  });
+
+  it("measures from the whole volume's center at a coarse granularity", async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const volume = (await withMap(v)).cell.obj!.data;
+    const whole = Loci.normalize(voxel(volume, 0, 0, 0), 'structure');
+    expect(Volume.isLoci(whole)).toBe(true);
+    const a = atom(v, 1, 'CA');
+    expectOk(await s.distance({ a: { loci: whole }, b: { loci: a.loci } } as never));
+    // the grid's center: its box from 0 to N Å on each axis (Mol*'s grid sphere), so N / 2
+    const c = N / 2;
+    expect(s.distancesState().value[0].distance).toBeCloseTo(Vec3.distance(Vec3.create(c, c, c), a.at), 1);
+    expect(s.distancesState().value[0].a.label).toBe('map.mrc (center)');
+  });
+
+  it('goes with its volume, in the same step', async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const map = await withMap(v);
+    expectOk(
+      await s.distance({
+        a: { loci: voxel(map.cell.obj!.data, 1, 1, 1) },
+        b: { loci: atom(v, 1, 'CA').loci },
+      } as never),
+    );
+    expect(distances(v)).toHaveLength(1);
+    expectOk(await v.api.run('volume.remove', { volume: map.cell.transform.ref }));
     expect(distances(v)).toHaveLength(0);
   });
 });

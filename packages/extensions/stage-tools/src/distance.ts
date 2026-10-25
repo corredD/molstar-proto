@@ -15,7 +15,7 @@ import { DistanceParams, DistanceRepresentation, type DistanceData } from '@mols
 import { Loci } from '@molstar/model/model/loci';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import { type Structure, StructureElement } from '@molstar/model/model/structure';
-import { Grid } from '@molstar/model/model/volume';
+import { Grid, Volume } from '@molstar/model/model/volume';
 import type { PluginContext } from '@molstar/plugin/context';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { drawnObject } from './drawn.js';
@@ -27,7 +27,7 @@ import { drawnObject } from './drawn.js';
 // and removed with either. Its line and text are sized to what it measures (the larger of the two), times the person's
 // text size and line width.
 
-/** One end of a distance: its object (a structure or a particle list, by state ref) and the point on it */
+/** One end of a distance: its object (a structure, a particle list or a volume, by state ref) and the point on it */
 export interface DistancePoint {
   readonly ref: string;
   /** What it is, for people ("ALA 10 CA", "HIV1_CA_P1 #12") */
@@ -40,6 +40,14 @@ export interface DistancePoint {
   readonly particle?: number;
   /** A particle list's particles, when the pick was several (a fiber): measured from their middle */
   readonly particles?: readonly number[];
+  /**
+   * A volume's voxels (its cell indices) and the instance they are in: a voxel picked on an isosurface or a slice; none
+   * (`volume` alone): the whole volume, at a coarse granularity (Ludovic, 2026-10-25)
+   */
+  readonly voxels?: readonly number[];
+  readonly instance?: number;
+  /** A volume point: its voxels, else all of it */
+  readonly volume?: true;
 }
 
 export const StageDistanceParams = {
@@ -72,16 +80,30 @@ export function pointLoci(plugin: PluginContext, p: DistancePoint): { loci: Loci
     if (StructureElement.Loci.isEmpty(loci)) return undefined;
     return { loci, radius: StructureElement.Loci.getBoundingSphere(loci).radius };
   }
+  if (p.volume && SO.Volume.Data.is(obj)) {
+    const volume = obj.data as Volume;
+    const instances = OrderedSet.ofSingleton((p.instance ?? 0) as Volume.InstanceIndex);
+    const cells = volume.grid.cells.data.length;
+    if (p.voxels?.some((i) => i < 0 || i >= cells)) return undefined;
+    const loci: Loci = p.voxels?.length
+      ? Volume.Cell.Loci(volume, [{ indices: OrderedSet.ofSortedArray(sorted(p.voxels)) as never, instances }])
+      : Volume.Loci(volume, instances);
+    // its size: a voxel's own (the grid's spacing), else the volume's
+    const size = p.voxels?.length ? Grid.getBoundingSphere(volume.grid).radius / Math.cbrt(cells) : undefined;
+    return { loci, radius: size ?? Loci.getBoundingSphere(loci)?.radius ?? 5 };
+  }
   const indices = p.particles ?? (p.particle !== undefined ? [p.particle] : undefined);
   if (indices?.length && SO.Particle.List.is(obj)) {
     const list = obj.data as ParticleList;
     if (indices.some((i) => i < 0 || i >= list.count)) return undefined;
     let radius = 0;
     for (const i of indices) radius = Math.max(radius, particleRadius(list, i));
-    return { loci: Particle.Loci(list, OrderedSet.ofSortedArray([...indices].sort((a, b) => a - b))), radius };
+    return { loci: Particle.Loci(list, OrderedSet.ofSortedArray(sorted(indices))), radius };
   }
   return undefined;
 }
+
+const sorted = (indices: readonly number[]) => [...indices].sort((a, b) => a - b);
 
 /** A particle's size: its own radius, else what decorates it (its structure's, volume's, shape's), else a few Å */
 export function particleRadius(list: ParticleList, i: number): number {
@@ -175,5 +197,16 @@ export function pointOf(
     if (OrderedSet.size(loci.indices) === 1) return { ...object, particle: OrderedSet.getAt(loci.indices, 0) };
     return { ...object, particles: OrderedSet.toArray(loci.indices) };
   }
+  // a voxel picked (its first element's cells, in its instance); else any other pick of a volume: all of it
+  if (Volume.Cell.isLoci(loci) && loci.elements.length) {
+    const { indices, instances } = loci.elements[0];
+    if (OrderedSet.size(indices) === 0) return undefined;
+    return { ...object, volume: true, voxels: OrderedSet.toArray(indices), instance: OrderedSet.getAt(instances, 0) };
+  }
+  if (Volume.isLoci(loci) || Volume.Isosurface.isLoci(loci)) {
+    const instance = OrderedSet.size(loci.instances) ? OrderedSet.getAt(loci.instances, 0) : 0;
+    return { ...object, volume: true, instance };
+  }
+  if (Volume.Segment.isLoci(loci)) return { ...object, volume: true };
   return undefined;
 }

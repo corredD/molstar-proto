@@ -963,8 +963,8 @@ async function distancePoint(
   }
   if (!loci || isEmptyLoci(loci)) return ApiResult.fail('invalid', `The ${which} point is missing.`);
   const pick = pickOf(ctx, loci);
-  if (pick.kind !== 'target' || pick.target.kind === 'volume') {
-    return ApiResult.fail('invalid', `The ${which} point is not on a structure or a particle list.`);
+  if (pick.kind !== 'target') {
+    return ApiResult.fail('invalid', `The ${which} point is not on a structure, a particle list or a volume.`);
   }
   const what = pointName(loci);
   const indices = Particle.isLoci(loci) ? loci.indices : undefined;
@@ -973,9 +973,20 @@ async function distancePoint(
       ? OrderedSet.size(indices) > 1
         ? `${pick.particle.name} (${OrderedSet.size(indices)} particles)`
         : `${pick.particle.name} #${OrderedSet.getAt(indices, 0)}`
-      : what;
+      : pick.target.kind === 'volume'
+        ? `${pick.target.label} ${voxelName(loci)}`
+        : what;
   const point = pointOf(loci, { ref: pick.target.ref, label: label || pick.target.label, key });
-  return point ?? ApiResult.fail('invalid', `The ${which} point is not on a structure or a particle list.`);
+  return point ?? ApiResult.fail('invalid', `The ${which} point is not on a structure, a particle list or a volume.`);
+}
+
+/** A volume point's name: "voxel (i, j, k)" (its grid coordinates, the first of several), else "(center)" */
+function voxelName(loci: Loci): string {
+  if (!Volume.Cell.isLoci(loci) || !loci.elements.length || OrderedSet.size(loci.elements[0].indices) === 0) {
+    return '(center)';
+  }
+  const ijk = loci.volume.grid.cells.space.getCoords(OrderedSet.getAt(loci.elements[0].indices, 0), [0, 0, 0]);
+  return `voxel (${ijk.join(', ')})`;
 }
 
 /** A point's short name: "THR 1 CA (A)" for an atom, "LYS 120 (A)" for a residue, else the condensed loci label */
@@ -997,7 +1008,13 @@ function pointName(loci: Loci): string {
 
 /** What a point is (its object and its elements or particle), not its name or row: a distance's identity */
 const pointId = (p: DistancePoint) =>
-  JSON.stringify([p.ref, p.particle ?? null, p.particles ?? null, p.bundle ?? null]);
+  JSON.stringify([
+    p.ref,
+    p.particle ?? null,
+    p.particles ?? null,
+    p.bundle ?? null,
+    p.volume ? [p.voxels ?? null, p.instance ?? 0] : null,
+  ]);
 
 /** A point as views list it: its object, name and row */
 const brief = (p: DistancePoint) => ({ ref: p.ref, label: p.label, key: p.key });
