@@ -156,6 +156,20 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(posted.at(-1)).toMatch(/Ctrl\+click one/);
   });
 
+  it("measures at the pick granularity (Ludovic, 2026-10-24): residues by default, atoms when it is 'element'", async () => {
+    const v = await viewer();
+    const { p } = picker(v);
+    expect(v.plugin.managers.interactivity.props.granularity).toBe('residue');
+    await p.click({ loci: atom(v, 1, 'CA'), measure: true });
+    await p.click({ loci: atom(v, 10, 'CA'), measure: true });
+    expect(distances(v)[0].distance).toBeCloseTo(10.67, 2);
+    v.plugin.managers.interactivity.setProps({ granularity: 'element' });
+    await p.click({ loci: atom(v, 1, 'CA'), measure: true });
+    await p.click({ loci: atom(v, 10, 'CA'), measure: true });
+    expect(distances(v)).toHaveLength(2);
+    expect(distances(v)[1].distance).toBeCloseTo(12.6, 2);
+  });
+
   it('names the gesture by platform on the status line: ⌘+click on a Mac, Ctrl+click elsewhere', async () => {
     const v = await viewer();
     for (const mac of [true, false]) {
