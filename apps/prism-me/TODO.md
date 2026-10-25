@@ -18,6 +18,11 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - Plane slice sized in voxels used as Å (`ea7dc5d3e`).
 - Gizmo: `rotate` axes option, `poseOfFrame`/`frameOfPose` (`ded144e8d`).
 - MRC reader: mode 6, mode 12 (float16), `.rec`/`.st`/`.mrcs`/`.ali` (`33dbca0c5`, `59ef5aa38`).
+- Needed, not built yet: `Particle.getBoundingSphere` (`packages/model/src/model/particles/particle-list.ts`, the
+  whole-list branch) calls `Sphere3D.copy(sphere, boundingSphere)` against `copy(out, a)`. A loci of all of a list's
+  particles given an output sphere (Mol*'s distance representation does) returns that sphere unchanged and writes it
+  into the list's cached boundary: a distance to a one-particle list (or a fiber that is its whole list) reads a wrong
+  value, and the list's bounds break. Found by the distance review (2026-10-25).
 
 ## Backlog
 
@@ -44,7 +49,8 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - A distance follows its objects' later moves (a moved structure, a particle handle) only when it is re-evaluated.
 - Distances, left open by the review: a hint that measuring needs selection mode (a ⌘/Ctrl+click outside it says
   nothing); tests for the explorer's click routing (`ui.tsx`: a modifier click outside selection mode reveals its row; a
-  Ctrl+click on a label is refused), which need `explorerUI` mounted with canvas clicks and `labelAt`.
+  Ctrl+click on a label is refused), which need `explorerUI` mounted with canvas clicks and `labelAt`; a volume point
+  keeps one instance (a volume of several, from MVS, would be measured from its first).
 - Upstream (Prism): Home counts particles as loaded; `particles.representation` on decorated lists; shapes in the scene
   tree.
 - Storybook stories for the Entities tab, the Decorations and Slice rows, the Segmentations tab and the stage menu,
