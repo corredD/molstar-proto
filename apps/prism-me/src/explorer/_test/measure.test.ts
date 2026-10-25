@@ -12,7 +12,10 @@ import { ButtonsType, EmptyKeyInput, ModifiersKeys } from '@molstar/core/util/in
 import { MarkerAction } from '@molstar/core/util/marker-action';
 import { clearFontAtlasCache, setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
 import type { Loci } from '@molstar/model/model/loci';
+import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
+import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import { Particle } from '@molstar/model/model/particles/particle-list';
+import { type Grid, Volume } from '@molstar/model/model/volume';
 import { type Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { Bond, StructureElement, StructureSelection } from '@molstar/model/model/structure';
 import { Script } from '@molstar/model/script/script';
@@ -297,6 +300,26 @@ describe('a distance by two Ctrl+clicks', () => {
     await f.click({ loci: particle(v, 0), measure: true });
     expect(posted.at(-1)).toBe('No can do.');
     expect(revealed.length).toBe(before + 1);
+  });
+
+  it('a volume is no point yet: says why and keeps the first point (volumes: the next brief)', async () => {
+    const v = await viewer();
+    const n = 6;
+    const data = new Float32Array(n * n * n).map((_, i) => i % 5);
+    const grid: Grid = {
+      transform: { kind: 'matrix', matrix: Mat4.identity() },
+      cells: Tensor.create(Tensor.Space([n, n, n], [2, 1, 0], Float32Array), Tensor.Data1(data)),
+      stats: { min: 0, max: 4, mean: 2, sigma: 1 },
+    };
+    expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, data)], 'map.mrc')] }));
+    const volume = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.obj!.data;
+    const { p, posted } = picker(v);
+    await p.click({ loci: atom(v, 1, 'CA'), measure: true });
+    const first = p.pending.value;
+    expect(await p.click({ loci: Volume.Loci(volume), measure: true })).toBe(true);
+    expect(posted.at(-1)).toMatch(/Volumes are not measured yet/);
+    expect(p.pending.value).toBe(first);
+    expect(distances(v)).toHaveLength(0);
   });
 
   it('takes a bond as a point (normalized to its atoms first)', async () => {
