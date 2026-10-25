@@ -61,17 +61,36 @@ follows what is picked in 3D (a click on a particle picks its entity's row and o
 
 The properties of the picked row, in sections that fold. Only what applies to it.
 
-| Section        | For                                                   | What                                                                                                                                       |
-| -------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Look           | every node                                            | visible, color (picker; for a model or group: Generate colors), opacity, glow                                                              |
-| Representation | structures, entities, particle lists, volumes, meshes | the type (cartoon, spacefill…; spheres or the decorating objects; slice or isosurface; surface, wireframe, both) and its few main settings |
-| Decoration     | a particle target or list                             | what decorates it: an object of the scene, a PDB id or URL, spheres; targets by class                                                      |
-| Slice          | a volume                                              | axis, position, contrast                                                                                                                   |
-| Position       | every object (not its parts)                          | position and rotation as numbers, reset                                                                                                    |
-| Clips          | every node                                            | its clips (§5), each: shape, invert, position, rotation, size, remove                                                                      |
-| Labels         | every node                                            | its labels (§5), each: text, size, remove                                                                                                  |
-| Graphics       | a model (cellPACK, PetWorld)                          | quality (ultra… fast), wiggle, tumble                                                                                                      |
-| Group by       | a model with compartments                             | Compartment or Function: how the tree groups its entities; above the sections, not folded; view state (no operation, no step)              |
+| Section           | For                                                                        | What                                                                                                                                          |
+| ----------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Look              | every node                                                                 | visible, color (picker; for a model or group: Generate colors), opacity, glow                                                                 |
+| Representation    | structures, entities, particle lists, volumes, meshes                      | the type (cartoon, spacefill…; spheres or the decorating objects; slice or isosurface; surface, wireframe, both) and its few main settings    |
+| Decoration        | a particle target or list                                                  | what decorates it: an object of the scene, a PDB id or URL, spheres; targets by class                                                         |
+| Slice             | a volume                                                                   | axis, position, contrast                                                                                                                      |
+| Position          | every object (not its parts)                                               | position and rotation as numbers, reset                                                                                                       |
+| Clips             | every node                                                                 | its clips (§5), each: shape, invert, position, rotation, size, remove                                                                         |
+| Labels            | every node                                                                 | its labels (§5), each: text, size, remove                                                                                                     |
+| Graphics & Motion | every object (a structure, a model, a particle list, a volume; not a part) | quality (Ultra, Quality, Balanced, Fast) of that object alone; wiggle and tumble (a toggle at 1 Å, an amplitude) where it moves: not a volume |
+| Group by          | a model with compartments                                                  | Compartment or Function: how the tree groups its entities; above the sections, not folded; view state (no operation, no step)                 |
+
+Graphics & Motion (Ludovic, 2026-10-24: on every object, what does not apply left out): `mesoscale.graphics` and
+`mesoscale.motion` with an `object` (the mesoscale extension's ops, so Prism stays as it is). A mode sets, by kind:
+
+| Mode        | quality (structure, volume) | levels of detail (particles, spacefill) | steps per cell (direct volume) |
+| ----------- | --------------------------- | --------------------------------------- | ------------------------------ |
+| ultra       | highest                     | ultra                                   | 5                              |
+| quality     | high                        | quality                                 | 3                              |
+| balanced    | medium                      | balanced                                | 2                              |
+| performance | low                         | performance                             | 1                              |
+
+One object's mode leaves the canvas alone; without `object` (⌘K, `?graphics-mode=`, the agent) every object changes, in
+one step, and so does the canvas resolution (pixel scale, sharpening), which is the canvas's props, outside the history:
+an undo does not bring it back. Motion writes the `animation` params of that object's representations (per structure,
+where Mol\*'s component options are scene-wide). No mode is lit until one is picked: a structure's and a volume's
+quality starts `auto` and a particle list's levels of detail at their own default, neither a mode's. Limits (TODO.md):
+the scene-wide structure options (component options, quick styles) put theirs back on every structure, and a structure's
+own Representation preset and a representation added later bring their defaults; the object then reads as mixed (every
+representation read: no mode lit, the motion off).
 
 ## 5. Right-click
 
@@ -297,6 +316,12 @@ Snapshots and stories, the sequence view, measurements, export: reachable from �
   group row is keyed apart from a compartment's (`g:<ref>:fn:<name>`). Group rows act by entity ids, so eyes, Look,
   clips and picks need no grouping; Look's Generate colors passes the model's grouping (`mesoscale.colors` `groupBy`).
   `mesoscale.entities` and `mesoscale.style` take `groupBy` for ⌘K and the agent.
+- Graphics & Motion (2026-10-24, Ludovic: quality and motion on every object, not only cellPACK): the model-only
+  Graphics section became Graphics & Motion on a structure, a model, a particle list and a volume (quality only); a part
+  has none (§4). Per object: `mesoscale.graphics` and `mesoscale.motion` take `object`, one step each; the global mode
+  stays for ⌘K, `?graphics-mode=` and the agent, and is now the only way to set the canvas resolution. Control:
+  `ObjectGraphics` (`@molstar/mesoscale-extension/controls`). A volume's quality changes little (Mol\*'s `quality` only
+  turns off double-sided faces at low on a slice or an isosurface; a direct volume's steps per cell show).
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.

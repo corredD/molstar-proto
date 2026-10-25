@@ -31,8 +31,8 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | Color an entity (picker), generate colors (a hue per compartment, its entities around it), theme colors, reset | Done     | `mesoscale.style`, `mesoscale.colors`                                                                                        |
 | Opacity, emissive of entities                                                                                  | Done     | `mesoscale.style` (`transparency`, `emissive`)                                                                               |
 | Filter the entities by name                                                                                    | Done     | the Scene tree's filter                                                                                                      |
-| Graphics modes: ultra, quality, balanced, performance (level of detail, pixel scale, sharpening)               | Done     | `mesoscale.graphics`; `?graphics-mode=`                                                                                      |
-| Wiggle and tumble                                                                                              | Partial  | `mesoscale.motion`: for all particles; the explorer tumbled all but membranes                                                |
+| Graphics modes: ultra, quality, balanced, performance (level of detail, quality, pixel scale, sharpening)      | Done     | `mesoscale.graphics`: every object, or one (`object`; Graphics & Motion); `?graphics-mode=`                                  |
+| Wiggle and tumble, per object (structures, models, particle lists; not volumes)                                | Done     | `mesoscale.motion` (`object`; Graphics & Motion); the explorer tumbled all but membranes (TODO)                              |
 | The explorer's look: multiscale occlusion, shadows, outlines, edges                                            | Done     | the app's canvas defaults (`look.ts`)                                                                                        |
 | Group by function                                                                                              | Done     | a model's Group by (its properties), the tree follows; `mesoscale.entities`, `mesoscale.style`, `mesoscale.colors` `groupBy` |
 | Lightness, pattern, illustrative and cel shading per entity                                                    | Deferred | need particle layers beyond color, transparency, emissive                                                                    |
@@ -85,7 +85,7 @@ Start: `node scripts/esbuild/app.mjs apps/prism-me --dev --port 1343`, open
 
 1. The panel's Open › Mesoscale examples… › CellPack HIV (or `?example=cellpack-hiv1`). In the Scene tree, pick the
    model: Look › Generate colors; Group by: Function, then Compartment; fold and unfold its groups; hide `membrane`;
-   color one entity; Graphics: Fast, then Quality; Wiggle, Tumble. The model's Look: Import colors…,
+   color one entity; Graphics & Motion: Fast, then Quality; Wiggle, Tumble. The model's Look: Import colors…,
    `data/examples/mesoscale/cellpack-hiv1-colors.json` (one name not found is said, and the entities the file names
    twice, in two compartments: one entity per name, the last color kept; a key matches by full name, else by the entity
    name, the last dotted part: the compartment path is not checked); Undo once brings the colors back.
@@ -100,3 +100,5 @@ Start: `node scripts/esbuild/app.mjs apps/prism-me --dev --port 1343`, open
 6. Undo (⌘Z) after each step: one step each (tried on CellPack MG, 2.1 million particles: about 0.3 s). ⌘K: type "cut",
    "decorate", "entities".
 7. `?example=petworld-hiv&graphics-mode=balanced` opens it directly.
+8. Load 1CRN, PetWorld HIV and a volume: 1CRN's Graphics & Motion: Wiggle (1CRN alone moves); the model's: Fast (1CRN
+   unchanged); the volume's: quality only, no wiggle or tumble.
