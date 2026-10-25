@@ -10,9 +10,6 @@ the app, in his words; the lane turns it into spec and tests.
 
 <!-- - **Title**: what I want to see. Check: what I do in the app and what I expect. -->
 
-- **Measure a distance, volumes** (after the first): the same between a volume and a volume pixel (voxel) and the
-  targets above. Check: Ctrl+click a volume's voxel and an atom; the distance appears under the first pick.
-
 ## Library fixes ready for upstream
 
 Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only when Ludovic says so.

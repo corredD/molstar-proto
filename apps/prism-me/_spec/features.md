@@ -63,13 +63,13 @@ agent run (one undo step each); the command menu (⌘K) has each.
 
 ## Stage tools (Stories Untold)
 
-| Feature                                                                                                              | Status   | Operation / where                                                    |
-| -------------------------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------- |
-| Clip an object (plane, sphere, box, cylinder, cone): Prism's cuts, moved, turned and sized by its handles            | Done     | `clipping.*` (Prism); the tree's scissors; Clips in the properties   |
-| Right-click menu on what was picked: focus, hide or color the entity, decorate                                       | Done     | the canvas (prism-me frees the right button from the camera's focus) |
-| Keys on cuts (animation)                                                                                             | Deferred |                                                                      |
-| Measure a distance between atoms, residues, chains, instances, particles: in selection mode, ⌘/Ctrl+click two points | Done     | `stage.distance`, `stage.editDistance`; a row under the first point  |
-| Commands for the agent and ⌘K                                                                                        | Done     | the three areas' commands and skills                                 |
+| Feature                                                                                                                             | Status   | Operation / where                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------- |
+| Clip an object (plane, sphere, box, cylinder, cone): Prism's cuts, moved, turned and sized by its handles                           | Done     | `clipping.*` (Prism); the tree's scissors; Clips in the properties   |
+| Right-click menu on what was picked: focus, hide or color the entity, decorate                                                      | Done     | the canvas (prism-me frees the right button from the camera's focus) |
+| Keys on cuts (animation)                                                                                                            | Deferred |                                                                      |
+| Measure a distance between atoms, residues, chains, instances, particles, volume voxels: in selection mode, ⌘/Ctrl+click two points | Done     | `stage.distance`, `stage.editDistance`; a row under the first point  |
+| Commands for the agent and ⌘K                                                                                                       | Done     | the three areas' commands and skills                                 |
 
 ## Known issues found on the way (Prism, upstream)
 
