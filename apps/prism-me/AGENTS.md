@@ -21,6 +21,19 @@ The Mesoscale Explorer on Prism. The repository's rules ([../../AGENTS.md](../..
   `src/_test/hidden-parts.test.ts` checks only this much: no tab of the app's extensions is visible but the Scene, and
   their hidden ids are real parts (it fails on a lazy extension, whose parts it cannot read). It cannot see UI added
   inside a tab already hidden: that is the review's.
+- **No accidental quadratic, few allocations** (David, 2026-10-24; Prism's "Bulk operations are one change" and "Snappy
+  is a requirement", [styling.md §5](../../packages/prism/ui/_spec/styling.md)): over entities, particles, targets or
+  cells, index once (a Map, a Set) and never `find`, `includes`, `indexOf` or a rebuild per item; one commit per
+  operation; nothing allocated per pointer event or per frame (reuse vectors and matrices). A bulk path in the app or an
+  extension lands with its scaling guard (`*.scaling.ts`, n and 4n, with a quadratic control, as
+  `mesoscale/src/_test/import-colors.scaling.ts`); the package gets a `test:scaling` script if it has none. Known debt:
+  the watched states rebuild the whole scene list and compare it as JSON on every state change.
+- **UI from Prism's foundations** (David, 2026-10-24): the explorer's views use Prism's tokens, components and rules as
+  Storybook's Overview/Foundations shows them ([styling.md §4](../../packages/prism/ui/_spec/styling.md)): flat and
+  quiet, the accent only for actions and the picked item, a row's actions on hover, cut-off text fading, the shared
+  controls (`ParamsForm`, `Select`, `ColorPicker`, `ActionFooter`) rather than our own. A gesture previews outside the
+  state and commits once on release (one undo step). A view is checked in light and dark, wide and narrow, in Storybook.
+  A principle of our own goes in [_spec/ui.md](_spec/ui.md) and here, with its story.
 
 ## How we work (Ludovic, 2026-10-24)
 
