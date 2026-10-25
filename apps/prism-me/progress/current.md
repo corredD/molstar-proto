@@ -7,9 +7,7 @@ is not built is [../TODO.md](../TODO.md).
 ## In flight
 
 - **Measure a distance, structures and particles** (`me/measure-distance`, `~/prism-me-lanes/measure-distance`, port
-  1344): Ctrl+click two points, a distance row under the first pick.
-- **Graphics quality and motion on every object** (`me/quality-motion`, `~/prism-me-lanes/quality-motion`, port 1345):
-  quality, wiggle, tumble in each object's properties.
+  1344): ⌘/Ctrl+click two points in selection mode, a distance row under the first pick. PR #5, waiting on Ludovic.
 
 ## Waiting on Ludovic
 
