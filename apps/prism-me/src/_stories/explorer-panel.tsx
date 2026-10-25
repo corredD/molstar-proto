@@ -82,14 +82,27 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
   );
   const rows = derive([open.asReadonly, filter.asReadonly, groupings.key('o:hiv')], (o, f, g) => {
     const text = f.trim().toLowerCase();
-    const flat = flattenTree(
-      roots,
-      (n) => n.children?.(n.key === 'o:hiv' || n.key.startsWith('g:hiv') ? (g ?? 'compartment') : 'compartment'),
-      (n) => o.has(n.key) || (!!text && n.kind === 'category'),
-    ).map(({ node, depth }) => ({ key: node.key, node, depth }));
-    return keep(
-      text ? flat.filter((r) => r.node.kind === 'category' || r.node.label.toLowerCase().includes(text)) : flat,
-    );
+    const kids = (n: MockNode) =>
+      n.children?.(n.key === 'o:hiv' || n.key.startsWith('g:hiv') ? (g ?? 'compartment') : 'compartment');
+    // a search looks into every row (opened or not) and keeps the hits with the rows they are in, as Prism's tree does
+    const flat = flattenTree(roots, kids, (n) => !!text || o.has(n.key)).map(({ node, depth }) => ({
+      key: node.key,
+      node,
+      depth,
+    }));
+    if (!text) return keep(flat);
+    const kept = new Uint8Array(flat.length);
+    const above: number[] = [];
+    for (let i = 0; i < flat.length; i++) {
+      above.length = flat[i].depth;
+      if (flat[i].node.label.toLowerCase().includes(text)) {
+        kept[i] = 1;
+        // its rows above, deepest first, up to one already kept (its own above are too)
+        for (let j = above.length - 1; j >= 0 && !kept[above[j]]; j--) kept[above[j]] = 1;
+      }
+      above.push(i);
+    }
+    return keep(flat.filter((_, i) => kept[i]));
   });
   let list: VirtualListHandle | undefined;
   const nav = new TreeNavigation<Row>({
