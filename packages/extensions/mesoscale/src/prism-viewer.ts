@@ -30,9 +30,11 @@ export const MesoscaleSkill: ViewerSkill = {
     'function. get_mesoscale_entities lists them (groupBy: compartment or function; absent: by compartment when the',
     'model has compartments); style_mesoscale_entities shows, hides, colors, fades or lights entities picked by name or',
     'by group (groupBy: the grouping the group is read in; reset brings them back); color_mesoscale_entities generates colors (a hue',
-    'per group), one uniform color, or goes back to the color theme; set_mesoscale_graphics trades detail for speed;',
+    'per group), one uniform color, or goes back to the color theme; set_mesoscale_graphics trades detail for speed',
+    '(object: one structure, model or volume alone; absent: every object and the canvas resolution);',
     "Their cuts are the clipping skill's (clipping.add with particles: a group's, an entity's or a target's).",
-    'move_mesoscale_particles wiggles the atoms and tumbles the particles of one model (particles; empty: every one; 0 stops); open_mesoscale_example opens one of',
+    'move_mesoscale_particles wiggles the atoms and tumbles the particles of one model (particles; empty: every one; 0 stops)',
+    'or of one structure (object; a volume does not move); open_mesoscale_example opens one of',
     "the Mesoscale Explorer's examples by id (petworld-hiv, cellpack-hiv1, …).",
   ].join('\n'),
   tools: [
@@ -60,7 +62,7 @@ export const MesoscaleSkill: ViewerSkill = {
     {
       id: 'move_mesoscale_particles',
       operation: 'mesoscale.motion',
-      description: 'Wiggles the atoms and tumbles the particles of a mesoscale model.',
+      description: 'Wiggles the atoms and tumbles the particles of a mesoscale model, or of one structure (object).',
     },
     {
       id: 'open_mesoscale_example',
@@ -70,7 +72,8 @@ export const MesoscaleSkill: ViewerSkill = {
     {
       id: 'set_mesoscale_graphics',
       operation: 'mesoscale.graphics',
-      description: 'Sets the graphics mode: ultra, quality, balanced or performance.',
+      description:
+        'Sets the graphics mode (ultra, quality, balanced or performance) of one object (a structure, a model, a volume) or of every object.',
     },
   ],
 };

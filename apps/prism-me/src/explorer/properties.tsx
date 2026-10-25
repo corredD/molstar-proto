@@ -12,7 +12,7 @@ import type { ObjectPose } from '@molstar/stage-tools-extension/move';
 import type { StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, ObliqueSlice, Slice } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
-import { GraphicsMode, ImportColors, Motion } from '@molstar/mesoscale-extension/controls';
+import { ImportColors, ObjectGraphics } from '@molstar/mesoscale-extension/controls';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
@@ -46,9 +46,9 @@ import type { Parts } from './rows.js';
 
 // The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name, then sections that fold, only
 // those that apply: Look (color, opacity, glow; what the node shows now), Representation (a structure's preset),
-// Decoration (a particle list's targets), Slice (a volume), the mesh's look, Graphics (a model's mode and motion). A
-// model with compartments also has its Group by switch, above them (the tree's grouping of its rows: view state).
-// They act through the API as the person; a slider once released (one step).
+// Decoration (a particle list's targets), Slice (a volume), the mesh's look, Graphics & Motion (an object's quality,
+// wiggle and tumble). A model with compartments also has its Group by switch, above them (the tree's grouping of its
+// rows: view state). They act through the API as the person; a slider once released (one step).
 
 /** The row picked: its key in the tree, what it is, what it stands for */
 export interface Picked {
@@ -105,6 +105,7 @@ function NodeProperties(props: {
         <GroupBy model={node.ref} parts={props.parts} groupings={props.groupings} />
       ) : null}
       {node ? sectionsOf(api, area, picked, node, props.parts) : null}
+      {node ? graphicsSection(api, picked.kind, node) : null}
       {node && movable(picked.kind) ? (
         <Section title="Position">{() => <Position api={api} area={area} kind={picked.kind} node={node} />}</Section>
       ) : null}
@@ -137,19 +138,6 @@ function sectionsOf(
       out.push(
         <Section title="Representation">
           {() => <Representations api={api} area={area} owner={node.ref} operation="particles.update" />}
-        </Section>,
-      );
-    }
-    if (kind === 'mesoscale model' && api.mesoscale) {
-      const mesoscale = api.mesoscale;
-      out.push(
-        <Section title="Graphics">
-          {() => (
-            <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
-              <GraphicsMode area={mesoscale} />
-              <Motion area={mesoscale} particles={node.ref} />
-            </div>
-          )}
         </Section>,
       );
     }
@@ -270,6 +258,28 @@ function sectionsOf(
       return [<Section title="Distance">{() => <DistanceProps api={api} area={area} node={node} />}</Section>];
   }
   return [];
+}
+
+// --- graphics and motion (_spec/ui.md §4, Graphics & Motion) --------------------------------------------------------
+
+/** The objects with graphics, by their row's kind, and whether they move (wiggle, tumble): a volume does not */
+const GraphicsKinds: ReadonlyMap<string, boolean> = new Map([
+  ['structure', true],
+  ['mesoscale model', true],
+  ['particle list', true],
+  ['volume', false],
+]);
+
+/** An object's Graphics & Motion: its quality, and its wiggle and tumble where they apply; none for a part */
+function graphicsSection(api: ViewerApi, kind: string, node: NodeRef): JSX.Element | null {
+  const motion = GraphicsKinds.get(kind);
+  const mesoscale = api.mesoscale;
+  if (motion === undefined || !mesoscale) return null;
+  return (
+    <Section title="Graphics & Motion">
+      {() => <ObjectGraphics area={mesoscale} object={node.ref} motion={motion} />}
+    </Section>
+  );
 }
 
 /**
