@@ -24,6 +24,18 @@ const on = (picked: string, menu: 'row' | 'clip' = 'row'): StoryObj => ({
 
 /** An object: Focus, Move, Rotate, Add label, Add clip…. */
 export const WholeObject = on('o:1crn');
+/** A structure's entity, as a part: Move and Rotate greyed. */
+export const StructureEntity = on('e:1crn:1');
+/** A cellPACK model, an object. */
+export const Model = on('o:hiv');
+/** A particle list, an object. */
+export const ParticleList = on('o:star');
+/** A volume, an object. */
+export const Volume = on('o:tomo');
+/** A volume's slice: drawn in its volume's frame (no place of its own, ui.md Status 2026-10-24); as a part here. */
+export const VolumeSlice = on('r:tomo:z');
+/** A mesh, an object. */
+export const Mesh = on('o:mesh');
 /** A model's group: Move and Rotate greyed (ui.md §5 [to decide]: the whole object, or only the part). */
 export const Group = on('g:hiv:capsid');
 /** A model's entity, as a group. */
