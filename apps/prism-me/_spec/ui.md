@@ -100,10 +100,13 @@ A distance between two points: atoms, residues, chains, instances and particles 
 such as a fiber, from their middle) (Ludovic, 2026-10-24).
 
 - **In selection mode** (its button under the 3D view) (Ludovic, 2026-10-24): that mode already selects everything in
-  the scene; there, two ⌘+clicks on a Mac, two Ctrl+clicks elsewhere, also make a distance. Outside it, nothing measures
-  and the canvas's Ctrl+click and ⌘+click do what Mol* does (focus; `spec.ts` keeps them). In selection mode, a
-  Ctrl+click still also does what Mol*'s selection mode binds to it (the camera's center and focus); ⌘+click is bound to
-  nothing else there. Leaving selection mode lets a first point go.
+  the scene; there, two ⌘+clicks on a Mac, two Ctrl+clicks elsewhere, also make a distance. A modifier click does not
+  toggle the selection (Mol*'s selection-mode bindings take a plain click). Outside it, nothing measures and the
+  canvas's Ctrl+click and ⌘+click do what Mol* does (focus; `spec.ts` keeps them), with no hint about measuring. In
+  selection mode, Mol*'s camera bindings still answer a Ctrl+click (off a Mac): each point clicked recenters the camera
+  on it (`clickCenterFocusSelectMode`), and a Ctrl+click on nothing resets the camera
+  (`clickResetCameraOnEmptySelectMode`) while the first point is kept. ⌘+click (on a Mac) is bound to nothing else
+  there: the camera stays. Leaving selection mode lets a first point go.
 - **A point follows the pick granularity** (Ludovic, 2026-10-24): residues by default, so CA 1 to CA 10 of 1CRN reads
   10.67 Å between the residues' centers, and 12.60 Å at atom granularity; a chain, an instance at theirs; a bond: its
   atoms. The point is the row its pick reveals.
