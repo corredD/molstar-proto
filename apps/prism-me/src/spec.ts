@@ -7,6 +7,7 @@
 import { Binding } from '@molstar/core/util/binding';
 import { ButtonsType, ModifiersKeys } from '@molstar/core/util/input/input-observer';
 import { FocusLoci as CameraFocusLoci } from '@molstar/plugin/behavior/dynamic/camera';
+import { DefaultSelectLociBindings, SelectLoci } from '@molstar/plugin/behavior/dynamic/representation';
 import { PluginConfig } from '@molstar/plugin/config';
 import { PluginSpec } from '@molstar/plugin/spec';
 import { PLUGIN_VERSION } from '@molstar/plugin/version';
@@ -58,7 +59,9 @@ export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
     },
     agent: { ...(base.agent || {}), assistant: assistant() },
     finalize: (spec) =>
-      withTomogramSlices(withMesoscaleLook(withoutRightClickFocus(base.finalize ? base.finalize(spec) : spec))),
+      withTomogramSlices(
+        withMesoscaleLook(withModifierSelect(withoutRightClickFocus(base.finalize ? base.finalize(spec) : spec))),
+      ),
   };
 }
 
@@ -123,5 +126,30 @@ function withoutRightClickFocus(spec: PluginSpec): PluginSpec {
         ? PluginSpec.Behavior(CameraFocusLoci, { ...b.defaultParams, bindings: LeftClickFocusBindings })
         : b,
     ),
+  };
+}
+
+/**
+ * Selection mode's click toggle also on ⌘+click and Ctrl+click (Ludovic, 2026-10-25): those clicks pick a distance's
+ * points there (_spec/ui.md §7), and select as a plain click does; the distance is added, the selection not replaced.
+ */
+function withModifierSelect(spec: PluginSpec): PluginSpec {
+  return {
+    ...spec,
+    behaviors: spec.behaviors.map((b) => {
+      if (b.transformer !== SelectLoci) return b;
+      const params = (b.defaultParams ?? {}) as { bindings?: typeof DefaultSelectLociBindings };
+      const bindings = params.bindings ?? DefaultSelectLociBindings;
+      const clickToggle = Binding(
+        [
+          ...bindings.clickToggle.triggers,
+          Binding.Trigger(B.Flag.Primary, M.create({ control: true })),
+          Binding.Trigger(B.Flag.Primary, M.create({ meta: true })),
+        ],
+        bindings.clickToggle.action,
+        bindings.clickToggle.description,
+      );
+      return PluginSpec.Behavior(SelectLoci, { ...params, bindings: { ...bindings, clickToggle } });
+    }),
   };
 }

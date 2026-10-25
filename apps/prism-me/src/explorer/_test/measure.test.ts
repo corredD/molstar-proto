@@ -25,7 +25,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { isStageDistanceData } from '@molstar/stage-tools-extension/distance';
 import type { DistanceInfo } from '@molstar/stage-tools-extension/operations';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { createMesoscaleExplorerSpec } from '../../spec.js';
 import { distancePicker } from '../measure.js';
@@ -391,8 +391,62 @@ function defaultsOf(t: PluginSpec['behaviors'][number]['transformer']) {
   }
 }
 
+describe('in selection mode, a modifier click selects as a plain click does (Ludovic, 2026-10-25)', () => {
+  it('selects a structure part and toggles a particle, and two of them also make the distance', async () => {
+    // the app's own spec (its bindings), headless
+    const spec = createMesoscaleExplorerSpec('');
+    const v = await createPrismViewerHeadless({ spec: { ...spec, persist: undefined, agent: undefined } as never });
+    viewers.push(v);
+    const crn = new File([readFileSync(new URL('../../../../../data/examples/1crn.cif', import.meta.url))], '1crn.cif');
+    for (const f of [crn, new File([star], 'p.star')]) expectOk(await v.api.load.files({ files: [f] }));
+    // no canvas headless: a stand-in that records the marks (Mol*'s selection clicks need one)
+    const marks: [string, number][] = [];
+    const mark = (r: { loci: Loci }, action: number) => {
+      marks.push([r.loci.kind, action]);
+      return true;
+    };
+    // (and takes what is added to it); the camera's Ctrl+click focus off a Mac (selection mode's) is not this test's
+    Object.defineProperty(v.plugin, 'canvas3d', { value: { mark, add() {}, remove() {} }, configurable: true });
+    vi.spyOn(v.plugin.managers.camera, 'focusLoci').mockImplementation(() => {});
+    v.plugin.selectionMode = true;
+    const area = v.api.explorer!;
+    const { p } = picker(v);
+    const runs: Promise<boolean>[] = [];
+    const sub = area.clicks.subscribe((c) => runs.push(p.click(c)));
+    try {
+      for (const mac of [true, false]) {
+        area.mac = mac;
+        const modifiers = ModifiersKeys.create(mac ? { meta: true } : { control: true });
+        const click = (loci: Loci) =>
+          v.plugin.behaviors.interaction.click.next({
+            current: { loci },
+            buttons: ButtonsType.Flag.Primary,
+            button: ButtonsType.Flag.Primary,
+            modifiers,
+          });
+        v.plugin.managers.interactivity.lociSelects.deselectAll();
+        marks.length = 0;
+        const before = distances(v).length;
+        click(atom(v, mac ? 1 : 2, 'CA'));
+        const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data;
+        expect(
+          StructureElement.Loci.size(v.plugin.managers.structure.selection.getLoci(structure) as never),
+        ).toBeGreaterThan(0);
+        click(particle(v, mac ? 1 : 0));
+        expect(marks.some(([kind, action]) => kind === 'particle-loci' && action === MarkerAction.Toggle)).toBe(true);
+        await Promise.all(runs);
+        expect(distances(v).length).toBe(before + 1);
+      }
+    } finally {
+      sub.unsubscribe();
+      // the stand-in goes before the viewer is disposed (it would dispose it)
+      Object.defineProperty(v.plugin, 'canvas3d', { value: undefined, configurable: true });
+    }
+  });
+});
+
 describe("the app's bindings", () => {
-  it("keep the canvas's Ctrl+click and ⌘+click focus as Mol* has them (a distance is measured in selection mode)", () => {
+  it("keep the canvas's Ctrl+click and ⌘+click focus as Mol* has them, and select with them in selection mode", () => {
     const spec = createMesoscaleExplorerSpec('');
     const plugin = spec.finalize ? spec.finalize(spec.plugin as PluginSpec) : (spec.plugin as PluginSpec);
     // both focus behaviors are there (else the test checks nothing of them), with bindings
@@ -421,6 +475,9 @@ describe("the app's bindings", () => {
         'ms-plugin.camera-focus-loci.clickResetCameraOnEmptySelectMode',
         'ms-plugin.representation-focus-loci.clickFocusAdd',
         'ms-plugin.representation-focus-loci.clickFocusAdd',
+        // selection mode's toggle: a modifier click selects as a plain one (Ludovic, 2026-10-25)
+        'ms-plugin.representation-select-loci.clickToggle',
+        'ms-plugin.representation-select-loci.clickToggle',
       ].sort(),
     );
   });
