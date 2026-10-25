@@ -55,7 +55,7 @@ export const StageDistanceParams = {
   b: PD.Value<DistancePoint>({ ref: '', label: '', key: '' }, { isHidden: true }),
   /** The explorer's row it is listed under (its key): its first pick's */
   node: PD.Text('', { isHidden: true }),
-  textSize: PD.Numeric(1, { min: 0.1, max: 10, step: 0.1 }, { description: "Its text's size, times its own" }),
+  textSize: PD.Numeric(1, { min: 0.1, max: 100, step: 0.1 }, { description: "Its text's size, times its own" }),
   lineWidth: PD.Numeric(1, { min: 0.1, max: 10, step: 0.1 }, { description: "Its line's width, times its own" }),
   opacity: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }),
 };

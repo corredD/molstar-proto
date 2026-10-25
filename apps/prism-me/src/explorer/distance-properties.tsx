@@ -63,7 +63,7 @@ export function DistanceProps(props: { api: ViewerApi; area: ExplorerApi; node: 
         label="Text size"
         value={mapState(distance, (d) => d?.textSize ?? 1)}
         min={0.1}
-        max={10}
+        max={100}
         scale="log"
         {...Times}
         onCommit={(textSize) => edit({ textSize })}
