@@ -6,6 +6,7 @@ names this port "the test of the shell's modularity": the app adds three extensi
 extensions (`FullPrismViewerSpec`), and changes none of Prism's code (one of its tests also covers the new MRC file
 names).
 
+- **How it is built, where it is weak, and the decisions on it:** [architecture.md](architecture.md).
 - **What it does, feature by feature, and what is missing:** [features.md](features.md). It is the checklist to test
   from (its last section).
 - **Decisions** (Ludovic, 2026-10-18):

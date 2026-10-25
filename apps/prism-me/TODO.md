@@ -10,6 +10,18 @@ the app, in his words; the lane turns it into spec and tests.
 
 <!-- - **Title**: what I want to see. Check: what I do in the app and what I expect. -->
 
+From the architecture's decisions ([_spec/architecture.md](_spec/architecture.md) §7, Ludovic 2026-10-24); 1 and 2 hold
+whether we refactor or start a v2:
+
+- **One owner for the looks**: a single operation writes a particle representation's Layers cell; mesoscale's styles,
+  cryo-ET's hidden classes and Prism's partial cuts call it. Check: color an entity, hide a class, cut the model partly,
+  then undo three times: each undo takes back exactly one of them, and none drops another.
+- **One handle class in Prism's gizmo library** for the oblique slice, the object move and the particle move: preview
+  outside the state, one commit on release. Check: drag each handle, then undo once: it goes back to before the drag.
+- **The app is only a spec**: `explorer.clipWhole`, the picks, the label sizing and the direct extension calls move into
+  the extensions as operations. Check: the app behaves as before; `apps/prism-me/src` has no `as any` and calls no
+  extension method directly.
+
 ## Library fixes ready for upstream
 
 Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only when Ludovic says so.
