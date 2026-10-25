@@ -19,6 +19,7 @@ export const classes = {
   'count': 'msp-me-explorer-count',
   'empty': 'msp-me-explorer-empty',
   'expander': 'msp-me-explorer-expander',
+  'fill': 'msp-me-explorer-fill',
   'filter': 'msp-me-explorer-filter',
   'frame': 'msp-me-explorer-frame',
   'frames': 'msp-me-explorer-frames',
@@ -36,6 +37,7 @@ export const classes = {
   'panel': 'msp-me-explorer-panel',
   'picked': 'msp-me-explorer-picked',
   'properties': 'msp-me-explorer-properties',
+  'propertiesContent': 'msp-me-explorer-propertiesContent',
   'rail': 'msp-me-explorer-rail',
   'row': 'msp-me-explorer-row',
   'split': 'msp-me-explorer-split',
@@ -228,10 +230,19 @@ defineStyles('me/_stories/explorer.module.css', `@layer msp.components {
 }
 
 .msp-me-explorer-properties {
-  min-height: 0;
-  padding: var(--msp-space-2) var(--msp-inset);
+  flex-direction: column;
   flex: none;
-  overflow: auto;
+  min-height: 0;
+  display: flex;
+}
+
+.msp-me-explorer-fill {
+  flex: 1;
+  min-height: 0;
+}
+
+.msp-me-explorer-propertiesContent {
+  padding: var(--msp-space-2) var(--msp-inset);
 }
 
 .msp-me-explorer-stack {

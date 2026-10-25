@@ -19,6 +19,7 @@ import {
   observableState,
   openContextMenu,
   type ReadonlyState,
+  ScrollArea,
   Show,
   TextInput,
   VirtualList,
@@ -218,19 +219,21 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
         }
       />
       <div class={classes.properties} style={{ height: derive(height, (h) => `${h}px`) }}>
-        <Show
-          when={derive(picked.asReadonly, (p) => !!p)}
-          fallback={() => <p class={classes.empty}>Pick a row to see its properties.</p>}
-        >
-          {() => (
-            <Properties
-              picked={picked.asReadonly}
-              groupBy={groupings.key('o:hiv')}
-              onGroupBy={(g) => groupings.set('o:hiv', g)}
-              folded={props.folded}
-            />
-          )}
-        </Show>
+        <ScrollArea class={classes.fill} contentClass={classes.propertiesContent} edge>
+          <Show
+            when={derive(picked.asReadonly, (p) => !!p)}
+            fallback={() => <p class={classes.empty}>Pick a row to see its properties.</p>}
+          >
+            {() => (
+              <Properties
+                picked={picked.asReadonly}
+                groupBy={groupings.key('o:hiv')}
+                onGroupBy={(g) => groupings.set('o:hiv', g)}
+                folded={props.folded}
+              />
+            )}
+          </Show>
+        </ScrollArea>
       </div>
     </div>
   ) as HTMLElement;

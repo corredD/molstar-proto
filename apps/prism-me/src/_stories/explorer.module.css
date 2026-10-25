@@ -194,8 +194,18 @@
 
 .properties {
   flex: none;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
-  overflow: auto;
+}
+
+/* The properties scroll in Prism's ScrollArea (styling.md §4): overlay bars, fading edges. */
+.fill {
+  flex: 1;
+  min-height: 0;
+}
+
+.propertiesContent {
   padding: var(--msp-space-2) var(--msp-inset);
 }
 
