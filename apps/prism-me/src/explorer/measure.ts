@@ -5,12 +5,13 @@
  */
 
 import { isEmptyLoci, type Loci } from '@molstar/model/model/loci';
+import { isMac } from '@molstar/prism-ui/commands/keys';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 
-// A distance by two Ctrl+clicks on the canvas (_spec/ui.md §7): the first point is kept (marked in 3D, said
+// A distance by two ⌘+clicks on a Mac, Ctrl+clicks elsewhere, in selection mode (_spec/ui.md §7): the first point is kept (marked in 3D, said
 // on the status line), the second measures it (`stage.distance`, one step), listed under the first point's row. Esc or
 // a plain click lets the first point go.
 
@@ -33,8 +34,14 @@ export interface DistancePicker {
 export function distancePicker(
   api: ViewerApi,
   area: ExplorerApi,
-  options: { readonly post?: (text: string) => void; readonly reveal?: (p: PickedNode) => void } = {},
+  options: {
+    readonly post?: (text: string) => void;
+    readonly reveal?: (p: PickedNode) => void;
+    /** An Apple platform: the gesture is ⌘+click (Ctrl+click is a right-click there); default: this one's */
+    readonly mac?: boolean;
+  } = {},
 ): DistancePicker {
+  const gesture = (options.mac ?? isMac()) ? '⌘+click' : 'Ctrl+click';
   const pending = observableState<PendingPoint | undefined>(undefined);
   const cancel = () => {
     if (!pending.value) return;
@@ -54,7 +61,7 @@ export function distancePicker(
       const loci = isEmptyLoci(click.loci) ? click.loci : area.measurePoint(click.loci);
       const picked = isEmptyLoci(loci) ? undefined : area.pickedOf(loci);
       if (!picked || picked.kind === 'distance' || picked.kind === 'label' || picked.kind === 'volume') {
-        options.post?.('A distance is measured between atoms, residues, chains and particles: Ctrl+click one.');
+        options.post?.(`A distance is measured between atoms, residues, chains and particles: ${gesture} one.`);
         return true;
       }
       const first = pending.value;
@@ -66,7 +73,7 @@ export function distancePicker(
         area.markPoint(loci);
         options.reveal?.(picked);
         options.post?.(
-          `${gone ? "The first point's object was removed. " : ''}Distance from ${picked.label}: Ctrl+click the second point (Esc cancels).`,
+          `${gone ? "The first point's object was removed. " : ''}Distance from ${picked.label}: ${gesture} the second point (Esc cancels).`,
         );
         return true;
       }

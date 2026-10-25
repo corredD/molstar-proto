@@ -100,6 +100,8 @@ function picker(v: PrismViewer) {
   const p = distancePicker(v.api, v.api.explorer!, {
     post: (t) => posted.push(t),
     reveal: (n) => revealed.push(n),
+    // the messages as off a Mac, whatever runs the test
+    mac: false,
   });
   return { p, posted, revealed };
 }
@@ -152,6 +154,21 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(await p.click({ loci: { kind: 'empty-loci' }, measure: true })).toBe(true);
     expect(p.pending.value).toBeUndefined();
     expect(posted.at(-1)).toMatch(/Ctrl\+click one/);
+  });
+
+  it('names the gesture by platform on the status line: ⌘+click on a Mac, Ctrl+click elsewhere', async () => {
+    const v = await viewer();
+    for (const mac of [true, false]) {
+      const posted: string[] = [];
+      const p = distancePicker(v.api, v.api.explorer!, { post: (t) => posted.push(t), mac });
+      await p.click({ loci: atom(v, 1, 'CA'), measure: true });
+      await p.click({ loci: { kind: 'empty-loci' }, measure: true });
+      const key = mac ? '⌘' : 'Ctrl';
+      expect(posted[0]).toMatch(new RegExp(`${key}\\+click the second point`));
+      expect(posted[1]).toMatch(new RegExp(`${key}\\+click one`));
+      expect(posted.join(' ')).not.toMatch(mac ? /Ctrl/ : /⌘/);
+      p.cancel();
+    }
   });
 
   it('measures only in selection mode: outside it, two Ctrl+clicks are not taken and make nothing', async () => {

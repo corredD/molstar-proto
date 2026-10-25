@@ -34,6 +34,7 @@ import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import { GizmoAppearance, type GizmoLook } from '@molstar/graphics/util/gizmo/controller';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import { isMac } from '@molstar/prism-ui/commands/keys';
 
 // The `explorer` area (apps/prism-me/_spec/ui.md §3): what the scene holds, as the explorer's tree shows it: four
 // categories (structures, particles, volumes, meshes), each object with its parts; and the 3D side of a row (its
@@ -95,7 +96,7 @@ export interface CanvasClick {
   readonly loci: Loci;
   readonly x?: number;
   readonly y?: number;
-  /** With Ctrl (or ⌘): a point of a distance (_spec/ui.md §7) */
+  /** With ⌘ on a Mac, Ctrl elsewhere: a point of a distance, in selection mode (_spec/ui.md §7) */
   readonly measure?: boolean;
 }
 
@@ -139,6 +140,8 @@ export class ExplorerApi extends ApiArea {
   /** The left-clicks on the canvas, what they picked and where (the tree follows them) */
   readonly clicks: Observable<CanvasClick> = this.picks.asObservable();
   private onClick?: (click: CanvasClick) => void;
+  /** An Apple platform: a distance's points are ⌘+clicks; elsewhere Ctrl+clicks */
+  private readonly mac = isMac();
   private readonly escapes = new Subject<void>();
   /** Esc pressed on the canvas, or selection mode left (a distance's first point is let go) */
   readonly escaped: Observable<void> = this.escapes.asObservable();
@@ -169,7 +172,8 @@ export class ExplorerApi extends ApiArea {
       this.picks.next({
         loci: e.current.loci,
         ...(e.page ? { x: e.page[0] - window.scrollX, y: e.page[1] - window.scrollY } : {}),
-        ...(e.modifiers.control || e.modifiers.meta ? { measure: true } : {}),
+        // ⌘ on a Mac (Ctrl+click is a right-click there), Ctrl elsewhere (Ludovic, 2026-10-24)
+        ...((this.mac ? e.modifiers.meta : e.modifiers.control) ? { measure: true } : {}),
       });
     });
     ctx.plugin.behaviors.interaction.key.subscribe((e) => {
