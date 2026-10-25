@@ -30,6 +30,7 @@ import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import { classes } from './_generated/explorer.module.css.js';
 import type { GroupBy, MockKind, MockNode } from './fake-scene.js';
+import { CategoryThemes } from './fake-menus.js';
 import { ObjectKinds } from './fake-scene.js';
 
 // The picked row's properties (ui.md §4), in sections that fold, only what applies to it: Prism's `SectionList` over a
@@ -65,7 +66,7 @@ const has = (...kinds: MockKind[]) => {
 };
 /** Every node but what was made at one (a clip, a label, a distance: their own section) */
 const node = (ctx: ShellViewContext) => !['clip', 'label', 'distance'].includes((ctx.subject as MockNode).kind);
-/** What a clip or a label can be made at: a node, not a category */
+/** What a label can be made at: a node, not a category (a category's clip cuts every object under it) */
 const part = (ctx: ShellViewContext) => node(ctx) && (ctx.subject as MockNode).kind !== 'category';
 const object = (ctx: ShellViewContext) => ObjectKinds.has((ctx.subject as MockNode).kind);
 
@@ -112,7 +113,10 @@ function sections(shell: ShellModel) {
       render: view((n) =>
         // a category: only its eye, for every object under it
         n.kind === 'category' ? (
-          form({ visible: PD.Boolean(n.visible !== false, { description: 'Every object under it' }) })()
+          form({
+            visible: PD.Boolean(n.visible !== false, { description: 'Every object under it' }),
+            theme: PD.Select('object', CategoryThemes, { label: 'Color theme', description: 'Every object under it' }),
+          })()
         ) : (
         <div class={classes.stack}>
           {form({
@@ -170,7 +174,7 @@ function sections(shell: ShellModel) {
       when: object,
       render: view((n) => <Position node={n} />),
     },
-    { id: 'clips', slot: Slot, title: 'Clips', when: part, render: view((n) => <Clips node={n} />) },
+    { id: 'clips', slot: Slot, title: 'Clips', when: node, render: view((n) => <Clips node={n} />) },
     { id: 'labels', slot: Slot, title: 'Labels', when: part, render: view((n) => <Labels node={n} />) },
     {
       id: 'graphics',
@@ -314,7 +318,15 @@ function Clips(props: { node: MockNode }) {
           </span>
         </div>
       ) : null}
-      {one ? clipForm() : <span class={classes.hint}>No clips. Add one from the right-click.</span>}
+      {one ? (
+        clipForm()
+      ) : (
+        <span class={classes.hint}>
+          {props.node.kind === 'category'
+            ? 'No clips. Add one with the scissors: it cuts every object under it.'
+            : 'No clips. Add one from the right-click.'}
+        </span>
+      )}
       {one ? (
         <Button size="sm" variant="ghost">
           Remove the clip

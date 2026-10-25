@@ -37,20 +37,30 @@ export function colorItemsOf(node: MockNode): ContextMenuItem[] {
   const swatches = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple', 'Gray', 'White'].map((c) =>
     item(`color-${c.toLowerCase()}`, c),
   );
+  if (node.kind === 'category') return CategoryThemes.map(([id, label]) => item(`theme-${id}`, label));
   return node.kind === 'model' || node.kind === 'group' ? [item('generate', 'Generate colors'), ...swatches] : swatches;
 }
 
+/** A category's color themes, for every object under it (Ludovic, 2026-10-25) */
+export const CategoryThemes: [string, string][] = [
+  ['object', 'By object'],
+  ['generate', 'Generate colors'],
+  ['entity', 'By entity'],
+  ['chain', 'By chain'],
+  ['uniform', 'Uniform'],
+];
+
 /** Whether a row has the brush (a color for all of it), as the app's `colorable` */
 export const colorable = (node: MockNode) =>
-  ['structure', 'entity', 'chain', 'model', 'group', 'model entity', 'target', 'mesh'].includes(node.kind);
+  ['category', 'structure', 'entity', 'chain', 'model', 'group', 'model entity', 'target', 'mesh'].includes(node.kind);
 
 /** Whether a row has the scissors (a clip), as the app's `clippable`: an object all of it, a part only it */
 export const clippable = (node: MockNode) =>
-  ['structure', 'model', 'list', 'volume', 'entity', 'chain', 'group', 'model entity', 'target'].includes(node.kind);
+  ['category', 'structure', 'model', 'list', 'volume', 'entity', 'chain', 'group', 'model entity', 'target'].includes(node.kind);
 
 /**
- * The right-click of a node (ui.md §5): Focus, Move and Rotate, Add label, Add clip; on a clip or a label its own; on a
- * distance its own (§7). A part's Move and Rotate are "[to decide]" in ui.md: greyed here, with why.
+ * The right-click of a node (ui.md §5): Focus, Move and turn, Add label, Add clip; on a clip or a label its own; on a
+ * distance its own (§7). A part's Move and turn is "[to decide]" in ui.md: greyed here, with why.
  */
 export function menuOf(node: MockNode, openClipShapes?: () => void): ContextMenuItem[] {
   switch (node.kind) {
@@ -76,10 +86,10 @@ export function menuOf(node: MockNode, openClipShapes?: () => void): ContextMenu
   }
   const part = !ObjectKinds.has(node.kind);
   const toDecide = part ? 'ui.md §5 [to decide]: the whole object it belongs to, or only this part' : undefined;
+  // one Move and turn: Prism's handles on it, move and turn together (Ludovic, 2026-10-25, as the app)
   return [
     item('focus', 'Focus'),
-    item('move', 'Move', toDecide),
-    item('rotate', 'Rotate', toDecide),
+    item('move', 'Move and turn', toDecide),
     item('label', 'Add label'),
     { ...item('clip', 'Add clip…'), run: () => openClipShapes?.() },
   ];
