@@ -32,6 +32,22 @@ export const ClipShapes: readonly ContextMenuItem[] = [
   item('clip-box', 'Box'),
 ];
 
+/** The brush's colors (ui.md §3 step 3b): swatches for all of it; a model's or group's Generate colors first */
+export function colorItemsOf(node: MockNode): ContextMenuItem[] {
+  const swatches = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple', 'Gray', 'White'].map((c) =>
+    item(`color-${c.toLowerCase()}`, c),
+  );
+  return node.kind === 'model' || node.kind === 'group' ? [item('generate', 'Generate colors'), ...swatches] : swatches;
+}
+
+/** Whether a row has the brush (a color for all of it), as the app's `colorable` */
+export const colorable = (node: MockNode) =>
+  ['structure', 'entity', 'chain', 'model', 'group', 'model entity', 'target', 'mesh'].includes(node.kind);
+
+/** Whether a row has the scissors (a clip), as the app's `clippable`: an object all of it, a part only it */
+export const clippable = (node: MockNode) =>
+  ['structure', 'model', 'list', 'volume', 'entity', 'chain', 'group', 'model entity', 'target'].includes(node.kind);
+
 /**
  * The right-click of a node (ui.md §5): Focus, Move and Rotate, Add label, Add clip; on a clip or a label its own; on a
  * distance its own (§7). A part's Move and Rotate are "[to decide]" in ui.md: greyed here, with why.

@@ -30,7 +30,7 @@ import { drag, timeout } from '@molstar/prism-ui/dom/scoped';
 import { TreeNavigation } from '@molstar/prism-ui/dom/tree-keys';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import { classes } from './_generated/explorer.module.css.js';
-import { ClipShapes, menuOf, OpenItems } from './fake-menus.js';
+import { ClipShapes, clippable, colorItemsOf, colorable, menuOf, OpenItems } from './fake-menus.js';
 import { type GroupBy, type MockNode, pathTo } from './fake-scene.js';
 import { Properties } from './properties.js';
 
@@ -200,7 +200,16 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
                 hidden={hidden.key(row.key)}
                 onToggle={() => toggle(row.key)}
                 onPick={() => pick(row.node)}
-                onEye={() => hidden.set(row.key, !(hidden.get(row.key) ?? row.node.visible === false))}
+                onEye={() => {
+                  const off = !(hidden.get(row.key) ?? row.node.visible === false);
+                  hidden.set(row.key, off);
+                  // a category's eye: every object under it
+                  if (row.node.kind === 'category') for (const o of row.node.children?.('compartment') ?? []) hidden.set(o.key, off);
+                }}
+                onTool={(at, which, onClose) => {
+                  pick(row.node);
+                  openContextMenu(menuRoot(), at, which === 'color' ? colorItemsOf(row.node) : ClipShapes, onClose);
+                }}
                 onMenu={(at, onClose) => menuAt(at, row.node, onClose)}
               />
             )}
@@ -274,6 +283,7 @@ function TreeRow(props: {
   onPick(): void;
   onEye(): void;
   onMenu(at: { x: number; y: number }, onClose?: () => void): void;
+  onTool(at: { x: number; y: number }, which: 'color' | 'clip', onClose: () => void): void;
 }) {
   const { node, depth } = props.row;
   const category = node.kind === 'category';
@@ -325,23 +335,49 @@ function TreeRow(props: {
           {node.label}
         </span>
         <span class={classes.count}>{node.count ?? ''}</span>
-        {category ? null : <RowActions node={node} off={off} onEye={props.onEye} onMenu={props.onMenu} />}
+        <RowActions node={node} off={off} onEye={props.onEye} onMenu={props.onMenu} onTool={props.onTool} />
       </div>
     </div>
   );
 }
 
-/** A row's actions, shown on its hover (always on touch, styling.md §4): its eye (kept while hidden), its ⋯ */
+/**
+ * A row's actions, shown on its hover (always on touch, styling.md §4): the brush and the scissors where it has them
+ * (ui.md §3 step 3b), its eye (kept while hidden), its ⋯; a category has only its eye
+ */
 function RowActions(props: {
   node: MockNode;
   off: ReadonlyState<boolean>;
   onEye(): void;
   onMenu(at: { x: number; y: number }, onClose?: () => void): void;
+  onTool(at: { x: number; y: number }, which: 'color' | 'clip', onClose: () => void): void;
 }): Child {
-  // its ⋯ stays shown while its menu is open (styling.md §4)
+  // its ⋯ and tools stay shown while their menu is open (styling.md §4)
   const menuOpen = observableState(false);
+  const toolOpen = observableState<'color' | 'clip' | undefined>(undefined);
+  const category = props.node.kind === 'category';
+  const tool = (which: 'color' | 'clip', icon: 'paintbrush' | 'scissors', tip: string) => (
+    <button
+      type="button"
+      class={classes.action}
+      classList={{ [classes.keep]: derive(toolOpen.asReadonly, (t) => t === which) }}
+      data-tip={tip}
+      aria-label={tip}
+      aria-haspopup="menu"
+      onClick={(e: MouseEvent) => {
+        e.stopPropagation();
+        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        toolOpen.set(which);
+        props.onTool({ x: r.left, y: r.bottom }, which, () => toolOpen.set(undefined));
+      }}
+    >
+      <Icon name={icon} size={14} />
+    </button>
+  );
   return (
     <span class={classes.actions}>
+      {colorable(props.node) ? tool('color', 'paintbrush', 'Color all of it') : null}
+      {clippable(props.node) ? tool('clip', 'scissors', 'Add a clip') : null}
       {props.node.visible !== undefined ? (
         <button
           type="button"
@@ -359,6 +395,7 @@ function RowActions(props: {
           </Show>
         </button>
       ) : null}
+      {category ? null : (
       <button
         type="button"
         class={classes.action}
@@ -376,6 +413,7 @@ function RowActions(props: {
       >
         <Icon name="ellipsis" size={14} />
       </button>
+      )}
     </span>
   );
 }

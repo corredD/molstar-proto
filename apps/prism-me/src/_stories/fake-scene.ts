@@ -223,6 +223,8 @@ export function categories(objects: readonly MockNode[]): MockNode[] {
       kind: 'category',
       label,
       count: String(items.length),
+      // its eye shows or hides every object under it
+      visible: true,
       children: () => items,
     }));
 }
