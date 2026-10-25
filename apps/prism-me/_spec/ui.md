@@ -153,9 +153,9 @@ volumes): a voxel is picked on an isosurface or a slice. A segment of a segmenta
   the model, as a label; a key no row has: under its first object's row), its kind told before its value ("Distance
   12.34 Å"), with its eye. A click on its line in 3D picks the row (its text is not pickable: Mol*'s text geometry sets
   `pickable: false`).
-- **Its properties** (Distance): the value, its two points (a click picks the point's row), text size (times its own,
-  0.1–100: a label readable at a volume's scale; Ludovic, 2026-10-25) and line width (0.1–10), opacity; a log slider and
-  its number box; one step a release.
+- **Its properties** (Distance): the value, its two points (a click picks the point's row), text size and line width
+  (times its own, 0.1–100: readable at a volume's scale; Ludovic, 2026-10-25), opacity; a log slider and its number box;
+  one step a release.
 - **Its right-click** (on the row or on the line): Focus (the camera on its two points), Hide, Remove.
 - ⌘K and the agent: `stage.distance` takes a point as a pick (`{ loci }`), a structure target (`A:10@CA`) or a particle
   (`<list ref>#<index>`); `stage.editDistance` changes or removes one. A point is named "THR 1 CA (A)" (an atom), "LYS

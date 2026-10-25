@@ -667,7 +667,7 @@ export class StageApi extends ApiArea {
       distance: PD.Text('', { description: 'The distance, by state ref' }),
       textSize: OptionalParam(PD.Numeric(1, { min: 0.1, max: 100 }, { description: "Its text's size, times its own" })),
       lineWidth: OptionalParam(
-        PD.Numeric(1, { min: 0.1, max: 10 }, { description: "Its line's width, times its own" }),
+        PD.Numeric(1, { min: 0.1, max: 100 }, { description: "Its line's width, times its own" }),
       ),
       opacity: OptionalParam(PD.Numeric(1, { min: 0, max: 1 })),
       visible: OptionalParam(PD.Boolean(true)),

@@ -208,9 +208,10 @@ describe('stage.distance', () => {
     expectOk(await v.api.run('history.undo', {}));
     expect(distances(v)).toHaveLength(1);
     expect(distances(v)[0].transform.ref).toBe(ref);
-    // a text size past the slider's old 10: up to 100, for a volume's scale
-    expectOk(await s.editDistance({ distance: ref, textSize: 50 } as never));
+    // a text size and a line width past the sliders' old 10: up to 100, for a volume's scale
+    expectOk(await s.editDistance({ distance: ref, textSize: 50, lineWidth: 50 } as never));
     expect(props().textSize).toBeCloseTo(atoms.textSize * 50, 6);
+    expect(props().linesSize).toBeCloseTo(atoms.linesSize * 50, 6);
   });
 
   it('goes with either of its objects, in the same step (its dependency); that step undone, it is back', async () => {

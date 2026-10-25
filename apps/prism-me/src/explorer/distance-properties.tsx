@@ -72,7 +72,7 @@ export function DistanceProps(props: { api: ViewerApi; area: ExplorerApi; node: 
         label="Line width"
         value={mapState(distance, (d) => d?.lineWidth ?? 1)}
         min={0.1}
-        max={10}
+        max={100}
         scale="log"
         {...Times}
         onCommit={(lineWidth) => edit({ lineWidth })}
