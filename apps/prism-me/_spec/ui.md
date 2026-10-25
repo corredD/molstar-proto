@@ -119,11 +119,12 @@ A distance between two points: atoms, residues, chains, instances and particles 
 such as a fiber, from their middle) (Ludovic, 2026-10-24).
 
 - **In selection mode** (its button under the 3D view) (Ludovic, 2026-10-24): that mode already selects everything in
-  the scene; there, two ⌘+clicks on a Mac, two Ctrl+clicks elsewhere, also make a distance. A modifier click does not
-  toggle the selection (Mol*'s selection-mode bindings take a plain click). Outside it, nothing measures and the
-  canvas's Ctrl+click and ⌘+click do what Mol* does (focus; `spec.ts` keeps them), with no hint about measuring. In
-  selection mode, Mol*'s camera bindings still answer a Ctrl+click (off a Mac): each point clicked recenters the camera
-  on it (`clickCenterFocusSelectMode`), and a Ctrl+click on nothing resets the camera
+  the scene; there, two ⌘+clicks on a Mac, two Ctrl+clicks elsewhere, also make a distance. A modifier click selects
+  exactly as a plain click does (Ludovic, 2026-10-25: the distance is added, the selection not replaced; `spec.ts` gives
+  Mol*'s selection-mode click toggle Ctrl and ⌘ triggers), on a structure, a particle or a volume. Outside it, nothing
+  measures and the canvas's Ctrl+click and ⌘+click do what Mol* does (focus; `spec.ts` keeps them), with no hint about
+  measuring. In selection mode, Mol*'s camera bindings still answer a Ctrl+click (off a Mac): each point clicked
+  recenters the camera on it (`clickCenterFocusSelectMode`), and a Ctrl+click on nothing resets the camera
   (`clickResetCameraOnEmptySelectMode`) while the first point is kept. ⌘+click (on a Mac) is bound to nothing else
   there: the camera stays. Leaving selection mode lets a first point go.
 - **A point follows the pick granularity** (Ludovic, 2026-10-24): residues by default, so CA 1 to CA 10 of 1CRN reads
@@ -132,13 +133,12 @@ such as a fiber, from their middle) (Ludovic, 2026-10-24).
 - **⌘ on a Mac, Ctrl elsewhere** (Ludovic, 2026-10-24): Ctrl+click is a right-click on a Mac. The status line names the
   platform's gesture.
 
-- **⌘/Ctrl+click** a first point: it is marked in 3D (as selected) and said on the status line; its row is picked.
+- **⌘/Ctrl+click** a first point: it is selected (as the click selects) and said on the status line; its row is picked.
   ⌘/Ctrl+click a second: the distance is made (`stage.distance`, one step) and its row picked. Esc on the canvas, or a
   plain click, lets the first point go. ⌘/Ctrl+click on nothing, a label, a distance or a volume says what can be
-  measured and keeps the first point. When the first point's object is removed, the next ⌘/Ctrl+click is a new first
-  point (said). The same two points again, either way round: no second distance; the first one's row is picked and the
-  status line says so; a failure says why. The first point's mark does not touch the selection manager; its unmark puts
-  back a structure selection's marks.
+  measured (a volume: not measured yet; the next brief) and keeps the first point. When the first point's object is
+  removed, the next ⌘/Ctrl+click is a new first point (said). The same two points again, either way round: no second
+  distance; the first one's row is picked and the status line says so; a failure says why.
 - Drawn by Mol*'s `DistanceRepresentation` (a dashed line and its value), one cell from the root that depends on both
   objects: removing either removes the distance in the same step. Its text and line are scaled by the larger of the two
   things measured (an atom: Mol*'s own size; a particle: its radius, else its decoration's), so a distance between two
