@@ -63,6 +63,8 @@ const has = (...kinds: MockKind[]) => {
 };
 /** Every node but what was made at one (a clip, a label, a distance: their own section) */
 const node = (ctx: ShellViewContext) => !['clip', 'label', 'distance'].includes((ctx.subject as MockNode).kind);
+/** What a clip or a label can be made at: a node, not a category */
+const part = (ctx: ShellViewContext) => node(ctx) && (ctx.subject as MockNode).kind !== 'category';
 const object = (ctx: ShellViewContext) => ObjectKinds.has((ctx.subject as MockNode).kind);
 
 /** A value that does not change (the mock's) */
@@ -105,7 +107,11 @@ function sections(shell: ShellModel) {
       slot: Slot,
       title: 'Look',
       when: node,
-      render: view((n) => (
+      render: view((n) =>
+        // a category: only its eye, for every object under it
+        n.kind === 'category' ? (
+          form({ visible: PD.Boolean(n.visible !== false, { description: 'Every object under it' }) })()
+        ) : (
         <div class={classes.stack}>
           {form({
             visible: PD.Boolean(n.visible !== false),
@@ -115,7 +121,8 @@ function sections(shell: ShellModel) {
           })()}
           {n.kind === 'model' || n.kind === 'group' ? <Button size="sm">Generate colors</Button> : null}
         </div>
-      )),
+        ),
+      ),
     },
     {
       id: 'representation',
@@ -173,8 +180,8 @@ function sections(shell: ShellModel) {
         </div>
       )),
     },
-    { id: 'clips', slot: Slot, title: 'Clips', when: node, render: view((n) => <Clips node={n} />) },
-    { id: 'labels', slot: Slot, title: 'Labels', when: node, render: view((n) => <Labels node={n} />) },
+    { id: 'clips', slot: Slot, title: 'Clips', when: part, render: view((n) => <Clips node={n} />) },
+    { id: 'labels', slot: Slot, title: 'Labels', when: part, render: view((n) => <Labels node={n} />) },
     {
       id: 'graphics',
       slot: Slot,

@@ -118,7 +118,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
     if (!next.delete(key)) next.add(key);
     open.set(next);
   };
-  const pick = (node: MockNode) => node.kind !== 'category' && picked.set(node);
+  const pick = (node: MockNode) => picked.set(node);
 
   // menus open in the frame around the panel (its theme's tokens), not inside it (its containment would clip them)
   let panelEl: HTMLElement | undefined;
@@ -299,7 +299,7 @@ function TreeRow(props: {
       tabIndex={-1}
       class={classes.item}
       ref={props.nav.row(node.key)}
-      // the pick follows the focus (↑/↓, Home, End: Prism's tree keys move it), as a click; a category is not picked
+      // the pick follows the focus (↑/↓, Home, End: Prism's tree keys move it), as a click, a category too
       onFocus={props.onPick}
     >
       <div
