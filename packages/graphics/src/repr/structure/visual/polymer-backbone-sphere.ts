@@ -1,7 +1,8 @@
 /**
- * Copyright (c) 2021-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2021-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author David Sehnal <david.sehnal@gmail.com>
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -29,6 +30,7 @@ import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { SpheresBuilder } from '@molstar/graphics/geo/geometry/spheres/spheres-builder';
 import { eachPolymerBackboneElement } from './util/polymer/backbone.js';
 import { checkSphereImpostorSupport, type StructureGroup } from './util/common.js';
+import { chooseVisual } from '../../visual-factory.js';
 
 export const PolymerBackboneSphereParams = {
   ...UnitsMeshParams,
@@ -39,16 +41,11 @@ export const PolymerBackboneSphereParams = {
 };
 export type PolymerBackboneSphereParams = typeof PolymerBackboneSphereParams;
 
-export function PolymerBackboneSphereVisual(
-  materialId: number,
-  structure: Structure,
-  props: PD.Values<PolymerBackboneSphereParams>,
-  graphics?: GraphicsContext,
-) {
-  return props.tryUseImpostor && checkSphereImpostorSupport(graphics)
-    ? PolymerBackboneSphereImpostorVisual(materialId)
-    : PolymerBackboneSphereMeshVisual(materialId);
-}
+export const PolymerBackboneSphereVisual = chooseVisual(
+  { impostor: PolymerBackboneSphereImpostorVisual, mesh: PolymerBackboneSphereMeshVisual },
+  (props: PD.Values<PolymerBackboneSphereParams>, graphics?: GraphicsContext) =>
+    props.tryUseImpostor && checkSphereImpostorSupport(graphics) ? 'impostor' : 'mesh',
+);
 
 interface PolymerBackboneSphereProps {
   detail: number;
@@ -99,13 +96,6 @@ export function PolymerBackboneSphereImpostorVisual(materialId: number): UnitsVi
         newProps: PD.Values<PolymerBackboneSphereParams>,
         currentProps: PD.Values<PolymerBackboneSphereParams>,
       ) => {},
-      mustRecreate: (
-        structureGroup: StructureGroup,
-        props: PD.Values<PolymerBackboneSphereParams>,
-        graphics?: GraphicsContext,
-      ) => {
-        return !props.tryUseImpostor || !graphics;
-      },
     },
     materialId,
   );
@@ -163,13 +153,6 @@ export function PolymerBackboneSphereMeshVisual(materialId: number): UnitsVisual
       ) => {
         state.createGeometry =
           newProps.sizeFactor !== currentProps.sizeFactor || newProps.detail !== currentProps.detail;
-      },
-      mustRecreate: (
-        structureGroup: StructureGroup,
-        props: PD.Values<PolymerBackboneSphereParams>,
-        graphics?: GraphicsContext,
-      ) => {
-        return props.tryUseImpostor && !!graphics;
       },
     },
     materialId,

@@ -84,6 +84,12 @@ export type PluginInitializedState = { kind: 'no' } | { kind: 'yes' } | { kind: 
 /** `PluginSpec` keys removed in 6.0; the constructor rejects them with a pointer to registry entries. */
 const REMOVED_SPEC_KEYS = ['actions', 'animations', 'customFormats'] as const;
 
+/**
+ * The entries `log.entries` keeps, the last ones: every evaluated transform logs its timing, so an unbounded log grew by
+ * tens of MB over a long session (perf-audit-2 12/B3). The classic Log shows the last 10, Prism's Log keeps its own 300.
+ */
+const LogSize = 1000;
+
 export class PluginContext {
   runTask = <T>(task: Task<T>, params?: { useOverlay?: boolean }) => this.managers.task.run(task, params);
   resolveTask = <T>(object: Task<T> | T | undefined) => {
@@ -375,9 +381,7 @@ export class PluginContext {
       if (this.spec.layout && this.spec.layout.initial) this.layout.setProps(this.spec.layout.initial);
 
       if (!canvas3dContext) {
-        const preferWebGl1 = this.config.get(PluginConfig.General.PreferWebGl1) || false;
-        const backends =
-          this.config.get(PluginConfig.General.GraphicsBackends) ?? getDefaultGraphicsBackends({ preferWebGl1 });
+        const backends = this.config.get(PluginConfig.General.GraphicsBackends) ?? getDefaultGraphicsBackends();
         this._graphicsBackends = backends;
         canvas3dContext = await Canvas3DContext.create(
           canvas,
@@ -386,7 +390,6 @@ export class PluginContext {
           {
             antialias: !(this.config.get(PluginConfig.General.DisableAntialiasing) ?? false),
             preserveDrawingBuffer: !(this.config.get(PluginConfig.General.DisablePreserveDrawingBuffer) ?? false),
-            preferWebGl1,
             failIfMajorPerformanceCaveat: !(this.config.get(PluginConfig.General.AllowMajorPerformanceCaveat) ?? false),
             powerPreference: this.config.get(PluginConfig.General.PowerPreference) || 'high-performance',
             handleResize: this.handleResize,
@@ -444,6 +447,7 @@ export class PluginContext {
         this.canvas3d!.xr.isPresenting.subscribe((e) => this.log.info(`WebXR ${e ? 'enabled' : 'disabled'}`)),
       );
       this.subs.push(this.canvas3d!.xr.requestFailed.subscribe((e) => this.log.error(`WebXR request failed: ${e}`)));
+      this.subs.push(this.canvas3d!.outOfMemory.subscribe((message) => this.log.error(message)));
       this.subs.push(this.layout.events.updated.subscribe(() => requestAnimationFrame(() => this.handleResize())));
       this.subs.push(
         this.canvas3d!.contextChanged.subscribe(({ reason }) => {
@@ -522,6 +526,12 @@ export class PluginContext {
     this.behaviors.interaction.selectionMode.next(mode);
   }
 
+  /**
+   * Runs `f` as one transaction of the data state. A script that loads or changes many structures should wrap its
+   * commits in it: each commit outside a transaction pays the per-change work of the managers and behaviors (the
+   * structure hierarchy, measurements, the representations' visibility), so N structures cost O(N²); inside, that
+   * work runs once at the end (about 2–3× faster at 200 structures, perf-audit-2 12/14/N3).
+   */
   dataTransaction(
     f: (ctx: RuntimeContext) => Promise<void> | void,
     options?: { canUndo?: string | boolean; rethrowErrors?: boolean },
@@ -692,7 +702,12 @@ export class PluginContext {
 
   async init() {
     try {
-      this.subs.push(this.events.log.subscribe((e) => (this.log.entries = this.log.entries.push(e))));
+      this.subs.push(
+        this.events.log.subscribe((e) => {
+          const entries = this.log.entries.push(e);
+          this.log.entries = entries.size > LogSize ? entries.shift() : entries;
+        }),
+      );
 
       this.initBehaviorEvents();
       this.initBuiltInBehavior();

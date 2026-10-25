@@ -19,7 +19,6 @@ import {
   createRenderObject,
   type GraphicsRenderObject,
   type RenderObjectValues,
-  createForeignResourcesCheck,
 } from '@molstar/graphics/gl/render-object';
 import { PickingId } from '@molstar/graphics/geo/geometry/picking';
 import { type Loci, isEveryLoci, EmptyLoci } from '@molstar/model/model/loci';
@@ -163,7 +162,10 @@ export function UnitsVisual<G extends Geometry, P extends StructureParams & Geom
     createPositionIterator,
   } = builder.geometryUtils;
   const updateState = VisualUpdateState.create();
-  const foreignResources = createForeignResourcesCheck();
+  const foreignResources = Visual.foreignResourcesCheck();
+  let newGraphics: GraphicsContext | undefined;
+  /** the context `geometry` was made with: a new render object over geometry of another context is not known clean */
+  let geometryGraphics: GraphicsContext | undefined;
   const previousMark: Visual.PreviousMark = { loci: EmptyLoci, action: MarkerAction.None, status: -1 };
 
   let renderObject: GraphicsRenderObject<G['kind']> | undefined;
@@ -196,6 +198,7 @@ export function UnitsVisual<G extends Geometry, P extends StructureParams & Geom
     newStructureGroup = structureGroup;
 
     VisualUpdateState.reset(updateState);
+    newGraphics = graphics;
 
     if (!renderObject || !currentStructureGroup) {
       initUpdateState?.(updateState, newProps, newTheme, newStructureGroup);
@@ -217,7 +220,8 @@ export function UnitsVisual<G extends Geometry, P extends StructureParams & Geom
 
     // after a backend switch or restore: textures and buffers of the previous context are rendered or computed again,
     // geometry relying on what the new context lacks (`GeometryUtils.isCompatible`) is created again, for the new context
-    if (graphics && renderObject && foreignResources(renderObject, graphics)) updateState.createGeometry = true;
+    if (graphics && renderObject && foreignResources.hasForeign(renderObject, graphics))
+      updateState.createGeometry = true;
     if (graphics && geometry && builder.geometryUtils.isCompatible?.(geometry, graphics) === false) {
       updateState.createGeometry = true;
     }
@@ -245,15 +249,18 @@ export function UnitsVisual<G extends Geometry, P extends StructureParams & Geom
       updateState.updateTransform = true;
     }
 
+    // the representation keeps its props object while no prop changes (`shallowMerge2`): the same props, no prop changed
+    const propsChanged = newProps !== currentProps;
     if (
-      newProps.instanceGranularity !== currentProps.instanceGranularity ||
-      newProps.cellSize !== currentProps.cellSize ||
-      newProps.batchSize !== currentProps.batchSize
+      propsChanged &&
+      (newProps.instanceGranularity !== currentProps.instanceGranularity ||
+        newProps.cellSize !== currentProps.cellSize ||
+        newProps.batchSize !== currentProps.batchSize)
     ) {
       updateState.updateTransform = true;
     }
 
-    if (!deepEqual(newProps.unitKinds, currentProps.unitKinds)) {
+    if (propsChanged && !deepEqual(newProps.unitKinds, currentProps.unitKinds)) {
       // console.log('new unitKinds');
       updateState.createGeometry = true;
     }
@@ -319,6 +326,8 @@ export function UnitsVisual<G extends Geometry, P extends StructureParams & Geom
           newProps,
           materialId,
         );
+        if (geometry === undefined || geometryGraphics === newGraphics)
+          foreignResources.created(renderObject, newGraphics);
         positionIt = createPositionIterator(newGeometry, renderObject.values);
       } else {
         throw new Error('expected geometry to be given');
@@ -328,8 +337,15 @@ export function UnitsVisual<G extends Geometry, P extends StructureParams & Geom
         throw new Error('expected renderObject to be available');
       }
 
-      if (updateState.updateColor || updateState.updateSize || updateState.updateTransform) {
-        // console.log('update locationIterator');
+      // a new iterator where what it iterates may differ: the transform, the group, the structure or the props (the
+      // color and size writers reset it); a recolor keeps it
+      if (
+        updateState.updateTransform ||
+        ((updateState.updateColor || updateState.updateSize) &&
+          (newProps !== currentProps ||
+            newStructureGroup.group !== currentStructureGroup.group ||
+            newStructureGroup.structure !== currentStructureGroup.structure))
+      ) {
         locationIt = createLocationIterator(newStructureGroup, newProps);
       }
 
@@ -388,8 +404,18 @@ export function UnitsVisual<G extends Geometry, P extends StructureParams & Geom
         createColors(locationIt, positionIt, newTheme.color, renderObject.values);
       }
 
-      updateValues(renderObject.values, newProps);
-      updateRenderableState(renderObject.state, newProps);
+      // the values from the props: again where the props or what the values derive from besides them changed (counts,
+      // bounds, sizes); a recolor of many units keeps them
+      if (
+        newProps !== currentProps ||
+        updateState.createGeometry ||
+        updateState.updateTransform ||
+        updateState.updateMatrix ||
+        updateState.updateSize
+      ) {
+        updateValues(renderObject.values, newProps);
+        updateRenderableState(renderObject.state, newProps);
+      }
     }
 
     currentProps = newProps;
@@ -397,6 +423,7 @@ export function UnitsVisual<G extends Geometry, P extends StructureParams & Geom
     currentStructureGroup = newStructureGroup;
     if (newGeometry) {
       geometry = newGeometry;
+      geometryGraphics = newGraphics;
       geometryVersion += 1;
     }
   }
@@ -553,9 +580,6 @@ export function UnitsVisual<G extends Geometry, P extends StructureParams & Geom
     },
     setVisibility(visible: boolean) {
       Visual.setVisibility(renderObject, visible);
-    },
-    setAlphaFactor(alphaFactor: number) {
-      Visual.setAlphaFactor(renderObject, alphaFactor);
     },
     setPickable(pickable: boolean) {
       Visual.setPickable(renderObject, pickable);

@@ -1,9 +1,11 @@
 /**
- * Copyright (c) 2017 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2017-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * from https://github.com/dsehnal/CIFTools.js
  * @author David Sehnal <david.sehnal@gmail.com>
  */
+
+import { anchorMap } from '../../util/map-anchor.js';
 
 /**
  * A generic chunked array builder.
@@ -32,7 +34,7 @@ namespace ChunkedArray {
   type Sizes = 1 | 2 | 3 | 4;
 
   export function is(x: any): x is ChunkedArray<any> {
-    return x.creator && x.chunkSize;
+    return !!x && typeof x.ctor === 'function' && typeof x.elementSize === 'number' && Array.isArray(x.chunks);
   }
 
   function allocateNext(array: ChunkedArray<any, any>) {
@@ -208,6 +210,9 @@ namespace ChunkedArray {
 
     return ret;
   }
+
+  // keeps the map of a chunked array with a chunk, which the adders' optimized code embeds (`anchorMap`)
+  anchorMap(create(Float32Array, 1, 1, 1));
 }
 
 export { ChunkedArray };

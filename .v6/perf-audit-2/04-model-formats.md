@@ -71,20 +71,20 @@ regressed 0, dropped 1**. Every v1 probe still open was rerun at HEAD and gives 
 
 | Id | vs v1 | Title | File | Kind | Impact | Estimate | Effort | Verdict | Frozen |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| P5 | partly-fixed | Sorted models copy every `atom_site` column; normalization decodes every column | [sort.ts:63](../../packages/model/src/formats/structure/basic/sort.ts#L63) | time+memory | medium | flat-192 −45 ms of ~0.5 s, −90 MB alloc; flat-864 ~−0.2 s, −0.4 GB | S | confirmed | no |
-| P16 | new | A BCIF model retains ~320 B/atom (string columns as pointer arrays, decoded cache, sorted copies) | [decoder.ts:219](../../packages/io/src/common/binary-cif/decoder.ts#L219) | memory | medium | −100–150 B/atom: −110–170 MB at 1.1M, −0.5–0.75 GB at 5M | L | confirmed | no |
+| P5 | partly-fixed; **fixed** #2036 (lazy sorted columns, fields decoded on first read, Float32 gather) | Sorted models copy every `atom_site` column; normalization decodes every column | [sort.ts:63](../../packages/model/src/formats/structure/basic/sort.ts#L63) | time+memory | medium | flat-192 −45 ms of ~0.5 s, −90 MB alloc; flat-864 ~−0.2 s, −0.4 GB | S | confirmed | no |
+| P16 | new; partly fixed #2036 (string columns as dictionaries: flat-192 retained 244 → 124 MB) | A BCIF model retains ~320 B/atom (string columns as pointer arrays, decoded cache, sorted copies) | [decoder.ts:219](../../packages/io/src/common/binary-cif/decoder.ts#L219) | memory | medium | −100–150 B/atom: −110–170 MB at 1.1M, −0.5–0.75 GB at 5M | L | confirmed | no |
 | P4 | still-open | Multi-model mmCIF builds each hierarchy before comparing | [atomic.ts:241](../../packages/model/src/formats/structure/basic/atomic.ts#L241) | time | medium | ~180 → ~105 ms per 576k rows (text) | M | confirmed | no |
 | P2 | still-open | Multi-frame GRO (and multi-molecule MOL2) build a full model per frame | [gro.ts:137](../../packages/model/src/formats/structure/gro.ts#L137) | memory | medium | 200 → ~15–25 B/atom/frame; 10k poses ~330 MB → a few MB | S | confirmed | no |
 | P3 | still-open | IHM ensembles rebuild coarse hierarchy, sequence, ranges, static props per model | [parser.ts:280](../../packages/model/src/formats/structure/basic/parser.ts#L280) | time+memory | medium | ~720 → ~60–100 KB/model; ~2× faster load | M | confirmed | no |
 | P15 | new | `missingResidues` computed eagerly on every load | [parser.ts:49](../../packages/model/src/formats/structure/basic/parser.ts#L49) | time | low | −18–31 ms at 1.1M, −150–190 ms at 5M | S | confirmed | no |
-| P17 | new | Kinemage parser: a tag array per point, JS arrays for positions | [kinparser.ts:114](../../packages/extensions/kinemage/src/reader/kinparser.ts#L114) | memory | low | 316 → 208 B/point shared tags; ~60–80 with typed arrays | S | confirmed | no |
+| P17 | new; partly fixed #2047 (shared tag arrays, dead loop gone; typed positions open) | Kinemage parser: a tag array per point, JS arrays for positions | [kinparser.ts:114](../../packages/extensions/kinemage/src/reader/kinparser.ts#L114) | memory | low | 316 → 208 B/point shared tags; ~60–80 with typed arrays | S | confirmed | no |
 | P19 | new | `molstar_bond_site` bonds rebuilt per model over every model's rows, and per coordinate frame | [mmcif.ts:98](../../packages/model/src/formats/structure/mmcif.ts#L98) | time | low | O(M·(A + M·B)) → O(A + M·B) per file | S | plausible | no |
 | P13 | still-open | Cube and DX volumes as Float64; cube orbitals copied again | [cube.ts:21](../../packages/model/src/formats/volume/cube.ts#L21) | memory | low | −50 % volume memory | S | confirmed | no |
 | 12/T1 | still-open | Trilinear interpolation: 8 `get()` calls through a closure per sample | [grid.ts:214](../../packages/model/src/model/volume/grid.ts#L214) | time | low | ~1.4× per sample | S | plausible | no |
-| P6 | partly-fixed | PDB SEQRES unobserved-residue scan: template key per atom | [entity.ts:234](../../packages/model/src/formats/structure/pdb/entity.ts#L234) | time | low | few ms per 100k-atom PDB | S | confirmed | no |
-| P18 | new | Volume stats: four full passes (min, max, mean, rms) | [ccp4.ts:118](../../packages/model/src/formats/volume/ccp4.ts#L118) | time | low | 41–52 → 13–26 ms on 256³ | S | confirmed | no |
-| 12/B1 | partly-fixed | Segmentation bounds: `getCoords` per non-zero voxel | [segmentation.ts:104](../../packages/model/src/formats/volume/segmentation.ts#L104) | time | low | ~3–10× for that pass | S | confirmed | no |
-| 12/L2 | still-open | `Volume.Cell.getBoundingSphere` and CCP4 writer: accessor per cell | [volume.ts:359](../../packages/model/src/model/volume/volume.ts#L359) | time | low | ~2× per call | S | confirmed | no |
+| P6 | partly-fixed; **fixed** #2047 | PDB SEQRES unobserved-residue scan: template key per atom | [entity.ts:234](../../packages/model/src/formats/structure/pdb/entity.ts#L234) | time | low | few ms per 100k-atom PDB | S | confirmed | no |
+| P18 | new; **fixed** #2047 | Volume stats: four full passes (min, max, mean, rms) | [ccp4.ts:118](../../packages/model/src/formats/volume/ccp4.ts#L118) | time | low | 41–52 → 13–26 ms on 256³ | S | confirmed | no |
+| 12/B1 | partly-fixed; **fixed** #2047 | Segmentation bounds: `getCoords` per non-zero voxel | [segmentation.ts:104](../../packages/model/src/formats/volume/segmentation.ts#L104) | time | low | ~3–10× for that pass | S | confirmed | no |
+| 12/L2 | still-open; partly fixed #2047 (the CCP4 writer; `Cell.getBoundingSphere` open) | `Volume.Cell.getBoundingSphere` and CCP4 writer: accessor per cell | [volume.ts:359](../../packages/model/src/model/volume/volume.ts#L359) | time | low | ~2× per call | S | confirmed | no |
 
 ### P5: sorted `atom_site` copies
 
@@ -187,12 +187,12 @@ regressed 0, dropped 1**. Every v1 probe still open was rerun at HEAD and gives 
 | 12/B3 | still-open; **fixed** #2032 | medium | Periodic trilinear interpolation reads unwrapped indices | [grid.ts:250](../../packages/model/src/model/volume/grid.ts#L250) | confirmed |
 | B9 | new | low | Models sharing the previous hierarchy also get its `atomSourceIndex` | [atomic.ts:244](../../packages/model/src/formats/structure/basic/atomic.ts#L244) | confirmed |
 | B11 | new; **fixed** #2033 | low | One-sided PDB CONECT (higher serial only) dropped | [conect.ts:70](../../packages/model/src/formats/structure/pdb/conect.ts#L70) | confirmed |
-| B4 | still-open | low | `Sequence.ofSequenceRanges` off by one; last coarse element dropped | [sequence.ts:212](../../packages/model/src/model/sequence/sequence.ts#L212) | confirmed |
+| B4 | still-open; **fixed** #2044 | low | `Sequence.ofSequenceRanges` off by one; last coarse element dropped | [sequence.ts:212](../../packages/model/src/model/sequence/sequence.ts#L212) | confirmed |
 | B5 | still-open; **fixed** #2033 | low | CONECT triple bonds written as `'trpl'` | [conect.ts:131](../../packages/model/src/formats/structure/pdb/conect.ts#L131) | confirmed |
 | B6 | still-open; **fixed** #2033 | low | Granularity options grouped under 'With Symmetry' | [loci.ts:304](../../packages/model/src/model/loci.ts#L304) | confirmed |
-| B12 | new | low | MOL2 bonds assume atom ids 1..N in file order | [mol2.ts:163](../../packages/model/src/formats/structure/mol2.ts#L163) | plausible |
-| B13 | new | low | Segmentation load throws on a voxel label without a table set | [segmentation.ts:105](../../packages/model/src/formats/volume/segmentation.ts#L105) | plausible |
-| B14 | new | low | Kinemage: a re-opened `@group` keeps the previous group's masters | [kinparser.ts:767](../../packages/extensions/kinemage/src/reader/kinparser.ts#L767) | plausible |
+| B12 | new; **fixed** #2044 | low | MOL2 bonds assume atom ids 1..N in file order | [mol2.ts:163](../../packages/model/src/formats/structure/mol2.ts#L163) | plausible |
+| B13 | new; **fixed** #2044 | low | Segmentation load throws on a voxel label without a table set | [segmentation.ts:105](../../packages/model/src/formats/volume/segmentation.ts#L105) | plausible |
+| B14 | new; **fixed** #2045 | low | Kinemage: a re-opened `@group` keeps the previous group's masters | [kinparser.ts:767](../../packages/extensions/kinemage/src/reader/kinparser.ts#L767) | plausible |
 
 ### B8: `molstar_bond_site` index space
 

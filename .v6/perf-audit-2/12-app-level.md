@@ -71,7 +71,7 @@ layer smoothing (#2005, #2012); Prism's event consumers coalesce per frame (`wat
 | 7 | H3 | Latest-wins and abort in the state/task layer | FIFO queue, no coalescing, a queued update cannot be dropped before it starts | P5 checkpoints (M), opt-in coalescing (M) | K × full cost → 1× for API bursts; abort latency s → ≤100 ms | M | plausible |
 | 8 | H2 | Progressive/LOD loading, quality per symmetry group | quality by root atoms; reprs show after all visuals | 13/P2 (S); coarse-first refine (M–L, needs H3) | better look on assemblies; first pixel ~5–10× sooner (estimate) | M | plausible |
 | 9 | H4 | Persistent cache of computed props and downloads | in-memory ref-counted byte cache only | opt-in content-keyed PropertyCache (Prism first) | repeated loads only: molsurf 6.5 → ~0.2 s | L | plausible (defer) |
-| 10 | H5 | Byte-level text CIF tokenizer | BCIF default; `ChunkedBigString` above 512 MB | tokenizer over Uint8Array | above 512 MB parse ~1.7–2× faster | L | confirmed (low; defer) |
+| 10 | H5 | Byte-level text CIF tokenizer (**done** #2036: flat-192-cif parse 644 → 310 ms median) | BCIF default; `ChunkedBigString` above 512 MB | tokenizer over Uint8Array | above 512 MB parse ~1.7–2× faster | L | confirmed (low; defer) |
 
 ### H7 Startup and bundle size
 
@@ -225,6 +225,8 @@ layer smoothing (#2005, #2012); Prism's event consumers coalesce per frame (`wat
   1,319–4,073 ms; ratio 1.7–2×; UTF-8 decode 5–10 ms.
 - **Win.** Only above 512 MB of text: parse ~2× faster, one fewer copy (~0.5 GB at 5M atoms). **Defer**; document BCIF
   for >1M atoms.
+- **Done (#2036):** text CIF is tokenized from its bytes (`TextByteTokenizer` for the other text formats, #2040):
+  flat-192-cif parse 594–726 → 285–327 ms, retained 320 → 256 MB.
 
 ## Open findings, ranked
 
@@ -242,10 +244,10 @@ layer smoothing (#2005, #2012); Prism's event consumers coalesce per frame (`wat
 | 10 | P5 | new | Synchronous blocks without yield/abort (inter-unit contacts, bond getters, valence) | [interactions.ts:398](../../packages/model/src/props/computed/interactions/interactions.ts#L398) | time | medium | seconds-long blocks → ≤100 ms slices; abort works | M | confirmed | no |
 | 11 | 10/P5 | **fixed** (#2026) | Measurement manager walks the whole tree per change | [measurement.ts:426](../../packages/plugin/core/src/state/manager/structure/measurement.ts#L426) | time | low | −1.2–1.7 ms per change at 4–6k cells | S | confirmed | no |
 | 12 | P7 | new; **fixed** #2034 | Focus recipes return new objects: mutative deep walk + `console.warn` | [structure-focus-representation.ts:212](../../packages/plugin/core/src/behavior/dynamic/selection/structure-focus-representation.ts#L212) | time | low | one warn and one walk per focus change and playback frame | S | confirmed | no |
-| 13 | P8 | new | `getCartoonParams` clones the param tree ~6× per update | [cartoon.ts:96](../../packages/graphics/src/repr/structure/representation/cartoon.ts#L96) | time | low | −1.6 % of `repr:auto` | S | confirmed | no |
+| 13 | P8 | new; **fixed** #2048 | `getCartoonParams` clones the param tree ~6× per update | [cartoon.ts:96](../../packages/graphics/src/repr/structure/representation/cartoon.ts#L96) | time | low | −1.6 % of `repr:auto` | S | confirmed | no |
 | 14 | 14/N4 | still open | Cartoon meshes reserve ~1.4× vertices | [polymer-trace-mesh.ts:86](../../packages/graphics/src/repr/structure/visual/polymer-trace-mesh.ts#L86) | memory | low | −3–5 % of `repr:auto` on many small structures | S | confirmed | no |
 | 15 | P6 | new | AsyncQueue: no coalescing, O(K²) waiter signalling | [async-queue.ts:18](../../packages/core/src/util/async-queue.ts#L18) | time | low | bursts K× → 1× with opt-in coalescing | M | confirmed | no |
-| 16 | 14/N3 | still open | Scripts without a transaction pay every walk per commit | [context.ts:522](../../packages/plugin/core/src/context.ts#L522) | time | low | ×2–3 by wrapping in `dataTransaction` | S | confirmed | no |
+| 16 | 14/N3 | still open; **fixed** #2048 | Scripts without a transaction pay every walk per commit | [context.ts:522](../../packages/plugin/core/src/context.ts#L522) | time | low | ×2–3 by wrapping in `dataTransaction` | S | confirmed | no |
 | 17 | 13/P2 | still open | quality `auto` by total atoms | [util.ts:148](../../packages/graphics/src/repr/util.ts#L148) | architecture | low | look on assemblies, +0.1–0.2 s | S | confirmed (question) | no |
 | 18 | 13/P3 | partly fixed | Unshared 5M per-element allocation | [polymer-trace-mesh.ts:62](../../packages/graphics/src/repr/structure/visual/polymer-trace-mesh.ts#L62) | memory | low | −0.5–2 s GC per stage at 5M | M | plausible | no |
 | 19 | 13/P6 | still open | ASA ignores symmetry | [accessible-surface-area.ts:62](../../packages/model/src/props/computed/accessible-surface-area.ts#L62) | time | low | assemblies 26 s → ~1/copies (spec) | M | confirmed (question) | no |
@@ -408,12 +410,12 @@ layer smoothing (#2005, #2012); Prism's event consumers coalesce per frame (`wat
 | Id | Status vs v1 | Severity | Title | File | Verdict |
 | --- | --- | --- | --- | --- | --- |
 | B2 | **fixed** (#2026) | low | Prism's size budget is on the 7 KB entry stub | [package.json:67](../../apps/prism-viewer/package.json#L67) | confirmed |
-| 06/B9 | still open | low | `CustomStructureProperty.attach` has no in-flight dedup | [custom-structure-property.ts:70](../../packages/model/src/props/common/custom-structure-property.ts#L70) | plausible |
+| 06/B9 | still open; **fixed** #2045 | low | `CustomStructureProperty.attach` has no in-flight dedup | [custom-structure-property.ts:70](../../packages/model/src/props/common/custom-structure-property.ts#L70) | plausible |
 | B4 | new | low | Bench stages record errors as fast results | [stage.ts:99](../../tests/src/pipeline/stage.ts#L99) | confirmed |
 | B1 | new | low | Pipeline bench crashes on coarse-only entries | [bench.ts:324](../../tests/src/pipeline/bench.ts#L324) | confirmed |
 | 03/B7 | still open | low | Late abort discards a completed result undisposed | [observable.ts:106](../../packages/core/src/task/execution/observable.ts#L106) | confirmed |
-| B3 | new | low | Plugin log entries grow without bound | [context.ts:692](../../packages/plugin/core/src/context.ts#L692) | confirmed |
-| 03/B8 | still open | low | `chunkedSubtask` sizing compounds | [chunked.ts:28](../../packages/core/src/task/util/chunked.ts#L28) | confirmed |
+| B3 | new; **fixed** #2044 | low | Plugin log entries grow without bound | [context.ts:692](../../packages/plugin/core/src/context.ts#L692) | confirmed |
+| 03/B8 | still open; **fixed** #2045 | low | `chunkedSubtask` sizing compounds | [chunked.ts:28](../../packages/core/src/task/util/chunked.ts#L28) | confirmed |
 
 - **B2.** `budgets: { 'index.js': 3200000 }` is checked per output file (`scripts/esbuild/app.mjs:304`). With
   `splitting: true`, `index.js` is a 7,385 B stub of imports; the start code is in 86 static chunks (6.31 MB). The budget

@@ -6,6 +6,7 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
+import { chooseVisual } from '@molstar/graphics/repr/visual-factory';
 import { Unit, Structure, StructureElement } from '@molstar/model/model/structure';
 import { Vec3 } from '@molstar/core/math/linear-algebra';
 import { type Loci, EmptyLoci } from '@molstar/model/model/loci';
@@ -245,16 +246,11 @@ export const InteractionsIntraUnitParams = {
 };
 export type InteractionsIntraUnitParams = typeof InteractionsIntraUnitParams;
 
-export function InteractionsIntraUnitVisual(
-  materialId: number,
-  structure: Structure,
-  props: PD.Values<InteractionsIntraUnitParams>,
-  graphics?: GraphicsContext,
-) {
-  return props.tryUseImpostor && checkCylinderImpostorSupport(graphics)
-    ? InteractionsIntraUnitImpostorVisual(materialId)
-    : InteractionsIntraUnitMeshVisual(materialId);
-}
+export const InteractionsIntraUnitVisual = chooseVisual(
+  { impostor: InteractionsIntraUnitImpostorVisual, mesh: InteractionsIntraUnitMeshVisual },
+  (props: PD.Values<InteractionsIntraUnitParams>, graphics?: GraphicsContext) =>
+    props.tryUseImpostor && checkCylinderImpostorSupport(graphics) ? 'impostor' : 'mesh',
+);
 
 function setUpdateState(
   state: VisualUpdateState,
@@ -321,7 +317,7 @@ export function InteractionsIntraUnitImpostorVisual(materialId: number): UnitsVi
       setUpdateState,
       initUpdateState,
       mustRecreate: (_: StructureGroup, props: PD.Values<InteractionsIntraUnitParams>, graphics?: GraphicsContext) =>
-        !props.tryUseImpostor || !graphics,
+        !props.tryUseImpostor || !checkCylinderImpostorSupport(graphics),
     },
     materialId,
   );
@@ -338,7 +334,7 @@ export function InteractionsIntraUnitMeshVisual(materialId: number): UnitsVisual
       setUpdateState: setMeshUpdateState,
       initUpdateState,
       mustRecreate: (_: StructureGroup, props: PD.Values<InteractionsIntraUnitParams>, graphics?: GraphicsContext) =>
-        props.tryUseImpostor && !!graphics,
+        props.tryUseImpostor && checkCylinderImpostorSupport(graphics),
     },
     materialId,
   );

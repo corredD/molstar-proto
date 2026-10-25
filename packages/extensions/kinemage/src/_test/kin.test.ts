@@ -2,6 +2,7 @@
  * Copyright (c) 2025-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author ReliaSolve <russ@reliasolve.com>
+ * @author David Sehnal <david.sehnal@gmail.com>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -211,5 +212,48 @@ describe('kin reader', () => {
     expect(kinemage.groupDict['First'].off).toEqual(false);
     expect(kinemage.groupDict['Second'].off).toEqual(true);
     expect(kinemage.groupDict['Third'].off).toEqual(false);
+  });
+
+  it('groups: a re-opened group keeps its own masters (perf-audit-2 04/B14)', async () => {
+    const parsed = await parseKin(`@kinemage 1
+@group {A} master={ma}
+@vectorlist {A1} color=white
+{a}P 0,0,0 {b} 1,0,0
+@group {B} master={mb}
+@vectorlist {B1} color=pink
+{c}P 0,1,0 {d} 1,1,0
+@group {A} master={mc}
+@dotlist {A2} color=gold
+{e} 0,0,1
+@group {B}
+@dotlist {B2} color=gold
+{f} 0,1,1
+`).run();
+    if (parsed.isError) expect.unreachable('Parse should not error');
+    const kinemage = parsed.result[0];
+
+    expect(kinemage.vectorLists.find((v) => v.name === 'A1')?.masterArray).toEqual(['ma']);
+    expect(kinemage.vectorLists.find((v) => v.name === 'B1')?.masterArray).toEqual(['mb']);
+    expect(kinemage.dotLists.find((v) => v.name === 'A2')?.masterArray).toEqual(['ma', 'mc']);
+    expect(kinemage.dotLists.find((v) => v.name === 'B2')?.masterArray).toEqual(['mb']);
+    expect(kinemage.groupMasters).toEqual(['ma', 'mb', 'mc']);
+  });
+
+  it('points with the same master tags share one array (perf-audit-2 04/P17)', async () => {
+    const parsed = await parseKin(`@kinemage 1
+@pointmaster 'a' {Alpha}
+@pointmaster 'b' {Beta}
+@dotlist {D} color=gold
+{p} 'ab' 0,0,0
+{q} 'ab' 1,0,0
+{r} 'a' 2,0,0
+{s} 3,0,0
+{t} 4,0,0
+`).run();
+    if (parsed.isError) expect.unreachable('Parse should not error');
+    const pms = parsed.result[0].dotLists[0].pointmasterArray;
+    expect(pms).toEqual([['a', 'b'], ['a', 'b'], ['a'], [], []]);
+    expect(pms[1]).toBe(pms[0]);
+    expect(pms[4]).toBe(pms[3]);
   });
 });

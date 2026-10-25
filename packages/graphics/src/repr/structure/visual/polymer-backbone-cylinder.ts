@@ -1,7 +1,8 @@
 /**
- * Copyright (c) 2018-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author David Sehnal <david.sehnal@gmail.com>
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -36,6 +37,7 @@ import { Cylinders } from '@molstar/graphics/geo/geometry/cylinders/cylinders';
 import { CylindersBuilder } from '@molstar/graphics/geo/geometry/cylinders/cylinders-builder';
 import { eachPolymerBackboneLink } from './util/polymer/backbone.js';
 import { checkCylinderImpostorSupport, type StructureGroup } from './util/common.js';
+import { chooseVisual } from '../../visual-factory.js';
 
 // avoiding namespace lookup improved performance in Chrome (Aug 2020)
 const v3scale = Vec3.scale;
@@ -51,16 +53,11 @@ export const PolymerBackboneCylinderParams = {
 };
 export type PolymerBackboneCylinderParams = typeof PolymerBackboneCylinderParams;
 
-export function PolymerBackboneCylinderVisual(
-  materialId: number,
-  structure: Structure,
-  props: PD.Values<PolymerBackboneCylinderParams>,
-  graphics?: GraphicsContext,
-) {
-  return props.tryUseImpostor && checkCylinderImpostorSupport(graphics)
-    ? PolymerBackboneCylinderImpostorVisual(materialId)
-    : PolymerBackboneCylinderMeshVisual(materialId);
-}
+export const PolymerBackboneCylinderVisual = chooseVisual(
+  { impostor: PolymerBackboneCylinderImpostorVisual, mesh: PolymerBackboneCylinderMeshVisual },
+  (props: PD.Values<PolymerBackboneCylinderParams>, graphics?: GraphicsContext) =>
+    props.tryUseImpostor && checkCylinderImpostorSupport(graphics) ? 'impostor' : 'mesh',
+);
 
 interface PolymerBackboneCylinderProps {
   radialSegments: number;
@@ -127,13 +124,6 @@ export function PolymerBackboneCylinderImpostorVisual(materialId: number): Units
         newProps: PD.Values<PolymerBackboneCylinderParams>,
         currentProps: PD.Values<PolymerBackboneCylinderParams>,
       ) => {},
-      mustRecreate: (
-        structureGroup: StructureGroup,
-        props: PD.Values<PolymerBackboneCylinderParams>,
-        graphics?: GraphicsContext,
-      ) => {
-        return !props.tryUseImpostor || !graphics;
-      },
     },
     materialId,
   );
@@ -213,13 +203,6 @@ export function PolymerBackboneCylinderMeshVisual(materialId: number): UnitsVisu
       ) => {
         state.createGeometry =
           newProps.sizeFactor !== currentProps.sizeFactor || newProps.radialSegments !== currentProps.radialSegments;
-      },
-      mustRecreate: (
-        structureGroup: StructureGroup,
-        props: PD.Values<PolymerBackboneCylinderParams>,
-        graphics?: GraphicsContext,
-      ) => {
-        return props.tryUseImpostor && !!graphics;
       },
     },
     materialId,

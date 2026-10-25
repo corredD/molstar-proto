@@ -16,12 +16,13 @@ import { Box3D } from '@molstar/core/math/geometry';
 import { toHalfFloat } from '@molstar/core/util/number-conversion';
 import { clamp } from '@molstar/core/math/interpolate';
 import { LocationIterator } from '@molstar/graphics/geo/util/location-iterator';
-import type { Tensor } from '@molstar/core/math/linear-algebra/tensor';
+import { Tensor } from '@molstar/core/math/linear-algebra/tensor';
 import { Interval } from '@molstar/core/data/int/interval';
 import type { SortedArray } from '@molstar/core/data/int/sorted-array';
 import { OrderedSet } from '@molstar/core/data/int/ordered-set';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import type { Image } from '@molstar/graphics/geo/geometry/image/image';
+import { type BrickRange, BrickSize } from '@molstar/graphics/geo/geometry/direct-volume/direct-volume';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import type { GraphicsFeature } from '@molstar/graphics/gl/capabilities';
 import { isComputeIsosurfaceSupported } from '@molstar/graphics/gl/compute/marching-cubes/compute';
@@ -118,18 +119,18 @@ export function eachVolumeLoci(
     } else {
       const segmentation = Volume.Segmentation.get(volume);
       if (segmentation) {
-        const set = new Set<number>();
         for (const { segments, instances } of loci.elements) {
+          // this element's sets, and the instances it names (perf-audit-2 07/N3)
+          const set = new Set<number>();
           for (let i = 0, _i = OrderedSet.size(segments); i < _i; i++) {
             const o = OrderedSet.getAt(segments, i);
             SetUtils.add(set, segmentation.segments.get(o)!);
           }
-          const s = Array.from(set.values());
           const d = volume.grid.cells.data;
           for (let i = 0, il = d.length; i < il; ++i) {
-            if (s.includes(d[i])) {
+            if (set.has(d[i])) {
               for (let j = 0, _j = OrderedSet.size(instances); j < _j; j++) {
-                const offset = j * cellCount;
+                const offset = OrderedSet.getAt(instances, j) * cellCount;
                 if (apply(Interval.ofSingleton(i + offset))) changed = true;
               }
             }
@@ -301,13 +302,111 @@ export function createVolumeTexture2d(
   return textureImage;
 }
 
-export function createVolumeTexture3d(volume: Volume, type: 'byte' | 'float' | 'halfFloat' = 'byte') {
+/**
+ * The values of a 3d grid and the strides to read them by (`data[x * sx + y * sy + z * sz]`): the data itself where the
+ * space is linear (`Tensor.strides`), else a copy in x-fastest order read once through the space's accessors (spaces
+ * that override them: periodic and wrapped volumes, which `dataOffset` maps modulo the data)
+ */
+function getStridedGrid(cells: Tensor): { data: ArrayLike<number>; sx: number; sy: number; sz: number } {
+  const { space, data } = cells;
+  const strides = Tensor.strides(space);
+  if (strides) return { data, sx: strides[0], sy: strides[1], sz: strides[2] };
+  const [nx, ny, nz] = space.dimensions;
+  const copy = new Float32Array(nx * ny * nz);
+  for (let z = 0, i = 0; z < nz; ++z) {
+    for (let y = 0; y < ny; ++y) {
+      for (let x = 0; x < nx; ++x, ++i) copy[i] = data[space.dataOffset(x, y, z)];
+    }
+  }
+  return { data: copy, sx: 1, sy: nx, sz: nx * ny };
+}
+
+/**
+ * The value range per brick of `BrickSize`³ cells (`BrickRange`): the grid's values normalized by its min and max (as in
+ * `createVolumeTexture3d`), of a brick's cells and the next cell along each axis, times 255 and rounded outwards
+ */
+export function createVolumeBrickRange(volume: Volume): BrickRange {
   const {
-    cells: { space, data },
+    cells,
     stats: { max, min },
   } = volume.grid;
-  const [width, height, depth] = space.dimensions as Vec3;
-  const { dataOffset: o } = space;
+  const [nx, ny, nz] = cells.space.dimensions as Vec3;
+  // offsets from strides, not `dataOffset` per cell (polymorphic, slow)
+  const { data, sx, sy, sz } = getStridedGrid(cells);
+
+  const bx = Math.ceil(nx / BrickSize);
+  const by = Math.ceil(ny / BrickSize);
+  const bz = Math.ceil(nz / BrickSize);
+  const bxy = bx * by;
+  const count = bxy * bz;
+  // per brick the lowest and highest value, normalized, times 255; rounded once at the end
+  const lows = new Float32Array(count).fill(Infinity);
+  const highs = new Float32Array(count).fill(-Infinity);
+  const scale = max > min ? 255 / (max - min) : 0;
+
+  // per x its brick column, and whether it is on a brick's lower face (the next cell of the brick before)
+  const brickX = new Int32Array(nx);
+  const faceX = new Uint8Array(nx);
+  for (let x = 0; x < nx; ++x) {
+    brickX[x] = Math.floor(x / BrickSize);
+    faceX[x] = x > 0 && x % BrickSize === 0 ? 1 : 0;
+  }
+
+  let v = 0;
+  const add = (b: number) => {
+    if (v < lows[b]) lows[b] = v;
+    if (v > highs[b]) highs[b] = v;
+  };
+
+  for (let z = 0; z < nz; ++z) {
+    const bz0 = Math.floor(z / BrickSize);
+    const ez = z > 0 && z % BrickSize === 0;
+    for (let y = 0; y < ny; ++y) {
+      const by0 = Math.floor(y / BrickSize);
+      const ey = y > 0 && y % BrickSize === 0;
+      const row = bz0 * bxy + by0 * bx;
+      let i = z * sz + y * sy;
+      for (let x = 0; x < nx; ++x, i += sx) {
+        v = (data[i] - min) * scale;
+        const b = row + brickX[x];
+        if (v < lows[b]) lows[b] = v;
+        if (v > highs[b]) highs[b] = v;
+        if (faceX[x] === 0 && !ey && !ez) continue;
+        const ex = faceX[x] === 1;
+        if (ex) add(b - 1);
+        if (ey) {
+          add(b - bx);
+          if (ex) add(b - bx - 1);
+        }
+        if (ez) {
+          add(b - bxy);
+          if (ex) add(b - bxy - 1);
+          if (ey) {
+            add(b - bxy - bx);
+            if (ex) add(b - bxy - bx - 1);
+          }
+        }
+      }
+    }
+  }
+
+  const array = new Uint8Array(count * 2);
+  for (let b = 0; b < count; ++b) {
+    // a little wider than the values: half-float data rounds
+    array[2 * b] = clamp(Math.floor(lows[b] - 0.01), 0, 255);
+    array[2 * b + 1] = clamp(Math.ceil(highs[b] + 0.01), 0, 255);
+  }
+  return { array, dim: Vec3.create(bx, by, bz) };
+}
+
+export function createVolumeTexture3d(volume: Volume, type: 'byte' | 'float' | 'halfFloat' = 'byte') {
+  const {
+    cells,
+    stats: { max, min },
+  } = volume.grid;
+  const [width, height, depth] = cells.space.dimensions as Vec3;
+  // offsets from strides, not `dataOffset` per cell (polymorphic, seven calls a cell)
+  const { data, sx, sy, sz } = getStridedGrid(cells);
 
   const array =
     type === 'byte'
@@ -317,48 +416,54 @@ export function createVolumeTexture3d(volume: Volume, type: 'byte' | 'float' | '
         : new Float32Array(width * height * depth * 4);
   const textureVolume = { array, width, height, depth };
   const diff = max - min;
-
-  const n0 = Vec3();
-  const n1 = Vec3();
-
-  const width1 = width - 1;
-  const height1 = height - 1;
-  const depth1 = depth - 1;
+  const byte = type === 'byte';
+  const half = type === 'halfFloat';
 
   let i = 0;
   for (let z = 0; z < depth; ++z) {
+    // the neighbors' offsets, clamped at the grid's faces
+    const zm = z > 0 ? -sz : 0;
+    const zp = z < depth - 1 ? sz : 0;
     for (let y = 0; y < height; ++y) {
-      for (let x = 0; x < width; ++x) {
-        const offset = o(x, y, z);
+      const ym = y > 0 ? -sy : 0;
+      const yp = y < height - 1 ? sy : 0;
+      let offset = z * sz + y * sy;
+      for (let x = 0; x < width; ++x, offset += sx, i += 4) {
+        const xm = x > 0 ? -sx : 0;
+        const xp = x < width - 1 ? sx : 0;
 
-        v3set(
-          n0,
-          data[o(Math.max(0, x - 1), y, z)],
-          data[o(x, Math.max(0, y - 1), z)],
-          data[o(x, y, Math.max(0, z - 1))],
-        );
-        v3set(
-          n1,
-          data[o(Math.min(width1, x + 1), y, z)],
-          data[o(x, Math.min(height1, y + 1), z)],
-          data[o(x, y, Math.min(depth1, z + 1))],
-        );
-        v3normalize(n0, v3sub(n0, n0, n1));
-        v3addScalar(n0, v3scale(n0, n0, 0.5), 0.5);
-
-        if (type === 'byte') {
-          v3toArray(v3scale(n0, n0, 255), array, i);
-          array[i + 3] = Math.round(((data[offset] - min) / diff) * 255);
-        } else if (type === 'halfFloat') {
-          array[i] = toHalfFloat(n0[0]);
-          array[i + 1] = toHalfFloat(n0[1]);
-          array[i + 2] = toHalfFloat(n0[2]);
-          array[i + 3] = toHalfFloat((data[offset] - min) / diff);
-        } else {
-          v3toArray(n0, array, i);
-          array[i + 3] = (data[offset] - min) / diff;
+        // the normal: the negated central differences, normalized (zero stays zero), mapped to [0, 1]
+        let nx = data[offset + xm] - data[offset + xp];
+        let ny = data[offset + ym] - data[offset + yp];
+        let nz = data[offset + zm] - data[offset + zp];
+        const len = nx * nx + ny * ny + nz * nz;
+        if (len > 0) {
+          const inv = 1 / Math.sqrt(len);
+          nx *= inv;
+          ny *= inv;
+          nz *= inv;
         }
-        i += 4;
+        nx = nx * 0.5 + 0.5;
+        ny = ny * 0.5 + 0.5;
+        nz = nz * 0.5 + 0.5;
+        const value = (data[offset] - min) / diff;
+
+        if (byte) {
+          array[i] = nx * 255;
+          array[i + 1] = ny * 255;
+          array[i + 2] = nz * 255;
+          array[i + 3] = Math.round(value * 255);
+        } else if (half) {
+          array[i] = toHalfFloat(nx);
+          array[i + 1] = toHalfFloat(ny);
+          array[i + 2] = toHalfFloat(nz);
+          array[i + 3] = toHalfFloat(value);
+        } else {
+          array[i] = nx;
+          array[i + 1] = ny;
+          array[i + 2] = nz;
+          array[i + 3] = value;
+        }
       }
     }
   }
@@ -371,13 +476,50 @@ export function createVolumeTexture3d(volume: Volume, type: 'byte' | 'float' | '
  * `set`, over 8. Cells outside the grid count as not in the segment: a segment's expanded box reaches past the grid's
  * faces, where a read wrapped into the next row or gave undefined (perf-audit-2 07/N1).
  */
-export function getSegmentMaskValue(cells: Tensor, set: number[]) {
+/**
+ * The smoothed segment mask (0..255) of a voxel, from its label and its 6 neighbours'. With `bbox` (the voxels that
+ * will be asked, `[min, max)`) the membership is computed once per voxel of the box and its 1-voxel border, not 7 times
+ * per voxel (perf-audit-2 07/P8); the same values.
+ */
+export function getSegmentMaskValue(cells: Tensor, set: number[], bbox?: Box3D) {
   const data = cells.data;
   const o = cells.space.dataOffset;
   const [gx, gy, gz] = cells.space.dimensions;
   const mask = (x: number, y: number, z: number) =>
     x < 0 || y < 0 || z < 0 || x >= gx || y >= gy || z >= gz ? 0 : set.includes(data[o(x, y, z)]) ? 255 : 0;
-  return (i: number, j: number, k: number) => {
+
+  if (bbox) {
+    const x0 = bbox.min[0] - 1,
+      y0 = bbox.min[1] - 1,
+      z0 = bbox.min[2] - 1;
+    const mx = bbox.max[0] - bbox.min[0] + 2,
+      my = bbox.max[1] - bbox.min[1] + 2,
+      mz = bbox.max[2] - bbox.min[2] + 2;
+    const values = new Uint8Array(mx * my * mz);
+    for (let z = 0; z < mz; ++z) {
+      for (let y = 0; y < my; ++y) {
+        for (let x = 0, r = (z * my + y) * mx; x < mx; ++x) values[r + x] = mask(x + x0, y + y0, z + z0);
+      }
+    }
+    const sy = mx,
+      sz = mx * my;
+    return (i: number, j: number, k: number) => {
+      const lx = i - x0,
+        ly = j - y0,
+        lz = k - z0;
+      // a voxel of the box: it and its neighbours are in `values`
+      if (lx >= 1 && ly >= 1 && lz >= 1 && lx < mx - 1 && ly < my - 1 && lz < mz - 1) {
+        const l = lz * sz + ly * sy + lx;
+        const v0 = values[l];
+        const n = values[l + 1] + values[l - 1] + values[l + sy] + values[l - sy] + values[l + sz] + values[l - sz];
+        return Math.round((v0 + v0 + n) / 8);
+      }
+      return stencil(i, j, k);
+    };
+  }
+  return stencil;
+
+  function stencil(i: number, j: number, k: number) {
     const v0 = mask(i, j, k);
     const n =
       mask(i + 1, j, k) +
@@ -387,13 +529,13 @@ export function getSegmentMaskValue(cells: Tensor, set: number[]) {
       mask(i, j, k + 1) +
       mask(i, j, k - 1);
     return Math.round((v0 + v0 + n) / 8);
-  };
+  }
 }
 
 export function createSegmentTexture2d(volume: Volume, set: number[], bbox: Box3D, padding = 0) {
   const dim = Box3D.size(Vec3(), bbox);
   const { width, height } = getVolumeTexture2dLayout(dim, padding);
-  const value = getSegmentMaskValue(volume.grid.cells, set);
+  const value = getSegmentMaskValue(volume.grid.cells, set, bbox);
 
   const itemSize = 1;
   const array = new Uint8Array(width * height * itemSize);

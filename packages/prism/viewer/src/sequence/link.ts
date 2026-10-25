@@ -11,7 +11,7 @@ import { type Structure, StructureElement } from '@molstar/model/model/structure
 import { Extents } from '@molstar/seq-core/model';
 import { StructureLink } from './molstar/link.js';
 import { coordinatesOf, linkViews, type LinkViewsOptions, type StructureView3D } from './molstar/link-views.js';
-import type { MarksView } from '../sources/marks.js';
+import type { Mark, MarksView } from '../sources/marks.js';
 import { type HoverLabel, lociSize } from '@molstar/seq-viewer';
 import type { SequenceStructure, SequenceViewer } from './model.js';
 
@@ -48,11 +48,12 @@ export function linkSequence(
   let shownNow: SequenceStructure | undefined;
   let stopViews: (() => void) | undefined;
   let lit: SequenceView3D | undefined;
-  const stop = () => {
+  /** `clear`: what the sequence hovered in 3D goes with the views; kept on a frame step, where the views start again. */
+  const stop = (clear = true) => {
     stopViews?.();
     stopViews = undefined;
-    // What the sequence hovered in 3D goes with the views (the 3D view also drops `hoverMapped`).
-    lit?.highlight(null);
+    // (the 3D view also drops `hoverMapped`)
+    if (clear) lit?.highlight(null);
     lit = undefined;
   };
   const drop = () => {
@@ -60,11 +61,11 @@ export function linkSequence(
     link?.detach();
     link = shownNow = undefined;
   };
-  /** The views over the link, for the 3D view of `structure` (the one shown, or a frame of it). */
-  const start = (structure: Structure, view: SequenceView3D) => {
+  /** The views over the link, for the 3D view of `structure` (the one shown, or a frame of it: no `replay`). */
+  const start = (structure: Structure, view: SequenceView3D, replay = true) => {
     if (!link) return;
     lit = view;
-    const stopLink = linkViews(seq, view, link, options);
+    const stopLink = linkViews(seq, view, link, options, replay);
     const stopMarks = options?.marks ? showMarks(seq, link, structure, options.marks) : undefined;
     const stopLabel = view.annotateHover ? annotateHover(seq, view.annotateHover) : undefined;
     // Whether the selection held something: the reset follows only the move that empties it, not an empty selection again.
@@ -100,13 +101,14 @@ export function linkSequence(
     start(structure, view);
   });
   // A frame step (sequence.md §2): the link follows the new Structure, its systems stay; only the views (which map 3D
-  // loci onto the structure drawn) start again.
+  // loci onto the structure drawn) start again, with no clear of the 3D hover and no replay of the selection, which 3D
+  // holds (a replay was a recorded `select.set` per step: perf-audit-2 10/B6).
   const frames = viewer.frame.subscribe((structure) => {
     if (!link || !shownNow || !structure || structure === link.structure) return;
     const view = view3d(structure);
     if (!view || !link.rebind(structure)) return;
-    stop();
-    start(structure, view);
+    stop(false);
+    start(structure, view, false);
   });
   return () => {
     sub.unsubscribe();
@@ -132,7 +134,33 @@ function showMarks(seq: SequenceViewer['seq'], link: StructureLink, structure: S
     return coordinatesOf(link, link.fromLoci(here, scratch));
   };
   let channels = new Set<string>();
+  // The marks already shown, by what they are (an owner's same marks set again are not new); the first list is what was
+  // there when the link was made: shown, not focused.
+  const keyOf = (m: Mark) => `${m.owner}\u0000${m.id}\u0000${m.structure}\u0000${m.label}`;
+  let shown: ReadonlySet<string> | undefined;
   const marked = marks.marks.subscribe((list) => {
+    // New marks that focus the sequence: their owner's marks, together, in view (a box's two ranges both shown).
+    const focusing = new Set(
+      shown ? list.filter((m) => m.focusSequence && !shown!.has(keyOf(m))).map((m) => m.owner) : [],
+    );
+    shown = new Set(list.map(keyOf));
+    if (focusing.size) {
+      // One target of their runs, each in its system (a box's ranges are often in two chains).
+      const systems: string[] = [];
+      const runs: number[] = [];
+      for (const m of list) {
+        if (!m.focusSequence || !focusing.has(m.owner)) continue;
+        const coords = coordsOf(m.loci);
+        if (!coords) continue;
+        for (let i = 0; i < coords.runs.length; i += 3) {
+          const key = coords.systems[coords.runs[i]];
+          let k = systems.indexOf(key);
+          if (k < 0) k = systems.push(key) - 1;
+          runs.push(k, coords.runs[i + 1], coords.runs[i + 2]);
+        }
+      }
+      if (runs.length) seq.focus.fromLoci({ systems, runs: Int32Array.from(runs) }, { origin: 'host:3d' });
+    }
     const next = new Set<string>();
     for (const m of list) {
       const coords = coordsOf(m.loci);

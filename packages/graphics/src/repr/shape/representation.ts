@@ -1,10 +1,11 @@
-import * as ShapeUtils from '@molstar/graphics/geo/shape/shape';
 /**
  * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author David Sehnal <david.sehnal@gmail.com>
  */
 
+import * as ShapeUtils from '@molstar/graphics/geo/shape/shape';
 import { Geometry, type GeometryUtils } from '@molstar/graphics/geo/geometry/geometry';
 import { resolveInstanceGranularity } from '@molstar/graphics/geo/geometry/base';
 import { Representation, type RepresentationContext } from '../representation.js';
@@ -199,6 +200,11 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
           ValueCell.updateIfChanged(_renderObject.values.uGroupCount, locationIt.groupCount);
         }
 
+        // the current geometry's positions before colors and sizes read them (perf-audit-2 07/B7)
+        if (updateState.updateTransform || updateState.createGeometry) {
+          positionIt = geometryUtils.createPositionIterator(_shape.geometry, _renderObject.values);
+        }
+
         if (updateState.updateColor) {
           // console.log('update color')
           createColors(locationIt, positionIt, _theme.color, _renderObject.values);
@@ -219,7 +225,6 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
         if (updateState.updateTransform || updateState.createGeometry) {
           // console.log('updateBoundingSphere')
           geometryUtils.updateBoundingSphere(_renderObject.values, _shape.geometry);
-          positionIt = geometryUtils.createPositionIterator(_shape.geometry, _renderObject.values);
         }
       }
 
@@ -331,7 +336,6 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
 
       if (_renderObject) {
         if (state.visible !== undefined) Visual.setVisibility(_renderObject, state.visible);
-        if (state.alphaFactor !== undefined) Visual.setAlphaFactor(_renderObject, state.alphaFactor);
         if (state.pickable !== undefined) Visual.setPickable(_renderObject, state.pickable);
         if (state.colorOnly !== undefined) Visual.setColorOnly(_renderObject, state.colorOnly);
         if (state.overpaint !== undefined) {

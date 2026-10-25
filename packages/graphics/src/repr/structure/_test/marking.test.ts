@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
 import fs from 'node:fs';
@@ -17,6 +18,7 @@ import { MarkerAction } from '@molstar/core/util/marker-action';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { CIF } from '@molstar/io/reader/cif';
 import { trajectoryFromMmCIF } from '@molstar/model/formats/structure/mmcif';
+import { SegmentedArray } from '@molstar/graphics/gl/segmented-array';
 import { EmptyLoci, type Loci } from '@molstar/model/model/loci';
 import { Bond, Structure, StructureElement, StructureProperties, Unit } from '@molstar/model/model/structure';
 import { StructureSymmetry } from '@molstar/model/model/structure/structure/symmetry';
@@ -28,11 +30,15 @@ import {
 } from '@molstar/graphics/gl/render-object';
 import { ColorTheme } from '@molstar/graphics/theme/color';
 import { BuiltInColorThemes } from '@molstar/graphics/theme/color/catalog';
+import { Clipping } from '@molstar/graphics/theme/clipping';
 import { Overpaint } from '@molstar/graphics/theme/overpaint';
 import { SizeTheme } from '@molstar/graphics/theme/size';
 import { BuiltInSizeThemes } from '@molstar/graphics/theme/size/catalog';
 import { Theme } from '@molstar/graphics/theme/theme';
+import { UnitsRepresentation } from '../units-representation.js';
+import { GaussianSurfaceMeshParams, GaussianSurfaceMeshVisual } from '../visual/gaussian-surface-mesh.js';
 import { Transparency } from '@molstar/graphics/theme/transparency';
+import { Wiggle } from '@molstar/graphics/theme/wiggle';
 import type { Representation } from '../../representation.js';
 import { BallAndStickRepresentationProvider } from '../representation/ball-and-stick.js';
 import { CartoonRepresentationProvider } from '../representation/cartoon.js';
@@ -155,12 +161,14 @@ function members(repr: Representation<Structure>): GraphicsRenderObject[] {
   return out;
 }
 
-/** markers of every visual: status, average and array; merged objects also their own (synced) copy */
+/** markers of every visual: status, average and elements; merged objects also their own (synced) copy */
 function markers(repr: Representation<Structure>) {
   const parts: string[] = [];
   for (const o of [...members(repr), ...repr.renderObjects.filter((o) => isMergedRenderObject(o))]) {
     const v = o.values;
-    parts.push(`${v.markerStatus.ref.value}/${v.markerAverage.ref.value}/${hash(v.tMarker.ref.value.array)}`);
+    parts.push(
+      `${v.markerStatus.ref.value}/${v.markerAverage.ref.value}/${hash(layerData(v.tMarker.ref.value.array).subarray(0, v.tMarker.ref.value.count))}`,
+    );
   }
   return (
     hash(
@@ -170,6 +178,11 @@ function markers(repr: Representation<Structure>) {
         .map((c) => c.charCodeAt(0)),
     ) + ` ${parts.length}`
   );
+}
+
+/** A layer's data: merged objects' layers are their members' as parts (`SegmentedArray`), composed here */
+function layerData<T extends Uint8Array | Float32Array>(array: T): T {
+  return SegmentedArray.is(array) ? (SegmentedArray.flatten(array) as T) : array;
 }
 
 function isZero(array: Uint8Array) {
@@ -189,7 +202,7 @@ function usedTexels(values: GraphicsRenderObject['values'], type: string) {
 function layer(values: GraphicsRenderObject['values'], name: 'Overpaint' | 'Transparency', itemSize: number) {
   if (!values[`d${name}`].ref.value) return 'off';
   const type = values[`${name.toLowerCase()}Type`].ref.value;
-  const array = values[`t${name}`].ref.value.array.subarray(0, usedTexels(values, type) * itemSize);
+  const array = layerData(values[`t${name}`].ref.value.array).subarray(0, usedTexels(values, type) * itemSize);
   return isZero(array) ? 'clear' : `${type}:${hash(array)}`;
 }
 
@@ -304,7 +317,7 @@ describe('layers on surfaces', async () => {
   function layerTypes(repr: Representation<Structure>) {
     return members(repr).map((o) => {
       const v = o.values;
-      return `${v.overpaintType.ref.value} ${isZero(v.tOverpaint.ref.value.array) ? 'clear' : 'set'}`;
+      return `${v.overpaintType.ref.value} ${isZero(layerData(v.tOverpaint.ref.value.array)) ? 'clear' : 'set'}`;
     });
   }
 
@@ -330,7 +343,38 @@ describe('layers on surfaces', async () => {
     // the merged copy shows the layer
     merged.merged.sync();
     expect(merged.values.overpaintType.ref.value).toBe('groupInstance');
-    expect(isZero(merged.values.tOverpaint.ref.value.array)).toBe(false);
+    expect(isZero(layerData(merged.values.tOverpaint.ref.value.array))).toBe(false);
+    repr.destroy();
+  });
+
+  it('merges visuals recreated with a layer set (perf-audit-2 07/P16)', async () => {
+    // gaussian surface visuals that can be made to recreate (as after a GPU <-> CPU switch)
+    let recreate = false;
+    const visualCtor = (materialId: number) => {
+      const visual = GaussianSurfaceMeshVisual(materialId);
+      visual.mustRecreate = () => recreate;
+      return visual;
+    };
+    const params = () => GaussianSurfaceMeshParams as any;
+    const repr = UnitsRepresentation('test', { ...registries }, params, visualCtor as any);
+    repr.setTheme(
+      Theme.create(
+        registries,
+        { structure: model },
+        { colorTheme: { name: 'uniform' }, sizeTheme: { name: 'uniform' } },
+      ),
+    );
+    const values = { ...PD.getDefaultValues(GaussianSurfaceMeshParams), ...props, renderMerged: true };
+    await repr.createOrUpdate(values, model).run();
+    repr.setState({ overpaint });
+    expect(repr.renderObjects.some((o) => isMergedRenderObject(o))).toBe(true);
+
+    recreate = true;
+    await repr.createOrUpdate({}, model).run();
+    expect(repr.renderObjects.some((o) => isMergedRenderObject(o))).toBe(true);
+    const types = layerTypes(repr);
+    expect(types.filter((t) => t === 'groupInstance set')).toHaveLength(1);
+    expect(types.filter((t) => t !== 'groupInstance set').every((t) => t === 'groupInstance clear')).toBe(true);
     repr.destroy();
   });
 
@@ -367,7 +411,7 @@ describe('layer updates and picking', async () => {
     repr.setState({ overpaint: Overpaint('element-loci', [{ loci: unitLoci(a), color: red, clear: false }]) });
     repr.setState({ transparency: Transparency('element-loci', [{ loci: unitLoci(a), value: 0.5 }]) });
     const after = versions();
-    const reached = members(repr).map((o) => !isZero(o.values.tOverpaint.ref.value.array));
+    const reached = members(repr).map((o) => !isZero(layerData(o.values.tOverpaint.ref.value.array)));
     expect(reached.some((r) => r)).toBe(true);
     expect(reached.some((r) => !r)).toBe(true);
     for (let i = 0; i < before.length; ++i) {
@@ -377,9 +421,42 @@ describe('layer updates and picking', async () => {
     expect(overpaints(repr)).toEqual(op);
     // a layer on `b`: the visuals of `a` are cleared, those of `b` set
     repr.setState({ overpaint: Overpaint('element-loci', [{ loci: unitLoci(b), color: red, clear: false }]) });
-    const moved = members(repr).map((o) => !isZero(o.values.tOverpaint.ref.value.array));
+    const moved = members(repr).map((o) => !isZero(layerData(o.values.tOverpaint.ref.value.array)));
     expect(moved).not.toEqual(reached);
     expect(moved.some((r) => r)).toBe(true);
+    repr.destroy();
+  });
+
+  it('leaves the clipping and wiggle textures of visuals a change does not reach as they are (perf-audit-2 07/P14)', async () => {
+    const repr = await createRepr(BallAndStickRepresentationProvider, model);
+    const versions = () =>
+      members(repr).map((o) => [o.values.tClipping.ref.version, o.values.tWiggle.ref.version].join('/'));
+    const [a, b] = units;
+    const groups = Clipping.Groups.create(Clipping.Groups.Flag.One);
+    const set = (u: Unit) => {
+      repr.setState({ clipping: Clipping('element-loci', [{ loci: unitLoci(u), groups }]) });
+      repr.setState({ wiggle: Wiggle('element-loci', [{ loci: unitLoci(u), value: 0.5 }]) });
+    };
+    set(a);
+    const before = versions();
+    const reached = members(repr).map((o) => !isZero(o.values.tClipping.ref.value.array));
+    expect(reached.some((r) => r)).toBe(true);
+    expect(reached.some((r) => !r)).toBe(true);
+    // the same layers again: only the visuals of `a` are set again
+    set(a);
+    const after = versions();
+    for (let i = 0; i < before.length; ++i) {
+      if (reached[i]) expect(after[i]).not.toBe(before[i]);
+      else expect(after[i]).toBe(before[i]);
+    }
+    expect(members(repr).map((o) => !isZero(o.values.tClipping.ref.value.array))).toEqual(reached);
+    // a layer on `b`: the visuals of `a` are cleared, those of `b` set
+    set(b);
+    const moved = members(repr).map((o) => !isZero(o.values.tClipping.ref.value.array));
+    const wiggled = members(repr).map((o) => !isZero(new Uint8Array(o.values.tWiggle.ref.value.array.buffer)));
+    expect(moved).not.toEqual(reached);
+    expect(moved.some((r) => r)).toBe(true);
+    expect(wiggled).toEqual(moved);
     repr.destroy();
   });
 

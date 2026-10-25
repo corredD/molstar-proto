@@ -11,6 +11,7 @@ import type { CanvasMenuItem, ShellModel } from '@molstar/prism-ui/shell/shell';
 import type { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { ModelSource } from '@molstar/ai';
 import type { CommandMenuAssistant } from '@molstar/prism-ui';
+import type { CommandMenuPrefix } from '@molstar/prism-ui/commands/types';
 import type { Child } from '@molstar/prism-ui/dom/jsx-types';
 import type { Observable } from 'rxjs';
 import type { DomainRules } from './agent/policies.js';
@@ -35,6 +36,7 @@ import type { ApiArea, ApiAreaContext, ApiModuleKey, OperationDefinition, Viewer
 import type { PrismViewerOptionValues } from './options.js';
 import type { SceneNode, SceneNodeKind } from './model/scene.js';
 import type { SequenceBehavior } from './sequence/behaviors.js';
+import type { SequenceTrackProvider } from './sequence/tracks.js';
 import type { AgentListChange, OperationToolSpec, SkillDeclaration } from './agent/skills.js';
 
 // What a Prism viewer is made from (viewer-spec.md): plain data, explicit ordered lists, nothing resolved by name, a
@@ -107,10 +109,20 @@ export interface PrismViewerSequenceSpec {
    * bundled.
    */
   readonly runtime: () => Promise<typeof import('./sequence/runtime.js')>;
-  /** The viewer's sequence behaviors (follow, secondary structure); extensions add theirs. */
+  /** The viewer's sequence behaviors; extensions add theirs. */
   readonly behaviors: readonly SequenceBehavior[];
+  /**
+   * The viewer's track providers (sequence.md §3: ruler, letters, secondary structure); extensions add theirs. Absent:
+   * `DefaultSequenceTracks`.
+   */
+  readonly tracks?: readonly SequenceTrackProvider[];
   /** The initial style; Tracks by default. */
   readonly style?: 'tracks' | 'text';
+  /**
+   * Each structure's Sequence node in the structure tree (sequence.md §8.1); false: none (the band, its menu, the
+   * commands and the API stay; Edit in structure tree goes). True by default.
+   */
+  readonly tree?: boolean;
 }
 
 /** A sequence behavior: what keeps part of the sequence's document in step with what it shows (sequence.md §3). */
@@ -121,6 +133,8 @@ export type {
   SequenceShown,
   SequenceTrackMenuItem,
 } from './sequence/behaviors.js';
+/** A track provider: a track a structure's sequence can have, which the viewer puts in and takes out (sequence.md §3). */
+export type { SequenceTrackContext, SequenceTrackProvider } from './sequence/tracks.js';
 
 /** §2.4 */
 export interface PrismViewerAgentSpec {
@@ -286,9 +300,22 @@ export interface ViewerExtension {
   /** The extensions it needs in the spec before it (by id: the \`annotations\` feature needs \`structure\`). */
   readonly requires?: readonly string[];
   readonly commands?: (api: ViewerApi) => readonly CommandDefinition<any>[];
+  /**
+   * Prefixes it adds to the command menu (`pymol `, ui's commands.md §5): typed at the start, they turn the menu into
+   * the prefix's list. Made once the extension's operations exist; an eager extension's only (a lazy stub declares
+   * none: the rows are made as the person types).
+   */
+  readonly commandPrefixes?: (ctx: CommandPrefixContext) => readonly CommandMenuPrefix[];
   /** Its tools, in skills: never core tools, they are disclosed (agent.md §3). */
   readonly skills?: readonly ViewerSkill[];
-  readonly sequence?: readonly SequenceBehavior[];
+  /**
+   * What it adds to the sequence (sequence.md §3): track providers (the way to add sequence data: a track the person
+   * can add, remove and hide per structure) and behaviors (rules that follow the scene), ids `<id>.sequence.<name>`.
+   */
+  readonly sequence?: {
+    readonly tracks?: readonly SequenceTrackProvider[];
+    readonly behaviors?: readonly SequenceBehavior[];
+  };
   /** What it can show of a structure (`annotations.apply`; README decision 27). */
   readonly annotations?: readonly AnnotationProvider[];
   /** Its Settings group. */
@@ -329,6 +356,8 @@ export interface BuiltInViewsContext {
   readonly person: ViewerApi;
   /** Opens a command as the command menu does (its form, or runs it). */
   readonly openCommand: (id: string, values?: Readonly<Record<string, unknown>>) => void;
+  /** Each structure's sequence for the structure tree (sequence.md §8.1); none: the spec has no sequence. */
+  readonly sequence?: import('./model/scene.js').SceneSequence;
 }
 
 /** What a built-in feature's part of the shell gets: the shell, the viewer's core, and the shell's own services. */
@@ -350,6 +379,20 @@ export interface ViewerUIContext {
   readonly api: ViewerApi;
   readonly sources: import('./sources/viewer-sources.js').ViewerSources;
   readonly managers: import('./api/managers.js').ViewerManagers;
+  /** The person's preferences (`persist.preferences`, journal.md §6): small and lasting; none, the session's only. */
+  readonly preferences?: PrismStore;
+}
+
+/** What an extension's command-menu prefixes are made with: the API as the person, the person's preferences. */
+export interface CommandPrefixContext {
+  readonly api: ViewerApi;
+  /** The person's preferences (`persist.preferences`); none, the session's only. */
+  readonly preferences?: PrismStore;
+  /**
+   * Says a row's outcome on the status line (and the log), as a command's is: a row runs after the menu closes, so
+   * this is where its result goes.
+   */
+  readonly post: (text: string, kind?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
 export interface ViewerExtensionUI {
@@ -368,7 +411,10 @@ export interface ViewerExtensionUI {
   }[];
   readonly tabs?: readonly {
     readonly id: PartId;
+    /** Its name: the rail's tooltip, and the panel's header unless `heading` says otherwise. */
     readonly title: string;
+    /** The panel's header when the title is longer than it needs (the PyMOL / VMD console: "Console"). */
+    readonly heading?: string;
     readonly icon: IconName;
     readonly dock?: DockId;
     readonly order?: number;

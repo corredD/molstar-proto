@@ -17,7 +17,6 @@ import {
   createRenderObject,
   type GraphicsRenderObject,
   type RenderObjectValues,
-  createForeignResourcesCheck,
 } from '@molstar/graphics/gl/render-object';
 import { PickingId } from '@molstar/graphics/geo/geometry/picking';
 import { type Loci, isEveryLoci, EmptyLoci } from '@molstar/model/model/loci';
@@ -25,6 +24,7 @@ import { Interval } from '@molstar/core/data/int';
 import { type LocationCallback, VisualUpdateState } from '../util.js';
 import { ColorTheme } from '@molstar/graphics/theme/color';
 import { ValueCell, deepEqual } from '@molstar/core/util';
+import { shallowMerge2 } from '@molstar/core/util/object';
 import { createSizes, type SizeData } from '@molstar/graphics/geo/geometry/size-data';
 import { createColors } from '@molstar/graphics/geo/geometry/color-data';
 import { MarkerAction } from '@molstar/core/util/marker-action';
@@ -144,7 +144,10 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
   } = builder;
   const { updateValues, updateBoundingSphere, updateRenderableState, createPositionIterator } = builder.geometryUtils;
   const updateState = VisualUpdateState.create();
-  const foreignResources = createForeignResourcesCheck();
+  const foreignResources = Visual.foreignResourcesCheck();
+  let newGraphics: GraphicsContext | undefined;
+  /** the context `geometry` was made with: a new render object over geometry of another context is not known clean */
+  let geometryGraphics: GraphicsContext | undefined;
   const previousMark: Visual.PreviousMark = { loci: EmptyLoci, action: MarkerAction.None, status: -1 };
 
   let renderObject: GraphicsRenderObject<G['kind']> | undefined;
@@ -167,11 +170,13 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
       throw new Error('missing structure');
     }
 
-    newProps = Object.assign({}, currentProps, props);
+    // the same object while no prop changes (compared with the visual's own: callers may change theirs in place)
+    newProps = currentProps ? shallowMerge2(currentProps, props) : Object.assign({}, currentProps, props);
     newTheme = theme;
     newStructure = structure;
 
     VisualUpdateState.reset(updateState);
+    newGraphics = graphics;
 
     if (!renderObject || !currentStructure) {
       initUpdateState?.(updateState, newProps, newTheme, newStructure);
@@ -184,7 +189,8 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
 
     // after a backend switch or restore: textures and buffers of the previous context are rendered or computed again,
     // geometry relying on what the new context lacks (`GeometryUtils.isCompatible`) is created again, for the new context
-    if (graphics && renderObject && foreignResources(renderObject, graphics)) updateState.createGeometry = true;
+    if (graphics && renderObject && foreignResources.hasForeign(renderObject, graphics))
+      updateState.createGeometry = true;
     if (graphics && geometry && builder.geometryUtils.isCompatible?.(geometry, graphics) === false) {
       updateState.createGeometry = true;
     }
@@ -206,7 +212,9 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
       updateState.updateSize = true;
     }
 
-    if (!deepEqual(newProps.unitKinds, currentProps.unitKinds)) {
+    // the representation keeps its props object while no prop changes (`shallowMerge2`): the same props, no prop changed
+    const propsChanged = newProps !== currentProps;
+    if (propsChanged && !deepEqual(newProps.unitKinds, currentProps.unitKinds)) {
       updateState.createGeometry = true;
     }
 
@@ -216,7 +224,7 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
       updateState.updateTransform = true;
     }
 
-    if (newProps.instanceGranularity !== currentProps.instanceGranularity) {
+    if (propsChanged && newProps.instanceGranularity !== currentProps.instanceGranularity) {
       updateState.updateTransform = true;
     }
 
@@ -235,6 +243,8 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
       locationIt = createLocationIterator(newStructure, newProps);
       if (newGeometry) {
         renderObject = createComplexRenderObject(newStructure, newGeometry, locationIt, newTheme, newProps, materialId);
+        if (geometry === undefined || geometryGraphics === newGraphics)
+          foreignResources.created(renderObject, newGraphics);
         positionIt = createPositionIterator(newGeometry, renderObject.values);
       } else {
         throw new Error('expected geometry to be given');
@@ -244,8 +254,13 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
         throw new Error('expected renderObject to be available');
       }
 
-      if (updateState.updateColor || updateState.updateSize || updateState.updateTransform) {
-        // console.log('update locationIterator');
+      // a new iterator where what it iterates may differ: the transform, the structure or the props (the color and size
+      // writers reset it); a recolor keeps it
+      if (
+        updateState.updateTransform ||
+        ((updateState.updateColor || updateState.updateSize) &&
+          (newProps !== currentProps || newStructure !== currentStructure))
+      ) {
         locationIt = createLocationIterator(newStructure, newProps);
       }
 
@@ -271,7 +286,8 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
 
       if (updateState.updateTransform || updateState.createGeometry) {
         updateBoundingSphere(renderObject.values, newGeometry || geometry);
-        positionIt = createPositionIterator(geometry, renderObject.values);
+        // the new geometry's positions: a vertex theme reads them below (perf-audit-2 07/B7)
+        positionIt = createPositionIterator(newGeometry || geometry, renderObject.values);
       }
 
       if (updateState.updateSize) {
@@ -285,8 +301,18 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
         createColors(locationIt, positionIt, newTheme.color, renderObject.values);
       }
 
-      updateValues(renderObject.values, newProps);
-      updateRenderableState(renderObject.state, newProps);
+      // the values from the props: again where the props or what the values derive from besides them changed (counts,
+      // bounds, sizes)
+      if (
+        newProps !== currentProps ||
+        updateState.createGeometry ||
+        updateState.updateTransform ||
+        updateState.updateMatrix ||
+        updateState.updateSize
+      ) {
+        updateValues(renderObject.values, newProps);
+        updateRenderableState(renderObject.state, newProps);
+      }
     }
 
     currentProps = newProps;
@@ -294,6 +320,7 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
     currentStructure = newStructure;
     if (newGeometry) {
       geometry = newGeometry;
+      geometryGraphics = newGraphics;
       geometryVersion += 1;
     }
   }
@@ -387,9 +414,6 @@ export function ComplexVisual<G extends Geometry, P extends StructureParams & Ge
     },
     setVisibility(visible: boolean) {
       Visual.setVisibility(renderObject, visible);
-    },
-    setAlphaFactor(alphaFactor: number) {
-      Visual.setAlphaFactor(renderObject, alphaFactor);
     },
     setPickable(pickable: boolean) {
       Visual.setPickable(renderObject, pickable);
