@@ -133,8 +133,11 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
     if (row) picked.set(row.node);
   }
 
-  // the split: the properties' height, dragged on the line above them (once a frame, `drag`'s every end path)
+  // the split: the properties' height, dragged on the line above them (once a frame, `drag`'s every end path) or moved
+  // by the arrows (as the dock's splitter); kept between 80 px and what leaves the tree 80 px (the panel's height read
+  // once, at the press or the key)
   const height = frameState(props.split ?? 280);
+  const clamp = (h: number) => Math.max(80, Math.min((panelEl?.clientHeight ?? 640) - 160, h));
 
   const panel = (
     <div class={classes.panel} ref={(el: HTMLElement) => (panelEl = el)}>
@@ -199,11 +202,18 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
         class={classes.split}
         role="separator"
         aria-orientation="horizontal"
-        aria-label="Drag to size the properties"
+        aria-label="The properties' height"
+        aria-valuenow={derive(height, (h) => String(Math.round(h)))}
+        tabIndex={0}
+        onKeyDown={(e: KeyboardEvent) => {
+          if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+          e.preventDefault();
+          height.offer(clamp(height.value + (e.shiftKey ? 64 : 16) * (e.key === 'ArrowUp' ? 1 : -1)));
+        }}
         ref={(el: HTMLElement) =>
           drag(el, {
-            start: (e) => ({ y: e.clientY, h: height.value }),
-            move: (e, s) => height.offer(Math.max(80, s.h - (e.clientY - s.y))),
+            start: (e) => ({ y: e.clientY, h: height.value, max: clamp(Number.POSITIVE_INFINITY) }),
+            move: (e, s) => height.offer(Math.max(80, Math.min(s.max, s.h - (e.clientY - s.y)))),
           })
         }
       />
