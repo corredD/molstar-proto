@@ -321,7 +321,7 @@ function defaultsOf(t: PluginSpec['behaviors'][number]['transformer']) {
 }
 
 describe("the app's bindings", () => {
-  it('leave Ctrl+click and ⌘+click to the distance: no behavior answers them', () => {
+  it("keep the canvas's Ctrl+click and ⌘+click focus as Mol* has them (a distance is measured in selection mode)", () => {
     const spec = createMesoscaleExplorerSpec('');
     const plugin = spec.finalize ? spec.finalize(spec.plugin as PluginSpec) : (spec.plugin as PluginSpec);
     // both focus behaviors are there (else the test checks nothing of them), with bindings
@@ -341,6 +341,16 @@ describe("the app's bindings", () => {
         }
       }
     }
-    expect(taken).toEqual([]);
+    // as before the distance: the camera's focus (also its selection mode's) and the representation's focus add
+    expect(taken.sort()).toEqual(
+      [
+        'ms-plugin.camera-focus-loci.clickCenterFocus',
+        'ms-plugin.camera-focus-loci.clickCenterFocusSelectMode',
+        'ms-plugin.camera-focus-loci.clickResetCameraOnEmpty',
+        'ms-plugin.camera-focus-loci.clickResetCameraOnEmptySelectMode',
+        'ms-plugin.representation-focus-loci.clickFocusAdd',
+        'ms-plugin.representation-focus-loci.clickFocusAdd',
+      ].sort(),
+    );
   });
 });
