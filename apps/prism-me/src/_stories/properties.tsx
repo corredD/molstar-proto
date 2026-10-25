@@ -179,7 +179,8 @@ function sections(shell: ShellModel) {
       id: 'graphics',
       slot: Slot,
       title: 'Graphics & Motion',
-      when: object,
+      // a structure, a model, a particle list, a volume (ui.md §4); not a mesh, not a part
+      when: has('structure', 'model', 'list', 'volume'),
       render: view((n) => (
         <div class={classes.stack}>
           <Choices
@@ -187,7 +188,7 @@ function sections(shell: ShellModel) {
             choices={['Ultra', 'Quality', 'Balanced', 'Fast'].map((q) => ({ id: q, label: q }))}
             onPick={() => {}}
           />
-          {n.kind === 'volume' || n.kind === 'mesh'
+          {n.kind === 'volume'
             ? null
             : form({
                 wiggle: PD.Boolean(false),
