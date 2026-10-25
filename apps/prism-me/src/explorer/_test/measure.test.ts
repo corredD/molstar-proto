@@ -5,7 +5,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { OrderedSet } from '@molstar/core/data/int';
+import { Interval, OrderedSet } from '@molstar/core/data/int';
 import { Binding } from '@molstar/core/util/binding';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { ButtonsType, EmptyKeyInput, ModifiersKeys } from '@molstar/core/util/input/input-observer';
@@ -302,24 +302,40 @@ describe('a distance by two Ctrl+clicks', () => {
     expect(revealed.length).toBe(before + 1);
   });
 
-  it('a volume is no point yet: says why and keeps the first point (volumes: the next brief)', async () => {
+  it("takes a volume's voxel as a point, and the whole volume at a coarse granularity; under the first pick's row", async () => {
     const v = await viewer();
     const n = 6;
     const data = new Float32Array(n * n * n).map((_, i) => i % 5);
     const grid: Grid = {
       transform: { kind: 'matrix', matrix: Mat4.identity() },
-      cells: Tensor.create(Tensor.Space([n, n, n], [2, 1, 0], Float32Array), Tensor.Data1(data)),
+      cells: Tensor.create(Tensor.Space([n, n, n], [0, 1, 2], Float32Array), Tensor.Data1(data)),
       stats: { min: 0, max: 4, mean: 2, sigma: 1 },
     };
     expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, data)], 'map.mrc')] }));
-    const volume = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.obj!.data;
-    const { p, posted } = picker(v);
+    const map = v.plugin.managers.volume.hierarchy.current.volumes[0];
+    const volume = map.cell.obj!.data;
+    const cell = (i: number, j: number, k: number) =>
+      Volume.Cell.Loci(volume, [
+        {
+          indices: Interval.ofSingleton(volume.grid.cells.space.dataOffset(i, j, k) as Volume.CellIndex),
+          instances: Interval.ofSingleton(0 as Volume.InstanceIndex),
+        },
+      ]);
+    const { p } = picker(v);
+    // a voxel first: the distance under the volume's row
+    await p.click({ loci: cell(1, 2, 3), measure: true });
+    expect(p.pending.value?.picked.key).toBe(`o:${map.cell.transform.ref}`);
     await p.click({ loci: atom(v, 1, 'CA'), measure: true });
-    const first = p.pending.value;
-    expect(await p.click({ loci: Volume.Loci(volume), measure: true })).toBe(true);
-    expect(posted.at(-1)).toMatch(/Volumes are not measured yet/);
-    expect(p.pending.value).toBe(first);
-    expect(distances(v)).toHaveLength(0);
+    expect(distances(v)).toHaveLength(1);
+    expect(distances(v)[0]).toMatchObject({
+      node: `o:${map.cell.transform.ref}`,
+      a: { label: 'map.mrc voxel (1, 2, 3)' },
+    });
+    // at a coarse granularity (Mol*'s 'structure': a volume whole), its center
+    v.plugin.managers.interactivity.setProps({ granularity: 'structure' });
+    await p.click({ loci: cell(0, 0, 0), measure: true });
+    await p.click({ loci: particle(v, 1), measure: true });
+    expect(distances(v)[1].a.label).toBe('map.mrc (center)');
   });
 
   it('takes a bond as a point (normalized to its atoms first)', async () => {
@@ -405,7 +421,10 @@ describe('in selection mode, a modifier click selects as a plain click does (Lud
       return true;
     };
     // (and takes what is added to it); the camera's Ctrl+click focus off a Mac (selection mode's) is not this test's
-    Object.defineProperty(v.plugin, 'canvas3d', { value: { mark, add() {}, remove() {} }, configurable: true });
+    Object.defineProperty(v.plugin, 'canvas3d', {
+      value: { mark, add() {}, remove() {}, syncVisibility() {} },
+      configurable: true,
+    });
     vi.spyOn(v.plugin.managers.camera, 'focusLoci').mockImplementation(() => {});
     v.plugin.selectionMode = true;
     const area = v.api.explorer!;
@@ -441,6 +460,40 @@ describe('in selection mode, a modifier click selects as a plain click does (Lud
           [],
         );
       }
+      // a volume's voxel: selected (its mark toggled) as the others, and a point
+      const n = 4;
+      const data = new Float32Array(n * n * n).map((_, i) => i % 3);
+      const grid: Grid = {
+        transform: { kind: 'matrix', matrix: Mat4.identity() },
+        cells: Tensor.create(Tensor.Space([n, n, n], [0, 1, 2], Float32Array), Tensor.Data1(data)),
+        stats: { min: 0, max: 2, mean: 1, sigma: 1 },
+      };
+      expectOk(await v.api.load.files({ files: [new File([CCP4Writer.writeMrc(grid, data)], 'map.mrc')] }));
+      const volume = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.obj!.data;
+      marks.length = 0;
+      const before = distances(v).length;
+      v.plugin.behaviors.interaction.click.next({
+        current: {
+          loci: Volume.Cell.Loci(volume, [
+            {
+              indices: Interval.ofSingleton(5 as Volume.CellIndex),
+              instances: Interval.ofSingleton(0 as Volume.InstanceIndex),
+            },
+          ]),
+        },
+        buttons: ButtonsType.Flag.Primary,
+        button: ButtonsType.Flag.Primary,
+        modifiers: ModifiersKeys.create({ control: true }),
+      });
+      v.plugin.behaviors.interaction.click.next({
+        current: { loci: atom(v, 3, 'CA') },
+        buttons: ButtonsType.Flag.Primary,
+        button: ButtonsType.Flag.Primary,
+        modifiers: ModifiersKeys.create({ control: true }),
+      });
+      await Promise.all(runs);
+      expect(marks.some(([kind, action]) => kind === 'cell-loci' && action === MarkerAction.Toggle)).toBe(true);
+      expect(distances(v).length).toBe(before + 1);
     } finally {
       sub.unsubscribe();
       // the stand-in goes before the viewer is disposed (it would dispose it)

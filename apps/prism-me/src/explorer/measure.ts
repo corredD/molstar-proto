@@ -58,11 +58,9 @@ export function distancePicker(
       // normalized first (a bond: its atoms; the selection granularity), so its row is the point's
       const loci = isEmptyLoci(click.loci) ? click.loci : area.measurePoint(click.loci);
       const picked = isEmptyLoci(loci) ? undefined : area.pickedOf(loci);
-      if (!picked || picked.kind === 'distance' || picked.kind === 'label' || picked.kind === 'volume') {
-        // (the click still selected it, as any click in selection mode; volumes: the next brief)
-        const what = picked?.kind === 'volume' ? 'Volumes are not measured yet. ' : '';
+      if (!picked || picked.kind === 'distance' || picked.kind === 'label') {
         options.post?.(
-          `${what}A distance is measured between atoms, residues, chains and particles: ${gesture()} one.`,
+          `A distance is measured between atoms, residues, chains, particles and volumes: ${gesture()} one.`,
         );
         return true;
       }
