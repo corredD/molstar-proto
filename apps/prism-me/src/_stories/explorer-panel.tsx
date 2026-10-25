@@ -180,7 +180,15 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
             aria-label="The scene"
             class={classes.tree}
             contentRef={nav.tree}
-            ref={(l) => (list = l)}
+            ref={(l) => {
+              list = l;
+              // the picked row brought into view, once the list has its height (ui.md §3: the tree shows where it is)
+              timeout(() => {
+                const key = picked.value?.key;
+                const i = key === undefined ? -1 : rows.value.findIndex((r) => r.key === key);
+                if (i >= 0) l.scrollToIndex(i);
+              }, 0);
+            }}
             reveal
           >
             {(row) => (
