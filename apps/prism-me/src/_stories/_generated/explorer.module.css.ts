@@ -142,6 +142,10 @@ defineStyles('me/_stories/explorer.module.css', `@layer msp.components {
   [aria-expanded="true"] > .msp-me-explorer-row > & {
     transform: rotate(90deg);
   }
+
+  &:hover {
+    color: var(--msp-color-text);
+  }
 }
 
 .msp-me-explorer-leaf {
@@ -163,7 +167,7 @@ defineStyles('me/_stories/explorer.module.css', `@layer msp.components {
 .msp-me-explorer-label {
   white-space: nowrap;
   min-width: 3ch;
-  max-width: 65%;
+  max-width: 60%;
   mask-image: linear-gradient(to right, #000 calc(100% - var(--msp-fade)), transparent);
   flex: 0 auto;
   font-weight: 500;

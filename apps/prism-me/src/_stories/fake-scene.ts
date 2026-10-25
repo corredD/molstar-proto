@@ -232,22 +232,6 @@ export function fullScene(entities = 2400): MockNode[] {
   return categories([Crambin, cellPackModel(entities), Ribosomes, Tomogram, Membrane]);
 }
 
-/** Every node under `roots`, by key, all of it unfolded (for the stories that pick a row by key) */
-export function findNode(roots: readonly MockNode[], key: string, groupBy: GroupBy = 'compartment'): MockNode {
-  const walk = (nodes: readonly MockNode[]): MockNode | undefined => {
-    for (const n of nodes) {
-      if (n.key === key) return n;
-      // only down the way to it: a key's prefix names its object (`me:hiv:12` is under `o:hiv`)
-      const found = n.children && wayTo(n, key) ? walk(n.children(groupBy)) : undefined;
-      if (found) return found;
-    }
-    return undefined;
-  };
-  const node = walk(roots);
-  if (!node) throw new Error(`No node ${key} in the mock scene`);
-  return node;
-}
-
 /** Whether `key` may be under `node` (its object's id is the second part of both keys; categories hold everything) */
 function wayTo(node: MockNode, key: string) {
   return node.kind === 'category' || node.key.split(':')[1] === key.split(':')[1];

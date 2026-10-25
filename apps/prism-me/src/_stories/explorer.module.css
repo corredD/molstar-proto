@@ -100,6 +100,10 @@
   [aria-expanded="true"] > .row > & {
     transform: rotate(90deg);
   }
+
+  &:hover {
+    color: var(--msp-color-text);
+  }
 }
 
 .leaf {
@@ -122,7 +126,7 @@
 .label {
   flex: 0 1 auto;
   min-width: 3ch;
-  max-width: 65%;
+  max-width: 60%;
   overflow: hidden;
   font-weight: 500;
   white-space: nowrap;
