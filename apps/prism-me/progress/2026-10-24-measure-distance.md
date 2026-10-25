@@ -100,3 +100,12 @@ distance between two SerumAlbumin particles; text size and opacity typed in the 
 
 - A distance follows its objects' later moves only when it is re-evaluated (TODO Backlog).
 - Volumes and voxels: the next brief.
+
+## After Ludovic tried the app (2026-10-25)
+
+"In selection mode … with ctrl or apple modifier, nothing is selected." A modifier click now selects exactly as a plain
+click does: `spec.ts` adds Ctrl and ⌘ triggers to Mol*'s selection-mode click toggle (6a78743d0). The picker no longer
+marks its first point itself (272b7c360), which also closes the particle-selection gap. A modifier click on a volume
+selects it and says volumes are not measured yet (9284b34ea; before, it gave the generic message). Rechecked on port
+1344: ⌘+clicks on two 1CRN residues select them ("2 residues", 11 atoms) and make the distance; two SerumAlbumin
+particles show selected.
