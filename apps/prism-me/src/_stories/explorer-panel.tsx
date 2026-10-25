@@ -299,6 +299,8 @@ function TreeRow(props: {
       tabIndex={-1}
       class={classes.item}
       ref={props.nav.row(node.key)}
+      // the pick follows the focus (↑/↓, Home, End: Prism's tree keys move it), as a click; a category is not picked
+      onFocus={props.onPick}
     >
       <div
         data-tree-row=""
