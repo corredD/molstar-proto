@@ -120,8 +120,8 @@ such as a fiber, from their middle) (Ludovic, 2026-10-24), and volumes (Ludovic,
 voxel under the click, on an isosurface or a slice ("map.mrc voxel (i, j, k)"); at a coarse pick granularity (Mol*'s
 `structure`, which takes a volume whole) it is the whole volume's center ("map.mrc (center)"), following "the
 granularity of what is selected". Its position is Mol*'s (the voxel's or the grid's sphere, in the volume's frame). A
-direct volume rendering is not picked at all (Mol*'s pick pass draws only the scene's primitives, not its direct
-volumes): a voxel is picked on an isosurface or a slice. A segment of a segmentation counts as the whole volume.
+voxel is picked on an isosurface, a slice or a direct volume (where it looks solid: Mol*'s `surfaceOpacity`; the same
+`Volume.Cell` pick). A segment of a segmentation counts as the whole volume.
 
 - **In selection mode** (its button under the 3D view) (Ludovic, 2026-10-24): that mode already selects everything in
   the scene; there, two ⌘+clicks on a Mac, two Ctrl+clicks elsewhere, also make a distance. A modifier click selects
