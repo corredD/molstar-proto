@@ -3,9 +3,11 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
+import { Sphere3D } from '@molstar/core/math/geometry';
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { CustomProperties } from '../../custom-property.js';
 import { OrderedSet } from '@molstar/core/data/int';
@@ -196,5 +198,23 @@ describe('a particle loci label', () => {
   it('is plain text when asked (no tags, nothing escaped)', () => {
     const list = { ...createParticles(new Float32Array([0, 0, 0, 5, 0, 0])), label: 'picks <1>.em' };
     expect(lociLabel(Particle.Loci(list, OrderedSet.ofSingleton(1)), { htmlStyling: false })).toBe('1 | picks <1>.em');
+  });
+});
+
+describe('Particle.getBoundingSphere', () => {
+  it('fills the given sphere for the whole list, and leaves the cached boundary as it was', () => {
+    const list = createParticles(new Float32Array([0, 0, 0, 10, 0, 0]));
+    const all = Particle.Loci(list, OrderedSet.ofBounds(0, 2));
+    const fresh = Particle.getBoundingSphere(all);
+    const expected = { center: Vec3.clone(fresh.center), radius: fresh.radius };
+    // a reused sphere holding an earlier answer, as callers pass one
+    const out = Sphere3D.create(Vec3.create(100, 100, 100), 1);
+    const res = Particle.getBoundingSphere(all, out);
+    expect(res).toBe(out);
+    expect(Vec3.distance(out.center, expected.center)).toBeCloseTo(0, 5);
+    expect(out.radius).toBeCloseTo(expected.radius, 5);
+    const again = Particle.getBoundingSphere(all);
+    expect(Vec3.distance(again.center, expected.center)).toBeCloseTo(0, 5);
+    expect(again.radius).toBeCloseTo(expected.radius, 5);
   });
 });
