@@ -45,7 +45,7 @@ export const MadeAtNodes: StoryObj = {
     story(() => (
       <PanelFrames
         roots={fullScene()}
-        picked="d:1"
+        picked="d:1crn:1"
         open={['c:structures', 'c:particles', 'o:1crn', 'e:1crn:1', 'ch:1crn:A', 'o:hiv']}
         split={200}
       />

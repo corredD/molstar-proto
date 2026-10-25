@@ -160,7 +160,7 @@ export const Crambin: MockNode = {
           kind: 'chain',
           label: 'Chain A',
           visible: true,
-          children: list({ key: 'd:1', kind: 'distance', label: 'Distance 10.67 Å', visible: true }),
+          children: list({ key: 'd:1crn:1', kind: 'distance', label: 'Distance 10.67 Å', visible: true }),
         },
         { key: 'ch:1crn:B', kind: 'chain', label: 'Chain B', visible: true },
       ),

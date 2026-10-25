@@ -39,11 +39,11 @@ export const FirstPoint: StoryObj = {
 
 /** The distance made: "Distance 10.67 Å" under its first point's row, picked, its properties below. */
 export const Made: StoryObj = {
-  render: () => story(() => <PanelFrames roots={fullScene()} picked="d:1" open={Open} split={300} />),
+  render: () => story(() => <PanelFrames roots={fullScene()} picked="d:1crn:1" open={Open} split={300} />),
 };
 
 /** Its right-click (on the row or the line): Focus, Hide, Remove. */
 export const Menu: StoryObj = {
   render: () =>
-    story(() => <PanelFrames roots={fullScene()} picked="d:1" open={Open} menu="row" height={420} split={120} />),
+    story(() => <PanelFrames roots={fullScene()} picked="d:1crn:1" open={Open} menu="row" height={420} split={120} />),
 };

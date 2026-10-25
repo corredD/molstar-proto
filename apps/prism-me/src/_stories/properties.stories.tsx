@@ -47,4 +47,4 @@ export const Clip = at('k:hiv:1');
 /** A label's row: its text, size (ui.md §5). */
 export const Label = at('l:hiv:1');
 /** A distance's row: its value, its two points, text size and line width (0.1–100, log), opacity (ui.md §7). */
-export const Distance = at('d:1');
+export const Distance = at('d:1crn:1');
