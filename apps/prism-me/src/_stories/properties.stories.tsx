@@ -32,15 +32,15 @@ export const Model = at('o:hiv');
 export const Group = at('g:hiv:capsid');
 /** A particle list: Representation (spheres or the decorating objects), Decoration (targets by class), … */
 export const ParticleList = at('o:star');
-/** A list's target: Look, Decoration. */
+/** A list's target: Look, Decoration, Clips, Labels. */
 export const Target = at('t:star:1');
 /** A volume: Representation, Slice (axis, position, contrast), Position, Graphics (quality only: no motion). */
 export const Volume = at('o:tomo');
-/** A volume's slice: Look, Slice. */
+/** A volume's slice: Look, Slice, Clips, Labels. */
 export const Slice = at('r:tomo:z');
-/** A volume's isosurface: Look, Representation. */
+/** A volume's isosurface: Look, Representation, Clips, Labels. */
 export const Isosurface = at('r:tomo:iso');
-/** A mesh: Look, Representation (surface, wireframe, both), Position. */
+/** A mesh: Look, Representation (surface, wireframe, both), Position, Clips, Labels (no Graphics & Motion). */
 export const Mesh = at('o:mesh');
 /** A clip's row: its shape, invert, place, size (ui.md §5). */
 export const Clip = at('k:hiv:1');
