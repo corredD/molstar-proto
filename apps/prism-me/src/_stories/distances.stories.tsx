@@ -24,7 +24,7 @@ export const FirstPoint: StoryObj = {
   render: () =>
     story(() => (
       <Frames
-        widths={[1100]}
+        widths={[1100, 720]}
         height={520}
         render={(w) => (
           <Layout
