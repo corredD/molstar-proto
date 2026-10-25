@@ -521,7 +521,7 @@ export namespace Particle {
       return boundingSphere ? Sphere3D.setZero(boundingSphere) : Sphere3D();
     } else if (lociSize(loci) === particles.count) {
       const sphere = getBoundary(particles).sphere;
-      return boundingSphere ? Sphere3D.copy(sphere, boundingSphere) : sphere;
+      return boundingSphere ? Sphere3D.copy(boundingSphere, sphere) : sphere;
     }
     const boundaryHelper = getBoundaryHelper(OrderedSet.size(indices));
     boundaryHelper.reset();
