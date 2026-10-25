@@ -12,7 +12,7 @@ import { ButtonsType, EmptyKeyInput, ModifiersKeys } from '@molstar/core/util/in
 import { MarkerAction } from '@molstar/core/util/marker-action';
 import { clearFontAtlasCache, setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
 import type { Loci } from '@molstar/model/model/loci';
-import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
+import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 import { type Grid, Volume } from '@molstar/model/model/volume';
@@ -336,6 +336,16 @@ describe('a distance by two Ctrl+clicks', () => {
     await p.click({ loci: cell(0, 0, 0), measure: true });
     await p.click({ loci: particle(v, 1), measure: true });
     expect(distances(v)[1].a.label).toBe('map.mrc (center)');
+    // a moved volume: its representation draws a new volume object, still the volume's row
+    v.plugin.managers.interactivity.setProps({ granularity: 'residue' });
+    const up = Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 10)));
+    expectOk(await v.api.run('stage.move', { target: map.cell.transform.ref, matrix: up }));
+    const drawn = v.plugin.managers.volume.hierarchy.current.volumes[0].representations[0].cell.obj!.data
+      .sourceData as Volume;
+    expect(drawn).not.toBe(volume);
+    expect(v.api.explorer!.pickedOf(Volume.Loci(drawn, Interval.ofSingleton(0 as Volume.InstanceIndex)))?.key).toBe(
+      `o:${map.cell.transform.ref}`,
+    );
   });
 
   it('takes a bond as a point (normalized to its atoms first)', async () => {

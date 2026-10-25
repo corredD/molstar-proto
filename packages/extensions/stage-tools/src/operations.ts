@@ -749,7 +749,14 @@ function pickOf(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StagePick {
     Volume.Cell.isLoci(loci) ||
     Volume.Segment.isLoci(loci)
   ) {
-    const t = targets.find((x) => x.kind === 'volume' && cells.get(x.ref)?.obj?.data === loci.volume);
+    // the volume as loaded, or as its representations draw it (moved: a decorator's new volume)
+    const volumes = ctx.plugin.managers.volume.hierarchy.current.volumes;
+    const t = targets.find((x) => {
+      if (x.kind !== 'volume') return false;
+      if (cells.get(x.ref)?.obj?.data === loci.volume) return true;
+      const v = volumes.find((y) => y.cell.transform.ref === x.ref);
+      return !!v?.representations.some((r) => r.cell.obj?.data.sourceData === loci.volume);
+    });
     if (t) return { kind: 'target', target: t };
   }
   return { kind: 'nothing' };

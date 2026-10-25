@@ -298,6 +298,20 @@ describe('stage.distance, volume points', () => {
     expect(s.distancesState().value[0].a.label).toBe('map.mrc (center)');
   });
 
+  it('measures a voxel of a moved volume (its representation draws the moved one), at its moved place', async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const map = await withMap(v);
+    const up = Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 10)));
+    expectOk(await s.move({ target: map.cell.transform.ref, matrix: up } as never));
+    const drawn = v.plugin.managers.volume.hierarchy.current.volumes[0].representations[0].cell.obj!.data
+      .sourceData as Volume;
+    const a = atom(v, 1, 'CA');
+    expectOk(await s.distance({ a: { loci: voxel(drawn, 0, 0, 0) }, b: { loci: a.loci } } as never));
+    expect(s.distancesState().value[0].distance).toBeCloseTo(Vec3.distance(Vec3.create(0, 0, 10), a.at), 3);
+    expect(s.distancesState().value[0].node).toBe(`o:${map.cell.transform.ref}`);
+  });
+
   it('goes with its volume, in the same step', async () => {
     const v = await viewer();
     const s = v.api.stage!;

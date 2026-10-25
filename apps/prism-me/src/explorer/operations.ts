@@ -803,7 +803,11 @@ function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
     Volume.Cell.isLoci(loci) ||
     Volume.Segment.isLoci(loci)
   ) {
-    const v = plugin.managers.volume.hierarchy.current.volumes.find((x) => x.cell.obj?.data === loci.volume);
+    // as loaded, or as its representations draw it (moved: a decorator's new volume)
+    const v = plugin.managers.volume.hierarchy.current.volumes.find(
+      (x) =>
+        x.cell.obj?.data === loci.volume || x.representations.some((r) => r.cell.obj?.data.sourceData === loci.volume),
+    );
     if (!v) return undefined;
     const ref = v.cell.transform.ref;
     return { key: `o:${ref}`, label: v.cell.obj?.label ?? ref, kind: 'volume', node: { ref } };
