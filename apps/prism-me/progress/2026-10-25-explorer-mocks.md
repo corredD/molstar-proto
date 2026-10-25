@@ -131,11 +131,38 @@ CSS.
 
 ## Size
 
-~1,600 lines of stories, fake data and CSS (`apps/prism-me/src/_stories`, without `_generated`), against ~900. What took
+~1,720 lines of stories, fake data and CSS (`apps/prism-me/src/_stories`, without `_generated`), against ~900. What took
 the room: the tree panel (~330, the rows' CSS repeated because Prism's tree is not exported), the properties (~330, a
 section per ui.md §4 row), one file per ui.md section (~240).
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+Reviewer (Opus, read-only) on `origin/prism-me...HEAD` at ae63b7aa9: 3 must-fix, 11 should-fix, 7 nits. Skeptic: 13
+confirmed, 1 plausible in part (S13), 1 nit refuted, 2 new nits; M2 lowered to should-fix, S8 to nit or should-fix.
+Every confirmed finding fixed in a commit of its own (mocks: no failing test first), but one nit left open (TODO.md).
+
+| Finding                                                                                       | Severity                  | Verdict                           | Commit / open                                                               |
+| --------------------------------------------------------------------------------------------- | ------------------------- | --------------------------------- | --------------------------------------------------------------------------- |
+| M1 Properties › Distance picked nothing (`d:1` names no object)                               | must-fix                  | confirmed                         | 0be8ae5ae                                                                   |
+| M2 the filter dropped a hit's parents, did not look into unopened rows, kept empty categories | should-fix (was must-fix) | confirmed                         | d26f3a79e                                                                   |
+| M3 the table's §2 rows said same where the app differs; count                                 | must-fix                  | confirmed                         | 3d1f9b3d4                                                                   |
+| S4 Distances › First point had no narrow frame                                                | should-fix                | confirmed                         | bdb3944b2                                                                   |
+| S5 the table overstated the extensions' controls (24 styles; a native color input)            | should-fix                | confirmed                         | 3d1f9b3d4                                                                   |
+| S6 the split had no upper clamp, no keyboard                                                  | should-fix                | confirmed                         | 66c4a9d39                                                                   |
+| S7 quality in Representation and in Graphics & Motion                                         | should-fix                | confirmed                         | e24edfab8                                                                   |
+| S8 Graphics & Motion on a mesh                                                                | nit or should-fix         | confirmed                         | 485de8c10                                                                   |
+| S9 the properties scrolled natively, not in a `ScrollArea`                                    | should-fix                | confirmed                         | bee089052                                                                   |
+| S10 the picked row was not brought into view (8 of 13 Properties stories)                     | should-fix                | confirmed                         | 5e2e763e6                                                                   |
+| S11 the app's `styles:check` and `typecheck:storybook` run nowhere in CI                      | should-fix                | confirmed                         | TODO.md, f1114802a                                                          |
+| S12 the conclusion understated `properties.tsx`'s restyle and `menu.ts`'s handlers            | should-fix                | confirmed                         | 3d1f9b3d4                                                                   |
+| S13 the ⋯ faded while its menu was open; `MenuPopover` vs `openContextMenu`                   | should-fix                | confirmed (last clause plausible) | 2687b8805; the popover's items are the viewer's own: a finding in the table |
+| S14 Right-click not on every pick kind                                                        | should-fix                | confirmed                         | 0967b529a                                                                   |
+| Nit: Group by keyed to `o:hiv`                                                                | nit                       | confirmed                         | open, TODO.md (f1114802a)                                                   |
+| Nit: `findNode` unused                                                                        | nit                       | confirmed                         | 2c9bc21a9                                                                   |
+| Nit: `.label` 65%, no `.expander:hover`                                                       | nit                       | confirmed                         | 2c9bc21a9                                                                   |
+| Nit: an isosurface offered Slice                                                              | nit                       | confirmed                         | 450b7106b                                                                   |
+| Nit: the header cited `properties.tsx:101` (102)                                              | nit                       | confirmed                         | 3d1f9b3d4                                                                   |
+| Nit: `frames.tsx` inline `height: '100%'`                                                     | nit                       | refuted (not a scale value)       | —                                                                           |
+| Nit: files beyond the brief's Touches                                                         | nit                       | confirmed                         | 3d1f9b3d4 (Decided)                                                         |
+| N1 the ⋯ had no `aria-expanded`                                                               | nit (new)                 | confirmed                         | 2687b8805                                                                   |
+| N2 the Properties stories' comments left out Clips and Labels                                 | nit (new)                 | confirmed                         | 7c0a704b8                                                                   |
