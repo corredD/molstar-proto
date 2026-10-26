@@ -13,9 +13,6 @@ the app, in his words; the lane turns it into spec and tests.
 In this order (Ludovic, 2026-10-25): the first two in parallel, then one at a time. From the architecture's decisions
 ([_spec/architecture.md](_spec/architecture.md) §7: refactor in place) and the review of the distances (PR #5):
 
-- **One owner for the looks**: a single operation writes a particle representation's Layers cell; mesoscale's styles,
-  cryo-ET's hidden classes and Prism's partial cuts call it. Check: color an entity, hide a class, cut the model partly,
-  then undo three times: each undo takes back exactly one of them, and none drops another.
 - **A distance follows its objects**: moving a structure, a list or a volume (or a particle with its handle) moves the
   distance's line and value with it; measuring outside selection mode says so (a hint) instead of nothing. Check:
   measure between two structures, move one: the line and the value follow; ⌘/Ctrl+click with selection mode off: a hint
