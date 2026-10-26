@@ -6,6 +6,7 @@
 
 import { Mat4 } from '@molstar/core/math/linear-algebra';
 import type { PluginContext } from '@molstar/plugin/context';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { GizmoHandles, PlacementHandles } from '@molstar/prism-viewer/sources/gizmos';
@@ -35,6 +36,11 @@ export class ObjectMoveGizmos {
         const value = ref ? area.placementOf(ref) : undefined;
         const label = ref ? (plugin.state.data.cells.get(ref)?.obj?.label ?? 'Object') : '';
         return ref && value ? [{ key: ref, value, label }] : [];
+      },
+      // what a drag starts from: the object and what is under it; a mesh's placement is its shape's, above it
+      cells: (key) => {
+        const cell = plugin.state.data.cells.get(key);
+        return cell && SO.Shape.Representation3D.is(cell.obj) ? [cell.transform.parent] : [key];
       },
       preview: async (key, from, next) => area.previewMove(key, moveBetween(from, next)),
       commit: async (key, from, next) => {
