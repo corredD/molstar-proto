@@ -19,7 +19,10 @@
   "scripts": {
     "build": "node ../../scripts/esbuild/app.mjs apps/prism-me --prd",
     "typecheck": "tsc -b",
-    "dev": "node ../../scripts/esbuild/app.mjs apps/prism-me --dev"
+    "dev": "node ../../scripts/esbuild/app.mjs apps/prism-me --dev",
+    "styles": "node ../../packages/prism/ui/scripts/css.mjs --root . --prefix me",
+    "styles:check": "node ../../packages/prism/ui/scripts/css.mjs --root . --prefix me --check",
+    "typecheck:storybook": "tsc -p tsconfig.storybook.json"
   },
   "dependencies": {
     "@molstar/core": "workspace:*",
@@ -37,6 +40,7 @@
     "tslib": "catalog:"
   },
   "devDependencies": {
+    "@storybook/web-components-vite": "catalog:",
     "@types/node": "catalog:",
     "@types/webxr": "catalog:",
     "typescript": "catalog:"

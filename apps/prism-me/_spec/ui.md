@@ -51,12 +51,17 @@ so its eye, Look, clips and picks are the same under both groupings. A label mad
 not show now is a row under the model (picked, hidden, edited and revealed there), back under its group when that
 grouping is shown again (a default, to confirm).
 
-Every row: an eye (show, hide, at its level), a color dot where it has one color, its name, a count (atoms, particles,
-entities) faint at the end. Clips and labels made at a node are rows under it (§5), and distances under their first
-point's row (§7), each with its own eye.
+Every row: a color dot where it has one color, its name, a count (atoms, particles, entities) faint, then its tools at
+the end (Ludovic, 2026-10-25, as Prism's tree): the brush (a color for all of it), the scissors (a clip), where it has
+them, the eye (show, hide, at its level) and ⋯ (its right-click). The tools show on the row's hover or focus, always on
+a touch screen; a hidden node keeps its eye in view. A category's row has the brush (its color theme), the scissors and
+the eye, for every object under it. Clips and labels made at a node are rows under it (§5), and distances under their
+first point's row (§7), each with its own eye.
 
-A click on a row picks it: highlighted in 3D, its properties below. A double click focuses the camera on it. The tree
-follows what is picked in 3D (a click on a particle picks its entity's row and opens the way to it).
+A click on a row picks it: highlighted in 3D, its properties below. A category is picked too (Ludovic, 2026-10-25). The
+arrows move the pick (↑/↓, Home, End; → opens or goes in, ← closes or goes to the parent), as a click. A double click
+focuses the camera on it. The tree follows what is picked in 3D (a click on a particle picks its entity's row and opens
+the way to it).
 
 ## 4. Properties
 
@@ -64,12 +69,12 @@ The properties of the picked row, in sections that fold. Only what applies to it
 
 | Section           | For                                                                        | What                                                                                                                                          |
 | ----------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Look              | every node                                                                 | visible, color (picker; for a model or group: Generate colors), opacity, glow                                                                 |
+| Look              | every node                                                                 | visible, color (picker; for a model or group: Generate colors), opacity, glow; a category: visible and a color theme, for all under it        |
 | Representation    | structures, entities, particle lists, volumes, meshes                      | the type (cartoon, spacefill…; spheres or the decorating objects; slice or isosurface; surface, wireframe, both) and its few main settings    |
 | Decoration        | a particle target or list                                                  | what decorates it: an object of the scene, a PDB id or URL, spheres; targets by class                                                         |
 | Slice             | a volume                                                                   | axis, position, contrast                                                                                                                      |
-| Position          | every object (not its parts)                                               | position and rotation as numbers, reset                                                                                                       |
-| Clips             | every node                                                                 | its clips (§5), each: shape, invert, position, rotation, size, remove                                                                         |
+| Position          | every object (not its parts)                                               | Handles (Move and turn / Hide), position and rotation as numbers on demand, handle size, a list's scale, reset                                |
+| Clips             | every node, a category                                                     | its clips (§5), each: its Handles, shape, invert, position, rotation, size, remove (Ludovic, 2026-10-25); a category's cut all under it       |
 | Labels            | every node                                                                 | its labels (§5), each: text, size, remove                                                                                                     |
 | Graphics & Motion | every object (a structure, a model, a particle list, a volume; not a part) | quality (Ultra, Quality, Balanced, Fast) of that object alone; wiggle and tumble (a toggle at 1 Å, an amplitude) where it moves: not a volume |
 | Group by          | a model with compartments                                                  | Compartment or Function: how the tree groups its entities; above the sections, not folded; view state (no operation, no step)                 |
@@ -99,8 +104,9 @@ On the canvas, at the level of what is picked (the selection granularity: an obj
 on a tree row, the same menu:
 
 - **Focus**
-- **Move** and **Rotate**: drag in 3D (live, one undo step on release, Esc cancels). On an object: the object itself. On
-  a part (an entity, a chain): **[to decide]** the whole object it belongs to, or only that part.
+- **Move and turn** (Ludovic, 2026-10-25: one item): shows the handles, move and turn together (live, one undo step on
+  release, Esc cancels); **Hide the handles** while they are on. On an object: the object itself. On a part (an entity,
+  a chain): **[to decide]** the whole object it belongs to, or only that part.
 - **Add label**: plain text at that place, for that node (Ludovic, 2026-10-18); it becomes a row under the node.
 - **Add clip**: a plane, sphere or box for that node (only its particles or atoms are cut); it becomes a row under it.
   Several per node (Ludovic, 2026-10-18; up to 8 per particle list).

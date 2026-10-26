@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import path from 'node:path';
@@ -50,6 +51,12 @@ export const StoryPackages: StoryPackage[] = [
   // The app (`apps/prism-viewer`): the viewer as the app composes it, with Mol*'s extensions (Prism › Viewer › With
   // extensions).
   { dir: 'apps/prism-viewer', group: 'Prism' },
+  // prism-me, the Mesoscale Explorer on Prism: the explorer's mocks (prism-me › Explorer › …), Prism UI over fake data.
+  {
+    dir: 'apps/prism-me',
+    group: 'prism-me',
+    plugins: (root) => [cssModulesPlugin([cssPackage(root, 'me')])],
+  },
   // The MolViewSpec stories example's stories in the Prism viewer (Prism › Viewer › MVS stories).
   { dir: 'examples/mvs-stories', group: 'Prism' },
   {

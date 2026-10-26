@@ -68,3 +68,8 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - The classic Mesoscale Explorer's sessions (`.molx` with its own transforms): a reader that maps them to prism-me's.
 - Before upstream PRs: squash `Particles: targets that reference objects in the state` with its fix
   (`a target ref is any cell`), and check each library commit builds and passes its tests on its own (`git rebase -x`).
+- The explorer mocks' checks in CI: `pnpm -C apps/prism-me styles:check` and `typecheck:storybook` run nowhere
+  (`.github/workflows/node.yml` runs them for `packages/prism/*` only), so a stale `_generated` module or a story's type
+  error stays green.
+- The explorer mocks group by `o:hiv` only (`_stories/explorer-panel.tsx`): a second mock model would share its Group
+  by.
