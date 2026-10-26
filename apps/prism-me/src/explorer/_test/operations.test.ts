@@ -6,6 +6,8 @@
 
 import { readFileSync } from 'node:fs';
 import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
+import { StateSelection } from '@molstar/core/state';
+import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import type { Grid } from '@molstar/model/model/volume';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -173,6 +175,27 @@ describe('explorer', () => {
     const decorated = area.focusSphereOf(target)!;
     // the points' sphere grown by the crambin drawn on each
     expect(decorated.radius).toBeCloseTo(bare.radius + crn, 3);
+  });
+
+  it("hides a list's target by its targets' layer, and shows it again", async () => {
+    const v = await viewer();
+    const list = v.api.explorer!.objectsState().value.find((o) => o.kind === 'list')!;
+    const row = {
+      key: `t:${list.ref}:0`,
+      depth: 2,
+      label: 'Target 0',
+      kind: 'target',
+      hasChildren: false,
+      node: { ref: list.ref, particles: { targets: [0] } },
+    };
+    const layers = () =>
+      v.plugin.state.data
+        .select(StateSelection.Generators.ofTransformer(ParticleRepresentation3DLayers))
+        .map((c) => (c.transform.params as any).layers);
+    expectOk((await toggleVisible(v.api, { ...row, visible: true }))!);
+    expect(layers()).toMatchObject([[{ entities: [], targets: [0], visible: false }]]);
+    expectOk((await toggleVisible(v.api, { ...row, visible: false }))!);
+    expect(layers()).toEqual([]);
   });
 
   it("flips each object's eye, and the watched read follows (a visibility change is a cell's state)", async () => {
