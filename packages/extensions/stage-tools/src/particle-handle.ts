@@ -229,8 +229,9 @@ export class ParticleHandles {
   }
 
   hide() {
-    this.#target.set(undefined);
+    // a drag in progress put back first (its redraw needs the target)
     this.#handles.hide();
+    this.#target.set(undefined);
   }
 
   /** The list's representations given these particles (the drawing only); none: as the state has them */

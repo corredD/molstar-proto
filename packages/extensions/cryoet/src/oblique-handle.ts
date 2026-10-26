@@ -104,8 +104,9 @@ export class ObliqueHandles {
   }
 
   hide() {
-    this.#target.set(undefined);
+    // a drag in progress put back first (its redraw needs the target)
     this.#handles.hide();
+    this.#target.set(undefined);
   }
 
   /** The slice cut on this plane (the drawing only); none: as the state has it */
