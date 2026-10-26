@@ -8,7 +8,7 @@ is not built is [../TODO.md](../TODO.md).
 
 - **One handle class in Prism** (`me/gizmo-handles`, `~/prism-me-lanes/gizmo-handles`,
   [brief](2026-10-26-gizmo-handles.md)): `GizmoHandles` in Prism, its two Prism hosts and the three extension handles on
-  it; an undo during a drag cancels it; started.
+  it; an undo during a drag cancels it; PR #9, built and reviewed, waits on Ludo.
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
