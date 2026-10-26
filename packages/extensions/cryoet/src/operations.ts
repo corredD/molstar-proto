@@ -27,7 +27,10 @@ import {
   ParticleListTargetsFromAttribute,
   ParticleListWithTargets,
 } from '@molstar/plugin/state/transforms/particles/ops';
-import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
+import {
+  type ParticleLayerProps,
+  ParticleRepresentation3DLayers,
+} from '@molstar/plugin/state/transforms/particles/layers';
 import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import { VolumeRepresentation3D } from '@molstar/plugin/state/transforms/volume/representation';
 import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
@@ -1223,31 +1226,20 @@ async function ensureTargetRepresentation(
   return made;
 }
 
-/** The representations' layers leave out these targets (drawn by the decorations' objects): their refs changed */
+/**
+ * The representations' looks leave out these targets (drawn by the decorations' objects), through `particles.look`
+ * (Prism's one writer of the layers cell: the colors and cuts there stay): their refs changed
+ */
 async function leaveOut(
   ctx: ApiContext,
   reprs: readonly ParticleListRef['representations'][number][],
   hidden: readonly number[],
 ): Promise<string[]> {
-  const state = ctx.plugin.state.data;
-  const b = state.build();
-  const changed: string[] = [];
-  for (const r of reprs) {
-    const cell = state.select(
-      StateSelection.Generators.ofTransformer(ParticleRepresentation3DLayers, r.cell.transform.ref),
-    )[0];
-    const p = (cell?.transform.params ?? {}) as { layers?: unknown[]; cuts?: unknown[]; hidden?: number[] };
-    if (JSON.stringify(p.hidden ?? []) === JSON.stringify(hidden)) continue;
-    if (cell) {
-      if (!hidden.length && !p.layers?.length && !p.cuts?.length) b.delete(cell.transform.ref);
-      else b.to(cell).update((old: any) => ({ ...old, hidden: [...hidden] }));
-    } else {
-      b.to(r.cell).apply(ParticleRepresentation3DLayers, { layers: [], cuts: [], hidden: [...hidden] });
-    }
-    changed.push(r.cell.transform.ref);
-  }
-  if (changed.length) await b.commit();
-  return changed;
+  if (!reprs.length) return [];
+  const node = reprs.map((r) => `#${r.cell.transform.ref}`).join(', ');
+  const r = await ctx.api.run('particles.look', { node, hidden: [...hidden] });
+  if (!r.ok) throw new Error(r.message);
+  return r.unchanged ? [] : [...(r.changed.nodes ?? [])];
 }
 
 /** A representation of `type` added to a list, with its type's defaults and default themes: its ref, none if no type */
@@ -1272,5 +1264,23 @@ async function addRepresentation(ctx: ApiContext, l: ParticleListRef, type: stri
     },
   } as never);
   await b.commit();
+  // the list's colors on it too (another representation's layers; not its cuts, whose clip objects it lacks, nor the
+  // targets it leaves out)
+  const layers = l.representations.length
+    ? ((ctx.plugin.state.data.select(
+        StateSelection.Generators.ofTransformer(
+          ParticleRepresentation3DLayers,
+          l.representations[0].cell.transform.ref,
+        ),
+      )[0]?.transform.params?.layers ?? []) as ParticleLayerProps[])
+    : [];
+  if (layers.length) {
+    const patches = layers.map(({ entities, compartments, targets, ...look }) => ({
+      selector: { entities, compartments, targets },
+      ...look,
+    }));
+    const r = await ctx.api.run('particles.look', { node: `#${repr.ref}`, layers: patches });
+    if (!r.ok) throw new Error(r.message);
+  }
   return [repr.ref];
 }
