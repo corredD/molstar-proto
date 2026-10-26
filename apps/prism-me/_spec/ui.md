@@ -93,10 +93,10 @@ One object's mode leaves the canvas alone; without `object` (⌘K, `?graphics-mo
 one step, and so does the canvas resolution (pixel scale, sharpening), which is the canvas's props, outside the history:
 an undo does not bring it back. Motion writes the `animation` params of that object's representations (per structure,
 where Mol\*'s component options are scene-wide). No mode is lit until one is picked: a structure's and a volume's
-quality starts `auto` and a particle list's levels of detail at their own default, neither a mode's. Limits (TODO.md):
-the scene-wide structure options (component options, quick styles) put theirs back on every structure, and a structure's
-own Representation preset and a representation added later bring their defaults; the object then reads as mixed (every
-representation read: no mode lit, the motion off).
+quality starts `auto` and a particle list's levels of detail at their own default, neither a mode's. The scene-wide
+component options change only the representations that had their previous value, so one structure keeps its own (v6
+#2057). Limits (TODO.md): a structure's own Representation preset and a representation added later bring their defaults;
+the object then reads as mixed (every representation read: no mode lit, the motion off).
 
 ## 5. Right-click
 

@@ -162,10 +162,9 @@ describe('graphics and motion per object', () => {
     expect([...after.a, ...after.b, ...after.volume].every((p) => p.quality === 'low')).toBe(true);
   });
 
-  // A known limit (apps/prism-me/TODO.md): the scene-wide structure options (component.options, the quick styles) put
-  // their own quality and motion back on every structure's representations, so one structure's settings are lost.
-  // Pinned so a fix (plugin-core) shows here.
-  it("loses a structure's own quality and motion to the scene-wide structure options", async () => {
+  // The scene-wide structure options (component.options) change only the representations that had their previous value:
+  // one structure's own quality and motion stay (v6 #2057, "component options keep overrides")
+  it("keeps a structure's own quality and motion under the scene-wide structure options", async () => {
     const v = await viewer();
     const { refs } = objects(v);
     const m = v.api.mesoscale!;
@@ -174,7 +173,8 @@ describe('graphics and motion per object', () => {
     expect(objects(v).a.every((p) => p.quality === 'highest' && p.animation.wiggleAmplitude === 1.5)).toBe(true);
     expectOk(await v.api.run('component.options', { quality: 'low' }));
     const after = objects(v);
-    expect(after.a.every((p) => p.quality === 'low' && p.animation.wiggleAmplitude === 0)).toBe(true);
+    expect(after.a.every((p) => p.quality === 'highest' && p.animation.wiggleAmplitude === 1.5)).toBe(true);
+    expect(after.b.every((p) => p.quality === 'low' && p.animation.wiggleAmplitude === 0)).toBe(true);
   });
   // ⌘K and the agent name an object as the tree does: a structure by its entry, any object by its file
   it('finds an object by its name in the tree and says it', async () => {
