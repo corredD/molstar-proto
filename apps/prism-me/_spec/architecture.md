@@ -159,8 +159,8 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
    `gizmo-handles`): `GizmoHandles` (`packages/prism/viewer/src/sources/gizmos`, Prism's
    [gizmos.md](../../../packages/prism/viewer/_spec/gizmos.md)) hosts Prism's structure move and cuts and the three
    extension handles; each keeps only its preview and commit. A drag is cancelled when the cells it starts from change
-   (under or above its item: an undo), which the three extension handles did not do; the object move uses Prism's
-   placement math (`PlacementHandles`), the slice and the particle `frameHandles`.
+   (its item's and those under it, or what places it: an undo), which the three extension handles did not do; the object
+   move uses Prism's placement math (`PlacementHandles`), the slice and the particle `frameHandles`.
 5. **The app becomes only a spec:** its logic (`clipWhole`, picks, label sizing, direct extension calls) moves as
    operations into the extension that owns the data. The app keeps layout, URL and defaults.
 6. **Refactor in place, not a prism-me-v2** (Ludovic, 2026-10-25, after the Storybook mocks of PR #6): the mocks'

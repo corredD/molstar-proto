@@ -75,7 +75,9 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Handles, left open by `gizmo-handles` (2026-10-26): the label Move's own drag (`stage-tools/src/drag.ts`, raw DOM
   listeners, no `pointercancel` or lost capture: a lost release leaves its layer up; Prism's `drag()` would end it); the
   oblique slice's sliders leave several undo steps (`cryoet/src/controls.tsx`, a run 60 ms after each pause); a
-  particle's preview copies every coordinate of its list (`offsetParticles`, architecture §5).
+  particle's preview copies every coordinate of its list (`offsetParticles`, architecture §5); a structure's preview
+  allocates about 200 KB a pointer event (its representations' `setState` and update); the hosts' tests cover one step
+  and an undo during a drag, not a refused commit's restore per host (only `GizmoHandles`' own test does).
 - The explorer mocks' checks in CI: `pnpm -C apps/prism-me styles:check` and `typecheck:storybook` run nowhere
   (`.github/workflows/node.yml` runs them for `packages/prism/*` only), so a stale `_generated` module or a story's type
   error stays green.
