@@ -58,8 +58,6 @@ export class GizmoHandles<T> {
   readonly #laidOut = new Map<string, { value: T; layout: GizmoLayout }>();
   /** A drag ended without its commit, whose cancel the controller runs after the preview in flight */
   #cancelOwed: { readonly key: string; readonly from: T } | undefined;
-  /** Owed cancels run early (at a new press): the controller's own calls of them, later, are dropped */
-  #cancelsRun = 0;
 
   constructor(
     private readonly plugin: PluginContext,
@@ -140,6 +138,8 @@ export class GizmoHandles<T> {
   #gizmoBinding(): GizmoBinding<T> {
     const b = this.binding;
     const laidOut = this.#laidOut;
+    /** Owed cancels run early (at a new press): this controller's own calls of them, later, are dropped */
+    let cancelsRun = 0;
     return {
       items: this.#items,
       invalidated: this.#invalidated,
@@ -165,7 +165,7 @@ export class GizmoHandles<T> {
         const owed = this.#cancelOwed;
         if (owed) {
           this.#cancelOwed = undefined;
-          this.#cancelsRun++;
+          cancelsRun++;
           b.cancel(owed.key, owed.from);
         }
         b.begin?.(key, value);
@@ -183,8 +183,8 @@ export class GizmoHandles<T> {
       },
       cancel: (key, from) => {
         // run already, at a new drag's press: this drag's state is the new one's
-        if (this.#cancelsRun > 0) {
-          this.#cancelsRun--;
+        if (cancelsRun > 0) {
+          cancelsRun--;
           return;
         }
         this.#drag = undefined;
