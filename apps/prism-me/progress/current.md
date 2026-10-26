@@ -14,6 +14,10 @@ is not built is [../TODO.md](../TODO.md).
   following its objects waits (below).
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
+- **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
+  run by another session): a third dialect for the command-language extension, as #2052 built PyMOL and VMD; one PR to
+  the fork's `master`, nothing upstream until Ludovic says so. Brief with Ludovic, no code until his OK; the volume
+  commands a follow-up lane.
 
 ## Waiting on Ludovic
 
