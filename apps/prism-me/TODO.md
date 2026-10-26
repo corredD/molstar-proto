@@ -14,8 +14,6 @@ In this order (Ludo, 2026-10-25), one at a time; the looks' owner (PR #8) and th
 the architecture's decisions ([_spec/architecture.md](_spec/architecture.md) §7: refactor in place) and the review of
 the distances (PR #5):
 
-- **One handle class in Prism's gizmo library** for the oblique slice, the object move and the particle move: preview
-  outside the state, one commit on release. Check: drag each handle, then undo once: it goes back to before the drag.
 - **The app is only a spec**: `explorer.clipWhole`, the picks, the label sizing and the direct extension calls move into
   the extensions as operations. Check: the app behaves as before; `apps/prism-me/src` has no `as any` and calls no
   extension method directly.
@@ -74,6 +72,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - The classic Mesoscale Explorer's sessions (`.molx` with its own transforms): a reader that maps them to prism-me's.
 - Before upstream PRs: squash `Particles: targets that reference objects in the state` with its fix
   (`a target ref is any cell`), and check each library commit builds and passes its tests on its own (`git rebase -x`).
+- Handles, left open by `gizmo-handles` (2026-10-26): the label Move's own drag (`stage-tools/src/drag.ts`, raw DOM
+  listeners, no `pointercancel` or lost capture: a lost release leaves its layer up; Prism's `drag()` would end it); the
+  oblique slice's sliders leave several undo steps (`cryoet/src/controls.tsx`, a run 60 ms after each pause); a
+  particle's preview copies every coordinate of its list (`offsetParticles`, architecture §5).
 - The explorer mocks' checks in CI: `pnpm -C apps/prism-me styles:check` and `typecheck:storybook` run nowhere
   (`.github/workflows/node.yml` runs them for `packages/prism/*` only), so a stale `_generated` module or a story's type
   error stays green.

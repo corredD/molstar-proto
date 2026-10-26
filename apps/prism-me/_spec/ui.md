@@ -105,8 +105,8 @@ on a tree row, the same menu:
 
 - **Focus**
 - **Move and turn** (Ludovic, 2026-10-25: one item): shows the handles, move and turn together (live, one undo step on
-  release, Esc cancels); **Hide the handles** while they are on. On an object: the object itself. On a part (an entity,
-  a chain): **[to decide]** the whole object it belongs to, or only that part.
+  release, Esc or an undo during the drag cancels it); **Hide the handles** while they are on. On an object: the object
+  itself. On a part (an entity, a chain): **[to decide]** the whole object it belongs to, or only that part.
 - **Add label**: plain text at that place, for that node (Ludovic, 2026-10-18); it becomes a row under the node.
 - **Add clip**: a plane, sphere or box for that node (only its particles or atoms are cut); it becomes a row under it.
   Several per node (Ludovic, 2026-10-18; up to 8 per particle list).
