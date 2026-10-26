@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
@@ -64,6 +65,17 @@ describe('structure-move', () => {
     // still twice the size, its center (as placed: twice the loaded one) moved 5 Å right
     expect(Mat4.getMaxScaleOnAxis(next.matrix)).toBeCloseTo(2, 6);
     close(Vec3.transformMat4(Vec3(), p.center, next.matrix), [25, 40, 60]);
+  });
+
+  it("a scaled placement's pose is its turn alone: the scale left out of the rotation", () => {
+    const turn = Quat.setAxisAngle(Quat(), Vec3.create(0, 1, 0), Math.PI / 2);
+    const p = placement(Mat4.mul(Mat4(), Mat4.fromQuat(Mat4(), turn), Mat4.fromUniformScaling(Mat4(), 2)));
+    expect(Math.abs(Quat.dot(placementPose(p).rotation, turn))).toBeCloseTo(1, 6);
+    // a turn by its ring keeps the scale and the center
+    const frame = { right: Vec3.create(1, 0, 0), up: Vec3.create(0, 1, 0), perPixel: 0.5 };
+    const next = applyToPlacement(p, { kind: 'rotate', axis: Vec3.create(0, 1, 0) }, frame, 30, 0);
+    expect(Mat4.getMaxScaleOnAxis(next.matrix)).toBeCloseTo(2, 6);
+    close(Vec3.transformMat4(Vec3(), p.center, next.matrix), Vec3.transformMat4(Vec3(), p.center, p.matrix));
   });
 
   it('is opt-in, and lists the structures it can move', async () => {

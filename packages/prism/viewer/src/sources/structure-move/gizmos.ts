@@ -5,7 +5,7 @@
  * @author Ludovic Autin <ludovic.autin@gmail.com>
  */
 
-import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat3, Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { StateObjectCell } from '@molstar/core/state';
 import { type GizmoBinding, GizmoController, type GizmoItem } from '@molstar/graphics/util/gizmo/controller';
 import { type DragFrame, type GizmoPose, poseGesture } from '@molstar/graphics/util/gizmo/gestures';
@@ -37,10 +37,15 @@ export interface StructurePlacement {
 /** One `structure.transform` (the structure by ref, the matrix from where it was loaded); false: not taken */
 export type MoveCommit = (structure: string, matrix: Mat4) => Promise<boolean>;
 
-/** A placement's pose: its center as placed, its rotation */
+/** A placement's pose: its center as placed, its rotation (a scale in its matrix left out: the columns made unit) */
 export function placementPose(p: StructurePlacement): GizmoPose {
   const position = Vec3.transformMat4(Vec3(), p.center, p.matrix);
-  const rotation = Quat.normalize(Quat(), Quat.fromMat4(Quat(), p.matrix));
+  const m = Mat3.fromMat4(Mat3(), p.matrix);
+  for (let c = 0; c < 3; c++) {
+    const n = Math.hypot(m[3 * c], m[3 * c + 1], m[3 * c + 2]) || 1;
+    for (let r = 0; r < 3; r++) m[3 * c + r] /= n;
+  }
+  const rotation = Quat.normalize(Quat(), Quat.fromMat3(Quat(), m));
   return { position, rotation, scale: Vec3.create(1, 1, 1) };
 }
 

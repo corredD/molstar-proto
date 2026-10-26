@@ -14,7 +14,7 @@ a structure.
   between (`Canvas3D.holdFrames`, a few seconds at most: the representations rebuilt still carrying the preview would
   show the structure moved twice). A change of the structure's cells under a drag cancels it, as does the structure
   going away. A placement with more than a rigid move (a scale or shear given as a matrix) keeps it under the new pose
-  (`applyToPlacement`).
+  (`applyToPlacement`), the pose's turn read with the scale left out (`placementPose`).
 - **The section**: which structure (the one holding the selection, or the first, picked again as structures come and go;
   a row each when several), Reset (`structure.transform-reset`); the handles show while the section does. The `move`
   area adds no operations.
