@@ -139,3 +139,24 @@ describe('parseAtomSpec: a spec at the start of a command', () => {
     expect(() => parseAtomSpec('')).toThrow('empty atom specifier');
   });
 });
+
+describe('fixes from the first review', () => {
+  const rest = (text: string) => text.slice(parseAtomSpec(text).end);
+
+  it('takes no blank before a range’s dash, nor after a part range’s, as ChimeraX (M1)', () => {
+    expect(rest(':12 -20 red')).toBe(' -20 red');
+    expect(rest('#1 -1')).toBe(' -1');
+    expect(rest('/A:12 -20')).toBe(' -20');
+    expect(rest('#1- 3 x')).toBe(' x');
+    expect(() => parseAtomSpec(':12- 20 red')).toThrow();
+  });
+
+  it('reads chain ranges by string order, without regex (M2)', () => {
+    for (const s of ['/a-D', '/D-A', '/A-c', '/AA-AC', '/1-3']) expect(() => transpiler(s), s).not.toThrow();
+  });
+
+  it('reads a long chain of | and & without a stack overflow (S4)', () => {
+    const long = Array.from({ length: 10000 }, (_, i) => `:${i + 1}`).join(' | ');
+    expect(transpiler(long)).toBeTruthy();
+  });
+});

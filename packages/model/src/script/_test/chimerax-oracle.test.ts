@@ -10,7 +10,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { RuntimeContext } from '@molstar/core/task';
 import { DefaultAssetManager } from '@molstar/core/util/assets';
 import { CIF } from '@molstar/io/reader/cif';
-import { transpiler } from '@molstar/query-language/transpilers/chimerax/parser';
+import { parseAtomSpec, transpiler } from '@molstar/query-language/transpilers/chimerax/parser';
 import { trajectoryFromMmCIF } from '@molstar/model/formats/structure/mmcif';
 import { SecondaryStructureProvider } from '@molstar/model/props/computed/secondary-structure';
 import { Script } from '@molstar/model/script/script';
@@ -71,3 +71,14 @@ for (const [name, entry] of Object.entries(oracle.structures) as [string, { coun
     }
   });
 }
+
+// Where a spec ends at the start of a command's arguments (`color /A :12 red`), as ChimeraX's parser reads it: the rest
+// is the command's (a quoted spec's used text keeps the blank after it there).
+describe('where ChimeraX atom specs end in a command, as ChimeraX reads them', () => {
+  for (const [text, used] of Object.entries(oracle.ends.used as Record<string, string>)) {
+    it(text, () => {
+      if (used.startsWith('error')) expect(() => parseAtomSpec(text)).toThrow();
+      else expect(parseAtomSpec(text).text).toBe(used.trimEnd());
+    });
+  }
+});

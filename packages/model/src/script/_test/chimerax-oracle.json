@@ -78,7 +78,19 @@
         ":10-20 & @CA | :50",
         "#1 & ~solvent",
         "/A:50-60 :<4 & ~:50-60",
-        "all"
+        "all",
+        "/a-D",
+        "/D-A",
+        "/A-c",
+        "::is_helix>=1",
+        "::is_helix=TRUE",
+        "::is_helix!=TRUE",
+        "::is_helix=1",
+        "::is_helix=2",
+        "@@element=8",
+        "@@element==O",
+        "@@element=o",
+        "::name=[^H]OH"
       ],
       "counts": {
         "#1": 1213,
@@ -156,7 +168,19 @@
         ":10-20 & @CA | :50": 11,
         "#1 & ~solvent": 1113,
         "/A:50-60 :<4 & ~:50-60": 232,
-        "all": 1213
+        "all": 1213,
+        "/a-D": 1213,
+        "/D-A": 0,
+        "/A-c": 1213,
+        "::is_helix>=1": 169,
+        "::is_helix=TRUE": 169,
+        "::is_helix!=TRUE": 1044,
+        "::is_helix=1": 169,
+        "::is_helix=2": 0,
+        "@@element=8": 316,
+        "@@element==O": 316,
+        "@@element=o": 316,
+        "::name=[^H]OH": 100
       }
     },
     "1tup.bcif": {
@@ -196,7 +220,13 @@
         "/A:start-110",
         "protein & /A & helix",
         "nucleic | ions",
-        "~(protein | nucleic)"
+        "~(protein | nucleic)",
+        "/A-c",
+        "/B-C",
+        "/a-C",
+        "/E-F | /A",
+        "@@element=Zn",
+        "@@element==Zn"
       ],
       "counts": {
         "/A": 1734,
@@ -234,8 +264,52 @@
         "/A:start-110": 132,
         "protein & /A & helix": 147,
         "nucleic | ions": 858,
-        "~(protein | nucleic)": 387
+        "~(protein | nucleic)": 387,
+        "/A-c": 4937,
+        "/B-C": 3203,
+        "/a-C": 4937,
+        "/E-F | /A": 2625,
+        "@@element=Zn": 3,
+        "@@element==Zn": 3
       }
+    }
+  },
+  "ends": {
+    "texts": [
+      ":12 -20 red",
+      "#1 -1",
+      "/A:12 -20",
+      "#1- 3 x",
+      "/A:12 red",
+      "/A :12 red",
+      "protein & /A target ac",
+      "#1 ligand red",
+      "ligand :<5 cartoons",
+      "ligand:<5 color",
+      "\"/A :12\" red",
+      ":12@CA :14@CA x",
+      "#1/A:12-20@CA,CB target a",
+      "@@bfactor>40 red",
+      "::name=\"HOH\" x",
+      "~protein red"
+    ],
+    "used": {
+      ":12 -20 red": ":12",
+      "#1 -1": "#1",
+      "/A:12 -20": "/A:12",
+      "#1- 3 x": "#1- 3",
+      "/A:12 red": "/A:12",
+      "/A :12 red": "/A :12",
+      "protein & /A target ac": "protein & /A",
+      "#1 ligand red": "#1",
+      "ligand :<5 cartoons": "ligand :<5",
+      "ligand:<5 color": "ligand:<5",
+      "\"/A :12\" red": "\"/A :12\" ",
+      ":12@CA :14@CA x": ":12@CA :14@CA",
+      "#1/A:12-20@CA,CB target a": "#1/A:12-20@CA,CB",
+      "@@bfactor>40 red": "@@bfactor>40",
+      "::name=\"HOH\" x": "::name=\"HOH\"",
+      "~protein red": "~protein"
     }
   }
 }

@@ -33,7 +33,6 @@ export const attributes: { readonly [L in AttrLevel]: { readonly [name: string]:
     number: { '@desc': 'residue number', kind: 'number', property: () => B.ammp('auth_seq_id') },
     insertion_code: { '@desc': 'insertion code', kind: 'string', property: () => B.ammp('pdbx_PDB_ins_code') },
     chain_id: { '@desc': 'chain identifier', kind: 'string', property: () => B.ammp('auth_asym_id') },
-    label_seq_id: { '@desc': 'mmCIF label_seq_id', kind: 'number', property: () => B.ammp('label_seq_id') },
     is_helix: {
       '@desc': 'in a helix',
       kind: 'bool',

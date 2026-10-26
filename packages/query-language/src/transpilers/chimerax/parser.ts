@@ -15,6 +15,7 @@
 // structure has lower-case chain ids) and take wildcards (`*`, `?`, `[…]`); a residue part that reads as a number
 // (`12`, `12A`, `start-20`) is a residue number, else a name. Zones (`@<5`) include the atoms they start from.
 
+import { escapeRegExp } from '@molstar/core/util/string';
 import { MolScriptBuilder as B } from '../../language/builder.js';
 import { Expression } from '../../language/expression.js';
 import type { TranspileOptions, Transpiler } from '../transpiler.js';
@@ -97,6 +98,15 @@ class Reader {
     return m[0];
   }
 
+  /** A pattern right at the place, no blanks first (Grako's inline patterns: a range's dash and end). */
+  reHere(r: RegExp): string | undefined {
+    r.lastIndex = this.i;
+    const m = r.exec(this.s);
+    if (!m) return undefined;
+    this.i += m[0].length;
+    return m[0];
+  }
+
   /** Whether the text at the place (without blanks first) is a `.` with no blank before it: a submodel level. */
   submodelDot(): boolean {
     if (this.s[this.i] !== '.') return false;
@@ -127,13 +137,25 @@ const AttrOps = ['>=', '>', '<=', '<', '==', '=', '!==', '!=', '<>'];
 const ZoneOps = ['@>', '@<', ':>', ':<', '/>', '/<', '#>', '#<'];
 
 function atomSpecifier(r: Reader): Spec | undefined {
-  const left = r.attempt(() => term(r));
-  if (!left) return undefined;
-  for (const op of ['&', '|'] as const) {
-    const right = r.attempt(() => (r.tok(op) ? atomSpecifier(r) : undefined));
-    if (right) return { kind: 'op', op, left, right };
+  // Terms joined by & and |, read in a loop (a long chain does not recurse), then grouped to the right.
+  const first = r.attempt(() => term(r));
+  if (!first) return undefined;
+  const terms: Term[] = [first];
+  const ops: ('&' | '|')[] = [];
+  for (;;) {
+    const next = r.attempt(() => {
+      const op = (['&', '|'] as const).find((o) => r.tok(o));
+      if (!op) return undefined;
+      const t = term(r);
+      return t ? { op, t } : undefined;
+    });
+    if (!next) break;
+    ops.push(next.op);
+    terms.push(next.t);
   }
-  return left;
+  let spec: Spec = terms[terms.length - 1];
+  for (let k = terms.length - 2; k >= 0; k--) spec = { kind: 'op', op: ops[k], left: terms[k], right: spec };
+  return spec;
 }
 
 function zone(r: Reader): Zone | undefined {
@@ -235,7 +257,8 @@ function modelRangeList(r: Reader): ModelRange[] | undefined {
 function modelRange(r: Reader): ModelRange | undefined {
   const range = r.attempt((): ModelRange | undefined => {
     const start = modelSpec(r, 'start');
-    if (start === undefined || r.re(Dash) === undefined) return undefined;
+    // The dash right after the start (`#1 -3` is `#1`, then ` -3`); the end may follow blanks (a rule in ChimeraX's).
+    if (start === undefined || r.reHere(Dash) === undefined) return undefined;
     const end = modelSpec(r, 'end');
     return end === undefined ? undefined : { start: start as ModelRange['start'], end: end as ModelRange['end'] };
   });
@@ -335,7 +358,8 @@ function part(r: Reader, names: boolean): Part | undefined {
   const start = r.re(PartStart);
   if (start === undefined) return undefined;
   if (names) return { start };
-  const end = r.attempt(() => (r.re(Dash) !== undefined ? r.re(PartEnd) : undefined));
+  // The dash and the end right after the start (`:12 -20` is `:12`, then ` -20`), as ChimeraX's inline patterns.
+  const end = r.attempt(() => (r.reHere(Dash) !== undefined ? r.reHere(PartEnd) : undefined));
   return end === undefined ? { start } : { start, end };
 }
 
@@ -377,7 +401,6 @@ const All = () => B.struct.generator.all();
 const Empty = () => B.struct.generator.empty();
 
 const hasWildcard = (s: string) => /[*?[]/.test(s);
-const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** A shell pattern (`C*`, `?G`, `[CN]A`) as an anchored regex, as Python's `fnmatch`. */
 function globToRegExp(pattern: string): string {
@@ -392,9 +415,10 @@ function globToRegExp(pattern: string): string {
         out += '\\[';
         continue;
       }
-      let body = pattern.slice(i + 1, close);
-      if (body.startsWith('!')) body = `^${body.slice(1)}`;
-      out += `[${body.replace(/\\/g, '\\\\')}]`;
+      let body = pattern.slice(i + 1, close).replace(/\\/g, '\\\\');
+      // fnmatch's negation is `!`; a `^` is itself.
+      body = body.startsWith('!') ? `^${body.slice(1)}` : body.startsWith('^') ? `\\${body}` : body;
+      out += `[${body}]`;
       i = close;
     } else out += escapeRegExp(c);
   }
@@ -414,11 +438,12 @@ const and = (xs: Expression[]) => (xs.length === 1 ? xs[0] : B.core.logic.and(xs
 function chainPartTest(p: Part): Expression {
   const id = B.ammp('auth_asym_id');
   if (p.end === undefined) return stringTest(id, p.start);
-  // ChimeraX compares the ids as strings; one character a side reads as a class.
-  if (p.start.length === 1 && p.end.length === 1 && !hasWildcard(p.start)) {
-    return B.core.str.match([B.re(`^[${escapeRegExp(p.start)}-${escapeRegExp(p.end)}]$`, 'i'), id]);
-  }
-  throw new Error(`chain range '${p.start}-${p.end}' is not supported: give the chains (/A,B,C) or one-letter ends`);
+  // ChimeraX compares the ids as strings, in lower case (`/A-c` is A to C, `/AA-AC` takes AB, `/1-3` takes 10). The
+  // runtime compares strings in their order; ids are upper case or lower case, so each side is tried in both.
+  const range = (from: string, to: string) => B.core.logic.and([B.core.rel.gre([id, from]), B.core.rel.lte([id, to])]);
+  const [lo, hi] = [p.start.toLowerCase(), p.end.toLowerCase()];
+  if (lo > hi) return B.core.type.bool([false]);
+  return B.core.logic.or([range(lo, hi), range(lo.toUpperCase(), hi.toUpperCase())]);
 }
 
 /** A residue id as ChimeraX reads one (`12`, `12A`, `-3`), or undefined when it is a name. */
@@ -474,8 +499,65 @@ const atomPartTest = (p: Part) => stringTest(B.ammp('auth_atom_id'), p.start);
 /** A value as ChimeraX converts an unquoted one: an int, else a float, else the text. */
 function attrValue(v: { text: string; quoted: boolean }, op: string): number | string {
   if (v.quoted || op === '==' || op === '!==') return v.text;
-  const n = Number(v.text);
-  return v.text.trim() !== '' && Number.isFinite(n) ? n : v.text;
+  // Python's int and float: decimal only (`0x10` is text there).
+  return /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(v.text) ? Number(v.text) : v.text;
+}
+
+/** A number comparison by ChimeraX's operator. */
+function compare(op: string, p: Expression, value: number): Expression {
+  switch (op) {
+    case '=':
+    case '==':
+      return B.core.rel.eq([p, value]);
+    case '!=':
+    case '!==':
+    case '<>':
+      return B.core.rel.neq([p, value]);
+    case '>':
+      return B.core.rel.gr([p, value]);
+    case '>=':
+      return B.core.rel.gre([p, value]);
+    case '<':
+      return B.core.rel.lt([p, value]);
+    default:
+      return B.core.rel.lte([p, value]);
+  }
+}
+
+/**
+ * A boolean attribute (`::is_helix`) as ChimeraX compares a Python bool: with a number by the operator (True is 1);
+ * with text, `=` and `!=` against `true`/`false` in any case, `==` and `!==` against `True`/`False` exactly.
+ */
+function boolTest(p: Expression, op: string, value: number | string, written: string): Expression {
+  const holds = (b: 0 | 1): boolean => {
+    if (typeof value === 'number') {
+      switch (op) {
+        case '>':
+          return b > value;
+        case '>=':
+          return b >= value;
+        case '<':
+          return b < value;
+        case '<=':
+          return b <= value;
+        case '!=':
+        case '!==':
+        case '<>':
+          return b !== value;
+        default:
+          return b === value;
+      }
+    }
+    const exact = op === '==' || op === '!==';
+    const text = exact ? value : value.toLowerCase();
+    const name = b ? (exact ? 'True' : 'true') : exact ? 'False' : 'false';
+    if (op === '=' || op === '==') return text === name;
+    if (op === '!=' || op === '!==' || op === '<>') return text !== name;
+    throw new Error(`'${written}' compares a boolean with text by order, which ChimeraX does not do`);
+  };
+  const t = holds(1);
+  const f = holds(0);
+  return t && f ? B.core.type.bool([true]) : t ? p : f ? B.core.logic.not([p]) : B.core.type.bool([false]);
 }
 
 function attrTestExpr(level: AttrLevel, t: AttrTest): Expression {
@@ -494,10 +576,15 @@ function attrTestExpr(level: AttrLevel, t: AttrTest): Expression {
     return attr.kind === 'number' ? B.core.rel.neq([p, 0]) : B.core.rel.neq([p, '']);
   }
   const value = attrValue(t.value, t.op);
-  if (attr.kind === 'bool') {
-    const truthy = value === 1 || value === 'true' || value === 'True';
-    const eq = t.op === '=' || t.op === '==';
-    return truthy === eq ? p : B.core.logic.not([p]);
+  if (attr.kind === 'bool') return boolTest(p, t.op, value, `${symbol}${t.name}${t.op}${t.value.text}`);
+  if (level === 'atom' && t.name === 'element') {
+    // ChimeraX's element compares with its symbol (`Zn`) or its number (`8`); Mol* writes symbols in upper case.
+    if (typeof value === 'number') return compare(t.op, B.acp('atomicNumber'), value);
+    const text = String(value);
+    const symbol =
+      t.op === '==' || t.op === '!==' ? (/^[A-Z][a-z]?$/.test(text) ? text.toUpperCase() : '\u0000') : text;
+    const eq = stringTest(p, symbol, false);
+    return t.op === '!=' || t.op === '!==' || t.op === '<>' ? B.core.logic.not([eq]) : eq;
   }
   if (typeof value === 'string' || attr.kind === 'string') {
     const text = String(value);
@@ -681,15 +768,33 @@ function termExpr(t: Term, id: readonly number[]): Expression {
 }
 
 function specExpr(s: Spec, id: readonly number[]): Expression {
-  if (s.kind !== 'op') return termExpr(s, id);
-  const left = termExpr(s.left, id);
-  const right = specExpr(s.right, id);
-  // Nothing folds away (`#1 & ligand` on model 2 is nothing): a part that selects nothing reads as such.
-  if (s.op === '&')
-    return isNothing(left) || isNothing(right) ? Empty() : B.struct.modifier.intersectBy({ 0: left, by: right });
-  if (isNothing(left)) return right;
-  if (isNothing(right)) return left;
-  return B.struct.combinator.merge([left, right]);
+  // The right spine in a loop, from its end: a long chain of & and | does not recurse; a run of | is one merge.
+  const spine: { op: '&' | '|'; left: Term }[] = [];
+  let at: Spec = s;
+  while (at.kind === 'op') {
+    spine.push({ op: at.op, left: at.left });
+    at = at.right;
+  }
+  let acc = termExpr(at, id);
+  let run: Expression[] = [];
+  const flush = () => {
+    if (!run.length) return;
+    const xs = [...run.reverse(), acc].filter((x) => !isNothing(x));
+    acc = xs.length === 0 ? Empty() : xs.length === 1 ? xs[0] : B.struct.combinator.merge(xs);
+    run = [];
+  };
+  for (let k = spine.length - 1; k >= 0; k--) {
+    const left = termExpr(spine[k].left, id);
+    if (spine[k].op === '|') {
+      run.push(left);
+      continue;
+    }
+    flush();
+    // Nothing folds away (`#1 & ligand` on model 2 is nothing): a part that selects nothing reads as such.
+    acc = isNothing(left) || isNothing(acc) ? Empty() : B.struct.modifier.intersectBy({ 0: left, by: acc });
+  }
+  flush();
+  return acc;
 }
 
 const isNothing = (e: Expression) =>
@@ -718,6 +823,10 @@ export interface AtomSpecPrefix {
  * double quotes is the quotes' contents, whole. Throws when no spec reads there.
  */
 export function parseAtomSpec(text: string, options?: ChimeraxTranspileOptions): AtomSpecPrefix {
+  return readably(() => readAtomSpec(text, options));
+}
+
+function readAtomSpec(text: string, options?: ChimeraxTranspileOptions): AtomSpecPrefix {
   const id = options?.modelId ?? [1];
   if (text.startsWith('"')) {
     const close = /"(\s|$)/g;
@@ -770,4 +879,15 @@ function transpile(source: string, options: ChimeraxTranspileOptions | undefined
 }
 
 /** A whole text as one atom spec (a target field, a test): every character must read. */
-export const transpiler: Transpiler = (source, options) => transpile(source, options as ChimeraxTranspileOptions);
+export const transpiler: Transpiler = (source, options) =>
+  readably(() => transpile(source, options as ChimeraxTranspileOptions));
+
+/** Nesting deeper than the stack (thousands of `(` or `~`) said as a parse error, not a RangeError. */
+function readably<T>(read: () => T): T {
+  try {
+    return read();
+  } catch (e) {
+    if (e instanceof RangeError) throw new Error('the atom specifier is nested too deeply to read');
+    throw e;
+  }
+}

@@ -58,12 +58,12 @@ const secondary = (flags: string[]) =>
     ]),
   });
 
-/** The element symbols, as ChimeraX names its element selectors (case matters: `C`, `Zn`). */
+/** The element symbols, as ChimeraX 1.10 names its element selectors (case matters: `C`, `Zn`; `Uut`, not `Nh`). */
 export const ElementSymbols = (
   'H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr ' +
   'Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt ' +
-  'Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc ' +
-  'Lv Ts Og D'
+  'Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Uut Fl ' +
+  'Uup Uuh Uus Uuo D'
 ).split(' ');
 
 const unsupported = (desc: string): Selector => ({ '@desc': desc });
@@ -167,8 +167,10 @@ export const IdatmTypes = new Set(
   ).split(' '),
 );
 
+const ElementSet = new Set(ElementSymbols);
+
 /** An element selector's expression, or undefined. Case matters, as in ChimeraX (`C` is carbon, `c` nothing). */
 export function elementSelector(name: string): Expression | undefined {
-  if (!ElementSymbols.includes(name)) return undefined;
+  if (!ElementSet.has(name)) return undefined;
   return B.struct.generator.atomGroups({ 'atom-test': B.core.rel.eq([B.acp('elementSymbol'), B.es(name)]) });
 }

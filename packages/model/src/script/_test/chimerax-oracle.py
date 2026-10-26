@@ -2,7 +2,7 @@
 #
 # @author Ludovic Autin <autin@scripps.edu>
 #
-# Records ChimeraX's atom counts for the atom specs in chimerax-oracle.json, which chimerax-oracle.test.ts compares
+# Records ChimeraX's atom counts for the atom specs in chimerax-oracle.json, and where specs end in a command, which chimerax-oracle.test.ts compares
 # Mol*'s against. By hand, with ChimeraX installed (fetches 1TUP; Mol*'s test reads data/examples/1tup.bcif):
 #   ChimeraX --nogui --exit --script packages/model/src/script/_test/chimerax-oracle.py
 import json, os
@@ -22,6 +22,17 @@ for name, entry in fixture['structures'].items():
     for spec in entry['specs']:
         counts[spec] = len(atomspec.AtomSpecArg.parse(spec, session)[0].evaluate(session).atoms)
     entry['counts'] = counts
+
+# Where a spec ends at the start of a command's arguments (what ChimeraX's parser uses, the rest left).
+run(session, 'close')
+run(session, opens['1cbs_updated.cif'])
+used = {}
+for text in fixture['ends']['texts']:
+    try:
+        used[text] = atomspec.AtomSpecArg.parse(text, session)[1]
+    except Exception as e:
+        used[text] = 'error: ' + str(e).split(chr(10))[0]
+fixture['ends']['used'] = used
 
 with open(path, 'w') as f:
     json.dump(fixture, f, indent=2)

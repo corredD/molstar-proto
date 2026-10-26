@@ -119,7 +119,7 @@ Not supported: `sel-residues`, `template-mismatch`, `pbonds`, `hbonds`, `clashes
 | Level | Attributes |
 | --- | --- |
 | atom | `bfactor`, `occupancy`, `name`, `element`, `serial_number`, `alt_loc` |
-| residue | `name`, `number`, `insertion_code`, `chain_id`, `label_seq_id`, `is_helix`, `is_strand` |
+| residue | `name`, `number`, `insertion_code`, `chain_id`, `is_helix`, `is_strand` |
 | chain | `chain_id` |
 
 ## Targets and atom styles
