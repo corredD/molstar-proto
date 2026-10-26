@@ -110,8 +110,8 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
      `transform.params as any`.
    - The tree's node kinds are plain strings, repeated in three files; the scene's kinds (`model`, `list`) and the
      tree's (`mesoscale model`, `particle list`) differ. (A list's target row sent its target ids as entity ids to
-     `mesoscale.style`: right only because a list without entities has its targets as entities; its eye now writes the
-     targets' layer through `particles.look`, 2026-10-25.)
+     `mesoscale.style`: right only because a list without entities has its targets as entities; the menu's Hide on it
+     now writes the targets' layer through `particles.look`, 2026-10-25; the row has no eye.)
 4. **The same helper, many times.**
    - walking up to a file's root cell (×6);
    - walking down a list's decorators (×5);
@@ -150,7 +150,7 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
    only code that creates, updates or deletes the cell; `particles.look` runs it on a list's representations in one
    update; clipping's partial cuts call the helper in their own commit, mesoscale's styles and cryoet's decorations the
    operation. A layer is keyed by its selector's sorted ids; an absent field is kept, `null` clears one; a
-   representation a decoration adds takes the list's layers.
+   representation added to a list (`particles.representation`) takes the list's layers.
 2. **No per-entity LOD or styles:** one LOD and one style per model. The v5 feature is marked deferred in features.md.
 3. **No atom-level work inside particles for now:** picking stays per particle, and features.md says so.
 4. **One handle class in Prism's gizmo library** for anything that moves: preview outside the state, one commit on
