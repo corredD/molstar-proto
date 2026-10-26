@@ -54,7 +54,48 @@ interface LookParams {
   readonly hidden: readonly number[];
 }
 
-const sorted = (ids: readonly number[] | undefined) => (ids?.length ? [...ids].sort((a, b) => a - b) : []);
+const sorted = (ids: readonly number[] | undefined) =>
+  ids?.length ? Array.from(new Set(ids)).sort((a, b) => a - b) : [];
+
+const isIds = (ids: unknown) => ids === undefined || (Array.isArray(ids) && ids.every(Number.isInteger));
+const isUnit = (x: unknown) => x === undefined || x === null || (typeof x === 'number' && x >= 0 && x <= 1);
+const isSelector = (s: unknown): s is ParticleLookSelector =>
+  !!s && typeof s === 'object' && ['entities', 'compartments', 'targets'].every((k) => isIds((s as any)[k]));
+
+/** What is wrong with a patch given as values (an agent's JSON), none when it is well formed */
+export function particleLookPatchError(patch: ParticleLookPatch): string | undefined {
+  const { layers, hidden, cuts } = patch as { layers?: unknown; hidden?: unknown; cuts?: unknown };
+  if (layers !== undefined) {
+    if (!Array.isArray(layers)) return 'layers is a list.';
+    for (const l of layers as ParticleLayerPatch[]) {
+      if (!l || !isSelector(l.selector))
+        return 'Each layer has a selector of integer ids: { entities, compartments, targets }.';
+      if (l.visible !== undefined && typeof l.visible !== 'boolean') return 'visible is true or false.';
+      if (l.color !== undefined && l.color !== null && !Number.isInteger(l.color))
+        return 'color is a color number or null.';
+      if (!isUnit(l.transparency) || !isUnit(l.emissive)) return 'transparency and emissive are 0 to 1, or null.';
+    }
+  }
+  if (hidden !== undefined && !isIds(hidden)) return 'hidden is a list of target ids.';
+  if (cuts !== undefined) {
+    const { add, remove } = (cuts ?? {}) as { add?: unknown; remove?: unknown };
+    if (
+      add !== undefined &&
+      !(
+        Array.isArray(add) &&
+        add.every(
+          (c) => isSelector(c) && typeof (c as ParticleCutPatch).tag === 'string' && !!(c as ParticleCutPatch).tag,
+        )
+      )
+    ) {
+      return 'Each cut added has a tag and integer ids.';
+    }
+    if (remove !== undefined && !(Array.isArray(remove) && remove.every((t) => typeof t === 'string'))) {
+      return 'cuts.remove is a list of tags.';
+    }
+  }
+  return undefined;
+}
 
 /** A layer's key: its selector's ids by kind, sorted */
 const keyOf = (s: { entities: readonly number[]; compartments: readonly number[]; targets: readonly number[] }) =>

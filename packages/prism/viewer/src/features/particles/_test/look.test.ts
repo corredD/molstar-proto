@@ -143,6 +143,26 @@ describe('particles.look', () => {
     expect(list(v).representations).toHaveLength(1);
   });
 
+  it('refuses a malformed patch as invalid, and keys a selector by its distinct ids', async () => {
+    const v = await create();
+    const run = (p: object) => v.api.run('particles.look', p);
+    for (const bad of [
+      { layers: [{ color: red }] },
+      { layers: 'x' },
+      { layers: [{ selector: { targets: ['1'] }, color: red }] },
+      { layers: [{ selector: { targets: [1] }, color: 'red' }] },
+      { layers: [{ selector: { targets: [1] }, transparency: 7 }] },
+      { hidden: ['a', 1] },
+      { cuts: { add: [{ targets: [1] }] } },
+    ]) {
+      expect(await run(bad)).toMatchObject({ ok: false, code: 'invalid' });
+    }
+    expect(looks(v).size).toBe(0);
+    expectOk(await run({ layers: [{ selector: { targets: [2, 2] }, color: red }] }));
+    expectOk(await run({ layers: [{ selector: { targets: [2] }, color: blue }] }));
+    expect(lookOf(v).layers).toMatchObject([{ targets: [2], color: blue }]);
+  });
+
   it('writes one representation by node', async () => {
     const v = await create();
     expectOk(await v.api.particles!.representation({ type: 'orientation' }));

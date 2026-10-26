@@ -38,6 +38,7 @@ import {
   copyParticleLayers,
   type ParticleCutPatch,
   type ParticleLayerPatch,
+  particleLookPatchError,
   patchParticleLook,
 } from '../../sources/particles/look.js';
 
@@ -535,11 +536,13 @@ export class ParticlesApi extends ApiArea {
       if (!layers && !hidden && !cuts) {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give layers, hidden or cuts.');
       }
+      const patch = { layers, hidden, cuts };
+      const error = particleLookPatchError(patch);
+      if (error) return ApiResult.fail('invalid', error);
       const reps = representationsFor(ctx, particles, representation, node);
       if (isFailure(reps)) return reps;
       const state = ctx.plugin.state.data;
       const b = state.build();
-      const patch = { layers, hidden, cuts };
       const changed = reps.filter((r) => patchParticleLook(b, r.cell.transform.ref, patch));
       if (!changed.length) return ApiResult.already(`${namesOfReps(ctx, reps)} already look so.`);
       await ctx.plugin.runTask(state.updateTree(b));
