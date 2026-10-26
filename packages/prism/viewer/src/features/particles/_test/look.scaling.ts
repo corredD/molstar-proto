@@ -36,8 +36,9 @@ it('the positive control (a copy per item) is caught', () => {
   checkLinear('quadratic control', scaling(quadraticControl, 2000), false);
 });
 
-it('a looks patch of N layers over N layers', async () => {
-  const s = await scalingAsync(
+/** N patches over a cell of N layers: each of an existing layer, or each a new one */
+async function patchOver(newKeys: boolean) {
+  return scalingAsync(
     {
       setup: async (n) => {
         const v = await headlessViewer();
@@ -50,7 +51,7 @@ it('a looks patch of N layers over N layers', async () => {
           .apply(ParticleRepresentation3DLayers, { layers, cuts: [], hidden: [] })
           .commit();
         const patches = Array.from({ length: n }, (_, i) => ({
-          selector: { entities: [n - 1 - i] },
+          selector: { entities: [newKeys ? n + i : n - 1 - i] },
           color: Color(0xff),
         }));
         return { v, repr, patches };
@@ -61,6 +62,15 @@ it('a looks patch of N layers over N layers', async () => {
       teardown: ({ v }) => v.dispose(),
     },
     2000,
+    // the run is synchronous (no commit): nothing else allocates meanwhile
+    { alloc: true },
   );
-  checkLinear('particles.look patch, N layers', s);
+}
+
+it('a looks patch of N layers over N layers', async () => {
+  checkLinear('particles.look patch, N existing layers', await patchOver(false));
+}, 600_000);
+
+it('a looks patch of N new layers over N layers', async () => {
+  checkLinear('particles.look patch, N new layers', await patchOver(true));
 }, 600_000);
