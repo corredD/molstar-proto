@@ -9,7 +9,6 @@ import { type StateObjectCell, type StateObjectSelector, StateTransform } from '
 import { Color } from '@molstar/core/util/color';
 import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
-import { StateSelection } from '@molstar/core/state';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { Grid, Volume } from '@molstar/model/model/volume';
 import {
@@ -27,11 +26,6 @@ import {
   ParticleListTargetsFromAttribute,
   ParticleListWithTargets,
 } from '@molstar/plugin/state/transforms/particles/ops';
-import {
-  type ParticleLayerProps,
-  ParticleRepresentation3DLayers,
-} from '@molstar/plugin/state/transforms/particles/layers';
-import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import { VolumeRepresentation3D } from '@molstar/plugin/state/transforms/volume/representation';
 import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
@@ -1242,45 +1236,13 @@ async function leaveOut(
   return r.unchanged ? [] : [...(r.changed.nodes ?? [])];
 }
 
-/** A representation of `type` added to a list, with its type's defaults and default themes: its ref, none if no type */
+/**
+ * A representation of `type` added to a list (`particles.representation`: its type's defaults and default themes, the
+ * list's layers): its ref, none if no type
+ */
 async function addRepresentation(ctx: ApiContext, l: ParticleListRef, type: string): Promise<string[]> {
-  const data = dataOf(ctx, l);
-  const { registry, themes } = ctx.plugin.representation.particles;
-  if (!data || !registry.has(type)) return [];
-  const provider = registry.get(type);
-  const dataCtx = { particles: data };
-  const color = themes.colorThemeRegistry.get(provider.defaultColorTheme.name);
-  const size = themes.sizeThemeRegistry.get(provider.defaultSizeTheme.name);
-  const b = ctx.plugin.state.data.build();
-  const repr = b.to(l.cell).apply(ParticlesRepresentation3D, {
-    type: { name: type, params: PD.getDefaultValues(provider.getParams(themes, data)) },
-    colorTheme: {
-      name: color.name,
-      params: { ...PD.getDefaultValues(color.getParams(dataCtx)), ...provider.defaultColorTheme.props },
-    },
-    sizeTheme: {
-      name: size.name,
-      params: { ...PD.getDefaultValues(size.getParams(dataCtx)), ...provider.defaultSizeTheme.props },
-    },
-  } as never);
-  await b.commit();
-  // the list's colors on it too (another representation's layers; not its cuts, whose clip objects it lacks, nor the
-  // targets it leaves out)
-  const layers = l.representations.length
-    ? ((ctx.plugin.state.data.select(
-        StateSelection.Generators.ofTransformer(
-          ParticleRepresentation3DLayers,
-          l.representations[0].cell.transform.ref,
-        ),
-      )[0]?.transform.params?.layers ?? []) as ParticleLayerProps[])
-    : [];
-  if (layers.length) {
-    const patches = layers.map(({ entities, compartments, targets, ...look }) => ({
-      selector: { entities, compartments, targets },
-      ...look,
-    }));
-    const r = await ctx.api.run('particles.look', { node: `#${repr.ref}`, layers: patches });
-    if (!r.ok) throw new Error(r.message);
-  }
-  return [repr.ref];
+  if (!dataOf(ctx, l) || !ctx.plugin.representation.particles.registry.has(type)) return [];
+  const r = await ctx.api.run('particles.representation', { particles: l.cell.transform.ref, type });
+  if (!r.ok) throw new Error(r.message);
+  return [...(r.changed.nodes ?? [])];
 }
