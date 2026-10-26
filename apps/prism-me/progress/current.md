@@ -8,16 +8,18 @@ is not built is [../TODO.md](../TODO.md).
 
 - **One owner for the particle looks** (`me/looks-owner`, `~/prism-me-lanes/looks-owner`,
   [brief](2026-10-25-looks-owner.md)): `particles.look` in Prism, mesoscale, cryo-ET and the cuts call it; PR #8, built
-  and reviewed, waits on Ludovic.
+  and reviewed; Ludo holds it.
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
-  run by another session): a third dialect for the command-language extension, as #2052 built PyMOL and VMD; one PR to
-  the fork's `master`, nothing upstream until Ludovic says so. Brief with Ludovic, no code until his OK; the volume
-  commands a follow-up lane.
+  run by another session): built, reviewed, pushed, no PR; waits on Ludo (he opens the PR, perhaps upstream). The volume
+  commands are the next lane.
 
 ## Waiting on Ludovic
 
 - The library fixes ready for upstream ([../TODO.md](../TODO.md)): which go, and when (he asks the maintainer).
 - A distance following its objects' moves: a Mol\* core change (`state.ts`, a dependency sees the decorators under its
   object), to talk over with the maintainer; then it follows live during a drag (Ludovic, 2026-10-25).
+- Hover highlight not drawn on merged render objects (a cellPACK model's targets): a Mol\* v6 graphics bug (Alexander's
+  `3039ea342`, on master; the draw table does not watch a merged object's members), not ours. Ludo tells Alexander
+  (write-up in `~/prism-me-drafts/alexander-merged-highlight.md`); no lane until then.
