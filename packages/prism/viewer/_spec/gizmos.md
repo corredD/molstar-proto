@@ -20,5 +20,7 @@ object.
   commits nothing.
 - **A placement comes ready** (`PlacementHandles`: `layout`, `sameGeometry`, `equal`, `apply`): a transform on top of
   where a thing was loaded and its center (a structure, an extension's object), its scale kept under the turn.
+- **A frame comes ready** (`frameHandles(options)`, the same): a rigid frame and a size (a slice's plane, a particle),
+  the rings those asked for.
 - **Tests** drive a fake canvas on a headless viewer's plugin (`src/testing/gizmo-canvas.ts`: hover a handle, drag,
   release, Esc); a release outside the window is the canvas's own (`interactionEnd`) and is not faked.
