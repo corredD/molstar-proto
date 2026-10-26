@@ -8,6 +8,7 @@
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cbs } from '../../../_test/harness.js';
+import { currentTransform } from '../../../api/structure.js';
 import { DefaultPrismViewerSpec } from '../../../default-spec.js';
 import { createPrismViewerHeadless } from '../../../headless.js';
 import {
@@ -16,6 +17,7 @@ import {
   poseMatrix,
   type StructurePlacement,
 } from '../../../sources/structure-move/gizmos.js';
+import { mountGizmoCanvas } from '../../../testing/gizmo-canvas.js';
 import type { PrismViewer } from '../../../viewer.js';
 import { StructureMoveFeature } from '../index.js';
 
@@ -92,5 +94,45 @@ describe('structure-move', () => {
     expect(move.structures.value.map((s) => s.label)).toEqual(['1CBS']);
     // headless: no canvas, no handles
     expect(move.showGizmos(viewer.api)).toBe(false);
+  });
+
+  it('moves a structure by a drag on its handles: one step, undone at once; an undo during a drag cancels it', async () => {
+    const base = DefaultPrismViewerSpec();
+    viewer = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), StructureMoveFeature] },
+    });
+    const v = viewer;
+    expect((await v.api.load.files({ files: [cbs()] })).ok).toBe(true);
+    const move = v.api.move!;
+    const matrix = () => {
+      const s = v.plugin.managers.structure.hierarchy.current.structures[0];
+      return currentTransform(s, s.cell.obj!.data);
+    };
+    const steps = () => v.managers.history.steps.value.length;
+    const canvas = mountGizmoCanvas(v.plugin);
+    move.gizmos.setTarget(move.structures.value[0].ref);
+    expect(move.showGizmos(v.api)).toBe(true);
+    const before = steps();
+    expect(await canvas.hover()).toBe(true);
+    await canvas.drag([2, 4, 6]);
+    // previewed: not in the state
+    expect(Mat4.areEqual(matrix(), Mat4.identity(), 1e-6)).toBe(true);
+    await canvas.release();
+    expect(steps()).toBe(before + 1);
+    expect(matrix()[12]).toBeGreaterThan(0);
+    expect((await v.api.run('history.undo', {})).ok).toBe(true);
+    expect(Mat4.areEqual(matrix(), Mat4.identity(), 1e-6)).toBe(true);
+
+    // a step to undo, then a drag that the undo cancels: its release commits nothing
+    expect((await v.api.run('structure.transform', { translation: [5, 0, 0] })).ok).toBe(true);
+    const moved = steps();
+    expect(await canvas.hover()).toBe(true);
+    await canvas.drag([5]);
+    expect((await v.api.run('history.undo', {})).ok).toBe(true);
+    await canvas.release();
+    expect(steps()).toBe(moved - 1);
+    expect(Mat4.areEqual(matrix(), Mat4.identity(), 1e-6)).toBe(true);
+    move.gizmos.hide();
+    canvas.remove();
   });
 });

@@ -7,3 +7,10 @@
 // Handles that move things (gizmos.md): the host of the gizmo library, for Prism's features and extensions.
 
 export { GizmoHandles, type GizmoHandlesOptions, type HandlesBinding } from './handles.js';
+export {
+  applyToPlacement,
+  type Placement,
+  PlacementHandles,
+  placementPose,
+  poseMatrix,
+} from './placement.js';

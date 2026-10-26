@@ -18,5 +18,7 @@ object.
   (`cells(key)`, default its key), every cell under them and every cell above them (a decorator under a structure, a
   volume's transform above a slice, a mesh's shape provider), compared by their params as at the press. Its release then
   commits nothing.
+- **A placement comes ready** (`PlacementHandles`: `layout`, `sameGeometry`, `equal`, `apply`): a transform on top of
+  where a thing was loaded and its center (a structure, an extension's object), its scale kept under the turn.
 - **Tests** drive a fake canvas on a headless viewer's plugin (`src/testing/gizmo-canvas.ts`: hover a handle, drag,
   release, Esc); a release outside the window is the canvas's own (`interactionEnd`) and is not faked.
