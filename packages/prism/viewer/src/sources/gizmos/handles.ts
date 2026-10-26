@@ -54,6 +54,8 @@ export class GizmoHandles<T> {
   #releaseClicks: (() => void) | undefined;
   /** The drag's cells as it started: their params, by ref; its value at the press */
   #drag: { readonly key: string; readonly from: T; readonly params: ReadonlyMap<string, unknown> } | undefined;
+  /** The last layout of each item shown, and the value it was of (its meshes kept while its geometry is the same) */
+  readonly #laidOut = new Map<string, { value: T; layout: GizmoLayout }>();
   /** A drag ended without its commit, whose cancel the controller runs after the preview in flight */
   #cancelOwed: { readonly key: string; readonly from: T } | undefined;
   /** Owed cancels run early (at a new press): the controller's own calls of them, later, are dropped */
@@ -115,6 +117,7 @@ export class GizmoHandles<T> {
     controller.dispose();
     this.#drag = undefined;
     this.#cancelOwed = undefined;
+    this.#laidOut.clear();
     this.#shown.set(false);
   }
 
@@ -125,13 +128,18 @@ export class GizmoHandles<T> {
 
   /** The items read again (a host's target changed) */
   publish(): void {
-    this.#items.next(this.binding.items());
+    const items = this.binding.items();
+    // an item gone: its meshes with it
+    if (this.#laidOut.size) {
+      const shown = new Set(items.map((i) => i.key));
+      for (const key of this.#laidOut.keys()) if (!shown.has(key)) this.#laidOut.delete(key);
+    }
+    this.#items.next(items);
   }
 
   #gizmoBinding(): GizmoBinding<T> {
     const b = this.binding;
-    /** The last layout of each item, and the value it was of */
-    const laidOut = new Map<string, { value: T; layout: GizmoLayout }>();
+    const laidOut = this.#laidOut;
     return {
       items: this.#items,
       invalidated: this.#invalidated,

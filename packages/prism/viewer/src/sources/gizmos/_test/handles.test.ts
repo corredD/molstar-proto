@@ -168,4 +168,23 @@ describe('GizmoHandles', () => {
     expect(log.commits).toHaveLength(1);
     canvas.remove();
   });
+
+  it("forgets an item's meshes when it leaves the items: back, it is laid out anew", async () => {
+    const v = await headlessViewer({ files: [cbs()] });
+    const { binding, log } = host(v);
+    let key = 'a';
+    const items = () => [{ key, value: { x: 0 }, label: key }];
+    const canvas = mountGizmoCanvas(v.plugin);
+    const handles = new GizmoHandles(v.plugin, { ...binding, items });
+    handles.show();
+    await canvas.hover();
+    key = 'b';
+    handles.publish();
+    key = 'a';
+    handles.publish();
+    await canvas.hover();
+    expect(log.layouts).toBe(3);
+    handles.hide();
+    canvas.remove();
+  });
 });
