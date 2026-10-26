@@ -54,7 +54,7 @@ export class GizmoHandles<T> {
   #releaseClicks: (() => void) | undefined;
   /** The drag's cells as it started: their params, by ref; its value at the press */
   #drag: { readonly key: string; readonly from: T; readonly params: ReadonlyMap<string, unknown> } | undefined;
-  /** The last layout of each item shown, and the value it was of (its meshes kept while its geometry is the same) */
+  /** The last layout of each item shown, and the value it was of (its meshes kept through a drag) */
   readonly #laidOut = new Map<string, { value: T; layout: GizmoLayout }>();
   /** A drag ended without its commit, whose cancel the controller runs after the preview in flight */
   #cancelOwed: { readonly key: string; readonly from: T } | undefined;
@@ -145,7 +145,9 @@ export class GizmoHandles<T> {
       invalidated: this.#invalidated,
       layout: (item) => {
         const last = laidOut.get(item.key);
-        if (last && b.frame && b.sameGeometry(last.value, item.value)) {
+        // a drag's move: the meshes as they are, the frame moved (at rest the controller may be making a gizmo with
+        // the last meshes: laid out anew, never shared)
+        if (last && b.frame && this.dragging === item.key && b.sameGeometry(last.value, item.value)) {
           last.value = item.value;
           last.layout = { ...last.layout, frame: b.frame(item) };
           return last.layout;

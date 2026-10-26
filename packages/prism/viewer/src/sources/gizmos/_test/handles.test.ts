@@ -187,4 +187,17 @@ describe('GizmoHandles', () => {
     handles.hide();
     canvas.remove();
   });
+
+  it('lays an item out anew at rest: two gizmos being made never share meshes', async () => {
+    const v = await headlessViewer({ files: [cbs()] });
+    const { handles, log } = host(v);
+    const canvas = mountGizmoCanvas(v.plugin);
+    // the items published before show: the controller makes the gizmo from them, and show publishes again meanwhile
+    handles.publish();
+    handles.show();
+    expect(await canvas.hover()).toBe(true);
+    expect(log.layouts).toBe(2);
+    handles.hide();
+    canvas.remove();
+  });
 });
