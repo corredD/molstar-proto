@@ -67,10 +67,11 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
 
 ## 4. Gizmos
 
-- **On the gizmo library** (`@molstar/graphics/util/gizmo`): its controller draws, hovers, drags, previews, commits and
-  cancels; clipping is a binding (`sources/clipping/gizmo/binding.ts`: a cut as a pose, previews on the representations'
-  clip, a commit through `clipping.update` by the cut's object, what a drag is on changing in the state invalidates it)
-  and its layouts (`geometry.ts`). Shown for the active cut while the section is (`onActive`); their clicks claimed
+- **On the gizmo library** (`@molstar/graphics/util/gizmo`), hosted by `GizmoHandles` ([gizmos.md](gizmos.md)): its
+  controller draws, hovers, drags, previews, commits and cancels; clipping is a binding
+  (`sources/clipping/gizmo/binding.ts`: a cut as a pose, previews on the representations' clip, a commit through
+  `clipping.update` by the cut's object, what a drag is on changing in the state invalidates it) and its layouts
+  (`geometry.ts`). Shown for the active cut while the section is (`onActive`); their clicks claimed
   (`InteractivityManager.clickOwners`: no focus, no select).
 - **Each handle says what a drag does** (the library's `Handle`): move (the screen's plane), slide (along the axis),
   turn (the screen's axes), scale (whole, a box across its edges, a cylinder's rims about their centers: by the cursor's

@@ -8,13 +8,13 @@
 import type { Sphere3D } from '@molstar/core/math/geometry';
 import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { Clip } from '@molstar/core/util/clip';
-import type { GizmoBinding, GizmoItem, GizmoLayout } from '@molstar/graphics/util/gizmo/controller';
+import type { GizmoItem, GizmoLayout } from '@molstar/graphics/util/gizmo/controller';
 import { type DragFrame, type GizmoPose, poseGesture, sizeRatio } from '@molstar/graphics/util/gizmo/gestures';
 import type { Handle } from '@molstar/graphics/util/gizmo/handle';
 import type { Representation } from '@molstar/graphics/repr/representation';
 import type { PluginContext } from '@molstar/plugin/context';
 import { RepresentationClip } from '@molstar/plugin/state/helpers/representation-clip';
-import { type Observable, Subject } from 'rxjs';
+import type { HandlesBinding } from '../../gizmos/handles.js';
 import { type CutObject, coneAngle, coneScale } from '../cuts.js';
 import { ConeAngleHandle, gizmoGeometry } from './geometry.js';
 
@@ -23,7 +23,7 @@ import { ConeAngleHandle, gizmoGeometry } from './geometry.js';
 // angle is the one gesture of its own); a preview is the object on the live representations (a clip-only update
 // touches uniforms only, repr/_test/clip-update.test.ts); a cancel puts them back to what the state holds; a commit is
 // the app's (one `clipping.update` through the person's API). What a drag is on changing in the state (an undo, another
-// edit) invalidates it.
+// edit) invalidates it: its representations' cells (`cells`, watched by `GizmoHandles`, gizmos.md).
 
 /** One `clipping.update` of the cut that is `from` (by its object: its number may shift) to `next`; false: not taken */
 export type GizmoCommit = (from: CutObject, next: CutObject) => Promise<boolean>;
@@ -81,28 +81,20 @@ export interface ClipItem extends GizmoItem<CutObject> {
   readonly bounds: Sphere3D;
 }
 
-export class ClipBinding implements GizmoBinding<CutObject> {
-  readonly #invalidated = new Subject<string>();
+export class ClipBinding implements HandlesBinding<CutObject> {
   /** The representations a drag found (by its item's key): what a cancel restores, what a change under it is told by */
   #drag: { key: string; targets: readonly Target[] } | undefined;
   #commit: GizmoCommit | undefined;
-  readonly #unsubscribe: () => void;
 
   constructor(
     private readonly plugin: PluginContext,
-    readonly items: Observable<readonly ClipItem[]>,
-  ) {
-    const sub = plugin.state.data.events.changed.subscribe(() => {
-      const d = this.#drag;
-      if (d?.targets.some((t) => plugin.state.data.cells.get(t.ref)?.transform.params !== t.params)) {
-        this.#invalidated.next(d.key);
-      }
-    });
-    this.#unsubscribe = () => sub.unsubscribe();
-  }
+    /** The cuts shown, as the state holds them now */
+    readonly items: () => readonly ClipItem[],
+  ) {}
 
-  get invalidated(): Observable<string> {
-    return this.#invalidated;
+  /** A drag's representations: what it starts from */
+  cells(): readonly string[] {
+    return this.#drag?.targets.map((t) => t.ref) ?? [];
   }
 
   /** How a drag's release is committed (the person's API) */
@@ -164,11 +156,5 @@ export class ClipBinding implements GizmoBinding<CutObject> {
       if (clip && repr) void repr.createOrUpdate({ ...repr.props, clip }).run();
     }
     this.#drag = undefined;
-  }
-
-  dispose() {
-    this.cancel();
-    this.#unsubscribe();
-    this.#invalidated.complete();
   }
 }
