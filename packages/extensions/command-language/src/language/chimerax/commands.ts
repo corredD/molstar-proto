@@ -174,7 +174,7 @@ function showOrHide(verb: 'show' | 'hide', a: ChimeraxArgs, c: Compiler): Compil
   return out;
 }
 
-const ShowKeywords: Keywords = { target: { kind: 'text' }, only: { kind: 'bool' } };
+const ShowKeywords: Keywords = { target: { kind: 'text' }, only: { kind: 'bool', flag: true } };
 
 /** ChimeraX's element colors on the atoms of a selection: the ones other than carbon (`byhetero`), or all. */
 const ElementList = ['C', 'N', 'O', 'S', 'P', 'H', 'F', 'CL', 'BR', 'I', 'SE', 'FE', 'ZN', 'MG', 'CA', 'NA', 'K'];
@@ -355,11 +355,25 @@ function axisOf(text: string, at: Span): 'x' | 'y' | 'z' {
 }
 
 /** A load from a word of `open`: an entry (`1cbs`, `pdb:1cbs`, `alphafold:P69905`), a URL, or a file given. */
-function loadOf(word: string, at: Span, a: ChimeraxArgs, c: Compiler, i: number): CommandBody {
+/** What one `open` has given its earlier words: their model ids and names (each word its own, as ChimeraX). */
+interface Opened {
+  readonly models: Set<number | undefined>;
+  readonly names: Set<string>;
+}
+
+function loadOf(word: string, at: Span, a: ChimeraxArgs, c: Compiler, i: number, opened: Opened): CommandBody {
   const db = a.has('fromDatabase') ? a.text('fromDatabase').toLowerCase() : undefined;
   const [prefix, rest] = word.includes(':') && !/^[a-z]+:\/\//i.test(word) ? word.split(/:(.*)/s) : [db, word];
-  const model = c.state.nextModel() + i;
-  const name = (wish: string) => c.state.freeName(a.has('name') ? a.text('name') : wish);
+  let model = 1;
+  while (opened.models.has(model)) model++;
+  opened.models.add(model);
+  const name = (want: string) => {
+    const wish = a.has('name') ? a.text('name') : want;
+    let n = c.state.freeName(wish);
+    for (let k = 2; opened.names.has(n.toLowerCase()); k++) n = c.state.freeName(`${wish}_${k}`);
+    opened.names.add(n.toLowerCase());
+    return n;
+  };
   const load = (from: LoadSource, wish: string): CommandBody => ({
     kind: 'load',
     from,
@@ -413,7 +427,7 @@ function formatOf(f: string): string {
   return t === 'mmcif' || t === 'cif' ? 'mmcif' : t === 'pdb' ? 'pdb' : t;
 }
 
-const Frames = 'Mol* moves at once: frames are ignored.';
+const Frames = 'Mol* moves at once, to where the frames end.';
 
 export const ChimeraxCommands: readonly ChimeraxCommand[] = [
   {
@@ -435,7 +449,8 @@ export const ChimeraxCommands: readonly ChimeraxCommand[] = [
       for (let w = a.word(); w; w = a.word()) words.push(w);
       if (!words.length) fail('argument', 'open needs what to open.', a.here, 'Give a PDB id: open 1cbs.');
       a.done();
-      return words.map((w, i) => loadOf(w.text, w.at, a, c, i));
+      const opened: Opened = { models: new Set(c.state.objects.map((o) => o.model)), names: new Set() };
+      return words.map((w, i) => loadOf(w.text, w.at, a, c, i, opened));
     },
   },
   {
@@ -506,12 +521,10 @@ export const ChimeraxCommands: readonly ChimeraxCommand[] = [
         return [];
       }
       const style: AtomStyle = word.value === 'stick' ? 'sticks' : word.value === 'ball' ? 'ball-and-stick' : 'spheres';
-      const sel = spec
-        ? fixedTo(
-            spec.sel,
-            c.state.objects.map((o) => o.name),
-          )
-        : All;
+      // Fixed to the models open now: one opened later is drawn in stick (ChimeraX's); no spec keeps the text `all`,
+      // which starts the list again (`nextAtomStyles`).
+      const objects = c.state.objects.map((o) => o.name);
+      const sel = spec ? fixedTo(spec.sel, objects) : { ...fixedTo(All, objects), text: 'all' };
       return [{ kind: 'atom-style', sel, style }];
     },
   },
@@ -880,7 +893,8 @@ export const ChimeraxCommands: readonly ChimeraxCommand[] = [
   },
   {
     name: 'name',
-    summary: 'Name an atom spec, used as a selector after (re-read with the models there are then).',
+    summary:
+      'Name an atom spec, used as a selector after (for models opened later too, as far as it names no model by id).',
     usage: 'name name spec',
     params: [p('name', 'name', false), objects('spec', false)],
     examples: ['name site /A:45,60,88', 'name lig ligand'],
@@ -990,9 +1004,11 @@ export const ChimeraxCommands: readonly ChimeraxCommand[] = [
       for (const k of ['models', 'atoms', 'rock', 'wobble']) {
         if (a.has(k)) fail('unsupported-argument', `turn ${k} is not supported: Mol* turns the view.`, a.at(k));
       }
-      if (frames && frames.value > 1) c.report(note(Frames, frames.at));
+      // ChimeraX turns by the angle each frame: the end is the angle times the frames, reached at once here.
+      const n = frames && frames.value > 1 ? frames.value : 1;
+      if (frames && n > 1) c.report(note(Frames, frames.at));
       const axis = axisWord ? axisOf(axisWord.text, axisWord.at) : 'y';
-      return [{ kind: 'camera.turn', axis, angle: angle?.value ?? 90 }];
+      return [{ kind: 'camera.turn', axis, angle: (angle?.value ?? 90) * n }];
     },
     keywords: { models: { kind: 'text' }, atoms: { kind: 'text' }, rock: { kind: 'int' }, wobble: { kind: 'int' } },
   },
@@ -1013,8 +1029,10 @@ export const ChimeraxCommands: readonly ChimeraxCommand[] = [
       for (const k of ['models', 'atoms']) {
         if (a.has(k)) fail('unsupported-argument', `move ${k} is not supported: Mol* moves the view.`, a.at(k));
       }
-      if (frames && frames.value > 1) c.report(note(Frames, frames.at));
-      return [{ kind: 'camera.move', axis: axisOf(axisWord.text, axisWord.at), distance: distance?.value ?? 1 }];
+      // As turn: the distance each frame, times the frames.
+      const n = frames && frames.value > 1 ? frames.value : 1;
+      if (frames && n > 1) c.report(note(Frames, frames.at));
+      return [{ kind: 'camera.move', axis: axisOf(axisWord.text, axisWord.at), distance: (distance?.value ?? 1) * n }];
     },
   },
   {
@@ -1348,7 +1366,8 @@ export const ChimeraxCommands: readonly ChimeraxCommand[] = [
     compile(a) {
       const w = a.word();
       a.done();
-      if (w && w.text !== 'ortho' && w.text !== 'mono') {
+      const type = w?.text.toLowerCase();
+      if (w && type !== 'ortho' && type !== 'mono') {
         fail(
           'unsupported',
           `The camera '${w.text}' is not supported.`,
@@ -1356,7 +1375,7 @@ export const ChimeraxCommands: readonly ChimeraxCommand[] = [
           'Mol* draws mono (perspective) or ortho.',
         );
       }
-      const projection = w ? (w.text === 'ortho' ? 'orthographic' : 'perspective') : undefined;
+      const projection = w ? (type === 'ortho' ? 'orthographic' : 'perspective') : undefined;
       const fov = a.has('fieldOfView') ? a.num('fieldOfView') : undefined;
       if (!projection && fov === undefined) return [{ kind: 'read', read: { kind: 'view' } }];
       return [{ kind: 'canvas', ...(projection ? { projection } : {}), ...(fov !== undefined ? { fov } : {}) }];

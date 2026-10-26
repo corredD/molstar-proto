@@ -25,7 +25,7 @@ import {
   ReadableProperties,
   shapeOf,
 } from './atoms.js';
-import { nextAtomStyles } from '../language/env.js';
+import { nextAtomStyles, withoutObjects } from '../language/env.js';
 import { atomStyle, cartoon, display } from './display.js';
 import { HostFailure, Ops, type Where } from './ops.js';
 import { colorTheme, hex, MolstarReps } from './reps.js';
@@ -102,8 +102,12 @@ export class PrismScriptHost implements ScriptHost {
         const refs = cmd.objects === 'all' ? ops.objects().map((o) => o.ref) : cmd.objects.map((o) => ops.ref(o));
         for (const ref of refs) await ops.run('structure.remove', { structure: ref });
         const objects = { ...this.holder.value.objects };
+        const gone = new Set(refs.map((ref) => objects[ref]?.name.toLowerCase()).filter((n): n is string => !!n));
         for (const ref of refs) delete objects[ref];
+        // A closed structure's ChimeraX styles go with it (one opened later under its name is drawn in stick).
+        const styles = this.holder.value.atomStyles;
         this.holder.update({
+          ...(styles?.length ? { atomStyles: cmd.objects === 'all' ? [] : withoutObjects(styles, gone) } : {}),
           objects,
           ...(this.holder.value.top && refs.includes(this.holder.value.top) ? { top: undefined } : {}),
         });
@@ -174,8 +178,12 @@ export class PrismScriptHost implements ScriptHost {
         return { ok: true };
       case 'transparency': {
         const where = ops.some(cmd.sel);
-        // Some representations only (ChimeraX's surfaces): as Mol*'s types.
-        const types = cmd.reps ? [...new Set(cmd.reps.map((r) => MolstarReps[r].type))] : undefined;
+        // Some representations only, ChimeraX's (its surfaces): as Mol*'s types. PyMOL's reps stay a warning, as
+        // they were (its settings say so; TODO).
+        const types =
+          cmd.reps && cmd.sel.dialect === 'chimerax'
+            ? [...new Set(cmd.reps.map((r) => MolstarReps[r].type))]
+            : undefined;
         for (const w of where)
           await ops.run('representation.transparency', {
             target: target(cmd.sel, w),
@@ -183,7 +191,7 @@ export class PrismScriptHost implements ScriptHost {
             ...(types ? { types } : {}),
             structure: w.ref,
           });
-        return `Made ${count(where)} atoms${cmd.reps ? ` (${cmd.reps.join(', ')})` : ''} ${Math.round(cmd.alpha * 100)}% transparent.`;
+        return `Made ${count(where)} atoms${types ? ` (${cmd.reps!.join(', ')})` : ''} ${Math.round(cmd.alpha * 100)}% transparent.`;
       }
       case 'size': {
         const where = ops.some(cmd.sel);
@@ -750,6 +758,7 @@ export class PrismScriptHost implements ScriptHost {
         return (
           ops
             .objects()
+            .sort((a, b) => (read.ids === 'model' ? (a.model ?? 0) - (b.model ?? 0) : 0))
             .map((o) => (read.ids === 'model' ? `#${o.model} ${o.name}` : `${o.molecule} ${o.name}`))
             .join('\n') || '(none)'
         );

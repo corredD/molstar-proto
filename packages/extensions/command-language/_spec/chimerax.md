@@ -41,7 +41,7 @@ when typed in lower case (`tar` target, `bgcolor` bgColor).
 | `select subtract` | `select subtract [objects]` | Take objects out of the selection. |
 | `~select` | `~select [objects]` | Take objects out of the selection (no objects: clear it). |
 | `select clear` | `select clear` | Clear the selection. |
-| `name` | `name name spec` | Name an atom spec, used as a selector after (re-read with the models there are then). |
+| `name` | `name name spec` | Name an atom spec, used as a selector after (for models opened later too, as far as it names no model by id). |
 | `name frozen` | `name frozen name spec` | Name the atoms an atom spec selects now (later models are not in it). |
 | `name delete` | `name delete name` | Forget a name (`all`: every one). |
 | `name list` | `name list` | List the names. |

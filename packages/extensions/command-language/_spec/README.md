@@ -138,9 +138,9 @@ order; the first failure stops. Selections are evaluated when their command runs
   it); its value is what each command printed and said. All reads: `unchanged`, no step. **`script.names`** lists
   objects, molecule ids and names.
 - **Session state** (`state.ts`, custom state `command-language`: Undo and saved sessions keep it with the tree): object
-  names and molecule ids by structure ref, named selections, the top molecule, VMD's rep defaults, and the components
-  the console made for PyMOL's types. Tcl variables and atomselect handles are the area's, not state (not undone, as in
-  VMD).
+  names, molecule ids and ChimeraX model ids by structure ref, named selections, the top molecule, VMD's rep defaults,
+  the components the console made for PyMOL's types, and ChimeraX's atom styles (§5.4; a closed structure's go with it).
+  Tcl variables and atomselect handles are the area's, not state (not undone, as in VMD).
 - **Targets** are `{ molql }` with the structure's ref: a selection's own part, or an atom set as `Loci.toExpression`
   (ranges of source indices) or `all`.
 - **IR to operations** (`host.ts`): loads → `load.entry` / `load.url` / `load.data` (a file given with the submission),

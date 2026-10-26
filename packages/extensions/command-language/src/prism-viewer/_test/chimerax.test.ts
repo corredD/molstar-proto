@@ -136,3 +136,41 @@ describe('ChimeraX commands on the viewer', () => {
     expect(v.plugin.managers.structure.hierarchy.current.structures).toHaveLength(0);
   });
 });
+
+describe('fixes from the first review, on the viewer', () => {
+  const layerTypes = (v: PrismViewer) =>
+    v.plugin.state.data
+      .select(StateSelection.Generators.ofTransformer(TransparencyStructureRepresentation3DFromBundle))
+      .map(
+        (c) =>
+          (v.plugin.state.data.cells.get(c.transform.parent)?.transform.params as { type: { name: string } }).type.name,
+      );
+
+  it('leaves PyMOL’s transparency on every representation, as before (M1)', async () => {
+    const v = await viewer();
+    const r = await v.api.script!.run({
+      text: 'load 1cbs.cif; show surface; set transparency, 0.5',
+      dialect: 'pymol',
+      files: [file()],
+    });
+    expect(r.ok).toBe(true);
+    expect(new Set(layerTypes(v)).size).toBeGreaterThan(1);
+  });
+
+  it('says why a measure of one selection does not have its atoms (S11)', async () => {
+    const v = await viewer();
+    await ok(v, 'open 1cbs.cif');
+    const r = await v.api.script!.run({ text: 'distance :45', dialect: 'chimerax', files: [file()] });
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.message).toContain('this measure takes 2');
+  });
+
+  it('forgets a closed model’s styles, and lists models by id (M3)', async () => {
+    const v = await viewer();
+    await ok(v, 'open 1cbs.cif; style ligand ball; close #1; open 1cbs.cif');
+    await ok(v, 'show ligand atoms');
+    expect(components(v).some((c) => c.label === 'ball-and-stick')).toBe(false);
+    await ok(v, 'open 1cbs.cif; open 1cbs.cif; close #2; open 1cbs.cif');
+    expect(JSON.stringify((await ok(v, 'info models')).value)).toMatch(/#1[^#]*#2[^#]*#3/);
+  });
+});

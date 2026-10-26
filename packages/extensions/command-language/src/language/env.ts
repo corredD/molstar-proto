@@ -7,7 +7,7 @@
 
 import type { AtomStyle, Command, Sel, VmdRep } from './ir.js';
 import { VmdColorIds } from './colors.js';
-import { selMinus, selOr } from './selection.js';
+import { isEmptyPart, selMinus, selOr } from './selection.js';
 
 // What names mean (_spec §4.3, §5): the host's objects (structures) and the session's names, molecule ids and VMD's rep
 // defaults, read once a submission. The compiler works on a copy that each command it compiles updates, so a later
@@ -102,8 +102,8 @@ export class CompileState {
   readonly scripts: ReadonlyMap<string, string>;
   readonly session: ScriptSession;
   atomStyles: readonly AtomStyleEntry[];
-  /** The selection as the commands compiled so far leave it (`sel`); undefined: nothing selected. */
-  selection: Sel | undefined;
+  #env: ScriptEnv;
+  #selection: Sel | undefined | null = null;
 
   constructor(env: ScriptEnv, session: ScriptSession = createScriptSession()) {
     this.objects = [...env.objects];
@@ -115,7 +115,17 @@ export class CompileState {
     this.scripts = env.scripts ?? new Map();
     this.session = session;
     this.atomStyles = env.atomStyles ?? [];
-    this.selection = env.selection;
+    this.#env = env;
+  }
+
+  /** The selection as the commands compiled so far leave it (`sel`); undefined: nothing selected. Read when asked. */
+  get selection(): Sel | undefined {
+    if (this.#selection === null) this.#selection = this.#env.selection;
+    return this.#selection;
+  }
+
+  set selection(s: Sel | undefined) {
+    this.#selection = s;
   }
 
   /** The ChimeraX model id the next opened structure takes: the lowest no object has, from 1. */
@@ -190,6 +200,8 @@ export class CompileState {
         const gone = cmd.objects === 'all' ? undefined : new Set(cmd.objects.map((o) => o.toLowerCase()));
         this.objects = gone ? this.objects.filter((o) => !gone.has(o.name.toLowerCase())) : [];
         if (this.top && (!gone || gone.has(this.top.toLowerCase()))) this.top = undefined;
+        // A closed model's styles go with it: one opened later under its name is drawn in stick.
+        this.atomStyles = gone ? withoutObjects(this.atomStyles, gone) : [];
         break;
       }
       case 'object.top':
@@ -223,6 +235,19 @@ export class CompileState {
         break;
     }
   }
+}
+
+/** The styles without the parts of objects gone (lowercase names); entries left selecting nothing go. */
+export function withoutObjects(list: readonly AtomStyleEntry[], gone: ReadonlySet<string>): readonly AtomStyleEntry[] {
+  return list
+    .map((e) => ({
+      ...e,
+      sel: {
+        ...e.sel,
+        parts: e.sel.parts.filter((p) => p.scope === 'others' || !gone.has(p.scope.object.toLowerCase())),
+      },
+    }))
+    .filter((e) => e.sel.parts.some((p) => p.scope !== 'others' && !isEmptyPart(p.molql)));
 }
 
 /** Styles kept at most: past it, the oldest go (a long session's styles stay a few selections). */

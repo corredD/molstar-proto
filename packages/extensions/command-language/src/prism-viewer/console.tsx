@@ -104,7 +104,7 @@ function EmptyView(props: { model: ConsoleModel; onPick: (text: string) => void 
       <div class={classes.emptyTitle}>PyMOL, VMD and ChimeraX commands</div>
       <div class={classes.emptyText}>
         Type the commands you know. Enter runs them as one step, which Undo takes back; the line under the input says
-        what they will do first. Open or drop a .pml, .tcl or .vmd script with the files it loads.
+        what they will do first. Open or drop a .pml, .tcl, .vmd or .cxc script with the files it loads.
       </div>
       <div class={classes.examples}>
         <For each={derive(props.model.dialect, (d) => ConsoleExamples[d])}>
@@ -401,7 +401,7 @@ export function ConsoleView(props: { model: ConsoleModel }) {
           size="sm"
           variant="ghost"
           icon={<Icon name="upload" size={15} />}
-          title="Import a .pml, .tcl or .vmd script with the files it loads, or structure files (or drop them here)"
+          title="Import a .pml, .tcl, .vmd or .cxc script with the files it loads, or structure files (or drop them here)"
           onClick={() => picker.click()}
         >
           Import
@@ -485,7 +485,7 @@ export function ConsoleView(props: { model: ConsoleModel }) {
           </span>
         </div>
       </div>
-      <div class={classes.drop}>Drop a .pml, .tcl or .vmd script with the files it loads</div>
+      <div class={classes.drop}>Drop a .pml, .tcl, .vmd or .cxc script with the files it loads</div>
     </div>
   ) as HTMLElement;
   effect(dropping.asReadonly, (on) => {

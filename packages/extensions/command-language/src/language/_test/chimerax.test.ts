@@ -251,3 +251,45 @@ describe('the dialect by its word and its files', () => {
     expect(dialectOfFile('setup.cxc')).toBe('chimerax');
   });
 });
+
+describe('fixes from the first review', () => {
+  it('gives each word of one open its own model id and name (M2)', () => {
+    const e = {
+      ...env,
+      objects: [
+        { name: 'a', molecule: 0, model: 1 },
+        { name: 'c', molecule: 1, model: 3 },
+      ],
+    };
+    const loads = ok('open 1cbs 1tqn name x', e) as { model?: number; name: string }[];
+    expect(loads.map((l) => l.model)).toEqual([2, 4]);
+    expect(new Set(loads.map((l) => l.name)).size).toBe(2);
+  });
+
+  it('keeps a style without a spec to the models open now (M3)', () => {
+    const cmds = ok('style sphere; open 1abc; show #3 atoms');
+    const shows = cmds.filter((c) => c.kind === 'display' && c.mode === 'show') as { reps: string[]; sel: Sel }[];
+    const spheres = shows.find((s) => s.reps[0] === 'spheres');
+    if (spheres) expect(on(spheres.sel, '1abc')).toBe(empty);
+  });
+
+  it('forgets the styles of a model closed (M3)', () => {
+    const cmds = ok('style #1 & ligand ball; close #1; open 1cbs; show ligand atoms');
+    const shows = cmds.filter((c) => c.kind === 'display' && c.mode === 'show') as { reps: string[] }[];
+    expect(shows.map((s) => s.reps[0])).toEqual(['sticks']);
+  });
+
+  it('reads only as a flag: it takes no value (M4)', () => {
+    ok('show ligand only target a');
+    expect(errorOf('show ligand only true').code).toBe('argument');
+  });
+
+  it('turns and moves by the amount each frame, as ChimeraX (S8)', () => {
+    expect(ok('turn y 10 3')[0]).toMatchObject({ kind: 'camera.turn', angle: 30 });
+    expect(ok('move x 2 5')[0]).toMatchObject({ kind: 'camera.move', distance: 10 });
+  });
+
+  it('reads enum words in any case, as ChimeraX (camera Ortho)', () => {
+    expect(ok('camera Ortho')[0]).toMatchObject({ kind: 'canvas', projection: 'orthographic' });
+  });
+});

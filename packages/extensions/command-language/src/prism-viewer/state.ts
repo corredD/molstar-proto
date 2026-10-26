@@ -155,15 +155,19 @@ export function envOf(
 ): ScriptEnv & { readonly objects: readonly (ObjectInfo & { readonly ref: string })[] } {
   const objects = objectsOf(ctx, state);
   const top = state.top ? objects.find((o) => o.ref === state.top)?.name : undefined;
-  const selection = selectionOf(ctx, objects);
+  // The viewer's selection only when a command reads it (ChimeraX's `sel`): each keystroke of the menu reads the env.
+  let selection: Sel | undefined | null = null;
   return {
+    get selection() {
+      if (selection === null) selection = selectionOf(ctx, objects);
+      return selection;
+    },
     objects,
     names: new Map(Object.entries(state.names)),
     ...(top ? { top } : {}),
     repDefaults: state.repDefaults,
     nextMolecule: Math.max(state.nextMolecule, ...objects.map((o) => o.molecule + 1)),
     files,
-    ...(selection ? { selection } : {}),
     ...(state.atomStyles?.length ? { atomStyles: state.atomStyles } : {}),
   };
 }
@@ -174,10 +178,11 @@ function selectionOf(
   objects: readonly (ObjectInfo & { readonly ref: string })[],
 ): Sel | undefined {
   const manager = ctx.plugin.managers.structure.selection;
+  const byRef = new Map(objects.map((o) => [o.ref, o]));
   const parts: SelPart[] = [];
   for (const s of loadedStructures(ctx)) {
     const data = s.cell.obj?.data;
-    const o = objects.find((x) => x.ref === s.cell.transform.ref);
+    const o = byRef.get(s.cell.transform.ref);
     if (!data || !o) continue;
     const loci = manager.getLoci(data);
     if (loci.kind !== 'element-loci' || loci.elements.length === 0) continue;

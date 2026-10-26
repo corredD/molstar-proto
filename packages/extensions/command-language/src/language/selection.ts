@@ -174,14 +174,15 @@ type SelOp = (a: Expression, b: Expression) => Expression;
 
 /** Two selections combined per scope: each object either names, and `others`. */
 function combine(a: Sel, b: Sel, op: SelOp, text: string): Sel {
-  const objects: string[] = [];
+  // Indexed once (lowercase name): a scan per part was quadratic in the structures.
+  const byName = new Map<string, string>();
   for (const s of [a, b]) {
     for (const p of s.parts) {
-      if (p.scope !== 'others' && !objects.some((o) => sameObject(o, (p.scope as { object: string }).object))) {
-        objects.push(p.scope.object);
-      }
+      const key = p.scope === 'others' ? undefined : p.scope.object.toLowerCase();
+      if (key !== undefined && !byName.has(key)) byName.set(key, (p.scope as { object: string }).object);
     }
   }
+  const objects = [...byName.values()];
   return {
     text,
     dialect: a.dialect,
@@ -196,15 +197,20 @@ function combine(a: Sel, b: Sel, op: SelOp, text: string): Sel {
 
 /** The atoms of both selections. */
 export const selAnd = (a: Sel, b: Sel, text = `(${a.text}) & (${b.text})`) =>
-  combine(a, b, (x, y) => B.struct.modifier.intersectBy({ 0: x, by: y }), text);
+  combine(
+    a,
+    b,
+    (x, y) => (isEmptyPart(x) || isEmptyPart(y) ? Empty : B.struct.modifier.intersectBy({ 0: x, by: y })),
+    text,
+  );
 
 /** The atoms of either selection. */
 export const selOr = (a: Sel, b: Sel, text = `${a.text} | ${b.text}`) =>
-  combine(a, b, (x, y) => B.struct.combinator.merge([x, y]), text);
+  combine(a, b, (x, y) => (isEmptyPart(x) ? y : isEmptyPart(y) ? x : B.struct.combinator.merge([x, y])), text);
 
 /** The atoms of the first selection that are not the second's. */
 export const selMinus = (a: Sel, b: Sel, text = `(${a.text}) & ~(${b.text})`) =>
-  combine(a, b, (x, y) => B.struct.modifier.exceptBy({ 0: x, by: y }), text);
+  combine(a, b, (x, y) => (isEmptyPart(x) || isEmptyPart(y) ? x : B.struct.modifier.exceptBy({ 0: x, by: y })), text);
 
 /**
  * A selection fixed to the objects there are now (a named selection when it is defined): each its part, and nothing

@@ -21,6 +21,8 @@ import { type CxWord, wordAt } from './tokenizer.js';
 export interface KeywordSpec {
   readonly kind: ParamSpec['kind'];
   readonly values?: readonly string[];
+  /** A keyword that takes no value (ChimeraX's `NoArg`: `show … only`): given is true. */
+  readonly flag?: true;
 }
 
 export type Keywords = Readonly<Record<string, KeywordSpec>>;
@@ -223,10 +225,7 @@ export class ChimeraxArgs {
       if (!color) this.#badValue(keyword, 'a color (a name, #rrggbb, r,g,b in percent)', at);
       return { keyword, word: { text: color!.text, raw: color!.text, at: color!.at } };
     }
-    if (spec?.kind === 'bool' && !this.peek()) {
-      // A flag (`show … only`): given is true.
-      return { keyword, word: { text: 'true', raw: '', at: at.at } };
-    }
+    if (spec?.flag) return { keyword, word: { text: 'true', raw: '', at: at.at } };
     const value = wordAt(this.src, this.i, this.end);
     if (!value) return this.#badValue(keyword, 'a value', at);
     this.i = value.at.to;

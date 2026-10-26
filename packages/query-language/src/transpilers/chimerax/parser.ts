@@ -16,7 +16,7 @@
 // (`12`, `12A`, `start-20`) is a residue number, else a name. Zones (`@<5`) include the atoms they start from.
 
 import { MolScriptBuilder as B } from '../../language/builder.js';
-import type { Expression } from '../../language/expression.js';
+import { Expression } from '../../language/expression.js';
 import type { TranspileOptions, Transpiler } from '../transpiler.js';
 import { type AttrLevel, attributes } from './attributes.js';
 import { elementSelector, IdatmTypes, selectors } from './selectors.js';
@@ -684,10 +684,16 @@ function specExpr(s: Spec, id: readonly number[]): Expression {
   if (s.kind !== 'op') return termExpr(s, id);
   const left = termExpr(s.left, id);
   const right = specExpr(s.right, id);
-  return s.op === '&'
-    ? B.struct.modifier.intersectBy({ 0: left, by: right })
-    : B.struct.combinator.merge([left, right]);
+  // Nothing folds away (`#1 & ligand` on model 2 is nothing): a part that selects nothing reads as such.
+  if (s.op === '&')
+    return isNothing(left) || isNothing(right) ? Empty() : B.struct.modifier.intersectBy({ 0: left, by: right });
+  if (isNothing(left)) return right;
+  if (isNothing(right)) return left;
+  return B.struct.combinator.merge([left, right]);
 }
+
+const isNothing = (e: Expression) =>
+  Expression.isApply(e) && Expression.isSymbol(e.head) && e.head.name === 'structure-query.generator.empty';
 
 /** Why nothing read at the start: the word that is no selector, else the place. */
 function noSpec(r: Reader): Error {

@@ -92,7 +92,7 @@ export class ScriptApi extends ApiArea {
 
   readonly run = this.operation({
     id: 'script.run',
-    title: 'Run PyMOL or VMD commands',
+    title: 'Run PyMOL, VMD or ChimeraX commands',
     params: {
       dialect: DialectParam(),
       text: PD.Text('', { description: 'The commands: one a line, or separated by ; (help lists them)' }),
