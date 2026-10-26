@@ -40,7 +40,7 @@ function host(v: PrismViewer, commitResult = true) {
     },
     cancel: () => void log.cancels++,
   };
-  return { key, log, handles: new GizmoHandles(v.plugin, binding) };
+  return { key, log, binding, handles: new GizmoHandles(v.plugin, binding) };
 }
 
 describe('GizmoHandles', () => {
@@ -116,6 +116,36 @@ describe('GizmoHandles', () => {
     expect(handles.dragging).toBeUndefined();
     await canvas.release();
     expect(log).toMatchObject({ commits: [], cancels: 1 });
+    canvas.remove();
+  });
+
+  it("cancels a new drag on an undo though the last drag's cancel waited for its preview (Esc, then a press)", async () => {
+    const v = await headlessViewer({ files: [cbs()] });
+    const { handles, log, key, binding } = host(v);
+    expectOk(await v.api.run('structure.transform', { structure: key, translation: [5, 0, 0] }));
+    // the first preview waits: Esc's cancel waits for it, and a press comes meanwhile
+    let release = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const preview = binding.preview;
+    binding.preview = async (k, f, n) => {
+      binding.preview = preview;
+      await gate;
+    };
+    const canvas = mountGizmoCanvas(v.plugin);
+    handles.show();
+    await canvas.hover();
+    await canvas.drag([5]);
+    canvas.escape();
+    await canvas.hover();
+    await canvas.drag([7]);
+    release();
+    await canvas.drag([]);
+    expect(handles.dragging).toBe(key);
+    // the item's undone: the new drag is cancelled, its release commits nothing
+    expectOk(await v.api.run('history.undo', {}));
+    expect(handles.dragging).toBeUndefined();
+    await canvas.release();
+    expect(log.commits).toEqual([]);
     canvas.remove();
   });
 });

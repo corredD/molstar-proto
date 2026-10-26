@@ -49,8 +49,12 @@ export class GizmoHandles<T> {
   #controller: GizmoController<T> | undefined;
   #subs: { unsubscribe(): void }[] = [];
   #releaseClicks: (() => void) | undefined;
-  /** The drag's cells as it started: their params, by ref */
-  #drag: { readonly key: string; readonly params: ReadonlyMap<string, unknown> } | undefined;
+  /** The drag's cells as it started: their params, by ref; its value at the press */
+  #drag: { readonly key: string; readonly from: T; readonly params: ReadonlyMap<string, unknown> } | undefined;
+  /** A drag ended without its commit, whose cancel the controller runs after the preview in flight */
+  #cancelOwed: { readonly key: string; readonly from: T } | undefined;
+  /** Owed cancels run early (at a new press): the controller's own calls of them, later, are dropped */
+  #cancelsRun = 0;
 
   constructor(
     private readonly plugin: PluginContext,
@@ -74,6 +78,12 @@ export class GizmoHandles<T> {
       if (!canvas) return false;
       const controller = new GizmoController(canvas, this.#gizmoBinding());
       this.#controller = controller;
+      this.#subs.push(
+        // a drag ended: its cancel is owed until the binding's commit or cancel runs
+        controller.dragging.subscribe((key) => {
+          if (key === undefined && this.#drag) this.#cancelOwed = { key: this.#drag.key, from: this.#drag.from };
+        }),
+      );
       this.#releaseClicks = this.plugin.managers.interactivity.clickOwners.claim((r) => controller.owns(r));
       const { changes } = this.options;
       this.#subs.push(
@@ -101,6 +111,7 @@ export class GizmoHandles<T> {
     // a drag in progress cancelled (the binding puts its item back)
     controller.dispose();
     this.#drag = undefined;
+    this.#cancelOwed = undefined;
     this.#shown.set(false);
   }
 
@@ -137,20 +148,34 @@ export class GizmoHandles<T> {
       equal: (x, y) => b.equal(x, y),
       apply: (from, handle, frame, dx, dy) => b.apply(from, handle, frame, dx, dy),
       begin: (key, value) => {
+        // the last drag's cancel waits for its preview (Esc, then a press): run now, before this drag's state is set
+        const owed = this.#cancelOwed;
+        if (owed) {
+          this.#cancelOwed = undefined;
+          this.#cancelsRun++;
+          b.cancel(owed.key, owed.from);
+        }
         b.begin?.(key, value);
-        this.#drag = { key, params: this.#paramsOf(key) };
+        this.#drag = { key, from: value, params: this.#paramsOf(key) };
       },
       preview: (key, from, next) => b.preview(key, from, next),
       commit: (key, from, next) => {
         // the commit changes what the drag started from: not a change under it
         this.#drag = undefined;
+        this.#cancelOwed = undefined;
         const done = b.commit(key, from, next);
         // frames held until the state has it: the preview and the state's drawing would show it moved twice, or not
         this.plugin.canvas3d?.holdFrames(done, MaxCommitHoldMs);
         return done;
       },
       cancel: (key, from) => {
+        // run already, at a new drag's press: this drag's state is the new one's
+        if (this.#cancelsRun > 0) {
+          this.#cancelsRun--;
+          return;
+        }
         this.#drag = undefined;
+        this.#cancelOwed = undefined;
         b.cancel(key, from);
       },
     };
