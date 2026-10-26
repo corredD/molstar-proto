@@ -109,7 +109,7 @@ their own packages (`@molstar/<name>-extension/prism-viewer`).
 | `representation.reset` | Reset a style layer |  | layer, structure |
 | `representation.set` | Show a component as… |  | component, type, params, structure |
 | `representation.size` | Set size |  | target, theme, factor, structure, language |
-| `representation.transparency` | Set transparency |  | target, alpha, structure, language |
+| `representation.transparency` | Set transparency |  | target, alpha, types, structure, language |
 | `representation.update` | Update a representation | ui-only | node, params |
 | `representation.visibility` | Show or hide a representation |  | node, visible |
 | `select.all` | Select everything | view | structure |

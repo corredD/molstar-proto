@@ -124,6 +124,19 @@ describe('representation', () => {
     expect(cells(v, TransparencyStructureRepresentation3DFromBundle)).toHaveLength(0);
   });
 
+  it('sets transparency on some representation types only', async () => {
+    // 1CBS's preset: the polymer as a cartoon, the ligand as ball-and-stick. Only the cartoon becomes transparent.
+    const v = await headlessViewer({ files: [cbs()] });
+    expectOk(await v.api.representation.transparency({ target: 'all', alpha: 0.5, types: ['cartoon'] }));
+    const under = cells(v, TransparencyStructureRepresentation3DFromBundle).map(
+      (c) =>
+        (v.plugin.state.data.cells.get(c.transform.parent)?.transform.params as { type?: { name: string } })?.type
+          ?.name,
+    );
+    expect(under.length).toBeGreaterThan(0);
+    expect(new Set(under)).toEqual(new Set(['cartoon']));
+  });
+
   it('creates the emissive and clipping layers, and resets each', async () => {
     const v = await headlessViewer({ files: [cbs()] });
     expectOk(await v.api.representation.emissive({ target: 'ligand', strength: 0.4 }));

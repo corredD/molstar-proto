@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Color } from '@molstar/core/util/color';
@@ -305,18 +306,25 @@ export class RepresentationApi extends ApiArea {
         { min: 0, max: 1, step: 0.01 },
         { description: '0: opaque, 1: hidden (the geometry stays)' },
       ),
+      // Absent: every representation of the atoms (api.md §1).
+      types: OptionalParam(
+        PD.Value<string[]>([], {
+          description: 'Only these representation types (molecular-surface, cartoon, …); absent: every one',
+        }),
+      ),
       structure: StructureParam(),
       language: LanguageParam(this.ctx.languages),
     },
-    async run({ target, alpha, structure, language }, ctx) {
+    async run({ target, alpha, types, structure, language }, ctx) {
       const where = await resolveCovered(ctx, target, structure, language);
       if (isFailure(where)) return where;
+      const only = types?.length ? types : undefined;
       return applyLayer(
         ctx,
         where,
         'transparency',
         alpha === 0 ? `Made ${where.summary} opaque.` : `Set the transparency of ${where.summary} to ${alpha}.`,
-        (part, getLoci) => setStructureTransparency(ctx.plugin, part.components, alpha, getLoci),
+        (part, getLoci) => setStructureTransparency(ctx.plugin, part.components, alpha, getLoci, only),
         alpha === 0,
       );
     },
