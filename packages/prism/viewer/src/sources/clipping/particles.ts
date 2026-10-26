@@ -5,7 +5,7 @@
  */
 
 import { OrderedSet } from '@molstar/core/data/int';
-import type { State, StateBuilder, StateObjectCell } from '@molstar/core/state';
+import type { State, StateObjectCell } from '@molstar/core/state';
 import { StateSelection } from '@molstar/core/state';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
@@ -48,31 +48,6 @@ function layersCell(state: State, reprRef: string): StateObjectCell | undefined 
 
 const cutsIn = (cell: StateObjectCell | undefined) =>
   ((cell?.transform.params as { cuts?: ParticleCutProps[] } | undefined)?.cuts ?? []) as ParticleCutProps[];
-
-/** The cut tagged `tag` made of only `selector`'s particles on the representation, in `b` */
-export function addParticleCut(
-  state: State,
-  b: StateBuilder.Root,
-  repr: StateObjectCell,
-  tag: string,
-  selector: ParticleSelector,
-) {
-  const cell = layersCell(state, repr.transform.ref);
-  const entry: ParticleCutProps = { tag, ...particleSelector(selector) } as ParticleCutProps;
-  if (cell) b.to(cell.transform.ref).update((p: any) => ({ ...p, cuts: [...cutsIn(cell), entry] }));
-  else b.to(repr.transform.ref).apply(ParticleRepresentation3DLayers, { layers: [], cuts: [entry] });
-}
-
-/** The cut tagged `tag` no longer of some particles on the representation, in `b` (the cell goes when left empty) */
-export function removeParticleCut(state: State, b: StateBuilder.Root, repr: StateObjectCell, tag: string) {
-  const cell = layersCell(state, repr.transform.ref);
-  const cuts = cutsIn(cell);
-  if (!cell || !cuts.some((c) => c.tag === tag)) return;
-  const rest = cuts.filter((c) => c.tag !== tag);
-  const { layers = [], hidden = [] } = cell.transform.params as { layers?: unknown[]; hidden?: number[] };
-  if (!rest.length && !layers.length && !hidden.length) b.delete(cell.transform.ref);
-  else b.to(cell.transform.ref).update((p: any) => ({ ...p, cuts: rest }));
-}
 
 /** The particles the cut tagged `tag` cuts on a representation, if of some only */
 export function particleCutOf(state: State, repr: StateObjectCell, tag: string): ParticleSelector | undefined {

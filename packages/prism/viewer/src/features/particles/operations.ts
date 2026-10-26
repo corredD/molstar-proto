@@ -34,6 +34,7 @@ import { seekWhileViewing } from '../../sources/trajectory.js';
 import { nodesFor, updateEach } from '../../api/nodes.js';
 import { entryRoot, isFailure, namesOf, pickOne } from '../../api/scope.js';
 import { commitRepresentation, setRepresentation } from '../../api/set-representation.js';
+import { type ParticleCutPatch, type ParticleLayerPatch, patchParticleLook } from '../../sources/particles/look.js';
 
 // `particles` (api.md §2): the particle lists in the scene (`get`), their representations (desired
 // state, like `representation.set`), visibility and removal. It follows `volume`: a `particles` names a list by label
@@ -486,6 +487,59 @@ export class ParticlesApi extends ApiArea {
       await ctx.plugin.runTask(ctx.plugin.state.data.updateTree(update));
       return ApiResult.ok(`Colored ${namesOfReps(ctx, todo)} by ${provider.label}.`, {
         nodes: todo.map((r) => r.cell.transform.ref),
+      });
+    },
+  });
+
+  // A representation's looks (its layers cell: colors, visibility, transparency, emissive of some particles; the
+  // targets it leaves out; its cuts of some particles), patched: each absent field kept, so one writer (styles,
+  // decorations, cuts) never drops another's. Every representation of the list, one update.
+  readonly look = this.operation({
+    id: 'particles.look',
+    title: 'Set how some particles look',
+    surface: {
+      kind: 'agent-only',
+      reason: "Styles, decorations and cuts call it with their layers; a selector's layers have no command form",
+    },
+    params: {
+      layers: OptionalParam(
+        PD.Value<ParticleLayerPatch[]>([], {
+          description:
+            'Per selector ({ entities, compartments, targets }): visible, color, transparency, emissive (null clears), reset',
+        }),
+      ),
+      hidden: OptionalParam(
+        PD.Value<number[]>([], { description: 'The targets left out (another representation draws them)' }),
+      ),
+      cuts: OptionalParam(
+        PD.Value<{ add?: ParticleCutPatch[]; remove?: string[] }>(
+          {},
+          { description: 'Cuts of some particles: added ({ tag, entities, compartments, targets }), removed by tag' },
+        ),
+      ),
+      particles: ListParam(),
+      representation: PD.Text('', { description: 'One representation by type; empty: every one of the list' }),
+      node: RepresentationNodeParam(),
+    },
+    async run(values, ctx) {
+      const { layers, hidden, cuts, particles, representation, node } = values as typeof values & {
+        layers?: ParticleLayerPatch[];
+        hidden?: number[];
+        cuts?: { add?: ParticleCutPatch[]; remove?: string[] };
+      };
+      if (!layers && !hidden && !cuts) {
+        return ApiResult.fail('invalid', 'Nothing to change.', 'Give layers, hidden or cuts.');
+      }
+      const reps = representationsFor(ctx, particles, representation, node);
+      if (isFailure(reps)) return reps;
+      const state = ctx.plugin.state.data;
+      const b = state.build();
+      const patch = { layers, hidden, cuts };
+      const changed = reps.filter((r) => patchParticleLook(b, r.cell.transform.ref, patch));
+      if (!changed.length) return ApiResult.already(`${namesOfReps(ctx, reps)} already look so.`);
+      await ctx.plugin.runTask(state.updateTree(b));
+      return ApiResult.ok(`Changed how ${namesOfReps(ctx, changed)} look.`, {
+        nodes: changed.map((r) => r.cell.transform.ref),
       });
     },
   });

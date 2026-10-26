@@ -53,13 +53,12 @@ import {
 } from '../../sources/clipping/cuts.js';
 import { rotationOf } from '../../sources/clipping/gizmo/binding.js';
 import {
-  addParticleCut,
   MaxParticleCutIndex,
   type ParticleSelector,
   particleSelector,
   particlesOf,
-  removeParticleCut,
 } from '../../sources/clipping/particles.js';
+import { patchParticleLook } from '../../sources/particles/look.js';
 import {
   afterRemoval,
   layerCell,
@@ -680,8 +679,11 @@ async function commit(
   const b = state.build();
   for (const cell of cells) {
     // of some particles: their record in its layers, in the same step (added, or gone with the cut)
-    if (particles && next?.tag && !previous) addParticleCut(state, b, cell, next.tag, particles);
-    if (previous?.tag && !next) removeParticleCut(state, b, cell, previous.tag);
+    const ref = cell.transform.ref;
+    if (particles && next?.tag && !previous) {
+      patchParticleLook(b, ref, { cuts: { add: [{ tag: next.tag, ...particleSelector(particles) }] } });
+    }
+    if (previous?.tag && !next) patchParticleLook(b, ref, { cuts: { remove: [previous.tag] } });
     // removed from it: its kept atoms' layer remapped in the same step (the objects after it moved up a place)
     if (previous && !next) {
       const at =
