@@ -108,6 +108,10 @@ Follow-ups from the review of the WebGPU branch (correctness, memory, one decisi
 - [shader-analysis.md](shader-analysis.md): proposed: every reachable variant compiled on every backend, GLSL and WGSL
   reviewed side by side for parity and numerical hazards, the costliest passes measured and analysed.
 
+- [shared-markers.md](shared-markers.md): proposed: one marker layer for the visuals of a structure group with the
+  same location iterator (element, polymer, …) and marker actions, a mark applied once, the data-page range shared;
+  gated on measuring how often groups are shown twice.
+
 ## Dropped
 
 - [batched-draws.md](batched-draws.md): many objects of separate representations per draw (merged geometry, object and
@@ -131,3 +135,11 @@ Follow-ups from the review of the WebGPU branch (correctness, memory, one decisi
 - [dual-source-blending.md](dual-source-blending.md): dual-source blending where available, for features (colored
   transmission in blended transparency, per-pixel accumulation weights); not for performance, and not for the passes
   with multiple render targets (WBOIT, DPOIT).
+- [geometry-residency.md](geometry-residency.md): proposed: CPU copies of geometry that can be computed again released
+  after upload (recomputed or read back on demand, the lost-context path widened); playback without allocations
+  (geometry buffers with slack handed out as views, a scratch arena per thread for intermediates); CPU bytes
+  accounted; gated on measurements.
+- [sphere-compute-raster.md](sphere-compute-raster.md): proposed: small opaque spheres rasterized by a compute kernel
+  into a visibility buffer (one 64-bit `atomicStoreMax` of depth and id, `atomic-vec2u-min-max`), shaded once per
+  pixel by a resolve; large spheres, transparency, the other variants and devices without the feature keep the
+  impostors; gated on a prototype.
