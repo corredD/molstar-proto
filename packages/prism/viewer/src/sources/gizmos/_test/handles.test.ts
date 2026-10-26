@@ -148,4 +148,24 @@ describe('GizmoHandles', () => {
     expect(log.commits).toEqual([]);
     canvas.remove();
   });
+
+  it('leaves a drag alone when a cell above its item changes (a trajectory playing its frames)', async () => {
+    const v = await headlessViewer({ files: [cbs()] });
+    const { handles, log, key } = host(v);
+    const model = v.plugin.state.data.cells.get(key)!.transform.parent;
+    const canvas = mountGizmoCanvas(v.plugin);
+    handles.show();
+    await canvas.hover();
+    await canvas.drag([5]);
+    // the model's params anew, as playback sets its frame index
+    await v.plugin
+      .build()
+      .to(model)
+      .update((p: object) => ({ ...p, playing: 1 }))
+      .commit();
+    expect(handles.dragging).toBe(key);
+    await canvas.release();
+    expect(log.commits).toHaveLength(1);
+    canvas.remove();
+  });
 });

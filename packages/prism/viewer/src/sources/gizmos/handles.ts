@@ -19,13 +19,16 @@ import { BehaviorSubject, Subject } from 'rxjs';
 // host's items, read from the state again at each change, shown and hidden, their clicks claimed
 // (`InteractivityManager.clickOwners`: no focus, no select). A drag previews outside the state (the host's) and its
 // release is the host's one commit, the canvas's frames held until it is done (`holdFrames`). A change to the cells a
-// drag starts from (an undo, another edit) cancels it: those cells, the ones above them and the ones under them.
+// drag starts from (an undo, another edit) cancels it: those cells and the ones under them.
 
 /** A host's handles: the gizmo library's binding, its items read from the state */
 export interface HandlesBinding<T> extends Omit<GizmoBinding<T>, 'items' | 'invalidated'> {
   /** The items shown, as the state holds them now (read again at each change) */
   items(): readonly GizmoItem<T>[];
-  /** The cells a drag on `key` starts from (default: the key's); a change to one, above or under it, cancels the drag */
+  /**
+   * The cells a drag on `key` starts from (default: the key's); a change to one or a cell under it cancels the drag (a
+   * cell above: name it, as a mesh's shape)
+   */
   cells?(key: string): readonly string[];
   /**
    * An item's frame alone (`layout`'s): with it, a value of the same geometry as the last laid out keeps that layout's
@@ -198,7 +201,7 @@ export class GizmoHandles<T> {
     if (changed) this.#invalidated.next(d.key);
   }
 
-  /** The params of the cells a drag on `key` starts from: each cell, every cell under it, every cell above it */
+  /** The params of the cells a drag on `key` starts from: each cell and every cell under it */
   #paramsOf(key: string): Map<string, unknown> {
     const { cells, tree } = this.plugin.state.data;
     const out = new Map<string, unknown>();
@@ -211,17 +214,6 @@ export class GizmoHandles<T> {
       if (children) for (const child of children.values()) down(child);
     };
     for (const root of roots) down(root);
-    // above: what places them (a decorator, the structure or volume they are of)
-    for (const root of roots) {
-      let ref = cells.get(root)?.transform.parent;
-      while (ref !== undefined) {
-        const cell = cells.get(ref);
-        if (!cell) break;
-        out.set(ref, cell.transform.params);
-        if (cell.transform.parent === ref) break;
-        ref = cell.transform.parent;
-      }
-    }
     return out;
   }
 }

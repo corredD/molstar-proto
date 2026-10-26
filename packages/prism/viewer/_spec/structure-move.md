@@ -13,7 +13,7 @@ a structure, hosted by `GizmoHandles` ([gizmos.md](gizmos.md)).
   structure is not moved by the transform. Its release is one `structure.transform` with the matrix from where it was
   loaded (a step); the representations' own transforms are put back once the state has it, the canvas's frames held in
   between (`Canvas3D.holdFrames`, a few seconds at most: the representations rebuilt still carrying the preview would
-  show the structure moved twice). A change of the cells the drag starts from (the structure's, under it, above it)
+  show the structure moved twice). A change of the cells the drag starts from (the structure's and those under it)
   cancels it, as does the structure going away. A placement with more than a rigid move (a scale or shear given as a
   matrix) keeps it under the new pose (`applyToPlacement`), the pose's turn read with the scale left out
   (`placementPose`).

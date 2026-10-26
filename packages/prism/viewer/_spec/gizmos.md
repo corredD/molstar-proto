@@ -18,9 +18,10 @@ object.
   geometry, its frame moved; the library lays an item out at each preview, and the transform handles' meshes are about
   750 KB (`handles.scaling.ts` guards the drag).
 - **What a drag starts from changing cancels it** (an undo, another edit): the cells the binding names for the item
-  (`cells(key)`, default its key), every cell under them and every cell above them (a decorator under a structure, a
-  volume's transform above a slice, a mesh's shape provider), compared by their params as at the press. Its release then
-  commits nothing.
+  (`cells(key)`, default its key) and every cell under them, compared by their params as at the press; a cell above is
+  named when it places the item (a mesh's shape provider, a slice's volume). Not every cell above: a trajectory playing
+  its frames would cancel every drag. Its release then commits nothing. A drag's cancel the controller runs late (after
+  a preview in flight) is run at the next press instead, before that drag begins.
 - **A placement comes ready** (`PlacementHandles`: `layout`, `sameGeometry`, `equal`, `apply`): a transform on top of
   where a thing was loaded and its center (a structure, an extension's object), its scale kept under the turn.
 - **A frame comes ready** (`frameHandles(options)`, the same): a rigid frame and a size (a slice's plane, a particle),
