@@ -25,7 +25,7 @@ export interface GizmoCanvas {
    * none shown
    */
   hover(g?: number): Promise<boolean>;
-  /** A press at the canvas's middle and a move to each x offset (px), not released; then the previews settle */
+  /** A press at the canvas's middle and a move to each x offset (px), each previewed, not released */
   drag(steps: readonly number[]): Promise<void>;
   /** The release; then its commit, if any, is done */
   release(): Promise<void>;
@@ -112,7 +112,11 @@ export function mountGizmoCanvas(plugin: PluginContext): GizmoCanvas {
     },
     async drag(steps) {
       input.drag.next({ isStart: true, x: 50, y: 50, dx: 0, dy: 0 });
-      for (const x of steps) input.drag.next({ isStart: false, x: 50 + x, y: 50, dx: 0, dy: 0 });
+      // each move's preview run before the next (a pointer at frame rate), then the last one done
+      for (const x of steps) {
+        input.drag.next({ isStart: false, x: 50 + x, y: 50, dx: 0, dy: 0 });
+        await new Promise((r) => setTimeout(r, 0));
+      }
       await settle();
     },
     async release() {
