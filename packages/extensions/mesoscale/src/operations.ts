@@ -16,7 +16,6 @@ import type {
   ParticleRepresentationRef,
 } from '@molstar/plugin/state/manager/particles/hierarchy-state';
 import {
-  type ParticleCutProps,
   type ParticleLayerProps,
   ParticleRepresentation3DLayers,
 } from '@molstar/plugin/state/transforms/particles/layers';
@@ -268,12 +267,13 @@ export class MesoscaleApi extends ApiArea {
       if (!reset && Object.keys(patch).length === 0) {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give visible, color, transparency, emissive or reset.');
       }
-      const styles = readStyles(ctx, l);
-      for (const id of ids) {
-        const next = reset ? { visible: true } : { ...(styles.get(id) ?? { visible: true }), ...patch };
-        styles.set(id, next);
-      }
-      const changed = await writeStyles(ctx, l, styles);
+      const change: LayerChange = reset ? { reset: true } : patch;
+      const changed = await writeStyles(
+        ctx,
+        l,
+        ids.map((id) => [id, change]),
+      );
+      if (isFailure(changed)) return changed;
       if (!changed) return ApiResult.already('They already look so.');
       return ApiResult.ok(`${reset ? 'Reset' : 'Styled'} ${describeSelection(l, ids)}.`, { nodes: changed });
     },
@@ -311,13 +311,12 @@ export class MesoscaleApi extends ApiArea {
         scheme === 'generate'
           ? generateColors(mesoGroups(data, mesoEntities(data), groupBy), variability, shift)
           : undefined;
-      const styles = readStyles(ctx, l);
-      for (const id of ids) {
-        const { color: _, ...rest } = styles.get(id) ?? { visible: true };
-        const c = scheme === 'theme' ? undefined : (uniform ?? generated?.get(id));
-        styles.set(id, c === undefined ? rest : { ...rest, color: c });
-      }
-      const changed = await writeStyles(ctx, l, styles);
+      const changed = await writeStyles(
+        ctx,
+        l,
+        ids.map((id) => [id, { color: (scheme === 'theme' ? undefined : (uniform ?? generated?.get(id))) ?? null }]),
+      );
+      if (isFailure(changed)) return changed;
       if (!changed) return ApiResult.already('They are already colored so.');
       return ApiResult.ok(`Colored ${describeSelection(l, ids)} (${scheme}).`, { nodes: changed });
     },
@@ -363,10 +362,13 @@ export class MesoscaleApi extends ApiArea {
           `Entities: ${namesOf(entities.map((e) => e.name))}.`,
         );
       }
-      // one read, one write: one commit, one history step, whatever the number of entities
-      const styles = readStyles(ctx, l);
-      for (const [id, color] of colors) styles.set(id, { ...(styles.get(id) ?? { visible: true }), color });
-      const changed = await writeStyles(ctx, l, styles);
+      // one write: one commit, one history step, whatever the number of entities
+      const changed = await writeStyles(
+        ctx,
+        l,
+        Array.from(colors, ([id, color]) => [id, { color }]),
+      );
+      if (isFailure(changed)) return changed;
       const missed = [
         unmatched.length ? `not found: ${namesOf(unmatched)}` : '',
         invalid.length ? `not colors: ${namesOf(invalid)}` : '',
@@ -834,18 +836,19 @@ function layersCell(ctx: Pick<ApiContext, 'plugin'>, r: ParticleRepresentationRe
   }
 }
 
-/** The entity styles of a list: read from the layers of its first representation (they are the same on each) */
+/**
+ * The entity styles of a list: read from the layers of its first representation (they are the same on each), the
+ * entities' (single-id) layers, or the targets' on a list without entities (whose entities are its targets)
+ */
 function readStyles(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Map<number, EntityStyle> {
   const styles = new Map<number, EntityStyle>();
   const r = l.representations[0];
   if (!r) return styles;
-  const t = layersCell(ctx, r);
-  for (const layer of (t?.params?.layers ?? []) as ParticleLayerProps[]) {
-    // an entity's layer, or a target's on a list without entities (`toLayers`)
-    const id =
-      layer.entities.length === 1 ? layer.entities[0] : layer.targets.length === 1 ? layer.targets[0] : undefined;
-    if (id === undefined) continue;
-    styles.set(id, {
+  const byTarget = !dataOf(l)?.entityInfo;
+  for (const layer of (layersCell(ctx, r)?.params?.layers ?? []) as ParticleLayerProps[]) {
+    const [own, other] = byTarget ? [layer.targets, layer.entities] : [layer.entities, layer.targets];
+    if (own.length !== 1 || other.length || layer.compartments.length) continue;
+    styles.set(own[0], {
       visible: layer.visible,
       ...(layer.color !== null ? { color: layer.color } : {}),
       ...(layer.transparency !== null ? { transparency: layer.transparency } : {}),
@@ -855,60 +858,33 @@ function readStyles(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Map<nu
   return styles;
 }
 
-/** The layers of the styles: by entity, or by target on a list without entities (whose entities are its targets) */
-function toLayers(styles: ReadonlyMap<number, EntityStyle>, byTarget: boolean): ParticleLayerProps[] {
-  const layers: ParticleLayerProps[] = [];
-  for (const [id, s] of Array.from(styles).sort((a, b) => a[0] - b[0])) {
-    if (s.visible && s.color === undefined && s.transparency === undefined && s.emissive === undefined) continue;
-    layers.push({
-      entities: byTarget ? [] : [id],
-      compartments: [],
-      targets: byTarget ? [id] : [],
-      visible: s.visible,
-      color: s.color ?? null,
-      transparency: s.transparency ?? null,
-      emissive: s.emissive ?? null,
-    });
-  }
-  return layers;
-}
-
-/** Writes the styles as the layers of every representation of the list; the refs changed, none when already so */
-function writeStyles(ctx: ApiContext, l: ParticleListRef, styles: ReadonlyMap<number, EntityStyle>) {
-  return writeLayers(ctx, l, { styles });
+/** A change to an entity's layer (`particles.look`'s): absent fields kept, null clears one, reset drops the layer */
+interface LayerChange {
+  readonly visible?: boolean;
+  readonly color?: Color | null;
+  readonly transparency?: number | null;
+  readonly emissive?: number | null;
+  readonly reset?: boolean;
 }
 
 /**
- * Writes the styles (layers) of a list on every representation, in its layers cell (the cuts there, of some particles,
- * Prism's clipping's, kept). The refs changed, none when already so.
+ * Patches the entities' layers on every representation of the list (`particles.look`, by id: the one writer of the
+ * layers cell, so the cuts and the hidden targets there, and the other entities' layers, stay): by entity, or by
+ * target on a list without entities (whose entities are its targets). The refs changed, none when already so.
  */
-async function writeLayers(
+async function writeStyles(
   ctx: ApiContext,
   l: ParticleListRef,
-  patch: { styles: ReadonlyMap<number, EntityStyle> },
-): Promise<string[] | undefined> {
+  changes: readonly (readonly [number, LayerChange])[],
+): Promise<readonly string[] | ApiFailure | undefined> {
   const byTarget = !dataOf(l)?.entityInfo;
-  const b = ctx.plugin.state.data.build();
-  const changed: string[] = [];
-  for (const r of l.representations) {
-    const t = layersCell(ctx, r);
-    const oldLayers = (t?.params?.layers ?? []) as ParticleLayerProps[];
-    const cuts = (t?.params?.cuts ?? []) as ParticleCutProps[];
-    const layers = toLayers(patch.styles, byTarget);
-    if (JSON.stringify(layers) === JSON.stringify(oldLayers)) continue;
-    if (t) {
-      const hidden = (t.params?.hidden ?? []) as number[];
-      if (layers.length || cuts.length || hidden.length) b.to(t.ref).update((old: any) => ({ ...old, layers }));
-      else b.delete(t.ref);
-      changed.push(t.ref);
-    } else if (layers.length) {
-      b.to(r.cell).apply(ParticleRepresentation3DLayers, { layers, cuts: [] });
-      changed.push(r.cell.transform.ref);
-    }
-  }
-  if (!changed.length) return;
-  await b.commit();
-  return changed;
+  const layers = changes.map(([id, change]) => ({
+    selector: byTarget ? { targets: [id] } : { entities: [id] },
+    ...change,
+  }));
+  const r = await ctx.api.run('particles.look', { particles: l.cell.transform.ref, layers });
+  if (!r.ok) return r;
+  return r.unchanged ? undefined : (r.changed.nodes ?? []);
 }
 
 export { cssColor };
