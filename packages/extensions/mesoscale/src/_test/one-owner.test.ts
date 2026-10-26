@@ -104,6 +104,8 @@ describe('one owner for the particle looks', () => {
 
     expectOk(await v.api.run('history.undo', {}));
     expect(looks(v)).toEqual([all, all]);
+    // that undo took the lipids' emissive back, and only it
+    expect(((await v.api.mesoscale!.entities({})).value as any).entities[0]).not.toHaveProperty('emissive');
     expectOk(await v.api.run('history.undo', {}));
     const noCut = { ...color, ...hidden, cuts: [] };
     expect(looks(v)).toEqual([noCut, noCut]);
