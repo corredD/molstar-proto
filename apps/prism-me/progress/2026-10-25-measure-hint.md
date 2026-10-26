@@ -31,13 +31,48 @@
 
 ## Built
 
+- A ⌘+click on a Mac, a Ctrl+click elsewhere, outside selection mode posts "Turn on selection mode to measure: ⌘+click
+  two points" (Ctrl+click off a Mac) on the status line, through the explorer's `post` (consecutive duplicates dropped),
+  then picks its row as before (`ui.tsx` `setOnClick`). The gesture's word is built once (`measure.ts` `measureGesture`,
+  `selectionModeHint`), for the picker's messages and the hint.
+- `_test/measure-hint.test.ts` (jsdom, headless viewer, 1CRN): `explorerUI` wired (no mount needed: the click routing is
+  set in `explorerUI`), clicks through `plugin.behaviors.interaction.click`. Off: the hint (Ctrl and ⌘), the row picked,
+  a click on nothing hinted too, a plain click not; on: a first point taken, no hint. Failed first at the hint
+  assertion.
+- `_spec/ui.md` §7 (the hint, also on nothing), `features.md` (the distances row), TODO.md (the Next item out; the
+  follow, live during a drag, to the Backlog; the click-routing item narrowed to the label case),
+  `.v6/changelogs/measure-hint.md`.
+
 ## Decided
+
+- The hint shows on any measuring click outside selection mode, on nothing too (lane, after the review: in selection
+  mode a modifier click on nothing already says "Ctrl+click one"; the hint matches it). To change if Ludovic prefers it
+  only on a hit.
+- The follow and "live during a drag" wait (Ludovic, 2026-10-25), in the Backlog.
 
 ## Learned
 
+- `import.meta.url` is not a file URL under vitest's jsdom environment: read test data with
+  `resolve(import.meta.dirname, …)`.
+- `pnpm check:workspace` needs the gitignored `lib/*.css` assets in a fresh worktree: run
+  `node scripts/workspace/assets.mjs` once (or `pnpm build:lib`).
+- The explorer's `post` drops a text equal to the one still showing: a repeat click in 4 s neither re-posts nor restarts
+  the fade (inherited, kept).
+
 ## Size
+
+Production 17 lines added, 10 removed (brief: ~10), test 113 (brief: ~60): the test covers both platforms and the click
+on nothing.
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+Reviewer: 0 must-fix, 2 should-fix, 4 nits. Skeptic: 4 confirmed (1 not the lane's, 1 in part), 2 refuted, none new.
+
+| Finding                                                             | Severity                   | Verdict                                                      | Commit / open                                       |
+| ------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------ | --------------------------------------------------- |
+| 1. TODO.md:13 "the first two in parallel" now names the gizmo lane  | should-fix (coordinator's) | confirmed; outside the lane (only distance items in TODO.md) | open: for the coordinator (and progress/current.md) |
+| 2. The hint also on a Ctrl/⌘+click on nothing                       | nit (was should-fix)       | confirmed in part; consistent with selection mode            | ccc2a10dc (ui.md says so), e47104b26 (test)         |
+| 3. A repeat click does not restart the hint's fade (dedupe)         | nit                        | confirmed, inherited                                         | kept; in Learned and the PR notes                   |
+| 4. The ⌘ sub-step did not prove its row revealed                    | nit                        | refuted as stated (same row); real gap confirmed             | e47104b26                                           |
+| 5. "measures as before" named more than it checks; needless `until` | nit                        | confirmed                                                    | e47104b26                                           |
+| 6. Progress sections empty                                          | nit                        | refuted (filled after the gate)                              | this commit                                         |
