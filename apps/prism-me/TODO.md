@@ -10,8 +10,9 @@ the app, in his words; the lane turns it into spec and tests.
 
 <!-- - **Title**: what I want to see. Check: what I do in the app and what I expect. -->
 
-In this order (Ludovic, 2026-10-25): the first two in parallel, then one at a time. From the architecture's decisions
-([_spec/architecture.md](_spec/architecture.md) §7: refactor in place) and the review of the distances (PR #5):
+In this order (Ludo, 2026-10-25), one at a time; the looks' owner (PR #8) and the measure hint (PR #7) are built. From
+the architecture's decisions ([_spec/architecture.md](_spec/architecture.md) §7: refactor in place) and the review of
+the distances (PR #5):
 
 - **One handle class in Prism's gizmo library** for the oblique slice, the object move and the particle move: preview
   outside the state, one commit on release. Check: drag each handle, then undo once: it goes back to before the drag.

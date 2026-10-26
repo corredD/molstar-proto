@@ -6,16 +6,13 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-- **One owner for the particle looks** (`me/looks-owner`, `~/prism-me-lanes/looks-owner`,
-  [brief](2026-10-25-looks-owner.md)): `particles.look` in Prism, mesoscale, cryo-ET and the cuts call it; PR #8, built
-  and reviewed; Ludo holds it.
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
   run by another session): built, reviewed, pushed, no PR; waits on Ludo (he opens the PR, perhaps upstream). The volume
   commands are the next lane.
 
-## Waiting on Ludovic
+## Waiting on Ludo
 
 - The library fixes ready for upstream ([../TODO.md](../TODO.md)): which go, and when (he asks the maintainer).
 - A distance following its objects' moves: a Mol\* core change (`state.ts`, a dependency sees the decorators under its
