@@ -135,10 +135,11 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   Mol*'s selection-mode click toggle Ctrl and ⌘ triggers), on a structure, a particle or a volume. Outside it, nothing
   measures and the canvas's Ctrl+click and ⌘+click do what Mol* does (focus; `spec.ts` keeps them) and pick the row of
   what they hit, as a plain click; the status line says "Turn on selection mode to measure: ⌘+click two points"
-  (Ctrl+click off a Mac) (Ludovic, 2026-10-25). In selection mode, Mol*'s camera bindings still answer a Ctrl+click (off
-  a Mac): each point clicked recenters the camera on it (`clickCenterFocusSelectMode`), and a Ctrl+click on nothing
-  resets the camera (`clickResetCameraOnEmptySelectMode`) while the first point is kept. ⌘+click (on a Mac) is bound to
-  nothing else there: the camera stays. Leaving selection mode lets a first point go.
+  (Ctrl+click off a Mac) (Ludovic, 2026-10-25), on nothing too (a missed point, as in selection mode). In selection
+  mode, Mol*'s camera bindings still answer a Ctrl+click (off a Mac): each point clicked recenters the camera on it
+  (`clickCenterFocusSelectMode`), and a Ctrl+click on nothing resets the camera (`clickResetCameraOnEmptySelectMode`)
+  while the first point is kept. ⌘+click (on a Mac) is bound to nothing else there: the camera stays. Leaving selection
+  mode lets a first point go.
 - **A point follows the pick granularity** (Ludovic, 2026-10-24): residues by default, so CA 1 to CA 10 of 1CRN reads
   10.67 Å between the residues' centers, and 12.60 Å at atom granularity; a chain, an instance at theirs; a bond: its
   atoms. The point is the row its pick reveals.
