@@ -9,9 +9,6 @@ is not built is [../TODO.md](../TODO.md).
 - **One owner for the particle looks** (`me/looks-owner`, `~/prism-me-lanes/looks-owner`,
   [brief](2026-10-25-looks-owner.md)): `particles.look` in Prism, mesoscale, cryo-ET and the cuts call it; PR #8, built
   and reviewed, waits on Ludovic.
-- **Measuring outside selection mode says so** (`me/measure-hint`, `~/prism-me-lanes/measure-hint`,
-  [brief](2026-10-25-measure-hint.md)): the status-line hint; PR #7, built and reviewed, waits on Ludovic. The distance
-  following its objects waits (below).
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
