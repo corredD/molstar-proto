@@ -50,7 +50,7 @@ const lookOf = (v: PrismViewer) => looks(v).get(list(v).representations[0].cell.
 describe('particles.look', () => {
   it('merges layers by their selector (ids sorted), keeping the fields a patch leaves out', async () => {
     const v = await create();
-    const run = (p: object) => v.api.run('particles.look', p);
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
     expectOk(await run({ layers: [{ selector: { targets: [2, 1] }, color: red }] }));
     expectOk(await run({ layers: [{ selector: { targets: [0] }, visible: false }] }));
     expectOk(await run({ layers: [{ selector: { targets: [1, 2] }, transparency: 0.5 }] }));
@@ -62,7 +62,7 @@ describe('particles.look', () => {
 
   it('clears a field with null, drops a layer left with no change, and the cell when nothing is left', async () => {
     const v = await create();
-    const run = (p: object) => v.api.run('particles.look', p);
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
     expectOk(await run({ layers: [{ selector: { targets: [1] }, color: red, emissive: 0.4 }] }));
     expectOk(await run({ layers: [{ selector: { targets: [1] }, color: null }] }));
     expect(lookOf(v).layers).toMatchObject([{ targets: [1], color: null, emissive: 0.4 }]);
@@ -72,7 +72,7 @@ describe('particles.look', () => {
 
   it('resets a layer, then sets what the same patch gives', async () => {
     const v = await create();
-    const run = (p: object) => v.api.run('particles.look', p);
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
     expectOk(await run({ layers: [{ selector: { targets: [1] }, color: red, visible: false }] }));
     expectOk(await run({ layers: [{ selector: { targets: [1] }, reset: true, color: blue }] }));
     expect(lookOf(v).layers).toMatchObject([{ targets: [1], visible: true, color: blue }]);
@@ -80,7 +80,7 @@ describe('particles.look', () => {
 
   it("leaves another writer's fields: the hidden targets and the cuts stay through a layer patch, and back", async () => {
     const v = await create();
-    const run = (p: object) => v.api.run('particles.look', p);
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
     expectOk(await run({ hidden: [2] }));
     expectOk(
       await v.api.clipping.add({
@@ -107,7 +107,7 @@ describe('particles.look', () => {
 
   it('is already so when nothing changes, without a history step', async () => {
     const v = await create();
-    const run = (p: object) => v.api.run('particles.look', p);
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
     expectOk(await run({ layers: [{ selector: { targets: [1] }, color: red }] }));
     const again = await run({ layers: [{ selector: { targets: [1] }, color: red }] });
     expect(again).toMatchObject({ ok: true, unchanged: true });
@@ -121,7 +121,7 @@ describe('particles.look', () => {
     expectOk(await v.api.particles!.representation({ type: 'orientation' }));
     const refs = list(v).representations.map((r) => r.cell.transform.ref);
     expect(refs).toHaveLength(2);
-    const run = (p: object) => v.api.run('particles.look', p);
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
     expectOk(await run({ layers: [{ selector: { targets: [1] }, color: red }] }));
     expectOk(await run({ layers: [{ selector: { targets: [2] }, color: blue }] }));
     for (const ref of refs) expect(looks(v).get(ref)?.layers).toHaveLength(2);
@@ -133,7 +133,7 @@ describe('particles.look', () => {
 
   it("gives a representation added to a list the list's layers (not its cuts, nor its hidden targets)", async () => {
     const v = await create();
-    const run = (p: object) => v.api.run('particles.look', p);
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
     expectOk(await run({ layers: [{ selector: { targets: [1] }, color: red }], hidden: [2] }));
     expectOk(await v.api.particles!.representation({ type: 'orientation' }));
     const [, added] = list(v).representations.map((r) => r.cell.transform.ref);
@@ -145,7 +145,7 @@ describe('particles.look', () => {
 
   it('refuses a malformed patch as invalid, and keys a selector by its distinct ids', async () => {
     const v = await create();
-    const run = (p: object) => v.api.run('particles.look', p);
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
     for (const bad of [
       { layers: [{ color: red }] },
       { layers: 'x' },
