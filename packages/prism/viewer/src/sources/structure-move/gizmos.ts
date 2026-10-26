@@ -41,6 +41,8 @@ export class StructureMoveGizmos {
   readonly #target = observableState<string | undefined>(undefined);
   readonly #handles: GizmoHandles<StructurePlacement>;
   #commit: MoveCommit | undefined;
+  /** A preview's move, reused (a pointer event's) */
+  readonly #delta = Mat4();
   /** The representations a drag moves, as they were drawn before it */
   #drawn: readonly Drawn[] | undefined;
 
@@ -51,7 +53,7 @@ export class StructureMoveGizmos {
       begin: (key) => this.#begin(key),
       preview: async (_key, from, next) => {
         // what the drag adds, on top of where the state has it
-        const delta = Mat4.mul(Mat4(), next.matrix, Mat4.invert(Mat4(), from.matrix));
+        const delta = Mat4.mul(this.#delta, next.matrix, Mat4.invert(this.#delta, from.matrix));
         for (const d of this.#drawn ?? []) this.#draw(d.repr, Mat4.mul(Mat4(), delta, d.transform));
         this.plugin.canvas3d?.requestDraw();
       },
