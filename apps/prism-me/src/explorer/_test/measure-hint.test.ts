@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ButtonsType, ModifiersKeys } from '@molstar/core/util/input/input-observer';
+import { EmptyLoci, type Loci } from '@molstar/model/model/loci';
 import { StructureSelection } from '@molstar/model/model/structure';
 import { Script } from '@molstar/model/script/script';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
@@ -64,21 +65,13 @@ function atom(v: PrismViewer, seq: number) {
 }
 
 /** A primary click on the canvas, as Mol*'s interaction behavior gives it */
-function click(v: PrismViewer, loci: ReturnType<typeof atom>, modifiers: Partial<ModifiersKeys>) {
+function click(v: PrismViewer, loci: Loci, modifiers: Partial<ModifiersKeys>) {
   v.plugin.behaviors.interaction.click.next({
     current: { loci },
     buttons: ButtonsType.Flag.Primary,
     button: ButtonsType.Flag.Primary,
     modifiers: ModifiersKeys.create(modifiers),
   });
-}
-
-async function until(check: () => boolean, ms = 5000) {
-  const t0 = Date.now();
-  while (!check()) {
-    if (Date.now() - t0 > ms) throw new Error('timed out');
-    await new Promise((r) => setTimeout(r, 5));
-  }
 }
 
 const hint = (gesture: string) => `Turn on selection mode to measure: ${gesture} two points`;
@@ -92,22 +85,29 @@ describe('a ⌘/Ctrl+click on the canvas', () => {
     click(v, atom(v, 1), { control: true });
     expect(posted).toContain(hint('Ctrl+click'));
     expect(model.picked.value?.key).toBe(row.key);
-    // on a Mac the gesture is ⌘+click, and so the hint says
+    // on a Mac the gesture is ⌘+click, and so the hint says; the row is picked again (the pick let go first)
+    model.picked.set(undefined);
     area.mac = true;
     click(v, atom(v, 10), { meta: true });
     expect(posted).toContain(hint('⌘+click'));
+    expect(model.picked.value?.key).toBe(area.pickedOf(atom(v, 10))!.key);
+    // on nothing, too: a missed point, as in selection mode (once the last hint has faded: the same text is not said twice)
+    v.managers.notifications.dismiss(v.managers.notifications.current.value!.id);
+    const missed = posted.length;
+    click(v, EmptyLoci, { meta: true });
+    expect(posted.slice(missed)).toEqual([hint('⌘+click')]);
     // a plain click says nothing about measuring
     const before = posted.length;
     click(v, atom(v, 1), {});
     expect(posted.slice(before).filter((t) => t.startsWith('Turn on selection mode'))).toEqual([]);
   });
 
-  it('in selection mode: measures as before (its first point kept), with no hint', async () => {
+  it('in selection mode: takes its first point, with no hint', async () => {
     const { v, area, posted } = await viewer();
     v.plugin.selectionMode = true;
     area.mac = false;
     click(v, atom(v, 1), { control: true });
-    await until(() => posted.some((t) => t.startsWith('Distance from')));
+    expect(posted.some((t) => t.startsWith('Distance from'))).toBe(true);
     expect(posted.filter((t) => t.startsWith('Turn on selection mode'))).toEqual([]);
   });
 });
