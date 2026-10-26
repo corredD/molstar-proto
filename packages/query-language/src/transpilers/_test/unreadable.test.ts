@@ -2,12 +2,14 @@
  * Copyright (c) 2026 Mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
 import { MolScriptBuilder as B } from '../../language/builder.js';
 import { transpiler as pymol } from '../pymol/parser.js';
 import { transpiler as vmd } from '../vmd/parser.js';
+import { transpiler as chimerax } from '../chimerax/parser.js';
 
 // Text the transpilers cannot read fails as a parse error that says where, never as a stack overflow or a TypeError:
 // what a person types is unfinished most of the time (a command line, a target field).
@@ -30,6 +32,24 @@ describe('unreadable text', () => {
   it.each([...Unfinished, 'resn ', 'b2', 'chain A and resn'])("VMD fails readably on '%s'", (text) =>
     failsReadably(vmd, text),
   );
+  it.each([
+    '',
+    '(',
+    '((',
+    '/',
+    ':',
+    '@',
+    '#',
+    '/A:',
+    ':12-',
+    '@@',
+    '@@bfactor>',
+    'protein &',
+    'protein |',
+    '~',
+    'ligand :<',
+    '"/A',
+  ])("ChimeraX fails readably on '%s'", (text) => failsReadably(chimerax, text));
 });
 
 // Unclosed groups, deep: each level is read once, not once per alternative (three a level was exponential: 30 levels
@@ -40,6 +60,12 @@ describe('deep groups', () => {
   it('PyMOL reads 40 closed levels and fails readably on 40 unclosed', () => {
     expect(pymol(deep(40, true))).toBeTruthy();
     failsReadably(pymol, deep(40, false));
+  });
+
+  it('ChimeraX reads 40 closed levels and fails readably on 40 unclosed', () => {
+    const spec = (n: number, closed: boolean) => `${'('.repeat(n)}/A${closed ? ')'.repeat(n) : ''}`;
+    expect(chimerax(spec(40, true))).toBeTruthy();
+    failsReadably(chimerax, spec(40, false));
   });
 
   it('VMD reads 20 closed levels and fails readably on 20 unclosed', () => {

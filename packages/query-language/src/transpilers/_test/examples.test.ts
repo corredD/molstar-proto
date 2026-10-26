@@ -1,6 +1,7 @@
 /**
- * Copyright (c) 2020-2021 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2020-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  * @author Koya Sakuma <koya.sakuma.work@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  * Adapted from MolQL project
  **/
 
@@ -9,9 +10,11 @@ import type { Transpiler } from '../transpiler.js';
 import { transpiler as jmol } from '../jmol/parser.js';
 import { transpiler as pymol } from '../pymol/parser.js';
 import { transpiler as vmd } from '../vmd/parser.js';
+import { transpiler as chimerax } from '../chimerax/parser.js';
 import { examples as jmolExamples } from '../jmol/examples.js';
 import { examples as pymolExamples } from '../pymol/examples.js';
 import { examples as vmdExamples } from '../vmd/examples.js';
+import { examples as chimeraxExamples } from '../chimerax/examples.js';
 
 function testTranspilerExamples(name: string, examples: { name: string; value: string }[], transpiler: Transpiler) {
   describe(`${name} examples`, () => {
@@ -27,3 +30,4 @@ function testTranspilerExamples(name: string, examples: { name: string; value: s
 testTranspilerExamples('pymol', pymolExamples, pymol);
 testTranspilerExamples('vmd', vmdExamples, vmd);
 testTranspilerExamples('jmol', jmolExamples, jmol);
+testTranspilerExamples('chimerax', chimeraxExamples, chimerax);
