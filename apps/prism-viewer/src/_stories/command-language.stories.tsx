@@ -4,14 +4,18 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Meta, StoryObj } from '@storybook/web-components-vite';
 import {
+  BindingSiteCxc,
   BindingSitePml,
   type ExampleScript,
   type ExampleStructure,
+  IncludeCxc,
   IncludePml,
+  ProteinDnaCxc,
   ProteinDnaPml,
   RepsTcl,
 } from '@molstar/command-language-extension/examples';
@@ -22,11 +26,14 @@ import { ExampleFiles, RealViewerStory } from '@molstar/prism-viewer/testing/rea
 import type { PrismViewer } from '@molstar/prism-viewer';
 import type { PrismViewerSpec } from '@molstar/prism-viewer/spec';
 
-// PyMOL and VMD commands in the Prism viewer (the command-language extension's _spec): typed in the command menu after
-// `pymol `, `vmd ` or `!`, or in the Console tab, each submission one Undo step through the viewer's operations. 1CBS
-// from data/examples; no network.
+// PyMOL, VMD and ChimeraX commands in the Prism viewer (the command-language extension's _spec): typed in the command
+// menu after `pymol `, `vmd `, `chimerax ` or `!`, or in the Console tab, each submission one Undo step through the
+// viewer's operations. 1CBS from data/examples; no network.
 
-const meta: Meta = { title: 'Viewer/With extensions/PyMOL and VMD commands', parameters: { layout: 'fullscreen' } };
+const meta: Meta = {
+  title: 'Viewer/With extensions/PyMOL, VMD and ChimeraX commands',
+  parameters: { layout: 'fullscreen' },
+};
 export default meta;
 
 const withCommands = (base: PrismViewerSpec): PrismViewerSpec => ({
@@ -166,6 +173,34 @@ export const VmdReps: StoryObj = commandsStory(async (v) => {
   );
 });
 
+/**
+ * The command menu after `chimerax `: an atom spec being typed, its completions by the symbol it ends in (here `/`:
+ * the structure's chains), the command's usage above.
+ */
+export const ChimeraxMenu: StoryObj = commandsStory(async () => {
+  await menuWith('chimerax show /');
+}, true);
+
+/**
+ * ChimeraX's way, run as one step on 1CBS: the cartoon alone, the ligand and the residues within 5 Å as atoms, the
+ * ligand as balls (ChimeraX's atom style), colored by heteroatom, the view on the ligand, soft lighting.
+ */
+export const ChimeraxStyles: StoryObj = commandsStory(async (v) => {
+  ok(
+    await v.api.script!.run({
+      dialect: 'chimerax',
+      text: [
+        'hide; cartoon',
+        'show ligand :<5 atoms',
+        'style ligand ball',
+        'color ligand :<5 & C lightgray; color ligand & C lime; color ligand :<5 byhetero',
+        'view ligand',
+        'lighting soft',
+      ].join('\n'),
+    }),
+  );
+}, true);
+
 // --- Scripts imported into the console (src/examples.ts of the extension; a headless test runs each the same way). ---
 
 /** The example files a script loads, by their name in data/examples. */
@@ -213,3 +248,16 @@ export const ImportedInclude: StoryObj = importedStory(IncludePml);
  * name, a transparent QuickSurf of the residues around it; the background white, the axes off, orthographic.
  */
 export const ImportedVmdReps: StoryObj = importedStory(RepsTcl);
+
+/**
+ * The binding-site figure in ChimeraX (binding-site.cxc, with 1cbs.cif): the pocket named by a zone (`ligand :<5 &
+ * protein`), the ligand as balls, carbons cyan and lime and the rest by element, the carboxylate's contacts with Arg132
+ * and Tyr134, the pocket's residues labelled, the view on the ligand on white in soft light.
+ */
+export const ImportedChimeraxBindingSite: StoryObj = importedStory(BindingSiteCxc);
+
+/** Protein and DNA in ChimeraX (p53-dna.cxc, with 1tup.bcif): chains, the DNA by element, chain A by B-factor, the zinc. */
+export const ImportedChimeraxProteinDna: StoryObj = importedStory(ProteinDnaCxc);
+
+/** A .cxc that opens another (crambin.cxc with `open style.cxc`, and 1crn.cif): one entry, both run in order. */
+export const ImportedChimeraxInclude: StoryObj = importedStory(IncludeCxc);

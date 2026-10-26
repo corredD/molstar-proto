@@ -295,4 +295,4 @@ view under jsdom, and the example scripts, `src/examples.ts`, each imported with
 no warning but the ones it lists as known; the lines that need a canvas are left out headless). ChimeraX's atom specs
 are checked against ChimeraX itself: Mol\*'s atom counts against ChimeraX 1.10's on 1CBS and 1TUP
 (`model/src/script/_test/chimerax-oracle.*`, recorded by hand with ChimeraX). No network. The stories
-(`apps/prism-viewer`, "PyMOL and VMD commands") replay the same scripts in full.
+(`apps/prism-viewer`, "PyMOL, VMD and ChimeraX commands") replay the same scripts in full.

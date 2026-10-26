@@ -2,12 +2,13 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Dialect } from './language/ir.js';
 
 // Scripts as people write them (_spec §9, Import): each imported into the console with the structures it loads, then
-// replayed. The stories show them (apps/prism-viewer, "PyMOL and VMD commands"); a headless test runs every one and
+// replayed. The stories show them (apps/prism-viewer, "PyMOL, VMD and ChimeraX commands"); a headless test runs every one and
 // fails on any error (src/prism-viewer/_test/examples.test.ts).
 
 /** A structure a script loads, by the name it uses and the example file it is (`data/examples`). */
@@ -22,7 +23,7 @@ export interface ExampleScript {
   /** The script files, the first the one imported (the others it includes). */
   readonly scripts: readonly { readonly name: string; readonly text: string }[];
   readonly structures: readonly ExampleStructure[];
-  /** The warnings it gives, known (where Mol* does less than PyMOL or VMD): a part of each. */
+  /** The warnings it gives, known (where Mol* does less than PyMOL, VMD or ChimeraX): a part of each. */
   readonly warns?: readonly string[];
 }
 
@@ -150,4 +151,96 @@ puts "reps added"
   structures: [{ name: '1cbs.cif', example: '1cbs_updated.cif' }],
 };
 
-export const ExampleScripts: readonly ExampleScript[] = [BindingSitePml, ProteinDnaPml, IncludePml, RepsTcl];
+/** The binding-site figure in ChimeraX: the pocket by a zone, the ligand as balls, the contact, soft light. */
+export const BindingSiteCxc: ExampleScript = {
+  title: 'A binding-site figure (ChimeraX)',
+  dialect: 'chimerax',
+  scripts: [
+    {
+      name: 'binding-site.cxc',
+      text: `# Retinoic acid in CRABP-II (1CBS): the pocket around the ligand
+open 1cbs.cif
+hide; cartoon
+color #1 lightgray
+transparency #1 50 target c
+
+name pocket ligand :<5 & protein
+show ligand | pocket atoms
+style ligand ball
+color pocket & C cyan
+color ligand & C lime
+color ligand | pocket byhetero
+
+# The carboxylate and Arg132, Tyr134
+distance :REA@O1 :132@NH2
+distance :REA@O1 :134@OH
+label pocket & ~:REA residues
+
+view ligand
+set bgColor white
+lighting soft
+info models
+`,
+    },
+  ],
+  structures: [{ name: '1cbs.cif', example: '1cbs_updated.cif' }],
+};
+
+/** p53 on DNA in ChimeraX: chains, the DNA as sticks by element, a B-factor palette, the zinc as a sphere. */
+export const ProteinDnaCxc: ExampleScript = {
+  title: 'Protein and DNA (ChimeraX)',
+  dialect: 'chimerax',
+  scripts: [
+    {
+      name: 'p53-dna.cxc',
+      text: `# p53 core domain bound to DNA (1TUP)
+open 1tup.bcif
+hide; cartoon
+color bychain
+show nucleic atoms
+color nucleic byhetero
+color bfactor /A palette bluered
+show ions atoms
+style ions sphere
+view /A
+`,
+    },
+  ],
+  structures: [{ name: '1tup.bcif', example: '1tup.bcif' }],
+  warns: ['colors whole components by a theme'],
+};
+
+/** A .cxc that opens another (`open style.cxc`): crambin's house style. */
+export const IncludeCxc: ExampleScript = {
+  title: 'A script and the one it opens (ChimeraX)',
+  dialect: 'chimerax',
+  scripts: [
+    {
+      name: 'crambin.cxc',
+      text: `open 1crn.cif
+open style.cxc
+info selection
+`,
+    },
+    {
+      name: 'style.cxc',
+      text: `# The house style: cartoon by chain, cysteines as sticks, sulfurs yellow
+hide; cartoon; rainbow
+show :CYS & sidechain atoms
+color :CYS & S yellow
+select :CYS
+`,
+    },
+  ],
+  structures: [{ name: '1crn.cif', example: '1crn.cif' }],
+};
+
+export const ExampleScripts: readonly ExampleScript[] = [
+  BindingSitePml,
+  ProteinDnaPml,
+  IncludePml,
+  RepsTcl,
+  BindingSiteCxc,
+  ProteinDnaCxc,
+  IncludeCxc,
+];

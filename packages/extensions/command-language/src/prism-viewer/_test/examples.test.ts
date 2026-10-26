@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { readFileSync } from 'node:fs';
@@ -21,6 +22,7 @@ import { ConsoleModel } from '../console-model.js';
 const NeedsCanvas = {
   pymol: /^\s*(orient|bg_color|zoom|center|turn|move|reset)\b/,
   vmd: /^\s*(color Display|display|axes|rotate|translate|scale)\b/,
+  chimerax: /^\s*(view|set|lighting|graphics|camera|turn|move|zoom)\b/,
 };
 
 // Measurement texts are drawn into a font atlas, which Node has no canvas for: a stand-in that draws nothing (as
