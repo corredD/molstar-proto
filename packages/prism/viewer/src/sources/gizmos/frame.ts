@@ -21,9 +21,10 @@ export interface FrameValue {
 /** The transform handles on a frame (`GizmoHandles`' binding but its items and what a drag does to the state) */
 export function frameHandles(
   options: TransformHandlesOptions = {},
-): Pick<HandlesBinding<FrameValue>, 'layout' | 'sameGeometry' | 'equal' | 'apply'> {
+): Pick<HandlesBinding<FrameValue>, 'layout' | 'frame' | 'sameGeometry' | 'equal' | 'apply'> {
   return {
     layout: (item) => ({ ...transformHandles(item.value.size, options), frame: item.value.frame }),
+    frame: (item) => item.value.frame,
     sameGeometry: (a, b) => a.size === b.size,
     equal: (a, b) => Mat4.areEqual(a.frame, b.frame, 1e-6),
     apply(from, handle, frame, dx, dy) {
