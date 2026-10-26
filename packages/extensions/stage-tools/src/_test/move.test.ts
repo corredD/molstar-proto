@@ -7,7 +7,8 @@
 import { describe, expect, it } from 'vitest';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { dragMatrix, movedClipObject, movedRepresentationParams, placementWith, poseOf } from '../move.js';
-import { dragPlacement, moveBetween } from '../move-gizmos.js';
+import { applyToPlacement } from '@molstar/prism-viewer/sources/gizmos';
+import { moveBetween } from '../move-gizmos.js';
 
 const frame = { right: Vec3.create(1, 0, 0), up: Vec3.create(0, 1, 0), pixel: 2 };
 
@@ -52,7 +53,7 @@ describe('move gizmos', () => {
     // the move handle (in the screen's plane): 10 px right at 1 Å a px
     const handle = { kind: 'move' } as const;
     const frame = { right: Vec3.create(1, 0, 0), up: Vec3.create(0, 1, 0), perPixel: 1 };
-    const next = dragPlacement(from, handle, frame, 10, 0);
+    const next = applyToPlacement(from, handle, frame, 10, 0);
     // the scale stays
     expect(Mat4.getMaxScaleOnAxis(next.matrix)).toBeCloseTo(2, 6);
     const m = moveBetween(from, next);
