@@ -196,7 +196,7 @@ export function patchParticleLook(b: StateBuilder.Root, reprRef: string, patch: 
   const nextHidden = patch.hidden ? Array.from(new Set(patch.hidden)).sort((a, b) => a - b) : oldHidden;
   const hidden = sameIds(nextHidden, oldHidden) ? oldHidden : nextHidden;
   if (layers === oldLayers && cuts === oldCuts && hidden === oldHidden) return false;
-  const params = { ...old, layers: [...layers], cuts: [...cuts], hidden: [...hidden] };
+  const params = { ...old, layers, cuts, hidden };
   if (!layers.length && !cuts.length && !hidden.length) {
     if (!ref) return false;
     b.delete(ref);
