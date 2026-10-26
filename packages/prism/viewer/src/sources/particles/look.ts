@@ -14,7 +14,7 @@ import {
 
 // A particle representation's looks (`ParticleRepresentation3DLayers`): its layers (color, transparency, visibility,
 // emissive of some particles), its cuts of some particles and the targets it leaves out. Several writers share the
-// cell (styles, decorations, cuts); each patches what it names and keeps the rest. This is the only code that
+// cell (styles, targets left out, cuts); each patches what it names and keeps the rest. This is the only code that
 // creates or deletes the cell.
 
 /** Which particles a layer is for: by entity, compartment or target ids; none: every particle */

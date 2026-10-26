@@ -499,13 +499,13 @@ export class ParticlesApi extends ApiArea {
 
   // A representation's looks (its layers cell: colors, visibility, transparency, emissive of some particles; the
   // targets it leaves out; its cuts of some particles), patched: each absent field kept, so one writer (styles,
-  // decorations, cuts) never drops another's. Every representation of the list, one update.
+  // targets left out, cuts) never drops another's. Every representation of the list, one update.
   readonly look = this.operation({
     id: 'particles.look',
     title: 'Set how some particles look',
     surface: {
       kind: 'agent-only',
-      reason: "Styles, decorations and cuts call it with their layers; a selector's layers have no command form",
+      reason: "Styles, targets left out and cuts call it with their layers; a selector's layers have no command form",
     },
     params: {
       layers: OptionalParam(
