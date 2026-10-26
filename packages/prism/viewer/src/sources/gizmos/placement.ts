@@ -59,13 +59,19 @@ export function applyToPlacement<P extends Placement>(
   return { ...from, matrix: Mat4.mul(Mat4(), poseMatrix(pose, from.center), residual) };
 }
 
+/** The handles' frame on a placement: its center as placed, turned as it is */
+function placementFrame(item: GizmoItem<Placement>): Mat4 {
+  const pose = placementPose(item.value);
+  return Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), pose.position), Mat4.fromQuat(Mat4(), pose.rotation));
+}
+
 /** The transform handles on a placement (`GizmoHandles`' binding but its items and what a drag does to the state) */
-export const PlacementHandles: Pick<HandlesBinding<Placement>, 'layout' | 'sameGeometry' | 'equal' | 'apply'> = {
-  layout(item: GizmoItem<Placement>) {
-    const pose = placementPose(item.value);
-    const frame = Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), pose.position), Mat4.fromQuat(Mat4(), pose.rotation));
-    return { ...transformHandles(item.value.radius * 0.6), frame };
-  },
+export const PlacementHandles: Pick<
+  HandlesBinding<Placement>,
+  'layout' | 'frame' | 'sameGeometry' | 'equal' | 'apply'
+> = {
+  layout: (item) => ({ ...transformHandles(item.value.radius * 0.6), frame: placementFrame(item) }),
+  frame: placementFrame,
   sameGeometry: (a, b) => a.radius === b.radius,
   equal: (a, b) => Mat4.areEqual(a.matrix, b.matrix, 1e-6),
   apply: applyToPlacement,

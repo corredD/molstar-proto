@@ -4,7 +4,13 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { type GizmoBinding, GizmoController, type GizmoItem } from '@molstar/graphics/util/gizmo/controller';
+import type { Mat4 } from '@molstar/core/math/linear-algebra';
+import {
+  type GizmoBinding,
+  GizmoController,
+  type GizmoItem,
+  type GizmoLayout,
+} from '@molstar/graphics/util/gizmo/controller';
 import type { PluginContext } from '@molstar/plugin/context';
 import { observableState, type ReadonlyState } from '@molstar/prism-ui/core';
 import { BehaviorSubject, Subject } from 'rxjs';
@@ -21,6 +27,11 @@ export interface HandlesBinding<T> extends Omit<GizmoBinding<T>, 'items' | 'inva
   items(): readonly GizmoItem<T>[];
   /** The cells a drag on `key` starts from (default: the key's); a change to one, above or under it, cancels the drag */
   cells?(key: string): readonly string[];
+  /**
+   * An item's frame alone (`layout`'s): with it, a value of the same geometry as the last laid out keeps that layout's
+   * meshes, its frame moved (a drag's moves: no meshes made a pointer event)
+   */
+  frame?(item: GizmoItem<T>): Mat4;
 }
 
 export interface GizmoHandlesOptions {
@@ -105,10 +116,23 @@ export class GizmoHandles<T> {
 
   #gizmoBinding(): GizmoBinding<T> {
     const b = this.binding;
+    /** The last layout of each item, and the value it was of */
+    const laidOut = new Map<string, { value: T; layout: GizmoLayout }>();
     return {
       items: this.#items,
       invalidated: this.#invalidated,
-      layout: (item) => b.layout(item),
+      layout: (item) => {
+        const last = laidOut.get(item.key);
+        if (last && b.frame && b.sameGeometry(last.value, item.value)) {
+          last.value = item.value;
+          last.layout = { ...last.layout, frame: b.frame(item) };
+          return last.layout;
+        }
+        const layout = b.layout(item);
+        if (layout) laidOut.set(item.key, { value: item.value, layout });
+        else laidOut.delete(item.key);
+        return layout;
+      },
       sameGeometry: (x, y) => b.sameGeometry(x, y),
       equal: (x, y) => b.equal(x, y),
       apply: (from, handle, frame, dx, dy) => b.apply(from, handle, frame, dx, dy),

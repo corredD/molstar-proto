@@ -5,6 +5,7 @@
  */
 
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import type { GizmoItem } from '@molstar/graphics/util/gizmo/controller';
 import { transformHandles } from '@molstar/graphics/util/gizmo/transform';
 import { describe, expect, it } from 'vitest';
 import { cbs, expectOk, headlessViewer } from '../../../_test/harness.js';
@@ -12,21 +13,23 @@ import { mountGizmoCanvas } from '../../../testing/gizmo-canvas.js';
 import type { PrismViewer } from '../../../viewer.js';
 import { GizmoHandles, type HandlesBinding } from '../handles.js';
 
-// The handles' host on a headless viewer and a fake canvas (gizmos.md): a drag previews, its release commits once with
-// the frames held; Esc, a commit not taken and a change under the drag's cells put it back, and a cancelled drag's
-// release commits nothing.
+// The handles' host on a headless viewer and a fake canvas (gizmos.md): a drag previews (its handles' meshes kept), its
+// release commits once with the frames held; Esc, a commit not taken and a change under the drag's cells put it back,
+// and a cancelled drag's release commits nothing.
 
 type Value = { readonly x: number };
 
 function host(v: PrismViewer, commitResult = true) {
   const key = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
-  const log = { previews: [] as number[], commits: [] as number[], cancels: 0 };
+  const log = { previews: [] as number[], commits: [] as number[], cancels: 0, layouts: 0 };
+  const frame = (item: GizmoItem<Value>) => Mat4.fromTranslation(Mat4(), Vec3.create(item.value.x, 0, 0));
   const binding: HandlesBinding<Value> = {
     items: () => [{ key, value: { x: 0 }, label: 'A' }],
-    layout: (item) => ({
-      ...transformHandles(10),
-      frame: Mat4.fromTranslation(Mat4(), Vec3.create(item.value.x, 0, 0)),
-    }),
+    layout: (item) => {
+      log.layouts++;
+      return { ...transformHandles(10), frame: frame(item) };
+    },
+    frame,
     sameGeometry: () => true,
     equal: (a, b) => a.x === b.x,
     apply: (from, _h, _f, dx) => ({ x: from.x + dx }),
@@ -55,6 +58,8 @@ describe('GizmoHandles', () => {
     expect(await canvas.hover()).toBe(true);
     await canvas.drag([1, 2, 3]);
     expect(log.previews.at(-1)).toBeGreaterThan(0);
+    // the handles' meshes made once, at show: a move moves their frame
+    expect(log.layouts).toBe(1);
     expect(handles.dragging).toBeDefined();
     await canvas.release();
     expect(log.commits).toHaveLength(1);

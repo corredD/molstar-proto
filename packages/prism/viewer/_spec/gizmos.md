@@ -14,6 +14,9 @@ object.
   step); the class holds the canvas's frames until it is done (`holdFrames`, 3 s at most), as the drawing and the state
   would otherwise show the item moved twice or not at all. A commit not taken or failed: the binding's `cancel` puts the
   item back (the library's rule).
+- **A drag makes no meshes:** a binding with `frame(item)` keeps the last layout's meshes for a value of the same
+  geometry, its frame moved; the library lays an item out at each preview, and the transform handles' meshes are about
+  750 KB (`handles.scaling.ts` guards the drag).
 - **What a drag starts from changing cancels it** (an undo, another edit): the cells the binding names for the item
   (`cells(key)`, default its key), every cell under them and every cell above them (a decorator under a structure, a
   volume's transform above a slice, a mesh's shape provider), compared by their params as at the press. Its release then
