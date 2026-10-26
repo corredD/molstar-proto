@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { CommandDefinition, CommandMenuItem, CommandMenuPrefix } from '@molstar/prism-ui/core';
@@ -14,7 +15,7 @@ import { formatDiagnostic } from '../language/diagnostics.js';
 import { type Dialect, DialectNames, Dialects } from '../language/ir.js';
 import { hasErrors } from '../language/script.js';
 
-// The language in Prism's command menu (_spec §9): `pymol ` and `vmd ` prefixes, and `!` for the person's default
+// The language in Prism's command menu (_spec §9): `pymol `, `vmd ` and `chimerax ` prefixes, and `!` for the person's default
 // dialect. A prefix's rows are the line's parse: what it will do (Enter runs it as one step) or what does not read,
 // then completions that edit the line. `undo` and `redo` alone run the viewer's own history.
 
@@ -76,10 +77,7 @@ export function prefixRows(
       {
         id: `${dialect}:help`,
         label: `Type a ${name} command`,
-        detail:
-          dialect === 'pymol'
-            ? 'show sticks, resn HEM · color red, chain A · help'
-            : 'mol addrep top · mol color Chain · help',
+        detail: PrefixExamples[dialect],
         icon: 'terminal',
         run: () => true,
       },
@@ -127,7 +125,14 @@ export function prefixRows(
   return [runRow, ...completions];
 }
 
-/** The prefixes: `pymol `, `vmd `, and `!` for the default dialect. */
+/** What a prefix's empty line shows: a few lines of the dialect. */
+const PrefixExamples: Readonly<Record<Dialect, string>> = {
+  pymol: 'show sticks, resn HEM · color red, chain A · help',
+  vmd: 'mol addrep top · mol color Chain · help',
+  chimerax: 'show ligand :<5 atoms · color /A red · help',
+};
+
+/** The prefixes: `pymol `, `vmd `, `chimerax `, and `!` for the default dialect. */
 export function commandPrefixes({ api, preferences, post }: CommandPrefixContext): CommandMenuPrefix[] {
   const word = (dialect: Dialect): CommandMenuPrefix => ({
     char: `${dialect} `,
@@ -138,10 +143,11 @@ export function commandPrefixes({ api, preferences, post }: CommandPrefixContext
   return [
     word('pymol'),
     word('vmd'),
+    word('chimerax'),
     {
       char: '!',
       title: 'Command in the default dialect',
-      placeholder: 'A command in your default dialect (PyMOL or VMD)',
+      placeholder: 'A command in your default dialect (PyMOL, VMD or ChimeraX)',
       items: (text) => {
         const viewer = api.script;
         if (!viewer) return [];
@@ -162,8 +168,11 @@ export function commandPrefixes({ api, preferences, post }: CommandPrefixContext
         }
         const rows = prefixRows(api, '!', dialect, text, post);
         if (text.trim()) return rows;
-        const other = Dialects.find((d) => d !== dialect)!;
-        return [...rows, choose(other, `Read ! as ${DialectNames[other]} instead of ${DialectNames[dialect]}`)];
+        const others = Dialects.filter((d) => d !== dialect);
+        return [
+          ...rows,
+          ...others.map((d) => choose(d, `Read ! as ${DialectNames[d]} instead of ${DialectNames[dialect]}`)),
+        ];
       },
     },
   ];
@@ -177,7 +186,7 @@ export function commandLanguageCommands(api: ViewerApi): CommandDefinition<any>[
     operationCommand(api, area.run, {
       category: 'Commands',
       icon: 'terminal',
-      alias: ['pymol script', 'vmd script', 'run commands'],
+      alias: ['pymol script', 'vmd script', 'chimerax script', 'cxc script', 'run commands'],
       action: 'Run',
       order: ['dialect', 'text'],
       values: { files: [] },

@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { ViewerExtension } from '@molstar/prism-viewer/spec';
@@ -12,24 +13,24 @@ import { ScriptApi } from './prism-viewer/operations.js';
 import { ConsoleTab } from './prism-viewer/parts.js';
 import { CommandLanguageSkill } from './prism-viewer/skill.js';
 
-// PyMOL and VMD commands in the Prism viewer (_spec README): an opt-in extension, as Mol*'s others. It brings the
-// `script` area (`script.run`: a submission as one step), the command menu's `pymol `, `vmd ` and `!` prefixes, and
-// VMD's default look as a representation preset. Eager: the menu's rows parse each keystroke, which a lazy chunk could
-// not do before it loaded (a prefix's rows are made synchronously).
+// PyMOL, VMD and ChimeraX commands in the Prism viewer (_spec README): an opt-in extension, as Mol*'s others. It
+// brings the `script` area (`script.run`: a submission as one step), the command menu's `pymol `, `vmd `, `chimerax `
+// and `!` prefixes, and VMD's default look as a representation preset. Eager: the menu's rows parse each keystroke,
+// which a lazy chunk could not do before it loaded (a prefix's rows are made synchronously).
 
 export const CommandLanguageExtension: ViewerExtension = {
   id: 'command-language',
-  title: 'PyMOL and VMD commands',
+  title: 'PyMOL, VMD and ChimeraX commands',
   plugin: { registry: [VmdLinesPresetEntry] },
   api: { script: (ctx) => new ScriptApi(ctx) },
   commands: (api) => [
     ...commandLanguageCommands(api),
     {
       id: 'script.console',
-      title: 'Open the command console (PyMOL, VMD)',
+      title: 'Open the command console (PyMOL, VMD, ChimeraX)',
       category: 'Commands',
       icon: 'terminal',
-      alias: ['console', 'pymol console', 'vmd console', 'tk console'],
+      alias: ['console', 'pymol console', 'vmd console', 'tk console', 'chimerax console'],
       // Opens the console's tab: a view, not a change.
       async run() {
         // The console's view is a chunk of its own: right after the viewer starts its tab may not be there yet.

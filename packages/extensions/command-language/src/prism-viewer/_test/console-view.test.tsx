@@ -182,7 +182,7 @@ describe('the console view', () => {
 
   it('says what the line will do, offers its completions, and fills an example', async () => {
     const t = open();
-    expect(t.container.textContent).toContain('PyMOL and VMD commands');
+    expect(t.container.textContent).toContain('PyMOL, VMD and ChimeraX commands');
     const example = [...t.container.querySelectorAll('button')].find((b) => b.textContent === 'show sticks, resn REA')!;
     example.click();
     expect(t.input.value).toBe('show sticks, resn REA');

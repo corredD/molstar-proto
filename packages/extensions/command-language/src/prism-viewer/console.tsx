@@ -4,6 +4,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Button, type Child, domView, effect, For, Icon, Show } from '@molstar/prism-ui';
@@ -100,7 +101,7 @@ function EntryView(props: { entry: ConsoleEntry; model: ConsoleModel; onSize: ()
 function EmptyView(props: { model: ConsoleModel; onPick: (text: string) => void }) {
   return (
     <div class={classes.empty}>
-      <div class={classes.emptyTitle}>PyMOL and VMD commands</div>
+      <div class={classes.emptyTitle}>PyMOL, VMD and ChimeraX commands</div>
       <div class={classes.emptyText}>
         Type the commands you know. Enter runs them as one step, which Undo takes back; the line under the input says
         what they will do first. Open or drop a .pml, .tcl or .vmd script with the files it loads.
@@ -143,6 +144,7 @@ function StatusView(props: { inspection: ConsoleInspection; usageShown?: boolean
 /** Signature help, the card's header: the command's usage with the argument being typed in bold, then what it does. */
 function SignatureView(props: { signature: Signature; dialect: Dialect }) {
   const { signature: sig, dialect } = props;
+  // PyMOL's arguments are separated by commas; VMD's and ChimeraX's by blanks.
   const sep = dialect === 'pymol' ? ', ' : ' ';
   const parts: Child[] = [<span class={classes.sigName}>{sig.name}</span>, ' '];
   sig.params.forEach((p, k) => {
@@ -513,7 +515,7 @@ export function consoleUI(ctx: ViewerUIContext): ViewerExtensionUI {
       {
         id: ConsoleTab,
         // The rail's name says what it is; the header has the dialect switch under it.
-        title: 'PyMOL / VMD console',
+        title: 'PyMOL / VMD / ChimeraX console',
         heading: 'Console',
         icon: 'terminal',
         place: 'foot',
