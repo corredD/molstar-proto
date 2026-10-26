@@ -1058,7 +1058,7 @@ export const ChimeraxCommands: readonly ChimeraxCommand[] = [
               monitor: 'Measurements follow their atoms.',
             }
           : { move: 'Nothing is moved.' },
-      examples: [example, `${name} sel`],
+      examples: [example, `select ${example.slice(name.length + 1)}; ${name} sel`],
       compile(a) {
         const spec = a.requiredSpec(`${n} atoms`);
         const value = a.number();
@@ -1207,7 +1207,7 @@ export const ChimeraxCommands: readonly ChimeraxCommand[] = [
       cutoffDistance: 'Mol* does not reject outliers.',
       reportMatrix: 'Mol* says the RMSD.',
     },
-    examples: ['align #2@CA toAtoms #1@CA'],
+    examples: ['align #2:30-40@CA toAtoms #1:30-40@CA'],
     compile(a) {
       const mobile = a.requiredSpec('the atoms to move');
       a.done();
