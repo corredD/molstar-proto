@@ -10,21 +10,33 @@ the app, in his words; the lane turns it into spec and tests.
 
 <!-- - **Title**: what I want to see. Check: what I do in the app and what I expect. -->
 
-From the architecture's decisions ([_spec/architecture.md](_spec/architecture.md) §7, Ludovic 2026-10-24); 1 and 2 hold
-whether we refactor or start a v2:
+In this order (Ludovic, 2026-10-25): the first two in parallel, then one at a time. From the architecture's decisions
+([_spec/architecture.md](_spec/architecture.md) §7: refactor in place) and the review of the distances (PR #5):
 
 - **One owner for the looks**: a single operation writes a particle representation's Layers cell; mesoscale's styles,
   cryo-ET's hidden classes and Prism's partial cuts call it. Check: color an entity, hide a class, cut the model partly,
   then undo three times: each undo takes back exactly one of them, and none drops another.
+- **A distance follows its objects**: moving a structure, a list or a volume (or a particle with its handle) moves the
+  distance's line and value with it; measuring outside selection mode says so (a hint) instead of nothing. Check:
+  measure between two structures, move one: the line and the value follow; ⌘/Ctrl+click with selection mode off: a hint
+  says to turn it on. (Review K1: the move is a decorator under the object, which the distance's dependency does not
+  see.)
 - **One handle class in Prism's gizmo library** for the oblique slice, the object move and the particle move: preview
   outside the state, one commit on release. Check: drag each handle, then undo once: it goes back to before the drag.
 - **The app is only a spec**: `explorer.clipWhole`, the picks, the label sizing and the direct extension calls move into
   the extensions as operations. Check: the app behaves as before; `apps/prism-me/src` has no `as any` and calls no
   extension method directly.
+- **The views on the mocks**, one lane each, checked against its story in Storybook (prism-me › Explorer), light and
+  dark, wide and narrow: the tree (`ui.tsx`, `rows.ts`: `VirtualList`, `TreeNavigation`, the row's tools on hover, the
+  eye at the end, categories picked); the properties (`properties.tsx`: `SectionList`, `ParamsForm`, a category's Look
+  and Clips, Position with its Handles); the right-click (`menu.ts`: one Move and turn, no icons on items). Check: the
+  app and the story look and behave the same.
 
 ## Library fixes ready for upstream
 
-Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only when Ludovic says so.
+Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only when Ludovic says so: he asks the
+maintainer first (2026-10-25). All are v6 (master); the MRC reader and the particle bounds are in v5 too (upstream's
+`v5` branch).
 
 - Periodic volume slices drawn half a box away (`5affa6d17`).
 - Plane slice sized in voxels used as Å (`ea7dc5d3e`).
@@ -54,12 +66,10 @@ Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only w
 - Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms.
 - Decorating by a string column (a tomogram name).
 - Keys on cuts (animation).
-- A distance follows its objects' later moves (a moved structure, list or volume, a particle handle) only when it is
-  re-evaluated: the move is a decorator under the object, which its dependency does not see (review K1, 2026-10-25).
-- Distances, left open by the review: a hint that measuring needs selection mode (a ⌘/Ctrl+click outside it says
-  nothing); tests for the explorer's click routing (`ui.tsx`: a modifier click outside selection mode reveals its row; a
-  Ctrl+click on a label is refused), which need `explorerUI` mounted with canvas clicks and `labelAt`; a volume point
-  keeps one instance (a volume of several, from MVS, would be measured from its first).
+- Distances, left open by the review: tests for the explorer's click routing (`ui.tsx`: a modifier click outside
+  selection mode reveals its row; a Ctrl+click on a label is refused), which need `explorerUI` mounted with canvas
+  clicks and `labelAt`; a volume point keeps one instance (a volume of several, from MVS, would be measured from its
+  first).
 - Upstream (Prism): Home counts particles as loaded; `particles.representation` on decorated lists; shapes in the scene
   tree.
 - Storybook stories for the Entities tab, the Decorations and Slice rows, the Segmentations tab and the stage menu,

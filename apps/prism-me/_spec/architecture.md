@@ -148,5 +148,7 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
    release. The three bindings become uses of it. It is a candidate for upstream.
 5. **The app becomes only a spec:** its logic (`clipWhole`, picks, label sizing, direct extension calls) moves as
    operations into the extension that owns the data. The app keeps layout, URL and defaults.
-6. **Refactor or prism-me-v2: decided after the Storybook mocks (stage 2),** by how far the current UI is from them.
-   Decisions 1 to 5 hold either way.
+6. **Refactor in place, not a prism-me-v2** (Ludovic, 2026-10-25, after the Storybook mocks of PR #6): the mocks'
+   comparison ([../progress/2026-10-25-explorer-mocks.md](../progress/2026-10-25-explorer-mocks.md)) found the app's
+   operations and sections the same and its views different (its own rows, keys, sections and colors where Prism has
+   them). The views are rebuilt on the mocks one at a time, each checked against its story.

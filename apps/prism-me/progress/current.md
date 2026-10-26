@@ -6,13 +6,11 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-- **Stage 2: Storybook mocks of the explorer** (`me/explorer-mocks`, `~/prism-me-lanes/explorer-mocks`,
-  [brief](2026-10-25-explorer-mocks.md)): PR #6, built and reviewed, waits on Ludovic; its table says refactor in place.
-  the Scene panel (tree, properties), the right-click menu and + Open, as stories on Prism's foundations, for Ludovic to
-  compare with the app; they decide refactor or v2 ([../_spec/architecture.md](../_spec/architecture.md) §7.6).
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 
 ## Waiting on Ludovic
 
-- The library fixes ready for upstream ([../TODO.md](../TODO.md)): which go, and when.
+- The library fixes ready for upstream ([../TODO.md](../TODO.md)): which go, and when (he asks the maintainer).
+- The next lanes, from [../TODO.md](../TODO.md) `Next`: the looks owner and the distance follow, in parallel; their
+  briefs wait on his OK.
