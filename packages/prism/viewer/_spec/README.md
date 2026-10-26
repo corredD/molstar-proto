@@ -17,6 +17,7 @@ missing: [../../TODO.md](../../TODO.md).
 | [marks.md](marks.md)                   | marks on the scene: highlights and what views draw over it                                                    |
 | [clipping.md](clipping.md)             | cuts through representations: read from the state, the area, the section, gizmos, keep whole, drawn in scene  |
 | [structure-move.md](structure-move.md) | moving a structure by hand: the Move section, transform handles, through `structure.transform`                |
+| [gizmos.md](gizmos.md)                 | handles that move things: `GizmoHandles`, the one host of the gizmo library for Prism and its extensions      |
 | [state.md](state.md)                   | the plugin's state area by area: sources, view models                                                         |
 | [journal.md](journal.md)               | the session record, History, what is kept in the browser                                                      |
 | [sequence.md](sequence.md)             | the sequence viewer (Seq\*) beside the 3D view, the link, the history's rules                                 |
@@ -54,7 +55,7 @@ assistant (`@molstar/prism-assistant/viewer`, its own chunk), and builds the sin
 | `agent/`               | the agent: tools over operations, skills, the account, policies, `createViewerAgent`, `runEval`                                                                              | no                   |
 | `journal/`             | the session's record (runs, turns, undos), keeping it in IndexedDB, History's model                                                                                          | no                   |
 | `persist/`, `storage/` | the light stores (versioned, budgeted), the Storage view's model and sources                                                                                                 | no                   |
-| `testing/`             | mocks for the stories (Storybook); not the viewer's code                                                                                                                     | —                    |
+| `testing/`             | mocks for the stories (Storybook) and tests (a gizmo canvas); not the viewer's code                                                                                          | —                    |
 
 `src/_test/boundary.test.ts` checks the plugin rule; `src/_test/coverage.test.ts` that every operation has a command, a
 tool, or a reason it is neither.
