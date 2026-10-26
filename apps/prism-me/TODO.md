@@ -13,11 +13,6 @@ the app, in his words; the lane turns it into spec and tests.
 In this order (Ludovic, 2026-10-25): the first two in parallel, then one at a time. From the architecture's decisions
 ([_spec/architecture.md](_spec/architecture.md) §7: refactor in place) and the review of the distances (PR #5):
 
-- **A distance follows its objects**: moving a structure, a list or a volume (or a particle with its handle) moves the
-  distance's line and value with it; measuring outside selection mode says so (a hint) instead of nothing. Check:
-  measure between two structures, move one: the line and the value follow; ⌘/Ctrl+click with selection mode off: a hint
-  says to turn it on. (Review K1: the move is a decorator under the object, which the distance's dependency does not
-  see.)
 - **One handle class in Prism's gizmo library** for the oblique slice, the object move and the particle move: preview
   outside the state, one commit on release. Check: drag each handle, then undo once: it goes back to before the drag.
 - **The app is only a spec**: `explorer.clipWhole`, the picks, the label sizing and the direct extension calls move into
@@ -63,10 +58,14 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Tilt angles (`.tlt`, `.rawtlt`) with the images of a tilt series; binning large tomograms.
 - Decorating by a string column (a tomogram name).
 - Keys on cuts (animation).
-- Distances, left open by the review: tests for the explorer's click routing (`ui.tsx`: a modifier click outside
-  selection mode reveals its row; a Ctrl+click on a label is refused), which need `explorerUI` mounted with canvas
-  clicks and `labelAt`; a volume point keeps one instance (a volume of several, from MVS, would be measured from its
-  first).
+- A distance follows its objects: moving a structure, a list or a volume (or a particle with its handle) moves the
+  distance's line and value with it, live during a drag, not on release (Ludovic, 2026-10-25). Waits for Ludovic's talk
+  with the maintainer (2026-10-25): it needs a Mol\* core change, a dependency on an object being one on the object as
+  decorated (`packages/core/src/state/state.ts`, `initCells` and the delete loop; review K1: the move is a decorator
+  under the object, which the distance's dependency does not see).
+- Distances, left open by the review: a test for the explorer's click routing on a label (`ui.tsx`: a Ctrl+click on a
+  label is refused), which needs canvas clicks with a position and `labelAt`; a volume point keeps one instance (a
+  volume of several, from MVS, would be measured from its first).
 - Upstream (Prism): Home counts particles as loaded; `particles.representation` on decorated lists; shapes in the scene
   tree.
 - Storybook stories for the Entities tab, the Decorations and Slice rows, the Segmentations tab and the stage menu,

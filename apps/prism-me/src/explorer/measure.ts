@@ -30,6 +30,13 @@ export interface DistancePicker {
   cancel(): void;
 }
 
+/** The gesture that measures: ⌘+click on a Mac, Ctrl+click elsewhere */
+export const measureGesture = (mac: boolean) => (mac ? '⌘+click' : 'Ctrl+click');
+
+/** Said on a measuring click outside selection mode, where nothing measures (_spec/ui.md §7) */
+export const selectionModeHint = (mac: boolean) =>
+  `Turn on selection mode to measure: ${measureGesture(mac)} two points`;
+
 export function distancePicker(
   api: ViewerApi,
   area: ExplorerApi,
@@ -40,7 +47,7 @@ export function distancePicker(
     readonly mac?: boolean;
   } = {},
 ): DistancePicker {
-  const gesture = () => ((options.mac ?? area.mac) ? '⌘+click' : 'Ctrl+click');
+  const gesture = () => measureGesture(options.mac ?? area.mac);
   const pending = observableState<PendingPoint | undefined>(undefined);
   const cancel = () => {
     if (!pending.value) return;
