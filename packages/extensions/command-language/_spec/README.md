@@ -1,9 +1,9 @@
-# Command language: PyMOL and VMD commands for Prism
+# Command language: PyMOL, VMD and ChimeraX commands for Prism
 
-`@molstar/command-language-extension`: people who know PyMOL or VMD type the commands they know (`show sticks, ligand`,
-`mol addrep top`) in the Prism viewer, and Mol\* does the same thing or says plainly that it cannot. This spec is for
-working on the code; code comments cite it (`_spec §5.2`). Scope per dialect: [pymol.md](pymol.md), [vmd.md](vmd.md).
-Open items: [../TODO.md](../TODO.md).
+`@molstar/command-language-extension`: people who know PyMOL, VMD or ChimeraX type the commands they know
+(`show sticks, ligand`, `mol addrep top`, `show ligand :<5 atoms`) in the Prism viewer, and Mol\* does the same thing or
+says plainly that it cannot. This spec is for working on the code; code comments cite it (`_spec §5.2`). Scope per
+dialect: [pymol.md](pymol.md), [vmd.md](vmd.md), [chimerax.md](chimerax.md). Open items: [../TODO.md](../TODO.md).
 
 ## 1. Decisions
 
@@ -18,14 +18,17 @@ Open items: [../TODO.md](../TODO.md).
    `script.run` (its calls join its step). Why: Prism's operations are the only way state changes there (Prism README
    decision 8); through them a script gets Undo, the session record, approvals and targets, and a plugin change outside
    the API would break Prism's Undo (api.md §5).
-4. **The person's words decide the dialect**: `pymol …` / `vmd …` in the command menu, `!` for the person's default.
-   Both dialects compile to one IR; nothing else differs.
+4. **The person's words decide the dialect**: `pymol …` / `vmd …` / `chimerax …` in the command menu, `!` for the
+   person's default. Every dialect compiles to one IR; nothing else differs. A dialect's own state (VMD's reps,
+   ChimeraX's model ids and atom styles) is optional in the IR and the session state, so the others are unchanged.
 5. **Unsupported is an error, never a silent no-op** (§7): a command Mol\* cannot do the same way fails before anything
    runs, saying what it is and what to do instead; one that runs with a difference (an option ignored) says so in a
    warning or a note.
 6. **A submission is one step, all or nothing** (§6).
-7. **Faithful semantics**: PyMOL's per-atom show flags and VMD's numbered reps are kept on Mol\*'s component tree (§5.2,
-   §5.3), so a script written for those programs ends in the scene its author expects.
+7. **Faithful semantics**: PyMOL's per-atom show flags, VMD's numbered reps and ChimeraX's atom styles are kept on
+   Mol\*'s component tree (§5.2–§5.4), so a script written for those programs ends in the scene its author expects.
+   ChimeraX's grammar, abbreviations and selectors are read from ChimeraX 1.10 itself (its registry, its parser, its
+   atom counts), not from memory.
 8. **Eager, not lazy**: the menu's rows parse each keystroke, synchronously (`CommandMenuPrefix.items`); a lazy chunk
    could not answer before it loaded. The language is small (tables and a color list).
 9. **No MolViewSpec export here**: a separate piece of work, in `packages/mvs`.
@@ -40,6 +43,7 @@ Open items: [../TODO.md](../TODO.md).
 | `src/language/selection.ts`  | selections: query-language with objects and named selections (§4.3)                       |
 | `src/language/pymol/`        | tokenizer, argument binding, commands, settings, the unsupported list                     |
 | `src/language/vmd/`          | Tcl words (§3.2), commands, styles and coloring methods, the unsupported list             |
+| `src/language/chimerax/`     | words and commands (§3.4), names (ChimeraX's order), arguments, colors, unsupported list  |
 | `src/language/completion.ts` | completion (§8); `describe.ts`: one line per IR command (the menu's Run row)              |
 | `src/prism-viewer/`          | the host (`host.ts`, `display.ts`, `vmd.ts`), the `script` area, the menu prefixes, state |
 | `src/plugin/vmd-preset.ts`   | VMD's default look as a representation preset (§5.3)                                      |
@@ -48,9 +52,11 @@ Open items: [../TODO.md](../TODO.md).
 - **One table per dialect drives everything**: each command's name, signature (argument kinds), help, examples and
   `compile`. Parsing, completion, `help` and the scope tables read it; a test compiles every example and fails every
   listed unsupported command.
-- **Changes outside**: query-language's `TranspileOptions.resolveName` (PyMOL objects and named selections); Prism's
-  `ViewerExtension.commandPrefixes` and prefix rows that fill the text (`run` returns `{ text }`); the model's
-  `queryInSelection` complement of an empty selection (PyMOL's `not`).
+- **Changes outside**: query-language's `TranspileOptions.resolveName` (PyMOL objects and named selections) and its
+  ChimeraX transpiler (`transpilers/chimerax`, `parseAtomSpec`: a spec at a command's start, where it ends, its pieces);
+  Prism's `ViewerExtension.commandPrefixes` and prefix rows that fill the text (`run` returns `{ text }`), and
+  `representation.transparency`'s `types`; the model's `queryInSelection` complement of an empty selection (PyMOL's
+  `not`). ChimeraX is not a core `Script['language']`: the extension imports its parser (TODO).
 
 ## 3. Parsing
 
@@ -74,10 +80,25 @@ flow and the rest fail `unsupported`: the console runs VMD commands one by one.
 
 ### 3.3 Scripts that run scripts
 
-`@file.pml` and `load file.pml` (PyMOL), `source file.tcl` and `play file.vmd` (VMD) run a script given with the
-submission (`ScriptEnv.scripts`: the texts of the `.pml`, `.tcl` and `.vmd` files among those given), compiled in place
-with the same names: its commands take the include's place, their text named by the file, and its messages, compile and
-runtime alike, name the file's line. A script that runs itself stops (8 deep at most). A file not given fails `no-name`.
+`@file.pml` and `load file.pml` (PyMOL), `source file.tcl` and `play file.vmd` (VMD), `open file.cxc` (ChimeraX) run a
+script given with the submission (`ScriptEnv.scripts`: the texts of the `.pml`, `.tcl`, `.vmd` and `.cxc` files among
+those given), compiled in place with the same names: its commands take the include's place, their text named by the
+file, and its messages, compile and runtime alike, name the file's line. A script that runs itself stops (8 deep at
+most). A file not given fails `no-name`.
+
+### 3.4 ChimeraX
+
+As ChimeraX's parser (`cli.py`): `;` and newlines end a command outside quotes; `#` where a command starts makes the
+line a comment (elsewhere it is a model, `#1`); a word runs to a blank or `;`, or is quoted, the quote only where a word
+starts (`@O3'`). A command's name is its words as ChimeraX resolves them: the whole name, else the first command in
+ChimeraX 1.10's registration order that starts with the word (`sel` select, `sh` shape), then the same among its
+subcommands (`sel cl`); the order is the registry's, without add-on bundles (`names.ts`). Arguments as `cli.py` binds
+them: positionals in order, an optional one tried and skipped when it does not read, none read where a keyword starts;
+then keyword and value pairs, a keyword shortened while it is one keyword, any case when typed in lower case. An atom
+spec reads as far as it can and ends at a blank (`parseAtomSpec`): `color /A :12 red` is the spec `/A :12`, then `red`.
+A word that may be a spec and reads as nothing says why the spec did not read. Keywords ChimeraX takes that change
+nothing here are warnings; a command that reads as one ChimeraX has but the table lacks fails `unsupported`, naming it
+(an abbreviation says what ChimeraX reads it as: `mol` is molmap).
 
 ## 4. The IR
 
@@ -95,8 +116,15 @@ reverse. Representations are the people's words (`sticks`, `mesh`, `tube`); the 
   selection language reads as its own word (`b`, the B-factor; `chain`) is refused when defined; one that only starts
   with such a word (`b2`, `both`) is a name.
 - **VMD selections are scoped to the command's molecule** (VMD's selections never name molecules).
-- **Names come from the env**: object names (the state's, else the entry, lowercased, deduplicated) and VMD molecule ids
-  (never reused) for every loaded structure, the named selections, the top molecule.
+- **ChimeraX specs are compiled per object by its model id** (`chimeraxSpec`): `#1` matches the object that is model 1
+  there, nothing elsewhere; `others` has no id (a model term selects nothing there). An object whose part is the same as
+  `others` gets none. Model ids are ChimeraX's: given at load, the lowest free (`load.model`, the state's `objects`),
+  every structure getting one when first seen. A spec of models side by side (`:12@CA :13@CA`) also gives its pieces in
+  the order written (angles and torsions read their atoms so). `sel` is the selection: the viewer's (each structure's
+  selected atoms, read with the env), as the submission's own `select` commands leave it (`CompileState.selection`).
+- **Names come from the env**: object names (the state's, else the entry, lowercased, deduplicated), VMD molecule ids
+  (never reused) and ChimeraX model ids (the lowest free) for every loaded structure, the named selections, the top
+  molecule, the viewer's selection, ChimeraX's atom styles.
 
 ## 5. Execution
 
@@ -128,10 +156,13 @@ order; the first failure stops. Selections are evaluated when their command runs
   it covers the whole component, which a warning says; transparency and size → `representation.transparency` / `.size`;
   `remove` → `contents.visibility` per entity and chain (whole chains only); camera → `camera.frame` / `.orient` /
   `.reset` / `.zoom`, and `camera.set` computed from the camera for `center`, `turn` and `move`; measurements →
-  `measure.*` (one atom each, one structure); labels → `measure.label` per atom (at most 100); superposition →
-  `superpose.chains` (sequence), `.tm-align` (structure), `.atoms` (PyMOL's `pair_fit`: Mol* pairs atoms in structure
-  order, so pairs given out of that order fail); canvas → `canvas.background` / `.camera` / `.lighting`; frames →
-  `trajectory.*`; images → `export.image`; reads computed from the atoms.
+  `measure.*` (one atom each, one structure; one selection of exactly the measure's atoms, in the structure's order:
+  ChimeraX's `distance sel`); labels → `measure.label` per atom, or per residue at the residue (ChimeraX's; at most
+  100); transparency of some representations → `representation.transparency`'s `types` (ChimeraX's surfaces); ChimeraX's
+  lighting → `canvas.lighting` (occlusion, shadow, outline, fog); superposition → `superpose.chains` (sequence),
+  `.tm-align` (structure), `.atoms` (PyMOL's `pair_fit`: Mol* pairs atoms in structure order, so pairs given out of that
+  order fail); canvas → `canvas.background` / `.camera` / `.lighting`; frames → `trajectory.*`; images → `export.image`;
+  reads computed from the atoms.
 - **`undo` and `redo`** run alone, as the viewer's history (the menu's row calls `history.undo`); inside a script they
   would undo the script's own step, so `script.run` refuses them.
 
@@ -170,6 +201,16 @@ VMD's dialect loads with VMD's look: the preset `command-language-vmd-lines` (on
 colors), registered through the extension's plugin parts, so the usual `mol delrep 0 top; mol addrep top` scripts end as
 in VMD. It is in Prism's Preset menu for anyone. One palette (`colors.ts`) serves it and the commands.
 
+### 5.4 ChimeraX's atom styles
+
+ChimeraX draws a shown atom in its style (stick, ball, sphere), set by `style` and kept for atoms not shown yet. The
+session state keeps the `style` commands' selections (fixed to the objects there were; oldest first, at most 16; a style
+of every atom starts the list again, stick of every atom empties it): an atom's style is the last one covering it, else
+stick. `show … atoms` shows each style's atoms in it and in no other atom style (Mol\*'s sticks, ball-and-stick,
+spacefill, lines: `display` per style, optional, after a `require`); `style X S` restyles the atoms of X shown now in
+any atom style, and records S. Cartoons and surfaces are the PyMOL host's types (§5.2); `transparency` changes surfaces
+unless its target says otherwise, as ChimeraX.
+
 ## 6. Undo and failure
 
 - One submission is one step: Undo (⌘Z, History) takes the whole submission back. Camera changes are view state, as
@@ -189,19 +230,21 @@ operation's failure, with its hint).
 
 `complete(text, dialect, env)`: the command word; then by the argument's kind (representations, colors, settings, enums,
 files, molecules); in a selection the dialect's keywords, properties and operators (query-language's lists), the
-session's names and objects, and after `chain` / `resn` the structures' chains and ligands. Items say what they are (a
-kind, a detail; a named color its `rgb`). A completion edits the line (`applyCompletion`); a PyMOL argument with more
+session's names and objects, and after `chain` / `resn` the structures' chains and ligands. In a ChimeraX spec: by the
+symbol the word ends in (`#` model ids, `/` chains, `:` ligands, `@` atom names, `@@` `::` `//` attributes), else `sel`,
+the names and the selectors; after a keyword its values; else the command's words and keywords. Items say what they are
+(a kind, a detail; a named color its `rgb`). A completion edits the line (`applyCompletion`); a PyMOL argument with more
 after it (not a selection, not the last) comes with its `, `, so the next one's completions follow at once. Once the
 command's name is typed, `signature` is its usage with the argument being typed (`active`). Help prints the tables'
 lines.
 
 ## 9. Prism integration
 
-- **Prefixes** (`commandPrefixes`): `pymol `, `vmd `, and `!` for the default dialect. A line's rows: what it will do
-  (`describeCommand`, with warnings) or the first error and its hint (the row keeps the menu open), then completions,
-  first while a word is being typed. Enter on the Run row runs `script.run` as the person; the menu has closed: the
-  viewer says a person's run on the status line (what it did and printed, or why it failed), and the row posts the
-  warnings, which the viewer does not say (`CommandPrefixContext.post`).
+- **Prefixes** (`commandPrefixes`): `pymol `, `vmd `, `chimerax `, and `!` for the default dialect. A line's rows: what
+  it will do (`describeCommand`, with warnings) or the first error and its hint (the row keeps the menu open), then
+  completions, first while a word is being typed. Enter on the Run row runs `script.run` as the person; the menu has
+  closed: the viewer says a person's run on the status line (what it did and printed, or why it failed), and the row
+  posts the warnings, which the viewer does not say (`CommandPrefixContext.post`).
 - **The default dialect** is chosen in `!`'s own rows ("Read ! as PyMOL") and kept in the person's preferences
   (`command-language.dialect`); without preferences it lasts for the session, per viewer. Why there: the extension's
   settings group is not shown by Prism, and the choice belongs where it is used.
@@ -215,38 +258,41 @@ lines.
   takes the whole run back. Files cannot be given by the agent (`files` is hidden), so neither can included scripts.
 - **The console** (`console-model.ts`, DOM-free; `console.tsx` and its CSS module, its own chunk through
   `ViewerExtension.ui`): a foot tab between History and the Assistant (the other panel one types into), named "PyMOL /
-  VMD console" on the rail (what it is, where "Console" alone could be a log) and "Console" in its header (the dialect
-  switch is under it). A transcript of runs, each a status mark (running, done, failed), its dialect, the command and
-  what it said: what it did, what reads printed (in a well), warnings and errors with their hints; its time; Edit puts a
-  typed line back in the input, in its dialect. Empty, it says what it is and offers example lines of the dialect. The
-  dialect is two pressed buttons, as the Log's filters; a line's `pymol ` / `vmd ` first word overrides it. The
-  composer: the input (Enter runs, ⇧Enter a new line, ↑/↓ the history at its first and last line, Tab the first
-  completion), a Run button, and one line under it, of one height whatever it says (what Enter will do and its warnings,
-  or the first error and its hint, the hint left to the card while it shows the usage; `inspect`, the whole in the tip),
-  so the composer never changes height as one types. A card over the transcript while a command is typed (from its name
-  until the line runs, so it does not come and go between arguments): its help as the header (the usage with the
-  argument being typed in bold, then what it does, the whole of it), and the completions of the word at the input's end
-  under it when there are any (`assist`); idle, there is no card and the composer is one line high. The textarea says
-  `aria-autocomplete`, `aria-controls` and the row picked (a textarea takes no combobox role). With the caret at the
-  end: ↑/↓ pick, Tab or Enter take the one picked, Tab the first when none is, Enter with none picked runs; Esc closes
-  the card until the next keystroke; a row picked is none again whenever the rows change; a line recalled from the
-  history comes without its card, so ↑/↓ go on through the history; ⌘I (Ctrl+I) asks for the list: every command on the
-  empty input, the card again after Esc; Tab on the empty input moves the focus on, as anywhere. A row is its kind or a
-  color's swatch, the label with the part typed marked, and the detail, left out when every row has the same one. The
-  tab's icon is `terminal` (`>_`). Every error of a submission shows at once, before anything runs; `undo` / `redo`
-  alone are the viewer's history; submissions run one after another. **Import** (and dropping on the tab, an overlay
-  saying where): scripts with the files they load, the ones no other includes run (`rootScripts`), each whole in the
-  dialect its extension says; files without a script are loaded as the line that loads them (`load 1cbs.cif`,
-  `mol new 1cbs.cif`), shown in the transcript. A log, not live (the viewer says each run). The tab fills the panel: the
-  transcript scrolls, the bar and the composer stay, and the newest is always in view (each entry observes its own size,
-  as it renders its outcome on its own, and the box its; one scroll a frame, `frames`). The history of lines is kept
-  with the preferences (`command-language.history`, the last 200).
+  VMD / ChimeraX console" on the rail (what it is, where "Console" alone could be a log) and "Console" in its header
+  (the dialect switch is under it). A transcript of runs, each a status mark (running, done, failed), its dialect, the
+  command and what it said: what it did, what reads printed (in a well), warnings and errors with their hints; its time;
+  Edit puts a typed line back in the input, in its dialect. Empty, it says what it is and offers example lines of the
+  dialect. The dialect is three pressed buttons, as the Log's filters; a line's `pymol ` / `vmd ` / `chimerax ` first
+  word overrides it. The composer: the input (Enter runs, ⇧Enter a new line, ↑/↓ the history at its first and last line,
+  Tab the first completion), a Run button, and one line under it, of one height whatever it says (what Enter will do and
+  its warnings, or the first error and its hint, the hint left to the card while it shows the usage; `inspect`, the
+  whole in the tip), so the composer never changes height as one types. A card over the transcript while a command is
+  typed (from its name until the line runs, so it does not come and go between arguments): its help as the header (the
+  usage with the argument being typed in bold, then what it does, the whole of it), and the completions of the word at
+  the input's end under it when there are any (`assist`); idle, there is no card and the composer is one line high. The
+  textarea says `aria-autocomplete`, `aria-controls` and the row picked (a textarea takes no combobox role). With the
+  caret at the end: ↑/↓ pick, Tab or Enter take the one picked, Tab the first when none is, Enter with none picked runs;
+  Esc closes the card until the next keystroke; a row picked is none again whenever the rows change; a line recalled
+  from the history comes without its card, so ↑/↓ go on through the history; ⌘I (Ctrl+I) asks for the list: every
+  command on the empty input, the card again after Esc; Tab on the empty input moves the focus on, as anywhere. A row is
+  its kind or a color's swatch, the label with the part typed marked, and the detail, left out when every row has the
+  same one. The tab's icon is `terminal` (`>_`). Every error of a submission shows at once, before anything runs; `undo`
+  / `redo` alone are the viewer's history; submissions run one after another. **Import** (and dropping on the tab, an
+  overlay saying where): scripts with the files they load, the ones no other includes run (`rootScripts`), each whole in
+  the dialect its extension says; files without a script are loaded as the line that loads them (`load 1cbs.cif`,
+  `mol new 1cbs.cif`, `open 1cbs.cif`), shown in the transcript. A log, not live (the viewer says each run). The tab
+  fills the panel: the transcript scrolls, the bar and the composer stay, and the newest is always in view (each entry
+  observes its own size, as it renders its outcome on its own, and the box its; one scroll a frame, `frames`). The
+  history of lines is kept with the preferences (`command-language.history`, the last 200).
 
 ## 10. Tests
 
 Quick lane: `src/language/_test` (tokenizers, every table example, every unsupported command, diagnostics, names and
-objects, completion) and `src/prism-viewer/_test` (a headless viewer with 1CBS given as a file: show/hide/as on the
-tree, Undo of a submission, rollback, names, measurements with a stand-in canvas, VMD reps and handles, the menu's rows,
-the console's model and its view under jsdom, and the example scripts, `src/examples.ts`, each imported with its
-structures and replayed: no error, no warning but the ones it lists as known; the lines that need a canvas are left out
-headless). No network. The stories (`apps/prism-viewer`, "PyMOL and VMD commands") replay the same scripts in full.
+objects, completion; ChimeraX's abbreviations as ChimeraX resolves them, its keywords' case, its colors) and
+`src/prism-viewer/_test` (a headless viewer with 1CBS given as a file: show/hide/as on the tree, Undo of a submission,
+rollback, names, measurements with a stand-in canvas, VMD reps and handles, the menu's rows, the console's model and its
+view under jsdom, and the example scripts, `src/examples.ts`, each imported with its structures and replayed: no error,
+no warning but the ones it lists as known; the lines that need a canvas are left out headless). ChimeraX's atom specs
+are checked against ChimeraX itself: Mol\*'s atom counts against ChimeraX 1.10's on 1CBS and 1TUP
+(`model/src/script/_test/chimerax-oracle.*`, recorded by hand with ChimeraX). No network. The stories
+(`apps/prism-viewer`, "PyMOL and VMD commands") replay the same scripts in full.
