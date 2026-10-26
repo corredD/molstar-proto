@@ -32,7 +32,7 @@ import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/s
 import type { Subscription } from 'rxjs';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { editInline } from './inline-edit.js';
-import { distancePicker } from './measure.js';
+import { distancePicker, selectionModeHint } from './measure.js';
 import { clipItems, clippable, colorable, colorItems, nodeMenuItems, removable, removeObject } from './menu.js';
 import type { ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
@@ -81,14 +81,12 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   });
   // a distance by two ⌘/Ctrl+clicks in selection mode (_spec/ui.md §7); Esc, a plain click or leaving the mode lets
   // its first point go
-  const picker = distancePicker(ctx.api, area, {
-    // a person's run is posted by the viewer already (its failures, its "already"): not twice
-    post: (text) => {
-      const notifications = ctx.managers.notifications;
-      if (notifications.current.value?.text !== text) notifications.post(text);
-    },
-    reveal: model.reveal,
-  });
+  // a person's run is posted by the viewer already (its failures, its "already"): not twice
+  const post = (text: string) => {
+    const notifications = ctx.managers.notifications;
+    if (notifications.current.value?.text !== text) notifications.post(text);
+  };
+  const picker = distancePicker(ctx.api, area, { post, reveal: model.reveal });
   area.escaped.subscribe(() => picker.cancel());
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
   area.setOnClick((click) => {
@@ -98,6 +96,8 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       void picker.click(labelPicked(click.x, click.y) ? { ...click, loci: EmptyLoci } : click);
       return;
     }
+    // outside it nothing measures: said, and the click picks its row as any other
+    if (click.measure) post(selectionModeHint(area.mac));
     picker.cancel();
     const p = labelPicked(click.x, click.y) ?? area.pickedOf(click.loci);
     if (p) model.reveal(p);
