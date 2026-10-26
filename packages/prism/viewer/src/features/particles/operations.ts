@@ -34,7 +34,12 @@ import { seekWhileViewing } from '../../sources/trajectory.js';
 import { nodesFor, updateEach } from '../../api/nodes.js';
 import { entryRoot, isFailure, namesOf, pickOne } from '../../api/scope.js';
 import { commitRepresentation, setRepresentation } from '../../api/set-representation.js';
-import { type ParticleCutPatch, type ParticleLayerPatch, patchParticleLook } from '../../sources/particles/look.js';
+import {
+  copyParticleLayers,
+  type ParticleCutPatch,
+  type ParticleLayerPatch,
+  patchParticleLook,
+} from '../../sources/particles/look.js';
 
 // `particles` (api.md §2): the particle lists in the scene (`get`), their representations (desired
 // state, like `representation.set`), visibility and removal. It follows `volume`: a `particles` names a list by label
@@ -124,15 +129,15 @@ export class ParticlesApi extends ApiArea {
         themes: ctx.plugin.representation.particles.themes,
         data,
         existing: l.representations,
-        create: (provider) =>
-          commitRepresentation(
-            ctx,
-            ctx.plugin.state.data
-              .build()
-              .to(l.cell)
-              .apply(ParticlesRepresentation3D, representationParams(ctx.plugin, data!, type, params ?? {})),
-            `Could not show ${name} as ${provider.label}`,
-          ),
+        create: (provider) => {
+          const b = ctx.plugin.state.data.build();
+          const made = b
+            .to(l.cell)
+            .apply(ParticlesRepresentation3D, representationParams(ctx.plugin, data!, type, params ?? {}));
+          // the list's looks are on each of its representations: the new one takes another's layers
+          if (l.representations.length) copyParticleLayers(b, l.representations[0].cell.transform.ref, made.ref);
+          return commitRepresentation(ctx, made, `Could not show ${name} as ${provider.label}`);
+        },
       });
     },
   });

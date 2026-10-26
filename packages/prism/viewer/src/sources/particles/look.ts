@@ -163,3 +163,21 @@ export function patchParticleLook(b: StateBuilder.Root, reprRef: string, patch: 
   else b.to(reprRef).apply(ParticleRepresentation3DLayers, params as never);
   return true;
 }
+
+/**
+ * The layers of the representation `fromRef` on the representation `toRef` too, in `b` (a list's looks are on each of
+ * its representations); not its cuts, whose clip objects are its own, nor the targets it leaves out
+ */
+export function copyParticleLayers(b: StateBuilder.Root, fromRef: string, toRef: string): boolean {
+  const ref = particleLookCell(b, fromRef);
+  const layers = (ref ? b.currentTree.transforms.get(ref).params?.layers : undefined) as
+    | readonly ParticleLayerProps[]
+    | undefined;
+  if (!layers?.length) return false;
+  return patchParticleLook(b, toRef, {
+    layers: layers.map(({ entities, compartments, targets, ...look }) => ({
+      selector: { entities, compartments, targets },
+      ...look,
+    })),
+  });
+}

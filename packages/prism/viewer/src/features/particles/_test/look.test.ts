@@ -131,6 +131,18 @@ describe('particles.look', () => {
     expect(looks(v).size).toBe(0);
   });
 
+  it("gives a representation added to a list the list's layers (not its cuts, nor its hidden targets)", async () => {
+    const v = await create();
+    const run = (p: object) => v.api.run('particles.look', p);
+    expectOk(await run({ layers: [{ selector: { targets: [1] }, color: red }], hidden: [2] }));
+    expectOk(await v.api.particles!.representation({ type: 'orientation' }));
+    const [, added] = list(v).representations.map((r) => r.cell.transform.ref);
+    expect(looks(v).get(added)).toMatchObject({ layers: [{ targets: [1], color: red }], hidden: [], cuts: [] });
+    // one step: undone with the representation
+    expectOk(await v.api.run('history.undo', {}));
+    expect(list(v).representations).toHaveLength(1);
+  });
+
   it('writes one representation by node', async () => {
     const v = await create();
     expectOk(await v.api.particles!.representation({ type: 'orientation' }));
