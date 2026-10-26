@@ -2,9 +2,11 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { compileScript } from '@molstar/query-language/compile';
+import { parseAtomSpec } from '@molstar/query-language/transpilers/chimerax/parser';
 import { MolScriptBuilder as B } from '@molstar/query-language/language/builder';
 import type { Expression } from '@molstar/query-language/language/expression';
 import { fail, type Span } from './diagnostics.js';
@@ -102,6 +104,107 @@ export function vmdSelection(text: string, object: string, at: Span): Sel {
     ],
   };
 }
+
+/** A ChimeraX atom spec read from the start of a command's arguments, with where it ends and its pieces. */
+export interface ChimeraxSpec {
+  readonly sel: Sel;
+  /** Where the spec ends in the text given (the rest is the command's). */
+  readonly end: number;
+  /** A spec of models side by side (`:12@CA :14@CA`): each piece, in the order written. */
+  readonly pieces?: readonly Sel[];
+}
+
+/**
+ * A ChimeraX atom spec at the start of `text` (_spec §4.3): compiled once per object, its model id deciding the model
+ * terms (`#1`, `#2-3`), and once for `others` (no model id: a model term selects nothing there), so each part is plain
+ * MolQL on one structure. Named selections and `sel` are the env's names, inlined. An object whose part is the same as
+ * `others` gets none. Throws the transpiler's message as a `selection` (or `no-name`) diagnostic at `at`.
+ */
+export function chimeraxSpec(text: string, state: CompileState, at: Span): ChimeraxSpec {
+  const resolveFor = (scope: Scope) => (name: string) => {
+    // `sel`: the selection (the viewer's, as the commands before leave it); a built-in name, never a user's.
+    if (name === 'sel') return state.selection ? partFor(state.selection, scope) : Empty;
+    const named = state.name(name);
+    return named ? partFor(named.sel, scope) : undefined;
+  };
+  const read = (scope: Scope, model: number | undefined) => {
+    try {
+      return parseAtomSpec(text, { modelId: model === undefined ? [] : [model], resolveName: resolveFor(scope) });
+    } catch (e) {
+      const m = messageOf(e);
+      const unknown = m.match(/^"([^"]*)" is not a selector name/);
+      if (unknown) {
+        const names = [...state.names.keys()];
+        return fail(
+          'no-name',
+          `'${unknown[1]}' is not an atom spec, a selector or a name.`,
+          at,
+          names.length ? `Names: ${names.join(', ')}.` : 'Atom specs: #1/A:12-20@CA, protein, ligand, sel.',
+        );
+      }
+      return fail('selection', `'${text.trim().split(/\s/)[0]}' does not read as a ChimeraX atom spec: ${m}`, at);
+    }
+  };
+  const others = read('others', undefined);
+  const source = text.slice(0, others.end).trim();
+  const own = state.objects
+    .filter((o) => o.model !== undefined)
+    .map((o) => ({ object: o.name, read: read({ object: o.name }, o.model) }));
+  const same = (a: Expression, b: Expression) => JSON.stringify(a) === JSON.stringify(b);
+  const selOf = (pick: (r: ReturnType<typeof read>) => Expression, label: string): Sel => ({
+    text: label,
+    dialect: 'chimerax',
+    parts: [
+      ...own
+        .filter((o) => !same(pick(o.read), pick(others)))
+        .map((o): SelPart => ({ scope: { object: o.object }, molql: pick(o.read) })),
+      { scope: 'others', molql: pick(others) },
+    ],
+  });
+  const sel = selOf((r) => r.expression, source);
+  const n = others.pieces?.length ?? 0;
+  const pieces =
+    n > 1 && own.every((o) => o.read.pieces?.length === n)
+      ? Array.from({ length: n }, (_, i) => selOf((r) => r.pieces![i], `${source} (atom ${i + 1})`))
+      : undefined;
+  return { sel, end: others.end, ...(pieces ? { pieces } : {}) };
+}
+
+type SelOp = (a: Expression, b: Expression) => Expression;
+
+/** Two selections combined per scope: each object either names, and `others`. */
+function combine(a: Sel, b: Sel, op: SelOp, text: string): Sel {
+  const objects: string[] = [];
+  for (const s of [a, b]) {
+    for (const p of s.parts) {
+      if (p.scope !== 'others' && !objects.some((o) => sameObject(o, (p.scope as { object: string }).object))) {
+        objects.push(p.scope.object);
+      }
+    }
+  }
+  return {
+    text,
+    dialect: a.dialect,
+    parts: [
+      ...objects.map(
+        (object): SelPart => ({ scope: { object }, molql: op(partFor(a, { object }), partFor(b, { object })) }),
+      ),
+      { scope: 'others', molql: op(partFor(a, 'others'), partFor(b, 'others')) },
+    ],
+  };
+}
+
+/** The atoms of both selections. */
+export const selAnd = (a: Sel, b: Sel, text = `(${a.text}) & (${b.text})`) =>
+  combine(a, b, (x, y) => B.struct.modifier.intersectBy({ 0: x, by: y }), text);
+
+/** The atoms of either selection. */
+export const selOr = (a: Sel, b: Sel, text = `${a.text} | ${b.text}`) =>
+  combine(a, b, (x, y) => B.struct.combinator.merge([x, y]), text);
+
+/** The atoms of the first selection that are not the second's. */
+export const selMinus = (a: Sel, b: Sel, text = `(${a.text}) & ~(${b.text})`) =>
+  combine(a, b, (x, y) => B.struct.modifier.exceptBy({ 0: x, by: y }), text);
 
 /**
  * A selection fixed to the objects there are now (a named selection when it is defined): each its part, and nothing

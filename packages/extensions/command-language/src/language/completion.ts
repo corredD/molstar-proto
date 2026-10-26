@@ -2,11 +2,18 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { attributes as ChimeraxAttributes } from '@molstar/query-language/transpilers/chimerax/attributes';
+import { selectors as ChimeraxSelectors } from '@molstar/query-language/transpilers/chimerax/selectors';
 import { all as PymolSymbols } from '@molstar/query-language/transpilers/pymol/symbols';
 import { all as VmdSymbols } from '@molstar/query-language/transpilers/vmd/symbols';
 import { PymolColorNames, pymolColor, VmdColorIds, vmdColor } from './colors.js';
+import { ChimeraxCommands, ChimeraxCommandsByName } from './chimerax/commands.js';
+import { ChimeraxColors } from './chimerax/colors.js';
+import { ChimeraxCommandOrder, ChimeraxSubcommandOrder, resolveWord } from './chimerax/names.js';
+import { splitChimerax, wordsOf } from './chimerax/tokenizer.js';
 import type { ScriptEnv } from './env.js';
 import type { Dialect } from './ir.js';
 import { PymolReps } from './pymol/args.js';
@@ -264,8 +271,156 @@ function vmdCompletion(text: string, env: ScriptEnv): Completion {
   };
 }
 
+/** ChimeraX's selectors and common elements, for a spec. */
+const ChimeraxSelectorItems: readonly CompletionItem[] = [
+  ...Object.entries(ChimeraxSelectors)
+    .filter(([, sel]) => sel.map)
+    .map(([label, sel]): CompletionItem => ({ label, insert: label, kind: 'keyword', detail: sel['@desc'] })),
+  ...['C', 'N', 'O', 'S', 'P', 'H', 'Zn', 'Fe', 'Mg', 'Ca', 'Na', 'Cl'].map(
+    (label): CompletionItem => ({ label, insert: label, kind: 'keyword', detail: 'element' }),
+  ),
+];
+
+const CommonAtomNames = ['CA', 'CB', 'C', 'N', 'O', 'P', "C1'", "C4'", 'OG', 'SG', 'NZ', 'OH'];
+
+/** In a ChimeraX spec: by the symbol the word starts with (`#` models, `/` chains, `:` ligands, `@` atoms). */
+function chimeraxSpecItems(word: string, env: ScriptEnv): CompletionItem[] {
+  const level = /(@@|::|\/\/|##|#|\/|:|@)([^#/:@]*)$/.exec(word);
+  if (level) {
+    const [, symbol] = level;
+    const prefix = word.slice(0, word.length - level[2].length);
+    const at = (labels: Iterable<string>, kind: CompletionItem['kind'], detail?: (l: string) => string) =>
+      [...labels].map(
+        (l): CompletionItem => ({
+          label: `${prefix}${l}`,
+          insert: `${prefix}${l}`,
+          kind,
+          ...(detail ? { detail: detail(l) } : {}),
+        }),
+      );
+    switch (symbol) {
+      case '#':
+        return env.objects
+          .filter((o) => o.model !== undefined)
+          .map(
+            (o): CompletionItem => ({
+              label: `${prefix}${o.model}`,
+              insert: `${prefix}${o.model}`,
+              kind: 'object',
+              detail: o.name,
+            }),
+          );
+      case '/':
+        return at(new Set(env.objects.flatMap((o) => o.chains ?? [])), 'text', () => 'chain');
+      case ':':
+        return at(new Set(env.objects.flatMap((o) => o.ligands ?? [])), 'text', () => 'ligand');
+      case '@':
+        return at(CommonAtomNames, 'text', () => 'atom');
+      case '@@':
+        return at(Object.keys(ChimeraxAttributes.atom), 'keyword', () => 'atom attribute');
+      case '::':
+        return at(Object.keys(ChimeraxAttributes.residue), 'keyword', () => 'residue attribute');
+      case '//':
+        return at(Object.keys(ChimeraxAttributes.chain), 'keyword', () => 'chain attribute');
+      default:
+        return [];
+    }
+  }
+  return [
+    { label: 'sel', insert: 'sel', kind: 'keyword', detail: 'the selection' },
+    ...items(env.names.keys(), 'name', 'name'),
+    ...ChimeraxSelectorItems,
+  ];
+}
+
+/** A ChimeraX value's items, by its kind (a color, an enum, true or false). */
+function chimeraxValueItems(kind: ArgKind, values: readonly string[] | undefined, env: ScriptEnv): CompletionItem[] {
+  if (kind === 'color') {
+    return [
+      ...(values ?? []).map((label): CompletionItem => ({ label, insert: label, kind: 'color', detail: 'coloring' })),
+      ...[...ChimeraxColors.entries()]
+        .filter(([name]) => !name.includes(' '))
+        .map(([label, rgb]): CompletionItem => ({ label, insert: label, kind: 'color', rgb })),
+    ];
+  }
+  if (kind === 'bool') return items(['true', 'false'], 'bool');
+  if (kind === 'file') return items(env.files, 'file');
+  return values ? items(values, kind) : [];
+}
+
+function chimeraxCompletion(text: string, env: ScriptEnv): Completion {
+  const { segments } = splitChimerax(text);
+  const seg = segments[segments.length - 1];
+  const atEnd = !!seg && seg.at.to === text.trimEnd().length && !/[;\n]\s*$/.test(text);
+  const words = atEnd ? wordsOf(text, seg.at.from, text.length) : [];
+  const open = atEnd && /\s$/.test(text);
+  const tops = [...new Set(ChimeraxCommands.map((c) => c.name.split(' ')[0]))];
+  // Typing the command's word.
+  if (!words.length || (words.length === 1 && !open)) {
+    const word = words[0]?.text ?? '';
+    const list = tops.map((f): CompletionItem => {
+      const own = ChimeraxCommandsByName.get(f);
+      return { label: f, insert: f, kind: 'command', ...(own ? { detail: own.summary } : {}) };
+    });
+    return { from: text.length - word.length, to: text.length, items: match(word, list) };
+  }
+  const top = resolveWord(words[0].text, ChimeraxCommandOrder) ?? words[0].text;
+  const subs = ChimeraxCommands.filter((c) => c.name.startsWith(`${top} `));
+  // Typing a subcommand (or the command's first argument: both are offered).
+  const typingSecond = words.length === 1 || (words.length === 2 && !open);
+  const sub =
+    words.length >= 2 && ChimeraxSubcommandOrder[top]
+      ? resolveWord(words[1].text, ChimeraxSubcommandOrder[top])
+      : undefined;
+  const command =
+    (sub && !typingSecond ? ChimeraxCommandsByName.get(`${top} ${sub}`) : undefined) ?? ChimeraxCommandsByName.get(top);
+  const subItems = typingSecond
+    ? subs.map(
+        (c): CompletionItem => ({
+          label: c.name.split(' ')[1],
+          insert: c.name.split(' ')[1],
+          kind: 'command',
+          detail: c.summary,
+        }),
+      )
+    : [];
+  if (!command) {
+    const word = typingSecond && words.length === 2 ? words[1].text : '';
+    return { from: text.length - word.length, to: text.length, items: match(word, subItems) };
+  }
+  const last = words[words.length - 1];
+  const word = open ? '' : last.text;
+  const prev = open ? last : words[words.length - 2];
+  const keywords = command.keywords ?? {};
+  // After a keyword: its value.
+  const kw = prev && Object.hasOwn(keywords, prev.text) ? keywords[prev.text] : undefined;
+  const params = command.params;
+  const signature = signatureOf(command, -1);
+  if (kw && prev !== words[0]) {
+    const found = match(word, chimeraxValueItems(kw.kind, kw.values, env));
+    return { from: text.length - word.length, to: text.length, items: found, signature };
+  }
+  // Else: a spec's part, the command's enum and color words, its keywords.
+  const takesSpec = params.some((p) => p.kind === 'selection');
+  const specWord = /^[#/:@~(]/.test(word) || /[#/:@]/.test(word);
+  const offered: CompletionItem[] = [
+    ...(takesSpec ? chimeraxSpecItems(word, env) : []),
+    ...(specWord
+      ? []
+      : params.flatMap((p) => (p.kind === 'selection' ? [] : chimeraxValueItems(p.kind, p.values, env)))),
+    ...(specWord
+      ? []
+      : Object.keys(keywords).map(
+          (k): CompletionItem => ({ label: k, insert: k, kind: 'keyword', detail: 'keyword' }),
+        )),
+    ...subItems,
+  ];
+  return { from: text.length - word.length, to: text.length, items: match(word, offered), signature };
+}
+
 /** What may come at the end of `text` (a completion edits the text before the cursor). */
 export function complete(text: string, dialect: Dialect, env: ScriptEnv): Completion {
+  if (dialect === 'chimerax') return chimeraxCompletion(text, env);
   return dialect === 'pymol' ? pymolCompletion(text, env) : vmdCompletion(text, env);
 }
 

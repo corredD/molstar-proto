@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { DialectImpl } from './dialect.js';
@@ -9,6 +10,7 @@ import { type Diagnostic, error, positionOf, ScriptError, type Span } from './di
 import { type AtomSelectHandle, CompileState, createScriptSession, type ScriptEnv, type ScriptSession } from './env.js';
 import type { Command, Dialect } from './ir.js';
 import { DialectNames } from './ir.js';
+import { ChimeraxDialect } from './chimerax/dialect.js';
 import { PymolDialect } from './pymol/dialect.js';
 import { VmdDialect } from './vmd/dialect.js';
 
@@ -16,7 +18,11 @@ import { VmdDialect } from './vmd/dialect.js';
 // command's names visible to the next), and run nothing if anything did not read; then run the commands in order on
 // the host, stopping at the first failure. The host runs them as one step, so a failure is all or nothing (_spec §6).
 
-export const DialectImpls: Readonly<Record<Dialect, DialectImpl>> = { pymol: PymolDialect, vmd: VmdDialect };
+export const DialectImpls: Readonly<Record<Dialect, DialectImpl>> = {
+  pymol: PymolDialect,
+  vmd: VmdDialect,
+  chimerax: ChimeraxDialect,
+};
 
 /** What the host does with one command (`ScriptHost.execute`). */
 export type ExecResult =
@@ -258,11 +264,11 @@ export function rootScripts(scripts: ReadonlyMap<string, string>): string[] {
   return [...scripts.keys()].filter((k) => !included.has(k));
 }
 
-/** The dialect a line names by its first word (`pymol show …`, `vmd mol …`), and the rest. */
+/** The dialect a line names by its first word (`pymol show …`, `vmd mol …`, `chimerax show …`), and the rest. */
 export function dialectPrefix(
   text: string,
 ): { readonly dialect: Dialect; readonly rest: string; readonly offset: number } | undefined {
-  const m = text.match(/^\s*(pymol|vmd)(\s+|$)/i);
+  const m = text.match(/^\s*(pymol|vmd|chimerax)(\s+|$)/i);
   if (!m) return undefined;
   return { dialect: m[1].toLowerCase() as Dialect, rest: text.slice(m[0].length), offset: m[0].length };
 }
@@ -272,5 +278,6 @@ export function dialectOfFile(name: string): Dialect | undefined {
   const ext = name.toLowerCase().split('.').pop();
   if (ext === 'pml') return 'pymol';
   if (ext === 'tcl' || ext === 'vmd') return 'vmd';
+  if (ext === 'cxc') return 'chimerax';
   return undefined;
 }

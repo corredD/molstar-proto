@@ -2,10 +2,12 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Command, Sel, VmdRep } from './ir.js';
+import type { AtomStyle, Command, Sel, VmdRep } from './ir.js';
 import { VmdColorIds } from './colors.js';
+import { selMinus, selOr } from './selection.js';
 
 // What names mean (_spec §4.3, §5): the host's objects (structures) and the session's names, molecule ids and VMD's rep
 // defaults, read once a submission. The compiler works on a copy that each command it compiles updates, so a later
@@ -18,6 +20,8 @@ export interface ObjectInfo {
   readonly name: string;
   /** Its VMD molecule id. */
   readonly molecule: number;
+  /** Its ChimeraX model id (`#1`): given at load, the lowest free (ChimeraX reuses a closed model's id). */
+  readonly model?: number;
   /** For completion: its chains (author ids) and the residue names of its ligands. */
   readonly chains?: readonly string[];
   readonly ligands?: readonly string[];
@@ -38,6 +42,16 @@ export interface ScriptEnv {
   readonly files: readonly string[];
   /** The texts of the scripts among them, by name (what `@file.pml` and `source file.tcl` run). */
   readonly scripts?: ReadonlyMap<string, string>;
+  /** The viewer's selection now (ChimeraX's `sel`): each structure's selected atoms. */
+  readonly selection?: Sel;
+  /** ChimeraX's atom styles set with `style`, oldest first, the last one an atom is in winning; others: stick. */
+  readonly atomStyles?: readonly AtomStyleEntry[];
+}
+
+/** One `style` command's atoms (fixed to the objects there were) and their style. */
+export interface AtomStyleEntry {
+  readonly style: AtomStyle;
+  readonly sel: Sel;
 }
 
 /** VMD's defaults for a new rep: Lines, `all`, colored by Name (VMD's own). */
@@ -87,6 +101,9 @@ export class CompileState {
   readonly files: readonly string[];
   readonly scripts: ReadonlyMap<string, string>;
   readonly session: ScriptSession;
+  atomStyles: readonly AtomStyleEntry[];
+  /** The selection as the commands compiled so far leave it (`sel`); undefined: nothing selected. */
+  selection: Sel | undefined;
 
   constructor(env: ScriptEnv, session: ScriptSession = createScriptSession()) {
     this.objects = [...env.objects];
@@ -97,6 +114,21 @@ export class CompileState {
     this.files = env.files;
     this.scripts = env.scripts ?? new Map();
     this.session = session;
+    this.atomStyles = env.atomStyles ?? [];
+    this.selection = env.selection;
+  }
+
+  /** The ChimeraX model id the next opened structure takes: the lowest no object has, from 1. */
+  nextModel(): number {
+    const used = new Set(this.objects.map((o) => o.model));
+    let id = 1;
+    while (used.has(id)) id++;
+    return id;
+  }
+
+  /** An object by its ChimeraX model id. */
+  model(id: number): ObjectInfo | undefined {
+    return this.objects.find((o) => o.model === id);
   }
 
   /** An object by name, case-insensitive (PyMOL's names are). */
@@ -147,7 +179,10 @@ export class CompileState {
   apply(cmd: Command): void {
     switch (cmd.kind) {
       case 'load':
-        this.objects = [...this.objects, { name: cmd.name, molecule: cmd.molecule }];
+        this.objects = [
+          ...this.objects,
+          { name: cmd.name, molecule: cmd.molecule, ...(cmd.model !== undefined ? { model: cmd.model } : {}) },
+        ];
         this.nextMolecule = Math.max(this.nextMolecule, cmd.molecule + 1);
         if (cmd.look === 'vmd-lines') this.top = cmd.name;
         break;
@@ -170,8 +205,37 @@ export class CompileState {
       case 'rep.defaults':
         this.repDefaults = { ...this.repDefaults, ...cmd.patch };
         break;
+      case 'select':
+        this.selection =
+          cmd.mode === 'set' || !this.selection
+            ? cmd.mode === 'remove'
+              ? undefined
+              : cmd.sel
+            : cmd.mode === 'add'
+              ? selOr(this.selection, cmd.sel)
+              : selMinus(this.selection, cmd.sel);
+        break;
+      case 'select.clear':
+        this.selection = undefined;
+        break;
+      case 'atom-style':
+        this.atomStyles = nextAtomStyles(this.atomStyles, { style: cmd.style, sel: cmd.sel });
+        break;
     }
   }
+}
+
+/** Styles kept at most: past it, the oldest go (a long session's styles stay a few selections). */
+export const MaxAtomStyles = 16;
+
+/**
+ * The styles after a `style` command: a style of every atom (`style ball`) starts the list again, and stick on every
+ * atom (the default) empties it.
+ */
+export function nextAtomStyles(list: readonly AtomStyleEntry[], entry: AtomStyleEntry): readonly AtomStyleEntry[] {
+  if (entry.sel.text === 'all') return entry.style === 'sticks' ? [] : [entry];
+  const next = [...list, entry];
+  return next.length > MaxAtomStyles ? next.slice(next.length - MaxAtomStyles) : next;
 }
 
 /** VMD's ColorID names, for messages and completion. */

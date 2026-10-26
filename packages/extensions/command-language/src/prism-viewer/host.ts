@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
@@ -17,15 +18,17 @@ import {
   atomProperty,
   compactExpression,
   eachAtom,
+  eachResidue,
   geometryOf,
   labelText,
   positionOf,
   ReadableProperties,
   shapeOf,
 } from './atoms.js';
-import { cartoon, display } from './display.js';
+import { nextAtomStyles } from '../language/env.js';
+import { atomStyle, cartoon, display } from './display.js';
 import { HostFailure, Ops, type Where } from './ops.js';
-import { colorTheme, hex } from './reps.js';
+import { colorTheme, hex, MolstarReps } from './reps.js';
 import { envOf, type StateHolder } from './state.js';
 import { addRep, modifyRep, removeRep, showRep } from './vmd.js';
 
@@ -40,6 +43,8 @@ const MaxContacts = 50;
 const MaxContactChecks = 1_000_000;
 /** Values `$sel get` and reads print at most. */
 const MaxValues = 50;
+/** The atoms each measurement takes. */
+const MeasureAtoms = { distance: 2, angle: 3, dihedral: 4 } as const;
 
 export class PrismScriptHost implements ScriptHost {
   readonly #ops: Ops;
@@ -65,8 +70,8 @@ export class PrismScriptHost implements ScriptHost {
     const known = { ...s.objects };
     let changed = false;
     for (const o of objects) {
-      if (!known[o.ref]) {
-        known[o.ref] = { name: o.name, molecule: o.molecule };
+      if (!known[o.ref] || known[o.ref].model === undefined) {
+        known[o.ref] = { name: o.name, molecule: o.molecule, ...(o.model !== undefined ? { model: o.model } : {}) };
         changed = true;
       }
     }
@@ -142,6 +147,12 @@ export class PrismScriptHost implements ScriptHost {
         return display(ops, cmd);
       case 'cartoon':
         return cartoon(ops, cmd);
+      case 'atom-style': {
+        this.holder.update({
+          atomStyles: nextAtomStyles(this.holder.value.atomStyles ?? [], { style: cmd.style, sel: cmd.sel }),
+        });
+        return atomStyle(ops, cmd);
+      }
       case 'rep.add':
         return addRep(ops, cmd);
       case 'rep.remove':
@@ -163,13 +174,16 @@ export class PrismScriptHost implements ScriptHost {
         return { ok: true };
       case 'transparency': {
         const where = ops.some(cmd.sel);
+        // Some representations only (ChimeraX's surfaces): as Mol*'s types.
+        const types = cmd.reps ? [...new Set(cmd.reps.map((r) => MolstarReps[r].type))] : undefined;
         for (const w of where)
           await ops.run('representation.transparency', {
             target: target(cmd.sel, w),
             alpha: cmd.alpha,
+            ...(types ? { types } : {}),
             structure: w.ref,
           });
-        return `Made ${count(where)} atoms ${Math.round(cmd.alpha * 100)}% transparent.`;
+        return `Made ${count(where)} atoms${cmd.reps ? ` (${cmd.reps.join(', ')})` : ''} ${Math.round(cmd.alpha * 100)}% transparent.`;
       }
       case 'size': {
         const where = ops.some(cmd.sel);
@@ -294,6 +308,19 @@ export class PrismScriptHost implements ScriptHost {
         .map((o) => o.molecule),
     );
     let nextId = Math.max(this.holder.value.nextMolecule, cmd.molecule, ...[...usedIds].map((m) => m + 1));
+    // ChimeraX model ids: the compiler's when it is free, else the lowest free (as ChimeraX's `open`).
+    const usedModels = new Set(
+      ops
+        .objects()
+        .filter((o) => !made.some((s) => s.cell.transform.ref === o.ref))
+        .map((o) => o.model),
+    );
+    const freeModel = (wanted: number | undefined) => {
+      let id = wanted !== undefined && !usedModels.has(wanted) ? wanted : 1;
+      while (usedModels.has(id)) id++;
+      usedModels.add(id);
+      return id;
+    };
     made.forEach((s, i) => {
       const name = free(i === 0 ? cmd.name : `${cmd.name}_${i + 1}`);
       names.push(name);
@@ -301,7 +328,8 @@ export class PrismScriptHost implements ScriptHost {
       const molecule = usedIds.has(wanted) ? nextId++ : wanted;
       usedIds.add(molecule);
       nextId = Math.max(nextId, molecule + 1);
-      objects[s.cell.transform.ref] = { name, molecule };
+      const model = freeModel(cmd.model !== undefined ? cmd.model + i : undefined);
+      objects[s.cell.transform.ref] = { name, molecule, model };
     });
     this.holder.update({
       objects,
@@ -489,9 +517,27 @@ export class PrismScriptHost implements ScriptHost {
     return { ref, atoms };
   }
 
+  /** One selection of all a measurement's atoms (ChimeraX's `distance sel`): exactly n, in one structure. */
+  #atomsOfOne(sel: Sel, n: number): { ref: string; atoms: Where[] } {
+    const where = this.#ops.some(sel);
+    const total = count(where);
+    if (total !== n || where.length !== 1) {
+      throw new HostFailure(
+        `'${sel.text}' selects ${total} atoms${where.length > 1 ? ` in ${where.length} structures` : ''}: this measure takes ${n}, in one structure.`,
+        'Give the atoms one by one: distance :12@CA :14@CA.',
+      );
+    }
+    const w = where[0];
+    return {
+      ref: w.ref,
+      atoms: eachAtom(w.loci, n).map((a) => ({ ...w, loci: a.loci })),
+    };
+  }
+
   async #measure(cmd: Extract<Command, { kind: 'measure' }>): Promise<string> {
     if (cmd.cutoff !== undefined) return this.#contacts(cmd.atoms, cmd.cutoff);
-    const { ref, atoms } = this.#atoms(cmd.atoms);
+    const { ref, atoms } =
+      cmd.atoms.length === 1 ? this.#atomsOfOne(cmd.atoms[0], MeasureAtoms[cmd.measure]) : this.#atoms(cmd.atoms);
     const keys = ['a', 'b', 'c', 'd'];
     const values: Record<string, unknown> = { structure: ref };
     atoms.forEach((w, i) => {
@@ -542,6 +588,7 @@ export class PrismScriptHost implements ScriptHost {
   }
 
   async #label(cmd: Extract<Command, { kind: 'label' }>): Promise<string> {
+    if (cmd.per === 'residue') return this.#labelResidues(cmd);
     const where = this.#ops.some(cmd.sel);
     const total = count(where);
     if (total > MaxLabels) {
@@ -560,6 +607,30 @@ export class PrismScriptHost implements ScriptHost {
       }
     }
     return `Labelled ${total} atom${total === 1 ? '' : 's'}.`;
+  }
+
+  /** One label a residue, at the residue (ChimeraX's residue labels), its text from the residue's first atom. */
+  async #labelResidues(cmd: Extract<Command, { kind: 'label' }>): Promise<string> {
+    const where = this.#ops.some(cmd.sel);
+    let total = 0;
+    for (const w of where) {
+      const residues = eachResidue(w.loci, MaxLabels + 1);
+      total += residues.length;
+      if (total > MaxLabels) {
+        throw new HostFailure(
+          `'${cmd.sel.text}' has more than ${MaxLabels} residues: Mol* labels at most ${MaxLabels} at once.`,
+          'Narrow it: /A:40-60.',
+        );
+      }
+      for (const r of residues) {
+        await this.#ops.run('measure.label', {
+          a: { molql: compactExpression(r.loci) },
+          text: labelText(r.location, cmd.text),
+          structure: w.ref,
+        });
+      }
+    }
+    return `Labelled ${total} residue${total === 1 ? '' : 's'}.`;
   }
 
   async #clearMeasurements(kind: 'distance' | 'angle' | 'dihedral' | 'label', sel?: Sel): Promise<string> {
@@ -652,8 +723,12 @@ export class PrismScriptHost implements ScriptHost {
         ).did,
       );
     }
-    if (cmd.fog !== undefined)
-      did.push((await ops.run('canvas.lighting', { fog: cmd.fog ? { name: 'on', params: {} } : { name: 'off' } })).did);
+    const lights = (['fog', 'occlusion', 'shadow', 'outline'] as const).filter((k) => cmd[k] !== undefined);
+    if (lights.length) {
+      const values = Object.fromEntries(lights.map((k) => [k, cmd[k] ? { name: 'on', params: {} } : { name: 'off' }]));
+      const r = await ops.run('canvas.lighting', values);
+      did.push(r.did);
+    }
     return did.join(' ');
   }
 
@@ -675,7 +750,7 @@ export class PrismScriptHost implements ScriptHost {
         return (
           ops
             .objects()
-            .map((o) => `${o.molecule} ${o.name}`)
+            .map((o) => (read.ids === 'model' ? `#${o.model} ${o.name}` : `${o.molecule} ${o.name}`))
             .join('\n') || '(none)'
         );
       case 'view': {

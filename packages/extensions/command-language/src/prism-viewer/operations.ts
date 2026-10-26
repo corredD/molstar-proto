@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -27,7 +28,7 @@ declare module '@molstar/prism-viewer/api' {
   }
 }
 
-// The `script` area (_spec §5.1): `script.run` runs a submission of PyMOL or VMD commands as one step through the
+// The `script` area (_spec §5.1): `script.run` runs a submission of PyMOL, VMD or ChimeraX commands as one step through the
 // viewer's operations (its calls join its step: Undo takes it back whole, a failure rolls it back), and `script.names`
 // lists what names mean. The area keeps the session state (custom state) and a console session (Tcl variables).
 
@@ -35,6 +36,7 @@ export const DialectParam = () =>
   PD.Select<Dialect>('pymol', [
     ['pymol', DialectNames.pymol],
     ['vmd', DialectNames.vmd],
+    ['chimerax', DialectNames.chimerax],
   ]);
 
 /** What `script.run` gives back: what each command printed and said. */

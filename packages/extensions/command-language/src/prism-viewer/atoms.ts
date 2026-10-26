@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { OrderedSet } from '@molstar/core/data/int/ordered-set';
@@ -11,6 +12,7 @@ import {
   StructureElement,
   StructureProperties as P,
   StructureSelection,
+  Unit,
 } from '@molstar/model/model/structure';
 import { Script } from '@molstar/model/script/script';
 import { MolScriptBuilder as B } from '@molstar/query-language/language/builder';
@@ -131,6 +133,35 @@ export function eachAtom(l: Loci, max: number): { location: StructureElement.Loc
         location,
         loci: StructureElement.Loci(l.structure, [{ unit: e.unit, indices: OrderedSet.ofSingleton(index) }]),
       });
+    }
+  }
+  return out;
+}
+
+/** Each residue of a set (its atoms of the set), up to `max`: its first atom's location and its own loci. */
+export function eachResidue(l: Loci, max: number): { location: StructureElement.Location; loci: Loci }[] {
+  const out: { location: StructureElement.Location; loci: Loci }[] = [];
+  for (const e of l.elements) {
+    const residueIndex = Unit.isAtomic(e.unit) ? e.unit.residueIndex : undefined;
+    let start = 0;
+    const n = OrderedSet.size(e.indices);
+    for (let i = 1; i <= n && out.length < max; i++) {
+      // A run of atoms of one residue ends where the residue changes (coarse units: each element is its own).
+      const same =
+        i < n &&
+        residueIndex !== undefined &&
+        residueIndex[e.unit.elements[OrderedSet.getAt(e.indices, i)]] ===
+          residueIndex[e.unit.elements[OrderedSet.getAt(e.indices, start)]];
+      if (same) continue;
+      const indices = OrderedSet.ofSortedArray(
+        Array.from({ length: i - start }, (_, k) => OrderedSet.getAt(e.indices, start + k)),
+      ) as typeof e.indices;
+      const first = OrderedSet.getAt(e.indices, start);
+      out.push({
+        location: StructureElement.Location.create(l.structure, e.unit, e.unit.elements[first]),
+        loci: StructureElement.Loci(l.structure, [{ unit: e.unit, indices }]),
+      });
+      start = i;
     }
   }
   return out;

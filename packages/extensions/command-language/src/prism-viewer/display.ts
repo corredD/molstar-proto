@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { StructureElement } from '@molstar/model/model/structure';
@@ -148,7 +149,9 @@ function typesShown(shown: readonly Shown[]): RepType[] {
 
 /** `show`, `hide`, `as`: per structure the selection selects atoms in. */
 export async function display(ops: Ops, cmd: Extract<Command, { kind: 'display' }>): Promise<string> {
-  const where = cmd.mode === 'hide' ? ops.where(cmd.sel) : ops.some(cmd.sel);
+  // One of several (ChimeraX's atoms by style): selecting nothing is no failure.
+  const where = cmd.mode === 'hide' || cmd.optional ? ops.where(cmd.sel) : ops.some(cmd.sel);
+  if (cmd.optional && !where.length) return '';
   let atoms = 0;
   for (const w of where) {
     const shown = shownOf(ops, w.structure);
@@ -199,4 +202,31 @@ export async function cartoon(ops: Ops, cmd: Extract<Command, { kind: 'cartoon' 
   }
   if (!atoms) return `Nothing in '${cmd.sel.text}' is shown as a cartoon: show it first (show cartoon, …).`;
   return `Drew the cartoon of ${atoms} atoms as ${to}.`;
+}
+
+/** ChimeraX's atom styles: what draws atoms (not polymers, not surfaces). */
+const AtomTypes: readonly RepType[] = ['sticks', 'ball-and-stick', 'spheres', 'lines'];
+
+/**
+ * ChimeraX's `style` (_spec §5.4): the atoms of the selection shown now in any atom style are drawn in the new one
+ * (in no other atom style); atoms not shown keep the style for when they are (the state's `atomStyles`).
+ */
+export async function atomStyle(ops: Ops, cmd: Extract<Command, { kind: 'atom-style' }>): Promise<string> {
+  let atoms = 0;
+  for (const w of ops.where(cmd.sel)) {
+    const shown = shownOf(ops, w.structure);
+    const drawn = union(
+      shown.filter((x) => AtomTypes.some((t) => x.types.includes(t))).map((x) => x.loci),
+      w.data,
+    );
+    const y = StructureElement.Loci.intersect(drawn, w.loci);
+    if (!atomCount(y)) continue;
+    for (const t of AtomTypes) if (t !== cmd.style) await hideType(ops, w, t, y);
+    await addOwn(ops, w, shownOf(ops, w.structure), cmd.style, y);
+    atoms += atomCount(y);
+  }
+  const word = cmd.style === 'sticks' ? 'sticks' : cmd.style === 'ball-and-stick' ? 'balls' : 'spheres';
+  return atoms
+    ? `Drew ${atoms} atom${atoms === 1 ? '' : 's'} as ${word}.`
+    : `The atoms of '${cmd.sel.text}' are drawn as ${word} when shown.`;
 }

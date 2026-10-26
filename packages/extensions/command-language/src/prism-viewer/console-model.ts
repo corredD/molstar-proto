@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { ReadonlyState } from '@molstar/prism-ui/core';
@@ -93,10 +94,20 @@ export const ConsoleExamples: Readonly<Record<Dialect, readonly string[]>> = {
     '$sel num',
     'help',
   ],
+  chimerax: [
+    'open 1cbs',
+    'hide; cartoon',
+    'show ligand :<5 atoms',
+    'style ligand ball',
+    'color /A cornflower blue; color byhetero',
+    'color bfactor palette bluered',
+    'view ligand',
+    'help',
+  ],
 };
 
 /** The script files a console runs, by extension; the other files are what they load. */
-export const ScriptExtensions = ['pml', 'tcl', 'vmd'];
+export const ScriptExtensions = ['pml', 'tcl', 'vmd', 'cxc'];
 
 export class ConsoleModel {
   readonly #dialect = observableState<Dialect>('pymol');
@@ -193,9 +204,7 @@ export class ConsoleModel {
     if (!scripts.length) {
       const dialect = this.#dialect.value;
       const quoted = (name: string) => (/[\s,;"'{}]/.test(name) ? `"${name.replace(/"/g, '')}"` : name);
-      const text = files
-        .map((f) => (dialect === 'pymol' ? `load ${quoted(f.name)}` : `mol new ${quoted(f.name)}`))
-        .join('\n');
+      const text = files.map((f) => `${LoadWord[dialect]} ${quoted(f.name)}`).join('\n');
       await this.#enqueue(() => this.#run(dialect, text, text, files));
       return;
     }
@@ -360,9 +369,18 @@ export class ConsoleModel {
 
   /** What the input says it reads, for its placeholder. */
   placeholder(d: Dialect): string {
-    return d === 'pymol' ? 'A PyMOL command: show sticks, resn REA' : 'A VMD command: mol addrep top';
+    return Placeholders[d];
   }
 }
+
+/** The command that loads a file given, per dialect. */
+const LoadWord: Readonly<Record<Dialect, string>> = { pymol: 'load', vmd: 'mol new', chimerax: 'open' };
+
+const Placeholders: Readonly<Record<Dialect, string>> = {
+  pymol: 'A PyMOL command: show sticks, resn REA',
+  vmd: 'A VMD command: mol addrep top',
+  chimerax: 'A ChimeraX command: show ligand :<5 atoms',
+};
 
 function readHistory(preferences: PrismStore | undefined): string[] {
   try {

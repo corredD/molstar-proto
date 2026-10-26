@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { ColorSpec, Command, RepType, Sel } from './ir.js';
@@ -44,6 +45,8 @@ export function describeCommand(c: Command): string {
         : `Show ${sel(c.sel)} as ${c.mode === 'only' ? 'only ' : ''}${reps(c.reps)}`;
     case 'cartoon':
       return `Draw the cartoon of ${sel(c.sel)} as ${c.style}`;
+    case 'atom-style':
+      return `Draw the atoms of ${sel(c.sel)} as ${c.style}`;
     case 'rep.add':
       return `Add a ${c.rep.style} rep of '${c.rep.selection}' to ${c.object}, colored ${color(c.rep.color)}`;
     case 'rep.modify':
@@ -79,7 +82,7 @@ export function describeCommand(c: Command): string {
     case 'measure.clear':
       return `Remove the ${c.measure} measurements`;
     case 'label':
-      return `Label ${sel(c.sel)}`;
+      return `Label ${c.per === 'residue' ? 'the residues of ' : ''}${sel(c.sel)}`;
     case 'label.clear':
       return c.sel ? `Remove the labels of ${sel(c.sel)}` : 'Remove the labels';
     case 'superpose':
@@ -90,6 +93,9 @@ export function describeCommand(c: Command): string {
         c.projection ? `${c.projection} projection` : '',
         c.fov !== undefined ? `field of view ${c.fov}°` : '',
         c.fog !== undefined ? `fog ${c.fog ? 'on' : 'off'}` : '',
+        c.occlusion !== undefined ? `ambient occlusion ${c.occlusion ? 'on' : 'off'}` : '',
+        c.shadow !== undefined ? `shadows ${c.shadow ? 'on' : 'off'}` : '',
+        c.outline !== undefined ? `outlines ${c.outline ? 'on' : 'off'}` : '',
       ].filter(Boolean);
       return `Set the ${parts.join(', ')}`;
     }

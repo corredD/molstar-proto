@@ -2,20 +2,21 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Expression } from '@molstar/query-language/language/expression';
 import type { Span } from './diagnostics.js';
 
-// The command IR (_spec §4): what to do in Mol* terms, whoever typed it. Both dialects compile to it; the host runs it.
+// The command IR (_spec §4): what to do in Mol* terms, whoever typed it. Every dialect compiles to it; the host runs it.
 // JSON-safe (selections are MolQL), so a run can be recorded and replayed without a parser. One person's command may
 // be several of these (`as` is a hide and a show), never the reverse.
 
-export type Dialect = 'pymol' | 'vmd';
+export type Dialect = 'pymol' | 'vmd' | 'chimerax';
 
-export const Dialects: readonly Dialect[] = ['pymol', 'vmd'];
+export const Dialects: readonly Dialect[] = ['pymol', 'vmd', 'chimerax'];
 
-export const DialectNames: Readonly<Record<Dialect, string>> = { pymol: 'PyMOL', vmd: 'VMD' };
+export const DialectNames: Readonly<Record<Dialect, string>> = { pymol: 'PyMOL', vmd: 'VMD', chimerax: 'ChimeraX' };
 
 /** One part of a selection: MolQL evaluated on one structure (_spec §4.3). */
 export interface SelPart {
@@ -84,6 +85,11 @@ export interface VmdRep {
   readonly material: 'opaque' | 'transparent';
 }
 
+/** ChimeraX's atom styles, as the IR's representations: stick, ball, sphere. */
+export type AtomStyle = 'sticks' | 'ball-and-stick' | 'spheres';
+
+export const AtomStyles: readonly AtomStyle[] = ['sticks', 'ball-and-stick', 'spheres'];
+
 export type LoadSource =
   | { readonly entry: { readonly db: 'pdb' | 'afdb'; readonly id: string } }
   | { readonly url: string }
@@ -98,7 +104,8 @@ export type LabelPart =
 export type Read =
   | { readonly kind: 'count'; readonly sel: Sel }
   | { readonly kind: 'names' }
-  | { readonly kind: 'objects' }
+  /** `ids: 'model'`: listed by ChimeraX model id (`#1 1cbs`); else by VMD molecule id. */
+  | { readonly kind: 'objects'; readonly ids?: 'model' }
   | { readonly kind: 'view' }
   | { readonly kind: 'values'; readonly sel: Sel; readonly properties: readonly string[] }
   | {
@@ -113,8 +120,10 @@ export type CommandBody =
       readonly from: LoadSource;
       /** The object's name (`fetch 1cbs` → `1cbs`), given or made from the source. */
       readonly name: string;
-      /** Its VMD molecule id: the next one (ids are never reused, as in VMD), in either dialect. */
+      /** Its VMD molecule id: the next one (ids are never reused, as in VMD), in any dialect. */
       readonly molecule: number;
+      /** Its ChimeraX model id (`#1`), when the compiler gave one: the lowest free, as ChimeraX's `open` (_spec §4.3). */
+      readonly model?: number;
       readonly format?: string;
       /** VMD's dialect loads with VMD's look (one Lines rep), PyMOL's with Mol*'s preset (_spec §5.3). */
       readonly look: 'default' | 'vmd-lines';
@@ -137,7 +146,14 @@ export type CommandBody =
       readonly mode: 'show' | 'hide' | 'only';
       readonly reps: readonly RepType[] | 'all';
       readonly sel: Sel;
+      /** One of several (ChimeraX's atoms by style): selecting nothing is no failure. */
+      readonly optional?: true;
     }
+  /**
+   * ChimeraX's `style`: the atoms of the selection drawn in an atom style from now on (_spec §5.4); the ones shown now
+   * change at once.
+   */
+  | { readonly kind: 'atom-style'; readonly sel: Sel; readonly style: AtomStyle }
   /** PyMOL `cartoon putty|tube|automatic`: what cartoon-flagged atoms in the selection show as. */
   | { readonly kind: 'cartoon'; readonly style: 'automatic' | 'putty' | 'tube'; readonly sel: Sel }
   /** VMD's reps of a molecule (_spec §5.3). */
@@ -175,11 +191,15 @@ export type CommandBody =
   | {
       readonly kind: 'measure';
       readonly measure: 'distance' | 'angle' | 'dihedral';
-      /** One atom each; with a `cutoff` (a distance), sets: every pair within it (PyMOL's mode 0). */
+      /**
+       * One atom each; with a `cutoff` (a distance), sets: every pair within it (PyMOL's mode 0). One selection alone
+       * holds all the atoms (ChimeraX's `distance sel`): the measure's 2, 3 or 4 atoms, in the structure's order.
+       */
       readonly atoms: readonly Sel[];
       readonly cutoff?: number;
     }
-  | { readonly kind: 'label'; readonly sel: Sel; readonly text: readonly LabelPart[] }
+  /** `per: 'residue'`: one label a residue, at its center (ChimeraX's residue labels); else one an atom. */
+  | { readonly kind: 'label'; readonly sel: Sel; readonly text: readonly LabelPart[]; readonly per?: 'residue' }
   | { readonly kind: 'label.clear'; readonly sel?: Sel }
   /** VMD `label delete Bonds|Angles|Dihedrals`: the measurements of a kind. */
   | { readonly kind: 'measure.clear'; readonly measure: 'distance' | 'angle' | 'dihedral' }
@@ -199,6 +219,10 @@ export type CommandBody =
       /** Degrees. */
       readonly fov?: number;
       readonly fog?: boolean;
+      /** Ambient occlusion, shadows, outlines (ChimeraX's `lighting soft|full`, `graphics silhouettes`). */
+      readonly occlusion?: boolean;
+      readonly shadow?: boolean;
+      readonly outline?: boolean;
     }
   /** A frame (0-based; -1 is the last), or playing. */
   | { readonly kind: 'trajectory'; readonly frame?: number; readonly play?: 'forward' | 'stop' }
