@@ -34,7 +34,8 @@ export interface DistancePicker {
 export const measureGesture = (mac: boolean) => (mac ? '⌘+click' : 'Ctrl+click');
 
 /** Said on a measuring click outside selection mode, where nothing measures (_spec/ui.md §7) */
-export const selectionModeHint = (mac: boolean) => `Turn on selection mode to measure: ${measureGesture(mac)} two points`;
+export const selectionModeHint = (mac: boolean) =>
+  `Turn on selection mode to measure: ${measureGesture(mac)} two points`;
 
 export function distancePicker(
   api: ViewerApi,

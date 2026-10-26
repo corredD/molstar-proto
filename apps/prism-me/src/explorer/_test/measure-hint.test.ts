@@ -35,7 +35,10 @@ async function viewer() {
     spec: { ...base, extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions] },
   });
   viewers.push(v);
-  const crn = new File([readFileSync(resolve(import.meta.dirname, '../../../../../data/examples/1crn.cif'))], '1crn.cif');
+  const crn = new File(
+    [readFileSync(resolve(import.meta.dirname, '../../../../../data/examples/1crn.cif'))],
+    '1crn.cif',
+  );
   const r = await v.api.load.files({ files: [crn] });
   if (!r.ok) expect.fail(r.message);
   const api = v.api.as({ kind: 'person' });
