@@ -125,6 +125,15 @@ describe('parseAtomSpec: a spec at the start of a command', () => {
     expect(ends('#1 /A:5-')).toEqual(['#1', ' /A:5-']);
   });
 
+  it('gives a spec of models side by side as its pieces, in the order written (angle :12@CA :13@CA :14@CA)', () => {
+    expect(parseAtomSpec(':12@CA :13@CA :14@CA').pieces).toHaveLength(3);
+    expect(JSON.stringify(parseAtomSpec(':14@CA :12@CA').pieces![0])).toBe(json(':14@CA'));
+    // Another model's piece is nothing there, so every model reads as many pieces.
+    expect(parseAtomSpec('#1/A:45@CA #2/A:45@CA').pieces).toHaveLength(2);
+    expect(parseAtomSpec('protein & :12').pieces).toBeUndefined();
+    expect(parseAtomSpec('ligand :<5').pieces).toBeUndefined();
+  });
+
   it('fails when no spec reads at the start', () => {
     expect(() => parseAtomSpec('red')).toThrow('"red" is not a selector name');
     expect(() => parseAtomSpec('')).toThrow('empty atom specifier');

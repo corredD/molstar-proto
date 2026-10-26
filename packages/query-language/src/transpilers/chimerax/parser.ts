@@ -557,6 +557,11 @@ function atomGroups(path: Path): Expression {
 
 /** A model's parts: each path through chains, residues and atoms is one generator, and the paths a union. */
 function partsExpr(chains: readonly ChainNode[]): Expression {
+  return union(partPaths(chains).map(atomGroups));
+}
+
+/** A model's parts as paths through chains, residues and atoms, in the order written. */
+function partPaths(chains: readonly ChainNode[]): Path[] {
   const paths: Path[] = [];
   for (const c of chains) {
     const chain = levelTest('chain', c, chainPartTest);
@@ -573,7 +578,25 @@ function partsExpr(chains: readonly ChainNode[]): Expression {
       for (const a of res.atoms) paths.push({ chain, residue, atom: levelTest('atom', a, atomPartTest) });
     }
   }
-  return union(paths.map(atomGroups));
+  return paths;
+}
+
+/**
+ * The pieces of a spec that is only models side by side (`:12@CA :14@CA`, `#1/A:45@CA #2/A:45@CA`): each model's
+ * paths, in the order written, so a command that takes atoms in order (`angle`) reads them as ChimeraX does. Undefined
+ * for any other spec (an operator, a selector, a zone).
+ */
+function piecesOf(s: Spec, id: readonly number[]): Expression[] | undefined {
+  if (s.kind !== 'models') return undefined;
+  const pieces: Expression[] = [];
+  for (const m of s.models) {
+    if (m.attrs || m.zone) return undefined;
+    // A model that is not this one still counts its pieces (as nothing), so every model reads as many.
+    const own = modelMatches(m, id);
+    const paths: Path[] = m.parts ? partPaths(m.parts) : [{}];
+    for (const path of paths) pieces.push(own ? atomGroups(path) : Empty());
+  }
+  return pieces;
 }
 
 function union(xs: Expression[]): Expression {
@@ -679,6 +702,8 @@ export interface AtomSpecPrefix {
   readonly text: string;
   /** Where the spec ends in `text`: the rest starts there (blanks first). */
   readonly end: number;
+  /** A spec of models side by side: its pieces in the order written (`piecesOf`). */
+  readonly pieces?: readonly Expression[];
 }
 
 /**
@@ -717,7 +742,13 @@ export function parseAtomSpec(text: string, options?: ChimeraxTranspileOptions):
     ({ r, spec, end } = read(blank));
     if (!spec || end === 0) throw noSpec(r);
   }
-  return { expression: specExpr(spec, id), text: text.slice(0, offset + end), end: offset + end };
+  const pieces = piecesOf(spec, id);
+  return {
+    expression: specExpr(spec, id),
+    text: text.slice(0, offset + end),
+    end: offset + end,
+    ...(pieces ? { pieces } : {}),
+  };
 }
 
 function transpile(source: string, options: ChimeraxTranspileOptions | undefined): Expression {
