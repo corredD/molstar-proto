@@ -93,11 +93,14 @@ Prism's operations.
 
 Ranked by what they cost you. The first three are bugs or design faults; the rest are cleanup.
 
-1. **One looks cell, three writers.** mesoscale, cryoet and Prism's clipping each patch the same Layers cell with
-   `...old` and each may delete it when "its" part is empty. Any one can drop another's change; nothing owns it.
-2. **Not one undo step each.**
-   - `cryoet.decorate` and `cryoet.classes` commit up to four times;
-   - `stage.move` on a structure is two steps;
+1. **One looks cell, three writers** (built 2026-10-25, lane `looks-owner`, §7.1). mesoscale, cryoet and Prism's
+   clipping each wrote the same Layers cell, each from what it had read, with its own rule for deleting it: mesoscale
+   rewrote every layer from the first representation's (a class hidden by target came back as an entity's layer). Now
+   `particles.look` (Prism) is the one writer, by patch; the others call it.
+2. **Not one undo step each.** Undo is one step per top-level operation (`packages/prism/ui/src/managers/history.ts`):
+   the commits inside a run, and the operations it calls through `ctx.api`, join its step, so `cryoet.decorate`,
+   `cryoet.classes` (up to four commits) and `stage.move` on a structure (two) are one step each. What lost a change was
+   the writes (1), not undo. Still more than one step, or none:
    - the oblique slice's sliders run the operation ~60 ms after each pause of the pointer, so one drag leaves several
      undo steps (the handle does it right: preview, then one commit);
    - graphics mode changes the canvas outside the state, so undo and sessions miss it.
@@ -106,8 +109,9 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
    - a few extension methods are called directly (`cryoet.oblique`, `cryoet.slices`, previews), and several
      `transform.params as any`.
    - The tree's node kinds are plain strings, repeated in three files; the scene's kinds (`model`, `list`) and the
-     tree's (`mesoscale model`, `particle list`) differ. A list's target row sends its target ids as entity ids to
-     `mesoscale.style` (likely a bug, untested).
+     tree's (`mesoscale model`, `particle list`) differ. (A list's target row sent its target ids as entity ids to
+     `mesoscale.style`: right only because a list without entities has its targets as entities; the menu's Hide on it
+     now writes the targets' layer through `particles.look`, 2026-10-25; the row has no eye.)
 4. **The same helper, many times.**
    - walking up to a file's root cell (×6);
    - walking down a list's decorators (×5);
@@ -141,7 +145,12 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
 ## 7. Decisions (Ludovic, 2026-10-24)
 
 1. **The looks cell has one owner:** a single `particles.look` operation (in Prism or the library) owns the Layers cell.
-   Mesoscale, cryoet and clipping call it by id. One undo step per change, and no writer drops another's change.
+   Mesoscale, cryoet and clipping call it by id. One undo step per change, and no writer drops another's change. Built
+   (2026-10-25, lane `looks-owner`): `patchParticleLook` (`packages/prism/viewer/src/sources/particles/look.ts`) is the
+   only code that creates, updates or deletes the cell; `particles.look` runs it on a list's representations in one
+   update; clipping's partial cuts call the helper in their own commit, mesoscale's styles and cryoet's decorations the
+   operation. A layer is keyed by its selector's sorted ids; an absent field is kept, `null` clears one; a
+   representation added to a list (`particles.representation`) takes the list's layers.
 2. **No per-entity LOD or styles:** one LOD and one style per model. The v5 feature is marked deferred in features.md.
 3. **No atom-level work inside particles for now:** picking stays per particle, and features.md says so.
 4. **One handle class in Prism's gizmo library** for anything that moves: preview outside the state, one commit on

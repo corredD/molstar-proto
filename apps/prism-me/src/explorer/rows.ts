@@ -309,11 +309,11 @@ export function toggleVisible(api: ViewerApi, row: Row) {
     case 'particle list':
       return api.run('particles.visibility', { particles: node.ref, visible });
     case 'target':
+      // a list's class: its targets' layer (Prism's one writer of the looks), not as entities
       if ('particles' in node) {
-        return api.run('mesoscale.style', {
+        return api.run('particles.look', {
           particles: node.ref,
-          entities: (node.particles.targets ?? []).join(','),
-          visible,
+          layers: [{ selector: { targets: node.particles.targets ?? [] }, visible }],
         });
       }
       return;

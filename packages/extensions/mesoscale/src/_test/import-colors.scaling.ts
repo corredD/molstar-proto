@@ -24,7 +24,7 @@ import { MesoscaleExtension } from '../prism-viewer.js';
 
 // The color file import over n and 4n entities (`test:scaling`; packages/prism/AGENTS.md, bulk operations are one
 // change): the file read and matched (the names indexed once, a lookup a key), and the whole operation on a headless
-// viewer (one read of the styles, one write of the layers, one commit). Both catch a scan of the entities per key: the
+// viewer (one patch of the layers by `particles.look`, one commit). Both catch a scan of the entities per key: the
 // operation's case at 4000 → 16000 entities, where a per-key `entities.find` in its run read ×12.7 (×6.1 at 1000, under
 // the band: the viewer's fixed cost hid it), the linear path ×3.4 (2026-10-24, M-series laptop).
 

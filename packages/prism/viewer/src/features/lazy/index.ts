@@ -183,6 +183,7 @@ export const LazyParticles: LazyViewerExtension = {
       { id: 'particles.visibility', title: 'Show or hide particles' },
       { id: 'particles.remove', title: 'Remove particles', approval: 'destructive' },
       { id: 'particles.color', title: 'Color particles by…' },
+      { id: 'particles.look', title: 'Set how some particles look' },
       { id: 'particles.focus', title: 'Focus the particles', history: false },
       { id: 'particles.unit-cell', title: 'Show the particle unit cell' },
       { id: 'particles.source', title: 'Set how particles are read' },

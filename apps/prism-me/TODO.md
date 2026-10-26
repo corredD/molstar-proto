@@ -13,9 +13,6 @@ the app, in his words; the lane turns it into spec and tests.
 In this order (Ludovic, 2026-10-25): the first two in parallel, then one at a time. From the architecture's decisions
 ([_spec/architecture.md](_spec/architecture.md) §7: refactor in place) and the review of the distances (PR #5):
 
-- **One owner for the looks**: a single operation writes a particle representation's Layers cell; mesoscale's styles,
-  cryo-ET's hidden classes and Prism's partial cuts call it. Check: color an entity, hide a class, cut the model partly,
-  then undo three times: each undo takes back exactly one of them, and none drops another.
 - **One handle class in Prism's gizmo library** for the oblique slice, the object move and the particle move: preview
   outside the state, one commit on release. Check: drag each handle, then undo once: it goes back to before the drag.
 - **The app is only a spec**: `explorer.clipWhole`, the picks, the label sizing and the direct extension calls move into
@@ -82,3 +79,7 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   error stays green.
 - The explorer mocks group by `o:hiv` only (`_stories/explorer-panel.tsx`): a second mock model would share its Group
   by.
+- A list's class (target row) can be hidden (right-click › Hide) but not shown again but by undo: its row has no eye
+  (lane `looks-owner`'s review, 2026-10-25).
+- Turning a cut of some particles off on one representation and on again (`clipping` on/off per representation) loses
+  its particles: it comes back as a cut of the whole representation (lane `looks-owner`'s review; not probed).

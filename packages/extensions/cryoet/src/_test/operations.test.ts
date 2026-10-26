@@ -194,6 +194,32 @@ describe('cryoet', () => {
     expect(shown()).toEqual(['spacefill']);
   });
 
+  it('decorating keeps an earlier color and an earlier cut, and the target representation takes the colors', async () => {
+    const v = await viewer();
+    const c = v.api.cryoet!;
+    const list = () => v.plugin.managers.particles.hierarchy.current.lists[0];
+    const ofType = (t: string) => list().representations.find((r) => (r.cell.transform.params as any).type.name === t)!;
+    const look = (t: string) =>
+      v.plugin.state.data.select(
+        StateSelection.Generators.ofTransformer(ParticleRepresentation3DLayers, ofType(t).cell.transform.ref),
+      )[0]?.transform.params as any;
+    expectOk(await c.classes({ attribute: 'class' } as never));
+    const ref = list().cell.transform.ref;
+    expectOk(
+      await v.api.run('particles.look', { particles: ref, layers: [{ selector: { targets: [2] }, color: 0xff0000 }] }),
+    );
+    expectOk(await v.api.run('clipping.add', { shape: 'sphere', node: `#${ref}`, particles: { targets: [0] } }));
+    expectOk(await c.decorate({ with: 'object', object: 'ribosome.mrc', targets: '1' } as never));
+    const spheres = look('spacefill');
+    expect(spheres.layers).toMatchObject([{ targets: [2], color: 0xff0000 }]);
+    expect(spheres.cuts).toMatchObject([{ targets: [0] }]);
+    expect(spheres.hidden).toEqual([1]);
+    // the objects drawn in the class's color too; they leave nothing out, and have no clip object for the cut
+    const target = look('target');
+    expect(target.layers).toMatchObject([{ targets: [2], color: 0xff0000 }]);
+    expect([target.hidden, target.cuts]).toEqual([[], []]);
+  });
+
   it('splits the targets by class and decorates each class apart, swapping one without touching the others', async () => {
     const v = await viewer();
     const c = v.api.cryoet!;
