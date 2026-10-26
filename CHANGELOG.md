@@ -10,6 +10,10 @@ here.
 
 ## [Unreleased]
 
+- [Breaking] Component options keep overrides: `StructureComponentManager.setOptions` changes only the representations
+  that had the previous value of a changed option (a representation given its own material, quality, … keeps it);
+  `reset` writes options to every representation. Representation presets give their representations the material, clip
+  objects, interior and animation of the component options, as `addRepresentation` does
 - Fix slices of a volume covering a whole unit cell (periodic, e.g. an EMDB map centered on its origin) drawn half a box
   away from the volume: `createPeriodicVolume` keeps the grid's origin, and periodic copies are counted in cells
 - Fix a `plane` slice sized by the grid's diagonal in voxels used as Å: it is as wide as the volume

@@ -11,7 +11,7 @@
 import { BehaviorSubject, type Observable, Subject, type Subscription, debounceTime, merge } from 'rxjs';
 import type { PickingId } from '@molstar/graphics/geo/geometry/picking';
 import { type GraphicsRenderObject, hasForeignResources } from '@molstar/graphics/gl/render-object';
-import { type Frame, createFrame } from '@molstar/graphics/gl/renderable';
+import { type Frame, type GraphicsRenderable, createFrame } from '@molstar/graphics/gl/renderable';
 import { Renderer, RendererParams, type RendererStats } from '@molstar/graphics/gl/renderer';
 import { MaxLightCount } from '@molstar/graphics/gl/renderable/schema';
 import { getVertexArenaStats } from '@molstar/graphics/gl/compute/marching-cubes/chunks';
@@ -26,6 +26,7 @@ import {
 import type { ProgramItem } from '@molstar/graphics/gl/render-item';
 import type { GlobalDefines } from '@molstar/graphics/gl/renderable/schema';
 import { MergedCullKernels } from '@molstar/graphics/gl/renderable/merged-culler';
+import { getDenoiseKernels, isComputeDenoiseSupported } from '@molstar/graphics/gl/compute/denoise';
 import { Object3D } from '@molstar/graphics/gl/object3d';
 import {
   createGraphicsContext,
@@ -62,6 +63,7 @@ import { StereoCamera, StereoCameraParams } from './camera/stereo.js';
 import type { CameraTransitionManager } from './camera/transition.js';
 import { TransitionTrajectoryParamDefinition, type TransitionTrajectory } from './camera/transition-functions.js';
 import { Viewport } from './camera/util.js';
+import { MarkIndex } from './mark-index.js';
 import { DefaultTrackballControlsAttribs, TrackballControls, TrackballControlsParams } from './controls/trackball.js';
 import { CameraHelperParams } from './helper/camera-helper.js';
 import type { DebugRegistry } from './helper/debug-registry.js';
@@ -958,6 +960,8 @@ namespace Canvas3D {
 
     const reprRenderObjects = new Map<Representation.Any, Set<GraphicsRenderObject>>();
     const reprUpdatedSubscriptions = new Map<Representation.Any, Subscription>();
+    /** the representations a loci marked on all of them may change (`applyMark`) */
+    const markIndex = new MarkIndex();
     const reprCount = new BehaviorSubject(0);
     const interactionEvent = new Subject<void>();
 
@@ -1053,6 +1057,9 @@ namespace Canvas3D {
       pickHelper.synchronous,
     );
     let multiSampleHelper = new MultiSampleHelper(passes.multiSample);
+    // the viewport of the renderer, picking and Hi-Z from the start, not only after a resize (a headless canvas may
+    // never have one)
+    syncViewport();
 
     passes.draw.postprocessing.background.update(camera, p.postprocessing.background, (changed) => {
       if (changed) requestDraw();
@@ -1220,10 +1227,15 @@ namespace Canvas3D {
       const { repr, loci } = reprLoci;
       let changed = false;
       if (repr) {
-        changed = repr.mark(loci, action) || changed;
+        if (repr.mark(loci, action)) {
+          markIndex.note(repr, action);
+          changed = true;
+        }
       } else {
-        reprRenderObjects.forEach((_, _repr) => {
-          changed = _repr.mark(loci, action) || changed;
+        markIndex.forEach(loci, action, (_repr) => {
+          if (!_repr.mark(loci, action)) return;
+          markIndex.note(_repr, action);
+          changed = true;
         });
       }
       const handleChanged = helper.handle.mark(loci, action);
@@ -1379,6 +1391,8 @@ namespace Canvas3D {
     let forceDrawAfterAllCommited = false;
     let drawPaused = false;
     let isContextLost = false;
+    /** set by `dispose`: idle callbacks queued before (warm-up, target release) do nothing */
+    let canvasDisposed = false;
 
     /** prepares of new props, and holds (`holdFrames`), that frames wait for, see `holdFramesUntilPrepared` */
     let propsPreparing = 0;
@@ -1570,7 +1584,7 @@ namespace Canvas3D {
         } else {
           passes.draw.plan(b, ctx, props, true);
         }
-        hiZ.plan(b, camera);
+        hiZ.plan(b, camera, props.hiZ);
       }
       if (interaction) {
         // picking, and marking, which draws only marked objects
@@ -1601,7 +1615,7 @@ namespace Canvas3D {
     function scheduleTargetRelease() {
       const { targets } = passes;
       targets.scheduleRelease(() => {
-        if (isContextLost || graphics.isContextLost || targets !== passes.targets) return;
+        if (canvasDisposed || isContextLost || graphics.isContextLost || targets !== passes.targets) return;
         const b = createTargetCollector();
         planFrame(b, p, true);
         targets.releaseUnused(b.used);
@@ -1631,6 +1645,7 @@ namespace Canvas3D {
       if (isContextLost || graphics.isContextLost) return Promise.resolve();
       const previous = precompileItems;
       precompileItems = new Map();
+      const gpuCulled = list.objects.some((s) => s.gpuCulled);
       // the passes plan against scenes of the list's objects: groups with their counts (the requests come from the
       // signatures, see `collect`) and averages that take every branch drawing objects (opaque and transparent or
       // only opaque, emissive or not); marking as for the first interaction
@@ -1676,6 +1691,8 @@ namespace Canvas3D {
             );
           }
         }
+        // marking as for the first interaction, with something marked: marking dims the rest (`MarkingPass`, dim)
+        const markedScenes = listScenes.map((s) => Object.create(s, { markerAverage: { value: 0.5 } }) as Scene);
         const allItems = [...primitives, ...volumes];
         const collect: PrepareCollect = (pass, g, target, all) => {
           // the scene's own groups too: the pick helper plans with them
@@ -1684,7 +1701,7 @@ namespace Canvas3D {
               ? primitives
               : g === listVolumes || g === scene.volumes
                 ? volumes
-                : g === scene || listScenes.includes(g as Scene)
+                : g === scene || listScenes.includes(g as Scene) || markedScenes.includes(g as Scene)
                   ? allItems
                   : undefined;
           return items && renderer.collectSignatures(pass, items, target, { all });
@@ -1693,17 +1710,24 @@ namespace Canvas3D {
         const b = createPrepareBuilder(graphics, renderer, collect);
         const cam = props.camera.stereo.name === 'on' ? stereoCamera : camera;
         passes.draw.withTransparency(transparency, () => {
-          for (const listScene of listScenes) {
-            const ctx = { renderer, camera: cam, scene: listScene, helper, frame };
+          for (let i = 0; i < listScenes.length; ++i) {
+            const ctx = { renderer, camera: cam, scene: listScenes[i], helper, frame };
             // as `prepare` with the interaction
             if (passes.illumination.supported && props.illumination.enabled) {
               passes.illumination.plan(b, { ...ctx, camera }, props, true);
-            } else if (MultiSamplePass.isEnabled(props.multiSample)) {
-              multiSampleHelper.plan(b, ctx, props, true);
             } else {
-              passes.draw.plan(b, ctx, props, true);
+              if (MultiSamplePass.isEnabled(props.multiSample)) {
+                multiSampleHelper.plan(b, ctx, props, true);
+              } else {
+                passes.draw.plan(b, ctx, props, true);
+              }
+              // as `planFrame`: with the props' Hi-Z (e.g. the Mesoscale Explorer turns it on), built for the GPU's test
+              // where the list has objects culled there
+              hiZ.plan(b, camera, props.hiZ, gpuCulled);
             }
-            if (MarkingPass.isEnabled(props.marking)) passes.draw.plan(b, ctx, props, true, false, true);
+            if (MarkingPass.isEnabled(props.marking)) {
+              passes.draw.plan(b, { ...ctx, scene: markedScenes[i] }, props, true, false, true);
+            }
           }
           pickHelper.plan(b, cam, frame);
         });
@@ -1712,25 +1736,38 @@ namespace Canvas3D {
         if (!precompileItems.has(key)) item.destroy();
       }
       // the culling's kernels of objects culled on the GPU, else compiled once such an object is created
-      const kernels =
-        graphics.compute && list.objects.some((s) => s.gpuCulled)
-          ? graphics.compute.prepareKernels(MergedCullKernels)
+      const kernels = graphics.compute && gpuCulled ? graphics.compute.prepareKernels(MergedCullKernels) : undefined;
+      // the illumination's denoiser, a kernel where compute shaders run
+      const denoise =
+        passes.illumination.supported &&
+        isComputeDenoiseSupported(graphics) &&
+        propsList.some((o) => {
+          const { enabled, denoise } = { ...p.illumination, ...o.illumination };
+          return enabled && denoise;
+        })
+          ? graphics.compute.prepareKernels(getDenoiseKernels())
           : undefined;
-      return Promise.all([graphics.resources.pending.whenReady(), kernels]).then(() => {});
+      return Promise.all([graphics.resources.pending.whenReady(), kernels, denoise]).then(() => {});
     }
 
-    let warmUpScheduled = false;
+    /** the scheduled warm-up, cancelled by `dispose` (it would plan a frame on the destroyed context) */
+    let warmUpCancel: (() => void) | undefined;
     /** prepares the frame and the first interaction in idle time, after the scene changed */
     function scheduleWarmUp() {
-      if (warmUpScheduled || !a.warmUp) return;
-      warmUpScheduled = true;
+      if (warmUpCancel || !a.warmUp || canvasDisposed) return;
       const warmUp = () => {
-        warmUpScheduled = false;
+        warmUpCancel = undefined;
+        if (canvasDisposed) return;
         prepare({ interaction: true });
         scheduleTargetRelease();
       };
-      if (typeof requestIdleCallback !== 'undefined') requestIdleCallback(warmUp, { timeout: 1000 });
-      else setTimeout(warmUp, 0);
+      if (typeof requestIdleCallback !== 'undefined') {
+        const handle = requestIdleCallback(warmUp, { timeout: 1000 });
+        warmUpCancel = () => cancelIdleCallback(handle);
+      } else {
+        const handle = setTimeout(warmUp, 0);
+        warmUpCancel = () => clearTimeout(handle);
+      }
     }
 
     function commit(isSynchronous: boolean = false) {
@@ -1991,6 +2028,7 @@ namespace Canvas3D {
         repr.renderObjects.forEach((o) => scene.add(o));
       }
       reprRenderObjects.set(repr, newRO);
+      markIndex.set(repr);
 
       scene.update(repr.renderObjects, false);
       forceDrawAfterAllCommited = true;
@@ -2000,6 +2038,7 @@ namespace Canvas3D {
     function remove(repr: Representation.Any) {
       unregisterAutoUpdate(repr);
       busy();
+      markIndex.delete(repr);
 
       const renderObjects = reprRenderObjects.get(repr);
       if (renderObjects) {
@@ -2165,6 +2204,7 @@ namespace Canvas3D {
       );
       rayHelper = new RayHelper(graphics, renderer, scene, helper, { ...pickOptions, pickPadding: p.pickPadding });
       multiSampleHelper = new MultiSampleHelper(passes.multiSample);
+      syncViewport();
       interactionHelper.resetPicks(pickHelper.synchronous);
       passes.draw.postprocessing.background.update(camera, p.postprocessing.background, (changed) => {
         if (changed) requestDraw();
@@ -2300,15 +2340,25 @@ namespace Canvas3D {
       remove,
       commit,
       update: (repr, keepSphere) => {
+        // updated values may have changed defines: the updated renderables recorded again
         if (repr) {
           if (!reprRenderObjects.has(repr)) return;
-          scene.update(repr.renderObjects, !!keepSphere);
+          markIndex.set(repr);
+          const { renderObjects } = repr;
+          scene.update(renderObjects, !!keepSphere);
+          // only the representation's, not the whole scene's: callers update one representation at a time (a drag)
+          const renderables: GraphicsRenderable[] = [];
+          for (let i = 0, il = renderObjects.length; i < il; ++i) {
+            const renderable = scene.get(renderObjects[i]);
+            if (renderable) renderables.push(renderable);
+          }
+          precompileRecorder.recordAgain(renderables);
         } else {
+          reprRenderObjects.forEach((_, r) => markIndex.set(r));
           scene.update(void 0, !!keepSphere);
+          precompileRecorder.invalidate();
+          precompileRecorder.record(scene.renderables);
         }
-        // updated values may have changed defines
-        precompileRecorder.invalidate();
-        precompileRecorder.record(scene.renderables);
         forceDrawAfterAllCommited = true;
         busy();
       },
@@ -2316,6 +2366,7 @@ namespace Canvas3D {
         reprUpdatedSubscriptions.forEach((v) => v.unsubscribe());
         reprUpdatedSubscriptions.clear();
         reprRenderObjects.clear();
+        markIndex.clear();
         scene.clear();
         helper.debug.clear();
         requestDraw();
@@ -2539,6 +2590,9 @@ namespace Canvas3D {
       debugRegistry: helper.debug,
       xr,
       dispose: () => {
+        canvasDisposed = true;
+        warmUpCancel?.();
+        warmUpCancel = undefined;
         passes.targets.cancelRelease();
         contextLostSub?.unsubscribe();
         ctxChangedSub?.unsubscribe();
