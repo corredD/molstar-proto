@@ -847,6 +847,14 @@ function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
 
 // --- a structure's look ----------------------------------------------------------------------------------------------
 
+/** A style layer on a structure representation, as `structureLook` reads it */
+interface StyleLayer {
+  readonly bundle: StructureElement.Bundle;
+  readonly clear?: boolean;
+  readonly color?: number;
+  readonly value: number;
+}
+
 /**
  * A structure node's color, transparency and emissive: on its representations, the last layer of each kind that
  * covers all of the node (a later layer paints over an earlier one; one that covers only part of it does not say how
@@ -869,7 +877,8 @@ function structureLook(plugin: PluginContext, node: NodeRef): StructureLook | un
     for (const ref of tree.children.get(repr.cell.transform.ref).toArray()) {
       const t = cells.get(ref)?.transform;
       if (!t) continue;
-      const layers = (t.params as { layers?: readonly Record<string, any>[] } | undefined)?.layers ?? [];
+      // an overpaint layer's color (or `clear`), a transparency's or emissive's value
+      const layers = (t.params as { layers?: readonly StyleLayer[] } | undefined)?.layers ?? [];
       for (const layer of layers) {
         if (!covers(layer.bundle)) continue;
         if (t.transformer === OverpaintStructureRepresentation3DFromBundle)
