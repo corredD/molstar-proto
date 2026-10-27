@@ -90,7 +90,9 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   area.escaped.subscribe(() => picker.cancel());
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
   // what a click is on, as the stage says (a label under the pointer first: drawn, not picked by Mol*), as a row
-  const pickedAt = (click: CanvasClick): PickedNode | undefined => area.pickedRow(ctx.api.stage?.pickedAt(click));
+  // (without the stage area, what Mol* picked: no label under the pointer)
+  const pickedAt = (click: CanvasClick): PickedNode | undefined =>
+    ctx.api.stage ? area.pickedRow(ctx.api.stage.pickedAt(click)) : area.pickedOf(click.loci);
   area.setOnClick((click) => {
     // a distance's point: Ctrl or ⌘ + click in selection mode; else the click picks a row as any other
     if (click.measure && area.selectionMode) {
