@@ -48,15 +48,51 @@
 
 ## Built
 
+- graphics (3 commits, no extension named): `Canvas3D.setOnTop` and the on-top layer (`Helper.onTop`, drawn by
+  `DrawPass.renderOnTop` into a target of its own and copied over the image; picked after the scene with the pick depth
+  cleared; `Renderer.withoutOcclusion`; the illumination and image passes too; a mark of it draws the image again);
+  `VisualSet.setOnTop`; `GizmoLook.xray` became `onTop`, followed by every controller. Tests:
+  `canvas3d/_test/on-top.test.ts` (a real Canvas3D on the gl shim: layers, updates, draw and pick order, marking),
+  `visual-set.test.ts`, `controller.test.ts`.
+- Prism: `canvas.handles` (`onTop`, `scale`; `history: false`), ⌘K "Handles on top" (a toggle), `canvas.get`'s
+  `handles`, `api.canvas.handleLook`; the fake gizmo canvas tells what is on top. Test:
+  `sources/gizmos/_test/on-top.test.ts` (every host, no step, the command flips it; a drag and its undo in both modes).
+- prism-me: On top in Position's Handles line and in each clip's line (`explorer/_test/handles-on-top.test.tsx`), the
+  mocks, ui.md §4, features.md, the changelog.
+
 ## Decided
 
-- Ludo, 2026-10-26: every part of the gizmo on top: with the toggle on, all a gizmo draws (its handles and its body:
-  a clip's plane, a slice's frame, rings, arrows, knobs) is drawn over the scene, because a handle one cannot see cannot
+- Ludo, 2026-10-26: every part of the gizmo on top: with the toggle on, all a gizmo draws (its handles and its body: a
+  clip's plane, a slice's frame, rings, arrows, knobs) is drawn over the scene, because a handle one cannot see cannot
   be grabbed. Picking as designed: the handles are picked through the scene, the body stays not pickable.
+- Design a (lane, Opus): a second scene in Canvas3D, not a render-object flag. A flag would have kept the objects in the
+  scene's every pass (SSAO, outlines, OIT, shadows, Hi-Z, marking) each needing an exception; a scene of its own is
+  drawn in one place, after the helpers, as the old handle helper's is. It draws into a target of its own and is copied
+  over, because at that point the image's target has the opaque depth texture attached (Hi-Z and the marking read it
+  afterwards): clearing it there would break both.
+- No option per host in `GizmoHandles` (lane): the library's per-canvas look already reaches every controller; an option
+  per host would contradict one viewer-wide toggle. The Prism setting is the `canvas.handles` operation.
+- Not kept across reloads (lane): Prism's canvas settings are not kept either (they live with the canvas); Handle size
+  is the same.
+- In the explorer the toggle goes through `canvas.handles` (operations only); Handle size still writes the look
+  directly, as before.
 
 ## Learned
 
+- A full `Canvas3D` runs on the gl shim in jsdom (`createGl` + `Canvas3DContext.fromGraphics`), with one patch: the shim
+  answers 0 for `COLOR_WRITEMASK`. Enough to test what draws and picks what, by wrapping `Renderer.create`.
+- Headless Chrome (playwright, `channel: 'chrome'`) gives the explorer WebGPU by default; `?graphics-backend=webgl2`
+  gives WebGL2. Both checked.
+- On top, a hovered handle is marked in its color (the marking pass's outline draws the scene only) and has no glow
+  (bloom is drawn before the helpers).
+- Moving gizmos out of the scene leaves its bounds: they no longer count for a camera reset; back in the scene they
+  count as when the handles are shown.
+
 ## Size
+
+Production about +280 against the brief's ~200: graphics ~180 (the routing through Canvas3D's add, remove, update,
+commit, context, marking, and the draw, pick and illumination passes), Prism ~70 (an operation, a command, the fake
+canvas), explorer ~25. Tests ~470.
 
 ## Review
 
