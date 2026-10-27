@@ -304,7 +304,7 @@ describe('GizmoController', () => {
       return version > was;
     };
     const before = colors();
-    const lit = Color(0xffe600);
+    const lit = Color(0xffff00);
     expect(before).not.toContain(lit);
 
     hoverOn(fake, 1);
@@ -352,7 +352,7 @@ describe('GizmoController', () => {
     const [remade] = fake.added;
     expect(remade).not.toBe(first);
     const values = remade.renderObjects[0].values as { tColor: { ref: { value: { array: Uint8Array } } } };
-    expect(Color.fromArray(values.tColor.ref.value.array, 4)).toBe(Color(0xffe600));
+    expect(Color.fromArray(values.tColor.ref.value.array, 4)).toBe(Color(0xffff00));
     c.dispose();
   });
 });

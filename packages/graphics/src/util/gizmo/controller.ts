@@ -109,7 +109,7 @@ export const GizmoAppearance = {
  * The hovered handle's own cue (three.js's TransformControls): a strong color, seen on top too, where no outline or
  * glow is drawn (Ludo, 2026-10-27: no grow). The marker highlight stays as well
  */
-const HoverColor = Color(0xffe600);
+const HoverColor = Color(0xffff00);
 
 /** The handle lit (`#light`): its item, its handles' representation, its group, its color before */
 interface Lit {
