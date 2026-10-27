@@ -262,6 +262,20 @@ describe('stage', () => {
     expect(await added({ radius: 17.6, depth: 17.6 })).toMatchObject({ size: 9, depth: 17.6 });
     // no part: as before (a 12th of its object, at the point)
     expect(await added({})).toMatchObject({ size: Math.max(2, object / 12), depth: 0 });
+    // a small part of a list 1000 Å across: a 15th of the list, over the part's half and the 2 Å floor
+    const star = 'data_particles\n\nloop_\n_rlnCoordinateX\n_rlnCoordinateY\n_rlnCoordinateZ\n0 0 0\n1000 0 0\n';
+    expectOk(await v.api.load.files({ files: [new File([star], 'wide.star')] }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    const wide = s.objectBounds(list)!.radius;
+    expect(wide / 15).toBeGreaterThan(10);
+    const onList = { text: 'y', target: list, node: `o:${list}`, x: 0, y: 0, z: 0 };
+    const big = await v.api.run('stage.label', { ...onList, radius: 10 });
+    expectOk(big);
+    const sized = (ref: string) => s.labelsState().value.find((l) => l.ref === ref)!;
+    expect(sized(big.changed.nodes![0]).size).toBe(Math.round((wide / 15) * 2) / 2);
+    const plain = await v.api.run('stage.label', onList);
+    expectOk(plain);
+    expect(sized(plain.changed.nodes![0]).size).toBeCloseTo(wide / 12, 6);
   });
 
   it("sets a label's plate and tether, on its representation too (a text's plate is drawn by its props)", async () => {
