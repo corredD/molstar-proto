@@ -47,7 +47,8 @@ interface Entry {
  *
  * They stay in the canvas's scene as any representation (picked, marked, in its bounds) and are re-created by the
  * canvas when its graphics backend changes. They are auto-synced: an update (`update`, or the representation's own)
- * reaches the canvas without a commit of the state. They can be drawn on top of the scene (`setOnTop`), all of them.
+ * reaches the canvas without a commit of the state. They can be drawn on top of the scene (`setOnTop`), all of them:
+ * picked and marked there too, out of the scene's bounds.
  */
 export class VisualSet {
   private readonly entries = new Map<AnyRepresentation, Entry>();

@@ -3,6 +3,7 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Ludovic Autin <ludovic.autin@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { OrderedSet } from '@molstar/core/data/int';
