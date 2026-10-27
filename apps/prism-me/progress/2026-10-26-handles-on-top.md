@@ -72,8 +72,8 @@
   afterwards): clearing it there would break both.
 - No option per host in `GizmoHandles` (lane): the library's per-canvas look already reaches every controller; an option
   per host would contradict one viewer-wide toggle. The Prism setting is the `canvas.handles` operation.
-- Not kept across reloads (lane): Prism's canvas settings are not kept either (they live with the canvas); Handle size
-  is the same.
+- Not kept across reloads (lane): prism-me keeps no canvas setting across a reload (no `persist.restore`); a Prism host
+  with one gets the canvas's props back but not the handles' look (to Prism's TODO). Handle size is the same.
 - In the explorer the toggle goes through `canvas.handles` (operations only); Handle size still writes the look
   directly, as before.
 
@@ -96,5 +96,23 @@ canvas), explorer ~25. Tests ~470.
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+| Finding                                                         | Severity   | Verdict                                         | Commit / open                          |
+| --------------------------------------------------------------- | ---------- | ----------------------------------------------- | -------------------------------------- |
+| M1 headers of area.ts, operations.ts (canvas-settings)          | must-fix   | confirmed                                       | d8a5d683d                              |
+| N1 headers of controller.ts and its test (the skeptic's)        | must-fix   | confirmed                                       | f081bd8fc                              |
+| M2 changelog under two headings                                 | must-fix   | confirmed                                       | 83ee945db                              |
+| M2b changelog only in the explorer commit                       | must-fix   | refuted (one file per branch)                   | -                                      |
+| S1 toggling On top moved the camera (radiusMax, a reset)        | should-fix | confirmed (probe)                               | cdf37503d                              |
+| N3 back in the scene, radiusMax not grown                       | should-fix | plausible                                       | cdf37503d (grows, never shrinks)       |
+| S2 not remembered like the canvas's settings                    | should-fix | refuted for prism-me (no restore); spec wording | a958be226, 7c3931718; open: Prism TODO |
+| S3 the draw test passed a layer drawn into the image            | should-fix | confirmed (mutant)                              | f6052aee8                              |
+| S4, N2 an on-top-only commit not recorded, warmed, counted      | should-fix | confirmed / plausible                           | 49de8c99d                              |
+| closures per frame and per pick in draw.ts, pick.ts             | nit        | confirmed                                       | open (the pass's own pattern)          |
+| a clear and a copy per frame while the layer has hidden objects | nit        | mostly refuted                                  | open                                   |
+| getByteCount counts the lazy target                             | nit        | refuted                                         | -                                      |
+| on-top handles dimmed by the scene's marker average             | nit        | confirmed, not a regression                     | open                                   |
+| setHandleLook writes the look directly                          | nit        | confirmed, intended (Decided)                   | -                                      |
+| markIndex.set in setOnTop                                       | nit        | confirmed                                       | cdf37503d                              |
+| VisualSet's doc: "in its bounds"                                | nit        | confirmed                                       | f081bd8fc                              |
+
+Reviewer: 2 must-fix, 4 should-fix, 7 nits; skeptic: 13 confirmed, 3 plausible, 4 refuted or mostly, 3 new.
