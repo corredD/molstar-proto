@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { OperationFn } from '../../api/area.js';
@@ -13,6 +14,7 @@ import {
   type CameraParams,
   type ClippingParams,
   canvasSettingsOperations,
+  type HandlesParams,
   type LightingParams,
   type SettingsParams,
   type XrParams,
@@ -26,6 +28,7 @@ declare module '../../api/canvas.js' {
     readonly camera: OperationFn<typeof CameraParams>;
     readonly clipping: OperationFn<typeof ClippingParams>;
     readonly xr: OperationFn<typeof XrParams>;
+    readonly handles: OperationFn<typeof HandlesParams>;
   }
 }
 
@@ -69,6 +72,14 @@ export const CanvasSettingsFeature: ViewerExtension = {
         alias: ['perspective', 'orthographic', 'field of view'],
       }),
       operationCommand(api, canvas.clipping, { category: 'Canvas', icon: 'scan', alias: ['clip', 'slab'] }),
+      // Handles on top or in the scene (gizmos.md): the command flips it, the operation takes the state wanted.
+      operationCommand(api, canvas.handles, {
+        category: 'Canvas',
+        icon: 'move-3d',
+        title: 'Handles on top',
+        alias: ['handles on top', 'handles through', 'gizmo on top'],
+        toggle: { key: 'onTop', current: () => api.canvas.handleLook.onTop },
+      }),
       // Offered only where WebXR is (the operation's `when`).
       ...(canvas.xr
         ? [

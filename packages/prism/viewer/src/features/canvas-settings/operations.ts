@@ -9,6 +9,7 @@
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Canvas3DParams, type Canvas3DProps, type PartialCanvas3DProps } from '@molstar/graphics/canvas3d/canvas3d';
+import { GizmoAppearance } from '@molstar/graphics/util/gizmo/controller';
 import { type ApiContext, ApiResult, type ApiFailure, type OperationDefinition } from '../../api/area.js';
 import { OptionalParam, SwitchParam, type SwitchValue } from '../../api/params.js';
 import { checkValues } from '../../api/run.js';
@@ -169,6 +170,18 @@ export const ClippingParams = {
   ),
   far: OptionalParam(PD.Boolean(true, { label: 'Hide distant scene', description: 'Hide the scene in the distance' })),
 };
+/** How every handle on the canvas is drawn (the gizmo library's `GizmoAppearance`): given, set; absent, kept. */
+export const HandlesParams = {
+  onTop: OptionalParam(
+    PD.Boolean(false, {
+      label: 'On top',
+      description: 'Handles drawn over everything, seen and grabbed through what is in front of them',
+    }),
+  ),
+  scale: OptionalParam(
+    PD.Numeric(1, { min: 0.25, max: 4, step: 0.05 }, { label: 'Size', description: 'Times their own size' }),
+  ),
+};
 
 const canvasModule = ['canvas'] as const;
 
@@ -301,6 +314,38 @@ export const canvasSettingsOperations = (): {
         if (JSON.stringify(change) === JSON.stringify(before)) return ApiResult.already('The lighting is already so.');
         const said = keys.map((k) => `${k} ${v[k]!.name}`);
         return set(ctx, change as PartialCanvas3DProps, `Lighting: ${said.join(', ')}.`);
+      },
+    }),
+  },
+  // The handles' look (gizmos.md): one setting for every handle on the canvas, Prism's and the extensions'; a view
+  // setting (no history step), kept with the canvas (not across reloads).
+  {
+    area: 'canvas',
+    name: 'handles',
+    operation: typed({
+      id: 'canvas.handles',
+      title: 'Set how handles are drawn',
+      params: HandlesParams,
+      history: false,
+      when: (ctx) => (ctx.plugin.canvas3d ? true : 'There is no canvas.'),
+      async run(v, ctx) {
+        const { onTop, scale } = v as { onTop?: boolean; scale?: number };
+        const canvas = ctx.plugin.canvas3d;
+        if (!canvas) return ApiResult.fail('unavailable', 'There is no canvas.');
+        if (onTop === undefined && scale === undefined) {
+          return ApiResult.fail('invalid', 'Change what?', 'onTop (true or false) or scale (times their size).');
+        }
+        const look = GizmoAppearance.of(canvas);
+        const next = {
+          onTop: onTop ?? look.onTop,
+          scale: scale === undefined ? look.scale : Math.max(0.25, Math.min(4, scale)),
+        };
+        if (next.onTop === look.onTop && next.scale === look.scale)
+          return ApiResult.already('The handles are already so.');
+        GizmoAppearance.set(canvas, next);
+        return ApiResult.ok(`Handles ${next.onTop ? 'on top' : 'in the scene'}, at ${Math.round(next.scale * 100)}%.`, {
+          view: true,
+        });
       },
     }),
   },

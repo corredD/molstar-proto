@@ -25,6 +25,7 @@ their own packages (`@molstar/<name>-extension/prism-viewer`).
 | `canvas.camera` | Set the camera | needs canvas | mode, fov |
 | `canvas.clipping` | Clip the scene | needs canvas | clip, far |
 | `canvas.get` | Describe the canvas | read |  |
+| `canvas.handles` | Set how handles are drawn | view | onTop, scale |
 | `canvas.lighting` | Change the lighting | needs canvas | occlusion, shadow, outline, fog, illumination |
 | `canvas.settings` | Change canvas settings | needs canvas; ui-only | section, values |
 | `canvas.xr` | Enter or leave XR | view; needs canvas | on |

@@ -424,6 +424,7 @@ export const BuiltInOperationFeatures: Readonly<Record<string, string>> = {
   'canvas.camera': 'CanvasSettingsFeature',
   'canvas.clipping': 'CanvasSettingsFeature',
   'canvas.xr': 'CanvasSettingsFeature',
+  'canvas.handles': 'CanvasSettingsFeature',
 };
 
 /** An operation as commands and tools see it, before running: its params resolved, and whether it can run now. */
