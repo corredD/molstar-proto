@@ -27,6 +27,8 @@ export class ClipGizmos {
   #followedCount = 0;
   readonly #binding: ClipBinding;
   readonly #handles: GizmoHandles<CutObject>;
+  /** The cut a view previews (`preview`), as it shows it */
+  #previewed: CutObject | undefined;
 
   constructor(
     private readonly plugin: PluginContext,
@@ -68,6 +70,13 @@ export class ClipGizmos {
     this.#handles.cancel();
   }
 
+  /** A cut previewed outside the state (a slider, `CutPreview`): its gizmo drawn there; undefined: as the state holds */
+  preview(object: CutObject | undefined): void {
+    if (this.#previewed === object) return;
+    this.#previewed = object;
+    this.#handles.publish();
+  }
+
   /** The active cuts followed into `cuts`, as the gizmos' items */
   #items(cuts: readonly Cut[]): ClipItem[] {
     // during a drag the cut is the drag's (its number and object are followed again once it ends)
@@ -82,7 +91,9 @@ export class ClipGizmos {
         }),
       );
       if (!bounds) continue;
-      items.push({ key: cut.object.tag || `#${cut.index}`, value: cut.object, label: `Cut ${cut.index}`, bounds });
+      const previewed = this.#previewed;
+      const value = previewed && RepresentationClip.sameCut(previewed, cut.object) ? previewed : cut.object;
+      items.push({ key: cut.object.tag || `#${cut.index}`, value, label: `Cut ${cut.index}`, bounds });
     }
     return items;
   }

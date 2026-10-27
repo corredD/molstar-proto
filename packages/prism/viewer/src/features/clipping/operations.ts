@@ -128,7 +128,8 @@ export class ClippingApi extends ApiArea {
     });
   }
 
-  readonly #preview = new CutPreview(this.ctx.plugin);
+  /** A view's preview of a cut: its representations, and its gizmo where shown */
+  readonly #preview = new CutPreview(this.ctx.plugin, (object) => this.gizmos.preview(object));
 
   /**
    * A view's gesture on a cut's numbers (a slider going): `from`, a cut as the state holds it, shown as `next` on its

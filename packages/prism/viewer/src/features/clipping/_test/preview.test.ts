@@ -132,6 +132,30 @@ describe('a cut previewed', () => {
     canvas.remove();
   });
 
+  it("moves the cut's gizmo with the preview, and back at its end", async () => {
+    const v = await headlessViewer({ files: [cbs()] });
+    const clipping = v.api.clipping;
+    expectOk(await clipping.add({ shape: 'sphere', target: 'polymer' }));
+    const cut = clipping.cuts.value[0];
+    const canvas = mountGizmoCanvas(v.plugin);
+    clipping.gizmos.handleOnly(1);
+    expect(clipping.showGizmos(v.api)).toBe(true);
+    // where the gizmo is drawn: the x of its representations' transform
+    const x = () => {
+      const t = canvas.shown().map((r) => (r.state as { transform?: ArrayLike<number> }).transform?.[12]);
+      return t.find((n) => n !== undefined);
+    };
+    await until(() => x() !== undefined);
+    const x0 = x()!;
+    const p = cut.object.position;
+    clipping.previewCut(cut.object, { ...cut.object, position: Vec3.create(p[0] + 7, p[1], p[2]) });
+    await until(() => Math.abs(x()! - (x0 + 7)) < 1e-3);
+    clipping.endPreview();
+    await until(() => Math.abs(x()! - x0) < 1e-3);
+    clipping.gizmos.hide();
+    canvas.remove();
+  });
+
   it("gives a cone's half-angle from its scale and back", async () => {
     const v = await headlessViewer({ files: [cbs()] });
     const { cone } = v.api.clipping;

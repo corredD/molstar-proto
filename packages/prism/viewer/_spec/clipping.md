@@ -85,8 +85,10 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
   and ends the preview, which puts the representations back to what the state then holds. `previewCut` returns a token:
   `endPreview(token)` is a no-op once a newer preview began (a release whose commit lands during the next gesture). A
   change of the state during a preview ends it (as a handle's drag is cancelled: what it captured is stale); the view
-  ends its own when it goes. The cut's gizmo, if shown, follows at the commit, not during the preview. `boundsOf(cut)`
-  (what it cuts, one sphere) is a view's reach; `cone` turns a cone's scale into its half-angle and back.
+  ends its own when it goes. Each preview asks the canvas for a frame (a clip-only update asks for none), and the cut's
+  gizmo, if shown, is drawn where the preview is (`ClipGizmos.preview`: its item's value; moved, or remade when its size
+  changes), back to the state's at the end. `boundsOf(cut)` (what it cuts, one sphere) is a view's reach; `cone` turns a
+  cone's scale into its half-angle and back.
 
 ## 5. Keep whole
 
