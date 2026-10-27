@@ -28,7 +28,7 @@ export class CutPreview {
   /** The state changed under the preview: what `begin` captured is not what the state holds */
   #stale = false;
 
-  constructor(plugin: PluginContext) {
+  constructor(private readonly plugin: PluginContext) {
     this.#binding = new ClipBinding(plugin, () => []);
     // previews touch the representations, never the state: a change of it is someone else's
     plugin.state.data.events.changed.subscribe(() => {
@@ -81,6 +81,8 @@ export class CutPreview {
         const next = this.#pending;
         this.#pending = undefined;
         await this.#binding.preview('', this.#from, next);
+        // a clip-only update changes uniforms and asks for no frame: drawn now, as a handle's drag is
+        this.plugin.canvas3d?.requestDraw();
       }
     } finally {
       this.#running = false;
@@ -90,6 +92,7 @@ export class CutPreview {
 
   #restore() {
     this.#binding.cancel();
+    this.plugin.canvas3d?.requestDraw();
     this.#from = undefined;
     this.#ending = false;
     this.#stale = false;

@@ -8,6 +8,7 @@ import { Vec3 } from '@molstar/core/math/linear-algebra';
 import type { Clip } from '@molstar/core/util/clip';
 import { describe, expect, it } from 'vitest';
 import { cbs, expectOk, headlessViewer } from '../../../_test/harness.js';
+import { mountGizmoCanvas } from '../../../testing/gizmo-canvas.js';
 
 // A cut previewed by a view's gesture (clipping.md §4): shown on its live representations, not in the state and no
 // step; `endPreview` puts them back to what the state holds, and a commit then is the one step.
@@ -110,6 +111,25 @@ describe('a cut previewed', () => {
     await until(() => live(b.object.tag!) === bx + 8);
     expectOk(await clipping.update({ tag: a.object.tag, invert: true }));
     await until(() => live(b.object.tag!) === bx);
+  });
+
+  it('asks the canvas for a frame at each preview and at its end (a clip-only update asks for none)', async () => {
+    const v = await headlessViewer({ files: [cbs()] });
+    const clipping = v.api.clipping;
+    expectOk(await clipping.add({ shape: 'sphere', target: 'polymer' }));
+    const cut = clipping.cuts.value[0];
+    const canvas = mountGizmoCanvas(v.plugin);
+    let draws = 0;
+    (v.plugin.canvas3d as unknown as { requestDraw: () => void }).requestDraw = () => {
+      draws++;
+    };
+    const p = cut.object.position;
+    clipping.previewCut(cut.object, { ...cut.object, position: Vec3.create(p[0] + 3, p[1], p[2]) });
+    await until(() => draws >= 1);
+    const before = draws;
+    clipping.endPreview();
+    expect(draws).toBeGreaterThan(before);
+    canvas.remove();
   });
 
   it("gives a cone's half-angle from its scale and back", async () => {
