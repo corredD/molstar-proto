@@ -16,6 +16,7 @@ import { addSphere } from '../../geo/geometry/mesh/builder/sphere.js';
 import { Mesh } from '../../geo/geometry/mesh/mesh.js';
 import { MeshBuilder } from '../../geo/geometry/mesh/mesh-builder.js';
 import { createGl } from '../../gl/_test/gl.shim.js';
+import { RenderState } from '../../gl/render-state.js';
 import type { Scene } from '../../gl/scene.js';
 import { Renderer } from '../../gl/renderer.js';
 import { createContext } from '../../gl/webgl/context.js';
@@ -44,6 +45,7 @@ function sphere(_: unknown, { x }: { x: number }) {
 /** The calls of the canvas's renderers that draw or clear, the group named: `main` (the scene's), `top` or `other` */
 type Call = readonly [name: string, group?: 'main' | 'top' | 'other'];
 const Recorded = [
+  'clear',
   'renderBlended',
   'renderOpaque',
   'renderBlendedTransparent',
@@ -84,13 +86,25 @@ function setup() {
           }
         }
         // a draw of the on-top layer is never occlusion tested (Hi-Z would cull what is behind the scene)
-        if (groupOf(a[0]) === 'top' && name !== 'clearDepth')
+        if (name === 'clear') calls.push([a[2] ? 'clear to transparent' : 'clear']);
+        else if (groupOf(a[0]) === 'top' && name !== 'clearDepth')
           calls.push([unoccluded ? name : `${name} (occluded)`, 'top']);
         else calls.push(name === 'clearDepth' ? [name] : [name, groupOf(a[0])]);
         return f(...a);
       };
     }
     return renderer;
+  });
+  // the passes begun (by label) and a copy drawn premultiplied
+  const begin = graphics.beginRenderPass.bind(graphics);
+  vi.spyOn(graphics, 'beginRenderPass').mockImplementation((t, o) => {
+    calls.push([`begin ${o?.label ?? ''}`]);
+    return begin(t, o);
+  });
+  const setRenderState = graphics.setRenderState.bind(graphics);
+  vi.spyOn(graphics, 'setRenderState').mockImplementation((state) => {
+    if (state === RenderState.Premultiplied) calls.push(['premultiplied']);
+    return setRenderState(state);
   });
   const plan = ctx.passes.draw.plan.bind(ctx.passes.draw);
   vi.spyOn(ctx.passes.draw, 'plan').mockImplementation((b, c, ...rest) => {
@@ -173,7 +187,12 @@ describe('Canvas3D on top', () => {
     const handle = await addSphere3D(canvas, 0);
     canvas.setOnTop(handle, true);
     draw(canvas);
-    const drawn = calls.filter(([, g]) => g !== 'other');
+    // the layer into a target of its own, cleared (to the far depth), then copied over the image premultiplied
+    const named = calls.map(([n]) => n);
+    const top = calls.findIndex(([n, g]) => n === 'renderBlended' && g === 'top');
+    expect(named.slice(top - 2, top)).toEqual(['begin on top', 'clear to transparent']);
+    expect(named.slice(top + 1, top + 3)).toEqual(['begin on top', 'premultiplied']);
+    const drawn = calls.filter(([, g]) => g !== undefined && g !== 'other');
     // each frame drawn: the scene, then the on-top layer over it, not occlusion tested
     expect(drawn.length).toBeGreaterThan(0);
     let sceneDrawn = false;
