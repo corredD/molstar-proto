@@ -133,14 +133,18 @@ export class ClippingApi extends ApiArea {
   /**
    * A view's gesture on a cut's numbers (a slider going): `from`, a cut as the state holds it, shown as `next` on its
    * representations, outside the state (no step); its release is the view's one `clipping.update`, then `endPreview`
+   * with the token this returns. A change of the state ends it.
    */
-  previewCut(from: CutObject, next: CutObject): void {
-    this.#preview.show(from, next);
+  previewCut(from: CutObject, next: CutObject): number {
+    return this.#preview.show(from, next);
   }
 
-  /** The preview's representations back to what the state holds (after the commit: as it now is) */
-  endPreview(): void {
-    this.#preview.end();
+  /**
+   * The preview's representations back to what the state holds (after the commit: as it now is); with a token, only if
+   * no preview came after it (another gesture begun while the commit ran)
+   */
+  endPreview(token?: number): void {
+    this.#preview.end(token);
   }
 
   /** What a cut cuts, as one sphere (its representations' bounds): a view's reach around it */

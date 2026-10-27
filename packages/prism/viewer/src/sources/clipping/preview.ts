@@ -12,7 +12,10 @@ import { ClipBinding } from './gizmo/binding.js';
 // A cut previewed outside the state (clipping.md §4): a view's gesture on a cut's numbers (a slider going) shows the cut
 // as it goes on its live representations, as a handle's drag does (the same binding: a clip-only update, uniforms
 // only), and its release is the app's one `clipping.update`. One preview in flight, the latest waiting (the others
-// dropped); `end` puts back what the state holds once the one in flight lands.
+// dropped); `end` puts back what the state holds once the one in flight lands. Each `show` is a token: an `end` with an
+// older one (a release whose commit landed after another gesture began) leaves the newer preview alone. A change of the
+// state during a preview (an undo, a remove, another edit) ends it, as it cancels a handle's drag: the representations
+// it captured are stale; the next `show` begins again from the state.
 
 export class CutPreview {
   readonly #binding: ClipBinding;
@@ -21,9 +24,18 @@ export class CutPreview {
   #pending: CutObject | undefined;
   #running = false;
   #ending = false;
+  #token = 0;
+  /** The state changed under the preview: what `begin` captured is not what the state holds */
+  #stale = false;
 
   constructor(plugin: PluginContext) {
     this.#binding = new ClipBinding(plugin, () => []);
+    // previews touch the representations, never the state: a change of it is someone else's
+    plugin.state.data.events.changed.subscribe(() => {
+      if (!this.#from) return;
+      this.#stale = true;
+      this.#end();
+    });
   }
 
   /** Whether a preview is on */
@@ -31,21 +43,31 @@ export class CutPreview {
     return this.#from !== undefined;
   }
 
-  /** `from` (a cut as the state holds it) shown as `next` on its representations, not in the state */
-  show(from: CutObject, next: CutObject): void {
+  /** `from` (a cut as the state holds it) shown as `next` on its representations, not in the state; its token */
+  show(from: CutObject, next: CutObject): number {
     this.#ending = false;
-    if (!this.#from || !RepresentationClip.sameCut(this.#from, from)) {
-      // another cut: the one previewed back to the state first
+    if (!this.#from || this.#stale || !RepresentationClip.sameCut(this.#from, from)) {
+      // another cut, or the state changed: what was previewed back to the state first
       if (this.#from) this.#binding.cancel();
       this.#from = from;
+      this.#stale = false;
       this.#binding.begin('', from);
     }
     this.#pending = next;
     if (!this.#running) void this.#flush();
+    return ++this.#token;
   }
 
-  /** The representations back to what the state holds (after a commit: as it now is) */
-  end(): void {
+  /**
+   * The representations back to what the state holds (after a commit: as it now is); with a token, only if no `show`
+   * came after it
+   */
+  end(token?: number): void {
+    if (token !== undefined && token !== this.#token) return;
+    this.#end();
+  }
+
+  #end() {
     if (!this.#from) return;
     this.#pending = undefined;
     this.#ending = true;
@@ -70,5 +92,6 @@ export class CutPreview {
     this.#binding.cancel();
     this.#from = undefined;
     this.#ending = false;
+    this.#stale = false;
   }
 }

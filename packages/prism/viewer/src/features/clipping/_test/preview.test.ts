@@ -54,6 +54,64 @@ describe('a cut previewed', () => {
     expect(v.managers.history.steps.value.length).toBe(steps + 1);
   });
 
+  it('drops the previews between, ends at once, keeps a newer one, and ends on a change of the state', async () => {
+    const v = await headlessViewer({ files: [cbs()] });
+    const clipping = v.api.clipping;
+    expectOk(await clipping.add({ shape: 'sphere', target: 'polymer' }));
+    expectOk(await clipping.add({ shape: 'cube', target: 'polymer' }));
+    const [a, b] = clipping.cuts.value;
+    const cell = v.plugin.state.data.cells.get(a.targets[0].ref)!;
+    const repr = () => (cell.obj?.data as { repr: { props: { clip: Clip.Props }; createOrUpdate: unknown } }).repr;
+    const live = (tag: string) => repr().props.clip.objects.find((o) => o.tag === tag)!.position[0];
+    const ax = a.object.position[0];
+    const bx = b.object.position[0];
+    const at = (o: typeof a.object, x: number) => ({
+      ...o,
+      position: Vec3.create(x, o.position[1], o.position[2]),
+    });
+    const settle = () => new Promise((r) => setTimeout(r, 100));
+
+    // a burst ended at once: the first in flight, the others dropped, then back to the state
+    const r = repr() as { createOrUpdate: (...args: unknown[]) => unknown };
+    const original = r.createOrUpdate;
+    let calls = 0;
+    r.createOrUpdate = function (this: unknown, ...args: unknown[]) {
+      calls++;
+      return original.apply(this, args);
+    };
+    clipping.previewCut(a.object, at(a.object, ax + 1));
+    clipping.previewCut(a.object, at(a.object, ax + 2));
+    clipping.previewCut(a.object, at(a.object, ax + 3));
+    clipping.endPreview();
+    await settle();
+    expect(live(a.object.tag!)).toBe(ax);
+    // the first preview and the restore
+    expect(calls).toBe(2);
+    r.createOrUpdate = original;
+
+    // another cut while one is previewed: the first back to the state's
+    clipping.previewCut(a.object, at(a.object, ax + 5));
+    clipping.previewCut(b.object, at(b.object, bx + 5));
+    await until(() => live(b.object.tag!) === bx + 5);
+    expect(live(a.object.tag!)).toBe(ax);
+
+    // a token: an older end leaves the newer preview
+    const t1 = clipping.previewCut(b.object, at(b.object, bx + 6));
+    const t2 = clipping.previewCut(b.object, at(b.object, bx + 7));
+    clipping.endPreview(t1);
+    await until(() => live(b.object.tag!) === bx + 7);
+    await settle();
+    expect(live(b.object.tag!)).toBe(bx + 7);
+    clipping.endPreview(t2);
+    await until(() => live(b.object.tag!) === bx);
+
+    // a change of the state (another cut's edit) ends a preview
+    clipping.previewCut(b.object, at(b.object, bx + 8));
+    await until(() => live(b.object.tag!) === bx + 8);
+    expectOk(await clipping.update({ tag: a.object.tag, invert: true }));
+    await until(() => live(b.object.tag!) === bx);
+  });
+
   it("gives a cone's half-angle from its scale and back", async () => {
     const v = await headlessViewer({ files: [cbs()] });
     const { cone } = v.api.clipping;
