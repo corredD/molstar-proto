@@ -10,13 +10,10 @@ the app, in his words; the lane turns it into spec and tests.
 
 <!-- - **Title**: what I want to see. Check: what I do in the app and what I expect. -->
 
-In this order (Ludo, 2026-10-25), one at a time; the looks' owner (PR #8) and the measure hint (PR #7) are built. From
-the architecture's decisions ([_spec/architecture.md](_spec/architecture.md) §7: refactor in place) and the review of
-the distances (PR #5):
+In this order (Ludo, 2026-10-25), one at a time; the looks' owner (PR #8), the measure hint (PR #7) and the app as a
+spec (lane `app-spec`) are built. From the architecture's decisions ([_spec/architecture.md](_spec/architecture.md) §7:
+refactor in place) and the review of the distances (PR #5):
 
-- **The app is only a spec**: `explorer.clipWhole`, the picks, the label sizing and the direct extension calls move into
-  the extensions as operations. Check: the app behaves as before; `apps/prism-me/src` has no `as any` and calls no
-  extension method directly.
 - **The views on the mocks**, one lane each, checked against its story in Storybook (prism-me › Explorer), light and
   dark, wide and narrow: the tree (`ui.tsx`, `rows.ts`: `VirtualList`, `TreeNavigation`, the row's tools on hover, the
   eye at the end, categories picked); the properties (`properties.tsx`: `SectionList`, `ParamsForm`, a category's Look

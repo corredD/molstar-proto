@@ -105,11 +105,14 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
    - the oblique slice's sliders run the operation ~60 ms after each pause of the pointer, so one drag leaves several
      undo steps (the handle does it right: preview, then one commit);
    - graphics mode changes the canvas outside the state, so undo and sessions miss it.
-3. **The app reaches past the operations.**
+3. **The app reaches past the operations.** Built (2026-10-27, lane `app-spec`) but for the node kinds:
    - `explorer.clipWhole` edited particle representation params inside the app (`as any`); now `stage.clipWhole`
      (2026-10-27, lane `app-spec`), typed by the target representation's props;
-   - a few extension methods are called directly (`cryoet.oblique`, `cryoet.slices`, previews), and several
-     `transform.params as any`.
+   - a few extension methods were called directly (`cryoet.oblique`, `cryoet.slices`, previews), and several
+     `transform.params as any`. The writes run by id now; what the app still calls on an extension is a read (a watched
+     state, `stage.pickedAt`, `placementOf`), a preview (`stage.previewMove`, `previewPose`: a drag is not an operation)
+     or a host (`use…Handles`, `moveGizmos`, `obliqueHandles`, `setMenu`). The app's own code has no `any`
+     (`src/_test/no-any.test.ts`).
    - The tree's node kinds are plain strings, repeated in three files; the scene's kinds (`model`, `list`) and the
      tree's (`mesoscale model`, `particle list`) differ. (A list's target row sent its target ids as entity ids to
      `mesoscale.style`: right only because a list without entities has its targets as entities; the menu's Hide on it
@@ -163,7 +166,10 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
    (its item's and those under it, or what places it: an undo), which the three extension handles did not do; the object
    move uses Prism's placement math (`PlacementHandles`), the slice and the particle `frameHandles`.
 5. **The app becomes only a spec:** its logic (`clipWhole`, picks, label sizing, direct extension calls) moves as
-   operations into the extension that owns the data. The app keeps layout, URL and defaults.
+   operations into the extension that owns the data. The app keeps layout, URL and defaults. Built (2026-10-27, lane
+   `app-spec`, [../progress/2026-10-27-app-spec.md](../progress/2026-10-27-app-spec.md)): `stage.clipWhole`; the label's
+   size from the named part's radius (`stage.label` `radius`); what a click is on, `stage.pickedAt` (the row it reveals
+   stays the explorer's: its keys are the tree's layout); the cryo-ET writes by id.
 6. **Refactor in place, not a prism-me-v2** (Ludovic, 2026-10-25, after the Storybook mocks of PR #6): the mocks'
    comparison ([../progress/2026-10-25-explorer-mocks.md](../progress/2026-10-25-explorer-mocks.md)) found the app's
    operations and sections the same and its views different (its own rows, keys, sections and colors where Prism has
