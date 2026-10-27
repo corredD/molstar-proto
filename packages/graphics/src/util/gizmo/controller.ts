@@ -111,8 +111,9 @@ export const GizmoAppearance = {
  */
 const HoverColor = Color(0xffe600);
 
-/** The handle lit (`#light`): its handles' representation, its group, its color before */
+/** The handle lit (`#light`): its item, its handles' representation, its group, its color before */
 interface Lit {
+  readonly key: string;
   readonly repr: Representation.Any;
   readonly group: number;
   readonly color: Color;
@@ -328,6 +329,7 @@ export class GizmoController<T> {
       }
       if (g) this.#remove(g);
       this.#gizmos.set(item.key, made);
+      this.#keepLit(item.key, made);
     }
     this.#canvas.requestDraw();
   }
@@ -425,6 +427,7 @@ export class GizmoController<T> {
     }
     this.#remove(g);
     this.#gizmos.set(item.key, made);
+    this.#keepLit(item.key, made);
   }
 
   /** After a frame: the gizmos facing the camera turned to it again where it moved (one more frame, then still) */
@@ -452,7 +455,7 @@ export class GizmoController<T> {
     const handle = g.layout.groups[group]?.handle;
     if (!handle) return;
     this.#hovered = { key, handle, ...(position ? { position: Vec3.clone(position) } : {}) };
-    this.#light(g, group);
+    this.#light(key, g, group);
     this.#takeDrags();
   }
 
@@ -460,14 +463,23 @@ export class GizmoController<T> {
    * The hovered handle lit (`HoverColor`), in place: its color in the handles' render object changed and updated
    * (nothing made); the last lit handle put back first
    */
-  #light(g: Gizmo<T>, group: number) {
+  #light(key: string, g: Gizmo<T>, group: number) {
     const lit = this.#lit;
     if (lit && lit.repr === g.handles && lit.group === group) return;
     this.#unlight();
     const colors = this.#colorsOf(g.handles);
     if (!colors) return;
-    this.#lit = { repr: g.handles, group, color: Color.fromArray(colors.ref.value.array, group * 4) };
+    this.#lit = { key, repr: g.handles, group, color: Color.fromArray(colors.ref.value.array, group * 4) };
     this.#paint(g.handles, colors, group, HoverColor);
+  }
+
+  /** A gizmo remade under its lit handle (a drag's new size, an edit at rest): the light on its new handles */
+  #keepLit(key: string, g: Gizmo<T>) {
+    const lit = this.#lit;
+    if (!lit || lit.key !== key || lit.repr === g.handles) return;
+    // the old handles are gone: nothing to put back
+    this.#lit = undefined;
+    this.#light(key, g, lit.group);
   }
 
   /** The lit handle put back as it was */

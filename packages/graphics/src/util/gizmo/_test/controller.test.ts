@@ -322,4 +322,20 @@ describe('GizmoController', () => {
     expect(handles.renderObjects).toEqual([ro]);
     c.dispose();
   });
+  it('keeps the dragged handle lit when the drag remakes its gizmo (a new size)', async () => {
+    const fake = fakeCanvas();
+    const binding = fakeBinding();
+    binding.sameGeometry = () => false;
+    const c = new GizmoController(fake.canvas, binding);
+    await settle();
+    const first = fake.added[0];
+    hoverOn(fake, 1);
+    await drag(fake, [5, 10]);
+    await settle();
+    const [remade] = fake.added;
+    expect(remade).not.toBe(first);
+    const values = remade.renderObjects[0].values as { tColor: { ref: { value: { array: Uint8Array } } } };
+    expect(Color.fromArray(values.tColor.ref.value.array, 4)).toBe(Color(0xffe600));
+    c.dispose();
+  });
 });
