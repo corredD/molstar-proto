@@ -714,8 +714,8 @@ function AddParticleRepresentation(props: {
 /** A volume's slices, a section each (Slice X, Y, Z: position and window), and the three at a click if some are missing */
 /** A new oblique slice through the volume's middle, its handle shown on it */
 async function addOblique(api: ViewerApi, cryoet: CryoetApi, volume: string) {
-  const r = await cryoet.oblique({ volume } as never);
-  const slice = r.ok ? (r as { value?: { slice?: string } }).value?.slice : undefined;
+  const r = await api.run('cryoet.oblique', { volume });
+  const slice = r.ok ? (r.value as { slice?: string } | undefined)?.slice : undefined;
   if (!slice) return;
   hideHandles(api);
   cryoet.useObliqueHandles(api).show({ volume, slice });
@@ -736,7 +736,7 @@ function VolumeSlices(props: { api: ViewerApi; volume: string }) {
       </For>
       <Show when={mapState(info, (i) => (i?.slices.length ?? 0) < 3)}>
         {() => (
-          <Button size="sm" onClick={() => void cryoet.slices({ volume: props.volume, isosurface: true } as never)}>
+          <Button size="sm" onClick={() => void props.api.run('cryoet.slices', { volume: props.volume, isosurface: true })}>
             Show the three slices
           </Button>
         )}
