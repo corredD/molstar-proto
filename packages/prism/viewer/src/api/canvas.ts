@@ -4,11 +4,13 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Color } from '@molstar/core/util/color';
 import { decodeColor } from '@molstar/core/util/color/utils';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { GizmoAppearance, type GizmoLook } from '@molstar/graphics/util/gizmo/controller';
 import type { ReadonlyState } from '@molstar/prism-ui/core';
 import type { CanvasState } from '../sources/viewer-sources.js';
 import { ApiArea, ApiResult } from './area.js';
@@ -23,6 +25,12 @@ export class CanvasApi extends ApiArea {
   /** The canvas as the viewer reads it; undefined without one (headless). */
   get state(): ReadonlyState<CanvasState | undefined> {
     return this.ctx.sources.canvas;
+  }
+
+  /** How every handle on the canvas is drawn (`canvas.handles`, gizmos.md); the default look without a canvas. */
+  get handleLook(): GizmoLook {
+    const canvas = this.ctx.plugin.canvas3d;
+    return canvas ? GizmoAppearance.of(canvas) : GizmoAppearance.Default;
   }
 
   readonly background = this.operation({
@@ -53,8 +61,9 @@ export class CanvasApi extends ApiArea {
     read: true,
     async run(_, ctx) {
       const canvas = ctx.sources.canvas.value;
-      const p = ctx.plugin.canvas3d?.props;
-      if (!canvas || !p) return ApiResult.ok('No canvas (a headless viewer).', {}, { value: undefined });
+      const c3d = ctx.plugin.canvas3d;
+      const p = c3d?.props;
+      if (!canvas || !c3d || !p) return ApiResult.ok('No canvas (a headless viewer).', {}, { value: undefined });
       // What the canvas operations set, so a script reads it back as it would give it (api.md §1).
       const on = (m: { name: string }) => m.name === 'on';
       const value = {
@@ -71,6 +80,8 @@ export class CanvasApi extends ApiArea {
         camera: { mode: p.camera.mode, fov: p.camera.fov },
         clipping: { clip: p.cameraClipping.radius, far: p.cameraClipping.far },
         xr: !!ctx.plugin.canvas3d?.xr?.isPresenting.value,
+        // every handle's look (`canvas.handles`)
+        handles: { ...GizmoAppearance.of(c3d) },
       };
       const lit = (Object.keys(value.lighting) as (keyof typeof value.lighting)[]).filter((k) => value.lighting[k]);
       return ApiResult.ok(

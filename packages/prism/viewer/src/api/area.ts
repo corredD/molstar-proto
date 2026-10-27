@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -424,6 +425,7 @@ export const BuiltInOperationFeatures: Readonly<Record<string, string>> = {
   'canvas.camera': 'CanvasSettingsFeature',
   'canvas.clipping': 'CanvasSettingsFeature',
   'canvas.xr': 'CanvasSettingsFeature',
+  'canvas.handles': 'CanvasSettingsFeature',
 };
 
 /** An operation as commands and tools see it, before running: its params resolved, and whether it can run now. */

@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { PassBuilder } from './pass-builder.js';
@@ -260,6 +261,15 @@ export class PickPass {
 
     if (helper.handle.isEnabled) {
       b.renderer(pass, helper.handle.scene, () => renderer.renderPick(helper.handle.scene, camera, variant, pickType));
+    }
+
+    // on top (`Helper.onTop`): over the scene's picks, whatever is in front of it
+    const { onTop } = helper;
+    if (onTop.renderables.length > 0) {
+      if (b.drawing) renderer.clearDepth();
+      b.renderer(pass, onTop, () =>
+        renderer.withoutOcclusion(() => renderer.renderPick(onTop, camera, variant, pickType)),
+      );
     }
 
     if (helper.camera.isEnabled) {

@@ -27,5 +27,14 @@ object.
   where a thing was loaded and its center (a structure, an extension's object), its scale kept under the turn.
 - **A frame comes ready** (`frameHandles(options)`, the same): a rigid frame and a size (a slice's plane, a particle),
   the rings those asked for.
+- **On top, one setting for every handle** (`canvas.handles`: `onTop`, `scale`; ⌘K "Handles on top" flips it): the gizmo
+  library's look of the canvas (`GizmoAppearance`), which every controller follows, Prism's hosts and an extension's
+  alike; no option per host. On top, every part of a gizmo (its handles and its body: a cut's plane, a slice's frame) is
+  drawn over the scene (Canvas3D's on-top layer, `setOnTop`), because a handle one cannot see cannot be grabbed (Ludo,
+  2026-10-26); the handles are picked through the scene, a body stays not pickable. A view setting (no history step),
+  kept with the canvas: not in the light restore (journal.md §6), which brings the canvas's props back where a host
+  keeps one (`persist.restore`); off by default.
+- **A hovered handle turns yellow** (the gizmo library's controller, on top or not; Ludo, 2026-10-27: a strong color, no
+  grow), and stays so while dragged: on top neither the marking's outline nor the glow is drawn.
 - **Tests** drive a fake canvas on a headless viewer's plugin (`src/testing/gizmo-canvas.ts`: hover a handle, drag,
-  release, Esc); a release outside the window is the canvas's own (`interactionEnd`) and is not faked.
+  release, Esc; what is on top); a release outside the window is the canvas's own (`interactionEnd`) and is not faked.

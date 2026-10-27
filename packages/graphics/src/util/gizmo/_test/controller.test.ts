@@ -3,11 +3,13 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Ludovic Autin <ludovic.autin@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { OrderedSet } from '@molstar/core/data/int';
 import { Mat4, Vec3, type Vec4 } from '@molstar/core/math/linear-algebra';
 import { Binding } from '@molstar/core/util/binding';
+import { Color } from '@molstar/core/util/color';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { BehaviorSubject, Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -31,6 +33,7 @@ const drags = {
 
 function fakeCanvas() {
   const added: Representation.Any[] = [];
+  const onTop = new Set<Representation.Any>();
   const attribs = { trackball: { bindings: drags } };
   const input = {
     pixelRatio: 1,
@@ -41,7 +44,11 @@ function fakeCanvas() {
   const canvas = {
     graphics,
     add: vi.fn((r: Representation.Any) => void added.push(r)),
-    remove: vi.fn((r: Representation.Any) => void added.splice(added.indexOf(r), 1)),
+    remove: vi.fn((r: Representation.Any) => {
+      added.splice(added.indexOf(r), 1);
+      onTop.delete(r);
+    }),
+    setOnTop: vi.fn((r: Representation.Any, on: boolean) => void (on ? onTop.add(r) : onTop.delete(r))),
     update: vi.fn(),
     requestDraw: vi.fn(),
     attribs,
@@ -67,7 +74,7 @@ function fakeCanvas() {
       },
     },
   };
-  return { canvas: canvas as unknown as Canvas3D, fake: canvas, added };
+  return { canvas: canvas as unknown as Canvas3D, fake: canvas, added, onTop };
 }
 
 function fakeBinding(commitResult = true) {
@@ -246,7 +253,106 @@ describe('GizmoController', () => {
     GizmoAppearance.set(fake.canvas, { scale: 0.5 });
     expect(scaleOf(handles)).toBeCloseTo(0.5);
     expect(scaleOf(body)).toBeCloseTo(1);
-    expect(GizmoAppearance.of(fake.canvas)).toMatchObject({ scale: 0.5, xray: false });
+    expect(GizmoAppearance.of(fake.canvas)).toMatchObject({ scale: 0.5, onTop: false });
+    c.dispose();
+  });
+
+  it("draws every part of the gizmos on top while the canvas's look says so, moved there, not made again", async () => {
+    const fake = fakeCanvas();
+    const binding = fakeBinding();
+    const layout = binding.layout();
+    binding.layout = () => ({ ...layout, body: layout.handles });
+    const c = new GizmoController(fake.canvas, binding);
+    await settle();
+    const parts = [...fake.added];
+    expect(parts).toHaveLength(2);
+    expect(fake.onTop.size).toBe(0);
+
+    GizmoAppearance.set(fake.canvas, { onTop: true });
+    // the handles and the body (Ludo: a handle one cannot see cannot be grabbed)
+    expect([...fake.onTop]).toEqual(expect.arrayContaining(parts));
+    expect(fake.added).toEqual(parts);
+
+    // a gizmo made while on top (its item changed geometry) goes there as it is added
+    binding.sameGeometry = () => false;
+    binding.items.next([{ key: 'a', value: { x: 3 }, label: 'A' }]);
+    await settle();
+    expect(fake.added).toHaveLength(2);
+    expect(fake.added.every((r) => fake.onTop.has(r))).toBe(true);
+    expect(fake.added.some((r) => parts.includes(r))).toBe(false);
+
+    GizmoAppearance.set(fake.canvas, { onTop: false });
+    expect(fake.onTop.size).toBe(0);
+    c.dispose();
+    GizmoAppearance.set(fake.canvas, GizmoAppearance.Default);
+  });
+
+  it('lights the hovered handle in a strong color, that one only, in place, and puts it back', async () => {
+    const fake = fakeCanvas();
+    const binding = fakeBinding();
+    const c = new GizmoController(fake.canvas, binding);
+    await settle();
+    const handles = fake.added[0];
+    const [ro] = handles.renderObjects;
+    const tColor = (ro.values as { tColor: { ref: { value: { array: Uint8Array }; version: number } } }).tColor;
+    const colors = () => Array.from({ length: 4 }, (_, g) => Color.fromArray(tColor.ref.value.array, g * 4));
+    // changed in place and told (its version: what the GPU upload follows)
+    let version = tColor.ref.version;
+    const bumped = () => {
+      const was = version;
+      version = tColor.ref.version;
+      return version > was;
+    };
+    const before = colors();
+    const lit = Color(0xffff00);
+    expect(before).not.toContain(lit);
+
+    hoverOn(fake, 1);
+    expect(colors()).toEqual([before[0], lit, before[2], before[3]]);
+    expect(bumped()).toBe(true);
+    expect(fake.fake.update).toHaveBeenLastCalledWith(handles, true);
+    hoverOn(fake, 2);
+    expect(colors()).toEqual([before[0], before[1], lit, before[3]]);
+    fake.fake.interaction.hover.next({ current: { repr: undefined, loci: { kind: 'empty-loci' } } as never });
+    expect(colors()).toEqual(before);
+    expect(bumped()).toBe(true);
+
+    // during a drag it stays on the dragged handle; the drag's end puts it back
+    hoverOn(fake, 1);
+    await drag(fake, [5, 10]);
+    hoverOn(fake, 2);
+    expect(colors()[1]).toBe(lit);
+    fake.fake.input.interactionEnd.next();
+    await settle();
+    expect(colors()[1]).toBe(before[1]);
+    // nothing made for it
+    expect(handles.renderObjects).toEqual([ro]);
+
+    // Esc during a drag, and dispose, put it back too
+    hoverOn(fake, 1);
+    await drag(fake, [5]);
+    fake.fake.input.keyDown.next({ key: 'Escape' });
+    expect(colors()[1]).toBe(before[1]);
+    hoverOn(fake, 3);
+    expect(colors()[3]).toBe(lit);
+    c.dispose();
+    expect(colors()[3]).toBe(before[3]);
+  });
+
+  it('keeps the dragged handle lit when the drag remakes its gizmo (a new size)', async () => {
+    const fake = fakeCanvas();
+    const binding = fakeBinding();
+    binding.sameGeometry = () => false;
+    const c = new GizmoController(fake.canvas, binding);
+    await settle();
+    const first = fake.added[0];
+    hoverOn(fake, 1);
+    await drag(fake, [5, 10]);
+    await settle();
+    const [remade] = fake.added;
+    expect(remade).not.toBe(first);
+    const values = remade.renderObjects[0].values as { tColor: { ref: { value: { array: Uint8Array } } } };
+    expect(Color.fromArray(values.tColor.ref.value.array, 4)).toBe(Color(0xffff00));
     c.dispose();
   });
 });

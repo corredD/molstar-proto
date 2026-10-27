@@ -903,6 +903,7 @@ function Position(props: { api: ViewerApi; area: ExplorerApi; kind: string; node
             onClick={() => exact.set(!exact.value)}
           />
         ) : null}
+        <OnTop api={api} area={props.area} />
       </div>
       {api.stage ? (
         <Show when={exact.asReadonly}>{() => <PoseSliders stage={api.stage!} api={api} target={node.ref} />}</Show>
@@ -1064,6 +1065,26 @@ function LocalHandle(props: { api: ViewerApi; stage: StageApi; list: string }) {
   );
 }
 
+/**
+ * Every handle on the canvas drawn on top of the scene, or in it (the move's and the clips' alike, one setting:
+ * `canvas.handles`, no history step); the same button in Position and in each clip's line
+ */
+function OnTop(props: { api: ViewerApi; area: ExplorerApi }) {
+  const on = mapState(props.area.handleLookState(), (l) => l.onTop);
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      title="Handles on top: drawn over everything, seen and grabbed through what is in front of them"
+      pressed={on}
+      icon={<Icon name="layers" />}
+      onClick={() => void props.api.run('canvas.handles', { onTop: !on.value })}
+    >
+      On top
+    </Button>
+  );
+}
+
 /** How every handle on the canvas is drawn (the move's and the clips' alike): its size */
 function HandleLook(props: { area: ExplorerApi }) {
   const look = props.area.handleLookState();
@@ -1157,6 +1178,7 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
                   else showClipHandles(api, c.index);
                 }}
               />
+              <OnTop api={api} area={area} />
               <Button
                 size="xs"
                 variant="ghost"

@@ -7,6 +7,10 @@ section); an entry leaves when it is done (its spec section says so then). The s
 
 ## Decisions open
 
+- **The handles' look in the light restore** (`canvas.handles`, gizmos.md): On top and the handles' size live with the
+  canvas (`GizmoAppearance`), outside its props, so a host with `persist.restore` gets the canvas's settings back on a
+  reload but not them; keep them in the restore (and write it when they change: they are no history step) if a host
+  wants that.
 - **One schema vocabulary; reconsider zod** (David). The workspace describes and checks data three ways: Mol\*'s
   `ParamDefinition` (operations, options, Settings: `viewer/src/options.ts`, the API areas), io-ts in MolViewSpec
   (`mvs/builder/src/tree/generic/field-schema.ts`, the builder and the runtime) and zod in `@molstar/ai` (the agent's

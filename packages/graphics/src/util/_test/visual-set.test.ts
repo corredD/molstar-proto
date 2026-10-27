@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import fs from 'node:fs';
@@ -31,14 +32,20 @@ const graphics = { capabilities: { flatInterpolation: true } } as unknown as Gra
 
 function fakeCanvas() {
   const added = new Set<Representation.Any>();
+  /** set on top, with whether it was added then */
+  const onTop = new Map<Representation.Any, boolean>();
   const canvas = {
     graphics,
     add: vi.fn((r: Representation.Any) => void added.add(r)),
-    remove: vi.fn((r: Representation.Any) => void added.delete(r)),
+    remove: vi.fn((r: Representation.Any) => {
+      added.delete(r);
+      onTop.delete(r);
+    }),
     update: vi.fn(),
     requestDraw: vi.fn(),
+    setOnTop: vi.fn((r: Representation.Any, on: boolean) => void (on ? onTop.set(r, added.has(r)) : onTop.delete(r))),
   } satisfies VisualSetCanvas;
-  return { canvas, added };
+  return { canvas, added, onTop };
 }
 
 function sphereShape(_: unknown, n: number) {
@@ -115,6 +122,25 @@ describe('VisualSet', () => {
     const sphere = repr.renderObjects[0].values.boundingSphere.ref.value;
     expect(sphere.center[0]).toBeCloseTo(5, 3);
     expect(repr.renderObjects.map((ro) => ro.id)).toEqual(ids);
+  });
+
+  it('draws all its representations on top, those added later as they are added, without rebuilding them', async () => {
+    const { canvas, onTop } = fakeCanvas();
+    const set = new VisualSet(canvas);
+    const a = await set.addShape(sphereShape, Mesh.Utils, 1);
+    const ids = a.renderObjects.map((ro) => ro.id);
+
+    set.setOnTop(true);
+    expect(set.onTop).toBe(true);
+    expect(onTop.get(a)).toBe(true);
+    const b = set.add(stubRepresentation());
+    // in its layer before it is added: never drawn in the scene first
+    expect(onTop.get(b)).toBe(false);
+    expect(a.renderObjects.map((ro) => ro.id)).toEqual(ids);
+
+    set.setOnTop(false);
+    expect(onTop.size).toBe(0);
+    set.dispose();
   });
 
   it('removes and destroys one, or all at once; disposed, it takes no more', async () => {

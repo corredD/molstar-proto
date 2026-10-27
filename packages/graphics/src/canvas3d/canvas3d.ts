@@ -6,6 +6,7 @@
  * @author Gianluca Tomasello <giagitom@gmail.com>
  * @author Herman Bergwerf <post@hbergwerf.nl>
  * @author Adam Midlik <midlik@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { BehaviorSubject, type Observable, Subject, type Subscription, debounceTime, merge } from 'rxjs';
@@ -765,6 +766,11 @@ interface Canvas3D {
   add(repr: Representation.Any): void;
   remove(repr: Representation.Any): void;
   /**
+   * Draws `repr` on top of the scene, or back in it: shown and picked through what is in front of it (gizmos' handles),
+   * its render objects moved, not made again; kept until it is removed (it may be set before it is added)
+   */
+  setOnTop(repr: Representation.Any, onTop: boolean): void;
+  /**
    * This function must be called if animate() is not set up so that add/remove actions take place.
    */
   commit(isSynchronous?: boolean): void;
@@ -960,6 +966,8 @@ namespace Canvas3D {
 
     const reprRenderObjects = new Map<Representation.Any, Set<GraphicsRenderObject>>();
     const reprUpdatedSubscriptions = new Map<Representation.Any, Subscription>();
+    /** the representations drawn on top (`setOnTop`), in `helper.onTop` instead of the scene */
+    const onTopReprs = new Set<Representation.Any>();
     /** the representations a loci marked on all of them may change (`applyMark`) */
     const markIndex = new MarkIndex();
     const reprCount = new BehaviorSubject(0);
@@ -1019,6 +1027,10 @@ namespace Canvas3D {
 
     const controls = TrackballControls.create(input, camera, scene, p.trackball, a.trackball);
     const helper = new Helper(graphics, scene, p);
+    helper.onTop.setGlobals({
+      dColorMarker: true,
+      dLightCount: Math.min(p.renderer.light?.length ?? RendererParams.light.defaultValue.length, MaxLightCount),
+    });
     let hiZ = new HiZPass(graphics, passes.draw, canvas, p.hiZ);
     // the pass's props are the props (`setProps` updates them), not a copy that goes stale
     p.hiZ = hiZ.props;
@@ -1212,6 +1224,7 @@ namespace Canvas3D {
       if (changed) {
         // the marked objects' values changed: those updated, not every object of the scene
         scene.updateChanged(true);
+        helper.onTop.updateChanged(true);
         helper.handle.scene.updateChanged(true);
         helper.camera.scene.updateChanged(true);
 
@@ -1226,21 +1239,25 @@ namespace Canvas3D {
     function applyMark(reprLoci: Representation.Loci, action: MarkerAction) {
       const { repr, loci } = reprLoci;
       let changed = false;
+      // marked on top: in its material color, drawn with the image (as the helpers')
+      let onTopChanged = false;
       if (repr) {
         if (repr.mark(loci, action)) {
           markIndex.note(repr, action);
           changed = true;
+          onTopChanged = onTopReprs.has(repr);
         }
       } else {
         markIndex.forEach(loci, action, (_repr) => {
           if (!_repr.mark(loci, action)) return;
           markIndex.note(_repr, action);
           changed = true;
+          if (onTopReprs.has(_repr)) onTopChanged = true;
         });
       }
       const handleChanged = helper.handle.mark(loci, action);
       const cameraChanged = helper.camera.mark(loci, action);
-      const helperChanged = handleChanged || cameraChanged;
+      const helperChanged = handleChanged || cameraChanged || onTopChanged;
       helperMarkingUpdated = helperMarkingUpdated || helperChanged;
       return changed || helperChanged;
     }
@@ -1492,6 +1509,7 @@ namespace Canvas3D {
         !resizeRequested &&
         markBuffer.length === 0 &&
         !scene.needsCommit &&
+        !helper.onTop.needsCommit &&
         !camera.transition.inTransition &&
         !controls.isAnimating &&
         !controls.isMoving &&
@@ -1865,7 +1883,28 @@ namespace Canvas3D {
     }
 
     const sceneCommitTimeoutMs = 250;
+    /**
+     * The scene's pending changes are only representations moved to the on-top layer or back (`setOnTop`): a look, so
+     * the camera stays (its reset and `radiusMax` follow what is added and removed)
+     */
+    let layerMovesOnly = false;
+
+    /** committed objects recorded and made ready (warm-up, frames held for props being prepared) */
+    function prepareCommitted(renderables: ReadonlyArray<GraphicsRenderable>) {
+      precompileRecorder.record(renderables);
+      // frames held for the props (`holdFramesUntilPrepared`) wait for the new scene too: the hold's prepare had the
+      // previous one, so the first frame after it would compile (and skip) the draws of what was added meanwhile
+      if (propsPreparing > 0) holdFramesUntilPrepared();
+      scheduleWarmUp();
+    }
+
     function commitScene(isSynchronous: boolean) {
+      // a few objects (gizmos): at once
+      if (helper.onTop.needsCommit) {
+        helper.onTop.commit();
+        prepareCommitted(helper.onTop.renderables);
+        reprCount.next(reprRenderObjects.size);
+      }
       if (!scene.needsCommit) return true;
 
       // snapshot the current bounding sphere of visible objects
@@ -1879,19 +1918,22 @@ namespace Canvas3D {
         return false;
       }
       commitQueueSize.next(0);
-      precompileRecorder.record(scene.renderables);
-      // frames held for the props (`holdFramesUntilPrepared`) wait for the new scene too: the hold's prepare had the
-      // previous one, so the first frame after it would compile (and skip) the draws of what was added meanwhile
-      if (propsPreparing > 0) holdFramesUntilPrepared();
-      scheduleWarmUp();
+      prepareCommitted(scene.renderables);
+      const keepCamera = layerMovesOnly;
+      layerMovesOnly = false;
 
       if (helper.debug.isEnabled) helper.debug.update();
-      if (!p.camera.manualReset && (reprCount.value === 0 || shouldResetCamera())) {
+      if (!p.camera.manualReset && !keepCamera && (reprCount.value === 0 || shouldResetCamera())) {
         cameraResetRequested = true;
       }
       if (oldBoundingSphereVisible.radius === 0) nextCameraResetOptions.durationMs = 0;
 
-      if (!p.camera.manualReset && scene.boundingSphere.radius > 0) {
+      // moved back in: the bounds may grow (a handle out of the model), never shrink
+      if (
+        !p.camera.manualReset &&
+        scene.boundingSphere.radius > 0 &&
+        (!keepCamera || getSceneRadius() > camera.state.radiusMax)
+      ) {
         camera.setState({ radiusMax: getSceneRadius() }, 0);
       }
       reprCount.next(reprRenderObjects.size);
@@ -1996,9 +2038,32 @@ namespace Canvas3D {
     /** render objects left out of the scene by a context change until their representation updated them */
     const droppedRenderObjects = new Set<GraphicsRenderObject>();
 
+    function sceneOf(repr: Representation.Any) {
+      return onTopReprs.has(repr) ? helper.onTop : scene;
+    }
+
+    function setOnTop(repr: Representation.Any, onTop: boolean) {
+      if (onTopReprs.has(repr) === onTop) return;
+      const from = sceneOf(repr);
+      if (onTop) onTopReprs.add(repr);
+      else onTopReprs.delete(repr);
+      const renderObjects = reprRenderObjects.get(repr);
+      if (!renderObjects) return;
+      if (!scene.needsCommit) layerMovesOnly = true;
+      const to = sceneOf(repr);
+      renderObjects.forEach((o) => {
+        from.remove(o);
+        if (!droppedRenderObjects.has(o)) to.add(o);
+      });
+      forceDrawAfterAllCommited = true;
+      busy();
+    }
+
     function add(repr: Representation.Any) {
       registerAutoUpdate(repr);
       busy();
+      const layer = sceneOf(repr);
+      if (layer === scene) layerMovesOnly = false;
 
       const oldRO = reprRenderObjects.get(repr);
       const newRO = new Set<GraphicsRenderObject>();
@@ -2007,10 +2072,10 @@ namespace Canvas3D {
       if (oldRO) {
         if (!SetUtils.areEqual(newRO, oldRO)) {
           newRO.forEach((o) => {
-            if (!oldRO.has(o)) scene.add(o);
+            if (!oldRO.has(o)) layer.add(o);
           });
           oldRO.forEach((o) => {
-            if (!newRO.has(o)) scene.remove(o);
+            if (!newRO.has(o)) layer.remove(o);
           });
         }
         if (droppedRenderObjects.size > 0) {
@@ -2020,17 +2085,17 @@ namespace Canvas3D {
               droppedRenderObjects.delete(o);
             } else if (!hasForeignResources(o, graphics)) {
               droppedRenderObjects.delete(o);
-              scene.add(o);
+              layer.add(o);
             }
           });
         }
       } else {
-        repr.renderObjects.forEach((o) => scene.add(o));
+        repr.renderObjects.forEach((o) => layer.add(o));
       }
       reprRenderObjects.set(repr, newRO);
       markIndex.set(repr);
 
-      scene.update(repr.renderObjects, false);
+      layer.update(repr.renderObjects, false);
       forceDrawAfterAllCommited = true;
       if (isDebugMode) consoleStats();
     }
@@ -2039,11 +2104,14 @@ namespace Canvas3D {
       unregisterAutoUpdate(repr);
       busy();
       markIndex.delete(repr);
+      const layer = sceneOf(repr);
+      if (layer === scene) layerMovesOnly = false;
+      onTopReprs.delete(repr);
 
       const renderObjects = reprRenderObjects.get(repr);
       if (renderObjects) {
         renderObjects.forEach((o) => {
-          scene.remove(o);
+          layer.remove(o);
           droppedRenderObjects.delete(o);
         });
         reprRenderObjects.delete(repr);
@@ -2179,6 +2247,7 @@ namespace Canvas3D {
 
       const dropped = scene.setContext(graphics);
       for (const o of dropped) droppedRenderObjects.add(o);
+      for (const o of helper.onTop.setContext(graphics)) droppedRenderObjects.add(o);
       helper.debug.setContext(graphics);
       helper.camera.setContext(graphics);
       helper.handle.setContext(graphics);
@@ -2338,26 +2407,30 @@ namespace Canvas3D {
 
       add,
       remove,
+      setOnTop,
       commit,
       update: (repr, keepSphere) => {
         // updated values may have changed defines: the updated renderables recorded again
         if (repr) {
           if (!reprRenderObjects.has(repr)) return;
           markIndex.set(repr);
+          const layer = sceneOf(repr);
           const { renderObjects } = repr;
-          scene.update(renderObjects, !!keepSphere);
+          layer.update(renderObjects, !!keepSphere);
           // only the representation's, not the whole scene's: callers update one representation at a time (a drag)
           const renderables: GraphicsRenderable[] = [];
           for (let i = 0, il = renderObjects.length; i < il; ++i) {
-            const renderable = scene.get(renderObjects[i]);
+            const renderable = layer.get(renderObjects[i]);
             if (renderable) renderables.push(renderable);
           }
           precompileRecorder.recordAgain(renderables);
         } else {
           reprRenderObjects.forEach((_, r) => markIndex.set(r));
           scene.update(void 0, !!keepSphere);
+          helper.onTop.update(void 0, !!keepSphere);
           precompileRecorder.invalidate();
           precompileRecorder.record(scene.renderables);
+          precompileRecorder.record(helper.onTop.renderables);
         }
         forceDrawAfterAllCommited = true;
         busy();
@@ -2366,8 +2439,10 @@ namespace Canvas3D {
         reprUpdatedSubscriptions.forEach((v) => v.unsubscribe());
         reprUpdatedSubscriptions.clear();
         reprRenderObjects.clear();
+        onTopReprs.clear();
         markIndex.clear();
         scene.clear();
+        helper.onTop.clear();
         helper.debug.clear();
         requestDraw();
         reprCount.next(reprRenderObjects.size);
@@ -2378,6 +2453,7 @@ namespace Canvas3D {
           nextCameraResetOptions.durationMs = 0;
         }
 
+        helper.onTop.syncVisibility();
         if (scene.syncVisibility()) {
           if (helper.debug.isEnabled) helper.debug.update();
         }
@@ -2515,6 +2591,7 @@ namespace Canvas3D {
         if (props.postprocessing || props.marking || props.multiSample) limitToSupported(p);
         if (props.hiZ) hiZ.setProps(props.hiZ);
         if (props.renderer || props.marking) {
+          const dLightCount = Math.min(props.renderer?.light?.length ?? renderer.props.light.length, MaxLightCount);
           scene.setGlobals({
             dColorMarker: isMaterialColorMarker(
               {
@@ -2522,8 +2599,10 @@ namespace Canvas3D {
               },
               p.marking,
             ),
-            dLightCount: Math.min(props.renderer?.light?.length ?? renderer.props.light.length, MaxLightCount),
+            dLightCount,
           });
+          // marked in their color: the marking pass does not draw them
+          helper.onTop.setGlobals({ dColorMarker: true, dLightCount });
         }
         if (props.renderer) renderer.setProps(props.renderer);
         if (props.trackball) controls.setProps(props.trackball);
@@ -2611,6 +2690,7 @@ namespace Canvas3D {
         markBuffer = [];
 
         scene.clear();
+        helper.onTop.clear();
         helper.debug.clear();
         destroyPrecompileItems();
         controls.dispose();

@@ -3,11 +3,13 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Ludovic Autin <ludovic.autin@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { OrderedSet } from '@molstar/core/data/int';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Binding } from '@molstar/core/util/binding';
+import { ValueCell } from '@molstar/core/util/value-cell';
 import { Color } from '@molstar/core/util/color';
 import { MarkerActions } from '@molstar/core/util/marker-action';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
@@ -73,8 +75,11 @@ const TrackballDrags = {
 export interface GizmoLook {
   /** The handles' size, times their own (the bodies stay: they are what is edited, a cut's volume) */
   readonly scale: number;
-  /** The handles drawn over what is in front of them, so they can be seen and grabbed through it */
-  readonly xray: boolean;
+  /**
+   * The gizmos drawn on top of the scene, all their parts (handles and bodies), so their handles are seen and grabbed
+   * through what is in front of them (`VisualSet.setOnTop`); a body stays not pickable
+   */
+  readonly onTop: boolean;
 }
 
 /**
@@ -82,7 +87,7 @@ export interface GizmoLook {
  * all its handles, Prism's and an extension's alike
  */
 export const GizmoAppearance = {
-  Default: { scale: 1, xray: false } as GizmoLook,
+  Default: { scale: 1, onTop: false } as GizmoLook,
   looks: new WeakMap<Canvas3D, BehaviorSubject<GizmoLook>>(),
   /** The look's state on a canvas, made at its default */
   state(canvas: Canvas3D): BehaviorSubject<GizmoLook> {
@@ -96,9 +101,23 @@ export const GizmoAppearance = {
   set(canvas: Canvas3D, look: Partial<GizmoLook>) {
     const s = this.state(canvas);
     const next = { ...s.value, ...look };
-    if (next.scale !== s.value.scale || next.xray !== s.value.xray) s.next(next);
+    if (next.scale !== s.value.scale || next.onTop !== s.value.onTop) s.next(next);
   },
 };
+
+/**
+ * The hovered handle's own cue (three.js's TransformControls): a strong color, seen on top too, where no outline or
+ * glow is drawn (Ludo, 2026-10-27: no grow). The marker highlight stays as well
+ */
+const HoverColor = Color(0xffff00);
+
+/** The handle lit (`#light`): its item, its handles' representation, its group, its color before */
+interface Lit {
+  readonly key: string;
+  readonly repr: Representation.Any;
+  readonly group: number;
+  readonly color: Color;
+}
 
 export interface GizmoItem<T> {
   readonly key: string;
@@ -178,6 +197,7 @@ export class GizmoController<T> {
   readonly #gizmos = new Map<string, Gizmo<T>>();
   #items: readonly GizmoItem<T>[] = [];
   #hovered: { key: string; handle: Handle; position?: Vec3 } | undefined;
+  #lit: Lit | undefined;
   #drag: Drag<T> | undefined;
   /** This controller holds the trackball's drags (`TrackballDrags`) */
   #holding = false;
@@ -203,8 +223,9 @@ export class GizmoController<T> {
         if (e.key === 'Escape' && this.#drag) this.cancel();
       }),
       canvas.didDraw.subscribe(() => this.#faceCamera()),
-      // the canvas's look: the handles resized in place (their meshes the same)
-      GizmoAppearance.state(canvas).subscribe(() => {
+      // the canvas's look: the handles resized in place (their meshes the same), the gizmos on top or in the scene
+      GizmoAppearance.state(canvas).subscribe((look) => {
+        this.#set.setOnTop(look.onTop);
         for (const g of this.#gizmos.values()) this.#setFrame(g);
         canvas.requestDraw();
       }),
@@ -230,6 +251,7 @@ export class GizmoController<T> {
     this.#drag = undefined;
     this.dragging.next(undefined);
     this.#forgetGrab();
+    this.#unlight();
     this.#undo(d);
     if (!this.#hovered) this.#restoreBindings();
   }
@@ -256,6 +278,7 @@ export class GizmoController<T> {
     if (this.#disposed) return;
     this.cancel();
     this.#hovered = undefined;
+    this.#unlight();
     this.#restoreBindings();
     for (const s of this.#subs) s.unsubscribe();
     this.#set.dispose();
@@ -306,6 +329,7 @@ export class GizmoController<T> {
       }
       if (g) this.#remove(g);
       this.#gizmos.set(item.key, made);
+      this.#keepLit(item.key, made);
     }
     this.#canvas.requestDraw();
   }
@@ -403,6 +427,7 @@ export class GizmoController<T> {
     }
     this.#remove(g);
     this.#gizmos.set(item.key, made);
+    this.#keepLit(item.key, made);
   }
 
   /** After a frame: the gizmos facing the camera turned to it again where it moved (one more frame, then still) */
@@ -418,6 +443,7 @@ export class GizmoController<T> {
     if (this.#drag) return;
     const entry = [...this.#gizmos].find(([, g]) => g.handles === current.repr);
     if (!entry || !ShapeGroup.isLoci(current.loci) || !current.loci.groups.length) {
+      this.#unlight();
       if (this.#hovered) {
         this.#hovered = undefined;
         this.#restoreBindings();
@@ -425,10 +451,58 @@ export class GizmoController<T> {
       return;
     }
     const [key, g] = entry;
-    const handle = g.layout.groups[OrderedSet.start(current.loci.groups[0].ids)]?.handle;
+    const group = OrderedSet.start(current.loci.groups[0].ids);
+    const handle = g.layout.groups[group]?.handle;
     if (!handle) return;
     this.#hovered = { key, handle, ...(position ? { position: Vec3.clone(position) } : {}) };
+    this.#light(key, g, group);
     this.#takeDrags();
+  }
+
+  /**
+   * The hovered handle lit (`HoverColor`), in place: its color in the handles' render object changed and updated
+   * (nothing made); the last lit handle put back first
+   */
+  #light(key: string, g: Gizmo<T>, group: number) {
+    const lit = this.#lit;
+    if (lit && lit.repr === g.handles && lit.group === group) return;
+    this.#unlight();
+    const colors = this.#colorsOf(g.handles);
+    if (!colors) return;
+    this.#lit = { key, repr: g.handles, group, color: Color.fromArray(colors.ref.value.array, group * 4) };
+    this.#paint(g.handles, colors, group, HoverColor);
+  }
+
+  /** A gizmo remade under its lit handle (a drag's new size, an edit at rest): the light on its new handles */
+  #keepLit(key: string, g: Gizmo<T>) {
+    const lit = this.#lit;
+    if (!lit || lit.key !== key || lit.repr === g.handles) return;
+    // the old handles are gone: nothing to put back
+    this.#lit = undefined;
+    this.#light(key, g, lit.group);
+  }
+
+  /** The lit handle put back as it was */
+  #unlight() {
+    const lit = this.#lit;
+    if (!lit) return;
+    this.#lit = undefined;
+    const colors = this.#colorsOf(lit.repr);
+    if (colors) this.#paint(lit.repr, colors, lit.group, lit.color);
+  }
+
+  /** The colors of a handles' representation, by group (one instance: `ShapeGroupColorTheme`'s `groupInstance`) */
+  #colorsOf(repr: Representation.Any) {
+    const values = repr.renderObjects[0]?.values;
+    return values && 'tColor' in values ? values.tColor : undefined;
+  }
+
+  #paint(repr: Representation.Any, colors: ValueCell<{ array: Uint8Array }>, group: number, color: Color) {
+    Color.toArray(color, colors.ref.value.array, group * 4);
+    ValueCell.update(colors, colors.ref.value);
+    // a destroyed one (remade meanwhile) is no longer the canvas's: nothing to update
+    if (this.#set.has(repr)) this.#canvas.update(repr, true);
+    this.#canvas.requestDraw();
   }
 
   #onDrag(isStart: boolean, x: number, y: number, fx: number, fy: number) {
@@ -502,6 +576,7 @@ export class GizmoController<T> {
     this.#drag = undefined;
     this.dragging.next(undefined);
     this.#forgetGrab();
+    this.#unlight();
     if (!this.#hovered) this.#restoreBindings();
     // taken: the items follow (sync); not taken, or failed: the binding puts it back (this drag's item, not a later one's)
     this.#committing = true;

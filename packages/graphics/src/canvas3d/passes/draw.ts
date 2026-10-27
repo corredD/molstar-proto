@@ -4,6 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Áron Samuel Kovács <aron.kovacs@mail.muni.cz>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
@@ -59,6 +60,9 @@ export class DrawPass {
   private depthTargetOpaque: RenderTarget | null;
 
   private copyFbo: CopyRenderable;
+  /** The on-top layer's own color and depth (`renderOnTop`), and its copy over the image */
+  private readonly onTopTarget: RenderTarget;
+  private readonly onTopCopy: CopyRenderable;
   private readonly renderBuilder: PassBuilder;
 
   readonly wboit: WboitPass;
@@ -157,6 +161,8 @@ export class DrawPass {
     this.volume = new VolumePass(targets);
 
     this.copyFbo = createCopyRenderable(graphics, this.colorTarget.texture);
+    this.onTopTarget = targets.createRenderTarget(width, height, 'depth-stencil', 'uint8', 'nearest');
+    this.onTopCopy = createCopyRenderable(graphics, this.onTopTarget.texture);
     this.renderBuilder = targets.createRenderBuilder();
 
     this.setTransparency(transparency);
@@ -167,6 +173,7 @@ export class DrawPass {
       this.drawTarget.getByteCount() +
       this.colorTarget.getByteCount() +
       this.transparentColorTarget.getByteCount() +
+      this.onTopTarget.getByteCount() +
       this.depthTargetTransparent.getByteCount() +
       (this.depthTargetOpaque ? this.depthTargetOpaque.getByteCount() : this.depthTextureOpaque.getByteCount()) +
       this.wboit.getByteCount() +
@@ -187,6 +194,7 @@ export class DrawPass {
       this.colorTarget.setSize(width, height);
       this.depthTargetTransparent.setSize(width, height);
       this.transparentColorTarget.setSize(width, height);
+      this.onTopTarget.setSize(width, height);
 
       if (this.depthTargetOpaque) {
         this.depthTargetOpaque.setSize(width, height);
@@ -195,6 +203,10 @@ export class DrawPass {
       }
 
       ValueCell.update(this.copyFbo.values.uTexSize, Vec2.set(this.copyFbo.values.uTexSize.ref.value, width, height));
+      ValueCell.update(
+        this.onTopCopy.values.uTexSize,
+        Vec2.set(this.onTopCopy.values.uTexSize.ref.value, width, height),
+      );
     }
 
     if (this.wboit.supported) {
@@ -747,6 +759,7 @@ export class DrawPass {
     if (helper.handle.isEnabled) {
       this.renderBlended(b, renderer, helper.handle.scene, camera);
     }
+    this.renderOnTop(b, renderer, helper.onTop, camera, target);
     if (helper.camera.isEnabled) {
       if (b.drawing) {
         helper.camera.update(camera);
@@ -754,6 +767,29 @@ export class DrawPass {
       }
       this.renderBlended(b, renderer, helper.camera.scene, helper.camera.camera);
     }
+  }
+
+  /**
+   * Draws `scene` over `target` whatever is in front of it (`Helper.onTop`): into a target of its own, cleared to
+   * transparent and to the far depth (the scene's depth is neither read nor written: Hi-Z and the marking read it after),
+   * then copied over `target` (premultiplied); without the occlusion test, which would cull what is behind the scene
+   */
+  renderOnTop(b: PassBuilder, renderer: Renderer, scene: Scene, camera: ICamera, target: RenderTarget) {
+    if (scene.renderables.length === 0) return;
+    b.begin(this.onTopTarget, { label: 'on top' });
+    if (b.drawing) {
+      renderer.clear(false, false, true);
+      renderer.withoutOcclusion(() => this.renderBlended(b, renderer, scene, camera));
+    } else {
+      this.renderBlended(b, renderer, scene, camera);
+    }
+    b.begin(target, { label: 'on top' });
+    if (b.drawing) {
+      const { x, y, width, height } = camera.viewport;
+      this.graphics.setViewport(x, y, width, height);
+      this.graphics.setScissor(x, y, width, height);
+    }
+    b.quad(this.onTopCopy, RenderState.Premultiplied);
   }
 
   /** `renderer.renderBlended` as renderer passes */

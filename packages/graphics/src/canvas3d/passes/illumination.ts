@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { type PassBuilder } from './pass-builder.js';
@@ -301,7 +302,13 @@ export class IlluminationPass {
   }
 
   private hasHelpers(helper: RenderContext<Camera>['helper']) {
-    return helper.debug.isEnabled || helper.pointer.isEnabled || helper.handle.isEnabled || helper.camera.isEnabled;
+    return (
+      helper.debug.isEnabled ||
+      helper.pointer.isEnabled ||
+      helper.handle.isEnabled ||
+      helper.camera.isEnabled ||
+      helper.onTop.renderables.length > 0
+    );
   }
 
   private renderHelpers(b: PassBuilder, ctx: RenderContext<Camera>) {
@@ -329,6 +336,7 @@ export class IlluminationPass {
     if (helper.handle.isEnabled) {
       this.drawPass.renderBlended(b, renderer, helper.handle.scene, camera);
     }
+    this.drawPass.renderOnTop(b, renderer, helper.onTop, camera, this.transparentTarget);
     if (helper.camera.isEnabled) {
       if (b.drawing) {
         helper.camera.update(camera);
