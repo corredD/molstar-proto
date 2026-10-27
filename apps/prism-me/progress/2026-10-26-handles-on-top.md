@@ -100,23 +100,34 @@ canvas), explorer ~25. Tests ~470.
 
 ## Review
 
-| Finding                                                         | Severity   | Verdict                                         | Commit / open                          |
-| --------------------------------------------------------------- | ---------- | ----------------------------------------------- | -------------------------------------- |
-| M1 headers of area.ts, operations.ts (canvas-settings)          | must-fix   | confirmed                                       | d8a5d683d                              |
-| N1 headers of controller.ts and its test (the skeptic's)        | must-fix   | confirmed                                       | f081bd8fc                              |
-| M2 changelog under two headings                                 | must-fix   | confirmed                                       | 83ee945db                              |
-| M2b changelog only in the explorer commit                       | must-fix   | refuted (one file per branch)                   | -                                      |
-| S1 toggling On top moved the camera (radiusMax, a reset)        | should-fix | confirmed (probe)                               | cdf37503d                              |
-| N3 back in the scene, radiusMax not grown                       | should-fix | plausible                                       | cdf37503d (grows, never shrinks)       |
-| S2 not remembered like the canvas's settings                    | should-fix | refuted for prism-me (no restore); spec wording | a958be226, 7c3931718; open: Prism TODO |
-| S3 the draw test passed a layer drawn into the image            | should-fix | confirmed (mutant)                              | f6052aee8                              |
-| S4, N2 an on-top-only commit not recorded, warmed, counted      | should-fix | confirmed / plausible                           | 49de8c99d                              |
-| closures per frame and per pick in draw.ts, pick.ts             | nit        | confirmed                                       | open (the pass's own pattern)          |
-| a clear and a copy per frame while the layer has hidden objects | nit        | mostly refuted                                  | open                                   |
-| getByteCount counts the lazy target                             | nit        | refuted                                         | -                                      |
-| on-top handles dimmed by the scene's marker average             | nit        | confirmed, not a regression                     | open                                   |
-| setHandleLook writes the look directly                          | nit        | confirmed, intended (Decided)                   | -                                      |
-| markIndex.set in setOnTop                                       | nit        | confirmed                                       | cdf37503d                              |
-| VisualSet's doc: "in its bounds"                                | nit        | confirmed                                       | f081bd8fc                              |
+| Finding                                                                                                   | Severity   | Verdict                                         | Commit / open                                         |
+| --------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------- | ----------------------------------------------------- |
+| M1 headers of area.ts, operations.ts (canvas-settings)                                                    | must-fix   | confirmed                                       | d8a5d683d                                             |
+| N1 headers of controller.ts and its test (the skeptic's)                                                  | must-fix   | confirmed                                       | f081bd8fc                                             |
+| M2 changelog under two headings                                                                           | must-fix   | confirmed                                       | 83ee945db                                             |
+| M2b changelog only in the explorer commit                                                                 | must-fix   | refuted (one file per branch)                   | -                                                     |
+| S1 toggling On top moved the camera (radiusMax, a reset)                                                  | should-fix | confirmed (probe)                               | cdf37503d                                             |
+| N3 back in the scene, radiusMax not grown                                                                 | should-fix | plausible                                       | cdf37503d (grows, never shrinks)                      |
+| S2 not remembered like the canvas's settings                                                              | should-fix | refuted for prism-me (no restore); spec wording | a958be226, 7c3931718; open: Prism TODO                |
+| S3 the draw test passed a layer drawn into the image                                                      | should-fix | confirmed (mutant)                              | f6052aee8                                             |
+| S4, N2 an on-top-only commit not recorded, warmed, counted                                                | should-fix | confirmed / plausible                           | 49de8c99d                                             |
+| closures per frame and per pick in draw.ts, pick.ts                                                       | nit        | confirmed                                       | open (the pass's own pattern)                         |
+| a clear and a copy per frame while the layer has hidden objects                                           | nit        | mostly refuted                                  | open                                                  |
+| getByteCount counts the lazy target                                                                       | nit        | refuted                                         | -                                                     |
+| on-top handles dimmed by the scene's marker average                                                       | nit        | confirmed, not a regression                     | open                                                  |
+| setHandleLook writes the look directly                                                                    | nit        | confirmed, intended (Decided)                   | -                                                     |
+| markIndex.set in setOnTop                                                                                 | nit        | confirmed                                       | cdf37503d                                             |
+| VisualSet's doc: "in its bounds"                                                                          | nit        | confirmed                                       | f081bd8fc                                             |
+| Hover cue (0e9ded806): M1 a drag that remakes its gizmo drops the light                                   | must-fix   | confirmed (probe)                               | 4e21d0afc                                             |
+| Hover cue: M2 ui.md, changelog, gizmos.md silent on it                                                    | should-fix | confirmed                                       | 3f05e4469, d95364355                                  |
+| Hover cue: S1 the test passed without the version bump (no upload)                                        | should-fix | confirmed (mutant)                              | 499592b71                                             |
+| Hover cue: S3 Esc, cancel, dispose not tested                                                             | should-fix | confirmed (mutant)                              | 499592b71                                             |
+| Hover cue: S2 0xffe600 close to the orange move knob                                                      | nit        | plausible                                       | 956f0a404 (pure yellow)                               |
+| Hover cue: whole-layer upload, a stale lit repr till the next hover, import order, a group with no handle | nit        | confirmed / plausible                           | open                                                  |
+| Hover cue: `#keepLit` reuses the group index on a remade layout of other groups                           | nit        | plausible                                       | open (a type change at rest; the next hover relights) |
 
 Reviewer: 2 must-fix, 4 should-fix, 7 nits; skeptic: 13 confirmed, 3 plausible, 4 refuted or mostly, 3 new.
+
+Hover cue (Ludo, 2026-10-26/27), reviewer: 2 must-fix, 3 should-fix, 3 nits; skeptic: 8 confirmed, 3 plausible, none
+refuted (M2 lowered to should-fix), 2 new nits. Gate re-run after merging origin/prism-me; real GL (WebGPU, WebGL2): the
+hovered handle turns yellow on top and not, and goes back after.
