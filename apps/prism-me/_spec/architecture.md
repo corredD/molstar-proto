@@ -111,8 +111,8 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
    - a few extension methods were called directly (`cryoet.oblique`, `cryoet.slices`, previews), and several
      `transform.params as any`. The writes run by id now; what the app still calls on an extension is a read (a watched
      state, `stage.pickedAt`, `placementOf`), a preview (`stage.previewMove`, `previewPose`: a drag is not an operation)
-     or a host (`use…Handles`, `moveGizmos`, `obliqueHandles`, `setMenu`). The app's own code has no `any`
-     (`src/_test/no-any.test.ts`).
+     or a host (`use…Handles`, `moveGizmos`, `obliqueHandles`, `setMenu`). The app's own code has no `any` (biome's
+     `noExplicitAny` on `src`, but tests and stories: `pnpm lint`).
    - The tree's node kinds are plain strings, repeated in three files; the scene's kinds (`model`, `list`) and the
      tree's (`mesoscale model`, `particle list`) differ. (A list's target row sent its target ids as entity ids to
      `mesoscale.style`: right only because a list without entities has its targets as entities; the menu's Hide on it

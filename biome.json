@@ -940,6 +940,16 @@
       }
     },
     {
+      "includes": ["apps/prism-me/src/**", "!apps/prism-me/src/**/_test/**", "!apps/prism-me/src/**/_stories/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/sequences/core/src/builder/**", "!packages/sequences/core/src/builder/svsx.ts"],
       "plugins": ["./packages/sequences/core/builder-imports.grit"]
     }
