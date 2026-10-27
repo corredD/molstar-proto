@@ -36,6 +36,8 @@ import {
   CutShapeLabels,
   CutShapes,
   clippableCells,
+  coneAngle,
+  coneScale,
   cutCandidates,
   type CutTarget,
   findCuts,
@@ -52,6 +54,7 @@ import {
   withObject,
 } from '../../sources/clipping/cuts.js';
 import { rotationOf } from '../../sources/clipping/gizmo/binding.js';
+import { CutPreview } from '../../sources/clipping/preview.js';
 import {
   MaxParticleCutIndex,
   type ParticleSelector,
@@ -124,6 +127,30 @@ export class ClippingApi extends ApiArea {
       return r.ok;
     });
   }
+
+  readonly #preview = new CutPreview(this.ctx.plugin);
+
+  /**
+   * A view's gesture on a cut's numbers (a slider going): `from`, a cut as the state holds it, shown as `next` on its
+   * representations, outside the state (no step); its release is the view's one `clipping.update`, then `endPreview`
+   */
+  previewCut(from: CutObject, next: CutObject): void {
+    this.#preview.show(from, next);
+  }
+
+  /** The preview's representations back to what the state holds (after the commit: as it now is) */
+  endPreview(): void {
+    this.#preview.end();
+  }
+
+  /** What a cut cuts, as one sphere (its representations' bounds): a view's reach around it */
+  boundsOf(cut: Cut): Sphere3D | undefined {
+    const cells = this.ctx.plugin.state.data.cells;
+    return representationsSphere(cut.targets.flatMap((t) => cells.get(t.ref) ?? []));
+  }
+
+  /** A cone's half-angle (degrees) from its scale, and the scale of a half-angle (`clipping.update`'s `scale`) */
+  readonly cone = { angle: coneAngle, scale: coneScale };
 
   /**
    * The section's filter (which of the selection's representation types a new cut goes through): every type but
