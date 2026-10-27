@@ -9,6 +9,7 @@
 import { OrderedSet } from '@molstar/core/data/int';
 import { Mat4, Vec3, type Vec4 } from '@molstar/core/math/linear-algebra';
 import { Binding } from '@molstar/core/util/binding';
+import { Color } from '@molstar/core/util/color';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { BehaviorSubject, Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -284,5 +285,41 @@ describe('GizmoController', () => {
     expect(fake.onTop.size).toBe(0);
     c.dispose();
     GizmoAppearance.set(fake.canvas, GizmoAppearance.Default);
+  });
+
+  it('lights the hovered handle in a strong color, that one only, in place, and puts it back', async () => {
+    const fake = fakeCanvas();
+    const binding = fakeBinding();
+    const c = new GizmoController(fake.canvas, binding);
+    await settle();
+    const handles = fake.added[0];
+    const [ro] = handles.renderObjects;
+    const colors = () => {
+      const { array } = (ro.values as { tColor: { ref: { value: { array: Uint8Array } } } }).tColor.ref.value;
+      return Array.from({ length: 4 }, (_, g) => Color.fromArray(array, g * 4));
+    };
+    const before = colors();
+    const lit = Color(0xffe600);
+    expect(before).not.toContain(lit);
+
+    hoverOn(fake, 1);
+    expect(colors()).toEqual([before[0], lit, before[2], before[3]]);
+    expect(fake.fake.update).toHaveBeenLastCalledWith(handles, true);
+    hoverOn(fake, 2);
+    expect(colors()).toEqual([before[0], before[1], lit, before[3]]);
+    fake.fake.interaction.hover.next({ current: { repr: undefined, loci: { kind: 'empty-loci' } } as never });
+    expect(colors()).toEqual(before);
+
+    // during a drag it stays on the dragged handle; the drag's end puts it back
+    hoverOn(fake, 1);
+    await drag(fake, [5, 10]);
+    hoverOn(fake, 2);
+    expect(colors()[1]).toBe(lit);
+    fake.fake.input.interactionEnd.next();
+    await settle();
+    expect(colors()[1]).toBe(before[1]);
+    // nothing made for it
+    expect(handles.renderObjects).toEqual([ro]);
+    c.dispose();
   });
 });

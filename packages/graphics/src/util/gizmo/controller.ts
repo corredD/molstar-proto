@@ -9,6 +9,7 @@
 import { OrderedSet } from '@molstar/core/data/int';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Binding } from '@molstar/core/util/binding';
+import { ValueCell } from '@molstar/core/util/value-cell';
 import { Color } from '@molstar/core/util/color';
 import { MarkerActions } from '@molstar/core/util/marker-action';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
@@ -104,6 +105,19 @@ export const GizmoAppearance = {
   },
 };
 
+/**
+ * The hovered handle's own cue (three.js's TransformControls): a strong color, seen on top too, where no outline or
+ * glow is drawn (Ludo, 2026-10-27: no grow). The marker highlight stays as well
+ */
+const HoverColor = Color(0xffe600);
+
+/** The handle lit (`#light`): its handles' representation, its group, its color before */
+interface Lit {
+  readonly repr: Representation.Any;
+  readonly group: number;
+  readonly color: Color;
+}
+
 export interface GizmoItem<T> {
   readonly key: string;
   readonly value: T;
@@ -182,6 +196,7 @@ export class GizmoController<T> {
   readonly #gizmos = new Map<string, Gizmo<T>>();
   #items: readonly GizmoItem<T>[] = [];
   #hovered: { key: string; handle: Handle; position?: Vec3 } | undefined;
+  #lit: Lit | undefined;
   #drag: Drag<T> | undefined;
   /** This controller holds the trackball's drags (`TrackballDrags`) */
   #holding = false;
@@ -235,6 +250,7 @@ export class GizmoController<T> {
     this.#drag = undefined;
     this.dragging.next(undefined);
     this.#forgetGrab();
+    this.#unlight();
     this.#undo(d);
     if (!this.#hovered) this.#restoreBindings();
   }
@@ -261,6 +277,7 @@ export class GizmoController<T> {
     if (this.#disposed) return;
     this.cancel();
     this.#hovered = undefined;
+    this.#unlight();
     this.#restoreBindings();
     for (const s of this.#subs) s.unsubscribe();
     this.#set.dispose();
@@ -423,6 +440,7 @@ export class GizmoController<T> {
     if (this.#drag) return;
     const entry = [...this.#gizmos].find(([, g]) => g.handles === current.repr);
     if (!entry || !ShapeGroup.isLoci(current.loci) || !current.loci.groups.length) {
+      this.#unlight();
       if (this.#hovered) {
         this.#hovered = undefined;
         this.#restoreBindings();
@@ -430,10 +448,49 @@ export class GizmoController<T> {
       return;
     }
     const [key, g] = entry;
-    const handle = g.layout.groups[OrderedSet.start(current.loci.groups[0].ids)]?.handle;
+    const group = OrderedSet.start(current.loci.groups[0].ids);
+    const handle = g.layout.groups[group]?.handle;
     if (!handle) return;
     this.#hovered = { key, handle, ...(position ? { position: Vec3.clone(position) } : {}) };
+    this.#light(g, group);
     this.#takeDrags();
+  }
+
+  /**
+   * The hovered handle lit (`HoverColor`), in place: its color in the handles' render object changed and updated
+   * (nothing made); the last lit handle put back first
+   */
+  #light(g: Gizmo<T>, group: number) {
+    const lit = this.#lit;
+    if (lit && lit.repr === g.handles && lit.group === group) return;
+    this.#unlight();
+    const colors = this.#colorsOf(g.handles);
+    if (!colors) return;
+    this.#lit = { repr: g.handles, group, color: Color.fromArray(colors.ref.value.array, group * 4) };
+    this.#paint(g.handles, colors, group, HoverColor);
+  }
+
+  /** The lit handle put back as it was */
+  #unlight() {
+    const lit = this.#lit;
+    if (!lit) return;
+    this.#lit = undefined;
+    const colors = this.#colorsOf(lit.repr);
+    if (colors) this.#paint(lit.repr, colors, lit.group, lit.color);
+  }
+
+  /** The colors of a handles' representation, by group (one instance: `ShapeGroupColorTheme`'s `groupInstance`) */
+  #colorsOf(repr: Representation.Any) {
+    const values = repr.renderObjects[0]?.values;
+    return values && 'tColor' in values ? values.tColor : undefined;
+  }
+
+  #paint(repr: Representation.Any, colors: ValueCell<{ array: Uint8Array }>, group: number, color: Color) {
+    Color.toArray(color, colors.ref.value.array, group * 4);
+    ValueCell.update(colors, colors.ref.value);
+    // a destroyed one (remade meanwhile) is no longer the canvas's: nothing to update
+    if (this.#set.has(repr)) this.#canvas.update(repr, true);
+    this.#canvas.requestDraw();
   }
 
   #onDrag(isStart: boolean, x: number, y: number, fx: number, fy: number) {
@@ -507,6 +564,7 @@ export class GizmoController<T> {
     this.#drag = undefined;
     this.dragging.next(undefined);
     this.#forgetGrab();
+    this.#unlight();
     if (!this.#hovered) this.#restoreBindings();
     // taken: the items follow (sync); not taken, or failed: the binding puts it back (this drag's item, not a later one's)
     this.#committing = true;
