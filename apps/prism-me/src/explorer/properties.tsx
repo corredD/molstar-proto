@@ -7,9 +7,8 @@
  */
 
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
-import { Euler } from '@molstar/core/math/linear-algebra/3d/euler';
 import { Color } from '@molstar/core/util/color';
-import type { ObjectPose } from '@molstar/stage-tools-extension/move';
+import { type ObjectPose, placementWith, poseOf } from '@molstar/stage-tools-extension/move';
 import type { StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, ObliqueSlice, Slice } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
@@ -1222,23 +1221,39 @@ function partOf(c: { kept?: unknown; atoms?: { label: string }; particles?: { la
 type ClipCut = ViewerApi['clipping']['cuts']['value'][number];
 type ClipObject = ClipCut['object'];
 
-/** A clip's turn as Euler angles (degrees: X, then Y, then Z, as Position's Turn), and back to its axis and angle */
-function eulerOf(o: ClipObject): [number, number, number] {
-  const q = Quat.setAxisAngle(Quat(), Vec3.normalize(Vec3(), o.rotation.axis), (o.rotation.angle * Math.PI) / 180);
-  const e = Euler.fromQuat(Euler(), q, 'ZYX');
-  return [(e[0] * 180) / Math.PI, (e[1] * 180) / Math.PI, (e[2] * 180) / Math.PI];
+// scratch for the turn's conversions (a slider's preview runs them every frame)
+const TurnQuat = Quat();
+const TurnMat = Mat4();
+const TurnAxis = Vec3();
+const TurnOrigin = Vec3();
+const TurnIdentity = Mat4.identity();
+const Deg = 180 / Math.PI;
+
+/**
+ * A clip's turn as Euler angles (degrees: X, then Y, then Z), into `out`, and back to its axis and angle: by the stage
+ * tools' `poseOf` and `placementWith`, so it reads as Position's Turn does. Y reads in −90…90: a turn typed past it
+ * reads back as its equal, X and Z flipped by 180°.
+ */
+function eulerOf(o: ClipObject, out: number[] = [0, 0, 0]): number[] {
+  Vec3.normalize(TurnAxis, o.rotation.axis);
+  Mat4.fromRotation(TurnMat, o.rotation.angle / Deg, TurnAxis);
+  const e = poseOf({ matrix: TurnMat, center: TurnOrigin }).euler;
+  out[0] = e[0];
+  out[1] = e[1];
+  out[2] = e[2];
+  return out;
 }
 function rotationWith(euler: readonly number[]): ClipObject['rotation'] {
-  const q = Quat.fromEuler(
-    Quat(),
-    Euler.create(...(euler.map((a) => (a * Math.PI) / 180) as [number, number, number])),
-    'ZYX',
+  const m = placementWith(
+    { matrix: TurnIdentity, center: TurnOrigin },
+    { position: [0, 0, 0], euler: [euler[0], euler[1], euler[2]] },
   );
-  const axis = Vec3();
-  const rad = Quat.getAxisAngle(axis, q);
-  if (!Number.isFinite(rad) || Vec3.magnitude(axis) < 1e-9) return { axis: Vec3.create(1, 0, 0), angle: 0 };
-  return { axis: Vec3.normalize(axis, axis), angle: (rad * 180) / Math.PI };
+  Quat.normalize(TurnQuat, Quat.fromMat4(TurnQuat, m));
+  const rad = Quat.getAxisAngle(TurnAxis, TurnQuat);
+  if (!Number.isFinite(rad) || Vec3.magnitude(TurnAxis) < 1e-9) return { axis: Vec3.create(1, 0, 0), angle: 0 };
+  return { axis: Vec3.normalize(Vec3(), TurnAxis), angle: rad * Deg };
 }
+const TurnRead = [0, 0, 0];
 
 interface ClipNumber {
   readonly label: string;
@@ -1278,9 +1293,9 @@ function clipNumbers(shape: string, center: Vec3, reach: number, cone: ViewerApi
       label,
       unit: '°',
       field: 'rotation',
-      read: (o) => eulerOf(o)[i],
+      read: (o) => eulerOf(o, TurnRead)[i],
       write: (o, v) => {
-        const euler = eulerOf(o);
+        const euler = eulerOf(o, TurnRead);
         euler[i] = v;
         return { ...o, rotation: rotationWith(euler) };
       },
@@ -1341,7 +1356,7 @@ function clipNumbers(shape: string, center: Vec3, reach: number, cone: ViewerApi
       break;
     case 'infiniteCone':
       out.push({
-        label: 'Angle',
+        label: 'Half-angle',
         unit: '°',
         field: 'scale',
         read: (o) => cone.angle(o.scale),
@@ -1368,23 +1383,33 @@ function ClipSliders(props: { api: ViewerApi; tag: string; cut: ReadonlyState<Cl
   const center = bounds ? Vec3.clone(bounds.center) : Vec3.clone(first.object.position);
   const reach = Math.max(bounds?.radius ?? 50, 10) * 1.5;
   const numbers = clipNumbers(first.object.type, center, reach, clipping.cone);
+  // the last preview of these sliders: ended at its release, or when they go (the row removed, folded, the clip gone)
+  let previewed: number | undefined;
+  onCleanup(() => {
+    if (previewed !== undefined) clipping.endPreview(previewed);
+  });
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
       {numbers.map((n) => {
         const value = mapState(cut, (c) => (c ? n.read(c.object) : 0));
         const commit = async (v: number) => {
-          const c = cut.value;
-          if (!c) return clipping.endPreview();
-          const next = n.write(c.object, v);
-          const values =
-            n.field === 'position'
-              ? { position: [...next.position] }
-              : n.field === 'rotation'
-                ? { rotation: { axis: [...next.rotation.axis], angle: next.rotation.angle } }
-                : { scale: [...next.scale] };
-          await api.run('clipping.update', { tag, ...values });
-          // the drawing back to the state's (now changed): else the preview would stay on it
-          clipping.endPreview();
+          const token = previewed;
+          previewed = undefined;
+          try {
+            const c = cut.value;
+            if (!c) return;
+            const next = n.write(c.object, v);
+            const values =
+              n.field === 'position'
+                ? { position: [...next.position] }
+                : n.field === 'rotation'
+                  ? { rotation: { axis: [...next.rotation.axis], angle: next.rotation.angle } }
+                  : { scale: [...next.scale] };
+            await api.run('clipping.update', { tag, ...values });
+          } finally {
+            // the drawing back to the state's (now changed), unless another gesture began meanwhile
+            if (token !== undefined) clipping.endPreview(token);
+          }
         };
         return (
           <SliderField
@@ -1399,7 +1424,7 @@ function ClipSliders(props: { api: ViewerApi; tag: string; cut: ReadonlyState<Cl
             unit={n.unit}
             onPreview={(v) => {
               const c = cut.value;
-              if (c) clipping.previewCut(c.object, n.write(c.object, v));
+              if (c) previewed = clipping.previewCut(c.object, n.write(c.object, v));
             }}
             onCommit={(v) => void commit(v)}
           />

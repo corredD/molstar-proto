@@ -9,6 +9,8 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import type { Clip } from '@molstar/core/util/clip';
 import { ShellModel } from '@molstar/prism-ui/shell/shell';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -106,17 +108,27 @@ describe("a clip's numbers in the properties", () => {
     await until(() => Math.abs(sphere().object.position[0] - (x0 + 5)) < 1e-6);
     expect(steps()).toBe(n + 1);
 
-    // a slider's drag and release: one step, its diameter
+    // a slider's drag: previewed on the representation (not in the state, no step), then its release: one step, and
+    // the representation as the state
     const d0 = sphere().object.scale[0];
+    const cell = v.plugin.state.data.cells.get(sphere().targets[0].ref)!;
+    const live = () =>
+      (cell.obj?.data as { repr: { props: { clip: Clip.Props } } }).repr.props.clip.objects.find(
+        (o) => o.tag === sphere().object.tag,
+      )!.scale[0];
     const range = ranges(host, 'Diameter')[0];
     for (const delta of [1, 2, 3]) {
-      range.value = String(Number(range.value) + delta * 0.01);
+      range.value = String(Number(range.value) + delta * 0.05);
       range.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    await until(() => live() !== d0);
+    expect(sphere().object.scale[0]).toBe(d0);
+    expect(steps()).toBe(n + 1);
     range.dispatchEvent(new Event('change', { bubbles: true }));
     await until(() => sphere().object.scale[0] !== d0);
     await new Promise((r) => setTimeout(r, 50));
     expect(steps()).toBe(n + 2);
+    expect(live()).toBe(sphere().object.scale[0]);
 
     // a change from elsewhere (an undo) shows in the open numbers
     await v.api.run('history.undo', {});
@@ -164,7 +176,7 @@ describe("a clip's numbers in the properties", () => {
     toggles(host)[0].click();
     await until(() => boxes(host, 'X').length === 1);
     for (const label of ['Turn X', 'Turn Y', 'Turn Z']) expect(boxes(host, label)).toHaveLength(1);
-    for (const label of ['Diameter', 'Size X', 'Height', 'Angle']) expect(boxes(host, label)).toHaveLength(0);
+    for (const label of ['Diameter', 'Size X', 'Height', 'Half-angle']) expect(boxes(host, label)).toHaveLength(0);
 
     // a turn typed (Turn Y, as Position's: X, then Y, then Z) is the cut's rotation, and reads back the same; from
     // no turn (a new plane faces the viewer)
@@ -179,5 +191,26 @@ describe("a clip's numbers in the properties", () => {
     expect(Math.abs(rotation().axis[1])).toBeCloseTo(1, 6);
     await until(() => boxes(host, 'Turn Y')[0].value === '30');
     expect(boxes(host, 'Turn X')[0].value).toBe('0');
+
+    // two turns: the order is Position's (R = Rz·Ry·Rx), against that matrix made here
+    const turnX = boxes(host, 'Turn X')[0];
+    turnX.value = '20';
+    turnX.dispatchEvent(new Event('change', { bubbles: true }));
+    // the box shows what was typed at once: wait for the cut
+    await until(() => Math.abs(rotation().angle - 30) > 1e-3);
+    const deg = Math.PI / 180;
+    const expected = Mat4.mul(
+      Mat4(),
+      Mat4.fromRotation(Mat4(), 30 * deg, Vec3.create(0, 1, 0)),
+      Mat4.fromRotation(Mat4(), 20 * deg, Vec3.create(1, 0, 0)),
+    );
+    const r = rotation();
+    const actual = Mat4.fromRotation(Mat4(), r.angle * deg, Vec3.normalize(Vec3(), r.axis));
+    for (const p of [Vec3.create(1, 0, 0), Vec3.create(0, 1, 0), Vec3.create(0, 0, 1)]) {
+      const a = Vec3.transformMat4(Vec3(), p, actual);
+      const e = Vec3.transformMat4(Vec3(), p, expected);
+      for (let i = 0; i < 3; i++) expect(a[i]).toBeCloseTo(e[i], 5);
+    }
+    expect(boxes(host, 'Turn Y')[0].value).toBe('30');
   });
 });
