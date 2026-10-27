@@ -316,8 +316,9 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   body too (a clip's plane, a slice's frame: Ludo, 2026-10-26, a handle one cannot see cannot be grabbed); the body is
   not picked. Off by default; one viewer-wide setting (the coordinator's default, not one per handle); a view setting,
   no undo step, kept with the canvas (not across reloads; prism-me keeps no canvas setting across one). Off: the handles
-  hide behind what is in front, as before. On top, a hovered handle is marked in its color (the marking pass's outline
-  does not draw the on-top layer) and has no glow.
+  hide behind what is in front, as before. A hovered handle turns yellow, on top or not (Ludo, 2026-10-27: a strong
+  color, no grow), and stays so while dragged: on top no outline (the marking pass draws the scene only) and no glow
+  show it.
 - Particle scale (2026-10-23, Ludovic: "important for tomograms and Simularium"): a list's or model's Position has Scale
   (Å per unit of its file, 0.01–100 on the slider, any value typed): its positions scaled about the file's origin,
   before its move and turn (the list transform's `scale`, a library param), so particles in a tomogram's pixels line up
