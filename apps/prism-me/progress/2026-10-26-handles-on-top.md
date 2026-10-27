@@ -8,8 +8,8 @@
   the object in front); toggle off: they hide behind as now. The same for a clip's handles, the oblique slice and a
   particle's handle. Dragging and one-undo still work in both modes; the toggle itself is no undo step.
 - **Defaults taken by the coordinator** (Ludo did not choose; say so in the PR): one viewer-wide toggle that every
-  handle follows (not one per handle), off by default; only the handles one grabs are on top, a gizmo's translucent body
-  (a clip's plane, a slice's frame) stays depth-tested so it still shows where it cuts.
+  handle follows (not one per handle), off by default. ~~Only the handles one grabs are on top, the translucent body
+  stays depth-tested~~: replaced by Ludo's correction (Decided): every part of a gizmo is on top.
 - **What the coordinator found** (read-only, 2026-10-26): Mol\* has no per-object "on top"; the canvas has a helper
   scene drawn after the scene without its depth, the old `HandleHelper`'s `helper.handle.scene`
   (`packages/graphics/src/canvas3d/passes/draw.ts:747-749`, also in `passes/illumination.ts:330`), and picked after it
@@ -49,6 +49,10 @@
 ## Built
 
 ## Decided
+
+- Ludo, 2026-10-26: every part of the gizmo on top: with the toggle on, all a gizmo draws (its handles and its body:
+  a clip's plane, a slice's frame, rings, arrows, knobs) is drawn over the scene, because a handle one cannot see cannot
+  be grabbed. Picking as designed: the handles are picked through the scene, the body stays not pickable.
 
 ## Learned
 
