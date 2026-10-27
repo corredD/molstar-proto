@@ -274,6 +274,7 @@ function Position(props: { node: MockNode }) {
             icon={<Icon name="sliders-horizontal" />}
             onClick={() => numbers.set(!numbers.value)}
           />
+          <OnTop />
         </span>
       </div>
       <Show when={numbers.asReadonly}>
@@ -297,6 +298,23 @@ function Position(props: { node: MockNode }) {
   );
 }
 
+/** Every handle on the canvas on top of the scene or in it (ui.md §4): one setting, the same in Position and Clips */
+const onTop = observableState(false);
+function OnTop() {
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      title="Handles on top: drawn over everything, seen and grabbed through what is in front of them"
+      pressed={onTop.asReadonly}
+      icon={<Icon name="layers" />}
+      onClick={() => onTop.set(!onTop.value)}
+    >
+      On top
+    </Button>
+  );
+}
+
 /** A node's clips (ui.md §4, §5): each its handles (move, turn, size it in 3D), its form, Remove; Add clip (right-click) */
 function Clips(props: { node: MockNode }) {
   const one = props.node.kind === 'model';
@@ -315,6 +333,7 @@ function Clips(props: { node: MockNode }) {
             >
               {derive(handles.asReadonly, (on) => (on ? 'Hide handles' : 'Handles'))}
             </Button>
+            <OnTop />
           </span>
         </div>
       ) : null}
