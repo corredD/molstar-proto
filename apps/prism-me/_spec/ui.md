@@ -56,7 +56,9 @@ the end (Ludovic, 2026-10-25, as Prism's tree): the brush (a color for all of it
 them, the eye (show, hide, at its level) and ⋯ (its right-click). The tools show on the row's hover or focus, always on
 a touch screen; a hidden node keeps its eye in view. A category's row has the brush (its color theme), the scissors and
 the eye, for every object under it. Clips and labels made at a node are rows under it (§5), and distances under their
-first point's row (§7), each with its own eye.
+first point's row (§7), each with its own eye. A model hidden closes every eye under it (its groups' and entities';
+their own flags kept, so shown again it looks as before); an eye opened under it shows that part alone: the model shown,
+its other entities hidden, one step (Ludovic, 2026-10-27, a cellPACK or PetWorld model).
 
 A click on a row picks it: highlighted in 3D, its properties below. A category is picked too (Ludovic, 2026-10-25). The
 arrows move the pick (↑/↓, Home, End; → opens or goes in, ← closes or goes to the parent), as a click. A double click

@@ -34,6 +34,8 @@ export interface Row {
   readonly color?: number;
   /** Its eye: whether shown; absent, no eye */
   readonly visible?: boolean;
+  /** A part of an object hidden as a whole: its eye shows closed, opened it shows this part alone */
+  readonly hiddenAbove?: boolean;
   readonly hasChildren: boolean;
   /** What it stands for in 3D (none for a category) */
   readonly node?: NodeRef;
@@ -152,10 +154,12 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
       if (!info) return;
       const byId = new Map(info.entities.map((e) => [e.id, e]));
       const groupKey = (path: string) => groupKeyOf(o.ref, info, path);
+      // the model hidden: every eye under it closed (its parts keep their own, shown again with it)
+      const above = o.visible ? {} : { hiddenAbove: true };
       const walk = (g: MesoGroup, depth: number) => {
         for (const child of g.groups) {
           const members = groupEntities(child);
-          const shown = members.some((id) => byId.get(id)?.visible);
+          const shown = o.visible && members.some((id) => byId.get(id)?.visible);
           push(
             {
               key: groupKey(child.path),
@@ -164,6 +168,7 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
               kind: 'group',
               count: String(members.length),
               visible: shown,
+              ...above,
               hasChildren: true,
               node: { ref: o.ref, particles: { entities: members } },
             },
@@ -180,7 +185,8 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
               label: e.name,
               kind: 'entity',
               count: e.count.toLocaleString('en'),
-              visible: e.visible,
+              visible: o.visible && e.visible,
+              ...above,
               ...(e.color !== undefined ? { color: e.color } : {}),
               hasChildren: false,
               node: { ref: o.ref, particles: { entities: [id] } },
@@ -320,11 +326,19 @@ export function toggleVisible(api: ViewerApi, row: Row) {
     case 'group':
     case 'entity':
       if ('particles' in node) {
-        return api.run('mesoscale.style', {
-          particles: node.ref,
-          entities: (node.particles.entities ?? []).join(','),
-          visible,
-        });
+        const entities = (node.particles.entities ?? []).join(',');
+        // opened under its hidden model: the model shown with this part alone, one step (the others hidden first, so
+        // the whole model never shows)
+        if (visible && row.hiddenAbove) {
+          return api.group(`Show ${row.label} alone`, async (g) => {
+            const others = await g.run('mesoscale.style', { particles: node.ref, entities: '', visible: false });
+            if (!others.ok) return others;
+            const own = await g.run('mesoscale.style', { particles: node.ref, entities, visible: true });
+            if (!own.ok) return own;
+            return g.run('particles.visibility', { particles: node.ref, visible: true });
+          });
+        }
+        return api.run('mesoscale.style', { particles: node.ref, entities, visible });
       }
       return;
     case 'volume':
