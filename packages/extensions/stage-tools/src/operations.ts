@@ -840,6 +840,8 @@ export function stagePicked(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StageP
     };
   }
   if (Particle.isLoci(loci)) {
+    // no particle: nothing (not the first one, `OrderedSet.getAt` of an empty interval)
+    if (Particle.isLociEmpty(loci)) return undefined;
     // as loaded, or as its representations draw it (decorated: targets by class)
     for (const l of ctx.plugin.managers.particles.hierarchy.current.lists) {
       if (

@@ -376,6 +376,8 @@ describe('stage.pickedAt', () => {
     });
     const particle = (i: number) => Particle.Loci(list.obj!.data, OrderedSet.ofSingleton(i as Particle.Index));
     expect(s.pickedAt({ loci: particle(1) })).toMatchObject({ kind: 'particles', ref: list.transform.ref, index: 1 });
+    // no particle (an empty loci, as a script may give): nothing, not the first particle
+    expect(s.pickedAt({ loci: Particle.Loci(list.obj!.data, OrderedSet.Empty) })).toBeUndefined();
     expect(s.pickedAt({ loci: EmptyLoci })).toBeUndefined();
     // a label and a distance by their drawings' loci (headless: no canvas to find a label's box on, x and y find none)
     const drawn = (ref: string) => {
