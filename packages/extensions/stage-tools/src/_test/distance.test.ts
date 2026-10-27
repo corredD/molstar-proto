@@ -400,5 +400,10 @@ describe('stage.pickedAt', () => {
     expectOk(d);
     const distance = (d.value as { ref: string }).ref;
     expect(s.pickedAt({ loci: drawn(distance) })).toEqual({ kind: 'distance', ref: distance });
+    // its points named by the menu's pick (pickOf, made of the same read): a list without entities, by its target
+    expect(s.distancesState().value.find((x) => x.ref === distance)).toMatchObject({
+      a: { ref: list.transform.ref, label: 'Target 0 #0' },
+      b: { ref: list.transform.ref, label: 'Target 0 #1' },
+    });
   });
 });
