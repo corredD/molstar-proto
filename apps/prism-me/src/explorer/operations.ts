@@ -802,7 +802,7 @@ function lociOf(plugin: PluginContext, node: NodeRef): Loci {
     // the volume as drawn (moved by its transform, if any)
     const drawn = drawnObject({ plugin }, node.ref);
     const volume = SO.Volume.Data.is(drawn) ? drawn.data : obj.data;
-    return Volume.Loci(volume, OrderedSet.ofSingleton(0 as never));
+    return Volume.Loci(volume, OrderedSet.ofSingleton(0 as Volume.InstanceIndex));
   }
   if (SO.Shape.Representation3D.is(obj)) return obj.data.repr.getAllLoci()[0] ?? EmptyLoci;
   // a label: its shape's (the representation under it)
