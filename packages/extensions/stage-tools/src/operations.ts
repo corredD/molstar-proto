@@ -816,7 +816,6 @@ export { drawnObject };
 
 // --- picks ---------------------------------------------------------------------------------------------------------
 
-/** The target a picked loci belongs to: its structure (the root of a component's), particle list or volume */
 /** What a pick is on, from its loci (`StagePicked`); undefined for nothing */
 export function stagePicked(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StagePicked | undefined {
   if (isEmptyLoci(loci)) return undefined;
@@ -970,7 +969,6 @@ export interface ObjectPlacement {
   readonly radius: number;
 }
 
-/** A particle list's scale (its transform's: Å per unit of its file), 1 when not scaled */
 /** A particle target representation's params (what draws a decorated list's objects) */
 interface TargetRepresentationParams {
   readonly type: { readonly name: 'target'; readonly params: ParticleTargetRepresentationProps };
@@ -989,6 +987,7 @@ function targetParams(cell: StateObjectCell): Partial<ParticleTargetRepresentati
   return (cell.transform.params as TargetRepresentationParams).type.params;
 }
 
+/** A particle list's scale (its transform's: Å per unit of its file), 1 when not scaled */
 function listScale(ctx: Pick<ApiContext, 'plugin'>, target: string): number {
   const old = decoratorUnder(ctx, target, ParticleListTransform);
   return (old?.transform.params as { scale?: number } | undefined)?.scale ?? 1;
