@@ -217,8 +217,10 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   selection's granularity: a structure, an entity, a chain; a model, an entity; a list, a target; a volume; a mesh):
   Focus, Hide (where an eye hides it), and for now the stage's cuts (until Add clip, 3b); on a cut's guide, the stage's
   own items (move, turn, size, flip, remove). The tree follows a pick in 3D (a left- or right-click): its row picked,
-  the way to it unfolded, brought into view. `explorer.pickedOf(loci)`, `menu.ts`; stage-tools lets a host open the menu
-  (`menuHosted`, the request's `loci`; its items in `@molstar/stage-tools-extension/menu`).
+  the way to it unfolded, brought into view. What a click is on is the stage's (`stage.pickedAt`: the object and its
+  part, a label under the pointer first; 2026-10-27), its row the explorer's (`pickedRow`; `pickedOf(loci)` for a loci),
+  `menu.ts`; stage-tools lets a host open the menu (`menuHosted`, the request's `loci`; its items in
+  `@molstar/stage-tools-extension/menu`).
 - Step 3b (2026-10-19, as the Mesoscale Explorer's rows): a row's tools at its right end, the brush (a color for all of
   it: swatches; a model's or group's Generate colors) and the scissors (a clip: plane, sphere, box; a part's also
   cylinder), beside its eye. Several clips at each level: an object's (structure, model, list, volume) cut all of it
@@ -235,12 +237,14 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   `stage.editLabel`, `labelsState`. Its move comes with 3d.
 - Labels, fixed (2026-10-20, Ludovic's test): made on the canvas, a label goes where it was clicked (the click's point
   on what it picked, `StageMenuRequest.position`), not the node's center (an entity's copies or a group around a model
-  have their center at the model's); made from the tree, on the part's particle nearest the camera (`anchorOf`). A label
-  is found under the pointer by its box on the screen (`stage.labelAt`: Mol* draws text, it does not pick it), so a
-  left-click picks its row and its right-click is its own: Edit the text… (a field where it was clicked, Enter keeps
-  it), Move, Focus, Hide, Remove. Its properties: text, size, color; its plate (shown, its color, its opacity) and its
-  tether (on, its length: the text set off up and to the right, a line to its place); on its representation too (a
-  text's plate is drawn by its props).
+  have their center at the model's); made from the tree, on the part's particle nearest the camera (`anchorOf`). Its
+  height is the stage's (`stage.label` `radius`, the part's radius, 2026-10-27): about half the part's size, at least a
+  15th of its object's and 2 Å, in half-Å steps; at a point clicked, in front of it by that height. A label is found
+  under the pointer by its box on the screen (`stage.labelAt`: Mol* draws text, it does not pick it), so a left-click
+  picks its row and its right-click is its own: Edit the text… (a field where it was clicked, Enter keeps it), Move,
+  Focus, Hide, Remove. Its properties: text, size, color; its plate (shown, its color, its opacity) and its tether (on,
+  its length: the text set off up and to the right, a line to its place); on its representation too (a text's plate is
+  drawn by its props).
 - Step 3d (2026-10-19): Move and Turn, by dragging on the canvas (a layer takes the pointer; the drawing follows,
   `previewMove`, the state unchanged; released: one step, `stage.move`; Esc: back, no step), for a whole object: a
   structure (its transform, Prism's), a particle list (`ParticleListTransform`, a new decorator), a volume
@@ -295,7 +299,7 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   list's Clips, while it draws objects, has Clip whole: Proteins (Mol\*'s `instance` variant: an object whose center is
   cut goes, the others stay whole) or Atoms (`pixel` with the spheres' `clipPrimitive`: each atom whose center is cut
   goes, the objects carved); as made, neither (cut through). On its target representations, one step
-  (`explorer.clipWhole`); a cut of a part (an entity) keeps to its part either way.
+  (`stage.clipWhole`); a cut of a part (an entity) keeps to its part either way.
 - Some targets decorated (2026-10-22, Ludovic's test: a class decorated, everything else gone): the spheres, axes and
   other representations of a list stay and draw the targets not decorated; the decorated ones are left out of them
   (their layers' `hidden`, a library param: fully transparent), so a class drawn as objects is not drawn twice and the

@@ -435,35 +435,6 @@ describe('explorer', () => {
     expect(reprs()).toContain('spacefill');
   });
 
-  it("clips a decorated list's objects whole, or its elements (atoms) whole, in one step", async () => {
-    const v = await viewer();
-    const area = v.api.explorer!;
-    const list = area.objectsState().value.find((o) => o.kind === 'list')!;
-    // nothing to set before it is decorated (no objects drawn)
-    expect(area.clipWholeState(list.ref).value).toBeUndefined();
-    expectOk(await v.api.run('cryoet.decorate', { particles: list.ref, with: 'object', object: '1crn' }));
-    const target = () =>
-      v.plugin.managers.particles.hierarchy.current.lists
-        .find((l) => l.cell.transform.ref === list.ref)!
-        .representations.find((r) => (r.cell.transform.params as any).type.name === 'target')!;
-    const params = () => (target().cell.transform.params as any).type.params;
-    // as made: cut through (neither the objects nor the atoms whole)
-    expect(area.clipWholeState(list.ref).value).toBe('pixel');
-    expectOk(await v.api.run('explorer.clipWhole', { particles: list.ref, whole: 'instance' }));
-    expect(params().clip.variant).toBe('instance');
-    expect(area.clipWholeState(list.ref).value).toBe('instance');
-    expect(await v.api.run('explorer.clipWhole', { particles: list.ref, whole: 'instance' })).toMatchObject({
-      unchanged: true,
-    });
-    expectOk(await v.api.run('explorer.clipWhole', { particles: list.ref, whole: 'element' }));
-    expect(params().clip.variant).toBe('pixel');
-    expect(params().structure.clipPrimitive).toBe(true);
-    expect(area.clipWholeState(list.ref).value).toBe('element');
-    // one step each
-    expectOk(await v.api.run('history.undo', {}));
-    expect(params().clip.variant).toBe('instance');
-  });
-
   it("shows a representation's color theme over the colors set in Look, once asked for (they are cleared)", async () => {
     const v = await viewer();
     const list = v.api.explorer!.objectsState().value.find((o) => o.kind === 'list')!;
@@ -485,6 +456,12 @@ describe('explorer', () => {
     await addLabel(v.api, area, entity, (p) => (revealed = p));
     const labels = v.api.stage!.labelsState().value;
     expect(labels).toMatchObject([{ text: 'CRAMBIN', node: entity.key, target: crn.ref }]);
+    // sized to the entity (about its radius, ~17.6 Å, halved), in front of its middle by its radius
+    expect(labels[0].size).toBe(9);
+    expect(labels[0].depth).toBeCloseTo(17.57, 2);
+    // at a point clicked on it: the same size, in front of the point by its height
+    await addLabel(v.api, area, entity, undefined, [1, 2, 3]);
+    expect(v.api.stage!.labelsState().value[1]).toMatchObject({ size: 9, depth: 9, position: [1, 2, 3] });
     expect(revealed?.key).toBe(`l:${labels[0].ref}`);
     // its row: under the entity's
     const rows = rowsOf(

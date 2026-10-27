@@ -10,11 +10,9 @@ import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { type Observable, Subject } from 'rxjs';
 import { EmptyLoci, Loci } from '@molstar/model/model/loci';
 import { isStageDistanceData } from '@molstar/stage-tools-extension/distance';
-import { isStageLabelData } from '@molstar/stage-tools-extension/label';
-import { drawnObject } from '@molstar/stage-tools-extension/operations';
+import { drawnObject, stagePicked, type StagePicked } from '@molstar/stage-tools-extension/operations';
 import { Particle, type ParticleList, type ParticleTarget } from '@molstar/model/model/particles/particle-list';
-import { Structure, StructureElement, StructureProperties, StructureSelection } from '@molstar/model/model/structure';
-import { Shape, ShapeGroup } from '@molstar/model/model/shape';
+import { Structure, StructureElement, StructureSelection } from '@molstar/model/model/structure';
 import { EmissiveStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/emissive';
 import { OverpaintStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/overpaint';
 import { TransparencyStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/transparency';
@@ -308,67 +306,6 @@ export class ExplorerApi extends ApiArea {
       .map(([type, label]) => ({ type, label: ParticleTypeLabels[type] ?? label }));
   }
 
-  /**
-   * How a decorated list's objects are clipped (its target representations', the first one's): whole objects
-   * (`instance`: a protein whose center is cut goes), whole elements (`element`: atoms, whose centers are cut, go),
-   * or cut through (`pixel`, as made); undefined without objects drawn. Following the state tree while watched.
-   */
-  clipWholeState(ref: string): ReadonlyState<'instance' | 'element' | 'pixel' | undefined> {
-    const plugin = this.ctx.plugin;
-    return watchedState(
-      () => {
-        const params = targetRepresentations(plugin, ref)[0]?.transform.params as any;
-        const p = params?.type?.params;
-        if (!p) return undefined;
-        if (p.clip?.variant === 'instance') return 'instance';
-        return p.structure?.clipPrimitive ? 'element' : 'pixel';
-      },
-      () => plugin.state.data.events.changed,
-    );
-  }
-
-  readonly clipWhole = this.operation({
-    id: 'explorer.clipWhole',
-    title: "Clip a list's objects whole, or their atoms",
-    params: {
-      particles: PD.Text('', { description: 'The state ref of the particle list (or mesoscale model)' }),
-      whole: PD.Select<'instance' | 'element'>('instance', [
-        ['instance', 'Objects (proteins): one whose center is cut goes whole'],
-        ['element', 'Elements (atoms): each whose center is cut goes whole'],
-      ]),
-    },
-    async run({ particles, whole }, ctx) {
-      const cells = targetRepresentations(ctx.plugin, particles);
-      if (!cells.length) return ApiResult.fail('not-found', 'It draws no objects.', 'Decorate its particles first.');
-      const b = ctx.plugin.state.data.build();
-      let changed = 0;
-      for (const cell of cells) {
-        const p = (cell.transform.params as any).type.params;
-        const variant = whole === 'instance' ? 'instance' : 'pixel';
-        const clipPrimitive = whole === 'element' ? true : !!p.structure?.clipPrimitive;
-        if (p.clip?.variant === variant && !!p.structure?.clipPrimitive === clipPrimitive) continue;
-        b.to(cell).update((old: any) => ({
-          ...old,
-          type: {
-            ...old.type,
-            params: {
-              ...old.type.params,
-              clip: { ...old.type.params.clip, variant },
-              structure: { ...old.type.params.structure, clipPrimitive },
-            },
-          },
-        }));
-        changed++;
-      }
-      if (!changed)
-        return ApiResult.already(`Its ${whole === 'instance' ? 'objects' : 'atoms'} are already clipped whole.`);
-      await b.commit();
-      return ApiResult.ok(`Clips its ${whole === 'instance' ? 'objects' : 'atoms'} whole.`, {
-        nodes: cells.map((c) => c.transform.ref),
-      });
-    },
-  });
-
   /** A representation's params as its transform defines them, and their values: for a form */
   representationForm(ref: string): { readonly params: PD.Params; readonly values: PD.Values<PD.Params> } | undefined {
     const { cells } = this.ctx.plugin.state.data;
@@ -396,7 +333,12 @@ export class ExplorerApi extends ApiArea {
    * a list, a target; a volume; a mesh): its row's key, name, kind and node; undefined when it is none of them
    */
   pickedOf(loci: Loci): PickedNode | undefined {
-    return pickedOf(this.ctx.plugin, loci);
+    return this.pickedRow(stagePicked({ plugin: this.ctx.plugin }, loci));
+  }
+
+  /** What the stage says a click is on (`stage.pickedAt`) as a row of the tree, at the selection's granularity */
+  pickedRow(picked: StagePicked | undefined): PickedNode | undefined {
+    return picked && pickedRow(this.ctx.plugin, picked);
   }
 
   /** Where a node is: the sphere around it (a label is put in front of it) */
@@ -648,14 +590,6 @@ function decorationRadius(target: ParticleTarget | undefined): number {
   return (target.shape.geometry as { boundingSphere?: { radius: number } }).boundingSphere?.radius ?? 0;
 }
 
-/** A particle list's target representations (what draws its decorations' objects) */
-function targetRepresentations(plugin: PluginContext, ref: string) {
-  const l = plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === ref);
-  return (l?.representations ?? [])
-    .map((r) => r.cell)
-    .filter((c) => (c.transform.params as { type?: { name?: string } })?.type?.name === 'target');
-}
-
 /** The name of the file or entry an object came from: its root data's label */
 function fileLabel(plugin: PluginContext, ref: string): string | undefined {
   const { cells, tree } = plugin.state.data;
@@ -728,57 +662,43 @@ function entitiesOf(structure: Structure): StructureEntity[] {
 
 // --- a 3D pick in the tree ------------------------------------------------------------------------------------------
 
-function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
-  if (loci.kind === 'empty-loci') return undefined;
+function pickedRow(plugin: PluginContext, picked: StagePicked): PickedNode | undefined {
   const granularity = plugin.managers.interactivity.props.granularity;
   const whole = granularity === 'structure' || granularity === 'model' || granularity === 'operator';
-  if (StructureElement.Loci.is(loci) && !StructureElement.Loci.isEmpty(loci)) {
-    // the structure's cell may have decorators on it (custom properties): up to the structure the tree lists
-    const structures = plugin.managers.structure.hierarchy.current.structures;
-    const tree = plugin.state.data.tree;
-    let ref: string | undefined = plugin.helpers.substructureParent.get(loci.structure)?.transform.ref;
-    let s = undefined as (typeof structures)[number] | undefined;
-    while (ref && !(s = structures.find((x) => x.cell.transform.ref === ref))) ref = tree.transforms.get(ref)?.parent;
-    const structure = s?.cell.obj?.data;
-    if (!s || !structure) return undefined;
-    ref = s.cell.transform.ref;
-    const label = labelOf({ plugin }, s);
-    if (whole) return { key: `o:${ref}`, label, kind: 'structure', node: { ref } };
-    // its first element: the entity and the chain it is in (label ids, as the tree's rows)
-    const e = loci.elements[0];
-    const loc = StructureElement.Location.create(
-      loci.structure,
-      e.unit,
-      e.unit.elements[OrderedSet.getAt(e.indices, 0)],
-    );
-    const entity = StructureProperties.entity.id(loc);
-    const chain = StructureProperties.chain.label_asym_id(loc);
-    const info = entitiesOf(structure).find((x) => x.id === entity);
-    if (!info) return { key: `o:${ref}`, label, kind: 'structure', node: { ref } };
-    if (granularity === 'entity' || info.chains.length < 2) {
-      return { key: `e:${ref}:${entity}`, label: info.label, kind: 'entity', node: { ref, entity } };
+  const { ref } = picked;
+  switch (picked.kind) {
+    case 'structure': {
+      const s = plugin.managers.structure.hierarchy.current.structures.find((x) => x.cell.transform.ref === ref);
+      const structure = s?.cell.obj?.data;
+      // a bond: no row (its atoms are a distance's point, `measurePoint`)
+      if (!s || !structure || picked.entity === undefined) return undefined;
+      const label = labelOf({ plugin }, s);
+      if (whole) return { key: `o:${ref}`, label, kind: 'structure', node: { ref } };
+      const { entity, chain } = picked;
+      const info = entitiesOf(structure).find((x) => x.id === entity);
+      if (!info) return { key: `o:${ref}`, label, kind: 'structure', node: { ref } };
+      // an entity of one chain has no chain rows
+      if (granularity === 'entity' || info.chains.length < 2 || chain === undefined) {
+        return { key: `e:${ref}:${entity}`, label: info.label, kind: 'entity', node: { ref, entity } };
+      }
+      return {
+        key: `ch:${ref}:${entity}:${chain}`,
+        label: `Chain ${chain}`,
+        kind: 'chain',
+        node: { ref, entity, chain },
+      };
     }
-    return {
-      key: `ch:${ref}:${entity}:${chain}`,
-      label: `Chain ${chain}`,
-      kind: 'chain',
-      node: { ref, entity, chain },
-    };
-  }
-  if (Particle.isLoci(loci)) {
-    for (const l of plugin.managers.particles.hierarchy.current.lists) {
-      const datas = [l.cell.obj?.data, ...l.representations.map((r) => r.cell.obj?.data.sourceData)];
-      if (!datas.includes(loci.particles)) continue;
-      const ref = l.cell.transform.ref;
-      const data = l.cell.obj!.data;
+    case 'particles': {
+      const data = plugin.state.data.cells.get(ref)?.obj?.data as ParticleList | undefined;
+      if (!data) return undefined;
       const model = !!(data.entityInfo?.size || data.compartmentInfo?.size);
-      const label = fileLabel(plugin, ref) ?? l.cell.obj!.label;
-      const kind = model ? 'mesoscale model' : 'particle list';
-      if (whole) return { key: `o:${ref}`, label, kind, node: { ref } };
-      const i = OrderedSet.getAt(loci.indices, 0);
-      const target = loci.particles.targets[i];
+      if (whole) {
+        const label = fileLabel(plugin, ref) ?? plugin.state.data.cells.get(ref)!.obj!.label;
+        return { key: `o:${ref}`, label, kind: model ? 'mesoscale model' : 'particle list', node: { ref } };
+      }
+      const { particles, index } = picked;
       if (model) {
-        const entity = Particle.entityOf(loci.particles, i);
+        const entity = Particle.entityOf(particles, index);
         const name = data.entityInfo?.get(entity)?.name ?? `Entity ${entity}`;
         return {
           key: `me:${ref}:${entity}`,
@@ -787,7 +707,8 @@ function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
           node: { ref, particles: { entities: [entity] } },
         };
       }
-      const name = loci.particles.targetInfo.get(target)?.name ?? `Target ${target}`;
+      const target = particles.targets[index];
+      const name = particles.targetInfo.get(target)?.name ?? `Target ${target}`;
       return {
         key: `t:${ref}:${target}`,
         label: name,
@@ -795,57 +716,38 @@ function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
         node: { ref, particles: { targets: [target] } },
       };
     }
-    return undefined;
-  }
-  if (
-    Volume.isLoci(loci) ||
-    Volume.Isosurface.isLoci(loci) ||
-    Volume.Cell.isLoci(loci) ||
-    Volume.Segment.isLoci(loci)
-  ) {
-    // as loaded, or as its representations draw it (moved: a decorator's new volume)
-    const v = plugin.managers.volume.hierarchy.current.volumes.find(
-      (x) =>
-        x.cell.obj?.data === loci.volume || x.representations.some((r) => r.cell.obj?.data.sourceData === loci.volume),
-    );
-    if (!v) return undefined;
-    const ref = v.cell.transform.ref;
-    return { key: `o:${ref}`, label: v.cell.obj?.label ?? ref, kind: 'volume', node: { ref } };
-  }
-  // a distance of the stage, its line (its text is not pickable): its row (under its first point's)
-  if (ShapeGroup.isLoci(loci) && isStageDistanceData(loci.shape.sourceData)) {
-    for (const cell of plugin.state.data.cells.values()) {
-      const obj = cell.obj;
-      if (!SO.Shape.Representation3D.is(obj) || obj.data.sourceData !== loci.shape.sourceData) continue;
-      return { key: `d:${cell.transform.ref}`, label: obj.label, kind: 'distance', node: { ref: cell.transform.ref } };
+    case 'volume': {
+      const label = plugin.state.data.cells.get(ref)?.obj?.label ?? ref;
+      return { key: `o:${ref}`, label, kind: 'volume', node: { ref } };
     }
-    return undefined;
-  }
-  // a label of the stage: its row (under the node it was made at)
-  if (ShapeGroup.isLoci(loci) && isStageLabelData(loci.shape.sourceData)) {
-    for (const cell of plugin.state.data.cells.values()) {
-      const obj = cell.obj;
-      if (!SO.Shape.Provider.is(obj) || obj.data.data !== loci.shape.sourceData) continue;
-      const ref = cell.transform.ref;
-      return { key: `l:${ref}`, label: loci.shape.sourceData.text, kind: 'label', node: { ref } };
+    // its row is under its first point's
+    case 'distance':
+      return {
+        key: `d:${ref}`,
+        label: plugin.state.data.cells.get(ref)?.obj?.label ?? ref,
+        kind: 'distance',
+        node: { ref },
+      };
+    // under the node it was made at
+    case 'label':
+      return { key: `l:${ref}`, label: picked.text, kind: 'label', node: { ref } };
+    // a mesh's (a model's unit cell, a cut's drawing: no row)
+    case 'shape': {
+      const mesh = meshes(plugin).find((m) => m.ref === ref);
+      return mesh ? { key: `o:${ref}`, label: mesh.label, kind: 'mesh', node: { ref } } : undefined;
     }
-    return undefined;
   }
-  // a mesh's shape, picked in a group or whole (its visuals' loci are whole: `Shape.Loci`, its surface's or wireframe's)
-  if (ShapeGroup.isLoci(loci) || Shape.isLoci(loci)) {
-    const mesh = meshes(plugin).find((m) => {
-      const obj = plugin.state.data.cells.get(m.ref)?.obj;
-      return (
-        SO.Shape.Representation3D.is(obj) &&
-        obj.data.repr.getAllLoci().some((l) => (Shape.isLoci(l) || ShapeGroup.isLoci(l)) && l.shape === loci.shape)
-      );
-    });
-    if (mesh) return { key: `o:${mesh.ref}`, label: mesh.label, kind: 'mesh', node: { ref: mesh.ref } };
-  }
-  return undefined;
 }
 
 // --- a structure's look ----------------------------------------------------------------------------------------------
+
+/** A style layer on a structure representation, as `structureLook` reads it */
+interface StyleLayer {
+  readonly bundle: StructureElement.Bundle;
+  readonly clear?: boolean;
+  readonly color?: number;
+  readonly value: number;
+}
 
 /**
  * A structure node's color, transparency and emissive: on its representations, the last layer of each kind that
@@ -869,7 +771,8 @@ function structureLook(plugin: PluginContext, node: NodeRef): StructureLook | un
     for (const ref of tree.children.get(repr.cell.transform.ref).toArray()) {
       const t = cells.get(ref)?.transform;
       if (!t) continue;
-      const layers = (t.params as { layers?: readonly Record<string, any>[] } | undefined)?.layers ?? [];
+      // an overpaint layer's color (or `clear`), a transparency's or emissive's value
+      const layers = (t.params as { layers?: readonly StyleLayer[] } | undefined)?.layers ?? [];
       for (const layer of layers) {
         if (!covers(layer.bundle)) continue;
         if (t.transformer === OverpaintStructureRepresentation3DFromBundle)
@@ -919,7 +822,7 @@ function lociOf(plugin: PluginContext, node: NodeRef): Loci {
     // the volume as drawn (moved by its transform, if any)
     const drawn = drawnObject({ plugin }, node.ref);
     const volume = SO.Volume.Data.is(drawn) ? drawn.data : obj.data;
-    return Volume.Loci(volume, OrderedSet.ofSingleton(0 as never));
+    return Volume.Loci(volume, OrderedSet.ofSingleton(0 as Volume.InstanceIndex));
   }
   if (SO.Shape.Representation3D.is(obj)) return obj.data.repr.getAllLoci()[0] ?? EmptyLoci;
   // a label: its shape's (the representation under it)

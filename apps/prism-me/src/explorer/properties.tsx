@@ -714,8 +714,8 @@ function AddParticleRepresentation(props: {
 /** A volume's slices, a section each (Slice X, Y, Z: position and window), and the three at a click if some are missing */
 /** A new oblique slice through the volume's middle, its handle shown on it */
 async function addOblique(api: ViewerApi, cryoet: CryoetApi, volume: string) {
-  const r = await cryoet.oblique({ volume } as never);
-  const slice = r.ok ? (r as { value?: { slice?: string } }).value?.slice : undefined;
+  const r = await api.run('cryoet.oblique', { volume });
+  const slice = r.ok ? (r.value as { slice?: string } | undefined)?.slice : undefined;
   if (!slice) return;
   hideHandles(api);
   cryoet.useObliqueHandles(api).show({ volume, slice });
@@ -736,7 +736,10 @@ function VolumeSlices(props: { api: ViewerApi; volume: string }) {
       </For>
       <Show when={mapState(info, (i) => (i?.slices.length ?? 0) < 3)}>
         {() => (
-          <Button size="sm" onClick={() => void cryoet.slices({ volume: props.volume, isosurface: true } as never)}>
+          <Button
+            size="sm"
+            onClick={() => void props.api.run('cryoet.slices', { volume: props.volume, isosurface: true })}
+          >
             Show the three slices
           </Button>
         )}
@@ -1128,7 +1131,9 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
   const handled = derive([clipping.gizmos.shown, clipping.gizmos.handled], (shown, h) => (shown ? h : []));
   // a model's or list's objects: clipped whole (proteins) or by their elements (atoms), when it draws objects
   const whole =
-    props.kind === 'mesoscale model' || props.kind === 'particle list' ? area.clipWholeState(node.ref) : undefined;
+    (props.kind === 'mesoscale model' || props.kind === 'particle list') && api.stage
+      ? api.stage.clipWholeState(node.ref)
+      : undefined;
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
       {whole ? (
@@ -1149,7 +1154,7 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
                 },
               ]}
               active={whole}
-              onPick={(w) => void api.run('explorer.clipWhole', { particles: node.ref, whole: w })}
+              onPick={(w) => void api.run('stage.clipWhole', { particles: node.ref, whole: w })}
             />
           )}
         </Show>

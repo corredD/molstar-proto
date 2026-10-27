@@ -34,7 +34,7 @@ import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/ope
 import { editInline } from './inline-edit.js';
 import { distancePicker, selectionModeHint } from './measure.js';
 import { clipItems, clippable, colorable, colorItems, nodeMenuItems, removable, removeObject } from './menu.js';
-import type { ExplorerApi, PickedNode } from './operations.js';
+import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
 import {
   ancestorKeys,
@@ -89,26 +89,23 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const picker = distancePicker(ctx.api, area, { post, reveal: model.reveal });
   area.escaped.subscribe(() => picker.cancel());
   // the tree follows a pick in 3D (a left-click): its row picked and the way to it unfolded
+  // what a click is on, as the stage says (a label under the pointer first: drawn, not picked by Mol*), as a row
+  // (without the stage area, what Mol* picked: no label under the pointer)
+  const pickedAt = (click: CanvasClick): PickedNode | undefined =>
+    ctx.api.stage ? area.pickedRow(ctx.api.stage.pickedAt(click)) : area.pickedOf(click.loci);
   area.setOnClick((click) => {
     // a distance's point: Ctrl or ⌘ + click in selection mode; else the click picks a row as any other
     if (click.measure && area.selectionMode) {
-      // a label under the pointer (drawn, not picked by Mol*): no point of a distance, as nothing is (ui.md §7)
-      void picker.click(labelPicked(click.x, click.y) ? { ...click, loci: EmptyLoci } : click);
+      // a label: no point of a distance, as nothing is (ui.md §7)
+      void picker.click(pickedAt(click)?.kind === 'label' ? { ...click, loci: EmptyLoci } : click);
       return;
     }
     // outside it nothing measures: said, and the click picks its row as any other
     if (click.measure) post(selectionModeHint(area.mac));
     picker.cancel();
-    const p = labelPicked(click.x, click.y) ?? area.pickedOf(click.loci);
+    const p = pickedAt(click);
     if (p) model.reveal(p);
   });
-  // a label under the pointer (a text is drawn, not picked by Mol*: the stage measures its box)
-  const labelPicked = (x: number | undefined, y: number | undefined): PickedNode | undefined => {
-    if (x === undefined || y === undefined) return undefined;
-    const ref = ctx.api.stage?.labelAt(x, y);
-    const label = ref ? ctx.api.stage?.labelsState().value.find((l) => l.ref === ref) : undefined;
-    return label ? { key: `l:${label.ref}`, label: label.text, kind: 'label', node: { ref: label.ref } } : undefined;
-  };
   // the canvas's right-click opens the explorer's menu, at the level of what it picked (the stage's own is not opened)
   const stage = ctx.api.stage;
   if (stage) {
@@ -117,7 +114,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       close?.();
       const root = rootOf(request.anchor);
       const at = { x: request.x, y: request.y };
-      const p = labelPicked(request.x, request.y) ?? area.pickedOf(request.loci);
+      const p = pickedAt(request);
       if (p) model.reveal(p);
       const items: ContextMenuItem[] = nodeMenuItems(ctx.api, area, p, {
         open: (sub) => {
