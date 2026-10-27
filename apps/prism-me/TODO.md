@@ -37,6 +37,9 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
+- Two fakes of the gizmo canvas: Prism's `@molstar/prism-viewer/testing/gizmo-canvas` (PR #9) and the gizmo library's
+  own `fakeCanvas` (`packages/graphics/src/util/gizmo/_test/controller.test.ts:32`); one, in graphics' testing folder,
+  when the gizmo library goes upstream (Ludo, 2026-10-26: kept for now).
 - The Mesoscale Explorer's generic zip (`manifest.json`) and Martini `instanced_structure.json`, read to a particle
   list.
 - Lightness, pattern, illustrative and cel shading per entity (particle layers beyond color, transparency, emissive);

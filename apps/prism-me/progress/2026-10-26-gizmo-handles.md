@@ -88,7 +88,10 @@
 
 - No injectable canvas (agent, after the advisor's review): a test puts a fake on `plugin.canvas3d`, as the camera tests
   do, so the class has no option that only tests use. The fake lives in Prism's `testing/` folder and is exported,
-  because the extensions' tests need it (precedent: `./testing/real-viewer`). This deviates from the brief.
+  because the extensions' tests need it (precedent: `./testing/real-viewer`). This deviates from the brief. Kept (Ludo,
+  2026-10-26): a `testing/` export is the repo's way to share test helpers across packages (David's
+  `./testing/real-viewer`, #1978); the brief meant no production API made public for tests. Its duplicate, the gizmo
+  library's own `fakeCanvas` (`graphics/src/util/gizmo/_test/controller.test.ts:32`), is left for later (TODO.md).
 - What a drag starts from is the cells a host names and those under them. Not every cell above: that cancelled drags
   during a trajectory's playback (review finding 2). The mesh names its shape provider (by reading: its test passes
   without it). The oblique slice names nothing: `stage.move` moves the slice's plane with its volume, so the slice's own
