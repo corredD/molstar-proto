@@ -65,6 +65,9 @@
 - Ludo, 2026-10-26: every part of the gizmo on top: with the toggle on, all a gizmo draws (its handles and its body: a
   clip's plane, a slice's frame, rings, arrows, knobs) is drawn over the scene, because a handle one cannot see cannot
   be grabbed. Picking as designed: the handles are picked through the scene, the body stays not pickable.
+- Ludo, 2026-10-26, after trying PR #10: on top, a hover barely shows (no outline, no glow). The hovered handle reacts
+  itself: a strong color and slightly bigger, in the gizmo controller, on top or not (not dimming what is behind, not
+  the marking and bloom passes). To build.
 - Design a (lane, Opus): a second scene in Canvas3D, not a render-object flag. A flag would have kept the objects in the
   scene's every pass (SSAO, outlines, OIT, shadows, Hi-Z, marking) each needing an exception; a scene of its own is
   drawn in one place, after the helpers, as the old handle helper's is. It draws into a target of its own and is copied
