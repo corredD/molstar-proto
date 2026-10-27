@@ -294,9 +294,14 @@ describe('GizmoController', () => {
     await settle();
     const handles = fake.added[0];
     const [ro] = handles.renderObjects;
-    const colors = () => {
-      const { array } = (ro.values as { tColor: { ref: { value: { array: Uint8Array } } } }).tColor.ref.value;
-      return Array.from({ length: 4 }, (_, g) => Color.fromArray(array, g * 4));
+    const tColor = (ro.values as { tColor: { ref: { value: { array: Uint8Array }; version: number } } }).tColor;
+    const colors = () => Array.from({ length: 4 }, (_, g) => Color.fromArray(tColor.ref.value.array, g * 4));
+    // changed in place and told (its version: what the GPU upload follows)
+    let version = tColor.ref.version;
+    const bumped = () => {
+      const was = version;
+      version = tColor.ref.version;
+      return version > was;
     };
     const before = colors();
     const lit = Color(0xffe600);
@@ -304,11 +309,13 @@ describe('GizmoController', () => {
 
     hoverOn(fake, 1);
     expect(colors()).toEqual([before[0], lit, before[2], before[3]]);
+    expect(bumped()).toBe(true);
     expect(fake.fake.update).toHaveBeenLastCalledWith(handles, true);
     hoverOn(fake, 2);
     expect(colors()).toEqual([before[0], before[1], lit, before[3]]);
     fake.fake.interaction.hover.next({ current: { repr: undefined, loci: { kind: 'empty-loci' } } as never });
     expect(colors()).toEqual(before);
+    expect(bumped()).toBe(true);
 
     // during a drag it stays on the dragged handle; the drag's end puts it back
     hoverOn(fake, 1);
@@ -320,8 +327,18 @@ describe('GizmoController', () => {
     expect(colors()[1]).toBe(before[1]);
     // nothing made for it
     expect(handles.renderObjects).toEqual([ro]);
+
+    // Esc during a drag, and dispose, put it back too
+    hoverOn(fake, 1);
+    await drag(fake, [5]);
+    fake.fake.input.keyDown.next({ key: 'Escape' });
+    expect(colors()[1]).toBe(before[1]);
+    hoverOn(fake, 3);
+    expect(colors()[3]).toBe(lit);
     c.dispose();
+    expect(colors()[3]).toBe(before[3]);
   });
+
   it('keeps the dragged handle lit when the drag remakes its gizmo (a new size)', async () => {
     const fake = fakeCanvas();
     const binding = fakeBinding();
