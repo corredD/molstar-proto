@@ -31,6 +31,7 @@ const drags = {
 
 function fakeCanvas() {
   const added: Representation.Any[] = [];
+  const onTop = new Set<Representation.Any>();
   const attribs = { trackball: { bindings: drags } };
   const input = {
     pixelRatio: 1,
@@ -41,7 +42,11 @@ function fakeCanvas() {
   const canvas = {
     graphics,
     add: vi.fn((r: Representation.Any) => void added.push(r)),
-    remove: vi.fn((r: Representation.Any) => void added.splice(added.indexOf(r), 1)),
+    remove: vi.fn((r: Representation.Any) => {
+      added.splice(added.indexOf(r), 1);
+      onTop.delete(r);
+    }),
+    setOnTop: vi.fn((r: Representation.Any, on: boolean) => void (on ? onTop.add(r) : onTop.delete(r))),
     update: vi.fn(),
     requestDraw: vi.fn(),
     attribs,
@@ -67,7 +72,7 @@ function fakeCanvas() {
       },
     },
   };
-  return { canvas: canvas as unknown as Canvas3D, fake: canvas, added };
+  return { canvas: canvas as unknown as Canvas3D, fake: canvas, added, onTop };
 }
 
 function fakeBinding(commitResult = true) {
@@ -246,7 +251,37 @@ describe('GizmoController', () => {
     GizmoAppearance.set(fake.canvas, { scale: 0.5 });
     expect(scaleOf(handles)).toBeCloseTo(0.5);
     expect(scaleOf(body)).toBeCloseTo(1);
-    expect(GizmoAppearance.of(fake.canvas)).toMatchObject({ scale: 0.5, xray: false });
+    expect(GizmoAppearance.of(fake.canvas)).toMatchObject({ scale: 0.5, onTop: false });
     c.dispose();
+  });
+
+  it("draws every part of the gizmos on top while the canvas's look says so, moved there, not made again", async () => {
+    const fake = fakeCanvas();
+    const binding = fakeBinding();
+    const layout = binding.layout();
+    binding.layout = () => ({ ...layout, body: layout.handles });
+    const c = new GizmoController(fake.canvas, binding);
+    await settle();
+    const parts = [...fake.added];
+    expect(parts).toHaveLength(2);
+    expect(fake.onTop.size).toBe(0);
+
+    GizmoAppearance.set(fake.canvas, { onTop: true });
+    // the handles and the body (Ludo: a handle one cannot see cannot be grabbed)
+    expect([...fake.onTop]).toEqual(expect.arrayContaining(parts));
+    expect(fake.added).toEqual(parts);
+
+    // a gizmo made while on top (its item changed geometry) goes there as it is added
+    binding.sameGeometry = () => false;
+    binding.items.next([{ key: 'a', value: { x: 3 }, label: 'A' }]);
+    await settle();
+    expect(fake.added).toHaveLength(2);
+    expect(fake.added.every((r) => fake.onTop.has(r))).toBe(true);
+    expect(fake.added.some((r) => parts.includes(r))).toBe(false);
+
+    GizmoAppearance.set(fake.canvas, { onTop: false });
+    expect(fake.onTop.size).toBe(0);
+    c.dispose();
+    GizmoAppearance.set(fake.canvas, GizmoAppearance.Default);
   });
 });

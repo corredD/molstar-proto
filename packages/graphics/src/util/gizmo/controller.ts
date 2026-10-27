@@ -73,8 +73,11 @@ const TrackballDrags = {
 export interface GizmoLook {
   /** The handles' size, times their own (the bodies stay: they are what is edited, a cut's volume) */
   readonly scale: number;
-  /** The handles drawn over what is in front of them, so they can be seen and grabbed through it */
-  readonly xray: boolean;
+  /**
+   * The gizmos drawn on top of the scene, all their parts (handles and bodies), so their handles are seen and grabbed
+   * through what is in front of them (`VisualSet.setOnTop`); a body stays not pickable
+   */
+  readonly onTop: boolean;
 }
 
 /**
@@ -82,7 +85,7 @@ export interface GizmoLook {
  * all its handles, Prism's and an extension's alike
  */
 export const GizmoAppearance = {
-  Default: { scale: 1, xray: false } as GizmoLook,
+  Default: { scale: 1, onTop: false } as GizmoLook,
   looks: new WeakMap<Canvas3D, BehaviorSubject<GizmoLook>>(),
   /** The look's state on a canvas, made at its default */
   state(canvas: Canvas3D): BehaviorSubject<GizmoLook> {
@@ -96,7 +99,7 @@ export const GizmoAppearance = {
   set(canvas: Canvas3D, look: Partial<GizmoLook>) {
     const s = this.state(canvas);
     const next = { ...s.value, ...look };
-    if (next.scale !== s.value.scale || next.xray !== s.value.xray) s.next(next);
+    if (next.scale !== s.value.scale || next.onTop !== s.value.onTop) s.next(next);
   },
 };
 
@@ -203,8 +206,9 @@ export class GizmoController<T> {
         if (e.key === 'Escape' && this.#drag) this.cancel();
       }),
       canvas.didDraw.subscribe(() => this.#faceCamera()),
-      // the canvas's look: the handles resized in place (their meshes the same)
-      GizmoAppearance.state(canvas).subscribe(() => {
+      // the canvas's look: the handles resized in place (their meshes the same), the gizmos on top or in the scene
+      GizmoAppearance.state(canvas).subscribe((look) => {
+        this.#set.setOnTop(look.onTop);
         for (const g of this.#gizmos.values()) this.#setFrame(g);
         canvas.requestDraw();
       }),
