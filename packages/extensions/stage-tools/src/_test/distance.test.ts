@@ -368,7 +368,12 @@ describe('stage.pickedAt', () => {
     expectOk(await v.api.load.files({ files: [new File([star('10 0 0\n80 0 0\n')], 'p.star')] }));
     const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
     const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell;
-    expect(s.pickedAt({ loci: atom(v, 1, 'CA').loci })).toEqual({ kind: 'structure', ref: crn, entity: '1', chain: 'A' });
+    expect(s.pickedAt({ loci: atom(v, 1, 'CA').loci })).toEqual({
+      kind: 'structure',
+      ref: crn,
+      entity: '1',
+      chain: 'A',
+    });
     const particle = (i: number) => Particle.Loci(list.obj!.data, OrderedSet.ofSingleton(i as Particle.Index));
     expect(s.pickedAt({ loci: particle(1) })).toMatchObject({ kind: 'particles', ref: list.transform.ref, index: 1 });
     expect(s.pickedAt({ loci: EmptyLoci })).toBeUndefined();
@@ -384,7 +389,12 @@ describe('stage.pickedAt', () => {
     expectOk(label);
     const ref = label.changed.nodes![0];
     expect(s.pickedAt({ loci: drawn(ref), x: 1, y: 1 })).toEqual({ kind: 'label', ref, text: 'crambin' });
-    const d = await s.distance({ a: { loci: particle(0) }, b: { loci: particle(1) }, node: 'o:x', nodeB: 'o:x' } as never);
+    const d = await s.distance({
+      a: { loci: particle(0) },
+      b: { loci: particle(1) },
+      node: 'o:x',
+      nodeB: 'o:x',
+    } as never);
     expectOk(d);
     const distance = (d.value as { ref: string }).ref;
     expect(s.pickedAt({ loci: drawn(distance) })).toEqual({ kind: 'distance', ref: distance });

@@ -681,7 +681,12 @@ function pickedRow(plugin: PluginContext, picked: StagePicked): PickedNode | und
       if (granularity === 'entity' || info.chains.length < 2 || chain === undefined) {
         return { key: `e:${ref}:${entity}`, label: info.label, kind: 'entity', node: { ref, entity } };
       }
-      return { key: `ch:${ref}:${entity}:${chain}`, label: `Chain ${chain}`, kind: 'chain', node: { ref, entity, chain } };
+      return {
+        key: `ch:${ref}:${entity}:${chain}`,
+        label: `Chain ${chain}`,
+        kind: 'chain',
+        node: { ref, entity, chain },
+      };
     }
     case 'particles': {
       const data = plugin.state.data.cells.get(ref)?.obj?.data as ParticleList | undefined;
@@ -695,11 +700,21 @@ function pickedRow(plugin: PluginContext, picked: StagePicked): PickedNode | und
       if (model) {
         const entity = Particle.entityOf(particles, index);
         const name = data.entityInfo?.get(entity)?.name ?? `Entity ${entity}`;
-        return { key: `me:${ref}:${entity}`, label: name, kind: 'entity', node: { ref, particles: { entities: [entity] } } };
+        return {
+          key: `me:${ref}:${entity}`,
+          label: name,
+          kind: 'entity',
+          node: { ref, particles: { entities: [entity] } },
+        };
       }
       const target = particles.targets[index];
       const name = particles.targetInfo.get(target)?.name ?? `Target ${target}`;
-      return { key: `t:${ref}:${target}`, label: name, kind: 'target', node: { ref, particles: { targets: [target] } } };
+      return {
+        key: `t:${ref}:${target}`,
+        label: name,
+        kind: 'target',
+        node: { ref, particles: { targets: [target] } },
+      };
     }
     case 'volume': {
       const label = plugin.state.data.cells.get(ref)?.obj?.label ?? ref;
@@ -707,7 +722,12 @@ function pickedRow(plugin: PluginContext, picked: StagePicked): PickedNode | und
     }
     // its row is under its first point's
     case 'distance':
-      return { key: `d:${ref}`, label: plugin.state.data.cells.get(ref)?.obj?.label ?? ref, kind: 'distance', node: { ref } };
+      return {
+        key: `d:${ref}`,
+        label: plugin.state.data.cells.get(ref)?.obj?.label ?? ref,
+        kind: 'distance',
+        node: { ref },
+      };
     // under the node it was made at
     case 'label':
       return { key: `l:${ref}`, label: picked.text, kind: 'label', node: { ref } };

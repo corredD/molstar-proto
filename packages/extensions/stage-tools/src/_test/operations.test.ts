@@ -243,7 +243,7 @@ describe('stage', () => {
     expect(m[12]).toBeCloseTo(5);
   });
 
-  it("sizes a label to the part it names (its radius) and to its object, in half-Å steps", async () => {
+  it('sizes a label to the part it names (its radius) and to its object, in half-Å steps', async () => {
     const v = await viewer();
     const s = v.api.stage!;
     const ref = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;

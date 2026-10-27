@@ -843,9 +843,17 @@ export function stagePicked(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StageP
   if (Particle.isLoci(loci)) {
     // as loaded, or as its representations draw it (decorated: targets by class)
     for (const l of ctx.plugin.managers.particles.hierarchy.current.lists) {
-      if (l.cell.obj?.data !== loci.particles && !l.representations.some((r) => r.cell.obj?.data.sourceData === loci.particles))
+      if (
+        l.cell.obj?.data !== loci.particles &&
+        !l.representations.some((r) => r.cell.obj?.data.sourceData === loci.particles)
+      )
         continue;
-      return { kind: 'particles', ref: l.cell.transform.ref, particles: loci.particles, index: OrderedSet.getAt(loci.indices, 0) };
+      return {
+        kind: 'particles',
+        ref: l.cell.transform.ref,
+        particles: loci.particles,
+        index: OrderedSet.getAt(loci.indices, 0),
+      };
     }
     return undefined;
   }

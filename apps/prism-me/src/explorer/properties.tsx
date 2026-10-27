@@ -736,7 +736,10 @@ function VolumeSlices(props: { api: ViewerApi; volume: string }) {
       </For>
       <Show when={mapState(info, (i) => (i?.slices.length ?? 0) < 3)}>
         {() => (
-          <Button size="sm" onClick={() => void props.api.run('cryoet.slices', { volume: props.volume, isosurface: true })}>
+          <Button
+            size="sm"
+            onClick={() => void props.api.run('cryoet.slices', { volume: props.volume, isosurface: true })}
+          >
             Show the three slices
           </Button>
         )}
