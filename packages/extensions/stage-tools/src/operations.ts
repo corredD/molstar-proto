@@ -24,6 +24,7 @@ import { setSubtreeVisibility } from '@molstar/plugin/behavior/static/state';
 import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
 import { type StateObjectCell, StateTransform } from '@molstar/core/state';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import type { ParticleTargetRepresentationProps } from '@molstar/graphics/repr/particles/representation/target/common';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import { Grid, Volume } from '@molstar/model/model/volume';
 import { OrderedSet } from '@molstar/core/data/int';
@@ -321,6 +322,65 @@ export class StageApi extends ApiArea {
       () => plugin.state.data.events.changed,
     );
   }
+
+  /**
+   * How a decorated list's objects are clipped (its target representations', the first one's): whole objects
+   * (`instance`: a protein whose center is cut goes), whole elements (`element`: atoms, whose centers are cut, go),
+   * or cut through (`pixel`, as made); undefined without objects drawn. Following the state tree while watched.
+   */
+  clipWholeState(particles: string): ReadonlyState<'instance' | 'element' | 'pixel' | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => {
+        const cell = targetRepresentations({ plugin }, particles)[0];
+        if (!cell) return undefined;
+        const p = targetParams(cell);
+        if (p.clip?.variant === 'instance') return 'instance';
+        return p.structure?.clipPrimitive ? 'element' : 'pixel';
+      },
+      () => plugin.state.data.events.changed,
+    );
+  }
+
+  readonly clipWhole = this.operation({
+    id: 'stage.clipWhole',
+    title: "Clip a list's objects whole, or their atoms",
+    params: {
+      particles: PD.Text('', { description: 'The state ref of the particle list (or mesoscale model)' }),
+      whole: PD.Select<'instance' | 'element'>('instance', [
+        ['instance', 'Objects (proteins): one whose center is cut goes whole'],
+        ['element', 'Elements (atoms): each whose center is cut goes whole'],
+      ]),
+    },
+    async run({ particles, whole }, ctx) {
+      const cells = targetRepresentations(ctx, particles);
+      if (!cells.length) return ApiResult.fail('not-found', 'It draws no objects.', 'Decorate its particles first.');
+      const b = ctx.plugin.state.data.build();
+      let changed = 0;
+      for (const cell of cells) {
+        const params = cell.transform.params as TargetRepresentationParams;
+        const p = params.type.params;
+        const variant = whole === 'instance' ? 'instance' : 'pixel';
+        const clipPrimitive = whole === 'element' ? true : !!p.structure?.clipPrimitive;
+        if (p.clip?.variant === variant && !!p.structure?.clipPrimitive === clipPrimitive) continue;
+        const next: TargetRepresentationParams = {
+          ...params,
+          type: {
+            ...params.type,
+            params: { ...p, clip: { ...p.clip, variant }, structure: { ...p.structure, clipPrimitive } },
+          },
+        };
+        b.to(cell).update(next);
+        changed++;
+      }
+      if (!changed)
+        return ApiResult.already(`Its ${whole === 'instance' ? 'objects' : 'atoms'} are already clipped whole.`);
+      await b.commit();
+      return ApiResult.ok(`Clips its ${whole === 'instance' ? 'objects' : 'atoms'} whole.`, {
+        nodes: cells.map((c) => c.transform.ref),
+      });
+    },
+  });
 
   readonly scale = this.operation({
     id: 'stage.scale',
@@ -820,6 +880,24 @@ export interface ObjectPlacement {
 }
 
 /** A particle list's scale (its transform's: Å per unit of its file), 1 when not scaled */
+/** A particle target representation's params (what draws a decorated list's objects) */
+interface TargetRepresentationParams {
+  readonly type: { readonly name: 'target'; readonly params: ParticleTargetRepresentationProps };
+}
+
+/** A particle list's target representations (what draws its decorations' objects) */
+function targetRepresentations(ctx: Pick<ApiContext, 'plugin'>, ref: string): StateObjectCell[] {
+  const l = ctx.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === ref);
+  return (l?.representations ?? [])
+    .map((r) => r.cell)
+    .filter((c) => (c.transform.params as { type?: { name?: string } } | undefined)?.type?.name === 'target');
+}
+
+/** A target representation's type params */
+function targetParams(cell: StateObjectCell): Partial<ParticleTargetRepresentationProps> {
+  return (cell.transform.params as TargetRepresentationParams).type.params;
+}
+
 function listScale(ctx: Pick<ApiContext, 'plugin'>, target: string): number {
   const old = decoratorUnder(ctx, target, ParticleListTransform);
   return (old?.transform.params as { scale?: number } | undefined)?.scale ?? 1;

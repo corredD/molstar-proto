@@ -1128,7 +1128,9 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
   const handled = derive([clipping.gizmos.shown, clipping.gizmos.handled], (shown, h) => (shown ? h : []));
   // a model's or list's objects: clipped whole (proteins) or by their elements (atoms), when it draws objects
   const whole =
-    props.kind === 'mesoscale model' || props.kind === 'particle list' ? area.clipWholeState(node.ref) : undefined;
+    (props.kind === 'mesoscale model' || props.kind === 'particle list') && api.stage
+      ? api.stage.clipWholeState(node.ref)
+      : undefined;
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
       {whole ? (
@@ -1149,7 +1151,7 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
                 },
               ]}
               active={whole}
-              onPick={(w) => void api.run('explorer.clipWhole', { particles: node.ref, whole: w })}
+              onPick={(w) => void api.run('stage.clipWhole', { particles: node.ref, whole: w })}
             />
           )}
         </Show>

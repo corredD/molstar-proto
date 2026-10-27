@@ -308,67 +308,6 @@ export class ExplorerApi extends ApiArea {
       .map(([type, label]) => ({ type, label: ParticleTypeLabels[type] ?? label }));
   }
 
-  /**
-   * How a decorated list's objects are clipped (its target representations', the first one's): whole objects
-   * (`instance`: a protein whose center is cut goes), whole elements (`element`: atoms, whose centers are cut, go),
-   * or cut through (`pixel`, as made); undefined without objects drawn. Following the state tree while watched.
-   */
-  clipWholeState(ref: string): ReadonlyState<'instance' | 'element' | 'pixel' | undefined> {
-    const plugin = this.ctx.plugin;
-    return watchedState(
-      () => {
-        const params = targetRepresentations(plugin, ref)[0]?.transform.params as any;
-        const p = params?.type?.params;
-        if (!p) return undefined;
-        if (p.clip?.variant === 'instance') return 'instance';
-        return p.structure?.clipPrimitive ? 'element' : 'pixel';
-      },
-      () => plugin.state.data.events.changed,
-    );
-  }
-
-  readonly clipWhole = this.operation({
-    id: 'explorer.clipWhole',
-    title: "Clip a list's objects whole, or their atoms",
-    params: {
-      particles: PD.Text('', { description: 'The state ref of the particle list (or mesoscale model)' }),
-      whole: PD.Select<'instance' | 'element'>('instance', [
-        ['instance', 'Objects (proteins): one whose center is cut goes whole'],
-        ['element', 'Elements (atoms): each whose center is cut goes whole'],
-      ]),
-    },
-    async run({ particles, whole }, ctx) {
-      const cells = targetRepresentations(ctx.plugin, particles);
-      if (!cells.length) return ApiResult.fail('not-found', 'It draws no objects.', 'Decorate its particles first.');
-      const b = ctx.plugin.state.data.build();
-      let changed = 0;
-      for (const cell of cells) {
-        const p = (cell.transform.params as any).type.params;
-        const variant = whole === 'instance' ? 'instance' : 'pixel';
-        const clipPrimitive = whole === 'element' ? true : !!p.structure?.clipPrimitive;
-        if (p.clip?.variant === variant && !!p.structure?.clipPrimitive === clipPrimitive) continue;
-        b.to(cell).update((old: any) => ({
-          ...old,
-          type: {
-            ...old.type,
-            params: {
-              ...old.type.params,
-              clip: { ...old.type.params.clip, variant },
-              structure: { ...old.type.params.structure, clipPrimitive },
-            },
-          },
-        }));
-        changed++;
-      }
-      if (!changed)
-        return ApiResult.already(`Its ${whole === 'instance' ? 'objects' : 'atoms'} are already clipped whole.`);
-      await b.commit();
-      return ApiResult.ok(`Clips its ${whole === 'instance' ? 'objects' : 'atoms'} whole.`, {
-        nodes: cells.map((c) => c.transform.ref),
-      });
-    },
-  });
-
   /** A representation's params as its transform defines them, and their values: for a form */
   representationForm(ref: string): { readonly params: PD.Params; readonly values: PD.Values<PD.Params> } | undefined {
     const { cells } = this.ctx.plugin.state.data;
@@ -646,14 +585,6 @@ function decorationRadius(target: ParticleTarget | undefined): number {
   if (target.kind === 'structure') return target.structure.boundary.sphere.radius;
   if (target.kind === 'volume') return Grid.getBoundingSphere(target.volume.grid).radius;
   return (target.shape.geometry as { boundingSphere?: { radius: number } }).boundingSphere?.radius ?? 0;
-}
-
-/** A particle list's target representations (what draws its decorations' objects) */
-function targetRepresentations(plugin: PluginContext, ref: string) {
-  const l = plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === ref);
-  return (l?.representations ?? [])
-    .map((r) => r.cell)
-    .filter((c) => (c.transform.params as { type?: { name?: string } })?.type?.name === 'target');
 }
 
 /** The name of the file or entry an object came from: its root data's label */

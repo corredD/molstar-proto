@@ -12,6 +12,7 @@ import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { ParticleListWithTargets } from '@molstar/plugin/state/transforms/particles/ops';
 import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
+import type { ParticleTargetRepresentationProps } from '@molstar/graphics/repr/particles/representation/target/common';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -155,6 +156,52 @@ describe('stage', () => {
     for (const ro of ros()) expect(Mat4.areEqual(ro.values.matrix.ref.value, m, 1e-6)).toBe(true);
     s.previewMove(listRef, Mat4.identity());
     for (const ro of ros()) expect(Mat4.isIdentity(ro.values.matrix.ref.value)).toBe(true);
+  });
+
+  it("clips a decorated list's objects whole, or its elements (atoms) whole, in one step", async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const star = 'data_particles\n\nloop_\n_rlnCoordinateX\n_rlnCoordinateY\n_rlnCoordinateZ\n10 0 0\n80 0 0\n';
+    expectOk(await v.api.load.files({ files: [new File([star], 'p.star')] }));
+    const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    // nothing to set before it is decorated (no objects drawn)
+    expect(s.clipWholeState(list).value).toBeUndefined();
+    expect(await v.api.run('stage.clipWhole', { particles: list, whole: 'instance' })).toMatchObject({
+      ok: false,
+      code: 'not-found',
+    });
+    await v.plugin
+      .build()
+      .to(list)
+      .apply(ParticleListWithTargets, { targets: [{ targetId: 0, source: { name: 'ref', params: { ref: crn } } }] })
+      .apply(ParticlesRepresentation3D, {
+        type: { name: 'target', params: {} },
+        colorTheme: { name: 'uniform', params: {} },
+        sizeTheme: { name: 'uniform', params: {} },
+      } as never)
+      .commit();
+    const params = () =>
+      (
+        v.plugin.managers.particles.hierarchy.current.lists[0].representations.find(
+          (r) => (r.cell.transform.params as { type: { name: string } }).type.name === 'target',
+        )!.cell.transform.params as { type: { params: ParticleTargetRepresentationProps } }
+      ).type.params;
+    // as made: cut through (neither the objects nor the atoms whole)
+    expect(s.clipWholeState(list).value).toBe('pixel');
+    expectOk(await v.api.run('stage.clipWhole', { particles: list, whole: 'instance' }));
+    expect(params().clip.variant).toBe('instance');
+    expect(s.clipWholeState(list).value).toBe('instance');
+    expect(await v.api.run('stage.clipWhole', { particles: list, whole: 'instance' })).toMatchObject({
+      unchanged: true,
+    });
+    expectOk(await v.api.run('stage.clipWhole', { particles: list, whole: 'element' }));
+    expect(params().clip.variant).toBe('pixel');
+    expect(params().structure.clipPrimitive).toBe(true);
+    expect(s.clipWholeState(list).value).toBe('element');
+    // one step each
+    expectOk(await v.api.run('history.undo', {}));
+    expect(params().clip.variant).toBe('instance');
   });
 
   it('moves a mesh (its shape, its scale kept), named by its file', async () => {

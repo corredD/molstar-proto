@@ -82,8 +82,8 @@ Prism's operations.
 - **Reads:** watched states rebuilt on every state change (`objectsState`, `infoState`, `decorationsState`,
   `sliceState`, …), compared by `JSON.stringify`. The tree's rows are derived from them (`rows.ts`), the properties pick
   their sections by the row's kind (`properties.tsx`), the menu its items by kind (`menu.ts`).
-- **Writes:** `api.run('<op>', params)`; ~35 operation ids across Prism, the three extensions and the app (two of its
-  own: `explorer.representationVisibility`, `explorer.clipWhole`).
+- **Writes:** `api.run('<op>', params)`; ~35 operation ids across Prism, the three extensions and the app (one of its
+  own: `explorer.representationVisibility`).
 - **Handles:** three hosts (oblique slice, object move, particle) on Prism's `GizmoHandles` (§7.4), as Prism's own
   structure move and cuts: they draw the preview outside the state (no history), commit one operation on release, and an
   undo during a drag cancels it.
@@ -106,7 +106,8 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
      undo steps (the handle does it right: preview, then one commit);
    - graphics mode changes the canvas outside the state, so undo and sessions miss it.
 3. **The app reaches past the operations.**
-   - `explorer.clipWhole` edits particle representation params inside the app;
+   - `explorer.clipWhole` edited particle representation params inside the app (`as any`); now `stage.clipWhole`
+     (2026-10-27, lane `app-spec`), typed by the target representation's props;
    - a few extension methods are called directly (`cryoet.oblique`, `cryoet.slices`, previews), and several
      `transform.params as any`.
    - The tree's node kinds are plain strings, repeated in three files; the scene's kinds (`model`, `list`) and the
