@@ -66,8 +66,9 @@
   clip's plane, a slice's frame, rings, arrows, knobs) is drawn over the scene, because a handle one cannot see cannot
   be grabbed. Picking as designed: the handles are picked through the scene, the body stays not pickable.
 - Ludo, 2026-10-26, after trying PR #10: on top, a hover barely shows (no outline, no glow). The hovered handle reacts
-  itself: a strong color and slightly bigger, in the gizmo controller, on top or not (not dimming what is behind, not
-  the marking and bloom passes). To build.
+  itself: a strong color (no grow: Ludo, 2026-10-27), in the gizmo controller, on top or not (not dimming what is
+  behind, not the marking and bloom passes). Built: its group's color in the handles' render object, changed in place
+  and put back when the pointer leaves or a drag ends.
 - Design a (lane, Opus): a second scene in Canvas3D, not a render-object flag. A flag would have kept the objects in the
   scene's every pass (SSAO, outlines, OIT, shadows, Hi-Z, marking) each needing an exception; a scene of its own is
   drawn in one place, after the helpers, as the old handle helper's is. It draws into a target of its own and is copied
