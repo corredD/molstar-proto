@@ -80,8 +80,9 @@ Prism's operations.
 ## 4. How the UI talks to it
 
 - **Reads:** watched states rebuilt on every state change (`objectsState`, `infoState`, `decorationsState`,
-  `sliceState`, …), compared by `JSON.stringify`. The tree's rows are derived from them (`rows.ts`), the properties pick
-  their sections by the row's kind (`properties.tsx`), the menu its items by kind (`menu.ts`).
+  `sliceState`, …), compared by `JSON.stringify`; and reads of the moment, unwatched: what a click is on
+  (`stage.pickedAt`), where an object is (`stage.placementOf`). The tree's rows are derived from them (`rows.ts`), the
+  properties pick their sections by the row's kind (`properties.tsx`), the menu its items by kind (`menu.ts`).
 - **Writes:** `api.run('<op>', params)`; ~35 operation ids across Prism, the three extensions and the app (one of its
   own: `explorer.representationVisibility`).
 - **Handles:** three hosts (oblique slice, object move, particle) on Prism's `GizmoHandles` (§7.4), as Prism's own
