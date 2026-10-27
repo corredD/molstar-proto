@@ -243,6 +243,27 @@ describe('stage', () => {
     expect(m[12]).toBeCloseTo(5);
   });
 
+  it("sizes a label to the part it names (its radius) and to its object, in half-Å steps", async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const ref = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    const object = s.objectBounds(ref)!.radius;
+    const at = { text: 'x', target: ref, node: `o:${ref}`, x: 1, y: 2, z: 3 };
+    const added = async (values: Record<string, unknown>) => {
+      const r = await v.api.run('stage.label', { ...at, ...values });
+      expectOk(r);
+      return s.labelsState().value.find((l) => l.ref === r.changed.nodes![0])!;
+    };
+    // a part about 17.6 Å across: about half of it; at a point clicked on it, in front of it by its height
+    expect(await added({ radius: 17.6 })).toMatchObject({ size: 9, depth: 9 });
+    // a small part of a big object: at least a 15th of the object's, at least 2 Å
+    expect((await added({ radius: 1 })).size).toBe(Math.round(Math.max(2, object / 15) * 2) / 2);
+    // its place given: kept
+    expect(await added({ radius: 17.6, depth: 17.6 })).toMatchObject({ size: 9, depth: 17.6 });
+    // no part: as before (a 12th of its object, at the point)
+    expect(await added({})).toMatchObject({ size: Math.max(2, object / 12), depth: 0 });
+  });
+
   it("sets a label's plate and tether, on its representation too (a text's plate is drawn by its props)", async () => {
     const v = await viewer();
     const s = v.api.stage!;

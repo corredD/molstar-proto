@@ -336,10 +336,8 @@ export async function addLabel(
 ) {
   const anchor = area.anchorOf(picked.node);
   const position = at ?? anchor?.position;
-  // readable at the object's scale: about the node's own size, at least a 15th of its object's, in half-Å steps
-  const object = area.boundsOf({ ref: picked.node.ref });
-  const own = anchor?.radius ?? object?.radius ?? 10;
-  const size = Math.round(Math.max(2, own / 2, (object?.radius ?? own) / 15) * 2) / 2;
+  // sized by the stage to the node's own radius (its part's) and to its object's
+  const own = anchor?.radius ?? area.boundsOf({ ref: picked.node.ref })?.radius ?? 10;
   const r = await api.run('stage.label', {
     text: picked.label,
     target: picked.node.ref,
@@ -349,9 +347,9 @@ export async function addLabel(
           x: position[0],
           y: position[1],
           z: position[2],
-          // in front of the surface clicked; else of the node's middle
-          depth: at ? size : own,
-          size,
+          radius: own,
+          // in front of the node's middle by its radius; a point clicked on it: by the label's height (the stage's)
+          ...(at ? {} : { depth: own }),
         }
       : {}),
   });

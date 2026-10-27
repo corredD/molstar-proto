@@ -537,13 +537,16 @@ export class StageApi extends ApiArea {
       z: OptionalParam(PD.Numeric(0)),
       depth: OptionalParam(PD.Numeric(0, { min: 0 }, { description: 'Brought toward the camera by this much (Å)' })),
       size: OptionalParam(PD.Numeric(4, { min: 0.1, max: 10000 }, { description: 'Its height (Å)' })),
+      radius: OptionalParam(
+        PD.Numeric(0, { min: 0 }, { description: 'The radius of the part it names (Å): its height is sized to it' }),
+      ),
       color: OptionalParam(PD.Text('white', { description: 'A CSS color' })),
       tether: OptionalParam(PD.Boolean(false, { description: 'A line from the place to the text, set off from it' })),
       node: PD.Text('', { description: "The explorer's row it is listed under (its key)" }),
     },
     async run(values, ctx) {
       const v = values as typeof values &
-        Partial<Record<'x' | 'y' | 'z' | 'depth' | 'size', number>> & { color?: string; tether?: boolean };
+        Partial<Record<'x' | 'y' | 'z' | 'depth' | 'size' | 'radius', number>> & { color?: string; tether?: boolean };
       const t = stageTargets(ctx).find((x) => x.ref === v.target);
       const bounds = t ? boundsOf(ctx, t) : undefined;
       if (v.x === undefined && !bounds) {
@@ -553,12 +556,19 @@ export class StageApi extends ApiArea {
       const position = Vec3.create(v.x ?? bounds!.center[0], v.y ?? bounds!.center[1], v.z ?? bounds!.center[2]);
       const color = v.color ? cssColor(v.color) : Color(0xffffff);
       if (color === undefined) return ApiResult.fail('invalid', `'${v.color}' is not a color.`);
+      // readable at the scale of what it names: about its part's size, at least a 15th of its object's, in half-Å
+      // steps; a point given on the part (clicked on it): in front of it by its height
+      const size =
+        v.size ??
+        (v.radius !== undefined
+          ? Math.round(Math.max(2, v.radius / 2, radius / 15) * 2) / 2
+          : Math.max(2, radius / 12));
       const b = ctx.plugin.state.data.build();
       const labelParams = {
         text: v.text || 'Label',
         position,
-        depth: v.depth ?? (v.x === undefined ? radius : 0),
-        size: v.size ?? Math.max(2, radius / 12),
+        depth: v.depth ?? (v.x === undefined ? radius : v.radius !== undefined ? size : 0),
+        size,
         color,
         target: v.target,
         node: v.node,

@@ -235,12 +235,14 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   `stage.editLabel`, `labelsState`. Its move comes with 3d.
 - Labels, fixed (2026-10-20, Ludovic's test): made on the canvas, a label goes where it was clicked (the click's point
   on what it picked, `StageMenuRequest.position`), not the node's center (an entity's copies or a group around a model
-  have their center at the model's); made from the tree, on the part's particle nearest the camera (`anchorOf`). A label
-  is found under the pointer by its box on the screen (`stage.labelAt`: Mol* draws text, it does not pick it), so a
-  left-click picks its row and its right-click is its own: Edit the text… (a field where it was clicked, Enter keeps
-  it), Move, Focus, Hide, Remove. Its properties: text, size, color; its plate (shown, its color, its opacity) and its
-  tether (on, its length: the text set off up and to the right, a line to its place); on its representation too (a
-  text's plate is drawn by its props).
+  have their center at the model's); made from the tree, on the part's particle nearest the camera (`anchorOf`). Its
+  height is the stage's (`stage.label` `radius`, the part's radius, 2026-10-27): about half the part's size, at least a
+  15th of its object's and 2 Å, in half-Å steps; at a point clicked, in front of it by that height. A label is found
+  under the pointer by its box on the screen (`stage.labelAt`: Mol* draws text, it does not pick it), so a left-click
+  picks its row and its right-click is its own: Edit the text… (a field where it was clicked, Enter keeps it), Move,
+  Focus, Hide, Remove. Its properties: text, size, color; its plate (shown, its color, its opacity) and its tether (on,
+  its length: the text set off up and to the right, a line to its place); on its representation too (a text's plate is
+  drawn by its props).
 - Step 3d (2026-10-19): Move and Turn, by dragging on the canvas (a layer takes the pointer; the drawing follows,
   `previewMove`, the state unchanged; released: one step, `stage.move`; Esc: back, no step), for a whole object: a
   structure (its transform, Prism's), a particle list (`ParticleListTransform`, a new decorator), a volume

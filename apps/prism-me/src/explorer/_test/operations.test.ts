@@ -456,6 +456,12 @@ describe('explorer', () => {
     await addLabel(v.api, area, entity, (p) => (revealed = p));
     const labels = v.api.stage!.labelsState().value;
     expect(labels).toMatchObject([{ text: 'CRAMBIN', node: entity.key, target: crn.ref }]);
+    // sized to the entity (about its radius, ~17.6 Å, halved), in front of its middle by its radius
+    expect(labels[0].size).toBe(9);
+    expect(labels[0].depth).toBeCloseTo(17.57, 2);
+    // at a point clicked on it: the same size, in front of the point by its height
+    await addLabel(v.api, area, entity, undefined, [1, 2, 3]);
+    expect(v.api.stage!.labelsState().value[1]).toMatchObject({ size: 9, depth: 9, position: [1, 2, 3] });
     expect(revealed?.key).toBe(`l:${labels[0].ref}`);
     // its row: under the entity's
     const rows = rowsOf(
