@@ -11,10 +11,11 @@ import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import { type Grid, Volume } from '@molstar/model/model/volume';
 import { clearFontAtlasCache, setCanvasModule } from '@molstar/graphics/geo/geometry/text/font-atlas';
-import { Loci } from '@molstar/model/model/loci';
+import { EmptyLoci, Loci } from '@molstar/model/model/loci';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 import { StructureElement, StructureProperties, StructureSelection } from '@molstar/model/model/structure';
 import { Script } from '@molstar/model/script/script';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { ParticleListWithTargets } from '@molstar/plugin/state/transforms/particles/ops';
 import { ParticlesRepresentation3D } from '@molstar/plugin/state/transforms/particles/representation';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
@@ -357,5 +358,35 @@ describe('stage.distance, volume points', () => {
     expect(distances(v)).toHaveLength(1);
     expectOk(await v.api.run('volume.remove', { volume: map.cell.transform.ref }));
     expect(distances(v)).toHaveLength(0);
+  });
+});
+
+describe('stage.pickedAt', () => {
+  it("says what a click is on: a structure (its first atom's entity, chain), a particle, a label, a distance", async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    expectOk(await v.api.load.files({ files: [new File([star('10 0 0\n80 0 0\n')], 'p.star')] }));
+    const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell;
+    expect(s.pickedAt({ loci: atom(v, 1, 'CA').loci })).toEqual({ kind: 'structure', ref: crn, entity: '1', chain: 'A' });
+    const particle = (i: number) => Particle.Loci(list.obj!.data, OrderedSet.ofSingleton(i as Particle.Index));
+    expect(s.pickedAt({ loci: particle(1) })).toMatchObject({ kind: 'particles', ref: list.transform.ref, index: 1 });
+    expect(s.pickedAt({ loci: EmptyLoci })).toBeUndefined();
+    // a label and a distance by their drawings' loci (headless: no canvas to find a label's box on, x and y find none)
+    const drawn = (ref: string) => {
+      const cell = v.plugin.state.data.cells.get(ref)!;
+      const repr = SO.Shape.Representation3D.is(cell.obj)
+        ? cell.obj
+        : v.plugin.state.data.cells.get(v.plugin.state.data.tree.children.get(ref).first())!.obj;
+      return (repr as SO.Shape.Representation3D).data.repr.getAllLoci()[0];
+    };
+    const label = await v.api.run('stage.label', { text: 'crambin', target: crn, node: 'o:x' });
+    expectOk(label);
+    const ref = label.changed.nodes![0];
+    expect(s.pickedAt({ loci: drawn(ref), x: 1, y: 1 })).toEqual({ kind: 'label', ref, text: 'crambin' });
+    const d = await s.distance({ a: { loci: particle(0) }, b: { loci: particle(1) }, node: 'o:x', nodeB: 'o:x' } as never);
+    expectOk(d);
+    const distance = (d.value as { ref: string }).ref;
+    expect(s.pickedAt({ loci: drawn(distance) })).toEqual({ kind: 'distance', ref: distance });
   });
 });

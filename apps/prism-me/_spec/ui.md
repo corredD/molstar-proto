@@ -217,8 +217,10 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   selection's granularity: a structure, an entity, a chain; a model, an entity; a list, a target; a volume; a mesh):
   Focus, Hide (where an eye hides it), and for now the stage's cuts (until Add clip, 3b); on a cut's guide, the stage's
   own items (move, turn, size, flip, remove). The tree follows a pick in 3D (a left- or right-click): its row picked,
-  the way to it unfolded, brought into view. `explorer.pickedOf(loci)`, `menu.ts`; stage-tools lets a host open the menu
-  (`menuHosted`, the request's `loci`; its items in `@molstar/stage-tools-extension/menu`).
+  the way to it unfolded, brought into view. What a click is on is the stage's (`stage.pickedAt`: the object and its
+  part, a label under the pointer first; 2026-10-27), its row the explorer's (`pickedRow`; `pickedOf(loci)` for a loci),
+  `menu.ts`; stage-tools lets a host open the menu (`menuHosted`, the request's `loci`; its items in
+  `@molstar/stage-tools-extension/menu`).
 - Step 3b (2026-10-19, as the Mesoscale Explorer's rows): a row's tools at its right end, the brush (a color for all of
   it: swatches; a model's or group's Generate colors) and the scissors (a clip: plane, sphere, box; a part's also
   cylinder), beside its eye. Several clips at each level: an object's (structure, model, list, volume) cut all of it

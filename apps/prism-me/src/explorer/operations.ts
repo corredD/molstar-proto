@@ -10,11 +10,9 @@ import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { type Observable, Subject } from 'rxjs';
 import { EmptyLoci, Loci } from '@molstar/model/model/loci';
 import { isStageDistanceData } from '@molstar/stage-tools-extension/distance';
-import { isStageLabelData } from '@molstar/stage-tools-extension/label';
-import { drawnObject } from '@molstar/stage-tools-extension/operations';
+import { drawnObject, stagePicked, type StagePicked } from '@molstar/stage-tools-extension/operations';
 import { Particle, type ParticleList, type ParticleTarget } from '@molstar/model/model/particles/particle-list';
-import { Structure, StructureElement, StructureProperties, StructureSelection } from '@molstar/model/model/structure';
-import { Shape, ShapeGroup } from '@molstar/model/model/shape';
+import { Structure, StructureElement, StructureSelection } from '@molstar/model/model/structure';
 import { EmissiveStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/emissive';
 import { OverpaintStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/overpaint';
 import { TransparencyStructureRepresentation3DFromBundle } from '@molstar/plugin/state/transforms/structure/effects/transparency';
@@ -335,7 +333,12 @@ export class ExplorerApi extends ApiArea {
    * a list, a target; a volume; a mesh): its row's key, name, kind and node; undefined when it is none of them
    */
   pickedOf(loci: Loci): PickedNode | undefined {
-    return pickedOf(this.ctx.plugin, loci);
+    return this.pickedRow(stagePicked({ plugin: this.ctx.plugin }, loci));
+  }
+
+  /** What the stage says a click is on (`stage.pickedAt`) as a row of the tree, at the selection's granularity */
+  pickedRow(picked: StagePicked | undefined): PickedNode | undefined {
+    return picked && pickedRow(this.ctx.plugin, picked);
   }
 
   /** Where a node is: the sphere around it (a label is put in front of it) */
@@ -659,121 +662,61 @@ function entitiesOf(structure: Structure): StructureEntity[] {
 
 // --- a 3D pick in the tree ------------------------------------------------------------------------------------------
 
-function pickedOf(plugin: PluginContext, loci: Loci): PickedNode | undefined {
-  if (loci.kind === 'empty-loci') return undefined;
+function pickedRow(plugin: PluginContext, picked: StagePicked): PickedNode | undefined {
   const granularity = plugin.managers.interactivity.props.granularity;
   const whole = granularity === 'structure' || granularity === 'model' || granularity === 'operator';
-  if (StructureElement.Loci.is(loci) && !StructureElement.Loci.isEmpty(loci)) {
-    // the structure's cell may have decorators on it (custom properties): up to the structure the tree lists
-    const structures = plugin.managers.structure.hierarchy.current.structures;
-    const tree = plugin.state.data.tree;
-    let ref: string | undefined = plugin.helpers.substructureParent.get(loci.structure)?.transform.ref;
-    let s = undefined as (typeof structures)[number] | undefined;
-    while (ref && !(s = structures.find((x) => x.cell.transform.ref === ref))) ref = tree.transforms.get(ref)?.parent;
-    const structure = s?.cell.obj?.data;
-    if (!s || !structure) return undefined;
-    ref = s.cell.transform.ref;
-    const label = labelOf({ plugin }, s);
-    if (whole) return { key: `o:${ref}`, label, kind: 'structure', node: { ref } };
-    // its first element: the entity and the chain it is in (label ids, as the tree's rows)
-    const e = loci.elements[0];
-    const loc = StructureElement.Location.create(
-      loci.structure,
-      e.unit,
-      e.unit.elements[OrderedSet.getAt(e.indices, 0)],
-    );
-    const entity = StructureProperties.entity.id(loc);
-    const chain = StructureProperties.chain.label_asym_id(loc);
-    const info = entitiesOf(structure).find((x) => x.id === entity);
-    if (!info) return { key: `o:${ref}`, label, kind: 'structure', node: { ref } };
-    if (granularity === 'entity' || info.chains.length < 2) {
-      return { key: `e:${ref}:${entity}`, label: info.label, kind: 'entity', node: { ref, entity } };
-    }
-    return {
-      key: `ch:${ref}:${entity}:${chain}`,
-      label: `Chain ${chain}`,
-      kind: 'chain',
-      node: { ref, entity, chain },
-    };
-  }
-  if (Particle.isLoci(loci)) {
-    for (const l of plugin.managers.particles.hierarchy.current.lists) {
-      const datas = [l.cell.obj?.data, ...l.representations.map((r) => r.cell.obj?.data.sourceData)];
-      if (!datas.includes(loci.particles)) continue;
-      const ref = l.cell.transform.ref;
-      const data = l.cell.obj!.data;
-      const model = !!(data.entityInfo?.size || data.compartmentInfo?.size);
-      const label = fileLabel(plugin, ref) ?? l.cell.obj!.label;
-      const kind = model ? 'mesoscale model' : 'particle list';
-      if (whole) return { key: `o:${ref}`, label, kind, node: { ref } };
-      const i = OrderedSet.getAt(loci.indices, 0);
-      const target = loci.particles.targets[i];
-      if (model) {
-        const entity = Particle.entityOf(loci.particles, i);
-        const name = data.entityInfo?.get(entity)?.name ?? `Entity ${entity}`;
-        return {
-          key: `me:${ref}:${entity}`,
-          label: name,
-          kind: 'entity',
-          node: { ref, particles: { entities: [entity] } },
-        };
+  const { ref } = picked;
+  switch (picked.kind) {
+    case 'structure': {
+      const s = plugin.managers.structure.hierarchy.current.structures.find((x) => x.cell.transform.ref === ref);
+      const structure = s?.cell.obj?.data;
+      // a bond: no row (its atoms are a distance's point, `measurePoint`)
+      if (!s || !structure || picked.entity === undefined) return undefined;
+      const label = labelOf({ plugin }, s);
+      if (whole) return { key: `o:${ref}`, label, kind: 'structure', node: { ref } };
+      const { entity, chain } = picked;
+      const info = entitiesOf(structure).find((x) => x.id === entity);
+      if (!info) return { key: `o:${ref}`, label, kind: 'structure', node: { ref } };
+      // an entity of one chain has no chain rows
+      if (granularity === 'entity' || info.chains.length < 2 || chain === undefined) {
+        return { key: `e:${ref}:${entity}`, label: info.label, kind: 'entity', node: { ref, entity } };
       }
-      const name = loci.particles.targetInfo.get(target)?.name ?? `Target ${target}`;
-      return {
-        key: `t:${ref}:${target}`,
-        label: name,
-        kind: 'target',
-        node: { ref, particles: { targets: [target] } },
-      };
+      return { key: `ch:${ref}:${entity}:${chain}`, label: `Chain ${chain}`, kind: 'chain', node: { ref, entity, chain } };
     }
-    return undefined;
-  }
-  if (
-    Volume.isLoci(loci) ||
-    Volume.Isosurface.isLoci(loci) ||
-    Volume.Cell.isLoci(loci) ||
-    Volume.Segment.isLoci(loci)
-  ) {
-    // as loaded, or as its representations draw it (moved: a decorator's new volume)
-    const v = plugin.managers.volume.hierarchy.current.volumes.find(
-      (x) =>
-        x.cell.obj?.data === loci.volume || x.representations.some((r) => r.cell.obj?.data.sourceData === loci.volume),
-    );
-    if (!v) return undefined;
-    const ref = v.cell.transform.ref;
-    return { key: `o:${ref}`, label: v.cell.obj?.label ?? ref, kind: 'volume', node: { ref } };
-  }
-  // a distance of the stage, its line (its text is not pickable): its row (under its first point's)
-  if (ShapeGroup.isLoci(loci) && isStageDistanceData(loci.shape.sourceData)) {
-    for (const cell of plugin.state.data.cells.values()) {
-      const obj = cell.obj;
-      if (!SO.Shape.Representation3D.is(obj) || obj.data.sourceData !== loci.shape.sourceData) continue;
-      return { key: `d:${cell.transform.ref}`, label: obj.label, kind: 'distance', node: { ref: cell.transform.ref } };
+    case 'particles': {
+      const data = plugin.state.data.cells.get(ref)?.obj?.data as ParticleList | undefined;
+      if (!data) return undefined;
+      const model = !!(data.entityInfo?.size || data.compartmentInfo?.size);
+      if (whole) {
+        const label = fileLabel(plugin, ref) ?? plugin.state.data.cells.get(ref)!.obj!.label;
+        return { key: `o:${ref}`, label, kind: model ? 'mesoscale model' : 'particle list', node: { ref } };
+      }
+      const { particles, index } = picked;
+      if (model) {
+        const entity = Particle.entityOf(particles, index);
+        const name = data.entityInfo?.get(entity)?.name ?? `Entity ${entity}`;
+        return { key: `me:${ref}:${entity}`, label: name, kind: 'entity', node: { ref, particles: { entities: [entity] } } };
+      }
+      const target = particles.targets[index];
+      const name = particles.targetInfo.get(target)?.name ?? `Target ${target}`;
+      return { key: `t:${ref}:${target}`, label: name, kind: 'target', node: { ref, particles: { targets: [target] } } };
     }
-    return undefined;
-  }
-  // a label of the stage: its row (under the node it was made at)
-  if (ShapeGroup.isLoci(loci) && isStageLabelData(loci.shape.sourceData)) {
-    for (const cell of plugin.state.data.cells.values()) {
-      const obj = cell.obj;
-      if (!SO.Shape.Provider.is(obj) || obj.data.data !== loci.shape.sourceData) continue;
-      const ref = cell.transform.ref;
-      return { key: `l:${ref}`, label: loci.shape.sourceData.text, kind: 'label', node: { ref } };
+    case 'volume': {
+      const label = plugin.state.data.cells.get(ref)?.obj?.label ?? ref;
+      return { key: `o:${ref}`, label, kind: 'volume', node: { ref } };
     }
-    return undefined;
+    // its row is under its first point's
+    case 'distance':
+      return { key: `d:${ref}`, label: plugin.state.data.cells.get(ref)?.obj?.label ?? ref, kind: 'distance', node: { ref } };
+    // under the node it was made at
+    case 'label':
+      return { key: `l:${ref}`, label: picked.text, kind: 'label', node: { ref } };
+    // a mesh's (a model's unit cell, a cut's drawing: no row)
+    case 'shape': {
+      const mesh = meshes(plugin).find((m) => m.ref === ref);
+      return mesh ? { key: `o:${ref}`, label: mesh.label, kind: 'mesh', node: { ref } } : undefined;
+    }
   }
-  // a mesh's shape, picked in a group or whole (its visuals' loci are whole: `Shape.Loci`, its surface's or wireframe's)
-  if (ShapeGroup.isLoci(loci) || Shape.isLoci(loci)) {
-    const mesh = meshes(plugin).find((m) => {
-      const obj = plugin.state.data.cells.get(m.ref)?.obj;
-      return (
-        SO.Shape.Representation3D.is(obj) &&
-        obj.data.repr.getAllLoci().some((l) => (Shape.isLoci(l) || ShapeGroup.isLoci(l)) && l.shape === loci.shape)
-      );
-    });
-    if (mesh) return { key: `o:${mesh.ref}`, label: mesh.label, kind: 'mesh', node: { ref: mesh.ref } };
-  }
-  return undefined;
 }
 
 // --- a structure's look ----------------------------------------------------------------------------------------------

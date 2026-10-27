@@ -26,6 +26,7 @@ import { type StateObjectCell, StateTransform } from '@molstar/core/state';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { ParticleTargetRepresentationProps } from '@molstar/graphics/repr/particles/representation/target/common';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
+import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { Grid, Volume } from '@molstar/model/model/volume';
 import { OrderedSet } from '@molstar/core/data/int';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
@@ -57,7 +58,7 @@ import {
   StageDistance,
   type StageDistanceProps,
 } from './distance.js';
-import { labelLook, StageLabel, StageLabelParams, type StageLabelProps } from './label.js';
+import { isStageLabelData, labelLook, StageLabel, StageLabelParams, type StageLabelProps } from './label.js';
 
 // The `stage` area (apps/prism-me/_spec/features.md, "Stage tools"): the canvas's right-click menu, objects moved by
 // hand (their clips move with them), labels. Clips are Prism's (`api.clipping`).
@@ -78,6 +79,23 @@ export type StagePick =
       /** The picked particle's target id and entity index (its target id on a list without entities) */
       readonly particle?: { readonly target: number; readonly entity: number; readonly name: string };
     };
+
+/**
+ * What a click is on, on the stage: an object and the part of it picked (a structure's first atom's entity and chain;
+ * the particles as drawn and the first one's index), a distance, a label, or a shape's representation (a mesh's, a
+ * unit cell's). The data, not a view's row: a host makes its rows of it.
+ */
+export type StagePicked =
+  | {
+      readonly kind: 'structure';
+      readonly ref: string;
+      /** The first atom's entity and chain (label ids); none for a bond */
+      readonly entity?: string;
+      readonly chain?: string;
+    }
+  | { readonly kind: 'particles'; readonly ref: string; readonly particles: ParticleList; readonly index: number }
+  | { readonly kind: 'volume' | 'distance' | 'shape'; readonly ref: string }
+  | { readonly kind: 'label'; readonly ref: string; readonly text: string };
 
 /** A right-click on the canvas (no drag): where (client px) and what it picked */
 export interface StageMenuRequest {
@@ -477,6 +495,18 @@ export class StageApi extends ApiArea {
   });
 
   /**
+   * What a click is on (`StagePicked`): a label under its point of the page (client px; a text is not picked by Mol*),
+   * else what it picked; undefined for nothing
+   */
+  pickedAt(click: { readonly loci: Loci; readonly x?: number; readonly y?: number }): StagePicked | undefined {
+    const plugin = this.ctx.plugin;
+    const ref = click.x !== undefined && click.y !== undefined ? this.labelAt(click.x, click.y) : undefined;
+    const label = ref ? labelsOf({ plugin }).find((l) => l.ref === ref) : undefined;
+    if (label) return { kind: 'label', ref: label.ref, text: label.text };
+    return stagePicked({ plugin }, click.loci);
+  }
+
+  /**
    * The label under a point of the page (client px), if any: a text is drawn but not picked by Mol*, so its box on the
    * screen is measured (its place brought toward the camera, its height, its text's length; set off when tethered)
    */
@@ -787,31 +817,37 @@ export { drawnObject };
 // --- picks ---------------------------------------------------------------------------------------------------------
 
 /** The target a picked loci belongs to: its structure (the root of a component's), particle list or volume */
-function pickOf(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StagePick {
-  if (isEmptyLoci(loci)) return { kind: 'nothing' };
-  const targets = stageTargets(ctx);
-  const cells = ctx.plugin.state.data.cells;
+/** What a pick is on, from its loci (`StagePicked`); undefined for nothing */
+export function stagePicked(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StagePicked | undefined {
+  if (isEmptyLoci(loci)) return undefined;
+  const { cells } = ctx.plugin.state.data;
   if (StructureElement.Loci.is(loci) || Bond.isLoci(loci)) {
     const refs = structureRefsOf(ctx, loci.structure);
-    const t = targets.find((x) => refs.has(x.ref));
-    if (t) return { kind: 'target', target: t };
+    const s = loadedStructures(ctx).find((x) => refs.has(x.cell.transform.ref));
+    if (!s) return undefined;
+    const ref = s.cell.transform.ref;
+    if (!StructureElement.Loci.is(loci) || StructureElement.Loci.isEmpty(loci)) return { kind: 'structure', ref };
+    const e = loci.elements[0];
+    const loc = StructureElement.Location.create(
+      loci.structure,
+      e.unit,
+      e.unit.elements[OrderedSet.getAt(e.indices, 0)],
+    );
+    return {
+      kind: 'structure',
+      ref,
+      entity: StructureProperties.entity.id(loc),
+      chain: StructureProperties.chain.label_asym_id(loc),
+    };
   }
   if (Particle.isLoci(loci)) {
-    for (const t of targets) {
-      if (t.kind !== 'particles') continue;
-      const l = ctx.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === t.ref);
-      const datas = [l?.cell.obj?.data, ...(l?.representations.map((r) => r.cell.obj?.data.sourceData) ?? [])];
-      if (!datas.includes(loci.particles)) continue;
-      const i = OrderedSet.getAt(loci.indices, 0);
-      const target = loci.particles.targets[i];
-      // a list without entities has one per target (as the mesoscale area counts them)
-      const entity = loci.particles.entityInfo ? Particle.entityOf(loci.particles, i) : target;
-      const name =
-        loci.particles.entityInfo?.get(entity)?.name ??
-        loci.particles.targetInfo.get(target)?.name ??
-        `Target ${target}`;
-      return { kind: 'target', target: t, particle: { target, entity, name } };
+    // as loaded, or as its representations draw it (decorated: targets by class)
+    for (const l of ctx.plugin.managers.particles.hierarchy.current.lists) {
+      if (l.cell.obj?.data !== loci.particles && !l.representations.some((r) => r.cell.obj?.data.sourceData === loci.particles))
+        continue;
+      return { kind: 'particles', ref: l.cell.transform.ref, particles: loci.particles, index: OrderedSet.getAt(loci.indices, 0) };
     }
+    return undefined;
   }
   if (
     Volume.isLoci(loci) ||
@@ -820,16 +856,53 @@ function pickOf(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StagePick {
     Volume.Segment.isLoci(loci)
   ) {
     // the volume as loaded, or as its representations draw it (moved: a decorator's new volume)
-    const volumes = ctx.plugin.managers.volume.hierarchy.current.volumes;
-    const t = targets.find((x) => {
-      if (x.kind !== 'volume') return false;
-      if (cells.get(x.ref)?.obj?.data === loci.volume) return true;
-      const v = volumes.find((y) => y.cell.transform.ref === x.ref);
-      return !!v?.representations.some((r) => r.cell.obj?.data.sourceData === loci.volume);
-    });
-    if (t) return { kind: 'target', target: t };
+    const v = ctx.plugin.managers.volume.hierarchy.current.volumes.find(
+      (x) =>
+        x.cell.obj?.data === loci.volume || x.representations.some((r) => r.cell.obj?.data.sourceData === loci.volume),
+    );
+    return v ? { kind: 'volume', ref: v.cell.transform.ref } : undefined;
   }
-  return { kind: 'nothing' };
+  if (!ShapeGroup.isLoci(loci) && !Shape.isLoci(loci)) return undefined;
+  const source = loci.shape.sourceData;
+  // a distance, its line (its text is not pickable)
+  if (isStageDistanceData(source)) {
+    for (const cell of cells.values()) {
+      if (SO.Shape.Representation3D.is(cell.obj) && cell.obj.data.sourceData === source)
+        return { kind: 'distance', ref: cell.transform.ref };
+    }
+    return undefined;
+  }
+  // a label, its shape (the cell under it draws it)
+  if (isStageLabelData(source)) {
+    for (const cell of cells.values()) {
+      if (SO.Shape.Provider.is(cell.obj) && cell.obj.data.data === source)
+        return { kind: 'label', ref: cell.transform.ref, text: source.text };
+    }
+    return undefined;
+  }
+  // a shape's representation, picked in a group or whole (its visuals' loci are whole: `Shape.Loci`)
+  for (const cell of cells.values()) {
+    if (cell.state.isGhost || !SO.Shape.Representation3D.is(cell.obj)) continue;
+    const all = cell.obj.data.repr.getAllLoci();
+    if (all.some((l) => (Shape.isLoci(l) || ShapeGroup.isLoci(l)) && l.shape === loci.shape))
+      return { kind: 'shape', ref: cell.transform.ref };
+  }
+  return undefined;
+}
+
+/** What a right-click picked, for the stage's menu: its target, and a particle's target, entity and name */
+function pickOf(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StagePick {
+  const p = stagePicked(ctx, loci);
+  if (p?.kind !== 'structure' && p?.kind !== 'particles' && p?.kind !== 'volume') return { kind: 'nothing' };
+  const target = stageTargets(ctx).find((t) => t.ref === p.ref);
+  if (!target) return { kind: 'nothing' };
+  if (p.kind !== 'particles') return { kind: 'target', target };
+  const { particles, index } = p;
+  const t = particles.targets[index];
+  // a list without entities has one per target (as the mesoscale area counts them)
+  const entity = particles.entityInfo ? Particle.entityOf(particles, index) : t;
+  const name = particles.entityInfo?.get(entity)?.name ?? particles.targetInfo.get(t)?.name ?? `Target ${t}`;
+  return { kind: 'target', target, particle: { target: t, entity, name } };
 }
 
 // --- targets ------------------------------------------------------------------------------------------------------
