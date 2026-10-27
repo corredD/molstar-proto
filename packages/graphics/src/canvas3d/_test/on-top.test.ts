@@ -235,5 +235,21 @@ describe('Canvas3D on top', () => {
     }
     canvas.dispose();
   });
-});
 
+  it('records what is drawn on top for precompiling, as what is drawn in the scene', async () => {
+    const { canvas } = setup();
+    const repr = ShapeRepresentation(sphere, Mesh.Utils, { graphics: canvas.graphics });
+    await repr.createOrUpdate({}, { x: 0 }).run();
+    repr.setState({ syncManually: false });
+    canvas.setOnTop(repr, true);
+    canvas.add(repr);
+    draw(canvas);
+    const recorded = () => JSON.stringify(canvas.getPrecompileList());
+    expect(recorded()).toContain('mesh');
+
+    canvas.resetPrecompileList();
+    canvas.update();
+    expect(recorded()).toContain('mesh');
+    canvas.dispose();
+  });
+});

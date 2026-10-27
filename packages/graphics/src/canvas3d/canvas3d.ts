@@ -1889,9 +1889,22 @@ namespace Canvas3D {
      */
     let layerMovesOnly = false;
 
+    /** committed objects recorded and made ready (warm-up, frames held for props being prepared) */
+    function prepareCommitted(renderables: ReadonlyArray<GraphicsRenderable>) {
+      precompileRecorder.record(renderables);
+      // frames held for the props (`holdFramesUntilPrepared`) wait for the new scene too: the hold's prepare had the
+      // previous one, so the first frame after it would compile (and skip) the draws of what was added meanwhile
+      if (propsPreparing > 0) holdFramesUntilPrepared();
+      scheduleWarmUp();
+    }
+
     function commitScene(isSynchronous: boolean) {
       // a few objects (gizmos): at once
-      if (helper.onTop.needsCommit) helper.onTop.commit();
+      if (helper.onTop.needsCommit) {
+        helper.onTop.commit();
+        prepareCommitted(helper.onTop.renderables);
+        reprCount.next(reprRenderObjects.size);
+      }
       if (!scene.needsCommit) return true;
 
       // snapshot the current bounding sphere of visible objects
@@ -1905,11 +1918,7 @@ namespace Canvas3D {
         return false;
       }
       commitQueueSize.next(0);
-      precompileRecorder.record(scene.renderables);
-      // frames held for the props (`holdFramesUntilPrepared`) wait for the new scene too: the hold's prepare had the
-      // previous one, so the first frame after it would compile (and skip) the draws of what was added meanwhile
-      if (propsPreparing > 0) holdFramesUntilPrepared();
-      scheduleWarmUp();
+      prepareCommitted(scene.renderables);
       const keepCamera = layerMovesOnly;
       layerMovesOnly = false;
 
@@ -2421,6 +2430,7 @@ namespace Canvas3D {
           helper.onTop.update(void 0, !!keepSphere);
           precompileRecorder.invalidate();
           precompileRecorder.record(scene.renderables);
+          precompileRecorder.record(helper.onTop.renderables);
         }
         forceDrawAfterAllCommited = true;
         busy();
