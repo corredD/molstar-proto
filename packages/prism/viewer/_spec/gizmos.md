@@ -32,6 +32,7 @@ object.
   alike; no option per host. On top, every part of a gizmo (its handles and its body: a cut's plane, a slice's frame) is
   drawn over the scene (Canvas3D's on-top layer, `setOnTop`), because a handle one cannot see cannot be grabbed (Ludo,
   2026-10-26); the handles are picked through the scene, a body stays not pickable. A view setting (no history step),
-  kept with the canvas, not across reloads (as the canvas's own settings); off by default.
+  kept with the canvas: not in the light restore (journal.md §6), which brings the canvas's props back where a host
+  keeps one (`persist.restore`); off by default.
 - **Tests** drive a fake canvas on a headless viewer's plugin (`src/testing/gizmo-canvas.ts`: hover a handle, drag,
   release, Esc; what is on top); a release outside the window is the canvas's own (`interactionEnd`) and is not faked.
