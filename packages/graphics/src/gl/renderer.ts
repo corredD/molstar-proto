@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { OcclusionPyramid } from './compute/cell-cull.js';
@@ -152,6 +153,8 @@ interface Renderer {
    * where passes need what is hidden, illumination)
    */
   setOcclusionPyramid: (get: (() => OcclusionPyramid | undefined) | null) => void;
+  /** Runs `draw` with no occlusion test or pyramid (what is drawn over the scene, behind it: nothing to cull) */
+  withoutOcclusion: (draw: () => void) => void;
 
   dispose: () => void;
 }
@@ -2230,6 +2233,18 @@ namespace Renderer {
       },
       setOcclusionPyramid: (get: (() => OcclusionPyramid | undefined) | null) => {
         getOcclusionPyramid = get;
+      },
+      withoutOcclusion: (draw: () => void) => {
+        const test = isOccluded;
+        const pyramid = getOcclusionPyramid;
+        isOccluded = null;
+        getOcclusionPyramid = null;
+        try {
+          draw();
+        } finally {
+          isOccluded = test;
+          getOcclusionPyramid = pyramid;
+        }
       },
 
       props: p,
