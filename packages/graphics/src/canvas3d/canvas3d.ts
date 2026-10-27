@@ -1883,6 +1883,12 @@ namespace Canvas3D {
     }
 
     const sceneCommitTimeoutMs = 250;
+    /**
+     * The scene's pending changes are only representations moved to the on-top layer or back (`setOnTop`): a look, so
+     * the camera stays (its reset and `radiusMax` follow what is added and removed)
+     */
+    let layerMovesOnly = false;
+
     function commitScene(isSynchronous: boolean) {
       // a few objects (gizmos): at once
       if (helper.onTop.needsCommit) helper.onTop.commit();
@@ -1904,14 +1910,21 @@ namespace Canvas3D {
       // previous one, so the first frame after it would compile (and skip) the draws of what was added meanwhile
       if (propsPreparing > 0) holdFramesUntilPrepared();
       scheduleWarmUp();
+      const keepCamera = layerMovesOnly;
+      layerMovesOnly = false;
 
       if (helper.debug.isEnabled) helper.debug.update();
-      if (!p.camera.manualReset && (reprCount.value === 0 || shouldResetCamera())) {
+      if (!p.camera.manualReset && !keepCamera && (reprCount.value === 0 || shouldResetCamera())) {
         cameraResetRequested = true;
       }
       if (oldBoundingSphereVisible.radius === 0) nextCameraResetOptions.durationMs = 0;
 
-      if (!p.camera.manualReset && scene.boundingSphere.radius > 0) {
+      // moved back in: the bounds may grow (a handle out of the model), never shrink
+      if (
+        !p.camera.manualReset &&
+        scene.boundingSphere.radius > 0 &&
+        (!keepCamera || getSceneRadius() > camera.state.radiusMax)
+      ) {
         camera.setState({ radiusMax: getSceneRadius() }, 0);
       }
       reprCount.next(reprRenderObjects.size);
@@ -2027,12 +2040,12 @@ namespace Canvas3D {
       else onTopReprs.delete(repr);
       const renderObjects = reprRenderObjects.get(repr);
       if (!renderObjects) return;
+      if (!scene.needsCommit) layerMovesOnly = true;
       const to = sceneOf(repr);
       renderObjects.forEach((o) => {
         from.remove(o);
         if (!droppedRenderObjects.has(o)) to.add(o);
       });
-      markIndex.set(repr);
       forceDrawAfterAllCommited = true;
       busy();
     }
@@ -2041,6 +2054,7 @@ namespace Canvas3D {
       registerAutoUpdate(repr);
       busy();
       const layer = sceneOf(repr);
+      if (layer === scene) layerMovesOnly = false;
 
       const oldRO = reprRenderObjects.get(repr);
       const newRO = new Set<GraphicsRenderObject>();
@@ -2082,6 +2096,7 @@ namespace Canvas3D {
       busy();
       markIndex.delete(repr);
       const layer = sceneOf(repr);
+      if (layer === scene) layerMovesOnly = false;
       onTopReprs.delete(repr);
 
       const renderObjects = reprRenderObjects.get(repr);

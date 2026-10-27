@@ -214,4 +214,26 @@ describe('Canvas3D on top', () => {
     expect(calls).toContainEqual(['renderBlended', 'top']);
     canvas.dispose();
   });
+
+  it('moves nothing of the camera when a representation goes on top or back (a look, not a scene change)', async () => {
+    const { canvas } = setup();
+    await addSphere3D(canvas, 0);
+    const handle = await addSphere3D(canvas, 30);
+    draw(canvas);
+    // the camera on the handle, away from the model
+    canvas.camera.setState({ target: Vec3.create(30, 0, 0), position: Vec3.create(30, 0, 5), radius: 1 }, 0);
+    draw(canvas);
+    const before = { ...canvas.camera.getSnapshot() };
+
+    for (const onTop of [true, false]) {
+      canvas.setOnTop(handle, onTop);
+      draw(canvas);
+      const now = canvas.camera.getSnapshot();
+      expect(Array.from(now.target)).toEqual(Array.from(before.target));
+      expect(now.radius).toBe(before.radius);
+      expect(now.radiusMax).toBe(before.radiusMax);
+    }
+    canvas.dispose();
+  });
 });
+
