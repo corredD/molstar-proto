@@ -7,7 +7,9 @@ is not built is [../TODO.md](../TODO.md).
 ## In flight
 
 - **The app is only a spec** (`me/app-spec`, `~/prism-me-lanes/app-spec`, [brief](2026-10-27-app-spec.md)):
-  `explorer.clipWhole`, the picks, the label sizing and the writes by direct call move into the extensions; started.
+  `explorer.clipWhole`, the picks, the label sizing and the writes by direct call move into stage-tools and `api.run`;
+  no `any` in the app (a biome rule). PR #11, reviewed (5 should-fix fixed), checked with real GL on WebGPU and WebGL2;
+  waits on Ludo.
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
