@@ -6,10 +6,7 @@
 
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { StateObjectCell } from '@molstar/core/state';
-import { type GizmoBinding, GizmoController, type GizmoItem } from '@molstar/graphics/util/gizmo/controller';
-import { type DragFrame, frameOfPose, poseGesture, poseOfFrame } from '@molstar/graphics/util/gizmo/gestures';
-import type { Handle } from '@molstar/graphics/util/gizmo/handle';
-import { transformHandles } from '@molstar/graphics/util/gizmo/transform';
+import type { GizmoItem } from '@molstar/graphics/util/gizmo/controller';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { Grid } from '@molstar/model/model/volume';
 import type { PluginContext } from '@molstar/plugin/context';
@@ -22,11 +19,11 @@ import {
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
-import { BehaviorSubject, type Observable, Subject } from 'rxjs';
+import { type FrameValue, frameHandles, GizmoHandles } from '@molstar/prism-viewer/sources/gizmos';
 import { placementWith, poseOf } from './move.js';
 
-// A particle's local handle (apps/prism-me/_spec/ui.md, step 4): Prism's gizmo library on one particle, in its own
-// frame, that edits an offset of what decorates the particles (`ParticleListOffsets`): with All on, its target's (its
+// A particle's local handle (apps/prism-me/_spec/ui.md, step 4): Prism's handles (`GizmoHandles`, on a frame:
+// `frameHandles`) on one particle, in its own frame, that edits an offset of what decorates the particles (`ParticleListOffsets`): with All on, its target's (its
 // class, its kind: every particle like it) or the list's; with All off, its own alone (`instances`). A drag shows the
 // particles offset as drawn only (the list's representations given the offset particles: the state, and its history,
 // untouched), its release is one step (`cryoet.offset` or `cryoet.instance`).
@@ -77,13 +74,6 @@ function offsetsCell(plugin: PluginContext, list: string): StateObjectCell | und
     if (next.transform.transformer === ParticleListOffsets) return next;
     ref = next.transform.ref;
   }
-}
-
-/** What a drag works on: the particle's frame now, and what the edited offset sits between */
-export interface HandleValue {
-  /** The particle's frame as drawn */
-  readonly frame: Mat4;
-  readonly size: number;
 }
 
 /** A particle's offsets, as the handle edits one of them */
@@ -172,105 +162,46 @@ function objectRadius(target: ParticleTarget | undefined): number {
   return sphere?.radius ?? 0;
 }
 
-/** The longest a commit holds the canvas's frames (ms) */
-const MaxCommitHoldMs = 3000;
-
-class ParticleHandleBinding implements GizmoBinding<HandleValue> {
-  readonly #invalidated = new Subject<string>();
-
-  constructor(
-    private readonly plugin: PluginContext,
-    private readonly api: ViewerApi,
-    private readonly target: () => ParticleHandleTarget | undefined,
-    readonly items: Observable<readonly GizmoItem<HandleValue>[]>,
-  ) {}
-
-  get invalidated(): Observable<string> {
-    return this.#invalidated;
-  }
-
-  layout(item: GizmoItem<HandleValue>) {
-    return { ...transformHandles(item.value.size), frame: item.value.frame };
-  }
-
-  sameGeometry(a: HandleValue, b: HandleValue) {
-    return a.size === b.size;
-  }
-
-  equal(a: HandleValue, b: HandleValue) {
-    return Mat4.areEqual(a.frame, b.frame, 1e-6);
-  }
-
-  apply(from: HandleValue, handle: Handle, frame: DragFrame, dx: number, dy: number): HandleValue {
-    const pose = poseGesture(poseOfFrame(from.frame), handle, frame, dx, dy);
-    return pose ? { ...from, frame: frameOfPose(pose) } : from;
-  }
-
-  /** The list's representations given these particles (the drawing only) */
-  async #draw(particles: ParticleList | undefined) {
-    const t = this.target();
-    const l = t && this.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === t.list);
-    if (!l) return;
-    for (const r of l.representations) {
-      const repr = (r.cell.obj?.data as { repr?: { createOrUpdate(p: object, d?: ParticleList): any } } | undefined)
-        ?.repr;
-      const data = particles ?? (r.cell.obj?.data as { sourceData?: ParticleList } | undefined)?.sourceData;
-      if (repr && data) await this.plugin.runTask(repr.createOrUpdate({}, data));
-    }
-    this.plugin.canvas3d?.requestDraw();
-  }
-
-  async preview(_key: string, _from: HandleValue, next: HandleValue) {
-    const t = this.target();
-    const stack = t && stackOf(this.plugin, t.list);
-    if (!t || !stack) return;
-    const solved = solveEdit(stack, t.index, t.edit, next.frame);
-    await this.#draw(offsetParticles(stack.input, solved.stack.offsets, solved.stack.instances));
-  }
-
-  async commit(_key: string, _from: HandleValue, next: HandleValue) {
-    const t = this.target();
-    const stack = t && stackOf(this.plugin, t.list);
-    if (!t || !stack) return false;
-    const {
-      translation: [x, y, z],
-      euler: [ex, ey, ez],
-    } = solveEdit(stack, t.index, t.edit, next.frame);
-    const done = (async () => {
-      const r =
-        t.edit.kind === 'instance'
-          ? await this.api.run('cryoet.instance', { particles: t.list, index: t.index, x, y, z, ex, ey, ez })
-          : await this.api.run('cryoet.offset', { particles: t.list, targets: t.edit.targets, x, y, z, ex, ey, ez });
-      // drawn as the state has it now (offset, or not)
-      if (!r.ok || r.unchanged) await this.#draw(undefined);
-      return r.ok;
-    })();
-    this.plugin.canvas3d?.holdFrames(done, MaxCommitHoldMs);
-    return done;
-  }
-
-  cancel() {
-    void this.#draw(undefined);
-  }
-
-  dispose() {
-    this.#invalidated.complete();
-  }
-}
-
 /** The local handle on a particle while shown: its list, the particle, what it edits */
 export class ParticleHandles {
   readonly #target = observableState<ParticleHandleTarget | undefined>(undefined);
-  readonly #items = new BehaviorSubject<readonly GizmoItem<HandleValue>[]>([]);
-  #controller: GizmoController<HandleValue> | undefined;
-  #binding: ParticleHandleBinding | undefined;
-  #release: (() => void) | undefined;
-  #sub: { unsubscribe(): void } | undefined;
+  readonly #handles: GizmoHandles<FrameValue>;
 
   constructor(
     private readonly plugin: PluginContext,
     private readonly api: ViewerApi,
-  ) {}
+  ) {
+    this.#handles = new GizmoHandles(plugin, {
+      ...frameHandles(),
+      items: () => this.#items(),
+      // the key is the particle's (`list:index`): what a drag starts from is its list (the offsets under it)
+      cells: (key) => [key.slice(0, key.lastIndexOf(':'))],
+      preview: async (_key, _from, next) => {
+        const t = this.#target.value;
+        const stack = t && stackOf(this.plugin, t.list);
+        if (!t || !stack) return;
+        const solved = solveEdit(stack, t.index, t.edit, next.frame);
+        await this.#draw(offsetParticles(stack.input, solved.stack.offsets, solved.stack.instances));
+      },
+      commit: async (_key, _from, next) => {
+        const t = this.#target.value;
+        const stack = t && stackOf(this.plugin, t.list);
+        if (!t || !stack) return false;
+        const {
+          translation: [x, y, z],
+          euler: [ex, ey, ez],
+        } = solveEdit(stack, t.index, t.edit, next.frame);
+        const r =
+          t.edit.kind === 'instance'
+            ? await this.api.run('cryoet.instance', { particles: t.list, index: t.index, x, y, z, ex, ey, ez })
+            : await this.api.run('cryoet.offset', { particles: t.list, targets: t.edit.targets, x, y, z, ex, ey, ez });
+        // drawn as the state has it now (offset, or not)
+        if (!r.ok || r.unchanged) await this.#draw(undefined);
+        return r.ok;
+      },
+      cancel: () => void this.#draw(undefined),
+    });
+  }
 
   /** The particle the handle is on and what it edits, while shown */
   get target(): ReadonlyState<ParticleHandleTarget | undefined> {
@@ -279,23 +210,13 @@ export class ParticleHandles {
 
   /** The handle on a particle, editing an offset (All on: its target's, or `targets`'), or its own (All off) */
   show(target: ParticleHandleTarget): boolean {
-    const canvas = this.plugin.canvas3d;
-    if (!canvas) return false;
+    if (!this.plugin.canvas3d) return false;
     const before = this.#target.value;
     this.#target.set(target);
     // another particle: the camera aimed at it (the same distance and angle), so a zoom goes toward it, not the scene's
     // middle (empty between a list and what else is open)
     if (before?.list !== target.list || before?.index !== target.index) this.#aimAt(target);
-    if (!this.#controller) {
-      const binding = new ParticleHandleBinding(this.plugin, this.api, () => this.#target.value, this.#items);
-      const controller = new GizmoController(canvas, binding);
-      this.#binding = binding;
-      this.#controller = controller;
-      this.#release = this.plugin.managers.interactivity.clickOwners.claim((r) => controller.owns(r));
-      this.#sub = this.plugin.state.data.events.changed.subscribe(() => this.#publish());
-    }
-    this.#publish();
-    return true;
+    return this.#handles.show();
   }
 
   /** All on: the offset of the particle's kind (its target); off: the particle alone */
@@ -308,14 +229,23 @@ export class ParticleHandles {
   }
 
   hide() {
+    // a drag in progress put back first (its redraw needs the target)
+    this.#handles.hide();
     this.#target.set(undefined);
-    if (!this.#controller) return;
-    this.#sub?.unsubscribe();
-    this.#release?.();
-    this.#controller.dispose();
-    this.#binding?.dispose();
-    this.#controller = undefined;
-    this.#binding = undefined;
+  }
+
+  /** The list's representations given these particles (the drawing only); none: as the state has them */
+  async #draw(particles: ParticleList | undefined) {
+    const t = this.#target.value;
+    const l = t && this.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === t.list);
+    if (!l) return;
+    for (const r of l.representations) {
+      const repr = (r.cell.obj?.data as { repr?: { createOrUpdate(p: object, d?: ParticleList): any } } | undefined)
+        ?.repr;
+      const data = particles ?? (r.cell.obj?.data as { sourceData?: ParticleList } | undefined)?.sourceData;
+      if (repr && data) await this.plugin.runTask(repr.createOrUpdate({}, data));
+    }
+    this.plugin.canvas3d?.requestDraw();
   }
 
   /** The camera's target moved to a particle, its offset kept (one short move) */
@@ -335,22 +265,19 @@ export class ParticleHandles {
   }
 
   /** The particle as an item: its frame as drawn, a size of its own (its radius, or that of what decorates it) */
-  #publish() {
+  #items(): GizmoItem<FrameValue>[] {
     const t = this.#target.value;
     const data = t ? this.#particles(t.list) : undefined;
-    if (!t || !data || t.index >= data.count) {
-      this.#items.next([]);
-      return;
-    }
+    if (!t || !data || t.index >= data.count) return [];
     // at least as big as what it moves: past the object drawn on the particle (its radius), else the particle's own
     const r = data.radii?.[t.index] ?? 0;
     const size = Math.max(objectRadius(data.targetMapping?.get(data.targets[t.index])) * 1.6, r * 3, MinHandleSize);
-    this.#items.next([
+    return [
       {
         key: `${t.list}:${t.index}`,
         value: { frame: particleFrame(data, t.index), size },
         label: `Particle ${t.index}`,
       },
-    ]);
+    ];
   }
 }

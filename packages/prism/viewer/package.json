@@ -99,6 +99,11 @@
       "types": "./lib/storage/model.d.ts",
       "import": "./lib/storage/model.js"
     },
+    "./sources/gizmos": {
+      "molstar-src": "./src/sources/gizmos/index.ts",
+      "types": "./lib/sources/gizmos/index.d.ts",
+      "import": "./lib/sources/gizmos/index.js"
+    },
     "./sources/watched": {
       "molstar-src": "./src/sources/watched.ts",
       "types": "./lib/sources/watched.d.ts",
@@ -143,6 +148,11 @@
       "molstar-src": "./src/journal/history-model.ts",
       "types": "./lib/journal/history-model.d.ts",
       "import": "./lib/journal/history-model.js"
+    },
+    "./testing/gizmo-canvas": {
+      "molstar-src": "./src/testing/gizmo-canvas.ts",
+      "types": "./lib/testing/gizmo-canvas.d.ts",
+      "import": "./lib/testing/gizmo-canvas.js"
     },
     "./testing/real-viewer": {
       "molstar-src": "./src/testing/real-viewer.ts",

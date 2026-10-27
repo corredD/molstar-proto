@@ -84,8 +84,9 @@ Prism's operations.
   their sections by the row's kind (`properties.tsx`), the menu its items by kind (`menu.ts`).
 - **Writes:** `api.run('<op>', params)`; ~35 operation ids across Prism, the three extensions and the app (two of its
   own: `explorer.representationVisibility`, `explorer.clipWhole`).
-- **Handles:** three gizmo bindings (oblique slice, object move, particle) on Prism's gizmo library: they draw the
-  preview outside the state (no history), and commit one operation on release.
+- **Handles:** three hosts (oblique slice, object move, particle) on Prism's `GizmoHandles` (§7.4), as Prism's own
+  structure move and cuts: they draw the preview outside the state (no history), commit one operation on release, and an
+  undo during a drag cancels it.
 - **Right-click:** stage-tools turns a secondary click into a menu request; the app replaces the menu with its own items
   per kind.
 
@@ -118,7 +119,7 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
    - CSS color parsing (×3, behaving differently);
    - list parameters (×2), plane types (×2);
    - Euler pose math (×4);
-   - the three gizmo classes are near copies.
+   - the three gizmo classes were near copies: one class now (§7.4).
 5. **Reads cost more than they need.** Every state change rebuilds the whole scene list (scanning every cell for meshes)
    and compares it as JSON; per-model entity info is kept only while the panel is open.
 6. **Big files.** `properties.tsx` 1,190 lines, `cryoet/operations.ts` 1,276; `ScenePanel` ~220 lines, `sectionsOf`
@@ -154,7 +155,12 @@ Ranked by what they cost you. The first three are bugs or design faults; the res
 2. **No per-entity LOD or styles:** one LOD and one style per model. The v5 feature is marked deferred in features.md.
 3. **No atom-level work inside particles for now:** picking stays per particle, and features.md says so.
 4. **One handle class in Prism's gizmo library** for anything that moves: preview outside the state, one commit on
-   release. The three bindings become uses of it. It is a candidate for upstream.
+   release. The three bindings become uses of it. It is a candidate for upstream. Built (2026-10-26, lane
+   `gizmo-handles`): `GizmoHandles` (`packages/prism/viewer/src/sources/gizmos`, Prism's
+   [gizmos.md](../../../packages/prism/viewer/_spec/gizmos.md)) hosts Prism's structure move and cuts and the three
+   extension handles; each keeps only its preview and commit. A drag is cancelled when the cells it starts from change
+   (its item's and those under it, or what places it: an undo), which the three extension handles did not do; the object
+   move uses Prism's placement math (`PlacementHandles`), the slice and the particle `frameHandles`.
 5. **The app becomes only a spec:** its logic (`clipWhole`, picks, label sizing, direct extension calls) moves as
    operations into the extension that owns the data. The app keeps layout, URL and defaults.
 6. **Refactor in place, not a prism-me-v2** (Ludovic, 2026-10-25, after the Storybook mocks of PR #6): the mocks'
