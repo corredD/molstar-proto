@@ -85,7 +85,7 @@ export interface TreeViewProps<R extends TreeRowView> {
   /** Its right-click, or its ⋯ (under the button) */
   onMenu(row: R, at: At, onClose?: () => void): void;
   /** A double click (the camera on it) */
-  onFocus?(row: R): void;
+  onDblClick?(row: R): void;
   /** The pointer over a row, or none */
   onHover?(row: R | undefined): void;
   ref?(handle: TreeViewHandle): void;
@@ -161,7 +161,7 @@ function TreeRow<R extends TreeRowView>(p: {
         classList={{ [classes.picked]: p.picked, [classes.off]: off, [classes.category]: !!row.category }}
         style={`--msp-tree-depth: ${row.depth}`}
         onClick={pick}
-        onDblClick={() => props.onFocus?.(row)}
+        onDblClick={() => props.onDblClick?.(row)}
         onPointerEnter={() => props.onHover?.(row)}
         onPointerLeave={() => props.onHover?.(undefined)}
         onContextMenu={(e: MouseEvent) => {

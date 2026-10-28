@@ -39,8 +39,11 @@ async function until(check: () => boolean, ms = 10000) {
 const buttons = (host: HTMLElement, text: string) =>
   Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter((b) => b.textContent?.trim() === text);
 const items = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLElement>('[role=treeitem]'));
+/** A row's clickable line (its treeitem holds it), by its name */
 const rowOf = (host: HTMLElement, label: string) =>
-  items(host).find((r) => r.querySelector('span[style*="flex: 1; min-width: 0"]')?.textContent === label);
+  items(host)
+    .find((r) => r.querySelector('[data-tip-overflow]')?.textContent === label)
+    ?.querySelector<HTMLElement>('[data-tree-row]') ?? undefined;
 
 describe('handles on top in the properties', () => {
   it('shows one state in Position and in a clip line, and flips it there, no history step', async () => {

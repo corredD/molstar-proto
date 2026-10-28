@@ -291,10 +291,10 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   decorations (they were of the other targets' ids) and switches what is drawn as a decoration does. File, Class, Score…
   have a tooltip (Prism UI's Choices: the app's `data-tip`, as its buttons, not a native title).
 - Keys in the tree (2026-10-22, Ludovic): a click on a row focuses the tree (a `tree` of `treeitem`s: level, selected,
-  expanded); Up and Down pick the row before or after (past the categories), Right opens a closed row or picks its first
-  child, Left closes an open row or picks its parent (`treeKey`); the picked row comes into view. Not while typing in a
-  field. The Decoration's Targets row is always there: File alone, and why, when the file has no columns (CC, class,
-  score) to split its targets by (an NDJSON list).
+  expanded); Up and Down pick the row before or after, Right opens a closed row or picks its first child, Left closes an
+  open row or picks its parent; the picked row comes into view. Not while typing in a field. Since 2026-10-27 Prism's
+  `TreeNavigation` (a category picked too, Home and End; below). The Decoration's Targets row is always there: File
+  alone, and why, when the file has no columns (CC, class, score) to split its targets by (an NDJSON list).
 - Clip whole (2026-10-22, Ludovic: "on a cellPACK model we either clip the atoms or the proteins"): a model's or a
   list's Clips, while it draws objects, has Clip whole: Proteins (Mol\*'s `instance` variant: an object whose center is
   cut goes, the others stay whole) or Atoms (`pixel` with the spheres' `clipPrimitive`: each atom whose center is cut
@@ -356,11 +356,12 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   grayscale at mean ± 3σ, the camera straight down z (x right, y up) framed to the slice; the x and y slices made too,
   hidden (their eyes show them). The properties' sections all start closed; one opened stays open from row to row this
   session.
-- Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
-  after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
-  its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,
-  `volume.remove` of the one object). One step of the history (its labels, if any, a step after it). The entry is given
-  to `state.remove` by its ref alone: an example's (a download, loaded by address) is no kind a `#ref` selector reaches.
+- Remove (2026-10-22, Ludovic): a loaded object's menu (a structure, a model, a list, a volume, a mesh; its row's ⋯ and
+  its right-click) has a Remove (its row's trash icon left with the tools of §3, 2026-10-27): the object goes with its
+  file (all the file holds: a model's unit cell) and its labels; a file holding another listed object keeps it (Prism's
+  `structure.remove`, `particles.remove`, `volume.remove` of the one object). One step of the history (its labels, if
+  any, a step after it). The entry is given to `state.remove` by its ref alone: an example's (a download, loaded by
+  address) is no kind a `#ref` selector reaches.
 - A volume moves as one (2026-10-24, Ludovic: "the volume, the parent, this should move everything, not jump"): its
   slices and isosurfaces are drawn in its frame and have no place of their own: no Position, and their menu's move shows
   their volume's handles ("Move and turn its volume"); a grid slice moves through the volume by its index only. A
@@ -396,6 +397,15 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.
+- The tree on its mock (2026-10-27, lane `tree-view`; the coordinator's defaults, not Ludo's): the explorer draws its
+  tree with the mock's view (`explorer/tree-view.tsx`, `tree.module.css`: Prism UI only, the Storybook mock draws the
+  same), its own rows on Prism's `VirtualList` (Prism's `SceneTree` is not exported): a screenful made, an opened
+  model's thousands of entities too; rows keyed and kept while the same (`keepRows`, field by field: no JSON). Keys:
+  Prism's `TreeNavigation` (↑/↓, Home, End, → opens or goes in, ← closes or goes to the parent, Enter a click), the pick
+  following the focus, a category's too (its properties: its name). A row: an object's icon, its color dot, its name
+  (cut by the fade), its count faint, then brush, scissors, eye and ⋯ (its right-click's menu, under it), on hover or
+  focus, always on a touch screen, a hidden node's eye kept. The tree takes the panel above the properties; the split
+  between them is `drag()`, ↑/↓ by 16 px (Shift 64), the properties 80 px at least and the tree too.
 - Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a
   structure entity's or chain's eye (Prism hides representations, not parts); a color dot only where a color was set;
   the mesh section repeats the mesh's eye and name.

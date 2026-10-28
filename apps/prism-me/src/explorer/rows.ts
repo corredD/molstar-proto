@@ -8,8 +8,10 @@ import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import { groupEntities, type MesoGroup } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import type { IconName } from '@molstar/prism-ui';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import type { Category, NodeRef, SceneObject } from './operations.js';
+import type { TreeRowView } from './tree-view.js';
 
 // The rows of the explorer's tree (_spec/ui.md §3), flat, from the scene's objects and the parts the mesoscale and
 // cryo-ET areas read; and what a row's eye runs.
@@ -25,20 +27,39 @@ export const Categories: readonly { id: Category; label: string }[] = [
 ];
 
 /** A row of the tree, flat (its depth says where it is) */
-export interface Row {
-  readonly key: string;
-  readonly depth: number;
-  readonly label: string;
+export interface Row extends TreeRowView {
   readonly kind: string;
-  readonly count?: string;
-  readonly color?: number;
-  /** Its eye: whether shown; absent, no eye */
-  readonly visible?: boolean;
-  readonly hasChildren: boolean;
   /** What it stands for in 3D (none for a category) */
   readonly node?: NodeRef;
   /** A representation's row: its state ref */
   readonly representation?: string;
+  /** A category's objects (their refs): its eye acts on all of them */
+  readonly objects?: readonly string[];
+}
+
+/** The icon of an object's row (styling.md §4: top-level rows only) */
+const ObjectIcons: Readonly<Record<SceneObject['kind'], IconName>> = {
+  structure: 'structure',
+  model: 'shapes',
+  list: 'locate',
+  volume: 'volume',
+  mesh: 'box',
+};
+
+/** Whether two rows of one key draw the same (`keepRows`: a row the same keeps its DOM) */
+export function sameRow(a: Row, b: Row): boolean {
+  return (
+    a.depth === b.depth &&
+    a.label === b.label &&
+    a.kind === b.kind &&
+    a.count === b.count &&
+    a.color === b.color &&
+    a.visible === b.visible &&
+    a.hasChildren === b.hasChildren &&
+    a.expanded === b.expanded &&
+    a.representation === b.representation &&
+    a.objects?.length === b.objects?.length
+  );
 }
 
 // --- the rows ---------------------------------------------------------------------------------------------------------
@@ -59,13 +80,13 @@ export function rowsOf(
   // one whose row is not there (a part gone, a key from elsewhere): under its object's row
   const shownGroups = groupRowsOf(objects, parts);
   const known = rowKeysOf(objects, parts, shownGroups.keys);
-  const byNode = new Map<string, Row[]>();
-  const under = (key: string, object: string, row: Omit<Row, 'depth'>) => {
+  const byNode = new Map<string, Draft[]>();
+  const under = (key: string, object: string, row: Omit<Draft, 'depth'>) => {
     const shown = key.startsWith('g:') && !shownGroups.keys.has(key) ? modelOf(key, shownGroups.models) : key;
     const node = known(shown) ? shown : `o:${object}`;
     const list = byNode.get(node);
-    if (list) list.push(row as Row);
-    else byNode.set(node, [row as Row]);
+    if (list) list.push(row as Draft);
+    else byNode.set(node, [row as Draft]);
   };
   for (const l of labels) {
     under(l.node, l.target, {
@@ -87,32 +108,51 @@ export function rowsOf(
       node: { ref: d.ref },
     });
   }
-  const push = (r0: Row, children: () => void) => {
+  // a filter looks into every row, opened or not (ui.md §1)
+  const push = (r0: Draft, children: () => void) => {
     const own = byNode.get(r0.key);
-    const r = own && !r0.hasChildren ? { ...r0, hasChildren: true } : r0;
-    rows.push(r);
-    if (!r.hasChildren || !(open.has(r.key) || f)) return;
+    const hasChildren = r0.hasChildren || !!own;
+    const expanded = hasChildren && (!!f || open.has(r0.key));
+    rows.push({ ...r0, hasChildren, expanded });
+    if (!expanded) return;
     // its own children (none when only its labels made it a parent)
     if (r0.hasChildren) children();
-    for (const l of own ?? []) rows.push({ ...l, depth: r.depth + 1 });
+    for (const l of own ?? []) rows.push({ ...l, depth: r0.depth + 1, expanded: false });
   };
   for (const c of Categories) {
     const items = objects.filter((o) => o.category === c.id);
     if (!items.length) continue;
     push(
-      { key: `c:${c.id}`, depth: 0, label: c.label, kind: 'category', count: String(items.length), hasChildren: true },
+      {
+        key: `c:${c.id}`,
+        depth: 0,
+        label: c.label,
+        kind: 'category',
+        category: true,
+        count: String(items.length),
+        hasChildren: true,
+      },
       () => {
-        for (const o of items) objectRows(o, parts.get(o.ref), push, f);
+        for (const o of items) objectRows(o, parts.get(o.ref), push);
       },
     );
   }
   return f ? rows.filter((r) => r.kind === 'category' || r.label.toLowerCase().includes(f)) : rows;
 }
 
-type Push = (r: Row, children: () => void) => void;
+/** A row before its place in the tree is known (whether it shows its children) */
+type Draft = Omit<Row, 'expanded'>;
+type Push = (r: Draft, children: () => void) => void;
 
-function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | undefined, push: Push, f: string) {
-  const base = { depth: 1, label: o.label, count: o.count, visible: o.visible, node: { ref: o.ref } };
+function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | undefined, push: Push) {
+  const base = {
+    depth: 1,
+    label: o.label,
+    ...(o.count !== undefined ? { count: o.count } : {}),
+    visible: o.visible,
+    icon: ObjectIcons[o.kind],
+    node: { ref: o.ref },
+  };
   if (o.kind === 'structure') {
     push({ ...base, key: `o:${o.ref}`, kind: 'structure', hasChildren: !!o.entities?.length }, () => {
       for (const e of o.entities ?? []) {
@@ -234,7 +274,6 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
     return;
   }
   push({ ...base, key: `o:${o.ref}`, kind: 'mesh', hasChildren: false }, () => {});
-  void f;
 }
 
 /**
@@ -297,8 +336,8 @@ function modelOf(key: string, models: readonly string[]): string {
 /** A volume's representations with rows of their own kind (others: 'volume representation') */
 const VolumeRowKinds: ReadonlySet<string> = new Set(['slice', 'oblique slice', 'isosurface']);
 
-/** A row's eye: the visibility operation of what it stands for */
-export function toggleVisible(api: ViewerApi, row: Row) {
+/** A row's eye: the visibility operation of what it stands for (whether it shows its children aside) */
+export function toggleVisible(api: ViewerApi, row: Draft) {
   const visible = !row.visible;
   const node = row.node;
   if (!node) return;
@@ -377,67 +416,4 @@ export function ancestorKeys(
     }
   }
   return out;
-}
-
-/**
- * Keeps the rows that did not change as the same objects (the tree's `For` remakes a row whose object is new): a
- * change remakes only the rows it touched, an unfolded model's thousands of entities stay as they are.
- */
-export function stableRows() {
-  let last = new Map<string, { row: Row; json: string }>();
-  return (rows: readonly Row[]): Row[] => {
-    const next = new Map<string, { row: Row; json: string }>();
-    const out = rows.map((row) => {
-      const json = JSON.stringify(row);
-      const old = last.get(row.key);
-      const kept = old && old.json === json ? old : { row, json };
-      next.set(row.key, kept);
-      return kept.row;
-    });
-    last = next;
-    return out;
-  };
-}
-
-// --- keys ------------------------------------------------------------------------------------------------------------
-
-/**
- * What a key does in the tree (a tree view's keys), over its rows as shown and the picked row: Up and Down pick the row
- * before or after (past the categories, which are not picked); Right opens a closed row, else picks its first child;
- * Left closes an open row, else picks its parent. Undefined: nothing to do (an end, another key).
- */
-export function treeKey(
-  rows: readonly Row[],
-  open: ReadonlySet<string>,
-  picked: string | undefined,
-  key: string,
-): { readonly pick: string } | { readonly toggle: string } | undefined {
-  const pickable = (r: Row) => r.kind !== 'category';
-  const at = picked === undefined ? -1 : rows.findIndex((r) => r.key === picked);
-  if (key === 'ArrowDown') {
-    const next = rows.slice(at + 1).find(pickable);
-    return next ? { pick: next.key } : undefined;
-  }
-  if (key === 'ArrowUp') {
-    if (at < 0) return undefined;
-    const prev = rows.slice(0, at).reverse().find(pickable);
-    return prev ? { pick: prev.key } : undefined;
-  }
-  if (at < 0) return undefined;
-  const row = rows[at];
-  const isOpen = row.hasChildren && open.has(row.key);
-  if (key === 'ArrowRight') {
-    if (row.hasChildren && !isOpen) return { toggle: row.key };
-    const child = rows[at + 1];
-    return isOpen && child && child.depth > row.depth ? { pick: child.key } : undefined;
-  }
-  if (key === 'ArrowLeft') {
-    if (isOpen) return { toggle: row.key };
-    const parent = rows
-      .slice(0, at)
-      .reverse()
-      .find((r) => r.depth < row.depth);
-    return parent && pickable(parent) ? { pick: parent.key } : undefined;
-  }
-  return undefined;
 }

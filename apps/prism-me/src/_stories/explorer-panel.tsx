@@ -157,7 +157,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
             tools={(row) => ({ color: colorable(row.node), clip: clippable(row.node), more: !row.category })}
             onPick={(row) => pick(row.node)}
             onToggle={(row) => toggle(row.key)}
-            onFocus={(row) => console.info(`[explorer mock] focus ${row.label}`)}
+            onDblClick={(row) => console.info(`[explorer mock] focus ${row.label}`)}
             onEye={(row) => {
               const on = !(shown.get(row.key) ?? row.visible !== false);
               shown.set(row.key, on);

@@ -6,7 +6,6 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Color } from '@molstar/core/util/color';
 import { EmptyLoci } from '@molstar/model/model/loci';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
@@ -15,13 +14,16 @@ import {
   Button,
   type ContextMenuItem,
   domView,
-  For,
   Icon,
+  keepRows,
   onCleanup,
   openContextMenu,
+  ScrollArea,
   Show,
   TextInput,
 } from '@molstar/prism-ui';
+import { effect, frameState } from '@molstar/prism-ui/dom/scope';
+import { frames, restartable } from '@molstar/prism-ui/dom/scoped';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { type KeyedState, keyedState } from '@molstar/prism-ui/reactive/keyed-state';
 import { type ObservableState, observableState } from '@molstar/prism-ui/reactive/observable-state';
@@ -33,20 +35,11 @@ import type { Subscription } from 'rxjs';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { editInline } from './inline-edit.js';
 import { distancePicker, selectionModeHint } from './measure.js';
-import { clipItems, clippable, colorable, colorItems, nodeMenuItems, removable, removeObject } from './menu.js';
+import { clipItems, clippable, colorable, colorItems, nodeMenuItems } from './menu.js';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
-import {
-  ancestorKeys,
-  Categories,
-  type Parts,
-  type Row,
-  rowOf,
-  rowsOf,
-  stableRows,
-  toggleVisible,
-  treeKey,
-} from './rows.js';
+import { ancestorKeys, Categories, type Parts, type Row, rowOf, rowsOf, sameRow, toggleVisible } from './rows.js';
+import { type At, SplitLine, TreeView, type TreeViewHandle, treeClasses as classes } from './tree-view.js';
 
 // The explorer's panel (apps/prism-me/_spec/ui.md §1–4): + Open, a filter, the tree of the scene in four categories,
 // and under it the properties of the row picked. Rows act through the API as the person (one step each): their eyes run
@@ -211,8 +204,6 @@ function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
   };
 }
 
-const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
-
 /** The person's picked row */
 function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: SceneModel }) {
   const { ctx, area, model } = props;
@@ -258,342 +249,173 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   });
 
   const { open, filter, picked } = model;
-  const split = splitter(240);
-  const stable = stableRows();
+  // the rows as shown, keyed: a row the same as before keeps its DOM (the window of a virtual list: a screenful)
+  const keep = keepRows<Row>((r) => r.key, sameRow);
   // the stage's labels, each under the row it was made at
   const labels = api.stage?.labelsState() ?? observableState<readonly LabelInfo[]>([]).asReadonly;
   // and its distances, each under its first point's row
   const distances = api.stage?.distancesState() ?? observableState<readonly DistanceInfo[]>([]).asReadonly;
   const rows = derive(
     [objects, parts.asReadonly, open.asReadonly, filter.asReadonly, labels, distances],
-    (o, p, op, f, l, d) => stable(rowsOf(o, p, op, f, l, d)),
+    (o, p, op, f, l, d) => keep(rowsOf(o, p, op, f, l, d)),
   );
-  // the row under the pointer: lit in the tree and in 3D (the picked row's highlight comes back when it leaves)
-  const hovered = observableState<string | undefined>(undefined);
+  const pickedKey = derive(picked.asReadonly, (p) => p?.key);
+  // the row under the pointer: lit in 3D (the picked row's highlight comes back when it leaves)
   const hover = (row: Row | undefined) => {
-    hovered.set(row?.key);
     const p = picked.value;
-    area.highlight(row ? row.node : p && lastingHighlight(p) ? p.node : undefined);
+    area.highlight(row?.node ? row.node : p && lastingHighlight(p) ? p.node : undefined);
   };
   const toggleOpen = (key: string) => {
     const next = new Set(open.value);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
+    if (!next.delete(key)) next.add(key);
     open.set(next);
   };
+  const pickedOf = (row: Row): Picked => ({
+    key: row.key,
+    label: row.label,
+    kind: row.kind,
+    ...(row.node ? { node: row.node } : {}),
+    ...(row.representation ? { representation: row.representation } : {}),
+  });
   const pick = (row: Row) => {
-    picked.set({
-      key: row.key,
-      label: row.label,
-      kind: row.kind,
-      ...(row.node ? { node: row.node } : {}),
-      ...(row.representation ? { representation: row.representation } : {}),
-    });
+    if (picked.value?.key !== row.key) picked.set(pickedOf(row));
     area.highlight(lastingHighlight(row) ? row.node : undefined);
   };
   onCleanup(() => area.highlight(undefined));
-  // the tree's keys: a row picked (and into view), or opened or closed; not while typing in a field
-  const keys = (e: KeyboardEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('input, textarea, select, [contenteditable]')) return;
-    const what = treeKey(rows.value, open.value, picked.value?.key, e.key);
-    if (!what) return;
-    e.preventDefault();
-    if ('toggle' in what) return toggleOpen(what.toggle);
-    const row = rows.value.find((r) => r.key === what.pick);
-    if (!row) return;
-    pick(row);
-    model.scrollTo.set(row.key);
-  };
-  // a row tool (the brush, the scissors): the row picked, its menu under the button
-  const tool = (row: Row, e: MouseEvent, which: 'color' | 'clip') => {
-    if (!row.node) return;
-    e.stopPropagation();
-    pick(row);
-    const button = e.currentTarget as HTMLElement;
-    const r = button.getBoundingClientRect();
-    const picked = {
-      key: row.key,
-      label: row.label,
-      kind: row.kind,
-      node: row.node,
-      ...(row.representation ? { representation: row.representation } : {}),
-    };
-    openContextMenu(
-      rootOf(button),
-      { x: r.left, y: r.bottom },
-      which === 'color' ? colorItems(api, area, picked, model.groupByOf) : clipItems(api, area, picked),
-    );
-  };
-  // a row's right-click: it is picked, and the menu of what it stands for opens at the pointer
-  const menu = (row: Row, e: MouseEvent) => {
-    if (!row.node) return;
-    e.preventDefault();
-    pick(row);
-    const root = rootOf(e.currentTarget as Element);
-    const at = { x: e.clientX, y: e.clientY };
-    const picked = { key: row.key, label: row.label, kind: row.kind, node: row.node };
-    openContextMenu(
-      root,
-      at,
-      nodeMenuItems(api, area, picked, {
-        open: (sub) => openContextMenu(root, at, sub),
-        reveal: model.reveal,
-        groupBy: model.groupByOf,
-        editText: (text, keep) => editInline(root, at, text, keep),
-      }),
-    );
+
+  // an eye flips at once; its operation runs after the frame is painted (on a large model it takes a moment), and
+  // the scene says the rest: the flip is dropped a frame after (back at once if it failed)
+  const shown = keyedState<string, boolean>();
+  const eyes: Row[] = [];
+  const settled: string[] = [];
+  const settle = frames(() => {
+    for (const key of settled.splice(0)) shown.delete(key);
+  });
+  const runEyes = restartable(() => {
+    for (const row of eyes.splice(0)) {
+      const visible = shown.get(row.key) ?? !row.visible;
+      void Promise.resolve(toggleVisible(api, { ...row, visible: !visible })).then(() => {
+        settled.push(row.key);
+        settle.request();
+      });
+    }
+  });
+  const afterPaint = frames(() => runEyes.start(0));
+  const eye = (row: Row) => {
+    shown.set(row.key, !(shown.get(row.key) ?? row.visible));
+    eyes.push(row);
+    afterPaint.request();
   };
 
+  // menus open at the app's root (its tokens), not inside the panel (its containment would clip them)
+  let panelEl: HTMLElement | undefined;
+  const root = () => rootOf(panelEl);
+  // a row tool (the brush, the scissors): the row picked, its menu under the button
+  const tool = (row: Row, which: 'color' | 'clip', at: At, onClose: () => void) => {
+    if (!row.node) return;
+    pick(row);
+    const p = { ...pickedOf(row), node: row.node };
+    const items = which === 'color' ? colorItems(api, area, p, model.groupByOf) : clipItems(api, area, p);
+    openContextMenu(root(), at, items, onClose);
+  };
+  // a row's right-click or ⋯: it is picked, and the menu of what it stands for opens there
+  const menu = (row: Row, at: At, onClose?: () => void) => {
+    if (!row.node) return;
+    pick(row);
+    const r = root();
+    const items = nodeMenuItems(
+      api,
+      area,
+      { ...pickedOf(row), node: row.node },
+      {
+        open: (sub) => openContextMenu(r, at, sub),
+        reveal: model.reveal,
+        groupBy: model.groupByOf,
+        editText: (text, keep) => editInline(r, at, text, keep),
+      },
+    );
+    openContextMenu(r, at, items, onClose);
+  };
+
+  // a row picked in 3D brought into view (once: the request is cleared), in the frame after its way is unfolded
+  let tree: TreeViewHandle | undefined;
+  const scroll = frames(() => {
+    const key = model.scrollTo.value;
+    if (key === undefined || !tree) return;
+    tree.scrollTo(key);
+    model.scrollTo.set(undefined);
+  });
+  effect(model.scrollTo.asReadonly, (key) => {
+    if (key !== undefined) scroll.request();
+  });
+
+  // the properties' height, dragged on the line above them or moved by its arrows (tree-view.tsx)
+  const height = frameState(240);
+
   return (
-    <div style="flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden">
-      <div style="display: flex; gap: var(--msp-space-2); align-items: center; padding: var(--msp-space-2) var(--msp-space-3)">
+    <div class={classes.panel} ref={(el: HTMLElement) => (panelEl = el)}>
+      <div class={classes.header}>
         <Button size="sm" icon={<Icon name="plus" />} onClick={(e) => openMenu(e, openItems(ctx))}>
           Open
         </Button>
-        <div style="flex: 1">
-          <TextInput
-            search
-            size="sm"
-            placeholder="Filter"
-            aria-label="Filter the scene"
-            onInput={(v) => filter.set(v)}
-          />
-        </div>
+        <TextInput
+          search
+          size="sm"
+          placeholder="Filter"
+          aria-label="Filter the scene"
+          class={classes.filter}
+          onInput={(v) => filter.set(v)}
+        />
       </div>
-      {/* focused by a click on a row: Up and Down pick, Left and Right close and open (a tree view's keys) */}
-      <div
-        role="tree"
-        aria-label="The scene"
-        tabIndex={0}
-        style="flex: 0 1 auto; min-height: 60px; overflow: auto; padding: 0 var(--msp-space-2); outline: none"
-        onKeyDown={keys}
-      >
-        <Show
-          when={mapState(objects, (o) => o.length > 0)}
-          fallback={() => (
-            <p style={`margin: var(--msp-space-3); ${Muted}`}>
-              Drop files here, or + Open: structures (mmCIF, PDB), cellPACK and PetWorld models, particle lists (STAR,
-              TBL, EM, NDJSON), maps and tomograms (MRC, REC, ST), meshes (OBJ, PLY, VTP).
-            </p>
-          )}
-        >
-          {() => (
-            <For each={rows} by={(r) => r.key}>
-              {(row) => (
-                <TreeRow
-                  api={api}
-                  area={area}
-                  row={row}
-                  open={open.asReadonly}
-                  picked={picked.asReadonly}
-                  hovered={hovered.asReadonly}
-                  scrollTo={model.scrollTo}
-                  onMenu={menu}
-                  onTool={tool}
-                  onToggleOpen={toggleOpen}
-                  onPick={pick}
-                  onHover={hover}
-                />
-              )}
-            </For>
-          )}
-        </Show>
-      </div>
-      <div
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Drag to size the properties"
-        style="flex: none; height: 7px; cursor: row-resize; display: flex; align-items: center; touch-action: none"
-        onPointerDown={split.down}
-        onPointerMove={split.move}
-        onPointerUp={split.up}
-      >
-        <div style="flex: 1; height: 1px; background: var(--msp-color-border)" />
-      </div>
-      {/* the tree as tall as it is, the properties under it in the rest, never less than their height (dragged) */}
-      <div
-        style={mapState(
-          split.height,
-          (h) => `flex: 1 0 ${h}px; min-height: ${h}px; overflow: auto; padding: var(--msp-space-2) var(--msp-space-3)`,
+      <Show
+        when={mapState(objects, (o) => o.length > 0)}
+        fallback={() => (
+          <p class={classes.empty}>
+            Drop files here, or + Open: structures (mmCIF, PDB), cellPACK and PetWorld models, particle lists (STAR,
+            TBL, EM, NDJSON), maps and tomograms (MRC, REC, ST), meshes (OBJ, PLY, VTP).
+          </p>
         )}
       >
-        <Show
-          when={mapState(picked.asReadonly, (p) => !!p)}
-          fallback={() => <p style={`margin: 0; ${Muted}`}>Pick a row to see its properties.</p>}
-        >
-          {() => (
-            <Properties
-              api={api}
-              area={area}
-              picked={picked.asReadonly}
-              parts={parts.asReadonly}
-              groupings={model.groupings}
-            />
-          )}
-        </Show>
+        {() => (
+          <TreeView
+            rows={rows}
+            picked={pickedKey}
+            shown={shown}
+            tools={(row) => ({
+              color: colorable(row.kind, row.node),
+              clip: clippable(row.kind, row.node),
+              more: !!row.node,
+            })}
+            onPick={pick}
+            onToggle={(row) => toggleOpen(row.key)}
+            onEye={eye}
+            onTool={tool}
+            onMenu={menu}
+            onDblClick={(row) => row.node && area.focus(row.node)}
+            onHover={hover}
+            ref={(t) => (tree = t)}
+          />
+        )}
+      </Show>
+      <SplitLine height={height} panel={() => panelEl} />
+      <div class={classes.properties} style={{ height: derive(height, (h) => `${h}px`) }}>
+        <ScrollArea class={classes.fill} contentClass={classes.propertiesContent} edge>
+          <Show
+            when={mapState(picked.asReadonly, (p) => !!p)}
+            fallback={() => <p class={classes.empty}>Pick a row to see its properties.</p>}
+          >
+            {() => (
+              <Properties
+                api={api}
+                area={area}
+                picked={picked.asReadonly}
+                parts={parts.asReadonly}
+                groupings={model.groupings}
+              />
+            )}
+          </Show>
+        </ScrollArea>
       </div>
-    </div>
-  );
-}
-
-function TreeRow(props: {
-  api: ViewerApi;
-  area: ExplorerApi;
-  row: Row;
-  open: ReadonlyState<ReadonlySet<string>>;
-  picked: ReadonlyState<Picked | undefined>;
-  hovered: ReadonlyState<string | undefined>;
-  scrollTo: ObservableState<string | undefined>;
-  onMenu(row: Row, e: MouseEvent): void;
-  onTool(row: Row, e: MouseEvent, which: 'color' | 'clip'): void;
-  onToggleOpen(key: string): void;
-  onPick(row: Row): void;
-  onHover(row: Row | undefined): void;
-}) {
-  const { row } = props;
-  const isOpen = mapState(props.open, (o) => o.has(row.key));
-  const isPicked = mapState(props.picked, (p) => p?.key === row.key);
-  const isHovered = mapState(props.hovered, (h) => h === row.key);
-  const shown = observableState(row.visible ?? false);
-  const category = row.kind === 'category';
-  // brought into view when picked in 3D (once: the request is cleared)
-  let el: HTMLElement | undefined;
-  const sub = props.scrollTo.asReadonly.subscribe((key) => {
-    if (key !== row.key || !el) return;
-    el.scrollIntoView({ block: 'nearest' });
-    props.scrollTo.set(undefined);
-  });
-  onCleanup(() => sub.unsubscribe());
-  return (
-    <div
-      ref={(e: HTMLElement) => {
-        el = e;
-        // a row made by the reveal itself (its way unfolded): into view once laid out
-        if (props.scrollTo.value === row.key) {
-          requestAnimationFrame(() => {
-            e.scrollIntoView({ block: 'nearest' });
-            props.scrollTo.set(undefined);
-          });
-        }
-      }}
-      style={derive(
-        [isPicked, isHovered],
-        (p, h) =>
-          `display: flex; align-items: center; gap: var(--msp-space-1); min-height: 26px; padding-left: calc(${row.depth} * var(--msp-space-3)); border-radius: var(--msp-radius-sm, 4px); cursor: default; ${p ? 'background: var(--msp-color-selected, rgba(120, 160, 255, 0.18));' : h ? 'background: var(--msp-color-hover, rgba(255, 255, 255, 0.06));' : ''}`,
-      )}
-      role="treeitem"
-      aria-level={row.depth + 1}
-      aria-selected={mapState(isPicked, String)}
-      aria-expanded={row.hasChildren ? mapState(isOpen, String) : undefined}
-      onClick={() => !category && props.onPick(row)}
-      onDblClick={() => row.node && props.area.focus(row.node)}
-      onMouseEnter={() => !category && props.onHover(row)}
-      onMouseLeave={() => !category && props.onHover(undefined)}
-      onContextMenu={(e) => !category && props.onMenu(row, e)}
-    >
-      {row.hasChildren ? (
-        <Button
-          size="xs"
-          variant="ghost"
-          title={mapState(isOpen, (o) => (o ? 'Fold' : 'Unfold'))}
-          icon={
-            <Show when={isOpen} fallback={() => <Icon name="chevron-right" />}>
-              {() => <Icon name="chevron-down" />}
-            </Show>
-          }
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onToggleOpen(row.key);
-          }}
-        />
-      ) : (
-        <span style="width: 20px" />
-      )}
-      {row.visible !== undefined ? (
-        <Button
-          size="xs"
-          variant="ghost"
-          title="Show or hide"
-          icon={
-            <Show when={shown} fallback={() => <Icon name="eye-off" />}>
-              {() => <Icon name="eye" />}
-            </Show>
-          }
-          onClick={(e) => {
-            e.stopPropagation();
-            // flipped at once, the operation after the next frame (on a large model it takes a moment): the row is made
-            // again from the scene when it is done, and goes back if it failed
-            const was = shown.value;
-            shown.set(!was);
-            // after the frame is painted (a frame callback runs before it)
-            requestAnimationFrame(() =>
-              setTimeout(() => {
-                void toggleVisible(props.api, row)?.then((r) => {
-                  if (r && !r.ok) shown.set(was);
-                });
-              }),
-            );
-          }}
-        />
-      ) : null}
-      {row.color !== undefined ? (
-        <span
-          style={`width: 10px; height: 10px; border-radius: 50%; flex: none; background: ${Color.toHexStyle(Color(row.color))}`}
-        />
-      ) : null}
-      <span
-        style={`flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${category ? 'font-weight: 600; text-transform: none' : ''}`}
-      >
-        {/* a label: told apart from the objects (its kind, before its text) */}
-        {row.kind === 'label' ? (
-          <span
-            style={`${Muted}; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; margin-right: var(--msp-space-1)`}
-          >
-            <Icon name="type" size={12} />
-            Label
-          </span>
-        ) : row.kind === 'distance' ? (
-          <span
-            style={`${Muted}; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; margin-right: var(--msp-space-1)`}
-          >
-            <Icon name="ruler" size={12} />
-            Distance
-          </span>
-        ) : null}
-        {row.label}
-      </span>
-      {row.count ? <span style={`flex: none; ${Muted}`}>{row.count}</span> : null}
-      {colorable(row.kind, row.node) ? (
-        <Button
-          size="xs"
-          variant="ghost"
-          title="Color all of it"
-          icon={<Icon name="paintbrush" />}
-          onClick={(e) => props.onTool(row, e, 'color')}
-        />
-      ) : null}
-      {clippable(row.kind, row.node) ? (
-        <Button
-          size="xs"
-          variant="ghost"
-          title="Add a clip"
-          icon={<Icon name="scissors" />}
-          onClick={(e) => props.onTool(row, e, 'clip')}
-        />
-      ) : null}
-      {removable(row.kind, row.node) ? (
-        <Button
-          size="xs"
-          variant="ghost"
-          title="Remove it from the scene"
-          icon={<Icon name="trash-2" />}
-          onClick={(e) => {
-            e.stopPropagation();
-            void removeObject(props.api, props.area, row.kind, row.node!.ref);
-          }}
-        />
-      ) : null}
     </div>
   );
 }
@@ -601,27 +423,6 @@ function TreeRow(props: {
 /** Whether a picked row stays lit in 3D: not a volume's (its light would cover the slice's image) */
 function lastingHighlight(row: { readonly kind: string }) {
   return !['volume', 'slice', 'oblique slice', 'isosurface', 'volume representation'].includes(row.kind);
-}
-
-// --- the split between the tree and the properties ----------------------------------------------------------------
-
-/** The properties' least height, dragged on the line above them (the pointer captured while dragging) */
-function splitter(initial: number) {
-  const height = observableState(initial);
-  let start: { y: number; h: number } | undefined;
-  return {
-    height: height.asReadonly,
-    down(e: PointerEvent) {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      start = { y: e.clientY, h: height.value };
-    },
-    move(e: PointerEvent) {
-      if (start) height.set(Math.max(60, Math.min(window.innerHeight - 160, start.h - (e.clientY - start.y))));
-    },
-    up() {
-      start = undefined;
-    },
-  };
 }
 
 // --- + Open ----------------------------------------------------------------------------------------------------------
