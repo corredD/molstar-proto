@@ -1,0 +1,35 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+/* The mesoscale controls (controls.tsx): Prism tokens only (prism-ui styling.md §4). A motion's line: its toggle in the
+   label column (`--msp-label-width`, as ParamsForm's rows), its amplitude after. */
+
+.stack {
+  display: grid;
+  gap: var(--msp-space-2);
+}
+
+.tight {
+  display: grid;
+  gap: var(--msp-space-1);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: var(--msp-space-2);
+  min-height: var(--msp-control-height);
+
+  & > :last-child {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.label {
+  flex: none;
+  width: var(--msp-label-width);
+}
