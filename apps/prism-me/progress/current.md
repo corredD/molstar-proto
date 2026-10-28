@@ -8,7 +8,8 @@ is not built is [../TODO.md](../TODO.md).
 
 - **The properties on their mock** (`me/properties-view`, `~/prism-me-lanes/properties-view`,
   [brief](2026-10-28-properties-view.md)): `properties.tsx` on `SectionList`, Prism's tokens and `ColorPicker`; a
-  category's and a clip row's properties, a Labels section; the last of the queue (Ludo, 2026-10-28); started.
+  category's and a clip row's properties, a Labels section; the last of the queue (Ludo, 2026-10-28). PR #14, reviewed
+  (3 must-fix, 4 should-fix fixed), checked with real GL on WebGPU and WebGL2 and against Storybook; waits on Ludo.
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
