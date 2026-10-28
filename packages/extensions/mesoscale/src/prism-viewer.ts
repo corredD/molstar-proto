@@ -70,6 +70,12 @@ export const MesoscaleSkill: ViewerSkill = {
       description: "Opens one of the Mesoscale Explorer's examples by id.",
     },
     {
+      id: 'color_objects_by_theme',
+      operation: 'mesoscale.theme',
+      description:
+        'Colors several objects at once by a theme (by object, entity, chain, generated colors, one color), each kind by what it takes: structures, particle models and lists, volumes (their isosurfaces), meshes.',
+    },
+    {
       id: 'set_mesoscale_graphics',
       operation: 'mesoscale.graphics',
       description:
@@ -104,6 +110,12 @@ export const MesoscaleExtension: ViewerExtension = {
         icon: 'upload',
         alias: ['import colors', 'color file', 'load colors', 'colors json'],
         action: 'Import',
+      }),
+      operationCommand(api, m.theme, {
+        category,
+        icon: 'palette',
+        alias: ['color theme', 'color objects', 'color by object', 'color all'],
+        action: 'Apply',
       }),
       operationCommand(api, m.graphics, {
         category,

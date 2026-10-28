@@ -5,6 +5,7 @@
  */
 
 import { Color } from '@molstar/core/util/color';
+import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { VisualQuality } from '@molstar/graphics/geo/geometry/base';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
@@ -549,6 +550,168 @@ export class MesoscaleApi extends ApiArea {
       return ApiResult.ok(`Graphics set to ${mode}${of}.`, { nodes, view: !one });
     },
   });
+
+  /**
+   * A color theme for several objects at once, each kind by the theme it takes (a category's brush in prism-me, ui.md
+   * §3): structures by object, entity, chain or one color; particle models and lists by object, entity (a list with no
+   * entities: by object), generated colors or one color; volumes (their isosurfaces: slices show the data) and meshes
+   * by object or one color. Everything is planned before a change, so a theme an object does not take changes nothing;
+   * then one commit of the representations' themes, and the particles' look colors (they paint over a theme) cleared or
+   * generated and the meshes colored in the same step.
+   */
+  readonly theme = this.operation({
+    id: 'mesoscale.theme',
+    title: 'Color several objects by a theme',
+    params: {
+      objects: PD.Value<string[]>([], {
+        description: 'The objects by state ref: structures, particle models and lists, volumes, meshes',
+      }),
+      theme: PD.Select<ObjectsTheme>('object', [...ObjectsThemes]),
+      color: PD.Text('white', { description: 'The color of the theme uniform (a CSS color)' }),
+    },
+    async run({ objects: refs, theme, color }, ctx) {
+      if (!refs.length) return ApiResult.fail('invalid', 'Which objects?', 'Give their state refs.');
+      const one = theme === 'uniform' ? cssColor(color) : undefined;
+      if (theme === 'uniform' && one === undefined) {
+        return ApiResult.fail('invalid', `'${color}' is not a color.`, 'Give a color name (tomato) or #rrggbb.');
+      }
+      const byRef = new Map(graphicsObjects(ctx).map((o) => [o.cell.transform.ref, o]));
+      const palette = distinctColors(refs.length);
+      const label = ObjectsThemes.find(([t]) => t === theme)![1];
+      // the plan: what each object takes, checked before any change
+      const plans: ThemePlan[] = [];
+      const fallbacks: string[] = [];
+      for (let i = 0; i < refs.length; i++) {
+        const o = byRef.get(refs[i]);
+        const mine = one ?? palette[i];
+        if (!o) {
+          // not a structure, a list or a volume: a mesh (cryoet's), one color
+          if (!ctx.plugin.state.data.cells.has(refs[i]))
+            return ApiResult.fail('not-found', `There is no object '${refs[i]}'.`);
+          if (theme !== 'object' && theme !== 'uniform') return doesNotTake(refs[i], label);
+          plans.push({ kind: 'mesh', ref: refs[i], color: mine });
+          continue;
+        }
+        const named = (name: string, params: Record<string, unknown> = {}) => ({ name, params });
+        if (o.kind === 'structure') {
+          if (theme === 'generate') return doesNotTake(o.name, label);
+          const name = theme === 'entity' ? 'entity-id' : theme === 'chain' ? 'chain-id' : 'uniform';
+          plans.push({ kind: 'reps', o, theme: named(name, name === 'uniform' ? { value: mine } : {}) });
+        } else if (o.kind === 'particles') {
+          if (theme === 'chain') return doesNotTake(o.name, label);
+          const data = particleData(o.cell, o.representations);
+          const entities = !!data?.entityInfo;
+          if (theme === 'generate' && entities) {
+            plans.push({ kind: 'generate', o });
+            continue;
+          }
+          const byEntity = theme === 'entity' && entities;
+          if ((theme === 'entity' || theme === 'generate') && !entities) fallbacks.push(o.name);
+          plans.push({
+            kind: 'reps',
+            o,
+            theme: byEntity ? named('particle-entity') : named('uniform', { value: mine }),
+            clear: entities,
+          });
+        } else {
+          if (theme !== 'object' && theme !== 'uniform') return doesNotTake(o.name, label);
+          plans.push({ kind: 'reps', o, theme: named('uniform', { value: mine }), only: 'isosurface' });
+        }
+      }
+      // one commit for every representation's theme (bulk is one change)
+      const b = ctx.plugin.state.data.build();
+      const nodes: string[] = [];
+      for (const p of plans) {
+        if (p.kind !== 'reps') continue;
+        for (const r of p.o.representations) {
+          const params = r.transform.params as { type?: { name?: string }; colorTheme?: { name: string } };
+          if (p.only && params.type?.name !== p.only) continue;
+          const next = themeFor(ctx, p.o, r, p.theme);
+          if (!next || JSON.stringify(params.colorTheme) === JSON.stringify(next)) continue;
+          b.to(r).update({ ...params, colorTheme: next });
+          nodes.push(r.transform.ref);
+        }
+      }
+      if (nodes.length) await b.commit();
+      // the particles' look colors, which paint over a theme (their one writer, `particles.look`): cleared, or generated
+      for (const p of plans) {
+        if (p.kind === 'generate' || (p.kind === 'reps' && p.clear)) {
+          const r = await ctx.api.run('mesoscale.colors', {
+            scheme: p.kind === 'generate' ? 'generate' : 'theme',
+            particles: p.o.cell.transform.ref,
+          });
+          if (r.ok && !r.unchanged) nodes.push(...(r.changed.nodes ?? []));
+        } else if (p.kind === 'mesh') {
+          const r = await ctx.api.run('cryoet.mesh', { mesh: p.ref, color: Color.toHexStyle(p.color) });
+          if (!r.ok) return r;
+          if (!r.unchanged) nodes.push(p.ref);
+        }
+      }
+      if (!nodes.length) return ApiResult.already(`They are already colored ${label.toLowerCase()}.`);
+      const fell = fallbacks.length ? ` (${fallbacks.join(', ')}: no entities, by object)` : '';
+      return ApiResult.ok(`Colored ${refs.length} object${refs.length > 1 ? 's' : ''} ${label.toLowerCase()}${fell}.`, {
+        nodes,
+      });
+    },
+  });
+}
+
+/** The themes `mesoscale.theme` gives several objects */
+const ObjectsThemes = [
+  ['object', 'By object'],
+  ['entity', 'By entity'],
+  ['chain', 'By chain'],
+  ['generate', 'Generate colors'],
+  ['uniform', 'Uniform'],
+] as const;
+type ObjectsTheme = (typeof ObjectsThemes)[number][0];
+
+/** What `mesoscale.theme` does to one object */
+type ThemePlan =
+  | {
+      readonly kind: 'reps';
+      readonly o: GraphicsObject;
+      readonly theme: { readonly name: string; readonly params: Record<string, unknown> };
+      /** Only representations of this type (a volume's isosurfaces) */
+      readonly only?: string;
+      /** Its look colors cleared (a model's: they paint over the theme) */
+      readonly clear?: boolean;
+    }
+  | { readonly kind: 'generate'; readonly o: GraphicsObject }
+  | { readonly kind: 'mesh'; readonly ref: string; readonly color: Color };
+
+const doesNotTake = (name: string, theme: string) =>
+  ApiResult.fail('invalid', `${name} cannot be colored ${theme.toLowerCase()}.`, 'Nothing was changed.');
+
+/** A particle object's list: its representations' source, else its own */
+function particleData(cell: StateObjectCell, reps: readonly StateObjectCell[]): ParticleList | undefined {
+  return (reps[0]?.obj?.data as { sourceData?: ParticleList } | undefined)?.sourceData ?? cell.obj?.data;
+}
+
+/** A representation's color theme, by name, its params the theme's defaults for it and `params` */
+function themeFor(
+  ctx: Pick<ApiContext, 'plugin'>,
+  o: GraphicsObject,
+  r: StateObjectCell,
+  theme: { readonly name: string; readonly params: Record<string, unknown> },
+): { name: string; params: Record<string, unknown> } | undefined {
+  const { themes } =
+    ctx.plugin.representation[o.kind === 'volume' ? 'volume' : o.kind === 'particles' ? 'particles' : 'structure'];
+  const registry = themes.colorThemeRegistry as {
+    has(name: string): boolean;
+    get(name: string): { getParams(ctx: object): PD.Params };
+  };
+  if (!registry.has(theme.name)) return undefined;
+  const data =
+    o.kind === 'particles'
+      ? { particles: particleData(o.cell, [r]) }
+      : o.kind === 'volume'
+        ? { volume: o.cell.obj?.data }
+        : { structure: o.cell.obj?.data };
+  return {
+    name: theme.name,
+    params: { ...PD.getDefaultValues(registry.get(theme.name).getParams(data)), ...theme.params },
+  };
 }
 
 /** The objects with graphics: structures, particle lists, volumes */
