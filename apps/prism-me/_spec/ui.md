@@ -413,6 +413,11 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   (`state.visibility` of their refs; shown while any is), its scissors add one Prism cut of all of them (`clipping.add`
   by their refs, its handles shown). Its brush (a color theme over every kind under it) waits: no one operation does it
   (TODO.md).
+- Clips as rows (2026-10-27, lane `tree-view`): each of Prism's cuts is a row under the row it was made at (an object's;
+  an entity's, a chain's, a group's or a target's for a cut of only them; their category's for a cut of several
+  objects), named by its shape and number (Plane 1). Its eye draws it in the scene or not (`clipping.show`, one step;
+  the coordinator's default: a Prism cut has no on and off); picked, its properties show its name only and it has no ⋯
+  (its menu and properties are the right-click's and the properties' lanes).
 - Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a
   structure entity's or chain's eye (Prism hides representations, not parts); a color dot only where a color was set;
   the mesh section repeats the mesh's eye and name.

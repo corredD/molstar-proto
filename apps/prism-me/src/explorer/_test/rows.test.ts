@@ -106,3 +106,20 @@ describe('the filter (ui.md §1)', () => {
     expect(keys('nothing')).toEqual([]);
   });
 });
+
+describe("a clip of a model's group", () => {
+  it("goes under the group whose entities it cuts, in the model's grouping", () => {
+    const clip = { tag: 'k1', label: 'Plane 1', node: 'o:m', object: 'm', entities: [1, 0], drawn: false };
+    const keys = rowsOf([model], new Map([['m', infoOf('compartment', true)]]), AllOpen, '', [], [], [clip]).map(
+      (r) => `${r.depth}:${r.key}`,
+    );
+    expect(keys.slice(keys.indexOf('2:g:m:root'))).toEqual([
+      '2:g:m:root',
+      '3:g:m:root.membrane',
+      '4:me:m:0',
+      '3:g:m:root.capsid',
+      '4:me:m:1',
+      '3:k:k1',
+    ]);
+  });
+});

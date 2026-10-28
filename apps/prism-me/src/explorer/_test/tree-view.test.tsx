@@ -255,3 +255,44 @@ describe("a category's tools (ui.md §3)", () => {
     expect(v.api.history.steps.value.length).toBe(steps + 1);
   });
 });
+
+describe('clips as rows (ui.md §3)', () => {
+  it('a clip made at a node is a row under it, its eye its drawing in the scene', async () => {
+    const v = await viewer([['HIV', 3]], true);
+    const { host, model, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    await until(() => !!model.parts.value.get(hiv));
+    const add = async (shape: string, params: object = {}) => {
+      const r = await v.api.run('clipping.add', { shape, node: `#${hiv}`, ...params });
+      if (!r.ok) throw new Error(r.message);
+    };
+    await add('plane');
+    await add('sphere', { particles: { entities: [1] } });
+    const [whole, part] = v.api.clipping.cuts.value;
+    // the way to the entity unfolded: the model's rows, its clip after its children; the entity's under it
+    model.reveal({ key: `me:${hiv}:1`, label: 'protein 1', kind: 'entity', node: { ref: hiv } });
+    model.open.set(new Set([...model.open.value, `me:${hiv}:1`]));
+    await settle();
+    const outline = items(host).map((r) => `${r.getAttribute('aria-level')}:${r.dataset.treeKey}`);
+    expect(outline).toEqual([
+      '1:c:particles',
+      `2:o:${hiv}`,
+      `3:g:${hiv}:root`,
+      `4:g:${hiv}:root.cytoplasm`,
+      `5:me:${hiv}:0`,
+      `5:me:${hiv}:1`,
+      `6:k:${part.object.tag}`,
+      `5:me:${hiv}:2`,
+      `3:k:${whole.object.tag}`,
+    ]);
+    expect(item(host, `k:${whole.object.tag}`)!.textContent).toContain('Plane 1');
+    // its eye draws it in the scene
+    item(host, `k:${whole.object.tag}`)!.querySelector<HTMLButtonElement>('button[aria-label="Show"]')!.click();
+    await until(() => !!v.api.clipping.cuts.value[0].drawing);
+    // picked, it shows no properties of its object
+    item(host, `k:${whole.object.tag}`)!.querySelector<HTMLElement>('[data-tree-row]')!.click();
+    await settle();
+    expect(model.picked.value?.key).toBe(`k:${whole.object.tag}`);
+    expect(model.picked.value?.node).toBeUndefined();
+  });
+});

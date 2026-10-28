@@ -10,7 +10,7 @@ import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { IconName } from '@molstar/prism-ui';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
-import type { Category, NodeRef, SceneObject } from './operations.js';
+import type { Category, ExplorerApi, NodeRef, SceneObject } from './operations.js';
 import { filterRows, type TreeRowView } from './tree-view.js';
 
 // The rows of the explorer's tree (_spec/ui.md §3), flat, from the scene's objects and the parts the mesoscale and
@@ -35,7 +35,32 @@ export interface Row extends TreeRowView {
   readonly representation?: string;
   /** A category's objects (their refs): its eye and its scissors act on all of them */
   readonly objects?: readonly string[];
+  /** A clip's row: its cut's tag (Prism's) */
+  readonly clip?: string;
 }
+
+/** A clip (Prism's cut) as a row under the row it was made at (ui.md §3) */
+export interface ClipAt {
+  readonly tag: string;
+  readonly label: string;
+  /** The row it goes under: its object's, its part's, its category's (a cut of several objects) */
+  readonly node: string;
+  /** Its (first) object's ref: under its row when its own is not there */
+  readonly object: string;
+  /** A cut of some of a model's entities: their ids, to find its group's row */
+  readonly entities?: readonly number[];
+  /** Drawn in the scene (its eye) */
+  readonly drawn: boolean;
+}
+
+/** Prism's cut shapes, as the tree names them */
+export const ClipShapes: Readonly<Record<string, string>> = {
+  plane: 'Plane',
+  sphere: 'Sphere',
+  cube: 'Box',
+  cylinder: 'Cylinder',
+  infiniteCone: 'Cone',
+};
 
 /** The icon of an object's row (styling.md §4: top-level rows only) */
 const ObjectIcons: Readonly<Record<SceneObject['kind'], IconName>> = {
@@ -58,6 +83,7 @@ export function sameRow(a: Row, b: Row): boolean {
     a.hasChildren === b.hasChildren &&
     a.expanded === b.expanded &&
     a.representation === b.representation &&
+    a.clip === b.clip &&
     a.objects?.length === b.objects?.length
   );
 }
@@ -71,6 +97,7 @@ export function rowsOf(
   filter: string,
   labels: readonly LabelInfo[] = [],
   distances: readonly DistanceInfo[] = [],
+  clips: readonly ClipAt[] = [],
 ): Row[] {
   const f = filter.trim().toLowerCase();
   const rows: Row[] = [];
@@ -78,7 +105,11 @@ export function rowsOf(
   // point's); one made at a model's group the model's grouping does not show now: under the model (§3), back under its
   // group when that grouping is shown again
   // one whose row is not there (a part gone, a key from elsewhere): under its object's row
-  const shownGroups = groupRowsOf(objects, parts);
+  const shownGroups = groupRowsOf(
+    objects,
+    parts,
+    clips.some((c) => (c.entities?.length ?? 0) > 1),
+  );
   const known = rowKeysOf(objects, parts, shownGroups.keys);
   const byNode = new Map<string, Draft[]>();
   const under = (key: string, object: string, row: Omit<Draft, 'depth'>) => {
@@ -88,6 +119,19 @@ export function rowsOf(
     if (list) list.push(row as Draft);
     else byNode.set(node, [row as Draft]);
   };
+  for (const c of clips) {
+    // a cut of several entities: its group's row, where one has exactly those
+    const group =
+      c.entities && c.entities.length > 1 ? shownGroups.byMembers.get(membersKey(c.object, c.entities)) : undefined;
+    under(group ?? c.node, c.object, {
+      key: `k:${c.tag}`,
+      label: c.label,
+      kind: 'clip',
+      visible: c.drawn,
+      hasChildren: false,
+      clip: c.tag,
+    });
+  }
   for (const l of labels) {
     under(l.node, l.target, {
       key: `l:${l.ref}`,
@@ -288,9 +332,13 @@ function groupKeyOf(ref: string, info: MesoscaleInfo, path: string): string {
   return `g:${ref}:${info.groupBy === 'function' && info.hasCompartments ? 'fn:' : ''}${path}`;
 }
 
-/** The group rows the models' groupings make (their keys), and the models' refs */
-function groupRowsOf(objects: readonly SceneObject[], parts: Parts) {
+/**
+ * The group rows the models' groupings make (their keys), and the models' refs; asked, each group's row by its entities
+ * (a cut of a group is of its entities)
+ */
+function groupRowsOf(objects: readonly SceneObject[], parts: Parts, members: boolean) {
   const keys = new Set<string>();
+  const byMembers = new Map<string, string>();
   const models: string[] = [];
   for (const o of objects) {
     if (o.kind !== 'model') continue;
@@ -299,13 +347,20 @@ function groupRowsOf(objects: readonly SceneObject[], parts: Parts) {
     if (!info) continue;
     const walk = (g: MesoGroup) => {
       for (const child of g.groups) {
-        keys.add(groupKeyOf(o.ref, info, child.path));
+        const key = groupKeyOf(o.ref, info, child.path);
+        keys.add(key);
+        if (members) byMembers.set(membersKey(o.ref, groupEntities(child)), key);
         walk(child);
       }
     };
     walk(info.groups);
   }
-  return { keys, models };
+  return { keys, models, byMembers };
+}
+
+/** A model's entities as one key (in any order) */
+function membersKey(model: string, entities: readonly number[]) {
+  return `${model}:${[...entities].sort((a, b) => a - b).join(',')}`;
 }
 
 /**
@@ -316,6 +371,7 @@ function rowKeysOf(objects: readonly SceneObject[], parts: Parts, groups: Readon
   const keys = new Set<string>(groups);
   const unread: string[] = [];
   for (const o of objects) {
+    keys.add(`c:${o.category}`);
     keys.add(`o:${o.ref}`);
     for (const e of o.entities ?? []) {
       keys.add(`e:${o.ref}:${e.id}`);
@@ -347,6 +403,7 @@ export function toggleVisible(api: ViewerApi, row: Draft) {
   if (row.kind === 'category' && row.objects?.length) {
     return api.run('state.visibility', { node: row.objects.map((r) => `#${r}`).join(', '), visible });
   }
+  if (row.kind === 'clip' && row.clip) return api.run('clipping.show', { tag: row.clip, on: visible });
   const node = row.node;
   if (!node) return;
   switch (row.kind) {
@@ -424,4 +481,47 @@ export function ancestorKeys(
     }
   }
   return out;
+}
+
+type Cut = ViewerApi['clipping']['cuts']['value'][number];
+
+/**
+ * Prism's cuts as rows, each at the row it was made at: a cut of some particles at its entity's or target's (or group's,
+ * in `rowsOf`), of some atoms at its entity's or chain's, of all of an object at its object's, of several objects at
+ * their category's. Over the cuts (few) and, for a part's, its object's parts.
+ */
+export function clipsAt(area: ExplorerApi, cuts: readonly Cut[], objects: readonly SceneObject[]): ClipAt[] {
+  const out: ClipAt[] = [];
+  for (const c of cuts) {
+    const tag = c.object.tag;
+    if (!tag) continue;
+    const of = objects.filter((o) => c.targets.some((t) => area.isUnder(t.ref, o.ref)));
+    if (!of.length) continue;
+    const o = of[0];
+    const label = `${ClipShapes[c.object.type] ?? c.object.type} ${c.index}`;
+    const at = { tag, label, object: o.ref, drawn: !!c.drawing };
+    if (of.length > 1) {
+      const category = of.every((x) => x.category === o.category);
+      out.push({ ...at, node: category ? `c:${o.category}` : `o:${o.ref}` });
+      continue;
+    }
+    const s = c.particles?.selector;
+    if (s?.targets?.length === 1) out.push({ ...at, node: `t:${o.ref}:${s.targets[0]}` });
+    else if (s?.entities?.length === 1) out.push({ ...at, node: `me:${o.ref}:${s.entities[0]}` });
+    else if (s?.entities?.length) out.push({ ...at, node: `o:${o.ref}`, entities: s.entities });
+    else out.push({ ...at, node: c.kept && c.atoms ? (atomsRow(area, c, o) ?? `o:${o.ref}`) : `o:${o.ref}` });
+  }
+  return out;
+}
+
+/** The entity's or chain's row a cut of some atoms is of (`area.cutsOf`: exactly its atoms) */
+function atomsRow(area: ExplorerApi, c: Cut, o: SceneObject): string | undefined {
+  for (const e of o.entities ?? []) {
+    if (area.cutsOf([c], { ref: o.ref, entity: e.id }).length) return `e:${o.ref}:${e.id}`;
+    if (e.chains.length < 2) continue;
+    for (const ch of e.chains) {
+      if (area.cutsOf([c], { ref: o.ref, entity: e.id, chain: ch }).length) return `ch:${o.ref}:${e.id}:${ch}`;
+    }
+  }
+  return undefined;
 }

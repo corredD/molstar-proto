@@ -38,7 +38,18 @@ import { distancePicker, selectionModeHint } from './measure.js';
 import { clipItems, clippable, colorable, colorItems, nodeMenuItems, showClipHandles } from './menu.js';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
-import { ancestorKeys, Categories, type Parts, type Row, rowOf, rowsOf, sameRow, toggleVisible } from './rows.js';
+import {
+  ancestorKeys,
+  Categories,
+  ClipShapes,
+  clipsAt,
+  type Parts,
+  type Row,
+  rowOf,
+  rowsOf,
+  sameRow,
+  toggleVisible,
+} from './rows.js';
 import { type At, SplitLine, TreeView, type TreeViewHandle, treeClasses as classes } from './tree-view.js';
 
 // The explorer's panel (apps/prism-me/_spec/ui.md §1–4): + Open, a filter, the tree of the scene in four categories,
@@ -255,9 +266,12 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   const labels = api.stage?.labelsState() ?? observableState<readonly LabelInfo[]>([]).asReadonly;
   // and its distances, each under its first point's row
   const distances = api.stage?.distancesState() ?? observableState<readonly DistanceInfo[]>([]).asReadonly;
+  // and Prism's cuts, each under the row it was made at
+  const cuts = api.clipping?.cuts ?? observableState<ExplorerCuts>([]).asReadonly;
+  const clips = derive([cuts, objects], (c, o) => clipsAt(area, c, o));
   const rows = derive(
-    [objects, parts.asReadonly, open.asReadonly, filter.asReadonly, labels, distances],
-    (o, p, op, f, l, d) => keep(rowsOf(o, p, op, f, l, d)),
+    [objects, parts.asReadonly, open.asReadonly, filter.asReadonly, labels, distances, clips],
+    (o, p, op, f, l, d, k) => keep(rowsOf(o, p, op, f, l, d, k)),
   );
   const pickedKey = derive(picked.asReadonly, (p) => p?.key);
   // the row under the pointer: lit in 3D (the picked row's highlight comes back when it leaves)
@@ -430,7 +444,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
 /** A category's scissors: one cut of every object under it (Prism's, through all their representations), by shape */
 function categoryClipItems(api: ViewerApi, objects: readonly string[]): ContextMenuItem[] {
   const node = objects.map((r) => `#${r}`).join(', ');
-  return CutShapes.map(([shape, label]) => ({
+  return Object.entries(ClipShapes).map(([shape, label]) => ({
     id: `clip-${shape}`,
     label,
     run: async () => {
@@ -441,14 +455,7 @@ function categoryClipItems(api: ViewerApi, objects: readonly string[]): ContextM
   }));
 }
 
-/** Prism's cut shapes, as the scissors offer them (menu.ts) */
-const CutShapes = [
-  ['plane', 'Plane'],
-  ['sphere', 'Sphere'],
-  ['cube', 'Box'],
-  ['cylinder', 'Cylinder'],
-  ['infiniteCone', 'Cone'],
-] as const;
+type ExplorerCuts = ViewerApi['clipping']['cuts']['value'];
 
 /** Whether a picked row stays lit in 3D: not a volume's (its light would cover the slice's image) */
 function lastingHighlight(row: { readonly kind: string }) {
