@@ -10,13 +10,10 @@ import { Button, Slider, type SliderProps } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ExplorerApi, NodeRef } from './operations.js';
+import { Hint, Line, propertiesClasses as classes } from './properties-view.js';
 
 // A distance's properties (_spec/ui.md §7): its two points (a click picks the point's row), its text size,
-// line width and opacity (`stage.editDistance`, one step a release).
-
-const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
-const Line = 'display: flex; align-items: center; gap: var(--msp-space-2); min-height: 28px';
-const Label = 'width: 64px; flex: none';
+// line width and opacity (`stage.editDistance`, one step a release). Lines as the properties' (properties-view.tsx).
 
 /** A fraction shown as a percent */
 const Percent = {
@@ -31,13 +28,12 @@ const Times = { format: (v: number) => String(Math.round(v * 100) / 100), unit: 
 export function DistanceProps(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef }) {
   const { api, area } = props;
   const stage = api.stage;
-  if (!stage) return <span style={Muted}>The stage tools are not loaded.</span>;
+  if (!stage) return <Hint>The stage tools are not loaded.</Hint>;
   const ref = props.node.ref;
   const distance = mapState(stage.distancesState(), (l) => l.find((d) => d.ref === ref));
   const edit = (values: Record<string, unknown>) => void api.run('stage.editDistance', { distance: ref, ...values });
   const point = (which: 'a' | 'b', title: string) => (
-    <div style={Line}>
-      <span style={Label}>{title}</span>
+    <Line label={title}>
       <Button
         size="sm"
         variant="ghost"
@@ -49,14 +45,13 @@ export function DistanceProps(props: { api: ViewerApi; area: ExplorerApi; node: 
       >
         {mapState(distance, (d) => d?.[which].label ?? '')}
       </Button>
-    </div>
+    </Line>
   );
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-      <div style={Line}>
-        <span style={Label}>Distance</span>
+    <div class={classes.tight}>
+      <Line label="Value">
         <span>{mapState(distance, (d) => d?.label ?? '')}</span>
-      </div>
+      </Line>
       {point('a', 'From')}
       {point('b', 'To')}
       <Field
@@ -93,11 +88,8 @@ export function DistanceProps(props: { api: ViewerApi; area: ExplorerApi; node: 
 function Field(props: SliderProps & { label: string }) {
   const { label, ...slider } = props;
   return (
-    <div style={Line}>
-      <span style={Label}>{label}</span>
-      <div style="flex: 1; min-width: 0">
-        <Slider aria-label={label} {...slider} />
-      </div>
-    </div>
+    <Line label={label}>
+      <Slider aria-label={label} {...slider} />
+    </Line>
   );
 }
