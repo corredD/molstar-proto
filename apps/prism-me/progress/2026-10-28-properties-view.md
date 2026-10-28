@@ -45,3 +45,71 @@
   and the header (Opus) 3. the category's and the clip row's properties, the Labels section (Opus) 4. restyle and
   ColorPicker (Sonnet for mechanical edits) 5. checks (Sonnet) 6. the gate (Opus reviewer, skeptic) 7. real GL and
   Storybook side by side: every kind, light and dark, 360 and 260 px.
+
+## Built
+
+The explorer's properties are the mock's frame (`src/explorer/properties-view.tsx`, `properties.module.css`): Prism UI
+only, no viewer, so the Storybook mock (`_stories/properties.tsx`) draws its fake sections in the same frame, as the
+tree lane shared the tree.
+
+- The header: the row's name (a label's text, a clip's shape, as they change) and its kind in words (Structure,
+  Mesoscale model, Particle list, Clip…), not the raw kind string.
+- The sections on Prism's `SectionList`, in ui.md §4's order, each `when` its row applies: Look, Representation,
+  Isosurface, Decoration, Slice, Oblique slice, Position, Clips, Labels, Graphics & Motion; a clip's, a label's and a
+  distance's own section. One `ShellModel` kept with the tree's state (`SceneModel.sections`): every section starts
+  folded, one opened (or folded) stays so from row to row this session; a folded section is paused. The module-global
+  `Section` is gone; a volume's Slice X/Y/Z and its oblique slices are blocks in one Slice section.
+- No inline style left in `properties.tsx` (59), `distance-properties.tsx` (9), cryoet's `controls.tsx` (38) and
+  mesoscale's (5): lines are a label in `--msp-label-width` and a control, on tokens. cryoet and mesoscale have a CSS
+  module each, with `styles` and `styles:check` scripts (as command-language).
+- Every color on Prism's color row (`ParamsForm`'s, its `ColorPicker`): the app's swatch is gone, and so is a mesh's
+  `<input type=color>`; a run of picks is one step (the scope's `restartable`, no raw timer). A color with none of its
+  own (a theme's, mixed) says so in words, a button to pick one (a white swatch read 255, 255, 255: seen in Chrome).
+- A category's Look: Visible (`state.visibility` of every object under it, one step) and its color themes as Choices,
+  the same as its row's brush (`mesoscale.theme`, one step; Uniform in Prism's `ColorPicker`, applied once); the brush
+  and the Look share `categoryTheme` (rows.ts). Its Clips: the cuts its scissors made (the tree's clip rows under it),
+  each editable.
+- One `ClipEditor` wherever a clip shows (an object's Clips, a category's, a clip row's own Clip section): its handles,
+  its numbers' toggle, On top, remove, then its shape (Prism's five) and invert, one `clipping.update` each; the numbers
+  made again for another shape. The clip row stays picked through a reshape (its tag is kept).
+- A Labels section on every node but a category and what was made at a node: each label made at it (by its row's key,
+  indexed by ref once a change), its text (as typed; Enter at once), size, Remove, one `stage.editLabel` each.
+- `Picked` carries a clip row's tag and a category's objects (they were dropped).
+- Tests: `src/explorer/_test/properties.test.tsx` (6, each failed first), cryoet's `mesh-controls.test.tsx` (failed
+  first).
+
+## Decided
+
+- The coordinator's defaults (not Ludo's; in the PR): a clip's shape and invert are fields in its properties (ui.md §4,
+  Ludo 2026-10-25), shape by Prism's `clipping.update` (one step); a category's Clips list the cuts its scissors made,
+  each editable as a clip row's, removed in one step.
+- One slot for every kind, so a section stays open from row to row whatever the kind (ui.md Status, 2026-10-23: "one
+  opened stays open from row to row"). The brief's "open per kind across picks" read this way; a slot per kind would
+  change Ludo's rule, which is his call.
+- The shell model lives with the tree's state (the viewer's life), not in the properties view: picking nothing (or
+  closing the panel) keeps what is open.
+- The mock moved onto the shared frame in the first commit, its sections drawn as the app's (a clip's line and fields, a
+  category's Choices and Uniform, a label's Text line); a Category story added.
+- Labels lists the labels whose `node` is the row's key; the tree's fallback (a label under its object's row when its
+  own row is gone, a group's under its model while grouped otherwise) is not followed there.
+- A distance's first line reads Value (the mock's), under its Distance section.
+- No icons on the Add a representation menu's items (styling.md §4).
+
+## Learned
+
+- The brief said a category's scissors make "one cut per object under it"; the code (and the tree lane's Learned) make
+  one cut of all of them (`clipping.add` `node: '#a, #b'`). The Clips follow the code.
+- `SectionList` mounts every section's body at the pick, folded or not (`activity` pauses its bindings, nothing else): a
+  `For` or `Show` under it fills in on the first open, but what a component does at its top runs at every pick.
+- ParamsForm's color row cannot show "none", and its number sliders set the field once a frame while dragged: a field on
+  it debounces (here `restartable`).
+- A CSS grid's column is as wide as its widest item (`min-width: auto`): at 260 px a long button pushed the Look 26 px
+  past the panel, cutting the sliders' boxes. `grid-template-columns: minmax(0, 1fr)`.
+- 1CRN is colored by chain when it opens: a test of the category's theme picks By object.
+
+## Size
+
+Production (without tests, stories, generated files, docs): +1,188 −665, net +523, under the brief's ~+800 stop. The app
++404 (`properties.tsx` +631 −475: the frame, the category's Look and Clips, the clip editor, the Labels section;
+`properties-view.tsx` 96, `properties.module.css` ~105), cryoet +80 (its CSS module 72), mesoscale +39 (its CSS module
+35). The stories +17 net.
