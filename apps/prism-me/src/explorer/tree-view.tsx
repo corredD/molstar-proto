@@ -20,6 +20,7 @@ import {
   type VirtualListHandle,
 } from '@molstar/prism-ui';
 import type { FrameState } from '@molstar/prism-ui/reactive/frame-state';
+import { uniqueId } from '@molstar/prism-ui/dom/focus';
 import { drag, on, timeout } from '@molstar/prism-ui/dom/scoped';
 import { TreeNavigation } from '@molstar/prism-ui/dom/tree-keys';
 import { derive } from '@molstar/prism-ui/reactive/state';
@@ -160,9 +161,12 @@ function TreeRow<R extends TreeRowView>(p: {
   const at = (e: MouseEvent): At => ({ x: e.clientX, y: e.clientY });
   const off = derive(props.shown.key(row.key), (s) => !(s ?? row.visible ?? true));
   const pick = () => props.onPick(row);
+  // named by its name alone, not its tools' labels (as Prism's tree)
+  const nameId = uniqueId('me-tree-name');
   return (
     <div
       role="treeitem"
+      aria-labelledby={nameId}
       aria-level={row.depth + 1}
       aria-expanded={row.hasChildren ? String(row.expanded) : undefined}
       aria-selected={derive(p.picked, String)}
@@ -201,7 +205,7 @@ function TreeRow<R extends TreeRowView>(p: {
         </button>
         {row.icon ? <Icon name={row.icon} size={15} class={classes.kind} /> : null}
         {row.color !== undefined ? <span class={classes.swatch} style={{ background: colorToHex(row.color) }} /> : null}
-        <span class={classes.label} data-tip-overflow="">
+        <span id={nameId} class={classes.label} data-tip-overflow="">
           {row.label}
         </span>
         <span class={classes.count}>{row.count ?? ''}</span>

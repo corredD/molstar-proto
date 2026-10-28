@@ -195,6 +195,22 @@ describe("the tree's keys and picks (ui.md §3)", () => {
     expect(model.picked.value?.key).toBe(`me:${hiv}:1`);
   });
 
+  it('names a row by its name alone (not its tools)', async () => {
+    const v = await viewer([['HIV', 3]]);
+    const { host, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    await until(() => !!item(host, `o:${hiv}`));
+    const name = (key: string) => {
+      const ids = item(host, key)!.getAttribute('aria-labelledby') ?? '';
+      return ids
+        .split(' ')
+        .map((id) => document.getElementById(id)?.textContent)
+        .join(' ');
+    };
+    expect(name(`o:${hiv}`)).toBe('HIV');
+    expect(name('c:particles')).toBe('Particles');
+  });
+
   it("opens the row's right-click menu from its ⋯, under it", async () => {
     const v = await viewer([['HIV', 3]]);
     const { host, model, refOf } = mount(v);
