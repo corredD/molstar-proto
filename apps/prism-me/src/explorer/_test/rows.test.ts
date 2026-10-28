@@ -85,3 +85,24 @@ describe('a label or a distance whose row is not there', () => {
     expect(keys).toContain('2:d:dist');
   });
 });
+
+describe('the filter (ui.md §1)', () => {
+  const crn: SceneObject = {
+    ref: 's',
+    category: 'structures',
+    kind: 'structure',
+    label: '1CRN',
+    visible: true,
+    entities: [{ id: '1', label: 'Crambin', chains: ['A'] }] as SceneObject['entities'],
+  };
+  const keys = (filter: string) =>
+    rowsOf([crn, model], new Map([['m', infoOf('compartment', true)]]), new Set(), filter).map(
+      (r) => `${r.depth}:${r.key}`,
+    );
+
+  it('keeps a hit with the rows it is in, unopened, and drops the categories with no hit', () => {
+    expect(keys('ca')).toEqual(['0:c:particles', '1:o:m', '2:g:m:root', '3:g:m:root.capsid', '4:me:m:1']);
+    expect(keys('cramb')).toEqual(['0:c:structures', '1:o:s', '2:e:s:1']);
+    expect(keys('nothing')).toEqual([]);
+  });
+});

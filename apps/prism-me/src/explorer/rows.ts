@@ -11,7 +11,7 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { IconName } from '@molstar/prism-ui';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import type { Category, NodeRef, SceneObject } from './operations.js';
-import type { TreeRowView } from './tree-view.js';
+import { filterRows, type TreeRowView } from './tree-view.js';
 
 // The rows of the explorer's tree (_spec/ui.md §3), flat, from the scene's objects and the parts the mesoscale and
 // cryo-ET areas read; and what a row's eye runs.
@@ -137,7 +137,8 @@ export function rowsOf(
       },
     );
   }
-  return f ? rows.filter((r) => r.kind === 'category' || r.label.toLowerCase().includes(f)) : rows;
+  // a hit kept with the rows it is in; a category with no hit goes (as Prism's tree, scene-tree.tsx)
+  return f ? filterRows(rows, f) : rows;
 }
 
 /** A row before its place in the tree is known (whether it shows its children) */

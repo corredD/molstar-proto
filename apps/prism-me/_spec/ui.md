@@ -27,6 +27,9 @@ Structure, Selection, Snapshots and other tabs, the Entities, Segmentations tabs
 The rail keeps two buttons: the panel (the tree) and Settings (the canvas settings). ⌘K and the assistant as Prism has
 them.
 
+The filter keeps each row whose name holds its text, with the rows it is in (looked for in every row, opened or not); a
+category with no hit goes (as Prism's tree).
+
 ## 2. Opening
 
 - Drag and drop anywhere: every format (features.md, "Opening files"); each lands in its category.
