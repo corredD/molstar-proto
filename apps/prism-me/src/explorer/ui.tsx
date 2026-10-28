@@ -276,9 +276,14 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   // and Prism's cuts, each under the row it was made at
   const cuts = api.clipping?.cuts ?? observableState<ExplorerCuts>([]).asReadonly;
   const clips = derive([cuts, objects], (c, o) => clipsAt(area, c, o));
+  // the rows folded while filtering (the filter opens all the others), forgotten when the filter changes
+  const folded = observableState<ReadonlySet<string>>(new Set());
+  effect(filter.asReadonly, () => {
+    if (folded.value.size) folded.set(new Set());
+  });
   const rows = derive(
-    [objects, parts.asReadonly, open.asReadonly, filter.asReadonly, labels, distances, clips],
-    (o, p, op, f, l, d, k) => keep(rowsOf(o, p, op, f, l, d, k)),
+    [objects, parts.asReadonly, open.asReadonly, filter.asReadonly, labels, distances, clips, folded.asReadonly],
+    (o, p, op, f, l, d, k, fo) => keep(rowsOf(o, p, op, f, l, d, k, fo)),
   );
   const pickedKey = derive(picked.asReadonly, (p) => p?.key);
   // the row under the pointer: lit in 3D (the picked row's highlight comes back when it leaves)
@@ -287,9 +292,10 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     area.highlight(row?.node ? row.node : p && lastingHighlight(p) ? p.node : undefined);
   };
   const toggleOpen = (key: string) => {
-    const next = new Set(open.value);
+    const set = filter.value.trim() ? folded : open;
+    const next = new Set(set.value);
     if (!next.delete(key)) next.add(key);
-    open.set(next);
+    set.set(next);
   };
   const pickedOf = (row: Row): Picked => ({
     key: row.key,

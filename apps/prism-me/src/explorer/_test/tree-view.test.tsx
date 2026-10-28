@@ -358,3 +358,22 @@ describe('+ Open and the empty tree (ui.md §2)', () => {
     expect(items.some((m) => m.querySelector('svg'))).toBe(false);
   });
 });
+
+describe('the filter and the chevrons (ui.md §1)', () => {
+  it('folds a row while filtering, and a new filter opens it again', async () => {
+    const v = await viewer([['HIV', 3]]);
+    const { host, model, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    await until(() => !!model.parts.value.get(hiv));
+    model.filter.set('protein 1');
+    await settle();
+    expect(item(host, `me:${hiv}:1`)).toBeTruthy();
+    item(host, `o:${hiv}`)!.querySelector<HTMLButtonElement>('[data-tree-toggle]')!.click();
+    await settle();
+    expect(item(host, `me:${hiv}:1`)).toBeUndefined();
+    expect(item(host, `o:${hiv}`)!.getAttribute('aria-expanded')).toBe('false');
+    model.filter.set('protein');
+    await settle();
+    expect(item(host, `me:${hiv}:1`)).toBeTruthy();
+  });
+});

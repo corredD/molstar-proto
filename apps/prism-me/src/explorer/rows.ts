@@ -106,6 +106,8 @@ export function rowsOf(
   labels: readonly LabelInfo[] = [],
   distances: readonly DistanceInfo[] = [],
   clips: readonly ClipAt[] = [],
+  /** While filtering, the rows the person folded (the filter opens every other) */
+  folded: ReadonlySet<string> = NoKeys,
 ): Row[] {
   const f = filter.trim().toLowerCase();
   const rows: Row[] = [];
@@ -195,7 +197,25 @@ export function rowsOf(
     );
   }
   // a hit kept with the rows it is in; a category with no hit goes (as Prism's tree, scene-tree.tsx)
-  return f ? filterRows(rows, f) : rows;
+  return f ? foldedOut(filterRows(rows, f), folded) : rows;
+}
+
+const NoKeys: ReadonlySet<string> = new Set();
+
+/** The rows under a folded one left out (it stays, with its hits under it, closed) */
+function foldedOut(rows: Row[], folded: ReadonlySet<string>): Row[] {
+  if (!folded.size) return rows;
+  const out: Row[] = [];
+  let under = -1;
+  for (const r of rows) {
+    if (under >= 0 && r.depth > under) continue;
+    under = -1;
+    if (r.expanded && folded.has(r.key)) {
+      under = r.depth;
+      out.push({ ...r, expanded: false });
+    } else out.push(r);
+  }
+  return out;
 }
 
 /** A row before its place in the tree is known (whether it shows its children) */

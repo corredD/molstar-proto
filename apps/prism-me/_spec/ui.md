@@ -28,7 +28,8 @@ The rail keeps two buttons: the panel (the tree) and Settings (the canvas settin
 them.
 
 The filter keeps each row whose name holds its text, with the rows it is in (looked for in every row, opened or not); a
-category with no hit goes (as Prism's tree).
+category with no hit goes (as Prism's tree). While filtering, a row's chevron folds it (its hits under it hidden); a new
+filter opens every row again.
 
 ## 2. Opening
 
