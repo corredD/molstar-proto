@@ -319,7 +319,13 @@ export function filterRows<R extends { readonly depth: number; readonly label: s
  */
 export function SplitLine(props: { height: FrameState<number>; panel: () => HTMLElement | undefined }) {
   const { height } = props;
-  const max = () => (props.panel()?.clientHeight ?? 640) - 160;
+  // the panel read at a press or a key, never per move; the range said once known (aria-valuemax)
+  const top = observableState<number | undefined>(undefined);
+  const max = () => {
+    const m = (props.panel()?.clientHeight ?? 640) - 160;
+    top.set(m);
+    return m;
+  };
   const clamp = (h: number, top = max()) => Math.max(80, Math.min(top, h));
   return (
     <div
@@ -328,6 +334,8 @@ export function SplitLine(props: { height: FrameState<number>; panel: () => HTML
       aria-orientation="horizontal"
       aria-label="The properties' height"
       aria-valuenow={derive(height, (h) => String(Math.round(h)))}
+      aria-valuemin="80"
+      aria-valuemax={derive(top.asReadonly, (t) => (t === undefined ? undefined : String(t)))}
       tabIndex={0}
       onKeyDown={(e: KeyboardEvent) => {
         if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
