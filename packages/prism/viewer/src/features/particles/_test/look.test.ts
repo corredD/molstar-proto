@@ -131,6 +131,59 @@ describe('particles.look', () => {
     expect(looks(v).size).toBe(0);
   });
 
+  it('patches several lists in one call: one tree update, one step, one undo', async () => {
+    const v = await create();
+    expectOk(await v.api.load.files({ files: [new File([await simularium().arrayBuffer()], 'second.simularium')] }));
+    const [a, b] = v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref);
+    const lookOfList = (ref: string) => {
+      const l = v.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === ref)!;
+      return looks(v).get(l.representations[0].cell.transform.ref);
+    };
+    const state = v.plugin.state.data;
+    const updateTree = state.updateTree.bind(state);
+    let updates = 0;
+    (state as { updateTree: typeof updateTree }).updateTree = ((...args: Parameters<typeof updateTree>) => {
+      updates++;
+      return updateTree(...args);
+    }) as typeof updateTree;
+    const steps = v.api.history.steps.value.length;
+    try {
+      expectOk(
+        await v.api.run('particles.look', {
+          lists: [
+            { particles: a, layers: [{ selector: { targets: [1] }, color: red }] },
+            { particles: b, layers: [{ selector: { targets: [2] }, color: blue }], hidden: [0] },
+          ],
+        }),
+      );
+    } finally {
+      (state as { updateTree: typeof updateTree }).updateTree = updateTree;
+    }
+    expect(updates).toBe(1);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    expect(lookOfList(a)).toMatchObject({ layers: [{ targets: [1], color: red }], hidden: [] });
+    expect(lookOfList(b)).toMatchObject({ layers: [{ targets: [2], color: blue }], hidden: [0] });
+    // a list that would not change is left as it is; all of them so: already
+    expect(
+      await v.api.run('particles.look', {
+        lists: [{ particles: a, layers: [{ selector: { targets: [1] }, color: red }] }],
+      }),
+    ).toMatchObject({ ok: true, unchanged: true });
+    // one bad list: nothing written
+    expect(
+      await v.api.run('particles.look', {
+        lists: [
+          { particles: a, layers: [{ selector: { targets: [3] }, color: blue }] },
+          { particles: 'nothing-here', layers: [{ selector: { targets: [1] }, color: red }] },
+        ],
+      }),
+    ).toMatchObject({ ok: false });
+    expect(lookOfList(a)?.layers).toHaveLength(1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(lookOfList(a)).toBeUndefined();
+    expect(lookOfList(b)).toBeUndefined();
+  });
+
   it("gives a representation added to a list the list's layers (not its cuts, nor its hidden targets)", async () => {
     const v = await create();
     const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);

@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -51,6 +52,15 @@ export const ParticlesPlugin = { registry: ParticlesRegistry, behaviors: [] } as
 
 const ListParam = () =>
   PD.Text('', { description: 'A particle list by label or state ref; empty: the only one loaded' });
+
+/** One list's patch of its looks, in `particles.look`'s `lists` (several lists, one write) */
+export interface ParticleListLookPatch {
+  /** The list, by name or state ref */
+  readonly particles?: string;
+  readonly layers?: ParticleLayerPatch[];
+  readonly hidden?: number[];
+  readonly cuts?: { add?: ParticleCutPatch[]; remove?: string[] };
+}
 
 export interface ParticleRepresentationInfo {
   readonly ref: string;
@@ -499,7 +509,8 @@ export class ParticlesApi extends ApiArea {
 
   // A representation's looks (its layers cell: colors, visibility, transparency, emissive of some particles; the
   // targets it leaves out; its cuts of some particles), patched: each absent field kept, so one writer (styles,
-  // targets left out, cuts) never drops another's. Every representation of the list, one update.
+  // targets left out, cuts) never drops another's. Every representation of the list, one update; several lists
+  // (`lists`, each its own patch), one update for all of them, every list checked before it.
   readonly look = this.operation({
     id: 'particles.look',
     title: 'Set how some particles look',
@@ -523,27 +534,47 @@ export class ParticlesApi extends ApiArea {
           { description: 'Cuts of some particles: added ({ tag, entities, compartments, targets }), removed by tag' },
         ),
       ),
+      lists: OptionalParam(
+        PD.Value<ParticleListLookPatch[]>([], {
+          description:
+            'Several lists at once, each its own patch ({ particles, layers, hidden, cuts }): one write for all of them',
+        }),
+      ),
       particles: ListParam(),
       representation: PD.Text('', { description: 'One representation by type; empty: every one of the list' }),
       node: RepresentationNodeParam(),
     },
     async run(values, ctx) {
-      const { layers, hidden, cuts, particles, representation, node } = values as typeof values & {
+      const { layers, hidden, cuts, lists, particles, representation, node } = values as typeof values & {
         layers?: ParticleLayerPatch[];
         hidden?: number[];
         cuts?: { add?: ParticleCutPatch[]; remove?: string[] };
+        lists?: ParticleListLookPatch[];
       };
-      if (!layers && !hidden && !cuts) {
-        return ApiResult.fail('invalid', 'Nothing to change.', 'Give layers, hidden or cuts.');
+      if (lists && (layers || hidden || cuts)) {
+        return ApiResult.fail('invalid', 'Give lists, or one patch (layers, hidden, cuts), not both.');
       }
-      const patch = { layers, hidden, cuts };
-      const error = particleLookPatchError(patch);
-      if (error) return ApiResult.fail('invalid', error);
-      const reps = representationsFor(ctx, particles, representation, node);
-      if (isFailure(reps)) return reps;
+      // each list's patch and representations, all checked before the one write (bulk is one change)
+      const todo: { reps: ParticleRepresentationRef[]; patch: Parameters<typeof patchParticleLook>[2] }[] = [];
+      for (const entry of lists ?? [{ particles, layers, hidden, cuts }]) {
+        const patch = { layers: entry.layers, hidden: entry.hidden, cuts: entry.cuts };
+        if (!patch.layers && !patch.hidden && !patch.cuts) {
+          return ApiResult.fail('invalid', 'Nothing to change.', 'Give layers, hidden or cuts.');
+        }
+        const error = particleLookPatchError(patch);
+        if (error) return ApiResult.fail('invalid', error);
+        const reps = lists
+          ? representationsFor(ctx, entry.particles ?? '', '', '')
+          : representationsFor(ctx, particles, representation, node);
+        if (isFailure(reps)) return reps;
+        todo.push({ reps, patch });
+      }
+      if (!todo.length)
+        return ApiResult.fail('invalid', 'Nothing to change.', 'Give lists, or layers, hidden or cuts.');
+      const reps = todo.flatMap((t) => t.reps);
       const state = ctx.plugin.state.data;
       const b = state.build();
-      const changed = reps.filter((r) => patchParticleLook(b, r.cell.transform.ref, patch));
+      const changed = todo.flatMap((t) => t.reps.filter((r) => patchParticleLook(b, r.cell.transform.ref, t.patch)));
       if (!changed.length) return ApiResult.already(`${namesOfReps(ctx, reps)} already look so.`);
       await ctx.plugin.runTask(state.updateTree(b));
       return ApiResult.ok(`Changed how ${namesOfReps(ctx, changed)} look.`, {
