@@ -22,7 +22,8 @@
     "dev": "node ../../scripts/esbuild/app.mjs apps/prism-me --dev",
     "styles": "node ../../packages/prism/ui/scripts/css.mjs --root . --prefix me",
     "styles:check": "node ../../packages/prism/ui/scripts/css.mjs --root . --prefix me --check",
-    "typecheck:storybook": "tsc -p tsconfig.storybook.json"
+    "typecheck:storybook": "tsc -p tsconfig.storybook.json",
+    "test:scaling": "vitest run --config vitest.scaling.config.ts"
   },
   "dependencies": {
     "@molstar/core": "workspace:*",
