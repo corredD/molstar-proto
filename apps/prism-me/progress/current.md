@@ -6,10 +6,9 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-- **The app is only a spec** (`me/app-spec`, `~/prism-me-lanes/app-spec`, [brief](2026-10-27-app-spec.md)):
-  `explorer.clipWhole`, the picks, the label sizing and the writes by direct call move into stage-tools and `api.run`;
-  no `any` in the app (a biome rule). PR #11, reviewed (5 should-fix fixed), checked with real GL on WebGPU and WebGL2;
-  waits on Ludo.
+- **The tree on its mock** (`me/tree-view`, `~/prism-me-lanes/tree-view`, [brief](2026-10-27-tree-view.md)): `ui.tsx`,
+  `rows.ts` on `VirtualList` and `TreeNavigation`, the row's tools at the end on hover, categories picked, clips as
+  rows; the first of the three views; started.
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,

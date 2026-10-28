@@ -1,0 +1,107 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+import type { PluginContext } from '@molstar/plugin/context';
+import { RepresentationClip } from '@molstar/plugin/state/helpers/representation-clip';
+import type { CutObject } from './cuts.js';
+import { ClipBinding } from './gizmo/binding.js';
+
+// A cut previewed outside the state (clipping.md §4): a view's gesture on a cut's numbers (a slider going) shows the cut
+// as it goes on its live representations, as a handle's drag does (the same binding: a clip-only update, uniforms
+// only), and its release is the app's one `clipping.update`. One preview in flight, the latest waiting (the others
+// dropped); `end` puts back what the state holds once the one in flight lands. Each `show` is a token: an `end` with an
+// older one (a release whose commit landed after another gesture began) leaves the newer preview alone. A change of the
+// state during a preview (an undo, a remove, another edit) ends it, as it cancels a handle's drag: the representations
+// it captured are stale; the next `show` begins again from the state.
+
+export class CutPreview {
+  readonly #binding: ClipBinding;
+  /** The cut previewed, as the state held it when the preview began */
+  #from: CutObject | undefined;
+  #pending: CutObject | undefined;
+  #running = false;
+  #ending = false;
+  #token = 0;
+  /** The state changed under the preview: what `begin` captured is not what the state holds */
+  #stale = false;
+
+  constructor(
+    private readonly plugin: PluginContext,
+    /** What the representations show of the cut now (its gizmo follows); undefined: the state's again */
+    private readonly onShown?: (object: CutObject | undefined) => void,
+  ) {
+    this.#binding = new ClipBinding(plugin, () => []);
+    // previews touch the representations, never the state: a change of it is someone else's
+    plugin.state.data.events.changed.subscribe(() => {
+      if (!this.#from) return;
+      this.#stale = true;
+      this.#end();
+    });
+  }
+
+  /** Whether a preview is on */
+  get active(): boolean {
+    return this.#from !== undefined;
+  }
+
+  /** `from` (a cut as the state holds it) shown as `next` on its representations, not in the state; its token */
+  show(from: CutObject, next: CutObject): number {
+    this.#ending = false;
+    if (!this.#from || this.#stale || !RepresentationClip.sameCut(this.#from, from)) {
+      // another cut, or the state changed: what was previewed back to the state first
+      if (this.#from) this.#binding.cancel();
+      this.#from = from;
+      this.#stale = false;
+      this.#binding.begin('', from);
+    }
+    this.#pending = next;
+    if (!this.#running) void this.#flush();
+    return ++this.#token;
+  }
+
+  /**
+   * The representations back to what the state holds (after a commit: as it now is); with a token, only if no `show`
+   * came after it
+   */
+  end(token?: number): void {
+    if (token !== undefined && token !== this.#token) return;
+    this.#end();
+  }
+
+  #end() {
+    if (!this.#from) return;
+    this.#pending = undefined;
+    this.#ending = true;
+    if (!this.#running) this.#restore();
+  }
+
+  async #flush() {
+    this.#running = true;
+    try {
+      while (this.#pending && this.#from) {
+        const next = this.#pending;
+        this.#pending = undefined;
+        await this.#binding.preview('', this.#from, next);
+        if (!this.#from) break;
+        this.onShown?.(next);
+        // a clip-only update changes uniforms and asks for no frame: drawn now, as a handle's drag is
+        this.plugin.canvas3d?.requestDraw();
+      }
+    } finally {
+      this.#running = false;
+    }
+    if (this.#ending) this.#restore();
+  }
+
+  #restore() {
+    this.#binding.cancel();
+    this.onShown?.(undefined);
+    this.plugin.canvas3d?.requestDraw();
+    this.#from = undefined;
+    this.#ending = false;
+    this.#stale = false;
+  }
+}

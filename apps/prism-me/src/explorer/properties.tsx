@@ -6,9 +6,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Color } from '@molstar/core/util/color';
-import type { ObjectPose } from '@molstar/stage-tools-extension/move';
+import { type ObjectPose, placementWith, poseOf } from '@molstar/stage-tools-extension/move';
 import type { StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, ObliqueSlice, Slice } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
@@ -1163,34 +1163,47 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
         {(tag) => {
           const cut = mapState(cuts, (l) => l.find((c) => c.object.tag === tag));
           const handles = derive([cut, handled], (c, h) => !!c && h.includes(c.index));
+          // its place, turn and size by numbers, shown on demand (view state, by the clip's row; the handles' twin)
+          const exact = observableState(false);
           return (
-            <div style={Line}>
-              <strong style="flex: 1">
-                {mapState(cut, (c) =>
-                  c ? `${ClipNames[c.object.type] ?? c.object.type} ${c.index}${partOf(c, node)}` : '',
-                )}
-              </strong>
-              <Button
-                size="xs"
-                variant="ghost"
-                title="Show or hide its handles (move, turn and size it in 3D)"
-                pressed={handles}
-                icon={<Icon name="move-3d" />}
-                onClick={() => {
-                  const c = cut.value;
-                  if (!c) return;
-                  if (handles.value) clipping.gizmos.hide();
-                  else showClipHandles(api, c.index);
-                }}
-              />
-              <OnTop api={api} area={area} />
-              <Button
-                size="xs"
-                variant="ghost"
-                title="Remove it"
-                icon={<Icon name="x" />}
-                onClick={() => void api.run('clipping.remove', { tag })}
-              />
+            <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+              <div style={Line}>
+                <strong style="flex: 1">
+                  {mapState(cut, (c) =>
+                    c ? `${ClipNames[c.object.type] ?? c.object.type} ${c.index}${partOf(c, node)}` : '',
+                  )}
+                </strong>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  title="Show or hide its handles (move, turn and size it in 3D)"
+                  pressed={handles}
+                  icon={<Icon name="move-3d" />}
+                  onClick={() => {
+                    const c = cut.value;
+                    if (!c) return;
+                    if (handles.value) clipping.gizmos.hide();
+                    else showClipHandles(api, c.index);
+                  }}
+                />
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  title="Its place, turn and size, by numbers"
+                  pressed={exact.asReadonly}
+                  icon={<Icon name="sliders-horizontal" />}
+                  onClick={() => exact.set(!exact.value)}
+                />
+                <OnTop api={api} area={area} />
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  title="Remove it"
+                  icon={<Icon name="x" />}
+                  onClick={() => void api.run('clipping.remove', { tag })}
+                />
+              </div>
+              <Show when={exact.asReadonly}>{() => <ClipSliders api={api} tag={tag} cut={cut} />}</Show>
             </div>
           );
         }}
@@ -1208,6 +1221,222 @@ function partOf(c: { kept?: unknown; atoms?: { label: string }; particles?: { la
   if ('entity' in node || 'particles' in node) return '';
   if (c.particles) return ` · ${c.particles.label}`;
   return c.kept && c.atoms ? ` · ${c.atoms.label}` : '';
+}
+
+type ClipCut = ViewerApi['clipping']['cuts']['value'][number];
+type ClipObject = ClipCut['object'];
+
+// scratch for the turn's conversions (a slider's preview runs them every frame)
+const TurnQuat = Quat();
+const TurnMat = Mat4();
+const TurnAxis = Vec3();
+const TurnOrigin = Vec3();
+const TurnIdentity = Mat4.identity();
+const Deg = 180 / Math.PI;
+
+/**
+ * A clip's turn as Euler angles (degrees: X, then Y, then Z), into `out`, and back to its axis and angle: by the stage
+ * tools' `poseOf` and `placementWith`, so it reads as Position's Turn does. Y reads in −90…90: a turn typed past it
+ * reads back as its equal, X and Z flipped by 180°.
+ */
+function eulerOf(o: ClipObject, out: number[] = [0, 0, 0]): number[] {
+  Vec3.normalize(TurnAxis, o.rotation.axis);
+  Mat4.fromRotation(TurnMat, o.rotation.angle / Deg, TurnAxis);
+  const e = poseOf({ matrix: TurnMat, center: TurnOrigin }).euler;
+  out[0] = e[0];
+  out[1] = e[1];
+  out[2] = e[2];
+  return out;
+}
+function rotationWith(euler: readonly number[]): ClipObject['rotation'] {
+  const m = placementWith(
+    { matrix: TurnIdentity, center: TurnOrigin },
+    { position: [0, 0, 0], euler: [euler[0], euler[1], euler[2]] },
+  );
+  Quat.normalize(TurnQuat, Quat.fromMat4(TurnQuat, m));
+  const rad = Quat.getAxisAngle(TurnAxis, TurnQuat);
+  if (!Number.isFinite(rad) || Vec3.magnitude(TurnAxis) < 1e-9) return { axis: Vec3.create(1, 0, 0), angle: 0 };
+  return { axis: Vec3.normalize(Vec3(), TurnAxis), angle: rad * Deg };
+}
+const TurnRead = [0, 0, 0];
+
+interface ClipNumber {
+  readonly label: string;
+  readonly unit: string;
+  /** What it changes (`clipping.update`'s field) */
+  readonly field: 'position' | 'rotation' | 'scale';
+  read(o: ClipObject): number;
+  write(o: ClipObject, v: number): ClipObject;
+  min(o: ClipObject): number;
+  max(o: ClipObject): number;
+  readonly log?: boolean;
+}
+
+/**
+ * A clip's numbers: X, Y, Z (its center, Å, within reach of what it cuts), Turn X, Y, Z (°), and its shape's size
+ * (a sphere's diameter, a box's edges, a cylinder's diameter and height, a cone's half-angle; a plane has none)
+ */
+function clipNumbers(shape: string, center: Vec3, reach: number, cone: ViewerApi['clipping']['cone']): ClipNumber[] {
+  const out: ClipNumber[] = [];
+  ['X', 'Y', 'Z'].forEach((label, i) =>
+    out.push({
+      label,
+      unit: 'Å',
+      field: 'position',
+      read: (o) => o.position[i],
+      write: (o, v) => {
+        const position = Vec3.clone(o.position);
+        position[i] = v;
+        return { ...o, position };
+      },
+      min: () => center[i] - reach,
+      max: () => center[i] + reach,
+    }),
+  );
+  ['Turn X', 'Turn Y', 'Turn Z'].forEach((label, i) =>
+    out.push({
+      label,
+      unit: '°',
+      field: 'rotation',
+      read: (o) => eulerOf(o, TurnRead)[i],
+      write: (o, v) => {
+        const euler = eulerOf(o, TurnRead);
+        euler[i] = v;
+        return { ...o, rotation: rotationWith(euler) };
+      },
+      min: () => -180,
+      max: () => 180,
+    }),
+  );
+  const size = (label: string, read: (s: Vec3) => number, write: (s: Vec3, v: number) => Vec3): ClipNumber => ({
+    label,
+    unit: 'Å',
+    field: 'scale',
+    read: (o) => read(o.scale),
+    write: (o, v) => ({ ...o, scale: write(o.scale, v) }),
+    min: () => 0.1,
+    max: (o) => Math.max(reach * 2, read(o.scale) * 2),
+    log: true,
+  });
+  switch (shape) {
+    case 'sphere':
+      out.push(
+        size(
+          'Diameter',
+          (s) => s[0],
+          (_, v) => Vec3.create(v, v, v),
+        ),
+      );
+      break;
+    case 'cube':
+      ['Size X', 'Size Y', 'Size Z'].forEach((label, i) =>
+        out.push(
+          size(
+            label,
+            (s) => s[i],
+            (s, v) => {
+              const next = Vec3.clone(s);
+              next[i] = v;
+              return next;
+            },
+          ),
+        ),
+      );
+      break;
+    case 'cylinder':
+      out.push(
+        size(
+          'Diameter',
+          (s) => s[0],
+          (s, v) => Vec3.create(v, s[1], v),
+        ),
+      );
+      out.push(
+        size(
+          'Height',
+          (s) => s[1],
+          (s, v) => Vec3.create(s[0], v, s[2]),
+        ),
+      );
+      break;
+    case 'infiniteCone':
+      out.push({
+        label: 'Half-angle',
+        unit: '°',
+        field: 'scale',
+        read: (o) => cone.angle(o.scale),
+        write: (o, v) => ({ ...o, scale: cone.scale(v) }),
+        min: () => 1,
+        max: () => 89,
+      });
+      break;
+  }
+  return out;
+}
+
+/**
+ * A clip's place, turn and size by numbers, the handles' twin: a slider shows the cut as it goes on what it cuts
+ * (`clipping.previewCut`, outside the state), and its release is one step (`clipping.update`, by its tag)
+ */
+function ClipSliders(props: { api: ViewerApi; tag: string; cut: ReadonlyState<ClipCut | undefined> }) {
+  const { api, tag, cut } = props;
+  const clipping = api.clipping;
+  const first = cut.value;
+  if (!first) return null;
+  // the reach of its X, Y, Z: around what it cuts, as it was when opened (a slider's range stays put while it goes)
+  const bounds = clipping.boundsOf(first);
+  const center = bounds ? Vec3.clone(bounds.center) : Vec3.clone(first.object.position);
+  const reach = Math.max(bounds?.radius ?? 50, 10) * 1.5;
+  const numbers = clipNumbers(first.object.type, center, reach, clipping.cone);
+  // the last preview of these sliders: ended at its release, or when they go (the row removed, folded, the clip gone)
+  let previewed: number | undefined;
+  onCleanup(() => {
+    if (previewed !== undefined) clipping.endPreview(previewed);
+  });
+  return (
+    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+      {numbers.map((n) => {
+        const value = mapState(cut, (c) => (c ? n.read(c.object) : 0));
+        const commit = async (v: number) => {
+          const token = previewed;
+          previewed = undefined;
+          try {
+            const c = cut.value;
+            if (!c) return;
+            const next = n.write(c.object, v);
+            const values =
+              n.field === 'position'
+                ? { position: [...next.position] }
+                : n.field === 'rotation'
+                  ? { rotation: { axis: [...next.rotation.axis], angle: next.rotation.angle } }
+                  : { scale: [...next.scale] };
+            await api.run('clipping.update', { tag, ...values });
+          } finally {
+            // the drawing back to the state's (now changed), unless another gesture began meanwhile
+            if (token !== undefined) clipping.endPreview(token);
+          }
+        };
+        return (
+          <SliderField
+            label={n.label}
+            value={value}
+            min={n.min(first.object)}
+            max={n.max(first.object)}
+            step={n.unit === '°' ? 1 : 'any'}
+            scale={n.log ? 'log' : 'linear'}
+            clamp={false}
+            format={tenths}
+            unit={n.unit}
+            onPreview={(v) => {
+              const c = cut.value;
+              if (c) previewed = clipping.previewCut(c.object, n.write(c.object, v));
+            }}
+            onCommit={(v) => void commit(v)}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 /** The app's root around an element (its tokens and styles apply in it) */
