@@ -9,3 +9,4 @@
 - `mesoscale.theme` (the agent's `color_objects_by_theme`; no ⌘K form: it takes state refs): a color theme for several objects at once (by object,
   entity, chain, generated colors, one color), each kind by what it takes: structures, particle models and lists,
   volumes' isosurfaces, meshes; one history step.
+- `cryoet.mesh` takes `colors`: several meshes, each its own color, checked first and written in one update.
