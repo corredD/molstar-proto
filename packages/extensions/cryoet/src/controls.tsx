@@ -6,32 +6,46 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Color } from '@molstar/core/util/color';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
+  bind,
   Button,
   Choices,
   For,
   Icon,
   onCleanup,
+  ParamsForm,
   Select,
   type SelectOption,
   Show,
   Slider,
   TextInput,
 } from '@molstar/prism-ui';
+import { restartable } from '@molstar/prism-ui/dom/scoped';
+import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import { classes } from './_generated/controls.module.css.js';
 import type { CryoetApi, DecorationsInfo, MeshInfo, ObliqueView, SliceAxis, TargetDecoration } from './operations.js';
 
 // The cryo-ET controls, shown by the extension's own rows and tab and by a host's panels (prism-me's properties):
 // what decorates a list's targets, a volume's slice, a segmentation mesh's look. They read the `cryoet` area and act
-// through it.
+// through it. Their lines on Prism's tokens and label column (controls.module.css).
 
-const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
-const Line = 'display: flex; align-items: center; gap: var(--msp-space-2); min-height: 28px';
+/** A line: its label in the label column, then its control */
+function Line(props: { label: string; children: JSX.Element }) {
+  return (
+    <div class={classes.line}>
+      <span class={classes.label}>{props.label}</span>
+      {props.children}
+    </div>
+  );
+}
 
 /** Spheres: no decoration (the select's value) */
 const Spheres = '';
@@ -61,7 +75,7 @@ export function Decorations(props: {
   const only = props.only;
   if (only) {
     return (
-      <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+      <div class={classes.stack}>
         <For each={mapState(info, (i) => [JSON.stringify(i.objects)])} by={(k) => k}>
           {() => (
             <For each={mapState(info, (i) => i.targets.filter(only))} by={(t) => t.id}>
@@ -73,7 +87,7 @@ export function Decorations(props: {
     );
   }
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+    <div class={classes.stack}>
       {/* always shown: File alone, and why, when the file has no columns to split its targets by */}
       <For each={mapState(info, (i) => [i.attributes.map((a) => a.key).join(',')])} by={(k) => k}>
         {() => (
@@ -97,7 +111,7 @@ export function Decorations(props: {
               onPick={(attribute) => void area.classes({ attribute, particles: particles() })}
             />
             {info.value.attributes.length ? null : (
-              <p style={`margin: 0; ${Muted}`}>
+              <p class={classes.hint}>
                 This file has no columns (CC, class, score) to split its targets by: its targets are the file's.
               </p>
             )}
@@ -129,7 +143,7 @@ export function Decorations(props: {
         aria-label="Decorate with a PDB id or URL"
         onSubmit={(id) => void area.decorate({ particles: particles(), with: 'pdb', id } as never)}
       />
-      <p style={`margin: 0; ${Muted}`}>
+      <p class={classes.hint}>
         An object of the scene swaps instantly: open a structure, a mesh (OBJ, PLY, VTP) or a map, then pick it here.
       </p>
     </div>
@@ -146,7 +160,7 @@ function TargetLine(props: {
   const current = mapState(info, (i) => i.targets.find((t) => t.id === target.id));
   return (
     <OffsetLine area={props.area} particles={info.value.particles} targets={String(target.id)} label={target.name}>
-      <span style={Muted}>{mapState(current, (t) => (t?.count ?? 0).toLocaleString('en'))}</span>
+      <span class={classes.hint}>{mapState(current, (t) => (t?.count ?? 0).toLocaleString('en'))}</span>
       <Select
         size="sm"
         aria-label={`Decorate ${target.name} with`}
@@ -184,9 +198,9 @@ function OffsetLine(props: {
   const open = observableState(false);
   const set = (key: string, v: number) => void area.offset({ particles, targets, [key]: v } as never);
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-      <div style={Line}>
-        <span style="flex: 1; overflow: hidden; white-space: nowrap">{props.label}</span>
+    <div class={classes.tight}>
+      <div class={classes.tools}>
+        <span class={classes.name}>{props.label}</span>
         {props.children}
         <Button
           size="xs"
@@ -199,27 +213,24 @@ function OffsetLine(props: {
       </div>
       <Show when={open.asReadonly}>
         {() => (
-          <div style="display: flex; flex-direction: column; gap: var(--msp-space-1); padding-left: var(--msp-space-3)">
+          <div class={classes.inline}>
             {OffsetAxes.map((a) => {
               const value = mapState(offset, (o) => o?.[a.of][a.i] ?? 0);
               const range = a.unit === 'Å' ? 200 : 180;
               return (
-                <div style={Line}>
-                  <span style="width: 56px">{a.label}</span>
-                  <div style="flex: 1; min-width: 0">
-                    <Slider
-                      aria-label={`${props.label} offset ${a.label}`}
-                      value={value}
-                      min={-range}
-                      max={range}
-                      step={a.unit === 'Å' ? 0.5 : 1}
-                      clamp={false}
-                      format={(v) => String(Math.round(v * 10) / 10)}
-                      unit={a.unit}
-                      onCommit={(v) => set(a.key, v)}
-                    />
-                  </div>
-                </div>
+                <Line label={a.label}>
+                  <Slider
+                    aria-label={`${props.label} offset ${a.label}`}
+                    value={value}
+                    min={-range}
+                    max={range}
+                    step={a.unit === 'Å' ? 0.5 : 1}
+                    clamp={false}
+                    format={(v) => String(Math.round(v * 10) / 10)}
+                    unit={a.unit}
+                    onCommit={(v) => set(a.key, v)}
+                  />
+                </Line>
               );
             })}
           </div>
@@ -274,52 +285,47 @@ export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: s
     key: 'x' | 'y' | 'z' | 'ex' | 'ey',
     range: { min: ReadonlyState<number> | number; max: ReadonlyState<number> | number; unit: string },
   ) => (
-    <div style={Line}>
-      <span style="width: 64px">{label}</span>
-      <div style="flex: 1; min-width: 0">
-        <Slider
-          aria-label={label}
-          value={mapState(view, (o) => (o ? Math.round(read(o) * 10) / 10 : 0))}
-          min={range.min}
-          max={range.max}
-          step={0.1}
-          unit={range.unit}
-          onPreview={(v) => run({ [key]: v })}
-          onCommit={(v) => run({ [key]: v })}
-        />
-      </div>
-    </div>
+    <Line label={label}>
+      <Slider
+        aria-label={label}
+        value={mapState(view, (o) => (o ? Math.round(read(o) * 10) / 10 : 0))}
+        min={range.min}
+        max={range.max}
+        step={0.1}
+        unit={range.unit}
+        onPreview={(v) => run({ [key]: v })}
+        onCommit={(v) => run({ [key]: v })}
+      />
+    </Line>
   );
   const across = { min: mapState(radius, (r) => -r), max: radius, unit: 'Å' };
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
-      <div style={Line}>
-        <span style="width: 64px">Handle</span>
+    <div class={classes.tight}>
+      <Line label="Handle">
         <Button size="sm" variant="ghost" onClick={() => (on.value ? handles.hide() : handles.show({ volume, slice }))}>
           {mapState(on, (o) => (o ? 'Hide the handle' : 'Show the handle'))}
         </Button>
-      </div>
-      <span style={Muted}>In the volume's frame: from its center, along its axes (they stay as the volume moves).</span>
+      </Line>
+      <span class={classes.hint}>
+        In the volume's frame: from its center, along its axes (they stay as the volume moves).
+      </span>
       {number('X', (o) => o.position[0], 'x', across)}
       {number('Y', (o) => o.position[1], 'y', across)}
       {number('Z', (o) => o.position[2], 'z', across)}
       {number('Tilt X', (o) => o.tilt[0], 'ex', { min: -90, max: 90, unit: '°' })}
       {number('Tilt Y', (o) => o.tilt[1], 'ey', { min: -180, max: 180, unit: '°' })}
-      <div style={Line}>
-        <span style="width: 64px">Contrast</span>
-        <div style="flex: 1; min-width: 0">
-          <Slider
-            aria-label="Contrast"
-            value={mapState(view, (o) => o?.contrast ?? 3)}
-            min={0.5}
-            max={10}
-            step={0.1}
-            unit="±σ"
-            onPreview={(c) => run({ contrast: c })}
-            onCommit={(c) => run({ contrast: c })}
-          />
-        </div>
-      </div>
+      <Line label="Contrast">
+        <Slider
+          aria-label="Contrast"
+          value={mapState(view, (o) => o?.contrast ?? 3)}
+          min={0.5}
+          max={10}
+          step={0.1}
+          unit="±σ"
+          onPreview={(c) => run({ contrast: c })}
+          onCommit={(c) => run({ contrast: c })}
+        />
+      </Line>
     </div>
   );
 }
@@ -348,7 +354,7 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
     timer = setTimeout(() => void area.slice({ volume, axis: current(), ...values } as never), delay);
   };
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+    <div class={classes.tight}>
       {axis ? (
         <Choices
           label="Axis"
@@ -371,39 +377,33 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
       >
         {() => (
           <>
-            <div style={Line}>
-              <span style="width: 64px">Slice</span>
-              <div style="flex: 1; min-width: 0">
-                {/* the box counts from 1, of the count */}
-                <Slider
-                  aria-label="Slice"
-                  value={mapState(index, (i) => i ?? 0)}
-                  min={0}
-                  max={mapState(count, (n) => Math.max(0, n - 1))}
-                  step={1}
-                  format={(i) => String(i + 1)}
-                  parse={(text) => Math.round(Number.parseFloat(text)) - 1}
-                  unit={mapState(count, (n) => `/ ${n}`)}
-                  onPreview={(i) => run({ index: i })}
-                  onCommit={(i) => run({ index: i })}
-                />
-              </div>
-            </div>
-            <div style={Line}>
-              <span style="width: 64px">Contrast</span>
-              <div style="flex: 1; min-width: 0">
-                <Slider
-                  aria-label="Contrast"
-                  value={contrast}
-                  min={0.5}
-                  max={10}
-                  step={0.1}
-                  unit="±σ"
-                  onPreview={(c) => run({ contrast: c })}
-                  onCommit={(c) => run({ contrast: c })}
-                />
-              </div>
-            </div>
+            {/* the box counts from 1, of the count */}
+            <Line label="Slice">
+              <Slider
+                aria-label="Slice"
+                value={mapState(index, (i) => i ?? 0)}
+                min={0}
+                max={mapState(count, (n) => Math.max(0, n - 1))}
+                step={1}
+                format={(i) => String(i + 1)}
+                parse={(text) => Math.round(Number.parseFloat(text)) - 1}
+                unit={mapState(count, (n) => `/ ${n}`)}
+                onPreview={(i) => run({ index: i })}
+                onCommit={(i) => run({ index: i })}
+              />
+            </Line>
+            <Line label="Contrast">
+              <Slider
+                aria-label="Contrast"
+                value={contrast}
+                min={0.5}
+                max={10}
+                step={0.1}
+                unit="±σ"
+                onPreview={(c) => run({ contrast: c })}
+                onCommit={(c) => run({ contrast: c })}
+              />
+            </Line>
           </>
         )}
       </Show>
@@ -420,6 +420,10 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
   );
 }
 
+/**
+ * A segmentation mesh's look: shown or hidden, its color (Prism's color row: its `ColorPicker`, one change a moment after
+ * the last move), surface, wireframe or both, opacity, scale
+ */
 export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: ReadonlyState<readonly MeshInfo[]> }) {
   const { area } = props;
   const ref = props.mesh.ref;
@@ -430,9 +434,16 @@ export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: Rea
     clearTimeout(timer);
     timer = setTimeout(() => void area.mesh({ mesh: ref, ...values } as never), delay);
   };
+  const color = new ParamsFormModel({ color: PD.Color(Color(0xcccccc)) }, undefined, {
+    onChange: () => paint.start(120),
+  });
+  const paint = restartable(
+    () => void area.mesh({ mesh: ref, color: Color.toHexStyle(color.values.value.color) } as never),
+  );
+  bind(mesh, (m) => color.load({ color: Color(m?.color ?? 0xcccccc) }));
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
-      <div style={Line}>
+    <div class={classes.tight}>
+      <div class={classes.tools}>
         <Button
           size="xs"
           variant="ghost"
@@ -444,14 +455,9 @@ export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: Rea
           }
           onClick={() => set({ visible: !(mesh.value?.visible ?? true) })}
         />
-        <strong style="flex: 1; overflow: hidden; white-space: nowrap">{props.mesh.label}</strong>
-        <input
-          type="color"
-          aria-label="Color"
-          value={mapState(mesh, (m) => `#${(m?.color ?? 0xcccccc).toString(16).padStart(6, '0')}`)}
-          onInput={(e) => set({ color: (e.target as HTMLInputElement).value }, 120)}
-        />
+        <strong class={classes.name}>{props.mesh.label}</strong>
       </div>
+      <ParamsForm form={color} />
       <Choices
         choices={[
           { id: 'mesh', label: 'Surface' },
@@ -461,35 +467,29 @@ export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: Rea
         active={mapState(mesh, (m) => (m && m.visuals.length > 1 ? 'both' : (m?.visuals[0] ?? 'mesh')))}
         onPick={(visuals) => set({ visuals })}
       />
-      <div style={Line}>
-        <span style="width: 64px">Opacity</span>
-        <div style="flex: 1; min-width: 0">
-          <Slider
-            aria-label="Opacity"
-            value={mapState(mesh, (m) => m?.opacity ?? 1)}
-            min={0.05}
-            max={1}
-            step={0.01}
-            onPreview={(opacity) => set({ opacity }, 80)}
-            onCommit={(opacity) => set({ opacity })}
-          />
-        </div>
-      </div>
+      <Line label="Opacity">
+        <Slider
+          aria-label="Opacity"
+          value={mapState(mesh, (m) => m?.opacity ?? 1)}
+          min={0.05}
+          max={1}
+          step={0.01}
+          onPreview={(opacity) => set({ opacity }, 80)}
+          onCommit={(opacity) => set({ opacity })}
+        />
+      </Line>
       {/* a mesh in pixels (a segmentation of a tomogram): its scale is the pixel size; the slider goes by powers */}
-      <div style={Line}>
-        <span style="width: 64px">Scale</span>
-        <div style="flex: 1; min-width: 0">
-          <Slider
-            aria-label="Scale"
-            value={mapState(mesh, (m) => m?.scale ?? 1)}
-            min={0.01}
-            max={100}
-            scale="log"
-            clamp={false}
-            onCommit={(scale) => set({ scale })}
-          />
-        </div>
-      </div>
+      <Line label="Scale">
+        <Slider
+          aria-label="Scale"
+          value={mapState(mesh, (m) => m?.scale ?? 1)}
+          min={0.01}
+          max={100}
+          scale="log"
+          clamp={false}
+          onCommit={(scale) => set({ scale })}
+        />
+      </Line>
     </div>
   );
 }
