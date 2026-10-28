@@ -60,8 +60,11 @@ the end (Ludovic, 2026-10-25, as Prism's tree): the brush (a color for all of it
 them, the eye (show, hide, at its level), the trash (remove it, one step, as its menu's Remove: an object, a clip, a
 label, a distance; not a part; Ludo, 2026-10-27) and ⋯ (its right-click). The tools show on the row's hover or focus,
 always on a touch screen; a hidden node keeps its eye in view. A category's row has the brush (its color theme), the
-scissors and the eye, for every object under it. Clips and labels made at a node are rows under it (§5), and distances
-under their first point's row (§7), each with its own eye.
+scissors and the eye, for every object under it; its brush offers the themes its kind takes, each object by its own
+(`mesoscale.theme`, one step; Ludo, 2026-10-27): Structures by object, entity, chain or one color; Particles by object,
+entity (a list with no entities: by object), generated colors or one color; Volumes (their isosurfaces: slices show the
+data) and Meshes by object or one color. Clips and labels made at a node are rows under it (§5), and distances under
+their first point's row (§7), each with its own eye.
 
 A click on a row picks it: highlighted in 3D, its properties below. A category is picked too (Ludovic, 2026-10-25). The
 arrows move the pick (↑/↓, Home, End; → opens or goes in, ← closes or goes to the parent), as a click. A double click
@@ -74,7 +77,7 @@ The properties of the picked row, in sections that fold. Only what applies to it
 
 | Section           | For                                                                        | What                                                                                                                                                                      |
 | ----------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Look              | every node                                                                 | visible, color (picker; for a model or group: Generate colors), opacity, glow; a category: visible and a color theme, for all under it                                    |
+| Look              | every node                                                                 | visible, color (picker; for a model or group: Generate colors), opacity, glow; a category: visible and a color theme, for all under it (the themes of §3)                 |
 | Representation    | structures, entities, particle lists, volumes, meshes                      | the type (cartoon, spacefill…; spheres or the decorating objects; slice or isosurface; surface, wireframe, both) and its few main settings                                |
 | Decoration        | a particle target or list                                                  | what decorates it: an object of the scene, a PDB id or URL, spheres; targets by class                                                                                     |
 | Slice             | a volume                                                                   | axis, position, contrast                                                                                                                                                  |
@@ -416,8 +419,9 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   and the tree too.
 - A category's tools (2026-10-27, lane `tree-view`): its eye shows or hides every object under it in one step
   (`state.visibility` of their refs; shown while any is), its scissors add one Prism cut of all of them (`clipping.add`
-  by their refs, its handles shown). Its brush (a color theme over every kind under it) waits: no one operation does it
-  (TODO.md).
+  by their refs, its handles shown), its brush colors them by a theme (Ludo, 2026-10-27: `mesoscale.theme`, the
+  mesoscale extension's, as §3 lists: the representations' themes in one commit, a model's look colors cleared or
+  generated and the meshes colored in the same step; a theme an object does not take changes nothing).
 - Clips as rows (2026-10-27, lane `tree-view`): each of Prism's cuts is a row under the row it was made at (an object's;
   an entity's, a chain's, a group's or a target's for a cut of only them; their category's for a cut of several
   objects), named by its shape and number (Plane 1). Its eye draws it in the scene or not (`clipping.show`, one step;

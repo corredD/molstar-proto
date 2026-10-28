@@ -412,3 +412,30 @@ describe("a row's trash (Ludo, 2026-10-27)", () => {
     expect(v.api.history.steps.value.length).toBe(steps + 1);
   });
 });
+
+describe("a category's brush (Ludo, 2026-10-27)", () => {
+  it('offers the themes its kind takes and colors every object under it, one step', async () => {
+    const v = await viewer(
+      [
+        ['HIV', 3],
+        ['Other', 2],
+      ],
+      true,
+    );
+    const { host } = mount(v);
+    await until(() => !!item(host, 'c:particles'));
+    const steps = v.api.history.steps.value.length;
+    item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Color all of it"]')!.click();
+    await settle();
+    const items = Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]'));
+    expect(items.map((m) => m.textContent?.trim())).toEqual(['By object', 'By entity', 'Generate colors', 'Uniform']);
+    expect(items.some((m) => m.querySelector('svg'))).toBe(false);
+    items[0].click();
+    const themes = () =>
+      v.plugin.managers.particles.hierarchy.current.lists.map(
+        (l) => (l.representations[0].cell.transform.params as { colorTheme: { name: string } }).colorTheme.name,
+      );
+    await until(() => themes().every((t) => t === 'uniform'));
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+  });
+});

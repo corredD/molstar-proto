@@ -350,9 +350,11 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   const root = () => rootOf(panelEl);
   // a row tool (the brush, the scissors): the row picked, its menu under the button
   const tool = (row: Row, which: 'color' | 'clip', at: At, onClose: () => void) => {
-    if (row.objects && which === 'clip') {
+    if (row.objects) {
       pick(row);
-      openContextMenu(root(), at, categoryClipItems(api, row.objects), onClose);
+      const items =
+        which === 'clip' ? categoryClipItems(api, row.objects) : categoryThemeItems(api, row.key, row.objects);
+      openContextMenu(root(), at, items, onClose);
       return;
     }
     if (!row.node) return;
@@ -417,7 +419,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
             picked={pickedKey}
             shown={shown}
             tools={(row) => ({
-              color: colorable(row.kind, row.node),
+              color: !!row.objects?.length || colorable(row.kind, row.node),
               clip: !!row.objects?.length || clippable(row.kind, row.node),
               remove: removable(row.kind, row.node) || Made.has(row.kind),
               more: !!row.node,
@@ -470,6 +472,43 @@ function categoryClipItems(api: ViewerApi, objects: readonly string[]): ContextM
     },
   }));
 }
+
+/**
+ * A category's brush: a color theme for every object under it, one step (`mesoscale.theme`, each kind by the theme it
+ * takes; Ludo, 2026-10-27), the themes its kind takes (ui.md §3); no icons on menu items (styling.md §4)
+ */
+function categoryThemeItems(api: ViewerApi, key: string, objects: readonly string[]): ContextMenuItem[] {
+  const themes = CategoryThemes[key] ?? [];
+  return themes.map(([theme, label]) => ({
+    id: `theme-${theme}`,
+    label,
+    run: () => void api.run('mesoscale.theme', { objects: [...objects], theme }),
+  }));
+}
+
+/** The themes each category's objects take (`mesoscale.theme`) */
+const CategoryThemes: Readonly<Record<string, readonly (readonly [string, string])[]>> = {
+  'c:structures': [
+    ['object', 'By object'],
+    ['entity', 'By entity'],
+    ['chain', 'By chain'],
+    ['uniform', 'Uniform'],
+  ],
+  'c:particles': [
+    ['object', 'By object'],
+    ['entity', 'By entity'],
+    ['generate', 'Generate colors'],
+    ['uniform', 'Uniform'],
+  ],
+  'c:volumes': [
+    ['object', 'By object'],
+    ['uniform', 'Uniform'],
+  ],
+  'c:meshes': [
+    ['object', 'By object'],
+    ['uniform', 'Uniform'],
+  ],
+};
 
 /** What was made at a node, removed by its row's trash */
 const Made: ReadonlySet<string> = new Set(['clip', 'label', 'distance']);

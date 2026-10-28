@@ -116,7 +116,10 @@ function sections(shell: ShellModel) {
         n.kind === 'category' ? (
           form({
             visible: PD.Boolean(n.visible !== false, { description: 'Every object under it' }),
-            theme: PD.Select('object', CategoryThemes, { label: 'Color theme', description: 'Every object under it' }),
+            theme: PD.Select('object', CategoryThemes[n.key] ?? [], {
+              label: 'Color theme',
+              description: 'Every object under it',
+            }),
           })()
         ) : (
           <div class={classes.stack}>
