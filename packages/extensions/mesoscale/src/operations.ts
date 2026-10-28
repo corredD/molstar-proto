@@ -589,13 +589,16 @@ export class MesoscaleApi extends ApiArea {
       // the plan: what each object takes, checked before any change
       const plans: ThemePlan[] = [];
       const fallbacks: string[] = [];
+      let meshRefs: ReadonlySet<string> | undefined;
       for (let i = 0; i < refs.length; i++) {
         const o = byRef.get(refs[i]);
         const mine = one ?? palette[i];
         if (!o) {
-          // not a structure, a list or a volume: a mesh (cryoet's), one color
-          if (!ctx.plugin.state.data.cells.has(refs[i]))
-            return ApiResult.fail('not-found', `There is no object '${refs[i]}'.`);
+          // not a structure, a list or a volume: a mesh, as cryoet lists them (by id, read once), else nothing changes
+          meshRefs ??= await meshesOf(ctx);
+          if (!meshRefs.has(refs[i])) {
+            return ApiResult.fail('not-found', `There is no object '${refs[i]}' to color.`, 'Nothing was changed.');
+          }
           if (theme !== 'object' && theme !== 'uniform') return doesNotTake(refs[i], label);
           plans.push({ kind: 'mesh', ref: refs[i], color: mine });
           continue;
@@ -693,6 +696,13 @@ type ThemePlan =
 
 const doesNotTake = (name: string, theme: string) =>
   ApiResult.fail('invalid', `${name} cannot be colored ${theme.toLowerCase()}.`, 'Nothing was changed.');
+
+/** The meshes' refs, as cryoet lists them (its read operation, by id); none without cryoet */
+async function meshesOf(ctx: ApiContext): Promise<ReadonlySet<string>> {
+  const r = await ctx.api.run('cryoet.meshes', {});
+  const list = r.ok ? ((r as { value?: readonly { ref: string }[] }).value ?? []) : [];
+  return new Set(list.map((m) => m.ref));
+}
 
 /** Whether a list has look colors (by entity, or by target on a list with no entities) */
 function hasLookColors(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef | undefined): boolean {

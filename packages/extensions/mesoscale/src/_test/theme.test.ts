@@ -178,3 +178,19 @@ describe('a plain list (no entities)', () => {
     expect(colored()).toEqual([]);
   });
 });
+
+describe('an object that is no mesh, nor a structure, a list or a volume', () => {
+  it('fails in the plan, so nothing changes even with undo checkpoints off (a large scene)', async () => {
+    const v = await viewer();
+    const before = themes(v);
+    const representation = v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.transform.ref;
+    (v.managers.history as unknown as { setCheckpointing(on: boolean): void }).setCheckpointing(false);
+    const r = await v.api.run('mesoscale.theme', {
+      objects: [before.refs.list, representation],
+      theme: 'uniform',
+      color: 'red',
+    });
+    expect(r.ok).toBe(false);
+    expect(themes(v)).toEqual(before);
+  });
+});
