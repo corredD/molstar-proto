@@ -14,10 +14,8 @@ In this order (Ludo, 2026-10-25), one at a time; the looks' owner (PR #8), the m
 spec (lane `app-spec`) are built. From the architecture's decisions ([_spec/architecture.md](_spec/architecture.md) §7:
 refactor in place) and the review of the distances (PR #5):
 
-- **The views on the mocks**, one lane each, checked against its story in Storybook (prism-me › Explorer), light and
-  dark, wide and narrow (the tree: built, lane `tree-view`): the properties (`properties.tsx`: `SectionList`,
-  `ParamsForm`, a category's Look and Clips, Position with its Handles). Check: the app and the story look and behave
-  the same. (The right-click's lane, `menu.ts` on its mock, is dropped: Ludo, 2026-10-28.)
+- **The views on the mocks**: built (the tree, lane `tree-view`; the properties, lane `properties-view`). The
+  right-click's lane, `menu.ts` on its mock, is dropped (Ludo, 2026-10-28).
 
 ## Library fixes ready for upstream
 
@@ -32,6 +30,14 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - A whole particle list's bounding sphere filled the wrong way (`me/particle-bounds`, `0927c892b`; in 5.x too).
 
 ## Backlog
+
+- The properties (lane `properties-view`, its review's open items): a Visible line in a node's Look (ui.md §4 lists it;
+  the app has the row's eye, a category its switch); a model's or group's color says Mixed when no entity has a color of
+  its own (`common` cannot tell none from mixed); the Labels section lists the labels made at the row's key, not the
+  tree's fallbacks (a label under its object's row when its own row is gone); each clip editor finds its cut among all
+  (a Map by tag would do; a few at a node, at most 16 cuts a representation); icons beside words carried over (Remove
+  the label, Add a clip, On top: styling.md §4); a viewer test waits on the real clock (300 ms) to show a run of picks
+  makes one step; the extensions' `styles:check` is not in CI (`.github/workflows/node.yml` runs Prism's).
 
 - The production build is over its size budget (`node scripts/esbuild/app.mjs apps/prism-me --prd`: index.js 5.78 MB
   against 3.40 MB), on prism-me before PR #9 too.
