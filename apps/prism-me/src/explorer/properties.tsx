@@ -294,6 +294,12 @@ const Sections: readonly Section[] = [
     ),
   },
   {
+    id: 'clip',
+    title: 'Clip',
+    when: ({ picked }) => picked.kind === 'clip' && !!picked.clip,
+    render: ({ api, area, picked }) => <ClipEditor api={api} area={area} tag={picked.clip!} />,
+  },
+  {
     id: 'label',
     title: 'Label',
     when: ({ api, picked }) => picked.kind === 'label' && !!api.stage && !!picked.node,
@@ -1174,9 +1180,14 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
   );
 }
 
+/** Prism's cut shapes, a clip's Shape */
+const ShapeOptions = Object.entries(ClipShapes) as [string, string][];
+
 /**
  * A clip (Prism's cut, by its tag): its line (its name where it is one of a list, its handles shown or hidden, its
- * numbers' toggle, On top, remove), and its place, turn and size by numbers on demand.
+ * numbers' toggle, On top, remove), its shape and invert (Prism's `clipping.update`, one step each; ui.md §4, Ludo
+ * 2026-10-25), and its place, turn and size by numbers on demand. The same in an object's Clips, a category's and a clip
+ * row's own section.
  */
 function ClipEditor(props: { api: ViewerApi; area: ExplorerApi; tag: string; named?: boolean; of?: NodeRef }) {
   const { api, area, tag } = props;
@@ -1186,6 +1197,15 @@ function ClipEditor(props: { api: ViewerApi; area: ExplorerApi; tag: string; nam
   const handles = derive([cut, handled], (c, h) => !!c && h.includes(c.index));
   // its place, turn and size by numbers, shown on demand (view state, by the clip; the handles' twin)
   const exact = observableState(false);
+  const fields = new ParamsFormModel(
+    {
+      shape: PD.Select<string>('plane', ShapeOptions, { label: 'Shape' }),
+      invert: PD.Boolean(false, { label: 'Invert', description: 'Remove the other side, or the outside' }),
+    },
+    undefined,
+    { onChange: (values, changed) => void api.run('clipping.update', { tag, [changed]: values[changed] }) },
+  );
+  bind(cut, (c) => c && fields.load({ shape: c.object.type, invert: !!c.object.invert }));
   return (
     <div class={classes.tight}>
       <div class={classes.tools}>
@@ -1226,6 +1246,7 @@ function ClipEditor(props: { api: ViewerApi; area: ExplorerApi; tag: string; nam
           onClick={() => void api.run('clipping.remove', { tag })}
         />
       </div>
+      <ParamsForm form={fields} />
       <Show when={exact.asReadonly}>
         {() => (
           // made again for another shape: its sizes are another's

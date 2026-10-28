@@ -18,7 +18,8 @@ import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { explorerUI } from '../ui.js';
 
 // The properties on their mock (_spec/ui.md §4), over a headless viewer in jsdom: 1CRN (data/examples). Prism's
-// `SectionList` (open per section from pick to pick), the header naming the kind.
+// `SectionList` (open per section from pick to pick), the header naming the kind, a clip row's shape and invert; each
+// change one step.
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
@@ -108,5 +109,43 @@ describe('the properties on their mock', () => {
     rowOf(host, '1CRN')!.click();
     await until(() => kindShown(host) === 'Structure');
     expect(isOpen(host, 'clips')).toBe(false);
+  });
+
+  it("a clip row's properties: its shape and invert, one step each, the row kept picked", async () => {
+    const v = await viewer();
+    const ref = structures(v)[0].cell.transform.ref;
+    const c = await v.api.run('clipping.add', { shape: 'plane', node: ref });
+    if (!c.ok) throw new Error(c.message);
+    const cut = () => v.api.clipping.cuts.value[0];
+    const host = mount(v);
+    await until(() => !!rowOf(host, '1CRN'));
+    openRow(host, '1CRN');
+    await until(() => !!rowOf(host, 'Plane 1'));
+    rowOf(host, 'Plane 1')!.click();
+    await until(() => kindShown(host) === 'Clip');
+    await open(host, 'clip');
+    const clip = () => section(host, 'clip')!;
+    const n = steps(v);
+
+    // its shape: Prism's clipping (one step), the same cut (its tag), named anew in the header and the tree
+    const shape = clip().querySelector<HTMLButtonElement>('button[aria-haspopup=listbox]')!;
+    expect(shape.textContent).toBe('Plane');
+    shape.click();
+    await until(() => !!clip().querySelector('[role=option]'));
+    const sphere = Array.from(clip().querySelectorAll<HTMLElement>('[role=option]')).find(
+      (o) => o.textContent === 'Sphere',
+    )!;
+    sphere.click();
+    await until(() => cut().object.type === 'sphere');
+    expect(steps(v)).toBe(n + 1);
+    await until(() => !!rowOf(host, 'Sphere 1'));
+    expect(kindShown(host)).toBe('Clip');
+    await until(() => host.querySelector('[data-properties-name]')?.textContent === 'Sphere 1');
+
+    // invert: one step
+    const invert = clip().querySelector<HTMLElement>('[role=switch]')!;
+    invert.click();
+    await until(() => cut().object.invert === true);
+    expect(steps(v)).toBe(n + 2);
   });
 });
