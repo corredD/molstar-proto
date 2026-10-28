@@ -112,10 +112,10 @@ tree lane shared the tree.
 
 ## Size
 
-Production (without tests, stories, generated files, docs): +1,188 −665, net +523, under the brief's ~+800 stop. The app
-+404 (`properties.tsx` +631 −475: the frame, the category's Look and Clips, the clip editor, the Labels section;
-`properties-view.tsx` 96, `properties.module.css` ~105), cryoet +80 (its CSS module 72), mesoscale +39 (its CSS module
-35). The stories +17 net.
+Production (without tests, stories, generated files, docs): +1,228 −669, net +559 after the review's fixes (+523
+before), under the brief's ~+800 stop. The app +404 (`properties.tsx` +631 −475: the frame, the category's Look and
+Clips, the clip editor, the Labels section; `properties-view.tsx` 96, `properties.module.css` ~105), cryoet +80 (its CSS
+module 72), mesoscale +39 (its CSS module 35). The stories +17 net.
 
 ## Review
 
