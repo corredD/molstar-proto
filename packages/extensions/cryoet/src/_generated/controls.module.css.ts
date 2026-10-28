@@ -24,11 +24,13 @@ export const classes = {
 defineStyles('cryoet/controls.module.css', `@layer msp.components {
 .msp-cryoet-controls-stack {
   gap: var(--msp-space-2);
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
 }
 
 .msp-cryoet-controls-tight {
   gap: var(--msp-space-1);
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
 }
 
@@ -80,6 +82,7 @@ defineStyles('cryoet/controls.module.css', `@layer msp.components {
   border-radius: var(--msp-radius-md);
   background: color-mix(in oklab, var(--msp-color-control), transparent 40%);
   box-shadow: inset 0 0 0 1px var(--msp-glass-edge);
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
 }
 }
