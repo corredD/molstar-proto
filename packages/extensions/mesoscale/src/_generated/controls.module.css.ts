@@ -20,11 +20,13 @@ export const classes = {
 defineStyles('mesoscale/controls.module.css', `@layer msp.components {
 .msp-mesoscale-controls-stack {
   gap: var(--msp-space-2);
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
 }
 
 .msp-mesoscale-controls-tight {
   gap: var(--msp-space-1);
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
 }
 

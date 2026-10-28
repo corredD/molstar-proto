@@ -9,11 +9,15 @@
 
 .stack {
   display: grid;
+  /* the column as wide as the panel, not as its widest content (a long button, a slider's box) */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--msp-space-2);
 }
 
 .tight {
   display: grid;
+  /* the column as wide as the panel, not as its widest content (a long button, a slider's box) */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--msp-space-1);
 }
 
