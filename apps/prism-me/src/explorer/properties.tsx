@@ -413,8 +413,9 @@ function ColorField(props: {
     onChange: () => apply.start(150),
   });
   const apply = restartable(() => props.onPick(Color.toHexStyle(form.values.value.color)));
-  bind(props.value, (c) => c !== undefined && form.load({ color: Color(c) }));
   const picking = observableState(false);
+  // a color of its own shown; none again (a reset, an undo): said so, the person's picking over
+  bind(props.value, (c) => (c === undefined ? picking.set(false) : form.load({ color: Color(c) })));
   return (
     <Show
       when={derive([props.value, picking.asReadonly], (c, p) => c !== undefined || p)}

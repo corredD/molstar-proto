@@ -262,6 +262,11 @@ describe('the properties on their mock', () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(steps(v)).toBe(n + 1);
     await until(() => !buttonIn(look(), "Its representation's · pick one"));
+
+    // its color undone: no color of its own again, said so (not the last swatch)
+    await v.api.run('history.undo', {});
+    await until(() => !!buttonIn(look(), "Its representation's · pick one"));
+    expect(swatch()).toBeUndefined();
   });
 
   it("a category's Look acts on the objects under it now, one loaded while it is picked too", async () => {
