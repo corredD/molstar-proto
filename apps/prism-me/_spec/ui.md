@@ -422,6 +422,6 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   objects), named by its shape and number (Plane 1). Its eye draws it in the scene or not (`clipping.show`, one step;
   the coordinator's default: a Prism cut has no on and off); picked, its properties show its name only and it has no ⋯
   (its menu and properties are the right-click's and the properties' lanes).
-- Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a
-  structure entity's or chain's eye (Prism hides representations, not parts); a color dot only where a color was set;
-  the mesh section repeats the mesh's eye and name.
+- Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: a structure entity's or chain's eye (Prism
+  hides representations, not parts); a color dot only where a color was set; the mesh section repeats the mesh's eye and
+  name.
