@@ -137,7 +137,7 @@ describe('a distance by two Ctrl+clicks', () => {
       .reverse()
       .find((r) => r.depth < rows[at].depth);
     expect(parent?.key).toBe(first.key);
-    expect(rows[at]).toMatchObject({ kind: 'distance', label: d.label, visible: true });
+    expect(rows[at]).toMatchObject({ kind: 'distance', label: `Distance ${d.label}`, visible: true });
     expect(ancestorKeys(objects, new Map(), `d:${d.ref}`, [], distances(v))).toContain(first.key);
     expectOk(await v.api.run('history.undo', {}));
     expect(distances(v)).toHaveLength(0);

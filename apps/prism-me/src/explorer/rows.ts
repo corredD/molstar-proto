@@ -136,6 +136,8 @@ export function rowsOf(
     under(l.node, l.target, {
       key: `l:${l.ref}`,
       label: l.text,
+      // told apart from the parts it is among (no icon on child rows, styling.md §4)
+      count: 'label',
       kind: 'label',
       visible: l.visible,
       hasChildren: false,
@@ -145,7 +147,7 @@ export function rowsOf(
   for (const d of distances) {
     under(d.node, d.a.ref, {
       key: `d:${d.ref}`,
-      label: d.label,
+      label: `Distance ${d.label}`,
       kind: 'distance',
       visible: d.visible,
       hasChildren: false,

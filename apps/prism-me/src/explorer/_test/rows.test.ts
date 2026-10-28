@@ -84,6 +84,22 @@ describe('a label or a distance whose row is not there', () => {
     expect(keys).toContain('2:l:lab');
     expect(keys).toContain('2:d:dist');
   });
+
+  it('says what it is: a label faint after its text, a distance before its value (as the mock)', () => {
+    const label = { ref: 'lab', text: 'here', node: 'o:m', target: 'm', visible: true } as LabelInfo;
+    const distance = {
+      ref: 'dist',
+      node: 'o:m',
+      label: '5.00 Å',
+      a: { ref: 'm', label: 'a', key: 'o:m' },
+      b: { ref: 'm', label: 'b', key: '' },
+      visible: true,
+    } as unknown as DistanceInfo;
+    const rows = rowsOf([model], new Map([['m', infoOf('compartment', true)]]), AllOpen, '', [label], [distance]);
+    const of = (key: string) => rows.find((r) => r.key === key)!;
+    expect([of('l:lab').label, of('l:lab').count]).toEqual(['here', 'label']);
+    expect(of('d:dist').label).toBe('Distance 5.00 Å');
+  });
 });
 
 describe('the filter (ui.md §1)', () => {
