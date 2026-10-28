@@ -20,6 +20,7 @@ import {
   onCleanup,
   openContextMenu,
   ScrollArea,
+  ShellModel,
   Show,
   TextInput,
 } from '@molstar/prism-ui';
@@ -99,6 +100,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
         kind: row.kind,
         node: row.node,
         ...(row.representation ? { representation: row.representation } : {}),
+        ...(row.clip ? { clip: row.clip } : {}),
       });
     }
   });
@@ -207,6 +209,8 @@ export interface SceneModel {
   reveal(p: PickedNode): void;
   /** A model's grouping as its rows show it (its info's), for what acts on its groups */
   groupByOf(model: string): MesoGroupBy | undefined;
+  /** The properties' sections, their open state kept from pick to pick for the session (ui.md §4) */
+  readonly sections: ShellModel;
 }
 
 function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
@@ -222,6 +226,7 @@ function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
     parts,
     groupings,
     scrollTo,
+    sections: new ShellModel(),
     groupByOf: (ref) => (parts.value.get(ref) as MesoscaleInfo | undefined)?.groupBy,
     reveal(p) {
       const labels = stage?.labelsState().value ?? [];
@@ -315,6 +320,8 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     kind: row.kind,
     ...(row.node ? { node: row.node } : {}),
     ...(row.representation ? { representation: row.representation } : {}),
+    ...(row.clip ? { clip: row.clip } : {}),
+    ...(row.objects ? { objects: row.objects } : {}),
   });
   const pick = (row: Row) => {
     if (picked.value?.key !== row.key) picked.set(pickedOf(row));
@@ -484,6 +491,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
                 picked={picked.asReadonly}
                 parts={parts.asReadonly}
                 groupings={model.groupings}
+                shell={model.sections}
               />
             )}
           </Show>
