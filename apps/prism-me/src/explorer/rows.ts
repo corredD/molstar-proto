@@ -33,7 +33,7 @@ export interface Row extends TreeRowView {
   readonly node?: NodeRef;
   /** A representation's row: its state ref */
   readonly representation?: string;
-  /** A category's objects (their refs): its eye acts on all of them */
+  /** A category's objects (their refs): its eye and its scissors act on all of them */
   readonly objects?: readonly string[];
 }
 
@@ -130,6 +130,9 @@ export function rowsOf(
         kind: 'category',
         category: true,
         count: String(items.length),
+        // its eye shows or hides every object under it (shown while any is)
+        visible: items.some((o) => o.visible),
+        objects: items.map((o) => o.ref),
         hasChildren: true,
       },
       () => {
@@ -340,6 +343,10 @@ const VolumeRowKinds: ReadonlySet<string> = new Set(['slice', 'oblique slice', '
 /** A row's eye: the visibility operation of what it stands for (whether it shows its children aside) */
 export function toggleVisible(api: ViewerApi, row: Draft) {
   const visible = !row.visible;
+  // a category's: every object under it, one step
+  if (row.kind === 'category' && row.objects?.length) {
+    return api.run('state.visibility', { node: row.objects.map((r) => `#${r}`).join(', '), visible });
+  }
   const node = row.node;
   if (!node) return;
   switch (row.kind) {

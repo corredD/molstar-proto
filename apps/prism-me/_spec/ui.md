@@ -409,6 +409,10 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   (cut by the fade), its count faint, then brush, scissors, eye and ⋯ (its right-click's menu, under it), on hover or
   focus, always on a touch screen, a hidden node's eye kept. The tree takes the panel above the properties; the split
   between them is `drag()`, ↑/↓ by 16 px (Shift 64), the properties 80 px at least and the tree too.
+- A category's tools (2026-10-27, lane `tree-view`): its eye shows or hides every object under it in one step
+  (`state.visibility` of their refs; shown while any is), its scissors add one Prism cut of all of them (`clipping.add`
+  by their refs, its handles shown). Its brush (a color theme over every kind under it) waits: no one operation does it
+  (TODO.md).
 - Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a
   structure entity's or chain's eye (Prism hides representations, not parts); a color dot only where a color was set;
   the mesh section repeats the mesh's eye and name.

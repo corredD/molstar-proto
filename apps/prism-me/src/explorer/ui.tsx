@@ -35,7 +35,7 @@ import type { Subscription } from 'rxjs';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { editInline } from './inline-edit.js';
 import { distancePicker, selectionModeHint } from './measure.js';
-import { clipItems, clippable, colorable, colorItems, nodeMenuItems } from './menu.js';
+import { clipItems, clippable, colorable, colorItems, nodeMenuItems, showClipHandles } from './menu.js';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
 import { ancestorKeys, Categories, type Parts, type Row, rowOf, rowsOf, sameRow, toggleVisible } from './rows.js';
@@ -314,6 +314,11 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   const root = () => rootOf(panelEl);
   // a row tool (the brush, the scissors): the row picked, its menu under the button
   const tool = (row: Row, which: 'color' | 'clip', at: At, onClose: () => void) => {
+    if (row.objects && which === 'clip') {
+      pick(row);
+      openContextMenu(root(), at, categoryClipItems(api, row.objects), onClose);
+      return;
+    }
     if (!row.node) return;
     pick(row);
     const p = { ...pickedOf(row), node: row.node };
@@ -385,7 +390,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
             shown={shown}
             tools={(row) => ({
               color: colorable(row.kind, row.node),
-              clip: clippable(row.kind, row.node),
+              clip: !!row.objects?.length || clippable(row.kind, row.node),
               more: !!row.node,
             })}
             onPick={pick}
@@ -421,6 +426,29 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     </div>
   );
 }
+
+/** A category's scissors: one cut of every object under it (Prism's, through all their representations), by shape */
+function categoryClipItems(api: ViewerApi, objects: readonly string[]): ContextMenuItem[] {
+  const node = objects.map((r) => `#${r}`).join(', ');
+  return CutShapes.map(([shape, label]) => ({
+    id: `clip-${shape}`,
+    label,
+    run: async () => {
+      const r = await api.run('clipping.add', { shape, node });
+      const cut = (r as { value?: { index: number } }).value;
+      if (r.ok && cut) showClipHandles(api, cut.index);
+    },
+  }));
+}
+
+/** Prism's cut shapes, as the scissors offer them (menu.ts) */
+const CutShapes = [
+  ['plane', 'Plane'],
+  ['sphere', 'Sphere'],
+  ['cube', 'Box'],
+  ['cylinder', 'Cylinder'],
+  ['infiniteCone', 'Cone'],
+] as const;
 
 /** Whether a picked row stays lit in 3D: not a volume's (its light would cover the slice's image) */
 function lastingHighlight(row: { readonly kind: string }) {

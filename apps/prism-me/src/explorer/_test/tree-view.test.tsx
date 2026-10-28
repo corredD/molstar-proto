@@ -59,13 +59,19 @@ afterEach(async () => {
   document.body.innerHTML = '';
 });
 
-async function viewer(models: readonly [string, number][]) {
+async function viewer(models: readonly [string, number][], drawn = false) {
   const base = DefaultPrismViewerSpec();
   const v = await createPrismViewerHeadless({
     spec: { ...base, extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions] },
   });
   viewers.push(v);
   for (const [label, n] of models) await v.plugin.build().toRoot().apply(TestModel, { label, n }).commit();
+  if (drawn) {
+    for (const l of v.plugin.managers.particles.hierarchy.current.lists) {
+      const r = await v.api.particles.representation({ type: 'spacefill', particles: l.cell.transform.ref });
+      if (!r.ok) throw new Error(r.message);
+    }
+  }
   return v;
 }
 
@@ -202,5 +208,50 @@ describe("a row's eye", () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(visible()).toBe(true);
     expect(eye('Hide')).toBeTruthy();
+  });
+});
+
+describe("a category's tools (ui.md §3)", () => {
+  it('its eye hides every object under it, one step, and shows them again', async () => {
+    const v = await viewer([
+      ['HIV', 3],
+      ['Other', 2],
+    ]);
+    const { api, host } = mount(v);
+    await until(() => !!item(host, 'c:particles'));
+    const shown = () => api.explorer!.objectsState().value.map((o) => o.visible);
+    const steps = v.api.history.steps.value.length;
+    item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Hide"]')!.click();
+    await until(() => shown().every((s) => !s));
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    // all hidden: its eye stays in view, and shows them
+    await until(() => !!item(host, 'c:particles')!.querySelector('button[aria-label="Show"]'));
+    item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Show"]')!.click();
+    await until(() => shown().every((s) => s));
+  });
+
+  it('its scissors add one cut of every object under it', async () => {
+    const v = await viewer(
+      [
+        ['HIV', 3],
+        ['Other', 2],
+      ],
+      true,
+    );
+    const { host } = mount(v);
+    await until(() => !!item(host, 'c:particles'));
+    const steps = v.api.history.steps.value.length;
+    item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Add a clip"]')!.click();
+    await settle();
+    const plane = Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]')).find(
+      (m) => m.textContent?.trim() === 'Plane',
+    );
+    expect(plane).toBeTruthy();
+    plane!.click();
+    await until(() => v.api.clipping.cuts.value.length === 1);
+    const lists = v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref);
+    const cut = v.api.clipping.cuts.value[0];
+    for (const ref of lists) expect(cut.targets.some((t) => v.api.explorer!.isUnder(t.ref, ref))).toBe(true);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
   });
 });

@@ -85,6 +85,12 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   error stays green.
 - The explorer mocks group by `o:hiv` only (`_stories/explorer-panel.tsx`): a second mock model would share its Group
   by.
+- A category's brush (ui.md §3: its color theme, for every object under it): structures, particles, volumes and meshes
+  take a color by different operations, and no one operation sets a theme over them; the tree's category row has its eye
+  and scissors only (lane `tree-view`, 2026-10-27).
+- Prism's `SceneTree` over a model the explorer implements (an upstream export): the explorer's tree would be Prism's
+  own (search, selection filter), not its rows repeated on `VirtualList` with the scene tree's CSS
+  (`src/explorer/tree-view.tsx`, `tree.module.css`; the coordinator's default for lane `tree-view`).
 - A list's class (target row) can be hidden (right-click › Hide) but not shown again but by undo: its row has no eye
   (lane `looks-owner`'s review, 2026-10-25).
 - Turning a cut of some particles off on one representation and on again (`clipping` on/off per representation) loses
