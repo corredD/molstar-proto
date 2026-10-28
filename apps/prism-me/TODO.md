@@ -15,10 +15,9 @@ spec (lane `app-spec`) are built. From the architecture's decisions ([_spec/arch
 refactor in place) and the review of the distances (PR #5):
 
 - **The views on the mocks**, one lane each, checked against its story in Storybook (prism-me › Explorer), light and
-  dark, wide and narrow: the tree (`ui.tsx`, `rows.ts`: `VirtualList`, `TreeNavigation`, the row's tools on hover, the
-  eye at the end, categories picked); the properties (`properties.tsx`: `SectionList`, `ParamsForm`, a category's Look
-  and Clips, Position with its Handles); the right-click (`menu.ts`: one Move and turn, no icons on items). Check: the
-  app and the story look and behave the same.
+  dark, wide and narrow (the tree: built, lane `tree-view`): the properties (`properties.tsx`: `SectionList`,
+  `ParamsForm`, a category's Look and Clips, Position with its Handles); the right-click (`menu.ts`: one Move and turn,
+  no icons on items). Check: the app and the story look and behave the same.
 
 ## Library fixes ready for upstream
 
