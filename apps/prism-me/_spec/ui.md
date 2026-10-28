@@ -421,8 +421,9 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   (`state.visibility` of their refs; shown while any is), its scissors add one Prism cut of all of them (`clipping.add`
   by their refs, its handles shown), its brush colors them by a theme (Ludo, 2026-10-27: `mesoscale.theme`, the
   mesoscale extension's, as §3 lists: one change, in one data transaction: the representations' themes in one commit,
-  every list's look colors cleared or generated in one `particles.look` (several lists), every mesh in one `cryoet.mesh`
-  (several colors); a theme an object does not take changes nothing).
+  the structures' own colors (their row's brush, an overpaint) cleared (Ludo, 2026-10-27), every list's look colors
+  cleared or generated in one `particles.look` (several lists), every mesh in one `cryoet.mesh` (several colors); a
+  theme an object does not take changes nothing).
 - Clips as rows (2026-10-27, lane `tree-view`): each of Prism's cuts is a row under the row it was made at (an object's;
   an entity's, a chain's, a group's or a target's for a cut of only them; their category's for a cut of several
   objects), named by its shape and number (Plane 1). Its eye draws it in the scene or not (`clipping.show`, one step;

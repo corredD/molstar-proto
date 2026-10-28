@@ -556,7 +556,8 @@ export class MesoscaleApi extends ApiArea {
    * §3): structures by object, entity, chain or one color; particle models and lists by object, entity (a list with no
    * entities: by object), generated colors or one color; volumes (their isosurfaces: slices show the data) and meshes
    * by object or one color. Everything is planned before a change, so a theme an object does not take changes nothing;
-   * then one change: the representations' themes in one commit, every list's look colors (they paint over a theme)
+   * then one change: the representations' themes in one commit, the structures' own colors (their overpaint) cleared in
+   * one `representation.reset` (when every structure is given), every list's look colors (they paint over a theme)
    * cleared or generated in one `particles.look`, every mesh in one `cryoet.mesh`, in one data transaction.
    */
   readonly theme = this.operation({
@@ -683,6 +684,12 @@ export class MesoscaleApi extends ApiArea {
       const meshes = plans.flatMap((p) =>
         p.kind === 'mesh' ? [{ mesh: p.ref, color: Color.toHexStyle(p.color) }] : [],
       );
+      const structures = plans.flatMap((p) =>
+        p.kind === 'reps' && p.o.kind === 'structure' ? [p.o.cell.transform.ref] : [],
+      );
+      const given = new Set(structures);
+      const loaded = ctx.plugin.managers.structure.hierarchy.current.structures;
+      const everyStructure = structures.length > 0 && loaded.every((s) => given.has(s.cell.transform.ref));
       // the list a representation's ref is of (a look's change, said by its representations)
       const listOf = new Map(
         [...lists.values()].flatMap((l) => l.representations.map((r) => [r.cell.transform.ref, l.cell.transform.ref])),
@@ -691,6 +698,16 @@ export class MesoscaleApi extends ApiArea {
         await ctx.plugin.dataTransaction(
           async () => {
             if (nodes.length) await b.commit();
+            // a structure's own colors (its row's brush: an overpaint) paint over a theme: cleared by their owner,
+            // `representation.reset`, once for every structure when all are colored (a category's), else one each
+            for (const structure of everyStructure ? [''] : structures) {
+              const r = await ctx.api.run('representation.reset', { layer: 'color', structure });
+              if (!r.ok) throw new Rollback(r);
+              if (!r.unchanged) {
+                nodes.push(...(r.changed.nodes ?? []));
+                for (const s of structure ? [structure] : structures) changed.add(s);
+              }
+            }
             if (looks.length) {
               const r = await ctx.api.run('particles.look', { lists: looks });
               if (!r.ok) throw new Rollback(r);

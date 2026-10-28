@@ -275,3 +275,43 @@ describe('one write however many lists', () => {
     }
   });
 });
+
+describe("a structure's own colors (its row's brush, an overpaint)", () => {
+  it('are cleared under a theme of every structure, one step; one undo brings them back', async () => {
+    const v = await viewer();
+    const { refs } = themes(v);
+    const overpaints = () =>
+      [...v.plugin.state.data.cells.values()].filter((c) => /overpaint/i.test(c.transform.transformer.id)).length;
+    expectOk(await v.api.run('representation.color', { target: 'all', structure: refs.a, color: 'red' }));
+    expect(overpaints()).toBeGreaterThan(0);
+    const steps = v.api.history.steps.value.length;
+    expectOk(await v.api.run('mesoscale.theme', { objects: [refs.a, refs.b], theme: 'entity' }));
+    expect(overpaints()).toBe(0);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(overpaints()).toBeGreaterThan(0);
+  });
+
+  it("are cleared on the structures given only (an agent's few)", async () => {
+    const v = await viewer();
+    const { refs } = themes(v);
+    const overpaintsOf = (ref: string) =>
+      [...v.plugin.state.data.cells.values()].filter(
+        (c) => /overpaint/i.test(c.transform.transformer.id) && isUnder(v, c.transform.ref, ref),
+      ).length;
+    expectOk(await v.api.run('representation.color', { target: 'all', structure: refs.a, color: 'red' }));
+    expectOk(await v.api.run('representation.color', { target: 'all', structure: refs.b, color: 'blue' }));
+    expectOk(await v.api.run('mesoscale.theme', { objects: [refs.a], theme: 'entity' }));
+    expect(overpaintsOf(refs.a)).toBe(0);
+    expect(overpaintsOf(refs.b)).toBeGreaterThan(0);
+  });
+});
+
+function isUnder(v: PrismViewer, ref: string, ancestor: string) {
+  const { tree } = v.plugin.state.data;
+  for (let r: string | undefined = ref; r; r = tree.transforms.get(r)?.parent) {
+    if (r === ancestor) return true;
+    if (r === tree.root.ref) return false;
+  }
+  return false;
+}
