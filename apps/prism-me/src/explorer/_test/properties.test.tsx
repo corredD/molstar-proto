@@ -17,9 +17,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { explorerUI } from '../ui.js';
 
-// The properties on their mock (_spec/ui.md §4), over a headless viewer in jsdom: 1CRN (data/examples). Prism's
-// `SectionList` (open per section from pick to pick), the header naming the kind, a clip row's shape and invert; each
-// change one step.
+// The properties on their mock (_spec/ui.md §4), over a headless viewer in jsdom: 1CRN (data/examples), twice where a
+// category needs two objects. Prism's `SectionList` (open per section from pick to pick), the header naming the kind,
+// a category's Look and Clips, a clip row's shape and invert; each change one step.
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
@@ -96,19 +96,53 @@ describe('the properties on their mock', () => {
     expect(isOpen(host, 'clips')).toBe(false);
     await open(host, 'clips');
 
-    // its entity: a part, Clips open there too
+    // its entity: a part, Clips open there too; the category: Clips open
     openRow(host, '1CRN');
     await until(() => !!rowOf(host, 'CRAMBIN'));
     rowOf(host, 'CRAMBIN')!.click();
     await until(() => kindShown(host) === 'Entity');
     expect(isOpen(host, 'clips')).toBe(true);
     expect(isOpen(host, 'look')).toBe(false);
+    rowOf(host, 'Structures')!.click();
+    await until(() => kindShown(host) === 'Category');
+    expect(isOpen(host, 'clips')).toBe(true);
 
     // folded here: folded back on the structure
     header(host, 'clips')!.click();
     rowOf(host, '1CRN')!.click();
     await until(() => kindShown(host) === 'Structure');
     expect(isOpen(host, 'clips')).toBe(false);
+  });
+
+  it("a category's Look: its eye for every object under it and a color theme, one step each", async () => {
+    const v = await viewer(2);
+    const host = mount(v);
+    await until(() => !!rowOf(host, 'Structures'));
+    rowOf(host, 'Structures')!.click();
+    await open(host, 'look');
+    const look = () => section(host, 'look');
+    await until(() => !!buttonIn(look(), 'By object'));
+    const n = steps(v);
+
+    // 1CRN is colored by chain at first: by object, each its own color
+    buttonIn(look(), 'By object')!.click();
+    await until(() => steps(v) === n + 1);
+    const themes = () =>
+      structures(v).flatMap((s) =>
+        s.components.flatMap((c) =>
+          c.representations.map(
+            (r) => (r.cell.transform.params as { colorTheme: { name: string } } | undefined)?.colorTheme.name,
+          ),
+        ),
+      );
+    expect(themes().includes('chain-id')).toBe(false);
+
+    // Prism's switch (ParamsForm's): the category's only one
+    const visible = () => look()!.querySelector<HTMLElement>('[role=switch]');
+    await until(() => !!visible());
+    visible()!.click();
+    await until(() => structures(v).every((s) => s.cell.state.isHidden));
+    expect(steps(v)).toBe(n + 2);
   });
 
   it("a clip row's properties: its shape and invert, one step each, the row kept picked", async () => {
@@ -147,5 +181,24 @@ describe('the properties on their mock', () => {
     invert.click();
     await until(() => cut().object.invert === true);
     expect(steps(v)).toBe(n + 2);
+  });
+
+  it("a category's Clips: the cuts of every object under it, each editable, removed in one step", async () => {
+    const v = await viewer(2);
+    const refs = structures(v).map((s) => `#${s.cell.transform.ref}`);
+    const c = await v.api.run('clipping.add', { shape: 'plane', node: refs.join(', ') });
+    if (!c.ok) throw new Error(c.message);
+    const host = mount(v);
+    await until(() => !!rowOf(host, 'Structures'));
+    rowOf(host, 'Structures')!.click();
+    await open(host, 'clips');
+    const clips = () => section(host, 'clips')!;
+    await until(() => !!clips().querySelector('[aria-label="Remove it"]'));
+    expect(clips().querySelector('button[aria-haspopup=listbox]')?.textContent).toBe('Plane');
+    const n = steps(v);
+    clips().querySelector<HTMLButtonElement>('[aria-label="Remove it"]')!.click();
+    await until(() => v.api.clipping.cuts.value.length === 0);
+    expect(steps(v)).toBe(n + 1);
+    await until(() => !clips().querySelector('[aria-label="Remove it"]'));
   });
 });

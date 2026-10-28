@@ -5,7 +5,8 @@
  */
 
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
-import { groupEntities, type MesoGroup } from '@molstar/mesoscale-extension/model';
+import { Color } from '@molstar/core/util/color';
+import { groupEntities, type MesoGroup, type MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { IconName } from '@molstar/prism-ui';
@@ -425,6 +426,33 @@ function modelOf(key: string, models: readonly string[]): string {
 
 /** A volume's representations with rows of their own kind (others: 'volume representation') */
 const VolumeRowKinds: ReadonlySet<string> = new Set(['slice', 'oblique slice', 'isosurface']);
+
+/**
+ * A category's color theme for every object under it, one step (`mesoscale.theme`, each kind by the theme it takes;
+ * ui.md §3, Ludo 2026-10-27): its row's brush and its Look. Generated colors by each model's grouping as the tree shows
+ * it (as its row's Generate colors); Uniform in `color`.
+ */
+export function categoryTheme(
+  api: ViewerApi,
+  objects: readonly string[],
+  theme: string,
+  groupByOf: (model: string) => MesoGroupBy | undefined,
+  color?: number,
+) {
+  if (theme === 'uniform') {
+    return api.run('mesoscale.theme', {
+      objects: [...objects],
+      theme,
+      color: Color.toHexStyle(Color(color ?? 0xffffff)),
+    });
+  }
+  const groupBy: Record<string, MesoGroupBy> = {};
+  for (const ref of objects) {
+    const by = groupByOf(ref);
+    if (by) groupBy[ref] = by;
+  }
+  return api.run('mesoscale.theme', { objects: [...objects], theme, groupBy });
+}
 
 /** A row's eye: the visibility operation of what it stands for (whether it shows its children aside) */
 export function toggleVisible(api: ViewerApi, row: Draft) {

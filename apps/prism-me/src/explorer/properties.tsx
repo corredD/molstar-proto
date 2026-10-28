@@ -17,9 +17,11 @@ import { ImportColors, ObjectGraphics } from '@molstar/mesoscale-extension/contr
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
+  ActionFooter,
   bind,
   Button,
   type Child,
+  ColorPicker,
   Choices,
   type ContextMenuItem,
   domView,
@@ -48,7 +50,8 @@ import { DistanceProps } from './distance-properties.js';
 import { clipItems, clippable, hideHandles, movable, showClipHandles, showHandles, showTheme } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
 import { Hint, Line, PropertiesFrame, PropertiesSlot, propertiesClasses as classes } from './properties-view.js';
-import { ClipShapes, type Parts } from './rows.js';
+import { type ClipAt, ClipShapes, categoryTheme, type Parts } from './rows.js';
+import { CategoryThemes } from './tree-view.js';
 
 // The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name and kind, a model's Group by
 // above the sections (the tree's grouping of its rows: view state), then the sections that apply on Prism's
@@ -76,6 +79,10 @@ interface Subject {
   readonly area: ExplorerApi;
   readonly picked: Picked;
   readonly parts: ReadonlyState<Parts>;
+  /** The clips as rows, where each was made (the tree's: a category's Clips are those under its row) */
+  readonly clips: ReadonlyState<readonly ClipAt[]>;
+  /** A model's grouping as its rows show it */
+  groupByOf(model: string): MesoGroupBy | undefined;
 }
 
 export function Properties(props: {
@@ -85,6 +92,8 @@ export function Properties(props: {
   parts: ReadonlyState<Parts>;
   /** Each model's grouping in the tree, by ref (the explorer's view state) */
   groupings: KeyedState<string, MesoGroupBy>;
+  groupByOf(model: string): MesoGroupBy | undefined;
+  clips: ReadonlyState<readonly ClipAt[]>;
   /** Kept by the owner for the session: the sections' open state, from pick to pick */
   shell: ShellModel;
 }) {
@@ -98,6 +107,8 @@ export function Properties(props: {
           area: props.area,
           picked,
           parts: props.parts,
+          clips: props.clips,
+          groupByOf: props.groupByOf,
         };
         return (
           <PropertiesFrame
@@ -167,9 +178,11 @@ const Sections: readonly Section[] = [
   {
     id: 'look',
     title: 'Look',
-    when: (s) => structural(s) || particled(s) || (s.picked.kind === 'mesh' && !!s.picked.node),
+    when: (s) =>
+      s.picked.kind === 'category' || structural(s) || particled(s) || (s.picked.kind === 'mesh' && !!s.picked.node),
     render: (s) => {
       const { api, area, picked } = s;
+      if (picked.kind === 'category') return <CategoryLook subject={s} />;
       if (picked.kind === 'mesh') return <MeshLook api={api} node={picked.node!} />;
       if (particled(s)) return <ParticleLook api={api} node={picked.node!} parts={s.parts} />;
       return <StructureLook api={api} area={area} node={picked.node!} whole={picked.kind === 'structure'} />;
@@ -282,8 +295,13 @@ const Sections: readonly Section[] = [
   {
     id: 'clips',
     title: 'Clips',
-    when: ({ picked }) => clippable(picked.kind, picked.node),
-    render: ({ api, area, picked }) => <Clips api={api} area={area} kind={picked.kind} node={picked.node!} />,
+    when: ({ picked }) => picked.kind === 'category' || clippable(picked.kind, picked.node),
+    render: (s) =>
+      s.picked.kind === 'category' ? (
+        <CategoryClips subject={s} />
+      ) : (
+        <Clips api={s.api} area={s.area} kind={s.picked.kind} node={s.picked.node!} />
+      ),
   },
   {
     id: 'graphics',
@@ -418,6 +436,73 @@ const Percent = {
 
 /** A place or a turn: to a tenth */
 const tenths = (v: number) => String(Math.round(v * 10) / 10);
+
+// --- a category (ui.md §3, §4) -------------------------------------------------------------------------------------------
+
+/**
+ * A category's Look: its eye for every object under it, and a color theme for all of them, the themes its kind takes
+ * (`mesoscale.theme`, one step; as its row's brush); Uniform picks its color in Prism's picker, applied once
+ */
+function CategoryLook(props: { subject: Subject }) {
+  const { api, area, picked, groupByOf } = props.subject;
+  const objects = picked.objects ?? [];
+  const mine = new Set(objects);
+  const shown = mapState(area.objectsState(), (os) => os.some((o) => mine.has(o.ref) && o.visible));
+  const form = new ParamsFormModel(
+    { visible: PD.Boolean(true, { label: 'Visible', description: 'Every object under it' }) },
+    undefined,
+    {
+      onChange: ({ visible }) =>
+        void api.run('state.visibility', { node: objects.map((r) => `#${r}`).join(', '), visible }),
+    },
+  );
+  bind(shown, (visible) => form.load({ visible }));
+  const uniform = observableState(false);
+  const color = observableState(0xffffff);
+  return (
+    <div class={classes.stack}>
+      <ParamsForm form={form} />
+      <Choices
+        label="Color theme"
+        choices={(CategoryThemes[picked.key] ?? []).map(([id, label]) => ({ id, label }))}
+        onPick={(theme) =>
+          theme === 'uniform' ? uniform.set(!uniform.value) : void categoryTheme(api, objects, theme, groupByOf)
+        }
+      />
+      <Show when={uniform.asReadonly}>
+        {() => (
+          <div class={classes.inline}>
+            <ColorPicker value={color.asReadonly} onChange={(c) => color.set(c)} />
+            <ActionFooter
+              icon="palette"
+              label="Apply"
+              onApply={() => {
+                void categoryTheme(api, objects, 'uniform', groupByOf, color.value);
+                uniform.set(false);
+              }}
+            />
+          </div>
+        )}
+      </Show>
+    </div>
+  );
+}
+
+/** A category's Clips: the cuts its scissors made (each of every object under it), each as a clip row's */
+function CategoryClips(props: { subject: Subject }) {
+  const { api, area, picked, clips } = props.subject;
+  const tags = mapState(clips, (all) => all.filter((c) => c.node === picked.key).map((c) => c.tag));
+  return (
+    <div class={classes.stack}>
+      <For each={tags} by={(t) => t}>
+        {(tag) => <ClipEditor api={api} area={area} tag={tag} named />}
+      </For>
+      <Show when={mapState(tags, (t) => t.length === 0)}>
+        {() => <Hint>No clips. Add one with the scissors: it cuts every object under it.</Hint>}
+      </Show>
+    </div>
+  );
+}
 
 // --- structures ------------------------------------------------------------------------------------------------------
 
