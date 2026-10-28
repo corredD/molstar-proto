@@ -18,6 +18,11 @@ is not built is [../TODO.md](../TODO.md).
   run by another session): built, reviewed, pushed, no PR; waits on Ludo (he opens the PR, perhaps upstream). The volume
   commands are the next lane.
 
+## Decided, not yet in TODO.md
+
+- Ludo, 2026-10-28: the right-click view lane (`menu.ts` on its mock: one Move and turn, no icons on items) is dropped
+  from `Next`. To take out of TODO.md once PR #13 (which edits `Next`) is merged.
+
 ## Waiting on Ludo
 
 - The library fixes ready for upstream ([../TODO.md](../TODO.md)): which go, and when (he asks the maintainer).
