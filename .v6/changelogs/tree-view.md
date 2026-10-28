@@ -6,6 +6,6 @@
   to the properties dragged or moved by the arrows.
 - A category's eye, scissors and brush act on every object under it, one step each; a row's trash removes an object, a
   clip, a label or a distance (as its menu's Remove); clips are rows under the row they were made at.
-- `mesoscale.theme` (⌘K, the agent's `color_objects_by_theme`): a color theme for several objects at once (by object,
+- `mesoscale.theme` (the agent's `color_objects_by_theme`; no ⌘K form: it takes state refs): a color theme for several objects at once (by object,
   entity, chain, generated colors, one color), each kind by what it takes: structures, particle models and lists,
   volumes' isosurfaces, meshes; one history step.

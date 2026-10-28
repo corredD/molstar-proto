@@ -562,6 +562,11 @@ export class MesoscaleApi extends ApiArea {
   readonly theme = this.operation({
     id: 'mesoscale.theme',
     title: 'Color several objects by a theme',
+    surface: {
+      kind: 'agent-only',
+      reason:
+        "Objects by state ref, which a command's form would read as files: the explorer's category brush and the agent",
+    },
     params: {
       objects: PD.Value<string[]>([], {
         description: 'The objects by state ref: structures, particle models and lists, volumes, meshes',

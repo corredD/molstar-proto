@@ -30,7 +30,7 @@ export const MesoscaleSkill: ViewerSkill = {
     'function. get_mesoscale_entities lists them (groupBy: compartment or function; absent: by compartment when the',
     'model has compartments); style_mesoscale_entities shows, hides, colors, fades or lights entities picked by name or',
     'by group (groupBy: the grouping the group is read in; reset brings them back); color_mesoscale_entities generates colors (a hue',
-    'per group), one uniform color, or goes back to the color theme; set_mesoscale_graphics trades detail for speed',
+    'per group), one uniform color, or goes back to the color theme; color_objects_by_theme colors several objects at once by a theme; set_mesoscale_graphics trades detail for speed',
     '(object: one structure, model or volume alone; absent: every object and the canvas resolution);',
     "Their cuts are the clipping skill's (clipping.add with particles: a group's, an entity's or a target's).",
     'move_mesoscale_particles wiggles the atoms and tumbles the particles of one model (particles; empty: every one; 0 stops)',
@@ -110,12 +110,6 @@ export const MesoscaleExtension: ViewerExtension = {
         icon: 'upload',
         alias: ['import colors', 'color file', 'load colors', 'colors json'],
         action: 'Import',
-      }),
-      operationCommand(api, m.theme, {
-        category,
-        icon: 'palette',
-        alias: ['color theme', 'color objects', 'color by object', 'color all'],
-        action: 'Apply',
       }),
       operationCommand(api, m.graphics, {
         category,

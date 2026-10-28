@@ -155,3 +155,11 @@ describe('a theme for several objects (mesoscale.theme)', () => {
     expect(themes(v)).toEqual(before);
   });
 });
+
+describe("mesoscale.theme's surface", () => {
+  it("is the agent's and the tree's, with no ⌘K form (its refs would be read as files)", async () => {
+    const v = await viewer();
+    expect(v.managers.commands.get('mesoscale.theme')).toBeUndefined();
+    expect(v.api.definitions.value.get('mesoscale.theme')?.surface).toMatchObject({ kind: 'agent-only' });
+  });
+});
