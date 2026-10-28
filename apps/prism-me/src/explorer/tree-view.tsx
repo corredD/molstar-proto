@@ -80,6 +80,8 @@ export function UniformPopover(props: {
   onClose(refocus?: boolean): void;
 }) {
   const color = observableState(0xffffff);
+  // its brush gone from the page (its row scrolled out of a virtual list): closed, not left hanging at no place
+  on(document, 'scroll', () => props.anchor.isConnected || props.onClose(), { capture: true, passive: true });
   return (
     <Popover anchor={props.anchor} onClose={props.onClose} title={props.title} aria-label="Uniform color" align="start">
       <ColorPicker value={color.asReadonly} onChange={(c) => color.set(c)} />

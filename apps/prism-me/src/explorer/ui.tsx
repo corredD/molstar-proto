@@ -455,7 +455,11 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
           <UniformPopover
             anchor={u.anchor}
             title={`${u.row.label}: one color`}
-            onClose={() => uniform.set(undefined)}
+            onClose={(refocus) => {
+              uniform.set(undefined);
+              // Escape and Apply: the focus back on the brush (Popover's contract), if still there
+              if (refocus && u.anchor.isConnected) u.anchor.focus();
+            }}
             onApply={(c) =>
               void api.run('mesoscale.theme', {
                 objects: [...(u.row.objects ?? [])],

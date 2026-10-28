@@ -200,7 +200,11 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
           <UniformPopover
             anchor={u.anchor}
             title={`${u.label}: one color`}
-            onClose={() => uniform.set(undefined)}
+            onClose={(refocus) => {
+              uniform.set(undefined);
+              // Escape and Apply: the focus back on the brush (Popover's contract), if still there
+              if (refocus && u.anchor.isConnected) u.anchor.focus();
+            }}
             onApply={(c) => console.info(`[explorer mock] ${u.label}: uniform ${c.toString(16)}`)}
           />
         )}

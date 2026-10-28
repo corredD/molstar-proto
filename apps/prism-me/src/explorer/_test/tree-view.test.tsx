@@ -505,6 +505,29 @@ describe("a category's Uniform (Ludo, 2026-10-27)", () => {
       );
     await until(() => values().every((c) => c === 0xff0000));
     expect(v.api.history.steps.value.length).toBe(steps + 1);
+    // closed, the focus is back on the brush (the keys go on from the tree)
+    await settle();
+    expect(document.querySelector('[aria-label="Uniform color"]')).toBeNull();
+    expect((document.activeElement as HTMLElement | null)?.getAttribute('aria-label')).toBe('Color all of it');
+  });
+
+  it('closes when its brush leaves the page (its row scrolled out of the tree)', async () => {
+    const v = await viewer([['HIV', 3]], true);
+    const { host } = mount(v);
+    await until(() => !!item(host, 'c:particles'));
+    const brush = item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Color all of it"]')!;
+    brush.click();
+    await settle();
+    Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]'))
+      .find((m) => m.textContent?.trim() === 'Uniform…')!
+      .click();
+    await settle();
+    expect(document.querySelector('[aria-label="Uniform color"]')).toBeTruthy();
+    // a virtual list removes a row scrolled away
+    item(host, 'c:particles')!.remove();
+    document.dispatchEvent(new Event('scroll'));
+    await settle();
+    expect(document.querySelector('[aria-label="Uniform color"]')).toBeNull();
   });
 });
 
