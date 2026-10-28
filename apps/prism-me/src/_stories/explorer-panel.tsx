@@ -22,7 +22,15 @@ import {
 import { frameState } from '@molstar/prism-ui/dom/scope';
 import { timeout } from '@molstar/prism-ui/dom/scoped';
 import { derive } from '@molstar/prism-ui/reactive/state';
-import { type At, filterRows, SplitLine, TreeView, type TreeRowView, treeClasses } from '../explorer/tree-view.js';
+import {
+  type At,
+  EmptyTreeLine,
+  filterRows,
+  SplitLine,
+  TreeView,
+  type TreeRowView,
+  treeClasses,
+} from '../explorer/tree-view.js';
 import { ClipShapes, clippable, colorItemsOf, colorable, menuOf, OpenItems } from './fake-menus.js';
 import { type GroupBy, type MockNode, pathTo } from './fake-scene.js';
 import { Properties } from './properties.js';
@@ -140,15 +148,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
           onInput={(v) => filter.set(v)}
         />
       </div>
-      <Show
-        when={derive(rows, (r) => r.length > 0)}
-        fallback={() => (
-          <p class={classes.empty}>
-            Drop files here, or + Open: structures (mmCIF, PDB), cellPACK and PetWorld models, particle lists (STAR,
-            TBL, EM, NDJSON, Simularium), maps and tomograms (MRC), meshes (OBJ, PLY, VTP).
-          </p>
-        )}
-      >
+      <Show when={derive(rows, (r) => r.length > 0)} fallback={() => <p class={classes.empty}>{EmptyTreeLine}</p>}>
         {() => (
           <TreeView
             rows={rows}

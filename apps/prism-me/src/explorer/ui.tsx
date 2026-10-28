@@ -50,7 +50,14 @@ import {
   sameRow,
   toggleVisible,
 } from './rows.js';
-import { type At, SplitLine, TreeView, type TreeViewHandle, treeClasses as classes } from './tree-view.js';
+import {
+  type At,
+  EmptyTreeLine,
+  SplitLine,
+  TreeView,
+  type TreeViewHandle,
+  treeClasses as classes,
+} from './tree-view.js';
 
 // The explorer's panel (apps/prism-me/_spec/ui.md §1–4): + Open, a filter, the tree of the scene in four categories,
 // and under it the properties of the row picked. Rows act through the API as the person (one step each): their eyes run
@@ -388,15 +395,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
           onInput={(v) => filter.set(v)}
         />
       </div>
-      <Show
-        when={mapState(objects, (o) => o.length > 0)}
-        fallback={() => (
-          <p class={classes.empty}>
-            Drop files here, or + Open: structures (mmCIF, PDB), cellPACK and PetWorld models, particle lists (STAR,
-            TBL, EM, NDJSON), maps and tomograms (MRC, REC, ST), meshes (OBJ, PLY, VTP).
-          </p>
-        )}
-      >
+      <Show when={mapState(objects, (o) => o.length > 0)} fallback={() => <p class={classes.empty}>{EmptyTreeLine}</p>}>
         {() => (
           <TreeView
             rows={rows}
@@ -489,20 +488,11 @@ function openItems(ctx: ViewerUIContext): ContextMenuItem[] {
     };
     input.click();
   };
+  // ui.md §2's words; no icons on menu items (styling.md §4)
   return [
-    { id: 'files', label: 'Files…', icon: 'folder-open', run: () => pickFiles(false) },
-    {
-      id: 'entry',
-      label: 'PDB, PDB-IHM or EMDB entry…',
-      icon: 'download',
-      run: () => void ctx.managers.commands.open('load.entry'),
-    },
-    {
-      id: 'examples',
-      label: 'Mesoscale examples…',
-      icon: 'book-open',
-      run: () => void ctx.managers.commands.open('mesoscale.example'),
-    },
-    { id: 'session', label: 'Session…', icon: 'file', run: () => pickFiles(true) },
+    { id: 'files', label: 'Files…', run: () => pickFiles(false) },
+    { id: 'entry', label: 'PDB / PDB-IHM / EMDB id…', run: () => void ctx.managers.commands.open('load.entry') },
+    { id: 'examples', label: 'Examples…', run: () => void ctx.managers.commands.open('mesoscale.example') },
+    { id: 'session', label: 'Session…', run: () => pickFiles(true) },
   ];
 }

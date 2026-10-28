@@ -33,6 +33,11 @@ import { classes } from './_generated/tree.module.css.js';
 
 export { classes as treeClasses };
 
+/** What the tree says while the scene is empty (ui.md §2) */
+export const EmptyTreeLine =
+  'Drop files here, or + Open: structures (mmCIF, PDB), cellPACK and PetWorld models, particle lists (STAR, TBL, EM, ' +
+  'NDJSON, Simularium), maps and tomograms (MRC, REC, ST), meshes (OBJ, PLY, VTP).';
+
 /** A row as the tree draws it: flat, its depth says where it is */
 export interface TreeRowView {
   readonly key: string;

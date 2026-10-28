@@ -296,3 +296,26 @@ describe('clips as rows (ui.md §3)', () => {
     expect(model.picked.value?.node).toBeUndefined();
   });
 });
+
+describe('+ Open and the empty tree (ui.md §2)', () => {
+  it('says what to drop or open, and + Open lists its four, worded as ui.md, no icons', async () => {
+    const v = await viewer([]);
+    const { host } = mount(v);
+    await settle();
+    expect(host.textContent).toContain('Drop files here, or + Open:');
+    expect(host.textContent).toContain('Simularium');
+    const open = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((b) =>
+      b.textContent?.includes('Open'),
+    )!;
+    open.click();
+    await settle();
+    const items = Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]'));
+    expect(items.map((m) => m.textContent?.trim())).toEqual([
+      'Files…',
+      'PDB / PDB-IHM / EMDB id…',
+      'Examples…',
+      'Session…',
+    ]);
+    expect(items.some((m) => m.querySelector('svg'))).toBe(false);
+  });
+});
