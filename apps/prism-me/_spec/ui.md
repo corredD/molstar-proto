@@ -27,6 +27,10 @@ Structure, Selection, Snapshots and other tabs, the Entities, Segmentations tabs
 The rail keeps two buttons: the panel (the tree) and Settings (the canvas settings). ⌘K and the assistant as Prism has
 them.
 
+The filter keeps each row whose name holds its text, with the rows it is in (looked for in every row, opened or not); a
+category with no hit goes (as Prism's tree). While filtering, a row's chevron folds it (its hits under it hidden); a new
+filter opens every row again.
+
 ## 2. Opening
 
 - Drag and drop anywhere: every format (features.md, "Opening files"); each lands in its category.
@@ -53,9 +57,14 @@ grouping is shown again (a default, to confirm).
 
 Every row: a color dot where it has one color, its name, a count (atoms, particles, entities) faint, then its tools at
 the end (Ludovic, 2026-10-25, as Prism's tree): the brush (a color for all of it), the scissors (a clip), where it has
-them, the eye (show, hide, at its level) and ⋯ (its right-click). The tools show on the row's hover or focus, always on
-a touch screen; a hidden node keeps its eye in view. A category's row has the brush (its color theme), the scissors and
-the eye, for every object under it. Clips and labels made at a node are rows under it (§5), and distances under their
+them, the eye (show, hide, at its level), the trash (remove it, one step, as its menu's Remove: an object, a clip, a
+label, a distance; not a part; Ludo, 2026-10-27) and ⋯ (its right-click). The tools show on the row's hover or focus,
+always on a touch screen; a hidden node keeps its eye in view. A category's row has the brush (its color theme), the
+scissors and the eye, for every object under it; its brush offers the themes its kind takes, each object by its own
+(`mesoscale.theme`, one step; Ludo, 2026-10-27): Structures by object, entity, chain or one color; Particles by object,
+entity (a list with no entities: by object), generated colors or one color; Volumes (their isosurfaces: slices show the
+data) and Meshes by object or one color; one color (Uniform…) picked in Prism's color picker at the brush and applied
+once (one step; Ludo, 2026-10-27). Clips and labels made at a node are rows under it (§5), and distances under their
 first point's row (§7), each with its own eye.
 
 A click on a row picks it: highlighted in 3D, its properties below. A category is picked too (Ludovic, 2026-10-25). The
@@ -69,7 +78,7 @@ The properties of the picked row, in sections that fold. Only what applies to it
 
 | Section           | For                                                                        | What                                                                                                                                                                      |
 | ----------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Look              | every node                                                                 | visible, color (picker; for a model or group: Generate colors), opacity, glow; a category: visible and a color theme, for all under it                                    |
+| Look              | every node                                                                 | visible, color (picker; for a model or group: Generate colors), opacity, glow; a category: visible and a color theme, for all under it (the themes of §3)                 |
 | Representation    | structures, entities, particle lists, volumes, meshes                      | the type (cartoon, spacefill…; spheres or the decorating objects; slice or isosurface; surface, wireframe, both) and its few main settings                                |
 | Decoration        | a particle target or list                                                  | what decorates it: an object of the scene, a PDB id or URL, spheres; targets by class                                                                                     |
 | Slice             | a volume                                                                   | axis, position, contrast                                                                                                                                                  |
@@ -291,10 +300,10 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   decorations (they were of the other targets' ids) and switches what is drawn as a decoration does. File, Class, Score…
   have a tooltip (Prism UI's Choices: the app's `data-tip`, as its buttons, not a native title).
 - Keys in the tree (2026-10-22, Ludovic): a click on a row focuses the tree (a `tree` of `treeitem`s: level, selected,
-  expanded); Up and Down pick the row before or after (past the categories), Right opens a closed row or picks its first
-  child, Left closes an open row or picks its parent (`treeKey`); the picked row comes into view. Not while typing in a
-  field. The Decoration's Targets row is always there: File alone, and why, when the file has no columns (CC, class,
-  score) to split its targets by (an NDJSON list).
+  expanded); Up and Down pick the row before or after, Right opens a closed row or picks its first child, Left closes an
+  open row or picks its parent; the picked row comes into view. Not while typing in a field. Since 2026-10-27 Prism's
+  `TreeNavigation` (a category picked too, Home and End; below). The Decoration's Targets row is always there: File
+  alone, and why, when the file has no columns (CC, class, score) to split its targets by (an NDJSON list).
 - Clip whole (2026-10-22, Ludovic: "on a cellPACK model we either clip the atoms or the proteins"): a model's or a
   list's Clips, while it draws objects, has Clip whole: Proteins (Mol\*'s `instance` variant: an object whose center is
   cut goes, the others stay whole) or Atoms (`pixel` with the spheres' `clipPrimitive`: each atom whose center is cut
@@ -356,11 +365,12 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   grayscale at mean ± 3σ, the camera straight down z (x right, y up) framed to the slice; the x and y slices made too,
   hidden (their eyes show them). The properties' sections all start closed; one opened stays open from row to row this
   session.
-- Remove (2026-10-22, Ludovic): a loaded object's row (a structure, a model, a list, a volume, a mesh) has a trash icon
-  after its scissors, and its menu a Remove: the object goes with its file (all the file holds: a model's unit cell) and
-  its labels; a file holding another listed object keeps it (Prism's `structure.remove`, `particles.remove`,
-  `volume.remove` of the one object). One step of the history (its labels, if any, a step after it). The entry is given
-  to `state.remove` by its ref alone: an example's (a download, loaded by address) is no kind a `#ref` selector reaches.
+- Remove (2026-10-22, Ludovic): a loaded object's menu (a structure, a model, a list, a volume, a mesh; its row's ⋯ and
+  its right-click) has a Remove (and its row's trash, §3): the object goes with its file (all the file holds: a model's
+  unit cell) and its labels; a file holding another listed object keeps it (Prism's `structure.remove`,
+  `particles.remove`, `volume.remove` of the one object). One step of the history (its labels, if any, a step after it).
+  The entry is given to `state.remove` by its ref alone: an example's (a download, loaded by address) is no kind a
+  `#ref` selector reaches.
 - A volume moves as one (2026-10-24, Ludovic: "the volume, the parent, this should move everything, not jump"): its
   slices and isosurfaces are drawn in its frame and have no place of their own: no Position, and their menu's move shows
   their volume's handles ("Move and turn its volume"); a grid slice moves through the volume by its index only. A
@@ -396,6 +406,30 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
 - A part's move (an entity, a chain, a group, a target): greyed in the menu, for now. Spiked: a model's or list's part
   is simple (the transform with a selection: only those particles); a structure's chain needs its own component, taken
   out of the others, with a transform under it (presets would undo it). Ludovic to choose.
-- Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: the tree following a pick in 3D; a
-  structure entity's or chain's eye (Prism hides representations, not parts); a color dot only where a color was set;
-  the mesh section repeats the mesh's eye and name.
+- The tree on its mock (2026-10-27, lane `tree-view`; the coordinator's defaults, not Ludo's): the explorer draws its
+  tree with the mock's view (`explorer/tree-view.tsx`, `tree.module.css`: Prism UI only, the Storybook mock draws the
+  same), its own rows on Prism's `VirtualList` (Prism's `SceneTree` is not exported): a screenful made, an opened
+  model's thousands of entities too; rows keyed and kept while the same (`keepRows`, field by field: no JSON). Keys:
+  Prism's `TreeNavigation` (↑/↓, Home, End, → opens or goes in, ← closes or goes to the parent, Enter a click), the pick
+  following a click or a key's move (not a focus alone: a row made again takes the focus back), a category's too (its
+  properties: its name). A row: an object's icon, its color dot, its name (cut by the fade), its count faint, then
+  brush, scissors, eye, trash and ⋯ (its right-click's menu, under it), on hover or focus, always on a touch screen, a
+  hidden node's eye kept. A label's row says so faint after its text (where a count is), a distance's reads "Distance
+  10.67 Å" (as the mock): no icon on child rows (styling.md §4), where the label and ruler were. The tree takes the
+  panel above the properties; the split between them is `drag()`, ↑/↓ by 16 px (Shift 64), the properties 80 px at least
+  and the tree too.
+- A category's tools (2026-10-27, lane `tree-view`): its eye shows or hides every object under it in one step
+  (`state.visibility` of their refs; shown while any is), its scissors add one Prism cut of all of them (`clipping.add`
+  by their refs, its handles shown), its brush colors them by a theme (Ludo, 2026-10-27: `mesoscale.theme`, the
+  mesoscale extension's, as §3 lists: one change, in one data transaction: the representations' themes in one commit,
+  the structures' own colors (their row's brush, an overpaint) cleared (Ludo, 2026-10-27), every list's look colors
+  cleared or generated in one `particles.look` (several lists), every mesh in one `cryoet.mesh` (several colors); a
+  theme an object does not take changes nothing).
+- Clips as rows (2026-10-27, lane `tree-view`): each of Prism's cuts is a row under the row it was made at (an object's;
+  an entity's, a chain's, a group's or a target's for a cut of only them; their category's for a cut of several
+  objects), named by its shape and number (Plane 1). Its eye draws it in the scene or not (`clipping.show`, one step;
+  the coordinator's default: a Prism cut has no on and off); picked, its properties show its name only and it has no ⋯
+  (its menu and properties are the right-click's and the properties' lanes).
+- Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: a structure entity's or chain's eye (Prism
+  hides representations, not parts); a color dot only where a color was set; the mesh section repeats the mesh's eye and
+  name.

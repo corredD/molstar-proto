@@ -74,3 +74,60 @@ it('a looks patch of N layers over N layers', async () => {
 it('a looks patch of N new layers over N layers', async () => {
   checkLinear('particles.look patch, N new layers', await patchOver(true));
 }, 600_000);
+
+it('one looks patch of N lists, one write', async () => {
+  let color = 0xff;
+  const s = await scalingAsync(
+    {
+      setup: async (n) => {
+        const v = await headlessViewer();
+        const bytes = await simularium().arrayBuffer();
+        const files = Array.from({ length: n }, (_, i) => new File([bytes], `list-${i}.simularium`));
+        expectOk(await v.api.load.files({ files }));
+        return { v, lists: v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref) };
+      },
+      run: async ({ v, lists }: { v: PrismViewer; lists: string[] }) => {
+        // another color each run, so each writes every list
+        color = color === 0xff ? 0xff00 : 0xff;
+        const r = await v.api.run('particles.look', {
+          lists: lists.map((particles) => ({
+            particles,
+            layers: [{ selector: { targets: [1] }, color: Color(color) }],
+          })),
+        });
+        if (!r.ok) throw new Error(r.message);
+      },
+      teardown: ({ v }) => v.dispose(),
+    },
+    10,
+  );
+  checkLinear('particles.look, N lists in one call', s);
+}, 600_000);
+
+it('one looks call over N lists that changes nothing: each list found without a scan', async () => {
+  const s = await scalingAsync(
+    {
+      setup: async (n) => {
+        const v = await headlessViewer();
+        const bytes = await simularium().arrayBuffer();
+        const files = Array.from({ length: n }, (_, i) => new File([bytes], `list-${i}.simularium`));
+        expectOk(await v.api.load.files({ files }));
+        const lists = v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref);
+        const patch = lists.map((particles) => ({
+          particles,
+          layers: [{ selector: { targets: [1] }, color: Color(0xff) }],
+        }));
+        expectOk(await v.api.run('particles.look', { lists: patch }));
+        return { v, patch };
+      },
+      // already so: no write, only the lookups and the checks
+      run: async ({ v, patch }: { v: PrismViewer; patch: object[] }) => {
+        const r = await v.api.run('particles.look', { lists: patch });
+        if (!r.ok || !r.unchanged) throw new Error('expected already');
+      },
+      teardown: ({ v }) => v.dispose(),
+    },
+    100,
+  );
+  checkLinear('particles.look, N lists already so', s);
+}, 600_000);

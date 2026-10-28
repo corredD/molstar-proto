@@ -9,6 +9,7 @@
 import { Button, CanvasPlaceholder, type Child, Icon, StatusPill } from '@molstar/prism-ui';
 import { installTooltips } from '@molstar/prism-ui/components/tooltip/tooltip';
 import { classes } from './_generated/explorer.module.css.js';
+import { treeClasses } from '../explorer/tree-view.js';
 import { ExplorerPanel, type ExplorerPanelProps } from './explorer-panel.js';
 
 // The mocks' frames: each story in light and dark, wide and narrow, side by side (a subtree's `data-msp-theme`
@@ -33,7 +34,7 @@ export function Frames(props: {
     <div class={classes.frames} ref={(el: HTMLElement) => installTooltips(el)}>
       {widths.flatMap((w) =>
         ['light', 'dark'].map((theme) => (
-          <div data-msp-theme={theme} class={classes.frame} classList={{ [classes.touch]: !!props.touch }}>
+          <div data-msp-theme={theme} class={classes.frame} classList={{ [treeClasses.touch]: !!props.touch }}>
             <span class={classes.caption}>{`${theme} · ${w}px${props.touch ? ' · touch' : ''}`}</span>
             <div style={{ width: `${w}px`, height: `${props.height ?? 640}px` }}>{props.render(w)}</div>
           </div>

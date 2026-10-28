@@ -92,7 +92,7 @@ their own packages (`@molstar/<name>-extension/prism-viewer`).
 | `particles.focus` | Focus the particles | view | particles |
 | `particles.frame` | Show a particle frame | view | index, by, particles |
 | `particles.list` | Describe the particles | read |  |
-| `particles.look` | Set how some particles look | agent-only | layers, hidden, cuts, particles, representation, node |
+| `particles.look` | Set how some particles look | agent-only | layers, hidden, cuts, lists, particles, representation, node |
 | `particles.play` | Play the particle frames | view; needs canvas | mode, seconds, particles |
 | `particles.remove` | Remove particles | destructive | particles, representation, node |
 | `particles.representation` | Show particles as… |  | type, params, particles |

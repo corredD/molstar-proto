@@ -1,0 +1,352 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+import { readFileSync } from 'node:fs';
+import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
+import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
+import type { Grid } from '@molstar/model/model/volume';
+import { ApiResult } from '@molstar/prism-viewer/api/area';
+import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
+import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
+import type { PrismViewer } from '@molstar/prism-viewer/viewer';
+import { afterEach, describe, expect, it } from 'vitest';
+import { MesoscaleExtension } from '../prism-viewer.js';
+import { TestParticleList, TestPlainList } from './fixtures.js';
+
+// A color theme for several objects at once (`mesoscale.theme`; apps/prism-me/_spec/ui.md §3, §4: a category's brush,
+// Ludo 2026-10-27): each kind takes the theme it supports, one history step, one undo. Two copies of 1CRN
+// (data/examples), a cellPACK-like list with entities and a small map with an isosurface, made in memory.
+
+const viewers: PrismViewer[] = [];
+afterEach(async () => {
+  for (const v of viewers.splice(0)) await v.dispose();
+});
+
+function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: true }> {
+  if (!r.ok) expect.fail(`${r.code}: ${r.message}${r.hint ? ` (${r.hint})` : ''}`);
+}
+
+function mapFile(name: string, n: number) {
+  const space = Tensor.Space([n, n, n], [2, 1, 0], Float32Array);
+  const data = new Float32Array(n * n * n);
+  const c = (n - 1) / 2;
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++)
+      for (let k = 0; k < n; k++)
+        data[space.dataOffset(i, j, k)] = Math.exp(-((i - c) ** 2 + (j - c) ** 2 + (k - c) ** 2) / 8);
+  const grid: Grid = {
+    transform: { kind: 'matrix', matrix: Mat4.identity() },
+    cells: Tensor.create(space, Tensor.Data1(data)),
+    stats: { min: 0, max: 1, mean: 0.1, sigma: 0.2 },
+  };
+  return new File([CCP4Writer.writeMrc(grid, data)], name);
+}
+
+const crn = (name: string) =>
+  new File([readFileSync(new URL('../../../../../data/examples/1crn.cif', import.meta.url))], name);
+
+async function viewer() {
+  const base = DefaultPrismViewerSpec();
+  const v = await createPrismViewerHeadless({
+    spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+  });
+  viewers.push(v);
+  await v.plugin.build().toRoot().apply(TestParticleList).commit();
+  expectOk(await v.api.particles.representation({ type: 'spacefill' }));
+  for (const f of [crn('a.cif'), crn('b.cif'), mapFile('map.mrc', 10)])
+    expectOk(await v.api.load.files({ files: [f] }));
+  if (!v.plugin.managers.volume.hierarchy.current.volumes[0]?.representations.length) {
+    expectOk(await v.api.run('volume.representation', { type: 'isosurface' }));
+  }
+  return v;
+}
+
+type Theme = { name: string; params: { value?: number } };
+const themeOf = (cell: { transform: { params?: unknown } }) =>
+  (cell.transform.params as { colorTheme: Theme }).colorTheme;
+
+/** Each object's representations' color themes: structures a and b, the list, the volume's isosurfaces */
+function themes(v: PrismViewer) {
+  const [a, b] = v.plugin.managers.structure.hierarchy.current.structures;
+  const list = v.plugin.managers.particles.hierarchy.current.lists[0];
+  const volume = v.plugin.managers.volume.hierarchy.current.volumes[0];
+  const of = (s: typeof a) => s.components.flatMap((c) => c.representations).map((r) => themeOf(r.cell));
+  return {
+    refs: {
+      a: a.cell.transform.ref,
+      b: b.cell.transform.ref,
+      list: list.cell.transform.ref,
+      volume: volume.cell.transform.ref,
+    },
+    a: of(a),
+    b: of(b),
+    list: list.representations.map((r) => themeOf(r.cell)),
+    volume: volume.representations.map((r) => themeOf(r.cell)),
+  };
+}
+
+describe('a theme for several objects (mesoscale.theme)', () => {
+  it('by chain: every structure, one step, one undo; already so, no step', async () => {
+    const v = await viewer();
+    const { refs } = themes(v);
+    const objects = [refs.a, refs.b];
+    // 1CRN opens by chain: by entity first
+    expectOk(await v.api.run('mesoscale.theme', { objects, theme: 'entity' }));
+    const before = themes(v);
+    const steps = v.api.history.steps.value.length;
+    expectOk(await v.api.run('mesoscale.theme', { objects, theme: 'chain' }));
+    const after = themes(v);
+    expect([...after.a, ...after.b].every((t) => t.name === 'chain-id')).toBe(true);
+    expect(after.list).toEqual(before.list);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    expect(await v.api.run('mesoscale.theme', { objects, theme: 'chain' })).toMatchObject({
+      ok: true,
+      unchanged: true,
+    });
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(themes(v).a).toEqual(before.a);
+    expect(themes(v).b).toEqual(before.b);
+  });
+
+  it('by object: a color each, structures, list and isosurface alike, one step', async () => {
+    const v = await viewer();
+    const { refs } = themes(v);
+    const steps = v.api.history.steps.value.length;
+    expectOk(
+      await v.api.run('mesoscale.theme', { objects: [refs.a, refs.b, refs.list, refs.volume], theme: 'object' }),
+    );
+    const after = themes(v);
+    const one = (ts: Theme[]) => {
+      expect(ts.length).toBeGreaterThan(0);
+      expect(ts.every((t) => t.name === 'uniform' && t.params.value === ts[0].params.value)).toBe(true);
+      return ts[0].params.value;
+    };
+    const colors = [one(after.a), one(after.b), one(after.list), one(after.volume)];
+    expect(new Set(colors).size).toBe(4);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+  });
+
+  it("by entity: a model's entities, its look colors cleared (they paint over a theme), one step", async () => {
+    const v = await viewer();
+    const { refs } = themes(v);
+    expectOk(await v.api.mesoscale!.colors({ scheme: 'generate', particles: refs.list } as never));
+    const colored = () => v.api.mesoscale!.infoState(refs.list).value!.entities.filter((e) => e.color !== undefined);
+    expect(colored().length).toBeGreaterThan(0);
+    const steps = v.api.history.steps.value.length;
+    expectOk(await v.api.run('mesoscale.theme', { objects: [refs.list, refs.a], theme: 'entity' }));
+    const after = themes(v);
+    expect(after.list.every((t) => t.name === 'particle-entity')).toBe(true);
+    expect(after.a.every((t) => t.name === 'entity-id')).toBe(true);
+    expect(colored()).toEqual([]);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(colored().length).toBeGreaterThan(0);
+  });
+
+  it('a theme a kind does not take fails before any change', async () => {
+    const v = await viewer();
+    const before = themes(v);
+    const r = await v.api.run('mesoscale.theme', { objects: [before.refs.a, before.refs.list], theme: 'chain' });
+    expect(r).toMatchObject({ ok: false, code: 'invalid' });
+    expect(themes(v)).toEqual(before);
+  });
+});
+
+describe("mesoscale.theme's surface", () => {
+  it("is the agent's and the tree's, with no ⌘K form (its refs would be read as files)", async () => {
+    const v = await viewer();
+    expect(v.managers.commands.get('mesoscale.theme')).toBeUndefined();
+    expect(v.api.definitions.value.get('mesoscale.theme')?.surface).toMatchObject({ kind: 'agent-only' });
+  });
+});
+
+describe('a plain list (no entities)', () => {
+  it('has its look colors cleared too (they paint over a theme), by object', async () => {
+    const v = await viewer();
+    await v.plugin.build().toRoot().apply(TestPlainList).commit();
+    const plain = v.plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.obj?.label === 'Plain')!;
+    const ref = plain.cell.transform.ref;
+    expectOk(await v.api.particles.representation({ type: 'spacefill', particles: ref }));
+    expectOk(await v.api.mesoscale!.colors({ scheme: 'generate', particles: ref } as never));
+    const colored = () => v.api.mesoscale!.infoState(ref).value!.entities.filter((e) => e.color !== undefined);
+    expect(colored().length).toBeGreaterThan(0);
+    expectOk(await v.api.run('mesoscale.theme', { objects: [ref], theme: 'object' }));
+    expect(colored()).toEqual([]);
+  });
+});
+
+describe('an object that is no mesh, nor a structure, a list or a volume', () => {
+  it('fails in the plan, so nothing changes even with undo checkpoints off (a large scene)', async () => {
+    const v = await viewer();
+    const before = themes(v);
+    const representation = v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell.transform.ref;
+    (v.managers.history as unknown as { setCheckpointing(on: boolean): void }).setCheckpointing(false);
+    const r = await v.api.run('mesoscale.theme', {
+      objects: [before.refs.list, representation],
+      theme: 'uniform',
+      color: 'red',
+    });
+    expect(r.ok).toBe(false);
+    expect(themes(v)).toEqual(before);
+  });
+});
+
+describe('nothing to color', () => {
+  it('is said, not "already so": a volume with no isosurface (its slices show the data)', async () => {
+    const v = await viewer();
+    const { refs } = themes(v);
+    const volume = v.plugin.managers.volume.hierarchy.current.volumes[0];
+    for (const r of volume.representations) expectOk(await v.api.run('state.remove', { node: r.cell.transform.ref }));
+    const r = await v.api.run('mesoscale.theme', { objects: [refs.volume], theme: 'object' });
+    expect(r).toMatchObject({ ok: false });
+    expect((r as { message: string }).message).toContain('nothing to color');
+    // with another object: it is colored, and the volume named
+    const both = await v.api.run('mesoscale.theme', { objects: [refs.volume, refs.a], theme: 'object' });
+    expectOk(both);
+    expect(both.did).toContain('1 object');
+  });
+});
+
+describe('generated colors', () => {
+  it("follow the model's grouping given (the tree's), as its row's Generate colors does", async () => {
+    const v = await viewer();
+    const { refs } = themes(v);
+    const colors = () => v.api.mesoscale!.infoState(refs.list).value!.entities.map((e) => e.color);
+    expectOk(await v.api.mesoscale!.colors({ scheme: 'generate', particles: refs.list, groupBy: 'function' } as never));
+    const byFunction = colors();
+    expectOk(
+      await v.api.mesoscale!.colors({ scheme: 'generate', particles: refs.list, groupBy: 'compartment' } as never),
+    );
+    // the groupings give other hues (else this test could not tell them apart)
+    expect(colors()).not.toEqual(byFunction);
+    expectOk(await v.api.mesoscale!.colors({ scheme: 'theme', particles: refs.list } as never));
+    expectOk(
+      await v.api.run('mesoscale.theme', {
+        objects: [refs.list],
+        theme: 'generate',
+        groupBy: { [refs.list]: 'function' },
+      }),
+    );
+    expect(colors()).toEqual(byFunction);
+  });
+});
+
+describe('one write however many lists', () => {
+  async function updatesFor(n: number, theme: 'object' | 'generate') {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const b = v.plugin.build();
+    for (let i = 0; i < n; i++) b.toRoot().apply(TestParticleList);
+    await b.commit();
+    const refs = v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref);
+    for (const ref of refs) {
+      expectOk(await v.api.particles.representation({ type: 'spacefill', particles: ref }));
+      expectOk(await v.api.mesoscale!.colors({ scheme: 'uniform', color: 'red', particles: ref } as never));
+    }
+    const state = v.plugin.state.data;
+    const updateTree = state.updateTree.bind(state);
+    let updates = 0;
+    (state as { updateTree: typeof updateTree }).updateTree = ((...args: Parameters<typeof updateTree>) => {
+      updates++;
+      return updateTree(...args);
+    }) as typeof updateTree;
+    const steps = v.api.history.steps.value.length;
+    try {
+      expectOk(await v.api.run('mesoscale.theme', { objects: refs, theme }));
+    } finally {
+      (state as { updateTree: typeof updateTree }).updateTree = updateTree;
+    }
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    return updates;
+  }
+
+  it('by object (look colors cleared) and generated: the same few tree updates for 2 lists and 8', async () => {
+    for (const theme of ['object', 'generate'] as const) {
+      const two = await updatesFor(2, theme);
+      expect(two).toBeLessThanOrEqual(2);
+      expect(await updatesFor(8, theme)).toBe(two);
+    }
+  });
+});
+
+describe("a structure's own colors (its row's brush, an overpaint)", () => {
+  it('are cleared under a theme of every structure, one step; one undo brings them back', async () => {
+    const v = await viewer();
+    const { refs } = themes(v);
+    const overpaints = () =>
+      [...v.plugin.state.data.cells.values()].filter((c) => /overpaint/i.test(c.transform.transformer.id)).length;
+    expectOk(await v.api.run('representation.color', { target: 'all', structure: refs.a, color: 'red' }));
+    expect(overpaints()).toBeGreaterThan(0);
+    const steps = v.api.history.steps.value.length;
+    expectOk(await v.api.run('mesoscale.theme', { objects: [refs.a, refs.b], theme: 'entity' }));
+    expect(overpaints()).toBe(0);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(overpaints()).toBeGreaterThan(0);
+  });
+
+  it("are cleared on the structures given only (an agent's few)", async () => {
+    const v = await viewer();
+    const { refs } = themes(v);
+    const overpaintsOf = (ref: string) =>
+      [...v.plugin.state.data.cells.values()].filter(
+        (c) => /overpaint/i.test(c.transform.transformer.id) && isUnder(v, c.transform.ref, ref),
+      ).length;
+    expectOk(await v.api.run('representation.color', { target: 'all', structure: refs.a, color: 'red' }));
+    expectOk(await v.api.run('representation.color', { target: 'all', structure: refs.b, color: 'blue' }));
+    expectOk(await v.api.run('mesoscale.theme', { objects: [refs.a], theme: 'entity' }));
+    expect(overpaintsOf(refs.a)).toBe(0);
+    expect(overpaintsOf(refs.b)).toBeGreaterThan(0);
+  });
+});
+
+function isUnder(v: PrismViewer, ref: string, ancestor: string) {
+  const { tree } = v.plugin.state.data;
+  for (let r: string | undefined = ref; r; r = tree.transforms.get(r)?.parent) {
+    if (r === ancestor) return true;
+    if (r === tree.root.ref) return false;
+  }
+  return false;
+}
+
+describe('a part that fails inside the change', () => {
+  it('restores everything (themes, own colors, looks), checkpoints on or off, and makes no step', async () => {
+    for (const checkpoints of [true, false]) {
+      for (const how of ['fails', 'throws'] as const) {
+        const v = await viewer();
+        const { refs } = themes(v);
+        (v.managers.history as unknown as { setCheckpointing(on: boolean): void }).setCheckpointing(checkpoints);
+        expectOk(await v.api.run('representation.color', { target: 'all', structure: refs.a, color: 'red' }));
+        expectOk(await v.api.mesoscale!.colors({ scheme: 'generate', particles: refs.list } as never));
+        const overpaints = () =>
+          [...v.plugin.state.data.cells.values()].filter((c) => /overpaint/i.test(c.transform.transformer.id)).length;
+        const colored = () => v.api.mesoscale!.infoState(refs.list).value!.entities.filter((e) => e.color).length;
+        const before = { themes: themes(v), overpaints: overpaints(), colored: colored() };
+        // the looks' write fails (or throws) after the themes and the overpaint reset are written
+        const def = v.api.definitions.value.get('particles.look') as unknown as { run: (...a: unknown[]) => unknown };
+        const run = def.run;
+        def.run = async () => {
+          if (how === 'throws') throw new Error('a failing write');
+          return ApiResult.fail('failed', 'a failing write');
+        };
+        const steps = v.api.history.steps.value.length;
+        let r: Awaited<ReturnType<typeof v.api.run>>;
+        try {
+          r = await v.api.run('mesoscale.theme', { objects: [refs.a, refs.b, refs.list], theme: 'object' });
+        } finally {
+          def.run = run;
+        }
+        expect(r.ok).toBe(false);
+        expect({ themes: themes(v), overpaints: overpaints(), colored: colored() }).toEqual(before);
+        expect(v.api.history.steps.value.length).toBe(steps);
+      }
+    }
+  });
+});

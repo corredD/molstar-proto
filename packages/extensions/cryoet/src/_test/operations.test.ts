@@ -289,6 +289,69 @@ describe('cryoet', () => {
     expect(await c.mesh({ mesh: 'nope', visible: true } as never)).toMatchObject({ ok: false, code: 'not-found' });
   });
 
+  it('colors several meshes, each its own color, in one write', async () => {
+    const v = await viewer();
+    const obj = 'v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n';
+    expectOk(await v.api.load.files({ files: [new File([obj], 'a.obj'), new File([obj], 'b.obj')] }));
+    const c = v.api.cryoet!;
+    const read = async () => {
+      const r = await c.meshes({});
+      expectOk(r);
+      return new Map((r.value as MeshInfo[]).map((m) => [m.label, m.color]));
+    };
+    const state = v.plugin.state.data;
+    const updateTree = state.updateTree.bind(state);
+    let updates = 0;
+    (state as { updateTree: typeof updateTree }).updateTree = ((...args: Parameters<typeof updateTree>) => {
+      updates++;
+      return updateTree(...args);
+    }) as typeof updateTree;
+    try {
+      expectOk(
+        await v.api.run('cryoet.mesh', {
+          colors: [
+            { mesh: 'a.obj', color: 'tomato' },
+            { mesh: 'b.obj', color: '#0000ff' },
+          ],
+        }),
+      );
+    } finally {
+      (state as { updateTree: typeof updateTree }).updateTree = updateTree;
+    }
+    expect(updates).toBe(1);
+    expect(await read()).toEqual(
+      new Map([
+        ['a.obj', 0xff6347],
+        ['b.obj', 0x0000ff],
+      ]),
+    );
+    // a mesh that is none, or a color that is none: nothing written
+    expect(
+      await v.api.run('cryoet.mesh', {
+        colors: [
+          { mesh: 'a.obj', color: 'red' },
+          { mesh: 'nope', color: 'red' },
+        ],
+      }),
+    ).toMatchObject({ ok: false });
+    expect((await read()).get('a.obj')).toBe(0xff6347);
+  });
+
+  it('refuses colors it cannot read: mixed with mesh or color, not a list, an entry with no color, a name of two', async () => {
+    const v = await viewer();
+    const obj = 'v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n';
+    expectOk(
+      await v.api.load.files({ files: [new File([obj], 'a.obj'), new File([obj], 'm.obj'), new File([obj], 'm.obj')] }),
+    );
+    const run = (p: Record<string, unknown>) => v.api.run('cryoet.mesh', p);
+    const one = { mesh: 'a.obj', color: 'red' };
+    expect(await run({ colors: [one], color: 'blue' })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await run({ colors: [one], mesh: 'a.obj' })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await run({ colors: one })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await run({ colors: [{ mesh: 'a.obj' }] })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await run({ colors: [{ mesh: 'm.obj', color: 'red' }] })).toMatchObject({ ok: false, code: 'ambiguous' });
+  });
+
   it('scales a segmentation mesh (a mesh in pixels: by the pixel size)', async () => {
     const v = await viewer();
     const obj = 'v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n';

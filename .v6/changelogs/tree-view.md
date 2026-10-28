@@ -1,0 +1,14 @@
+## prism-me: the explorer's tree on its mock
+
+- The explorer's tree is the Storybook mock's view (`apps/prism-me/src/explorer/tree-view.tsx`): virtualized (an opened
+  model of thousands of entities makes a screenful of rows), Prism's tree keys (a category picked too, Home and End), a
+  row's brush, scissors, eye and ⋯ at its end on hover (always on touch), the ⋯ opening its right-click menu; the split
+  to the properties dragged or moved by the arrows.
+- A category's eye, scissors and brush act on every object under it, one step each; a row's trash removes an object, a
+  clip, a label or a distance (as its menu's Remove); clips are rows under the row they were made at.
+- `mesoscale.theme` (the agent's `color_objects_by_theme`; no ⌘K form: it takes state refs): a color theme for several objects at once (by object,
+  entity, chain, generated colors, one color), each kind by what it takes: structures, particle models and lists,
+  volumes' isosurfaces, meshes; one history step.
+- `cryoet.mesh` takes `colors`: several meshes, each its own color, checked first and written in one update.
+- A category's Generate colors uses each model's grouping as the tree shows it (by compartment when it has some, else by
+  function), as its row's does; `mesoscale.colors` alone still defaults to by compartment.

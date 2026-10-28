@@ -125,8 +125,12 @@ function mountScene(v: PrismViewer) {
 }
 
 const items = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLElement>('[role=treeitem]'));
-const labelOf = (row: HTMLElement) => row.querySelector('span[style*="flex: 1; min-width: 0"]')?.textContent ?? '';
-const rowOf = (host: HTMLElement, label: string) => items(host).find((r) => labelOf(r) === label);
+const labelOf = (row: HTMLElement) => row.querySelector('[data-tip-overflow]')?.textContent ?? '';
+/** A row's clickable line (its treeitem holds it), by its name */
+const rowOf = (host: HTMLElement, label: string) =>
+  items(host)
+    .find((r) => labelOf(r) === label)
+    ?.querySelector<HTMLElement>('[data-tree-row]') ?? undefined;
 const button = (host: HTMLElement, text: string) =>
   Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.trim() === text);
 const quality = (host: HTMLElement, label: string) =>
@@ -156,7 +160,7 @@ describe('Graphics & Motion', () => {
     expect(await graphicsOf(host, 'list.star')).toEqual(['Quality', 'Wiggle', 'Tumble']);
     expect(await graphicsOf(host, 'map.mrc')).toEqual(['Quality']);
     // a part (the model's entity): no section of its own
-    (rowOf(host, 'HIV')!.querySelector('button[aria-label="Unfold"]') as HTMLButtonElement).click();
+    (rowOf(host, 'HIV')!.querySelector('button[data-tree-toggle]') as HTMLButtonElement).click();
     await until(() => !!rowOf(host, 'CA'));
     rowOf(host, 'CA')!.click();
     await until(() => !button(host, 'Graphics & Motion'));

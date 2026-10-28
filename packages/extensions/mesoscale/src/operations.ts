@@ -5,6 +5,7 @@
  */
 
 import { Color } from '@molstar/core/util/color';
+import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { VisualQuality } from '@molstar/graphics/geo/geometry/base';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
@@ -549,6 +550,290 @@ export class MesoscaleApi extends ApiArea {
       return ApiResult.ok(`Graphics set to ${mode}${of}.`, { nodes, view: !one });
     },
   });
+
+  /**
+   * A color theme for several objects at once, each kind by the theme it takes (a category's brush in prism-me, ui.md
+   * §3): structures by object, entity, chain or one color; particle models and lists by object, entity (a list with no
+   * entities: by object), generated colors or one color; volumes (their isosurfaces: slices show the data) and meshes
+   * by object or one color. Everything is planned before a change, so a theme an object does not take changes nothing;
+   * then one change: the representations' themes in one commit, the structures' own colors (their overpaint) cleared in
+   * one `representation.reset` (when every structure is given), every list's look colors (they paint over a theme)
+   * cleared or generated in one `particles.look`, every mesh in one `cryoet.mesh`, in one data transaction.
+   */
+  readonly theme = this.operation({
+    id: 'mesoscale.theme',
+    title: 'Color several objects by a theme',
+    surface: {
+      kind: 'agent-only',
+      reason:
+        "Objects by state ref, which a command's form would read as files: the explorer's category brush and the agent",
+    },
+    params: {
+      objects: PD.Value<string[]>([], {
+        description: 'The objects by state ref: structures, particle models and lists, volumes, meshes',
+      }),
+      theme: PD.Select<ObjectsTheme>('object', [...ObjectsThemes]),
+      color: PD.Text('white', { description: 'The color of the theme uniform (a CSS color)' }),
+      groupBy: PD.Value<Record<string, MesoGroupBy>>(
+        {},
+        { description: "Generate colors: a model's grouping by its ref (its default when absent)" },
+      ),
+    },
+    async run({ objects: refs, theme, color, groupBy }, ctx) {
+      if (!refs.length) return ApiResult.fail('invalid', 'Which objects?', 'Give their state refs.');
+      const one = theme === 'uniform' ? cssColor(color) : undefined;
+      if (theme === 'uniform' && one === undefined) {
+        return ApiResult.fail('invalid', `'${color}' is not a color.`, 'Give a color name (tomato) or #rrggbb.');
+      }
+      const byRef = new Map(graphicsObjects(ctx).map((o) => [o.cell.transform.ref, o]));
+      const lists = new Map(
+        ctx.plugin.managers.particles.hierarchy.current.lists.map((l) => [l.cell.transform.ref, l]),
+      );
+      const palette = distinctColors(refs.length);
+      const label = ObjectsThemes.find(([t]) => t === theme)![1];
+      // the plan: what each object takes, checked before any change
+      const plans: ThemePlan[] = [];
+      const fallbacks: string[] = [];
+      let meshRefs: ReadonlySet<string> | undefined;
+      for (let i = 0; i < refs.length; i++) {
+        const o = byRef.get(refs[i]);
+        const mine = one ?? palette[i];
+        if (!o) {
+          // not a structure, a list or a volume: a mesh, as cryoet lists them (by id, read once), else nothing changes
+          meshRefs ??= await meshesOf(ctx);
+          if (!meshRefs.has(refs[i])) {
+            return ApiResult.fail('not-found', `There is no object '${refs[i]}' to color.`, 'Nothing was changed.');
+          }
+          if (theme !== 'object' && theme !== 'uniform') return doesNotTake(refs[i], label);
+          plans.push({ kind: 'mesh', ref: refs[i], color: mine });
+          continue;
+        }
+        const named = (name: string, params: Record<string, unknown> = {}) => ({ name, params });
+        if (o.kind === 'structure') {
+          if (theme === 'generate') return doesNotTake(o.name, label);
+          const name = theme === 'entity' ? 'entity-id' : theme === 'chain' ? 'chain-id' : 'uniform';
+          plans.push({ kind: 'reps', o, theme: named(name, name === 'uniform' ? { value: mine } : {}) });
+        } else if (o.kind === 'particles') {
+          if (theme === 'chain') return doesNotTake(o.name, label);
+          const data = particleData(o.cell, o.representations);
+          const entities = !!data?.entityInfo?.size;
+          const list = lists.get(o.cell.transform.ref);
+          if (theme === 'generate' && entities && data) {
+            // the colors `mesoscale.colors` generates, by the model's grouping (the tree's when given)
+            const by = groupBy[o.cell.transform.ref] ?? defaultGroupBy(data);
+            const colors = generateColors(mesoGroups(data, mesoEntities(data), by));
+            plans.push({
+              kind: 'look',
+              o,
+              look: [...colors].map(([id, c]) => ({ selector: { entities: [id] }, color: c })),
+            });
+            continue;
+          }
+          const byEntity = theme === 'entity' && entities;
+          if ((theme === 'entity' || theme === 'generate') && !entities) fallbacks.push(o.name);
+          plans.push({
+            kind: 'reps',
+            o,
+            theme: byEntity ? named('particle-entity') : named('uniform', { value: mine }),
+            // look colors paint over a theme: cleared, whether set by entity or (a plain list) by target
+            look: list ? clearedColors(ctx, list) : undefined,
+          });
+        } else {
+          if (theme !== 'object' && theme !== 'uniform') return doesNotTake(o.name, label);
+          plans.push({ kind: 'reps', o, theme: named('uniform', { value: mine }), only: 'isosurface' });
+        }
+      }
+      // each representation's theme, planned too: an object with none it can take has nothing to color (a volume's
+      // slices show the data; a list not drawn), said rather than "already so"
+      const writes: { o: GraphicsObject; r: StateObjectCell; params: object; next: object; same: boolean }[] = [];
+      const nothing: string[] = [];
+      for (const p of plans) {
+        if (p.kind !== 'reps') continue;
+        let any = false;
+        for (const r of p.o.representations) {
+          const params = r.transform.params as { type?: { name?: string }; colorTheme?: { name: string } };
+          if (p.only && params.type?.name !== p.only) continue;
+          const next = themeFor(ctx, p.o, r, p.theme);
+          if (!next) continue;
+          any = true;
+          writes.push({ o: p.o, r, params, next, same: JSON.stringify(params.colorTheme) === JSON.stringify(next) });
+        }
+        if (!any) nothing.push(p.o.name);
+      }
+      const none = nothing.length ? `${nothing.join(', ')}: nothing to color` : '';
+      if (nothing.length === plans.length) {
+        return ApiResult.fail('not-found', `${none} (a volume's slices show the data; a list needs a representation).`);
+      }
+      // one change (bulk is one change): the representations' themes in one commit, every list's look colors in one
+      // `particles.look` (their one writer: cleared, or generated), every mesh's color in one `cryoet.mesh`, in one data
+      // transaction (the managers' work done once; restored if any part fails, undo checkpoints on or off)
+      const b = ctx.plugin.state.data.build();
+      const nodes: string[] = [];
+      const changed = new Set<string>();
+      for (const w of writes) {
+        if (w.same) continue;
+        b.to(w.r).update({ ...w.params, colorTheme: w.next });
+        nodes.push(w.r.transform.ref);
+        changed.add(w.o.cell.transform.ref);
+      }
+      const looks = plans.flatMap((p) =>
+        (p.kind === 'reps' || p.kind === 'look') && p.look?.length
+          ? [{ particles: p.o.cell.transform.ref, layers: p.look }]
+          : [],
+      );
+      const meshes = plans.flatMap((p) =>
+        p.kind === 'mesh' ? [{ mesh: p.ref, color: Color.toHexStyle(p.color) }] : [],
+      );
+      const structures = plans.flatMap((p) =>
+        p.kind === 'reps' && p.o.kind === 'structure' ? [p.o.cell.transform.ref] : [],
+      );
+      const given = new Set(structures);
+      const loaded = ctx.plugin.managers.structure.hierarchy.current.structures;
+      const everyStructure = structures.length > 0 && loaded.every((s) => given.has(s.cell.transform.ref));
+      // the list a representation's ref is of (a look's change, said by its representations)
+      const listOf = new Map(
+        [...lists.values()].flatMap((l) => l.representations.map((r) => [r.cell.transform.ref, l.cell.transform.ref])),
+      );
+      try {
+        await ctx.plugin.dataTransaction(
+          async () => {
+            if (nodes.length) await b.commit();
+            // a structure's own colors (its row's brush: an overpaint) paint over a theme: cleared by their owner,
+            // `representation.reset`, once for every structure when all are colored (a category's), else one each
+            for (const structure of everyStructure ? [''] : structures) {
+              const r = await ctx.api.run('representation.reset', { layer: 'color', structure });
+              if (!r.ok) throw new Rollback(r);
+              if (!r.unchanged) {
+                nodes.push(...(r.changed.nodes ?? []));
+                for (const s of structure ? [structure] : structures) changed.add(s);
+              }
+            }
+            if (looks.length) {
+              const r = await ctx.api.run('particles.look', { lists: looks });
+              if (!r.ok) throw new Rollback(r);
+              if (!r.unchanged) {
+                for (const ref of r.changed.nodes ?? []) {
+                  nodes.push(ref);
+                  changed.add(listOf.get(ref) ?? ref);
+                }
+              }
+            }
+            if (meshes.length) {
+              const r = await ctx.api.run('cryoet.mesh', { colors: meshes });
+              if (!r.ok) throw new Rollback(r);
+              if (!r.unchanged) {
+                for (const m of meshes) changed.add(m.mesh);
+                nodes.push(...(r.changed.nodes ?? []));
+              }
+            }
+          },
+          { rethrowErrors: true },
+        );
+      } catch (e) {
+        // a part failed: the transaction put the state back; its failure is the run's
+        if (e instanceof Rollback) return e.failure;
+        throw e;
+      }
+      const notes = [
+        ...(fallbacks.length ? [`${fallbacks.join(', ')}: no entities, by object`] : []),
+        ...(none ? [none] : []),
+      ];
+      const also = notes.length ? ` (${notes.join('; ')})` : '';
+      if (!nodes.length) return ApiResult.already(`They are already colored ${label.toLowerCase()}${also}.`);
+      const n = changed.size;
+      return ApiResult.ok(`Colored ${n} object${n > 1 ? 's' : ''} ${label.toLowerCase()}${also}.`, { nodes });
+    },
+  });
+}
+
+/** The themes `mesoscale.theme` gives several objects */
+const ObjectsThemes = [
+  ['object', 'By object'],
+  ['entity', 'By entity'],
+  ['chain', 'By chain'],
+  ['generate', 'Generate colors'],
+  ['uniform', 'Uniform'],
+] as const;
+type ObjectsTheme = (typeof ObjectsThemes)[number][0];
+
+/** What `mesoscale.theme` does to one object */
+type ThemePlan =
+  | {
+      readonly kind: 'reps';
+      readonly o: GraphicsObject;
+      readonly theme: { readonly name: string; readonly params: Record<string, unknown> };
+      /** Only representations of this type (a volume's isosurfaces) */
+      readonly only?: string;
+      /** Its look colors cleared (they paint over the theme) */
+      readonly look?: readonly LookLayer[];
+    }
+  /** A model's generated colors, its look (no theme of its own) */
+  | { readonly kind: 'look'; readonly o: GraphicsObject; readonly look: readonly LookLayer[] }
+  | { readonly kind: 'mesh'; readonly ref: string; readonly color: Color };
+
+const doesNotTake = (name: string, theme: string) =>
+  ApiResult.fail('invalid', `${name} cannot be colored ${theme.toLowerCase()}.`, 'Nothing was changed.');
+
+/** The meshes' refs, as cryoet lists them (its read operation, by id); none without cryoet */
+async function meshesOf(ctx: ApiContext): Promise<ReadonlySet<string>> {
+  const r = await ctx.api.run('cryoet.meshes', {});
+  const list = r.ok ? ((r as { value?: readonly { ref: string }[] }).value ?? []) : [];
+  return new Set(list.map((m) => m.ref));
+}
+
+/** A layer of `particles.look`: a color for some entities or targets (null clears it) */
+interface LookLayer {
+  readonly selector: { readonly entities?: number[]; readonly targets?: number[] };
+  readonly color: Color | null;
+}
+
+/** A failed part of a transaction: thrown so the transaction restores the state, returned as the run's failure */
+class Rollback extends Error {
+  constructor(readonly failure: ApiFailure) {
+    super(failure.message);
+  }
+}
+
+/** A list's look colors cleared (by entity, or by target on a list with no entities); none to clear: undefined */
+function clearedColors(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): LookLayer[] | undefined {
+  const byTarget = !dataOf(l)?.entityInfo;
+  const layers: LookLayer[] = [];
+  for (const [id, style] of readStyles(ctx, l)) {
+    if (style.color === undefined) continue;
+    layers.push({ selector: byTarget ? { targets: [id] } : { entities: [id] }, color: null });
+  }
+  return layers.length ? layers : undefined;
+}
+
+/** A particle object's list: its representations' source, else its own */
+function particleData(cell: StateObjectCell, reps: readonly StateObjectCell[]): ParticleList | undefined {
+  return (reps[0]?.obj?.data as { sourceData?: ParticleList } | undefined)?.sourceData ?? cell.obj?.data;
+}
+
+/** A representation's color theme, by name, its params the theme's defaults for it and `params` */
+function themeFor(
+  ctx: Pick<ApiContext, 'plugin'>,
+  o: GraphicsObject,
+  r: StateObjectCell,
+  theme: { readonly name: string; readonly params: Record<string, unknown> },
+): { name: string; params: Record<string, unknown> } | undefined {
+  const { themes } =
+    ctx.plugin.representation[o.kind === 'volume' ? 'volume' : o.kind === 'particles' ? 'particles' : 'structure'];
+  const registry = themes.colorThemeRegistry as {
+    has(name: string): boolean;
+    get(name: string): { getParams(ctx: object): PD.Params };
+  };
+  if (!registry.has(theme.name)) return undefined;
+  const data =
+    o.kind === 'particles'
+      ? { particles: particleData(o.cell, [r]) }
+      : o.kind === 'volume'
+        ? { volume: o.cell.obj?.data }
+        : { structure: o.cell.obj?.data };
+  return {
+    name: theme.name,
+    params: { ...PD.getDefaultValues(registry.get(theme.name).getParams(data)), ...theme.params },
+  };
 }
 
 /** The objects with graphics: structures, particle lists, volumes */

@@ -29,8 +29,9 @@ import {
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import { classes } from './_generated/explorer.module.css.js';
+import { treeClasses } from '../explorer/tree-view.js';
 import type { GroupBy, MockKind, MockNode } from './fake-scene.js';
-import { CategoryThemes } from './fake-menus.js';
+import { CategoryThemes } from '../explorer/tree-view.js';
 import { ObjectKinds } from './fake-scene.js';
 
 // The picked row's properties (ui.md §4), in sections that fold, only what applies to it: Prism's `SectionList` over a
@@ -115,7 +116,10 @@ function sections(shell: ShellModel) {
         n.kind === 'category' ? (
           form({
             visible: PD.Boolean(n.visible !== false, { description: 'Every object under it' }),
-            theme: PD.Select('object', CategoryThemes, { label: 'Color theme', description: 'Every object under it' }),
+            theme: PD.Select('object', CategoryThemes[n.key] ?? [], {
+              label: 'Color theme',
+              description: 'Every object under it',
+            }),
           })()
         ) : (
           <div class={classes.stack}>
@@ -257,7 +261,7 @@ function Position(props: { node: MockNode }) {
     <div class={classes.stack}>
       <div class={classes.line}>
         <span class={classes.lineLabel}>Handles</span>
-        <span class={classes.actions}>
+        <span class={treeClasses.actions}>
           <Button
             size="sm"
             icon={<Icon name="move-3d" />}
@@ -324,7 +328,7 @@ function Clips(props: { node: MockNode }) {
       {one ? (
         <div class={classes.line}>
           <span class={classes.lineLabel}>Plane clip</span>
-          <span class={classes.actions}>
+          <span class={treeClasses.actions}>
             <Button
               size="sm"
               icon={<Icon name="move-3d" />}
@@ -433,7 +437,7 @@ export function Properties(props: {
       {(n) => (
         <div class={classes.stack}>
           <div class={classes.title}>
-            <strong class={classes.label}>{n.label}</strong>
+            <strong class={treeClasses.label}>{n.label}</strong>
             <span class={classes.hint}>{KindNames[n.kind]}</span>
           </div>
           {n.kind === 'model' ? (

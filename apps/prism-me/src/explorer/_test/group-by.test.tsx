@@ -115,8 +115,12 @@ function mountScene(v: PrismViewer) {
 }
 
 const items = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLElement>('[role=treeitem]'));
-const labelOf = (row: HTMLElement) => row.querySelector('span[style*="flex: 1; min-width: 0"]')?.textContent ?? '';
-const rowOf = (host: HTMLElement, label: string) => items(host).find((r) => labelOf(r) === label);
+const labelOf = (row: HTMLElement) => row.querySelector('[data-tip-overflow]')?.textContent ?? '';
+/** A row's clickable line (its treeitem holds it), by its name */
+const rowOf = (host: HTMLElement, label: string) =>
+  items(host)
+    .find((r) => labelOf(r) === label)
+    ?.querySelector<HTMLElement>('[data-tree-row]') ?? undefined;
 /** The rows under a model's row, until the next row at its level, as [label, level] */
 const childrenOf = (host: HTMLElement, model: string) => {
   const all = items(host);
@@ -130,7 +134,7 @@ const childrenOf = (host: HTMLElement, model: string) => {
   return out;
 };
 const outline = (rows: HTMLElement[]) => rows.map((r) => `${r.getAttribute('aria-level')}:${labelOf(r)}`);
-const unfold = (row: HTMLElement) => (row.querySelector('button[aria-label="Unfold"]') as HTMLButtonElement).click();
+const unfold = (row: HTMLElement) => (row.querySelector('button[data-tree-toggle]') as HTMLButtonElement).click();
 const choice = (host: HTMLElement, label: string) =>
   Array.from(host.querySelectorAll<HTMLButtonElement>('[aria-label="Group by"] button')).find(
     (b) => b.textContent === label,
@@ -181,7 +185,7 @@ describe("a model's Group by", () => {
     await until(() => !!choice(host, 'Function'));
     choice(host, 'Function')!.click();
     await until(() => !!rowOf(host, 'unknown function'));
-    (rowOf(host, 'unknown function')!.querySelector('button[aria-label="Show or hide"]') as HTMLButtonElement).click();
+    (rowOf(host, 'unknown function')!.querySelector('button[aria-label="Hide"]') as HTMLButtonElement).click();
     const hidden = (ref: string) =>
       v.api
         .mesoscale!.infoState(ref)

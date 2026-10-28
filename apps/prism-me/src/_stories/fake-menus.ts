@@ -5,6 +5,7 @@
  */
 
 import type { ContextMenuItem } from '@molstar/prism-ui';
+import { CategoryThemes } from '../explorer/tree-view.js';
 import { type MockNode, ObjectKinds } from './fake-scene.js';
 
 // The explorer's menus as ui.md says them (§2 + Open, §5 the right-click, §7 a distance's), for the mocks: the same
@@ -37,18 +38,10 @@ export function colorItemsOf(node: MockNode): ContextMenuItem[] {
   const swatches = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple', 'Gray', 'White'].map((c) =>
     item(`color-${c.toLowerCase()}`, c),
   );
-  if (node.kind === 'category') return CategoryThemes.map(([id, label]) => item(`theme-${id}`, label));
+  if (node.kind === 'category')
+    return (CategoryThemes[node.key] ?? []).map(([id, label]) => item(`theme-${id}`, label));
   return node.kind === 'model' || node.kind === 'group' ? [item('generate', 'Generate colors'), ...swatches] : swatches;
 }
-
-/** A category's color themes, for every object under it (Ludovic, 2026-10-25) */
-export const CategoryThemes: [string, string][] = [
-  ['object', 'By object'],
-  ['generate', 'Generate colors'],
-  ['entity', 'By entity'],
-  ['chain', 'By chain'],
-  ['uniform', 'Uniform'],
-];
 
 /** Whether a row has the brush (a color for all of it), as the app's `colorable` */
 export const colorable = (node: MockNode) =>

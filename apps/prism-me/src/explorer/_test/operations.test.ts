@@ -18,7 +18,8 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { withTomogramSlices } from '../../tomograms.js';
-import { ancestorKeys, rowsOf, stableRows, toggleVisible } from '../rows.js';
+import { keepRows } from '@molstar/prism-ui';
+import { ancestorKeys, type Row, rowsOf, sameRow, toggleVisible } from '../rows.js';
 import {
   addLabel,
   clipItems,
@@ -517,9 +518,25 @@ describe('explorer', () => {
   });
 
   it('keeps unchanged rows as the same objects', () => {
-    const stable = stableRows();
-    const a = { key: 'a', depth: 1, label: 'A', kind: 'entity', hasChildren: false, visible: true };
-    const b = { key: 'b', depth: 1, label: 'B', kind: 'entity', hasChildren: false, visible: true };
+    const stable = keepRows<Row>((r) => r.key, sameRow);
+    const a: Row = {
+      key: 'a',
+      depth: 1,
+      label: 'A',
+      kind: 'entity',
+      hasChildren: false,
+      expanded: false,
+      visible: true,
+    };
+    const b: Row = {
+      key: 'b',
+      depth: 1,
+      label: 'B',
+      kind: 'entity',
+      hasChildren: false,
+      expanded: false,
+      visible: true,
+    };
     const [a1, b1] = stable([a, b]);
     const [a2, b2] = stable([{ ...a }, { ...b, visible: false }]);
     expect(a2).toBe(a1);

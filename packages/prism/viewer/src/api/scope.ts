@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { StateTransform } from '@molstar/core/state';
@@ -271,15 +272,29 @@ export function pickOne<T extends Listed>(
   what: string,
   empty: string,
 ): T | ApiFailure {
+  return pickNamed(list, name, listedRule(list, what, empty));
+}
+
+/** `pickOne` for many names over one list (`namedPicker`: the list and its names indexed once) */
+export function onePicker<T extends Listed>(
+  list: readonly T[],
+  what: string,
+  empty: string,
+): (name: string | undefined) => T | ApiFailure {
+  return namedPicker(list, listedRule(list, what, empty));
+}
+
+/** The rule `pickOne` names a hierarchy list's items by: their ref, then their shown name, then their label */
+function listedRule<T extends Listed>(list: readonly T[], what: string, empty: string): NameRule<T> {
   const names = namesOf(list);
   const shown = (x: T) => names.get(x.cell.transform.ref) ?? x.cell.transform.ref;
-  return pickNamed(list, name, {
+  return {
     what,
     ids: (x) => [x.cell.transform.ref],
     names: (x) => [shown(x), x.cell.obj?.label],
     describe: (x) => (shown(x) === x.cell.transform.ref ? shown(x) : `${shown(x)} (${x.cell.transform.ref})`),
     none: { message: `No ${what}s are loaded.`, hint: empty },
-  });
+  };
 }
 
 // --- the state tree ---------------------------------------------------------------------------------------------

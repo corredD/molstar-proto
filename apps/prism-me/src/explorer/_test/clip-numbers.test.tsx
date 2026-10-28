@@ -44,8 +44,11 @@ const buttons = (host: HTMLElement, text: string) =>
 const toggles = (host: HTMLElement) =>
   Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter((b) => b.getAttribute('aria-label') === Toggle);
 const items = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLElement>('[role=treeitem]'));
+/** A row's clickable line (its treeitem holds it), by its name */
 const rowOf = (host: HTMLElement, label: string) =>
-  items(host).find((r) => r.querySelector('span[style*="flex: 1; min-width: 0"]')?.textContent === label);
+  items(host)
+    .find((r) => r.querySelector('[data-tip-overflow]')?.textContent === label)
+    ?.querySelector<HTMLElement>('[data-tree-row]') ?? undefined;
 /** A slider's typed box (not its range), by its label */
 const boxes = (host: HTMLElement, label: string) =>
   Array.from(host.querySelectorAll<HTMLInputElement>(`input[aria-label="${label}"]`)).filter((i) => i.type !== 'range');

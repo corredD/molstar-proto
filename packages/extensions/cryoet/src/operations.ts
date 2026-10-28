@@ -208,6 +208,11 @@ export class CryoetApi extends ApiArea {
       ),
       opacity: OptionalParam(PD.Numeric(1, { min: 0, max: 1, step: 0.01 })),
       color: OptionalParam(PD.Text('', { description: 'A CSS color (#ffcc00, tomato); one color for the whole mesh' })),
+      colors: OptionalParam(
+        PD.Value<{ mesh: string; color: string }[]>([], {
+          description: 'Several meshes, each its own color ({ mesh, color }), in one write (mesh and color left out)',
+        }),
+      ),
       scale: OptionalParam(
         PD.Numeric(
           1,
@@ -219,26 +224,66 @@ export class CryoetApi extends ApiArea {
       ),
     },
     async run(values, ctx) {
-      const { mesh, visible, visuals, opacity, color, scale } = values as typeof values & {
+      const { mesh, visible, visuals, opacity, color, colors, scale } = values as typeof values & {
         scale?: number;
         visible?: boolean;
         visuals?: 'mesh' | 'wireframe' | 'both';
         opacity?: number;
         color?: string;
+        colors?: { mesh: string; color: string }[];
       };
       const all = meshes(ctx);
-      const n = mesh.trim().toLowerCase();
-      const picked = n ? all.filter((m) => m.ref === mesh.trim() || m.label.toLowerCase() === n) : all;
-      if (!picked.length) {
-        return ApiResult.fail(
+      // the meshes indexed once, by ref and by name (lowercased): an entry of `colors` found without a scan
+      const byRef = new Map(all.map((m) => [m.ref, m]));
+      const byName = new Map<string, MeshInfo[]>();
+      for (const m of all) {
+        const key = m.label.toLowerCase();
+        const found = byName.get(key);
+        if (found) found.push(m);
+        else byName.set(key, [m]);
+      }
+      const find = (name: string): readonly MeshInfo[] => {
+        const n = name.trim();
+        if (!n) return all;
+        const one = byRef.get(n);
+        return one ? [one] : (byName.get(n.toLowerCase()) ?? []);
+      };
+      const missing = (name: string) =>
+        ApiResult.fail(
           'not-found',
-          all.length ? `There is no mesh '${mesh}'.` : 'No meshes are loaded.',
+          all.length ? `There is no mesh '${name}'.` : 'No meshes are loaded.',
           all.length ? `Meshes: ${all.map((m) => m.label).join(', ')}.` : 'Open an OBJ, PLY or VTP file.',
         );
+      const notColor = (c: string) => ApiResult.fail('invalid', `'${c}' is not a color.`, 'Give #rrggbb or a name.');
+      // each mesh and its color: one given for all, or each its own (`colors`), all checked before the write
+      const picked: (MeshInfo & { color?: number })[] = [];
+      if (colors !== undefined) {
+        if (!Array.isArray(colors) || mesh.trim() || color) {
+          return ApiResult.fail('invalid', 'colors: a list of { mesh, color }, without mesh or color.');
+        }
+        for (const c of colors) {
+          if (!c || typeof c.mesh !== 'string' || typeof c.color !== 'string' || !c.mesh.trim()) {
+            return ApiResult.fail('invalid', 'colors: each entry a mesh (name or ref) and a color.');
+          }
+          const found = find(c.mesh);
+          if (found.length > 1) {
+            return ApiResult.fail(
+              'ambiguous',
+              `Which '${c.mesh}'? ${found.length} meshes have that name.`,
+              `Give its state ref: ${found.map((m) => m.ref).join(', ')}.`,
+            );
+          }
+          if (!found.length) return missing(c.mesh);
+          const parsed = cssColor(c.color);
+          if (parsed === undefined) return notColor(c.color);
+          picked.push({ ...found[0], color: parsed });
+        }
+      } else {
+        const parsed = color ? cssColor(color) : undefined;
+        if (color && parsed === undefined) return notColor(color);
+        for (const m of find(mesh)) picked.push({ ...m, color: parsed });
+        if (!picked.length) return missing(mesh);
       }
-      const parsed = color ? cssColor(color) : undefined;
-      if (color && parsed === undefined)
-        return ApiResult.fail('invalid', `'${color}' is not a color.`, 'Give #rrggbb or a name.');
       const b = ctx.plugin.state.data.build();
       const nodes: string[] = [];
       for (const m of picked) {
@@ -248,7 +293,9 @@ export class CryoetApi extends ApiArea {
           ...old,
           ...(visuals ? { visuals: visuals === 'both' ? ['mesh', 'wireframe'] : [visuals] } : {}),
           ...(opacity !== undefined ? { alpha: opacity } : {}),
-          ...(parsed !== undefined && old.coloring ? { coloring: { name: 'uniform', params: { color: parsed } } } : {}),
+          ...(m.color !== undefined && old.coloring
+            ? { coloring: { name: 'uniform', params: { color: m.color } } }
+            : {}),
         };
         if (JSON.stringify(next) !== JSON.stringify(old)) {
           b.to(cell).update(next);
