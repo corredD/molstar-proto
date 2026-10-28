@@ -263,4 +263,21 @@ describe('the properties on their mock', () => {
     expect(steps(v)).toBe(n + 1);
     await until(() => !buttonIn(look(), "Its representation's · pick one"));
   });
+
+  it("a category's Look acts on the objects under it now, one loaded while it is picked too", async () => {
+    const v = await viewer();
+    const host = mount(v);
+    await until(() => !!rowOf(host, 'Structures'));
+    rowOf(host, 'Structures')!.click();
+    await open(host, 'look');
+    const look = () => section(host, 'look')!;
+    await until(() => !!look().querySelector('[role=switch]'));
+    // a second structure, the category still picked
+    const l = await v.api.load.files({ files: [crnFile('1crn-late.cif')] });
+    if (!l.ok) throw new Error(l.message);
+    await until(() => structures(v).length === 2);
+    expect(kindShown(host)).toBe('Category');
+    look().querySelector<HTMLElement>('[role=switch]')!.click();
+    await until(() => structures(v).every((s) => s.cell.state.isHidden));
+  });
 });

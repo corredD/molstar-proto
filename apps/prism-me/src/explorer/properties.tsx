@@ -69,8 +69,6 @@ export interface Picked {
   readonly representation?: string;
   /** A clip's row: its cut's tag (Prism's) */
   readonly clip?: string;
-  /** A category's row: its objects (their refs) */
-  readonly objects?: readonly string[];
 }
 
 /** What a section is given: the pick and what acts on it (the section list's subject, one per pick) */
@@ -466,15 +464,22 @@ const tenths = (v: number) => String(Math.round(v * 10) / 10);
  */
 function CategoryLook(props: { subject: Subject }) {
   const { api, area, picked, groupByOf } = props.subject;
-  const objects = picked.objects ?? [];
-  const mine = new Set(objects);
-  const shown = mapState(area.objectsState(), (os) => os.some((o) => mine.has(o.ref) && o.visible));
+  // the objects under it now (one loaded or removed while it stays picked too), its key's category (`c:<id>`)
+  const category = picked.key.slice(2);
+  const under = mapState(area.objectsState(), (os) => os.filter((o) => o.category === category));
+  const shown = mapState(under, (os) => os.some((o) => o.visible));
+  const refs = () => under.value.map((o) => o.ref);
   const form = new ParamsFormModel(
     { visible: PD.Boolean(true, { label: 'Visible', description: 'Every object under it' }) },
     undefined,
     {
       onChange: ({ visible }) =>
-        void api.run('state.visibility', { node: objects.map((r) => `#${r}`).join(', '), visible }),
+        void api.run('state.visibility', {
+          node: refs()
+            .map((r) => `#${r}`)
+            .join(', '),
+          visible,
+        }),
     },
   );
   bind(shown, (visible) => form.load({ visible }));
@@ -487,7 +492,7 @@ function CategoryLook(props: { subject: Subject }) {
         label="Color theme"
         choices={(CategoryThemes[picked.key] ?? []).map(([id, label]) => ({ id, label }))}
         onPick={(theme) =>
-          theme === 'uniform' ? uniform.set(!uniform.value) : void categoryTheme(api, objects, theme, groupByOf)
+          theme === 'uniform' ? uniform.set(!uniform.value) : void categoryTheme(api, refs(), theme, groupByOf)
         }
       />
       <Show when={uniform.asReadonly}>
@@ -498,7 +503,7 @@ function CategoryLook(props: { subject: Subject }) {
               icon="palette"
               label="Apply"
               onApply={() => {
-                void categoryTheme(api, objects, 'uniform', groupByOf, color.value);
+                void categoryTheme(api, refs(), 'uniform', groupByOf, color.value);
                 uniform.set(false);
               }}
             />

@@ -321,7 +321,6 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     ...(row.node ? { node: row.node } : {}),
     ...(row.representation ? { representation: row.representation } : {}),
     ...(row.clip ? { clip: row.clip } : {}),
-    ...(row.objects ? { objects: row.objects } : {}),
   });
   const pick = (row: Row) => {
     if (picked.value?.key !== row.key) picked.set(pickedOf(row));
