@@ -7,13 +7,16 @@
  */
 
 import {
+  ActionFooter,
   type Child,
+  ColorPicker,
   colorToHex,
   Icon,
   type IconName,
   type KeyedState,
   keyedSelector,
   observableState,
+  Popover,
   type ReadonlyState,
   Show,
   VirtualList,
@@ -48,23 +51,49 @@ export const CategoryThemes: Readonly<Record<string, readonly (readonly [string,
     ['object', 'By object'],
     ['entity', 'By entity'],
     ['chain', 'By chain'],
-    ['uniform', 'Uniform'],
+    ['uniform', 'Uniform…'],
   ],
   'c:particles': [
     ['object', 'By object'],
     ['entity', 'By entity'],
     ['generate', 'Generate colors'],
-    ['uniform', 'Uniform'],
+    ['uniform', 'Uniform…'],
   ],
   'c:volumes': [
     ['object', 'By object'],
-    ['uniform', 'Uniform'],
+    ['uniform', 'Uniform…'],
   ],
   'c:meshes': [
     ['object', 'By object'],
-    ['uniform', 'Uniform'],
+    ['uniform', 'Uniform…'],
   ],
 };
+
+/**
+ * A category's Uniform: Prism's color picker over every object under it (Ludo, 2026-10-27), the color kept here while
+ * picked and applied once (one step), not at every move of the picker
+ */
+export function UniformPopover(props: {
+  anchor: HTMLElement;
+  title: string;
+  onApply(color: number): void;
+  onClose(refocus?: boolean): void;
+}) {
+  const color = observableState(0xffffff);
+  return (
+    <Popover anchor={props.anchor} onClose={props.onClose} title={props.title} aria-label="Uniform color" align="start">
+      <ColorPicker value={color.asReadonly} onChange={(c) => color.set(c)} />
+      <ActionFooter
+        icon="palette"
+        label="Apply"
+        onApply={() => {
+          props.onApply(color.value);
+          props.onClose(true);
+        }}
+      />
+    </Popover>
+  );
+}
 
 /** A row as the tree draws it: flat, its depth says where it is */
 export interface TreeRowView {

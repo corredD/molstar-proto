@@ -428,7 +428,7 @@ describe("a category's brush (Ludo, 2026-10-27)", () => {
     item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Color all of it"]')!.click();
     await settle();
     const items = Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]'));
-    expect(items.map((m) => m.textContent?.trim())).toEqual(['By object', 'By entity', 'Generate colors', 'Uniform']);
+    expect(items.map((m) => m.textContent?.trim())).toEqual(['By object', 'By entity', 'Generate colors', 'Uniform…']);
     expect(items.some((m) => m.querySelector('svg'))).toBe(false);
     items[0].click();
     const themes = () =>
@@ -463,6 +463,47 @@ describe("a label's and a distance's trash", () => {
     steps = v.api.history.steps.value.length;
     trash(`d:${distances()[0].ref}`)!.click();
     await until(() => distances().length === 0);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+  });
+});
+
+describe("a category's Uniform (Ludo, 2026-10-27)", () => {
+  it('opens a color picker; picks change nothing until Apply, which colors them all in one step', async () => {
+    const v = await viewer(
+      [
+        ['HIV', 3],
+        ['Other', 2],
+      ],
+      true,
+    );
+    const { host } = mount(v);
+    await until(() => !!item(host, 'c:particles'));
+    item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Color all of it"]')!.click();
+    await settle();
+    const uniform = Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]')).find(
+      (m) => m.textContent?.trim() === 'Uniform…',
+    );
+    expect(uniform).toBeTruthy();
+    uniform!.click();
+    await settle();
+    const field = document.querySelector<HTMLInputElement>('[aria-label="Uniform color"] input');
+    expect(field).toBeTruthy();
+    const steps = v.api.history.steps.value.length;
+    field!.value = '#ff0000';
+    field!.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+    expect(v.api.history.steps.value.length).toBe(steps);
+    const apply = Array.from(document.querySelectorAll<HTMLButtonElement>('[aria-label="Uniform color"] button')).find(
+      (b) => b.textContent?.includes('Apply'),
+    )!;
+    apply.click();
+    const values = () =>
+      v.plugin.managers.particles.hierarchy.current.lists.map(
+        (l) =>
+          (l.representations[0].cell.transform.params as { colorTheme: { params: { value?: number } } }).colorTheme
+            .params.value,
+      );
+    await until(() => values().every((c) => c === 0xff0000));
     expect(v.api.history.steps.value.length).toBe(steps + 1);
   });
 });

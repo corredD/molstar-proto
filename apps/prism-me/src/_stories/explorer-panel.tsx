@@ -30,6 +30,7 @@ import {
   TreeView,
   type TreeRowView,
   treeClasses,
+  UniformPopover,
 } from '../explorer/tree-view.js';
 import { ClipShapes, clippable, colorItemsOf, colorable, menuOf, OpenItems } from './fake-menus.js';
 import { type GroupBy, type MockNode, ObjectKinds, pathTo } from './fake-scene.js';
@@ -126,6 +127,15 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
     if (row) picked.set(row.node);
   }
 
+  // a category's Uniform: its picker (the app's), at its brush
+  const uniform = observableState<{ label: string; anchor: HTMLElement } | undefined>(undefined);
+  const uniformAt = (row: Row) => {
+    const anchor = panelEl?.querySelector<HTMLElement>(
+      `[data-tree-key="${CSS.escape(row.key)}"] button[aria-label="Color all of it"]`,
+    );
+    if (anchor) uniform.set({ label: row.label, anchor });
+  };
+
   // the split: the properties' height, dragged on the line above them or moved by the arrows (tree-view.tsx)
   const height = frameState(props.split ?? 280);
 
@@ -175,9 +185,23 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
             }}
             onTool={(row, which, at, onClose) => {
               pick(row.node);
-              openContextMenu(menuRoot(), at, which === 'color' ? colorItemsOf(row.node) : ClipShapes, onClose);
+              // a category's Uniform…: the app's picker at its brush, applied once
+              const colors = colorItemsOf(row.node).map((i) =>
+                i.id === 'theme-uniform' ? { ...i, run: () => uniformAt(row) } : i,
+              );
+              openContextMenu(menuRoot(), at, which === 'color' ? colors : ClipShapes, onClose);
             }}
             onMenu={(row, at, onClose) => menuAt(at, row.node, onClose)}
+          />
+        )}
+      </Show>
+      <Show when={uniform.asReadonly}>
+        {(u) => (
+          <UniformPopover
+            anchor={u.anchor}
+            title={`${u.label}: one color`}
+            onClose={() => uniform.set(undefined)}
+            onApply={(c) => console.info(`[explorer mock] ${u.label}: uniform ${c.toString(16)}`)}
           />
         )}
       </Show>

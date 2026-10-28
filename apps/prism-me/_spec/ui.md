@@ -63,8 +63,9 @@ always on a touch screen; a hidden node keeps its eye in view. A category's row 
 scissors and the eye, for every object under it; its brush offers the themes its kind takes, each object by its own
 (`mesoscale.theme`, one step; Ludo, 2026-10-27): Structures by object, entity, chain or one color; Particles by object,
 entity (a list with no entities: by object), generated colors or one color; Volumes (their isosurfaces: slices show the
-data) and Meshes by object or one color. Clips and labels made at a node are rows under it (§5), and distances under
-their first point's row (§7), each with its own eye.
+data) and Meshes by object or one color; one color (Uniform…) picked in Prism's color picker at the brush and applied
+once (one step; Ludo, 2026-10-27). Clips and labels made at a node are rows under it (§5), and distances under their
+first point's row (§7), each with its own eye.
 
 A click on a row picks it: highlighted in 3D, its properties below. A category is picked too (Ludovic, 2026-10-25). The
 arrows move the pick (↑/↓, Home, End; → opens or goes in, ← closes or goes to the parent), as a click. A double click

@@ -6,6 +6,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Color } from '@molstar/core/util/color';
 import { EmptyLoci } from '@molstar/model/model/loci';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
@@ -67,6 +68,7 @@ import {
   TreeView,
   type TreeViewHandle,
   treeClasses as classes,
+  UniformPopover,
 } from './tree-view.js';
 
 // The explorer's panel (apps/prism-me/_spec/ui.md §1–4): + Open, a filter, the tree of the scene in four categories,
@@ -356,7 +358,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
       const items =
         which === 'clip'
           ? categoryClipItems(api, row.objects)
-          : categoryThemeItems(api, row.key, row.objects, model.groupByOf);
+          : categoryThemeItems(api, row.key, row.objects, model.groupByOf, () => uniformOf(row));
       openContextMenu(root(), at, items, onClose);
       return;
     }
@@ -383,6 +385,15 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
       },
     );
     openContextMenu(r, at, items, onClose);
+  };
+
+  // a category's Uniform: its picker at its brush, its color applied to every object under it, once
+  const uniform = observableState<{ row: Row; anchor: HTMLElement } | undefined>(undefined);
+  const uniformOf = (row: Row) => {
+    const anchor = panelEl?.querySelector<HTMLElement>(
+      `[data-tree-key="${CSS.escape(row.key)}"] button[aria-label="Color all of it"]`,
+    );
+    if (anchor) uniform.set({ row, anchor });
   };
 
   // a row picked in 3D brought into view (once: the request is cleared), in the frame after its way is unfolded
@@ -439,6 +450,22 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
           />
         )}
       </Show>
+      <Show when={uniform.asReadonly}>
+        {(u) => (
+          <UniformPopover
+            anchor={u.anchor}
+            title={`${u.row.label}: one color`}
+            onClose={() => uniform.set(undefined)}
+            onApply={(c) =>
+              void api.run('mesoscale.theme', {
+                objects: [...(u.row.objects ?? [])],
+                theme: 'uniform',
+                color: Color.toHexStyle(Color(c)),
+              })
+            }
+          />
+        )}
+      </Show>
       <SplitLine height={height} panel={() => panelEl} />
       <div class={classes.properties} style={{ height: derive(height, (h) => `${h}px`) }}>
         <ScrollArea class={classes.fill} contentClass={classes.propertiesContent} edge>
@@ -485,6 +512,7 @@ function categoryThemeItems(
   key: string,
   objects: readonly string[],
   groupBy: (model: string) => MesoGroupBy | undefined,
+  uniform: () => void,
 ): ContextMenuItem[] {
   // generated colors by each model's grouping as the tree shows it (as its row's Generate colors)
   const groupings: Record<string, MesoGroupBy> = {};
@@ -495,7 +523,11 @@ function categoryThemeItems(
   return (CategoryThemes[key] ?? []).map(([theme, label]) => ({
     id: `theme-${theme}`,
     label,
-    run: () => void api.run('mesoscale.theme', { objects: [...objects], theme, groupBy: groupings }),
+    // Uniform: its color picked first (a popover), applied once
+    run: () =>
+      theme === 'uniform'
+        ? uniform()
+        : void api.run('mesoscale.theme', { objects: [...objects], theme, groupBy: groupings }),
   }));
 }
 
