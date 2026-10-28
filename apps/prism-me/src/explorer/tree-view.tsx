@@ -20,7 +20,7 @@ import {
   type VirtualListHandle,
 } from '@molstar/prism-ui';
 import type { FrameState } from '@molstar/prism-ui/reactive/frame-state';
-import { drag, timeout } from '@molstar/prism-ui/dom/scoped';
+import { drag, on, timeout } from '@molstar/prism-ui/dom/scoped';
 import { TreeNavigation } from '@molstar/prism-ui/dom/tree-keys';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import { classes } from './_generated/tree.module.css.js';
@@ -96,6 +96,9 @@ export interface TreeViewProps<R extends TreeRowView> {
   ref?(handle: TreeViewHandle): void;
 }
 
+/** The keys that move the active row (TreeNavigation): the pick follows them, a category's too (ui.md §3) */
+const MoveKeys: ReadonlySet<string> = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End']);
+
 export function TreeView<R extends TreeRowView>(props: TreeViewProps<R>) {
   const { rows } = props;
   const isPicked = keyedSelector(props.picked);
@@ -122,7 +125,16 @@ export function TreeView<R extends TreeRowView>(props: TreeViewProps<R>) {
       role="tree"
       aria-label="The scene"
       class={classes.tree}
-      contentRef={nav.tree}
+      contentRef={(el) => {
+        nav.tree(el);
+        // a key's move picks the row it moved to (after TreeNavigation's own keydown, bound first); a focus alone does
+        // not: TreeNavigation gives it back to a row made again (its eye or chevron clicked, a reveal)
+        on(el, 'keydown', (e: KeyboardEvent) => {
+          if (!e.defaultPrevented || !MoveKeys.has(e.key)) return;
+          const i = indexOf(nav.active);
+          if (i >= 0) props.onPick(rows.value[i]);
+        });
+      }}
       ref={(l) => {
         list = l;
         // the picked row brought into view, once the list has its height (ui.md §3: the tree shows where it is)
@@ -157,8 +169,6 @@ function TreeRow<R extends TreeRowView>(p: {
       tabIndex={-1}
       class={classes.item}
       ref={p.nav.row(row.key)}
-      // the pick follows the focus (↑/↓, Home, End move it), as a click, a category's too (ui.md §3)
-      onFocus={pick}
     >
       <div
         data-tree-row=""

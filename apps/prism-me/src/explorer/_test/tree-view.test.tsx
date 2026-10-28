@@ -103,7 +103,7 @@ const settle = async () => {
   flush();
 };
 const press = async (el: HTMLElement, key: string) => {
-  el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+  el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
   await settle();
 };
 const focused = (host: HTMLElement) =>
@@ -145,6 +145,7 @@ describe("the tree's keys and picks (ui.md §3)", () => {
     const other = refOf('Other');
     await until(() => !!item(host, `o:${other}`));
     const start = item(host, 'c:particles')!;
+    start.querySelector<HTMLElement>('[data-tree-row]')!.click();
     start.focus();
     await settle();
     expect(model.picked.value?.key).toBe('c:particles');
@@ -170,6 +171,28 @@ describe("the tree's keys and picks (ui.md §3)", () => {
     // ↑ from the first object: its category (picked too)
     await press(focused(host)!, 'ArrowUp');
     expect(model.picked.value?.key).toBe('c:particles');
+  });
+
+  it('picks on a click or a key, not on a focus alone (a row made again takes the focus back)', async () => {
+    const v = await viewer([
+      ['HIV', 3],
+      ['Other', 2],
+    ]);
+    const { host, model, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    const other = refOf('Other');
+    await until(() => !!item(host, `o:${other}`) && !!model.parts.value.get(hiv));
+    item(host, `o:${hiv}`)!.querySelector<HTMLElement>('[data-tree-row]')!.click();
+    await settle();
+    // the focus put back on a row (its eye or chevron clicked, the row made again): no pick
+    item(host, `o:${other}`)!.focus();
+    await settle();
+    expect(model.picked.value?.key).toBe(`o:${hiv}`);
+    // a reveal (a 3D pick, a menu's new row) while a row holds the focus keeps its pick
+    model.reveal({ key: `me:${hiv}:1`, label: 'protein 1', kind: 'entity', node: { ref: hiv } });
+    await settle();
+    await settle();
+    expect(model.picked.value?.key).toBe(`me:${hiv}:1`);
   });
 
   it("opens the row's right-click menu from its ⋯, under it", async () => {

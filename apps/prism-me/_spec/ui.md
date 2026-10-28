@@ -405,12 +405,13 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   same), its own rows on Prism's `VirtualList` (Prism's `SceneTree` is not exported): a screenful made, an opened
   model's thousands of entities too; rows keyed and kept while the same (`keepRows`, field by field: no JSON). Keys:
   Prism's `TreeNavigation` (↑/↓, Home, End, → opens or goes in, ← closes or goes to the parent, Enter a click), the pick
-  following the focus, a category's too (its properties: its name). A row: an object's icon, its color dot, its name
-  (cut by the fade), its count faint, then brush, scissors, eye and ⋯ (its right-click's menu, under it), on hover or
-  focus, always on a touch screen, a hidden node's eye kept. A label's row says so faint after its text (where a count
-  is), a distance's reads "Distance 10.67 Å" (as the mock): no icon on child rows (styling.md §4), where the label and
-  ruler were. The tree takes the panel above the properties; the split between them is `drag()`, ↑/↓ by 16 px (Shift
-  64), the properties 80 px at least and the tree too.
+  following a click or a key's move (not a focus alone: a row made again takes the focus back), a category's too (its
+  properties: its name). A row: an object's icon, its color dot, its name (cut by the fade), its count faint, then
+  brush, scissors, eye and ⋯ (its right-click's menu, under it), on hover or focus, always on a touch screen, a hidden
+  node's eye kept. A label's row says so faint after its text (where a count is), a distance's reads "Distance 10.67 Å"
+  (as the mock): no icon on child rows (styling.md §4), where the label and ruler were. The tree takes the panel above
+  the properties; the split between them is `drag()`, ↑/↓ by 16 px (Shift 64), the properties 80 px at least and the
+  tree too.
 - A category's tools (2026-10-27, lane `tree-view`): its eye shows or hides every object under it in one step
   (`state.visibility` of their refs; shown while any is), its scissors add one Prism cut of all of them (`clipping.add`
   by their refs, its handles shown). Its brush (a color theme over every kind under it) waits: no one operation does it
