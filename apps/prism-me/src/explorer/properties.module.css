@@ -46,6 +46,14 @@
   font-size: var(--msp-font-size-xs);
 }
 
+/* the header's kind: on one line, after the name (the name is what fades) */
+.kind {
+  flex: none;
+  color: var(--msp-color-text-muted);
+  font-size: var(--msp-font-size-xs);
+  white-space: nowrap;
+}
+
 .line {
   display: flex;
   align-items: center;

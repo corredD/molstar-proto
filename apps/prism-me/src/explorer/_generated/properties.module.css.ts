@@ -15,6 +15,7 @@ export const classes = {
   'hint': 'msp-me-properties-hint',
   'inline': 'msp-me-properties-inline',
   'itemName': 'msp-me-properties-itemName',
+  'kind': 'msp-me-properties-kind',
   'line': 'msp-me-properties-line',
   'lineLabel': 'msp-me-properties-lineLabel',
   'name': 'msp-me-properties-name',
@@ -59,6 +60,13 @@ defineStyles('me/explorer/properties.module.css', `@layer msp.components {
 .msp-me-properties-hint {
   color: var(--msp-color-text-muted);
   font-size: var(--msp-font-size-xs);
+}
+
+.msp-me-properties-kind {
+  color: var(--msp-color-text-muted);
+  font-size: var(--msp-font-size-xs);
+  white-space: nowrap;
+  flex: none;
 }
 
 .msp-me-properties-line {

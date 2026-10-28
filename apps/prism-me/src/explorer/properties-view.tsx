@@ -70,7 +70,7 @@ export function PropertiesFrame(props: {
         <strong class={classes.name} data-properties-name="" data-tip-overflow="">
           {props.name}
         </strong>
-        <span class={classes.hint} data-properties-kind="">
+        <span class={classes.kind} data-properties-kind="">
           {kindName(props.kind)}
         </span>
       </div>
