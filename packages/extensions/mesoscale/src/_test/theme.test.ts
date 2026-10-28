@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { Mat4, Tensor } from '@molstar/core/math/linear-algebra';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import type { Grid } from '@molstar/model/model/volume';
-import type { ApiResult } from '@molstar/prism-viewer/api/area';
+import { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
@@ -315,3 +315,38 @@ function isUnder(v: PrismViewer, ref: string, ancestor: string) {
   }
   return false;
 }
+
+describe('a part that fails inside the change', () => {
+  it('restores everything (themes, own colors, looks), checkpoints on or off, and makes no step', async () => {
+    for (const checkpoints of [true, false]) {
+      for (const how of ['fails', 'throws'] as const) {
+        const v = await viewer();
+        const { refs } = themes(v);
+        (v.managers.history as unknown as { setCheckpointing(on: boolean): void }).setCheckpointing(checkpoints);
+        expectOk(await v.api.run('representation.color', { target: 'all', structure: refs.a, color: 'red' }));
+        expectOk(await v.api.mesoscale!.colors({ scheme: 'generate', particles: refs.list } as never));
+        const overpaints = () =>
+          [...v.plugin.state.data.cells.values()].filter((c) => /overpaint/i.test(c.transform.transformer.id)).length;
+        const colored = () => v.api.mesoscale!.infoState(refs.list).value!.entities.filter((e) => e.color).length;
+        const before = { themes: themes(v), overpaints: overpaints(), colored: colored() };
+        // the looks' write fails (or throws) after the themes and the overpaint reset are written
+        const def = v.api.definitions.value.get('particles.look') as unknown as { run: (...a: unknown[]) => unknown };
+        const run = def.run;
+        def.run = async () => {
+          if (how === 'throws') throw new Error('a failing write');
+          return ApiResult.fail('failed', 'a failing write');
+        };
+        const steps = v.api.history.steps.value.length;
+        let r: Awaited<ReturnType<typeof v.api.run>>;
+        try {
+          r = await v.api.run('mesoscale.theme', { objects: [refs.a, refs.b, refs.list], theme: 'object' });
+        } finally {
+          def.run = run;
+        }
+        expect(r.ok).toBe(false);
+        expect({ themes: themes(v), overpaints: overpaints(), colored: colored() }).toEqual(before);
+        expect(v.api.history.steps.value.length).toBe(steps);
+      }
+    }
+  });
+});
