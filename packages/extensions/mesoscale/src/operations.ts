@@ -581,6 +581,9 @@ export class MesoscaleApi extends ApiArea {
         return ApiResult.fail('invalid', `'${color}' is not a color.`, 'Give a color name (tomato) or #rrggbb.');
       }
       const byRef = new Map(graphicsObjects(ctx).map((o) => [o.cell.transform.ref, o]));
+      const lists = new Map(
+        ctx.plugin.managers.particles.hierarchy.current.lists.map((l) => [l.cell.transform.ref, l]),
+      );
       const palette = distinctColors(refs.length);
       const label = ObjectsThemes.find(([t]) => t === theme)![1];
       // the plan: what each object takes, checked before any change
@@ -605,7 +608,7 @@ export class MesoscaleApi extends ApiArea {
         } else if (o.kind === 'particles') {
           if (theme === 'chain') return doesNotTake(o.name, label);
           const data = particleData(o.cell, o.representations);
-          const entities = !!data?.entityInfo;
+          const entities = !!data?.entityInfo?.size;
           if (theme === 'generate' && entities) {
             plans.push({ kind: 'generate', o });
             continue;
@@ -616,7 +619,8 @@ export class MesoscaleApi extends ApiArea {
             kind: 'reps',
             o,
             theme: byEntity ? named('particle-entity') : named('uniform', { value: mine }),
-            clear: entities,
+            // look colors paint over a theme: cleared, whether set by entity or (a plain list) by target
+            clear: hasLookColors(ctx, lists.get(o.cell.transform.ref)),
           });
         } else {
           if (theme !== 'object' && theme !== 'uniform') return doesNotTake(o.name, label);
@@ -645,7 +649,9 @@ export class MesoscaleApi extends ApiArea {
             scheme: p.kind === 'generate' ? 'generate' : 'theme',
             particles: p.o.cell.transform.ref,
           });
-          if (r.ok && !r.unchanged) nodes.push(...(r.changed.nodes ?? []));
+          // a nested failure is the run's (a top-level run reads only its own result)
+          if (!r.ok) return r;
+          if (!r.unchanged) nodes.push(...(r.changed.nodes ?? []));
         } else if (p.kind === 'mesh') {
           const r = await ctx.api.run('cryoet.mesh', { mesh: p.ref, color: Color.toHexStyle(p.color) });
           if (!r.ok) return r;
@@ -687,6 +693,13 @@ type ThemePlan =
 
 const doesNotTake = (name: string, theme: string) =>
   ApiResult.fail('invalid', `${name} cannot be colored ${theme.toLowerCase()}.`, 'Nothing was changed.');
+
+/** Whether a list has look colors (by entity, or by target on a list with no entities) */
+function hasLookColors(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef | undefined): boolean {
+  if (!l) return false;
+  for (const s of readStyles(ctx, l).values()) if (s.color !== undefined) return true;
+  return false;
+}
 
 /** A particle object's list: its representations' source, else its own */
 function particleData(cell: StateObjectCell, reps: readonly StateObjectCell[]): ParticleList | undefined {

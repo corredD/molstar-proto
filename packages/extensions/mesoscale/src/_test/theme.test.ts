@@ -14,7 +14,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExtension } from '../prism-viewer.js';
-import { TestParticleList } from './fixtures.js';
+import { TestParticleList, TestPlainList } from './fixtures.js';
 
 // A color theme for several objects at once (`mesoscale.theme`; apps/prism-me/_spec/ui.md §3, §4: a category's brush,
 // Ludo 2026-10-27): each kind takes the theme it supports, one history step, one undo. Two copies of 1CRN
@@ -161,5 +161,20 @@ describe("mesoscale.theme's surface", () => {
     const v = await viewer();
     expect(v.managers.commands.get('mesoscale.theme')).toBeUndefined();
     expect(v.api.definitions.value.get('mesoscale.theme')?.surface).toMatchObject({ kind: 'agent-only' });
+  });
+});
+
+describe('a plain list (no entities)', () => {
+  it('has its look colors cleared too (they paint over a theme), by object', async () => {
+    const v = await viewer();
+    await v.plugin.build().toRoot().apply(TestPlainList).commit();
+    const plain = v.plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.obj?.label === 'Plain')!;
+    const ref = plain.cell.transform.ref;
+    expectOk(await v.api.particles.representation({ type: 'spacefill', particles: ref }));
+    expectOk(await v.api.mesoscale!.colors({ scheme: 'generate', particles: ref } as never));
+    const colored = () => v.api.mesoscale!.infoState(ref).value!.entities.filter((e) => e.color !== undefined);
+    expect(colored().length).toBeGreaterThan(0);
+    expectOk(await v.api.run('mesoscale.theme', { objects: [ref], theme: 'object' }));
+    expect(colored()).toEqual([]);
   });
 });

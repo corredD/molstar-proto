@@ -64,3 +64,17 @@ export const TestParticleList = PluginStateTransform.BuiltIn({
     return new SO.Particle.List(cellpackLike(), { label: 'HIV' });
   },
 });
+
+/** A list as a plain particle file has it: targets, no entities and no compartments (a RELION list), for tests */
+export const TestPlainList = PluginStateTransform.BuiltIn({
+  name: 'mesoscale-test-plain-list',
+  display: { name: 'Test Plain List' },
+  from: SO.Root,
+  to: SO.Particle.List,
+  params: {},
+})({
+  apply() {
+    const { entityInfo: _e, compartmentInfo: _ci, compartments: _c, ...plain } = cellpackLike();
+    return new SO.Particle.List(plain as ReturnType<typeof cellpackLike>, { label: 'Plain' });
+  },
+});
