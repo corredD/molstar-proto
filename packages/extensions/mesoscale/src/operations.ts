@@ -556,8 +556,8 @@ export class MesoscaleApi extends ApiArea {
    * §3): structures by object, entity, chain or one color; particle models and lists by object, entity (a list with no
    * entities: by object), generated colors or one color; volumes (their isosurfaces: slices show the data) and meshes
    * by object or one color. Everything is planned before a change, so a theme an object does not take changes nothing;
-   * then one commit of the representations' themes, and the particles' look colors (they paint over a theme) cleared or
-   * generated and the meshes colored in the same step.
+   * then one change: the representations' themes in one commit, every list's look colors (they paint over a theme)
+   * cleared or generated in one `particles.look`, every mesh in one `cryoet.mesh`, in one data transaction.
    */
   readonly theme = this.operation({
     id: 'mesoscale.theme',
@@ -616,8 +616,16 @@ export class MesoscaleApi extends ApiArea {
           if (theme === 'chain') return doesNotTake(o.name, label);
           const data = particleData(o.cell, o.representations);
           const entities = !!data?.entityInfo?.size;
-          if (theme === 'generate' && entities) {
-            plans.push({ kind: 'generate', o });
+          const list = lists.get(o.cell.transform.ref);
+          if (theme === 'generate' && entities && data) {
+            // the colors `mesoscale.colors` generates, by the model's grouping (the tree's when given)
+            const by = groupBy[o.cell.transform.ref] ?? defaultGroupBy(data);
+            const colors = generateColors(mesoGroups(data, mesoEntities(data), by));
+            plans.push({
+              kind: 'look',
+              o,
+              look: [...colors].map(([id, c]) => ({ selector: { entities: [id] }, color: c })),
+            });
             continue;
           }
           const byEntity = theme === 'entity' && entities;
@@ -627,7 +635,7 @@ export class MesoscaleApi extends ApiArea {
             o,
             theme: byEntity ? named('particle-entity') : named('uniform', { value: mine }),
             // look colors paint over a theme: cleared, whether set by entity or (a plain list) by target
-            clear: hasLookColors(ctx, lists.get(o.cell.transform.ref)),
+            look: list ? clearedColors(ctx, list) : undefined,
           });
         } else {
           if (theme !== 'object' && theme !== 'uniform') return doesNotTake(o.name, label);
@@ -655,7 +663,9 @@ export class MesoscaleApi extends ApiArea {
       if (nothing.length === plans.length) {
         return ApiResult.fail('not-found', `${none} (a volume's slices show the data; a list needs a representation).`);
       }
-      // one commit for every representation's theme (bulk is one change)
+      // one change (bulk is one change): the representations' themes in one commit, every list's look colors in one
+      // `particles.look` (their one writer: cleared, or generated), every mesh's color in one `cryoet.mesh`, in one data
+      // transaction (the managers' work done once; restored if any part fails, undo checkpoints on or off)
       const b = ctx.plugin.state.data.build();
       const nodes: string[] = [];
       const changed = new Set<string>();
@@ -665,31 +675,47 @@ export class MesoscaleApi extends ApiArea {
         nodes.push(w.r.transform.ref);
         changed.add(w.o.cell.transform.ref);
       }
-      if (nodes.length) await b.commit();
-      // the particles' look colors, which paint over a theme (their one writer, `particles.look`): cleared, or generated
-      for (const p of plans) {
-        if (p.kind === 'generate' || (p.kind === 'reps' && p.clear)) {
-          const ref = p.o.cell.transform.ref;
-          const by = p.kind === 'generate' ? groupBy[ref] : undefined;
-          const r = await ctx.api.run('mesoscale.colors', {
-            scheme: p.kind === 'generate' ? 'generate' : 'theme',
-            particles: ref,
-            ...(by ? { groupBy: by } : {}),
-          });
-          // a nested failure is the run's (a top-level run reads only its own result)
-          if (!r.ok) return r;
-          if (!r.unchanged) {
-            nodes.push(...(r.changed.nodes ?? []));
-            changed.add(p.o.cell.transform.ref);
-          }
-        } else if (p.kind === 'mesh') {
-          const r = await ctx.api.run('cryoet.mesh', { mesh: p.ref, color: Color.toHexStyle(p.color) });
-          if (!r.ok) return r;
-          if (!r.unchanged) {
-            nodes.push(p.ref);
-            changed.add(p.ref);
-          }
-        }
+      const looks = plans.flatMap((p) =>
+        (p.kind === 'reps' || p.kind === 'look') && p.look?.length
+          ? [{ particles: p.o.cell.transform.ref, layers: p.look }]
+          : [],
+      );
+      const meshes = plans.flatMap((p) =>
+        p.kind === 'mesh' ? [{ mesh: p.ref, color: Color.toHexStyle(p.color) }] : [],
+      );
+      // the list a representation's ref is of (a look's change, said by its representations)
+      const listOf = new Map(
+        [...lists.values()].flatMap((l) => l.representations.map((r) => [r.cell.transform.ref, l.cell.transform.ref])),
+      );
+      try {
+        await ctx.plugin.dataTransaction(
+          async () => {
+            if (nodes.length) await b.commit();
+            if (looks.length) {
+              const r = await ctx.api.run('particles.look', { lists: looks });
+              if (!r.ok) throw new Rollback(r);
+              if (!r.unchanged) {
+                for (const ref of r.changed.nodes ?? []) {
+                  nodes.push(ref);
+                  changed.add(listOf.get(ref) ?? ref);
+                }
+              }
+            }
+            if (meshes.length) {
+              const r = await ctx.api.run('cryoet.mesh', { colors: meshes });
+              if (!r.ok) throw new Rollback(r);
+              if (!r.unchanged) {
+                for (const m of meshes) changed.add(m.mesh);
+                nodes.push(...(r.changed.nodes ?? []));
+              }
+            }
+          },
+          { rethrowErrors: true },
+        );
+      } catch (e) {
+        // a part failed: the transaction put the state back; its failure is the run's
+        if (e instanceof Rollback) return e.failure;
+        throw e;
       }
       const notes = [
         ...(fallbacks.length ? [`${fallbacks.join(', ')}: no entities, by object`] : []),
@@ -721,10 +747,11 @@ type ThemePlan =
       readonly theme: { readonly name: string; readonly params: Record<string, unknown> };
       /** Only representations of this type (a volume's isosurfaces) */
       readonly only?: string;
-      /** Its look colors cleared (a model's: they paint over the theme) */
-      readonly clear?: boolean;
+      /** Its look colors cleared (they paint over the theme) */
+      readonly look?: readonly LookLayer[];
     }
-  | { readonly kind: 'generate'; readonly o: GraphicsObject }
+  /** A model's generated colors, its look (no theme of its own) */
+  | { readonly kind: 'look'; readonly o: GraphicsObject; readonly look: readonly LookLayer[] }
   | { readonly kind: 'mesh'; readonly ref: string; readonly color: Color };
 
 const doesNotTake = (name: string, theme: string) =>
@@ -737,11 +764,28 @@ async function meshesOf(ctx: ApiContext): Promise<ReadonlySet<string>> {
   return new Set(list.map((m) => m.ref));
 }
 
-/** Whether a list has look colors (by entity, or by target on a list with no entities) */
-function hasLookColors(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef | undefined): boolean {
-  if (!l) return false;
-  for (const s of readStyles(ctx, l).values()) if (s.color !== undefined) return true;
-  return false;
+/** A layer of `particles.look`: a color for some entities or targets (null clears it) */
+interface LookLayer {
+  readonly selector: { readonly entities?: number[]; readonly targets?: number[] };
+  readonly color: Color | null;
+}
+
+/** A failed part of a transaction: thrown so the transaction restores the state, returned as the run's failure */
+class Rollback extends Error {
+  constructor(readonly failure: ApiFailure) {
+    super(failure.message);
+  }
+}
+
+/** A list's look colors cleared (by entity, or by target on a list with no entities); none to clear: undefined */
+function clearedColors(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): LookLayer[] | undefined {
+  const byTarget = !dataOf(l)?.entityInfo;
+  const layers: LookLayer[] = [];
+  for (const [id, style] of readStyles(ctx, l)) {
+    if (style.color === undefined) continue;
+    layers.push({ selector: byTarget ? { targets: [id] } : { entities: [id] }, color: null });
+  }
+  return layers.length ? layers : undefined;
 }
 
 /** A particle object's list: its representations' source, else its own */

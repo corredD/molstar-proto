@@ -234,3 +234,44 @@ describe('generated colors', () => {
     expect(colors()).toEqual(byFunction);
   });
 });
+
+describe('one write however many lists', () => {
+  async function updatesFor(n: number, theme: 'object' | 'generate') {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const b = v.plugin.build();
+    for (let i = 0; i < n; i++) b.toRoot().apply(TestParticleList);
+    await b.commit();
+    const refs = v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref);
+    for (const ref of refs) {
+      expectOk(await v.api.particles.representation({ type: 'spacefill', particles: ref }));
+      expectOk(await v.api.mesoscale!.colors({ scheme: 'uniform', color: 'red', particles: ref } as never));
+    }
+    const state = v.plugin.state.data;
+    const updateTree = state.updateTree.bind(state);
+    let updates = 0;
+    (state as { updateTree: typeof updateTree }).updateTree = ((...args: Parameters<typeof updateTree>) => {
+      updates++;
+      return updateTree(...args);
+    }) as typeof updateTree;
+    const steps = v.api.history.steps.value.length;
+    try {
+      expectOk(await v.api.run('mesoscale.theme', { objects: refs, theme }));
+    } finally {
+      (state as { updateTree: typeof updateTree }).updateTree = updateTree;
+    }
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    return updates;
+  }
+
+  it('by object (look colors cleared) and generated: the same few tree updates for 2 lists and 8', async () => {
+    for (const theme of ['object', 'generate'] as const) {
+      const two = await updatesFor(2, theme);
+      expect(two).toBeLessThanOrEqual(2);
+      expect(await updatesFor(8, theme)).toBe(two);
+    }
+  });
+});

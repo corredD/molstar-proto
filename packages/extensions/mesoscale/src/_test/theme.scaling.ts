@@ -13,11 +13,12 @@ import { MesoscaleExtension } from '../prism-viewer.js';
 import { TestParticleList } from './fixtures.js';
 
 // `mesoscale.theme` over N objects (`test:scaling`; packages/prism/AGENTS.md, bulk operations are one change): N
-// particle lists colored by object, one commit of their representations' themes, each object found in one index. A
-// lookup or a commit per object would read about ×16.
+// particle lists, generated colors and by object in turn, so each run writes every list's look colors (generated, then
+// cleared) as well as their themes: one transaction, a constant number of tree updates, each object found in one
+// index. A lookup, a nested run or a commit per object would read about ×16.
 
 it('mesoscale.theme over N particle lists', async () => {
-  let theme: 'object' | 'uniform' = 'object';
+  let theme: 'object' | 'generate' = 'object';
   const s = await scalingAsync(
     {
       setup: async (n) => {
@@ -36,7 +37,7 @@ it('mesoscale.theme over N particle lists', async () => {
       },
       run: async ({ v, objects }: { v: PrismViewer; objects: string[] }) => {
         // a change every run (alternating), so each measures the write
-        theme = theme === 'object' ? 'uniform' : 'object';
+        theme = theme === 'object' ? 'generate' : 'object';
         const r = await v.api.run('mesoscale.theme', { objects, theme });
         if (!r.ok) throw new Error(r.message);
       },
