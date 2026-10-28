@@ -507,3 +507,41 @@ describe("a category's Uniform (Ludo, 2026-10-27)", () => {
     expect(v.api.history.steps.value.length).toBe(steps + 1);
   });
 });
+
+describe("the Meshes category's brush", () => {
+  it('colors every mesh by object in one step, one tree update', async () => {
+    const v = await viewer([]);
+    const obj = 'v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n';
+    const r = await v.api.load.files({ files: [new File([obj], 'a.obj'), new File([obj], 'b.obj')] });
+    if (!r.ok) throw new Error(r.message);
+    const { host } = mount(v);
+    await until(() => !!item(host, 'c:meshes'));
+    const colors = async () => {
+      const m = await v.api.run('cryoet.meshes', {});
+      return ((m as { value?: { color?: number }[] }).value ?? []).map((x) => x.color);
+    };
+    const before = await colors();
+    item(host, 'c:meshes')!.querySelector<HTMLButtonElement>('button[aria-label="Color all of it"]')!.click();
+    await settle();
+    const steps = v.api.history.steps.value.length;
+    const state = v.plugin.state.data;
+    const updateTree = state.updateTree.bind(state);
+    let updates = 0;
+    (state as { updateTree: typeof updateTree }).updateTree = ((...args: Parameters<typeof updateTree>) => {
+      updates++;
+      return updateTree(...args);
+    }) as typeof updateTree;
+    try {
+      Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]'))
+        .find((m) => m.textContent?.trim() === 'By object')!
+        .click();
+      await until(() => v.api.history.steps.value.length === steps + 1);
+    } finally {
+      (state as { updateTree: typeof updateTree }).updateTree = updateTree;
+    }
+    const after = await colors();
+    expect(after[0]).not.toEqual(before[0]);
+    expect(after[0]).not.toEqual(after[1]);
+    expect(updates).toBe(1);
+  });
+});
