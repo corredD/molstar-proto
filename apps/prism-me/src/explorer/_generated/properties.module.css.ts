@@ -11,6 +11,7 @@
 import { defineStyles } from '@molstar/prism-ui/styles/registry';
 
 export const classes = {
+  'fit': 'msp-me-properties-fit',
   'hint': 'msp-me-properties-hint',
   'inline': 'msp-me-properties-inline',
   'itemName': 'msp-me-properties-itemName',
@@ -26,11 +27,13 @@ export const classes = {
 defineStyles('me/explorer/properties.module.css', `@layer msp.components {
 .msp-me-properties-stack {
   gap: var(--msp-space-2);
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
 }
 
 .msp-me-properties-tight {
   gap: var(--msp-space-1);
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
 }
 
@@ -102,7 +105,19 @@ defineStyles('me/explorer/properties.module.css', `@layer msp.components {
   border-radius: var(--msp-radius-md);
   background: color-mix(in oklab, var(--msp-color-control), transparent 40%);
   box-shadow: inset 0 0 0 1px var(--msp-glass-edge);
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
+}
+
+.msp-me-properties-fit {
+  min-width: 0;
+  max-width: 100%;
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--msp-fade)), transparent);
+  justify-content: flex-start;
+  animation-name: msp-fade-overflow;
+  animation-fill-mode: both;
+  animation-timeline: scroll(self inline);
+  overflow: hidden;
 }
 }
 `);

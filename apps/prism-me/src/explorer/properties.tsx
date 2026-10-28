@@ -422,7 +422,7 @@ function ColorField(props: {
       when={derive([props.value, picking.asReadonly], (c, p) => c !== undefined || p)}
       fallback={() => (
         <Line label={label}>
-          <Button size="sm" variant="ghost" onClick={() => picking.set(true)}>
+          <Button size="sm" variant="ghost" class={classes.fit} onClick={() => picking.set(true)}>
             {`${props.none} · pick one`}
           </Button>
         </Line>
@@ -583,6 +583,7 @@ function StructureLook(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef
           <Button
             size="sm"
             variant="ghost"
+            class={classes.fit}
             onClick={() => void api.run('representation.reset', { layer: 'all', structure: node.ref })}
           >
             Reset colors, opacity and glow
@@ -936,7 +937,13 @@ function LabelFields(props: {
       />
       {props.full ? <LabelLook label={label} edit={edit} /> : null}
       <Line>
-        <Button size="sm" variant="ghost" icon={<Icon name="x" />} onClick={() => edit({ remove: true })}>
+        <Button
+          size="sm"
+          variant="ghost"
+          class={classes.fit}
+          icon={<Icon name="x" />}
+          onClick={() => edit({ remove: true })}
+        >
           Remove the label
         </Button>
       </Line>
