@@ -8,9 +8,9 @@ import type { MesoGroup } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { describe, expect, it } from 'vitest';
-import type { SceneObject } from '../operations.js';
+import type { ExplorerApi, SceneObject } from '../operations.js';
 import { keepRows } from '@molstar/prism-ui';
-import { type Row, rowsOf, sameRow } from '../rows.js';
+import { clipsAt, type Row, rowsOf, sameRow } from '../rows.js';
 
 // A model's rows (_spec/ui.md §3) from its info, grouped by compartment or by function: lipids (function "membrane")
 // in root.membrane, CA in root.capsid.
@@ -149,5 +149,39 @@ describe("a category row's objects", () => {
       keep(rowsOf(objects, new Map(), new Set(), '')).find((r) => r.key === 'c:particles')!;
     category([model, other('a')]);
     expect(category([model, other('b')]).objects).toEqual(['m', 'b']);
+  });
+});
+
+describe("a clip's place", () => {
+  it("is found once per cut, not again at each change of the scene (an eye's click)", () => {
+    let queries = 0;
+    const area = {
+      isUnder: (ref: string, ancestor: string) => ref === `${ancestor}:repr`,
+      cutsOf: (cuts: readonly unknown[], node: { chain?: string }) => {
+        queries++;
+        return node.chain === 'C' ? cuts : [];
+      },
+    } as unknown as ExplorerApi;
+    const s: SceneObject = {
+      ref: 's',
+      category: 'structures',
+      kind: 'structure',
+      label: 'capsid',
+      visible: true,
+      entities: [{ id: '1', label: 'CA', chains: ['A', 'B', 'C', 'D'] }] as SceneObject['entities'],
+    };
+    const cut = {
+      index: 1,
+      object: { type: 'plane', tag: 'k1' },
+      targets: [{ ref: 's:repr', label: '', type: 'cartoon' }],
+      kept: { count: 1, label: '' },
+      atoms: { count: 1, label: '', loci: [] },
+    } as unknown as Parameters<typeof clipsAt>[1][number];
+    expect(clipsAt(area, [cut], [s]).map((c) => c.node)).toEqual(['ch:s:1:C']);
+    const first = queries;
+    expect(first).toBeGreaterThan(0);
+    // the scene changed (an object's eye): the same cut, its place known
+    expect(clipsAt(area, [cut], [{ ...s, visible: false }]).map((c) => c.node)).toEqual(['ch:s:1:C']);
+    expect(queries).toBe(first);
   });
 });

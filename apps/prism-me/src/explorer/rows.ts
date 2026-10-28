@@ -524,8 +524,23 @@ export function clipsAt(area: ExplorerApi, cuts: readonly Cut[], objects: readon
   return out;
 }
 
-/** The entity's or chain's row a cut of some atoms is of (`area.cutsOf`: exactly its atoms) */
+/**
+ * Where each cut of some atoms was found, by object ref: a cut is the same object until the clipping changes, so a change
+ * of the scene (an eye's click) does not query the structure again per entity and chain
+ */
+const AtomsRows = new WeakMap<Cut, Map<string, string | undefined>>();
+
+/** The entity's or chain's row a cut of some atoms is of (`area.cutsOf`: exactly its atoms), found once a cut */
 function atomsRow(area: ExplorerApi, c: Cut, o: SceneObject): string | undefined {
+  let known = AtomsRows.get(c);
+  if (!known) AtomsRows.set(c, (known = new Map()));
+  if (known.has(o.ref)) return known.get(o.ref);
+  const row = findAtomsRow(area, c, o);
+  known.set(o.ref, row);
+  return row;
+}
+
+function findAtomsRow(area: ExplorerApi, c: Cut, o: SceneObject): string | undefined {
   for (const e of o.entities ?? []) {
     if (area.cutsOf([c], { ref: o.ref, entity: e.id }).length) return `e:${o.ref}:${e.id}`;
     if (e.chains.length < 2) continue;
