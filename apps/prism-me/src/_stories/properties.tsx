@@ -63,30 +63,11 @@ const form = (params: PD.Params) => () => <ParamsForm form={new ParamsFormModel(
 const view = (render: (n: MockNode) => Child) =>
   domView<ShellViewContext>(({ ctx }) => render(ctx.subject as MockNode));
 
-const RepresentationTypes: Partial<Record<MockKind, [string, string][]>> = {
-  structure: [
-    ['cartoon', 'Cartoon'],
-    ['spacefill', 'Spacefill'],
-    ['ball-and-stick', 'Ball and stick'],
-    ['surface', 'Molecular surface'],
-  ],
-  list: [
-    ['spheres', 'Spheres'],
-    ['objects', 'Decorating objects'],
-  ],
-  volume: [
-    ['slice', 'Slice'],
-    ['isosurface', 'Isosurface'],
-  ],
-  mesh: [
-    ['surface', 'Surface'],
-    ['wireframe', 'Wireframe'],
-    ['both', 'Both'],
-  ],
-};
-RepresentationTypes.entity = RepresentationTypes.structure;
-RepresentationTypes.model = RepresentationTypes.list;
-RepresentationTypes.isosurface = [['isosurface', 'Isosurface']];
+/** A list's or a model's representations: their type (the app: each its whole form) */
+const ParticleTypes: [string, string][] = [
+  ['spheres', 'Spheres'],
+  ['objects', 'Decorating objects'],
+];
 
 function sections(shell: ShellModel) {
   shell.registerSections([
@@ -94,15 +75,17 @@ function sections(shell: ShellModel) {
       id: 'look',
       slot: Slot,
       title: 'Look',
-      when: node,
+      // as the app: what has a look of its own (a volume's is its slices' and isosurfaces', a list's its targets')
+      when: has('category', 'structure', 'entity', 'chain', 'model', 'group', 'model entity', 'mesh'),
       render: view((n) =>
-        // a category: its eye and a color theme, for every object under it
+        // a category: its eye and a color theme, for every object under it; a mesh: its look's own controls
         n.kind === 'category' ? (
           <CategoryLook node={n} />
+        ) : n.kind === 'mesh' ? (
+          <MeshLook />
         ) : (
           <div class={classes.stack}>
             {form({
-              visible: PD.Boolean(n.visible !== false),
               color: PD.Color(Color(n.color ?? 0x8a8f98)),
               opacity: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }),
               glow: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }),
@@ -116,20 +99,39 @@ function sections(shell: ShellModel) {
       id: 'representation',
       slot: Slot,
       title: 'Representation',
-      when: has('structure', 'entity', 'model', 'list', 'volume', 'isosurface', 'mesh'),
-      render: view((n) => {
-        const types = RepresentationTypes[n.kind]!;
-        return form({
-          type: PD.Select(types[0][0], types),
-          size: PD.Numeric(1, { min: 0.1, max: 4, step: 0.1 }),
-        })();
-      }),
+      // as the app: a structure's preset; a model's, a list's, a slice's representations
+      when: has('structure', 'model', 'list', 'slice'),
+      render: view((n) =>
+        n.kind === 'structure' ? (
+          <Line label="Preset">
+            <Select size="sm" aria-label="Representation preset" options={[['', 'Apply a preset…']]} value="" />
+          </Line>
+        ) : (
+          form({
+            type: PD.Select(
+              n.kind === 'slice' ? 'slice' : 'spheres',
+              n.kind === 'slice' ? [['slice', 'Slice']] : ParticleTypes,
+            ),
+            size: PD.Numeric(1, { min: 0.1, max: 4, step: 0.1 }),
+          })()
+        ),
+      ),
+    },
+    {
+      // a volume's isosurfaces (its slices are Slice's); an isosurface's row: its own
+      id: 'isosurface',
+      slot: Slot,
+      title: 'Isosurface',
+      when: has('volume', 'isosurface'),
+      render: view(() =>
+        form({ level: PD.Numeric(1.5, { min: -3, max: 6, step: 0.1 }, { label: 'Iso level (σ)' }) })(),
+      ),
     },
     {
       id: 'decoration',
       slot: Slot,
       title: 'Decoration',
-      when: has('list', 'target', 'model'),
+      when: has('list', 'target', 'model', 'group', 'model entity'),
       render: view(() => <Decoration />),
     },
     {
@@ -156,7 +158,14 @@ function sections(shell: ShellModel) {
       when: object,
       render: view((n) => <Position node={n} />),
     },
-    { id: 'clips', slot: Slot, title: 'Clips', when: node, render: view((n) => <Clips node={n} />) },
+    {
+      id: 'clips',
+      slot: Slot,
+      title: 'Clips',
+      // as the app: not a volume's slice or isosurface (they are cut with their volume)
+      when: (ctx) => node(ctx) && !['slice', 'isosurface'].includes((ctx.subject as MockNode).kind),
+      render: view((n) => <Clips node={n} />),
+    },
     { id: 'labels', slot: Slot, title: 'Labels', when: part, render: view((n) => <Labels node={n} />) },
     {
       id: 'graphics',
@@ -192,6 +201,28 @@ function sections(shell: ShellModel) {
     },
     { id: 'distance', slot: Slot, title: 'Distance', when: has('distance'), render: view(() => <Distance />) },
   ]);
+}
+
+/** A mesh's Look (the app's cryo-ET MeshControls): its color, surface, wireframe or both, opacity, scale */
+function MeshLook() {
+  return (
+    <div class={classes.stack}>
+      {form({ color: PD.Color(Color(0xb58bd6)) })()}
+      <Choices
+        choices={[
+          { id: 'mesh', label: 'Surface' },
+          { id: 'wireframe', label: 'Wireframe' },
+          { id: 'both', label: 'Both' },
+        ]}
+        active={fixed('mesh')}
+        onPick={() => {}}
+      />
+      {form({
+        opacity: PD.Numeric(1, { min: 0.05, max: 1, step: 0.01 }),
+        scale: PD.Numeric(1, { min: 0.01, max: 100, step: 0.01 }),
+      })()}
+    </div>
+  );
 }
 
 /** A category's Look (ui.md §4): its eye and a color theme for every object under it; Uniform's color picked, applied */
