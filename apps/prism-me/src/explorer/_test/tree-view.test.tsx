@@ -439,3 +439,30 @@ describe("a category's brush (Ludo, 2026-10-27)", () => {
     expect(v.api.history.steps.value.length).toBe(steps + 1);
   });
 });
+
+describe("a label's and a distance's trash", () => {
+  it('removes each, one step', async () => {
+    const v = await viewer([['HIV', 3]], true);
+    const { api, host, model, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    await until(() => !!model.parts.value.get(hiv));
+    const label = await v.api.run('stage.label', { text: 'Here', target: hiv, node: `o:${hiv}` });
+    if (!label.ok) throw new Error(label.message);
+    const distance = await v.api.run('stage.distance', { a: `${hiv}#0`, b: `${hiv}#2` });
+    if (!distance.ok) throw new Error(distance.message);
+    model.open.set(new Set([...model.open.value, `o:${hiv}`]));
+    await settle();
+    const labels = () => api.stage!.labelsState().value;
+    const distances = () => api.stage!.distancesState().value;
+    const trash = (key: string) => item(host, key)?.querySelector<HTMLButtonElement>('button[aria-label="Remove"]');
+    await until(() => !!trash(`l:${labels()[0]?.ref}`) && !!trash(`d:${distances()[0]?.ref}`));
+    let steps = v.api.history.steps.value.length;
+    trash(`l:${labels()[0].ref}`)!.click();
+    await until(() => labels().length === 0);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    steps = v.api.history.steps.value.length;
+    trash(`d:${distances()[0].ref}`)!.click();
+    await until(() => distances().length === 0);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+  });
+});
