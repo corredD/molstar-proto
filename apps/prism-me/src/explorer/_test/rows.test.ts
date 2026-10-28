@@ -9,7 +9,8 @@ import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { describe, expect, it } from 'vitest';
 import type { SceneObject } from '../operations.js';
-import { rowsOf } from '../rows.js';
+import { keepRows } from '@molstar/prism-ui';
+import { type Row, rowsOf, sameRow } from '../rows.js';
 
 // A model's rows (_spec/ui.md §3) from its info, grouped by compartment or by function: lipids (function "membrane")
 // in root.membrane, CA in root.capsid.
@@ -137,5 +138,16 @@ describe("a clip of a model's group", () => {
       '4:me:m:1',
       '3:k:k1',
     ]);
+  });
+});
+
+describe("a category row's objects", () => {
+  it('are new when one object is replaced by another (as many as before), so its eye acts on them', () => {
+    const keep = keepRows<Row>((r) => r.key, sameRow);
+    const other = (ref: string): SceneObject => ({ ...model, ref, label: ref });
+    const category = (objects: SceneObject[]) =>
+      keep(rowsOf(objects, new Map(), new Set(), '')).find((r) => r.key === 'c:particles')!;
+    category([model, other('a')]);
+    expect(category([model, other('b')]).objects).toEqual(['m', 'b']);
   });
 });

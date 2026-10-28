@@ -84,8 +84,16 @@ export function sameRow(a: Row, b: Row): boolean {
     a.expanded === b.expanded &&
     a.representation === b.representation &&
     a.clip === b.clip &&
-    a.objects?.length === b.objects?.length
+    sameRefs(a.objects, b.objects)
   );
+}
+
+/** A category's objects, the same refs in order (an object replaced by another keeps their number) */
+function sameRefs(a: readonly string[] | undefined, b: readonly string[] | undefined) {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 // --- the rows ---------------------------------------------------------------------------------------------------------
