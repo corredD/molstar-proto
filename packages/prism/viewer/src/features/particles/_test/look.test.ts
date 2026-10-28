@@ -184,6 +184,26 @@ describe('particles.look', () => {
     expect(lookOfList(b)).toBeUndefined();
   });
 
+  it('refuses lists mixed with one patch, a representation or a node, and an entry that is no patch', async () => {
+    const v = await create();
+    const a = list(v).cell.transform.ref;
+    const one = { particles: a, layers: [{ selector: { targets: [1] }, color: red }] };
+    for (const extra of [{ representation: 'spacefill' }, { node: 'representation' }, { hidden: [1] }]) {
+      expect(await v.api.run('particles.look', { lists: [one], ...extra })).toMatchObject({
+        ok: false,
+        code: 'invalid',
+      });
+    }
+    expect(await v.api.run('particles.look', { lists: [null] })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(looks(v).size).toBe(0);
+    // one list given twice: both patches, its representation said once
+    const r = await v.api.run('particles.look', {
+      lists: [one, { particles: a, layers: [{ selector: { targets: [2] }, color: blue }] }],
+    });
+    expectOk(r);
+    expect(r.did.match(/Spacefill|spacefill/g)?.length ?? 1).toBe(1);
+  });
+
   it("gives a representation added to a list the list's layers (not its cuts, nor its hidden targets)", async () => {
     const v = await create();
     const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);

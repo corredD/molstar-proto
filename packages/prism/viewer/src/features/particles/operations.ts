@@ -33,7 +33,7 @@ import { FileParam } from '../../api/files.js';
 import { messageOf } from '../../api/run.js';
 import { seekWhileViewing } from '../../sources/trajectory.js';
 import { nodesFor, updateEach } from '../../api/nodes.js';
-import { entryRoot, isFailure, namesOf, pickOne } from '../../api/scope.js';
+import { entryRoot, isFailure, namesOf, onePicker, pickOne } from '../../api/scope.js';
 import { commitRepresentation, setRepresentation } from '../../api/set-representation.js';
 import {
   copyParticleLayers,
@@ -551,10 +551,18 @@ export class ParticlesApi extends ApiArea {
         cuts?: { add?: ParticleCutPatch[]; remove?: string[] };
         lists?: ParticleListLookPatch[];
       };
-      if (lists && (layers || hidden || cuts)) {
-        return ApiResult.fail('invalid', 'Give lists, or one patch (layers, hidden, cuts), not both.');
+      if (lists && (layers || hidden || cuts || representation || node)) {
+        return ApiResult.fail(
+          'invalid',
+          'Give lists, or one patch (layers, hidden, cuts) of one list, its representation or node; not both.',
+        );
       }
-      // each list's patch and representations, all checked before the one write (bulk is one change)
+      if (lists && (!Array.isArray(lists) || lists.some((e) => !e || typeof e !== 'object'))) {
+        return ApiResult.fail('invalid', 'lists: give an array of { particles, layers, hidden, cuts }.');
+      }
+      // the lists indexed once, each entry's found without a scan (bulk is one change)
+      const pick = lists ? listPicker(ctx) : undefined;
+      // each list's patch and representations, all checked before the one write
       const todo: { reps: ParticleRepresentationRef[]; patch: Parameters<typeof patchParticleLook>[2] }[] = [];
       for (const entry of lists ?? [{ particles, layers, hidden, cuts }]) {
         const patch = { layers: entry.layers, hidden: entry.hidden, cuts: entry.cuts };
@@ -563,18 +571,21 @@ export class ParticlesApi extends ApiArea {
         }
         const error = particleLookPatchError(patch);
         if (error) return ApiResult.fail('invalid', error);
-        const reps = lists
-          ? representationsFor(ctx, entry.particles ?? '', '', '')
+        const reps = pick
+          ? representationsOfList(ctx, pick(entry.particles || undefined))
           : representationsFor(ctx, particles, representation, node);
         if (isFailure(reps)) return reps;
         todo.push({ reps, patch });
       }
       if (!todo.length)
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give lists, or layers, hidden or cuts.');
-      const reps = todo.flatMap((t) => t.reps);
+      // a list given twice: its representations said once
+      const reps = [...new Set(todo.flatMap((t) => t.reps))];
       const state = ctx.plugin.state.data;
       const b = state.build();
-      const changed = todo.flatMap((t) => t.reps.filter((r) => patchParticleLook(b, r.cell.transform.ref, t.patch)));
+      const changed = [
+        ...new Set(todo.flatMap((t) => t.reps.filter((r) => patchParticleLook(b, r.cell.transform.ref, t.patch)))),
+      ];
       if (!changed.length) return ApiResult.already(`${namesOfReps(ctx, reps)} already look so.`);
       await ctx.plugin.runTask(state.updateTree(b));
       return ApiResult.ok(`Changed how ${namesOfReps(ctx, changed)} look.`, {
@@ -688,13 +699,31 @@ function listName(ctx: ApiContext, l: ParticleListRef): string {
   return namesOf(lists(ctx)).get(l.cell.transform.ref) ?? l.cell.transform.ref;
 }
 
+const NoLists = 'Open a particle file (RELION STAR, Dynamo TBL, CryoET NDJSON, EM, …) first.';
+
 function oneList(ctx: ApiContext, name: string | undefined): ParticleListRef | ApiFailure {
-  return pickOne(
-    lists(ctx),
-    name,
-    'particle list',
-    'Open a particle file (RELION STAR, Dynamo TBL, CryoET NDJSON, EM, …) first.',
-  );
+  return pickOne(lists(ctx), name, 'particle list', NoLists);
+}
+
+/** `oneList` for many names: the lists indexed once */
+function listPicker(ctx: ApiContext): (name: string | undefined) => ParticleListRef | ApiFailure {
+  return onePicker(lists(ctx), 'particle list', NoLists);
+}
+
+/** A list's representations; a failure as given, or none: said */
+function representationsOfList(
+  ctx: ApiContext,
+  l: ParticleListRef | ApiFailure,
+): ParticleRepresentationRef[] | ApiFailure {
+  if (isFailure(l)) return l;
+  if (!l.representations.length) {
+    return ApiResult.fail(
+      'not-found',
+      `${listName(ctx, l)} has no representations.`,
+      'Add one with particles.representation.',
+    );
+  }
+  return l.representations;
 }
 
 const RepresentationNodeParam = () =>
@@ -729,16 +758,7 @@ function representationsFor(
     const t = findRepresentation(ctx, particles, representation);
     return isFailure(t) ? t : [t.rep];
   }
-  const l = oneList(ctx, particles || undefined);
-  if (isFailure(l)) return l;
-  if (!l.representations.length) {
-    return ApiResult.fail(
-      'not-found',
-      `${listName(ctx, l)} has no representations.`,
-      'Add one with particles.representation.',
-    );
-  }
-  return l.representations;
+  return representationsOfList(ctx, oneList(ctx, particles || undefined));
 }
 
 /** A target by id or name (an entity's), or the only one */
