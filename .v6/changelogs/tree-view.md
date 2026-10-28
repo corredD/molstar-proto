@@ -10,3 +10,5 @@
   entity, chain, generated colors, one color), each kind by what it takes: structures, particle models and lists,
   volumes' isosurfaces, meshes; one history step.
 - `cryoet.mesh` takes `colors`: several meshes, each its own color, checked first and written in one update.
+- A category's Generate colors uses each model's grouping as the tree shows it (by compartment when it has some, else by
+  function), as its row's does; `mesoscale.colors` alone still defaults to by compartment.

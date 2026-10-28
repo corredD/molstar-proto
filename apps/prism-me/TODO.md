@@ -84,6 +84,12 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   error stays green.
 - The explorer mocks group by `o:hiv` only (`_stories/explorer-panel.tsx`): a second mock model would share its Group
   by.
+- `mesoscale.theme` on some structures, not all (an agent's few; the category brush always gives every one): one
+  `representation.reset` each, in its one transaction (1+k tree updates). One for all needs Prism's
+  `representation.reset` to take several structures (a Prism change; Ludo's call). Also open from the third review (lane
+  `tree-view`): the category brush stays faded while its Uniform popover is open (only its menu keeps it shown); the
+  picker opens at white, not the category's color; a tree update that errs inside the transaction is reverted while the
+  run says ok (Mol*'s `State.transaction`); a part's failure is logged by Mol* as a transaction error.
 - Prism's `SceneTree` over a model the explorer implements (an upstream export): the explorer's tree would be Prism's
   own (search, selection filter), not its rows repeated on `VirtualList` with the scene tree's CSS
   (`src/explorer/tree-view.tsx`, `tree.module.css`; the coordinator's default for lane `tree-view`).
