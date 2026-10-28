@@ -47,6 +47,7 @@ defineStyles('me/explorer/tree.module.css', `@layer msp.components {
   font-size: var(--msp-font-size-sm);
   contain: layout paint;
   flex-direction: column;
+  flex: 1 1 0;
   display: flex;
 }
 

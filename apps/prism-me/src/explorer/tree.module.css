@@ -9,6 +9,8 @@
    which prism-ui does not export: the same rules, repeated here. */
 
 .panel {
+  /* the tab's body is a flex column of no set height (the app), a story's frame a set one */
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   height: 100%;
