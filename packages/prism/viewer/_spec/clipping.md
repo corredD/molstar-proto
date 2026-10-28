@@ -79,6 +79,16 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
   the cone's angle (the binding's own: its rim under the cursor). Outlines are handles; a sphere's ring faces the
   camera.
 - **Bodies** are the clip volumes' walls (`graphics/geo/clip-volumes.ts`), drawn on both sides as fronts; handles glow.
+- **A view's gesture previews as a drag does** (`sources/clipping/preview.ts`, `ClippingApi.previewCut`, `endPreview`):
+  a slider on a cut's numbers shows the cut as it goes on its representations through the same binding, outside the
+  state (no step), one preview in flight, the latest waiting; the view commits once at the release (`clipping.update`)
+  and ends the preview, which puts the representations back to what the state then holds. `previewCut` returns a token:
+  `endPreview(token)` is a no-op once a newer preview began (a release whose commit lands during the next gesture). A
+  change of the state during a preview ends it (as a handle's drag is cancelled: what it captured is stale); the view
+  ends its own when it goes. Each preview asks the canvas for a frame (a clip-only update asks for none), and the cut's
+  gizmo, if shown, is drawn where the preview is (`ClipGizmos.preview`: its item's value; moved, or remade when its size
+  changes), back to the state's at the end. `boundsOf(cut)` (what it cuts, one sphere) is a view's reach; `cone` turns a
+  cone's scale into its half-angle and back.
 
 ## 5. Keep whole
 
