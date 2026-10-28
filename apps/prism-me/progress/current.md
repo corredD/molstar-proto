@@ -9,7 +9,9 @@ is not built is [../TODO.md](../TODO.md).
 - **The tree on its mock** (`me/tree-view`, `~/prism-me-lanes/tree-view`, [brief](2026-10-27-tree-view.md)): `ui.tsx`,
   `rows.ts` on `VirtualList` and `TreeNavigation`, the row's tools at the end on hover, categories picked, clips as
   rows; the first of the three views. Built and reviewed; over its size stop (+536 net, the mock's tree moved into the
-  app; Ludo accepts it). Ludo, 2026-10-27: the trash back on the row and the category's brush built, then the PR.
+  app; Ludo accepts it), with Ludo's trash on the row and the category's brush (`mesoscale.theme`; Prism's
+  `particles.look` takes several lists, `cryoet.mesh` several meshes). PR #13, three review rounds, checked with real GL
+  on WebGPU and WebGL2; waits on Ludo.
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
