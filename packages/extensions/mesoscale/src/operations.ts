@@ -573,8 +573,12 @@ export class MesoscaleApi extends ApiArea {
       }),
       theme: PD.Select<ObjectsTheme>('object', [...ObjectsThemes]),
       color: PD.Text('white', { description: 'The color of the theme uniform (a CSS color)' }),
+      groupBy: PD.Value<Record<string, MesoGroupBy>>(
+        {},
+        { description: "Generate colors: a model's grouping by its ref (its default when absent)" },
+      ),
     },
-    async run({ objects: refs, theme, color }, ctx) {
+    async run({ objects: refs, theme, color, groupBy }, ctx) {
       if (!refs.length) return ApiResult.fail('invalid', 'Which objects?', 'Give their state refs.');
       const one = theme === 'uniform' ? cssColor(color) : undefined;
       if (theme === 'uniform' && one === undefined) {
@@ -665,9 +669,12 @@ export class MesoscaleApi extends ApiArea {
       // the particles' look colors, which paint over a theme (their one writer, `particles.look`): cleared, or generated
       for (const p of plans) {
         if (p.kind === 'generate' || (p.kind === 'reps' && p.clear)) {
+          const ref = p.o.cell.transform.ref;
+          const by = p.kind === 'generate' ? groupBy[ref] : undefined;
           const r = await ctx.api.run('mesoscale.colors', {
             scheme: p.kind === 'generate' ? 'generate' : 'theme',
-            particles: p.o.cell.transform.ref,
+            particles: ref,
+            ...(by ? { groupBy: by } : {}),
           });
           // a nested failure is the run's (a top-level run reads only its own result)
           if (!r.ok) return r;

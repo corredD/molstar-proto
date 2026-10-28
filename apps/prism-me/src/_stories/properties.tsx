@@ -31,7 +31,7 @@ import { derive } from '@molstar/prism-ui/reactive/state';
 import { classes } from './_generated/explorer.module.css.js';
 import { treeClasses } from '../explorer/tree-view.js';
 import type { GroupBy, MockKind, MockNode } from './fake-scene.js';
-import { CategoryThemes } from './fake-menus.js';
+import { CategoryThemes } from '../explorer/tree-view.js';
 import { ObjectKinds } from './fake-scene.js';
 
 // The picked row's properties (ui.md §4), in sections that fold, only what applies to it: Prism's `SectionList` over a

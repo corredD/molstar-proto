@@ -210,3 +210,27 @@ describe('nothing to color', () => {
     expect(both.did).toContain('1 object');
   });
 });
+
+describe('generated colors', () => {
+  it("follow the model's grouping given (the tree's), as its row's Generate colors does", async () => {
+    const v = await viewer();
+    const { refs } = themes(v);
+    const colors = () => v.api.mesoscale!.infoState(refs.list).value!.entities.map((e) => e.color);
+    expectOk(await v.api.mesoscale!.colors({ scheme: 'generate', particles: refs.list, groupBy: 'function' } as never));
+    const byFunction = colors();
+    expectOk(
+      await v.api.mesoscale!.colors({ scheme: 'generate', particles: refs.list, groupBy: 'compartment' } as never),
+    );
+    // the groupings give other hues (else this test could not tell them apart)
+    expect(colors()).not.toEqual(byFunction);
+    expectOk(await v.api.mesoscale!.colors({ scheme: 'theme', particles: refs.list } as never));
+    expectOk(
+      await v.api.run('mesoscale.theme', {
+        objects: [refs.list],
+        theme: 'generate',
+        groupBy: { [refs.list]: 'function' },
+      }),
+    );
+    expect(colors()).toEqual(byFunction);
+  });
+});

@@ -39,6 +39,33 @@ export const EmptyTreeLine =
   'Drop files here, or + Open: structures (mmCIF, PDB), cellPACK and PetWorld models, particle lists (STAR, TBL, EM, ' +
   'NDJSON, Simularium), maps and tomograms (MRC, REC, ST), meshes (OBJ, PLY, VTP).';
 
+/**
+ * The color themes a category's brush offers, by its row's key: those its objects take (`mesoscale.theme`; ui.md §3,
+ * Ludo 2026-10-27), the app's and the mock's
+ */
+export const CategoryThemes: Readonly<Record<string, readonly (readonly [string, string])[]>> = {
+  'c:structures': [
+    ['object', 'By object'],
+    ['entity', 'By entity'],
+    ['chain', 'By chain'],
+    ['uniform', 'Uniform'],
+  ],
+  'c:particles': [
+    ['object', 'By object'],
+    ['entity', 'By entity'],
+    ['generate', 'Generate colors'],
+    ['uniform', 'Uniform'],
+  ],
+  'c:volumes': [
+    ['object', 'By object'],
+    ['uniform', 'Uniform'],
+  ],
+  'c:meshes': [
+    ['object', 'By object'],
+    ['uniform', 'Uniform'],
+  ],
+};
+
 /** A row as the tree draws it: flat, its depth says where it is */
 export interface TreeRowView {
   readonly key: string;

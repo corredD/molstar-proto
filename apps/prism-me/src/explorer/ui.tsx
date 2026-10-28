@@ -61,6 +61,7 @@ import {
 } from './rows.js';
 import {
   type At,
+  CategoryThemes,
   EmptyTreeLine,
   SplitLine,
   TreeView,
@@ -353,7 +354,9 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     if (row.objects) {
       pick(row);
       const items =
-        which === 'clip' ? categoryClipItems(api, row.objects) : categoryThemeItems(api, row.key, row.objects);
+        which === 'clip'
+          ? categoryClipItems(api, row.objects)
+          : categoryThemeItems(api, row.key, row.objects, model.groupByOf);
       openContextMenu(root(), at, items, onClose);
       return;
     }
@@ -477,38 +480,24 @@ function categoryClipItems(api: ViewerApi, objects: readonly string[]): ContextM
  * A category's brush: a color theme for every object under it, one step (`mesoscale.theme`, each kind by the theme it
  * takes; Ludo, 2026-10-27), the themes its kind takes (ui.md §3); no icons on menu items (styling.md §4)
  */
-function categoryThemeItems(api: ViewerApi, key: string, objects: readonly string[]): ContextMenuItem[] {
-  const themes = CategoryThemes[key] ?? [];
-  return themes.map(([theme, label]) => ({
+function categoryThemeItems(
+  api: ViewerApi,
+  key: string,
+  objects: readonly string[],
+  groupBy: (model: string) => MesoGroupBy | undefined,
+): ContextMenuItem[] {
+  // generated colors by each model's grouping as the tree shows it (as its row's Generate colors)
+  const groupings: Record<string, MesoGroupBy> = {};
+  for (const ref of objects) {
+    const by = groupBy(ref);
+    if (by) groupings[ref] = by;
+  }
+  return (CategoryThemes[key] ?? []).map(([theme, label]) => ({
     id: `theme-${theme}`,
     label,
-    run: () => void api.run('mesoscale.theme', { objects: [...objects], theme }),
+    run: () => void api.run('mesoscale.theme', { objects: [...objects], theme, groupBy: groupings }),
   }));
 }
-
-/** The themes each category's objects take (`mesoscale.theme`) */
-const CategoryThemes: Readonly<Record<string, readonly (readonly [string, string])[]>> = {
-  'c:structures': [
-    ['object', 'By object'],
-    ['entity', 'By entity'],
-    ['chain', 'By chain'],
-    ['uniform', 'Uniform'],
-  ],
-  'c:particles': [
-    ['object', 'By object'],
-    ['entity', 'By entity'],
-    ['generate', 'Generate colors'],
-    ['uniform', 'Uniform'],
-  ],
-  'c:volumes': [
-    ['object', 'By object'],
-    ['uniform', 'Uniform'],
-  ],
-  'c:meshes': [
-    ['object', 'By object'],
-    ['uniform', 'Uniform'],
-  ],
-};
 
 /** What was made at a node, removed by its row's trash */
 const Made: ReadonlySet<string> = new Set(['clip', 'label', 'distance']);
