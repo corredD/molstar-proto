@@ -337,6 +337,21 @@ describe('cryoet', () => {
     expect((await read()).get('a.obj')).toBe(0xff6347);
   });
 
+  it('refuses colors it cannot read: mixed with mesh or color, not a list, an entry with no color, a name of two', async () => {
+    const v = await viewer();
+    const obj = 'v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n';
+    expectOk(
+      await v.api.load.files({ files: [new File([obj], 'a.obj'), new File([obj], 'm.obj'), new File([obj], 'm.obj')] }),
+    );
+    const run = (p: Record<string, unknown>) => v.api.run('cryoet.mesh', p);
+    const one = { mesh: 'a.obj', color: 'red' };
+    expect(await run({ colors: [one], color: 'blue' })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await run({ colors: [one], mesh: 'a.obj' })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await run({ colors: one })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await run({ colors: [{ mesh: 'a.obj' }] })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await run({ colors: [{ mesh: 'm.obj', color: 'red' }] })).toMatchObject({ ok: false, code: 'ambiguous' });
+  });
+
   it('scales a segmentation mesh (a mesh in pixels: by the pixel size)', async () => {
     const v = await viewer();
     const obj = 'v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n';

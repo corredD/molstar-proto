@@ -89,6 +89,7 @@
         "packages/ai/vitest*.config.ts",
         "packages/extensions/mesoscale/vitest*.config.ts",
         "apps/prism-me/vitest*.config.ts",
+        "packages/extensions/cryoet/vitest*.config.ts",
         "apps/docs/astro.config.ts",
         "examples/minimal-prism-viewer/vite.config.ts"
       ],
