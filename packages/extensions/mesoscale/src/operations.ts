@@ -630,19 +630,36 @@ export class MesoscaleApi extends ApiArea {
           plans.push({ kind: 'reps', o, theme: named('uniform', { value: mine }), only: 'isosurface' });
         }
       }
-      // one commit for every representation's theme (bulk is one change)
-      const b = ctx.plugin.state.data.build();
-      const nodes: string[] = [];
+      // each representation's theme, planned too: an object with none it can take has nothing to color (a volume's
+      // slices show the data; a list not drawn), said rather than "already so"
+      const writes: { o: GraphicsObject; r: StateObjectCell; params: object; next: object; same: boolean }[] = [];
+      const nothing: string[] = [];
       for (const p of plans) {
         if (p.kind !== 'reps') continue;
+        let any = false;
         for (const r of p.o.representations) {
           const params = r.transform.params as { type?: { name?: string }; colorTheme?: { name: string } };
           if (p.only && params.type?.name !== p.only) continue;
           const next = themeFor(ctx, p.o, r, p.theme);
-          if (!next || JSON.stringify(params.colorTheme) === JSON.stringify(next)) continue;
-          b.to(r).update({ ...params, colorTheme: next });
-          nodes.push(r.transform.ref);
+          if (!next) continue;
+          any = true;
+          writes.push({ o: p.o, r, params, next, same: JSON.stringify(params.colorTheme) === JSON.stringify(next) });
         }
+        if (!any) nothing.push(p.o.name);
+      }
+      const none = nothing.length ? `${nothing.join(', ')}: nothing to color` : '';
+      if (nothing.length === plans.length) {
+        return ApiResult.fail('not-found', `${none} (a volume's slices show the data; a list needs a representation).`);
+      }
+      // one commit for every representation's theme (bulk is one change)
+      const b = ctx.plugin.state.data.build();
+      const nodes: string[] = [];
+      const changed = new Set<string>();
+      for (const w of writes) {
+        if (w.same) continue;
+        b.to(w.r).update({ ...w.params, colorTheme: w.next });
+        nodes.push(w.r.transform.ref);
+        changed.add(w.o.cell.transform.ref);
       }
       if (nodes.length) await b.commit();
       // the particles' look colors, which paint over a theme (their one writer, `particles.look`): cleared, or generated
@@ -654,18 +671,27 @@ export class MesoscaleApi extends ApiArea {
           });
           // a nested failure is the run's (a top-level run reads only its own result)
           if (!r.ok) return r;
-          if (!r.unchanged) nodes.push(...(r.changed.nodes ?? []));
+          if (!r.unchanged) {
+            nodes.push(...(r.changed.nodes ?? []));
+            changed.add(p.o.cell.transform.ref);
+          }
         } else if (p.kind === 'mesh') {
           const r = await ctx.api.run('cryoet.mesh', { mesh: p.ref, color: Color.toHexStyle(p.color) });
           if (!r.ok) return r;
-          if (!r.unchanged) nodes.push(p.ref);
+          if (!r.unchanged) {
+            nodes.push(p.ref);
+            changed.add(p.ref);
+          }
         }
       }
-      if (!nodes.length) return ApiResult.already(`They are already colored ${label.toLowerCase()}.`);
-      const fell = fallbacks.length ? ` (${fallbacks.join(', ')}: no entities, by object)` : '';
-      return ApiResult.ok(`Colored ${refs.length} object${refs.length > 1 ? 's' : ''} ${label.toLowerCase()}${fell}.`, {
-        nodes,
-      });
+      const notes = [
+        ...(fallbacks.length ? [`${fallbacks.join(', ')}: no entities, by object`] : []),
+        ...(none ? [none] : []),
+      ];
+      const also = notes.length ? ` (${notes.join('; ')})` : '';
+      if (!nodes.length) return ApiResult.already(`They are already colored ${label.toLowerCase()}${also}.`);
+      const n = changed.size;
+      return ApiResult.ok(`Colored ${n} object${n > 1 ? 's' : ''} ${label.toLowerCase()}${also}.`, { nodes });
     },
   });
 }

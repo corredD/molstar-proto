@@ -194,3 +194,19 @@ describe('an object that is no mesh, nor a structure, a list or a volume', () =>
     expect(themes(v)).toEqual(before);
   });
 });
+
+describe('nothing to color', () => {
+  it('is said, not "already so": a volume with no isosurface (its slices show the data)', async () => {
+    const v = await viewer();
+    const { refs } = themes(v);
+    const volume = v.plugin.managers.volume.hierarchy.current.volumes[0];
+    for (const r of volume.representations) expectOk(await v.api.run('state.remove', { node: r.cell.transform.ref }));
+    const r = await v.api.run('mesoscale.theme', { objects: [refs.volume], theme: 'object' });
+    expect(r).toMatchObject({ ok: false });
+    expect((r as { message: string }).message).toContain('nothing to color');
+    // with another object: it is colored, and the volume named
+    const both = await v.api.run('mesoscale.theme', { objects: [refs.volume, refs.a], theme: 'object' });
+    expectOk(both);
+    expect(both.did).toContain('1 object');
+  });
+});
