@@ -286,24 +286,26 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   // an eye flips at once; its operation runs after the frame is painted (on a large model it takes a moment), and
   // the scene says the rest: the flip is dropped a frame after (back at once if it failed)
   const shown = keyedState<string, boolean>();
-  const eyes: Row[] = [];
-  const settled: string[] = [];
+  // each flip with the state it asked for, at the click (a second click before the scene says so flips it back)
+  const eyes: { row: Row; visible: boolean }[] = [];
+  const settled: { key: string; visible: boolean }[] = [];
   const settle = frames(() => {
-    for (const key of settled.splice(0)) shown.delete(key);
+    // a flip asked for since is kept
+    for (const { key, visible } of settled.splice(0)) if (shown.get(key) === visible) shown.delete(key);
   });
   const runEyes = restartable(() => {
-    for (const row of eyes.splice(0)) {
-      const visible = shown.get(row.key) ?? !row.visible;
+    for (const { row, visible } of eyes.splice(0)) {
       void Promise.resolve(toggleVisible(api, { ...row, visible: !visible })).then(() => {
-        settled.push(row.key);
+        settled.push({ key: row.key, visible });
         settle.request();
       });
     }
   });
   const afterPaint = frames(() => runEyes.start(0));
   const eye = (row: Row) => {
-    shown.set(row.key, !(shown.get(row.key) ?? row.visible));
-    eyes.push(row);
+    const visible = !(shown.get(row.key) ?? row.visible);
+    shown.set(row.key, visible);
+    eyes.push({ row, visible });
     afterPaint.request();
   };
 

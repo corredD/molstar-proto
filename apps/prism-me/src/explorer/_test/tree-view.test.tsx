@@ -184,3 +184,23 @@ describe("the tree's keys and picks (ui.md §3)", () => {
     expect(item(host, 'c:particles')!.querySelector('button[aria-label="More"]')).toBeNull();
   });
 });
+
+describe("a row's eye", () => {
+  it('clicked twice before the scene answers, ends as the second click asked', async () => {
+    const v = await viewer([['HIV', 3]]);
+    const { api, host, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    await until(() => !!item(host, `o:${hiv}`));
+    const visible = () => api.explorer!.objectsState().value[0].visible;
+    const eye = (label: string) =>
+      item(host, `o:${hiv}`)!.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+    eye('Hide').click();
+    await until(() => !visible());
+    // shown again at once, before the first flip is settled
+    eye('Show').click();
+    await until(() => visible());
+    await new Promise((r) => setTimeout(r, 100));
+    expect(visible()).toBe(true);
+    expect(eye('Hide')).toBeTruthy();
+  });
+});
