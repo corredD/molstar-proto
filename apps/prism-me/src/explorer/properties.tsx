@@ -412,7 +412,7 @@ function ColorField(props: {
   const form = new ParamsFormModel({ color: PD.Color(Color(0xffffff), { label }) }, undefined, {
     onChange: () => apply.start(150),
   });
-  const apply = restartable(() => props.onPick(Color.toHexStyle(form.values.value.color)));
+  const apply = lastWrite(() => props.onPick(Color.toHexStyle(form.values.value.color)));
   const picking = observableState(false);
   // a color of its own shown; none again (a reset, an undo): said so, the person's picking over
   bind(props.value, (c) => (c === undefined ? picking.set(false) : form.load({ color: Color(c) })));
@@ -444,6 +444,33 @@ function SliderField(props: SliderProps & { label: string }) {
       <Slider aria-label={label} {...slider} />
     </Line>
   );
+}
+
+/**
+ * A write a moment after the last change (a field typed, a picker or a slider dragged: the scope's `restartable`), made
+ * at once if the view goes first (another row picked, the panel closed), so what was typed is not lost
+ */
+function lastWrite(write: () => unknown) {
+  let pending = false;
+  const timer = restartable(() => {
+    pending = false;
+    void write();
+  });
+  onCleanup(() => {
+    if (!pending) return;
+    pending = false;
+    void write();
+  });
+  return {
+    start(ms: number) {
+      pending = true;
+      timer.start(ms);
+    },
+    cancel() {
+      pending = false;
+      timer.cancel();
+    },
+  };
 }
 
 /** A fraction shown as a percent: the box reads and takes 50 for 0.5 */
@@ -739,7 +766,7 @@ function Representations(props: {
             if (!form) return <Hint>{r.label}</Hint>;
             // a list's color theme changed: the colors set in Look (painted over it) cleared, so it shows
             let theme = JSON.stringify((form.values as { colorTheme?: unknown }).colorTheme);
-            const update = restartable(async () => {
+            const update = lastWrite(async () => {
               const values = model.values.value;
               await api.run(props.operation, { node: r.ref, params: values });
               const next = JSON.stringify((values as { colorTheme?: unknown }).colorTheme);
@@ -913,7 +940,7 @@ function LabelFields(props: {
   const edit = (values: Record<string, unknown>) =>
     void api.run('stage.editLabel', { label: props.labelRef, ...values });
   let typed = '';
-  const typing = restartable(() => edit({ text: typed }));
+  const typing = lastWrite(() => edit({ text: typed }));
   return (
     <div class={classes.tight}>
       <Line label="Text">

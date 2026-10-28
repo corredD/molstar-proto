@@ -285,4 +285,26 @@ describe('the properties on their mock', () => {
     look().querySelector<HTMLElement>('[role=switch]')!.click();
     await until(() => structures(v).every((s) => s.cell.state.isHidden));
   });
+
+  it('a label typed, then another row picked before the edit lands: the text is kept, one step', async () => {
+    const v = await viewer();
+    const ref = structures(v)[0].cell.transform.ref;
+    const host = mount(v);
+    await until(() => !!rowOf(host, '1CRN'));
+    const l = await v.api.run('stage.label', { text: 'Crambin', target: ref, node: `o:${ref}` });
+    if (!l.ok) throw new Error(l.message);
+    const labels = () => v.api.stage!.labelsState().value;
+    rowOf(host, '1CRN')!.click();
+    await open(host, 'labels');
+    const text = () =>
+      section(host, 'labels')?.querySelector<HTMLInputElement>('input[aria-label="The label\'s text"]');
+    await until(() => text()?.value === 'Crambin');
+    const n = steps(v);
+    text()!.value = 'Crambin typed';
+    text()!.dispatchEvent(new Event('input', { bubbles: true }));
+    // at once (before the typing's wait ends), the category
+    rowOf(host, 'Structures')!.click();
+    await until(() => labels()[0].text === 'Crambin typed');
+    expect(steps(v)).toBe(n + 1);
+  });
 });
