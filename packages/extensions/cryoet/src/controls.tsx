@@ -428,18 +428,22 @@ export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: Rea
   const { area } = props;
   const ref = props.mesh.ref;
   const mesh = mapState(props.list, (l) => l.find((m) => m.ref === ref));
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => clearTimeout(timer));
+  // one change a moment after the last (a slider, the picker dragged), made at once if the controls go first
+  let pending: Record<string, unknown> | undefined;
+  const write = () => {
+    const values = pending;
+    pending = undefined;
+    if (values) void area.mesh({ mesh: ref, ...values } as never);
+  };
+  const timer = restartable(write);
+  onCleanup(write);
   const set = (values: Record<string, unknown>, delay = 0) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => void area.mesh({ mesh: ref, ...values } as never), delay);
+    pending = { ...pending, ...values };
+    timer.start(delay);
   };
   const color = new ParamsFormModel({ color: PD.Color(Color(0xcccccc)) }, undefined, {
-    onChange: () => paint.start(120),
+    onChange: ({ color }) => set({ color: Color.toHexStyle(color) }, 120),
   });
-  const paint = restartable(
-    () => void area.mesh({ mesh: ref, color: Color.toHexStyle(color.values.value.color) } as never),
-  );
   bind(mesh, (m) => color.load({ color: Color(m?.color ?? 0xcccccc) }));
   return (
     <div class={classes.tight}>
