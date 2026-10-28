@@ -399,26 +399,37 @@ function GroupBy(props: { model: string; parts: ReadonlyState<Parts>; groupings:
 
 /**
  * A color: Prism's color row (`ParamsForm`'s: the swatch, the channels, its `ColorPicker` under it). `value` undefined:
- * no color of its own (a theme's, mixed), said under it. The picker changes as it is dragged across: one call a moment
- * after the last (one step).
+ * no color of its own (a theme's, mixed): said in words, not a white swatch, until the person picks one. The picker
+ * changes as it is dragged across: one call a moment after the last (one step).
  */
 function ColorField(props: {
   value: ReadonlyState<number | undefined>;
+  /** What it shows without a color of its own ("Its representation's") */
   none: string;
   onPick(color: string): void;
   /** Its name ('Color') */
   label?: string;
 }) {
-  const form = new ParamsFormModel({ color: PD.Color(Color(0xffffff), { label: props.label ?? 'Color' }) }, undefined, {
+  const label = props.label ?? 'Color';
+  const form = new ParamsFormModel({ color: PD.Color(Color(0xffffff), { label }) }, undefined, {
     onChange: () => apply.start(150),
   });
   const apply = restartable(() => props.onPick(Color.toHexStyle(form.values.value.color)));
-  bind(props.value, (c) => form.load({ color: Color(c ?? 0xffffff) }));
+  bind(props.value, (c) => c !== undefined && form.load({ color: Color(c) }));
+  const picking = observableState(false);
   return (
-    <div class={classes.tight}>
-      <ParamsForm form={form} />
-      <Show when={mapState(props.value, (c) => c === undefined)}>{() => <Hint>{props.none}</Hint>}</Show>
-    </div>
+    <Show
+      when={derive([props.value, picking.asReadonly], (c, p) => c !== undefined || p)}
+      fallback={() => (
+        <Line label={label}>
+          <Button size="sm" variant="ghost" onClick={() => picking.set(true)}>
+            {`${props.none} · pick one`}
+          </Button>
+        </Line>
+      )}
+    >
+      {() => <ParamsForm form={form} />}
+    </Show>
   );
 }
 
@@ -535,7 +546,7 @@ function StructureLook(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef
     <div class={classes.tight}>
       <ColorField
         value={mapState(look, (l) => l?.color)}
-        none="Its representation's colors."
+        none="Its representation's"
         onPick={(color) => void api.run('representation.color', { ...at(), color })}
       />
       {props.whole ? (
@@ -622,7 +633,7 @@ function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlySta
     <div class={classes.tight}>
       <ColorField
         value={mapState(entities, (es) => common(es.map((e) => e.color as number | undefined)))}
-        none={ids && ids.length === 1 ? 'The color theme’s.' : 'Mixed.'}
+        none={ids && ids.length === 1 ? 'The color theme’s' : 'Mixed'}
         onPick={(color) => style({ color })}
       />
       <SliderField
@@ -941,7 +952,7 @@ function LabelLook(props: {
   const { label, edit } = props;
   return (
     <>
-      <ColorField value={mapState(label, (l) => l?.color)} none="White." onPick={(color) => edit({ color })} />
+      <ColorField value={mapState(label, (l) => l?.color)} none="White" onPick={(color) => edit({ color })} />
       <Line label="Plate">
         <Button
           size="sm"
@@ -958,7 +969,7 @@ function LabelLook(props: {
             <ColorField
               label="Plate color"
               value={mapState(label, (l) => l?.backgroundColor)}
-              none="Dark."
+              none="Dark"
               onPick={(color) => edit({ backgroundColor: color })}
             />
             <SliderField

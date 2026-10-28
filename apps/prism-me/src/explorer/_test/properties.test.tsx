@@ -234,4 +234,33 @@ describe('the properties on their mock', () => {
     expect(steps(v)).toBe(n + 3);
     await until(() => !text());
   });
+
+  it("a color of none of its own says so, not a white swatch; picked in Prism's ColorPicker, a run of picks one step", async () => {
+    const v = await viewer();
+    const host = mount(v);
+    await until(() => !!rowOf(host, '1CRN'));
+    rowOf(host, '1CRN')!.click();
+    await open(host, 'look');
+    const look = () => section(host, 'look')!;
+    await until(() => !!buttonIn(look(), "Its representation's · pick one"));
+    expect(look().textContent).not.toContain('255, 255, 255');
+    const n = steps(v);
+
+    buttonIn(look(), "Its representation's · pick one")!.click();
+    // Prism's color row, its picker opened under it at its swatch
+    const swatch = () =>
+      Array.from(look().querySelectorAll<HTMLButtonElement>('button[aria-expanded]')).find((b) =>
+        /^\d+, \d+, \d+$/.test(b.textContent ?? ''),
+      );
+    await until(() => !!swatch());
+    swatch()!.click();
+    await until(() => look().querySelectorAll('[aria-label="Palette"] [role=option]').length > 2);
+    const hues = Array.from(look().querySelectorAll<HTMLButtonElement>('[aria-label="Palette"] [role=option]'));
+    hues[0].click();
+    hues[1].click();
+    await until(() => steps(v) === n + 1);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(steps(v)).toBe(n + 1);
+    await until(() => !buttonIn(look(), "Its representation's · pick one"));
+  });
 });
