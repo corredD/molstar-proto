@@ -159,6 +159,9 @@ const kinds =
   ({ picked }: Subject) =>
     !!picked.node && ks.includes(picked.kind);
 
+/** What was made at a node: a section of its own, not a node's */
+const Made: ReadonlySet<string> = new Set(['clip', 'label', 'distance']);
+
 /** The objects with graphics, by their row's kind, and whether they move (wiggle, tumble): a volume does not */
 const GraphicsKinds: ReadonlyMap<string, boolean> = new Map([
   ['structure', true],
@@ -302,6 +305,13 @@ const Sections: readonly Section[] = [
       ) : (
         <Clips api={s.api} area={s.area} kind={s.picked.kind} node={s.picked.node!} />
       ),
+  },
+  {
+    // the labels made at this node (ui.md §4): not at a category, nor at what was made at a node
+    id: 'labels',
+    title: 'Labels',
+    when: ({ api, picked }) => !!api.stage && !!picked.node && picked.kind !== 'category' && !Made.has(picked.kind),
+    render: ({ api, picked }) => <Labels api={api} stage={api.stage!} at={picked.key} />,
   },
   {
     id: 'graphics',
@@ -852,6 +862,24 @@ function VolumeSlices(props: { api: ViewerApi; cryoet: CryoetApi; volume: string
 }
 
 // --- labels ----------------------------------------------------------------------------------------------------------
+
+/** The labels made at a node (its row's key), each: its text, size, remove (ui.md §4) */
+function Labels(props: { api: ViewerApi; stage: StageApi; at: string }) {
+  const all = props.stage.labelsState();
+  // indexed once a change (each label's fields read by ref)
+  const byRef = mapState(all, (ls) => new Map(ls.map((l) => [l.ref, l])));
+  const refs = mapState(all, (ls) => ls.filter((l) => l.node === props.at).map((l) => l.ref));
+  return (
+    <div class={classes.stack}>
+      <For each={refs} by={(r) => r}>
+        {(ref) => <LabelFields api={props.api} label={mapState(byRef, (m) => m.get(ref))} labelRef={ref} />}
+      </For>
+      <Show when={mapState(refs, (r) => r.length === 0)}>
+        {() => <Hint>No labels. Add one from the right-click.</Hint>}
+      </Show>
+    </div>
+  );
+}
 
 /**
  * A label's text (changed as typed, a moment after the last key; Enter at once), size, remove; `full` (its own row's

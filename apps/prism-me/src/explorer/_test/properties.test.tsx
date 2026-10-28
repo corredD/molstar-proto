@@ -19,7 +19,7 @@ import { explorerUI } from '../ui.js';
 
 // The properties on their mock (_spec/ui.md §4), over a headless viewer in jsdom: 1CRN (data/examples), twice where a
 // category needs two objects. Prism's `SectionList` (open per section from pick to pick), the header naming the kind,
-// a category's Look and Clips, a clip row's shape and invert; each change one step.
+// a category's Look and Clips, a clip row's shape and invert, the Labels section; each change one step.
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
@@ -200,5 +200,38 @@ describe('the properties on their mock', () => {
     await until(() => v.api.clipping.cuts.value.length === 0);
     expect(steps(v)).toBe(n + 1);
     await until(() => !clips().querySelector('[aria-label="Remove it"]'));
+  });
+
+  it('the Labels section: each label made at the node, its text and size edited, removed, one step each', async () => {
+    const v = await viewer();
+    const ref = structures(v)[0].cell.transform.ref;
+    const host = mount(v);
+    await until(() => !!rowOf(host, '1CRN'));
+    const l = await v.api.run('stage.label', { text: 'Crambin', target: ref, node: `o:${ref}` });
+    if (!l.ok) throw new Error(l.message);
+    const labels = () => v.api.stage!.labelsState().value;
+    rowOf(host, '1CRN')!.click();
+    await open(host, 'labels');
+    const section_ = () => section(host, 'labels')!;
+    const text = () => section_().querySelector<HTMLInputElement>('input[aria-label="The label\'s text"]');
+    await until(() => text()?.value === 'Crambin');
+    const n = steps(v);
+
+    text()!.value = 'Crambin!';
+    text()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await until(() => labels()[0].text === 'Crambin!');
+    expect(steps(v)).toBe(n + 1);
+
+    // its size: a typed value (the slider's box), one step
+    const size = section_().querySelector<HTMLInputElement>('input[aria-label="Size"]:not([type=range])')!;
+    size.value = '12';
+    size.dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => labels()[0].size === 12);
+    expect(steps(v)).toBe(n + 2);
+
+    buttonIn(section_(), 'Remove the label')!.click();
+    await until(() => labels().length === 0);
+    expect(steps(v)).toBe(n + 3);
+    await until(() => !text());
   });
 });
