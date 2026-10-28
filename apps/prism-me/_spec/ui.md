@@ -57,10 +57,11 @@ grouping is shown again (a default, to confirm).
 
 Every row: a color dot where it has one color, its name, a count (atoms, particles, entities) faint, then its tools at
 the end (Ludovic, 2026-10-25, as Prism's tree): the brush (a color for all of it), the scissors (a clip), where it has
-them, the eye (show, hide, at its level) and ⋯ (its right-click). The tools show on the row's hover or focus, always on
-a touch screen; a hidden node keeps its eye in view. A category's row has the brush (its color theme), the scissors and
-the eye, for every object under it. Clips and labels made at a node are rows under it (§5), and distances under their
-first point's row (§7), each with its own eye.
+them, the eye (show, hide, at its level), the trash (remove it, one step, as its menu's Remove: an object, a clip, a
+label, a distance; not a part; Ludo, 2026-10-27) and ⋯ (its right-click). The tools show on the row's hover or focus,
+always on a touch screen; a hidden node keeps its eye in view. A category's row has the brush (its color theme), the
+scissors and the eye, for every object under it. Clips and labels made at a node are rows under it (§5), and distances
+under their first point's row (§7), each with its own eye.
 
 A click on a row picks it: highlighted in 3D, its properties below. A category is picked too (Ludovic, 2026-10-25). The
 arrows move the pick (↑/↓, Home, End; → opens or goes in, ← closes or goes to the parent), as a click. A double click
@@ -361,11 +362,11 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   hidden (their eyes show them). The properties' sections all start closed; one opened stays open from row to row this
   session.
 - Remove (2026-10-22, Ludovic): a loaded object's menu (a structure, a model, a list, a volume, a mesh; its row's ⋯ and
-  its right-click) has a Remove (its row's trash icon left with the tools of §3, 2026-10-27): the object goes with its
-  file (all the file holds: a model's unit cell) and its labels; a file holding another listed object keeps it (Prism's
-  `structure.remove`, `particles.remove`, `volume.remove` of the one object). One step of the history (its labels, if
-  any, a step after it). The entry is given to `state.remove` by its ref alone: an example's (a download, loaded by
-  address) is no kind a `#ref` selector reaches.
+  its right-click) has a Remove (and its row's trash, §3): the object goes with its file (all the file holds: a model's
+  unit cell) and its labels; a file holding another listed object keeps it (Prism's `structure.remove`,
+  `particles.remove`, `volume.remove` of the one object). One step of the history (its labels, if any, a step after it).
+  The entry is given to `state.remove` by its ref alone: an example's (a download, loaded by address) is no kind a
+  `#ref` selector reaches.
 - A volume moves as one (2026-10-24, Ludovic: "the volume, the parent, this should move everything, not jump"): its
   slices and isosurfaces are drawn in its frame and have no place of their own: no Position, and their menu's move shows
   their volume's handles ("Move and turn its volume"); a grid slice moves through the volume by its index only. A
@@ -408,11 +409,11 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   Prism's `TreeNavigation` (↑/↓, Home, End, → opens or goes in, ← closes or goes to the parent, Enter a click), the pick
   following a click or a key's move (not a focus alone: a row made again takes the focus back), a category's too (its
   properties: its name). A row: an object's icon, its color dot, its name (cut by the fade), its count faint, then
-  brush, scissors, eye and ⋯ (its right-click's menu, under it), on hover or focus, always on a touch screen, a hidden
-  node's eye kept. A label's row says so faint after its text (where a count is), a distance's reads "Distance 10.67 Å"
-  (as the mock): no icon on child rows (styling.md §4), where the label and ruler were. The tree takes the panel above
-  the properties; the split between them is `drag()`, ↑/↓ by 16 px (Shift 64), the properties 80 px at least and the
-  tree too.
+  brush, scissors, eye, trash and ⋯ (its right-click's menu, under it), on hover or focus, always on a touch screen, a
+  hidden node's eye kept. A label's row says so faint after its text (where a count is), a distance's reads "Distance
+  10.67 Å" (as the mock): no icon on child rows (styling.md §4), where the label and ruler were. The tree takes the
+  panel above the properties; the split between them is `drag()`, ↑/↓ by 16 px (Shift 64), the properties 80 px at least
+  and the tree too.
 - A category's tools (2026-10-27, lane `tree-view`): its eye shows or hides every object under it in one step
   (`state.visibility` of their refs; shown while any is), its scissors add one Prism cut of all of them (`clipping.add`
   by their refs, its handles shown). Its brush (a color theme over every kind under it) waits: no one operation does it

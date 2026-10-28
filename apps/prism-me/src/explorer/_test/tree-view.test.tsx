@@ -377,3 +377,38 @@ describe('the filter and the chevrons (ui.md §1)', () => {
     expect(item(host, `me:${hiv}:1`)).toBeTruthy();
   });
 });
+
+describe("a row's trash (Ludo, 2026-10-27)", () => {
+  it('removes an object, or a clip, in one step; a part has none', async () => {
+    const v = await viewer(
+      [
+        ['HIV', 3],
+        ['Other', 2],
+      ],
+      true,
+    );
+    const { api, host, model, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    const other = refOf('Other');
+    await until(() => !!model.parts.value.get(hiv) && !!item(host, `o:${other}`));
+    const trash = (key: string) => item(host, key)?.querySelector<HTMLButtonElement>('button[aria-label="Remove"]');
+    expect(trash('c:particles')).toBeNull();
+    model.open.set(new Set([...model.open.value, `o:${hiv}`, `g:${hiv}:root`, `g:${hiv}:root.cytoplasm`]));
+    await settle();
+    expect(trash(`me:${hiv}:0`)).toBeNull();
+    // a clip's
+    const r = await v.api.run('clipping.add', { shape: 'plane', node: `#${hiv}` });
+    if (!r.ok) throw new Error(r.message);
+    const tag = v.api.clipping.cuts.value[0].object.tag!;
+    await until(() => !!trash(`k:${tag}`));
+    let steps = v.api.history.steps.value.length;
+    trash(`k:${tag}`)!.click();
+    await until(() => v.api.clipping.cuts.value.length === 0);
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    // an object's
+    steps = v.api.history.steps.value.length;
+    trash(`o:${other}`)!.click();
+    await until(() => !api.explorer!.objectsState().value.some((o) => o.ref === other));
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+  });
+});

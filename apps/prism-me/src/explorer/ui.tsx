@@ -35,7 +35,16 @@ import type { Subscription } from 'rxjs';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { editInline } from './inline-edit.js';
 import { distancePicker, selectionModeHint } from './measure.js';
-import { clipItems, clippable, colorable, colorItems, nodeMenuItems, showClipHandles } from './menu.js';
+import {
+  clipItems,
+  clippable,
+  colorable,
+  colorItems,
+  nodeMenuItems,
+  removable,
+  removeObject,
+  showClipHandles,
+} from './menu.js';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
 import {
@@ -410,11 +419,13 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
             tools={(row) => ({
               color: colorable(row.kind, row.node),
               clip: !!row.objects?.length || clippable(row.kind, row.node),
+              remove: removable(row.kind, row.node) || Made.has(row.kind),
               more: !!row.node,
             })}
             onPick={pick}
             onToggle={(row) => toggleOpen(row.key)}
             onEye={eye}
+            onRemove={(row) => void removeRow(api, area, row)}
             onTool={tool}
             onMenu={menu}
             onDblClick={(row) => row.node && area.focus(row.node)}
@@ -458,6 +469,18 @@ function categoryClipItems(api: ViewerApi, objects: readonly string[]): ContextM
       if (r.ok && cut) showClipHandles(api, cut.index);
     },
   }));
+}
+
+/** What was made at a node, removed by its row's trash */
+const Made: ReadonlySet<string> = new Set(['clip', 'label', 'distance']);
+
+/** A row's trash: one step, as the menu's Remove (an object with its file and labels, a clip, a label, a distance) */
+function removeRow(api: ViewerApi, area: ExplorerApi, row: Row) {
+  if (row.kind === 'clip' && row.clip) return api.run('clipping.remove', { tag: row.clip });
+  if (!row.node) return;
+  if (row.kind === 'label') return api.run('stage.editLabel', { label: row.node.ref, remove: true });
+  if (row.kind === 'distance') return api.run('stage.editDistance', { distance: row.node.ref, remove: true });
+  return removeObject(api, area, row.kind, row.node.ref);
 }
 
 type ExplorerCuts = ViewerApi['clipping']['cuts']['value'];

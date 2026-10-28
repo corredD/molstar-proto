@@ -32,7 +32,7 @@ import {
   treeClasses,
 } from '../explorer/tree-view.js';
 import { ClipShapes, clippable, colorItemsOf, colorable, menuOf, OpenItems } from './fake-menus.js';
-import { type GroupBy, type MockNode, pathTo } from './fake-scene.js';
+import { type GroupBy, type MockNode, ObjectKinds, pathTo } from './fake-scene.js';
 import { Properties } from './properties.js';
 
 // The explorer's panel as ui.md §1–4 draw it, over the mock scene: + Open and the filter, the tree (four categories,
@@ -45,6 +45,9 @@ interface Row extends TreeRowView {
 }
 
 const classes = treeClasses;
+
+/** The rows a trash removes (Ludo, 2026-10-27): objects, and what was made at a node; not parts */
+const Removable: ReadonlySet<string> = new Set([...ObjectKinds, 'clip', 'label', 'distance']);
 
 /** What a story asks of the panel: the scene, what is open and picked, a menu shown at once */
 export interface ExplorerPanelProps {
@@ -154,10 +157,16 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
             rows={rows}
             picked={pickedKey}
             shown={shown}
-            tools={(row) => ({ color: colorable(row.node), clip: clippable(row.node), more: !row.category })}
+            tools={(row) => ({
+              color: colorable(row.node),
+              clip: clippable(row.node),
+              remove: Removable.has(row.node.kind),
+              more: !row.category,
+            })}
             onPick={(row) => pick(row.node)}
             onToggle={(row) => toggle(row.key)}
             onDblClick={(row) => console.info(`[explorer mock] focus ${row.label}`)}
+            onRemove={(row) => console.info(`[explorer mock] remove ${row.label}`)}
             onEye={(row) => {
               const on = !(shown.get(row.key) ?? row.visible !== false);
               shown.set(row.key, on);

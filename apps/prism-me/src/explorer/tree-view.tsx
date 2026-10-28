@@ -58,10 +58,11 @@ export interface TreeRowView {
   readonly icon?: IconName;
 }
 
-/** The tools a row has besides its eye: the brush, the scissors, the ⋯ (its right-click) */
+/** The tools a row has besides its eye: the brush, the scissors, the trash, the ⋯ (its right-click) */
 export interface RowTools {
   readonly color?: boolean;
   readonly clip?: boolean;
+  readonly remove?: boolean;
   readonly more?: boolean;
 }
 
@@ -86,6 +87,8 @@ export interface TreeViewProps<R extends TreeRowView> {
   onPick(row: R): void;
   onToggle(row: R): void;
   onEye(row: R): void;
+  /** Its trash: what it is removed, one step (an object, a clip, a label, a distance) */
+  onRemove?(row: R): void;
   /** The brush's or the scissors' menu, under the button; `onClose` when it closes */
   onTool(row: R, which: 'color' | 'clip', at: At, onClose: () => void): void;
   /** Its right-click, or its ⋯ (under the button) */
@@ -217,7 +220,8 @@ function TreeRow<R extends TreeRowView>(p: {
 
 /**
  * A row's tools at its end, shown on its hover or focus, always on touch (styling.md §4): the brush and the scissors
- * where it has them, its eye (kept in view while hidden), its ⋯; each kept while its menu is open
+ * where it has them, its eye (kept in view while hidden), its trash (Ludo, 2026-10-27), its ⋯; each kept while its menu
+ * is open
  */
 function RowActions<R extends TreeRowView>(p: {
   row: R;
@@ -269,6 +273,20 @@ function RowActions<R extends TreeRowView>(p: {
           <Show when={p.off} fallback={() => <Icon name="eye" size={14} />}>
             {() => <Icon name="eye-off" size={14} />}
           </Show>
+        </button>
+      ) : null}
+      {tools.remove ? (
+        <button
+          type="button"
+          class={classes.action}
+          data-tip="Remove"
+          aria-label="Remove"
+          onClick={(e: MouseEvent) => {
+            e.stopPropagation();
+            props.onRemove?.(row);
+          }}
+        >
+          <Icon name="trash-2" size={14} />
         </button>
       ) : null}
       {tools.more ? (
