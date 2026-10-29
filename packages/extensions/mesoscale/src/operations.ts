@@ -898,10 +898,20 @@ function withMode(
   mode: GraphicsMode,
 ): Record<string, unknown> {
   const next = { ...params };
-  if (kind !== 'volume' && 'lodLevels' in params) next.lodLevels = Spheres.LodLevelsPresets[mode];
+  // levels by size on screen, as the particle and mesoscale defaults (`screen-space-lod.md`): distances are ignored there
+  if (kind !== 'volume' && 'lodLevels' in params) {
+    const { lodLevels, lodPixelSize } = Spheres.LodPixelPresets[mode];
+    next.lodLevels = lodLevels;
+    if ('lodPixelSize' in params) next.lodPixelSize = lodPixelSize;
+  }
   if (kind !== 'particles') next.quality = ModeSettings[mode].quality;
   if (kind === 'volume' && 'stepsPerCell' in params) next.stepsPerCell = ModeSettings[mode].stepsPerCell;
   return next;
+}
+
+/** Whether a representation's levels of detail are a mode's preset: its levels and its size on screen */
+function isLodPreset(t: Record<string, unknown>, preset: { lodLevels: unknown; lodPixelSize: number }) {
+  return JSON.stringify(t.lodLevels) === JSON.stringify(preset.lodLevels) && t.lodPixelSize === preset.lodPixelSize;
 }
 
 /**
@@ -920,7 +930,7 @@ function graphicsOf(o: GraphicsObject): GraphicsInfo | undefined {
   };
   const modeOf = (t: Record<string, unknown>) =>
     o.kind === 'particles'
-      ? GraphicsModes.find((m) => JSON.stringify(Spheres.LodLevelsPresets[m]) === JSON.stringify(t.lodLevels))
+      ? GraphicsModes.find((m) => isLodPreset(t, Spheres.LodPixelPresets[m]))
       : GraphicsModes.find((m) => ModeSettings[m].quality === t.quality);
   const mode = common(modeOf);
   if (o.kind === 'volume') return mode ? { mode } : {};

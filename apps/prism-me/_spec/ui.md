@@ -95,21 +95,26 @@ label column (`--msp-label-width`) and its control, Prism's (styling.md §4).
 Graphics & Motion (Ludovic, 2026-10-24: on every object, what does not apply left out): `mesoscale.graphics` and
 `mesoscale.motion` with an `object` (the mesoscale extension's ops, so Prism stays as it is). A mode sets, by kind:
 
-| Mode        | quality (structure, volume) | levels of detail (particles, spacefill) | steps per cell (direct volume) |
-| ----------- | --------------------------- | --------------------------------------- | ------------------------------ |
-| ultra       | highest                     | ultra                                   | 5                              |
-| quality     | high                        | quality                                 | 3                              |
-| balanced    | medium                      | balanced                                | 2                              |
-| performance | low                         | performance                             | 1                              |
+| Mode        | quality (structure, volume) | levels of detail (particles, spacefill), smallest sphere drawn | steps per cell (direct volume) |
+| ----------- | --------------------------- | -------------------------------------------------------------- | ------------------------------ |
+| ultra       | highest                     | 1.5 px                                                         | 5                              |
+| quality     | high                        | 3 px                                                           | 3                              |
+| balanced    | medium                      | 4 px                                                           | 2                              |
+| performance | low                         | 6 px                                                           | 1                              |
+
+The levels of detail are by size on screen (`Spheres.LodPixelPresets[mode]`: the levels and their `lodPixelSize`, as the
+particle and mesoscale defaults; Ludo, 2026-10-29, cellVIEW evaluation item 1): the distance presets
+(`LodLevelsPresets`) are ignored once `lodPixelSize` is set, so a mode that wrote them changed the strides only. The
+mode is read back by both, the levels and the pixel size.
 
 One object's mode leaves the canvas alone; without `object` (⌘K, `?graphics-mode=`, the agent) every object changes, in
 one step, and so does the canvas resolution (pixel scale, sharpening), which is the canvas's props, outside the history:
 an undo does not bring it back. Motion writes the `animation` params of that object's representations (per structure,
 where Mol\*'s component options are scene-wide). No mode is lit until one is picked: a structure's and a volume's
-quality starts `auto` and a particle list's levels of detail at their own default, neither a mode's. The scene-wide
-component options change only the representations that had their previous value, so one structure keeps its own (v6
-#2057). Limits (TODO.md): a structure's own Representation preset and a representation added later bring their defaults;
-the object then reads as mixed (every representation read: no mode lit, the motion off).
+quality starts `auto`, and a particle list's levels of detail light a mode only when they are its preset (levels and
+pixel size). The scene-wide component options change only the representations that had their previous value, so one
+structure keeps its own (v6 #2057). Limits (TODO.md): a structure's own Representation preset and a representation added
+later bring their defaults; the object then reads as mixed (every representation read: no mode lit, the motion off).
 
 ## 5. Right-click
 

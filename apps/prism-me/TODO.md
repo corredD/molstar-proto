@@ -25,10 +25,6 @@ Lanes in parallel where they do not overlap. The design is the mock: Storybook p
 [_spec/cellview.md](_spec/cellview.md). A library part is built on prism-me for tomorrow, in commits of its own that
 name no extension (upstreamable later, when Ludo says so).
 
-- **1. The graphics modes change the levels of detail** (app, small; now). Performance, Balanced, Quality, Ultra write
-  the pixel presets (`Spheres.LodPixelPresets[mode]`: levels and `lodPixelSize`), not the distance presets the particles
-  ignore at 3 px; the mode read back compares both. Check: on CellPack MG, Performance draws visibly fewer spheres far
-  away than Ultra, and the mode picked stays lit. Test first: a mode's `lodPixelSize` is its preset's.
 - **2. The tree's eye and ⋯** (app, `explorer/tree-view.tsx`, `rows.ts`; now). Every row shows its eye and its ⋯,
   always, each in one column; the brush, scissors and trash go into the ⋯ (Color…, Add clip…, Remove) with the
   right-click's items, on a category too; no Hide in the menus. A parent's eye sets every row under it, all the way

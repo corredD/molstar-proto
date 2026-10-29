@@ -99,7 +99,9 @@ describe('graphics and motion per object', () => {
     expectOk(await m.graphics({ mode: 'performance', object: before.refs.list } as never));
     const after = objects(v);
     expect(
-      after.list.every((p) => JSON.stringify(p.lodLevels) === JSON.stringify(Spheres.LodLevelsPresets.performance)),
+      after.list.every(
+        (p) => JSON.stringify(p.lodLevels) === JSON.stringify(Spheres.LodPixelPresets.performance.lodLevels),
+      ),
     ).toBe(true);
     expect(after.a).toEqual(before.a);
     expect(after.b).toEqual(before.b);
@@ -115,6 +117,32 @@ describe('graphics and motion per object', () => {
     expectOk(await m.graphics({ mode: 'balanced', object: before.refs.volume } as never));
     expect(objects(v).volume.every((p) => p.quality === 'medium')).toBe(true);
     expect(m.graphicsState(before.refs.volume).value).toEqual({ mode: 'balanced' });
+  });
+
+  // A particle list draws by size on screen (`lodPixelSize`): a mode writes its pixel preset, levels and size, and reads
+  // back by both (TODO.md, from the cellVIEW evaluation, item 1)
+  it("writes a mode's pixel levels of detail and lights that mode", async () => {
+    const v = await viewer();
+    const { refs } = objects(v);
+    const m = v.api.mesoscale!;
+    for (const mode of ['performance', 'balanced', 'ultra', 'quality'] as const) {
+      expectOk(await m.graphics({ mode, object: refs.list } as never));
+      const { lodLevels, lodPixelSize } = Spheres.LodPixelPresets[mode];
+      for (const p of objects(v).list) {
+        expect(p.lodLevels).toEqual(lodLevels);
+        expect(p.lodPixelSize).toBe(lodPixelSize);
+      }
+      expect(m.graphicsState(refs.list).value?.mode).toBe(mode);
+    }
+    // the preset's levels by distance (`lodPixelSize` 0) are no mode
+    const b = v.plugin.build();
+    for (const r of v.plugin.managers.particles.hierarchy.current.lists[0].representations) {
+      b.to(r.cell).update((old: Params) => {
+        old.type.params.lodPixelSize = 0;
+      });
+    }
+    await b.commit();
+    expect(m.graphicsState(refs.list).value?.mode).toBeUndefined();
   });
 
   it('wiggles and tumbles one structure, the other still', async () => {
@@ -157,7 +185,7 @@ describe('graphics and motion per object', () => {
     const v = await viewer();
     expectOk(await v.api.mesoscale!.graphics({ mode: 'performance' }));
     const after = objects(v);
-    const lod = JSON.stringify(Spheres.LodLevelsPresets.performance);
+    const lod = JSON.stringify(Spheres.LodPixelPresets.performance.lodLevels);
     expect(after.list.every((p) => JSON.stringify(p.lodLevels) === lod)).toBe(true);
     expect([...after.a, ...after.b, ...after.volume].every((p) => p.quality === 'low')).toBe(true);
   });
