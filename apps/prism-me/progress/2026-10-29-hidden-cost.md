@@ -43,9 +43,14 @@ Frame time in ms (median of the runs' medians, lower is better). CellPack MG, 2,
   second pass below.
 - **B′, to find why (WebGPU, one session, 60 frames):** the same hidden state, with the object's `transparencyAverage`
   forced to 0 so that its draw facts say "no transparency" (draws 22 to 21): whole 25.6 (A 20.9, B 55.1 in that
-  session), close 46.3 (A 67.0, B 104.7). So about 30 of the 58 ms (whole) are the second, transparent draw and the
-  blended passes; what is left (25.6 against 20.9) is the hidden instances still going through the vertex stage and the
-  per-instance transparency fetch. B′ is a probe (the value is set in the page, not by any app path), not a fix.
+  session), close 46.3 (A 67.0, B 104.7). So about 30 of the 58 ms (whole) and 58 of the 105 (close) are the second,
+  transparent draw and the blended passes. What is left differs by camera: close, hidden (46.3) is already faster than
+  all visible (67.0), since the discarded fragments are not shaded; whole, it is still above visible (25.6 against
+  20.9): the hidden instances still go through the vertex stage and the per-instance transparency fetch, which is what
+  the table removes. B′ is a probe (the value is set in the page, not by any app path), not a fix. Its image was
+  checked: screenshots of B, B′ and C (WebGPU, whole) show the same silhouette of the one entity kept, B and B′
+  identical; C has another colour only because the entity indices are renumbered when the list is rebuilt (the colour
+  theme follows them), and B's strands look a little lighter (blended pass).
 
 ## Why (file:line, at `460d197f9`)
 
@@ -81,7 +86,10 @@ Hidden is not close to removed: it costs as much as drawn or more. A visibility 
 1. **The facts (small, both backends, WebGPU and WebGL2).** Count a hidden instance (transparency 1) out of the object's
    `transparencyAverage` / `transparencyMin`, so a mostly hidden object stays in the opaque pass only. Where:
    `transparency-data.ts:39-51` (the average and the min) and `merged.ts:719-736` (the merged average), ~15 lines, plus
-   a test on the draw facts. B′ says: 58 to about 26 ms (WebGPU whole); still not below A.
+   a test on the draw facts. Edge case: an object with every instance hidden must still read as fully transparent (keep
+   `TransparencyFull`, or skip the object), not as fully opaque and drawn: a line or two and its test. **Expected
+   (B′):** WebGPU whole 58 to about 26 ms, still above none hidden (21); close 107 to about 46 ms, below none hidden
+   (67). So in a close view this step alone makes hiding most of a model faster, as the brief's check wants.
 2. **The table in the GPU cull (WebGPU).** A bit per instance, hidden or not, read by `instance-copy`:
    - WGSL: one binding `hidden: array<u32>` and
      `drawn = drawn && (hidden[instance >> 5u] & (1u << (instance & 31u))) == 0u;` in `instance_copy_wgsl`
@@ -98,8 +106,8 @@ Hidden is not close to removed: it costs as much as drawn or more. A visibility 
      need the same skip (not read in depth): about one day more. Open question: whether a hidden instance should also
      leave the marking pass (a hover on a hidden particle already finds nothing, as the pick path discards by alpha,
      `uPickingAlphaThreshold`).
-   - **Expected:** B falls from 58 to near C (5.7 ms, WebGPU whole); hiding most of a model makes it faster, as the
-     brief's check wants.
+   - **Expected:** on top of step 1, WebGPU whole about 26 to near C (5.7 ms), close about 46 to near C (8.5 ms): the
+     whole view, where step 1 is not enough, becomes 3.7 times faster than none hidden.
 
 ## Method (to repeat it)
 
@@ -133,8 +141,10 @@ Hidden is not close to removed: it costs as much as drawn or more. A visibility 
   Chrome on the M1 Pro reports about 11.7 ms for every pass, a trivial one included (the 14 passes of a frame sum to 163
   ms against a wall time of 21 ms). The wall time with `waitForGpuCommandsComplete` is what is reported. On a machine
   where the timestamps are right, `graphics.timer.resolve()` gives `Canvas3D.render` with its `DrawPass.render`.
-- **Limits:** one machine, one model, headless, the default look and quality, 89.4 % not exactly 90 %. The scripts are
-  in the lane's scratchpad, not the repo (asked in the PR whether to commit a small helper).
+- **Limits:** on WebGL2, C is built as four `spheres` render objects (76,155, 74,054, ... instances), not the one merged
+  object of A and B; the B / C gap (8 to 13 times) is far larger than that could explain. One machine, one model,
+  headless, the default look and quality, 89.4 % not exactly 90 %. The scripts are in the lane's scratchpad, not the
+  repo (asked in the PR whether to commit a small helper).
 - **The core of the page script** (the rest is the Playwright launch, the route and the sequence above):
 
 ```js
