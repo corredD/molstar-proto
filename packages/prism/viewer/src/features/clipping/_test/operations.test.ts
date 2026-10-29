@@ -335,6 +335,22 @@ describe('the clipping area', () => {
     expect(await clipping.release({ cut: 1 })).toMatchObject({ ok: true, unchanged: true });
   });
 
+  it('releases some kept atoms only: the others stay whole', async () => {
+    const v = await create(cbs());
+    const clipping = v.api.clipping;
+    ok(await clipping.add({ shape: 'plane', target: 'polymer' }));
+    ok(await clipping.keep({ cut: 1, target: 'A:10-30' }));
+    const all = findCuts(v.plugin)[0].kept!.count;
+    ok(await clipping.release({ cut: 1, target: 'A:10-20' }));
+    const some = findCuts(v.plugin)[0].kept!.count;
+    expect(some).toBeGreaterThan(0);
+    expect(some).toBeLessThan(all);
+    // released again: nothing to cut again there
+    expect(await clipping.release({ cut: 1, target: 'A:10-20' })).toMatchObject({ ok: true, unchanged: true });
+    ok(await clipping.release({ cut: 1, target: 'A:21-30' }));
+    expect(findCuts(v.plugin)[0].kept).toBeUndefined();
+  });
+
   it('adds a cut that keeps its target whole', async () => {
     const v = await create(cbs());
     const cut = ok<Cut>(await v.api.clipping.add({ shape: 'sphere', target: 'A:10-20', keepWhole: true }));

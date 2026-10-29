@@ -84,6 +84,20 @@ export function mapGroups(layer: Clipping, map: (groups: number) => number): Cli
   return Clipping.merge({ kind: layer.kind, layers } as Clipping);
 }
 
+/** `loci` (on the layer's structure, its root) with `bit` cleared from their flags, the others' kept */
+export function withoutKeptOn(layer: Clipping, loci: StructureElement.Loci, bit: number): Clipping {
+  const layers: Clipping.Layer[] = [];
+  for (const l of layer.layers) {
+    const at = l.loci as StructureElement.Loci;
+    const both = StructureElement.Loci.intersect(at, loci);
+    const only = StructureElement.Loci.subtract(at, loci);
+    if (!StructureElement.Loci.isEmpty(only)) layers.push({ loci: only, groups: l.groups });
+    const groups = l.groups & ~bit;
+    if (groups && !StructureElement.Loci.isEmpty(both)) layers.push({ loci: both, groups: groups as Clipping.Groups });
+  }
+  return Clipping.merge({ kind: 'element-loci', layers });
+}
+
 /** `bit` cleared everywhere: the cut keeps nothing whole */
 export const withoutKept = (layer: Clipping, bit: number) => mapGroups(layer, (g) => g & ~bit);
 

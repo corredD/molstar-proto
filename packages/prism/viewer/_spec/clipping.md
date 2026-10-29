@@ -22,8 +22,8 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
 - `list`; `add` (`shape`; `target` atoms, the selection by default, or `node` (volumes, shapes), or `everything`;
   `types`; `invert`; `keepWhole`; `only`; `particles`); `update` (`shape`, `position`, `normal` or `rotation`, `scale`,
   `invert`: only what is given); `apply` (one or several representations on or off, one step; never the last off);
-  `keep` / `release` (§5); `show` (§6); `remove`; `clear`. Each a person's step, each a command, in the `clipping`
-  skill.
+  `keep` / `release` (§5; `release` of some atoms only with a `target`, the others kept whole); `show` (§6); `remove`;
+  `clear`. Each a person's step, each a command, in the `clipping` skill.
 - **A cut by its number or its tag** (`cut`, `tag`): the views and the gizmos send the tag. Why: runs wait their turn,
   so a number read at a click can name another cut by the time the run starts (a double click's second remove).
 - **Params checked**: vectors are three finite numbers (a size positive), an angle finite, drawing options the drawing's
