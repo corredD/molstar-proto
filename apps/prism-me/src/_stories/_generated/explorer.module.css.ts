@@ -204,9 +204,29 @@ defineStyles('me/_stories/explorer.module.css', `@layer msp.components {
   stroke-width: .6px;
 }
 
-.msp-me-explorer-eyesShown :is(button[aria-label="Hide"], button[aria-label="Show"]) {
-  opacity: 1;
-  order: 1;
+.msp-me-explorer-eyesShown {
+  --eye-slot: calc(max(24px, var(--msp-touch-target, 0px)) + 1px);
+
+  & :is(button[aria-label="Hide"], button[aria-label="Show"]) {
+    opacity: 1;
+    order: 1;
+  }
+
+  & button[aria-label="Remove"] {
+    order: 2;
+  }
+
+  & button[aria-label="More"] {
+    order: 3;
+  }
+
+  & span:not(:has( > button[aria-label="Remove"])) > :is(button[aria-label="Hide"], button[aria-label="Show"]) {
+    margin-right: var(--eye-slot);
+  }
+
+  & span:has( > :is(button[aria-label="Hide"], button[aria-label="Show"])):not(:has( > button[aria-label="More"])) {
+    padding-right: var(--eye-slot);
+  }
 }
 }
 `);
