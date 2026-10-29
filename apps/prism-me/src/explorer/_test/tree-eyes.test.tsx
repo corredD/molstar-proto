@@ -379,6 +379,27 @@ describe('the eyes dragged: what a drag sets, and how it ends (review)', () => {
       delete (document as { elementFromPoint?: unknown }).elementFromPoint;
     }
   });
+  it("a drag over a model's entities is one change: a few updates, not one a row", async () => {
+    const v = await viewer(false, 40);
+    const { ref, eye, shownIds } = await mounted(v);
+    await until(() => !!eye(`me:${ref}:39`));
+    const state = v.plugin.state.data;
+    const updateTree = state.updateTree.bind(state);
+    let updates = 0;
+    (state as { updateTree: typeof updateTree }).updateTree = ((...args: Parameters<typeof updateTree>) => {
+      updates++;
+      return updateTree(...args);
+    }) as typeof updateTree;
+    try {
+      eye(`me:${ref}:0`)!.dispatchEvent(pointer('pointerdown', { x: 0, y: 0 }));
+      eye(`me:${ref}:39`)!.dispatchEvent(pointer('pointermove', { x: 0, y: 1000 }));
+      eye(`me:${ref}:39`)!.dispatchEvent(pointer('pointerup', { x: 0, y: 1000 }));
+      await until(() => shownIds().length === 0);
+    } finally {
+      (state as { updateTree: typeof updateTree }).updateTree = updateTree;
+    }
+    expect(updates).toBeLessThanOrEqual(2);
+  });
 });
 
 describe('Show only (cellVIEW, Ludo 2026-10-28)', () => {

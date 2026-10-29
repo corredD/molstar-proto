@@ -477,17 +477,53 @@ export type EyeRow = Pick<Row, 'kind' | 'node' | 'objects' | 'representation' | 
 /**
  * Eyes set, one step (a click's row, or each row a drag passed; Ludo, 2026-10-28): each row's and every part under it
  * (a parent's: all the way down), the object drawn again when a part of it is shown (hide the model, then show one
- * group alone). The labels, distances and clips under a row keep their own.
+ * group alone). The labels, distances and clips under a row keep their own. The parts a drag passed are gathered by
+ * object: one write each (a model's entities, a list's targets), not one a row; an undrawn list's (no looks) skipped.
  */
 export function setEyes(api: ViewerApi, area: ExplorerApi, rows: readonly EyeRow[], visible: boolean) {
   return api.group(visible ? 'Show' : 'Hide', async (g) => {
+    const entities = new Map<string, number[]>();
+    const targets = new Map<string, number[]>();
     for (const row of rows) {
+      const node = row.node;
+      if (node && 'particles' in node && PartKinds.has(row.kind)) {
+        const [by, ids] =
+          row.kind === 'target' ? [targets, node.particles.targets] : [entities, node.particles.entities];
+        let list = by.get(node.ref);
+        if (!list) by.set(node.ref, (list = []));
+        for (const id of ids ?? []) list.push(id);
+        continue;
+      }
       const r = await setEye(g, area, row, visible);
       if (r && !r.ok) return r;
+    }
+    for (const ref of new Set([...entities.keys(), ...targets.keys()])) {
+      if (!area.representationsState(ref).value.length) continue;
+      // a part shown: its object drawn (its other parts as they are)
+      if (visible) {
+        const r = await g.run('particles.visibility', { particles: ref, visible });
+        if (!r.ok) return r;
+      }
+      const e = entities.get(ref);
+      if (e) {
+        const r = await g.run('mesoscale.style', { particles: ref, entities: e.join(','), visible });
+        if (!r.ok) return r;
+      }
+      const t = targets.get(ref);
+      if (!t) continue;
+      // a list's class: its targets' layers (Prism's one writer of the looks), not as entities
+      const l = await g.run('particles.look', {
+        particles: ref,
+        layers: t.map((id) => ({ selector: { targets: [id] }, visible })),
+      });
+      if (!l.ok) return l;
     }
     return undefined;
   });
 }
+
+/** A part's rows: their eyes gathered by object (`setEyes`) */
+const PartKinds: ReadonlySet<string> = new Set(['group', 'entity', 'target']);
 
 /** The kinds of the tree's object rows, by the scene's */
 const ObjectRowKinds: Readonly<Record<SceneObject['kind'], string>> = {
@@ -520,28 +556,6 @@ async function setEye(api: ViewerApi, area: ExplorerApi, row: EyeRow, visible: b
     case 'particle list': {
       const r = await api.run('particles.visibility', { particles: node.ref, visible });
       return r.ok ? ((await setParts(api, area, row.kind, node.ref, visible)) ?? r) : r;
-    }
-    case 'target':
-    case 'group':
-    case 'entity': {
-      if (!('particles' in node)) return;
-      // a part shown: its object drawn (its other parts as they are)
-      if (visible) {
-        const r = await api.run('particles.visibility', { particles: node.ref, visible });
-        if (!r.ok) return r;
-      }
-      // a list's class: its targets' layer (Prism's one writer of the looks), not as entities
-      if (row.kind === 'target') {
-        return api.run('particles.look', {
-          particles: node.ref,
-          layers: [{ selector: { targets: node.particles.targets ?? [] }, visible }],
-        });
-      }
-      return api.run('mesoscale.style', {
-        particles: node.ref,
-        entities: (node.particles.entities ?? []).join(','),
-        visible,
-      });
     }
     case 'volume':
       return api.run('volume.visibility', { volume: node.ref, visible });
