@@ -184,14 +184,14 @@
   }
 }
 
-/* The color dot opens the row's colors: its hit area larger than the dot. */
+/* The color dot opens the row's colors: its hit area a tool's, the dot in its middle. */
 .dot {
   flex: none;
   display: grid;
   place-items: center;
-  width: 16px; /* off-scale: the dot's hit area, twice the dot */
-  height: 16px;
-  margin: 0 calc(-1 * var(--msp-space-1));
+  width: max(24px, var(--msp-touch-target, 0px));
+  height: max(24px, var(--msp-touch-target, 0px));
+  margin: 0 calc(-1 * var(--msp-space-3));
   border-radius: 50%;
   cursor: pointer;
 

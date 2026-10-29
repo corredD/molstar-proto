@@ -294,6 +294,7 @@ function Dot<R extends TreeRowView>(p: { row: R; props: TreeViewProps<R> }): Chi
       data-tip="Colors"
       aria-label="Colors"
       aria-haspopup="menu"
+      aria-expanded={derive(open.asReadonly, String)}
       onClick={(e: MouseEvent) => {
         e.stopPropagation();
         open.set(true);
@@ -429,7 +430,8 @@ function eyeDrag<R extends TreeRowView>(el: HTMLElement, rows: ReadonlyState<rea
   };
   const gesture = drag<EyeDrag<R>>(el, {
     start: (e) => {
-      const eye = e.button === 0 ? (e.target as Element).closest?.('[data-tree-eye]') : null;
+      // the main button alone (a Ctrl+click is the context menu's on macOS)
+      const eye = e.button === 0 && !e.ctrlKey ? (e.target as Element).closest?.('[data-tree-eye]') : null;
       const key = eye?.closest('[data-tree-key]')?.getAttribute('data-tree-key');
       if (!eye || !key) return undefined;
       const all = rows.value;

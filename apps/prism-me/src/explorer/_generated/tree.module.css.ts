@@ -209,9 +209,9 @@ defineStyles('me/explorer/tree.module.css', `@layer msp.components {
 }
 
 .msp-me-tree-dot {
-  width: 16px;
-  height: 16px;
-  margin: 0 calc(-1 * var(--msp-space-1));
+  width: max(24px, var(--msp-touch-target, 0px));
+  height: max(24px, var(--msp-touch-target, 0px));
+  margin: 0 calc(-1 * var(--msp-space-3));
   cursor: pointer;
   border-radius: 50%;
   flex: none;
