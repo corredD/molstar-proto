@@ -175,7 +175,9 @@
   stroke-width: 0.6;
 }
 
-/* Proposed (Ludo, 2026-10-28): every row's eye in view, not only on hover (the tree's eye is its Hide or Show button). */
+/* Proposed (Ludo, 2026-10-28): every row's eye in view, not only on hover, and in a column of its own: last of the row's
+   tools, so at the row's end whatever tools the row has (the tree's eye is its Hide or Show button). */
 .eyesShown :is(button[aria-label="Hide"], button[aria-label="Show"]) {
   opacity: 1;
+  order: 1;
 }

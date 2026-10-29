@@ -206,6 +206,7 @@ defineStyles('me/_stories/explorer.module.css', `@layer msp.components {
 
 .msp-me-explorer-eyesShown :is(button[aria-label="Hide"], button[aria-label="Show"]) {
   opacity: 1;
+  order: 1;
 }
 }
 `);
