@@ -4,18 +4,19 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
+import { groupEntities, type MesoGroup, type MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { ContextMenuItem } from '@molstar/prism-ui';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type {} from '@molstar/prism-viewer/features/clipping';
 import type {} from '@molstar/prism-viewer/features/structure-move';
 import { startMoveDrag } from '@molstar/stage-tools-extension/drag';
+import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ExplorerApi, NodeRef, PickedNode } from './operations.js';
 
 // The explorer's menus (_spec/ui.md §3, §5), at the level of what is picked (an object, a group, an entity, a chain, a
 // target): the right-click's, on the canvas and as a tree row's ⋯ (a label's: edit, remove; a distance's: focus,
 // remove), with Color… (a color for all of it), Add clip… (a clip of it: several at each level, each listed in its
-// Clips) and Remove. No Hide: every row's eye is in view (Ludo, 2026-10-28).
+// Clips), Remove and Show only. No Hide: every row's eye is in view (Ludo, 2026-10-28).
 
 /** Whole objects: their clips cut all of them (Prism's clipping) */
 const WholeClips = new Set(['structure', 'mesoscale model', 'particle list', 'volume', 'mesh']);
@@ -422,6 +423,7 @@ export function nodeMenuItems(
   if (open && clippable(kind, node)) {
     items.push({ id: 'clip', label: 'Add clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
   }
+  items.push(...showOnlyItems(api, picked, actions.groupBy));
   if (removable(kind, node)) {
     items.push({
       id: 'remove',
@@ -439,4 +441,103 @@ export function nodeMenuItems(
     });
   }
   return items;
+}
+
+// --- Show only (cellVIEW's, _spec/cellview.md §2; Ludo, 2026-10-28) -------------------------------------------------
+
+/**
+ * A part's Show only: this, its group, its compartment (a model's entity), Show all again; each one step, the object
+ * drawn again if hidden. A model's entities by `mesoscale.style` (`particles.look`'s entity layers, as their eyes read
+ * them), a list's targets by `particles.look`.
+ */
+function showOnlyItems(
+  api: ViewerApi,
+  picked: PickedNode,
+  groupBy?: (model: string) => MesoGroupBy | undefined,
+): ContextMenuItem[] {
+  const { node, kind } = picked;
+  if (!('particles' in node) || !['entity', 'group', 'target'].includes(kind)) return [];
+  const ref = node.ref;
+  const item = (id: string, label: string, only: () => readonly number[] | undefined): ContextMenuItem => ({
+    id,
+    label,
+    icon: 'eye',
+    run: () => void showOnly(api, ref, kind === 'target' ? 'targets' : 'entities', only()),
+  });
+  if (kind !== 'entity') {
+    const ids = node.particles.entities ?? node.particles.targets ?? [];
+    return [item('show-only', 'Show only this', () => ids), item('show-all', 'Show all again', () => undefined)];
+  }
+  const id = node.particles.entities?.[0];
+  if (id === undefined) return [];
+  const items = [item('show-only', 'Show only this', () => [id])];
+  // its group as the tree groups the model; its compartment from the compartments, whatever the tree's grouping
+  const shown = api.mesoscale?.infoState(ref, observableState(groupBy?.(ref)).asReadonly).value;
+  const group = shown && parentOf(shown.groups, id);
+  if (group?.path) items.push(item('show-group', 'Show only its group', () => groupEntities(group)));
+  const byCompartment = shown?.hasCompartments
+    ? api.mesoscale?.infoState(ref, observableState<MesoGroupBy | undefined>('compartment').asReadonly).value
+    : undefined;
+  const home = byCompartment && parentOf(byCompartment.groups, id);
+  if (byCompartment && home?.path) {
+    const key = compartmentOf(home.path);
+    items.push(item('show-compartment', 'Show only its compartment', () => inCompartment(byCompartment.groups, key)));
+  }
+  items.push(item('show-all', 'Show all again', () => undefined));
+  return items;
+}
+
+/**
+ * Shows only some of a list's entities or targets, the others hidden, the list drawn again; none given: every one shown
+ * (Show all again). One step: the list's visibility (when hidden) and its looks.
+ */
+export function showOnly(api: ViewerApi, ref: string, by: 'entities' | 'targets', only: readonly number[] | undefined) {
+  return api.group(only ? 'Show only' : 'Show all again', async (g) => {
+    const drawn = await g.run('particles.visibility', { particles: ref, visible: true });
+    if (!drawn.ok) return drawn;
+    if (by === 'entities') {
+      // all of them hidden or shown (one write, none named), then the ones kept
+      const all = await g.run('mesoscale.style', { particles: ref, visible: !only });
+      if (!all.ok || !only) return all;
+      return g.run('mesoscale.style', { particles: ref, entities: only.join(','), visible: true });
+    }
+    const targets = g.cryoet?.decorationsState(ref).value?.targets ?? [];
+    const kept = new Set(only);
+    return g.run('particles.look', {
+      particles: ref,
+      layers: targets.map((t) => ({ selector: { targets: [t.id] }, visible: !only || kept.has(t.id) })),
+    });
+  });
+}
+
+/** The group an entity is directly in, if not the model's root */
+function parentOf(root: MesoGroup, id: number): MesoGroup | undefined {
+  if (root.path && root.entities.includes(id)) return root;
+  for (const g of root.groups) {
+    const found = parentOf(g, id);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/**
+ * A compartment's key from a compartment path (cellPACK's `root.<compartment>.(surface|interior).<group>`): the path
+ * before its last surface or interior; none: the path's parent (a membrane beside its compartment's surface)
+ */
+export function compartmentOf(path: string): string {
+  const parts = path.split('.');
+  for (let i = parts.length - 1; i > 0; i--)
+    if (parts[i] === 'surface' || parts[i] === 'interior') return parts.slice(0, i).join('.');
+  return parts.length > 1 ? parts.slice(0, -1).join('.') : path;
+}
+
+/** The entities whose compartment (a group path's key) is `key` */
+function inCompartment(root: MesoGroup, key: string): number[] {
+  const out: number[] = [];
+  const walk = (g: MesoGroup) => {
+    if (g.path && g.entities.length && compartmentOf(g.path) === key) out.push(...g.entities);
+    for (const c of g.groups) walk(c);
+  };
+  walk(root);
+  return out;
 }

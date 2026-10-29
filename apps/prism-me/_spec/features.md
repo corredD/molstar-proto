@@ -29,6 +29,7 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | Entities, by compartment tree (cellPACK) or function, with counts                                                             | Done     | `mesoscale.entities`; the Scene tree (a model's groups, then entities; its Group by in its properties)                       |
 | Show, hide an entity or a whole group                                                                                         | Done     | `mesoscale.style` (`visible`) by `particles.look`; the eyes                                                                  |
 | A parent's eye sets all under it (a model, a group, a category), each its own after; eyes dragged along the column (one step) | Done     | `setEyes` (one `api.group`); the Scene tree (lane `tree-eyes`)                                                               |
+| Show only an entity, its group, its compartment, a group, a target; Show all again                                            | Done     | `mesoscale.style`, `particles.look`, one step; a part's ⋯ and the right-click (lane `tree-eyes`)                             |
 | Color an entity (picker), generate colors (a hue per compartment, its entities around it), theme colors, reset                | Done     | `mesoscale.style`, `mesoscale.colors`                                                                                        |
 | Opacity, emissive of entities                                                                                                 | Done     | `mesoscale.style` (`transparency`, `emissive`)                                                                               |
 | Filter the entities by name                                                                                                   | Done     | the Scene tree's filter: a hit with the rows it is in                                                                        |
@@ -76,7 +77,7 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | The properties on their mock: the header names the kind; Prism's SectionList (open from row to row), tokens, controls and ColorPicker (a mesh's too) | Done     | `explorer/properties-view.tsx`, shared with the Storybook mock (lane `properties-view`)                               |
 | A node's Labels section: each label made at it, its text and size edited, removed, one step each                                                     | Done     | `stage.editLabel`; the properties (lane `properties-view`)                                                            |
 | A clip's shape and invert: its fields, in Clips and in its row's own Clip section, one step each                                                     | Done     | `clipping.update` `shape`, `invert` (Prism); the properties (lane `properties-view`)                                  |
-| Right-click menu on what was picked (a row's ⋯ the same): focus, color, remove, decorate; no Hide (the eyes)                                         | Done     | the canvas (prism-me frees the right button from the camera's focus)                                                  |
+| Right-click menu on what was picked (a row's ⋯ the same): focus, color, Show only, remove, decorate; no Hide (the eyes)                              | Done     | the canvas (prism-me frees the right button from the camera's focus)                                                  |
 | Keys on cuts (animation)                                                                                                                             | Deferred |                                                                                                                       |
 | Measure a distance between atoms, residues, chains, instances, particles, volume voxels: in selection mode, ⌘/Ctrl+click two points                  | Done     | `stage.distance`, `stage.editDistance`; a row under the first point; outside selection mode a hint says to turn it on |
 | Commands for the agent and ⌘K                                                                                                                        | Done     | the three areas' commands and skills                                                                                  |
@@ -100,8 +101,8 @@ Start: `node scripts/esbuild/app.mjs apps/prism-me --dev --port 1343`, open
    `data/examples/mesoscale/cellpack-hiv1-colors.json` (one name not found is said, and the entities the file names
    twice, in two compartments: one entity per name, the last color kept; a key matches by full name, else by the entity
    name, the last dotted part: the compartment path is not checked); Undo once brings the colors back.
-2. Right-click a protein (or its row's ⋯): Color…; Add clip… a plane; Cut row: Position, Flip; right-click again: Remove
-   the cut. Try the sphere and the box.
+2. Right-click a protein (or its row's ⋯): Show only this, then Show all again; Color…; Add clip… a plane; Cut row:
+   Position, Flip; right-click again: Remove the cut. Try the sphere and the box.
 3. Drop a RELION `.star` with classes. Structure tab › its Decorations row: Targets: Class; drop or load a structure
    (1CRN) and a mesh (OBJ); pick them per class; type a PDB id and Enter. Right-click a particle › Decorate with….
 4. Drop a tomogram (`.mrc` or `.rec`): its Slice row: Show a slice, move it, change the contrast, axis Z for a tilt

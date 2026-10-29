@@ -292,6 +292,51 @@ describe('the eyes dragged along the column (C4D, Ludo 2026-10-28)', () => {
   });
 });
 
+describe('Show only (cellVIEW, Ludo 2026-10-28)', () => {
+  it("on a part's ⋯: only this, its group, its compartment, all again; one step each, one undo", async () => {
+    const v = await viewer();
+    const { ref, more, shownIds, drawn, steps } = await mounted(v);
+    const labels = labelsOf(await more(`me:${ref}:0`));
+    for (const l of ['Show only this', 'Show only its group', 'Show only its compartment', 'Show all again']) {
+      expect(labels).toContain(l);
+    }
+    let before = steps();
+    await clickItem('Show only this');
+    await until(() => shownIds().join() === '0');
+    expect(steps()).toBe(before + 1);
+    await undo(v);
+    await until(() => shownIds().length === 6);
+    // its group: the group it is under; its compartment: root.cell, its surface and interior
+    await more(`me:${ref}:0`);
+    await clickItem('Show only its group');
+    await until(() => shownIds().join() === '0,1');
+    await more(`me:${ref}:0`);
+    await clickItem('Show only its compartment');
+    await until(() => shownIds().join() === '0,1,2,3');
+    // the model hidden: Show only draws it again (one step)
+    before = steps();
+    await v.api.run('particles.visibility', { particles: ref, visible: false });
+    await until(() => !drawn());
+    await more(`me:${ref}:4`);
+    await clickItem('Show only its group');
+    await until(() => shownIds().join() === '4,5' && drawn());
+    expect(steps()).toBe(before + 2);
+    await more(`me:${ref}:4`);
+    await clickItem('Show all again');
+    await until(() => shownIds().length === 6);
+  });
+
+  it("a group's ⋯: Show only this", async () => {
+    const v = await viewer();
+    const { ref, more, shownIds } = await mounted(v);
+    const labels = labelsOf(await more(`g:${ref}:root.other`));
+    expect(labels).toContain('Show only this');
+    expect(labels).not.toContain('Show only its compartment');
+    await clickItem('Show only this');
+    await until(() => shownIds().join() === '4,5');
+  });
+});
+
 describe("a row's color dot", () => {
   it('opens its colors, as Color…', async () => {
     const v = await viewer();

@@ -40,7 +40,7 @@ export const ProposedClipShapes: readonly ContextMenuItem[] = [
   item('clip-aperture', 'Aperture: open the view onto this part'),
 ];
 
-/** The proposed Show only (cellVIEW evaluation, item d): a part's right-click, one step each */
+/** Show only (cellVIEW's, Ludo 2026-10-28): a part's right-click, one step each */
 const showOnly = (node: MockNode): ContextMenuItem[] =>
   node.kind === 'model entity' || node.kind === 'group' || node.kind === 'target'
     ? [
@@ -76,10 +76,10 @@ export const clippable = (node: MockNode) =>
 
 /**
  * The right-click of a node (ui.md §5), the same as its row's ⋯ (Ludo, 2026-10-28): Focus, Move and turn, Color…, Add
- * label, Add clip…, Remove (an object); on a clip, a label or a distance its own; on a category its
+ * label, Add clip…, Show only (a part), Remove (an object); on a clip, a label or a distance its own; on a category its
  * color theme and a clip of every object in it. No Hide: every row's eye is in view. A part's Move and turn is
  * "[to decide]" in ui.md: greyed here, with why. `proposed`: with the cellVIEW evaluation's items not built yet (a
- * clip's ghosts, the Clips category's New clip…, Show only).
+ * clip's ghosts, the Clips category's New clip…).
  */
 export function menuOf(
   node: MockNode,
@@ -115,7 +115,7 @@ export function menuOf(
     ...(colorable(node) ? [colors] : []),
     item('label', 'Add label'),
     ...(clippable(node) ? [clip('Add clip…')] : []),
-    ...(proposed ? showOnly(node) : []),
+    ...showOnly(node),
     ...(ObjectKinds.has(node.kind) ? [remove] : []),
   ];
 }

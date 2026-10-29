@@ -341,11 +341,11 @@ describe('explorer', () => {
       `o:${crn.ref}`,
       'c:structures',
     ]);
-    // the menu: focus (no Hide: the eye is in view)
+    // the menu: focus, Show only on a part (no Hide: the eye is in view)
     const picked = area.pickedOf(particle)!;
     // a target is a part: its Move greyed (a part's move: not yet)
     const items = nodeMenuItems(v.api, area, picked);
-    expect(items.map((i) => i.id)).toEqual(['focus', 'move', 'label']);
+    expect(items.map((i) => i.id)).toEqual(['focus', 'move', 'label', 'show-only', 'show-all']);
     expect(items[1].disabled).toBeTruthy();
     expect(nodeMenuItems(v.api, area, area.pickedOf(atoms)).map((i) => i.id)).toEqual(['focus', 'move', 'label']);
     // a whole structure moves and turns

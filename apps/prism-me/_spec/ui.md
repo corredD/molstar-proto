@@ -138,6 +138,12 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
 - **Add label**: plain text at that place, for that node (Ludovic, 2026-10-18); it becomes a row under the node.
 - **Add clip…**: a plane, sphere, box, cylinder or cone for that node (only its particles or atoms are cut); it becomes
   a row under it. Several per node (Ludovic, 2026-10-18; up to 8 per particle list).
+- **Show only** (cellVIEW's, Ludo 2026-10-28), on a part of a model or a list: **Show only this**; on a model's entity
+  also **Show only its group** (the group it is under as the tree groups the model) and **Show only its compartment**
+  (cellPACK's `root.<compartment>.(surface|interior).<group>`: every entity whose compartment path is the same before
+  its last surface or interior, so a membrane beside them is in it and a compartment inside it, the capsid in the
+  envelope, is not; by function the same, read from the compartments); **Show all again**. Each one step through
+  `particles.look`, the object drawn again if hidden.
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit
@@ -458,7 +464,8 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   draws its object again, a parent open when all under it is. The eyes dragged along the column (Prism's `drag()`: a
   preview in the tree's eye states, one step on release, put back on a cancel; the column read in the tree's root, a
   shadow root in the app); a click is a press and a release (Enter and Space click). A list's class has its eye (the
-  cryo-ET area reads a target hidden by its own layer). The color dot opens Color…'s items.
+  cryo-ET area reads a target hidden by its own layer). The color dot opens Color…'s items. Show only (§5) on a part's ⋯
+  and the canvas's right-click.
 - Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: a structure entity's or chain's eye (Prism
   hides representations, not parts); a color dot only where a color was set; the mesh section repeats the mesh's eye and
   name.

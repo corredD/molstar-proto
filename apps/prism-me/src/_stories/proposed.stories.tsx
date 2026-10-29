@@ -66,7 +66,10 @@ export const ShownInPart: StoryObj = {
   render: () => story(() => <PanelFrames roots={scene()} picked="g:hiv:capsid.surface" proposed split={360} />),
 };
 
-/** Item d: a part's right-click with Show only this, its group, its compartment; Show all again. */
+/**
+ * Item d, built (lane `tree-eyes`): a part's right-click with Show only this, its group, its compartment; Show all
+ * again.
+ */
 export const ShowOnly: StoryObj = {
   render: () =>
     story(() => <PanelFrames roots={scene()} picked="me:hiv:4" menu="row" proposed height={460} split={120} />),
