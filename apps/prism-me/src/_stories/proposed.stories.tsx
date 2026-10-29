@@ -101,3 +101,20 @@ export const Eyes: StoryObj = {
       />
     )),
 };
+
+/**
+ * A row's ⋯ (Ludo, 2026-10-28): every row shows only its eye and its ⋯; the ⋯ holds the other tools (Color…, Add clip…,
+ * Remove) with the right-click's items. Here a model's.
+ */
+export const MoreMenu: StoryObj = {
+  render: () =>
+    story(() => (
+      <PanelFrames roots={scene()} picked="o:hiv" open={['c:particles']} menu="row" proposed height={460} split={120} />
+    )),
+};
+
+/** A category's ⋯: its color theme, a clip of every object in it. */
+export const CategoryMenu: StoryObj = {
+  render: () =>
+    story(() => <PanelFrames roots={scene()} picked="c:particles" menu="row" proposed height={420} split={120} />),
+};

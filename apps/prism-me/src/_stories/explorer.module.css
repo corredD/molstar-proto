@@ -175,32 +175,8 @@
   stroke-width: 0.6;
 }
 
-/* Proposed (Ludo, 2026-10-28): every row's eye in view, not only on hover, in a column of its own: the row's tools
-   end eye, trash, ⋯ (the ⋯ always last), and a row without a trash or a ⋯ keeps their room, so the eye stays in one
-   column whatever tools the row has. The tree's eye is its Hide or Show button, the trash Remove, the ⋯ More. */
-.eyesShown {
-  --eye-slot: calc(max(24px, var(--msp-touch-target, 0px)) + 1px); /* off-scale: a tool's width and the 1px gap */
-
-  & :is(button[aria-label="Hide"], button[aria-label="Show"]) {
-    opacity: 1;
-    order: 1;
-  }
-
-  & button[aria-label="Remove"] {
-    order: 2;
-  }
-
-  & button[aria-label="More"] {
-    order: 3;
-  }
-
-  /* no trash: its room between the eye and the ⋯ */
-  & span:not(:has(> button[aria-label="Remove"])) > :is(button[aria-label="Hide"], button[aria-label="Show"]) {
-    margin-right: var(--eye-slot);
-  }
-
-  /* no ⋯: its room at the end */
-  & span:has(> :is(button[aria-label="Hide"], button[aria-label="Show"])):not(:has(> button[aria-label="More"])) {
-    padding-right: var(--eye-slot);
-  }
+/* Proposed (Ludo, 2026-10-28): every row shows its eye and its ⋯, always, not only on hover; the other tools are in the
+   ⋯. Two tools on every row: the eye stays in one column. The tree's eye is its Hide or Show button, the ⋯ More. */
+.eyesShown :is(button[aria-label="Hide"], button[aria-label="Show"], button[aria-label="More"]) {
+  opacity: 1;
 }

@@ -34,7 +34,16 @@ import {
 } from '../explorer/tree-view.js';
 import { classes as mockClasses } from './_generated/explorer.module.css.js';
 import { clipBook } from './clip-book.js';
-import { ClipShapes, clippable, colorItemsOf, colorable, menuOf, OpenItems, ProposedClipShapes } from './fake-menus.js';
+import {
+  ClipShapes,
+  clippable,
+  colorItemsOf,
+  colorable,
+  menuOf,
+  OpenItems,
+  ProposedClipShapes,
+  proposedMenuOf,
+} from './fake-menus.js';
 import { type GroupBy, type MockNode, ObjectKinds, pathTo } from './fake-scene.js';
 import { Properties } from './properties.js';
 
@@ -125,7 +134,11 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
   const menuRoot = () => panelEl?.closest<HTMLElement>('[data-msp-theme]') ?? document.body;
   const menuAt = (at: At, node: MockNode, onClose?: () => void) => {
     pick(node);
-    const items = (): ContextMenuItem[] => menuOf(node, () => openContextMenu(menuRoot(), at, shapes), props.proposed);
+    const clipShapes = () => openContextMenu(menuRoot(), at, shapes);
+    const items = (): ContextMenuItem[] =>
+      props.proposed
+        ? proposedMenuOf(node, { clipShapes, colors: () => openContextMenu(menuRoot(), at, colorItemsOf(node)) })
+        : menuOf(node, clipShapes);
     openContextMenu(menuRoot(), at, items(), onClose);
   };
   if (props.picked) {
@@ -178,12 +191,17 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
             rows={rows}
             picked={pickedKey}
             shown={shown}
-            tools={(row) => ({
-              color: colorable(row.node),
-              clip: clippable(row.node),
-              remove: Removable.has(row.node.kind),
-              more: !row.category,
-            })}
+            tools={(row) =>
+              // proposed (Ludo, 2026-10-28): the eye and the ⋯ on every row, the other tools in the ⋯
+              props.proposed
+                ? { color: false, clip: false, remove: false, more: true }
+                : {
+                    color: colorable(row.node),
+                    clip: clippable(row.node),
+                    remove: Removable.has(row.node.kind),
+                    more: !row.category,
+                  }
+            }
             onPick={(row) => pick(row.node)}
             onToggle={(row) => toggle(row.key)}
             onDblClick={(row) => console.info(`[explorer mock] focus ${row.label}`)}

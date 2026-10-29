@@ -101,6 +101,10 @@ export function menuOf(node: MockNode, openClipShapes?: () => void, proposed = f
     case 'distance':
       return [item('focus', 'Focus'), item('hide', 'Hide'), item('remove', 'Remove')];
   }
+  return nodeMenu(node, openClipShapes, proposed);
+}
+
+function nodeMenu(node: MockNode, openClipShapes?: () => void, proposed = false): ContextMenuItem[] {
   const part = !ObjectKinds.has(node.kind);
   const toDecide = part ? 'ui.md §5 [to decide]: the whole object it belongs to, or only this part' : undefined;
   // one Move and turn: Prism's handles on it, move and turn together (Ludovic, 2026-10-25, as the app)
@@ -110,5 +114,42 @@ export function menuOf(node: MockNode, openClipShapes?: () => void, proposed = f
     item('label', 'Add label'),
     { ...item('clip', 'Add clip…'), run: () => openClipShapes?.() },
     ...(proposed ? showOnly(node) : []),
+  ];
+}
+
+/**
+ * The proposed ⋯ (Ludo, 2026-10-28): a row shows only its eye and its ⋯, and the ⋯ holds what the row's other tools did
+ * (Color…, Add clip…, Remove) with its right-click's items; the same menu on the canvas. No Hide: the eye is always there.
+ */
+export function proposedMenuOf(node: MockNode, open: { clipShapes(): void; colors(): void }): ContextMenuItem[] {
+  const colors = { ...item('color', 'Color…'), run: open.colors };
+  const clip = (label: string) => ({ ...item('clip', label), run: open.clipShapes });
+  const remove = item('remove', 'Remove');
+  switch (node.kind) {
+    case 'clip':
+      return [
+        item('move', 'Move'),
+        item('rotate', 'Rotate'),
+        item('size', 'Size'),
+        item('flip', 'Flip'),
+        item('ghosts', 'Outline what it cuts'),
+        remove,
+      ];
+    case 'label':
+      return [item('move', 'Move'), item('rotate', 'Rotate'), item('edit', 'Edit text'), remove];
+    case 'distance':
+      return [item('focus', 'Focus'), remove];
+    case 'category':
+      return node.key === 'c:clips' ? [clip('New clip…')] : [colors, clip('Add clip… (every object in it)')];
+  }
+  const [focus, move, label] = nodeMenu(node);
+  return [
+    focus,
+    move,
+    ...(colorable(node) ? [colors] : []),
+    label,
+    ...(clippable(node) ? [clip('Add clip…')] : []),
+    ...showOnly(node),
+    ...(ObjectKinds.has(node.kind) ? [remove] : []),
   ];
 }

@@ -112,11 +112,12 @@ every other story, so nothing proposed looks decided.
     to it; New clip makes one that cuts it, Use a clip gives it one of the scene's.
   - **The aperture cut** (item f), a clip of the category too: the parts it opens onto, the opening, the share kept near
     the edge, a preview of the screen.
-- **Eyes** (Ludo, 2026-10-28): every row's eye in view, not only on hover, in a column of its own: a row's tools end
-  eye, trash, ⋯ (the ⋯ always last), and a row without a trash or a ⋯ keeps their room, so the eye stays in one column
-  (measured: eye, trash and ⋯ each at one x down the tree). A parent's eye sets every row under it, all the way down,
-  each its own after: hide the model, then show one group alone. A parent's eye is its own state, open or closed, never
-  "some shown".
+- **Eyes and ⋯** (Ludo, 2026-10-28): every row shows its eye and its ⋯, always, not only on hover, each in one column
+  down the tree (measured); the ⋯ holds what the row's other tools did (Color…, Add clip…, Remove) with the
+  right-click's items, on a category too (its color theme, a clip of every object in it; on Clips, New clip…). No Hide
+  in the menus: the eye is there. A parent's eye sets every row under it, all the way down, each its own after: hide the
+  model, then show one group alone. A parent's eye is its own state, open or closed, never "some shown". (Tried on the
+  way: the eye before the trash and the ⋯ with missing tools keeping their room; replaced by this.)
 - **Shown in part** (with item b): Look › Shown on a group, a model entity or a target.
 - **Show only** (item d): on a part's right-click. **Add aperture**: Add clip… gains it. **Clip menu**: Outline what it
   cuts.
