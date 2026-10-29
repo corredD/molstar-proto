@@ -59,6 +59,7 @@ import {
   clipTargetsOf,
   type Parts,
   whatItCuts,
+  allItCuts,
 } from './rows.js';
 import { CategoryThemes } from './tree-view.js';
 
@@ -1338,8 +1339,7 @@ function Clips(props: { subject: Subject }) {
   const last = (tag: string) =>
     derive([api.clipping.cuts, objects, parts, layers], (all, os, ps) => {
       const c = all.find((x) => x.object.tag === tag);
-      const uses = c ? whatItCuts(area, c, os, ps) : [];
-      return uses.length === 1 && within(uses[0].node, node);
+      return !!c && allItCuts(whatItCuts(area, c, os, ps), node);
     });
   // a model's or list's objects: clipped whole (proteins) or by their elements (atoms), when it draws objects
   const whole =
@@ -1408,20 +1408,6 @@ function Clips(props: { subject: Subject }) {
       <HandleLook area={area} />
     </div>
   );
-}
-
-/** Whether all of `part` is in `node` (the same object; its particles' or atoms' among the node's) */
-function within(part: NodeRef, node: NodeRef): boolean {
-  if (part.ref !== node.ref) return false;
-  if ('particles' in node) {
-    if (!('particles' in part)) return false;
-    const ids = new Set([...(node.particles.entities ?? []), ...(node.particles.targets ?? [])]);
-    return [...(part.particles.entities ?? []), ...(part.particles.targets ?? [])].every((id) => ids.has(id));
-  }
-  if ('entity' in node) {
-    return 'entity' in part && part.entity === node.entity && (!node.chain || part.chain === node.chain);
-  }
-  return true;
 }
 
 /**

@@ -12,7 +12,7 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { IconName } from '@molstar/prism-ui';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import type { Category, ExplorerApi, NodeRef, SceneObject } from './operations.js';
-import type { Ids } from './clips.js';
+import { type Ids, kindOf } from './clips.js';
 import { filterRows, type TreeRowView } from './tree-view.js';
 
 // The rows of the explorer's tree (_spec/ui.md §3), flat, from the scene's objects and the parts the mesoscale and
@@ -723,4 +723,25 @@ export function clipTargetsOf(objects: readonly SceneObject[], parts: Parts): Cl
     walk(info.groups, o.label);
   }
   return out;
+}
+
+/** Whether a clip's uses are all in `node` (taking it off would leave the clip cutting nothing: no ×) */
+export function allItCuts(uses: readonly ClipUse[], node: NodeRef): boolean {
+  return uses.length > 0 && uses.every((u) => within(u.node, node));
+}
+
+/** Whether all of `part` is in `node` (the same object; its particles' or atoms' among the node's) */
+function within(part: NodeRef, node: NodeRef): boolean {
+  if (part.ref !== node.ref) return false;
+  if ('particles' in node) {
+    if (!('particles' in part)) return false;
+    const kind = kindOf(part.particles);
+    if (kindOf(node.particles) !== kind) return false;
+    const ids = new Set(node.particles[kind]);
+    return (part.particles[kind] ?? []).every((id) => ids.has(id));
+  }
+  if ('entity' in node) {
+    return 'entity' in part && part.entity === node.entity && (!node.chain || part.chain === node.chain);
+  }
+  return true;
 }

@@ -8,9 +8,9 @@ import type { MesoGroup } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { describe, expect, it } from 'vitest';
-import type { ExplorerApi, SceneObject } from '../operations.js';
+import type { ExplorerApi, NodeRef, SceneObject } from '../operations.js';
 import { keepRows } from '@molstar/prism-ui';
-import { type Row, rowsOf, sameRow, whatItCuts } from '../rows.js';
+import { allItCuts, type Row, rowsOf, sameRow, whatItCuts } from '../rows.js';
 
 // A model's rows (_spec/ui.md §3) from its info, grouped by compartment or by function: lipids (function "membrane")
 // in root.membrane, CA in root.capsid.
@@ -169,5 +169,17 @@ describe("a category row's objects", () => {
       keep(rowsOf(objects, new Map(), new Set(), '')).find((r) => r.key === 'c:particles')!;
     category([model, other('a')]);
     expect(category([model, other('b')]).objects).toEqual(['m', 'b']);
+  });
+});
+
+describe('the last thing a clip cuts (review S1)', () => {
+  const use = (key: string, node: NodeRef) => ({ key, label: key, node });
+  const membrane = use('g:m:root.membrane', { ref: 'm', particles: { entities: [0] } });
+  const capsid = use('g:m:root.capsid', { ref: 'm', particles: { entities: [1] } });
+  it('is all it cuts in the node: an object cut in two parts, one part alone; not a part of two', () => {
+    expect(allItCuts([membrane, capsid], { ref: 'm' })).toBe(true);
+    expect(allItCuts([membrane], membrane.node)).toBe(true);
+    expect(allItCuts([membrane, capsid], membrane.node)).toBe(false);
+    expect(allItCuts([use('o:m', { ref: 'm' })], membrane.node)).toBe(false);
   });
 });
