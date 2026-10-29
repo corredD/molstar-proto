@@ -72,7 +72,7 @@ export const ShowOnly: StoryObj = {
     story(() => <PanelFrames roots={scene()} picked="me:hiv:4" menu="row" proposed height={460} split={120} />),
 };
 
-/** Item f: Add clip… (the scissors, the right-click) with the aperture: open the view onto the picked part. */
+/** Item f: Add clip… (the ⋯, the right-click) with the aperture: open the view onto the picked part. */
 export const AddAperture: StoryObj = {
   render: () =>
     story(() => (
@@ -88,7 +88,7 @@ export const ClipMenu: StoryObj = {
 /**
  * Every row's eye in view; a parent's eye sets every row under it, all the way down (Ludo, 2026-10-28): hide the model,
  * then show one of its groups or entities alone. As in C4D, press an eye and drag along the column: every row passed
- * takes the first one's new state. A row's color dot opens its colors.
+ * takes the first one's new state. A row's color dot opens its colors. Built (lane `tree-eyes`): the tree's own code.
  */
 export const Eyes: StoryObj = {
   render: () =>
@@ -105,7 +105,7 @@ export const Eyes: StoryObj = {
 
 /**
  * A row's ⋯ (Ludo, 2026-10-28): every row shows only its eye and its ⋯; the ⋯ holds the other tools (Color…, Add clip…,
- * Remove) with the right-click's items. Here a model's.
+ * Remove) with the right-click's items. Here a model's. Built (lane `tree-eyes`).
  */
 export const MoreMenu: StoryObj = {
   render: () =>
@@ -114,7 +114,7 @@ export const MoreMenu: StoryObj = {
     )),
 };
 
-/** A category's ⋯: its color theme, a clip of every object in it. */
+/** A category's ⋯: its color theme, a clip of every object in it. Built (lane `tree-eyes`). */
 export const CategoryMenu: StoryObj = {
   render: () =>
     story(() => <PanelFrames roots={scene()} picked="c:particles" menu="row" proposed height={420} split={120} />),

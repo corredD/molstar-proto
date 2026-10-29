@@ -11,24 +11,11 @@ import type {} from '@molstar/prism-viewer/features/clipping';
 import type {} from '@molstar/prism-viewer/features/structure-move';
 import { startMoveDrag } from '@molstar/stage-tools-extension/drag';
 import type { ExplorerApi, NodeRef, PickedNode } from './operations.js';
-import { toggleVisible } from './rows.js';
 
 // The explorer's menus (_spec/ui.md §3, §5), at the level of what is picked (an object, a group, an entity, a chain, a
-// target): the right-click's (on the canvas and on a tree row; a label's: edit, hide, remove; a distance's: focus, hide, remove), and the row tools' (Mesoscale Explorer's brush and
-// scissors beside the eye): a color for all of it, a clip of it (several at each level, each listed in its Clips).
-
-/** Kinds whose eye hides them (a structure's entities and chains have none: Prism hides representations) */
-const Hideable = new Set([
-  'structure',
-  'mesoscale model',
-  'particle list',
-  'group',
-  'target',
-  'volume',
-  'mesh',
-  'label',
-  'distance',
-]);
+// target): the right-click's, on the canvas and as a tree row's ⋯ (a label's: edit, remove; a distance's: focus,
+// remove), with Color… (a color for all of it), Add clip… (a clip of it: several at each level, each listed in its
+// Clips) and Remove. No Hide: every row's eye is in view (Ludo, 2026-10-28).
 
 /** Whole objects: their clips cut all of them (Prism's clipping) */
 const WholeClips = new Set(['structure', 'mesoscale model', 'particle list', 'volume', 'mesh']);
@@ -144,7 +131,7 @@ export function hideHandles(api: ViewerApi) {
   api.cryoet?.obliqueHandles?.hide();
 }
 
-/** The swatches of the brush */
+/** The swatches of Color… */
 export const Swatches: readonly [string, string][] = [
   ['tomato', 'Red'],
   ['orange', 'Orange'],
@@ -220,7 +207,7 @@ export async function showTheme(api: ViewerApi, list: string): Promise<boolean> 
 }
 
 /**
- * The brush's items: a color for all of the node; a model's or group's generated colors, a hue per group as the tree
+ * Color…'s items: a color for all of the node; a model's or group's generated colors, a hue per group as the tree
  * groups the model (`groupBy`: the explorer's grouping of a model, by ref)
  */
 export function colorItems(
@@ -288,7 +275,7 @@ export function showClipHandles(api: ViewerApi, index: number) {
   clipping.gizmos.handleOnly(index);
 }
 
-/** The scissors' items: a clip of the node (added to its others), by shape */
+/** Add clip…'s items: a clip of the node (added to its others), by shape */
 export function clipItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
   const { node, kind } = picked;
   if (!clippable(kind, node)) return [];
@@ -310,7 +297,7 @@ export function clipItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode)
 }
 
 /**
- * What the menu asks of the panel: a sub-menu at the same place (Color…, Add a clip…), a row to pick (a new label), a
+ * What the menu asks of the panel: a sub-menu at the same place (Color…, Add clip…), a row to pick (a new label), a
  * text edited where the menu was (a label's); and where it was opened in 3D (a label goes there)
  */
 export interface MenuActions {
@@ -357,21 +344,15 @@ export async function addLabel(
   if (ref && reveal) reveal({ key: `l:${ref}`, label: picked.label, kind: 'label', node: { ref } });
 }
 
-/** A distance's right-click: the camera on its two points, hide, remove */
+/** A distance's right-click: the camera on its two points, remove */
 function distanceItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
   const { node, label } = picked;
   const name = api.stage?.distancesState().value.find((d) => d.ref === node.ref)?.label ?? label;
   return [
     { id: 'focus', label: `Focus on the distance ${name}`, icon: 'scan', run: () => area.focus(node) },
     {
-      id: 'hide',
-      label: 'Hide the distance',
-      icon: 'eye-off',
-      run: () => void api.run('stage.editDistance', { distance: node.ref, visible: false }),
-    },
-    {
       id: 'remove-distance',
-      label: 'Remove the distance',
+      label: 'Remove',
       icon: 'x',
       run: () => void api.run('stage.editDistance', { distance: node.ref, remove: true }),
     },
@@ -414,21 +395,10 @@ export function nodeMenuItems(
     items.push({ id: 'focus', label: `Focus on ${picked.label}`, icon: 'scan', run: () => area.focus(node) });
     items.push(...moveItems(api, area, picked));
   }
-  // an entity of a model hides as a group does (its style); a structure's entity or chain cannot yet
-  const hideable = Hideable.has(kind) || (kind === 'entity' && 'particles' in node);
-  if (hideable) {
-    items.push({
-      id: 'hide',
-      label: `Hide ${label}`,
-      icon: 'eye-off',
-      run: () =>
-        void toggleVisible(api, { key: picked.key, depth: 0, label, kind, hasChildren: false, visible: true, node }),
-    });
-  }
   if (kind === 'label') {
     items.push({
       id: 'remove-label',
-      label: 'Remove the label',
+      label: 'Remove',
       icon: 'x',
       run: () => void api.run('stage.editLabel', { label: node.ref, remove: true }),
     });
@@ -443,19 +413,19 @@ export function nodeMenuItems(
       run: () => open(colorItems(api, area, picked, actions.groupBy)),
     });
   }
-  if (open && clippable(kind, node)) {
-    items.push({ id: 'clip', label: 'Add a clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
-  }
   items.push({
     id: 'label',
     label: 'Add a label',
     icon: 'type',
     run: () => void addLabel(api, area, picked, actions.reveal, actions.at),
   });
+  if (open && clippable(kind, node)) {
+    items.push({ id: 'clip', label: 'Add clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
+  }
   if (removable(kind, node)) {
     items.push({
       id: 'remove',
-      label: `Remove ${label}`,
+      label: 'Remove',
       icon: 'trash-2',
       run: () => void removeObject(api, area, kind, node.ref),
     });

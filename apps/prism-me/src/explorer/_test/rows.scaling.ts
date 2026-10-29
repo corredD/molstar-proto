@@ -11,6 +11,7 @@ import { it } from 'vitest';
 import { checkLinear, quadraticControl, scaling } from '../../../../../packages/sequences/core/_test/model/scaling.js';
 import type { SceneObject } from '../operations.js';
 import { type ClipAt, type Row, rowsOf, sameRow } from '../rows.js';
+import { eyeKeys } from '../tree-view.js';
 
 // The tree's rows of an opened model of N entities (`test:scaling`; AGENTS.md, no accidental quadratic): flattened,
 // filtered (a hit kept with the rows it is in), clips placed (a group's by its entities) and kept by key, as each change
@@ -80,4 +81,21 @@ it("an opened model's rows, filtered, with clips, kept by key", () => {
     12000,
   );
   checkLinear("an opened model's rows, N entities", s);
+});
+
+it("the eyes a drag over every row sets (each row's and those under it, each once)", () => {
+  const s = scaling(
+    {
+      setup: (n) => {
+        const rows = rowsOf([model], new Map([['m', infoOf(n)]]), AllOpen, '');
+        // a drag from the bottom up: each entity first, then their groups, the model, the category
+        return { rows, passed: rows.filter((r) => r.visible !== undefined).reverse() };
+      },
+      run: ({ rows, passed }) => {
+        eyeKeys(rows, passed);
+      },
+    },
+    12000,
+  );
+  checkLinear('the eyes of N rows', s);
 });

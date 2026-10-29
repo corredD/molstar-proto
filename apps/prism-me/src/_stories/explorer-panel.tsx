@@ -20,7 +20,7 @@ import {
   TextInput,
 } from '@molstar/prism-ui';
 import { frameState } from '@molstar/prism-ui/dom/scope';
-import { drag, on, timeout } from '@molstar/prism-ui/dom/scoped';
+import { timeout } from '@molstar/prism-ui/dom/scoped';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import {
   type At,
@@ -32,20 +32,9 @@ import {
   treeClasses,
   UniformPopover,
 } from '../explorer/tree-view.js';
-import { classes as mockClasses } from './_generated/explorer.module.css.js';
 import { clipBook } from './clip-book.js';
-import {
-  ClipShapes,
-  clippable,
-  colorItemsOf,
-  colorable,
-  menuOf,
-  OpenItems,
-  ProposedClipShapes,
-  proposedClipItems,
-  proposedMenuOf,
-} from './fake-menus.js';
-import { type GroupBy, type MockNode, ObjectKinds, pathTo } from './fake-scene.js';
+import { ClipShapes, colorItemsOf, menuOf, OpenItems, ProposedClipShapes, proposedClipItems } from './fake-menus.js';
+import { type GroupBy, type MockNode, pathTo } from './fake-scene.js';
 import { Properties } from './properties.js';
 
 // The explorer's panel as ui.md §1–4 draw it, over the mock scene: + Open and the filter, the tree (four categories,
@@ -58,9 +47,6 @@ interface Row extends TreeRowView {
 }
 
 const classes = treeClasses;
-
-/** The rows a trash removes (Ludo, 2026-10-27): objects, and what was made at a node; not parts */
-const Removable: ReadonlySet<string> = new Set([...ObjectKinds, 'clip', 'label', 'distance']);
 
 /** What a story asks of the panel: the scene, what is open and picked, a menu shown at once */
 export interface ExplorerPanelProps {
@@ -133,14 +119,20 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
   // menus open in the frame around the panel (its theme's tokens), not inside it (its containment would clip them)
   let panelEl: HTMLElement | undefined;
   const menuRoot = () => panelEl?.closest<HTMLElement>('[data-msp-theme]') ?? document.body;
+  // a node's colors (its ⋯'s Color…, its dot): a category's Uniform… the app's picker at its ⋯, applied once
+  const colorsOf = (node: MockNode): ContextMenuItem[] =>
+    colorItemsOf(node).map((i) => (i.id === 'theme-uniform' ? { ...i, run: () => uniformAt(node) } : i));
   const menuAt = (at: At, node: MockNode, onClose?: () => void) => {
     pick(node);
-    const clipShapes = () => openContextMenu(menuRoot(), at, props.proposed ? proposedClipItems(node) : shapes);
-    const items = (): ContextMenuItem[] =>
-      props.proposed
-        ? proposedMenuOf(node, { clipShapes, colors: () => openContextMenu(menuRoot(), at, colorItemsOf(node)) })
-        : menuOf(node, clipShapes);
-    openContextMenu(menuRoot(), at, items(), onClose);
+    const items: ContextMenuItem[] = menuOf(
+      node,
+      {
+        clipShapes: () => openContextMenu(menuRoot(), at, props.proposed ? proposedClipItems(node) : shapes),
+        colors: () => openContextMenu(menuRoot(), at, colorsOf(node)),
+      },
+      props.proposed,
+    );
+    openContextMenu(menuRoot(), at, items, onClose);
   };
   if (props.picked) {
     const key = props.picked;
@@ -148,18 +140,17 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
     if (row) picked.set(row.node);
   }
 
-  // a category's Uniform: its picker (the app's), at its brush
+  // a category's Uniform: its picker (the app's), at its ⋯
   const uniform = observableState<{ label: string; anchor: HTMLElement } | undefined>(undefined);
-  const uniformAt = (row: Row) => {
+  const uniformAt = (node: MockNode) => {
     const anchor = panelEl?.querySelector<HTMLElement>(
-      `[data-tree-key="${CSS.escape(row.key)}"] button[aria-label="Color all of it"]`,
+      `[data-tree-key="${CSS.escape(node.key)}"] button[aria-label="More"]`,
     );
-    if (anchor) uniform.set({ label: row.label, anchor });
+    if (anchor) uniform.set({ label: node.label, anchor });
   };
 
-  // a row's eye as shown, and set (proposed, Ludo 2026-10-28: a parent's eye sets every row under it, all the way down,
-  // each its own eye after: hide a parent, then show one child; the model's rows by its grouping)
-  const isShown = (row: { key: string; visible?: boolean }) => shown.get(row.key) ?? row.visible !== false;
+  // a row's eye set (Ludo, 2026-10-28: a parent's eye sets every row under it, all the way down, each its own eye
+  // after: hide a parent, then show one child; the model's rows by its grouping)
   const setEye = (node: MockNode, visible: boolean) => {
     shown.set(node.key, visible);
     const g = groupings.get('o:hiv') ?? 'compartment';
@@ -171,17 +162,12 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
     };
     down(node);
   };
-  let pressedEye: string | undefined;
 
   // the split: the properties' height, dragged on the line above them or moved by the arrows (tree-view.tsx)
   const height = frameState(props.split ?? 280);
 
   const panel = (
-    <div
-      class={classes.panel}
-      classList={{ [mockClasses.eyesShown]: !!props.proposed }}
-      ref={(el: HTMLElement) => (panelEl = el)}
-    >
+    <div class={classes.panel} ref={(el: HTMLElement) => (panelEl = el)}>
       <div class={classes.header}>
         <Button
           size="sm"
@@ -208,45 +194,17 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
             rows={rows}
             picked={pickedKey}
             shown={shown}
-            tools={(row) =>
-              // proposed (Ludo, 2026-10-28): the eye and the ⋯ on every row, the other tools in the ⋯
-              props.proposed
-                ? { color: false, clip: false, remove: false, more: true }
-                : {
-                    color: colorable(row.node),
-                    clip: clippable(row.node),
-                    remove: Removable.has(row.node.kind),
-                    more: !row.category,
-                  }
-            }
+            // every row's eye and ⋯ (Ludo, 2026-10-28): the other tools in the ⋯
+            more={() => true}
             onPick={(row) => pick(row.node)}
             onToggle={(row) => toggle(row.key)}
             onDblClick={(row) => console.info(`[explorer mock] focus ${row.label}`)}
-            onRemove={(row) => console.info(`[explorer mock] remove ${row.label}`)}
-            onEye={(row) => {
-              // a press on an eye was the drag's (it set the eye already): its click does nothing
-              if (pressedEye === row.key) {
-                pressedEye = undefined;
-                return;
-              }
-              const on = !isShown(row);
-              if (props.proposed) {
-                setEye(row.node, on);
-                return;
-              }
-              shown.set(row.key, on);
-              if (row.category) {
-                // a category's eye: every object under it
-                for (const o of row.node.children?.('compartment') ?? []) shown.set(o.key, on);
-              }
+            onEyes={(set, visible) => {
+              for (const row of set) setEye(row.node, visible);
             }}
-            onTool={(row, which, at, onClose) => {
+            onColor={(row, at, onClose) => {
               pick(row.node);
-              // a category's Uniform…: the app's picker at its brush, applied once
-              const colors = colorItemsOf(row.node).map((i) =>
-                i.id === 'theme-uniform' ? { ...i, run: () => uniformAt(row) } : i,
-              );
-              openContextMenu(menuRoot(), at, which === 'color' ? colors : shapes, onClose);
+              openContextMenu(menuRoot(), at, colorsOf(row.node), onClose);
             }}
             onMenu={(row, at, onClose) => menuAt(at, row.node, onClose)}
           />
@@ -259,7 +217,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
             title={`${u.label}: one color`}
             onClose={(refocus) => {
               uniform.set(undefined);
-              // Escape and Apply: the focus back on the brush (Popover's contract), if still there
+              // Escape and Apply: the focus back on the ⋯ (Popover's contract), if still there
               if (refocus && u.anchor.isConnected) u.anchor.focus();
             }}
             onApply={(c) => console.info(`[explorer mock] ${u.label}: uniform ${c.toString(16)}`)}
@@ -287,51 +245,6 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
       </div>
     </div>
   ) as HTMLElement;
-
-  if (props.proposed) {
-    const eyeOf = (el: Element | null) =>
-      el?.closest('button[aria-label="Hide"], button[aria-label="Show"]')?.closest<HTMLElement>('[data-tree-key]');
-    // C4D's eyes (Ludo, 2026-10-28): press an eye and drag along the column: each row passed takes the first one's new
-    // state (a parent's, all under it too); Prism's drag(), so every end path releases (rendering.md §2.4)
-    drag<{ x: number; visible: boolean; done: Set<string>; byKey: Map<string, MockNode> }>(panel, {
-      start: (e) => {
-        const rowEl = eyeOf(e.target as Element);
-        if (!rowEl || e.button !== 0) return undefined;
-        // the rows as shown, indexed once a drag
-        const byKey = new Map(rows.value.map((r) => [r.key, r.node] as const));
-        const key = rowEl.getAttribute('data-tree-key')!;
-        const node = byKey.get(key);
-        if (!node) return undefined;
-        const visible = !(shown.get(key) ?? node.visible !== false);
-        setEye(node, visible);
-        pressedEye = key;
-        const eye = rowEl.querySelector('button[aria-label="Hide"], button[aria-label="Show"]')!;
-        const r = eye.getBoundingClientRect();
-        return { x: r.left + r.width / 2, visible, done: new Set([key]), byKey };
-      },
-      move: (e, s) => {
-        const key = document
-          .elementFromPoint(s.x, e.clientY)
-          ?.closest('[data-tree-key]')
-          ?.getAttribute('data-tree-key');
-        const node = key ? s.byKey.get(key) : undefined;
-        if (!key || !node || s.done.has(key)) return;
-        s.done.add(key);
-        setEye(node, s.visible);
-      },
-    });
-    // the color dot: the colors, as Color… (Ludo, 2026-10-28)
-    on<MouseEvent>(panel, 'click', (e) => {
-      const dot = (e.target as Element).closest(`.${classes.swatch}`);
-      const key = dot?.closest('[data-tree-key]')?.getAttribute('data-tree-key');
-      const node = key ? rows.value.find((r) => r.key === key)?.node : undefined;
-      if (!dot || !node) return;
-      e.stopPropagation();
-      pick(node);
-      const r = dot.getBoundingClientRect();
-      openContextMenu(menuRoot(), { x: r.left, y: r.bottom }, colorItemsOf(node));
-    });
-  }
 
   // a menu shown with the story (no click needed): at the picked row's place, or under + Open
   if (props.menu) {

@@ -34,7 +34,7 @@ import { createMesoscaleExplorerSpec } from '../../spec.js';
 import { distancePicker } from '../measure.js';
 import { nodeMenuItems, removeObject } from '../menu.js';
 import type { PickedNode } from '../operations.js';
-import { ancestorKeys, rowsOf, toggleVisible } from '../rows.js';
+import { ancestorKeys, rowsOf, setEyes } from '../rows.js';
 
 // A distance by two Ctrl+clicks in the explorer (_spec/ui.md §7), on a headless viewer: 1CRN and a RELION
 // list made in memory.
@@ -395,11 +395,11 @@ describe('a distance by two Ctrl+clicks', () => {
       hasChildren: false,
       node: { ref: d.ref },
     };
-    expectOk((await toggleVisible(v.api, row))!);
+    expectOk(await setEyes(v.api, area, [row], false));
     expect(distances(v)[0].visible).toBe(false);
-    // the menu: focus, hide, remove
+    // the menu: focus, remove (no Hide: its eye is in view)
     const items = nodeMenuItems(v.api, area, picked);
-    expect(items.map((i) => i.id)).toEqual(['focus', 'hide', 'remove-distance']);
+    expect(items.map((i) => i.id)).toEqual(['focus', 'remove-distance']);
     // the list removed as the tree's trash does: the distance with it, in the same step
     const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
     expectOk(await removeObject(v.api, area, 'particle list', list));

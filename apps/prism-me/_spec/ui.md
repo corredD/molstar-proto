@@ -55,17 +55,31 @@ so its eye, Look, clips and picks are the same under both groupings. A label mad
 not show now is a row under the model (picked, hidden, edited and revealed there), back under its group when that
 grouping is shown again (a default, to confirm).
 
-Every row: a color dot where it has one color, its name, a count (atoms, particles, entities) faint, then its tools at
-the end (Ludovic, 2026-10-25, as Prism's tree): the brush (a color for all of it), the scissors (a clip), where it has
-them, the eye (show, hide, at its level), the trash (remove it, one step, as its menu's Remove: an object, a clip, a
-label, a distance; not a part; Ludo, 2026-10-27) and ⋯ (its right-click). The tools show on the row's hover or focus,
-always on a touch screen; a hidden node keeps its eye in view. A category's row has the brush (its color theme), the
-scissors and the eye, for every object under it; its brush offers the themes its kind takes, each object by its own
-(`mesoscale.theme`, one step; Ludo, 2026-10-27): Structures by object, entity, chain or one color; Particles by object,
-entity (a list with no entities: by object), generated colors or one color; Volumes (their isosurfaces: slices show the
-data) and Meshes by object or one color; one color (Uniform…) picked in Prism's color picker at the brush and applied
-once (one step; Ludo, 2026-10-27). Clips and labels made at a node are rows under it (§5), and distances under their
-first point's row (§7), each with its own eye.
+Every row: a color dot where it has one color, its name, a count (atoms, particles, entities) faint, then its eye and
+its ⋯, always in view, each in a column of its own down the tree; a row without an eye (a structure's entity or chain:
+Prism hides whole representations) keeps its room (Ludo, 2026-10-28). The ⋯ is its right-click (§5), which holds what
+the row's tools did: Color… (a color for all of it), Add clip… (a clip of it) and Remove (an object, a clip, a label, a
+distance, one step; not a part). A row's color dot opens its colors, as Color…. There is no Hide in a menu: the eye is
+there.
+
+- **The eye** shows or hides what the row stands for, one step. A parent's eye sets every row under it, all the way
+  down, folded or not (a model's entities, a list's targets, a volume's representations; a category's objects and all of
+  each), in one step; each row keeps its own state after (hide the model, then show one group alone). Showing a part
+  draws its object again, its other parts as they are. A parent's eye is open when it and everything under it are shown,
+  else closed: never "some shown"; pressed, it sets all of it. A volume's representations are its views, not parts: a
+  tomogram's hidden slices leave its eye open. The labels, distances and clips under a row keep their own eyes (Ludo,
+  2026-10-28; the cascade is the coordinator's default for what "every row" covers).
+- **Dragged** (C4D's eyes, Ludo 2026-10-28): press an eye and drag along the column; every row passed takes the first
+  row's new state (with the rows under each), shown at once and set on release in one step; a fast move sets the rows
+  between too; a cancel (Esc, a lost release) puts the eyes back. A click is a drag of one row.
+- **A category's ⋯**: Color… (its color theme for every object under it: the themes its kind takes, each object by its
+  own, `mesoscale.theme`, one step; Ludo, 2026-10-27): Structures by object, entity, chain or one color; Particles by
+  object, entity (a list with no entities: by object), generated colors or one color; Volumes (their isosurfaces: slices
+  show the data) and Meshes by object or one color; one color (Uniform…) picked in Prism's color picker at the ⋯ and
+  applied once (one step); and Add clip… (one cut of every object under it).
+
+Clips and labels made at a node are rows under it (§5), and distances under their first point's row (§7), each with its
+own eye.
 
 A click on a row picks it: highlighted in 3D, its properties below. A category is picked too (Ludovic, 2026-10-25). The
 arrows move the pick (↑/↓, Home, End; → opens or goes in, ← closes or goes to the parent), as a click. A double click
@@ -114,18 +128,20 @@ the object then reads as mixed (every representation read: no mode lit, the moti
 ## 5. Right-click
 
 On the canvas, at the level of what is picked (the selection granularity: an object, a group, an entity, a chain…), and
-on a tree row, the same menu:
+on a tree row (its right-click or its ⋯), the same menu, in this order:
 
 - **Focus**
 - **Move and turn** (Ludovic, 2026-10-25: one item): shows the handles, move and turn together (live, one undo step on
   release, Esc or an undo during the drag cancels it); **Hide the handles** while they are on. On an object: the object
   itself. On a part (an entity, a chain): **[to decide]** the whole object it belongs to, or only that part.
+- **Color…**: a color for all of it (swatches; a model's or a group's Generate colors first).
 - **Add label**: plain text at that place, for that node (Ludovic, 2026-10-18); it becomes a row under the node.
-- **Add clip**: a plane, sphere or box for that node (only its particles or atoms are cut); it becomes a row under it.
-  Several per node (Ludovic, 2026-10-18; up to 8 per particle list).
+- **Add clip…**: a plane, sphere, box, cylinder or cone for that node (only its particles or atoms are cut); it becomes
+  a row under it. Several per node (Ludovic, 2026-10-18; up to 8 per particle list).
+- **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit
-text**), **Hide**, **Remove**.
+text**), **Remove**. On a distance: **Focus**, **Remove**. No **Hide**: every row's eye is in view (Ludo, 2026-10-28).
 
 ## 6. Not now
 
@@ -434,6 +450,15 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   objects), named by its shape and number (Plane 1). Its eye draws it in the scene or not (`clipping.show`, one step;
   the coordinator's default: a Prism cut has no on and off); picked, its properties show its name only and it has no ⋯
   (its menu and properties are the right-click's and the properties' lanes).
+- The eyes and the ⋯ (2026-10-29, lane `tree-eyes`; Ludo, 2026-10-28, from the cellVIEW evaluation): every row's eye and
+  ⋯ always in view, each in a column of its own (`tree-view.tsx`, shared with the mock); the brush, the scissors and the
+  trash moved into the ⋯ as Color…, Add clip… and Remove, a category's ⋯ its Color… (Uniform… at the ⋯) and Add clip…, a
+  clip's ⋯ its Remove; no Hide in a menu. A parent's eye sets all under it in one step (`setEyes` in `rows.ts`: one
+  `api.group`; a model's entities in one `mesoscale.style`, a list's targets in one `particles.look`), a shown part
+  draws its object again, a parent open when all under it is. The eyes dragged along the column (Prism's `drag()`: a
+  preview in the tree's eye states, one step on release, put back on a cancel; the column read in the tree's root, a
+  shadow root in the app); a click is a press and a release (Enter and Space click). A list's class has its eye (the
+  cryo-ET area reads a target hidden by its own layer). The color dot opens Color…'s items.
 - Not yet (step 3, with the right-click menu): Position, Clips, Labels. Also: a structure entity's or chain's eye (Prism
   hides representations, not parts); a color dot only where a color was set; the mesh section repeats the mesh's eye and
   name.

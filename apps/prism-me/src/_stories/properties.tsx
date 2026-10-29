@@ -419,11 +419,11 @@ function OnTop() {
 
 /**
  * A node's clips (ui.md §4, §5): each as a clip row's (`Clip`); Add a clip, the handle size. A category's: the cuts its
- * scissors made, each of every object under it
+ * Add clip… made, each of every object under it
  */
 function Clips(props: { node: MockNode }) {
   if (props.node.kind === 'category') {
-    return <Hint>No clips. Add one with the scissors: it cuts every object under it.</Hint>;
+    return <Hint>No clips. Add one with its ⋯ › Add clip…: it cuts every object under it.</Hint>;
   }
   return (
     <div class={classes.stack}>

@@ -19,7 +19,7 @@ import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { withTomogramSlices } from '../../tomograms.js';
 import { keepRows } from '@molstar/prism-ui';
-import { ancestorKeys, type Row, rowsOf, sameRow, toggleVisible } from '../rows.js';
+import { ancestorKeys, type Row, rowsOf, sameRow, setEyes } from '../rows.js';
 import {
   addLabel,
   clipItems,
@@ -193,9 +193,9 @@ describe('explorer', () => {
       v.plugin.state.data
         .select(StateSelection.Generators.ofTransformer(ParticleRepresentation3DLayers))
         .map((c) => (c.transform.params as any).layers);
-    expectOk((await toggleVisible(v.api, { ...row, visible: true }))!);
+    expectOk(await setEyes(v.api, v.api.explorer!, [row], false));
     expect(layers()).toMatchObject([[{ entities: [], targets: [0], visible: false }]]);
-    expectOk((await toggleVisible(v.api, { ...row, visible: false }))!);
+    expectOk(await setEyes(v.api, v.api.explorer!, [row], true));
     expect(layers()).toEqual([]);
   });
 
@@ -208,11 +208,10 @@ describe('explorer', () => {
     for (const kind of ['structure', 'particle list', 'mesh']) {
       const row = rows().find((r) => r.kind === kind)!;
       expect(row.visible).toBe(true);
-      const r = await toggleVisible(v.api, row);
-      expectOk(r!);
+      expectOk(await setEyes(v.api, v.api.explorer!, [row], !row.visible));
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(rows().find((x) => x.key === row.key)!.visible).toBe(false);
-      expectOk((await toggleVisible(v.api, { ...row, visible: false }))!);
+      expectOk(await setEyes(v.api, v.api.explorer!, [row], true));
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
     sub.unsubscribe();
@@ -342,23 +341,23 @@ describe('explorer', () => {
       `o:${crn.ref}`,
       'c:structures',
     ]);
-    // the menu: focus, and hide where it hides
+    // the menu: focus (no Hide: the eye is in view)
     const picked = area.pickedOf(particle)!;
     // a target is a part: its Move greyed (a part's move: not yet)
     const items = nodeMenuItems(v.api, area, picked);
-    expect(items.map((i) => i.id)).toEqual(['focus', 'move', 'hide', 'label']);
+    expect(items.map((i) => i.id)).toEqual(['focus', 'move', 'label']);
     expect(items[1].disabled).toBeTruthy();
     expect(nodeMenuItems(v.api, area, area.pickedOf(atoms)).map((i) => i.id)).toEqual(['focus', 'move', 'label']);
     // a whole structure moves and turns
     setGranularity('structure');
     const whole = nodeMenuItems(v.api, area, area.pickedOf(atoms));
-    expect(whole.map((i) => i.id)).toEqual(['focus', 'move', 'hide', 'label', 'remove']);
+    expect(whole.map((i) => i.id)).toEqual(['focus', 'move', 'label', 'remove']);
     expect(whole[1].disabled).toBeUndefined();
     setGranularity('chain');
     expect(nodeMenuItems(v.api, area, undefined).map((i) => i.id)).toEqual(['reset-camera']);
   });
 
-  it('maps a pick on a mesh, in a group or whole, to its row; its menu: color, move, clip, label', async () => {
+  it('maps a pick on a mesh, in a group or whole, to its row; its menu: color, move, clip, label, remove', async () => {
     const v = await viewer();
     const area = v.api.explorer!;
     const mesh = area.objectsState().value.find((o) => o.kind === 'mesh')!;
@@ -367,7 +366,7 @@ describe('explorer', () => {
     expect(area.pickedOf(Shape.Loci(shape))).toMatchObject(row);
     expect(area.pickedOf(ShapeGroup.Loci(shape, [{ ids: OrderedSet.ofSingleton(0), instance: 0 }]))).toMatchObject(row);
     const ids = nodeMenuItems(v.api, area, area.pickedOf(Shape.Loci(shape)), { open: () => {} }).map((i) => i.id);
-    expect(ids).toEqual(['focus', 'move', 'hide', 'color', 'clip', 'label', 'remove']);
+    expect(ids).toEqual(['focus', 'move', 'color', 'label', 'clip', 'remove']);
   });
 
   it("adds several clips to an object and one to a target (Prism's), each listed at its row, and colors a target", async () => {
@@ -484,7 +483,6 @@ describe('explorer', () => {
       'edit-label',
       'move',
       'focus',
-      'hide',
       'remove-label',
     ]);
     expect(nodeMenuItems(v.api, area, entity).map((x) => x.id)).toContain('label');

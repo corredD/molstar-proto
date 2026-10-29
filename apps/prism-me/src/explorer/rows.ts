@@ -34,7 +34,7 @@ export interface Row extends TreeRowView {
   readonly node?: NodeRef;
   /** A representation's row: its state ref */
   readonly representation?: string;
-  /** A category's objects (their refs): its eye and its scissors act on all of them */
+  /** A category's objects (their refs): its eye and its ⋯ act on all of them */
   readonly objects?: readonly string[];
   /** A clip's row: its cut's tag (Prism's) */
   readonly clip?: string;
@@ -187,8 +187,8 @@ export function rowsOf(
         kind: 'category',
         category: true,
         count: String(items.length),
-        // its eye shows or hides every object under it (shown while any is)
-        visible: items.some((o) => o.visible),
+        // its eye sets every object under it, all of each; open when they all are (never "some shown")
+        visible: items.every((o) => objectOpen(o, parts.get(o.ref))),
         objects: items.map((o) => o.ref),
         hasChildren: true,
       },
@@ -223,12 +223,24 @@ function foldedOut(rows: Row[], folded: ReadonlySet<string>): Row[] {
 type Draft = Omit<Row, 'expanded'>;
 type Push = (r: Draft, children: () => void) => void;
 
+/**
+ * An object's eye (Ludo, 2026-10-28): open when it is shown and every part of it too (a model's entities, a list's
+ * targets), never "some shown"; a volume's representations are its own views, not parts (a tomogram's hidden slices
+ * leave it open)
+ */
+export function objectOpen(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | undefined): boolean {
+  if (!o.visible || !part) return o.visible;
+  if (o.kind === 'model') return (part as MesoscaleInfo).entities.every((e) => e.visible);
+  if (o.kind === 'list') return (part as DecorationsInfo).targets.every((t) => t.visible !== false);
+  return true;
+}
+
 function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | undefined, push: Push) {
   const base = {
     depth: 1,
     label: o.label,
     ...(o.count !== undefined ? { count: o.count } : {}),
-    visible: o.visible,
+    visible: objectOpen(o, part),
     icon: ObjectIcons[o.kind],
     node: { ref: o.ref },
   };
@@ -274,7 +286,8 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
       const walk = (g: MesoGroup, depth: number) => {
         for (const child of g.groups) {
           const members = groupEntities(child);
-          const shown = members.some((id) => byId.get(id)?.visible);
+          // open when all its entities are (its own after: hide the model, then show one group alone)
+          const shown = members.every((id) => byId.get(id)?.visible !== false);
           push(
             {
               key: groupKey(child.path),
@@ -323,6 +336,7 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
             label: t.with ? `${t.name} · ${t.with}` : t.name,
             kind: 'target',
             count: t.count.toLocaleString('en'),
+            visible: t.visible !== false,
             hasChildren: false,
             node: { ref: o.ref, particles: { targets: [t.id] } },
           },
@@ -429,7 +443,7 @@ const VolumeRowKinds: ReadonlySet<string> = new Set(['slice', 'oblique slice', '
 
 /**
  * A category's color theme for every object under it, one step (`mesoscale.theme`, each kind by the theme it takes;
- * ui.md §3, Ludo 2026-10-27): its row's brush and its Look. Generated colors by each model's grouping as the tree shows
+ * ui.md §3, Ludo 2026-10-27): its row's Color… and its Look. Generated colors by each model's grouping as the tree shows
  * it (as its row's Generate colors); Uniform in `color`.
  */
 export function categoryTheme(
@@ -454,12 +468,44 @@ export function categoryTheme(
   return api.run('mesoscale.theme', { objects: [...objects], theme, groupBy });
 }
 
-/** A row's eye: the visibility operation of what it stands for (whether it shows its children aside) */
-export function toggleVisible(api: ViewerApi, row: Draft) {
-  const visible = !row.visible;
-  // a category's: every object under it, one step
+/** What an eye sets: a row, as the scene knows it */
+export type EyeRow = Pick<Row, 'kind' | 'node' | 'objects' | 'representation' | 'clip'>;
+
+/**
+ * Eyes set, one step (a click's row, or each row a drag passed; Ludo, 2026-10-28): each row's and every part under it
+ * (a parent's: all the way down), the object drawn again when a part of it is shown (hide the model, then show one
+ * group alone). The labels, distances and clips under a row keep their own.
+ */
+export function setEyes(api: ViewerApi, area: ExplorerApi, rows: readonly EyeRow[], visible: boolean) {
+  return api.group(visible ? 'Show' : 'Hide', async (g) => {
+    for (const row of rows) {
+      const r = await setEye(g, area, row, visible);
+      if (r && !r.ok) return r;
+    }
+    return undefined;
+  });
+}
+
+/** The kinds of the tree's object rows, by the scene's */
+const ObjectRowKinds: Readonly<Record<SceneObject['kind'], string>> = {
+  structure: 'structure',
+  model: 'mesoscale model',
+  list: 'particle list',
+  volume: 'volume',
+  mesh: 'mesh',
+};
+
+async function setEye(api: ViewerApi, area: ExplorerApi, row: EyeRow, visible: boolean) {
+  // a category's: every object under it (one write), then the parts of each
   if (row.kind === 'category' && row.objects?.length) {
-    return api.run('state.visibility', { node: row.objects.map((r) => `#${r}`).join(', '), visible });
+    const r = await api.run('state.visibility', { node: row.objects.map((r) => `#${r}`).join(', '), visible });
+    if (!r.ok) return r;
+    const kinds = new Map(area.objectsState().value.map((o) => [o.ref, ObjectRowKinds[o.kind]] as const));
+    for (const ref of row.objects) {
+      const p = await setParts(api, area, kinds.get(ref), ref, visible);
+      if (p && !p.ok) return p;
+    }
+    return r;
   }
   if (row.kind === 'clip' && row.clip) return api.run('clipping.show', { tag: row.clip, on: visible });
   const node = row.node;
@@ -468,27 +514,32 @@ export function toggleVisible(api: ViewerApi, row: Draft) {
     case 'structure':
       return api.run('structure.visibility', { structure: node.ref, visible });
     case 'mesoscale model':
-    case 'particle list':
-      return api.run('particles.visibility', { particles: node.ref, visible });
+    case 'particle list': {
+      const r = await api.run('particles.visibility', { particles: node.ref, visible });
+      return r.ok ? ((await setParts(api, area, row.kind, node.ref, visible)) ?? r) : r;
+    }
     case 'target':
+    case 'group':
+    case 'entity': {
+      if (!('particles' in node)) return;
+      // a part shown: its object drawn (its other parts as they are)
+      if (visible) {
+        const r = await api.run('particles.visibility', { particles: node.ref, visible });
+        if (!r.ok) return r;
+      }
       // a list's class: its targets' layer (Prism's one writer of the looks), not as entities
-      if ('particles' in node) {
+      if (row.kind === 'target') {
         return api.run('particles.look', {
           particles: node.ref,
           layers: [{ selector: { targets: node.particles.targets ?? [] }, visible }],
         });
       }
-      return;
-    case 'group':
-    case 'entity':
-      if ('particles' in node) {
-        return api.run('mesoscale.style', {
-          particles: node.ref,
-          entities: (node.particles.entities ?? []).join(','),
-          visible,
-        });
-      }
-      return;
+      return api.run('mesoscale.style', {
+        particles: node.ref,
+        entities: (node.particles.entities ?? []).join(','),
+        visible,
+      });
+    }
     case 'volume':
       return api.run('volume.visibility', { volume: node.ref, visible });
     case 'slice':
@@ -503,6 +554,23 @@ export function toggleVisible(api: ViewerApi, row: Draft) {
     case 'distance':
       return api.run('stage.editDistance', { distance: node.ref, visible });
   }
+}
+
+/**
+ * Every part of an object set: a model's entities (one write, none named: all), a list's targets (one layer each, as
+ * its rows' eyes), where it is drawn (its looks are its representations'); a volume's representations follow it already
+ * (Mol*'s subtree), a structure has no part eyes
+ */
+async function setParts(api: ViewerApi, area: ExplorerApi, kind: string | undefined, ref: string, visible: boolean) {
+  if (kind !== 'mesoscale model' && kind !== 'particle list') return;
+  if (!area.representationsState(ref).value.length) return;
+  if (kind === 'mesoscale model') return api.run('mesoscale.style', { particles: ref, visible });
+  const targets = api.cryoet?.decorationsState(ref).value?.targets ?? [];
+  if (!targets.length) return;
+  return api.run('particles.look', {
+    particles: ref,
+    layers: targets.map((t) => ({ selector: { targets: [t.id] }, visible })),
+  });
 }
 
 /** Every row open: all of the tree */
