@@ -19,6 +19,35 @@ refactor in place) and the review of the distances (PR #5):
   `ParamsForm`, a category's Look and Clips, Position with its Handles). Check: the app and the story look and behave
   the same. (The right-click's lane, `menu.ts` on its mock, is dropped: Ludo, 2026-10-28.)
 
+## Proposed (cellVIEW evaluation, 2026-10-28): order to decide
+
+From [progress/2026-10-28-cellview-evaluation.md](progress/2026-10-28-cellview-evaluation.md) and the reference
+[_spec/cellview.md](_spec/cellview.md). Not briefs yet: Ludo picks, orders and moves them to Next. Each: its layer, its
+evidence (read, inferred, measured), the decision it touches.
+
+- **a. The graphics modes change the levels of detail** (app; read, not run). Performance, Balanced, Quality, Ultra
+  write the pixel presets (`LodPixelPresets[mode]`: the strides and the pixel size), not the distance presets the
+  particles ignore at 3 px. Check: on CellPack MG, Performance draws visibly fewer spheres far away than Ultra, and the
+  mode picked stays lit. Test first: a mode's `lodPixelSize` is the preset's.
+- **b. Graded cuts per part** (library and app; read, cellVIEW `ObjectSpaceCutAways.compute`). A part's cut row gets
+  cellVIEW's + / 0 / − (+ keeps a layer of the part on the cut's face, − cuts it further), the band's width, and
+  fuzziness (the band thins out at random, the same instances every frame). The per-part mapping becomes a table (cut ×
+  part), which also lifts the 6 per-part cuts. Check: cut a cellPACK model with a plane, set the membrane to + and see a
+  layer of it kept on the face; raise fuzziness and see it thin out; move the camera and see the same instances. A
+  library change (Mol\*'s instance clip): its own lane off master, upstream when Ludo says so.
+- **c. Measure: do hidden particles cost a frame?** (library; inferred). A hidden part is a transparency of 1, probably
+  still drawn and discarded per fragment. Measure the frame on WebGPU with 90 % of CellPack MG hidden against none
+  hidden; if close, the GPU cull reads a visibility table and skips them. Check: hiding most of a model makes it faster.
+- **d. Show only** (app; cellVIEW's ingredient panel). On a part's right-click: show only this, only its group, only its
+  compartment; and show all again. One step each, through `particles.look`. Check: right-click a ribosome, Show only,
+  and only ribosomes stay; Undo brings back the rest.
+- **e. Ghosts of what is cut** (library and app; cellVIEW `DrawGhosts`). A cut's removed instances drawn as outlines
+  only, a switch on the cut. Check: cut a model in half and see the cut half's outline faintly, as context.
+- **f. Research, with Alexander, measured before any lane** (library): proxy spheres per target (k-means, the radius the
+  cluster's bound) against stride decimation, at the same sphere count; deferred shading from ID buffers; the aperture
+  cut (the visibility equalizer: what is in front of a focus part is opened). Each starts as a measurement or a design
+  note, not code. Proxy LOD stays per target, so it reopens no decision (architecture §7.2 is about per entity).
+
 ## Library fixes ready for upstream
 
 Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only when Ludovic says so: he asks the
