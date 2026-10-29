@@ -9,7 +9,8 @@ is not built is [../TODO.md](../TODO.md).
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
   parallel; merged in this order (each merges `origin/prism-me` before its PR):
-  - **1. Graphics modes change the LOD** (`me/lod-modes`, `~/prism-me-lanes/lod-modes`); started.
+  - **1. Graphics modes change the LOD** (`me/lod-modes`, `~/prism-me-lanes/lod-modes`): PR #16, reviewed, checked with
+    real GL on WebGPU and WebGL2 (a second bug found there: a list with fibers never lit a mode); waits on Ludo.
   - **6. Do hidden particles cost a frame?** (`me/hidden-cost`, a measurement); started.
   - **4. Graded cuts, the library half** (`me/graded-cuts`); started. The app half after 3.
   - **2 + 5. The tree's eye and ⋯, and Show only** (`me/tree-eyes`, one lane: both change the ⋯); started.
