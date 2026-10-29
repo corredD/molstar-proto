@@ -36,14 +36,8 @@ name no extension (upstreamable later, when Ludo says so).
   Press an eye and drag along the column: every row passed takes the first one's new state (Prism's `drag()`; one undo
   step for the drag). A row's color dot opens its colors, as Color…. Check: the Eyes, MoreMenu and CategoryMenu stories
   and the app behave the same; hide HIV, show only its membrane; drag down six eyes, Undo once.
-- **3. Clips in a category of their own** (app on Prism's clips; now; changes ui.md §2, §5). A Clips category after
-  Structures, Particles, Volumes, Meshes holds every clip of the scene; no clip row under an object. A clip's
-  properties: its shape, then What it cuts (every object or part it is given, × to take one off, Cut also… to add one).
-  An object's or part's Clips: the clips on it, New clip (a shape; it cuts this), Use a clip (one of the scene's). Add
-  clip… in the ⋯ lists a new clip of each shape and every clip of the scene. One clip is one Prism cut (its tag) over
-  the representations it is given. Check: the ClipsCategory, GradedCut (its list), PartClips and ObjectWithoutClips
-  stories and the app behave the same; make a plane from the membrane's Clips, use it on the capsid, see both cut and
-  both listed under the clip.
+- **3. Clips in a category of their own**: built (lane `clips-category`): a Clips category, a clip's What it cuts, a
+  node's Clips, Add clip… with the scene's clips.
 - **4. Graded cuts per part, and a part shown in part** (library and app; after 3, its library half now). Per (clip,
   object or part): keeps a layer (cellVIEW's +), cuts it, cuts it wider (−), with a band in Å and fuzziness (thins out
   toward the band's edge, the same instances every frame: a stable hash of the instance), _spec/cellview.md §4.1. The

@@ -283,7 +283,7 @@ describe("a category's tools (ui.md §3)", () => {
     item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Add a clip"]')!.click();
     await settle();
     const plane = Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]')).find(
-      (m) => m.textContent?.trim() === 'Plane',
+      (m) => m.textContent?.trim() === 'New plane',
     );
     expect(plane).toBeTruthy();
     plane!.click();
@@ -296,7 +296,7 @@ describe("a category's tools (ui.md §3)", () => {
 });
 
 describe('clips as rows (ui.md §3)', () => {
-  it('a clip made at a node is a row under it, its eye its drawing in the scene', async () => {
+  it('a clip is a row of the Clips category, none under the node it was made at, its eye its drawing', async () => {
     const v = await viewer([['HIV', 3]], true);
     const { host, model, refOf } = mount(v);
     const hiv = refOf('HIV');
@@ -308,7 +308,7 @@ describe('clips as rows (ui.md §3)', () => {
     await add('plane');
     await add('sphere', { particles: { entities: [1] } });
     const [whole, part] = v.api.clipping.cuts.value;
-    // the way to the entity unfolded: the model's rows, its clip after its children; the entity's under it
+    // the way to the entity unfolded: the model's rows, no clip among them; the clips in their category, last
     model.reveal({ key: `me:${hiv}:1`, label: 'protein 1', kind: 'entity', node: { ref: hiv } });
     model.open.set(new Set([...model.open.value, `me:${hiv}:1`]));
     await settle();
@@ -320,9 +320,10 @@ describe('clips as rows (ui.md §3)', () => {
       `4:g:${hiv}:root.cytoplasm`,
       `5:me:${hiv}:0`,
       `5:me:${hiv}:1`,
-      `6:k:${part.object.tag}`,
       `5:me:${hiv}:2`,
-      `3:k:${whole.object.tag}`,
+      '1:c:clips',
+      `2:k:${whole.object.tag}`,
+      `2:k:${part.object.tag}`,
     ]);
     expect(item(host, `k:${whole.object.tag}`)!.textContent).toContain('Plane 1');
     // its eye draws it in the scene

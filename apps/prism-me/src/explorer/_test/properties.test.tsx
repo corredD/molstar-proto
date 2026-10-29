@@ -183,23 +183,37 @@ describe('the properties on their mock', () => {
     expect(steps(v)).toBe(n + 2);
   });
 
-  it("a category's Clips: the cuts of every object under it, each editable, removed in one step", async () => {
+  it("a category's Clips: a scene's clip used on every object in it, a new one of all of them, one step each", async () => {
     const v = await viewer(2);
-    const refs = structures(v).map((s) => `#${s.cell.transform.ref}`);
-    const c = await v.api.run('clipping.add', { shape: 'plane', node: refs.join(', ') });
+    const [a, b] = structures(v).map((s) => s.cell.transform.ref);
+    const c = await v.api.run('clipping.add', { shape: 'plane', node: `#${a}` });
     if (!c.ok) throw new Error(c.message);
+    const tag = v.api.clipping.cuts.value[0].object.tag!;
+    const cuts = (ref: string) =>
+      v.api.clipping.cuts.value.filter((x) => x.targets.some((t) => v.api.explorer!.isUnder(t.ref, ref)));
     const host = mount(v);
     await until(() => !!rowOf(host, 'Structures'));
     rowOf(host, 'Structures')!.click();
     await open(host, 'clips');
     const clips = () => section(host, 'clips')!;
-    await until(() => !!clips().querySelector('[aria-label="Remove it"]'));
-    expect(clips().querySelector('button[aria-haspopup=listbox]')?.textContent).toBe('Plane');
+    const pick = async (label: string, option: string) => {
+      await until(() => !!clips().querySelector(`button[aria-label="${label}"]`));
+      clips().querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!.click();
+      await until(() => Array.from(clips().querySelectorAll('[role=option]')).some((o) => o.textContent === option));
+      Array.from(clips().querySelectorAll<HTMLElement>('[role=option]'))
+        .find((o) => o.textContent === option)!
+        .click();
+    };
     const n = steps(v);
-    clips().querySelector<HTMLButtonElement>('[aria-label="Remove it"]')!.click();
-    await until(() => v.api.clipping.cuts.value.length === 0);
+    // the plane on the second copy too: one step
+    await pick('A clip of the scene, used on every object in it', 'Plane 1');
+    await until(() => cuts(b).some((x) => x.object.tag === tag));
     expect(steps(v)).toBe(n + 1);
-    await until(() => !clips().querySelector('[aria-label="Remove it"]'));
+    // a new sphere of both: one step
+    await pick('A new clip that cuts every object in it', 'Sphere');
+    await until(() => v.api.clipping.cuts.value.length === 2);
+    expect(steps(v)).toBe(n + 2);
+    expect([cuts(a).length, cuts(b).length]).toEqual([2, 2]);
   });
 
   it('the Labels section: each label made at the node, its text and size edited, removed, one step each', async () => {

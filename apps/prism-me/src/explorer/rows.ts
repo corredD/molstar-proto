@@ -40,18 +40,23 @@ export interface Row extends TreeRowView {
   readonly clip?: string;
 }
 
-/** A clip (Prism's cut) as a row under the row it was made at (ui.md §3) */
-export interface ClipAt {
+/** A clip (Prism's cut) as a row of the Clips category (ui.md §3) */
+export interface ClipRow {
   readonly tag: string;
+  /** Its shape and number: Plane 1 */
   readonly label: string;
-  /** The row it goes under: its object's, its part's, its category's (a cut of several objects) */
-  readonly node: string;
-  /** Its (first) object's ref: under its row when its own is not there */
-  readonly object: string;
-  /** A cut of some of a model's entities: their ids, to find its group's row */
-  readonly entities?: readonly number[];
+  /** How many objects or parts it cuts (its What it cuts) */
+  readonly count: number;
   /** Drawn in the scene (its eye) */
   readonly drawn: boolean;
+}
+
+/** An object or a part a clip cuts (its What it cuts), as its row: its key, its name, what it stands for */
+export interface ClipUse {
+  readonly key: string;
+  /** Its name with its parent's (envelope › membrane), an object's alone */
+  readonly label: string;
+  readonly node: NodeRef;
 }
 
 /** Prism's cut shapes, as the tree names them */
@@ -106,7 +111,7 @@ export function rowsOf(
   filter: string,
   labels: readonly LabelInfo[] = [],
   distances: readonly DistanceInfo[] = [],
-  clips: readonly ClipAt[] = [],
+  clips: readonly ClipRow[] = [],
   /** While filtering, the rows the person folded (the filter opens every other) */
   folded: ReadonlySet<string> = NoKeys,
 ): Row[] {
@@ -116,11 +121,7 @@ export function rowsOf(
   // point's); one made at a model's group the model's grouping does not show now: under the model (§3), back under its
   // group when that grouping is shown again
   // one whose row is not there (a part gone, a key from elsewhere): under its object's row
-  const shownGroups = groupRowsOf(
-    objects,
-    parts,
-    clips.some((c) => (c.entities?.length ?? 0) > 1),
-  );
+  const shownGroups = groupRowsOf(objects, parts);
   const known = rowKeysOf(objects, parts, shownGroups.keys);
   const byNode = new Map<string, Draft[]>();
   const under = (key: string, object: string, row: Omit<Draft, 'depth'>) => {
@@ -130,19 +131,6 @@ export function rowsOf(
     if (list) list.push(row as Draft);
     else byNode.set(node, [row as Draft]);
   };
-  for (const c of clips) {
-    // a cut of several entities: its group's row, where one has exactly those
-    const group =
-      c.entities && c.entities.length > 1 ? shownGroups.byMembers.get(membersKey(c.object, c.entities)) : undefined;
-    under(group ?? c.node, c.object, {
-      key: `k:${c.tag}`,
-      label: c.label,
-      kind: 'clip',
-      visible: c.drawn,
-      hasChildren: false,
-      clip: c.tag,
-    });
-  }
   for (const l of labels) {
     under(l.node, l.target, {
       key: `l:${l.ref}`,
@@ -197,11 +185,38 @@ export function rowsOf(
       },
     );
   }
+  // the clips, in a category of their own after the others (Ludo, 2026-10-28): every clip of the scene, none under an
+  // object
+  if (clips.length) {
+    push(
+      { key: ClipsKey, depth: 0, label: 'Clips', kind: 'category', category: true, count: String(clips.length), hasChildren: true },
+      () => {
+        for (const c of clips) {
+          push(
+            {
+              key: `k:${c.tag}`,
+              depth: 1,
+              label: c.label,
+              count: c.count === 1 ? '1 object' : `${c.count} objects`,
+              kind: 'clip',
+              visible: c.drawn,
+              hasChildren: false,
+              clip: c.tag,
+            },
+            () => {},
+          );
+        }
+      },
+    );
+  }
   // a hit kept with the rows it is in; a category with no hit goes (as Prism's tree, scene-tree.tsx)
   return f ? foldedOut(filterRows(rows, f), folded) : rows;
 }
 
 const NoKeys: ReadonlySet<string> = new Set();
+
+/** The Clips category's key: its rows are the clips' (`k:<tag>`) */
+export const ClipsKey = 'c:clips';
 
 /** The rows under a folded one left out (it stays, with its hits under it, closed) */
 function foldedOut(rows: Row[], folded: ReadonlySet<string>): Row[] {
@@ -363,13 +378,9 @@ function groupKeyOf(ref: string, info: MesoscaleInfo, path: string): string {
   return `g:${ref}:${info.groupBy === 'function' && info.hasCompartments ? 'fn:' : ''}${path}`;
 }
 
-/**
- * The group rows the models' groupings make (their keys), and the models' refs; asked, each group's row by its entities
- * (a cut of a group is of its entities)
- */
-function groupRowsOf(objects: readonly SceneObject[], parts: Parts, members: boolean) {
+/** The group rows the models' groupings make (their keys), and the models' refs */
+function groupRowsOf(objects: readonly SceneObject[], parts: Parts) {
   const keys = new Set<string>();
-  const byMembers = new Map<string, string>();
   const models: string[] = [];
   for (const o of objects) {
     if (o.kind !== 'model') continue;
@@ -378,20 +389,13 @@ function groupRowsOf(objects: readonly SceneObject[], parts: Parts, members: boo
     if (!info) continue;
     const walk = (g: MesoGroup) => {
       for (const child of g.groups) {
-        const key = groupKeyOf(o.ref, info, child.path);
-        keys.add(key);
-        if (members) byMembers.set(membersKey(o.ref, groupEntities(child)), key);
+        keys.add(groupKeyOf(o.ref, info, child.path));
         walk(child);
       }
     };
     walk(info.groups);
   }
-  return { keys, models, byMembers };
-}
-
-/** A model's entities as one key (in any order) */
-function membersKey(model: string, entities: readonly number[]) {
-  return `${model}:${[...entities].sort((a, b) => a - b).join(',')}`;
+  return { keys, models };
 }
 
 /**
@@ -527,6 +531,8 @@ export function ancestorKeys(
   labels: readonly LabelInfo[] = [],
   distances: readonly DistanceInfo[] = [],
 ): string[] | undefined {
+  // a clip's row: under the Clips category
+  if (key.startsWith('k:')) return [ClipsKey];
   const rows = rowsOf(objects, parts, AllOpen, '', labels, distances);
   const i = rows.findIndex((r) => r.key === key);
   if (i < 0) return undefined;
@@ -543,58 +549,140 @@ export function ancestorKeys(
 
 type Cut = ViewerApi['clipping']['cuts']['value'][number];
 
-/**
- * Prism's cuts as rows, each at the row it was made at: a cut of some particles at its entity's or target's (or group's,
- * in `rowsOf`), of some atoms at its entity's or chain's, of all of an object at its object's, of several objects at
- * their category's. Over the cuts (few) and, for a part's, its object's parts.
- */
-export function clipsAt(area: ExplorerApi, cuts: readonly Cut[], objects: readonly SceneObject[]): ClipAt[] {
-  const out: ClipAt[] = [];
+/** Prism's cuts as the Clips category's rows, in Prism's order: each named by its shape and number, and its count */
+export function clipRowsOf(area: ExplorerApi, cuts: readonly Cut[], objects: readonly SceneObject[], parts: Parts) {
+  const out: ClipRow[] = [];
   for (const c of cuts) {
-    const tag = c.object.tag;
-    if (!tag) continue;
-    const of = objects.filter((o) => c.targets.some((t) => area.isUnder(t.ref, o.ref)));
-    if (!of.length) continue;
-    const o = of[0];
-    const label = `${ClipShapes[c.object.type] ?? c.object.type} ${c.index}`;
-    const at = { tag, label, object: o.ref, drawn: !!c.drawing };
-    if (of.length > 1) {
-      const category = of.every((x) => x.category === o.category);
-      out.push({ ...at, node: category ? `c:${o.category}` : `o:${o.ref}` });
-      continue;
-    }
-    const s = c.particles?.selector;
-    if (s?.targets?.length === 1) out.push({ ...at, node: `t:${o.ref}:${s.targets[0]}` });
-    else if (s?.entities?.length === 1) out.push({ ...at, node: `me:${o.ref}:${s.entities[0]}` });
-    else if (s?.entities?.length) out.push({ ...at, node: `o:${o.ref}`, entities: s.entities });
-    else out.push({ ...at, node: c.kept && c.atoms ? (atomsRow(area, c, o) ?? `o:${o.ref}`) : `o:${o.ref}` });
+    if (!c.object.tag) continue;
+    out.push({ tag: c.object.tag, label: clipName(c), count: whatItCuts(area, c, objects, parts).length, drawn: !!c.drawing });
   }
   return out;
 }
 
-/**
- * Where each cut of some atoms was found, by object ref: a cut is the same object until the clipping changes, so a change
- * of the scene (an eye's click) does not query the structure again per entity and chain
- */
-const AtomsRows = new WeakMap<Cut, Map<string, string | undefined>>();
-
-/** The entity's or chain's row a cut of some atoms is of (`area.cutsOf`: exactly its atoms), found once a cut */
-function atomsRow(area: ExplorerApi, c: Cut, o: SceneObject): string | undefined {
-  let known = AtomsRows.get(c);
-  if (!known) AtomsRows.set(c, (known = new Map()));
-  if (known.has(o.ref)) return known.get(o.ref);
-  const row = findAtomsRow(area, c, o);
-  known.set(o.ref, row);
-  return row;
+/** A clip's name: its shape and number (Plane 1) */
+export function clipName(c: Cut): string {
+  return `${ClipShapes[c.object.type] ?? c.object.type} ${c.index}`;
 }
 
-function findAtomsRow(area: ExplorerApi, c: Cut, o: SceneObject): string | undefined {
+/**
+ * What a clip cuts, each object or part as its row (ui.md §4, a clip's What it cuts), in the tree's order: an object
+ * cut all of it; of a model's particles, the largest groups it cuts all of (as the model's grouping shows them), then
+ * entities; a list's targets; a structure's entities, or their chains, it cuts all of
+ */
+export function whatItCuts(area: ExplorerApi, cut: Cut, objects: readonly SceneObject[], parts: Parts): ClipUse[] {
+  const out: ClipUse[] = [];
+  for (const o of objects) {
+    const of = area.cutOf(cut, o.ref);
+    if (!of) continue;
+    const some =
+      of.particles ? particleUses(o, parts.get(o.ref), of.particles) : of.atoms ? atomUses(area, cut, o) : undefined;
+    if (some?.length) out.push(...some);
+    else out.push({ key: `o:${o.ref}`, label: o.label, node: { ref: o.ref } });
+  }
+  return out;
+}
+
+/** The rows of a cut of some particles: a model's groups cut whole (the largest), then entities; a list's targets */
+function particleUses(
+  o: SceneObject,
+  part: MesoscaleInfo | DecorationsInfo | undefined,
+  ids: { readonly entities: readonly number[]; readonly targets: readonly number[] },
+): ClipUse[] | undefined {
+  if (!part) return undefined;
+  const ref = o.ref;
+  const out: ClipUse[] = [];
+  if (o.kind === 'list') {
+    const targets = new Set(ids.targets);
+    for (const t of (part as DecorationsInfo).targets) {
+      if (!targets.has(t.id)) continue;
+      out.push({ key: `t:${ref}:${t.id}`, label: `${o.label} › ${t.name}`, node: { ref, particles: { targets: [t.id] } } });
+    }
+    return out;
+  }
+  const info = part as MesoscaleInfo;
+  const cut = new Set(ids.entities);
+  const names = new Map(info.entities.map((e) => [e.id, e.name]));
+  const walk = (g: MesoGroup, parent: string) => {
+    for (const child of g.groups) {
+      const members = groupEntities(child);
+      const n = members.reduce((k, id) => k + (cut.has(id) ? 1 : 0), 0);
+      if (n && n === members.length) {
+        out.push({
+          key: groupKeyOf(ref, info, child.path),
+          label: `${parent} › ${child.label}`,
+          node: { ref, particles: { entities: members } },
+        });
+      } else if (n) walk(child, child.label);
+    }
+    for (const id of g.entities) {
+      if (!cut.has(id)) continue;
+      out.push({ key: `me:${ref}:${id}`, label: `${parent} › ${names.get(id) ?? id}`, node: { ref, particles: { entities: [id] } } });
+    }
+  };
+  walk(info.groups, o.label);
+  return out;
+}
+
+/** What a cut keeps whole of a structure, found once a cut (a cut is the same object until the clipping changes) */
+const AtomUses = new WeakMap<Cut, Map<string, ClipUse[]>>();
+
+/** The rows of a cut of some atoms: the structure's entities it cuts all of, else their chains it cuts all of */
+function atomUses(area: ExplorerApi, cut: Cut, o: SceneObject): ClipUse[] {
+  let known = AtomUses.get(cut);
+  if (!known) AtomUses.set(cut, (known = new Map()));
+  const had = known.get(o.ref);
+  if (had) return had;
+  const of = area.cutOf(cut, o.ref);
+  const out: ClipUse[] = [];
   for (const e of o.entities ?? []) {
-    if (area.cutsOf([c], { ref: o.ref, entity: e.id }).length) return `e:${o.ref}:${e.id}`;
+    const entity = { ref: o.ref, entity: e.id };
+    if (of && area.covers(of, entity)) {
+      out.push({ key: `e:${o.ref}:${e.id}`, label: `${o.label} › ${e.label}`, node: entity });
+      continue;
+    }
     if (e.chains.length < 2) continue;
     for (const ch of e.chains) {
-      if (area.cutsOf([c], { ref: o.ref, entity: e.id, chain: ch }).length) return `ch:${o.ref}:${e.id}:${ch}`;
+      const chain = { ref: o.ref, entity: e.id, chain: ch };
+      if (of && area.covers(of, chain)) out.push({ key: `ch:${o.ref}:${e.id}:${ch}`, label: `${e.label} › Chain ${ch}`, node: chain });
     }
   }
-  return undefined;
+  known.set(o.ref, out);
+  return out;
+}
+
+/**
+ * What a clip can be given (its Cut also): every object, and its parts a clip is often of: a structure's entities, a
+ * model's groups, a list's targets (a model's entities are many: from their own Clips), named as What it cuts names them
+ */
+export function clipTargetsOf(objects: readonly SceneObject[], parts: Parts): ClipUse[] {
+  const out: ClipUse[] = [];
+  for (const o of objects) {
+    const ref = o.ref;
+    out.push({ key: `o:${ref}`, label: o.label, node: { ref } });
+    for (const e of o.entities ?? []) {
+      out.push({ key: `e:${ref}:${e.id}`, label: `${o.label} › ${e.label}`, node: { ref, entity: e.id } });
+    }
+    const part = parts.get(ref);
+    if (!part) continue;
+    if (o.kind === 'list') {
+      for (const t of (part as DecorationsInfo).targets) {
+        out.push({ key: `t:${ref}:${t.id}`, label: `${o.label} › ${t.name}`, node: { ref, particles: { targets: [t.id] } } });
+      }
+      continue;
+    }
+    if (o.kind !== 'model') continue;
+    const info = part as MesoscaleInfo;
+    const walk = (g: MesoGroup, parent: string) => {
+      for (const child of g.groups) {
+        out.push({
+          key: groupKeyOf(ref, info, child.path),
+          label: `${parent} › ${child.label}`,
+          node: { ref, particles: { entities: groupEntities(child) } },
+        });
+        walk(child, child.label);
+      }
+    };
+    walk(info.groups, o.label);
+  }
+  return out;
 }
