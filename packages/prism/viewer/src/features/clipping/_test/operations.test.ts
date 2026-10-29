@@ -27,13 +27,23 @@ const simularium = () =>
     'small.simularium',
   );
 
-/** A particle list's representation: the particles that ignore each clip object (by its bit), as its layers set */
+/**
+ * A particle list's representation: the particles that ignore some clip objects, with those objects' bits, as its
+ * clipping table's rows say (row 0: the particles in no layer)
+ */
 const ignoring = (v: PrismViewer) => {
-  const r = v.plugin.managers.particles.hierarchy.current.lists[0].representations[0];
-  const clipping = (r.cell.obj as any).data.repr.state.clipping;
-  return clipping.layers
-    .map((l: any) => [Array.from(OrderedSet.toArray(l.loci.indices)), l.groups])
-    .sort((a: any, b: any) => a[0][0] - b[0][0]);
+  const { cell, representations } = v.plugin.managers.particles.hierarchy.current.lists[0];
+  const { layers, table } = (representations[0].cell.obj as any).data.repr.state.clipping;
+  if (!table) return [];
+  const rowOf = new Array<number>(cell.obj!.data.count).fill(0);
+  for (const l of layers) for (const j of OrderedSet.toArray(l.loci.indices)) rowOf[j] = l.row;
+  const bits = (row: any[]) => row.reduce((m: number, c, i) => (c?.mode === 'ignore' ? m | (1 << i) : m), 0);
+  const byBits = new Map<number, number[]>();
+  rowOf.forEach((r, j) => {
+    const b = bits(table[r]);
+    if (b) byBits.set(b, [...(byBits.get(b) ?? []), j]);
+  });
+  return [...byBits].map(([b, js]) => [js, b]).sort((a: any, b: any) => a[0][0] - b[0][0]);
 };
 
 const triangle = () => new File(['v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n'], 'triangle.obj');

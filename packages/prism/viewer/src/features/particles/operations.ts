@@ -37,8 +37,8 @@ import { entryRoot, isFailure, namesOf, onePicker, pickOne } from '../../api/sco
 import { commitRepresentation, setRepresentation } from '../../api/set-representation.js';
 import {
   copyParticleLayers,
-  type ParticleCutPatch,
   type ParticleLayerPatch,
+  type ParticleLookPatch,
   particleLookPatchError,
   patchParticleLook,
 } from '../../sources/particles/look.js';
@@ -59,7 +59,7 @@ export interface ParticleListLookPatch {
   readonly particles?: string;
   readonly layers?: ParticleLayerPatch[];
   readonly hidden?: number[];
-  readonly cuts?: { add?: ParticleCutPatch[]; remove?: string[] };
+  readonly cuts?: ParticleLookPatch['cuts'];
 }
 
 export interface ParticleRepresentationInfo {
@@ -522,16 +522,19 @@ export class ParticlesApi extends ApiArea {
       layers: OptionalParam(
         PD.Value<ParticleLayerPatch[]>([], {
           description:
-            'Per selector ({ entities, compartments, targets }): visible, color, transparency, emissive (null clears), reset',
+            'Per selector ({ entities, compartments, targets }): visible, color, transparency, emissive, shown (the share, 0–1) (null clears), reset',
         }),
       ),
       hidden: OptionalParam(
         PD.Value<number[]>([], { description: 'The targets left out (another representation draws them)' }),
       ),
       cuts: OptionalParam(
-        PD.Value<{ add?: ParticleCutPatch[]; remove?: string[] }>(
+        PD.Value<NonNullable<ParticleLookPatch['cuts']>>(
           {},
-          { description: 'Cuts of some particles: added ({ tag, entities, compartments, targets }), removed by tag' },
+          {
+            description:
+              'Cuts of some particles: parts added ({ tag, entities, compartments, targets, mode: cut, keep or wider, band in Å, fuzziness 0–1 }), removed by tag or by part ({ tag, entities, compartments, targets })',
+          },
         ),
       ),
       lists: OptionalParam(
@@ -548,7 +551,7 @@ export class ParticlesApi extends ApiArea {
       const { layers, hidden, cuts, lists, particles, representation, node } = values as typeof values & {
         layers?: ParticleLayerPatch[];
         hidden?: number[];
-        cuts?: { add?: ParticleCutPatch[]; remove?: string[] };
+        cuts?: ParticleLookPatch['cuts'];
         lists?: ParticleListLookPatch[];
       };
       if (lists && (layers || hidden || cuts || representation || node)) {

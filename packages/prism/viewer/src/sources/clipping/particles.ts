@@ -10,16 +10,14 @@ import { StateSelection } from '@molstar/core/state';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import {
-  MaxParticleCutIndex,
   type ParticleCutProps,
   ParticleRepresentation3DLayers,
 } from '@molstar/plugin/state/transforms/particles/layers';
 
 // Cuts of some particles (clipping.md §5): a particle representation's layers cell (`ParticleRepresentation3DLayers`)
-// holds, per cut, the particles it cuts, by the cut's tag; the others ignore its clip object (Mol*'s clipping groups).
+// holds, per cut, the particles it cuts (a record a part, each its way), by the cut's tag; the others ignore its clip
+// object (the representation's clipping table).
 // The layers cell is the record, as a structure's clipping layer is for its kept atoms.
-
-export { MaxParticleCutIndex };
 
 /** Which particles a cut cuts: by entity, compartment or target ids (`Particle.Selector`) */
 export interface ParticleSelector {
@@ -49,10 +47,12 @@ function layersCell(state: State, reprRef: string): StateObjectCell | undefined 
 const cutsIn = (cell: StateObjectCell | undefined) =>
   ((cell?.transform.params as { cuts?: ParticleCutProps[] } | undefined)?.cuts ?? []) as ParticleCutProps[];
 
-/** The particles the cut tagged `tag` cuts on a representation, if of some only */
+/** The particles the cut tagged `tag` cuts on a representation, if of some only: every part of it, one selector */
 export function particleCutOf(state: State, repr: StateObjectCell, tag: string): ParticleSelector | undefined {
-  const c = cutsIn(layersCell(state, repr.transform.ref)).find((x) => x.tag === tag);
-  return c ? particleSelector(c) : undefined;
+  const parts = cutsIn(layersCell(state, repr.transform.ref)).filter((x) => x.tag === tag);
+  if (!parts.length) return undefined;
+  const union = (k: keyof ParticleSelector) => Array.from(new Set(parts.flatMap((p) => p[k]))).sort((a, b) => a - b);
+  return { entities: union('entities'), compartments: union('compartments'), targets: union('targets') };
 }
 
 /** How many particles a selector picks, and in words (an entity's or a target's name when one) */

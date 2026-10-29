@@ -5,11 +5,13 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { OrderedSet } from '@molstar/core/data/int';
 import { StateSelection } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
 import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import { afterEach, describe, expect, it } from 'vitest';
 import { expectOk } from '../../../_test/harness.js';
+import { type Cut, findCuts } from '../../../sources/clipping/cuts.js';
 import { DefaultPrismViewerSpec } from '../../../default-spec.js';
 import { createPrismViewerHeadless } from '../../../headless.js';
 import type { PrismViewer } from '../../../viewer.js';
@@ -35,6 +37,11 @@ async function create() {
   return viewer;
 }
 
+const ok = <T>(r: { ok: boolean; value?: unknown }) => {
+  expectOk(r as any);
+  return r.value as T;
+};
+
 const red = Color(0xff0000);
 const blue = Color(0x0000ff);
 
@@ -46,6 +53,7 @@ const looks = (v: PrismViewer) => {
   return new Map(cells.map((c) => [c.transform.parent, c.transform.params as any]));
 };
 const lookOf = (v: PrismViewer) => looks(v).get(list(v).representations[0].cell.transform.ref);
+const ids = (targets: number[]) => ({ entities: [], compartments: [], targets });
 
 describe('particles.look', () => {
   it('merges layers by their selector (ids sorted), keeping the fields a patch leaves out', async () => {
@@ -55,8 +63,8 @@ describe('particles.look', () => {
     expectOk(await run({ layers: [{ selector: { targets: [0] }, visible: false }] }));
     expectOk(await run({ layers: [{ selector: { targets: [1, 2] }, transparency: 0.5 }] }));
     expect(lookOf(v).layers).toEqual([
-      { entities: [], compartments: [], targets: [1, 2], visible: true, color: red, transparency: 0.5, emissive: null },
-      { entities: [], compartments: [], targets: [0], visible: false, color: null, transparency: null, emissive: null },
+      { ...ids([1, 2]), visible: true, color: red, transparency: 0.5, emissive: null, shown: null },
+      { ...ids([0]), visible: false, color: null, transparency: null, emissive: null, shown: null },
     ]);
   });
 
@@ -227,6 +235,11 @@ describe('particles.look', () => {
       { layers: [{ selector: { targets: [1] }, transparency: 7 }] },
       { hidden: ['a', 1] },
       { cuts: { add: [{ targets: [1] }] } },
+      { layers: [{ selector: { targets: [1] }, shown: 1.5 }] },
+      { cuts: { add: [{ tag: 't', targets: [1], mode: 'thin' }] } },
+      { cuts: { add: [{ tag: 't', targets: [1], band: -1 }] } },
+      { cuts: { add: [{ tag: 't', targets: [1], fuzziness: 2 }] } },
+      { cuts: { remove: [{ targets: [1] }] } },
     ]) {
       expect(await run(bad)).toMatchObject({ ok: false, code: 'invalid' });
     }
@@ -243,5 +256,61 @@ describe('particles.look', () => {
     expectOk(await v.api.run('particles.look', { node: `#${second}`, hidden: [1] }));
     expect(looks(v).has(first)).toBe(false);
     expect(looks(v).get(second)?.hidden).toEqual([1]);
+  });
+
+  it('shows a share of a part: the same particles hidden at a share, a lower share hiding more', async () => {
+    const v = await create();
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
+    const hidden = () => {
+      const t = (list(v).representations[0].cell.obj as any).data.repr.state.transparency;
+      return t.layers.filter((l: any) => l.value === 1).flatMap((l: any) => OrderedSet.toArray(l.loci.indices));
+    };
+    // target 3: particles 3 and 4, their stable randoms about 0.53 and 0.80 (`Clipping.random`)
+    expectOk(await run({ layers: [{ selector: { targets: [3] }, shown: 0.3 }] }));
+    expect(lookOf(v).layers).toMatchObject([{ targets: [3], shown: 0.3 }]);
+    expect(hidden()).toEqual([3, 4]);
+    expectOk(await run({ layers: [{ selector: { targets: [3] }, shown: 0.6 }] }));
+    expect(hidden()).toEqual([4]);
+    // all shown again: no layer left
+    expectOk(await run({ layers: [{ selector: { targets: [3] }, shown: null }] }));
+    expect(looks(v).size).toBe(0);
+  });
+
+  it('gives a cut several parts, each its way; replaced by tag and part, removed by part or by tag', async () => {
+    const v = await create();
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
+    const cut = ok<Cut>(
+      await v.api.clipping.add({ shape: 'plane', node: `#${list(v).cell.transform.ref}`, particles: { targets: [1] } }),
+    );
+    const tag = cut.object.tag!;
+    expectOk(await run({ cuts: { add: [{ tag, targets: [1], mode: 'keep', band: 40, fuzziness: 0.5 }] } }));
+    expectOk(await run({ cuts: { add: [{ tag, targets: [2], mode: 'wider', band: 80 }] } }));
+    expect(lookOf(v).cuts).toEqual([
+      { tag, ...ids([1]), mode: 'keep', band: 40, fuzziness: 0.5 },
+      { tag, ...ids([2]), mode: 'wider', band: 80, fuzziness: 0 },
+    ]);
+    // the cut reads back every part
+    expect(findCuts(v.plugin)[0].particles?.selector).toMatchObject({ targets: [1, 2] });
+    expect(await run({ cuts: { add: [{ tag, targets: [2], mode: 'wider', band: 80 }] } })).toMatchObject({
+      unchanged: true,
+    });
+    expectOk(await run({ cuts: { remove: [{ tag, targets: [2] }] } }));
+    expect(lookOf(v).cuts).toEqual([{ tag, ...ids([1]), mode: 'keep', band: 40, fuzziness: 0.5 }]);
+    expectOk(await run({ cuts: { remove: [tag] } }));
+    expect(looks(v).size).toBe(0);
+  });
+
+  it('cuts some particles by more than six cuts on a representation', async () => {
+    const v = await create();
+    const node = `#${list(v).cell.transform.ref}`;
+    // each a shape and a place of its own (one like an earlier one would be that one)
+    const shapes = ['sphere', 'plane', 'cube'] as const;
+    for (let i = 0; i < 8; ++i) {
+      ok(await v.api.clipping.add({ shape: shapes[Math.floor(i / 3)], node, particles: { targets: [i % 3] } }));
+    }
+    expect(lookOf(v).cuts).toHaveLength(8);
+    const clipping = (list(v).representations[0].cell.obj as any).data.repr.state.clipping;
+    // eight objects, each a cell of the rows: none left out
+    expect(clipping.table.every((row: unknown[]) => row.filter(Boolean).length === 8)).toBe(true);
   });
 });

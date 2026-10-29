@@ -31,6 +31,8 @@ export interface ParticleLayerPatch {
   readonly color?: Color | null;
   readonly transparency?: number | null;
   readonly emissive?: number | null;
+  /** The share shown (0 to 1), the same particles at every share; null: all */
+  readonly shown?: number | null;
   readonly reset?: boolean;
 }
 
@@ -39,13 +41,30 @@ export interface ParticleLookPatch {
   readonly layers?: readonly ParticleLayerPatch[];
   /** The targets left out (drawn by another representation), replaced */
   readonly hidden?: readonly number[];
-  /** Cuts of some particles: added (one of the same tag replaced), removed by tag */
-  readonly cuts?: { readonly add?: readonly ParticleCutPatch[]; readonly remove?: readonly string[] };
+  /**
+   * Cuts of some particles: parts added (one of the same tag and selector replaced), removed by tag (every part of the
+   * cut) or by part (a tag and a selector)
+   */
+  readonly cuts?: {
+    readonly add?: readonly ParticleCutPatch[];
+    readonly remove?: readonly (string | ParticleCutPart)[];
+  };
 }
 
-/** A cut of some particles: the representation's clip object tagged `tag` cuts only the selector's */
-export interface ParticleCutPatch extends ParticleLookSelector {
+/** A part of a cut: the representation's clip object tagged `tag` on the selector's particles */
+export interface ParticleCutPart extends ParticleLookSelector {
   readonly tag: string;
+}
+
+/**
+ * A cut of some particles: the representation's clip object tagged `tag` cuts only the selector's, its way: `cut` (the
+ * default), `keep` a layer of the band inside, or cut a band `wider`; the band in Å (60 by default) and the fuzziness
+ * (0 to 1, 0 by default) that thins the band toward its edge (`Clipping.isCut`, the instance clip)
+ */
+export interface ParticleCutPatch extends ParticleCutPart {
+  readonly mode?: 'cut' | 'keep' | 'wider';
+  readonly band?: number;
+  readonly fuzziness?: number;
 }
 
 interface LookParams {
@@ -61,6 +80,9 @@ const isIds = (ids: unknown) => ids === undefined || (Array.isArray(ids) && ids.
 const isUnit = (x: unknown) => x === undefined || x === null || (typeof x === 'number' && x >= 0 && x <= 1);
 const isSelector = (s: unknown): s is ParticleLookSelector =>
   !!s && typeof s === 'object' && ['entities', 'compartments', 'targets'].every((k) => isIds((s as any)[k]));
+const isPart = (c: unknown): c is ParticleCutPart =>
+  isSelector(c) && typeof (c as ParticleCutPart).tag === 'string' && !!(c as ParticleCutPart).tag;
+const CutModes = ['cut', 'keep', 'wider'];
 
 /** What is wrong with a patch given as values (an agent's JSON), none when it is well formed */
 export function particleLookPatchError(patch: ParticleLookPatch): string | undefined {
@@ -73,25 +95,28 @@ export function particleLookPatchError(patch: ParticleLookPatch): string | undef
       if (l.visible !== undefined && typeof l.visible !== 'boolean') return 'visible is true or false.';
       if (l.color !== undefined && l.color !== null && !Number.isInteger(l.color))
         return 'color is a color number or null.';
-      if (!isUnit(l.transparency) || !isUnit(l.emissive)) return 'transparency and emissive are 0 to 1, or null.';
+      if (!isUnit(l.transparency) || !isUnit(l.emissive) || !isUnit(l.shown)) {
+        return 'transparency, emissive and shown are 0 to 1, or null.';
+      }
     }
   }
   if (hidden !== undefined && !isIds(hidden)) return 'hidden is a list of target ids.';
   if (cuts !== undefined) {
     const { add, remove } = (cuts ?? {}) as { add?: unknown; remove?: unknown };
-    if (
-      add !== undefined &&
-      !(
-        Array.isArray(add) &&
-        add.every(
-          (c) => isSelector(c) && typeof (c as ParticleCutPatch).tag === 'string' && !!(c as ParticleCutPatch).tag,
-        )
-      )
-    ) {
+    if (add !== undefined && !(Array.isArray(add) && add.every(isPart))) {
       return 'Each cut added has a tag and integer ids.';
     }
-    if (remove !== undefined && !(Array.isArray(remove) && remove.every((t) => typeof t === 'string'))) {
-      return 'cuts.remove is a list of tags.';
+    for (const c of (add ?? []) as ParticleCutPatch[]) {
+      if (c.mode !== undefined && !CutModes.includes(c.mode)) return "A cut's mode is cut, keep or wider.";
+      if (c.band !== undefined && !(typeof c.band === 'number' && c.band >= 0 && Number.isFinite(c.band))) {
+        return "A cut's band is a length in Å, 0 or more.";
+      }
+      if (c.fuzziness !== undefined && (c.fuzziness === null || !isUnit(c.fuzziness))) {
+        return "A cut's fuzziness is 0 to 1.";
+      }
+    }
+    if (remove !== undefined && !(Array.isArray(remove) && remove.every((t) => typeof t === 'string' || isPart(t)))) {
+      return 'cuts.remove is a list of tags or parts ({ tag, entities, compartments, targets }).';
     }
   }
   return undefined;
@@ -102,10 +127,14 @@ const keyOf = (s: { entities: readonly number[]; compartments: readonly number[]
   `${s.entities.join(',')}|${s.compartments.join(',')}|${s.targets.join(',')}`;
 
 const isNoChange = (l: ParticleLayerProps) =>
-  l.visible && l.color === null && l.transparency === null && l.emissive === null;
+  l.visible && l.color === null && l.transparency === null && l.emissive === null && (l.shown ?? null) === null;
 
 const sameLayer = (a: ParticleLayerProps, b: ParticleLayerProps) =>
-  a.visible === b.visible && a.color === b.color && a.transparency === b.transparency && a.emissive === b.emissive;
+  a.visible === b.visible &&
+  a.color === b.color &&
+  a.transparency === b.transparency &&
+  a.emissive === b.emissive &&
+  (a.shown ?? null) === (b.shown ?? null);
 
 function sameIds(a: readonly number[], b: readonly number[]) {
   if (a.length !== b.length) return false;
@@ -137,13 +166,15 @@ function patchLayers(old: readonly ParticleLayerProps[], patches: readonly Parti
     const key = keyOf(selector);
     const i = at.get(key);
     const was = i === undefined ? undefined : layers[i];
-    const base = p.reset || !was ? { visible: true, color: null, transparency: null, emissive: null } : was;
+    const base =
+      p.reset || !was ? { visible: true, color: null, transparency: null, emissive: null, shown: null } : was;
     const next: ParticleLayerProps = {
       ...selector,
       visible: p.visible ?? base.visible,
       color: p.color !== undefined ? p.color : base.color,
       transparency: p.transparency !== undefined ? p.transparency : base.transparency,
       emissive: p.emissive !== undefined ? p.emissive : base.emissive,
+      shown: p.shown !== undefined ? p.shown : (base.shown ?? null),
     };
     const keep = !isNoChange(next);
     if (was && keep && sameLayer(was, next)) continue;
@@ -159,18 +190,34 @@ function patchLayers(old: readonly ParticleLayerProps[], patches: readonly Parti
   return changed ? layers.filter((l): l is ParticleLayerProps => !!l) : old;
 }
 
+const sortedPart = (c: ParticleCutPart) => ({
+  entities: sorted(c.entities),
+  compartments: sorted(c.compartments),
+  targets: sorted(c.targets),
+});
+/** A part's key: its cut's tag and its selector's */
+const partKey = (tag: string, s: Parameters<typeof keyOf>[0]) => `${tag}#${keyOf(s)}`;
+
 function patchCuts(old: readonly ParticleCutProps[], patch: NonNullable<ParticleLookPatch['cuts']>) {
-  const drop = new Set<string>([...(patch.remove ?? []), ...(patch.add ?? []).map((c) => c.tag)]);
-  if (!drop.size) return old;
-  const cuts = old.filter((c) => !drop.has(c.tag));
-  for (const c of patch.add ?? []) {
-    cuts.push({
-      tag: c.tag,
-      entities: sorted(c.entities),
-      compartments: sorted(c.compartments),
-      targets: sorted(c.targets),
-    });
+  const tags = new Set<string>();
+  const parts = new Set<string>();
+  for (const r of patch.remove ?? []) {
+    if (typeof r === 'string') tags.add(r);
+    else parts.add(partKey(r.tag, sortedPart(r)));
   }
+  const added = (patch.add ?? []).map(
+    (c): ParticleCutProps => ({
+      tag: c.tag,
+      ...sortedPart(c),
+      mode: c.mode ?? 'cut',
+      band: c.band ?? 60,
+      fuzziness: c.fuzziness ?? 0,
+    }),
+  );
+  for (const c of added) parts.add(partKey(c.tag, c));
+  if (!tags.size && !parts.size) return old;
+  const cuts = old.filter((c) => !tags.has(c.tag) && !parts.has(partKey(c.tag, c)));
+  cuts.push(...added);
   if (cuts.length === old.length && cuts.every((c, i) => sameCut(c, old[i]))) return old;
   return cuts;
 }
@@ -179,7 +226,10 @@ const sameCut = (a: ParticleCutProps, b: ParticleCutProps) =>
   a.tag === b.tag &&
   sameIds(a.entities, b.entities) &&
   sameIds(a.compartments, b.compartments) &&
-  sameIds(a.targets, b.targets);
+  sameIds(a.targets, b.targets) &&
+  (a.mode ?? 'cut') === (b.mode ?? 'cut') &&
+  (a.band ?? 60) === (b.band ?? 60) &&
+  (a.fuzziness ?? 0) === (b.fuzziness ?? 0);
 
 /**
  * Patches the looks of the particle representation `reprRef` in `b` (applied, updated or deleted when left empty;
