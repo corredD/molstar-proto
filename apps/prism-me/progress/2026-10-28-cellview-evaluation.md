@@ -95,6 +95,25 @@ so), the parameters keyed by index (prism-me keys by node).
   (`packages/prism/viewer/_spec/clipping.md:43-47`), `stage.clipWhole` writes it per representation
   (`stage-tools/src/operations.ts:381-388`). Not probed.
 
+## The mock (Ludo, 2026-10-28: "everything proposed")
+
+Storybook, prism-me › Explorer › Proposed (cellVIEW), stories in `apps/prism-me/src/_stories/proposed.stories.tsx`, the
+controls in `proposed.tsx`. Apart from the decided mocks: a `proposed` switch on the mock panel, scene and menus, off in
+every other story, so nothing proposed looks decided.
+
+- **Graded cut** (items b, e): a plane clip's Clip section gains "What it cuts", one line per compartment (ignores it,
+  keeps a layer, cuts it, cuts it wider) with a band (Å) and fuzziness where it keeps or widens; a preview of the picked
+  part, a 2D slice of dots drawn by cellVIEW's rule (`isCut`, at full strength, its stable hash); Ghosts outlines what
+  is removed.
+- **Aperture cut** (item f): the parts it opens onto, the opening, the share kept near the edge, a preview of the
+  screen.
+- **Shown in part** (with item b): Look › Shown on a group, a model entity or a target.
+- **Show only** (item d): on a part's right-click. **Add aperture**: Add clip… gains it. **Clip menu**: Outline what it
+  cuts. **Clip rows**: the clips under their model, with how many parts they cut.
+
+Checked: rendered headless (Playwright on Chrome) in light and dark, wide and narrow, no page error;
+`typecheck:storybook`, `styles:check`, `tsc`, lint, format, `check:workspace`.
+
 ## Size
 
-Docs only: the spec (about 200 lines), this file, the TODO block. No code.
+The spec (about 200 lines), this file, the TODO block; the mock (about 450 lines of stories). No app code.
