@@ -87,7 +87,8 @@ export const ClipMenu: StoryObj = {
 
 /**
  * Every row's eye in view; a parent's eye sets every row under it, all the way down (Ludo, 2026-10-28): hide the model,
- * then show one of its groups or entities alone.
+ * then show one of its groups or entities alone. As in C4D, press an eye and drag along the column: every row passed
+ * takes the first one's new state. A row's color dot opens its colors.
  */
 export const Eyes: StoryObj = {
   render: () =>

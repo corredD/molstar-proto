@@ -207,5 +207,16 @@ defineStyles('me/_stories/explorer.module.css', `@layer msp.components {
 .msp-me-explorer-eyesShown :is(button[aria-label="Hide"], button[aria-label="Show"], button[aria-label="More"]) {
   opacity: 1;
 }
+
+.msp-me-explorer-eyesShown [data-tree-key] span[style*="background"] {
+  cursor: pointer;
+  position: relative;
+
+  &:before {
+    content: "";
+    inset: calc(-1 * var(--msp-space-2));
+    position: absolute;
+  }
+}
 }
 `);

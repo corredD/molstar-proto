@@ -81,22 +81,22 @@ export class ClipBook {
   }
 
   /** A new clip of `shape`; with `node`, it cuts (or, an aperture, opens onto) that node */
-  add(shape: ClipShape, node?: string): string {
+  add(shape: ClipShape, node?: string, nodeLabel?: string): string {
     const key = `k:${this.next++}`;
     const same = this.clips.value.filter((c) => c.shape === shape).length;
     const label = same ? `${ShapeNames[shape]} ${same + 1}` : ShapeNames[shape];
     this.clips.set([...this.clips.value, { key, label, shape }]);
-    if (node) this.use(key, node, shape === 'aperture' ? 'focus' : 'cut');
+    if (node) this.use(key, node, shape === 'aperture' ? 'focus' : 'cut', 60, 0, nodeLabel);
     return key;
   }
 
-  /** `clip` used on `node` (once: a second use of the same pair is ignored) */
-  use(clip: string, node: string, bias: CutBias, band = 60, fuzziness = 0) {
+  /** `clip` used on `node` (once: a second use of the same pair is ignored); `label`, the node's name if not a target */
+  use(clip: string, node: string, bias: CutBias, band = 60, fuzziness = 0, label?: string) {
     if (this.uses.value.some((u) => u.clip === clip && u.node === node)) return;
     const use: ClipUse = {
       clip,
       node,
-      nodeLabel: TargetNames.get(node) ?? node,
+      nodeLabel: TargetNames.get(node) ?? label ?? node,
       bias: observableState(bias),
       band: observableState(band),
       fuzziness: observableState(fuzziness),

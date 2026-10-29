@@ -6,6 +6,7 @@
 
 import type { ContextMenuItem } from '@molstar/prism-ui';
 import { CategoryThemes } from '../explorer/tree-view.js';
+import { type ClipShape, clipBook, ShapeNames } from './clip-book.js';
 import { type MockNode, ObjectKinds } from './fake-scene.js';
 
 // The explorer's menus as ui.md says them (§2 + Open, §5 the right-click, §7 a distance's), for the mocks: the same
@@ -122,6 +123,7 @@ function nodeMenu(node: MockNode, openClipShapes?: () => void, proposed = false)
  * (Color…, Add clip…, Remove) with its right-click's items; the same menu on the canvas. No Hide: the eye is always there.
  */
 export function proposedMenuOf(node: MockNode, open: { clipShapes(): void; colors(): void }): ContextMenuItem[] {
+  // Add clip…: a new clip of a shape, or one of the scene's (proposedClipItems)
   const colors = { ...item('color', 'Color…'), run: open.colors };
   const clip = (label: string) => ({ ...item('clip', label), run: open.clipShapes });
   const remove = item('remove', 'Remove');
@@ -151,5 +153,24 @@ export function proposedMenuOf(node: MockNode, open: { clipShapes(): void; color
     ...(clippable(node) ? [clip('Add clip…')] : []),
     ...showOnly(node),
     ...(ObjectKinds.has(node.kind) ? [remove] : []),
+  ];
+}
+
+/**
+ * The proposed Add clip… (Ludo, 2026-10-28): a new clip of a shape that cuts `node`, or a clip of the scene used on it
+ * too (those already on it greyed)
+ */
+export function proposedClipItems(node: MockNode): ContextMenuItem[] {
+  const shapes: ClipShape[] = ['plane', 'sphere', 'box', 'aperture'];
+  const on = new Set(clipBook.uses.value.filter((u) => u.node === node.key).map((u) => u.clip));
+  return [
+    ...shapes.map((shape) => ({
+      ...item(`new-${shape}`, `New ${ShapeNames[shape].toLowerCase()}`),
+      run: () => clipBook.add(shape, node.key, node.label),
+    })),
+    ...clipBook.clips.value.map((c) => ({
+      ...item(`use-${c.key}`, `Use ${c.label}`, on.has(c.key) ? 'Already on it' : undefined),
+      run: () => clipBook.use(c.key, node.key, c.shape === 'aperture' ? 'focus' : 'cut', 60, 0, node.label),
+    })),
   ];
 }

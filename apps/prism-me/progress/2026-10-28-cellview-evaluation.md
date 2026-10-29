@@ -118,6 +118,11 @@ every other story, so nothing proposed looks decided.
   in the menus: the eye is there. A parent's eye sets every row under it, all the way down, each its own after: hide the
   model, then show one group alone. A parent's eye is its own state, open or closed, never "some shown". (Tried on the
   way: the eye before the trash and the ⋯ with missing tools keeping their room; replaced by this.)
+- **C4D's eyes, the dot, Add clip** (Ludo, 2026-10-28): press an eye and drag along the column, every row passed takes
+  the first one's new state (Prism's `drag()`; a click still toggles once); a row's color dot opens its colors, as
+  Color… (a hit area larger than the dot); Add clip… lists a new clip of each shape and every clip of the scene (those
+  already on the row greyed). Driven headless: a click toggles once, a drag down sets six rows hidden and one back up
+  shows them, the dot opens the swatches, Add clip lists four new and three of the scene's.
 - **Shown in part** (with item b): Look › Shown on a group, a model entity or a target.
 - **Show only** (item d): on a part's right-click. **Add aperture**: Add clip… gains it. **Clip menu**: Outline what it
   cuts.

@@ -20,7 +20,7 @@ import {
   TextInput,
 } from '@molstar/prism-ui';
 import { frameState } from '@molstar/prism-ui/dom/scope';
-import { timeout } from '@molstar/prism-ui/dom/scoped';
+import { drag, on, timeout } from '@molstar/prism-ui/dom/scoped';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import {
   type At,
@@ -42,6 +42,7 @@ import {
   menuOf,
   OpenItems,
   ProposedClipShapes,
+  proposedClipItems,
   proposedMenuOf,
 } from './fake-menus.js';
 import { type GroupBy, type MockNode, ObjectKinds, pathTo } from './fake-scene.js';
@@ -134,7 +135,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
   const menuRoot = () => panelEl?.closest<HTMLElement>('[data-msp-theme]') ?? document.body;
   const menuAt = (at: At, node: MockNode, onClose?: () => void) => {
     pick(node);
-    const clipShapes = () => openContextMenu(menuRoot(), at, shapes);
+    const clipShapes = () => openContextMenu(menuRoot(), at, props.proposed ? proposedClipItems(node) : shapes);
     const items = (): ContextMenuItem[] =>
       props.proposed
         ? proposedMenuOf(node, { clipShapes, colors: () => openContextMenu(menuRoot(), at, colorItemsOf(node)) })
@@ -155,6 +156,22 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
     );
     if (anchor) uniform.set({ label: row.label, anchor });
   };
+
+  // a row's eye as shown, and set (proposed, Ludo 2026-10-28: a parent's eye sets every row under it, all the way down,
+  // each its own eye after: hide a parent, then show one child; the model's rows by its grouping)
+  const isShown = (row: { key: string; visible?: boolean }) => shown.get(row.key) ?? row.visible !== false;
+  const setEye = (node: MockNode, visible: boolean) => {
+    shown.set(node.key, visible);
+    const g = groupings.get('o:hiv') ?? 'compartment';
+    const down = (n: MockNode) => {
+      for (const c of n.children?.(g) ?? []) {
+        shown.set(c.key, visible);
+        down(c);
+      }
+    };
+    down(node);
+  };
+  let pressedEye: string | undefined;
 
   // the split: the properties' height, dragged on the line above them or moved by the arrows (tree-view.tsx)
   const height = frameState(props.split ?? 280);
@@ -207,20 +224,18 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
             onDblClick={(row) => console.info(`[explorer mock] focus ${row.label}`)}
             onRemove={(row) => console.info(`[explorer mock] remove ${row.label}`)}
             onEye={(row) => {
-              const on = !(shown.get(row.key) ?? row.visible !== false);
-              shown.set(row.key, on);
+              // a press on an eye was the drag's (it set the eye already): its click does nothing
+              if (pressedEye === row.key) {
+                pressedEye = undefined;
+                return;
+              }
+              const on = !isShown(row);
               if (props.proposed) {
-                // proposed (Ludo, 2026-10-28): a parent's eye sets every row under it, all the way down, each its own
-                // eye after (hide a parent, then show one child); the model's rows by its grouping
-                const g = groupings.get('o:hiv') ?? 'compartment';
-                const down = (n: MockNode) => {
-                  for (const c of n.children?.(g) ?? []) {
-                    shown.set(c.key, on);
-                    down(c);
-                  }
-                };
-                down(row.node);
-              } else if (row.category) {
+                setEye(row.node, on);
+                return;
+              }
+              shown.set(row.key, on);
+              if (row.category) {
                 // a category's eye: every object under it
                 for (const o of row.node.children?.('compartment') ?? []) shown.set(o.key, on);
               }
@@ -272,6 +287,51 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
       </div>
     </div>
   ) as HTMLElement;
+
+  if (props.proposed) {
+    const eyeOf = (el: Element | null) =>
+      el?.closest('button[aria-label="Hide"], button[aria-label="Show"]')?.closest<HTMLElement>('[data-tree-key]');
+    // C4D's eyes (Ludo, 2026-10-28): press an eye and drag along the column: each row passed takes the first one's new
+    // state (a parent's, all under it too); Prism's drag(), so every end path releases (rendering.md §2.4)
+    drag<{ x: number; visible: boolean; done: Set<string>; byKey: Map<string, MockNode> }>(panel, {
+      start: (e) => {
+        const rowEl = eyeOf(e.target as Element);
+        if (!rowEl || e.button !== 0) return undefined;
+        // the rows as shown, indexed once a drag
+        const byKey = new Map(rows.value.map((r) => [r.key, r.node] as const));
+        const key = rowEl.getAttribute('data-tree-key')!;
+        const node = byKey.get(key);
+        if (!node) return undefined;
+        const visible = !(shown.get(key) ?? node.visible !== false);
+        setEye(node, visible);
+        pressedEye = key;
+        const eye = rowEl.querySelector('button[aria-label="Hide"], button[aria-label="Show"]')!;
+        const r = eye.getBoundingClientRect();
+        return { x: r.left + r.width / 2, visible, done: new Set([key]), byKey };
+      },
+      move: (e, s) => {
+        const key = document
+          .elementFromPoint(s.x, e.clientY)
+          ?.closest('[data-tree-key]')
+          ?.getAttribute('data-tree-key');
+        const node = key ? s.byKey.get(key) : undefined;
+        if (!key || !node || s.done.has(key)) return;
+        s.done.add(key);
+        setEye(node, s.visible);
+      },
+    });
+    // the color dot: the colors, as Color… (Ludo, 2026-10-28)
+    on<MouseEvent>(panel, 'click', (e) => {
+      const dot = (e.target as Element).closest(`.${classes.swatch}`);
+      const key = dot?.closest('[data-tree-key]')?.getAttribute('data-tree-key');
+      const node = key ? rows.value.find((r) => r.key === key)?.node : undefined;
+      if (!dot || !node) return;
+      e.stopPropagation();
+      pick(node);
+      const r = dot.getBoundingClientRect();
+      openContextMenu(menuRoot(), { x: r.left, y: r.bottom }, colorItemsOf(node));
+    });
+  }
 
   // a menu shown with the story (no click needed): at the picked row's place, or under + Open
   if (props.menu) {
