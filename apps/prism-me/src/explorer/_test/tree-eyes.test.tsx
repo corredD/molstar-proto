@@ -314,6 +314,24 @@ describe('the eyes dragged: what a drag sets, and how it ends (review)', () => {
     await until(() => !drawn() && api.stage!.labelsState().value[0].visible === false);
   });
 
+  it('Esc cancels a drag: the eyes put back, no step', async () => {
+    const v = await viewer(false);
+    const { ref, eye, says, shownIds, steps } = await mounted(v);
+    const before = steps();
+    eye(`me:${ref}:0`)!.dispatchEvent(pointer('pointerdown', { x: 0, y: 0 }));
+    eye(`me:${ref}:1`)!.dispatchEvent(pointer('pointermove', { x: 0, y: 26 }));
+    await settle();
+    expect(says(`me:${ref}:1`)).toBe('Show');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    eye(`me:${ref}:1`)!.dispatchEvent(pointer('pointerup', { x: 0, y: 26 }));
+    await settle();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(says(`me:${ref}:0`)).toBe('Hide');
+    expect(says(`me:${ref}:1`)).toBe('Hide');
+    expect(shownIds().length).toBe(6);
+    expect(steps()).toBe(before);
+  });
+
   it('a pointercancel puts the eyes back, no step', async () => {
     const v = await viewer(false);
     const { ref, eye, says, steps } = await mounted(v);

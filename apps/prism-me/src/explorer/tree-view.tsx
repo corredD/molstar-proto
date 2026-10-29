@@ -407,8 +407,8 @@ interface EyeDrag<R> {
 
 /**
  * C4D's eyes (Ludo, 2026-10-28): press an eye and drag along the column, every row passed takes the first one's new
- * state, previewed in `shown` and set once on release (`onEyes`: one step); a cancel puts the eyes back. A fast move's
- * rows between are passed too. Prism's `drag()`, so every way a drag ends ends it (rendering.md §2.4).
+ * state, previewed in `shown` and set once on release (`onEyes`: one step); a cancel (Esc too) puts the eyes back. A
+ * fast move's rows between are passed too. Prism's `drag()`, so every way a drag ends ends it (rendering.md §2.4).
  */
 function eyeDrag<R extends TreeRowView>(el: HTMLElement, rows: ReadonlyState<readonly R[]>, props: TreeViewProps<R>) {
   const pass = (s: EyeDrag<R>, i: number) => {
@@ -427,7 +427,7 @@ function eyeDrag<R extends TreeRowView>(el: HTMLElement, rows: ReadonlyState<rea
     const key = at?.closest?.('[data-tree-key]')?.getAttribute('data-tree-key');
     return key === null || key === undefined ? undefined : s.index.get(key);
   };
-  drag<EyeDrag<R>>(el, {
+  const gesture = drag<EyeDrag<R>>(el, {
     start: (e) => {
       const eye = e.button === 0 ? (e.target as Element).closest?.('[data-tree-eye]') : null;
       const key = eye?.closest('[data-tree-key]')?.getAttribute('data-tree-key');
@@ -466,6 +466,10 @@ function eyeDrag<R extends TreeRowView>(el: HTMLElement, rows: ReadonlyState<rea
         else props.shown.set(key, v);
       }
     },
+  });
+  // Esc cancels it (ui.md §3), its eyes put back
+  on(el.ownerDocument, 'keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && gesture.active) gesture.cancel();
   });
 }
 
