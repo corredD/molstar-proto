@@ -189,7 +189,15 @@ export function rowsOf(
   // object
   if (clips.length) {
     push(
-      { key: ClipsKey, depth: 0, label: 'Clips', kind: 'category', category: true, count: String(clips.length), hasChildren: true },
+      {
+        key: ClipsKey,
+        depth: 0,
+        label: 'Clips',
+        kind: 'category',
+        category: true,
+        count: String(clips.length),
+        hasChildren: true,
+      },
       () => {
         for (const c of clips) {
           push(
@@ -554,7 +562,12 @@ export function clipRowsOf(area: ExplorerApi, cuts: readonly Cut[], objects: rea
   const out: ClipRow[] = [];
   for (const c of cuts) {
     if (!c.object.tag) continue;
-    out.push({ tag: c.object.tag, label: clipName(c), count: whatItCuts(area, c, objects, parts).length, drawn: !!c.drawing });
+    out.push({
+      tag: c.object.tag,
+      label: clipName(c),
+      count: whatItCuts(area, c, objects, parts).length,
+      drawn: !!c.drawing,
+    });
   }
   return out;
 }
@@ -574,8 +587,11 @@ export function whatItCuts(area: ExplorerApi, cut: Cut, objects: readonly SceneO
   for (const o of objects) {
     const of = area.cutOf(cut, o.ref);
     if (!of) continue;
-    const some =
-      of.particles ? particleUses(o, parts.get(o.ref), of.particles) : of.atoms ? atomUses(area, cut, o) : undefined;
+    const some = of.particles
+      ? particleUses(o, parts.get(o.ref), of.particles)
+      : of.atoms
+        ? atomUses(area, cut, o)
+        : undefined;
     if (some?.length) out.push(...some);
     else out.push({ key: `o:${o.ref}`, label: o.label, node: { ref: o.ref } });
   }
@@ -595,7 +611,11 @@ function particleUses(
     const targets = new Set(ids.targets);
     for (const t of (part as DecorationsInfo).targets) {
       if (!targets.has(t.id)) continue;
-      out.push({ key: `t:${ref}:${t.id}`, label: `${o.label} › ${t.name}`, node: { ref, particles: { targets: [t.id] } } });
+      out.push({
+        key: `t:${ref}:${t.id}`,
+        label: `${o.label} › ${t.name}`,
+        node: { ref, particles: { targets: [t.id] } },
+      });
     }
     return out;
   }
@@ -616,7 +636,11 @@ function particleUses(
     }
     for (const id of g.entities) {
       if (!cut.has(id)) continue;
-      out.push({ key: `me:${ref}:${id}`, label: `${parent} › ${names.get(id) ?? id}`, node: { ref, particles: { entities: [id] } } });
+      out.push({
+        key: `me:${ref}:${id}`,
+        label: `${parent} › ${names.get(id) ?? id}`,
+        node: { ref, particles: { entities: [id] } },
+      });
     }
   };
   walk(info.groups, o.label);
@@ -643,7 +667,8 @@ function atomUses(area: ExplorerApi, cut: Cut, o: SceneObject): ClipUse[] {
     if (e.chains.length < 2) continue;
     for (const ch of e.chains) {
       const chain = { ref: o.ref, entity: e.id, chain: ch };
-      if (of && area.covers(of, chain)) out.push({ key: `ch:${o.ref}:${e.id}:${ch}`, label: `${e.label} › Chain ${ch}`, node: chain });
+      if (of && area.covers(of, chain))
+        out.push({ key: `ch:${o.ref}:${e.id}:${ch}`, label: `${e.label} › Chain ${ch}`, node: chain });
     }
   }
   known.set(o.ref, out);
@@ -666,7 +691,11 @@ export function clipTargetsOf(objects: readonly SceneObject[], parts: Parts): Cl
     if (!part) continue;
     if (o.kind === 'list') {
       for (const t of (part as DecorationsInfo).targets) {
-        out.push({ key: `t:${ref}:${t.id}`, label: `${o.label} › ${t.name}`, node: { ref, particles: { targets: [t.id] } } });
+        out.push({
+          key: `t:${ref}:${t.id}`,
+          label: `${o.label} › ${t.name}`,
+          node: { ref, particles: { targets: [t.id] } },
+        });
       }
       continue;
     }

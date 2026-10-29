@@ -175,7 +175,9 @@ function UseLine(props: { use: ClipUse; name: string; picked?: ReadonlyState<boo
           variant="ghost"
           class={classes.partRemove}
           title={derive(last, (l) =>
-            l ? 'No longer affected by this clip (all it cuts: remove the clip instead)' : 'No longer affected by this clip',
+            l
+              ? 'No longer affected by this clip (all it cuts: remove the clip instead)'
+              : 'No longer affected by this clip',
           )}
           disabled={last}
           icon={<Icon name="x" />}

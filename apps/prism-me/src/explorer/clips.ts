@@ -28,7 +28,11 @@ import type { NodeRef } from './operations.js';
 export type Cut = ViewerApi['clipping']['cuts']['value'][number];
 
 /** The particle ids a cut is of, by kind (Prism's selector) */
-type Ids = { readonly entities: readonly number[]; readonly compartments: readonly number[]; readonly targets: readonly number[] };
+type Ids = {
+  readonly entities: readonly number[];
+  readonly compartments: readonly number[];
+  readonly targets: readonly number[];
+};
 
 /** What a clip cuts of one object: all of it, some of its particles, or some of its atoms */
 export interface CutOfObject {
@@ -67,7 +71,12 @@ function particleCut(state: State, rep: string, tag: string): ParticleCutProps |
 }
 
 /** What `cut` cuts of the object `ref`; undefined when it is on none of its representations */
-export function cutOfObject(state: State, cut: Cut, ref: string, reps = clippableUnder(state, ref)): CutOfObject | undefined {
+export function cutOfObject(
+  state: State,
+  cut: Cut,
+  ref: string,
+  reps = clippableUnder(state, ref),
+): CutOfObject | undefined {
   const targets = new Set(cut.targets.map((t) => t.ref));
   const on = reps.filter((c) => targets.has(c.transform.ref));
   if (!on.length) return undefined;
@@ -148,7 +157,9 @@ async function useOne(
   const look = (refs: readonly string[], ids: Ids) =>
     ctx.api.run('particles.look', {
       node: refs.map((r) => `#${r}`).join(', '),
-      cuts: { add: [{ tag, entities: [...ids.entities], compartments: [...ids.compartments], targets: [...ids.targets] }] },
+      cuts: {
+        add: [{ tag, entities: [...ids.entities], compartments: [...ids.compartments], targets: [...ids.targets] }],
+      },
     });
   const full = (cells: readonly StateObjectCell[], past: number) =>
     cells.find((c) => (RepresentationClip.get(c.transform.params)?.objects.length ?? 0) > past);
@@ -157,17 +168,24 @@ async function useOne(
   const onIt = (c: StateObjectCell) => !!of?.on.includes(c.transform.ref);
   const notOn = (cells: readonly StateObjectCell[]) => cells.filter((c) => !onIt(c));
   const blocked = (what: string) =>
-    ApiResult.fail('blocked', `Only the first ${MaxParticleCutIndex + 1} clips on it can cut ${what}.`, 'Remove a clip from it first.');
+    ApiResult.fail(
+      'blocked',
+      `Only the first ${MaxParticleCutIndex + 1} clips on it can cut ${what}.`,
+      'Remove a clip from it first.',
+    );
 
   // all of an object
   if (!('particles' in node) && !('entity' in node)) {
     if (!on) return of ? apply(of.on, false) : unchanged;
     const missing = notOn(reps);
     if (of && !of.particles && !of.atoms && !missing.length) return unchanged;
-    if (full(missing, Clip.MaxObjectCount - 1)) return ApiResult.fail('blocked', `It has ${Clip.MaxObjectCount} clips already.`);
+    if (full(missing, Clip.MaxObjectCount - 1))
+      return ApiResult.fail('blocked', `It has ${Clip.MaxObjectCount} clips already.`);
     if (of?.particles) {
       const r = await ctx.api.run('particles.look', {
-        node: refsOf(reps.filter((c) => onIt(c) && isParticles(c))).map((r) => `#${r}`).join(', '),
+        node: refsOf(reps.filter((c) => onIt(c) && isParticles(c)))
+          .map((r) => `#${r}`)
+          .join(', '),
         cuts: { remove: [tag] },
       });
       if (!r.ok) return r;
@@ -215,7 +233,8 @@ async function useOne(
   const part = lociOf(node);
   const cells = reps.filter((c) => !!structureOf(c));
   const structure = cells.length ? structureOf(cells[0]) : undefined;
-  if (!part || !structure || StructureElement.Loci.isEmpty(part)) return ApiResult.fail('not-found', 'No atoms of it are drawn.');
+  if (!part || !structure || StructureElement.Loci.isEmpty(part))
+    return ApiResult.fail('not-found', 'No atoms of it are drawn.');
   const whole = allAtoms(structure);
   const keep = (loci: StructureElement.Loci) => ctx.api.run('clipping.keep', { tag, target: { loci } });
   if (on) {

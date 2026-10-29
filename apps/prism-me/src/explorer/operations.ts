@@ -442,7 +442,8 @@ export class ExplorerApi extends ApiArea {
     params: {
       tag: PD.Text('', { description: "The clip's tag (Prism's cut: clipping.list)" }),
       nodes: PD.Value<NodeRef[]>([], {
-        description: 'Objects or parts: { ref }, { ref, entity, chain? } (atoms), { ref, particles: { entities | targets } }',
+        description:
+          'Objects or parts: { ref }, { ref, entity, chain? } (atoms), { ref, particles: { entities | targets } }',
       }),
       on: PD.Boolean(true, { description: 'Cut them (true) or no longer (false)' }),
     },

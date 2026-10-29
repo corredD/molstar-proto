@@ -305,12 +305,7 @@ const Sections: readonly Section[] = [
     id: 'clips',
     title: 'Clips',
     when: ({ picked }) => picked.kind === 'category' || clippable(picked.kind, picked.node),
-    render: (s) =>
-      s.picked.kind === 'category' ? (
-        <CategoryClips subject={s} />
-      ) : (
-        <Clips subject={s} />
-      ),
+    render: (s) => (s.picked.kind === 'category' ? <CategoryClips subject={s} /> : <Clips subject={s} />),
   },
   {
     // the labels made at this node (ui.md §4): not at a category, nor at what was made at a node
@@ -571,12 +566,10 @@ function CategoryClips(props: { subject: Subject }) {
           placeholder="Its shape…"
           options={NewClipOptions}
           onPick={(shape) =>
-            void api
-              .run('clipping.add', { shape, node: objects.value.map((r) => `#${r}`).join(', ') })
-              .then((r) => {
-                const cut = (r as { value?: { index: number } }).value;
-                if (r.ok && cut) showClipHandles(api, cut.index);
-              })
+            void api.run('clipping.add', { shape, node: objects.value.map((r) => `#${r}`).join(', ') }).then((r) => {
+              const cut = (r as { value?: { index: number } }).value;
+              if (r.ok && cut) showClipHandles(api, cut.index);
+            })
           }
         />
       </Line>

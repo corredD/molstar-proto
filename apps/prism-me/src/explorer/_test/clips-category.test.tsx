@@ -87,7 +87,10 @@ async function viewer() {
     spec: { ...base, extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions] },
   });
   viewers.push(v);
-  const crn = new File([readFileSync(resolve(import.meta.dirname, '../../../../../data/examples/1crn.cif'))], '1crn.cif');
+  const crn = new File(
+    [readFileSync(resolve(import.meta.dirname, '../../../../../data/examples/1crn.cif'))],
+    '1crn.cif',
+  );
   const l = await v.api.load.files({ files: [crn] });
   if (!l.ok) throw new Error(l.message);
   await v.plugin.build().toRoot().apply(TestModel, {}).commit();
@@ -169,7 +172,9 @@ describe('the Clips category', () => {
     // every row open: the objects' and the parts'
     model.open.set(new Set(items(host).map((r) => r.dataset.treeKey!)));
     await until(() => !!item(host, `k:${plane}`));
-    model.open.set(new Set([...model.open.value, `o:${crn}`, `o:${hiv}`, ...items(host).map((r) => r.dataset.treeKey!)]));
+    model.open.set(
+      new Set([...model.open.value, `o:${crn}`, `o:${hiv}`, ...items(host).map((r) => r.dataset.treeKey!)]),
+    );
     await new Promise((r) => setTimeout(r, 20));
     const top = items(host).filter((r) => r.getAttribute('aria-level') === '1');
     expect(top.map(labelOf)).toEqual(['Structures', 'Particles', 'Clips']);
@@ -289,7 +294,7 @@ describe("a node's Clips", () => {
 });
 
 describe('Add clip…', () => {
-  it("lists a new clip of each shape and every clip of the scene, those on it already greyed", async () => {
+  it('lists a new clip of each shape and every clip of the scene, those on it already greyed', async () => {
     const v = await viewer();
     const { api, area, model, refOf } = mount(v);
     const crn = refOf('1CRN');

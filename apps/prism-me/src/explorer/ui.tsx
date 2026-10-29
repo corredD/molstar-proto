@@ -89,7 +89,9 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   scenes.set(area, model);
   area.setOnReveal((key) => {
     // a clip's row: in the Clips category, by its tag
-    const clip = key.startsWith('k:') ? ctx.api.clipping?.cuts.value.find((c) => `k:${c.object.tag}` === key) : undefined;
+    const clip = key.startsWith('k:')
+      ? ctx.api.clipping?.cuts.value.find((c) => `k:${c.object.tag}` === key)
+      : undefined;
     if (clip) {
       model.reveal({ key, label: clipName(clip), kind: 'clip', clip: clip.object.tag! });
       return;
