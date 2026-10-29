@@ -6,16 +6,15 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-- **The properties on their mock** (`me/properties-view`, `~/prism-me-lanes/properties-view`,
-  [brief](2026-10-28-properties-view.md)): `properties.tsx` on `SectionList`, Prism's tokens and `ColorPicker`; a
-  category's and a clip row's properties, a Labels section; the last of the queue (Ludo, 2026-10-28). PR #14, reviewed
-  (3 must-fix, 4 should-fix fixed), checked with real GL on WebGPU and WebGL2 and against Storybook; waits on Ludo.
-- **Not a lane of this queue: cellVIEW's tree and cuts, a spec and an evaluation** (`me/cellview-eval`,
-  `~/prism-me-lanes/cellview-eval`, run by the session molstar-prism-me-30, 2026-10-28): `_spec/cellview.md`, its
-  progress file, a TODO section "Proposed (cellVIEW evaluation)" (not in `Next`); 2 commits, not pushed; waits on Ludo.
-  Its item (a), likely an app bug (read, not run): `mesoscale.graphics` writes `Spheres.LodLevelsPresets` (distances,
-  `operations.ts:901`) while particles draw by `lodPixelSize` (distances then ignored), so a mode only changes strides;
-  `Spheres.LodPixelPresets` is the mode's pair.
+- **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
+  [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
+  parallel; merged in this order (each merges `origin/prism-me` before its PR):
+  - **1. Graphics modes change the LOD** (`me/lod-modes`, `~/prism-me-lanes/lod-modes`); started.
+  - **6. Do hidden particles cost a frame?** (`me/hidden-cost`, a measurement); started.
+  - **4. Graded cuts, the library half** (`me/graded-cuts`); started. The app half after 3.
+  - **2 + 5. The tree's eye and ⋯, and Show only** (`me/tree-eyes`, one lane: both change the ⋯); started.
+  - **3. Clips in a category of their own** (`me/clips-category`); started; merges after 2 + 5.
+  - 7. Ghosts, and 4's app half: after 3 and 4.
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
