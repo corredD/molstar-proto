@@ -33,6 +33,24 @@ export const ClipShapes: readonly ContextMenuItem[] = [
   item('clip-box', 'Box'),
 ];
 
+/** Add clip's shapes with the proposed aperture cut (cellVIEW evaluation, item f) */
+export const ProposedClipShapes: readonly ContextMenuItem[] = [
+  ...ClipShapes,
+  item('clip-aperture', 'Aperture: open the view onto this part'),
+];
+
+/** The proposed Show only (cellVIEW evaluation, item d): a part's right-click, one step each */
+const showOnly = (node: MockNode): ContextMenuItem[] =>
+  node.kind === 'model entity' || node.kind === 'group' || node.kind === 'target'
+    ? [
+        item('only', 'Show only this'),
+        ...(node.kind === 'model entity'
+          ? [item('only-group', 'Show only its group'), item('only-compartment', 'Show only its compartment')]
+          : []),
+        item('all', 'Show all again'),
+      ]
+    : [];
+
 /** The brush's colors (ui.md §3 step 3b): swatches for all of it; a model's or group's Generate colors first */
 export function colorItemsOf(node: MockNode): ContextMenuItem[] {
   const swatches = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple', 'Gray', 'White'].map((c) =>
@@ -55,9 +73,10 @@ export const clippable = (node: MockNode) =>
 
 /**
  * The right-click of a node (ui.md §5): Focus, Move and turn, Add label, Add clip; on a clip or a label its own; on a
- * distance its own (§7). A part's Move and turn is "[to decide]" in ui.md: greyed here, with why.
+ * distance its own (§7). A part's Move and turn is "[to decide]" in ui.md: greyed here, with why. `proposed`: with the
+ * cellVIEW evaluation's items (Show only on a part; a clip's ghosts).
  */
-export function menuOf(node: MockNode, openClipShapes?: () => void): ContextMenuItem[] {
+export function menuOf(node: MockNode, openClipShapes?: () => void, proposed = false): ContextMenuItem[] {
   switch (node.kind) {
     case 'clip':
       return [
@@ -65,6 +84,7 @@ export function menuOf(node: MockNode, openClipShapes?: () => void): ContextMenu
         item('rotate', 'Rotate'),
         item('size', 'Size'),
         item('flip', 'Flip'),
+        ...(proposed ? [item('ghosts', 'Outline what it cuts')] : []),
         item('hide', 'Hide'),
         item('remove', 'Remove'),
       ];
@@ -87,5 +107,6 @@ export function menuOf(node: MockNode, openClipShapes?: () => void): ContextMenu
     item('move', 'Move and turn', toDecide),
     item('label', 'Add label'),
     { ...item('clip', 'Add clip…'), run: () => openClipShapes?.() },
+    ...(proposed ? showOnly(node) : []),
   ];
 }

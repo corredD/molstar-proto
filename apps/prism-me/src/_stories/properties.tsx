@@ -33,6 +33,7 @@ import { treeClasses } from '../explorer/tree-view.js';
 import type { GroupBy, MockKind, MockNode } from './fake-scene.js';
 import { CategoryThemes } from '../explorer/tree-view.js';
 import { ObjectKinds } from './fake-scene.js';
+import { ApertureClip, GradedClip, ShownShare } from './proposed.js';
 
 // The picked row's properties (ui.md §4), in sections that fold, only what applies to it: Prism's `SectionList` over a
 // `ShellModel` slot, each section `when` its kind; their controls Prism's shared ones (`ParamsForm` over the section's
@@ -104,7 +105,8 @@ RepresentationTypes.entity = RepresentationTypes.structure;
 RepresentationTypes.model = RepresentationTypes.list;
 RepresentationTypes.isosurface = [['isosurface', 'Isosurface']];
 
-function sections(shell: ShellModel) {
+/** `proposed`: with the cellVIEW evaluation's controls (Explorer/Proposed) */
+function sections(shell: ShellModel, proposed = false) {
   shell.registerSections([
     {
       id: 'look',
@@ -130,6 +132,9 @@ function sections(shell: ShellModel) {
               glow: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }),
             })()}
             {n.kind === 'model' || n.kind === 'group' ? <Button size="sm">Generate colors</Button> : null}
+            {proposed && (n.kind === 'model entity' || n.kind === 'group' || n.kind === 'target') ? (
+              <ShownShare node={n} />
+            ) : null}
           </div>
         ),
       ),
@@ -204,7 +209,15 @@ function sections(shell: ShellModel) {
       )),
     },
     // what was made at a node: its own section (ui.md §5: a clip's shape, invert, place, size; a label's text, size)
-    { id: 'clip', slot: Slot, title: 'Clip', when: has('clip'), render: view(() => clipForm()) },
+    {
+      id: 'clip',
+      slot: Slot,
+      title: 'Clip',
+      when: has('clip'),
+      render: view((n) =>
+        !proposed ? clipForm() : n.shape === 'aperture' ? <ApertureClip /> : <GradedClip shape={clipForm()} />,
+      ),
+    },
     { id: 'label', slot: Slot, title: 'Label', when: has('label'), render: view((n) => <LabelEdit text={n.label} />) },
     { id: 'distance', slot: Slot, title: 'Distance', when: has('distance'), render: view(() => <Distance />) },
   ]);
@@ -429,9 +442,11 @@ export function Properties(props: {
   onGroupBy(g: GroupBy): void;
   /** Sections folded at first (the app's default); else open, to see them */
   folded?: boolean;
+  /** With the cellVIEW evaluation's controls (Explorer/Proposed) */
+  proposed?: boolean;
 }) {
   const shell = new ShellModel();
-  sections(shell);
+  sections(shell, props.proposed);
   return (
     <For each={derive(props.picked, (p) => (p ? [p] : []))} by={(p) => p.key}>
       {(n) => (

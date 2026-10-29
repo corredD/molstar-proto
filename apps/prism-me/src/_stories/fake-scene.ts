@@ -46,6 +46,8 @@ export interface MockNode {
   readonly visible?: boolean;
   /** Top-level rows only (styling.md §4: icons on top-level tree rows, not child rows) */
   readonly icon?: IconName;
+  /** A clip's shape, where it matters (the proposed aperture cut: Explorer/Proposed) */
+  readonly shape?: 'plane' | 'aperture';
   /** Made when first opened (thousands of entities cost nothing until looked at, ui.md §3); by the model's grouping */
   readonly children?: (groupBy: GroupBy) => readonly MockNode[];
 }
@@ -73,11 +75,14 @@ const hue = (i: number) => {
 };
 
 /** A cellPACK model's compartments, and the functions its entities have */
-const Compartments = ['envelope.membrane', 'envelope.surface', 'capsid.interior', 'capsid.surface', 'cytoplasm'];
+export const Compartments = ['envelope.membrane', 'envelope.surface', 'capsid.interior', 'capsid.surface', 'cytoplasm'];
 const Functions = ['Structural', 'Enzyme', 'Transport', 'Signaling', 'Unknown'];
 
-/** A model of `n` entities (2,400 in the stories: the virtualized tree), grouped as its Group by says (ui.md §3) */
-export function cellPackModel(n: number): MockNode {
+/**
+ * A model of `n` entities (2,400 in the stories: the virtualized tree), grouped as its Group by says (ui.md §3);
+ * `proposed`: with the cellVIEW evaluation's rows (a graded plane clip, an aperture cut)
+ */
+export function cellPackModel(n: number, proposed = false): MockNode {
   const entities = Array.from({ length: n }, (_, i) => ({
     id: i,
     name: `${['GAG', 'ENV', 'NEF', 'VPR', 'POL', 'MA', 'CA'][i % 7]}_${String(i + 1).padStart(4, '0')}`,
@@ -133,7 +138,21 @@ export function cellPackModel(n: number): MockNode {
     icon: 'shapes',
     children: lazy((by) => [
       ...groups(by),
-      { key: 'k:hiv:1', kind: 'clip', label: 'Plane clip', visible: true },
+      proposed
+        ? { key: 'k:hiv:1', kind: 'clip', label: 'Plane clip', count: '4 of 5 parts', visible: true, shape: 'plane' }
+        : { key: 'k:hiv:1', kind: 'clip', label: 'Plane clip', visible: true },
+      ...(proposed
+        ? [
+            {
+              key: 'k:hiv:2',
+              kind: 'clip',
+              label: 'Aperture cut',
+              count: 'onto the capsid',
+              visible: true,
+              shape: 'aperture',
+            } as const,
+          ]
+        : []),
       { key: 'l:hiv:1', kind: 'label', label: 'HIV-1 capsid', visible: true },
     ]),
   };
@@ -229,9 +248,12 @@ export function categories(objects: readonly MockNode[]): MockNode[] {
     }));
 }
 
-/** A scene with every kind of row: a structure, a model of `entities` entities, a particle list, a volume, a mesh */
-export function fullScene(entities = 2400): MockNode[] {
-  return categories([Crambin, cellPackModel(entities), Ribosomes, Tomogram, Membrane]);
+/**
+ * A scene with every kind of row: a structure, a model of `entities` entities, a particle list, a volume, a mesh;
+ * `proposed`: the model with the cellVIEW evaluation's rows
+ */
+export function fullScene(entities = 2400, proposed = false): MockNode[] {
+  return categories([Crambin, cellPackModel(entities, proposed), Ribosomes, Tomogram, Membrane]);
 }
 
 /** Whether `key` may be under `node` (its object's id is the second part of both keys; categories hold everything) */

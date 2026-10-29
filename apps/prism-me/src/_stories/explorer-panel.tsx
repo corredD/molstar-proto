@@ -32,7 +32,7 @@ import {
   treeClasses,
   UniformPopover,
 } from '../explorer/tree-view.js';
-import { ClipShapes, clippable, colorItemsOf, colorable, menuOf, OpenItems } from './fake-menus.js';
+import { ClipShapes, clippable, colorItemsOf, colorable, menuOf, OpenItems, ProposedClipShapes } from './fake-menus.js';
 import { type GroupBy, type MockNode, ObjectKinds, pathTo } from './fake-scene.js';
 import { Properties } from './properties.js';
 
@@ -64,10 +64,13 @@ export interface ExplorerPanelProps {
   readonly folded?: boolean;
   /** The properties' height at first (px; the split is dragged) */
   readonly split?: number;
+  /** With the cellVIEW evaluation's proposals (Explorer/Proposed): menus and properties */
+  readonly proposed?: boolean;
 }
 
 export function ExplorerPanel(props: ExplorerPanelProps) {
   const { roots } = props;
+  const shapes = props.proposed ? ProposedClipShapes : ClipShapes;
   const opened = new Set(props.open ?? roots.map((r) => r.key));
   if (props.picked) for (const k of pathTo(roots, props.picked, props.groupBy)) opened.add(k);
   const open = observableState<ReadonlySet<string>>(opened);
@@ -118,7 +121,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
   const menuRoot = () => panelEl?.closest<HTMLElement>('[data-msp-theme]') ?? document.body;
   const menuAt = (at: At, node: MockNode, onClose?: () => void) => {
     pick(node);
-    const items = (): ContextMenuItem[] => menuOf(node, () => openContextMenu(menuRoot(), at, ClipShapes));
+    const items = (): ContextMenuItem[] => menuOf(node, () => openContextMenu(menuRoot(), at, shapes), props.proposed);
     openContextMenu(menuRoot(), at, items(), onClose);
   };
   if (props.picked) {
@@ -189,7 +192,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
               const colors = colorItemsOf(row.node).map((i) =>
                 i.id === 'theme-uniform' ? { ...i, run: () => uniformAt(row) } : i,
               );
-              openContextMenu(menuRoot(), at, which === 'color' ? colors : ClipShapes, onClose);
+              openContextMenu(menuRoot(), at, which === 'color' ? colors : shapes, onClose);
             }}
             onMenu={(row, at, onClose) => menuAt(at, row.node, onClose)}
           />
@@ -222,6 +225,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
                 groupBy={groupings.key('o:hiv')}
                 onGroupBy={(g) => groupings.set('o:hiv', g)}
                 folded={props.folded}
+                proposed={props.proposed}
               />
             )}
           </Show>
@@ -240,7 +244,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
       if (props.menu === 'open') openContextMenu(menuRoot(), at('button'), OpenItems);
       else if (picked.value) {
         const p = at('[aria-selected="true"]');
-        if (props.menu === 'clip') openContextMenu(menuRoot(), p, ClipShapes);
+        if (props.menu === 'clip') openContextMenu(menuRoot(), p, shapes);
         else menuAt(p, picked.value);
       }
     }, 50);

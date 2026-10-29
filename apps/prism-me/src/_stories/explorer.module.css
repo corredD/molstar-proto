@@ -105,3 +105,63 @@
   padding: var(--msp-space-2) var(--msp-space-1);
   background: var(--msp-color-panel);
 }
+
+/* Proposed (cellVIEW evaluation): a cut's line per part, and the previews' 2D slice. */
+.partCut {
+  display: grid;
+  gap: var(--msp-space-1);
+  padding: var(--msp-space-1);
+  border-radius: var(--msp-radius-md);
+}
+
+.partCutPicked {
+  background: var(--msp-color-hover);
+}
+
+.partName {
+  flex: none;
+  width: var(--msp-label-width);
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--msp-space-1);
+}
+
+.preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--msp-radius-md);
+  background: var(--msp-color-well);
+}
+
+.previewCut {
+  fill: var(--msp-color-hover);
+}
+
+.previewSurface {
+  stroke: var(--msp-color-text-muted);
+  stroke-dasharray: 3 3;
+}
+
+.previewFocus {
+  fill: var(--msp-color-accent-muted);
+}
+
+.previewKept {
+  fill: var(--msp-color-accent);
+}
+
+.previewGone {
+  fill: none;
+}
+
+.previewGhost {
+  fill: none;
+  stroke: var(--msp-color-text-subtle);
+  stroke-width: 0.6;
+}
