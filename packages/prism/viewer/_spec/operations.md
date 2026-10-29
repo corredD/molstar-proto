@@ -34,7 +34,7 @@ their own packages (`@molstar/<name>-extension/prism-viewer`).
 | `clipping.clear` | Remove every cut | destructive |  |
 | `clipping.keep` | Keep atoms whole |  | cut, tag, target |
 | `clipping.list` | List the cuts | read |  |
-| `clipping.release` | Cut atoms kept whole again |  | cut, tag |
+| `clipping.release` | Cut atoms kept whole again |  | cut, tag, target |
 | `clipping.remove` | Remove a cut | destructive | cut, tag |
 | `clipping.settings` | Set how cuts cut |  | variant, solidSurface |
 | `clipping.show` | Draw a cut in the scene, or not |  | cut, tag, on, options |
