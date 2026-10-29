@@ -164,7 +164,8 @@ export class MesoscaleApi extends ApiArea {
 
   /**
    * The graphics mode and the motion of an object (a structure, a particle list, a volume; by state ref) as its
-   * representations have them (every one; mixed: no mode, no motion), else of the first particle list shown; following the state tree while
+   * representations have them (every one, a particle list's mode those with levels of detail; mixed: no mode, no
+   * motion), else of the first particle list shown; following the state tree while
    * watched: a read for views; undefined without such an object
    */
   graphicsState(object?: string): ReadonlyState<GraphicsInfo | undefined> {

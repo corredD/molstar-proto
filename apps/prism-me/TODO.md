@@ -94,7 +94,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   their defaults (the object reads mixed). The scene-wide `component.options` keep one structure's own since v6 #2057
   (guarded in `mesoscale/src/_test/object-graphics.test.ts`); the quick styles and `animation.wiggle` unchecked.
 - Graphics & Motion on parts (entities, chains, groups, targets) and meshes; the starting state shown (no mode lit until
-  one is picked: `auto` quality, a list's default levels of detail).
+  one is picked: `auto` quality, a list's spacefill at no levels). A list drawn by fibers alone answers "already" to a
+  mode and lights none: no levels of detail to set (a failure, as for an object with nothing drawn).
 - The canvas resolution (pixel scale, sharpening) on screen: only ⌘K, `?graphics-mode=` and the agent set it now.
 - A volume's quality: Mol\*'s `quality` barely changes a slice or an isosurface; a stronger setting per volume
   (resolution, a smoother surface).
