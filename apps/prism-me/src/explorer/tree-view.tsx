@@ -391,6 +391,9 @@ export function eyeKeys(rows: readonly TreeRowView[], set: readonly { readonly k
   return [...keys];
 }
 
+/** macOS: its Ctrl+click is a right-click */
+const Mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+
 interface EyeDrag<R> {
   /** The eyes' column (its middle), where each move is read, in the tree's root (read at the press: in the page by then) */
   readonly x: number;
@@ -430,8 +433,8 @@ function eyeDrag<R extends TreeRowView>(el: HTMLElement, rows: ReadonlyState<rea
   };
   const gesture = drag<EyeDrag<R>>(el, {
     start: (e) => {
-      // the main button alone (a Ctrl+click is the context menu's on macOS)
-      const eye = e.button === 0 && !e.ctrlKey ? (e.target as Element).closest?.('[data-tree-eye]') : null;
+      // the main button alone (on macOS a Ctrl+click is the context menu's)
+      const eye = e.button === 0 && !(e.ctrlKey && Mac) ? (e.target as Element).closest?.('[data-tree-eye]') : null;
       const key = eye?.closest('[data-tree-key]')?.getAttribute('data-tree-key');
       if (!eye || !key) return undefined;
       const all = rows.value;

@@ -314,6 +314,15 @@ describe('the eyes dragged: what a drag sets, and how it ends (review)', () => {
     await until(() => !drawn() && api.stage!.labelsState().value[0].visible === false);
   });
 
+  it('a Ctrl+press on an eye sets it off macOS (only macOS takes it for the context menu)', async () => {
+    const v = await viewer(false);
+    const { ref, eye, shownIds } = await mounted(v);
+    const at = { bubbles: true, cancelable: true, button: 0, buttons: 1, ctrlKey: true, pointerId: 1 };
+    eye(`me:${ref}:0`)!.dispatchEvent(new PointerEvent('pointerdown', at));
+    eye(`me:${ref}:0`)!.dispatchEvent(new PointerEvent('pointerup', { ...at, buttons: 0 }));
+    await until(() => !shownIds().includes(0));
+  });
+
   it('Esc cancels a drag: the eyes put back, no step', async () => {
     const v = await viewer(false);
     const { ref, eye, says, shownIds, steps } = await mounted(v);
