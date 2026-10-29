@@ -17,10 +17,8 @@ export const classes = {
   'eyesShown': 'msp-me-explorer-eyesShown',
   'frame': 'msp-me-explorer-frame',
   'frames': 'msp-me-explorer-frames',
-  'hint': 'msp-me-explorer-hint',
   'layout': 'msp-me-explorer-layout',
   'line': 'msp-me-explorer-line',
-  'lineLabel': 'msp-me-explorer-lineLabel',
   'partCut': 'msp-me-explorer-partCut',
   'partCutPicked': 'msp-me-explorer-partCutPicked',
   'partName': 'msp-me-explorer-partName',
@@ -33,48 +31,11 @@ export const classes = {
   'previewKept': 'msp-me-explorer-previewKept',
   'previewSurface': 'msp-me-explorer-previewSurface',
   'rail': 'msp-me-explorer-rail',
-  'stack': 'msp-me-explorer-stack',
   'status': 'msp-me-explorer-status',
-  'title': 'msp-me-explorer-title',
   'viewButtons': 'msp-me-explorer-viewButtons',
 } as const;
 
 defineStyles('me/_stories/explorer.module.css', `@layer msp.components {
-.msp-me-explorer-stack {
-  gap: var(--msp-space-2);
-  display: grid;
-}
-
-.msp-me-explorer-title {
-  align-items: baseline;
-  gap: var(--msp-space-2);
-  min-width: 0;
-  display: flex;
-}
-
-.msp-me-explorer-hint {
-  color: var(--msp-color-text-muted);
-  font-size: var(--msp-font-size-xs);
-}
-
-.msp-me-explorer-line {
-  align-items: center;
-  gap: var(--msp-space-2);
-  min-height: var(--msp-control-height);
-  display: flex;
-
-  & > :last-child {
-    flex: 1;
-    min-width: 0;
-  }
-}
-
-.msp-me-explorer-lineLabel {
-  width: var(--msp-label-width);
-  color: var(--msp-color-text-muted);
-  flex: none;
-}
-
 .msp-me-explorer-frames {
   gap: var(--msp-space-5);
   padding: var(--msp-space-5);

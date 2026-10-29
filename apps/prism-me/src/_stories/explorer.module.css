@@ -5,42 +5,8 @@
  */
 
 /* The explorer mocks (prism-me › Explorer): Prism tokens only (styling.md §4). The panel and the tree are the app's own
-   (explorer/tree.module.css); here, the properties' lines and the stories' frames. */
-
-.stack {
-  display: grid;
-  gap: var(--msp-space-2);
-}
-
-.title {
-  display: flex;
-  align-items: baseline;
-  gap: var(--msp-space-2);
-  min-width: 0;
-}
-
-.hint {
-  color: var(--msp-color-text-muted);
-  font-size: var(--msp-font-size-xs);
-}
-
-.line {
-  display: flex;
-  align-items: center;
-  gap: var(--msp-space-2);
-  min-height: var(--msp-control-height);
-
-  & > :last-child {
-    flex: 1;
-    min-width: 0;
-  }
-}
-
-.lineLabel {
-  flex: none;
-  width: var(--msp-label-width);
-  color: var(--msp-color-text-muted);
-}
+   (explorer/tree.module.css), and so are the properties' lines (explorer/properties.module.css); here, the stories'
+   frames. */
 
 /* The stories' frames: light and dark, wide and narrow, side by side (each its own theme, data-msp-theme). */
 .frames {

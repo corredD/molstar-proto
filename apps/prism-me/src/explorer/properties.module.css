@@ -1,0 +1,119 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+/* The picked row's properties (ui.md §4), the app's and the mock's: Prism tokens only (styling.md §4). A line is a
+   label in the label column (`--msp-label-width`, as ParamsForm's rows) and its control; a block stacks lines. */
+
+.stack {
+  display: grid;
+  /* the column as wide as the panel, not as its widest content (a long button, a slider's box) */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--msp-space-2);
+}
+
+/* lines inside one item (a clip, a label, a slice): closer than the items */
+.tight {
+  display: grid;
+  /* the column as wide as the panel, not as its widest content (a long button, a slider's box) */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--msp-space-1);
+}
+
+.title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--msp-space-2);
+  min-width: 0;
+}
+
+.name {
+  flex: 0 1 auto;
+  min-width: 3ch;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--msp-fade)), transparent);
+  animation-name: msp-fade-overflow;
+  animation-fill-mode: both;
+  animation-timeline: scroll(self inline);
+}
+
+.hint {
+  color: var(--msp-color-text-muted);
+  font-size: var(--msp-font-size-xs);
+}
+
+/* the header's kind: on one line, after the name (the name is what fades) */
+.kind {
+  flex: none;
+  color: var(--msp-color-text-muted);
+  font-size: var(--msp-font-size-xs);
+  white-space: nowrap;
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: var(--msp-space-2);
+  min-height: var(--msp-control-height);
+
+  & > :last-child {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* a line whose controls keep their width (buttons after a name): they wrap when narrow */
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--msp-space-1);
+  min-height: var(--msp-control-height);
+}
+
+.lineLabel {
+  flex: none;
+  width: var(--msp-label-width);
+  color: var(--msp-color-text-muted);
+}
+
+/* an item's name at the head of its lines (a clip, a slice): the rest of its line after it */
+.itemName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--msp-fade)), transparent);
+  animation-name: msp-fade-overflow;
+  animation-fill-mode: both;
+  animation-timeline: scroll(self inline);
+}
+
+/* what a line opens under itself (a picker, numbers): the inline block (styling.md §4) */
+.inline {
+  display: grid;
+  /* the column as wide as the panel, not as its widest content (a long button, a slider's box) */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--msp-space-1);
+  padding: var(--msp-space-1) var(--msp-space-2);
+  border-radius: var(--msp-radius-md);
+  background: color-mix(in oklab, var(--msp-color-control), transparent 40%);
+  box-shadow: inset 0 0 0 1px var(--msp-glass-edge);
+}
+
+/* a button with words in a line (Its representation's · pick one): as wide as the line lets it, cut off by the fade */
+.fit {
+  min-width: 0;
+  max-width: 100%;
+  justify-content: flex-start;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--msp-fade)), transparent);
+  animation-name: msp-fade-overflow;
+  animation-fill-mode: both;
+  animation-timeline: scroll(self inline);
+}

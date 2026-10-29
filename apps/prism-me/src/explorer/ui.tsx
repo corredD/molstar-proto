@@ -6,7 +6,6 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Color } from '@molstar/core/util/color';
 import { EmptyLoci } from '@molstar/model/model/loci';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
@@ -20,6 +19,7 @@ import {
   onCleanup,
   openContextMenu,
   ScrollArea,
+  ShellModel,
   Show,
   TextInput,
 } from '@molstar/prism-ui';
@@ -51,6 +51,7 @@ import { type Picked, Properties } from './properties.js';
 import {
   ancestorKeys,
   Categories,
+  categoryTheme,
   ClipShapes,
   clipsAt,
   type Parts,
@@ -99,6 +100,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
         kind: row.kind,
         node: row.node,
         ...(row.representation ? { representation: row.representation } : {}),
+        ...(row.clip ? { clip: row.clip } : {}),
       });
     }
   });
@@ -207,6 +209,8 @@ export interface SceneModel {
   reveal(p: PickedNode): void;
   /** A model's grouping as its rows show it (its info's), for what acts on its groups */
   groupByOf(model: string): MesoGroupBy | undefined;
+  /** The properties' sections, their open state kept from pick to pick for the session (ui.md §4) */
+  readonly sections: ShellModel;
 }
 
 function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
@@ -222,6 +226,7 @@ function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
     parts,
     groupings,
     scrollTo,
+    sections: new ShellModel(),
     groupByOf: (ref) => (parts.value.get(ref) as MesoscaleInfo | undefined)?.groupBy,
     reveal(p) {
       const labels = stage?.labelsState().value ?? [];
@@ -315,6 +320,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     kind: row.kind,
     ...(row.node ? { node: row.node } : {}),
     ...(row.representation ? { representation: row.representation } : {}),
+    ...(row.clip ? { clip: row.clip } : {}),
   });
   const pick = (row: Row) => {
     if (picked.value?.key !== row.key) picked.set(pickedOf(row));
@@ -460,13 +466,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
               // Escape and Apply: the focus back on the brush (Popover's contract), if still there
               if (refocus && u.anchor.isConnected) u.anchor.focus();
             }}
-            onApply={(c) =>
-              void api.run('mesoscale.theme', {
-                objects: [...(u.row.objects ?? [])],
-                theme: 'uniform',
-                color: Color.toHexStyle(Color(c)),
-              })
-            }
+            onApply={(c) => void categoryTheme(api, u.row.objects ?? [], 'uniform', model.groupByOf, c)}
           />
         )}
       </Show>
@@ -484,6 +484,9 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
                 picked={picked.asReadonly}
                 parts={parts.asReadonly}
                 groupings={model.groupings}
+                groupByOf={model.groupByOf}
+                clips={clips}
+                shell={model.sections}
               />
             )}
           </Show>
@@ -518,20 +521,11 @@ function categoryThemeItems(
   groupBy: (model: string) => MesoGroupBy | undefined,
   uniform: () => void,
 ): ContextMenuItem[] {
-  // generated colors by each model's grouping as the tree shows it (as its row's Generate colors)
-  const groupings: Record<string, MesoGroupBy> = {};
-  for (const ref of objects) {
-    const by = groupBy(ref);
-    if (by) groupings[ref] = by;
-  }
   return (CategoryThemes[key] ?? []).map(([theme, label]) => ({
     id: `theme-${theme}`,
     label,
     // Uniform: its color picked first (a popover), applied once
-    run: () =>
-      theme === 'uniform'
-        ? uniform()
-        : void api.run('mesoscale.theme', { objects: [...objects], theme, groupBy: groupings }),
+    run: () => (theme === 'uniform' ? uniform() : void categoryTheme(api, objects, theme, groupBy)),
   }));
 }
 

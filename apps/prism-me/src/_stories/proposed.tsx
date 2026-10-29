@@ -21,6 +21,7 @@ import {
 } from '@molstar/prism-ui';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import { classes } from './_generated/explorer.module.css.js';
+import { classes as propertyClasses } from '../explorer/_generated/properties.module.css.js';
 import { type ClipShape, type ClipUse, ClipTargets, type CutBias, clipBook, type MockClip } from './clip-book.js';
 import type { MockNode } from './fake-scene.js';
 
@@ -114,7 +115,7 @@ function CutPreview(props: { use: ClipUse; ghosts: ReadonlyState<boolean> }) {
 
 const line = (label: Child, child: Child) => (
   <div class={classes.line}>
-    <span class={classes.lineLabel}>{label}</span>
+    <span class={propertyClasses.lineLabel}>{label}</span>
     {child}
   </div>
 );
@@ -178,7 +179,7 @@ function UseLine(props: { use: ClipUse; name: string; picked?: ReadonlyState<boo
       </div>
       <Show when={graded}>
         {() => (
-          <div class={classes.stack}>
+          <div class={propertyClasses.stack}>
             {line('Band', slider(`${props.name}: the band's width`, use.band, { min: 5, max: HalfWidth, step: 1 }))}
             {line('Fuzziness', slider(`${props.name}: fuzziness`, use.fuzziness, { min: 0, max: 1, step: 0.01 }))}
           </div>
@@ -227,18 +228,18 @@ function AddSelect(props: {
  */
 export function ClipProperties(props: { node: MockNode; shape: Child }) {
   const clip = clipBook.clip(props.node.key);
-  if (!clip) return <span class={classes.hint}>This clip was removed.</span>;
+  if (!clip) return <span class={propertyClasses.hint}>This clip was removed.</span>;
   if (clip.shape === 'aperture') return <ApertureClip clip={clip} />;
   const uses = derive(clipBook.uses.asReadonly, (all) => all.filter((u) => u.clip === clip.key));
   const picked = observableState<ClipUse | undefined>(uses.value[0]);
   const ghosts = observableState(false);
   const free = derive(uses, (us) => ClipTargets.filter(([k]) => !us.some((u) => u.node === k)));
   return (
-    <div class={classes.stack}>
+    <div class={propertyClasses.stack}>
       {props.shape}
-      <div class={classes.title}>
+      <div class={propertyClasses.title}>
         <strong>What it cuts</strong>
-        <span class={classes.hint}>each object or part its way</span>
+        <span class={propertyClasses.hint}>each object or part its way</span>
       </div>
       <For each={uses} by={(u) => u.node}>
         {(u) => (
@@ -261,9 +262,9 @@ export function ClipProperties(props: { node: MockNode; shape: Child }) {
       )}
       <For each={derive(picked.asReadonly, (p) => (p ? [p] : []))} by={(u) => u.node}>
         {(u) => (
-          <div class={classes.stack}>
+          <div class={propertyClasses.stack}>
             <CutPreview use={u} ghosts={ghosts.asReadonly} />
-            <span class={classes.hint}>{`${u.nodeLabel}: a slice through the cut, its side shaded`}</span>
+            <span class={propertyClasses.hint}>{`${u.nodeLabel}: a slice through the cut, its side shaded`}</span>
           </div>
         )}
       </For>
@@ -318,10 +319,10 @@ function ApertureClip(props: { clip: MockClip }) {
     else clipBook.use(clip.key, node, 'focus');
   };
   return (
-    <div class={classes.stack}>
-      <div class={classes.title}>
+    <div class={propertyClasses.stack}>
+      <div class={propertyClasses.title}>
         <strong>Opens the view onto</strong>
-        <span class={classes.hint}>what is in front of these is removed, most at their middle</span>
+        <span class={propertyClasses.hint}>what is in front of these is removed, most at their middle</span>
       </div>
       <div class={classes.chips}>
         {ClipTargets.filter(([k]) => k.startsWith('g:hiv')).map(([k, label]) => (
@@ -339,7 +340,7 @@ function ApertureClip(props: { clip: MockClip }) {
         slider('How much of what is in front it keeps near the edge', keep, { min: 0, max: 1, step: 0.01 }),
       )}
       {preview}
-      <span class={classes.hint}>The screen: the parts' outline faint, what is in front of them as dots</span>
+      <span class={propertyClasses.hint}>The screen: the parts' outline faint, what is in front of them as dots</span>
       {line(
         'Ghosts',
         <Toggle
@@ -368,10 +369,10 @@ const newClipOptions = observableState(NewClipOptions).asReadonly;
 export function NodeClips(props: { node: MockNode }) {
   const { node } = props;
   if (node.key === 'c:clips')
-    return <span class={classes.hint}>Every clip of the scene. Pick one to see what it cuts.</span>;
+    return <span class={propertyClasses.hint}>Every clip of the scene. Pick one to see what it cuts.</span>;
   if (!ClipTargets.some(([k]) => k === node.key))
     return (
-      <span class={classes.hint}>
+      <span class={propertyClasses.hint}>
         In the mock, clips are given to the objects and the HIV model's compartments: pick one of those.
       </span>
     );
@@ -380,10 +381,10 @@ export function NodeClips(props: { node: MockNode }) {
     clips.filter((c) => !us.some((u) => u.clip === c.key)).map((c) => [c.key, c.label] as const),
   );
   return (
-    <div class={classes.stack}>
+    <div class={propertyClasses.stack}>
       <Show
         when={derive(uses, (us) => us.length > 0)}
-        fallback={() => <span class={classes.hint}>No clip on it. Make one, or use one of the scene's.</span>}
+        fallback={() => <span class={propertyClasses.hint}>No clip on it. Make one, or use one of the scene's.</span>}
       >
         {() => (
           <For each={uses} by={(u) => u.clip}>
@@ -417,9 +418,11 @@ export function NodeClips(props: { node: MockNode }) {
 export function ShownShare(props: { node: MockNode }) {
   const share = observableState(props.node.kind === 'group' ? 0.35 : 1);
   return (
-    <div class={classes.stack}>
+    <div class={propertyClasses.stack}>
       {line('Shown', slider('The share of its instances shown', share, { min: 0, max: 1, step: 0.01 }))}
-      <span class={classes.hint}>The same instances at every share and every frame: a crowded part thinned out</span>
+      <span class={propertyClasses.hint}>
+        The same instances at every share and every frame: a crowded part thinned out
+      </span>
     </div>
   );
 }

@@ -31,6 +31,8 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
+    "styles": "node ../../prism/ui/scripts/css.mjs --root . --prefix mesoscale",
+    "styles:check": "node ../../prism/ui/scripts/css.mjs --root . --prefix mesoscale --check",
     "test:scaling": "vitest run --config vitest.scaling.config.ts"
   },
   "dependencies": {
