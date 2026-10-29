@@ -648,8 +648,13 @@ export type SubstanceSchema = typeof SubstanceSchema;
 export type SubstanceValues = Values<SubstanceSchema>;
 
 export const ClippingSchema = {
+  /** per instance (or group instance) the objects it ignores, a bit each; with `dClipTable` its row of `tClipTable` */
   tClipping: DataSpec('r8'),
   dClipping: DefineSpec('boolean'),
+  /** per (row, clip object) its mode, band and fuzziness (`Clipping.tableData`, 16 a row) */
+  tClipTable: DataSpec('rgba32f', ['dClipTable']),
+  /** whether the clipping value is a row of `tClipTable` (`Clipping.table`) */
+  dClipTable: DefineSpec('boolean'),
   /** the clipping type (`ClippingType`); `uInstanceGranularity` selects the index */
   clippingType: ValueSpec('string'),
 } as const;

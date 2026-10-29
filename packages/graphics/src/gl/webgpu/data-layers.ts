@@ -25,6 +25,8 @@ export const DataLayers = {
   tClipping: 'r8',
   tWiggle: 'r8',
   tPositionGroup: 'rgba32f',
+  // last: a new layer takes the next bits of `DataLayerPagesName`, the layouts of before stay
+  tClipTable: 'rgba32f',
 } as const;
 export type DataLayer = keyof typeof DataLayers;
 /** Bytes per element of the encodings of `DataLayers` */

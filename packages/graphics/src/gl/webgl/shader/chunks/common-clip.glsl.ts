@@ -6,6 +6,63 @@
  * @author Gianluca Tomasello <giagitom@gmail.com>
  */
 
+/**
+ * The clipping table (\`dClipTable\`, \`Clipping.Table\`): per (row, clip object) a cell of \`tClipTable\`, its mode
+ * (0 cut, 1 ignore, 2 keep, 3 wider), band (Å) and fuzziness; an instance's row is its clipping value. Expects
+ * \`common_clip\`'s clip objects; on WebGL1 (no unsigned integers) the random is a float hash.
+ */
+export const clip_table = `
+#if defined(dClipTable)
+    // a stable random in [0, 1) of an instance id: cellVIEW's Wang hash, its top 24 bits (\`Clipping.random\`)
+    float clipRandom(const in float id) {
+        #if __VERSION__ == 100
+            return fract(sin(id * 12.9898) * 43758.5453);
+        #else
+            uint h = uint(id);
+            h = (h ^ 61u) ^ (h >> 16u);
+            h *= 9u;
+            h ^= h >> 4u;
+            h *= 0x27d4eb2du;
+            h ^= h >> 15u;
+            return float(h >> 8u) / 16777216.0;
+        #endif
+    }
+
+    // whether the row \`row\` cuts an instance at \`center\` with the id \`id\` (\`Clipping.isCut\`, OR-ed over the objects)
+    bool clipTableTest(const in vec3 center, const in float row, const in float id) {
+        float r = clipRandom(id);
+        for (int i = 0; i < uClipObjectCount; ++i) {
+            if (i == uSolidInteriorClip) continue;
+            vec4 c = read_tClipTable(row * 16.0 + float(i));
+            int mode = int(c.r + 0.5);
+            if (mode == 1) continue;
+            float d = clipObjectSD(center, uClipObjectFrame[i], uClipObjectShape[i]);
+            if (clipInverted(uClipObjectShape[i])) d = -d;
+            bool inside = d <= 0.0;
+            if (mode == 0) {
+                if (inside) return true;
+                continue;
+            }
+            float nd = abs(d) / max(c.g, 0.01);
+            bool passes = nd > 1.0 || r < c.b * nd;
+            if (mode == 2 ? (inside && passes) : (inside || !passes)) return true;
+        }
+        return false;
+    }
+
+    // the clip objects the row \`row\` ignores, a bit each: the clipping flag of the pixel clip
+    float clipTableIgnored(const in float row) {
+        float mask = 0.0;
+        float bit = 1.0;
+        for (int i = 0; i < uClipObjectCount; ++i) {
+            if (int(read_tClipTable(row * 16.0 + float(i)).r + 0.5) == 1) mask += bit;
+            bit *= 2.0;
+        }
+        return mask;
+    }
+#endif
+`;
+
 export const common_clip = `
 vec3 quaternionTransform(const in vec4 q, const in vec3 v) {
     vec3 t = 2.0 * cross(q.xyz, v);
@@ -265,5 +322,7 @@ float clipObjectSD(const in vec3 center, const in mat4 frame, const in vec4 shap
             clipCapDistance(center + e.yyx) - clipCapDistance(center - e.yyx)
         ));
     }
+
+    ${clip_table}
 #endif
 `;

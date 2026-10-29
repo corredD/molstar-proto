@@ -7,7 +7,12 @@
 export const clip_instance = `
 #if defined(dClipVariant_instance) && defined(dClipObjects)
     vec3 mCenter = (uModel * aTransform * vec4(InvariantBoundingSphere.xyz, 1.0)).xyz;
-    if (clipTest(mCenter / uModelScale)) {
+    #if defined(dClipTable) && defined(dClipping)
+        bool clipCut = clipTableTest(mCenter / uModelScale, clipRow, aInstance);
+    #else
+        bool clipCut = clipTest(mCenter / uModelScale);
+    #endif
+    if (clipCut) {
         // move out of [ -w, +w ] to 'discard' in vert shader
         gl_Position.z = 2.0 * gl_Position.w;
     }

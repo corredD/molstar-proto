@@ -38,7 +38,12 @@ import {
   getTransparencyMin,
 } from '@molstar/graphics/geo/geometry/transparency-data';
 import type { Clipping } from '@molstar/graphics/theme/clipping';
-import { createClipping, applyClippingGroups, clearClipping } from '@molstar/graphics/geo/geometry/clipping-data';
+import {
+  createClipping,
+  applyClippingGroups,
+  clearClipping,
+  setClippingTable,
+} from '@molstar/graphics/geo/geometry/clipping-data';
 import { getMarkersAverage } from '@molstar/graphics/geo/geometry/marker-data';
 import type { Texture } from '@molstar/graphics/gl/texture';
 import type { Geometry, GeometryUtils } from '@molstar/graphics/geo/geometry/geometry';
@@ -704,13 +709,16 @@ namespace Visual {
     const count = instanceGranularity.ref.value
       ? instanceCount.ref.value
       : uGroupCount.ref.value * instanceCount.ref.value;
-    const { layers } = clipping;
+    const { layers, table } = clipping;
+    // with a table, the instances in no layer are in its row 0: clipped by it
+    const used = layers.length > 0 || !!table;
+    setClippingTable(renderObject.values, table);
 
     // as the four layers above: a visual the change does not reach stays clear (perf-audit-2 07/P14)
     const type = instanceGranularity.ref.value ? 'instance' : 'groupInstance';
     if (
       clear &&
-      layers.length > 0 &&
+      used &&
       dClipping.ref.value &&
       isKnownClear(renderObject, 'clipping', tClipping, count, type) &&
       !reachesAny(layers, lociApply)
@@ -719,7 +727,7 @@ namespace Visual {
     }
 
     // ensure texture has right size and type
-    createClipping(layers.length ? count : 0, type, renderObject.values);
+    createClipping(used ? count : 0, type, renderObject.values);
     const { array } = tClipping.ref.value;
 
     // clear if requested
@@ -728,21 +736,22 @@ namespace Visual {
 
     let touched = false;
     for (let i = 0, il = clipping.layers.length; i < il; ++i) {
-      const { loci, groups } = clipping.layers[i];
+      const { loci, groups, row } = clipping.layers[i];
+      const value = table ? ((row ?? 0) as Clipping.Groups) : groups;
       const apply = (interval: Interval) => {
         touched = true;
         const start = Interval.start(interval);
         const end = Interval.end(interval);
         ranges.push(start, end);
-        return applyClippingGroups(array, start, end, groups);
+        return applyClippingGroups(array, start, end, value);
       };
       lociApply(loci, apply, false);
     }
     // cleared: all of it changed
     TextureChanges.update(tClipping, clear ? undefined : ranges);
-    ValueCell.updateIfChanged(dClipping, clipping.layers.length > 0);
+    ValueCell.updateIfChanged(dClipping, used);
 
-    setKnownClear(renderObject, 'clipping', tClipping, count, type, clear && !touched && layers.length > 0);
+    setKnownClear(renderObject, 'clipping', tClipping, count, type, clear && !touched && used);
   }
 
   export function setWiggle(

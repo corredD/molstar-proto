@@ -119,6 +119,7 @@ const FeatureDefines: { [k: string]: string | boolean | number } = {
   dSubstance: true,
   dSubstanceType: 'texture',
   dClipping: true,
+  dClipTable: true,
   dWiggle: true,
   dSegmented: true,
   dXrayShaded: 'on',

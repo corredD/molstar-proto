@@ -240,7 +240,13 @@ export const assign_varyings_wgsl = /* wgsl */ `
 
     #if defined(dClipObjects) && defined(dClipping)
         ${assign_data_index_wgsl(undefined, 'clippingIndex')}
-        out.vClipping = read_tClipping(clippingIndex).r;
+        #if defined(dClipTable)
+            // the value is the instance's row of the clipping table; the flag, the objects that row ignores
+            let clipRow = i32(floor(read_tClipping(clippingIndex).r * 255.0 + 0.5));
+            out.vClipping = f32(clipTableIgnored(clipRow)) / 255.0;
+        #else
+            out.vClipping = read_tClipping(clippingIndex).r;
+        #endif
     #endif
     ${clip_flag_wgsl('out.vClipping')}
 `;
