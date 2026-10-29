@@ -70,6 +70,14 @@ function particleCut(state: State, rep: string, tag: string): ParticleCutProps |
   return cuts?.find((c) => c.tag === tag);
 }
 
+/** A cut's representations' refs, as a Set once a cut (asked once an object) */
+const Targets = new WeakMap<Cut, ReadonlySet<string>>();
+function targetsOf(cut: Cut): ReadonlySet<string> {
+  let t = Targets.get(cut);
+  if (!t) Targets.set(cut, (t = new Set(cut.targets.map((x) => x.ref))));
+  return t;
+}
+
 /** What `cut` cuts of the object `ref`; undefined when it is on none of its representations */
 export function cutOfObject(
   state: State,
@@ -77,7 +85,7 @@ export function cutOfObject(
   ref: string,
   reps = clippableUnder(state, ref),
 ): CutOfObject | undefined {
-  const targets = new Set(cut.targets.map((t) => t.ref));
+  const targets = targetsOf(cut);
   const on = reps.filter((c) => targets.has(c.transform.ref));
   if (!on.length) return undefined;
   const refs = on.map((c) => c.transform.ref);
@@ -126,7 +134,39 @@ export async function useClip(
   if (!cut) return ApiResult.fail('not-found', `There is no clip ${tag}.`);
   const name = `${CutNames[cut.object.type] ?? cut.object.type} ${cut.index}`;
   let changed = 0;
+  // whole objects, cut all of or not at all already: one clipping.apply for all of them (one commit, not one each)
+  const state = ctx.plugin.state.data;
+  const each: NodeRef[] = [];
+  const refs: string[] = [];
   for (const node of nodes) {
+    if ('particles' in node || 'entity' in node) {
+      each.push(node);
+      continue;
+    }
+    const reps = clippableUnder(state, node.ref);
+    const of = cutOfObject(state, cut, node.ref, reps);
+    if (!on) {
+      if (of) refs.push(...of.on);
+    } else if (of && (of.particles || of.atoms)) {
+      // cut in part: its record or its kept atoms change too
+      each.push(node);
+    } else {
+      for (const c of reps) if (!of?.on.includes(c.transform.ref)) refs.push(c.transform.ref);
+    }
+  }
+  if (refs.length) {
+    const full = on
+      ? refs.find(
+          (r) =>
+            (RepresentationClip.get(state.cells.get(r)?.transform.params)?.objects.length ?? 0) >= Clip.MaxObjectCount,
+        )
+      : undefined;
+    if (full) return ApiResult.fail('blocked', `It has ${Clip.MaxObjectCount} clips already.`);
+    const r = await ctx.api.run('clipping.apply', { tag, representations: refs, on });
+    if (!r.ok) return r;
+    if (!r.unchanged) changed++;
+  }
+  for (const node of each) {
     const r = await useOne(ctx, cut, lociOf, node, on);
     if (!r.ok) return r;
     if (!r.unchanged) changed++;
