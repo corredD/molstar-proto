@@ -333,10 +333,13 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   });
   const runEyes = restartable(() => {
     for (const { rows, keys, visible } of eyes.splice(0)) {
-      void setEyes(api, area, rows, visible).then(() => {
-        for (const key of keys) settled.push({ key, visible });
-        settle.request();
-      });
+      // settled however it ends (a thrown write too: the eyes follow the scene again)
+      void Promise.resolve(setEyes(api, area, rows, visible))
+        .catch(() => undefined)
+        .finally(() => {
+          for (const key of keys) settled.push({ key, visible });
+          settle.request();
+        });
     }
   });
   const afterPaint = frames(() => runEyes.start(0));
