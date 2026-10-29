@@ -915,24 +915,27 @@ function isLodPreset(t: Record<string, unknown>, preset: { lodLevels: unknown; l
 }
 
 /**
- * An object's mode and motion as its representations have them, every one: a value they differ on is mixed, read as no
- * mode and the motion off (a representation added later, or a preset, has its own); a volume's mode only
+ * An object's mode and motion as its representations have them, every one (a particle list's mode, every one with levels
+ * of detail): a value they differ on is mixed, read as no mode and the motion off (a representation added later, or a
+ * preset, has its own); a volume's mode only
  */
 function graphicsOf(o: GraphicsObject): GraphicsInfo | undefined {
   const types = o.representations
     .map((r) => (r.transform.params as { type?: { params?: Record<string, unknown> } } | undefined)?.type?.params)
     .filter((t): t is Record<string, unknown> => !!t);
   if (!types.length) return undefined;
-  // the one value every representation has, else undefined (mixed)
-  const common = <T>(of: (t: Record<string, unknown>) => T): T | undefined => {
-    const first = JSON.stringify(of(types[0]));
-    return types.every((t) => JSON.stringify(of(t)) === first) ? of(types[0]) : undefined;
+  // the one value every representation (of `among`) has, else undefined (mixed)
+  const common = <T>(of: (t: Record<string, unknown>) => T, among = types): T | undefined => {
+    if (!among.length) return undefined;
+    const first = JSON.stringify(of(among[0]));
+    return among.every((t) => JSON.stringify(of(t)) === first) ? of(among[0]) : undefined;
   };
   const modeOf = (t: Record<string, unknown>) =>
     o.kind === 'particles'
       ? GraphicsModes.find((m) => isLodPreset(t, Spheres.LodPixelPresets[m]))
       : GraphicsModes.find((m) => ModeSettings[m].quality === t.quality);
-  const mode = common(modeOf);
+  // a particle list's mode is its levels of detail, read where they are (not on its fibers)
+  const mode = common(modeOf, o.kind === 'particles' ? types.filter((t) => 'lodLevels' in t) : types);
   if (o.kind === 'volume') return mode ? { mode } : {};
   return {
     ...(mode ? { mode } : {}),

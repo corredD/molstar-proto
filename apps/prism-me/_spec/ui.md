@@ -105,7 +105,8 @@ Graphics & Motion (Ludovic, 2026-10-24: on every object, what does not apply lef
 The levels of detail are by size on screen (`Spheres.LodPixelPresets[mode]`: the levels and their `lodPixelSize`, as the
 particle and mesoscale defaults; Ludo, 2026-10-29, cellVIEW evaluation item 1): the distance presets
 (`LodLevelsPresets`) are ignored once `lodPixelSize` is set, so a mode that wrote them changed the strides only. The
-mode is read back by both, the levels and the pixel size.
+mode is read back by both, the levels and the pixel size, on the representations that have them (not a cellPACK list's
+fibers).
 
 One object's mode leaves the canvas alone; without `object` (⌘K, `?graphics-mode=`, the agent) every object changes, in
 one step, and so does the canvas resolution (pixel scale, sharpening), which is the canvas's props, outside the history:

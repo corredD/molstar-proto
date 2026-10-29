@@ -16,7 +16,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MesoscaleExtension } from '../prism-viewer.js';
-import { TestParticleList } from './fixtures.js';
+import { TestFiberList, TestParticleList } from './fixtures.js';
 
 // Graphics quality and motion per object (apps/prism-me/_spec/ui.md §4, Graphics & Motion): `mesoscale.graphics` and
 // `mesoscale.motion` given an `object` (a structure, a particle list, a volume) change that object alone; without one,
@@ -143,6 +143,27 @@ describe('graphics and motion per object', () => {
     }
     await b.commit();
     expect(m.graphicsState(refs.list).value?.mode).toBeUndefined();
+  });
+
+  // A cellPACK list draws its fibers too, without levels of detail: the mode is read from the representations that have
+  // them, so the picked mode stays lit
+  it('lights the mode of a list with a representation without levels of detail', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    await v.plugin.build().toRoot().apply(TestFiberList).commit();
+    expectOk(await v.api.particles.representation({ type: 'spacefill' }));
+    expectOk(await v.api.particles.representation({ type: 'fibers' }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0];
+    const types = list.representations.map((r) => paramsOf(r.cell));
+    expect(types.length).toBe(2);
+    expect(types.some((p) => !('lodLevels' in p))).toBe(true);
+    const m = v.api.mesoscale!;
+    const ref = list.cell.transform.ref;
+    expectOk(await m.graphics({ mode: 'performance', object: ref } as never));
+    expect(m.graphicsState(ref).value?.mode).toBe('performance');
   });
 
   it('wiggles and tumbles one structure, the other still', async () => {
