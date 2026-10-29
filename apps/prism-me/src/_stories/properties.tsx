@@ -39,6 +39,7 @@ import {
 import type { GroupBy, MockKind, MockNode } from './fake-scene.js';
 import { CategoryThemes } from '../explorer/tree-view.js';
 import { ObjectKinds } from './fake-scene.js';
+import { ClipProperties, NodeClips, ShownShare } from './proposed.js';
 
 // The picked row's properties (ui.md §4), in sections that fold, only what applies to it: the app's frame
 // (explorer/properties-view.tsx: the header, Prism's `SectionList`), each section `when` its kind; their controls
@@ -69,14 +70,18 @@ const ParticleTypes: [string, string][] = [
   ['objects', 'Decorating objects'],
 ];
 
-function sections(shell: ShellModel) {
+/** `proposed`: with the cellVIEW evaluation's controls (Explorer/Proposed) */
+function sections(shell: ShellModel, proposed = false) {
   shell.registerSections([
     {
       id: 'look',
       slot: Slot,
       title: 'Look',
-      // as the app: what has a look of its own (a volume's is its slices' and isosurfaces', a list's its targets')
-      when: has('category', 'structure', 'entity', 'chain', 'model', 'group', 'model entity', 'mesh'),
+      // as the app: what has a look of its own (a volume's is its slices' and isosurfaces', a list's its targets');
+      // the proposed Clips category has no look of its own
+      when: (ctx) =>
+        has('category', 'structure', 'entity', 'chain', 'model', 'group', 'model entity', 'mesh')(ctx) &&
+        (ctx.subject as MockNode).key !== 'c:clips',
       render: view((n) =>
         // a category: its eye and a color theme, for every object under it; a mesh: its look's own controls
         n.kind === 'category' ? (
@@ -91,6 +96,9 @@ function sections(shell: ShellModel) {
               glow: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }),
             })()}
             {n.kind === 'model' || n.kind === 'group' ? <Button size="sm">Generate colors</Button> : null}
+            {proposed && (n.kind === 'model entity' || n.kind === 'group' || n.kind === 'target') ? (
+              <ShownShare node={n} />
+            ) : null}
           </div>
         ),
       ),
@@ -164,7 +172,7 @@ function sections(shell: ShellModel) {
       title: 'Clips',
       // as the app: not a volume's slice or isosurface (they are cut with their volume)
       when: (ctx) => node(ctx) && !['slice', 'isosurface'].includes((ctx.subject as MockNode).kind),
-      render: view((n) => <Clips node={n} />),
+      render: view((n) => (proposed ? <NodeClips node={n} /> : <Clips node={n} />)),
     },
     { id: 'labels', slot: Slot, title: 'Labels', when: part, render: view((n) => <Labels node={n} />) },
     {
@@ -191,7 +199,13 @@ function sections(shell: ShellModel) {
       )),
     },
     // what was made at a node: its own section (ui.md §5: a clip's shape, invert, place, size; a label's text, size)
-    { id: 'clip', slot: Slot, title: 'Clip', when: has('clip'), render: view(() => <Clip />) },
+    {
+      id: 'clip',
+      slot: Slot,
+      title: 'Clip',
+      when: has('clip'),
+      render: view((n) => (proposed ? <ClipProperties node={n} shape={<Clip />} /> : <Clip />)),
+    },
     {
       id: 'label',
       slot: Slot,
@@ -507,9 +521,11 @@ export function Properties(props: {
   onGroupBy(g: GroupBy): void;
   /** Sections folded at first (the app's default); else open, to see them */
   folded?: boolean;
+  /** With the cellVIEW evaluation's controls (Explorer/Proposed) */
+  proposed?: boolean;
 }) {
   const shell = new ShellModel();
-  sections(shell);
+  sections(shell, props.proposed);
   return (
     <For each={derive(props.picked, (p) => (p ? [p] : []))} by={(p) => p.key}>
       {(n) => (

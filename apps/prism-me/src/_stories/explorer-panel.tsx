@@ -20,7 +20,7 @@ import {
   TextInput,
 } from '@molstar/prism-ui';
 import { frameState } from '@molstar/prism-ui/dom/scope';
-import { timeout } from '@molstar/prism-ui/dom/scoped';
+import { drag, on, timeout } from '@molstar/prism-ui/dom/scoped';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import {
   type At,
@@ -32,7 +32,19 @@ import {
   treeClasses,
   UniformPopover,
 } from '../explorer/tree-view.js';
-import { ClipShapes, clippable, colorItemsOf, colorable, menuOf, OpenItems } from './fake-menus.js';
+import { classes as mockClasses } from './_generated/explorer.module.css.js';
+import { clipBook } from './clip-book.js';
+import {
+  ClipShapes,
+  clippable,
+  colorItemsOf,
+  colorable,
+  menuOf,
+  OpenItems,
+  ProposedClipShapes,
+  proposedClipItems,
+  proposedMenuOf,
+} from './fake-menus.js';
 import { type GroupBy, type MockNode, ObjectKinds, pathTo } from './fake-scene.js';
 import { Properties } from './properties.js';
 
@@ -64,10 +76,13 @@ export interface ExplorerPanelProps {
   readonly folded?: boolean;
   /** The properties' height at first (px; the split is dragged) */
   readonly split?: number;
+  /** With the cellVIEW evaluation's proposals (Explorer/Proposed): menus and properties */
+  readonly proposed?: boolean;
 }
 
 export function ExplorerPanel(props: ExplorerPanelProps) {
   const { roots } = props;
+  const shapes = props.proposed ? ProposedClipShapes : ClipShapes;
   const opened = new Set(props.open ?? roots.map((r) => r.key));
   if (props.picked) for (const k of pathTo(roots, props.picked, props.groupBy)) opened.add(k);
   const open = observableState<ReadonlySet<string>>(opened);
@@ -84,7 +99,9 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
     (r) => r.key,
     (a, b) => a.node === b.node && a.depth === b.depth && a.expanded === b.expanded,
   );
-  const rows = derive([open.asReadonly, filter.asReadonly, groupings.key('o:hiv')], (o, f, g) => {
+  // the proposed Clips category's rows follow the story's book of clips (a clip made or used elsewhere)
+  const clipSources = props.proposed ? [clipBook.clips.asReadonly, clipBook.uses.asReadonly] : [];
+  const rows = derive([open.asReadonly, filter.asReadonly, groupings.key('o:hiv'), ...clipSources], (o, f, g) => {
     const text = f.trim();
     const kids = (n: MockNode) =>
       n.children?.(n.key === 'o:hiv' || n.key.startsWith('g:hiv') ? (g ?? 'compartment') : 'compartment');
@@ -118,7 +135,11 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
   const menuRoot = () => panelEl?.closest<HTMLElement>('[data-msp-theme]') ?? document.body;
   const menuAt = (at: At, node: MockNode, onClose?: () => void) => {
     pick(node);
-    const items = (): ContextMenuItem[] => menuOf(node, () => openContextMenu(menuRoot(), at, ClipShapes));
+    const clipShapes = () => openContextMenu(menuRoot(), at, props.proposed ? proposedClipItems(node) : shapes);
+    const items = (): ContextMenuItem[] =>
+      props.proposed
+        ? proposedMenuOf(node, { clipShapes, colors: () => openContextMenu(menuRoot(), at, colorItemsOf(node)) })
+        : menuOf(node, clipShapes);
     openContextMenu(menuRoot(), at, items(), onClose);
   };
   if (props.picked) {
@@ -136,11 +157,31 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
     if (anchor) uniform.set({ label: row.label, anchor });
   };
 
+  // a row's eye as shown, and set (proposed, Ludo 2026-10-28: a parent's eye sets every row under it, all the way down,
+  // each its own eye after: hide a parent, then show one child; the model's rows by its grouping)
+  const isShown = (row: { key: string; visible?: boolean }) => shown.get(row.key) ?? row.visible !== false;
+  const setEye = (node: MockNode, visible: boolean) => {
+    shown.set(node.key, visible);
+    const g = groupings.get('o:hiv') ?? 'compartment';
+    const down = (n: MockNode) => {
+      for (const c of n.children?.(g) ?? []) {
+        shown.set(c.key, visible);
+        down(c);
+      }
+    };
+    down(node);
+  };
+  let pressedEye: string | undefined;
+
   // the split: the properties' height, dragged on the line above them or moved by the arrows (tree-view.tsx)
   const height = frameState(props.split ?? 280);
 
   const panel = (
-    <div class={classes.panel} ref={(el: HTMLElement) => (panelEl = el)}>
+    <div
+      class={classes.panel}
+      classList={{ [mockClasses.eyesShown]: !!props.proposed }}
+      ref={(el: HTMLElement) => (panelEl = el)}
+    >
       <div class={classes.header}>
         <Button
           size="sm"
@@ -167,21 +208,37 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
             rows={rows}
             picked={pickedKey}
             shown={shown}
-            tools={(row) => ({
-              color: colorable(row.node),
-              clip: clippable(row.node),
-              remove: Removable.has(row.node.kind),
-              more: !row.category,
-            })}
+            tools={(row) =>
+              // proposed (Ludo, 2026-10-28): the eye and the ⋯ on every row, the other tools in the ⋯
+              props.proposed
+                ? { color: false, clip: false, remove: false, more: true }
+                : {
+                    color: colorable(row.node),
+                    clip: clippable(row.node),
+                    remove: Removable.has(row.node.kind),
+                    more: !row.category,
+                  }
+            }
             onPick={(row) => pick(row.node)}
             onToggle={(row) => toggle(row.key)}
             onDblClick={(row) => console.info(`[explorer mock] focus ${row.label}`)}
             onRemove={(row) => console.info(`[explorer mock] remove ${row.label}`)}
             onEye={(row) => {
-              const on = !(shown.get(row.key) ?? row.visible !== false);
+              // a press on an eye was the drag's (it set the eye already): its click does nothing
+              if (pressedEye === row.key) {
+                pressedEye = undefined;
+                return;
+              }
+              const on = !isShown(row);
+              if (props.proposed) {
+                setEye(row.node, on);
+                return;
+              }
               shown.set(row.key, on);
-              // a category's eye: every object under it
-              if (row.category) for (const o of row.node.children?.('compartment') ?? []) shown.set(o.key, on);
+              if (row.category) {
+                // a category's eye: every object under it
+                for (const o of row.node.children?.('compartment') ?? []) shown.set(o.key, on);
+              }
             }}
             onTool={(row, which, at, onClose) => {
               pick(row.node);
@@ -189,7 +246,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
               const colors = colorItemsOf(row.node).map((i) =>
                 i.id === 'theme-uniform' ? { ...i, run: () => uniformAt(row) } : i,
               );
-              openContextMenu(menuRoot(), at, which === 'color' ? colors : ClipShapes, onClose);
+              openContextMenu(menuRoot(), at, which === 'color' ? colors : shapes, onClose);
             }}
             onMenu={(row, at, onClose) => menuAt(at, row.node, onClose)}
           />
@@ -222,6 +279,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
                 groupBy={groupings.key('o:hiv')}
                 onGroupBy={(g) => groupings.set('o:hiv', g)}
                 folded={props.folded}
+                proposed={props.proposed}
               />
             )}
           </Show>
@@ -229,6 +287,51 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
       </div>
     </div>
   ) as HTMLElement;
+
+  if (props.proposed) {
+    const eyeOf = (el: Element | null) =>
+      el?.closest('button[aria-label="Hide"], button[aria-label="Show"]')?.closest<HTMLElement>('[data-tree-key]');
+    // C4D's eyes (Ludo, 2026-10-28): press an eye and drag along the column: each row passed takes the first one's new
+    // state (a parent's, all under it too); Prism's drag(), so every end path releases (rendering.md §2.4)
+    drag<{ x: number; visible: boolean; done: Set<string>; byKey: Map<string, MockNode> }>(panel, {
+      start: (e) => {
+        const rowEl = eyeOf(e.target as Element);
+        if (!rowEl || e.button !== 0) return undefined;
+        // the rows as shown, indexed once a drag
+        const byKey = new Map(rows.value.map((r) => [r.key, r.node] as const));
+        const key = rowEl.getAttribute('data-tree-key')!;
+        const node = byKey.get(key);
+        if (!node) return undefined;
+        const visible = !(shown.get(key) ?? node.visible !== false);
+        setEye(node, visible);
+        pressedEye = key;
+        const eye = rowEl.querySelector('button[aria-label="Hide"], button[aria-label="Show"]')!;
+        const r = eye.getBoundingClientRect();
+        return { x: r.left + r.width / 2, visible, done: new Set([key]), byKey };
+      },
+      move: (e, s) => {
+        const key = document
+          .elementFromPoint(s.x, e.clientY)
+          ?.closest('[data-tree-key]')
+          ?.getAttribute('data-tree-key');
+        const node = key ? s.byKey.get(key) : undefined;
+        if (!key || !node || s.done.has(key)) return;
+        s.done.add(key);
+        setEye(node, s.visible);
+      },
+    });
+    // the color dot: the colors, as Color… (Ludo, 2026-10-28)
+    on<MouseEvent>(panel, 'click', (e) => {
+      const dot = (e.target as Element).closest(`.${classes.swatch}`);
+      const key = dot?.closest('[data-tree-key]')?.getAttribute('data-tree-key');
+      const node = key ? rows.value.find((r) => r.key === key)?.node : undefined;
+      if (!dot || !node) return;
+      e.stopPropagation();
+      pick(node);
+      const r = dot.getBoundingClientRect();
+      openContextMenu(menuRoot(), { x: r.left, y: r.bottom }, colorItemsOf(node));
+    });
+  }
 
   // a menu shown with the story (no click needed): at the picked row's place, or under + Open
   if (props.menu) {
@@ -240,7 +343,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
       if (props.menu === 'open') openContextMenu(menuRoot(), at('button'), OpenItems);
       else if (picked.value) {
         const p = at('[aria-selected="true"]');
-        if (props.menu === 'clip') openContextMenu(menuRoot(), p, ClipShapes);
+        if (props.menu === 'clip') openContextMenu(menuRoot(), p, shapes);
         else menuAt(p, picked.value);
       }
     }, 50);

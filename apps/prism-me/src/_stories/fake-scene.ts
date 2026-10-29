@@ -5,6 +5,7 @@
  */
 
 import type { IconName } from '@molstar/prism-ui';
+import { clipBook, newClipBook } from './clip-book.js';
 
 // The explorer mocks' scene, made in memory (apps/prism-me/_spec/ui.md §3): what the tree shows, by kind, with no viewer
 // and no plugin. Its own shape, not the app's (`explorer/rows.ts`): the mocks show the target, not today's code.
@@ -73,11 +74,14 @@ const hue = (i: number) => {
 };
 
 /** A cellPACK model's compartments, and the functions its entities have */
-const Compartments = ['envelope.membrane', 'envelope.surface', 'capsid.interior', 'capsid.surface', 'cytoplasm'];
+export const Compartments = ['envelope.membrane', 'envelope.surface', 'capsid.interior', 'capsid.surface', 'cytoplasm'];
 const Functions = ['Structural', 'Enzyme', 'Transport', 'Signaling', 'Unknown'];
 
-/** A model of `n` entities (2,400 in the stories: the virtualized tree), grouped as its Group by says (ui.md §3) */
-export function cellPackModel(n: number): MockNode {
+/**
+ * A model of `n` entities (2,400 in the stories: the virtualized tree), grouped as its Group by says (ui.md §3);
+ * `proposed`: its clips are not under it but in the Clips category (Explorer/Proposed)
+ */
+export function cellPackModel(n: number, proposed = false): MockNode {
   const entities = Array.from({ length: n }, (_, i) => ({
     id: i,
     name: `${['GAG', 'ENV', 'NEF', 'VPR', 'POL', 'MA', 'CA'][i % 7]}_${String(i + 1).padStart(4, '0')}`,
@@ -133,7 +137,7 @@ export function cellPackModel(n: number): MockNode {
     icon: 'shapes',
     children: lazy((by) => [
       ...groups(by),
-      { key: 'k:hiv:1', kind: 'clip', label: 'Plane clip', visible: true },
+      ...(proposed ? [] : [{ key: 'k:hiv:1', kind: 'clip', label: 'Plane clip', visible: true } as const]),
       { key: 'l:hiv:1', kind: 'label', label: 'HIV-1 capsid', visible: true },
     ]),
   };
@@ -207,6 +211,25 @@ export const Membrane: MockNode = {
   icon: 'box',
 };
 
+/** The proposed Clips category (Ludo, 2026-10-28): every clip of the scene, read from the story's book at each rebuild */
+function clipsCategory(): MockNode {
+  return {
+    key: 'c:clips',
+    kind: 'category',
+    label: 'Clips',
+    count: String(clipBook.clips.value.length),
+    visible: true,
+    children: () =>
+      clipBook.clips.value.map((c) => ({
+        key: c.key,
+        kind: 'clip' as const,
+        label: c.label,
+        count: clipBook.countOf(c.key),
+        visible: true,
+      })),
+  };
+}
+
 /** The four categories, shown when they hold something (ui.md §3) */
 export function categories(objects: readonly MockNode[]): MockNode[] {
   const of = (kinds: MockKind[]) => objects.filter((o) => kinds.includes(o.kind));
@@ -229,13 +252,20 @@ export function categories(objects: readonly MockNode[]): MockNode[] {
     }));
 }
 
-/** A scene with every kind of row: a structure, a model of `entities` entities, a particle list, a volume, a mesh */
-export function fullScene(entities = 2400): MockNode[] {
-  return categories([Crambin, cellPackModel(entities), Ribosomes, Tomogram, Membrane]);
+/**
+ * A scene with every kind of row: a structure, a model of `entities` entities, a particle list, a volume, a mesh;
+ * `proposed`: the clips in a category of their own, after the others (a new book of clips for the story)
+ */
+export function fullScene(entities = 2400, proposed = false): MockNode[] {
+  const all = categories([Crambin, cellPackModel(entities, proposed), Ribosomes, Tomogram, Membrane]);
+  if (!proposed) return all;
+  newClipBook();
+  return [...all, clipsCategory()];
 }
 
 /** Whether `key` may be under `node` (its object's id is the second part of both keys; categories hold everything) */
 function wayTo(node: MockNode, key: string) {
+  if (node.key === 'c:clips') return key.startsWith('k:');
   return node.kind === 'category' || node.key.split(':')[1] === key.split(':')[1];
 }
 
