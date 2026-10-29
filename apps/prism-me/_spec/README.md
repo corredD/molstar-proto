@@ -9,6 +9,8 @@ names).
 - **How it is built, where it is weak, and the decisions on it:** [architecture.md](architecture.md).
 - **What it does, feature by feature, and what is missing:** [features.md](features.md). It is the checklist to test
   from (its last section).
+- **cellVIEW, the Unity viewer before it:** [cellview.md](cellview.md), its scene tree and cut mapping, as read from its
+  code (a reference, not a decision).
 - **Decisions** (Ludovic, 2026-10-18):
   - Everything mesoscale is the particles model (`ParticleList`, Alexander Rose's): cellPACK and PetWorld load through
     the plugin's `mmcif_particles`, so a mesoscale model and a cryo-ET particle list are the same thing, decorated by
