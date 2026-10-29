@@ -18,7 +18,9 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
+import { StructureElement } from '@molstar/model/model/structure';
 import { clipItems } from '../menu.js';
+import { whatItCuts } from '../rows.js';
 import { explorerUI, sceneModelOf } from '../ui.js';
 
 // Clips in a category of their own (_spec/ui.md §3, §4, §5; lane clips-category), over a headless viewer in jsdom:
@@ -325,5 +327,77 @@ describe('Add clip…', () => {
     menu.find((i) => i.id === `use-${sphere}`)!.run();
     await until(() => cutsObject(v, sphere, crn));
     expect(steps(v)).toBe(n + 1);
+  });
+});
+
+describe('explorer.clipUse on structure parts and some compartments (review M1, M2, M3)', () => {
+  const cbs = () =>
+    new File([readFileSync(resolve(import.meta.dirname, '../../../../../data/examples/1cbs_updated.cif'))], '1cbs.cif');
+
+  it("gives a part of a second structure, then all of it, without cutting the first's kept atoms again", async () => {
+    const v = await viewer();
+    for (const name of ['a.cif', 'b.cif']) {
+      const l = await v.api.load.files({ files: [new File([await cbs().arrayBuffer()], name)] });
+      if (!l.ok) throw new Error(l.message);
+    }
+    const { area } = mount(v);
+    const objects = () => area.objectsState().value;
+    const [a, b] = objects()
+      .filter((o) => o.kind === 'structure')
+      .slice(-2);
+    const [e1, e2] = a.entities!.map((e) => e.id);
+    const ok = async (params: object) => {
+      const r = await v.api.run('explorer.clipUse', params);
+      if (!r.ok) throw new Error(r.message);
+    };
+    const r = await v.api.run('clipping.add', { shape: 'plane', node: `#${a.ref}` });
+    if (!r.ok) throw new Error(r.message);
+    const tag = cuts(v)[0].object.tag!;
+    const cut = () => cuts(v).find((c) => c.object.tag === tag)!;
+    const cutOn = (ref: string) => {
+      const of = area.cutOf(cut(), ref);
+      return of?.atoms ? StructureElement.Loci.size(of.atoms) : of ? 'all' : 0;
+    };
+    // a's second entity kept whole
+    await ok({ tag, nodes: [{ ref: a.ref, entity: e2 }], on: false });
+    const before = cutOn(a.ref);
+    expect(typeof before).toBe('number');
+    // b's first entity, then its second: a's kept atoms stay kept
+    await ok({ tag, nodes: [{ ref: b.ref, entity: e1 }], on: true });
+    await ok({ tag, nodes: [{ ref: b.ref, entity: e2 }], on: true });
+    expect(cutOn(a.ref)).toBe(before);
+    // all of b: a's too
+    await ok({ tag, nodes: [{ ref: b.ref }], on: true });
+    expect(cutOn(a.ref)).toBe(before);
+    // all of b again: nothing changes, a's kept atoms stay kept (N1)
+    const n = steps(v);
+    await ok({ tag, nodes: [{ ref: b.ref }], on: true });
+    expect(steps(v)).toBe(n);
+    expect(cutOn(a.ref)).toBe(before);
+    // b is cut whole: listed as itself, not by entities (M3)
+    expect(cutOn(b.ref)).toBe('all');
+    const uses = whatItCuts(area, cut(), objects(), new Map()).map((u) => u.key);
+    expect(uses).toContain(`o:${b.ref}`);
+  });
+
+  it("keeps a clip's compartments when an entity is given to it, and lists them (M2)", async () => {
+    const v = await viewer();
+    const { area, model, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    await until(() => !!model.parts.value.get(hiv));
+    const r = await v.api.run('clipping.add', { shape: 'plane', node: `#${hiv}`, particles: { compartments: [0] } });
+    if (!r.ok) throw new Error(r.message);
+    const tag = cuts(v)[0].object.tag!;
+    const cut = () => cuts(v).find((c) => c.object.tag === tag)!;
+    const uses = () => whatItCuts(area, cut(), area.objectsState().value, model.parts.value).map((u) => u.key);
+    expect(uses()).not.toContain(`o:${hiv}`);
+    const u = await v.api.run('explorer.clipUse', {
+      tag,
+      nodes: [{ ref: hiv, particles: { entities: [1] } }],
+      on: true,
+    });
+    if (!u.ok) throw new Error(u.message);
+    const of = area.cutOf(cut(), hiv)!;
+    expect([of.particles?.compartments, of.particles?.entities]).toEqual([[0], [1]]);
   });
 });

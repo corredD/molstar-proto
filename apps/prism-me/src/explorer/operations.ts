@@ -29,7 +29,7 @@ import { labelOf, loadedStructures } from '@molstar/prism-viewer/api/scope';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type {} from '@molstar/prism-viewer/features/clipping';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
-import { clippableUnder, type CutOfObject, cutOfObject, useClip } from './clips.js';
+import { clippableUnder, type CutOfObject, cutOfObject, idSet, kindOf, useClip } from './clips.js';
 import { GizmoAppearance, type GizmoLook } from '@molstar/graphics/util/gizmo/controller';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
@@ -417,8 +417,8 @@ export class ExplorerApi extends ApiArea {
   covers(of: CutOfObject, node: NodeRef): boolean {
     if ('particles' in node) {
       if (!of.particles) return true;
-      const kind = node.particles.targets?.length ? 'targets' : 'entities';
-      const has = new Set(of.particles[kind]);
+      const kind = kindOf(node.particles);
+      const has = idSet(of.particles, kind);
       return (node.particles[kind] ?? []).every((id) => has.has(id));
     }
     if (!('entity' in node) || !of.atoms) return true;

@@ -28,7 +28,7 @@ import type { NodeRef } from './operations.js';
 export type Cut = ViewerApi['clipping']['cuts']['value'][number];
 
 /** The particle ids a cut is of, by kind (Prism's selector) */
-type Ids = {
+export type Ids = {
   readonly entities: readonly number[];
   readonly compartments: readonly number[];
   readonly targets: readonly number[];
@@ -85,11 +85,21 @@ export function cutOfObject(
   const first = tag ? on.find(isParticles) : undefined;
   const some = first && tag ? particleCut(state, first.transform.ref, tag) : undefined;
   if (some) return { ref, on: refs, particles: some };
-  // a cut keeping some atoms whole: the atoms it cuts on this object's structure
+  // a cut keeping some atoms whole: the atoms it cuts on this object's structure, when it keeps some of this one (its
+  // kept atoms may be another structure's)
   const structure = on.map(structureOf).find((s) => !!s);
   if (cut.kept && cut.atoms && structure) {
     const atoms = cut.atoms.loci.find((l) => l.structure === structure.root);
-    return { ref, on: refs, atoms: atoms ?? StructureElement.Loci.none(structure.root) };
+    if (!atoms) return { ref, on: refs, atoms: StructureElement.Loci.none(structure.root) };
+    // what its representations draw: their components' atoms (each once; components do not overlap)
+    const drawnBy = new Set<Structure>();
+    for (const c of on) {
+      const s = structureOf(c);
+      if (s) drawnBy.add(s);
+    }
+    let drawn = 0;
+    for (const s of drawnBy) drawn += s.elementCount;
+    if (StructureElement.Loci.size(atoms) < drawn) return { ref, on: refs, atoms };
   }
   return { ref, on: refs };
 }
@@ -191,7 +201,11 @@ async function useOne(
       if (!r.ok) return r;
     }
     if (of?.atoms) {
-      const r = await ctx.api.run('clipping.release', { tag });
+      // this structure's kept atoms only (another's stay kept)
+      const structure = reps.map(structureOf).find((x) => !!x);
+      const r = structure
+        ? await ctx.api.run('clipping.release', { tag, target: { loci: allAtoms(structure) } })
+        : ApiResult.ok('');
       if (!r.ok) return r;
     }
     return missing.length ? apply(refsOf(missing), true) : ApiResult.ok('');
@@ -200,13 +214,13 @@ async function useOne(
   // some particles of a model or a list (an entity's, a group's, a target's)
   if ('particles' in node) {
     const cells = reps.filter(isParticles);
-    const kind = node.particles.targets?.length ? 'targets' : 'entities';
+    const kind = kindOf(node.particles);
     const part = node.particles[kind] ?? [];
     const has = new Set(of?.particles ? of.particles[kind] : []);
+    // the record's other kinds kept (a clip of a compartment given an entity cuts both)
     const ids = (next: readonly number[]): Ids => ({
-      entities: kind === 'entities' ? next : [],
-      compartments: [],
-      targets: kind === 'targets' ? next : [],
+      ...(of?.particles ?? { entities: [], compartments: [], targets: [] }),
+      [kind]: next,
     });
     if (on) {
       if (of && !of.particles) return unchanged;
@@ -223,10 +237,11 @@ async function useOne(
     const drop = new Set(part);
     if (!all.some((id) => drop.has(id))) return unchanged;
     const next = all.filter((id) => !drop.has(id));
-    if (!next.length) return apply(of.on, false);
+    const left = ids(next);
+    if (!left.entities.length && !left.compartments.length && !left.targets.length) return apply(of.on, false);
     const onCells = cells.filter(onIt);
     if (!of.particles && onCells.some((c) => indexOf(c) > MaxParticleCutIndex)) return blocked('some of its particles');
-    return look(refsOf(onCells), ids(next));
+    return look(refsOf(onCells), left);
   }
 
   // some atoms of a structure (an entity, a chain): the rest kept whole by the cut
@@ -247,10 +262,8 @@ async function useOne(
       const rest = StructureElement.Loci.subtract(whole, part);
       return StructureElement.Loci.isEmpty(rest) ? r : keep(rest);
     }
-    const r = await ctx.api.run('clipping.release', { tag });
-    if (!r.ok) return r;
-    const rest = StructureElement.Loci.subtract(whole, StructureElement.Loci.union(of.atoms!, part));
-    return StructureElement.Loci.isEmpty(rest) ? r : keep(rest);
+    // the part cut again, on this structure only (another's kept atoms stay kept)
+    return ctx.api.run('clipping.release', { tag, target: { loci: part } });
   }
   if (!of) return unchanged;
   const cutAtoms = of.atoms ?? whole;
@@ -262,9 +275,28 @@ async function useOne(
   return keep(part);
 }
 
-/** Every id of a kind a particle representation's list has (its entities, its targets) */
-function allIds(cell: StateObjectCell | undefined, kind: 'entities' | 'targets'): number[] {
+/** A record's ids of a kind as a Set, made once a record (a list of what a clip cannot cut asks for each target) */
+const IdSets = new WeakMap<Ids, Partial<Record<keyof Ids, ReadonlySet<number>>>>();
+export function idSet(ids: Ids, kind: keyof Ids): ReadonlySet<number> {
+  let sets = IdSets.get(ids);
+  if (!sets) IdSets.set(ids, (sets = {}));
+  return (sets[kind] ??= new Set(ids[kind]));
+}
+
+/** The kind of particle ids a node is by: a list's targets, a model's compartments, else its entities */
+export function kindOf(p: {
+  readonly entities?: readonly number[];
+  readonly compartments?: readonly number[];
+  readonly targets?: readonly number[];
+}): keyof Ids {
+  return p.targets?.length ? 'targets' : p.compartments?.length ? 'compartments' : 'entities';
+}
+
+/** Every id of a kind a particle representation's list has (its entities, compartments or targets) */
+function allIds(cell: StateObjectCell | undefined, kind: keyof Ids): number[] {
   const list = cell?.obj && SO.Particle.Representation3D.is(cell.obj) ? cell.obj.data.sourceData : undefined;
   if (!list) return [];
-  return kind === 'entities' ? [...(list.entityInfo?.keys() ?? [])] : [...list.targetInfo.keys()];
+  if (kind === 'entities') return [...(list.entityInfo?.keys() ?? [])];
+  if (kind === 'compartments') return [...(list.compartmentInfo?.keys() ?? [])];
+  return [...list.targetInfo.keys()];
 }

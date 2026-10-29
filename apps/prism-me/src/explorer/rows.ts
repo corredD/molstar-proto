@@ -12,6 +12,7 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { IconName } from '@molstar/prism-ui';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import type { Category, ExplorerApi, NodeRef, SceneObject } from './operations.js';
+import type { Ids } from './clips.js';
 import { filterRows, type TreeRowView } from './tree-view.js';
 
 // The rows of the explorer's tree (_spec/ui.md §3), flat, from the scene's objects and the parts the mesoscale and
@@ -602,11 +603,19 @@ export function whatItCuts(area: ExplorerApi, cut: Cut, objects: readonly SceneO
 function particleUses(
   o: SceneObject,
   part: MesoscaleInfo | DecorationsInfo | undefined,
-  ids: { readonly entities: readonly number[]; readonly targets: readonly number[] },
+  ids: Ids,
 ): ClipUse[] | undefined {
   if (!part) return undefined;
   const ref = o.ref;
   const out: ClipUse[] = [];
+  // a clip of some compartments (Prism's selector; from ⌘K or the agent): each compartment
+  for (const c of ids.compartments) {
+    out.push({
+      key: `cp:${ref}:${c}`,
+      label: `${o.label} › compartment ${c}`,
+      node: { ref, particles: { compartments: [c] } },
+    });
+  }
   if (o.kind === 'list') {
     const targets = new Set(ids.targets);
     for (const t of (part as DecorationsInfo).targets) {
