@@ -17,7 +17,9 @@ is not built is [../TODO.md](../TODO.md).
     GPU cull (~60 + tests); waits on Ludo.
   - **4. Graded cuts, the library half** (`me/graded-cuts`); started. The app half after 3.
   - **2 + 5. The tree's eye and ⋯, and Show only** (`me/tree-eyes`, one lane: both change the ⋯); started.
-  - **3. Clips in a category of their own** (`me/clips-category`); started; merges after 2 + 5.
+  - **3. Clips in a category of their own** (`me/clips-category`): PR #18, reviewed, checked with real GL on WebGPU and
+    WebGL2; over its size stop (~+780 against ~700, review fixes; the coordinator let it open); a Prism commit
+    (`clipping.release` takes a target); merges after 2 + 5; waits on Ludo.
   - 7. Ghosts, and 4's app half: after 3 and 4.
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
