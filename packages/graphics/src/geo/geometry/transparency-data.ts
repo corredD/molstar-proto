@@ -104,14 +104,15 @@ export function createTransparency(
   }
 }
 
-const emptyTransparencyTexture = { array: new Uint8Array(4), count: 1 };
+/** A new one each time: the layer's data reuses its array (`createDataArray`), which no two visuals may share */
+const emptyTransparencyTexture = () => ({ array: new Uint8Array(4), count: 1 });
 export function createEmptyTransparency(transparencyData?: TransparencyData): TransparencyData {
   if (transparencyData) {
-    ValueCell.update(transparencyData.tTransparency, emptyTransparencyTexture);
+    ValueCell.update(transparencyData.tTransparency, emptyTransparencyTexture());
     return transparencyData;
   } else {
     return {
-      tTransparency: ValueCell.create(emptyTransparencyTexture),
+      tTransparency: ValueCell.create(emptyTransparencyTexture()),
       dTransparency: ValueCell.create(false),
       transparencyAverage: ValueCell.create(0),
       transparencyMin: ValueCell.create(1),

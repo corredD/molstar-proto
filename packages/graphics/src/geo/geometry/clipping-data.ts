@@ -75,16 +75,17 @@ export function createClipping(count: number, type: ClippingType, clippingData?:
   }
 }
 
-const emptyClippingTexture = { array: new Uint8Array(4), count: 1 };
+/** A new one each time: the layer's data reuses its array (`createDataArray`), which no two visuals may share */
+const emptyClippingTexture = () => ({ array: new Uint8Array(4), count: 1 });
 export function createEmptyClipping(clippingData?: ClippingData): ClippingData {
   if (clippingData) {
-    ValueCell.update(clippingData.tClipping, emptyClippingTexture);
+    ValueCell.update(clippingData.tClipping, emptyClippingTexture());
     ValueCell.updateIfChanged(clippingData.dClipping, false);
     ValueCell.updateIfChanged(clippingData.dClipTable, false);
     return clippingData;
   } else {
     return {
-      tClipping: ValueCell.create(emptyClippingTexture),
+      tClipping: ValueCell.create(emptyClippingTexture()),
       dClipping: ValueCell.create(false),
       clippingType: ValueCell.create<string>('groupInstance'),
       tClipTable: ValueCell.create(emptyClipTable()),

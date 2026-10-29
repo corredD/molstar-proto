@@ -57,14 +57,15 @@ export function createWiggle(count: number, type: WiggleType, wiggleData?: Wiggl
   }
 }
 
-const emptyWiggleTexture = { array: new Uint8Array(4), count: 1 };
+/** A new one each time: the layer's data reuses its array (`createDataArray`), which no two visuals may share */
+const emptyWiggleTexture = () => ({ array: new Uint8Array(4), count: 1 });
 export function createEmptyWiggle(wiggleData?: WiggleData): WiggleData {
   if (wiggleData) {
-    ValueCell.update(wiggleData.tWiggle, emptyWiggleTexture);
+    ValueCell.update(wiggleData.tWiggle, emptyWiggleTexture());
     return wiggleData;
   } else {
     return {
-      tWiggle: ValueCell.create(emptyWiggleTexture),
+      tWiggle: ValueCell.create(emptyWiggleTexture()),
       dWiggle: ValueCell.create(false),
       wiggleAverage: ValueCell.create(0),
       wiggleType: ValueCell.create<string>('groupInstance'),

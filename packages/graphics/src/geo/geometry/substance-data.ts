@@ -78,14 +78,15 @@ export function createSubstance(count: number, type: SubstanceType, substanceDat
   }
 }
 
-const emptySubstanceTexture = { array: new Uint8Array(4), count: 1 };
+/** A new one each time: the layer's data reuses its array (`createDataArray`), which no two visuals may share */
+const emptySubstanceTexture = () => ({ array: new Uint8Array(4), count: 1 });
 export function createEmptySubstance(substanceData?: SubstanceData): SubstanceData {
   if (substanceData) {
-    ValueCell.update(substanceData.tSubstance, emptySubstanceTexture);
+    ValueCell.update(substanceData.tSubstance, emptySubstanceTexture());
     return substanceData;
   } else {
     return {
-      tSubstance: ValueCell.create(emptySubstanceTexture),
+      tSubstance: ValueCell.create(emptySubstanceTexture()),
       dSubstance: ValueCell.create(false),
 
       tSubstanceGrid: ValueCell.create(createNullTexture()),

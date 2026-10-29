@@ -78,14 +78,15 @@ export function createOverpaint(count: number, type: OverpaintType, overpaintDat
   }
 }
 
-const emptyOverpaintTexture = { array: new Uint8Array(4), count: 1 };
+/** A new one each time: the layer's data reuses its array (`createDataArray`), which no two visuals may share */
+const emptyOverpaintTexture = () => ({ array: new Uint8Array(4), count: 1 });
 export function createEmptyOverpaint(overpaintData?: OverpaintData): OverpaintData {
   if (overpaintData) {
-    ValueCell.update(overpaintData.tOverpaint, emptyOverpaintTexture);
+    ValueCell.update(overpaintData.tOverpaint, emptyOverpaintTexture());
     return overpaintData;
   } else {
     return {
-      tOverpaint: ValueCell.create(emptyOverpaintTexture),
+      tOverpaint: ValueCell.create(emptyOverpaintTexture()),
       dOverpaint: ValueCell.create(false),
 
       tOverpaintGrid: ValueCell.create(createNullTexture()),
