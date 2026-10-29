@@ -103,12 +103,16 @@ representations it is given (`clipping.md` §1). Of an object it cuts all, some 
 targets: the representations' layers record them by the tag, clipping.md §5) or some atoms (the rest kept whole by its
 group bit). So What it cuts lists, object by object in the tree's order: an object it cuts all of; of a model, the
 largest groups it cuts all of (as the model's grouping shows them), then entities; a list's targets; a structure's
-entities, or their chains, it cuts all of. A node's Clips lists the clips that cut all of it (an object's: any clip on
-it). Cut also… offers each object, a structure's entities, a model's groups and a list's targets it does not cut all of
-(a model's entities from their own Clips: they are many). Each add or take-off is one step (`explorer.clipUse`: Prism's
-`clipping.apply`, `particles.look` cuts, `clipping.keep` and `release` in one run). The last thing a clip cuts has no ×
-(greyed: a clip cuts something; remove the clip instead), as Prism's `clipping.apply` refuses it. Limits, Prism's: 16
-clips a representation; a clip of a part only among the first six on it (Mol\*'s clipping groups).
+entities, or their chains, it cuts all of; a model's compartments when the clip is of compartments (Prism's selector,
+from ⌘K or the agent: given an entity too, it keeps them). A node's Clips lists the clips that cut all of it (an
+object's: any clip on it). Cut also… offers each object, a structure's entities, a model's groups and a list's targets
+it does not cut all of (a model's entities from their own Clips: they are many). Each add or take-off is one step
+(`explorer.clipUse`: Prism's `clipping.apply`, `particles.look` cuts, `clipping.keep` and `release` in one run). The
+last thing a clip cuts has no × (greyed: a clip cuts something; remove the clip instead), as Prism's `clipping.apply`
+refuses it: in a clip's What it cuts, its only line; in a node's Clips, a clip whose every line is in the node (an
+object cut in two parts). Many objects given or taken off at once (a category's) are one `clipping.apply`; a part of a
+structure cut again is that part only (`clipping.release` with a target), another structure's kept atoms stay kept.
+Limits, Prism's: 16 clips a representation; a clip of a part only among the first six on it (Mol\*'s clipping groups).
 
 Graphics & Motion (Ludovic, 2026-10-24: on every object, what does not apply left out): `mesoscale.graphics` and
 `mesoscale.motion` with an `object` (the mesoscale extension's ops, so Prism stays as it is). A mode sets, by kind:

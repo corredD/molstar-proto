@@ -101,14 +101,16 @@ Playwright, headless Chrome (`channel: 'chrome'`), dev server on 1353, `?example
 (`data/examples`), WebGPU (the default) and WebGL2 (`?graphics-backend=webgl2`; the canvas's context checked: webgpu,
 then webgl2), light and dark. Same results on both, no page error:
 
-- The membrane's Clips (`HIVenvelop_mature › membrane`): New clip › Plane makes Plane 1, a row of Clips, cutting the
-  membrane (`entities: [0]`).
-- The capsid's Clips (`HIV_capsid`): Use a clip › Plane 1. The clip's record becomes `entities: [0, 1]` on the model's
-  representations (3 targets), one clip in the scene; its row says "2 objects"; its What it cuts lists
-  `HIVenvelop_mature › membrane` and `HIVenvelop_mature › HIV_capsid`, each with its ×.
+- The membrane's Clips (`HIVenvelop_mature › membrane`): New clip › Plane makes Plane 1, a row of Clips ("1 object");
+  its record, read fresh (the area's `cutOf` and each of the model's 3 representations' layers cell), is the membrane's
+  entities `0,1`; the canvas shows the cut.
+- The capsid's Clips (`HIV_capsid`, entities `2,22,43`): Use a clip › Plane 1. The record becomes `0,1,2,22,43` on all 3
+  representations, one clip in the scene; its row says "2 objects"; its What it cuts lists
+  `HIVenvelop_mature › membrane` and `HIVenvelop_mature › HIV_capsid`, each with its ×; the canvas changes (the capsid
+  opened inside the membrane's cut).
 - Storybook (6103): ClipsCategory, GradedCut, PartClips, ObjectWithoutClips render in light and dark at 360 and 260 px,
-  no page error; the app's Clips lines are the mock's less the bias select (item 4). The app's panel was not narrowed to
-  260 px in Playwright (its width is the shell's): checked in the stories only.
+  no page error; the app's Clips lines are the mock's less the bias select (item 4). Not checked in the app: its panel
+  in light and at 260 px (the shell's width and theme did not take a script's change): in the stories only.
 
 ## Review
 
