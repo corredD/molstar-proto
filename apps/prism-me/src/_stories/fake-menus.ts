@@ -63,10 +63,12 @@ export function colorItemsOf(node: MockNode): ContextMenuItem[] {
 
 /** Whether a row has the brush (a color for all of it), as the app's `colorable` */
 export const colorable = (node: MockNode) =>
+  node.key !== 'c:clips' &&
   ['category', 'structure', 'entity', 'chain', 'model', 'group', 'model entity', 'target', 'mesh'].includes(node.kind);
 
 /** Whether a row has the scissors (a clip), as the app's `clippable`: an object all of it, a part only it */
 export const clippable = (node: MockNode) =>
+  node.key !== 'c:clips' &&
   ['category', 'structure', 'model', 'list', 'volume', 'entity', 'chain', 'group', 'model entity', 'target'].includes(
     node.kind,
   );

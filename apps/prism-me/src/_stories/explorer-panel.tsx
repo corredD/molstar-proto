@@ -32,6 +32,7 @@ import {
   treeClasses,
   UniformPopover,
 } from '../explorer/tree-view.js';
+import { clipBook } from './clip-book.js';
 import { ClipShapes, clippable, colorItemsOf, colorable, menuOf, OpenItems, ProposedClipShapes } from './fake-menus.js';
 import { type GroupBy, type MockNode, ObjectKinds, pathTo } from './fake-scene.js';
 import { Properties } from './properties.js';
@@ -87,7 +88,9 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
     (r) => r.key,
     (a, b) => a.node === b.node && a.depth === b.depth && a.expanded === b.expanded,
   );
-  const rows = derive([open.asReadonly, filter.asReadonly, groupings.key('o:hiv')], (o, f, g) => {
+  // the proposed Clips category's rows follow the story's book of clips (a clip made or used elsewhere)
+  const clipSources = props.proposed ? [clipBook.clips.asReadonly, clipBook.uses.asReadonly] : [];
+  const rows = derive([open.asReadonly, filter.asReadonly, groupings.key('o:hiv'), ...clipSources], (o, f, g) => {
     const text = f.trim();
     const kids = (n: MockNode) =>
       n.children?.(n.key === 'o:hiv' || n.key.startsWith('g:hiv') ? (g ?? 'compartment') : 'compartment');

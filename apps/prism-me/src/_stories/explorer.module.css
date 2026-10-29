@@ -125,6 +125,15 @@
   overflow: hidden;
 }
 
+/* A use's remove: as small as its icon, though last on its line (the line stretches its last child) */
+.partRemove {
+  flex: none;
+
+  .line > & {
+    flex: none;
+  }
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

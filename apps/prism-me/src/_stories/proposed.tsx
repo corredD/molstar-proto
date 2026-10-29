@@ -9,6 +9,8 @@
 import {
   Button,
   type Child,
+  For,
+  Icon,
   type ObservableState,
   observableState,
   type ReadonlyState,
@@ -19,22 +21,22 @@ import {
 } from '@molstar/prism-ui';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import { classes } from './_generated/explorer.module.css.js';
-import { Compartments, type MockNode } from './fake-scene.js';
+import { type ClipShape, type ClipUse, ClipTargets, type CutBias, clipBook, type MockClip } from './clip-book.js';
+import type { MockNode } from './fake-scene.js';
 
 // What the cellVIEW evaluation proposes (TODO.md, Proposed; progress/2026-10-28-cellview-evaluation.md), mocked for Ludo
-// to judge before any brief: a cut graded per part (+ / 0 / −, the band, fuzziness), ghosts of what is cut, the aperture
-// cut, a part shown in part. Not decided: the stories that show it are under Explorer/Proposed. The previews draw the
-// rules of cellVIEW's cut (_spec/cellview.md §4.1, §4.2) on a 2D slice of dots, so the controls can be judged by eye.
+// to judge before any brief; under Explorer/Proposed, apart from the decided mocks. Clips are objects of their own (the
+// tree's Clips category, Ludo 2026-10-28): a clip says what it cuts and how (graded per object or part: + / 0 / −, the
+// band, fuzziness), and every object or part says which clips are on it, adds a new one or uses an existing one; both
+// edit one table (`clip-book.ts`). The previews draw cellVIEW's rules (_spec/cellview.md §4.1, §4.2) on 2D dots.
 
-/** What a cut does to one part (cellVIEW's + / 0 / −, and the part ignoring it: Prism's per-part cut today) */
-export type CutBias = 'ignore' | 'keep' | 'cut' | 'wider';
-
-const BiasOptions: [CutBias, string][] = [
-  ['ignore', 'Ignores it'],
+const CutOptions: [CutBias, string][] = [
   ['keep', 'Keeps a layer'],
   ['cut', 'Cuts it'],
   ['wider', 'Cuts it wider'],
 ];
+const ApertureOptions: [CutBias, string][] = [['focus', 'Opens onto it']];
+const optionsOf = (shape: ClipShape | undefined) => (shape === 'aperture' ? ApertureOptions : CutOptions);
 
 /** cellVIEW's stable random per instance (a Wang hash of its id, `Helper.cginc`): the same instances every frame */
 export function stableRandom(id: number): number {
@@ -54,40 +56,11 @@ export function stableRandom(id: number): number {
  */
 export function isCut(bias: CutBias, d: number, band: number, fuzziness: number, r: number): boolean {
   const inside = d <= 0;
-  if (bias === 'ignore') return false;
-  if (bias === 'cut') return inside;
+  if (bias === 'cut' || bias === 'focus') return inside;
   const nd = Math.abs(d) / Math.max(band, 0.01);
   // cellVIEW's `rand < 1 − p · lerp(1, 1 − fuzziness, nd)` at p = 1: affected inside the band, less toward its edge
   const passes = nd > 1 || r < fuzziness * nd;
   return bias === 'keep' ? inside && passes : inside || !passes;
-}
-
-/** A part's setting under one cut */
-interface PartCut {
-  readonly path: string;
-  readonly bias: ObservableState<CutBias>;
-  readonly band: ObservableState<number>;
-  readonly fuzziness: ObservableState<number>;
-}
-
-/** The mock's cut over the HIV model's compartments: a membrane kept on the face, the capsid's inside cut wider */
-function partCuts(): PartCut[] {
-  const first: Record<string, [CutBias, number, number]> = {
-    'envelope.membrane': ['keep', 60, 0.3],
-    'envelope.surface': ['cut', 60, 0],
-    'capsid.interior': ['wider', 80, 0.6],
-    'capsid.surface': ['ignore', 60, 0],
-    cytoplasm: ['cut', 60, 0],
-  };
-  return Compartments.map((path) => {
-    const [bias, band, fuzziness] = first[path] ?? ['cut', 60, 0];
-    return {
-      path,
-      bias: observableState<CutBias>(bias),
-      band: observableState(band),
-      fuzziness: observableState(fuzziness),
-    };
-  });
 }
 
 /** The previews' dots: a jittered grid on a 200 × 100 slice, each its own stable random */
@@ -109,18 +82,18 @@ const Dots = (() => {
 /** The preview's half-width in Å: the slice spans ±250 Å around the cut's surface (cellVIEW's widest band) */
 const HalfWidth = 250;
 
+const dotClass = (cut: boolean, ghosts: boolean) =>
+  cut ? (ghosts ? classes.previewGhost : classes.previewGone) : classes.previewKept;
+
 /**
- * A 2D slice through the cut: the cut's side shaded, its surface dashed, the part's instances as dots; a removed one is
- * gone, or an outline when ghosts are on (cellVIEW's ghosts, §4.3). Built once; a watch writes what changed.
+ * A 2D slice through a cut, for one use: the cut's side shaded, its surface dashed, the node's instances as dots; a
+ * removed one is gone, or an outline when ghosts are on (cellVIEW's ghosts, §4.3). Built once; a watch writes the dots.
  */
-function CutPreview(props: {
-  parts: readonly PartCut[];
-  picked: ReadonlyState<number>;
-  ghosts: ReadonlyState<boolean>;
-}) {
+function CutPreview(props: { use: ClipUse; ghosts: ReadonlyState<boolean> }) {
+  const { use } = props;
   const circles: SVGElement[] = [];
   const svg = (
-    <svg class={classes.preview} viewBox="0 0 200 100" role="img" aria-label="What the cut keeps of the part">
+    <svg class={classes.preview} viewBox="0 0 200 100" role="img" aria-label={`What the cut keeps of ${use.nodeLabel}`}>
       <rect class={classes.previewCut} x="0" y="0" width="100" height="100" />
       <line class={classes.previewSurface} x1="100" y1="0" x2="100" y2="100" />
       {Dots.map((d) => (
@@ -128,81 +101,86 @@ function CutPreview(props: {
       ))}
     </svg>
   );
-  // every part's settings are sources (five parts, three each): the picked one's draw, a change to another draws nothing new
-  const sources = props.parts.flatMap((p) => [p.bias.asReadonly, p.band.asReadonly, p.fuzziness.asReadonly]);
-  watch([props.picked, props.ghosts, ...sources], () => {
-    const p = props.parts[props.picked.value];
-    const g = props.ghosts.value;
+  watch([use.bias.asReadonly, use.band.asReadonly, use.fuzziness.asReadonly, props.ghosts], () => {
     for (let i = 0; i < Dots.length; i++) {
       const dot = Dots[i];
-      const cut = isCut(p.bias.value, ((dot.x - 100) / 100) * HalfWidth, p.band.value, p.fuzziness.value, dot.r);
-      circles[i].setAttribute('class', cut ? (g ? classes.previewGhost : classes.previewGone) : classes.previewKept);
+      const d = ((dot.x - 100) / 100) * HalfWidth;
+      const cut = isCut(use.bias.value, d, use.band.value, use.fuzziness.value, dot.r);
+      circles[i].setAttribute('class', dotClass(cut, props.ghosts.value));
     }
   });
   return svg;
 }
 
-const line = (label: string, child: Child) => (
+const line = (label: Child, child: Child) => (
   <div class={classes.line}>
     <span class={classes.lineLabel}>{label}</span>
     {child}
   </div>
 );
 
-const angstrom = { format: (v: number) => String(Math.round(v)), unit: 'Å' };
-const percent = { format: (v: number) => String(Math.round(v * 100)), unit: '%' };
+const Angstrom = { format: (v: number) => String(Math.round(v)), unit: 'Å' };
+const Percent = { format: (v: number) => String(Math.round(v * 100)), unit: '%' };
 
-/** One part's line under a cut: what the cut does to it; the band and fuzziness where it keeps or widens */
-function PartLine(props: { part: PartCut; picked: ReadonlyState<boolean>; onPick(): void }) {
-  const { part } = props;
-  const graded = derive(part.bias.asReadonly, (b) => b === 'keep' || b === 'wider');
-  const name = part.path.split('.').join(' › ');
+/** A slider writing `state` as it is dragged (the mock's: no operation, no step) */
+function slider(label: string, state: ObservableState<number>, range: { min: number; max: number; step: number }) {
+  const unit = range.max > 1 ? Angstrom : Percent;
   return (
-    <div class={classes.partCut} classList={{ [classes.partCutPicked]: props.picked }}>
+    <Slider
+      aria-label={label}
+      value={state.asReadonly}
+      {...range}
+      {...unit}
+      onPreview={(v) => state.set(v)}
+      onCommit={(v) => state.set(v)}
+    />
+  );
+}
+
+/**
+ * One use's line: its name (the node on a clip's list, the clip on a node's), what the clip does to it, and remove;
+ * under it the band and fuzziness where it keeps a layer or cuts wider
+ */
+function UseLine(props: { use: ClipUse; name: string; picked?: ReadonlyState<boolean>; onPick?(): void }) {
+  const { use } = props;
+  const shape = clipBook.clip(use.clip)?.shape;
+  const graded = derive(use.bias.asReadonly, (b) => b === 'keep' || b === 'wider');
+  return (
+    <div class={classes.partCut} classList={{ [classes.partCutPicked]: props.picked ?? false }}>
       <div class={classes.line}>
-        <Button size="sm" variant="ghost" class={classes.partName} title="Preview this part" onClick={props.onPick}>
-          {name}
+        <Button
+          size="sm"
+          variant="ghost"
+          class={classes.partName}
+          title={props.onPick ? 'Preview it' : `Pick ${props.name} in the tree`}
+          onClick={() => (props.onPick ? props.onPick() : console.info(`[explorer mock] pick ${props.name}`))}
+        >
+          {props.name}
         </Button>
         <Select
           size="sm"
-          aria-label={`What the cut does to ${name}`}
-          options={BiasOptions}
-          value={part.bias.asReadonly}
+          aria-label={`What it does to ${props.name}`}
+          options={optionsOf(shape)}
+          value={use.bias.asReadonly}
           onChange={(v) => {
-            part.bias.set(v as CutBias);
-            props.onPick();
+            use.bias.set(v as CutBias);
+            props.onPick?.();
           }}
+        />
+        <Button
+          size="xs"
+          variant="ghost"
+          class={classes.partRemove}
+          title="No longer affected by this clip"
+          icon={<Icon name="x" />}
+          onClick={() => clipBook.drop(use)}
         />
       </div>
       <Show when={graded}>
         {() => (
           <div class={classes.stack}>
-            {line(
-              'Band',
-              <Slider
-                aria-label={`${name}: the band's width`}
-                value={part.band.asReadonly}
-                min={5}
-                max={HalfWidth}
-                step={1}
-                {...angstrom}
-                onPreview={(v) => part.band.set(v)}
-                onCommit={(v) => part.band.set(v)}
-              />,
-            )}
-            {line(
-              'Fuzziness',
-              <Slider
-                aria-label={`${name}: fuzziness`}
-                value={part.fuzziness.asReadonly}
-                min={0}
-                max={1}
-                step={0.01}
-                {...percent}
-                onPreview={(v) => part.fuzziness.set(v)}
-                onCommit={(v) => part.fuzziness.set(v)}
-              />,
-            )}
+            {line('Band', slider(`${props.name}: the band's width`, use.band, { min: 5, max: HalfWidth, step: 1 }))}
+            {line('Fuzziness', slider(`${props.name}: fuzziness`, use.fuzziness, { min: 0, max: 1, step: 0.01 }))}
           </div>
         )}
       </Show>
@@ -211,59 +189,110 @@ function PartLine(props: { part: PartCut; picked: ReadonlyState<boolean>; onPick
 }
 
 /** A toggle as the mocks make one: a small pressed button */
-function Toggle(props: { on: ObservableState<boolean>; label: string; title: string }) {
+function Toggle(props: { on: ReadonlyState<boolean>; label: string; title: string; onClick(): void }) {
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      title={props.title}
-      pressed={props.on.asReadonly}
-      onClick={() => props.on.set(!props.on.value)}
-    >
+    <Button size="sm" variant="ghost" title={props.title} pressed={props.on} onClick={props.onClick}>
       {props.label}
     </Button>
   );
 }
 
+/** A picker that runs its choice and goes back to its placeholder (Cut also, New clip, Use a clip) */
+function AddSelect(props: {
+  label: string;
+  placeholder: string;
+  options: ReadonlyState<readonly (readonly [string, string])[]>;
+  onPick(id: string): void;
+}) {
+  return (
+    <For each={derive(props.options, (o) => [o])} by={(o) => o.map(([id]) => id).join()}>
+      {(options) => (
+        <Select
+          size="sm"
+          aria-label={props.label}
+          options={[['', props.placeholder], ...options] as [string, string][]}
+          value=""
+          onChange={(id) => {
+            if (id) props.onPick(id);
+          }}
+        />
+      )}
+    </For>
+  );
+}
+
 /**
- * A graded cut's properties (proposed items b and e): its shape (`shape`, the decided form), then what it does to each
- * part of the model, a preview of the picked part, and its ghosts
+ * A clip's properties (proposed items b, e; clips in their own category): its shape (`shape`, the decided form), What it
+ * cuts (every object or part it is given, each its way), Cut also, a preview of the picked use, and its ghosts
  */
-export function GradedClip(props: { shape: Child; ghosts?: boolean }) {
-  const parts = partCuts();
-  const picked = observableState(0);
-  const ghosts = observableState(!!props.ghosts);
-  const name = derive(picked.asReadonly, (i) => parts[i].path.split('.').join(' › '));
+export function ClipProperties(props: { node: MockNode; shape: Child }) {
+  const clip = clipBook.clip(props.node.key);
+  if (!clip) return <span class={classes.hint}>This clip was removed.</span>;
+  if (clip.shape === 'aperture') return <ApertureClip clip={clip} />;
+  const uses = derive(clipBook.uses.asReadonly, (all) => all.filter((u) => u.clip === clip.key));
+  const picked = observableState<ClipUse | undefined>(uses.value[0]);
+  const ghosts = observableState(false);
+  const free = derive(uses, (us) => ClipTargets.filter(([k]) => !us.some((u) => u.node === k)));
   return (
     <div class={classes.stack}>
       {props.shape}
       <div class={classes.title}>
         <strong>What it cuts</strong>
-        <span class={classes.hint}>per part; a layer kept or a wider cut thins out with fuzziness</span>
+        <span class={classes.hint}>each object or part its way</span>
       </div>
-      {parts.map((p, i) => (
-        <PartLine part={p} picked={derive(picked.asReadonly, (j) => j === i)} onPick={() => picked.set(i)} />
-      ))}
-      <CutPreview parts={parts} picked={picked.asReadonly} ghosts={ghosts.asReadonly} />
-      <span class={classes.hint}>{derive(name, (n) => `${n}: a slice through the cut, its side shaded`)}</span>
+      <For each={uses} by={(u) => u.node}>
+        {(u) => (
+          <UseLine
+            use={u}
+            name={u.nodeLabel}
+            picked={derive(picked.asReadonly, (p) => p === u)}
+            onPick={() => picked.set(u)}
+          />
+        )}
+      </For>
+      {line(
+        'Cut also',
+        <AddSelect
+          label="An object or part this clip also cuts"
+          placeholder="An object or part…"
+          options={free}
+          onPick={(k) => clipBook.use(clip.key, k, 'cut')}
+        />,
+      )}
+      <For each={derive(picked.asReadonly, (p) => (p ? [p] : []))} by={(u) => u.node}>
+        {(u) => (
+          <div class={classes.stack}>
+            <CutPreview use={u} ghosts={ghosts.asReadonly} />
+            <span class={classes.hint}>{`${u.nodeLabel}: a slice through the cut, its side shaded`}</span>
+          </div>
+        )}
+      </For>
       {line(
         'Ghosts',
-        <Toggle on={ghosts} label="Outline what it cuts" title="What the cut removes, drawn as outlines (context)" />,
+        <Toggle
+          on={ghosts.asReadonly}
+          label="Outline what it cuts"
+          title="What the cut removes, drawn as outlines (context)"
+          onClick={() => ghosts.set(!ghosts.value)}
+        />,
       )}
     </div>
   );
 }
 
 /**
- * The aperture cut's properties (proposed item f, cellVIEW's visibility equalizer, _spec/cellview.md §4.2): the parts
- * it opens the view onto, how far from their outline's edge it opens, how much of what is in front it keeps near the
- * edge; a preview of the screen with the focus's outline
+ * The aperture cut (proposed item f, cellVIEW's visibility equalizer, _spec/cellview.md §4.2): the parts it opens the
+ * view onto (its uses), how far from their outline's edge it opens, how much of what is in front it keeps near the edge
  */
-export function ApertureClip(props: { ghosts?: boolean }) {
-  const focus = Compartments.map((path) => ({ path, on: observableState(path.startsWith('capsid')) }));
+function ApertureClip(props: { clip: MockClip }) {
+  const { clip } = props;
   const opening = observableState(0.6);
   const keep = observableState(0.4);
-  const ghosts = observableState(!!props.ghosts);
+  const ghosts = observableState(false);
+  const focus = derive(
+    clipBook.uses.asReadonly,
+    (all) => new Set(all.filter((u) => u.clip === clip.key).map((u) => u.node)),
+  );
   const circles: SVGElement[] = [];
   const R = 38;
   const preview = (
@@ -280,54 +309,105 @@ export function ApertureClip(props: { ghosts?: boolean }) {
       // inside the outline, its distance to the edge; near the edge (within the opening's band) kept at random
       const e = R - Math.hypot(d.x - 100, d.y - 50);
       const cut = e > 0 && (e >= (1 - opening.value) * R || d.r > keep.value);
-      circles[i].setAttribute(
-        'class',
-        cut ? (ghosts.value ? classes.previewGhost : classes.previewGone) : classes.previewKept,
-      );
+      circles[i].setAttribute('class', dotClass(cut, ghosts.value));
     }
   });
+  const toggle = (node: string) => {
+    const use = clipBook.uses.value.find((u) => u.clip === clip.key && u.node === node);
+    if (use) clipBook.drop(use);
+    else clipBook.use(clip.key, node, 'focus');
+  };
   return (
     <div class={classes.stack}>
       <div class={classes.title}>
         <strong>Opens the view onto</strong>
-        <span class={classes.hint}>what is in front of these parts is removed, most at their middle</span>
+        <span class={classes.hint}>what is in front of these is removed, most at their middle</span>
       </div>
       <div class={classes.chips}>
-        {focus.map((f) => (
-          <Toggle on={f.on} label={f.path.split('.').join(' › ')} title="A part the aperture opens onto" />
+        {ClipTargets.filter(([k]) => k.startsWith('g:hiv')).map(([k, label]) => (
+          <Toggle
+            on={derive(focus, (f) => f.has(k))}
+            label={label}
+            title="A part the aperture opens onto"
+            onClick={() => toggle(k)}
+          />
         ))}
       </div>
-      {line(
-        'Opening',
-        <Slider
-          aria-label="How far from the outline's edge it opens"
-          value={opening.asReadonly}
-          min={0}
-          max={1}
-          step={0.01}
-          {...percent}
-          onPreview={(v) => opening.set(v)}
-          onCommit={(v) => opening.set(v)}
-        />,
-      )}
+      {line('Opening', slider("How far from the outline's edge it opens", opening, { min: 0, max: 1, step: 0.01 }))}
       {line(
         'Keep at edge',
-        <Slider
-          aria-label="How much of what is in front it keeps near the edge"
-          value={keep.asReadonly}
-          min={0}
-          max={1}
-          step={0.01}
-          {...percent}
-          onPreview={(v) => keep.set(v)}
-          onCommit={(v) => keep.set(v)}
-        />,
+        slider('How much of what is in front it keeps near the edge', keep, { min: 0, max: 1, step: 0.01 }),
       )}
       {preview}
       <span class={classes.hint}>The screen: the parts' outline faint, what is in front of them as dots</span>
       {line(
         'Ghosts',
-        <Toggle on={ghosts} label="Outline what it opens" title="What the aperture removes, drawn as outlines" />,
+        <Toggle
+          on={ghosts.asReadonly}
+          label="Outline what it opens"
+          title="What the aperture removes, drawn as outlines"
+          onClick={() => ghosts.set(!ghosts.value)}
+        />,
+      )}
+    </div>
+  );
+}
+
+const NewClipOptions: readonly (readonly [string, string])[] = [
+  ['plane', 'Plane'],
+  ['sphere', 'Sphere'],
+  ['box', 'Box'],
+  ['aperture', 'Aperture: open the view onto it'],
+];
+const newClipOptions = observableState(NewClipOptions).asReadonly;
+
+/**
+ * An object's or part's clips (Ludo, 2026-10-28: clips in their own category, pointed at from here): the clips on it,
+ * each what it does to it (and remove it from that clip), a new clip that cuts it, or an existing clip used on it
+ */
+export function NodeClips(props: { node: MockNode }) {
+  const { node } = props;
+  if (node.key === 'c:clips')
+    return <span class={classes.hint}>Every clip of the scene. Pick one to see what it cuts.</span>;
+  if (!ClipTargets.some(([k]) => k === node.key))
+    return (
+      <span class={classes.hint}>
+        In the mock, clips are given to the objects and the HIV model's compartments: pick one of those.
+      </span>
+    );
+  const uses = derive(clipBook.uses.asReadonly, (all) => all.filter((u) => u.node === node.key));
+  const others = derive([clipBook.clips.asReadonly, uses], (clips, us) =>
+    clips.filter((c) => !us.some((u) => u.clip === c.key)).map((c) => [c.key, c.label] as const),
+  );
+  return (
+    <div class={classes.stack}>
+      <Show
+        when={derive(uses, (us) => us.length > 0)}
+        fallback={() => <span class={classes.hint}>No clip on it. Make one, or use one of the scene's.</span>}
+      >
+        {() => (
+          <For each={uses} by={(u) => u.clip}>
+            {(u) => <UseLine use={u} name={clipBook.clip(u.clip)?.label ?? u.clip} />}
+          </For>
+        )}
+      </Show>
+      {line(
+        'New clip',
+        <AddSelect
+          label="A new clip that cuts it"
+          placeholder="Its shape…"
+          options={newClipOptions}
+          onPick={(shape) => clipBook.add(shape as ClipShape, node.key)}
+        />,
+      )}
+      {line(
+        'Use a clip',
+        <AddSelect
+          label="A clip of the scene, used on it too"
+          placeholder="A clip of the scene…"
+          options={others}
+          onPick={(k) => clipBook.use(k, node.key, clipBook.clip(k)?.shape === 'aperture' ? 'focus' : 'cut')}
+        />,
       )}
     </div>
   );
@@ -338,19 +418,7 @@ export function ShownShare(props: { node: MockNode }) {
   const share = observableState(props.node.kind === 'group' ? 0.35 : 1);
   return (
     <div class={classes.stack}>
-      {line(
-        'Shown',
-        <Slider
-          aria-label="The share of its instances shown"
-          value={share.asReadonly}
-          min={0}
-          max={1}
-          step={0.01}
-          {...percent}
-          onPreview={(v) => share.set(v)}
-          onCommit={(v) => share.set(v)}
-        />,
-      )}
+      {line('Shown', slider('The share of its instances shown', share, { min: 0, max: 1, step: 0.01 }))}
       <span class={classes.hint}>The same instances at every share and every frame: a crowded part thinned out</span>
     </div>
   );

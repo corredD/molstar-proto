@@ -21,26 +21,44 @@ export default meta;
 const scene = () => fullScene(2400, true);
 
 /**
- * Items b and e: a plane clip graded per part. Each compartment ignores it, keeps a layer on its face, is cut, or is cut
- * wider; a layer or a wider cut has a band (Å) and fuzziness (it thins out toward the band's edge, the same instances
- * every frame). Click a part's name to preview it; Ghosts outlines what the cut removes.
+ * Clips in a category of their own, after the others (Ludo, 2026-10-28): every clip of the scene, each saying how many
+ * objects or parts it affects; no clip row under an object any more.
  */
-export const GradedCut: StoryObj = {
-  render: () => story(() => <PanelFrames roots={scene()} picked="k:hiv:1" proposed split={860} height={1080} />),
+export const ClipsCategory: StoryObj = {
+  render: () =>
+    story(() => <PanelFrames roots={scene()} picked="k:1" open={['c:particles', 'c:clips']} proposed split={160} />),
 };
 
 /**
- * Item f: the aperture cut (cellVIEW's visibility equalizer). What is in front of the chosen parts is removed, most at
- * their outline's middle; near the edge, a share is kept. The preview is the screen.
+ * Items b and e: a clip says what it cuts, each object or part its way: keeps a layer on the cut's face, cuts it, or
+ * cuts it wider; a layer or a wider cut has a band (Å) and fuzziness (it thins out toward the band's edge, the same
+ * instances every frame). Cut also adds one; × takes one off. Click a name to preview it; Ghosts outlines what is removed.
  */
-export const ApertureCut: StoryObj = {
-  render: () => story(() => <PanelFrames roots={scene()} picked="k:hiv:2" proposed split={520} height={740} />),
+export const GradedCut: StoryObj = {
+  render: () => story(() => <PanelFrames roots={scene()} picked="k:1" proposed split={820} height={1040} />),
 };
 
-/** The clips as rows under their model: the graded plane clip says how many parts it cuts, the aperture onto what. */
-export const ClipRows: StoryObj = {
+/**
+ * An object's or part's Clips points at the clips (Ludo, 2026-10-28): the clips on it, each what it does to it; New
+ * clip makes one that cuts it, Use a clip gives it one of the scene's. Here the membrane, which the plane clip keeps a
+ * layer of.
+ */
+export const PartClips: StoryObj = {
   render: () =>
-    story(() => <PanelFrames roots={scene()} picked="k:hiv:2" open={['c:particles', 'o:hiv']} proposed split={160} />),
+    story(() => <PanelFrames roots={scene()} picked="g:hiv:envelope.membrane" proposed split={460} height={760} />),
+};
+
+/** An object no clip is on: its Clips offers a new clip, or one of the scene's. */
+export const ObjectWithoutClips: StoryObj = {
+  render: () => story(() => <PanelFrames roots={scene()} picked="o:1crn" proposed split={420} height={720} />),
+};
+
+/**
+ * Item f: the aperture cut (cellVIEW's visibility equalizer), a clip of the Clips category too. What is in front of the
+ * chosen parts is removed, most at their outline's middle; near the edge, a share is kept. The preview is the screen.
+ */
+export const ApertureCut: StoryObj = {
+  render: () => story(() => <PanelFrames roots={scene()} picked="k:3" proposed split={520} height={740} />),
 };
 
 /** With item b: a part shown in part (Look › Shown): a share of its instances, the same ones at every share. */
@@ -54,7 +72,7 @@ export const ShowOnly: StoryObj = {
     story(() => <PanelFrames roots={scene()} picked="me:hiv:4" menu="row" proposed height={460} split={120} />),
 };
 
-/** Item f: Add clip… with the aperture: open the view onto the picked part. */
+/** Item f: Add clip… (the scissors, the right-click) with the aperture: open the view onto the picked part. */
 export const AddAperture: StoryObj = {
   render: () =>
     story(() => (
@@ -64,6 +82,5 @@ export const AddAperture: StoryObj = {
 
 /** Item e: a clip's right-click with Outline what it cuts (its ghosts). */
 export const ClipMenu: StoryObj = {
-  render: () =>
-    story(() => <PanelFrames roots={scene()} picked="k:hiv:1" menu="row" proposed height={420} split={120} />),
+  render: () => story(() => <PanelFrames roots={scene()} picked="k:1" menu="row" proposed height={420} split={120} />),
 };

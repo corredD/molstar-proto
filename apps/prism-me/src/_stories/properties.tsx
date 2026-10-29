@@ -33,7 +33,7 @@ import { treeClasses } from '../explorer/tree-view.js';
 import type { GroupBy, MockKind, MockNode } from './fake-scene.js';
 import { CategoryThemes } from '../explorer/tree-view.js';
 import { ObjectKinds } from './fake-scene.js';
-import { ApertureClip, GradedClip, ShownShare } from './proposed.js';
+import { ClipProperties, NodeClips, ShownShare } from './proposed.js';
 
 // The picked row's properties (ui.md §4), in sections that fold, only what applies to it: Prism's `SectionList` over a
 // `ShellModel` slot, each section `when` its kind; their controls Prism's shared ones (`ParamsForm` over the section's
@@ -112,7 +112,8 @@ function sections(shell: ShellModel, proposed = false) {
       id: 'look',
       slot: Slot,
       title: 'Look',
-      when: node,
+      // the proposed Clips category has no look of its own
+      when: (ctx) => node(ctx) && (ctx.subject as MockNode).key !== 'c:clips',
       render: view((n) =>
         // a category: only its eye, for every object under it
         n.kind === 'category' ? (
@@ -183,7 +184,13 @@ function sections(shell: ShellModel, proposed = false) {
       when: object,
       render: view((n) => <Position node={n} />),
     },
-    { id: 'clips', slot: Slot, title: 'Clips', when: node, render: view((n) => <Clips node={n} />) },
+    {
+      id: 'clips',
+      slot: Slot,
+      title: 'Clips',
+      when: node,
+      render: view((n) => (proposed ? <NodeClips node={n} /> : <Clips node={n} />)),
+    },
     { id: 'labels', slot: Slot, title: 'Labels', when: part, render: view((n) => <Labels node={n} />) },
     {
       id: 'graphics',
@@ -214,9 +221,7 @@ function sections(shell: ShellModel, proposed = false) {
       slot: Slot,
       title: 'Clip',
       when: has('clip'),
-      render: view((n) =>
-        !proposed ? clipForm() : n.shape === 'aperture' ? <ApertureClip /> : <GradedClip shape={clipForm()} />,
-      ),
+      render: view((n) => (proposed ? <ClipProperties node={n} shape={clipForm()} /> : clipForm())),
     },
     { id: 'label', slot: Slot, title: 'Label', when: has('label'), render: view((n) => <LabelEdit text={n.label} />) },
     { id: 'distance', slot: Slot, title: 'Distance', when: has('distance'), render: view(() => <Distance />) },

@@ -23,6 +23,7 @@ export const classes = {
   'partCut': 'msp-me-explorer-partCut',
   'partCutPicked': 'msp-me-explorer-partCutPicked',
   'partName': 'msp-me-explorer-partName',
+  'partRemove': 'msp-me-explorer-partRemove',
   'preview': 'msp-me-explorer-preview',
   'previewCut': 'msp-me-explorer-previewCut',
   'previewFocus': 'msp-me-explorer-previewFocus',
@@ -151,6 +152,14 @@ defineStyles('me/_stories/explorer.module.css', `@layer msp.components {
   flex: none;
   justify-content: flex-start;
   overflow: hidden;
+}
+
+.msp-me-explorer-partRemove {
+  flex: none;
+
+  .msp-me-explorer-line > & {
+    flex: none;
+  }
 }
 
 .msp-me-explorer-chips {
