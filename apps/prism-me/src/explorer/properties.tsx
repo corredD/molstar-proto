@@ -1443,7 +1443,7 @@ function ClipProperties(props: { subject: Subject }) {
       <div class={classes.title}>
         <strong>What it cuts</strong>
       </div>
-      <For each={uses} by={(u) => u.key}>
+      <For each={uses} by={(u) => `${u.key}:${u.label}`}>
         {(u: ClipUse) => (
           <UseLine
             name={u.label}
