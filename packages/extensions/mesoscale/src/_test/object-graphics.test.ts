@@ -166,6 +166,24 @@ describe('graphics and motion per object', () => {
     expect(m.graphicsState(ref).value?.mode).toBe('performance');
   });
 
+  // A structure's representations with levels of detail (a spacefill, a cartoon) take the same pixel preset
+  it("writes a mode's pixel levels of detail to a structure's spacefill", async () => {
+    const v = await viewer(['crn.cif']);
+    const s = v.plugin.managers.structure.hierarchy.current.structures[0];
+    await v.plugin.builders.structure.representation.addRepresentation(s.components[0].cell, { type: 'spacefill' });
+    const m = v.api.mesoscale!;
+    expectOk(await m.graphics({ mode: 'performance', object: s.cell.transform.ref } as never));
+    const { lodLevels, lodPixelSize } = Spheres.LodPixelPresets.performance;
+    const reprs = v.plugin.managers.structure.hierarchy.current.structures[0].components
+      .flatMap((c) => c.representations)
+      .map((r) => ({ type: (r.cell.transform.params as { type: { name: string } }).type.name, p: paramsOf(r.cell) }));
+    expect(reprs.some((r) => r.type === 'spacefill')).toBe(true);
+    for (const { p } of reprs.filter((r) => 'lodLevels' in r.p)) {
+      expect(p.lodLevels).toEqual(lodLevels);
+      expect(p.lodPixelSize).toBe(lodPixelSize);
+    }
+  });
+
   it('wiggles and tumbles one structure, the other still', async () => {
     const v = await viewer();
     const { refs } = objects(v);
