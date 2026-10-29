@@ -903,7 +903,7 @@ function withMode(
   if (kind !== 'volume' && 'lodLevels' in params) {
     const { lodLevels, lodPixelSize } = Spheres.LodPixelPresets[mode];
     next.lodLevels = lodLevels;
-    if ('lodPixelSize' in params) next.lodPixelSize = lodPixelSize;
+    next.lodPixelSize = lodPixelSize;
   }
   if (kind !== 'particles') next.quality = ModeSettings[mode].quality;
   if (kind === 'volume' && 'stepsPerCell' in params) next.stepsPerCell = ModeSettings[mode].stepsPerCell;
