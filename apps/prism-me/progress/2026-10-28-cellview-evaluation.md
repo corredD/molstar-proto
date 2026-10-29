@@ -101,18 +101,24 @@ Storybook, prism-me › Explorer › Proposed (cellVIEW), stories in `apps/prism
 controls in `proposed.tsx`. Apart from the decided mocks: a `proposed` switch on the mock panel, scene and menus, off in
 every other story, so nothing proposed looks decided.
 
-- **Graded cut** (items b, e): a plane clip's Clip section gains "What it cuts", one line per compartment (ignores it,
-  keeps a layer, cuts it, cuts it wider) with a band (Å) and fuzziness where it keeps or widens; a preview of the picked
-  part, a 2D slice of dots drawn by cellVIEW's rule (`isCut`, at full strength, its stable hash); Ghosts outlines what
-  is removed.
-- **Aperture cut** (item f): the parts it opens onto, the opening, the share kept near the edge, a preview of the
-  screen.
+- **Clips are objects of their own** (Ludo, 2026-10-28, after the first mock): a Clips category after the others holds
+  every clip of the scene; no clip row under an object. A clip maps to many objects and parts, each its own way:
+  cellVIEW's cut × ingredient table, edited from either side (`clip-book.ts`, one table a story).
+  - **A clip** (Clips Category, Graded cut): its shape, then What it cuts, each object or part with keeps a layer, cuts
+    it or cuts it wider (a band in Å and fuzziness where it keeps or widens), × to take one off, Cut also to add one; a
+    preview of the picked one, a 2D slice of dots drawn by cellVIEW's rule (`isCut`, full strength, its stable hash);
+    Ghosts outlines what is removed (items b, e).
+  - **An object or part** (Part clips, Object without clips): its Clips section lists the clips on it, each what it does
+    to it; New clip makes one that cuts it, Use a clip gives it one of the scene's.
+  - **The aperture cut** (item f), a clip of the category too: the parts it opens onto, the opening, the share kept near
+    the edge, a preview of the screen.
 - **Shown in part** (with item b): Look › Shown on a group, a model entity or a target.
 - **Show only** (item d): on a part's right-click. **Add aperture**: Add clip… gains it. **Clip menu**: Outline what it
-  cuts. **Clip rows**: the clips under their model, with how many parts they cut.
+  cuts.
 
-Checked: rendered headless (Playwright on Chrome) in light and dark, wide and narrow, no page error;
-`typecheck:storybook`, `styles:check`, `tsc`, lint, format, `check:workspace`.
+Checked: rendered headless (Playwright on Chrome) in light and dark, wide and narrow, no page error; driven: Cut also
+1CRN takes the plane clip's row from 4 to 5 objects, New clip on 1CRN adds Sphere clip 2, Use a clip adds the plane
+clip; `typecheck:storybook`, `styles:check`, `tsc`, lint, format, `check:workspace`.
 
 ## Size
 
