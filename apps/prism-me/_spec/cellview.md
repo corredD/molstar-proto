@@ -124,6 +124,13 @@ What that does, with `w = 0.01 + fuzzinessDistance · 250` the band's width (sce
   instance is affected with probability `1 − fuzziness`. A partial bias (`value1` between) affects that share of the
   instances. Which instances, is stable per instance (`rand(id)`).
 
+**In prism-me** (the library half, lane `graded-cuts`, 2026-10-29): Mol\*'s instance clip runs this rule at full
+strength (`Clipping.isCut`; no partial bias, no `fuzzinessCurve`), per (clip object, part) from a clipping table
+(`Clipping.table`, up to 16 clip objects a representation, not 6), with this Wang hash of the instance (its top 24 bits,
+`Clipping.random`). The band is in Å, the fuzziness 0–1; a part is set through `particles.look` (`cuts`: `mode` `keep`,
+`cut` or `wider`, `band`, `fuzziness`). The same hash gives Shown (%) (`particles.look` `layers[].shown`). The app's
+controls (the GradedCut and ShownInPart stories) are the app half.
+
 Fibers use a simpler rule, without fuzziness: − cuts the whole type, + is never cut, 0 cuts where `d ≤ 0`
 (`RenderCurveIngredients.shader:90-110`).
 
