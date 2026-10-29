@@ -174,3 +174,8 @@
   stroke: var(--msp-color-text-subtle);
   stroke-width: 0.6;
 }
+
+/* Proposed (Ludo, 2026-10-28): every row's eye in view, not only on hover (the tree's eye is its Hide or Show button). */
+.eyesShown :is(button[aria-label="Hide"], button[aria-label="Show"]) {
+  opacity: 1;
+}

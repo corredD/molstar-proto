@@ -14,6 +14,7 @@ export const classes = {
   'canvas': 'msp-me-explorer-canvas',
   'caption': 'msp-me-explorer-caption',
   'chips': 'msp-me-explorer-chips',
+  'eyesShown': 'msp-me-explorer-eyesShown',
   'frame': 'msp-me-explorer-frame',
   'frames': 'msp-me-explorer-frames',
   'hint': 'msp-me-explorer-hint',
@@ -201,6 +202,10 @@ defineStyles('me/_stories/explorer.module.css', `@layer msp.components {
   fill: none;
   stroke: var(--msp-color-text-subtle);
   stroke-width: .6px;
+}
+
+.msp-me-explorer-eyesShown :is(button[aria-label="Hide"], button[aria-label="Show"]) {
+  opacity: 1;
 }
 }
 `);

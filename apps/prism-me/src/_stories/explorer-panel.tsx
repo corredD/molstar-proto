@@ -32,6 +32,7 @@ import {
   treeClasses,
   UniformPopover,
 } from '../explorer/tree-view.js';
+import { classes as mockClasses } from './_generated/explorer.module.css.js';
 import { clipBook } from './clip-book.js';
 import { ClipShapes, clippable, colorItemsOf, colorable, menuOf, OpenItems, ProposedClipShapes } from './fake-menus.js';
 import { type GroupBy, type MockNode, ObjectKinds, pathTo } from './fake-scene.js';
@@ -146,7 +147,11 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
   const height = frameState(props.split ?? 280);
 
   const panel = (
-    <div class={classes.panel} ref={(el: HTMLElement) => (panelEl = el)}>
+    <div
+      class={classes.panel}
+      classList={{ [mockClasses.eyesShown]: !!props.proposed }}
+      ref={(el: HTMLElement) => (panelEl = el)}
+    >
       <div class={classes.header}>
         <Button
           size="sm"
@@ -186,8 +191,21 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
             onEye={(row) => {
               const on = !(shown.get(row.key) ?? row.visible !== false);
               shown.set(row.key, on);
-              // a category's eye: every object under it
-              if (row.category) for (const o of row.node.children?.('compartment') ?? []) shown.set(o.key, on);
+              if (props.proposed) {
+                // proposed (Ludo, 2026-10-28): a parent's eye sets every row under it, all the way down, each its own
+                // eye after (hide a parent, then show one child); the model's rows by its grouping
+                const g = groupings.get('o:hiv') ?? 'compartment';
+                const down = (n: MockNode) => {
+                  for (const c of n.children?.(g) ?? []) {
+                    shown.set(c.key, on);
+                    down(c);
+                  }
+                };
+                down(row.node);
+              } else if (row.category) {
+                // a category's eye: every object under it
+                for (const o of row.node.children?.('compartment') ?? []) shown.set(o.key, on);
+              }
             }}
             onTool={(row, which, at, onClose) => {
               pick(row.node);

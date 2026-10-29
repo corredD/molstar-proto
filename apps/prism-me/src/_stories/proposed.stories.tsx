@@ -84,3 +84,20 @@ export const AddAperture: StoryObj = {
 export const ClipMenu: StoryObj = {
   render: () => story(() => <PanelFrames roots={scene()} picked="k:1" menu="row" proposed height={420} split={120} />),
 };
+
+/**
+ * Every row's eye in view; a parent's eye sets every row under it, all the way down (Ludo, 2026-10-28): hide the model,
+ * then show one of its groups or entities alone.
+ */
+export const Eyes: StoryObj = {
+  render: () =>
+    story(() => (
+      <PanelFrames
+        roots={scene()}
+        picked="g:hiv:envelope.membrane"
+        open={['c:particles', 'o:hiv', 'g:hiv:envelope', 'g:hiv:capsid', 'c:clips']}
+        proposed
+        split={160}
+      />
+    )),
+};
