@@ -9,16 +9,17 @@
 import { Color } from '@molstar/core/util/color';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
+  ActionFooter,
   Button,
   type Child,
   Choices,
+  ColorPicker,
   domView,
   For,
   Icon,
   observableState,
   ParamsForm,
   type ReadonlyState,
-  SectionList,
   Select,
   ShellModel,
   type ShellViewContext,
@@ -28,38 +29,21 @@ import {
 } from '@molstar/prism-ui';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import { derive } from '@molstar/prism-ui/reactive/state';
-import { classes } from './_generated/explorer.module.css.js';
-import { treeClasses } from '../explorer/tree-view.js';
+import {
+  Hint,
+  Line,
+  PropertiesFrame,
+  PropertiesSlot as Slot,
+  propertiesClasses as classes,
+} from '../explorer/properties-view.js';
 import type { GroupBy, MockKind, MockNode } from './fake-scene.js';
 import { CategoryThemes } from '../explorer/tree-view.js';
 import { ObjectKinds } from './fake-scene.js';
 
-// The picked row's properties (ui.md §4), in sections that fold, only what applies to it: Prism's `SectionList` over a
-// `ShellModel` slot, each section `when` its kind; their controls Prism's shared ones (`ParamsForm` over the section's
-// params, `Choices`, `Select`, `Slider`, `TextInput`, `Button`), filled with the mock's values. Nothing applies (no
-// viewer): a form keeps what is typed.
-
-const Slot = 'explorer:properties';
-
-/** What each kind is called in the header */
-const KindNames: Record<MockKind, string> = {
-  category: 'Category',
-  structure: 'Structure',
-  entity: 'Entity',
-  chain: 'Chain',
-  model: 'Mesoscale model',
-  group: 'Group',
-  'model entity': 'Entity',
-  list: 'Particle list',
-  target: 'Target',
-  volume: 'Volume',
-  slice: 'Slice',
-  isosurface: 'Isosurface',
-  mesh: 'Mesh',
-  clip: 'Clip',
-  label: 'Label',
-  distance: 'Distance',
-};
+// The picked row's properties (ui.md §4), in sections that fold, only what applies to it: the app's frame
+// (explorer/properties-view.tsx: the header, Prism's `SectionList`), each section `when` its kind; their controls
+// Prism's shared ones (`ParamsForm` over the section's params, `Choices`, `Select`, `Slider`, `TextInput`, `Button`,
+// `ColorPicker`), filled with the mock's values. Nothing applies (no viewer): a form keeps what is typed.
 
 const has = (...kinds: MockKind[]) => {
   const set = new Set(kinds);
@@ -79,30 +63,11 @@ const form = (params: PD.Params) => () => <ParamsForm form={new ParamsFormModel(
 const view = (render: (n: MockNode) => Child) =>
   domView<ShellViewContext>(({ ctx }) => render(ctx.subject as MockNode));
 
-const RepresentationTypes: Partial<Record<MockKind, [string, string][]>> = {
-  structure: [
-    ['cartoon', 'Cartoon'],
-    ['spacefill', 'Spacefill'],
-    ['ball-and-stick', 'Ball and stick'],
-    ['surface', 'Molecular surface'],
-  ],
-  list: [
-    ['spheres', 'Spheres'],
-    ['objects', 'Decorating objects'],
-  ],
-  volume: [
-    ['slice', 'Slice'],
-    ['isosurface', 'Isosurface'],
-  ],
-  mesh: [
-    ['surface', 'Surface'],
-    ['wireframe', 'Wireframe'],
-    ['both', 'Both'],
-  ],
-};
-RepresentationTypes.entity = RepresentationTypes.structure;
-RepresentationTypes.model = RepresentationTypes.list;
-RepresentationTypes.isosurface = [['isosurface', 'Isosurface']];
+/** A list's or a model's representations: their type (the app: each its whole form) */
+const ParticleTypes: [string, string][] = [
+  ['spheres', 'Spheres'],
+  ['objects', 'Decorating objects'],
+];
 
 function sections(shell: ShellModel) {
   shell.registerSections([
@@ -110,21 +75,17 @@ function sections(shell: ShellModel) {
       id: 'look',
       slot: Slot,
       title: 'Look',
-      when: node,
+      // as the app: what has a look of its own (a volume's is its slices' and isosurfaces', a list's its targets')
+      when: has('category', 'structure', 'entity', 'chain', 'model', 'group', 'model entity', 'mesh'),
       render: view((n) =>
-        // a category: only its eye, for every object under it
+        // a category: its eye and a color theme, for every object under it; a mesh: its look's own controls
         n.kind === 'category' ? (
-          form({
-            visible: PD.Boolean(n.visible !== false, { description: 'Every object under it' }),
-            theme: PD.Select('object', CategoryThemes[n.key] ?? [], {
-              label: 'Color theme',
-              description: 'Every object under it',
-            }),
-          })()
+          <CategoryLook node={n} />
+        ) : n.kind === 'mesh' ? (
+          <MeshLook />
         ) : (
           <div class={classes.stack}>
             {form({
-              visible: PD.Boolean(n.visible !== false),
               color: PD.Color(Color(n.color ?? 0x8a8f98)),
               opacity: PD.Numeric(1, { min: 0, max: 1, step: 0.01 }),
               glow: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }),
@@ -138,20 +99,39 @@ function sections(shell: ShellModel) {
       id: 'representation',
       slot: Slot,
       title: 'Representation',
-      when: has('structure', 'entity', 'model', 'list', 'volume', 'isosurface', 'mesh'),
-      render: view((n) => {
-        const types = RepresentationTypes[n.kind]!;
-        return form({
-          type: PD.Select(types[0][0], types),
-          size: PD.Numeric(1, { min: 0.1, max: 4, step: 0.1 }),
-        })();
-      }),
+      // as the app: a structure's preset; a model's, a list's, a slice's representations
+      when: has('structure', 'model', 'list', 'slice'),
+      render: view((n) =>
+        n.kind === 'structure' ? (
+          <Line label="Preset">
+            <Select size="sm" aria-label="Representation preset" options={[['', 'Apply a preset…']]} value="" />
+          </Line>
+        ) : (
+          form({
+            type: PD.Select(
+              n.kind === 'slice' ? 'slice' : 'spheres',
+              n.kind === 'slice' ? [['slice', 'Slice']] : ParticleTypes,
+            ),
+            size: PD.Numeric(1, { min: 0.1, max: 4, step: 0.1 }),
+          })()
+        ),
+      ),
+    },
+    {
+      // a volume's isosurfaces (its slices are Slice's); an isosurface's row: its own
+      id: 'isosurface',
+      slot: Slot,
+      title: 'Isosurface',
+      when: has('volume', 'isosurface'),
+      render: view(() =>
+        form({ level: PD.Numeric(1.5, { min: -3, max: 6, step: 0.1 }, { label: 'Iso level (σ)' }) })(),
+      ),
     },
     {
       id: 'decoration',
       slot: Slot,
       title: 'Decoration',
-      when: has('list', 'target', 'model'),
+      when: has('list', 'target', 'model', 'group', 'model entity'),
       render: view(() => <Decoration />),
     },
     {
@@ -178,7 +158,14 @@ function sections(shell: ShellModel) {
       when: object,
       render: view((n) => <Position node={n} />),
     },
-    { id: 'clips', slot: Slot, title: 'Clips', when: node, render: view((n) => <Clips node={n} />) },
+    {
+      id: 'clips',
+      slot: Slot,
+      title: 'Clips',
+      // as the app: not a volume's slice or isosurface (they are cut with their volume)
+      when: (ctx) => node(ctx) && !['slice', 'isosurface'].includes((ctx.subject as MockNode).kind),
+      render: view((n) => <Clips node={n} />),
+    },
     { id: 'labels', slot: Slot, title: 'Labels', when: part, render: view((n) => <Labels node={n} />) },
     {
       id: 'graphics',
@@ -204,24 +191,121 @@ function sections(shell: ShellModel) {
       )),
     },
     // what was made at a node: its own section (ui.md §5: a clip's shape, invert, place, size; a label's text, size)
-    { id: 'clip', slot: Slot, title: 'Clip', when: has('clip'), render: view(() => clipForm()) },
-    { id: 'label', slot: Slot, title: 'Label', when: has('label'), render: view((n) => <LabelEdit text={n.label} />) },
+    { id: 'clip', slot: Slot, title: 'Clip', when: has('clip'), render: view(() => <Clip />) },
+    {
+      id: 'label',
+      slot: Slot,
+      title: 'Label',
+      when: has('label'),
+      render: view((n) => <LabelEdit text={n.label} full />),
+    },
     { id: 'distance', slot: Slot, title: 'Distance', when: has('distance'), render: view(() => <Distance />) },
   ]);
 }
 
-const clipForm = () =>
-  form({
-    shape: PD.Select('plane', [
-      ['plane', 'Plane'],
-      ['sphere', 'Sphere'],
-      ['box', 'Box'],
-    ]),
-    invert: PD.Boolean(false),
-    position: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
-    rotation: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
-    size: PD.Numeric(100, { min: 1, max: 1000, step: 1 }),
-  })();
+/** A mesh's Look (the app's cryo-ET MeshControls): its color, surface, wireframe or both, opacity, scale */
+function MeshLook() {
+  return (
+    <div class={classes.stack}>
+      {form({ color: PD.Color(Color(0xb58bd6)) })()}
+      <Choices
+        choices={[
+          { id: 'mesh', label: 'Surface' },
+          { id: 'wireframe', label: 'Wireframe' },
+          { id: 'both', label: 'Both' },
+        ]}
+        active={fixed('mesh')}
+        onPick={() => {}}
+      />
+      {form({
+        opacity: PD.Numeric(1, { min: 0.05, max: 1, step: 0.01 }),
+        scale: PD.Numeric(1, { min: 0.01, max: 100, step: 0.01 }),
+      })()}
+    </div>
+  );
+}
+
+/** A category's Look (ui.md §4): its eye and a color theme for every object under it; Uniform's color picked, applied */
+function CategoryLook(props: { node: MockNode }) {
+  const uniform = observableState(false);
+  const color = observableState(0xffffff);
+  return (
+    <div class={classes.stack}>
+      {form({ visible: PD.Boolean(props.node.visible !== false, { description: 'Every object under it' }) })()}
+      <Choices
+        label="Color theme"
+        choices={(CategoryThemes[props.node.key] ?? []).map(([id, label]) => ({ id, label }))}
+        onPick={(id) => id === 'uniform' && uniform.set(!uniform.value)}
+      />
+      <Show when={uniform.asReadonly}>
+        {() => (
+          <div class={classes.inline}>
+            <ColorPicker value={color.asReadonly} onChange={(c) => color.set(c)} />
+            <ActionFooter icon="palette" label="Apply" onApply={() => uniform.set(false)} />
+          </div>
+        )}
+      </Show>
+    </div>
+  );
+}
+
+/**
+ * A clip (ui.md §4, §5): its line (its handles, its numbers' toggle, On top, remove), its shape and invert, its place,
+ * turn and size by numbers on demand; the same in a node's Clips and the clip row's own section
+ */
+function Clip(props: { name?: string }) {
+  const handles = observableState(false);
+  const numbers = observableState(false);
+  return (
+    <div class={classes.tight}>
+      <div class={classes.tools}>
+        {props.name ? <span class={classes.itemName}>{props.name}</span> : null}
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Show or hide its handles (move, turn and size it in 3D)"
+          pressed={handles.asReadonly}
+          icon={<Icon name="move-3d" />}
+          onClick={() => handles.set(!handles.value)}
+        />
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Its place, turn and size, by numbers"
+          pressed={numbers.asReadonly}
+          icon={<Icon name="sliders-horizontal" />}
+          onClick={() => numbers.set(!numbers.value)}
+        />
+        <OnTop />
+        <Button size="xs" variant="ghost" title="Remove it" icon={<Icon name="x" />} />
+      </div>
+      {form({
+        shape: PD.Select('plane', [
+          ['plane', 'Plane'],
+          ['sphere', 'Sphere'],
+          ['cube', 'Box'],
+          ['cylinder', 'Cylinder'],
+          ['infiniteCone', 'Cone'],
+        ]),
+        invert: PD.Boolean(false, { description: 'Remove the other side, or the outside' }),
+      })()}
+      <Show when={numbers.asReadonly}>
+        {() => (
+          <div class={classes.inline}>
+            {form({
+              x: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
+              y: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
+              z: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
+              turnX: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
+              turnY: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
+              turnZ: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
+            })()}
+          </div>
+        )}
+      </Show>
+    </div>
+  );
+}
 
 /** A list's or target's decoration (ui.md §4): what decorates each target, targets by class */
 function Decoration() {
@@ -239,10 +323,9 @@ function Decoration() {
     <div class={classes.stack}>
       <Choices label="Targets" choices={by} active={fixed('class')} onPick={() => {}} />
       {['Class 1', 'Class 2'].map((t, i) => (
-        <div class={classes.line}>
-          <span class={classes.lineLabel}>{t}</span>
+        <Line label={t}>
           <Select size="sm" aria-label={`${t} decorated with`} options={With} value={i ? 'spheres' : 'pdb'} />
-        </div>
+        </Line>
       ))}
     </div>
   );
@@ -258,10 +341,9 @@ function Position(props: { node: MockNode }) {
   const numbers = observableState(false);
   const scaled = props.node.kind === 'list' || props.node.kind === 'model';
   return (
-    <div class={classes.stack}>
-      <div class={classes.line}>
-        <span class={classes.lineLabel}>Handles</span>
-        <span class={treeClasses.actions}>
+    <div class={classes.tight}>
+      <Line label="Handles">
+        <div class={classes.tools}>
           <Button
             size="sm"
             icon={<Icon name="move-3d" />}
@@ -279,19 +361,21 @@ function Position(props: { node: MockNode }) {
             onClick={() => numbers.set(!numbers.value)}
           />
           <OnTop />
-        </span>
-      </div>
+        </div>
+      </Line>
       <Show when={numbers.asReadonly}>
-        {() =>
-          form({
-            x: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
-            y: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
-            z: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
-            turnX: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
-            turnY: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
-            turnZ: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
-          })()
-        }
+        {() => (
+          <div class={classes.inline}>
+            {form({
+              x: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
+              y: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
+              z: PD.Numeric(0, { min: -500, max: 500, step: 0.1 }),
+              turnX: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
+              turnY: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
+              turnZ: PD.Numeric(0, { min: -180, max: 180, step: 1 }),
+            })()}
+          </div>
+        )}
       </Show>
       {form({
         handleSize: PD.Numeric(100, { min: 25, max: 400, step: 5 }, { label: 'Handle size (%)' }),
@@ -319,42 +403,21 @@ function OnTop() {
   );
 }
 
-/** A node's clips (ui.md §4, §5): each its handles (move, turn, size it in 3D), its form, Remove; Add clip (right-click) */
+/**
+ * A node's clips (ui.md §4, §5): each as a clip row's (`Clip`); Add a clip, the handle size. A category's: the cuts its
+ * scissors made, each of every object under it
+ */
 function Clips(props: { node: MockNode }) {
-  const one = props.node.kind === 'model';
-  const handles = observableState(false);
+  if (props.node.kind === 'category') {
+    return <Hint>No clips. Add one with the scissors: it cuts every object under it.</Hint>;
+  }
   return (
     <div class={classes.stack}>
-      {one ? (
-        <div class={classes.line}>
-          <span class={classes.lineLabel}>Plane clip</span>
-          <span class={treeClasses.actions}>
-            <Button
-              size="sm"
-              icon={<Icon name="move-3d" />}
-              pressed={handles.asReadonly}
-              onClick={() => handles.set(!handles.value)}
-            >
-              {derive(handles.asReadonly, (on) => (on ? 'Hide handles' : 'Handles'))}
-            </Button>
-            <OnTop />
-          </span>
-        </div>
-      ) : null}
-      {one ? (
-        clipForm()
-      ) : (
-        <span class={classes.hint}>
-          {props.node.kind === 'category'
-            ? 'No clips. Add one with the scissors: it cuts every object under it.'
-            : 'No clips. Add one from the right-click.'}
-        </span>
-      )}
-      {one ? (
-        <Button size="sm" variant="ghost">
-          Remove the clip
-        </Button>
-      ) : null}
+      {props.node.kind === 'model' ? <Clip name="Plane 1" /> : null}
+      <Button size="sm" icon={<Icon name="scissors" />}>
+        Add a clip
+      </Button>
+      {form({ handleSize: PD.Numeric(100, { min: 25, max: 400, step: 5 }, { label: 'Handle size (%)' }) })()}
     </div>
   );
 }
@@ -362,25 +425,42 @@ function Clips(props: { node: MockNode }) {
 /** A node's labels (ui.md §4, §5): each its text, size, Remove */
 function Labels(props: { node: MockNode }) {
   return props.node.kind === 'model' ? (
-    <LabelEdit text="HIV-1 capsid" remove />
+    <LabelEdit text="HIV-1 capsid" />
   ) : (
-    <span class={classes.hint}>No labels. Add one from the right-click.</span>
+    <Hint>No labels. Add one from the right-click.</Hint>
   );
 }
 
-function LabelEdit(props: { text: string; remove?: boolean }) {
+/** A label's text, size, remove; `full` (its own row's section): its color, plate and tether too */
+function LabelEdit(props: { text: string; full?: boolean }) {
   return (
-    <div class={classes.stack}>
-      <TextInput size="sm" aria-label="The label's text" value={props.text} />
-      <div class={classes.line}>
-        <span class={classes.lineLabel}>Size</span>
-        <Slider aria-label="Size" value={fixed(12)} min={0.5} max={500} scale="log" clamp={false} />
-      </div>
-      {props.remove ? (
-        <Button size="sm" variant="ghost">
+    <div class={classes.tight}>
+      <Line label="Text">
+        <TextInput size="sm" aria-label="The label's text" value={props.text} />
+      </Line>
+      <Line label="Size">
+        <Slider aria-label="Size" value={fixed(12)} min={0.5} max={500} scale="log" clamp={false} unit="Å" />
+      </Line>
+      {props.full ? form({ color: PD.Color(Color(0xffffff)) })() : null}
+      {props.full ? (
+        <Line label="Plate">
+          <Button size="sm" variant="ghost">
+            Hidden
+          </Button>
+        </Line>
+      ) : null}
+      {props.full ? (
+        <Line label="Tether">
+          <Button size="sm" variant="ghost">
+            Off
+          </Button>
+        </Line>
+      ) : null}
+      <Line>
+        <Button size="sm" variant="ghost" icon={<Icon name="x" />}>
           Remove the label
         </Button>
-      ) : null}
+      </Line>
     </div>
   );
 }
@@ -388,40 +468,38 @@ function LabelEdit(props: { text: string; remove?: boolean }) {
 /** A distance (ui.md §7): its value, its two points (a click picks the point's row), text size, line width, opacity */
 function Distance() {
   const times = { format: (v: number) => String(Math.round(v * 100) / 100), unit: '×' };
-  const row = (label: string, child: Child) => (
-    <div class={classes.line}>
-      <span class={classes.lineLabel}>{label}</span>
-      {child}
-    </div>
-  );
   return (
-    <div class={classes.stack}>
-      {row('Value', <span>10.67 Å</span>)}
-      {row(
-        'From',
+    <div class={classes.tight}>
+      <Line label="Value">
+        <span>10.67 Å</span>
+      </Line>
+      <Line label="From">
         <Button size="sm" variant="ghost">
           CYS 3 (A)
-        </Button>,
-      )}
-      {row(
-        'To',
+        </Button>
+      </Line>
+      <Line label="To">
         <Button size="sm" variant="ghost">
           THR 13 (A)
-        </Button>,
-      )}
-      {row('Text size', <Slider aria-label="Text size" value={fixed(1)} min={0.1} max={100} scale="log" {...times} />)}
-      {row(
-        'Line width',
-        <Slider aria-label="Line width" value={fixed(1)} min={0.1} max={100} scale="log" {...times} />,
-      )}
-      {row('Opacity', <Slider aria-label="Opacity" value={fixed(1)} min={0} max={1} step={0.01} />)}
+        </Button>
+      </Line>
+      <Line label="Text size">
+        <Slider aria-label="Text size" value={fixed(1)} min={0.1} max={100} scale="log" {...times} />
+      </Line>
+      <Line label="Line width">
+        <Slider aria-label="Line width" value={fixed(1)} min={0.1} max={100} scale="log" {...times} />
+      </Line>
+      <Line label="Opacity">
+        <Slider aria-label="Opacity" value={fixed(1)} min={0} max={1} step={0.01} />
+      </Line>
     </div>
   );
 }
 
 /**
- * The properties of the picked row: its name and kind, a model's Group by above the sections (not folded, ui.md §4),
- * then its sections. Made again for each pick (the section list's subject is the node).
+ * The properties of the picked row, on the app's frame (properties-view.tsx): its name and kind, a model's Group by
+ * above the sections (not folded, ui.md §4), then its sections. Made again for each pick (the section list's subject
+ * is the node); the shell outlives the picks, so a section stays open (or folded) as it was left.
  */
 export function Properties(props: {
   picked: ReadonlyState<MockNode | undefined>;
@@ -435,24 +513,26 @@ export function Properties(props: {
   return (
     <For each={derive(props.picked, (p) => (p ? [p] : []))} by={(p) => p.key}>
       {(n) => (
-        <div class={classes.stack}>
-          <div class={classes.title}>
-            <strong class={treeClasses.label}>{n.label}</strong>
-            <span class={classes.hint}>{KindNames[n.kind]}</span>
-          </div>
-          {n.kind === 'model' ? (
-            <Choices
-              label="Group by"
-              choices={[
-                { id: 'compartment', label: 'Compartment' },
-                { id: 'function', label: 'Function' },
-              ]}
-              active={derive(props.groupBy, (g) => g ?? 'compartment')}
-              onPick={(id) => props.onGroupBy(id as GroupBy)}
-            />
-          ) : null}
-          <SectionList shell={shell} slot={Slot} subject={n} flat collapsed={props.folded} />
-        </div>
+        <PropertiesFrame
+          shell={shell}
+          name={n.label}
+          kind={n.kind}
+          subject={n}
+          collapsed={props.folded}
+          above={
+            n.kind === 'model' ? (
+              <Choices
+                label="Group by"
+                choices={[
+                  { id: 'compartment', label: 'Compartment' },
+                  { id: 'function', label: 'Function' },
+                ]}
+                active={derive(props.groupBy, (g) => g ?? 'compartment')}
+                onPick={(id) => props.onGroupBy(id as GroupBy)}
+              />
+            ) : undefined
+          }
+        />
       )}
     </For>
   );

@@ -8,29 +8,37 @@
 
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Color } from '@molstar/core/util/color';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { type ObjectPose, placementWith, poseOf } from '@molstar/stage-tools-extension/move';
-import type { StageApi } from '@molstar/stage-tools-extension/operations';
+import type { LabelInfo, StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, ObliqueSlice, Slice } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
 import { ImportColors, ObjectGraphics } from '@molstar/mesoscale-extension/controls';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
+  ActionFooter,
+  bind,
   Button,
+  type Child,
   ColorPicker,
   Choices,
   type ContextMenuItem,
+  domView,
   For,
   Icon,
   onCleanup,
   openContextMenu,
   ParamsForm,
   Select,
+  type ShellModel,
+  type ShellViewContext,
   Show,
   Slider,
   type SliderProps,
   TextInput,
 } from '@molstar/prism-ui';
+import { restartable } from '@molstar/prism-ui/dom/scoped';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import type { KeyedState } from '@molstar/prism-ui/reactive/keyed-state';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
@@ -38,17 +46,18 @@ import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
-import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
 import { DistanceProps } from './distance-properties.js';
 import { clipItems, clippable, hideHandles, movable, showClipHandles, showHandles, showTheme } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
-import type { Parts } from './rows.js';
+import { Hint, Line, PropertiesFrame, PropertiesSlot, propertiesClasses as classes } from './properties-view.js';
+import { type ClipAt, ClipShapes, categoryTheme, type Parts } from './rows.js';
+import { CategoryThemes } from './tree-view.js';
 
-// The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name, then sections that fold, only
-// those that apply: Look (color, opacity, glow; what the node shows now), Representation (a structure's preset),
-// Decoration (a particle list's targets), Slice (a volume), the mesh's look, Graphics & Motion (an object's quality,
-// wiggle and tumble). A model with compartments also has its Group by switch, above them (the tree's grouping of its
-// rows: view state). They act through the API as the person; a slider once released (one step).
+// The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name and kind, a model's Group by
+// above the sections (the tree's grouping of its rows: view state), then the sections that apply on Prism's
+// `SectionList` (properties-view.tsx), in ui.md §4's order: Look, Representation, Decoration, Slice, Position, Clips,
+// Labels, Graphics & Motion; a clip's, a label's and a distance's own section. They act through the API as the person;
+// a slider once released (one step).
 
 /** The row picked: its key in the tree, what it is, what it stands for */
 export interface Picked {
@@ -58,11 +67,21 @@ export interface Picked {
   readonly node?: NodeRef;
   /** A representation's row: its state ref */
   readonly representation?: string;
+  /** A clip's row: its cut's tag (Prism's) */
+  readonly clip?: string;
 }
 
-const Muted = 'color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
-const Line = 'display: flex; align-items: center; gap: var(--msp-space-2); min-height: 28px';
-const Label = 'width: 64px; flex: none';
+/** What a section is given: the pick and what acts on it (the section list's subject, one per pick) */
+interface Subject {
+  readonly api: ViewerApi;
+  readonly area: ExplorerApi;
+  readonly picked: Picked;
+  readonly parts: ReadonlyState<Parts>;
+  /** The clips as rows, where each was made (the tree's: a category's Clips are those under its row) */
+  readonly clips: ReadonlyState<readonly ClipAt[]>;
+  /** A model's grouping as its rows show it */
+  groupByOf(model: string): MesoGroupBy | undefined;
+}
 
 export function Properties(props: {
   api: ViewerApi;
@@ -71,196 +90,75 @@ export function Properties(props: {
   parts: ReadonlyState<Parts>;
   /** Each model's grouping in the tree, by ref (the explorer's view state) */
   groupings: KeyedState<string, MesoGroupBy>;
+  groupByOf(model: string): MesoGroupBy | undefined;
+  clips: ReadonlyState<readonly ClipAt[]>;
+  /** Kept by the owner for the session: the sections' open state, from pick to pick */
+  shell: ShellModel;
 }) {
+  registerSections(props.shell);
   // made again for each pick
   return (
     <For each={mapState(props.picked, (p) => (p ? [p] : []))} by={(p) => p.key}>
-      {(p) => (
-        <NodeProperties api={props.api} area={props.area} picked={p} parts={props.parts} groupings={props.groupings} />
-      )}
+      {(picked) => {
+        const subject: Subject = {
+          api: props.api,
+          area: props.area,
+          picked,
+          parts: props.parts,
+          clips: props.clips,
+          groupByOf: props.groupByOf,
+        };
+        return (
+          <PropertiesFrame
+            shell={props.shell}
+            name={nameOf(subject)}
+            kind={picked.kind}
+            subject={subject}
+            above={
+              picked.node && picked.kind === 'mesoscale model' ? (
+                <GroupBy model={picked.node.ref} parts={props.parts} groupings={props.groupings} />
+              ) : undefined
+            }
+            collapsed
+          />
+        );
+      }}
     </For>
   );
 }
 
-function NodeProperties(props: {
-  api: ViewerApi;
-  area: ExplorerApi;
-  picked: Picked;
-  parts: ReadonlyState<Parts>;
-  groupings: KeyedState<string, MesoGroupBy>;
-}) {
-  const { api, area, picked } = props;
-  const node = picked.node;
-  return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
-      <div style="display: flex; align-items: baseline; gap: var(--msp-space-2); min-width: 0">
-        <strong style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-          {picked.kind === 'label' && api.stage
-            ? mapState(api.stage.labelsState(), (l) => l.find((x) => x.ref === node?.ref)?.text ?? picked.label)
-            : picked.label}
-        </strong>
-        <span style={Muted}>{picked.kind}</span>
-      </div>
-      {node && picked.kind === 'mesoscale model' ? (
-        <GroupBy model={node.ref} parts={props.parts} groupings={props.groupings} />
-      ) : null}
-      {node ? sectionsOf(api, area, picked, node, props.parts) : null}
-      {node ? graphicsSection(api, picked.kind, node) : null}
-      {node && movable(picked.kind) ? (
-        <Section title="Position">{() => <Position api={api} area={area} kind={picked.kind} node={node} />}</Section>
-      ) : null}
-      {node && clippable(picked.kind, node) ? (
-        <Section title="Clips">{() => <Clips api={api} area={area} kind={picked.kind} node={node} />}</Section>
-      ) : null}
-    </div>
-  );
+/** A label's name is its text, a clip's its shape: as they change */
+function nameOf({ api, picked }: Subject): Child {
+  const ref = picked.node?.ref;
+  if (picked.kind === 'label' && api.stage) {
+    return mapState(api.stage.labelsState(), (l) => l.find((x) => x.ref === ref)?.text ?? picked.label);
+  }
+  if (picked.kind === 'clip' && picked.clip) {
+    return mapState(api.clipping.cuts, (all) => {
+      const c = all.find((x) => x.object.tag === picked.clip);
+      return c ? `${ClipShapes[c.object.type] ?? c.object.type} ${c.index}` : picked.label;
+    });
+  }
+  return picked.label;
 }
 
-function sectionsOf(
-  api: ViewerApi,
-  area: ExplorerApi,
-  picked: Picked,
-  node: NodeRef,
-  parts: ReadonlyState<Parts>,
-): JSX.Element[] {
-  const kind = picked.kind;
-  if ('particles' in node || kind === 'mesoscale model') {
-    if (kind === 'target')
-      return [<Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>];
-    const out = [<Section title="Look">{() => <ParticleLook api={api} node={node} parts={parts} />}</Section>];
-    // a part's own decoration (an entity's, a group's): its targets' rows alone
-    if ('particles' in node && (kind === 'entity' || kind === 'group')) {
-      out.push(<Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>);
-    }
-    if (kind === 'mesoscale model') {
-      // what each target is drawn as (a Simularium agent, a cellPACK entity): another object of the scene
-      out.push(<Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>);
-      out.push(
-        <Section title="Representation">
-          {() => <Representations api={api} area={area} owner={node.ref} operation="particles.update" />}
-        </Section>,
-      );
-    }
-    return out;
-  }
-  switch (kind) {
-    case 'structure':
-      return [
-        <Section title="Look">{() => <StructureLook api={api} area={area} node={node} whole />}</Section>,
-        <Section title="Representation">{() => <Representation api={api} area={area} node={node} />}</Section>,
-      ];
-    case 'entity':
-    case 'chain':
-      return [<Section title="Look">{() => <StructureLook api={api} area={area} node={node} />}</Section>];
-    case 'particle list':
-      return [
-        <Section title="Decoration">{() => <ListDecoration api={api} node={node} />}</Section>,
-        <Section title="Representation">
-          {() => <Representations api={api} area={area} owner={node.ref} operation="particles.update" />}
-        </Section>,
-      ];
-    // a volume: each of its slices (x, y, z) and its isosurfaces; a slice's row, that slice (its position and window,
-    // then its whole form); another's, its own form
-    case 'volume':
-      return [
-        <VolumeSlices api={api} volume={node.ref} />,
-        <Section title="Isosurface">
-          {() => (
-            <Representations
-              api={api}
-              area={area}
-              owner={node.ref}
-              operation="volume.update"
-              only={(r) => r.type !== 'slice'}
-              none={() => (
-                <Button
-                  size="sm"
-                  onClick={() => void api.run('volume.representation', { type: 'isosurface', volume: node.ref })}
-                >
-                  Add an isosurface
-                </Button>
-              )}
-            />
-          )}
-        </Section>,
-      ];
-    case 'slice': {
-      // its axis: the slice of this representation
-      const axis = api.cryoet?.sliceState(node.ref).value?.slices.find((x) => x.ref === picked.representation)?.axis;
-      return [
-        ...(api.cryoet && axis
-          ? [<Section title="Slice">{() => <Slice area={api.cryoet!} volume={node.ref} axis={axis} />}</Section>]
-          : []),
-        <Section title="Representation">
-          {() => (
-            <Representations
-              api={api}
-              area={area}
-              owner={node.ref}
-              operation="volume.update"
-              only={(r) => r.ref === picked.representation}
-            />
-          )}
-        </Section>,
-      ];
-    }
-    case 'oblique slice':
-      // its place (its handle, its numbers in the volume's frame) and contrast, then its whole form
-      return [
-        ...(api.cryoet
-          ? [
-              <Section title="Oblique slice">
-                {() => <ObliqueSlice api={api} area={api.cryoet!} volume={node.ref} slice={picked.representation!} />}
-              </Section>,
-            ]
-          : []),
-        <Section title="Representation">
-          {() => (
-            <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
-              <Representations
-                api={api}
-                area={area}
-                owner={node.ref}
-                operation="volume.update"
-                only={(r) => r.ref === picked.representation}
-              />
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => void api.run('volume.remove', { node: picked.representation! })}
-              >
-                Remove the oblique slice
-              </Button>
-            </div>
-          )}
-        </Section>,
-      ];
-    case 'isosurface':
-    case 'volume representation':
-      return [
-        <Section title={kind === 'isosurface' ? 'Isosurface' : 'Representation'}>
-          {() => (
-            <Representations
-              api={api}
-              area={area}
-              owner={node.ref}
-              operation="volume.update"
-              only={(r) => r.ref === picked.representation}
-            />
-          )}
-        </Section>,
-      ];
-    case 'mesh':
-      return [<Section title="Look">{() => <MeshLook api={api} node={node} />}</Section>];
-    case 'label':
-      return [<Section title="Label">{() => <LabelProps api={api} node={node} />}</Section>];
-    case 'distance':
-      return [<Section title="Distance">{() => <DistanceProps api={api} area={area} node={node} />}</Section>];
-  }
-  return [];
-}
+// --- the sections (ui.md §4) -------------------------------------------------------------------------------------------
 
-// --- graphics and motion (_spec/ui.md §4, Graphics & Motion) --------------------------------------------------------
+/** What has particles' looks: a model, its groups and entities (a list's targets: their decoration only) */
+const particled = ({ picked }: Subject) =>
+  !!picked.node &&
+  ('particles' in picked.node || picked.kind === 'mesoscale model') &&
+  picked.kind !== 'target' &&
+  picked.kind !== 'particle list';
+const structural = ({ picked }: Subject) =>
+  !!picked.node && !('particles' in picked.node) && ['structure', 'entity', 'chain'].includes(picked.kind);
+const kinds =
+  (...ks: string[]) =>
+  ({ picked }: Subject) =>
+    !!picked.node && ks.includes(picked.kind);
+
+/** What was made at a node: a section of its own, not a node's */
+const Made: ReadonlySet<string> = new Set(['clip', 'label', 'distance']);
 
 /** The objects with graphics, by their row's kind, and whether they move (wiggle, tumble): a volume does not */
 const GraphicsKinds: ReadonlyMap<string, boolean> = new Map([
@@ -270,16 +168,202 @@ const GraphicsKinds: ReadonlyMap<string, boolean> = new Map([
   ['volume', false],
 ]);
 
-/** An object's Graphics & Motion: its quality, and its wiggle and tumble where they apply; none for a part */
-function graphicsSection(api: ViewerApi, kind: string, node: NodeRef): JSX.Element | null {
-  const motion = GraphicsKinds.get(kind);
-  const mesoscale = api.mesoscale;
-  if (motion === undefined || !mesoscale) return null;
-  return (
-    <Section title="Graphics & Motion">
-      {() => <ObjectGraphics area={mesoscale} object={node.ref} motion={motion} />}
-    </Section>
+interface Section {
+  readonly id: string;
+  readonly title: string;
+  when(s: Subject): boolean;
+  render(s: Subject): Child;
+}
+
+const Sections: readonly Section[] = [
+  {
+    id: 'look',
+    title: 'Look',
+    when: (s) =>
+      s.picked.kind === 'category' || structural(s) || particled(s) || (s.picked.kind === 'mesh' && !!s.picked.node),
+    render: (s) => {
+      const { api, area, picked } = s;
+      if (picked.kind === 'category') return <CategoryLook subject={s} />;
+      if (picked.kind === 'mesh') return <MeshLook api={api} node={picked.node!} />;
+      if (particled(s)) return <ParticleLook api={api} node={picked.node!} parts={s.parts} />;
+      return <StructureLook api={api} area={area} node={picked.node!} whole={picked.kind === 'structure'} />;
+    },
+  },
+  {
+    id: 'representation',
+    title: 'Representation',
+    when: kinds('structure', 'mesoscale model', 'particle list', 'slice', 'oblique slice', 'volume representation'),
+    render: ({ api, area, picked }) => {
+      const node = picked.node!;
+      if (picked.kind === 'structure') return <Representation api={api} area={area} node={node} />;
+      if (picked.kind === 'mesoscale model' || picked.kind === 'particle list') {
+        return <Representations api={api} area={area} owner={node.ref} operation="particles.update" />;
+      }
+      const only = (r: RepresentationInfo) => r.ref === picked.representation;
+      const form = <Representations api={api} area={area} owner={node.ref} operation="volume.update" only={only} />;
+      if (picked.kind !== 'oblique slice') return form;
+      return (
+        <div class={classes.stack}>
+          {form}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void api.run('volume.remove', { node: picked.representation! })}
+          >
+            Remove the oblique slice
+          </Button>
+        </div>
+      );
+    },
+  },
+  {
+    // a volume's isosurfaces (its slices are Slice's); an isosurface's row: its own
+    id: 'isosurface',
+    title: 'Isosurface',
+    when: kinds('volume', 'isosurface'),
+    render: ({ api, area, picked }) => {
+      const node = picked.node!;
+      if (picked.kind === 'isosurface') {
+        return (
+          <Representations
+            api={api}
+            area={area}
+            owner={node.ref}
+            operation="volume.update"
+            only={(r) => r.ref === picked.representation}
+          />
+        );
+      }
+      return (
+        <Representations
+          api={api}
+          area={area}
+          owner={node.ref}
+          operation="volume.update"
+          only={(r) => r.type !== 'slice'}
+          none={() => (
+            <Button
+              size="sm"
+              onClick={() => void api.run('volume.representation', { type: 'isosurface', volume: node.ref })}
+            >
+              Add an isosurface
+            </Button>
+          )}
+        />
+      );
+    },
+  },
+  {
+    // what each target is drawn as: a list's or a model's all, a part's (a target, an entity, a group) its own
+    id: 'decoration',
+    title: 'Decoration',
+    when: (s) =>
+      !!s.picked.node &&
+      (['target', 'mesoscale model', 'particle list'].includes(s.picked.kind) ||
+        ('particles' in s.picked.node && (s.picked.kind === 'entity' || s.picked.kind === 'group'))),
+    render: ({ api, picked }) => <ListDecoration api={api} node={picked.node!} />,
+  },
+  {
+    id: 'slice',
+    title: 'Slice',
+    when: (s) => {
+      if (!s.api.cryoet) return false;
+      if (s.picked.kind === 'volume') return true;
+      return s.picked.kind === 'slice' && !!sliceAxis(s);
+    },
+    render: (s) => {
+      const cryoet = s.api.cryoet!;
+      const volume = s.picked.node!.ref;
+      if (s.picked.kind === 'volume') return <VolumeSlices api={s.api} cryoet={cryoet} volume={volume} />;
+      return <Slice area={cryoet} volume={volume} axis={sliceAxis(s)!} />;
+    },
+  },
+  {
+    // its place (its handle, its numbers in the volume's frame) and contrast
+    id: 'oblique',
+    title: 'Oblique slice',
+    when: (s) => s.picked.kind === 'oblique slice' && !!s.api.cryoet && !!s.picked.node,
+    render: ({ api, picked }) => (
+      <ObliqueSlice api={api} area={api.cryoet!} volume={picked.node!.ref} slice={picked.representation!} />
+    ),
+  },
+  {
+    id: 'position',
+    title: 'Position',
+    when: ({ picked }) => !!picked.node && movable(picked.kind),
+    render: ({ api, area, picked }) => <Position api={api} area={area} kind={picked.kind} node={picked.node!} />,
+  },
+  {
+    id: 'clips',
+    title: 'Clips',
+    when: ({ picked }) => picked.kind === 'category' || clippable(picked.kind, picked.node),
+    render: (s) =>
+      s.picked.kind === 'category' ? (
+        <CategoryClips subject={s} />
+      ) : (
+        <Clips api={s.api} area={s.area} kind={s.picked.kind} node={s.picked.node!} />
+      ),
+  },
+  {
+    // the labels made at this node (ui.md §4): not at a category, nor at what was made at a node
+    id: 'labels',
+    title: 'Labels',
+    when: ({ api, picked }) => !!api.stage && !!picked.node && picked.kind !== 'category' && !Made.has(picked.kind),
+    render: ({ api, picked }) => <Labels api={api} stage={api.stage!} at={picked.key} />,
+  },
+  {
+    id: 'graphics',
+    title: 'Graphics & Motion',
+    when: ({ api, picked }) => !!api.mesoscale && !!picked.node && GraphicsKinds.has(picked.kind),
+    render: ({ api, picked }) => (
+      <ObjectGraphics area={api.mesoscale!} object={picked.node!.ref} motion={GraphicsKinds.get(picked.kind)!} />
+    ),
+  },
+  {
+    id: 'clip',
+    title: 'Clip',
+    when: ({ picked }) => picked.kind === 'clip' && !!picked.clip,
+    render: ({ api, area, picked }) => <ClipEditor api={api} area={area} tag={picked.clip!} />,
+  },
+  {
+    id: 'label',
+    title: 'Label',
+    when: ({ api, picked }) => picked.kind === 'label' && !!api.stage && !!picked.node,
+    render: ({ api, picked }) => {
+      const ref = picked.node!.ref;
+      const label = mapState(api.stage!.labelsState(), (l) => l.find((x) => x.ref === ref));
+      return <LabelFields api={api} label={label} labelRef={ref} full />;
+    },
+  },
+  {
+    id: 'distance',
+    title: 'Distance',
+    when: ({ picked }) => picked.kind === 'distance' && !!picked.node,
+    render: ({ api, area, picked }) => <DistanceProps api={api} area={area} node={picked.node!} />,
+  },
+];
+
+/** The shells whose sections are registered (once each: the owner keeps one for the session) */
+const Registered = new WeakSet<ShellModel>();
+
+function registerSections(shell: ShellModel) {
+  if (Registered.has(shell)) return;
+  Registered.add(shell);
+  shell.registerSections(
+    Sections.map((s) => ({
+      id: s.id,
+      slot: PropertiesSlot,
+      title: s.title,
+      when: (ctx: ShellViewContext) => s.when(ctx.subject as Subject),
+      render: domView<ShellViewContext>(({ ctx }) => s.render(ctx.subject as Subject)),
+    })),
   );
+}
+
+/** A slice row's axis: the slice of its representation */
+function sliceAxis({ api, picked }: Subject) {
+  if (!picked.node) return undefined;
+  return api.cryoet?.sliceState(picked.node.ref).value?.slices.find((x) => x.ref === picked.representation)?.axis;
 }
 
 /**
@@ -309,89 +393,84 @@ function GroupBy(props: { model: string; parts: ReadonlyState<Parts>; groupings:
   );
 }
 
-// --- sections --------------------------------------------------------------------------------------------------------
+// --- shared fields -----------------------------------------------------------------------------------------------------
 
-/** The sections opened (by title) this session: every section starts closed, one opened stays so from row to row */
-const OpenSections = new Set<string>();
-
-function Section(props: { title: string; children: () => JSX.Element }) {
-  const open = observableState(OpenSections.has(props.title));
-  const sub = open.asReadonly.subscribe((o) => (o ? OpenSections.add(props.title) : OpenSections.delete(props.title)));
-  onCleanup(() => sub.unsubscribe());
-  return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-      <button
-        type="button"
-        style="display: flex; align-items: center; gap: var(--msp-space-1); padding: 0; border: none; background: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; text-align: left"
-        aria-expanded={mapState(open.asReadonly, String)}
-        onClick={() => open.set(!open.value)}
-      >
-        <Show when={open.asReadonly} fallback={() => <Icon name="chevron-right" />}>
-          {() => <Icon name="chevron-down" />}
-        </Show>
-        {props.title}
-      </button>
-      <Show when={open.asReadonly}>{() => <div style="padding-left: var(--msp-space-4)">{props.children()}</div>}</Show>
-    </div>
-  );
-}
-
-/** A color: its swatch and value; a click opens the picker under it. `value` undefined: no color of its own */
+/**
+ * A color: Prism's color row (`ParamsForm`'s: the swatch, the channels, its `ColorPicker` under it). `value` undefined:
+ * no color of its own (a theme's, mixed): said in words, not a white swatch, until the person picks one. The picker
+ * changes as it is dragged across: one call a moment after the last (one step).
+ */
 function ColorField(props: {
   value: ReadonlyState<number | undefined>;
+  /** What it shows without a color of its own ("Its representation's") */
   none: string;
   onPick(color: string): void;
   /** Its name ('Color') */
   label?: string;
 }) {
+  const label = props.label ?? 'Color';
+  const form = new ParamsFormModel({ color: PD.Color(Color(0xffffff), { label }) }, undefined, {
+    onChange: () => apply.start(150),
+  });
+  const apply = lastWrite(() => props.onPick(Color.toHexStyle(form.values.value.color)));
   const picking = observableState(false);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => clearTimeout(timer));
-  // the picker changes as it is dragged across: one call a moment after the last
-  const pick = (c: number) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => props.onPick(Color.toHexStyle(Color(c))), 150);
-  };
+  // a color of its own shown; none again (a reset, an undo): said so, the person's picking over
+  bind(props.value, (c) => (c === undefined ? picking.set(false) : form.load({ color: Color(c) })));
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-      <div style={Line}>
-        <span style={Label}>{props.label ?? 'Color'}</span>
-        <button
-          type="button"
-          aria-label={`Pick a ${(props.label ?? 'color').toLowerCase()}`}
-          style={mapState(
-            props.value,
-            (c) =>
-              `width: 18px; height: 18px; border-radius: 50%; padding: 0; cursor: pointer; border: 1px solid var(--msp-color-border); background: ${c === undefined ? 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' : Color.toHexStyle(Color(c))}`,
-          )}
-          onClick={() => picking.set(!picking.value)}
-        />
-        <span style={Muted}>
-          {mapState(props.value, (c) => (c === undefined ? props.none : Color.toHexStyle(Color(c))))}
-        </span>
-      </div>
-      <Show when={picking.asReadonly}>
-        {() => <ColorPicker value={mapState(props.value, (c) => c ?? 0xffffff)} onChange={pick} />}
-      </Show>
-    </div>
+    <Show
+      when={derive([props.value, picking.asReadonly], (c, p) => c !== undefined || p)}
+      fallback={() => (
+        <Line label={label}>
+          <Button size="sm" variant="ghost" class={classes.fit} onClick={() => picking.set(true)}>
+            {`${props.none} · pick one`}
+          </Button>
+        </Line>
+      )}
+    >
+      {() => <ParamsForm form={form} />}
+    </Show>
   );
 }
 
 /**
- * A slider in a row, Prism's (ParamsForm's) with its label: its value is what the node shows (`undefined`: mixed); it
+ * A slider in a line, Prism's (ParamsForm's) with its label: its value is what the node shows (`undefined`: mixed); it
  * acts once released or typed, `onPreview` as it goes. A size over decades (a label's: an atom's to a cell's) is
  * `scale: 'log'`, its box taking any value (`clamp: false`)
  */
 function SliderField(props: SliderProps & { label: string }) {
   const { label, ...slider } = props;
   return (
-    <div style={Line}>
-      <span style={Label}>{label}</span>
-      <div style="flex: 1; min-width: 0">
-        <Slider aria-label={label} {...slider} />
-      </div>
-    </div>
+    <Line label={label}>
+      <Slider aria-label={label} {...slider} />
+    </Line>
   );
+}
+
+/**
+ * A write a moment after the last change (a field typed, a picker or a slider dragged: the scope's `restartable`), made
+ * at once if the view goes first (another row picked, the panel closed), so what was typed is not lost
+ */
+function lastWrite(write: () => unknown) {
+  let pending = false;
+  const timer = restartable(() => {
+    pending = false;
+    void write();
+  });
+  onCleanup(() => {
+    if (!pending) return;
+    pending = false;
+    void write();
+  });
+  return {
+    start(ms: number) {
+      pending = true;
+      timer.start(ms);
+    },
+    cancel() {
+      pending = false;
+      timer.cancel();
+    },
+  };
 }
 
 /** A fraction shown as a percent: the box reads and takes 50 for 0.5 */
@@ -404,6 +483,80 @@ const Percent = {
 
 /** A place or a turn: to a tenth */
 const tenths = (v: number) => String(Math.round(v * 10) / 10);
+
+// --- a category (ui.md §3, §4) -------------------------------------------------------------------------------------------
+
+/**
+ * A category's Look: its eye for every object under it, and a color theme for all of them, the themes its kind takes
+ * (`mesoscale.theme`, one step; as its row's brush); Uniform picks its color in Prism's picker, applied once
+ */
+function CategoryLook(props: { subject: Subject }) {
+  const { api, area, picked, groupByOf } = props.subject;
+  // the objects under it now (one loaded or removed while it stays picked too), its key's category (`c:<id>`)
+  const category = picked.key.slice(2);
+  const under = mapState(area.objectsState(), (os) => os.filter((o) => o.category === category));
+  const shown = mapState(under, (os) => os.some((o) => o.visible));
+  const refs = () => under.value.map((o) => o.ref);
+  const form = new ParamsFormModel(
+    { visible: PD.Boolean(true, { label: 'Visible', description: 'Every object under it' }) },
+    undefined,
+    {
+      onChange: ({ visible }) =>
+        void api.run('state.visibility', {
+          node: refs()
+            .map((r) => `#${r}`)
+            .join(', '),
+          visible,
+        }),
+    },
+  );
+  bind(shown, (visible) => form.load({ visible }));
+  const uniform = observableState(false);
+  const color = observableState(0xffffff);
+  return (
+    <div class={classes.stack}>
+      <ParamsForm form={form} />
+      <Choices
+        label="Color theme"
+        choices={(CategoryThemes[picked.key] ?? []).map(([id, label]) => ({ id, label }))}
+        onPick={(theme) =>
+          theme === 'uniform' ? uniform.set(!uniform.value) : void categoryTheme(api, refs(), theme, groupByOf)
+        }
+      />
+      <Show when={uniform.asReadonly}>
+        {() => (
+          <div class={classes.inline}>
+            <ColorPicker value={color.asReadonly} onChange={(c) => color.set(c)} />
+            <ActionFooter
+              icon="palette"
+              label="Apply"
+              onApply={() => {
+                void categoryTheme(api, refs(), 'uniform', groupByOf, color.value);
+                uniform.set(false);
+              }}
+            />
+          </div>
+        )}
+      </Show>
+    </div>
+  );
+}
+
+/** A category's Clips: the cuts its scissors made (each of every object under it), each as a clip row's */
+function CategoryClips(props: { subject: Subject }) {
+  const { api, area, picked, clips } = props.subject;
+  const tags = mapState(clips, (all) => all.filter((c) => c.node === picked.key).map((c) => c.tag));
+  return (
+    <div class={classes.stack}>
+      <For each={tags} by={(t) => t}>
+        {(tag) => <ClipEditor api={api} area={area} tag={tag} named />}
+      </For>
+      <Show when={mapState(tags, (t) => t.length === 0)}>
+        {() => <Hint>No clips. Add one with the scissors: it cuts every object under it.</Hint>}
+      </Show>
+    </div>
+  );
+}
 
 // --- structures ------------------------------------------------------------------------------------------------------
 
@@ -423,15 +576,14 @@ function StructureLook(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef
   const look = area.structureLookState(node);
   const at = () => ({ target: { loci: area.loci(node) }, structure: node.ref });
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+    <div class={classes.tight}>
       <ColorField
         value={mapState(look, (l) => l?.color)}
-        none="its representation's"
+        none="Its representation's"
         onPick={(color) => void api.run('representation.color', { ...at(), color })}
       />
       {props.whole ? (
-        <div style={Line}>
-          <span style={Label} />
+        <Line>
           <Select
             size="sm"
             aria-label="Color by"
@@ -439,7 +591,7 @@ function StructureLook(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef
             value=""
             onChange={(theme) => theme && void api.run('representation.color', { ...at(), theme })}
           />
-        </div>
+        </Line>
       ) : null}
       <SliderField
         label="Opacity"
@@ -460,16 +612,16 @@ function StructureLook(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef
         onCommit={(strength) => void api.run('representation.emissive', { ...at(), strength })}
       />
       {props.whole ? (
-        <div style={Line}>
-          <span style={Label} />
+        <Line>
           <Button
             size="sm"
             variant="ghost"
+            class={classes.fit}
             onClick={() => void api.run('representation.reset', { layer: 'all', structure: node.ref })}
           >
             Reset colors, opacity and glow
           </Button>
-        </div>
+        </Line>
       ) : null}
     </div>
   );
@@ -478,8 +630,7 @@ function StructureLook(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef
 function Representation(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef }) {
   const { api, area, node } = props;
   return (
-    <div style={Line}>
-      <span style={Label}>Preset</span>
+    <Line label="Preset">
       <Select
         size="sm"
         aria-label="Representation preset"
@@ -487,7 +638,7 @@ function Representation(props: { api: ViewerApi; area: ExplorerApi; node: NodeRe
         value=""
         onChange={(preset) => preset && void api.run('structure.preset', { preset, structure: node.ref })}
       />
-    </div>
+    </Line>
   );
 }
 
@@ -503,19 +654,20 @@ function common<T>(values: readonly T[]): T | undefined {
 function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlyState<Parts> }) {
   const { api, node } = props;
   const ids = 'particles' in node ? node.particles.entities : undefined;
+  const wanted = ids ? new Set(ids) : undefined;
   const entities = mapState(props.parts, (p) => {
     const info = p.get(node.ref) as MesoscaleInfo | undefined;
     const all = info?.entities ?? [];
-    return ids ? all.filter((e) => ids.includes(e.id)) : all;
+    return wanted ? all.filter((e) => wanted.has(e.id)) : all;
   });
   const selection = ids ? { entities: ids.join(',') } : {};
   const style = (patch: Record<string, unknown>) =>
     void api.run('mesoscale.style', { particles: node.ref, ...selection, ...patch });
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+    <div class={classes.tight}>
       <ColorField
         value={mapState(entities, (es) => common(es.map((e) => e.color as number | undefined)))}
-        none={ids && ids.length === 1 ? 'the color theme' : 'mixed'}
+        none={ids && ids.length === 1 ? 'The color theme’s' : 'Mixed'}
         onPick={(color) => style({ color })}
       />
       <SliderField
@@ -537,8 +689,7 @@ function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlySta
         onCommit={(emissive) => style({ emissive })}
       />
       {!ids || ids.length > 1 ? (
-        <div style={`${Line}; flex-wrap: wrap`}>
-          <span style={Label} />
+        <div class={classes.tools}>
           <Button
             size="sm"
             icon={<Icon name="palette" />}
@@ -571,12 +722,13 @@ function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlySta
  */
 function ListDecoration(props: { api: ViewerApi; node: NodeRef }) {
   const cryoet = props.api.cryoet;
-  if (!cryoet) return <span style={Muted}>The cryo-ET extension is not loaded.</span>;
+  if (!cryoet) return <Hint>The cryo-ET extension is not loaded.</Hint>;
   const info = cryoet.decorationsState(props.node.ref);
   const part = 'particles' in props.node ? props.node.particles : undefined;
+  const targets = part?.targets ? new Set(part.targets) : undefined;
+  const entities = part?.entities ? new Set(part.entities) : undefined;
   const only = part
-    ? (t: TargetDecoration) =>
-        !!part.targets?.includes(t.id) || (t.entity !== undefined && !!part.entities?.includes(t.entity))
+    ? (t: TargetDecoration) => !!targets?.has(t.id) || (t.entity !== undefined && !!entities?.has(t.entity))
     : undefined;
   return (
     <Show when={mapState(info, (i) => !!i)}>
@@ -596,7 +748,7 @@ function Representations(props: {
   owner: string;
   operation: 'particles.update' | 'volume.update';
   only?: (r: RepresentationInfo) => boolean;
-  none?: () => JSX.Element;
+  none?: () => Child;
 }) {
   const { api, area } = props;
   const all = area.representationsState(props.owner);
@@ -604,34 +756,29 @@ function Representations(props: {
   const list = (
     <Show
       when={mapState(reprs, (r) => r.length > 0)}
-      fallback={() => (props.none ? props.none() : <span style={Muted}>Not shown.</span>)}
+      fallback={() => (props.none ? props.none() : <Hint>Not shown.</Hint>)}
     >
       {() => (
         // made again when a representation's type changes (its form is another), or it is shown or hidden
         <For each={reprs} by={(r) => `${r.ref}:${r.type}:${r.visible}`}>
           {(r) => {
             const form = area.representationForm(r.ref);
-            if (!form) return <span style={Muted}>{r.label}</span>;
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            onCleanup(() => clearTimeout(timer));
+            if (!form) return <Hint>{r.label}</Hint>;
             // a list's color theme changed: the colors set in Look (painted over it) cleared, so it shows
             let theme = JSON.stringify((form.values as { colorTheme?: unknown }).colorTheme);
-            const model = new ParamsFormModel(form.params, form.values, {
-              onChange: (values) => {
-                clearTimeout(timer);
-                timer = setTimeout(async () => {
-                  await api.run(props.operation, { node: r.ref, params: values });
-                  const next = JSON.stringify((values as { colorTheme?: unknown }).colorTheme);
-                  if (props.operation === 'particles.update' && next !== theme) await showTheme(api, props.owner);
-                  theme = next;
-                }, 150);
-              },
+            const update = lastWrite(async () => {
+              const values = model.values.value;
+              await api.run(props.operation, { node: r.ref, params: values });
+              const next = JSON.stringify((values as { colorTheme?: unknown }).colorTheme);
+              if (props.operation === 'particles.update' && next !== theme) await showTheme(api, props.owner);
+              theme = next;
             });
+            const model = new ParamsFormModel(form.params, form.values, { onChange: () => update.start(150) });
             // the type's own params open (the iso level, the spheres' size): what is changed most
             model.fold('/type#params', true);
             return (
-              <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-                <div style={Line}>
+              <div class={classes.tight}>
+                <div class={classes.tools}>
                   <Button
                     size="xs"
                     variant="ghost"
@@ -641,7 +788,7 @@ function Representations(props: {
                       void api.run('explorer.representationVisibility', { node: r.ref, visible: !r.visible })
                     }
                   />
-                  <span style={`flex: 1; ${Muted}`}>{r.label}</span>
+                  <span class={classes.itemName}>{r.label}</span>
                   {props.operation === 'particles.update' ? (
                     <Button
                       size="xs"
@@ -662,7 +809,7 @@ function Representations(props: {
   );
   if (props.operation !== 'particles.update') return list;
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+    <div class={classes.stack}>
       {list}
       <AddParticleRepresentation api={api} area={area} list={props.owner} present={all} />
     </div>
@@ -689,14 +836,12 @@ function AddParticleRepresentation(props: {
     const items: ContextMenuItem[] = missing.map((t) => ({
       id: `add-${t.type}`,
       label: t.label,
-      icon: 'plus',
       run: () => void add(t.type),
     }));
     if (!present.has('spacefill') && !present.has('orientation') && missing.some((t) => t.type === 'orientation')) {
       items.unshift({
         id: 'add-defaults',
         label: 'Spheres and axes',
-        icon: 'plus',
         run: () => void add('spacefill').then(() => add('orientation')),
       });
     }
@@ -711,7 +856,8 @@ function AddParticleRepresentation(props: {
   );
 }
 
-/** A volume's slices, a section each (Slice X, Y, Z: position and window), and the three at a click if some are missing */
+// --- volumes ---------------------------------------------------------------------------------------------------------
+
 /** A new oblique slice through the volume's middle, its handle shown on it */
 async function addOblique(api: ViewerApi, cryoet: CryoetApi, volume: string) {
   const r = await api.run('cryoet.oblique', { volume });
@@ -721,37 +867,39 @@ async function addOblique(api: ViewerApi, cryoet: CryoetApi, volume: string) {
   cryoet.useObliqueHandles(api).show({ volume, slice });
 }
 
-function VolumeSlices(props: { api: ViewerApi; volume: string }) {
-  const cryoet = props.api.cryoet;
-  if (!cryoet) return <span />;
-  const info = cryoet.sliceState(props.volume);
+/**
+ * A volume's slices, each a block in its Slice section (Slice X, Y, Z: position and window; its oblique slices: place
+ * and contrast), the three at a click if some are missing, a new oblique one
+ */
+function VolumeSlices(props: { api: ViewerApi; cryoet: CryoetApi; volume: string }) {
+  const { api, cryoet, volume } = props;
+  const info = cryoet.sliceState(volume);
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+    <div class={classes.stack}>
       <For each={mapState(info, (i) => i?.slices.map((x) => x.axis) ?? [])} by={(a) => a}>
         {(axis) => (
-          <Section title={`Slice ${axis.toUpperCase()}`}>
-            {() => <Slice area={cryoet} volume={props.volume} axis={axis} />}
-          </Section>
+          <div class={classes.tight}>
+            <span class={classes.itemName}>{`Slice ${axis.toUpperCase()}`}</span>
+            <Slice area={cryoet} volume={volume} axis={axis} />
+          </div>
         )}
       </For>
       <Show when={mapState(info, (i) => (i?.slices.length ?? 0) < 3)}>
         {() => (
-          <Button
-            size="sm"
-            onClick={() => void props.api.run('cryoet.slices', { volume: props.volume, isosurface: true })}
-          >
+          <Button size="sm" onClick={() => void api.run('cryoet.slices', { volume, isosurface: true })}>
             Show the three slices
           </Button>
         )}
       </Show>
       <For each={mapState(info, (i) => i?.obliques.map((o) => o.ref) ?? [])} by={(r) => r}>
         {(slice) => (
-          <Section title="Oblique slice">
-            {() => <ObliqueSlice api={props.api} area={cryoet} volume={props.volume} slice={slice} />}
-          </Section>
+          <div class={classes.tight}>
+            <span class={classes.itemName}>Oblique slice</span>
+            <ObliqueSlice api={api} area={cryoet} volume={volume} slice={slice} />
+          </div>
         )}
       </For>
-      <Button size="sm" variant="ghost" onClick={() => void addOblique(props.api, cryoet, props.volume)}>
+      <Button size="sm" variant="ghost" onClick={() => void addOblique(api, cryoet, volume)}>
         Add an oblique slice
       </Button>
     </div>
@@ -760,37 +908,56 @@ function VolumeSlices(props: { api: ViewerApi; volume: string }) {
 
 // --- labels ----------------------------------------------------------------------------------------------------------
 
-/** A label's text (changed as typed, a moment after the last key), size, color; remove */
-function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
-  const { api } = props;
-  const stage = api.stage;
-  if (!stage) return <span style={Muted}>The stage tools are not loaded.</span>;
-  const ref = props.node.ref;
-  const label = mapState(stage.labelsState(), (l) => l.find((x) => x.ref === ref));
-  const edit = (values: Record<string, unknown>) => void api.run('stage.editLabel', { label: ref, ...values });
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => clearTimeout(timer));
-  const text = (value: string) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => edit({ text: value }), 400);
-  };
+/** The labels made at a node (its row's key), each: its text, size, remove (ui.md §4) */
+function Labels(props: { api: ViewerApi; stage: StageApi; at: string }) {
+  const all = props.stage.labelsState();
+  // indexed once a change (each label's fields read by ref)
+  const byRef = mapState(all, (ls) => new Map(ls.map((l) => [l.ref, l])));
+  const refs = mapState(all, (ls) => ls.filter((l) => l.node === props.at).map((l) => l.ref));
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-      <div style={Line}>
-        <span style={Label}>Text</span>
-        <div style="flex: 1">
-          <TextInput
-            size="sm"
-            aria-label="The label's text"
-            value={mapState(label, (l) => l?.text ?? '')}
-            onInput={text}
-            onSubmit={(v) => {
-              clearTimeout(timer);
-              edit({ text: v });
-            }}
-          />
-        </div>
-      </div>
+    <div class={classes.stack}>
+      <For each={refs} by={(r) => r}>
+        {(ref) => <LabelFields api={props.api} label={mapState(byRef, (m) => m.get(ref))} labelRef={ref} />}
+      </For>
+      <Show when={mapState(refs, (r) => r.length === 0)}>
+        {() => <Hint>No labels. Add one from the right-click.</Hint>}
+      </Show>
+    </div>
+  );
+}
+
+/**
+ * A label's text (changed as typed, a moment after the last key; Enter at once), size, remove; `full` (its own row's
+ * section): its color, its plate and its tether too
+ */
+function LabelFields(props: {
+  api: ViewerApi;
+  label: ReadonlyState<LabelInfo | undefined>;
+  labelRef: string;
+  full?: boolean;
+}) {
+  const { api, label } = props;
+  const edit = (values: Record<string, unknown>) =>
+    void api.run('stage.editLabel', { label: props.labelRef, ...values });
+  let typed = '';
+  const typing = lastWrite(() => edit({ text: typed }));
+  return (
+    <div class={classes.tight}>
+      <Line label="Text">
+        <TextInput
+          size="sm"
+          aria-label="The label's text"
+          value={mapState(label, (l) => l?.text ?? '')}
+          onInput={(v) => {
+            typed = v;
+            typing.start(400);
+          }}
+          onSubmit={(v) => {
+            typing.cancel();
+            edit({ text: v });
+          }}
+        />
+      </Line>
       <SliderField
         label="Size"
         value={mapState(label, (l) => l?.size ?? 4)}
@@ -801,9 +968,32 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
         unit="Å"
         onCommit={(size) => edit({ size })}
       />
-      <ColorField value={mapState(label, (l) => l?.color)} none="white" onPick={(color) => edit({ color })} />
-      <div style={Line}>
-        <span style={Label}>Plate</span>
+      {props.full ? <LabelLook label={label} edit={edit} /> : null}
+      <Line>
+        <Button
+          size="sm"
+          variant="ghost"
+          class={classes.fit}
+          icon={<Icon name="x" />}
+          onClick={() => edit({ remove: true })}
+        >
+          Remove the label
+        </Button>
+      </Line>
+    </div>
+  );
+}
+
+/** A label's color, its plate (shown, its color and opacity) and its tether (on, its length) */
+function LabelLook(props: {
+  label: ReadonlyState<LabelInfo | undefined>;
+  edit(values: Record<string, unknown>): void;
+}) {
+  const { label, edit } = props;
+  return (
+    <>
+      <ColorField value={mapState(label, (l) => l?.color)} none="White" onPick={(color) => edit({ color })} />
+      <Line label="Plate">
         <Button
           size="sm"
           variant="ghost"
@@ -812,14 +1002,14 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
         >
           {mapState(label, (l) => (l?.background ? 'Shown' : 'Hidden'))}
         </Button>
-      </div>
+      </Line>
       <Show when={mapState(label, (l) => !!l?.background)}>
         {() => (
           <>
             <ColorField
               label="Plate color"
               value={mapState(label, (l) => l?.backgroundColor)}
-              none="dark"
+              none="Dark"
               onPick={(color) => edit({ backgroundColor: color })}
             />
             <SliderField
@@ -834,8 +1024,7 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
           </>
         )}
       </Show>
-      <div style={Line}>
-        <span style={Label}>Tether</span>
+      <Line label="Tether">
         <Button
           size="sm"
           variant="ghost"
@@ -844,7 +1033,7 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
         >
           {mapState(label, (l) => (l?.tether ? 'On' : 'Off'))}
         </Button>
-      </div>
+      </Line>
       <Show when={mapState(label, (l) => !!l?.tether)}>
         {() => (
           <SliderField
@@ -858,13 +1047,7 @@ function LabelProps(props: { api: ViewerApi; node: NodeRef }) {
           />
         )}
       </Show>
-      <div style={Line}>
-        <span style={Label} />
-        <Button size="sm" variant="ghost" icon={<Icon name="x" />} onClick={() => edit({ remove: true })}>
-          Remove the label
-        </Button>
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -884,39 +1067,39 @@ function Position(props: { api: ViewerApi; area: ExplorerApi; kind: string; node
     ],
     (a, ta, b, tb) => (a && ta === node.ref) || (b && tb === node.ref),
   );
+  const listed = props.kind === 'particle list' || props.kind === 'mesoscale model';
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-      <div style={Line}>
-        <span style={Label}>Handles</span>
-        <Button
-          size="sm"
-          icon={<Icon name="move-3d" />}
-          pressed={shownOn}
-          onClick={() => (shownOn.value ? hideHandles(api) : showHandles(api, node.ref, props.kind))}
-        >
-          {mapState(shownOn, (on) => (on ? 'Hide' : 'Move and turn'))}
-        </Button>
-        {api.stage ? (
+    <div class={classes.tight}>
+      <Line label="Handles">
+        <div class={classes.tools}>
           <Button
-            size="xs"
-            variant="ghost"
-            title="Its place and turn, by numbers"
-            pressed={exact.asReadonly}
-            icon={<Icon name="sliders-horizontal" />}
-            onClick={() => exact.set(!exact.value)}
-          />
-        ) : null}
-        <OnTop api={api} area={props.area} />
-      </div>
+            size="sm"
+            icon={<Icon name="move-3d" />}
+            pressed={shownOn}
+            onClick={() => (shownOn.value ? hideHandles(api) : showHandles(api, node.ref, props.kind))}
+          >
+            {mapState(shownOn, (on) => (on ? 'Hide' : 'Move and turn'))}
+          </Button>
+          {api.stage ? (
+            <Button
+              size="xs"
+              variant="ghost"
+              title="Its place and turn, by numbers"
+              pressed={exact.asReadonly}
+              icon={<Icon name="sliders-horizontal" />}
+              onClick={() => exact.set(!exact.value)}
+            />
+          ) : null}
+          <OnTop api={api} area={props.area} />
+        </div>
+      </Line>
       {api.stage ? (
         <Show when={exact.asReadonly}>{() => <PoseSliders stage={api.stage!} api={api} target={node.ref} />}</Show>
       ) : null}
       <HandleLook area={props.area} />
-      {(props.kind === 'particle list' || props.kind === 'mesoscale model') && api.stage && api.cryoet ? (
-        <LocalHandle api={api} stage={api.stage} list={node.ref} />
-      ) : null}
+      {listed && api.stage && api.cryoet ? <LocalHandle api={api} stage={api.stage} list={node.ref} /> : null}
       {/* a particle list's positions in Å: its file's unit times this (a tomogram's pixel size) */}
-      {(props.kind === 'particle list' || props.kind === 'mesoscale model') && api.stage ? (
+      {listed && api.stage ? (
         <SliderField
           label="Scale"
           value={api.stage.scaleState(node.ref)}
@@ -961,7 +1144,7 @@ function PoseSliders(props: { api: ViewerApi; stage: StageApi; target: string })
     return { position, euler };
   };
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+    <div class={classes.inline}>
       {PoseAxes.map((axis, i) => {
         const min = i < 3 ? home[i] - reach : -180;
         const max = i < 3 ? home[i] + reach : 180;
@@ -1020,29 +1203,30 @@ function LocalHandle(props: { api: ViewerApi; stage: StageApi; list: string }) {
             ? api.run('cryoet.offset', { particles: list, targets, [key]: v })
             : api.run('cryoet.instance', { particles: list, index: t.index, [key]: v }));
         return (
-          <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-            <div style={Line}>
-              <span style={Label}>Local handle</span>
-              <span style={`flex: 1; ${Muted}`}>
-                {all ? `particle ${t.index}: all like it` : `particle ${t.index} alone`}
-              </span>
-              <Button
-                size="xs"
-                variant="ghost"
-                pressed={all}
-                title="All on: the offset of every particle like it (its kind); off: this particle alone"
-                onClick={() => handles.setAll(!all)}
-              >
-                All
-              </Button>
-              <Button
-                size="xs"
-                variant="ghost"
-                title="Hide the handle"
-                icon={<Icon name="x" />}
-                onClick={() => handles.hide()}
-              />
-            </div>
+          <div class={classes.tight}>
+            <Line label="Local handle">
+              <div class={classes.tools}>
+                <span class={classes.itemName}>
+                  {all ? `particle ${t.index}: all like it` : `particle ${t.index} alone`}
+                </span>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  pressed={all}
+                  title="All on: the offset of every particle like it (its kind); off: this particle alone"
+                  onClick={() => handles.setAll(!all)}
+                >
+                  All
+                </Button>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  title="Hide the handle"
+                  icon={<Icon name="x" />}
+                  onClick={() => handles.hide()}
+                />
+              </div>
+            </Line>
             {PoseAxes.map((axis, i) => {
               const value = mapState(offset, (o) => (o ? (i < 3 ? o.translation[i] : o.euler[i - 3]) : 0));
               const range = i < 3 ? 200 : 180;
@@ -1106,36 +1290,26 @@ function HandleLook(props: { area: ExplorerApi }) {
 
 // --- clips -----------------------------------------------------------------------------------------------------------
 
-const ClipNames: Record<string, string> = {
-  plane: 'Plane',
-  sphere: 'Sphere',
-  cube: 'Box',
-  cylinder: 'Cylinder',
-  infiniteCone: 'Cone',
-};
-
 /**
- * An object's clips, Prism's (its clipping: the cuts through its representations), each: its name, its handles (shown
- * or hidden: to move, turn and size it in 3D), remove; and Add a clip
+ * A node's clips, Prism's (its clipping: the cuts through its representations), each as a clip row's (`ClipEditor`);
+ * Add a clip, the handle size
  */
 function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: NodeRef }) {
   const { api, area, node } = props;
-  const clipping = api.clipping;
   const add = (e: MouseEvent) => {
     const button = e.currentTarget as HTMLElement;
     const r = button.getBoundingClientRect();
     const picked = { key: '', label: '', kind: props.kind, node };
     openContextMenu(rootOf(button), { x: r.left, y: r.bottom }, clipItems(api, area, picked));
   };
-  const cuts = mapState(clipping.cuts, (all) => area.cutsOf(all, node));
-  const handled = derive([clipping.gizmos.shown, clipping.gizmos.handled], (shown, h) => (shown ? h : []));
+  const cuts = mapState(api.clipping.cuts, (all) => area.cutsOf(all, node));
   // a model's or list's objects: clipped whole (proteins) or by their elements (atoms), when it draws objects
   const whole =
     (props.kind === 'mesoscale model' || props.kind === 'particle list') && api.stage
       ? api.stage.clipWholeState(node.ref)
       : undefined;
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+    <div class={classes.stack}>
       {whole ? (
         <Show when={mapState(whole, (w) => w !== undefined)}>
           {() => (
@@ -1160,58 +1334,91 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
         </Show>
       ) : null}
       <For each={mapState(cuts, (l) => l.map((c) => c.object.tag!))} by={(tag) => tag}>
-        {(tag) => {
-          const cut = mapState(cuts, (l) => l.find((c) => c.object.tag === tag));
-          const handles = derive([cut, handled], (c, h) => !!c && h.includes(c.index));
-          // its place, turn and size by numbers, shown on demand (view state, by the clip's row; the handles' twin)
-          const exact = observableState(false);
-          return (
-            <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
-              <div style={Line}>
-                <strong style="flex: 1">
-                  {mapState(cut, (c) =>
-                    c ? `${ClipNames[c.object.type] ?? c.object.type} ${c.index}${partOf(c, node)}` : '',
-                  )}
-                </strong>
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  title="Show or hide its handles (move, turn and size it in 3D)"
-                  pressed={handles}
-                  icon={<Icon name="move-3d" />}
-                  onClick={() => {
-                    const c = cut.value;
-                    if (!c) return;
-                    if (handles.value) clipping.gizmos.hide();
-                    else showClipHandles(api, c.index);
-                  }}
-                />
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  title="Its place, turn and size, by numbers"
-                  pressed={exact.asReadonly}
-                  icon={<Icon name="sliders-horizontal" />}
-                  onClick={() => exact.set(!exact.value)}
-                />
-                <OnTop api={api} area={area} />
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  title="Remove it"
-                  icon={<Icon name="x" />}
-                  onClick={() => void api.run('clipping.remove', { tag })}
-                />
-              </div>
-              <Show when={exact.asReadonly}>{() => <ClipSliders api={api} tag={tag} cut={cut} />}</Show>
-            </div>
-          );
-        }}
+        {(tag) => <ClipEditor api={api} area={area} tag={tag} named of={node} />}
       </For>
       <Button size="sm" icon={<Icon name="scissors" />} onClick={add}>
         Add a clip
       </Button>
       <HandleLook area={area} />
+    </div>
+  );
+}
+
+/** Prism's cut shapes, a clip's Shape */
+const ShapeOptions = Object.entries(ClipShapes) as [string, string][];
+
+/**
+ * A clip (Prism's cut, by its tag): its line (its name where it is one of a list, its handles shown or hidden, its
+ * numbers' toggle, On top, remove), its shape and invert (Prism's `clipping.update`, one step each; ui.md §4, Ludo
+ * 2026-10-25), and its place, turn and size by numbers on demand. The same in an object's Clips, a category's and a clip
+ * row's own section.
+ */
+function ClipEditor(props: { api: ViewerApi; area: ExplorerApi; tag: string; named?: boolean; of?: NodeRef }) {
+  const { api, area, tag } = props;
+  const clipping = api.clipping;
+  const cut = mapState(clipping.cuts, (all) => all.find((c) => c.object.tag === tag));
+  const handled = derive([clipping.gizmos.shown, clipping.gizmos.handled], (shown, h) => (shown ? h : []));
+  const handles = derive([cut, handled], (c, h) => !!c && h.includes(c.index));
+  // its place, turn and size by numbers, shown on demand (view state, by the clip; the handles' twin)
+  const exact = observableState(false);
+  const fields = new ParamsFormModel(
+    {
+      shape: PD.Select<string>('plane', ShapeOptions, { label: 'Shape' }),
+      invert: PD.Boolean(false, { label: 'Invert', description: 'Remove the other side, or the outside' }),
+    },
+    undefined,
+    { onChange: (values, changed) => void api.run('clipping.update', { tag, [changed]: values[changed] }) },
+  );
+  bind(cut, (c) => c && fields.load({ shape: c.object.type, invert: !!c.object.invert }));
+  return (
+    <div class={classes.tight}>
+      <div class={classes.tools}>
+        {props.named ? (
+          <span class={classes.itemName}>
+            {mapState(cut, (c) =>
+              c ? `${ClipShapes[c.object.type] ?? c.object.type} ${c.index}${props.of ? partOf(c, props.of) : ''}` : '',
+            )}
+          </span>
+        ) : null}
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Show or hide its handles (move, turn and size it in 3D)"
+          pressed={handles}
+          icon={<Icon name="move-3d" />}
+          onClick={() => {
+            const c = cut.value;
+            if (!c) return;
+            if (handles.value) clipping.gizmos.hide();
+            else showClipHandles(api, c.index);
+          }}
+        />
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Its place, turn and size, by numbers"
+          pressed={exact.asReadonly}
+          icon={<Icon name="sliders-horizontal" />}
+          onClick={() => exact.set(!exact.value)}
+        />
+        <OnTop api={api} area={area} />
+        <Button
+          size="xs"
+          variant="ghost"
+          title="Remove it"
+          icon={<Icon name="x" />}
+          onClick={() => void api.run('clipping.remove', { tag })}
+        />
+      </div>
+      <ParamsForm form={fields} />
+      <Show when={exact.asReadonly}>
+        {() => (
+          // made again for another shape: its sizes are another's
+          <For each={mapState(cut, (c) => (c ? [c.object.type] : []))} by={(t) => t}>
+            {() => <ClipSliders api={api} tag={tag} cut={cut} />}
+          </For>
+        )}
+      </Show>
     </div>
   );
 }
@@ -1394,7 +1601,7 @@ function ClipSliders(props: { api: ViewerApi; tag: string; cut: ReadonlyState<Cl
     if (previewed !== undefined) clipping.endPreview(previewed);
   });
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+    <div class={classes.inline}>
       {numbers.map((n) => {
         const value = mapState(cut, (c) => (c ? n.read(c.object) : 0));
         const commit = async (v: number) => {
@@ -1448,7 +1655,7 @@ function rootOf(el: Element | null): HTMLElement {
 
 function MeshLook(props: { api: ViewerApi; node: NodeRef }) {
   const cryoet = props.api.cryoet;
-  if (!cryoet) return <span style={Muted}>The cryo-ET extension is not loaded.</span>;
+  if (!cryoet) return <Hint>The cryo-ET extension is not loaded.</Hint>;
   const list = cryoet.meshesState();
   const ref = props.node.ref;
   return (

@@ -9,13 +9,13 @@
 import { Button, Choices, Icon, Slider } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
+import { classes } from './_generated/controls.module.css.js';
 import type { GraphicsInfo, GraphicsMode, MesoscaleApi } from './operations.js';
 
 // The mesoscale controls, shown by the extension's Entities tab and by a host's panels (prism-me's properties): the
 // graphics mode (every object's, or one object's) and the motion, as the representations have them, and the color
-// file import. They act through the `mesoscale` area: a slider once released (one step).
-
-const Line = 'display: flex; align-items: center; gap: var(--msp-space-2); min-height: 28px';
+// file import. They act through the `mesoscale` area: a slider once released (one step). Prism's tokens and label
+// column (controls.module.css).
 
 const ModeChoices = [
   { id: 'ultra', label: 'Ultra' },
@@ -43,7 +43,7 @@ export function GraphicsMode(props: { area: MesoscaleApi }) {
 export function ObjectGraphics(props: { area: MesoscaleApi; object: string; motion: boolean }) {
   const graphics = props.area.graphicsState(props.object);
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-2)">
+    <div class={classes.stack}>
       <Choices
         label="Quality"
         choices={ModeChoices}
@@ -76,8 +76,8 @@ function MotionRows(props: {
   const row = (label: string, max: number, key: 'wiggle' | 'tumble') => {
     const value = mapState(props.graphics, (g) => g?.[key] ?? 0);
     return (
-      <div style={Line}>
-        <div style="width: 64px; flex: none">
+      <div class={classes.line}>
+        <div class={classes.label}>
           <Button
             size="xs"
             variant="ghost"
@@ -88,22 +88,20 @@ function MotionRows(props: {
             {label}
           </Button>
         </div>
-        <div style="flex: 1; min-width: 0">
-          <Slider
-            aria-label={`${label} amplitude`}
-            value={value}
-            min={0}
-            max={max}
-            step={0.1}
-            unit="Å"
-            onCommit={(v) => run(key, v)}
-          />
-        </div>
+        <Slider
+          aria-label={`${label} amplitude`}
+          value={value}
+          min={0}
+          max={max}
+          step={0.1}
+          unit="Å"
+          onCommit={(v) => run(key, v)}
+        />
       </div>
     );
   };
   return (
-    <div style="display: flex; flex-direction: column; gap: var(--msp-space-1)">
+    <div class={classes.tight}>
       {row('Wiggle', 5, 'wiggle')}
       {row('Tumble', 10, 'tumble')}
     </div>
