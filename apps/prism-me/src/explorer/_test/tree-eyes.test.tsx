@@ -13,7 +13,7 @@ import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/s
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { flush } from '@molstar/prism-ui/dom/scope';
 import { ShellModel } from '@molstar/prism-ui/shell/shell';
-import { pointer, stubPointerCapture } from '@molstar/prism-ui/testing/gestures';
+import { lostReleases, pointer, stubPointerCapture } from '@molstar/prism-ui/testing/gestures';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
@@ -289,6 +289,77 @@ describe('the eyes dragged along the column (C4D, Ludo 2026-10-28)', () => {
     eye(`me:${ref}:4`)!.dispatchEvent(pointer('pointermove', { x: 0, y: 104 }));
     eye(`me:${ref}:4`)!.dispatchEvent(pointer('pointerup', { x: 0, y: 104 }));
     await until(() => shownIds().join() === '5,6,7');
+  });
+});
+
+describe('the eyes dragged: what a drag sets, and how it ends (review)', () => {
+  it('a label passed by a drag is set; a click on its parent leaves its eye as it is', async () => {
+    const v = await viewer(false);
+    const { api, ref, eye, says, item, drawn } = await mounted(v);
+    const r = await v.api.run('stage.label', { text: 'Here', target: ref, node: `o:${ref}` });
+    if (!r.ok) throw new Error(r.message);
+    const l = `l:${api.stage!.labelsState().value[0].ref}`;
+    await until(() => !!item(l));
+    // the model's eye clicked: its label keeps its own eye, at once too
+    eye(`o:${ref}`)!.click();
+    await settle();
+    expect(says(l)).toBe('Hide');
+    await until(() => !drawn());
+    eye(`o:${ref}`)!.click();
+    await until(() => drawn());
+    // a drag from the model's eye onto its label: both hidden
+    eye(`o:${ref}`)!.dispatchEvent(pointer('pointerdown', { x: 0, y: 0 }));
+    eye(l)!.dispatchEvent(pointer('pointermove', { x: 0, y: 200 }));
+    eye(l)!.dispatchEvent(pointer('pointerup', { x: 0, y: 200 }));
+    await until(() => !drawn() && api.stage!.labelsState().value[0].visible === false);
+  });
+
+  it('a pointercancel puts the eyes back, no step', async () => {
+    const v = await viewer(false);
+    const { ref, eye, says, steps } = await mounted(v);
+    const before = steps();
+    eye(`me:${ref}:0`)!.dispatchEvent(pointer('pointerdown', { x: 0, y: 0 }));
+    eye(`me:${ref}:1`)!.dispatchEvent(pointer('pointermove', { x: 0, y: 26 }));
+    eye(`me:${ref}:1`)!.dispatchEvent(pointer('pointercancel', { x: 0, y: 26 }, 0));
+    await settle();
+    await new Promise((r) => setTimeout(r, 50));
+    expect([says(`me:${ref}:0`), says(`me:${ref}:1`)]).toEqual(['Hide', 'Hide']);
+    expect(steps()).toBe(before);
+  });
+
+  it('leaves no listener after lost releases, and the next drag sets the eyes', async () => {
+    const v = await viewer(false);
+    const { ref, eye, says } = await mounted(v);
+    const r = lostReleases({
+      target: () => eye(`me:${ref}:0`)!,
+      from: { x: 0, y: 0 },
+      to: { x: 0, y: 0 },
+      worked: () => {
+        flush();
+        return says(`me:${ref}:0`) === 'Show';
+      },
+    });
+    expect(r.grown).toBe(0);
+    expect(r.worked).toBe(true);
+  });
+
+  it("reads the row under the pointer in the eyes' column (moves on the tree, as with the capture)", async () => {
+    const v = await viewer(false);
+    const { host, ref, eye, shownIds } = await mounted(v);
+    const tree = host.querySelector<HTMLElement>('[role=tree]')!;
+    // jsdom lays nothing out: the row at a y is the one of that index (26 px a row)
+    const rows = () => Array.from(host.querySelectorAll<HTMLElement>('[data-tree-key]'));
+    const at = (y: number) => rows()[Math.floor(y / 26)] ?? null;
+    (document as { elementFromPoint?: unknown }).elementFromPoint = (_x: number, y: number) => at(y);
+    try {
+      const i0 = rows().findIndex((r) => r.dataset.treeKey === `me:${ref}:0`);
+      eye(`me:${ref}:0`)!.dispatchEvent(pointer('pointerdown', { x: 0, y: i0 * 26 + 5 }));
+      tree.dispatchEvent(pointer('pointermove', { x: 0, y: (i0 + 2) * 26 + 5 }));
+      tree.dispatchEvent(pointer('pointerup', { x: 0, y: (i0 + 2) * 26 + 5 }));
+      await until(() => shownIds().join() === '3,4,5');
+    } finally {
+      delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+    }
   });
 });
 

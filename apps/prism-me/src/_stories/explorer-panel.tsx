@@ -48,6 +48,9 @@ interface Row extends TreeRowView {
 
 const classes = treeClasses;
 
+/** Rows whose eye is their own: a parent's eye leaves them (as the app's), but a category's (the Clips) */
+const OwnEyes: ReadonlySet<string> = new Set(['clip', 'label', 'distance']);
+
 /** What a story asks of the panel: the scene, what is open and picked, a menu shown at once */
 export interface ExplorerPanelProps {
   readonly roots: readonly MockNode[];
@@ -101,6 +104,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
         ...(node.count !== undefined ? { count: node.count } : {}),
         ...(node.color !== undefined ? { color: node.color } : {}),
         ...(node.visible !== undefined ? { visible: node.visible } : {}),
+        ...(OwnEyes.has(node.kind) ? { own: true } : {}),
         ...(node.icon ? { icon: node.icon } : {}),
         category: node.kind === 'category',
         hasChildren: !!node.children,
@@ -156,6 +160,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
     const g = groupings.get('o:hiv') ?? 'compartment';
     const down = (n: MockNode) => {
       for (const c of n.children?.(g) ?? []) {
+        if (OwnEyes.has(c.kind) && n.kind !== 'category') continue;
         shown.set(c.key, visible);
         down(c);
       }

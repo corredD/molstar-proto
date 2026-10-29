@@ -138,6 +138,7 @@ export function rowsOf(
       key: `k:${c.tag}`,
       label: c.label,
       kind: 'clip',
+      own: true,
       visible: c.drawn,
       hasChildren: false,
       clip: c.tag,
@@ -150,6 +151,7 @@ export function rowsOf(
       // told apart from the parts it is among (no icon on child rows, styling.md §4)
       count: 'label',
       kind: 'label',
+      own: true,
       visible: l.visible,
       hasChildren: false,
       node: { ref: l.ref },
@@ -160,6 +162,7 @@ export function rowsOf(
       key: `d:${d.ref}`,
       label: `Distance ${d.label}`,
       kind: 'distance',
+      own: true,
       visible: d.visible,
       hasChildren: false,
       node: { ref: d.ref },
