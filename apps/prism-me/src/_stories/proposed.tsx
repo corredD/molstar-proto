@@ -24,7 +24,7 @@ import { classes } from './_generated/explorer.module.css.js';
 import { type ClipShape, type ClipUse, ClipTargets, type CutBias, clipBook, type MockClip } from './clip-book.js';
 import type { MockNode } from './fake-scene.js';
 
-// What the cellVIEW evaluation proposes (TODO.md, Proposed; progress/2026-10-28-cellview-evaluation.md), mocked for Ludo
+// What the cellVIEW evaluation proposes (TODO.md, Next; progress/2026-10-28-cellview-evaluation.md), mocked for Ludo
 // to judge before any brief; under Explorer/Proposed, apart from the decided mocks. Clips are objects of their own (the
 // tree's Clips category, Ludo 2026-10-28): a clip says what it cuts and how (graded per object or part: + / 0 / −, the
 // band, fuzziness), and every object or part says which clips are on it, adds a new one or uses an existing one; both

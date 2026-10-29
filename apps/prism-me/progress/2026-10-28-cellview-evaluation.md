@@ -4,7 +4,7 @@
   of a cellPACK model, write an accurate spec, evaluate what is good to take with WebGPU in mind ("the most performant
   viewer that exists for the mesoscale"), and add possible features to the queue.
 - **Built:** the spec, [../\_spec/cellview.md](../_spec/cellview.md) (cellVIEW at `1f0bbd67`, read from its code); this
-  evaluation; the proposed items in [../TODO.md](../TODO.md), "Proposed (cellVIEW evaluation)".
+  evaluation; its items, now briefs in [../TODO.md](../TODO.md) Next (Ludo, 2026-10-28: all of them).
 - **How:** three readers in parallel: cellVIEW's tree and cuts, cellVIEW's renderer, prism-me today. The claims the spec
   rests on were then checked in the source: the parameters, the GPU packing, the fuzzy test, the hard-cut line, the
   toggle's values, the hidden-type skip, the aperture flags.

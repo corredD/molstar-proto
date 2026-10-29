@@ -11,7 +11,7 @@ import type { Meta, StoryObj } from '@storybook/web-components-vite';
 import { fullScene } from './fake-scene.js';
 import { PanelFrames } from './frames.js';
 
-// What the cellVIEW evaluation proposes (apps/prism-me/TODO.md, Proposed; progress/2026-10-28-cellview-evaluation.md),
+// What the cellVIEW evaluation proposes (apps/prism-me/TODO.md, Next; progress/2026-10-28-cellview-evaluation.md),
 // in the explorer's four places, for Ludo to judge before any brief: not decided, so apart from the decided mocks. The
 // previews draw cellVIEW's rules (_spec/cellview.md §4) on a 2D slice of dots: change a control, see what it keeps.
 

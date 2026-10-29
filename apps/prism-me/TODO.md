@@ -19,34 +19,50 @@ refactor in place) and the review of the distances (PR #5):
   `ParamsForm`, a category's Look and Clips, Position with its Handles). Check: the app and the story look and behave
   the same. (The right-click's lane, `menu.ts` on its mock, is dropped: Ludo, 2026-10-28.)
 
-## Proposed (cellVIEW evaluation, 2026-10-28): order to decide
+### From the cellVIEW evaluation (Ludo, 2026-10-28: all of it, a testable version by 2026-10-29)
 
-From [progress/2026-10-28-cellview-evaluation.md](progress/2026-10-28-cellview-evaluation.md) and the reference
-[_spec/cellview.md](_spec/cellview.md). Not briefs yet: Ludo picks, orders and moves them to Next. Each: its layer, its
-evidence (read, inferred, measured), the decision it touches.
+Lanes in parallel where they do not overlap. The design is the mock: Storybook prism-me › Explorer › Proposed
+(cellVIEW), `apps/prism-me/src/_stories/proposed*.tsx`, `clip-book.ts`; the reasons in
+[progress/2026-10-28-cellview-evaluation.md](progress/2026-10-28-cellview-evaluation.md), cellVIEW's behaviour in
+[_spec/cellview.md](_spec/cellview.md). A library part is built on prism-me for tomorrow, in commits of its own that
+name no extension (upstreamable later, when Ludo says so).
 
-- **a. The graphics modes change the levels of detail** (app; read, not run). Performance, Balanced, Quality, Ultra
-  write the pixel presets (`LodPixelPresets[mode]`: the strides and the pixel size), not the distance presets the
-  particles ignore at 3 px. Check: on CellPack MG, Performance draws visibly fewer spheres far away than Ultra, and the
-  mode picked stays lit. Test first: a mode's `lodPixelSize` is the preset's.
-- **b. Graded cuts per part** (library and app; read, cellVIEW `ObjectSpaceCutAways.compute`). A part's cut row gets
-  cellVIEW's + / 0 / − (+ keeps a layer of the part on the cut's face, − cuts it further), the band's width, and
-  fuzziness (the band thins out at random, the same instances every frame). The per-part mapping becomes a table (cut ×
-  part), which also lifts the 6 per-part cuts. Check: cut a cellPACK model with a plane, set the membrane to + and see a
-  layer of it kept on the face; raise fuzziness and see it thin out; move the camera and see the same instances. A
-  library change (Mol\*'s instance clip): its own lane off master, upstream when Ludo says so.
-- **c. Measure: do hidden particles cost a frame?** (library; inferred). A hidden part is a transparency of 1, probably
-  still drawn and discarded per fragment. Measure the frame on WebGPU with 90 % of CellPack MG hidden against none
-  hidden; if close, the GPU cull reads a visibility table and skips them. Check: hiding most of a model makes it faster.
-- **d. Show only** (app; cellVIEW's ingredient panel). On a part's right-click: show only this, only its group, only its
-  compartment; and show all again. One step each, through `particles.look`. Check: right-click a ribosome, Show only,
-  and only ribosomes stay; Undo brings back the rest.
-- **e. Ghosts of what is cut** (library and app; cellVIEW `DrawGhosts`). A cut's removed instances drawn as outlines
-  only, a switch on the cut. Check: cut a model in half and see the cut half's outline faintly, as context.
-- **f. Research, with Alexander, measured before any lane** (library): proxy spheres per target (k-means, the radius the
-  cluster's bound) against stride decimation, at the same sphere count; deferred shading from ID buffers; the aperture
-  cut (the visibility equalizer: what is in front of a focus part is opened). Each starts as a measurement or a design
-  note, not code. Proxy LOD stays per target, so it reopens no decision (architecture §7.2 is about per entity).
+- **1. The graphics modes change the levels of detail** (app, small; now). Performance, Balanced, Quality, Ultra write
+  the pixel presets (`Spheres.LodPixelPresets[mode]`: levels and `lodPixelSize`), not the distance presets the particles
+  ignore at 3 px; the mode read back compares both. Check: on CellPack MG, Performance draws visibly fewer spheres far
+  away than Ultra, and the mode picked stays lit. Test first: a mode's `lodPixelSize` is its preset's.
+- **2. The tree's eye and ⋯** (app, `explorer/tree-view.tsx`, `rows.ts`; now). Every row shows its eye and its ⋯,
+  always, each in one column; the brush, scissors and trash go into the ⋯ (Color…, Add clip…, Remove) with the
+  right-click's items, on a category too; no Hide in the menus. A parent's eye sets every row under it, all the way
+  down, each its own after (hide the model, show one group alone); a parent's eye is its own state, never "some shown".
+  Press an eye and drag along the column: every row passed takes the first one's new state (Prism's `drag()`; one undo
+  step for the drag). A row's color dot opens its colors, as Color…. Check: the Eyes, MoreMenu and CategoryMenu stories
+  and the app behave the same; hide HIV, show only its membrane; drag down six eyes, Undo once.
+- **3. Clips in a category of their own** (app on Prism's clips; now; changes ui.md §2, §5). A Clips category after
+  Structures, Particles, Volumes, Meshes holds every clip of the scene; no clip row under an object. A clip's
+  properties: its shape, then What it cuts (every object or part it is given, × to take one off, Cut also… to add one).
+  An object's or part's Clips: the clips on it, New clip (a shape; it cuts this), Use a clip (one of the scene's). Add
+  clip… in the ⋯ lists a new clip of each shape and every clip of the scene. One clip is one Prism cut (its tag) over
+  the representations it is given. Check: the ClipsCategory, GradedCut (its list), PartClips and ObjectWithoutClips
+  stories and the app behave the same; make a plane from the membrane's Clips, use it on the capsid, see both cut and
+  both listed under the clip.
+- **4. Graded cuts per part, and a part shown in part** (library and app; after 3, its library half now). Per (clip,
+  object or part): keeps a layer (cellVIEW's +), cuts it, cuts it wider (−), with a band in Å and fuzziness (thins out
+  toward the band's edge, the same instances every frame: a stable hash of the instance), _spec/cellview.md §4.1. The
+  per-part mapping becomes a table (clip × part) in Mol\*'s instance clip, which lifts the 6 per-part cuts. With the
+  same hash, Look › Shown (%) on a group, an entity or a target. Check: the GradedCut and ShownInPart stories' controls
+  in the app; set the membrane to Keeps a layer and see a layer kept on the cut's face; raise fuzziness and see it thin;
+  turn the camera and see the same instances; Shown 30 % on the capsid thins it, the same ones at every share.
+- **5. Show only** (app; now). On a part's ⋯: Show only this, only its group, only its compartment; Show all again. One
+  step each, through `particles.look`. Check: the ShowOnly story; Show only a ribosome entity, then Undo.
+- **6. Measure: do hidden particles cost a frame?** (library, a measurement; now). On WebGPU, CellPack MG with 90 %
+  hidden against none: if close, the GPU cull skips hidden instances (a visibility table). Check: the numbers in the
+  lane's progress file; if built, hiding most of a model makes it faster.
+- **7. Ghosts of what is cut** (library and app; after 4). A clip's Outline what it cuts: what it removes drawn as
+  outlines only. Check: the GradedCut story's Ghosts; cut HIV in half and see the cut half faintly outlined.
+- **Not by tomorrow: research, with Alexander, measured before any lane** (library): the aperture cut (the visibility
+  equalizer, the mock's ApertureCut story); proxy spheres per target (k-means) against stride decimation; deferred
+  shading from ID buffers. Each starts as a measurement or a design note.
 
 ## Library fixes ready for upstream
 
