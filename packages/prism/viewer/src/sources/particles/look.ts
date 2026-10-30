@@ -152,6 +152,9 @@ export function particleLookCell(b: StateBuilder.Root, reprRef: string): string 
   return undefined;
 }
 
+/** A share shown, the whole (1) as none: it hides nothing */
+const shownOf = (shown: number | null) => (shown === 1 ? null : shown);
+
 function patchLayers(old: readonly ParticleLayerProps[], patches: readonly ParticleLayerPatch[]) {
   const layers: (ParticleLayerProps | undefined)[] = [...old];
   const at = new Map<string, number>();
@@ -174,7 +177,7 @@ function patchLayers(old: readonly ParticleLayerProps[], patches: readonly Parti
       color: p.color !== undefined ? p.color : base.color,
       transparency: p.transparency !== undefined ? p.transparency : base.transparency,
       emissive: p.emissive !== undefined ? p.emissive : base.emissive,
-      shown: p.shown !== undefined ? p.shown : (base.shown ?? null),
+      shown: shownOf(p.shown !== undefined ? p.shown : (base.shown ?? null)),
     };
     const keep = !isNoChange(next);
     if (was && keep && sameLayer(was, next)) continue;
@@ -214,10 +217,18 @@ function patchCuts(old: readonly ParticleCutProps[], patch: NonNullable<Particle
       fuzziness: c.fuzziness ?? 0,
     }),
   );
-  for (const c of added) parts.add(partKey(c.tag, c));
-  if (!tags.size && !parts.size) return old;
-  const cuts = old.filter((c) => !tags.has(c.tag) && !parts.has(partKey(c.tag, c)));
-  cuts.push(...added);
+  if (!tags.size && !parts.size && !added.length) return old;
+  // a part given again takes its place (a later part wins where parts overlap); a new one goes last
+  const byKey = new Map(added.map((c) => [partKey(c.tag, c), c]));
+  const cuts: ParticleCutProps[] = [];
+  for (const c of old) {
+    const key = partKey(c.tag, c);
+    if (tags.has(c.tag) || parts.has(key)) continue;
+    const next = byKey.get(key);
+    cuts.push(next ?? c);
+    byKey.delete(key);
+  }
+  cuts.push(...byKey.values());
   if (cuts.length === old.length && cuts.every((c, i) => sameCut(c, old[i]))) return old;
   return cuts;
 }

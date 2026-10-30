@@ -340,4 +340,22 @@ describe('particles.look', () => {
     expectOk(await run({ cuts: { add: [{ tag }] } }));
     expect(findCuts(v.plugin)[0].particles?.count).toBe(5);
   });
+
+  it('keeps a part where it is when it is given again, and drops a layer shown whole', async () => {
+    const v = await create();
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
+    const node = `#${list(v).cell.transform.ref}`;
+    const tag = ok<Cut>(await v.api.clipping.add({ shape: 'plane', node, particles: { targets: [1] } })).object.tag!;
+    expectOk(await run({ cuts: { add: [{ tag, targets: [2], mode: 'keep', band: 30 }] } }));
+    // the first part again, as it is: no change (a later part wins where parts overlap: the order is kept)
+    expect(await run({ cuts: { add: [{ tag, targets: [1] }] } })).toMatchObject({ ok: true, unchanged: true });
+    // changed: in its place
+    expectOk(await run({ cuts: { add: [{ tag, targets: [1], mode: 'wider' }] } }));
+    expect(lookOf(v).cuts.map((c: any) => [c.targets, c.mode])).toEqual([
+      [[1], 'wider'],
+      [[2], 'keep'],
+    ]);
+    // shown 1 hides nothing: no layer
+    expect(await run({ layers: [{ selector: { targets: [0] }, shown: 1 }] })).toMatchObject({ unchanged: true });
+  });
 });

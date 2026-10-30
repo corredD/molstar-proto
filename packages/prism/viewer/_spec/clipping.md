@@ -113,8 +113,8 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
   through the list's particle representations only (not its unit cell), centered on those particles; each
   representation's layers cell (`ParticleRepresentation3DLayers`, its `cuts`) records the particles by the cut's tag,
   and the others ignore its object. By tag, not place: an earlier cut removed, it keeps its particles. Added and removed
-  with its cut in the same step; read back as the cut's `particles` (`selector`, `count`, `label`: every part of it, one
-  selector).
+  with its cut in the same step; read back as the cut's `particles` (`selector`, its first part, the one `add` made;
+  `parts`, every one; `count`, the particles of all its parts; `label`).
 - **The clipping table, not the groups** (graded-cuts lane, 2026-10-29): the cuts become the rows of the
   representation's clipping table (Mol\*'s `Clipping.table`): per particle and clip object, the way of the last part
   covering it, or it ignores the object. So any of the representation's 16 clip objects can cut some particles (a full
@@ -123,14 +123,14 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
   selector), each `cut` (the default), `keep` a layer of the band inside (cellVIEW's +) or cut a band `wider`
   (cellVIEW's −), with the band in Å (60) and a fuzziness (0 to 1, 0) that thins the band toward its edge: an instance
   in the band is left as a plain cut leaves it with probability fuzziness × its distance over the band, by a stable hash
-  of the instance (the same ones every frame and from every view). `add` replaces the part of the same tag and selector;
-  `remove` takes a tag (every part) or a part (`{ tag, entities, compartments, targets }`). Graded ways are the instance
-  clip's (`settings` variant `instance`); the pixel clip cuts by them plainly. Why `particles.look`, not `update`:
-  `update` edits a clip object, the same for all it cuts; a part's way is a look of that part, recorded where its cut's
-  particles already are.
+  of the instance's place (the same ones every frame and from every view). `add` replaces the part of the same tag and
+  selector in its place (a later part wins where parts overlap), a new one last; `remove` takes a tag (every part) or a
+  part (`{ tag, entities, compartments, targets }`). Graded ways are the instance clip's (`settings` variant
+  `instance`); the pixel clip cuts by them plainly. Why `particles.look`, not `update`: `update` edits a clip object,
+  the same for all it cuts; a part's way is a look of that part, recorded where its cut's particles already are.
 - **A part shown in part** (`particles.look` `layers`, `shown`, 0 to 1): the particles of the layer's selector whose
   stable random (`Clipping.random` of the particle's index) is at or over the share are hidden, over every layer: the
-  same ones at every share and every frame, a lower share hiding more.
+  same ones at every share and every frame, a lower share hiding more; 1 is no change.
 
 ## 6. Drawn in the scene
 
