@@ -21,6 +21,9 @@ export type ClippingData = {
   dClipTable: ValueCell<boolean>;
 };
 
+/** Each table encoded once, however many visuals it is set on (a representation's target visuals share one) */
+const encoded = new WeakMap<Clipping.Table, Float32Array>();
+
 const emptyClipTable = () => ({ array: new Float32Array(4), count: 1 });
 
 /**
@@ -31,7 +34,8 @@ export function setClippingTable(data: ClippingData, table: Clipping.Table | und
   ValueCell.updateIfChanged(data.dClipTable, !!table);
   if (!table) return false;
   const current = data.tClipTable.ref.value;
-  const array = Clipping.tableData(table);
+  let array = encoded.get(table);
+  if (!array) encoded.set(table, (array = Clipping.tableData(table)));
   const count = Math.max(1, table.length * Clipping.TableWidth);
   if (current.count === count && current.array.length >= array.length) {
     let same = true;

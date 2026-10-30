@@ -159,4 +159,17 @@ describe('the clipping table', () => {
     expect(values.tClipTable.ref.version).toBe(versions[1]);
     canvas.dispose();
   });
+
+  it('encodes a table once for every visual it is set on', async () => {
+    const { canvas } = setup();
+    const a = ShapeRepresentation(spheres, Mesh.Utils, { graphics: canvas.graphics });
+    const b = ShapeRepresentation(spheres, Mesh.Utils, { graphics: canvas.graphics });
+    for (const r of [a, b])
+      await r.createOrUpdate({ clip: { variant: 'instance', objects: planes } } as any, { count: 2 }).run();
+    const encode = vi.spyOn(Clipping, 'tableData');
+    const clipping: Clipping = { kind: 'every-loci', layers: [], table: [[keep]] };
+    for (const r of [a, b, a]) Visual.setClipping(r.renderObjects[0], clipping, () => false, true);
+    expect(encode).toHaveBeenCalledTimes(1);
+    canvas.dispose();
+  });
 });
