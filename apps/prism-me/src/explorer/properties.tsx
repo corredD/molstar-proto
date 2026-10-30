@@ -1408,7 +1408,7 @@ function Clips(props: { subject: Subject }) {
 /**
  * A clip's properties (Ludo, 2026-10-28): its editor (handles, numbers, On top, remove, shape, invert: PR #14), then
  * What it cuts: every object or part it is given (each picks its row; × takes it off, one step; not the last one:
- * remove the clip instead), Cut also… (one step)
+ * remove the clip instead), Cut also… (one step), its Ghosts (Outline what it cuts, one step: cellview.md §4.3)
  */
 function ClipProperties(props: { subject: Subject }) {
   const { api, area, picked, parts } = props.subject;
@@ -1460,7 +1460,27 @@ function ClipProperties(props: { subject: Subject }) {
           }}
         />
       </Line>
+      <ClipGhosts api={api} tag={tag} />
     </div>
+  );
+}
+
+/** A clip's Ghosts: what it removes drawn again as outlines only (the canvas's outlines on), a press one step */
+function ClipGhosts(props: { api: ViewerApi; tag: string }) {
+  const { api, tag } = props;
+  const on = mapState(api.clipping.cuts, (all) => !!all.find((c) => c.object.tag === tag)?.object.ghost);
+  return (
+    <Line label="Ghosts">
+      <Button
+        size="sm"
+        variant="ghost"
+        title="What it removes, drawn as outlines (context)"
+        pressed={on}
+        onClick={() => void api.run('clipping.update', { tag, ghost: !on.value })}
+      >
+        Outline what it cuts
+      </Button>
+    </Line>
   );
 }
 
