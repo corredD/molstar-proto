@@ -371,7 +371,9 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   list's Clips, while it draws objects, has Clip whole: Proteins (Mol\*'s `instance` variant: an object whose center is
   cut goes, the others stay whole) or Atoms (`pixel` with the spheres' `clipPrimitive`: each atom whose center is cut
   goes, the objects carved); as made, neither (cut through). On its target representations, one step
-  (`stage.clipWhole`); a cut of a part (an entity) keeps to its part either way.
+  (`stage.clipWhole`); a cut of a part (an entity) keeps to its part either way. Since 2026-10-29 (Ludo: "the proteins
+  vs atoms mode for the clip disappear") also in a clip's section (§4's Clip), under What it cuts: Clip whole: <name>
+  for each model or list it cuts (all or a part) that draws objects; the same state, so the two stay in step.
 - Some targets decorated (2026-10-22, Ludovic's test: a class decorated, everything else gone): the spheres, axes and
   other representations of a list stay and draw the targets not decorated; the decorated ones are left out of them
   (their layers' `hidden`, a library param: fully transparent), so a class drawn as objects is not drawn twice and the
