@@ -16,7 +16,10 @@ is not built is [../TODO.md](../TODO.md).
     steps proposed, nothing built: hidden left out of the transparency averages (~15 lines), then a hidden bit in the
     GPU cull (~60 + tests); waits on Ludo.
   - **4. Graded cuts, the library half** (`me/graded-cuts`); started. The app half after 3.
-  - **2 + 5. The tree's eye and ⋯, and Show only** (`me/tree-eyes`, one lane: both change the ⋯); started.
+  - **2 + 5. The tree's eye and ⋯, and Show only** (`me/tree-eyes-2`: the fork already had a `me/tree-eyes` of
+    2026-10-27, two commits on part eyes, no PR; Ludo keeps or deletes it): PR #19, reviewed (4 must-fix, 4 should-fix
+    fixed), checked with real GL on WebGPU and WebGL2; waits on Ludo. PR #18 then merges it (conflicts in the specs,
+    `rows.scaling.ts`).
   - **3. Clips in a category of their own** (`me/clips-category`): PR #18, reviewed, checked with real GL on WebGPU and
     WebGL2; over its size stop (~+780 against ~700, review fixes; the coordinator let it open); a Prism commit
     (`clipping.release` takes a target); merges after 2 + 5; waits on Ludo.
