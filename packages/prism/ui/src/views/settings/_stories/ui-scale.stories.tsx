@@ -11,6 +11,7 @@ import { Color } from '@molstar/core/util/color';
 import type { Meta, StoryObj } from '@storybook/web-components-vite';
 import { Button } from '../../../components/button/button.js';
 import { Icon } from '../../../components/icon/icon.js';
+import { onCleanup } from '../../../dom/scope.js';
 import { ParamsFormModel } from '../../../forms/params-form.js';
 import { UIScaleModel } from '../../../shell/ui-scale.js';
 import { story } from '../../../testing/story-root.js';
@@ -39,7 +40,7 @@ function settings(scale: UIScaleModel) {
             title: 'Appearance',
             icon: 'palette',
             form,
-            rows: [{ label: 'UI scale', keywords: 'zoom', view: () => <UIScaleRow scale={scale} /> }],
+            rows: [{ label: 'UI scale', keywords: 'text size', view: () => <UIScaleRow scale={scale} /> }],
           },
         ],
       }}
@@ -50,10 +51,15 @@ function settings(scale: UIScaleModel) {
 /** One panel at a scale: `--msp-ui-scale` on its themed root, as the shell sets it (styling.md §6). */
 function Panel(props: { theme: string; initial: number }) {
   const scale = new UIScaleModel(props.initial);
+  // Released with the story (its subscription to the scale).
+  let release: (() => void) | undefined;
+  onCleanup(() => release?.());
   return (
     <div
       data-msp-theme={props.theme}
-      ref={(el) => scale.applyTo(el)}
+      ref={(el) => {
+        release = scale.applyTo(el);
+      }}
       style="background: var(--msp-color-panel); color: var(--msp-color-text); padding: var(--msp-space-3); display: grid; gap: var(--msp-space-3); align-content: start; height: 520px"
     >
       <div style="display: flex; gap: var(--msp-space-2); align-items: center; font-size: var(--msp-font-size-sm)">
