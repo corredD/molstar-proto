@@ -60,6 +60,8 @@ import {
   type Parts,
   whatItCuts,
   allItCuts,
+  objectOpen,
+  setEyes,
 } from './rows.js';
 import { CategoryThemes } from './tree-view.js';
 
@@ -492,27 +494,20 @@ const tenths = (v: number) => String(Math.round(v * 10) / 10);
 
 /**
  * A category's Look: its eye for every object under it, and a color theme for all of them, the themes its kind takes
- * (`mesoscale.theme`, one step; as its row's brush); Uniform picks its color in Prism's picker, applied once
+ * (`mesoscale.theme`, one step; as its row's Color…); Uniform picks its color in Prism's picker, applied once
  */
 function CategoryLook(props: { subject: Subject }) {
-  const { api, area, picked, groupByOf } = props.subject;
+  const { api, area, picked, parts, groupByOf } = props.subject;
   // the objects under it now (one loaded or removed while it stays picked too), its key's category (`c:<id>`)
   const category = picked.key.slice(2);
   const under = mapState(area.objectsState(), (os) => os.filter((o) => o.category === category));
-  const shown = mapState(under, (os) => os.some((o) => o.visible));
+  // its row's eye: every object under it and all of each (ui.md §3)
+  const shown = derive([under, parts], (os, p) => os.every((o) => objectOpen(o, p.get(o.ref))));
   const refs = () => under.value.map((o) => o.ref);
   const form = new ParamsFormModel(
-    { visible: PD.Boolean(true, { label: 'Visible', description: 'Every object under it' }) },
+    { visible: PD.Boolean(true, { label: 'Visible', description: 'Every object under it, all of each' }) },
     undefined,
-    {
-      onChange: ({ visible }) =>
-        void api.run('state.visibility', {
-          node: refs()
-            .map((r) => `#${r}`)
-            .join(', '),
-          visible,
-        }),
-    },
+    { onChange: ({ visible }) => void setEyes(api, area, [{ kind: 'category', objects: refs() }], visible) },
   );
   bind(shown, (visible) => form.load({ visible }));
   const uniform = observableState(false);

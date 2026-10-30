@@ -36,17 +36,7 @@ import type { Subscription } from 'rxjs';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { editInline } from './inline-edit.js';
 import { distancePicker, selectionModeHint } from './measure.js';
-import {
-  clipItems,
-  clippable,
-  colorable,
-  colorItems,
-  nodeMenuItems,
-  removable,
-  removeObject,
-  showClipHandles,
-  useItems,
-} from './menu.js';
+import { colorItems, nodeMenuItems, showClipHandles, useItems } from './menu.js';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
 import {
@@ -62,12 +52,13 @@ import {
   rowOf,
   rowsOf,
   sameRow,
-  toggleVisible,
+  setEyes,
 } from './rows.js';
 import {
   type At,
   CategoryThemes,
   EmptyTreeLine,
+  eyeKeys,
   SplitLine,
   TreeView,
   type TreeViewHandle,
@@ -342,57 +333,89 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   };
   onCleanup(() => area.highlight(undefined));
 
-  // an eye flips at once; its operation runs after the frame is painted (on a large model it takes a moment), and
-  // the scene says the rest: the flip is dropped a frame after (back at once if it failed)
+  // eyes set at once (a click's row, a drag's rows, and the rows shown under each); their one step runs after the frame
+  // is painted (on a large model it takes a moment), and the scene says the rest: the flips are dropped a frame after
+  // (back at once if it failed)
   const shown = keyedState<string, boolean>();
-  // each flip with the state it asked for, at the click (a second click before the scene says so flips it back)
-  const eyes: { row: Row; visible: boolean }[] = [];
+  // each set with the state it asked for, at the release (a second click before the scene says so sets it back)
+  const eyes: { rows: readonly Row[]; keys: readonly string[]; visible: boolean }[] = [];
   const settled: { key: string; visible: boolean }[] = [];
   const settle = frames(() => {
     // a flip asked for since is kept
     for (const { key, visible } of settled.splice(0)) if (shown.get(key) === visible) shown.delete(key);
   });
   const runEyes = restartable(() => {
-    for (const { row, visible } of eyes.splice(0)) {
-      void Promise.resolve(toggleVisible(api, { ...row, visible: !visible })).then(() => {
-        settled.push({ key: row.key, visible });
-        settle.request();
-      });
+    for (const { rows, keys, visible } of eyes.splice(0)) {
+      // settled however it ends (a thrown write too: the eyes follow the scene again)
+      void Promise.resolve(setEyes(api, area, rows, visible))
+        .catch(() => undefined)
+        .finally(() => {
+          for (const key of keys) settled.push({ key, visible });
+          settle.request();
+        });
     }
   });
   const afterPaint = frames(() => runEyes.start(0));
-  const eye = (row: Row) => {
-    const visible = !(shown.get(row.key) ?? row.visible);
-    shown.set(row.key, visible);
-    eyes.push({ row, visible });
+  const setShown = (set: readonly Row[], visible: boolean) => {
+    const keys = eyeKeys(rows.value, set);
+    for (const key of keys) shown.set(key, visible);
+    eyes.push({ rows: set, keys, visible });
     afterPaint.request();
   };
 
   // menus open at the app's root (its tokens), not inside the panel (its containment would clip them)
   let panelEl: HTMLElement | undefined;
   const root = () => rootOf(panelEl);
-  // a row tool (the brush, the scissors): the row picked, its menu under the button
-  const tool = (row: Row, which: 'color' | 'clip', at: At, onClose: () => void) => {
+  // a row's right-click or ⋯: it is picked, and the menu of what it stands for opens there (Color…, Add clip…, Remove
+  // with its right-click's items; Ludo, 2026-10-28)
+  const menu = (row: Row, at: At, onClose?: () => void) => {
+    const r = root();
     if (row.objects) {
       pick(row);
-      const items =
-        which === 'clip'
-          ? categoryClipItems(api, area, row.objects)
-          : categoryThemeItems(api, row.key, row.objects, model.groupByOf, () => uniformOf(row));
-      openContextMenu(root(), at, items, onClose);
+      const items = categoryItems(
+        api,
+        area,
+        row,
+        model.groupByOf,
+        () => uniformOf(row),
+        (sub) => openContextMenu(r, at, sub),
+      );
+      openContextMenu(r, at, items, onClose);
+      return;
+    }
+    // the Clips category's ⋯: a new clip of every object of the scene (the mock's New clip…)
+    if (row.key === ClipsKey) {
+      pick(row);
+      const all = area.objectsState().value.map((o) => o.ref);
+      const shapes = categoryClipItems(api, area, all).filter((i) => i.id.startsWith('clip-'));
+      openContextMenu(
+        r,
+        at,
+        [
+          {
+            id: 'clip',
+            label: 'New clip… (every object)',
+            icon: 'scissors',
+            run: () => openContextMenu(r, at, shapes),
+          },
+        ],
+        onClose,
+      );
+      return;
+    }
+    if (row.kind === 'clip' && row.clip) {
+      const tag = row.clip;
+      pick(row);
+      openContextMenu(
+        r,
+        at,
+        [{ id: 'remove', label: 'Remove', icon: 'trash-2', run: () => void api.run('clipping.remove', { tag }) }],
+        onClose,
+      );
       return;
     }
     if (!row.node) return;
     pick(row);
-    const p = { ...pickedOf(row), node: row.node };
-    const items = which === 'color' ? colorItems(api, area, p, model.groupByOf) : clipItems(api, area, p);
-    openContextMenu(root(), at, items, onClose);
-  };
-  // a row's right-click or ⋯: it is picked, and the menu of what it stands for opens there
-  const menu = (row: Row, at: At, onClose?: () => void) => {
-    if (!row.node) return;
-    pick(row);
-    const r = root();
     const items = nodeMenuItems(
       api,
       area,
@@ -406,12 +429,18 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     );
     openContextMenu(r, at, items, onClose);
   };
+  // a row's color dot: its colors, as Color…
+  const colors = (row: Row, at: At, onClose: () => void) => {
+    if (!row.node) return;
+    pick(row);
+    openContextMenu(root(), at, colorItems(api, area, { ...pickedOf(row), node: row.node }, model.groupByOf), onClose);
+  };
 
-  // a category's Uniform: its picker at its brush, its color applied to every object under it, once
+  // a category's Uniform: its picker at its ⋯, its color applied to every object under it, once
   const uniform = observableState<{ row: Row; anchor: HTMLElement } | undefined>(undefined);
   const uniformOf = (row: Row) => {
     const anchor = panelEl?.querySelector<HTMLElement>(
-      `[data-tree-key="${CSS.escape(row.key)}"] button[aria-label="Color all of it"]`,
+      `[data-tree-key="${CSS.escape(row.key)}"] button[aria-label="More"]`,
     );
     if (anchor) uniform.set({ row, anchor });
   };
@@ -452,18 +481,12 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
             rows={rows}
             picked={pickedKey}
             shown={shown}
-            tools={(row) => ({
-              color: !!row.objects?.length || colorable(row.kind, row.node),
-              clip: !!row.objects?.length || clippable(row.kind, row.node),
-              remove: removable(row.kind, row.node) || Made.has(row.kind),
-              more: !!row.node,
-            })}
+            more={(row) => !!row.node || !!row.objects?.length || !!row.clip || row.key === ClipsKey}
             onPick={pick}
             onToggle={(row) => toggleOpen(row.key)}
-            onEye={eye}
-            onRemove={(row) => void removeRow(api, area, row)}
-            onTool={tool}
+            onEyes={setShown}
             onMenu={menu}
+            onColor={colors}
             onDblClick={(row) => row.node && area.focus(row.node)}
             onHover={hover}
             ref={(t) => (tree = t)}
@@ -477,7 +500,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
             title={`${u.row.label}: one color`}
             onClose={(refocus) => {
               uniform.set(undefined);
-              // Escape and Apply: the focus back on the brush (Popover's contract), if still there
+              // Escape and Apply: the focus back on the ⋯ (Popover's contract), if still there
               if (refocus && u.anchor.isConnected) u.anchor.focus();
             }}
             onApply={(c) => void categoryTheme(api, u.row.objects ?? [], 'uniform', model.groupByOf, c)}
@@ -510,7 +533,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
 }
 
 /**
- * A category's scissors: a new clip of every object under it (Prism's, through all their representations), by shape;
+ * A category's Add clip…: a new clip of every object under it (Prism's, through all their representations), by shape;
  * then every clip of the scene, used on all of them too (one step), greyed when it cuts each already
  */
 function categoryClipItems(api: ViewerApi, area: ExplorerApi, objects: readonly string[]): ContextMenuItem[] {
@@ -536,34 +559,33 @@ function categoryClipItems(api: ViewerApi, area: ExplorerApi, objects: readonly 
 }
 
 /**
- * A category's brush: a color theme for every object under it, one step (`mesoscale.theme`, each kind by the theme it
- * takes; Ludo, 2026-10-27), the themes its kind takes (ui.md §3); no icons on menu items (styling.md §4)
+ * A category's ⋯ (Ludo, 2026-10-28): Color… (a color theme for every object under it, one step: `mesoscale.theme`, the
+ * themes its kind takes, ui.md §3; Uniform… its color picked first) and Add clip… (a new clip of every object under it, or
+ * one of the scene's used on all of them); no icons on the themes and shapes (styling.md §4)
  */
-function categoryThemeItems(
+function categoryItems(
   api: ViewerApi,
-  key: string,
-  objects: readonly string[],
+  area: ExplorerApi,
+  row: Row,
   groupBy: (model: string) => MesoGroupBy | undefined,
   uniform: () => void,
+  open: (items: ContextMenuItem[]) => void,
 ): ContextMenuItem[] {
-  return (CategoryThemes[key] ?? []).map(([theme, label]) => ({
+  const objects = row.objects ?? [];
+  const themes: ContextMenuItem[] = (CategoryThemes[row.key] ?? []).map(([theme, label]) => ({
     id: `theme-${theme}`,
     label,
-    // Uniform: its color picked first (a popover), applied once
     run: () => (theme === 'uniform' ? uniform() : void categoryTheme(api, objects, theme, groupBy)),
   }));
-}
-
-/** What was made at a node, removed by its row's trash */
-const Made: ReadonlySet<string> = new Set(['clip', 'label', 'distance']);
-
-/** A row's trash: one step, as the menu's Remove (an object with its file and labels, a clip, a label, a distance) */
-function removeRow(api: ViewerApi, area: ExplorerApi, row: Row) {
-  if (row.kind === 'clip' && row.clip) return api.run('clipping.remove', { tag: row.clip });
-  if (!row.node) return;
-  if (row.kind === 'label') return api.run('stage.editLabel', { label: row.node.ref, remove: true });
-  if (row.kind === 'distance') return api.run('stage.editDistance', { distance: row.node.ref, remove: true });
-  return removeObject(api, area, row.kind, row.node.ref);
+  return [
+    { id: 'color', label: 'Color…', icon: 'palette', run: () => open(themes) },
+    {
+      id: 'clip',
+      label: 'Add clip… (every object in it)',
+      icon: 'scissors',
+      run: () => open(categoryClipItems(api, area, objects)),
+    },
+  ];
 }
 
 type ExplorerCuts = ViewerApi['clipping']['cuts']['value'];

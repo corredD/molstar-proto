@@ -26,6 +26,10 @@ import {
   ParticleListTargetsFromAttribute,
   ParticleListWithTargets,
 } from '@molstar/plugin/state/transforms/particles/ops';
+import {
+  type ParticleLayerProps,
+  ParticleRepresentation3DLayers,
+} from '@molstar/plugin/state/transforms/particles/layers';
 import { VolumeRepresentation3D } from '@molstar/plugin/state/transforms/volume/representation';
 import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
@@ -55,6 +59,8 @@ export interface TargetDecoration {
   readonly object?: string;
   /** The entity it stands for, on a list with entities (a cellPACK or Simularium model) */
   readonly entity?: number;
+  /** Shown: no layer of it alone hides it (its eye in the explorer's tree) */
+  readonly visible: boolean;
 }
 
 export interface DecorationsInfo {
@@ -1017,6 +1023,7 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Decorati
   const classes = decoratorCell(ctx, l, ParticleListTargetsFromAttribute)?.transform.params?.attribute as
     | string
     | undefined;
+  const hidden = hiddenTargets(ctx, l);
   return {
     particles: l.cell.transform.ref,
     label: labelOf(l),
@@ -1041,10 +1048,32 @@ function describe(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Decorati
         ...(w ? { with: w } : {}),
         ...(object ? { object } : {}),
         ...(info.entity !== undefined ? { entity: info.entity } : {}),
+        visible: !hidden.has(id),
       };
     }),
     objects,
   };
+}
+
+/**
+ * The targets a list hides, each by a layer of it alone (the explorer's eye of a class, `particles.look`), read from its
+ * first representation's layers (they are the same on each)
+ */
+function hiddenTargets(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): Set<number> {
+  const hidden = new Set<number>();
+  const r = l.representations[0];
+  if (!r) return hidden;
+  const tree = ctx.plugin.state.data.tree;
+  for (const child of tree.children.get(r.cell.transform.ref).toArray()) {
+    const t = tree.transforms.get(child);
+    if (t?.transformer !== ParticleRepresentation3DLayers) continue;
+    for (const layer of (t.params?.layers ?? []) as ParticleLayerProps[]) {
+      if (layer.targets.length !== 1 || layer.entities.length || layer.compartments.length) continue;
+      if (layer.visible) hidden.delete(layer.targets[0]);
+      else hidden.add(layer.targets[0]);
+    }
+  }
+  return hidden;
 }
 
 /** The shape representations of meshes loaded from files (not the guides and shapes the viewer makes itself) */

@@ -194,6 +194,29 @@ describe('the Clips category', () => {
   });
 });
 
+describe("the Clips category's eye and ⋯ (with tree-eyes)", () => {
+  it("draws every clip in the scene in one step; its ⋯ has New clip…", async () => {
+    const v = await viewer();
+    const { host, refOf } = mount(v);
+    const crn = refOf('1CRN');
+    for (const shape of ['plane', 'sphere']) {
+      const r = await v.api.run('clipping.add', { shape, node: `#${crn}` });
+      if (!r.ok) throw new Error(r.message);
+    }
+    await until(() => !!item(host, 'c:clips'));
+    const n = steps(v);
+    item(host, 'c:clips')!.querySelector<HTMLButtonElement>('button[aria-label="Show"]')!.click();
+    await until(() => cuts(v).every((c) => !!c.drawing));
+    expect(steps(v)).toBe(n + 1);
+    // its ⋯: New clip… (a new clip of every object of the scene)
+    item(host, 'c:clips')!.querySelector<HTMLButtonElement>('button[aria-label="More"]')!.click();
+    await until(() => document.querySelectorAll('[role=menuitem]').length > 0);
+    expect(Array.from(document.querySelectorAll('[role=menuitem]')).map((m) => m.textContent?.trim())).toEqual([
+      'New clip… (every object)',
+    ]);
+  });
+});
+
 describe("a clip's What it cuts", () => {
   it('lists what it is given; Cut also and × are one step each and change what is cut', async () => {
     const v = await viewer();

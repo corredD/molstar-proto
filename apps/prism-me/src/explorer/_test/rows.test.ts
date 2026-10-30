@@ -136,9 +136,9 @@ describe('the Clips category (Ludo, 2026-10-28)', () => {
       ['Plane 1', '2 objects', false, 'k1'],
       ['Sphere 2', '1 object', true, 'k2'],
     ]);
-    // the category has no objects: no brush, scissors nor eye of its own
+    // the category has no objects; its eye draws its clips (open when all are drawn)
     const category = rows.find((r) => r.key === 'c:clips')!;
-    expect([category.objects, category.visible]).toEqual([undefined, undefined]);
+    expect([category.objects, category.visible, category.clips]).toEqual([undefined, false, ['k1', 'k2']]);
   });
 });
 

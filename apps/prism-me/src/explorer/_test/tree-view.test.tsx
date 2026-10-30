@@ -106,6 +106,20 @@ const press = async (el: HTMLElement, key: string) => {
   el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
   await settle();
 };
+/** The ⋯ of a row clicked, then its items along `path` (Color…, then a theme): the items shown at the end */
+const viaMore = async (host: HTMLElement, key: string, ...path: string[]) => {
+  item(host, key)!.querySelector<HTMLButtonElement>('button[aria-label="More"]')!.click();
+  await settle();
+  for (const label of path) {
+    const m = Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]')).find(
+      (x) => x.textContent?.trim() === label,
+    );
+    if (!m) throw new Error(`no menu item ${label}`);
+    m.click();
+    await settle();
+  }
+  return Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]'));
+};
 const focused = (host: HTMLElement) =>
   (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[data-tree-key]');
 
@@ -225,8 +239,8 @@ describe("the tree's keys and picks (ui.md §3)", () => {
     expect(menu).toBeTruthy();
     const labels = Array.from(menu!.querySelectorAll('[role=menuitem]')).map((m) => m.textContent?.trim());
     expect(labels).toContain('Focus on HIV');
-    // a category has no ⋯ (nothing of its own to act on)
-    expect(item(host, 'c:particles')!.querySelector('button[aria-label="More"]')).toBeNull();
+    // a category has its ⋯ too (Ludo, 2026-10-28: its color theme, a clip of every object in it)
+    expect(item(host, 'c:particles')!.querySelector('button[aria-label="More"]')).toBeTruthy();
   });
 });
 
@@ -269,7 +283,7 @@ describe("a category's tools (ui.md §3)", () => {
     await until(() => shown().every((s) => s));
   });
 
-  it('its scissors add one cut of every object under it', async () => {
+  it("its ⋯'s Add clip… adds one cut of every object under it", async () => {
     const v = await viewer(
       [
         ['HIV', 3],
@@ -280,9 +294,7 @@ describe("a category's tools (ui.md §3)", () => {
     const { host } = mount(v);
     await until(() => !!item(host, 'c:particles'));
     const steps = v.api.history.steps.value.length;
-    item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Add a clip"]')!.click();
-    await settle();
-    const plane = Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]')).find(
+    const plane = (await viaMore(host, 'c:particles', 'Add clip… (every object in it)')).find(
       (m) => m.textContent?.trim() === 'New plane',
     );
     expect(plane).toBeTruthy();
@@ -379,7 +391,7 @@ describe('the filter and the chevrons (ui.md §1)', () => {
   });
 });
 
-describe("a row's trash (Ludo, 2026-10-27)", () => {
+describe("a row's ⋯ › Remove (the trash, Ludo 2026-10-27; in the ⋯, Ludo 2026-10-28)", () => {
   it('removes an object, or a clip, in one step; a part has none', async () => {
     const v = await viewer(
       [
@@ -392,16 +404,17 @@ describe("a row's trash (Ludo, 2026-10-27)", () => {
     const hiv = refOf('HIV');
     const other = refOf('Other');
     await until(() => !!model.parts.value.get(hiv) && !!item(host, `o:${other}`));
-    const trash = (key: string) => item(host, key)?.querySelector<HTMLButtonElement>('button[aria-label="Remove"]');
-    expect(trash('c:particles')).toBeNull();
+    const removes = async (key: string) => (await viaMore(host, key)).some((m) => m.textContent?.trim() === 'Remove');
+    const trash = (key: string) => ({ click: () => void viaMore(host, key, 'Remove') });
+    expect(await removes('c:particles')).toBe(false);
     model.open.set(new Set([...model.open.value, `o:${hiv}`, `g:${hiv}:root`, `g:${hiv}:root.cytoplasm`]));
     await settle();
-    expect(trash(`me:${hiv}:0`)).toBeNull();
+    expect(await removes(`me:${hiv}:0`)).toBe(false);
     // a clip's
     const r = await v.api.run('clipping.add', { shape: 'plane', node: `#${hiv}` });
     if (!r.ok) throw new Error(r.message);
     const tag = v.api.clipping.cuts.value[0].object.tag!;
-    await until(() => !!trash(`k:${tag}`));
+    await until(() => !!item(host, `k:${tag}`));
     let steps = v.api.history.steps.value.length;
     trash(`k:${tag}`)!.click();
     await until(() => v.api.clipping.cuts.value.length === 0);
@@ -414,7 +427,7 @@ describe("a row's trash (Ludo, 2026-10-27)", () => {
   });
 });
 
-describe("a category's brush (Ludo, 2026-10-27)", () => {
+describe("a category's Color… (its brush, Ludo 2026-10-27; in its ⋯, Ludo 2026-10-28)", () => {
   it('offers the themes its kind takes and colors every object under it, one step', async () => {
     const v = await viewer(
       [
@@ -426,9 +439,7 @@ describe("a category's brush (Ludo, 2026-10-27)", () => {
     const { host } = mount(v);
     await until(() => !!item(host, 'c:particles'));
     const steps = v.api.history.steps.value.length;
-    item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Color all of it"]')!.click();
-    await settle();
-    const items = Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]'));
+    const items = await viaMore(host, 'c:particles', 'Color…');
     expect(items.map((m) => m.textContent?.trim())).toEqual(['By object', 'By entity', 'Generate colors', 'Uniform…']);
     expect(items.some((m) => m.querySelector('svg'))).toBe(false);
     items[0].click();
@@ -441,7 +452,7 @@ describe("a category's brush (Ludo, 2026-10-27)", () => {
   });
 });
 
-describe("a label's and a distance's trash", () => {
+describe("a label's and a distance's ⋯ › Remove", () => {
   it('removes each, one step', async () => {
     const v = await viewer([['HIV', 3]], true);
     const { api, host, model, refOf } = mount(v);
@@ -455,8 +466,8 @@ describe("a label's and a distance's trash", () => {
     await settle();
     const labels = () => api.stage!.labelsState().value;
     const distances = () => api.stage!.distancesState().value;
-    const trash = (key: string) => item(host, key)?.querySelector<HTMLButtonElement>('button[aria-label="Remove"]');
-    await until(() => !!trash(`l:${labels()[0]?.ref}`) && !!trash(`d:${distances()[0]?.ref}`));
+    const trash = (key: string) => ({ click: () => void viaMore(host, key, 'Remove') });
+    await until(() => !!item(host, `l:${labels()[0]?.ref}`) && !!item(host, `d:${distances()[0]?.ref}`));
     let steps = v.api.history.steps.value.length;
     trash(`l:${labels()[0].ref}`)!.click();
     await until(() => labels().length === 0);
@@ -479,11 +490,7 @@ describe("a category's Uniform (Ludo, 2026-10-27)", () => {
     );
     const { host } = mount(v);
     await until(() => !!item(host, 'c:particles'));
-    item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Color all of it"]')!.click();
-    await settle();
-    const uniform = Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]')).find(
-      (m) => m.textContent?.trim() === 'Uniform…',
-    );
+    const uniform = (await viaMore(host, 'c:particles', 'Color…')).find((m) => m.textContent?.trim() === 'Uniform…');
     expect(uniform).toBeTruthy();
     uniform!.click();
     await settle();
@@ -506,23 +513,17 @@ describe("a category's Uniform (Ludo, 2026-10-27)", () => {
       );
     await until(() => values().every((c) => c === 0xff0000));
     expect(v.api.history.steps.value.length).toBe(steps + 1);
-    // closed, the focus is back on the brush (the keys go on from the tree)
+    // closed, the focus is back on the ⋯ (the keys go on from the tree)
     await settle();
     expect(document.querySelector('[aria-label="Uniform color"]')).toBeNull();
-    expect((document.activeElement as HTMLElement | null)?.getAttribute('aria-label')).toBe('Color all of it');
+    expect((document.activeElement as HTMLElement | null)?.getAttribute('aria-label')).toBe('More');
   });
 
-  it('closes when its brush leaves the page (its row scrolled out of the tree)', async () => {
+  it('closes when its ⋯ leaves the page (its row scrolled out of the tree)', async () => {
     const v = await viewer([['HIV', 3]], true);
     const { host } = mount(v);
     await until(() => !!item(host, 'c:particles'));
-    const brush = item(host, 'c:particles')!.querySelector<HTMLButtonElement>('button[aria-label="Color all of it"]')!;
-    brush.click();
-    await settle();
-    Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]'))
-      .find((m) => m.textContent?.trim() === 'Uniform…')!
-      .click();
-    await settle();
+    await viaMore(host, 'c:particles', 'Color…', 'Uniform…');
     expect(document.querySelector('[aria-label="Uniform color"]')).toBeTruthy();
     // a virtual list removes a row scrolled away
     item(host, 'c:particles')!.remove();
@@ -532,7 +533,7 @@ describe("a category's Uniform (Ludo, 2026-10-27)", () => {
   });
 });
 
-describe("the Meshes category's brush", () => {
+describe("the Meshes category's Color…", () => {
   it('colors every mesh by object in one step, one tree update', async () => {
     const v = await viewer([]);
     const obj = 'v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n';
@@ -545,8 +546,7 @@ describe("the Meshes category's brush", () => {
       return ((m as { value?: { color?: number }[] }).value ?? []).map((x) => x.color);
     };
     const before = await colors();
-    item(host, 'c:meshes')!.querySelector<HTMLButtonElement>('button[aria-label="Color all of it"]')!.click();
-    await settle();
+    await viaMore(host, 'c:meshes', 'Color…');
     const steps = v.api.history.steps.value.length;
     const state = v.plugin.state.data;
     const updateTree = state.updateTree.bind(state);

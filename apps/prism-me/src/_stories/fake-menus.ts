@@ -40,7 +40,7 @@ export const ProposedClipShapes: readonly ContextMenuItem[] = [
   item('clip-aperture', 'Aperture: open the view onto this part'),
 ];
 
-/** The proposed Show only (cellVIEW evaluation, item d): a part's right-click, one step each */
+/** Show only (cellVIEW's, Ludo 2026-10-28): a part's right-click, one step each */
 const showOnly = (node: MockNode): ContextMenuItem[] =>
   node.kind === 'model entity' || node.kind === 'group' || node.kind === 'target'
     ? [
@@ -52,7 +52,7 @@ const showOnly = (node: MockNode): ContextMenuItem[] =>
       ]
     : [];
 
-/** The brush's colors (ui.md §3 step 3b): swatches for all of it; a model's or group's Generate colors first */
+/** Color…'s colors (ui.md §3 step 3b): swatches for all of it; a model's or group's Generate colors first */
 export function colorItemsOf(node: MockNode): ContextMenuItem[] {
   const swatches = ['Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Blue', 'Purple', 'Gray', 'White'].map((c) =>
     item(`color-${c.toLowerCase()}`, c),
@@ -62,12 +62,12 @@ export function colorItemsOf(node: MockNode): ContextMenuItem[] {
   return node.kind === 'model' || node.kind === 'group' ? [item('generate', 'Generate colors'), ...swatches] : swatches;
 }
 
-/** Whether a row has the brush (a color for all of it), as the app's `colorable` */
+/** Whether a row's ⋯ has Color… (a color for all of it), as the app's `colorable` */
 export const colorable = (node: MockNode) =>
   node.key !== 'c:clips' &&
   ['category', 'structure', 'entity', 'chain', 'model', 'group', 'model entity', 'target', 'mesh'].includes(node.kind);
 
-/** Whether a row has the scissors (a clip), as the app's `clippable`: an object all of it, a part only it */
+/** Whether a row's ⋯ has Add clip… (a clip), as the app's `clippable`: an object all of it, a part only it */
 export const clippable = (node: MockNode) =>
   node.key !== 'c:clips' &&
   ['category', 'structure', 'model', 'list', 'volume', 'entity', 'chain', 'group', 'model entity', 'target'].includes(
@@ -75,55 +75,17 @@ export const clippable = (node: MockNode) =>
   );
 
 /**
- * The right-click of a node (ui.md §5): Focus, Move and turn, Add label, Add clip; on a clip or a label its own; on a
- * distance its own (§7). A part's Move and turn is "[to decide]" in ui.md: greyed here, with why. `proposed`: with the
- * cellVIEW evaluation's items (Show only on a part; a clip's ghosts).
+ * The right-click of a node (ui.md §5), the same as its row's ⋯ (Ludo, 2026-10-28): Focus, Move and turn, Color…, Add
+ * label, Add clip…, Show only (a part), Remove (an object); on a clip, a label or a distance its own; on a category its
+ * color theme and a clip of every object in it. No Hide: every row's eye is in view. A part's Move and turn is
+ * "[to decide]" in ui.md: greyed here, with why. `proposed`: with the cellVIEW evaluation's items not built yet (a
+ * clip's ghosts, the Clips category's New clip…).
  */
-export function menuOf(node: MockNode, openClipShapes?: () => void, proposed = false): ContextMenuItem[] {
-  switch (node.kind) {
-    case 'clip':
-      return [
-        item('move', 'Move'),
-        item('rotate', 'Rotate'),
-        item('size', 'Size'),
-        item('flip', 'Flip'),
-        ...(proposed ? [item('ghosts', 'Outline what it cuts')] : []),
-        item('hide', 'Hide'),
-        item('remove', 'Remove'),
-      ];
-    case 'label':
-      return [
-        item('move', 'Move'),
-        item('rotate', 'Rotate'),
-        item('edit', 'Edit text'),
-        item('hide', 'Hide'),
-        item('remove', 'Remove'),
-      ];
-    case 'distance':
-      return [item('focus', 'Focus'), item('hide', 'Hide'), item('remove', 'Remove')];
-  }
-  return nodeMenu(node, openClipShapes, proposed);
-}
-
-function nodeMenu(node: MockNode, openClipShapes?: () => void, proposed = false): ContextMenuItem[] {
-  const part = !ObjectKinds.has(node.kind);
-  const toDecide = part ? 'ui.md §5 [to decide]: the whole object it belongs to, or only this part' : undefined;
-  // one Move and turn: Prism's handles on it, move and turn together (Ludovic, 2026-10-25, as the app)
-  return [
-    item('focus', 'Focus'),
-    item('move', 'Move and turn', toDecide),
-    item('label', 'Add label'),
-    { ...item('clip', 'Add clip…'), run: () => openClipShapes?.() },
-    ...(proposed ? showOnly(node) : []),
-  ];
-}
-
-/**
- * The proposed ⋯ (Ludo, 2026-10-28): a row shows only its eye and its ⋯, and the ⋯ holds what the row's other tools did
- * (Color…, Add clip…, Remove) with its right-click's items; the same menu on the canvas. No Hide: the eye is always there.
- */
-export function proposedMenuOf(node: MockNode, open: { clipShapes(): void; colors(): void }): ContextMenuItem[] {
-  // Add clip…: a new clip of a shape, or one of the scene's (proposedClipItems)
+export function menuOf(
+  node: MockNode,
+  open: { clipShapes(): void; colors(): void },
+  proposed = false,
+): ContextMenuItem[] {
   const colors = { ...item('color', 'Color…'), run: open.colors };
   const clip = (label: string) => ({ ...item('clip', label), run: open.clipShapes });
   const remove = item('remove', 'Remove');
@@ -134,7 +96,7 @@ export function proposedMenuOf(node: MockNode, open: { clipShapes(): void; color
         item('rotate', 'Rotate'),
         item('size', 'Size'),
         item('flip', 'Flip'),
-        item('ghosts', 'Outline what it cuts'),
+        ...(proposed ? [item('ghosts', 'Outline what it cuts')] : []),
         remove,
       ];
     case 'label':
@@ -144,12 +106,14 @@ export function proposedMenuOf(node: MockNode, open: { clipShapes(): void; color
     case 'category':
       return node.key === 'c:clips' ? [clip('New clip…')] : [colors, clip('Add clip… (every object in it)')];
   }
-  const [focus, move, label] = nodeMenu(node);
+  const part = !ObjectKinds.has(node.kind);
+  const toDecide = part ? 'ui.md §5 [to decide]: the whole object it belongs to, or only this part' : undefined;
+  // one Move and turn: Prism's handles on it, move and turn together (Ludovic, 2026-10-25, as the app)
   return [
-    focus,
-    move,
+    item('focus', 'Focus'),
+    item('move', 'Move and turn', toDecide),
     ...(colorable(node) ? [colors] : []),
-    label,
+    item('label', 'Add label'),
     ...(clippable(node) ? [clip('Add clip…')] : []),
     ...showOnly(node),
     ...(ObjectKinds.has(node.kind) ? [remove] : []),
