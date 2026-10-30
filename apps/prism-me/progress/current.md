@@ -27,7 +27,14 @@ is not built is [../TODO.md](../TODO.md).
   - **3. Clips in a category of their own** (`me/clips-category`): PR #18, reviewed, checked with real GL on WebGPU and
     WebGL2; over its size stop (~+780 against ~700, review fixes; the coordinator let it open); a Prism commit
     (`clipping.release` takes a target); merges after 2 + 5; waits on Ludo.
-  - 7. Ghosts, and 4's app half: after 3 and 4.
+  - #18, #20 and #17 merged (Ludo, 2026-10-29); their worktrees removed. The app live on 1343.
+  - **Clip whole lost** (Ludo, 2026-10-29: "the proteins vs atoms mode for the clip disappear"): lane `clip-whole`
+    (`me/clip-whole`, port 1356), reproduce first, merges before the two below.
+  - PR #21 (`me/clip-records`): the #18/#20 merge fixed (a clip's parts are Prism's records, one each); found by the
+    graded-cuts-ui lane. PR #22 (`me/clip-whole`): Clip whole in a clip's section. PR #23 (`me/graded-cuts-ui`): 4's app
+    half, reviewed, real GL on both backends; contains #21 and #22 (ui.md row merged by the coordinator). Merge 21,
+    22, 23. Open for Ludo: the switch to instance is scene-wide, not per cut (a per-cut variant needs a library change).
+  - **7. Ghosts** (`me/ghosts`, port 1358): design and library first, the app control after the two above.
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
