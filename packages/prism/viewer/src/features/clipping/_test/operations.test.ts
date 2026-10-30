@@ -96,6 +96,22 @@ describe('the clipping area', () => {
     expect(cut.targets.map((t) => t.type)).toEqual(['cartoon']);
   });
 
+  it('outlines what a cut cuts (its ghosts), a step undo takes back', async () => {
+    const v = await create(cbs());
+    const clipping = v.api.clipping;
+    const { targets } = ok<Cut>(await clipping.add({ shape: 'plane', target: 'polymer' }));
+    const ghosts = () => targets.map((t) => !!clipOf(v, t.ref).objects[0].ghost);
+    expect(ghosts().some((g) => g)).toBe(false);
+
+    ok(await clipping.update({ cut: 1, ghost: true }));
+    expect(ghosts().every((g) => g)).toBe(true);
+    // read back by the list (an agent sees what it set)
+    expect(((await clipping.list({})) as any).did).toContain('outlined (ghost)');
+    expect((await clipping.update({ cut: 1, ghost: true })) as any).toMatchObject({ unchanged: true });
+    ok(await v.api.history.undo());
+    expect(ghosts().some((g) => g)).toBe(false);
+  });
+
   it('changes, inverts and removes a cut, each a step undo takes back', async () => {
     const v = await create(cbs());
     const clipping = v.api.clipping;

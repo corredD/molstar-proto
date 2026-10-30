@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { depth_wgsl } from './chunks/depth.wgsl.js';
@@ -136,7 +137,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
                     let finalOutlineAlpha = clamp(outline.alpha * 2.0, 0.0, 1.0);
                     let outlineFogFactor = getFogFactor(outline.transparentDepth);
                     let finalAlpha = max(transparentColor.a, finalOutlineAlpha * (1.0 - outlineFogFactor));
-                    transparentColor = vec4<f32>(uObject.uOutlineColor * finalAlpha, finalAlpha);
+                    transparentColor = vec4<f32>(uObject.uTransparentOutlineColor * finalAlpha, finalAlpha);
                 }
             }
         #endif

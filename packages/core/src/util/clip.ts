@@ -4,6 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { EPSILON } from '@molstar/core/math/linear-algebra/3d/common';
@@ -59,6 +60,8 @@ export namespace Clip {
      * (`getShape`)
      */
     shape: number[];
+    /** The objects whose cut part the renderer outlines (`ghost`), a bit an object */
+    ghost: number;
   };
 
   export type Rotation = { axis: Vec3; angle: number };
@@ -87,6 +90,8 @@ export namespace Clip {
          * representations is one cut by it. Not used for clipping; empty: untagged.
          */
         tag: PD.Optional(PD.Text('', { isHidden: true })),
+        /** What it cuts drawn again as outlines only (with the outline pass on): its ghosts */
+        ghost: PD.Optional(PD.Boolean(false, { isHidden: true })),
       },
       (o) => stringToWords(o.type),
     ),
@@ -105,6 +110,7 @@ export namespace Clip {
       transform: new Array(count * 16).fill(0),
       frame: new Array(count * 16).fill(0),
       shape: new Array(count * 4).fill(0),
+      ghost: 0,
     };
   }
 
@@ -142,8 +148,10 @@ export namespace Clip {
     const count = Math.min(props.objects.length, MaxObjectCount);
     const objects = clip?.objects || createClipObjects(count);
     const { type, invert, position, rotation, scale, transform } = objects;
+    objects.ghost = 0;
     for (let i = 0; i < count; ++i) {
       const p = props.objects[i];
+      if (p.ghost) objects.ghost |= 1 << i;
       type[i] = Type[p.type];
       invert[i] = p.invert;
       Vec3.toArray(p.position, position, i * 3);
@@ -204,6 +212,7 @@ export namespace Clip {
   export function areEqual(cA: Clip, cB: Clip) {
     if (cA.variant !== cB.variant) return false;
     if (cA.objects.count !== cB.objects.count) return false;
+    if (cA.objects.ghost !== cB.objects.ghost) return false;
 
     const oA = cA.objects,
       oB = cB.objects;

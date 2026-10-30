@@ -35,8 +35,7 @@ name no extension (upstreamable later, when Ludo says so).
 - **6. Measure: do hidden particles cost a frame?** (library, a measurement; now). On WebGPU, CellPack MG with 90 %
   hidden against none: if close, the GPU cull skips hidden instances (a visibility table). Check: the numbers in the
   lane's progress file; if built, hiding most of a model makes it faster.
-- **7. Ghosts of what is cut** (library and app; after 4). A clip's Outline what it cuts: what it removes drawn as
-  outlines only. Check: the GradedCut story's Ghosts; cut HIV in half and see the cut half faintly outlined.
+- **7. Ghosts of what is cut**: built (lane `ghosts`): a clip's Ghosts, Outline what it cuts.
 - **Not by tomorrow: research, with Alexander, measured before any lane** (library): the aperture cut (the visibility
   equalizer, the mock's ApertureCut story); proxy spheres per target (k-means) against stride decimation; deferred
   shading from ID buffers. Each starts as a measurement or a design note.

@@ -24,6 +24,9 @@ export const common = `
 #define MaskAll 0
 #define MaskOpaque 1
 #define MaskTransparent 2
+#define MaskGhost 3
+// the alpha of the ghost pass's depth (\`MaskGhost\`): the outline pass draws ghosts' edges at twice it
+#define GhostAlpha 0.2
 
 //
 

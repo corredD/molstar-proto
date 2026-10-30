@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -86,5 +87,25 @@ describe('clip', () => {
     expect(
       Clip.canIntersectSphere(getObjects('infiniteCone', false, Vec3.create(20, 0, 0), one, identity), 0, sphere),
     ).toBe(true);
+  });
+
+  it('ghost: a bit an object whose cut part is outlined, and a difference of clips', () => {
+    const object = (ghost?: boolean) => ({
+      type: 'plane' as const,
+      invert: false,
+      position: Vec3(),
+      rotation: { axis: Vec3.create(1, 0, 0), angle: 0 },
+      scale: Vec3.create(1, 1, 1),
+      transform: Mat4.identity(),
+      ...(ghost === undefined ? {} : { ghost }),
+    });
+    const clip = (...ghosts: (boolean | undefined)[]) =>
+      Clip.getClip({ variant: 'instance', objects: ghosts.map(object) } as Clip.Props);
+    expect(clip(undefined, false).objects.ghost).toBe(0);
+    expect(clip(false, true, true).objects.ghost).toBe(0b110);
+    // reused objects lose the bits of the earlier clip
+    expect(Clip.getClip({ variant: 'instance', objects: [object(false)] }, clip(true)).objects.ghost).toBe(0);
+    expect(Clip.areEqual(clip(true), clip(false))).toBe(false);
+    expect(Clip.areEqual(clip(true), clip(true))).toBe(true);
   });
 });

@@ -61,6 +61,8 @@ export enum DrawFact {
   SingleSided = 1 << 22,
   /** wiggling (`uWiggleAmplitude` or `wiggleAverage`, with speed and frequency) or tumbling: drawn anew per frame */
   Animated = 1 << 23,
+  /** `uClipObjectGhost` (not an image, text or direct volume): a clip object whose cut part is drawn as outlines */
+  Ghost = 1 << 24,
 }
 
 /** The cells `getDrawFacts` and the row's bounds read: a change of any refreshes the row */
@@ -79,6 +81,7 @@ export const DrawFactCells = [
   'dFlipSided',
   'hasReflection',
   'dSolidInterior',
+  'uClipObjectGhost',
   'instanceGrid',
   'uInstanceCount',
   'lodLevels',
@@ -185,6 +188,9 @@ export function getCheckFacts(values: Values): number {
   if (geometryType === 'directVolume') f |= DrawFact.DirectVolume;
   if (geometryType === 'text' || geometryType === 'image') f |= DrawFact.TextOrImage;
   if (getValue(values, 'dPointStyle') === 'fuzzy') f |= DrawFact.FuzzyPoints;
+  // images, text and direct volumes write no ghost depth (their own depth outputs): never ghosts
+  const ghostable = geometryType !== 'directVolume' && geometryType !== 'text' && geometryType !== 'image';
+  if (ghostable && getValue(values, 'uClipObjectGhost')) f |= DrawFact.Ghost;
   const xray = getValue(values, 'dXrayShaded');
   if (xray === 'on' || xray === 'inverted') f |= DrawFact.Xray;
   const backfaces = getValue(values, 'dTransparentBackfaces');
@@ -222,6 +228,10 @@ export const checkOpaque = (facts: number, _state?: number) =>
  */
 export const checkTransparent = (facts: number, _state?: number) =>
   (facts & (DrawFact.AlphaZero | DrawFact.TransparencyFull)) === 0 && (facts & TransparentReasons) !== 0;
+
+/** not alpha 0 and not fully transparent, with a clip object whose cut part is drawn as outlines (the ghost pass) */
+export const checkGhost = (facts: number, _state?: number) =>
+  (facts & (DrawFact.AlphaZero | DrawFact.TransparencyFull)) === 0 && (facts & DrawFact.Ghost) !== 0;
 
 /** An object's state as bits of a row (`DrawRow.State`) */
 export enum DrawState {

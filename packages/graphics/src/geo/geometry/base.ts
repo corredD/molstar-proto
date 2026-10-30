@@ -2,6 +2,7 @@
  * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { RenderableState } from '@molstar/graphics/gl/renderable';
@@ -261,6 +262,7 @@ export namespace BaseGeometry {
       clipObjects: ValueCell.create(clip.objects),
       uClipObjectFrame: ValueCell.create(clip.objects.frame),
       uClipObjectShape: ValueCell.create(clip.objects.shape),
+      uClipObjectGhost: ValueCell.create(clip.objects.ghost),
 
       uInstanceGranularity: ValueCell.create(
         resolveInstanceGranularity(props.instanceGranularity, counts.groupCount, counts.instanceCount),
@@ -292,6 +294,7 @@ export namespace BaseGeometry {
       ValueCell.update(values.clipObjects, clip.objects);
       ValueCell.update(values.uClipObjectFrame, clip.objects.frame);
       ValueCell.update(values.uClipObjectShape, clip.objects.shape);
+      ValueCell.updateIfChanged(values.uClipObjectGhost, clip.objects.ghost);
     }
 
     ValueCell.updateIfChanged(

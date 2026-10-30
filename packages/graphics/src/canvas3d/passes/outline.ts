@@ -29,6 +29,8 @@ export const OutlineParams = {
   threshold: PD.Numeric(0.33, { min: 0.01, max: 1, step: 0.01 }),
   color: PD.Color(Color(0x000000)),
   includeTransparent: PD.Boolean(true, { description: 'Whether to show outline for transparent objects' }),
+  /** Of transparent objects' outlines and the ghosts of what clips cut (cellview.md §4.3); null: `color` */
+  transparentColor: PD.Value<Color | null>(null, { isHidden: true }),
 };
 
 export type OutlineProps = PD.Values<typeof OutlineParams>;
@@ -69,7 +71,14 @@ export class OutlinePass {
     }
   }
 
-  update(camera: ICamera, props: OutlineProps, depthTextureTransparent: Texture, depthTextureOpaque: Texture) {
+  /** `ghosts`: the transparent depth holds ghosts of what clips cut, outlined as transparent objects are */
+  update(
+    camera: ICamera,
+    props: OutlineProps,
+    depthTextureTransparent: Texture,
+    depthTextureOpaque: Texture,
+    ghosts = false,
+  ) {
     let needsUpdate = false;
 
     const orthographic = camera.state.mode === 'orthographic' ? 1 : 0;
@@ -77,7 +86,7 @@ export class OutlinePass {
     const invProjection = this.renderable.values.uInvProjection.ref.value;
     Mat4.invert(invProjection, camera.projection);
 
-    const transparentOutline = props.includeTransparent ?? true;
+    const transparentOutline = (props.includeTransparent ?? true) || ghosts;
     const outlineScale = Math.max(1, Math.round(props.scale * this.graphics.pixelRatio)) - 1;
     const outlineThreshold = 50 * props.threshold * this.graphics.pixelRatio;
 

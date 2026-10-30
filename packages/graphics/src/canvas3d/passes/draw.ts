@@ -361,6 +361,39 @@ export class DrawPass {
     }
   }
 
+  /**
+   * The transparent depth, for the passes that read it, and the ghosts of what clips cut, for the outline pass alone
+   * (cellview.md §4.3): with no transparent object to draw, the transparent color is cleared, as the postprocessing
+   * blends it for the ghosts' outlines
+   */
+  private renderTransparentDepth(
+    b: PassBuilder,
+    renderer: Renderer,
+    camera: ICamera,
+    scene: Scene,
+    props: PostprocessingProps,
+  ) {
+    const transparent = PostprocessingPass.isTransparentDepthRequired(scene, props);
+    const ghosts = PostprocessingPass.isGhostDepthRequired(scene, props);
+    if (!transparent && !ghosts) return;
+    b.begin(this.depthTargetTransparent, { label: 'transparent depth' });
+    if (b.drawing) renderer.clearDepth(true);
+    if (transparent && scene.opacityAverage < 1) {
+      b.renderer({ name: 'depthTransparent' }, scene.primitives, () =>
+        renderer.renderDepthTransparent(scene.primitives, camera, this.depthTextureOpaque),
+      );
+    }
+    if (ghosts) {
+      b.renderer({ name: 'depthGhost' }, scene.primitives, () =>
+        renderer.renderDepthGhost(scene.primitives, camera, this.depthTextureOpaque),
+      );
+      if (scene.opacityAverage === 1 && b.drawing) {
+        b.begin(this.transparentColorTarget, { label: 'transparent clear' });
+        renderer.clear(false, false, true);
+      }
+    }
+  }
+
   private _renderDpoit(
     b: PassBuilder,
     renderer: Renderer,
@@ -383,15 +416,7 @@ export class DrawPass {
 
     this.depthTextureOpaque.detachFramebuffer(this.colorTarget.framebuffer, 'depth');
 
-    if (PostprocessingPass.isTransparentDepthRequired(scene, postprocessingProps)) {
-      b.begin(this.depthTargetTransparent, { label: 'transparent depth' });
-      if (b.drawing) renderer.clearDepth(true);
-      if (scene.opacityAverage < 1) {
-        b.renderer({ name: 'depthTransparent' }, scene.primitives, () =>
-          renderer.renderDepthTransparent(scene.primitives, camera, this.depthTextureOpaque),
-        );
-      }
-    }
+    this.renderTransparentDepth(b, renderer, camera, scene, postprocessingProps);
 
     // render transparent primitives
     const isPostprocessingEnabled = PostprocessingPass.isEnabled(scene, postprocessingProps);
@@ -463,15 +488,7 @@ export class DrawPass {
       b.renderer({ name: 'opaque' }, scene.primitives, () => renderer.renderOpaque(scene.primitives, camera));
     }
 
-    if (PostprocessingPass.isTransparentDepthRequired(scene, postprocessingProps)) {
-      b.begin(this.depthTargetTransparent, { label: 'transparent depth' });
-      if (b.drawing) renderer.clearDepth(true);
-      if (scene.opacityAverage < 1) {
-        b.renderer({ name: 'depthTransparent' }, scene.primitives, () =>
-          renderer.renderDepthTransparent(scene.primitives, camera, this.depthTextureOpaque),
-        );
-      }
-    }
+    this.renderTransparentDepth(b, renderer, camera, scene, postprocessingProps);
 
     // render transparent primitives
     const isPostprocessingEnabled = PostprocessingPass.isEnabled(scene, postprocessingProps);
@@ -565,15 +582,7 @@ export class DrawPass {
         b.begin(this.colorTarget, { label: 'transparent' });
       }
 
-      if (PostprocessingPass.isTransparentDepthRequired(scene, postprocessingProps)) {
-        b.begin(this.depthTargetTransparent, { label: 'transparent depth' });
-        if (b.drawing) renderer.clearDepth(true);
-        if (scene.opacityAverage < 1) {
-          b.renderer({ name: 'depthTransparent' }, scene.primitives, () =>
-            renderer.renderDepthTransparent(scene.primitives, camera, this.depthTextureOpaque),
-          );
-        }
-      }
+      this.renderTransparentDepth(b, renderer, camera, scene, postprocessingProps);
 
       // render transparent primitives
       const isPostprocessingEnabled = PostprocessingPass.isEnabled(scene, postprocessingProps);

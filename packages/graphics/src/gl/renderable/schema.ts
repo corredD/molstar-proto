@@ -711,6 +711,8 @@ export const BaseSchema = {
   uClipObjectFrame: MaterialUniformSpec('m4[]', Clip.MaxObjectCount, 'uClipObjectCount'),
   /** per clip object its half size, the type in `w`, negative where inverted (`Clip.Objects.shape`) */
   uClipObjectShape: MaterialUniformSpec('v4[]', Clip.MaxObjectCount, 'uClipObjectCount'),
+  /** the clip objects whose cut part is drawn as outlines (`Clip.Objects.ghost`), a bit an object: the ghost pass */
+  uClipObjectGhost: MaterialUniformSpec('i'),
 
   aInstance: AttributeSpec('float32', 1, 1),
   /**

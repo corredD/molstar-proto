@@ -38,13 +38,18 @@ export const clip_table = `
     // whether the row \`row\` cuts an instance at \`center\` placed at \`place\` (\`Clipping.isCut\`, OR-ed over the objects)
     bool clipTableTest(const in vec3 center, const in float row, const in vec3 place) {
         float r = clipRandom(place);
+        // in the ghost pass, cut unless a ghosted object it does not ignore applies (\`clipGhostless\`)
+        bool ghosted = false;
         for (int i = 0; i < uClipObjectCount; ++i) {
             if (i == uSolidInteriorClip) continue;
             vec4 c = read_tClipTable(row * 16.0 + float(i));
             int mode = int(c.r + 0.5);
             if (mode == 1) continue;
+            #if defined(dRenderVariant_depth)
+                if (!hasBit(uClipObjectGhost, clipBit(i))) ghosted = true;
+            #endif
             float d = clipObjectSD(center, uClipObjectFrame[i], uClipObjectShape[i]);
-            if (clipInverted(uClipObjectShape[i])) d = -d;
+            if (clipInverted(uClipObjectShape[i], i)) d = -d;
             bool inside = d <= 0.0;
             if (mode == 0) {
                 if (inside) return true;
@@ -54,6 +59,9 @@ export const clip_table = `
             bool passes = nd > 1.0 || r < c.b * nd;
             if (mode == 2 ? (inside && passes) : (inside || !passes)) return true;
         }
+        #if defined(dRenderVariant_depth)
+            if (uRenderMask == MaskGhost && !ghosted) return true;
+        #endif
         return false;
     }
 
@@ -106,10 +114,6 @@ int clipType(const in vec4 shape) {
     return int(abs(shape.w) + 0.5);
 }
 
-bool clipInverted(const in vec4 shape) {
-    return shape.w < 0.0;
-}
-
 float clipObjectSD(const in vec3 center, const in mat4 frame, const in vec4 shape) {
     return localSD(clipType(shape), (frame * vec4(center, 1.0)).xyz, shape.xyz);
 }
@@ -155,6 +159,30 @@ float clipObjectSD(const in vec3 center, const in mat4 frame, const in vec4 shap
 #endif
 
 #if defined(dClipObjects)
+    // whether clip object \`i\` of shape \`shape\` cuts what is outside: negative \`w\`; in the ghost pass (\`MaskGhost\`) a ghosted
+    // object is turned inside out, what it cuts kept and what it keeps cut (\`uClipObjectGhost\`, cellview.md §4.3)
+    bool clipInverted(const in vec4 shape, const in int i) {
+        bool inverted = shape.w < 0.0;
+        #if defined(dRenderVariant_depth)
+            if (uRenderMask == MaskGhost && !hasBit(uClipObjectGhost, clipBit(i))) return !inverted;
+        #endif
+        return inverted;
+    }
+
+    // in the ghost pass, whether no ghosted object applies (\`flag\`: the objects ignored): then nothing is a ghost
+    bool clipGhostless(const in int flag) {
+        #if defined(dRenderVariant_depth)
+            if (uRenderMask != MaskGhost) return false;
+            for (int i = 0; i < uClipObjectCount; ++i) {
+                bool applies = i != uSolidInteriorClip && (flag == 0 || hasBit(flag, clipBit(i)));
+                if (applies && !hasBit(uClipObjectGhost, clipBit(i))) return false;
+            }
+            return true;
+        #else
+            return false;
+        #endif
+    }
+
     bool clipIgnored(const in int index) {
         #if defined(dClipping)
             int flag = int(floor(vClipping * 255.0 + 0.5));
@@ -172,10 +200,11 @@ float clipObjectSD(const in vec3 center, const in mat4 frame, const in vec4 shap
             int flag = 0;
         #endif
 
+        if (clipGhostless(flag)) return true;
         for (int i = 0; i < uClipObjectCount; ++i) {
             if (i != uSolidInteriorClip && (flag == 0 || hasBit(flag, clipBit(i)))) {
                 bool test = clipObjectSD(center, uClipObjectFrame[i], uClipObjectShape[i]) <= 0.0;
-                if (test != clipInverted(uClipObjectShape[i])) {
+                if (test != clipInverted(uClipObjectShape[i], i)) {
                     return true;
                 }
             }
@@ -194,7 +223,7 @@ float clipObjectSD(const in vec3 center, const in mat4 frame, const in vec4 shap
         for (int i = 0; i < uClipObjectCount; ++i) {
             if (i != uSolidInteriorClip && (flag == 0 || hasBit(flag, clipBit(i)))) {
                 float sd = clipObjectSD(center, uClipObjectFrame[i], uClipObjectShape[i]);
-                d = min(d, clipInverted(uClipObjectShape[i]) ? -sd : sd);
+                d = min(d, clipInverted(uClipObjectShape[i], i) ? -sd : sd);
             }
         }
         return d;
@@ -279,13 +308,14 @@ float clipObjectSD(const in vec3 center, const in mat4 frame, const in vec4 shap
             int flag = 0;
         #endif
 
+        if (clipGhostless(flag)) return -1.0;
         float s = sStart;
         for (int k = 0; k <= uClipObjectCount; ++k) {
             float sNext = s;
             for (int i = 0; i < uClipObjectCount; ++i) {
                 if (i != uSolidInteriorClip && (flag == 0 || hasBit(flag, clipBit(i)))) {
                     vec2 iv = clipObjectInterval(uClipObjectFrame[i], uClipObjectShape[i], pFront, pBack);
-                    if (clipInverted(uClipObjectShape[i])) {
+                    if (clipInverted(uClipObjectShape[i], i)) {
                         if (iv.x > iv.y || s > iv.y) sNext = 1.0e6;
                         else if (s < iv.x) sNext = max(sNext, iv.x);
                     } else if (s > iv.x && s < iv.y) {
@@ -305,7 +335,7 @@ float clipObjectSD(const in vec3 center, const in mat4 frame, const in vec4 shap
         for (int i = 0; i < uClipObjectCount; ++i) {
             if (i == uSolidInteriorClip) {
                 vec2 iv = clipObjectInterval(uClipObjectFrame[i], uClipObjectShape[i], pFront, pBack);
-                if (iv.x < iv.y) s = clipInverted(uClipObjectShape[i]) != back ? iv.x : iv.y;
+                if (iv.x < iv.y) s = clipInverted(uClipObjectShape[i], i) != back ? iv.x : iv.y;
             }
         }
         return s;
@@ -316,7 +346,7 @@ float clipObjectSD(const in vec3 center, const in mat4 frame, const in vec4 shap
         for (int i = 0; i < uClipObjectCount; ++i) {
             if (i == uSolidInteriorClip) {
                 float sd = clipObjectSD(center, uClipObjectFrame[i], uClipObjectShape[i]);
-                d = clipInverted(uClipObjectShape[i]) ? -sd : sd;
+                d = clipInverted(uClipObjectShape[i], i) ? -sd : sd;
             }
         }
         return d;

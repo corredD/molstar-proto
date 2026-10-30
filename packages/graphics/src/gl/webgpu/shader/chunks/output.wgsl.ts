@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /**
@@ -203,6 +204,9 @@ export function depth_output_wgsl(materialOpacity = '1.0') {
             }
         #endif
         out.color = packDepthWithAlphaToRGBA(fragmentDepth, alpha);
+    } else if (depthRenderMask == MaskGhost) {
+        // the ghosts of what clips cut, faint: the outline pass draws their edges at twice this alpha (cellview.md §4.3)
+        out.color = packDepthWithAlphaToRGBA(fragmentDepth, GhostAlpha);
     } else {
         out.color = packDepthToRGBA(fragmentDepth);
     }

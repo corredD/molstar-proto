@@ -4,6 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Áron Samuel Kovács <aron.kovacs@mail.muni.cz>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { common } from './chunks/common.glsl.js';
@@ -179,7 +180,7 @@ void main(void) {
                     float fogFactor = smoothstep(uFogNear, uFogFar, viewDist);
                     float finalAlpha = max(transparentColor.a, finalOutlineAlpha * (1.0 - fogFactor));
                     transparentColor.a = finalAlpha;
-                    transparentColor.rgb = uOutlineColor * finalAlpha;
+                    transparentColor.rgb = uTransparentOutlineColor * finalAlpha;
                 }
             }
         #endif

@@ -33,7 +33,8 @@ export const ClippingSkill: ViewerSkill = {
     '  cylinder remove their inside; cone its inside) on the representations drawing a target (default: the selection),',
     '  or a node selector (volume > representation) for volumes and shapes; types narrows them (molecular-surface).',
     '- clipping.list gives the cuts by number; clipping.update moves (position), turns (normal or rotation), sizes',
-    '  (scale) or inverts one; clipping.apply turns one on or off for a representation (its ref, as the list gives it);',
+    '  (scale), inverts one or outlines what it cuts (ghost: drawn again as outlines only); clipping.apply turns one on',
+    '  or off for a representation (its ref, as the list gives it);',
     '  clipping.keep leaves atoms (a target; the selection by default) whole in a cut, clipping.release cuts them again;',
     '  clipping.show draws a cut in the scene (saved with it); clipping.remove and clipping.clear take them away.',
     '- clipping.settings: variant instance leaves out whole copies whose center is cut away (pixel cuts through), for',
@@ -50,7 +51,11 @@ export const ClippingSkill: ViewerSkill = {
       operation: 'clipping.add',
       description: 'Cuts representations with a shape to show their inside.',
     },
-    { id: 'change_cut', operation: 'clipping.update', description: 'Moves, turns, sizes or inverts a cut.' },
+    {
+      id: 'change_cut',
+      operation: 'clipping.update',
+      description: 'Moves, turns, sizes or inverts a cut, or outlines what it cuts (ghost).',
+    },
     {
       id: 'apply_cut',
       operation: 'clipping.apply',

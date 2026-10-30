@@ -1460,7 +1460,7 @@ function Clips(props: { subject: Subject }) {
 /**
  * A clip's properties (Ludo, 2026-10-28): its editor (handles, numbers, On top, remove, shape, invert: PR #14), then
  * What it cuts: every object or part it is given (each picks its row; × takes it off, one step; not the last one:
- * remove the clip instead), Cut also… (one step)
+ * remove the clip instead), Cut also… (one step), its Ghosts (Outline what it cuts, one step: cellview.md §4.3)
  */
 function ClipProperties(props: { subject: Subject }) {
   const { api, area, picked, parts } = props.subject;
@@ -1519,12 +1519,30 @@ function ClipProperties(props: { subject: Subject }) {
           }}
         />
       </Line>
+      <ClipGhosts api={api} tag={tag} cut={cut} />
       {/* each model or list it cuts that draws objects: its Clip whole, the same as in its own Clips */}
       <For each={wholes} by={(o) => `${o.ref}:${o.label}`}>
         {(o) => <ClipWhole api={api} particles={o.ref} label={`Clip whole: ${o.label}`} />}
       </For>
     </div>
   );
+}
+
+/**
+ * A clip's Ghosts: what it removes drawn again as outlines only (the canvas's outlines on; cellview.md §4.3), a switch
+ * as Invert's, one `clipping.update` a change
+ */
+function ClipGhosts(props: { api: ViewerApi; tag: string; cut: ReadonlyState<ClipCut | undefined> }) {
+  const { api, tag, cut } = props;
+  const form = new ParamsFormModel(
+    {
+      ghost: PD.Boolean(false, { label: 'Ghosts', description: 'Outline what it cuts: what it removes, as outlines' }),
+    },
+    undefined,
+    { onChange: (values) => void api.run('clipping.update', { tag, ghost: values.ghost }) },
+  );
+  bind(cut, (c) => c && form.load({ ghost: !!c.object.ghost }));
+  return <ParamsForm form={form} />;
 }
 
 /** Whether a clip on a node cuts it in a way (particles, and all of an object only where it cuts all of it) */

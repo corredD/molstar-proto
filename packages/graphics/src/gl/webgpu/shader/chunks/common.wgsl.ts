@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { depth_wgsl } from './depth.wgsl.js';
@@ -41,6 +42,9 @@ export const common_wgsl = /* wgsl */ `
 const MaskAll = 0;
 const MaskOpaque = 1;
 const MaskTransparent = 2;
+const MaskGhost = 3;
+/** The alpha of the ghost pass's depth (\`MaskGhost\`): the outline pass draws ghosts' edges at twice it */
+const GhostAlpha = 0.2;
 
 const MaxDpoitDepth = 99999.0; // NOTE constant also set in TypeScript
 const PI = 3.14159265;
