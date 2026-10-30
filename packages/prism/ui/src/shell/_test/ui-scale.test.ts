@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatUIScale, UIScaleModel, UIScales } from '../ui-scale.js';
 
-// The UI scale (styling.md §7): one CSS variable on the element the UI is themed by, in steps; nothing else written.
+// The UI scale (styling.md §6): one CSS variable on the element the UI is themed by, in steps; nothing else written.
 
 describe('UIScaleModel', () => {
   it('starts at 100 % and steps up and down, stopping at the ends', () => {

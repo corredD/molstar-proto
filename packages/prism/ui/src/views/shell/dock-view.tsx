@@ -229,7 +229,7 @@ export function FloatingDock(props: {
   }
   // A rail button's height at the rail's step (rail.ts; the CSS steps the buttons themselves): the panel's header takes
   // it, so the content starts where the rail's first button ends. Before the rail is measured, the normal step. At the
-  // UI scale (styling.md §7), as the CSS sizes the buttons.
+  // UI scale (styling.md §6), as the CSS sizes the buttons.
   const railHead = derive(
     [rail.height.asReadonly, shell.uiScale.scale],
     (h, s) => `${(h > 0 ? railStep(h) : RailSteps[0]).button * s}px`,

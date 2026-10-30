@@ -126,7 +126,7 @@ describe('the Settings tab', () => {
     const titles = [...host.querySelectorAll('section[aria-label]')].map((s) => s.getAttribute('aria-label'));
     expect(titles).toContain('Viewer');
     expect(titles).toContain('Behaviors');
-    // No canvas, no canvas groups: Appearance is last, with the UI's own rows only (the UI scale, prism-ui styling.md §7).
+    // No canvas, no canvas groups: Appearance is last, with the UI's own rows only (the UI scale, prism-ui styling.md §6).
     expect(titles.at(-1)).toBe('Appearance');
     // The first group (Viewer) is open: its switch is Undo for each step.
     const box = host.querySelector(

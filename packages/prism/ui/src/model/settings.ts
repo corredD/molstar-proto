@@ -12,7 +12,7 @@ import type { Child } from '../dom/jsx-types.js';
 import type { ParamsFormModel } from '../forms/params-form.js';
 
 /**
- * A row of a group that is not a param of its form: a setting of the UI itself (the UI scale, styling.md §7), shown
+ * A row of a group that is not a param of its form: a setting of the UI itself (the UI scale, styling.md §6), shown
  * before the form. The search finds it by its label and keywords, as it finds a param.
  */
 export interface SettingsRow {

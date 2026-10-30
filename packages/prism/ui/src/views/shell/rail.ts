@@ -65,7 +65,7 @@ const NoneHidden: ReadonlySet<string> = new Set();
 /**
  * What fits in a rail `height` px tall, at the step that height uses: all of it, or, when even the smallest step is too
  * tall, the entries of the highest `priority` numbers (the later in the rail when they are equal) are left out until the
- * rest and the More button fit. A height of 0 (not measured yet) hides nothing. At a UI `scale` (styling.md §7) the step
+ * rest and the More button fit. A height of 0 (not measured yet) hides nothing. At a UI `scale` (styling.md §6) the step
  * is still the height's (the CSS container queries pick it by the rail's px), and its buttons are `scale` times taller.
  */
 export function fitRail(entries: readonly RailEntry[], height: number, scale = 1): RailFit {

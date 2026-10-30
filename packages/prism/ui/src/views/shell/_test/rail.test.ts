@@ -46,7 +46,7 @@ describe('rail steps', () => {
     expect(queries.length).toBe(stepped.length);
     stepped.forEach((step, i) => {
       expect(Number(queries[i][1]) + 1).toBe(RailSteps[i].min);
-      // The step's size times the UI scale (styling.md §7), as `fitRail` counts it.
+      // The step's size times the UI scale (styling.md §6), as `fitRail` counts it.
       expect(queries[i][2]).toContain(`--msp-rail-button: calc(${step.button}px * var(--msp-ui-scale, 1))`);
       expect(queries[i][2]).toContain(
         `--msp-rail-button-captioned: calc(${step.captioned}px * var(--msp-ui-scale, 1))`,

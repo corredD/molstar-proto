@@ -205,7 +205,7 @@
     --msp-font-size-lg: calc(16px * var(--msp-ui-scale, 1));
     --msp-line-height: 1.4;
 
-    /* Size. Every size token is its 100 % size times the UI scale (styling.md §7: `--msp-ui-scale`, set by the shell on
+    /* Size. Every size token is its 100 % size times the UI scale (styling.md §6: `--msp-ui-scale`, set by the shell on
        the element the UI is themed by), so what sizes by tokens grows with it; 1px hairlines and shadows do not. */
     --msp-row-height: calc(32px * var(--msp-ui-scale, 1));
     --msp-control-height: calc(28px * var(--msp-ui-scale, 1));

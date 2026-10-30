@@ -162,7 +162,7 @@ export async function mountShell(core: ViewerCore, target: HTMLElement): Promise
     };
 
     const layout = spec.ui?.layout ?? {};
-    // The UI scale the person chose last (prism-ui styling.md §7), kept in the preferences as the theme is; a store that
+    // The UI scale the person chose last (prism-ui styling.md §6), kept in the preferences as the theme is; a store that
     // fails to read or write leaves it at 100 % for this session. On the root, as the theme: the size tokens under it
     // multiply by it, the canvas is not touched.
     const preferences = spec.persist?.preferences;
@@ -593,7 +593,7 @@ export async function mountShell(core: ViewerCore, target: HTMLElement): Promise
             return { message: '' };
           },
         },
-        // The UI scale (prism-ui styling.md §7), as Settings › Appearance steps it.
+        // The UI scale (prism-ui styling.md §6), as Settings › Appearance steps it.
         {
           id: 'view.ui-larger',
           title: 'Larger UI',

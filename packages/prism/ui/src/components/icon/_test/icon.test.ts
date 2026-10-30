@@ -82,7 +82,7 @@ describe('Icon', () => {
     expect(svg.hasAttribute('aria-hidden')).toBe(false);
   });
 
-  it('gives its size to CSS, so it follows the UI scale (styling.md §7)', () => {
+  it('gives its size to CSS, so it follows the UI scale (styling.md §6)', () => {
     const svg = Icon({ name: 'house', size: 14 });
     expect(svg.getAttribute('width')).toBe('14');
     expect(svg.style.getPropertyValue('--msp-icon-px')).toBe('14px');

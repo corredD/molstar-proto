@@ -28,7 +28,8 @@ states (`-accent`, `-accent-strong`, `-danger`, `-success`, `-warning`, `-info`,
 (`--msp-color-brand-1…4`, the logo's colors), glass (`--msp-glass-bg`, `-panel-bg`, `-filter`, `-edge`, `-shadow`), type
 (`--msp-font-*`, `--msp-line-height`), size (`--msp-row-height`, `--msp-control-height`, `--msp-label-width`,
 `--msp-radius-sm/md/lg`), elevation (`--msp-shadow-*`, `--msp-z-*`), motion (`--msp-motion-fast`, `-base`, `--msp-ease`,
-`--msp-ease-reveal`), the over-canvas ink (`--msp-ink*`), fades (`--msp-fade*`, registered in `reset.css`).
+`--msp-ease-reveal`), the over-canvas ink (`--msp-ink*`), fades (`--msp-fade*`, registered in `reset.css`). Every size
+token is its 100 % size times the UI scale (§6).
 
 - **Layout values are set inline by the shell**, not the theme: `--msp-dock-size`, `--msp-canvas-*` insets, the rail's
   `--msp-rail-*` steps. In compact mode fixed-size targets grow to `--msp-touch-target`.
@@ -182,3 +183,26 @@ content loads.
 - **Fonts and images** reserve their size; fonts have metric-compatible fallbacks.
 - **Check it**: record the interaction in the browser's performance panel (CPU throttled 4x): forced reflows, long style
   recalculations, long tasks. A story with a heavy view is the place to measure.
+
+## 6. UI scale
+
+How large the UI is drawn, for reading (Settings › Appearance › UI scale, − and +; View › Larger UI, Smaller UI, UI at
+100 %). The canvas is not touched: its picture, its pixel ratio and its labels are the renderer's; only its region gets
+smaller as the panels grow. Story: Overview › Foundations › UI scale.
+
+- **One variable, `--msp-ui-scale`**, on the element the UI is themed by (the shell's root, as `data-msp-theme`; never
+  `documentElement`: an embedding page keeps its own size). `UIScaleModel` (`shell/ui-scale.ts`) holds it, in steps (90,
+  100, 110, 125, 150, 175, 200 %); `ShellModel.uiScale` carries it to the views. Why one variable: a press restyles and
+  rebuilds nothing, and a view that sizes by tokens needs no code to follow.
+- **What scales**: every size token (`--msp-font-size-*`, `--msp-space-*`, `--msp-row-height`, `--msp-control-height`,
+  `--msp-label-width`, `--msp-icon-*`, `--msp-radius-md/lg`) is its 100 % size times the variable, and so is every box
+  size in px in a module (heights, widths, line heights, offsets, grid tracks: `calc(Npx * var(--msp-ui-scale, 1))`). An
+  icon hands its `size` to CSS (`--msp-icon-px`). **What does not**: 1px hairlines, borders, shadows, transforms, the
+  hit areas marked `off-scale`, and the sequence views (Seq\* draws them). A new size in px is written scaled.
+- **Whole pixels where JS places things by a size**: a virtual list's row (`--msp-list-row`, rounded: the list places
+  rows by index × the measured height, and a fraction would drift) and the rail's column (`--msp-rail-width`, as the
+  shell's layout puts the canvas beside it). The shell view scales its own px (the rail, the canvas edge, the corner
+  room) by the same state; the rail fits its buttons at the scale (`fitRail`: the step by the height, as the container
+  queries, the sizes scaled).
+- **A preference of the person's, not a setting of the plugin**: kept in the viewer's preferences as the theme is
+  (`uiScale`; a store that throws leaves 100 %), never in Canvas3D's props, a snapshot or the History.

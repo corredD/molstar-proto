@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { headlessViewer, until } from '../../_test/harness.js';
 import { settingsTab } from '../settings.js';
 
-// Settings › Appearance › UI scale (prism-ui styling.md §7): the shell's scale, − and + in the Appearance group, before
+// Settings › Appearance › UI scale (prism-ui styling.md §6): the shell's scale, − and + in the Appearance group, before
 // the canvas's params; a press changes the shell's scale and nothing of the plugin's.
 
 afterEach(() => {

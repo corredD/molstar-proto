@@ -124,7 +124,7 @@ export function ShellView(props: ShellViewProps) {
   // behind its lines, fading out below them (BandFadePx); the canvas' chrome goes below the lines.
   // What floats at the top (the sequence card, or the text of a band) takes this much: the snapshots and the canvas stack
   // go below it (a band's faded bottom is not in the way).
-  // The rail and the frame's margin at the UI scale (styling.md §7): the CSS sizes them by the tokens, which the scale
+  // The rail and the frame's margin at the UI scale (styling.md §6): the CSS sizes them by the tokens, which the scale
   // multiplies; the layout here follows. The rail is whole pixels (the canvas ends at it).
   const uiScale = shell.uiScale.scale;
   const railWidth = derive(uiScale, (s) => Math.round(RailWidth * s));

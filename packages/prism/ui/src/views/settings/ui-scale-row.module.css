@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-/* Settings › Appearance › UI scale (styling.md §7): laid out as a form's row, the label's column then − value +. */
+/* Settings › Appearance › UI scale (styling.md §6): laid out as a form's row, the label's column then − value +. */
 .row {
   display: grid;
   grid-template-columns: var(--msp-label-width) minmax(0, 1fr);

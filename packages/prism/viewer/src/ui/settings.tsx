@@ -82,7 +82,7 @@ function modelOf(
   api: ViewerApi,
   uiScale: UIScaleModel,
 ): SettingsModel {
-  // The UI's own settings, first in Appearance (prism-ui styling.md §7): not the plugin's, so not through `settings.set`
+  // The UI's own settings, first in Appearance (prism-ui styling.md §6): not the plugin's, so not through `settings.set`
   // nor a step in the History.
   const appearanceRows: readonly SettingsRow[] = [
     {

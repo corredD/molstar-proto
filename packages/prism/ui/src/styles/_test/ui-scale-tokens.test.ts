@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-// The UI scale (styling.md §7) is carried by the size tokens: each is its 100 % size times `--msp-ui-scale`, so a
+// The UI scale (styling.md §6) is carried by the size tokens: each is its 100 % size times `--msp-ui-scale`, so a
 // view that sizes by tokens grows with it and nothing else is written. A list row is a whole number of pixels at
 // every scale (a virtual list places rows by index × the measured height: a fraction would drift).
 

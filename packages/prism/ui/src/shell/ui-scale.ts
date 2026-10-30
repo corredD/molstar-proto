@@ -9,7 +9,7 @@ import type { ReadonlyState } from '../reactive/readonly-state.js';
 import { derive } from '../reactive/state.js';
 
 /**
- * The UI scale's steps (styling.md §7): 100 % and a few around it, more above (the point is a larger UI). Whole
+ * The UI scale's steps (styling.md §6): 100 % and a few around it, more above (the point is a larger UI). Whole
  * percents, so the value reads plainly; the list rows round to whole pixels in CSS whatever the step.
  */
 export const UIScales: readonly number[] = [0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
@@ -28,7 +28,7 @@ function nearestStep(value: unknown): number {
 }
 
 /**
- * The UI scale (styling.md §7): how large the UI is drawn, set as `--msp-ui-scale` on the element the UI is themed by
+ * The UI scale (styling.md §6): how large the UI is drawn, set as `--msp-ui-scale` on the element the UI is themed by
  * (as `ThemeModel` sets `data-msp-theme`). The size tokens multiply by it; the canvas is not touched (its picture, its
  * pixel ratio and its labels are the renderer's), only its region gets smaller as the panels grow.
  */

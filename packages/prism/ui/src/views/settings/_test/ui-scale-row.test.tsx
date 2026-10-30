@@ -15,7 +15,7 @@ import { UIScaleModel, UIScales } from '../../../shell/ui-scale.js';
 import { SettingsTab } from '../settings-tab.js';
 import { UIScaleRow } from '../ui-scale-row.js';
 
-// Settings › Appearance › UI scale (styling.md §7): − and + around the value, each disabled at its end; a row of a
+// Settings › Appearance › UI scale (styling.md §6): − and + around the value, each disabled at its end; a row of a
 // group that the search finds by its label, as it finds the form's params.
 
 const flush = () => new Promise((r) => setTimeout(r, 0));

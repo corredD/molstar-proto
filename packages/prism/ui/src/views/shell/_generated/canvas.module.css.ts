@@ -131,7 +131,8 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
   right: var(--msp-canvas-panel-right, calc(64px * var(--msp-ui-scale, 1)));
   bottom: calc(var(--msp-canvas-edge) + var(--msp-corner-room, 0px));
   z-index: var(--msp-z-overlay);
-  width: min(var(--msp-right-panel-width, calc(340px * var(--msp-ui-scale, 1))), calc(100% - calc(96px * var(--msp-ui-scale, 1))));
+  width: min(var(--msp-right-panel-width, calc(340px * var(--msp-ui-scale, 1))),
+    calc(100% - calc(96px * var(--msp-ui-scale, 1))));
   border-radius: var(--msp-radius-lg);
   contain: content;
   animation: msp-shell-canvas-card-in var(--msp-motion-base) var(--msp-ease);
@@ -437,7 +438,8 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 :where([data-mode="compact"]) .msp-shell-canvas-lead {
-  width: min(calc(320px * var(--msp-ui-scale, 1)), calc(100% - calc(36px * var(--msp-ui-scale, 1)) - 3 * var(--msp-canvas-edge)));
+  width: min(calc(320px * var(--msp-ui-scale, 1)),
+    calc(100% - calc(36px * var(--msp-ui-scale, 1)) - 3 * var(--msp-canvas-edge)));
 }
 
 .msp-shell-canvas-bottom {

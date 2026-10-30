@@ -13,7 +13,7 @@ import { formatUIScale, type UIScaleModel } from '../../shell/ui-scale.js';
 import { classes } from './_generated/ui-scale-row.module.css.js';
 
 /**
- * The UI scale's row (styling.md §7; Settings › Appearance): − and + around the value, each disabled at its end. A
+ * The UI scale's row (styling.md §6; Settings › Appearance): − and + around the value, each disabled at its end. A
  * press is one step, applied at once (a CSS variable: nothing is rebuilt).
  */
 export function UIScaleRow(props: { scale: UIScaleModel }) {

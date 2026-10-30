@@ -73,7 +73,7 @@ describe('the shell on a page', () => {
     mounted.dispose();
   });
 
-  // The UI scale (prism-ui styling.md §7): one variable on the shell's root, kept like the theme; never a canvas prop.
+  // The UI scale (prism-ui styling.md §6): one variable on the shell's root, kept like the theme; never a canvas prop.
   it('scales the UI by one variable on its root, keeps it, and leaves the canvas alone', async () => {
     const preferences = memoryStore();
     const c = await core(preferences);

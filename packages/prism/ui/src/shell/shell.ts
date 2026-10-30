@@ -147,7 +147,7 @@ export interface ShellOptions {
    */
   toolbar?: 'auto' | 'expanded' | 'collapsed';
   /**
-   * How large the UI is drawn (styling.md §7): the host makes it (with the person's kept value) and sets it on the
+   * How large the UI is drawn (styling.md §6): the host makes it (with the person's kept value) and sets it on the
    * element the UI is themed by (`UIScaleModel.applyTo`); the shell's view scales its own px by it (the rail, the
    * canvas edge). Absent, 100 %.
    */
@@ -354,7 +354,7 @@ export class ShellModel extends ReactiveModel {
   readonly #compactWidth: number;
   readonly #toolbarOption: 'auto' | 'expanded' | 'collapsed';
   readonly #toolbarCollapsed = observableState(false);
-  /** How large the UI is drawn (styling.md §7; `ShellOptions.uiScale`). */
+  /** How large the UI is drawn (styling.md §6; `ShellOptions.uiScale`). */
   readonly uiScale: UIScaleModel;
 
   constructor(options: ShellOptions = {}) {
