@@ -27,13 +27,11 @@ name no extension (upstreamable later, when Ludo says so).
 
 - **3. Clips in a category of their own**: built (lane `clips-category`): a Clips category, a clip's What it cuts, a
   node's Clips, Add clip… with the scene's clips.
-- **4. Graded cuts per part, and a part shown in part** (library and app; after 3, its library half now). Per (clip,
-  object or part): keeps a layer (cellVIEW's +), cuts it, cuts it wider (−), with a band in Å and fuzziness (thins out
-  toward the band's edge, the same instances every frame: a stable hash of the instance), _spec/cellview.md §4.1. The
-  per-part mapping becomes a table (clip × part) in Mol\*'s instance clip, which lifts the 6 per-part cuts. With the
-  same hash, Look › Shown (%) on a group, an entity or a target. Check: the GradedCut and ShownInPart stories' controls
-  in the app; set the membrane to Keeps a layer and see a layer kept on the cut's face; raise fuzziness and see it thin;
-  turn the camera and see the same instances; Shown 30 % on the capsid thins it, the same ones at every share.
+- **4. Graded cuts per part, and a part shown in part**: built (library: lane `graded-cuts`; app: lane
+  `graded-cuts-ui`): a clip's What it cuts and a node's Clips give each object or part of particles its way (keeps a
+  layer, cuts it, cuts it wider, band, fuzziness); a graded way switches the cuts to instance; Look › Shown on a group,
+  an entity or a target. Left: the aperture cut, the cut's 2D preview, graded ways on structures (pixel only),
+  precompiling the `dClipTable` programs.
 - **6. Measure: do hidden particles cost a frame?** (library, a measurement; now). On WebGPU, CellPack MG with 90 %
   hidden against none: if close, the GPU cull skips hidden instances (a visibility table). Check: the numbers in the
   lane's progress file; if built, hiding most of a model makes it faster.
