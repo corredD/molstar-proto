@@ -471,7 +471,7 @@ export class ExplorerApi extends ApiArea {
         ['cut', 'Cuts it'],
         ['wider', 'Cuts it wider'],
       ]),
-      band: PD.Numeric(60, { min: 0, max: 1000, step: 1 }, { description: "The band's width, Å" }),
+      band: PD.Numeric(60, { min: 5, max: 250, step: 1 }, { description: "The band's width, Å" }),
       fuzziness: PD.Numeric(
         0,
         { min: 0, max: 1, step: 0.01 },
@@ -481,13 +481,15 @@ export class ExplorerApi extends ApiArea {
     run: ({ tag, node, mode, band, fuzziness }, ctx) => setWay(ctx, tag, node, { mode, band, fuzziness }),
   });
 
-  /** The share of a part's particles shown (Look › Shown: its layer's), 1 when all; following the layers while watched */
+  /**
+   * The share of a part's particles shown (Look › Shown), 1 when all: the lowest share of the layers holding all of it
+   * (its own, a group's it is in, the model's: Prism thins over every layer, so the lowest wins); following the layers
+   * while watched
+   */
   shownState(node: NodeRef): ReadonlyState<number> {
     const state = this.ctx.plugin.state.data;
-    const selector = 'particles' in node ? node.particles : undefined;
-    const key = (s: { entities?: readonly number[]; compartments?: readonly number[]; targets?: readonly number[] }) =>
-      [s.entities, s.compartments, s.targets].map((ids) => [...(ids ?? [])].sort((a, b) => a - b).join(',')).join('|');
-    const wanted = selector ? key(selector) : '';
+    const kind = 'particles' in node ? kindOf(node.particles) : undefined;
+    const ids = 'particles' in node && kind ? (node.particles[kind] ?? []) : [];
     return watchedState(
       () => {
         for (const cell of clippableUnder(state, node.ref)) {
@@ -496,8 +498,16 @@ export class ExplorerApi extends ApiArea {
             StateSelection.Generators.ofTransformer(ParticleRepresentation3DLayers, cell.transform.ref),
           )[0];
           const all = (layers?.transform.params as { layers?: readonly ParticleLayerProps[] } | undefined)?.layers;
-          const layer = all?.find((l) => key(l) === wanted);
-          return layer?.shown ?? 1;
+          let shown = 1;
+          for (const l of all ?? []) {
+            if (l.shown === null || l.shown === undefined || l.shown >= shown) continue;
+            const some = !!(l.entities.length || l.compartments.length || l.targets.length);
+            // a layer of every particle, or of this kind of ids only, holding all of the part's
+            const others = (['entities', 'compartments', 'targets'] as const).some((k) => k !== kind && l[k].length);
+            if (some && (!kind || others || !ids.every((id) => l[kind].includes(id)))) continue;
+            shown = l.shown;
+          }
+          return shown;
         }
         return 1;
       },
