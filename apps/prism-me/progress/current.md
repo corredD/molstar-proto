@@ -9,20 +9,17 @@ is not built is [../TODO.md](../TODO.md).
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
   parallel; merged in this order (each merges `origin/prism-me` before its PR):
-  - **1. Graphics modes change the LOD** (`me/lod-modes`, `~/prism-me-lanes/lod-modes`): PR #16, reviewed, checked with
-    real GL on WebGPU and WebGL2 (a second bug found there: a list with fibers never lit a mode); waits on Ludo.
+  - 1. Graphics modes change the LOD: merged (PR #16).
   - **6. Do hidden particles cost a frame?** (`me/hidden-cost`, a measurement): PR #17. Yes: CellPack MG 89 % hidden is
     slower than none hidden, 8-13× the same removed (a hidden instance is transparency 1, still drawn and blended). Two
     steps proposed, nothing built: hidden left out of the transparency averages (~15 lines), then a hidden bit in the
     GPU cull (~60 + tests); waits on Ludo.
   - **4. Graded cuts, the library half** (`me/graded-cuts`): PR #20, reviewed (2 must-fix, 2 should-fix fixed), checked
     with real GL on WebGPU and WebGL2 through the API; a clipping table per part (16 clip objects), keep / cut / wider
-    with band and fuzziness, Shown; a shared-empty-array bug fixed on the way; graded ways need the instance clip (Prism
-    defaults to pixel: Ludo's call for the app half); waits on Ludo. The app half after 3.
-  - **2 + 5. The tree's eye and ⋯, and Show only** (`me/tree-eyes-2`: the fork already had a `me/tree-eyes` of
-    2026-10-27, two commits on part eyes, no PR; Ludo keeps or deletes it): PR #19, reviewed (4 must-fix, 4 should-fix
-    fixed), checked with real GL on WebGPU and WebGL2; waits on Ludo. PR #18 then merges it (conflicts in the specs,
-    `rows.scaling.ts`).
+    with band and fuzziness, Shown; a shared-empty-array bug fixed on the way; graded ways need the instance clip (Ludo,
+    2026-10-29: the app switches a cut to instance when a part gets a graded way); waits on Ludo. The app half after 3.
+  - 2 + 5. The tree's eye and ⋯, and Show only: merged (PR #19). The fork's older `me/tree-eyes` (2026-10-27): Ludo to
+    decide.
   - **3. Clips in a category of their own** (`me/clips-category`): PR #18, reviewed, checked with real GL on WebGPU and
     WebGL2; over its size stop (~+780 against ~700, review fixes; the coordinator let it open); a Prism commit
     (`clipping.release` takes a target); merges after 2 + 5; waits on Ludo.
