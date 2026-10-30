@@ -1465,23 +1465,22 @@ function ClipProperties(props: { subject: Subject }) {
   );
 }
 
-/** A clip's Ghosts: what it removes drawn again as outlines only (the canvas's outlines on), a press one step */
+/**
+ * A clip's Ghosts: what it removes drawn again as outlines only (the canvas's outlines on; cellview.md §4.3), a switch
+ * as Invert's, one `clipping.update` a change
+ */
 function ClipGhosts(props: { api: ViewerApi; tag: string }) {
   const { api, tag } = props;
-  const on = mapState(api.clipping.cuts, (all) => !!all.find((c) => c.object.tag === tag)?.object.ghost);
-  return (
-    <Line label="Ghosts">
-      <Button
-        size="sm"
-        variant="ghost"
-        title="What it removes, drawn as outlines (context)"
-        pressed={on}
-        onClick={() => void api.run('clipping.update', { tag, ghost: !on.value })}
-      >
-        Outline what it cuts
-      </Button>
-    </Line>
+  const form = new ParamsFormModel(
+    {
+      ghost: PD.Boolean(false, { label: 'Ghosts', description: 'Outline what it cuts: what it removes, as outlines' }),
+    },
+    undefined,
+    { onChange: (values) => void api.run('clipping.update', { tag, ghost: values.ghost }) },
   );
+  const cut = mapState(api.clipping.cuts, (all) => all.find((c) => c.object.tag === tag));
+  bind(cut, (c) => c && form.load({ ghost: !!c.object.ghost }));
+  return <ParamsForm form={form} />;
 }
 
 /** An object or part a clip cuts, or a clip on a node: its name (a click picks its row), then × (no longer cut) */

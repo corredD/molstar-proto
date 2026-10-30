@@ -60,20 +60,21 @@ describe("a clip's Ghosts", () => {
     const header = () => host.querySelector<HTMLElement>('[data-section="clip"]')?.querySelector('button');
     await until(() => !!header());
     if (header()!.getAttribute('aria-expanded') !== 'true') header()!.click();
+    // the switch labelled Ghosts (Invert's is another)
     const toggle = () =>
-      Array.from(host.querySelectorAll<HTMLButtonElement>('[data-section="clip"] button')).find(
-        (b) => b.textContent === 'Outline what it cuts',
+      Array.from(host.querySelectorAll<HTMLButtonElement>('[data-section="clip"] [role=switch]')).find(
+        (b) => document.getElementById(b.getAttribute('aria-labelledby') ?? '')?.textContent === 'Ghosts',
       );
     await until(() => !!toggle());
 
     const ghost = () => !!v.api.clipping.cuts.value[0].object.ghost;
     const steps = () => v.api.history.steps.value.length;
     const n = steps();
-    expect(toggle()!.getAttribute('aria-pressed')).toBe('false');
+    expect(toggle()!.getAttribute('aria-checked')).toBe('false');
     toggle()!.click();
     await until(ghost);
     expect(steps()).toBe(n + 1);
-    await until(() => toggle()!.getAttribute('aria-pressed') === 'true');
+    await until(() => toggle()!.getAttribute('aria-checked') === 'true');
 
     toggle()!.click();
     await until(() => !ghost());
