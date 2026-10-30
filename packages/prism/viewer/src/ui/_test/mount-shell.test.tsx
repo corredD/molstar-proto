@@ -83,19 +83,32 @@ describe('the shell on a page', () => {
     const settingsBefore = JSON.stringify(c.sources.settings.groups.value.map((g) => g.values));
     expect(mounted.root.style.getPropertyValue('--msp-ui-scale')).toBe('');
     expect(preferences.values.has('uiScale')).toBe(false);
+    // The canvas, as if it had started (jsdom has no WebGL): its props and its context's (the pixel ratio) watched.
+    const canvasProps = vi.fn();
+    const contextProps = vi.fn();
+    Object.defineProperty(c.plugin, 'canvas3d', { value: { setProps: canvasProps }, configurable: true });
+    Object.defineProperty(c.plugin, 'canvas3dContext', {
+      value: { setProps: contextProps, pixelScale: 1 },
+      configurable: true,
+    });
+    const setCanvas = vi.spyOn(c.plugin, 'setCanvas3DProps');
+    const setContext = vi.spyOn(c.plugin, 'setCanvas3DContextProps');
     c.managers.commands.open('view.ui-larger');
     c.managers.commands.open('view.ui-larger');
     await new Promise((r) => setTimeout(r, 0));
+    // The 3D is not touched: no canvas prop, no context prop (the pixel ratio among them), by any path.
+    expect(canvasProps).not.toHaveBeenCalled();
+    expect(contextProps).not.toHaveBeenCalled();
+    expect(setCanvas).not.toHaveBeenCalled();
+    expect(setContext).not.toHaveBeenCalled();
+    delete (c.plugin as { canvas3d?: unknown }).canvas3d;
+    delete (c.plugin as { canvas3dContext?: unknown }).canvas3dContext;
     const scale = mounted.shell.uiScale.value;
     expect(scale).toBeGreaterThan(1);
     expect(mounted.root.style.getPropertyValue('--msp-ui-scale')).toBe(String(scale));
     expect(preferences.values.get('uiScale')).toBe(scale);
-    // Not a setting of the plugin's: the settings (the canvas's props among them) are as they were, and the canvas host
-    // keeps no style of it.
+    // Not a setting of the plugin's: the settings are as they were.
     expect(JSON.stringify(c.sources.settings.groups.value.map((g) => g.values))).toBe(settingsBefore);
-    expect(mounted.root.querySelector<HTMLElement>('[data-msp-canvas]')?.style.getPropertyValue('--msp-ui-scale')).toBe(
-      '',
-    );
     mounted.dispose();
 
     // A new shell reads it back.
