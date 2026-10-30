@@ -87,6 +87,12 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | Measure a distance between atoms, residues, chains, instances, particles, volume voxels: in selection mode, ⌘/Ctrl+click two points                                                | Done     | `stage.distance`, `stage.editDistance`; a row under the first point; outside selection mode a hint says to turn it on                  |
 | Commands for the agent and ⌘K                                                                                                                                                      | Done     | the three areas' commands and skills                                                                                                   |
 
+## Interface (Prism)
+
+| Feature                                                                                         | Status | How                                                                                                        |
+| ----------------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
+| UI scale: the whole UI larger (90–200 %), the 3D untouched; Settings › Appearance − and +, kept | Done   | Prism's `UIScaleModel`, `view.ui-larger` / `-smaller` / `-reset` (prism-ui styling.md §6, lane `ui-scale`) |
+
 ## Known issues found on the way (Prism, upstream)
 
 - Home's "Current session" says "Nothing loaded" when only particles are loaded.
