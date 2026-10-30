@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -103,6 +104,25 @@ describe('merged', () => {
     expect(SegmentedArray.changedRanges(segmented, { array: segmented, versions: before })).toEqual([3 * 4, 5 * 4]);
     const pg = SegmentedArray.flatten(segmented);
     expect(Array.from(pg.subarray(3 * 4, 3 * 4 + 4))).toEqual([3, 0, 0, 0]);
+  });
+
+  it('a member with every instance hidden does not make the merged object transparent', () => {
+    const [a, b] = createMembers();
+    const merged = createMergedRenderObject([a, b]);
+    const averages = (x: number, y: number) => {
+      ValueCell.update(a.values.transparencyAverage, x);
+      ValueCell.update(b.values.transparencyAverage, y);
+      merged.merged.sync();
+      return merged.values.transparencyAverage.ref.value;
+    };
+    // a is hidden (average 1), b is shown and opaque
+    expect(averages(1, 0)).toBe(0);
+    // b has a transparency of its own
+    expect(averages(1, 0.5)).toBe(0.5);
+    // nothing is left shown
+    expect(averages(1, 1)).toBe(1);
+    // no member hidden: the weighted mean, as before (both members weigh the same)
+    expect(averages(0.5, 0)).toBeCloseTo(0.25);
   });
 
   it('points', () => {

@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { OcclusionPyramid } from '../compute/cell-cull.js';
@@ -722,17 +723,25 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
     let wiggleAverage = 0;
     let hasReflection = false;
     let weight = 0;
+    // a member of 1 has every instance hidden: not counted, as the instances hidden in a member are
+    let shownWeight = 0;
     for (let i = 0; i < n; ++i) {
       const v = members[i];
       const w = Math.max(1, v.instanceCount.ref.value * v.uGroupCount.ref.value);
-      transparencyAverage += v.transparencyAverage.ref.value * w;
+      if (v.transparencyAverage.ref.value < 1) {
+        transparencyAverage += v.transparencyAverage.ref.value * w;
+        shownWeight += w;
+      }
       emissiveAverage += v.emissiveAverage.ref.value * w;
       wiggleAverage += v.wiggleAverage.ref.value * w;
       transparencyMin = Math.min(transparencyMin, v.transparencyMin.ref.value);
       hasReflection = hasReflection || v.hasReflection.ref.value;
       weight += w;
     }
-    ValueCell.updateIfChanged(own.transparencyAverage, weight > 0 ? transparencyAverage / weight : 0);
+    ValueCell.updateIfChanged(
+      own.transparencyAverage,
+      shownWeight > 0 ? transparencyAverage / shownWeight : weight > 0 ? 1 : 0,
+    );
     ValueCell.updateIfChanged(own.transparencyMin, transparencyMin);
     ValueCell.updateIfChanged(own.emissiveAverage, weight > 0 ? emissiveAverage / weight : 0);
     ValueCell.updateIfChanged(own.wiggleAverage, weight > 0 ? wiggleAverage / weight : 0);

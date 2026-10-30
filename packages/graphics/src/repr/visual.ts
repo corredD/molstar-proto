@@ -491,7 +491,9 @@ namespace Visual {
     }
     // cleared: all of it changed
     TextureChanges.update(tTransparency, clear ? undefined : ranges);
-    ValueCell.updateIfChanged(transparencyAverage, getTransparencyAverage(array, count));
+    // hidden (255) only where a layer's 1 is: per instance, at a theme strength of 1 (`setThemeStrength` follows it)
+    const hidden = instanceGranularity.ref.value && renderObject.values.uTransparencyStrength.ref.value === 1;
+    ValueCell.updateIfChanged(transparencyAverage, getTransparencyAverage(array, count, hidden));
     ValueCell.updateIfChanged(transparencyMin, getTransparencyMin(array, count));
     ValueCell.updateIfChanged(dTransparency, transparency.layers.length > 0);
 
@@ -818,7 +820,17 @@ namespace Visual {
   ) {
     if (renderObject) {
       ValueCell.updateIfChanged(renderObject.values.uOverpaintStrength, strength.overpaint);
-      ValueCell.updateIfChanged(renderObject.values.uTransparencyStrength, strength.transparency);
+      const { uTransparencyStrength, tTransparency, transparencyAverage, uInstanceGranularity } = renderObject.values;
+      if ((uTransparencyStrength.ref.value === 1) !== (strength.transparency === 1) && uInstanceGranularity.ref.value) {
+        // what is hidden changes with the strength: the average follows
+        const { array } = tTransparency.ref.value;
+        const count = renderObject.values.instanceCount.ref.value;
+        ValueCell.updateIfChanged(
+          transparencyAverage,
+          getTransparencyAverage(array, count, strength.transparency === 1),
+        );
+      }
+      ValueCell.updateIfChanged(uTransparencyStrength, strength.transparency);
       ValueCell.updateIfChanged(renderObject.values.uEmissiveStrength, strength.emissive);
       ValueCell.updateIfChanged(renderObject.values.uSubstanceStrength, strength.substance);
       ValueCell.updateIfChanged(renderObject.values.uWiggleStrength, strength.wiggle);

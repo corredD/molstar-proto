@@ -277,6 +277,15 @@ describe('draw table', () => {
     expect(c.transparencyMin[sb]).toBe(0.5);
     expect(c.opaque[sb]).toBe(1);
 
+    // every instance hidden (average 1): drawn by no pass, so it does not lower the scene's opacity
+    ValueCell.update(a.values.uAlpha, 1);
+    ValueCell.update(a.values.transparencyAverage, 1);
+    table.refresh();
+    expect(c.opacity[sa]).toBe(1);
+    expect(c.opaque[sa]).toBe(0);
+    ValueCell.update(a.values.transparencyAverage, 0.5);
+    table.refresh();
+
     expect(row(table, a).facts & DrawFact.Animated).toBe(0);
     ValueCell.update(a.values.uWiggleAmplitude, 1);
     ValueCell.update(a.values.uWiggleSpeed, 1);
