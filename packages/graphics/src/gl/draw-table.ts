@@ -61,7 +61,7 @@ export enum DrawFact {
   SingleSided = 1 << 22,
   /** wiggling (`uWiggleAmplitude` or `wiggleAverage`, with speed and frequency) or tumbling: drawn anew per frame */
   Animated = 1 << 23,
-  /** `uClipObjectGhost`: a clip object whose cut part is drawn as outlines (the ghost pass) */
+  /** `uClipObjectGhost` (not an image, text or direct volume): a clip object whose cut part is drawn as outlines */
   Ghost = 1 << 24,
 }
 
@@ -188,6 +188,9 @@ export function getCheckFacts(values: Values): number {
   if (geometryType === 'directVolume') f |= DrawFact.DirectVolume;
   if (geometryType === 'text' || geometryType === 'image') f |= DrawFact.TextOrImage;
   if (getValue(values, 'dPointStyle') === 'fuzzy') f |= DrawFact.FuzzyPoints;
+  // images, text and direct volumes write no ghost depth (their own depth outputs): never ghosts
+  const ghostable = geometryType !== 'directVolume' && geometryType !== 'text' && geometryType !== 'image';
+  if (ghostable && getValue(values, 'uClipObjectGhost')) f |= DrawFact.Ghost;
   const xray = getValue(values, 'dXrayShaded');
   if (xray === 'on' || xray === 'inverted') f |= DrawFact.Xray;
   const backfaces = getValue(values, 'dTransparentBackfaces');
@@ -198,7 +201,6 @@ export function getCheckFacts(values: Values): number {
   else if (doubleSided !== undefined) f |= DrawFact.SingleSided;
   if (getValue(values, 'dFlipSided')) f |= DrawFact.FlipSided;
   if (getValue(values, 'hasReflection')) f |= DrawFact.HasReflection;
-  if (getValue(values, 'uClipObjectGhost')) f |= DrawFact.Ghost;
   if ((geometryType === 'mesh' || geometryType === 'textureMesh') && getValue(values, 'dSolidInterior')) {
     f |= DrawFact.SolidInterior;
   }

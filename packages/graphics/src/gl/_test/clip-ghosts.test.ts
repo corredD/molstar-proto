@@ -66,6 +66,12 @@ describe('clip ghosts', () => {
     expect(checkOpaque(facts(cutPoints(false, true)), DrawState.Visible)).toBe(true);
     expect(checkGhost(facts(cutPoints(false, undefined)), DrawState.Visible)).toBe(false);
     expect(facts(cutPoints()) & DrawFact.Ghost).toBe(0);
+    // images, text and direct volumes have no ghost depth output: never in the ghost pass
+    for (const type of ['image', 'text', 'directVolume']) {
+      const o = cutPoints(true);
+      ValueCell.update(o.values.dGeometryType as ValueCell<string>, type);
+      expect(facts(o) & DrawFact.Ghost).toBe(0);
+    }
   });
 
   it('the scene has ghosts while a visible object has a ghosted clip object', () => {
