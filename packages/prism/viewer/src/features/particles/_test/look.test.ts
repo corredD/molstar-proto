@@ -289,8 +289,12 @@ describe('particles.look', () => {
       { tag, ...ids([1]), mode: 'keep', band: 40, fuzziness: 0.5 },
       { tag, ...ids([2]), mode: 'wider', band: 80, fuzziness: 0 },
     ]);
-    // the cut reads back every part
-    expect(findCuts(v.plugin)[0].particles?.selector).toMatchObject({ targets: [1, 2] });
+    // the cut reads back its first part (the one `clipping.add` made) and every part, counted as their union
+    expect(findCuts(v.plugin)[0].particles).toMatchObject({
+      selector: ids([1]),
+      parts: [ids([1]), ids([2])],
+      count: 2,
+    });
     expect(await run({ cuts: { add: [{ tag, targets: [2], mode: 'wider', band: 80 }] } })).toMatchObject({
       unchanged: true,
     });
@@ -312,5 +316,28 @@ describe('particles.look', () => {
     const clipping = (list(v).representations[0].cell.obj as any).data.repr.state.clipping;
     // eight objects, each a cell of the rows: none left out
     expect(clipping.table.every((row: unknown[]) => row.filter(Boolean).length === 8)).toBe(true);
+  });
+
+  it("counts a cut's parts as their union, a part of every particle counting them all", async () => {
+    const v = await create();
+    const run = (p: Record<string, unknown>) => v.api.run('particles.look', p);
+    const node = `#${list(v).cell.transform.ref}`;
+    const cut = ok<Cut>(await v.api.clipping.add({ shape: 'plane', node, particles: { targets: [1] } }));
+    const tag = cut.object.tag!;
+    // targets 0, 1, 2, 3, 3: target 3 and target 0 are three particles, not their intersection (none)
+    expectOk(
+      await run({
+        cuts: {
+          add: [
+            { tag, targets: [3] },
+            { tag, targets: [0] },
+          ],
+        },
+      }),
+    );
+    expect(findCuts(v.plugin)[0].particles?.count).toBe(4);
+    // a part of every particle (an empty selector): all five
+    expectOk(await run({ cuts: { add: [{ tag }] } }));
+    expect(findCuts(v.plugin)[0].particles?.count).toBe(5);
   });
 });

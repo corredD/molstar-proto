@@ -47,12 +47,23 @@ function layersCell(state: State, reprRef: string): StateObjectCell | undefined 
 const cutsIn = (cell: StateObjectCell | undefined) =>
   ((cell?.transform.params as { cuts?: ParticleCutProps[] } | undefined)?.cuts ?? []) as ParticleCutProps[];
 
-/** The particles the cut tagged `tag` cuts on a representation, if of some only: every part of it, one selector */
-export function particleCutOf(state: State, repr: StateObjectCell, tag: string): ParticleSelector | undefined {
+/** The parts of the cut tagged `tag` on a representation (its particles, a selector each), if of some only */
+export function particleCutOf(state: State, repr: StateObjectCell, tag: string): ParticleSelector[] | undefined {
   const parts = cutsIn(layersCell(state, repr.transform.ref)).filter((x) => x.tag === tag);
-  if (!parts.length) return undefined;
-  const union = (k: keyof ParticleSelector) => Array.from(new Set(parts.flatMap((p) => p[k]))).sort((a, b) => a - b);
-  return { entities: union('entities'), compartments: union('compartments'), targets: union('targets') };
+  return parts.length ? parts.map(particleSelector) : undefined;
+}
+
+/**
+ * What the parts of a cut cut: its first part's selector (the one `clipping.add` made), every part, and how many
+ * particles they pick together (their union: a selector intersects its kinds) and in words
+ */
+export function particleCutInWords(particles: ParticleList, parts: readonly ParticleSelector[]) {
+  const selector = parts[0];
+  if (parts.length === 1) return { selector, parts, ...particlesInWords(particles, selector) };
+  let union = Particle.selectLoci(particles, parts[0]).indices;
+  for (let i = 1; i < parts.length; ++i)
+    union = OrderedSet.union(union, Particle.selectLoci(particles, parts[i]).indices);
+  return { selector, parts, count: OrderedSet.size(union), label: `${parts.length} parts` };
 }
 
 /** How many particles a selector picks, and in words (an entity's or a target's name when one) */
