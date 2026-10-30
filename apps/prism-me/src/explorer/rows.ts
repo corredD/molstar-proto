@@ -12,7 +12,7 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { IconName } from '@molstar/prism-ui';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import type { Category, ExplorerApi, NodeRef, SceneObject } from './operations.js';
-import { type Ids, kindOf } from './clips.js';
+import { type Ids, isCover, kindOf, PlainCut, type Way, wayOfRecord } from './clips.js';
 import { filterRows, type TreeRowView } from './tree-view.js';
 
 // The rows of the explorer's tree (_spec/ui.md §3), flat, from the scene's objects and the parts the mesoscale and
@@ -60,6 +60,8 @@ export interface ClipUse {
   /** Its name with its parent's (envelope › membrane), an object's alone */
   readonly label: string;
   readonly node: NodeRef;
+  /** On particles: how the clip cuts it (graded ways, cellVIEW's; atoms and structures are cut plainly) */
+  readonly way?: Way;
 }
 
 /** Prism's cut shapes, as the tree names them */
@@ -686,13 +688,49 @@ export function whatItCuts(area: ExplorerApi, cut: Cut, objects: readonly SceneO
   for (const o of objects) {
     const of = area.cutOf(cut, o.ref);
     if (!of) continue;
-    const some = of.particles
-      ? particleUses(o, parts.get(o.ref), of.particles)
-      : of.atoms
-        ? atomUses(area, cut, o)
-        : undefined;
+    const whole: ClipUse = { key: `o:${o.ref}`, label: o.label, node: { ref: o.ref } };
+    if (of.particled || of.particles) {
+      // a row a record (Prism's, a part each), with its way; a later record's row over an earlier one's
+      const rows = new Map<string, ClipUse>();
+      const records: readonly (Ids & Way)[] = of.records?.length
+        ? of.records
+        : of.particles
+          ? [{ ...of.particles, ...PlainCut }]
+          : [];
+      // the records of one way as one (the union of their ids), in the order of each way's last record: the model's
+      // groups walked once a way, not once a record (a clip given many targets one at a time has a record each)
+      const byWay = new Map<string, { way: Way; ids: Record<keyof Ids, Set<number>>; all: boolean; last: number }>();
+      records.forEach((r, i) => {
+        const key = `${r.mode}:${r.band}:${r.fuzziness}`;
+        let g = byWay.get(key);
+        if (!g) {
+          g = {
+            way: wayOfRecord(r),
+            ids: { entities: new Set(), compartments: new Set(), targets: new Set() },
+            all: false,
+            last: i,
+          };
+          byWay.set(key, g);
+        }
+        g.last = i;
+        if (isCover(r)) g.all = true;
+        for (const k of ['entities', 'compartments', 'targets'] as const) for (const id of r[k]) g.ids[k].add(id);
+      });
+      for (const g of [...byWay.values()].sort((a, b) => a.last - b.last)) {
+        const ids = {
+          entities: [...g.ids.entities],
+          compartments: [...g.ids.compartments],
+          targets: [...g.ids.targets],
+        };
+        const some = g.all || isCover(ids) ? undefined : particleUses(o, parts.get(o.ref), ids);
+        for (const u of some?.length ? some : [whole]) rows.set(u.key, { ...u, way: g.way });
+      }
+      out.push(...(rows.size ? rows.values() : [{ ...whole, way: PlainCut }]));
+      continue;
+    }
+    const some = of.atoms ? atomUses(area, cut, o) : undefined;
     if (some?.length) out.push(...some);
-    else out.push({ key: `o:${o.ref}`, label: o.label, node: { ref: o.ref } });
+    else out.push(whole);
   }
   return out;
 }

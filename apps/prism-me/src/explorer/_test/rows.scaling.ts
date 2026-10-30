@@ -84,6 +84,39 @@ it("an opened model's rows, filtered, with clips, kept by key", () => {
   checkLinear("an opened model's rows, N entities", s);
 });
 
+it('what a clip of N records cuts (a record an entity, two ways: graded cuts)', () => {
+  const s = scaling(
+    {
+      setup: (n) => {
+        const info = infoOf(n);
+        // a record of every particle, then one an entity, every other one kept a layer of
+        const records = [
+          { tag: 'k', entities: [], compartments: [], targets: [], mode: 'cut', band: 60, fuzziness: 0 },
+          ...Array.from({ length: n }, (_, i) => ({
+            tag: 'k',
+            entities: [i],
+            compartments: [],
+            targets: [],
+            mode: i % 2 ? 'keep' : 'wider',
+            band: 60,
+            fuzziness: 0,
+          })),
+        ];
+        const area = { cutOf: () => ({ ref: 'm', on: ['r'], records, particled: true }) } as unknown as ExplorerApi;
+        const cut = { index: 1, object: { type: 'plane', tag: 'k' }, targets: [] } as unknown as Parameters<
+          typeof whatItCuts
+        >[1];
+        return { parts: new Map([['m', info]]), area, cut };
+      },
+      run: ({ parts, area, cut }) => {
+        whatItCuts(area, cut, [model], parts);
+      },
+    },
+    12000,
+  );
+  checkLinear('what a clip of N records cuts', s);
+});
+
 it("the eyes a drag over every row sets (each row's and those under it, each once)", () => {
   const s = scaling(
     {
