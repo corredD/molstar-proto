@@ -78,18 +78,21 @@ await api.run('particles.look', { layers: [{ selector: { compartments: [1] }, sh
 - **Exposure through `particles.look`**, not `clipping.update` (the brief's narrowest option): `update` edits a clip
   object, the same for every part it cuts; the per-part mapping already lived in the particle look (`cuts`, by tag and
   selector), and Shown is a look of a part. No new operation.
+- **A cut reads back** its first part as `selector` (the one `clipping.add` made, which the app's rows match), every
+  part as `parts`, and the count of their union (review finding 2).
 - **A cut has a record a part** (tag × selector): the mock gives one plane a membrane that keeps a layer and a capsid
   cut wider. `add` replaces the record of the same tag and selector (it replaced the tag's record before: only
   `clipping.add` wrote one, once); `remove` takes a tag or a part. A later part wins where parts overlap.
 - **Band and fuzziness for `keep` and `wider` only**, as the mock and cellVIEW (mode 0 is the plain cut). Defaults: band
   60 Å, fuzziness 0.
-- **The hash is of the instance's `aInstance`** in the shaders (it survives the GPU cull's compaction and the LOD
-  strides) and of the particle's index for Shown (on the CPU, a transparency-1 layer: the existing hide, every backend
-  and both clip variants). The same function (`Clipping.random`), not the same ids: a part's Shown and its fuzzy band
-  are not correlated by design.
-- **Pixel variant:** the table's ignored objects become the flag (16 bits), so per-part plain cuts work there too, past
-  six; `keep` and `wider` cut plainly (graded is per instance by nature). Prism's default variant is pixel: the app lane
-  sets `instance` where it shows graded ways (or asks Ludo for a per-cut variant).
+- **The hash is of the instance's place** in the shaders (the bits of its transform's translation, `Clipping.randomAt`;
+  review finding 4: `aInstance` was offset by merging) and of the particle's index for Shown (on the CPU, a
+  transparency-1 layer: the existing hide, every backend and both clip variants). The same Wang hash, not the same ids:
+  a part's Shown and its fuzzy band are not correlated by design.
+- **Pixel variant:** the table's ignored objects become the flag (16 bits, WebGL1 too since `2b6c73ccc`), so per-part
+  plain cuts work there too, past six; `keep` and `wider` cut plainly (graded is per instance by nature). Prism's
+  default variant is pixel: the app lane sets `instance` where it shows graded ways (or asks Ludo for a per-cut
+  variant).
 - **Structures keep the groups** (Prism's `keep`, six): out of the lane.
 - **Past 256 distinct rows** the layers cell fails loudly (an error in the state), not silently.
 - **The empty-array fix is its own commit**, so it can go to a master lane alone (Ludo says when).
@@ -105,7 +108,40 @@ await api.run('particles.look', { layers: [{ selector: { compartments: [1] }, sh
 
 ## Size
 
-Production +523 −126 (graphics ~+300, of which the empty-array fix +15; plugin +90; prism +130), under the brief's 600.
-Tests +757 −29; specs and changelog +81.
+Production +617 −140, a little over the brief's ~600: the lane +523 (graphics ~+300 with the empty-array fix's +15,
+plugin +90, prism +130), then the review's fixes +78 and 16 author lines. Tests +857 −29; specs, progress and changelog
++151.
+
+## Checked in the app (real GL)
+
+Playwright, headless Chrome, port 1354, `?example=cellpack-hiv1` (230,158 particles), WebGPU and WebGL2
+(`?graphics-backend=webgl2`), driven by `window.molstar.api`, after the review's fixes; screenshots in the session's
+scratchpad (`graded-cuts-gl/`). Both backends alike, no page or shader error:
+
+- `clipping.settings` `instance`; the blood (compartment 5) hidden; a plane cut of the virus's compartments: the inside
+  shows.
+- The membrane (compartment 0) `keep`, band 250 Å: a layer of membrane kept on the cut's face (24k px changed);
+  fuzziness 0.9: the layer thins toward the band's edge (15k px); the capsid's surface `wider`, band 200 Å: cut further
+  (11k px).
+- The same instances from every view: the membrane alone, kept with fuzziness 0.9, turned 30°, 90°, 200° and back: 0 px
+  changed on both backends. (The full scene turned and back changes ~9k px even without cuts, on WebGPU: progressive
+  passes and Hi-Z from earlier frames; a control run showed it.)
+- Shown 30 % on the capsid's surface (compartment 1): thinned (9k px); 60 %: fewer hidden; 30 % again: 0 px from the
+  first 30 %.
 
 ## Review
+
+Lane-reviewer (Opus) then lane-skeptic (Opus; a first run stopped at the spend limit, run again): 7 findings, 7
+confirmed, none refuted. Every must-fix and should-fix fixed, test first, one commit each.
+
+| Finding                                                                                                    | Severity (skeptic)    | Commit                       |
+| ---------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------------- |
+| 1 WebGL1's 8-bit `bitwiseAnd`: a flag ≥ 256 ignored every object (objects 8–15 never tested)               | should-fix (was must) | `2b6c73ccc`                  |
+| 2 `particleCutOf` joined parts into one selector, which intersects its kinds: wrong count, label           | must-fix              | `21692a1e8`                  |
+| 3 author lines missing on 16 modified files                                                                | must-fix (house rule) | `e8a753b55`                  |
+| 4 the hash of `aInstance` changed with merging and was shared by instance k of every target                | should-fix            | `529645fe0` (keyed by place) |
+| 5 the table encoded per render object per update                                                           | nit (was should-fix)  | `5434a0da6`                  |
+| N1 a part given again moved last (could change what is cut)                                                | nit+                  | `9c2683199`                  |
+| N2 `shown: 1` kept as a layer                                                                              | nit                   | `9c2683199`                  |
+| Open: `dClipTable` programs are not precompiled (`repr/signatures.ts`), a compile on the first graded cut  | nit                   | open (TODO for the app lane) |
+| Open: the 256-row error is not tested; `empty-layer-data` leaves out size data; shader runs are by reading | nit                   | open                         |
