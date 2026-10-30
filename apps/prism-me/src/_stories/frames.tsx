@@ -9,7 +9,6 @@
 import { Button, CanvasPlaceholder, type Child, Icon, StatusPill } from '@molstar/prism-ui';
 import { installTooltips } from '@molstar/prism-ui/components/tooltip/tooltip';
 import { classes } from './_generated/explorer.module.css.js';
-import { treeClasses } from '../explorer/tree-view.js';
 import { ExplorerPanel, type ExplorerPanelProps } from './explorer-panel.js';
 
 // The mocks' frames: each story in light and dark, wide and narrow, side by side (a subtree's `data-msp-theme`
@@ -19,23 +18,15 @@ import { ExplorerPanel, type ExplorerPanelProps } from './explorer-panel.js';
 /** A panel's widths: wide (the dock's default) and narrow (its least) */
 export const Widths = { wide: 360, narrow: 260 } as const;
 
-/**
- * The content in light and dark, wide and narrow; `touch`: the row actions shown as `@media (hover: none)` shows them
- * (styling.md §4); `only`: one width (a layout, wider than a panel).
- */
-export function Frames(props: {
-  render: (width: number) => Child;
-  height?: number;
-  touch?: boolean;
-  widths?: readonly number[];
-}) {
+/** The content in light and dark, wide and narrow; `only`: one width (a layout, wider than a panel). */
+export function Frames(props: { render: (width: number) => Child; height?: number; widths?: readonly number[] }) {
   const widths = props.widths ?? [Widths.wide, Widths.narrow];
   return (
     <div class={classes.frames} ref={(el: HTMLElement) => installTooltips(el)}>
       {widths.flatMap((w) =>
         ['light', 'dark'].map((theme) => (
-          <div data-msp-theme={theme} class={classes.frame} classList={{ [treeClasses.touch]: !!props.touch }}>
-            <span class={classes.caption}>{`${theme} · ${w}px${props.touch ? ' · touch' : ''}`}</span>
+          <div data-msp-theme={theme} class={classes.frame}>
+            <span class={classes.caption}>{`${theme} · ${w}px`}</span>
             <div style={{ width: `${w}px`, height: `${props.height ?? 640}px` }}>{props.render(w)}</div>
           </div>
         )),
@@ -45,9 +36,9 @@ export function Frames(props: {
 }
 
 /** The explorer's panel in the frames */
-export function PanelFrames(props: ExplorerPanelProps & { height?: number; touch?: boolean }) {
-  const { height, touch, ...panel } = props;
-  return <Frames height={height} touch={touch} render={() => <ExplorerPanel {...panel} />} />;
+export function PanelFrames(props: ExplorerPanelProps & { height?: number }) {
+  const { height, ...panel } = props;
+  return <Frames height={height} render={() => <ExplorerPanel {...panel} />} />;
 }
 
 /**

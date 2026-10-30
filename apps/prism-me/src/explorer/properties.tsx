@@ -50,7 +50,7 @@ import { DistanceProps } from './distance-properties.js';
 import { clipItems, clippable, hideHandles, movable, showClipHandles, showHandles, showTheme } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
 import { Hint, Line, PropertiesFrame, PropertiesSlot, propertiesClasses as classes } from './properties-view.js';
-import { type ClipAt, ClipShapes, categoryTheme, type Parts } from './rows.js';
+import { type ClipAt, ClipShapes, categoryTheme, objectOpen, type Parts, setEyes } from './rows.js';
 import { CategoryThemes } from './tree-view.js';
 
 // The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name and kind, a model's Group by
@@ -488,27 +488,20 @@ const tenths = (v: number) => String(Math.round(v * 10) / 10);
 
 /**
  * A category's Look: its eye for every object under it, and a color theme for all of them, the themes its kind takes
- * (`mesoscale.theme`, one step; as its row's brush); Uniform picks its color in Prism's picker, applied once
+ * (`mesoscale.theme`, one step; as its row's Color…); Uniform picks its color in Prism's picker, applied once
  */
 function CategoryLook(props: { subject: Subject }) {
-  const { api, area, picked, groupByOf } = props.subject;
+  const { api, area, picked, parts, groupByOf } = props.subject;
   // the objects under it now (one loaded or removed while it stays picked too), its key's category (`c:<id>`)
   const category = picked.key.slice(2);
   const under = mapState(area.objectsState(), (os) => os.filter((o) => o.category === category));
-  const shown = mapState(under, (os) => os.some((o) => o.visible));
+  // its row's eye: every object under it and all of each (ui.md §3)
+  const shown = derive([under, parts], (os, p) => os.every((o) => objectOpen(o, p.get(o.ref))));
   const refs = () => under.value.map((o) => o.ref);
   const form = new ParamsFormModel(
-    { visible: PD.Boolean(true, { label: 'Visible', description: 'Every object under it' }) },
+    { visible: PD.Boolean(true, { label: 'Visible', description: 'Every object under it, all of each' }) },
     undefined,
-    {
-      onChange: ({ visible }) =>
-        void api.run('state.visibility', {
-          node: refs()
-            .map((r) => `#${r}`)
-            .join(', '),
-          visible,
-        }),
-    },
+    { onChange: ({ visible }) => void setEyes(api, area, [{ kind: 'category', objects: refs() }], visible) },
   );
   bind(shown, (visible) => form.load({ visible }));
   const uniform = observableState(false);
@@ -542,7 +535,7 @@ function CategoryLook(props: { subject: Subject }) {
   );
 }
 
-/** A category's Clips: the cuts its scissors made (each of every object under it), each as a clip row's */
+/** A category's Clips: the cuts its Add clip… made (each of every object under it), each as a clip row's */
 function CategoryClips(props: { subject: Subject }) {
   const { api, area, picked, clips } = props.subject;
   const tags = mapState(clips, (all) => all.filter((c) => c.node === picked.key).map((c) => c.tag));
@@ -552,7 +545,7 @@ function CategoryClips(props: { subject: Subject }) {
         {(tag) => <ClipEditor api={api} area={area} tag={tag} named />}
       </For>
       <Show when={mapState(tags, (t) => t.length === 0)}>
-        {() => <Hint>No clips. Add one with the scissors: it cuts every object under it.</Hint>}
+        {() => <Hint>No clips. Add one with its ⋯ › Add clip…: it cuts every object under it.</Hint>}
       </Show>
     </div>
   );

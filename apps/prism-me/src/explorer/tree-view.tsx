@@ -43,7 +43,7 @@ export const EmptyTreeLine =
   'NDJSON, Simularium), maps and tomograms (MRC, REC, ST), meshes (OBJ, PLY, VTP).';
 
 /**
- * The color themes a category's brush offers, by its row's key: those its objects take (`mesoscale.theme`; ui.md §3,
+ * The color themes a category's Color… offers, by its row's key: those its objects take (`mesoscale.theme`; ui.md §3,
  * Ludo 2026-10-27), the app's and the mock's
  */
 export const CategoryThemes: Readonly<Record<string, readonly (readonly [string, string])[]>> = {
@@ -80,7 +80,7 @@ export function UniformPopover(props: {
   onClose(refocus?: boolean): void;
 }) {
   const color = observableState(0xffffff);
-  // its brush gone from the page (its row scrolled out of a virtual list): closed, not left hanging at no place
+  // its ⋯ gone from the page (its row scrolled out of a virtual list): closed, not left hanging at no place
   on(document, 'scroll', () => props.anchor.isConnected || props.onClose(), { capture: true, passive: true });
   return (
     <Popover anchor={props.anchor} onClose={props.onClose} title={props.title} aria-label="Uniform color" align="start">
@@ -108,20 +108,14 @@ export interface TreeRowView {
   readonly color?: number;
   /** Its eye: whether shown; absent, no eye */
   readonly visible?: boolean;
+  /** Its eye is its own: a parent's eye leaves it (a label, a distance, a clip under a row) */
+  readonly own?: boolean;
   readonly hasChildren: boolean;
   /** Its children shown */
   readonly expanded: boolean;
   readonly category?: boolean;
   /** Top-level rows only (styling.md §4) */
   readonly icon?: IconName;
-}
-
-/** The tools a row has besides its eye: the brush, the scissors, the trash, the ⋯ (its right-click) */
-export interface RowTools {
-  readonly color?: boolean;
-  readonly clip?: boolean;
-  readonly remove?: boolean;
-  readonly more?: boolean;
 }
 
 export interface At {
@@ -139,18 +133,21 @@ export interface TreeViewProps<R extends TreeRowView> {
   readonly rows: ReadonlyState<readonly R[]>;
   /** The picked row's key */
   readonly picked: ReadonlyState<string | undefined>;
-  /** Eyes flipped before the scene says so, by key (a row's `visible` otherwise) */
+  /** Eyes set before the scene says so, by key (a row's `visible` otherwise): a drag's preview, a click's flip */
   readonly shown: KeyedState<string, boolean>;
-  readonly tools: (row: R) => RowTools;
+  /** Whether a row has its ⋯ (its right-click) */
+  readonly more: (row: R) => boolean;
   onPick(row: R): void;
   onToggle(row: R): void;
-  onEye(row: R): void;
-  /** Its trash: what it is removed, one step (an object, a clip, a label, a distance) */
-  onRemove?(row: R): void;
-  /** The brush's or the scissors' menu, under the button; `onClose` when it closes */
-  onTool(row: R, which: 'color' | 'clip', at: At, onClose: () => void): void;
+  /**
+   * Eyes set: a click's (one row) or a drag's along the column (each row passed, in order), on release, all to the first
+   * one's new state; their rows and the shown rows under them already previewed in `shown`
+   */
+  onEyes(rows: readonly R[], visible: boolean): void;
   /** Its right-click, or its ⋯ (under the button) */
   onMenu(row: R, at: At, onClose?: () => void): void;
+  /** Its color dot: its colors, as Color… (under the dot) */
+  onColor?(row: R, at: At, onClose: () => void): void;
   /** A double click (the camera on it) */
   onDblClick?(row: R): void;
   /** The pointer over a row, or none */
@@ -189,6 +186,7 @@ export function TreeView<R extends TreeRowView>(props: TreeViewProps<R>) {
       class={classes.tree}
       contentRef={(el) => {
         nav.tree(el);
+        eyeDrag(el, rows, props);
         // a key's move picks the row it moved to (after TreeNavigation's own keydown, bound first); a focus alone does
         // not: TreeNavigation gives it back to a row made again (its eye or chevron clicked, a reveal)
         on(el, 'keydown', (e: KeyboardEvent) => {
@@ -245,7 +243,7 @@ function TreeRow<R extends TreeRowView>(p: {
         onPointerEnter={() => props.onHover?.(row)}
         onPointerLeave={() => props.onHover?.(undefined)}
         onContextMenu={(e: MouseEvent) => {
-          if (!props.tools(row).more) return;
+          if (!props.more(row)) return;
           e.preventDefault();
           props.onMenu(row, at(e));
         }}
@@ -265,108 +263,219 @@ function TreeRow<R extends TreeRowView>(p: {
           <Icon name="chevron-right" size={14} />
         </button>
         {row.icon ? <Icon name={row.icon} size={15} class={classes.kind} /> : null}
-        {row.color !== undefined ? <span class={classes.swatch} style={{ background: colorToHex(row.color) }} /> : null}
+        {row.color !== undefined ? <Dot row={row} props={props} /> : null}
         <span id={nameId} class={classes.label} data-tip-overflow="">
           {row.label}
         </span>
         <span class={classes.count}>{row.count ?? ''}</span>
-        <RowActions row={row} tools={props.tools(row)} off={off} props={props} />
+        <RowActions row={row} off={off} props={props} />
       </div>
     </div>
   );
 }
 
-/**
- * A row's tools at its end, shown on its hover or focus, always on touch (styling.md §4): the brush and the scissors
- * where it has them, its eye (kept in view while hidden), its trash (Ludo, 2026-10-27), its ⋯; each kept while its menu
- * is open
- */
-function RowActions<R extends TreeRowView>(p: {
-  row: R;
-  tools: RowTools;
-  off: ReadonlyState<boolean>;
-  props: TreeViewProps<R>;
-}): Child {
-  const { row, tools, props } = p;
-  const open = observableState<'color' | 'clip' | 'more' | undefined>(undefined);
-  const isOpen = (which: 'color' | 'clip' | 'more') => derive(open.asReadonly, (o) => o === which);
-  const under = (e: MouseEvent): At => {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    return { x: r.left, y: r.bottom };
-  };
-  const tool = (which: 'color' | 'clip', icon: IconName, tip: string) => (
+const under = (e: MouseEvent): At => {
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  return { x: r.left, y: r.bottom };
+};
+
+/** A row's color dot: a click opens its colors, as Color… (Ludo, 2026-10-28), its hit area larger than the dot */
+function Dot<R extends TreeRowView>(p: { row: R; props: TreeViewProps<R> }): Child {
+  const { row, props } = p;
+  const dot = <span class={classes.swatch} style={{ background: colorToHex(row.color!) }} />;
+  const onColor = props.onColor;
+  if (!onColor) return dot;
+  const open = observableState(false);
+  return (
     <button
       type="button"
-      class={classes.action}
-      classList={{ [classes.keep]: isOpen(which) }}
-      data-tip={tip}
-      aria-label={tip}
+      class={classes.dot}
+      classList={{ [classes.open]: open.asReadonly }}
+      data-tip="Colors"
+      aria-label="Colors"
       aria-haspopup="menu"
+      aria-expanded={derive(open.asReadonly, String)}
       onClick={(e: MouseEvent) => {
         e.stopPropagation();
-        open.set(which);
-        props.onTool(row, which, under(e), () => open.set(undefined));
+        open.set(true);
+        onColor(row, under(e), () => open.set(false));
       }}
     >
-      <Icon name={icon} size={14} />
+      {dot}
     </button>
   );
+}
+
+/**
+ * A row's eye and its ⋯, always in view, each in a column of its own (Ludo, 2026-10-28): a row without one keeps its
+ * room, so the columns line up down the tree. The eye's press is the drag's (`eyeDrag`); its click is the keys' (Enter,
+ * Space). The ⋯ holds what the row's other tools did (Color…, Add clip…, Remove) with its right-click's items.
+ */
+function RowActions<R extends TreeRowView>(p: { row: R; off: ReadonlyState<boolean>; props: TreeViewProps<R> }): Child {
+  const { row, props } = p;
+  const open = observableState(false);
   const eyeTip = derive(p.off, (h) => (h ? 'Show' : 'Hide'));
   return (
     <span class={classes.actions}>
-      {tools.color ? tool('color', 'paintbrush', 'Color all of it') : null}
-      {tools.clip ? tool('clip', 'scissors', 'Add a clip') : null}
       {row.visible !== undefined ? (
         <button
           type="button"
           class={classes.action}
-          classList={{ [classes.keep]: p.off }}
+          data-tree-eye=""
           data-tip={eyeTip}
           aria-label={eyeTip}
           onClick={(e: MouseEvent) => {
             e.stopPropagation();
-            props.onEye(row);
+            // a pointer's click: its press and release were the drag's, which set it
+            if (e.detail === 0) props.onEyes([row], p.off.value);
           }}
         >
           <Show when={p.off} fallback={() => <Icon name="eye" size={14} />}>
             {() => <Icon name="eye-off" size={14} />}
           </Show>
         </button>
-      ) : null}
-      {tools.remove ? (
+      ) : (
+        <span class={classes.slot} />
+      )}
+      {props.more(row) ? (
         <button
           type="button"
           class={classes.action}
-          data-tip="Remove"
-          aria-label="Remove"
-          onClick={(e: MouseEvent) => {
-            e.stopPropagation();
-            props.onRemove?.(row);
-          }}
-        >
-          <Icon name="trash-2" size={14} />
-        </button>
-      ) : null}
-      {tools.more ? (
-        <button
-          type="button"
-          class={classes.action}
-          classList={{ [classes.keep]: isOpen('more') }}
+          classList={{ [classes.open]: open.asReadonly }}
           data-tip="More"
           aria-label="More"
           aria-haspopup="menu"
-          aria-expanded={derive(isOpen('more'), String)}
+          aria-expanded={derive(open.asReadonly, String)}
           onClick={(e: MouseEvent) => {
             e.stopPropagation();
-            open.set('more');
-            props.onMenu(row, under(e), () => open.set(undefined));
+            open.set(true);
+            props.onMenu(row, under(e), () => open.set(false));
           }}
         >
           <Icon name="ellipsis" size={14} />
         </button>
-      ) : null}
+      ) : (
+        <span class={classes.slot} />
+      )}
     </span>
   );
+}
+
+/**
+ * The keys a row's eye sets as shown: its own and those of the rows with an eye shown under it, but those whose eye is
+ * their own (a label, a distance, a clip: a parent's eye leaves them)
+ */
+export function keysUnder(rows: readonly TreeRowView[], i: number): string[] {
+  const out = [rows[i].key];
+  const depth = rows[i].depth;
+  for (let j = i + 1; j < rows.length && rows[j].depth > depth; j++) {
+    if (rows[j].visible !== undefined && !rows[j].own) out.push(rows[j].key);
+  }
+  return out;
+}
+
+/**
+ * The keys some rows' eyes set as shown (a click's row, a drag's rows): each row's and those shown under it, each once;
+ * the rows indexed once, a row under one already set not walked again
+ */
+export function eyeKeys(rows: readonly TreeRowView[], set: readonly { readonly key: string }[]): string[] {
+  const index = new Map<string, number>();
+  for (let i = 0; i < rows.length; i++) index.set(rows[i].key, i);
+  const keys = new Set<string>();
+  for (const row of set) {
+    if (keys.has(row.key)) continue;
+    const i = index.get(row.key);
+    if (i === undefined) keys.add(row.key);
+    else for (const key of keysUnder(rows, i)) keys.add(key);
+  }
+  return [...keys];
+}
+
+/** macOS: its Ctrl+click is a right-click */
+const Mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+
+interface EyeDrag<R> {
+  /** The eyes' column (its middle), where each move is read, in the tree's root (read at the press: in the page by then) */
+  readonly x: number;
+  readonly root: Document | ShadowRoot;
+  readonly visible: boolean;
+  /** The rows at the press, and each one's index (read once a press) */
+  readonly rows: readonly R[];
+  readonly index: ReadonlyMap<string, number>;
+  /** The latest row passed */
+  last: number;
+  readonly passed: R[];
+  /** What `shown` said before the preview, by key: put back on a cancel */
+  readonly before: Map<string, boolean | undefined>;
+}
+
+/**
+ * C4D's eyes (Ludo, 2026-10-28): press an eye and drag along the column, every row passed takes the first one's new
+ * state, previewed in `shown` and set once on release (`onEyes`: one step); a cancel (Esc too) puts the eyes back. A
+ * fast move's rows between are passed too. Prism's `drag()`, so every way a drag ends ends it (rendering.md §2.4).
+ */
+function eyeDrag<R extends TreeRowView>(el: HTMLElement, rows: ReadonlyState<readonly R[]>, props: TreeViewProps<R>) {
+  const pass = (s: EyeDrag<R>, i: number) => {
+    const row = s.rows[i];
+    // a row already set (passed, or under one passed) is not set again
+    if (row.visible === undefined || s.before.has(row.key)) return;
+    s.passed.push(row);
+    for (const key of keysUnder(s.rows, i)) {
+      if (!s.before.has(key)) s.before.set(key, props.shown.get(key));
+      props.shown.set(key, s.visible);
+    }
+  };
+  const indexAt = (s: EyeDrag<R>, target: EventTarget | null, y: number) => {
+    // the tree's root (a document, or the shadow root the app is in) says what is under the pointer
+    const at = (s.root.elementFromPoint?.(s.x, y) as Element | null | undefined) ?? (target as Element | null);
+    const key = at?.closest?.('[data-tree-key]')?.getAttribute('data-tree-key');
+    return key === null || key === undefined ? undefined : s.index.get(key);
+  };
+  const gesture = drag<EyeDrag<R>>(el, {
+    start: (e) => {
+      // the main button alone (on macOS a Ctrl+click is the context menu's)
+      const eye = e.button === 0 && !(e.ctrlKey && Mac) ? (e.target as Element).closest?.('[data-tree-eye]') : null;
+      const key = eye?.closest('[data-tree-key]')?.getAttribute('data-tree-key');
+      if (!eye || !key) return undefined;
+      const all = rows.value;
+      const index = new Map<string, number>();
+      for (let i = 0; i < all.length; i++) index.set(all[i].key, i);
+      const i = index.get(key);
+      if (i === undefined) return undefined;
+      const r = eye.getBoundingClientRect();
+      const visible = !(props.shown.get(key) ?? all[i].visible ?? true);
+      const s: EyeDrag<R> = {
+        x: r.left + r.width / 2,
+        root: el.getRootNode() as Document | ShadowRoot,
+        visible,
+        rows: all,
+        index,
+        last: i,
+        passed: [],
+        before: new Map(),
+      };
+      pass(s, i);
+      return s;
+    },
+    move: (e, s) => {
+      const i = indexAt(s, e.target, e.clientY);
+      if (i === undefined || i === s.last) return;
+      const step = i > s.last ? 1 : -1;
+      for (let j = s.last + step; j !== i + step; j += step) pass(s, j);
+      s.last = i;
+    },
+    end: (s, how) => {
+      if (how === 'up') return props.onEyes(s.passed, s.visible);
+      for (const [key, v] of s.before) {
+        if (v === undefined) props.shown.delete(key);
+        else props.shown.set(key, v);
+      }
+    },
+  });
+  // Esc cancels it (ui.md §3), its eyes put back
+  on(el.ownerDocument, 'keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && gesture.active) gesture.cancel();
+  });
 }
 
 /**

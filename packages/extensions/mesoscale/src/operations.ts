@@ -1090,9 +1090,13 @@ function selectEntities(
     .map((s) => s.trim())
     .filter((s) => s);
   if (wanted.length) {
+    // indexed once (a drag over many rows names many entities): by name, the first of a name, else by id
+    const byName = new Map<string, MesoEntity>();
+    for (const x of entities) if (!byName.has(x.name)) byName.set(x.name, x);
+    for (const x of entities) if (!byName.has(String(x.id))) byName.set(String(x.id), x);
     const picked: number[] = [];
     for (const w of wanted) {
-      const e = entities.find((x) => x.name === w || String(x.id) === w);
+      const e = byName.get(w);
       if (!e) {
         return ApiResult.fail(
           'not-found',
@@ -1105,7 +1109,8 @@ function selectEntities(
       }
       picked.push(e.id);
     }
-    ids = ids ? ids.filter((id) => picked.includes(id)) : picked;
+    const kept = new Set(picked);
+    ids = ids ? ids.filter((id) => kept.has(id)) : picked;
   }
   return ids ?? entities.map((e) => e.id);
 }
