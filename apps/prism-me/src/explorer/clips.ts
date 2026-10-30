@@ -78,7 +78,7 @@ function particleRecords(state: State, rep: string, tag: string): ParticleCutPro
 const partKey = (r: Ids) => `${r.entities}|${r.compartments}|${r.targets}`;
 
 /** A record of every particle: no ids of any kind */
-const isCover = (r: Ids) => !r.entities.length && !r.compartments.length && !r.targets.length;
+export const isCover = (r: Ids) => !r.entities.length && !r.compartments.length && !r.targets.length;
 
 /** The ids of a cut's records, each kind's union: what it cuts of some particles; undefined when one is of all */
 function unionOf(records: readonly ParticleCutProps[]): Ids | undefined {

@@ -12,7 +12,7 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { IconName } from '@molstar/prism-ui';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import type { Category, ExplorerApi, NodeRef, SceneObject } from './operations.js';
-import { type Ids, kindOf, PlainCut, type Way, wayOfRecord } from './clips.js';
+import { type Ids, isCover, kindOf, PlainCut, type Way, wayOfRecord } from './clips.js';
 import { filterRows, type TreeRowView } from './tree-view.js';
 
 // The rows of the explorer's tree (_spec/ui.md §3), flat, from the scene's objects and the parts the mesoscale and
@@ -697,10 +697,33 @@ export function whatItCuts(area: ExplorerApi, cut: Cut, objects: readonly SceneO
         : of.particles
           ? [{ ...of.particles, ...PlainCut }]
           : [];
-      for (const r of records) {
-        const way = wayOfRecord(r);
-        const some = isAll(r) ? undefined : particleUses(o, parts.get(o.ref), r);
-        for (const u of some?.length ? some : [whole]) rows.set(u.key, { ...u, way });
+      // the records of one way as one (the union of their ids), in the order of each way's last record: the model's
+      // groups walked once a way, not once a record (a clip given many targets one at a time has a record each)
+      const byWay = new Map<string, { way: Way; ids: Record<keyof Ids, Set<number>>; all: boolean; last: number }>();
+      records.forEach((r, i) => {
+        const key = `${r.mode}:${r.band}:${r.fuzziness}`;
+        let g = byWay.get(key);
+        if (!g) {
+          g = {
+            way: wayOfRecord(r),
+            ids: { entities: new Set(), compartments: new Set(), targets: new Set() },
+            all: false,
+            last: i,
+          };
+          byWay.set(key, g);
+        }
+        g.last = i;
+        if (isCover(r)) g.all = true;
+        for (const k of ['entities', 'compartments', 'targets'] as const) for (const id of r[k]) g.ids[k].add(id);
+      });
+      for (const g of [...byWay.values()].sort((a, b) => a.last - b.last)) {
+        const ids = {
+          entities: [...g.ids.entities],
+          compartments: [...g.ids.compartments],
+          targets: [...g.ids.targets],
+        };
+        const some = g.all || isCover(ids) ? undefined : particleUses(o, parts.get(o.ref), ids);
+        for (const u of some?.length ? some : [whole]) rows.set(u.key, { ...u, way: g.way });
       }
       out.push(...(rows.size ? rows.values() : [{ ...whole, way: PlainCut }]));
       continue;
@@ -711,9 +734,6 @@ export function whatItCuts(area: ExplorerApi, cut: Cut, objects: readonly SceneO
   }
   return out;
 }
-
-/** A record of every particle: no ids of any kind */
-const isAll = (r: Ids) => !r.entities.length && !r.compartments.length && !r.targets.length;
 
 /** The rows of a cut of some particles: a model's groups cut whole (the largest), then entities; a list's targets */
 function particleUses(
