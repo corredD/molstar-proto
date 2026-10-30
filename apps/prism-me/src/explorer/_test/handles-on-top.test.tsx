@@ -18,9 +18,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { explorerUI } from '../ui.js';
 
-// Handles on top in an object's properties (_spec/ui.md §4, Position and Clips), over a headless viewer in jsdom with
-// a fake canvas: 1CRN (data/examples) and a plane clip on it. One setting: the On top of Position and of the clip's
-// line show the same state and flip it for every handle, no history step.
+// Handles on top in the properties (_spec/ui.md §4, an object's Position and a clip's own section), over a headless
+// viewer in jsdom with a fake canvas: 1CRN (data/examples) and a plane clip on it. One setting: the On top of Position
+// and of the clip's line show the same state and flip it for every handle, no history step.
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
@@ -46,7 +46,7 @@ const rowOf = (host: HTMLElement, label: string) =>
     ?.querySelector<HTMLElement>('[data-tree-row]') ?? undefined;
 
 describe('handles on top in the properties', () => {
-  it('shows one state in Position and in a clip line, and flips it there, no history step', async () => {
+  it("shows one state in Position and in a clip's line, and flips it in either, no history step", async () => {
     const base = DefaultPrismViewerSpec();
     const v = await createPrismViewerHeadless({
       spec: { ...base, extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions] },
@@ -68,23 +68,30 @@ describe('handles on top in the properties', () => {
     const host = document.createElement('div');
     document.body.append(host);
     ui.tabs![0].render.mount(host, { shell: new ShellModel() } as never, undefined as never);
-    await until(() => !!rowOf(host, '1CRN'));
-    rowOf(host, '1CRN')!.click();
-    for (const title of ['Position', 'Clips']) {
+    const open = async (title: string) => {
       await until(() => buttons(host, title).length > 0);
       const section = buttons(host, title)[0];
       if (section.getAttribute('aria-expanded') !== 'true') section.click();
-    }
-    await until(() => buttons(host, 'On top').length === 2);
-    const pressed = () => buttons(host, 'On top').map((b) => b.getAttribute('aria-pressed'));
-    expect(pressed()).toEqual(['false', 'false']);
+      await until(() => buttons(host, 'On top').length === 1);
+    };
+    const pressed = () => buttons(host, 'On top')[0].getAttribute('aria-pressed');
     const steps = v.api.history.steps.value.length;
-
+    // the object's Position
+    await until(() => !!rowOf(host, '1CRN'));
+    rowOf(host, '1CRN')!.click();
+    await open('Position');
+    expect(pressed()).toBe('false');
     buttons(host, 'On top')[0].click();
-    await until(() => pressed().every((p) => p === 'true'));
+    await until(() => pressed() === 'true');
     expect(v.api.canvas.handleLook.onTop).toBe(true);
-    buttons(host, 'On top')[1].click();
-    await until(() => pressed().every((p) => p === 'false'));
+    // the clip's line, in its row's Clip section (the Clips category): the same state, flipped there
+    await until(() => !!rowOf(host, 'Plane 1'));
+    rowOf(host, 'Plane 1')!.click();
+    await open('Clip');
+    expect(pressed()).toBe('true');
+    buttons(host, 'On top')[0].click();
+    await until(() => pressed() === 'false');
+    expect(v.api.canvas.handleLook.onTop).toBe(false);
     expect(v.api.history.steps.value.length).toBe(steps);
     canvas.remove();
   });

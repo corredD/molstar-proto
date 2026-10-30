@@ -369,7 +369,7 @@ describe('explorer', () => {
     expect(ids).toEqual(['focus', 'move', 'color', 'label', 'clip', 'remove']);
   });
 
-  it("adds several clips to an object and one to a target (Prism's), each listed at its row, and colors a target", async () => {
+  it("adds several clips to an object and one to a target (Prism's), each on what it cuts, and colors a target", async () => {
     const v = await viewer();
     const area = v.api.explorer!;
     const list = area.objectsState().value.find((o) => o.kind === 'list')!;
@@ -384,7 +384,7 @@ describe('explorer', () => {
     const ofList = () => v.api.clipping.cuts.value.filter((c) => c.targets.some((t) => area.isUnder(t.ref, list.ref)));
     expect(ofList().map((c) => c.object.type)).toEqual(['plane', 'sphere']);
     expect(ofList().every((c) => !!c.object.tag)).toBe(true);
-    // a target: Prism's cut of only its particles, listed at its row (and its object's)
+    // a target: Prism's cut of only its particles; its clips are those that cut all of it: the list's and its own
     const target = {
       key: `t:${list.ref}:0`,
       label: 'Target 0',
@@ -394,7 +394,11 @@ describe('explorer', () => {
     expect(clippable(target.kind, target.node)).toBe(true);
     await run(clipItems(v.api, area, target), 'clip-cube');
     const ofTarget = area.cutsOf(v.api.clipping.cuts.value, target.node);
-    expect(ofTarget.map((c) => [c.object.type, c.particles?.selector.targets])).toEqual([['cube', [0]]]);
+    expect(ofTarget.map((c) => [c.object.type, c.particles?.selector.targets])).toEqual([
+      ['plane', undefined],
+      ['sphere', undefined],
+      ['cube', [0]],
+    ]);
     expect(ofList().map((c) => c.object.type)).toEqual(['plane', 'sphere', 'cube']);
     // a color, by the brush
     await run(colorItems(v.api, area, target), 'color-tomato');

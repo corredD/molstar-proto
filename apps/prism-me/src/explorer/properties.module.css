@@ -117,3 +117,15 @@
   animation-fill-mode: both;
   animation-timeline: scroll(self inline);
 }
+
+/* an object or part a clip cuts, or a clip on a node: its name (it picks its row), then its × */
+.use {
+  display: flex;
+  align-items: center;
+  gap: var(--msp-space-1);
+  min-height: var(--msp-control-height);
+
+  & > :first-child {
+    flex: 1;
+  }
+}

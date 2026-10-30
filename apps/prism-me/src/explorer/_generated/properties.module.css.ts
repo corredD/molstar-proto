@@ -23,6 +23,7 @@ export const classes = {
   'tight': 'msp-me-properties-tight',
   'title': 'msp-me-properties-title',
   'tools': 'msp-me-properties-tools',
+  'use': 'msp-me-properties-use',
 } as const;
 
 defineStyles('me/explorer/properties.module.css', `@layer msp.components {
@@ -126,6 +127,17 @@ defineStyles('me/explorer/properties.module.css', `@layer msp.components {
   animation-fill-mode: both;
   animation-timeline: scroll(self inline);
   overflow: hidden;
+}
+
+.msp-me-properties-use {
+  align-items: center;
+  gap: var(--msp-space-1);
+  min-height: var(--msp-control-height);
+  display: flex;
+
+  & > :first-child {
+    flex: 1;
+  }
 }
 }
 `);

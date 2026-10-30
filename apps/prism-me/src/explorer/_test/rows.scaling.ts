@@ -9,13 +9,13 @@ import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import { keepRows } from '@molstar/prism-ui';
 import { it } from 'vitest';
 import { checkLinear, quadraticControl, scaling } from '../../../../../packages/sequences/core/_test/model/scaling.js';
-import type { SceneObject } from '../operations.js';
-import { type ClipAt, type Row, rowsOf, sameRow } from '../rows.js';
+import type { ExplorerApi, SceneObject } from '../operations.js';
+import { type ClipRow, type Row, rowsOf, sameRow, whatItCuts } from '../rows.js';
 import { eyeKeys } from '../tree-view.js';
 
 // The tree's rows of an opened model of N entities (`test:scaling`; AGENTS.md, no accidental quadratic): flattened,
-// filtered (a hit kept with the rows it is in), clips placed (a group's by its entities) and kept by key, as each change
-// of the scene makes them. At 12000 → 48000 entities the path reads ×4.8; an `indexOf` per row in the filter read ×9.7
+// filtered (a hit kept with the rows it is in), with the Clips category and kept by key, as each change of the scene
+// makes them; and what a clip of every other entity cuts (its What it cuts, the clip rows' counts). At 12000 → 48000 entities the path reads ×4.8; an `indexOf` per row in the filter read ×9.7
 // (at 4000 it hid under the fixed cost: ×6.7), 2026-10-27, M-series laptop.
 
 const model: SceneObject = { ref: 'm', category: 'particles', kind: 'model', label: 'HIV', visible: true };
@@ -59,23 +59,24 @@ it("an opened model's rows, filtered, with clips, kept by key", () => {
     {
       setup: (n) => {
         const info = infoOf(n);
-        const clips: ClipAt[] = [
-          { tag: 'k1', label: 'Plane 1', node: 'o:m', object: 'm', drawn: false },
-          {
-            tag: 'k2',
-            label: 'Plane 2',
-            node: 'o:m',
-            object: 'm',
-            entities: [0, 2, 4].filter((i) => i < n),
-            drawn: false,
-          },
-          { tag: 'k3', label: 'Plane 3', node: `me:m:${n - 1}`, object: 'm', drawn: false },
+        const clips: ClipRow[] = [
+          { tag: 'k1', label: 'Plane 1', count: 1, drawn: false },
+          { tag: 'k2', label: 'Plane 2', count: 3, drawn: false },
         ];
-        return { parts: new Map([['m', info]]), clips, keep: keepRows<Row>((r) => r.key, sameRow) };
+        // a clip of every other entity: one compartment cut all of, half of the other's entities
+        const entities = Array.from({ length: n }, (_, i) => i).filter((i) => i % 2 === 0 || i % 4 === 1);
+        const area = {
+          cutOf: () => ({ ref: 'm', on: ['r'], particles: { entities, compartments: [], targets: [] } }),
+        } as unknown as ExplorerApi;
+        const cut = { index: 2, object: { type: 'plane', tag: 'k2' }, targets: [] } as unknown as Parameters<
+          typeof whatItCuts
+        >[1];
+        return { parts: new Map([['m', info]]), clips, keep: keepRows<Row>((r) => r.key, sameRow), area, cut };
       },
-      run: ({ parts, clips, keep }) => {
+      run: ({ parts, clips, keep, area, cut }) => {
         keep(rowsOf([model], parts, AllOpen, '', [], [], clips));
         keep(rowsOf([model], parts, AllOpen, 'e1', [], [], clips));
+        whatItCuts(area, cut, [model], parts);
       },
     },
     12000,

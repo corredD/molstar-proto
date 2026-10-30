@@ -12,6 +12,7 @@ import type {} from '@molstar/prism-viewer/features/structure-move';
 import { startMoveDrag } from '@molstar/stage-tools-extension/drag';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ExplorerApi, NodeRef, PickedNode } from './operations.js';
+import { clipName } from './rows.js';
 
 // The explorer's menus (_spec/ui.md §3, §5), at the level of what is picked (an object, a group, an entity, a chain, a
 // target): the right-click's, on the canvas and as a tree row's ⋯ (a label's: edit, remove; a distance's: focus,
@@ -276,26 +277,55 @@ export function showClipHandles(api: ViewerApi, index: number) {
   clipping.gizmos.handleOnly(index);
 }
 
-/** Add clip…'s items: a clip of the node (added to its others), by shape */
+/** Prism's cut shapes, in Add clip…'s order */
+const NewClipShapes = [
+  ['plane', 'Plane'],
+  ['sphere', 'Sphere'],
+  ['cube', 'Box'],
+  ['cylinder', 'Cylinder'],
+  ['infiniteCone', 'Cone'],
+] as const;
+
+/**
+ * Add clip… (the ⋯, the right-click; Ludo, 2026-10-28): a new clip of each shape that cuts the node, then
+ * every clip of the scene, used on it too (one step: `explorer.clipUse`); those on it already greyed
+ */
 export function clipItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
   const { node, kind } = picked;
   if (!clippable(kind, node)) return [];
-  // Prism's cut of all of it (its representations), or of only its atoms; its handles shown on it
-  return (
-    [
-      ['plane', 'Plane'],
-      ['sphere', 'Sphere'],
-      ['cube', 'Box'],
-      ['cylinder', 'Cylinder'],
-      ['infiniteCone', 'Cone'],
-    ] as const
-  ).map(([shape, label]) => ({
-    id: `clip-${shape}`,
-    label,
-    icon: 'scissors',
-    run: () => void addClip(api, area, node, shape),
-  }));
+  const cuts = api.clipping?.cuts.value ?? [];
+  const on = new Set(area.cutsOf(cuts, node).map((c) => c.object.tag));
+  return [
+    ...NewClipShapes.map(([shape, label]) => ({
+      id: `clip-${shape}`,
+      label: `New ${label.toLowerCase()}`,
+      run: () => void addClip(api, area, node, shape),
+    })),
+    ...useItems(api, cuts, [node], (tag) => on.has(tag)),
+  ];
 }
+
+/** Every clip of the scene, used on `nodes` too (one step); greyed where `isOn` */
+export function useItems(
+  api: ViewerApi,
+  cuts: readonly ClipCut[],
+  nodes: readonly NodeRef[],
+  isOn: (tag: string) => boolean,
+): ContextMenuItem[] {
+  return cuts
+    .filter((c) => !!c.object.tag)
+    .map((c) => {
+      const tag = c.object.tag!;
+      return {
+        id: `use-${tag}`,
+        label: `Use ${clipName(c)}`,
+        ...(isOn(tag) ? { disabled: 'It cuts it already' } : {}),
+        run: () => void api.run('explorer.clipUse', { tag, nodes: [...nodes], on: true }),
+      };
+    });
+}
+
+type ClipCut = ViewerApi['clipping']['cuts']['value'][number];
 
 /**
  * What the menu asks of the panel: a sub-menu at the same place (Color…, Add clip…), a row to pick (a new label), a

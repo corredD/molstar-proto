@@ -8,9 +8,9 @@ import type { MesoGroup } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { describe, expect, it } from 'vitest';
-import type { ExplorerApi, SceneObject } from '../operations.js';
+import type { ExplorerApi, NodeRef, SceneObject } from '../operations.js';
 import { keepRows } from '@molstar/prism-ui';
-import { clipsAt, type Row, rowsOf, sameRow } from '../rows.js';
+import { allItCuts, type Row, rowsOf, sameRow, whatItCuts } from '../rows.js';
 
 // A model's rows (_spec/ui.md §3) from its info, grouped by compartment or by function: lipids (function "membrane")
 // in root.membrane, CA in root.capsid.
@@ -124,20 +124,40 @@ describe('the filter (ui.md §1)', () => {
   });
 });
 
-describe("a clip of a model's group", () => {
-  it("goes under the group whose entities it cuts, in the model's grouping", () => {
-    const clip = { tag: 'k1', label: 'Plane 1', node: 'o:m', object: 'm', entities: [1, 0], drawn: false };
-    const keys = rowsOf([model], new Map([['m', infoOf('compartment', true)]]), AllOpen, '', [], [], [clip]).map(
-      (r) => `${r.depth}:${r.key}`,
-    );
-    expect(keys.slice(keys.indexOf('2:g:m:root'))).toEqual([
-      '2:g:m:root',
-      '3:g:m:root.membrane',
-      '4:me:m:0',
-      '3:g:m:root.capsid',
-      '4:me:m:1',
-      '3:k:k1',
+describe('the Clips category (Ludo, 2026-10-28)', () => {
+  it('holds every clip after the other categories, none under an object, each with its count', () => {
+    const clips = [
+      { tag: 'k1', label: 'Plane 1', count: 2, drawn: false },
+      { tag: 'k2', label: 'Sphere 2', count: 1, drawn: true },
+    ];
+    const rows = rowsOf([model], new Map([['m', infoOf('compartment', true)]]), AllOpen, '', [], [], clips);
+    expect(rows.map((r) => `${r.depth}:${r.key}`).slice(-3)).toEqual(['0:c:clips', '1:k:k1', '1:k:k2']);
+    expect(rows.filter((r) => r.kind === 'clip').map((r) => [r.label, r.count, r.visible, r.clip])).toEqual([
+      ['Plane 1', '2 objects', false, 'k1'],
+      ['Sphere 2', '1 object', true, 'k2'],
     ]);
+    // the category has no objects; its eye draws its clips (open when all are drawn)
+    const category = rows.find((r) => r.key === 'c:clips')!;
+    expect([category.objects, category.visible, category.clips]).toEqual([undefined, false, ['k1', 'k2']]);
+  });
+});
+
+describe("what a clip cuts of a model's particles", () => {
+  const area = (entities: number[]) =>
+    ({
+      cutOf: () => ({ ref: 'm', on: ['m:repr'], particles: { entities, compartments: [], targets: [] } }),
+    }) as unknown as ExplorerApi;
+  const cut = { index: 1, object: { type: 'plane', tag: 'k1' }, targets: [] } as unknown as Parameters<
+    typeof whatItCuts
+  >[1];
+  const uses = (entities: number[]) =>
+    whatItCuts(area(entities), cut, [model], new Map([['m', infoOf('compartment', true)]])).map((u) => [
+      u.key,
+      u.label,
+    ]);
+  it("is the largest groups it cuts all of, in the model's grouping, then entities", () => {
+    expect(uses([0])).toEqual([['g:m:root.membrane', 'root › membrane']]);
+    expect(uses([0, 1])).toEqual([['g:m:root', 'HIV › root']]);
   });
 });
 
@@ -152,36 +172,14 @@ describe("a category row's objects", () => {
   });
 });
 
-describe("a clip's place", () => {
-  it("is found once per cut, not again at each change of the scene (an eye's click)", () => {
-    let queries = 0;
-    const area = {
-      isUnder: (ref: string, ancestor: string) => ref === `${ancestor}:repr`,
-      cutsOf: (cuts: readonly unknown[], node: { chain?: string }) => {
-        queries++;
-        return node.chain === 'C' ? cuts : [];
-      },
-    } as unknown as ExplorerApi;
-    const s: SceneObject = {
-      ref: 's',
-      category: 'structures',
-      kind: 'structure',
-      label: 'capsid',
-      visible: true,
-      entities: [{ id: '1', label: 'CA', chains: ['A', 'B', 'C', 'D'] }] as SceneObject['entities'],
-    };
-    const cut = {
-      index: 1,
-      object: { type: 'plane', tag: 'k1' },
-      targets: [{ ref: 's:repr', label: '', type: 'cartoon' }],
-      kept: { count: 1, label: '' },
-      atoms: { count: 1, label: '', loci: [] },
-    } as unknown as Parameters<typeof clipsAt>[1][number];
-    expect(clipsAt(area, [cut], [s]).map((c) => c.node)).toEqual(['ch:s:1:C']);
-    const first = queries;
-    expect(first).toBeGreaterThan(0);
-    // the scene changed (an object's eye): the same cut, its place known
-    expect(clipsAt(area, [cut], [{ ...s, visible: false }]).map((c) => c.node)).toEqual(['ch:s:1:C']);
-    expect(queries).toBe(first);
+describe('the last thing a clip cuts (review S1)', () => {
+  const use = (key: string, node: NodeRef) => ({ key, label: key, node });
+  const membrane = use('g:m:root.membrane', { ref: 'm', particles: { entities: [0] } });
+  const capsid = use('g:m:root.capsid', { ref: 'm', particles: { entities: [1] } });
+  it('is all it cuts in the node: an object cut in two parts, one part alone; not a part of two', () => {
+    expect(allItCuts([membrane, capsid], { ref: 'm' })).toBe(true);
+    expect(allItCuts([membrane], membrane.node)).toBe(true);
+    expect(allItCuts([membrane, capsid], membrane.node)).toBe(false);
+    expect(allItCuts([use('o:m', { ref: 'm' })], membrane.node)).toBe(false);
   });
 });

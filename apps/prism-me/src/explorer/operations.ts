@@ -19,6 +19,7 @@ import { TransparencyStructureRepresentation3DFromBundle } from '@molstar/plugin
 import { Grid, Volume } from '@molstar/model/model/volume';
 import { Script } from '@molstar/model/script/script';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
+import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import type { PluginContext } from '@molstar/plugin/context';
 import { StateTransform } from '@molstar/core/state';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -28,6 +29,7 @@ import { labelOf, loadedStructures } from '@molstar/prism-viewer/api/scope';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type {} from '@molstar/prism-viewer/features/clipping';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
+import { clippableUnder, type CutOfObject, cutOfObject, idSet, kindOf, useClip } from './clips.js';
 import { GizmoAppearance, type GizmoLook } from '@molstar/graphics/util/gizmo/controller';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
@@ -371,36 +373,82 @@ export class ExplorerApi extends ApiArea {
   }
 
   /**
-   * Of Prism's cuts, those a row lists: an object's, every cut through its representations (a part's too); a
-   * structure entity's or chain's, the cuts of its atoms and no others (`clipping.add` `only`); a model's or list's
-   * group's, entity's or target's, the cuts of exactly its particles (`clipping.add` `particles`)
+   * Of Prism's cuts, the clips on a node (its Clips, _spec/ui.md §4): an object's, every clip through its
+   * representations (of all of it or of a part); a part's, those cutting all of it (all of its object, or its atoms or
+   * particles among those the clip cuts)
    */
   cutsOf(cuts: readonly Cut[], node: NodeRef): Cut[] {
-    const under = cuts.filter((c) => c.object.tag && c.targets.some((t) => this.isUnder(t.ref, node.ref)));
-    if ('particles' in node) {
-      const ids = (a: readonly number[] | undefined) => [...(a ?? [])].sort((x, y) => x - y).join(',');
-      const p = node.particles;
-      return under.filter((c) => {
-        const s = c.particles?.selector;
-        return (
-          !!s &&
-          ids(s.entities) === ids(p.entities) &&
-          ids(s.compartments) === ids(p.compartments) &&
-          ids(s.targets) === ids(p.targets)
-        );
-      });
+    const state = this.ctx.plugin.state.data;
+    const reps = clippableUnder(state, node.ref);
+    const out: Cut[] = [];
+    for (const c of cuts) {
+      if (!c.object.tag) continue;
+      const of = cutOfObject(state, c, node.ref, reps);
+      if (of && this.covers(of, node)) out.push(c);
     }
-    if (!('entity' in node)) return under;
-    const loci = this.loci(node);
-    if (!StructureElement.Loci.is(loci)) return [];
-    const part = StructureElement.Loci.remap(loci, loci.structure.root);
-    return under.filter(
-      (c) =>
-        c.atoms?.loci.length === 1 &&
-        c.atoms.loci[0].structure === part.structure &&
-        StructureElement.Loci.areEqual(c.atoms.loci[0], part),
+    return out;
+  }
+
+  /**
+   * The particle representations' layers as they change (their versions): what a clip cuts of a list or a model is
+   * recorded there, which Prism's `clipping.cuts` does not compare (it follows the clip objects), so a view of what a
+   * clip cuts follows this too
+   */
+  particleLayersState(): ReadonlyState<string> {
+    const state = this.ctx.plugin.state.data;
+    return watchedState(
+      () => {
+        let out = '';
+        for (const cell of state.cells.values()) {
+          if (cell.transform.transformer === ParticleRepresentation3DLayers) out += `${cell.transform.version};`;
+        }
+        return out;
+      },
+      () => state.events.changed,
     );
   }
+
+  /** What a clip cuts of an object (all of it, some particles, some atoms); none when it is on none of it */
+  cutOf(cut: Cut, ref: string): CutOfObject | undefined {
+    return cutOfObject(this.ctx.plugin.state.data, cut, ref);
+  }
+
+  /** Whether what a clip cuts of an object holds all of `node` (an object: any of it) */
+  covers(of: CutOfObject, node: NodeRef): boolean {
+    if ('particles' in node) {
+      if (!of.particles) return true;
+      const kind = kindOf(node.particles);
+      const has = idSet(of.particles, kind);
+      return (node.particles[kind] ?? []).every((id) => has.has(id));
+    }
+    if (!('entity' in node) || !of.atoms) return true;
+    const part = this.partAtoms(node);
+    return !!part && StructureElement.Loci.isSubset(of.atoms, part);
+  }
+
+  /** A structure part's atoms, on its structure's root (what a clip cuts is read there) */
+  partAtoms(node: NodeRef): StructureElement.Loci | undefined {
+    const loci = this.loci(node);
+    return StructureElement.Loci.is(loci) ? StructureElement.Loci.remap(loci, loci.structure.root) : undefined;
+  }
+
+  /**
+   * Objects or parts given to a clip, or taken off it (its What it cuts' Cut also and ×, a node's Use a clip and ×,
+   * Add clip…'s Use), one step: Prism's clipping on what each is drawn as
+   */
+  readonly clipUse = this.operation({
+    id: 'explorer.clipUse',
+    title: 'Cut with a clip, or not',
+    params: {
+      tag: PD.Text('', { description: "The clip's tag (Prism's cut: clipping.list)" }),
+      nodes: PD.Value<NodeRef[]>([], {
+        description:
+          'Objects or parts: { ref }, { ref, entity, chain? } (atoms), { ref, particles: { entities | targets } }',
+      }),
+      on: PD.Boolean(true, { description: 'Cut them (true) or no longer (false)' }),
+    },
+    run: ({ tag, nodes, on }, ctx) => useClip(ctx, (n) => this.partAtoms(n), tag, nodes, on),
+  });
 
   /** How the handles are drawn on the canvas (all of them: Prism's and the stage's), following changes */
   handleLookState(): ReadonlyState<GizmoLook> {

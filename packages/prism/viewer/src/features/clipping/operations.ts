@@ -70,8 +70,10 @@ import {
   structureOf,
   withKept,
   withoutKept,
+  withoutKeptOn,
   writeLayer,
 } from '../../sources/clipping/kept.js';
+import { Clipping } from '@molstar/graphics/theme/clipping';
 
 // The `clipping` area (clipping.md §2): cuts through the representations a target or a node selector reaches,
 // written into those representations' own params (the state tree is the record), read back as cuts. Each run is one
@@ -569,20 +571,37 @@ export class ClippingApi extends ApiArea {
   readonly release = this.operation({
     id: 'clipping.release',
     title: 'Cut atoms kept whole again',
-    params: { cut: CutParam(), tag: CutTagParam() },
-    async run({ cut: index, tag }, ctx) {
+    params: {
+      cut: CutParam(),
+      tag: CutTagParam(),
+      target: OptionalParam(TargetParam('Only these atoms cut again (default: every atom it keeps whole)')),
+    },
+    async run({ cut: index, tag, target }, ctx) {
       const cut = oneCut(ctx, index, tag);
       if (ApiResult.isFailure(cut)) return cut;
       if (!cut.kept) return ApiResult.already(`Cut ${cut.index} keeps nothing whole.`);
+      const atoms = target ? await targetAtoms(ctx, target) : undefined;
+      if (ApiResult.isFailure(atoms)) return atoms;
       const state = ctx.plugin.state.data;
       const b = state.build();
+      let touched = 0;
       for (const cell of cellsOf(ctx, cut)) {
         const at = objectIndex(cell, cut.object);
-        if (!structureOf(cell) || at > MaxKeptIndex || !layerCell(state, cell.transform.ref)) continue;
-        writeLayer(state, b, cell, withoutKept(layerOf(state, cell), 1 << at));
+        const structure = structureOf(cell);
+        if (!structure || at > MaxKeptIndex || !layerCell(state, cell.transform.ref)) continue;
+        const layer = layerOf(state, cell);
+        const loci = atoms ? atomsOn(atoms, structure.root) : undefined;
+        if (atoms && !loci) continue;
+        const next = loci ? withoutKeptOn(layer, loci, 1 << at) : withoutKept(layer, 1 << at);
+        if (loci && Clipping.areEqual(next, layer)) continue;
+        writeLayer(state, b, cell, next);
+        touched++;
       }
+      if (!touched) return ApiResult.already(`Cut ${cut.index} keeps none of them whole.`);
       await ctx.plugin.runTask(state.updateTree(b));
-      return ApiResult.ok(`Cut ${cut.index} cuts ${cut.kept.label} again.`, { nodes: cut.targets.map((t) => t.ref) });
+      return ApiResult.ok(`Cut ${cut.index} cuts ${atoms ? 'them' : cut.kept.label} again.`, {
+        nodes: cut.targets.map((t) => t.ref),
+      });
     },
   });
 

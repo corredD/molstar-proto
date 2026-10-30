@@ -19,8 +19,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { explorerUI } from '../ui.js';
 
-// A clip's numbers in an object's properties (_spec/ui.md §4, Clips), over a headless viewer in jsdom: 1CRN
-// (data/examples), a plane and a sphere clip on it. Each clip's line has its numbers' toggle (view state, no step);
+// A clip's numbers in its properties (_spec/ui.md §4, Clip), over a headless viewer in jsdom: 1CRN (data/examples), a
+// plane and a sphere clip on it, each a row of the Clips category. A clip's line has its numbers' toggle (view state, no step);
 // open, its place, turn and size (its shape's) as sliders; a release or a typed value is one `clipping.update`, one
 // step; a change from elsewhere shows in them.
 
@@ -81,24 +81,23 @@ describe("a clip's numbers in the properties", () => {
     const host = document.createElement('div');
     document.body.append(host);
     ui.tabs![0].render.mount(host, { shell: new ShellModel() } as never, undefined as never);
-    await until(() => !!rowOf(host, '1CRN'));
-    rowOf(host, '1CRN')!.click();
-    await until(() => buttons(host, 'Clips').length > 0);
-    const section = buttons(host, 'Clips')[0];
+    // the sphere's row, in the Clips category: its Clip section
+    const name = `Sphere ${sphere().index}`;
+    await until(() => !!rowOf(host, name));
+    rowOf(host, name)!.click();
+    await until(() => buttons(host, 'Clip').length > 0);
+    const section = buttons(host, 'Clip')[0];
     if (section.getAttribute('aria-expanded') !== 'true') section.click();
-    await until(() => toggles(host).length === 2);
+    await until(() => toggles(host).length === 1);
     const steps = () => v.api.history.steps.value.length;
     const n = steps();
-    expect(toggles(host).map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false']);
+    expect(toggles(host).map((b) => b.getAttribute('aria-pressed'))).toEqual(['false']);
     expect(boxes(host, 'X')).toHaveLength(0);
 
-    // the sphere's numbers (the second line): its place, turn and diameter; the plane's stay closed
-    const sphereLine = cuts().findIndex((c) => c.object.type === 'sphere');
-    toggles(host)[sphereLine].click();
+    // its numbers: its place, turn and diameter
+    toggles(host)[0].click();
     await until(() => boxes(host, 'X').length === 1);
-    expect(toggles(host).map((b) => b.getAttribute('aria-pressed'))).toEqual(
-      sphereLine === 1 ? ['false', 'true'] : ['true', 'false'],
-    );
+    expect(toggles(host).map((b) => b.getAttribute('aria-pressed'))).toEqual(['true']);
     for (const label of ['Y', 'Z', 'Turn X', 'Turn Y', 'Turn Z', 'Diameter'])
       expect(boxes(host, label)).toHaveLength(1);
     expect(steps()).toBe(n);
@@ -145,7 +144,7 @@ describe("a clip's numbers in the properties", () => {
 
     // closed again: no numbers, no step
     const before = steps();
-    toggles(host)[sphereLine].click();
+    toggles(host)[0].click();
     await until(() => boxes(host, 'X').length === 0);
     expect(steps()).toBe(before);
   });
@@ -170,10 +169,10 @@ describe("a clip's numbers in the properties", () => {
     const host = document.createElement('div');
     document.body.append(host);
     ui.tabs![0].render.mount(host, { shell: new ShellModel() } as never, undefined as never);
-    await until(() => !!rowOf(host, '1CRN'));
-    rowOf(host, '1CRN')!.click();
-    await until(() => buttons(host, 'Clips').length > 0);
-    const section = buttons(host, 'Clips')[0];
+    await until(() => !!rowOf(host, 'Plane 1'));
+    rowOf(host, 'Plane 1')!.click();
+    await until(() => buttons(host, 'Clip').length > 0);
+    const section = buttons(host, 'Clip')[0];
     if (section.getAttribute('aria-expanded') !== 'true') section.click();
     await until(() => toggles(host).length === 1);
     toggles(host)[0].click();

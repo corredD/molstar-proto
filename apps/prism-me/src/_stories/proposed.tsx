@@ -146,6 +146,8 @@ function UseLine(props: { use: ClipUse; name: string; picked?: ReadonlyState<boo
   const { use } = props;
   const shape = clipBook.clip(use.clip)?.shape;
   const graded = derive(use.bias.asReadonly, (b) => b === 'keep' || b === 'wider');
+  // the last thing a clip cuts has no × (the app's, Prism's clipping.apply refuses it: remove the clip instead)
+  const last = derive(clipBook.uses.asReadonly, (all) => all.filter((u) => u.clip === use.clip).length === 1);
   return (
     <div class={classes.partCut} classList={{ [classes.partCutPicked]: props.picked ?? false }}>
       <div class={classes.line}>
@@ -172,7 +174,12 @@ function UseLine(props: { use: ClipUse; name: string; picked?: ReadonlyState<boo
           size="xs"
           variant="ghost"
           class={classes.partRemove}
-          title="No longer affected by this clip"
+          title={derive(last, (l) =>
+            l
+              ? 'No longer affected by this clip (all it cuts: remove the clip instead)'
+              : 'No longer affected by this clip',
+          )}
+          disabled={last}
           icon={<Icon name="x" />}
           onClick={() => clipBook.drop(use)}
         />

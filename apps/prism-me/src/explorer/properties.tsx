@@ -47,10 +47,22 @@ import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { DistanceProps } from './distance-properties.js';
-import { clipItems, clippable, hideHandles, movable, showClipHandles, showHandles, showTheme } from './menu.js';
+import { addClip, clippable, hideHandles, movable, showClipHandles, showHandles, showTheme } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
 import { Hint, Line, PropertiesFrame, PropertiesSlot, propertiesClasses as classes } from './properties-view.js';
-import { type ClipAt, ClipShapes, categoryTheme, objectOpen, type Parts, setEyes } from './rows.js';
+import {
+  ClipShapes,
+  ClipsKey,
+  type ClipUse,
+  categoryTheme,
+  clipName,
+  clipTargetsOf,
+  type Parts,
+  whatItCuts,
+  allItCuts,
+  objectOpen,
+  setEyes,
+} from './rows.js';
 import { CategoryThemes } from './tree-view.js';
 
 // The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name and kind, a model's Group by
@@ -77,8 +89,6 @@ interface Subject {
   readonly area: ExplorerApi;
   readonly picked: Picked;
   readonly parts: ReadonlyState<Parts>;
-  /** The clips as rows, where each was made (the tree's: a category's Clips are those under its row) */
-  readonly clips: ReadonlyState<readonly ClipAt[]>;
   /** A model's grouping as its rows show it */
   groupByOf(model: string): MesoGroupBy | undefined;
 }
@@ -91,7 +101,6 @@ export function Properties(props: {
   /** Each model's grouping in the tree, by ref (the explorer's view state) */
   groupings: KeyedState<string, MesoGroupBy>;
   groupByOf(model: string): MesoGroupBy | undefined;
-  clips: ReadonlyState<readonly ClipAt[]>;
   /** Kept by the owner for the session: the sections' open state, from pick to pick */
   shell: ShellModel;
 }) {
@@ -105,7 +114,6 @@ export function Properties(props: {
           area: props.area,
           picked,
           parts: props.parts,
-          clips: props.clips,
           groupByOf: props.groupByOf,
         };
         return (
@@ -136,7 +144,7 @@ function nameOf({ api, picked }: Subject): Child {
   if (picked.kind === 'clip' && picked.clip) {
     return mapState(api.clipping.cuts, (all) => {
       const c = all.find((x) => x.object.tag === picked.clip);
-      return c ? `${ClipShapes[c.object.type] ?? c.object.type} ${c.index}` : picked.label;
+      return c ? clipName(c) : picked.label;
     });
   }
   return picked.label;
@@ -180,7 +188,10 @@ const Sections: readonly Section[] = [
     id: 'look',
     title: 'Look',
     when: (s) =>
-      s.picked.kind === 'category' || structural(s) || particled(s) || (s.picked.kind === 'mesh' && !!s.picked.node),
+      (s.picked.kind === 'category' && s.picked.key !== ClipsKey) ||
+      structural(s) ||
+      particled(s) ||
+      (s.picked.kind === 'mesh' && !!s.picked.node),
     render: (s) => {
       const { api, area, picked } = s;
       if (picked.kind === 'category') return <CategoryLook subject={s} />;
@@ -297,12 +308,7 @@ const Sections: readonly Section[] = [
     id: 'clips',
     title: 'Clips',
     when: ({ picked }) => picked.kind === 'category' || clippable(picked.kind, picked.node),
-    render: (s) =>
-      s.picked.kind === 'category' ? (
-        <CategoryClips subject={s} />
-      ) : (
-        <Clips api={s.api} area={s.area} kind={s.picked.kind} node={s.picked.node!} />
-      ),
+    render: (s) => (s.picked.kind === 'category' ? <CategoryClips subject={s} /> : <Clips subject={s} />),
   },
   {
     // the labels made at this node (ui.md §4): not at a category, nor at what was made at a node
@@ -323,7 +329,7 @@ const Sections: readonly Section[] = [
     id: 'clip',
     title: 'Clip',
     when: ({ picked }) => picked.kind === 'clip' && !!picked.clip,
-    render: ({ api, area, picked }) => <ClipEditor api={api} area={area} tag={picked.clip!} />,
+    render: (s) => <ClipProperties subject={s} />,
   },
   {
     id: 'label',
@@ -535,18 +541,44 @@ function CategoryLook(props: { subject: Subject }) {
   );
 }
 
-/** A category's Clips: the cuts its Add clip… made (each of every object under it), each as a clip row's */
+/**
+ * A category's Clips: a new clip of every object in it, or one of the scene used on all of them (one step each); the
+ * Clips category's: where its clips are
+ */
 function CategoryClips(props: { subject: Subject }) {
-  const { api, area, picked, clips } = props.subject;
-  const tags = mapState(clips, (all) => all.filter((c) => c.node === picked.key).map((c) => c.tag));
+  const { api, area, picked } = props.subject;
+  if (picked.key === ClipsKey) return <Hint>Every clip of the scene. Pick one to see what it cuts.</Hint>;
+  const category = picked.key.slice(2);
+  const objects = mapState(area.objectsState(), (os) => os.filter((o) => o.category === category).map((o) => o.ref));
+  const clips = mapState(api.clipping.cuts, (all) =>
+    all.filter((c) => !!c.object.tag).map((c) => [c.object.tag!, clipName(c)] as const),
+  );
   return (
     <div class={classes.stack}>
-      <For each={tags} by={(t) => t}>
-        {(tag) => <ClipEditor api={api} area={area} tag={tag} named />}
-      </For>
-      <Show when={mapState(tags, (t) => t.length === 0)}>
-        {() => <Hint>No clips. Add one with its ⋯ › Add clip…: it cuts every object under it.</Hint>}
-      </Show>
+      <Hint>A clip made or used here cuts every object in it.</Hint>
+      <Line label="New clip">
+        <AddSelect
+          label="A new clip that cuts every object in it"
+          placeholder="Its shape…"
+          options={NewClipOptions}
+          onPick={(shape) =>
+            void api.run('clipping.add', { shape, node: objects.value.map((r) => `#${r}`).join(', ') }).then((r) => {
+              const cut = (r as { value?: { index: number } }).value;
+              if (r.ok && cut) showClipHandles(api, cut.index);
+            })
+          }
+        />
+      </Line>
+      <Line label="Use a clip">
+        <AddSelect
+          label="A clip of the scene, used on every object in it"
+          placeholder="A clip of the scene…"
+          options={clips}
+          onPick={(tag) =>
+            void api.run('explorer.clipUse', { tag, nodes: objects.value.map((ref) => ({ ref })), on: true })
+          }
+        />
+      </Line>
     </div>
   );
 }
@@ -1284,21 +1316,29 @@ function HandleLook(props: { area: ExplorerApi }) {
 // --- clips -----------------------------------------------------------------------------------------------------------
 
 /**
- * A node's clips, Prism's (its clipping: the cuts through its representations), each as a clip row's (`ClipEditor`);
- * Add a clip, the handle size
+ * A node's Clips (Ludo, 2026-10-28: the clips are in their own category, pointed at from here): the clips on it (each
+ * picks its row; × takes it off them, one step), New clip (a shape: it cuts this), Use a clip (one of the scene's, one
+ * step); a model's or list's Clip whole, the handle size
  */
-function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: NodeRef }) {
-  const { api, area, node } = props;
-  const add = (e: MouseEvent) => {
-    const button = e.currentTarget as HTMLElement;
-    const r = button.getBoundingClientRect();
-    const picked = { key: '', label: '', kind: props.kind, node };
-    openContextMenu(rootOf(button), { x: r.left, y: r.bottom }, clipItems(api, area, picked));
-  };
-  const cuts = mapState(api.clipping.cuts, (all) => area.cutsOf(all, node));
+function Clips(props: { subject: Subject }) {
+  const { api, area, picked, parts } = props.subject;
+  const node = picked.node!;
+  const objects = area.objectsState();
+  // read again when what a clip cuts of a list changes (its layers), which the cuts do not compare
+  const layers = area.particleLayersState();
+  const on = derive([api.clipping.cuts, layers], (all) => area.cutsOf(all, node));
+  const others = derive([api.clipping.cuts, on], (all, o) =>
+    all.filter((c) => !!c.object.tag && !o.includes(c)).map((c) => [c.object.tag!, clipName(c)] as const),
+  );
+  // its × off where it is all the clip cuts (a clip cuts something: remove it instead)
+  const last = (tag: string) =>
+    derive([api.clipping.cuts, objects, parts, layers], (all, os, ps) => {
+      const c = all.find((x) => x.object.tag === tag);
+      return !!c && allItCuts(whatItCuts(area, c, os, ps), node);
+    });
   // a model's or list's objects: clipped whole (proteins) or by their elements (atoms), when it draws objects
   const whole =
-    (props.kind === 'mesoscale model' || props.kind === 'particle list') && api.stage
+    (picked.kind === 'mesoscale model' || picked.kind === 'particle list') && api.stage
       ? api.stage.clipWholeState(node.ref)
       : undefined;
   return (
@@ -1326,14 +1366,165 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
           )}
         </Show>
       ) : null}
-      <For each={mapState(cuts, (l) => l.map((c) => c.object.tag!))} by={(tag) => tag}>
-        {(tag) => <ClipEditor api={api} area={area} tag={tag} named of={node} />}
-      </For>
-      <Button size="sm" icon={<Icon name="scissors" />} onClick={add}>
-        Add a clip
-      </Button>
+      <Show
+        when={mapState(on, (l) => l.length > 0)}
+        fallback={() => <Hint>No clip on it. Make one, or use one of the scene's.</Hint>}
+      >
+        {() => (
+          <For each={on} by={(c) => `${c.object.tag}:${clipName(c)}`}>
+            {(c) => (
+              <UseLine
+                name={clipName(c)}
+                pick="Pick the clip"
+                last={last(c.object.tag!)}
+                onPick={() => area.revealRow(`k:${c.object.tag}`)}
+                onDrop={() => void api.run('explorer.clipUse', { tag: c.object.tag!, nodes: [node], on: false })}
+              />
+            )}
+          </For>
+        )}
+      </Show>
+      <Line label="New clip">
+        <AddSelect
+          label="A new clip that cuts it"
+          placeholder="Its shape…"
+          options={NewClipOptions}
+          onPick={(shape) => void addClip(api, area, node, shape)}
+        />
+      </Line>
+      <Line label="Use a clip">
+        <AddSelect
+          label="A clip of the scene, used on it too"
+          placeholder="A clip of the scene…"
+          options={others}
+          onPick={(tag) => void api.run('explorer.clipUse', { tag, nodes: [node], on: true })}
+        />
+      </Line>
       <HandleLook area={area} />
     </div>
+  );
+}
+
+/**
+ * A clip's properties (Ludo, 2026-10-28): its editor (handles, numbers, On top, remove, shape, invert: PR #14), then
+ * What it cuts: every object or part it is given (each picks its row; × takes it off, one step; not the last one:
+ * remove the clip instead), Cut also… (one step)
+ */
+function ClipProperties(props: { subject: Subject }) {
+  const { api, area, picked, parts } = props.subject;
+  const tag = picked.clip!;
+  const objects = area.objectsState();
+  const cut = mapState(api.clipping.cuts, (all) => all.find((c) => c.object.tag === tag));
+  // read again when what it cuts of a list changes (its layers), which the cuts do not compare
+  const layers = area.particleLayersState();
+  const uses = derive([cut, objects, parts, layers], (c, os, ps) => (c ? whatItCuts(area, c, os, ps) : []));
+  // what it can be given more of: every object and its parts it does not cut all of
+  const more = derive([cut, objects, parts, layers], (c, os, ps) => {
+    if (!c) return [];
+    const of = new Map(os.map((o) => [o.ref, area.cutOf(c, o.ref)] as const));
+    return clipTargetsOf(os, ps)
+      .filter((t) => {
+        const o = of.get(t.node.ref);
+        if (!o) return true;
+        const isObject = !('particles' in t.node) && !('entity' in t.node);
+        return isObject ? !!(o.particles || o.atoms) : !area.covers(o, t.node);
+      })
+      .map((t) => [t.key, t.label] as const);
+  });
+  const byKey = (key: string) => clipTargetsOf(objects.value, parts.value).find((t) => t.key === key);
+  return (
+    <div class={classes.stack}>
+      <ClipEditor api={api} area={area} tag={tag} />
+      <div class={classes.title}>
+        <strong>What it cuts</strong>
+      </div>
+      <For each={uses} by={(u) => `${u.key}:${u.label}`}>
+        {(u: ClipUse) => (
+          <UseLine
+            name={u.label}
+            pick="Pick it in the tree"
+            last={derive(uses, (l) => l.length === 1)}
+            onPick={() => area.revealRow(u.key)}
+            onDrop={() => void api.run('explorer.clipUse', { tag, nodes: [u.node], on: false })}
+          />
+        )}
+      </For>
+      <Line label="Cut also">
+        <AddSelect
+          label="An object or part this clip also cuts"
+          placeholder="An object or part…"
+          options={more}
+          onPick={(key) => {
+            const t = byKey(key);
+            if (t) void api.run('explorer.clipUse', { tag, nodes: [t.node], on: true });
+          }}
+        />
+      </Line>
+    </div>
+  );
+}
+
+/** An object or part a clip cuts, or a clip on a node: its name (a click picks its row), then × (no longer cut) */
+function UseLine(props: {
+  name: string;
+  pick: string;
+  last: boolean | ReadonlyState<boolean>;
+  onPick(): void;
+  onDrop(): void;
+}) {
+  const last = typeof props.last === 'boolean' ? observableState(props.last).asReadonly : props.last;
+  return (
+    <div class={classes.use} data-clip-use={props.name}>
+      <Button size="sm" variant="ghost" class={classes.fit} title={props.pick} onClick={props.onPick}>
+        {props.name}
+      </Button>
+      <Button
+        size="xs"
+        variant="ghost"
+        title={mapState(last, (l) =>
+          l
+            ? `No longer cut by it: ${props.name} (all the clip cuts: remove the clip instead)`
+            : `No longer cut by it: ${props.name}`,
+        )}
+        disabled={last}
+        icon={<Icon name="x" />}
+        onClick={props.onDrop}
+      />
+    </div>
+  );
+}
+
+/** Prism's cut shapes, a new clip's */
+const NewClipOptions = observableState<readonly (readonly [string, string])[]>(Object.entries(ClipShapes)).asReadonly;
+
+/** A picker that runs its choice and goes back to its placeholder (New clip, Use a clip, Cut also) */
+function AddSelect(props: {
+  label: string;
+  placeholder: string;
+  options: ReadonlyState<readonly (readonly [string, string])[]>;
+  onPick(id: string): void;
+}) {
+  // made again when its options change, or once picked: back at its placeholder
+  const again = observableState(0);
+  return (
+    <For
+      each={derive([props.options, again.asReadonly], (o, n) => [{ o, n }])}
+      by={({ o, n }) => `${n}:${o.map(([id]) => id).join()}`}
+    >
+      {({ o }) => (
+        <Select
+          size="sm"
+          aria-label={props.label}
+          options={[['', props.placeholder], ...o] as [string, string][]}
+          value=""
+          onChange={(id) => {
+            if (!id) return;
+            again.set(again.value + 1);
+            props.onPick(id);
+          }}
+        />
+      )}
+    </For>
   );
 }
 
@@ -1341,12 +1532,11 @@ function Clips(props: { api: ViewerApi; area: ExplorerApi; kind: string; node: N
 const ShapeOptions = Object.entries(ClipShapes) as [string, string][];
 
 /**
- * A clip (Prism's cut, by its tag): its line (its name where it is one of a list, its handles shown or hidden, its
- * numbers' toggle, On top, remove), its shape and invert (Prism's `clipping.update`, one step each; ui.md §4, Ludo
- * 2026-10-25), and its place, turn and size by numbers on demand. The same in an object's Clips, a category's and a clip
- * row's own section.
+ * A clip (Prism's cut, by its tag): its line (its handles shown or hidden, its numbers' toggle, On top, remove), its
+ * shape and invert (Prism's `clipping.update`, one step each; ui.md §4, Ludo 2026-10-25), and its place, turn and size
+ * by numbers on demand: the head of a clip row's own section
  */
-function ClipEditor(props: { api: ViewerApi; area: ExplorerApi; tag: string; named?: boolean; of?: NodeRef }) {
+function ClipEditor(props: { api: ViewerApi; area: ExplorerApi; tag: string }) {
   const { api, area, tag } = props;
   const clipping = api.clipping;
   const cut = mapState(clipping.cuts, (all) => all.find((c) => c.object.tag === tag));
@@ -1366,13 +1556,6 @@ function ClipEditor(props: { api: ViewerApi; area: ExplorerApi; tag: string; nam
   return (
     <div class={classes.tight}>
       <div class={classes.tools}>
-        {props.named ? (
-          <span class={classes.itemName}>
-            {mapState(cut, (c) =>
-              c ? `${ClipShapes[c.object.type] ?? c.object.type} ${c.index}${props.of ? partOf(c, props.of) : ''}` : '',
-            )}
-          </span>
-        ) : null}
         <Button
           size="xs"
           variant="ghost"
@@ -1414,13 +1597,6 @@ function ClipEditor(props: { api: ViewerApi; area: ExplorerApi; tag: string; nam
       </Show>
     </div>
   );
-}
-
-/** A part's cut, at its object's row: its part, named (" · CRAMBIN"); else nothing */
-function partOf(c: { kept?: unknown; atoms?: { label: string }; particles?: { label: string } }, node: NodeRef) {
-  if ('entity' in node || 'particles' in node) return '';
-  if (c.particles) return ` · ${c.particles.label}`;
-  return c.kept && c.atoms ? ` · ${c.atoms.label}` : '';
 }
 
 type ClipCut = ViewerApi['clipping']['cuts']['value'][number];

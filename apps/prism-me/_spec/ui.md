@@ -18,6 +18,7 @@ Structure, Selection, Snapshots and other tabs, the Entities, Segmentations tabs
 │          canvas              │ ▾ Particles        │   the tree
 │                              │ ▾ Volumes          │
 │                              │ ▾ Meshes           │
+│                              │ ▾ Clips            │   every clip of the scene
 │  [view buttons]              ├────────────────────┤   a split the person can drag
 │                              │ properties of the  │   the properties of the node
 │                              │ node clicked       │   clicked in the tree or in 3D
@@ -33,14 +34,16 @@ filter opens every row again.
 
 ## 2. Opening
 
-- Drag and drop anywhere: every format (features.md, "Opening files"); each lands in its category.
+- Drag and drop anywhere: every format (features.md, "Opening files"); each lands in its category. A clip made anywhere
+  (a node's Clips, Add clip…) lands in Clips (§3), and so does one a session or a file brings.
 - **+ Open** at the top of the tree: Files…; PDB / PDB-IHM / EMDB id…; Examples (the Mesoscale Explorer's); Session….
 - The tree empty: a short line in its place, "Drop files here, or + Open", with the formats.
 
 ## 3. The tree
 
-Four categories, shown when they hold something. Under each, what was opened, then its parts; the parts' parts are
-loaded when first opened (thousands of entities cost nothing until looked at).
+Four categories of objects, then Clips (Ludo, 2026-10-28), each shown when it holds something. Under each object
+category, what was opened, then its parts; the parts' parts are loaded when first opened (thousands of entities cost
+nothing until looked at). Under Clips, every clip of the scene (§4, Clip).
 
 | Category   | An item                                                                                | Its children                                                                                                                                                      |
 | ---------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -48,10 +51,11 @@ loaded when first opened (thousands of entities cost nothing until looked at).
 | Particles  | a cellPACK or PetWorld model; a particle list (RELION, Dynamo, EM, NDJSON, Simularium) | a model: its groups (compartments, or functions by its Group by), then entities. A list: its targets (a class each when by class), each showing what decorates it |
 | Volumes    | a map, tomogram, tilt series (MRC…)                                                    | its representations (slice, isosurface)                                                                                                                           |
 | Meshes     | a mesh file (OBJ, PLY, VTP)                                                            | its segments, when it has several                                                                                                                                 |
+| Clips      | a clip (Prism's cut, its tag): its shape and number (Plane 1), how many it cuts        | none: what it cuts is in its properties (§4, Clip)                                                                                                                |
 
 A model's groups follow its Group by (§4), a model's own choice: compartments (the dotted names' tree) by default when
 it has some, else functions; switching remakes that model's rows only. A group row stands for its entities (their ids),
-so its eye, Look, clips and picks are the same under both groupings. A label made at a group the model's grouping does
+so its eye, Look, Clips and picks are the same under both groupings. A label made at a group the model's grouping does
 not show now is a row under the model (picked, hidden, edited and revealed there), back under its group when that
 grouping is shown again (a default, to confirm).
 
@@ -76,10 +80,14 @@ there.
   own, `mesoscale.theme`, one step; Ludo, 2026-10-27): Structures by object, entity, chain or one color; Particles by
   object, entity (a list with no entities: by object), generated colors or one color; Volumes (their isosurfaces: slices
   show the data) and Meshes by object or one color; one color (Uniform…) picked in Prism's color picker at the ⋯ and
-  applied once (one step); and Add clip… (one cut of every object under it).
+  applied once (one step); and Add clip… (a new clip of every object under it, or one of the scene's used on all of
+  them).
+- **The Clips category** (lane `clips-category`): its eye draws every clip in the scene, or none (one step), open when
+  all are drawn; its ⋯ has New clip… (a new clip of every object of the scene). A clip's row: its eye its drawing, its ⋯
+  Remove.
 
-Clips and labels made at a node are rows under it (§5), and distances under their first point's row (§7), each with its
-own eye.
+Labels made at a node are rows under it (§5), and distances under their first point's row (§7), each with its own eye. A
+clip is never a row under a node: it is a row of Clips (Ludo, 2026-10-28).
 
 A click on a row picks it: highlighted in 3D, its properties below. A category is picked too (Ludovic, 2026-10-25). The
 arrows move the pick (↑/↓, Home, End; → opens or goes in, ← closes or goes to the parent), as a click. A double click
@@ -101,10 +109,27 @@ label column (`--msp-label-width`) and its control, Prism's (styling.md §4).
 | Decoration        | a particle list, a model, a target, a model's group or entity                                                                                | what decorates it: an object of the scene, a PDB id or URL, spheres; targets by class                                                                                                                                                                                                                                                                              |
 | Slice             | a volume (each of its slices a block), a slice                                                                                               | axis, position, contrast                                                                                                                                                                                                                                                                                                                                           |
 | Position          | every object (not its parts)                                                                                                                 | Handles (Move and turn / Hide), position and rotation as numbers on demand, handle size, a list's scale, reset                                                                                                                                                                                                                                                     |
-| Clips             | every node but a volume's slice or isosurface; a category                                                                                    | its clips (§5), each: its Handles, its shape (Prism's five) and invert (one step each, `clipping.update`), its numbers on demand (position, turn, size: sliders), On top, remove (Ludovic, 2026-10-25, 2026-10-27); a category's cut all under it; a clip's row: the same, in a Clip section of its own                                                            |
+| Clips             | every node but a volume's slice or isosurface; a category                                                                                    | the clips on it, each its name (a click picks its row) and × (no longer cut by it, one step), then New clip (a shape: it cuts this, one step) and Use a clip (one of the scene's, one step); a model's or list's Clip whole; the handle size. A category's: New clip and Use a clip for every object in it; the Clips category's: where its clips are              |
+| Clip              | a clip's row (Clips)                                                                                                                         | its editor (its Handles, its numbers on demand: position, turn, size; On top, remove; its shape, Prism's five, and invert, one `clipping.update` each: Ludovic, 2026-10-25, 2026-10-27), then What it cuts: every object or part it is given, each its name (a click picks its row) and × (one step), Cut also… (one step)                                         |
 | Labels            | every node but a category                                                                                                                    | its labels (§5: those made at it, its row's key), each: text, size, remove (one step each); a label's row: also its color, plate and tether                                                                                                                                                                                                                        |
 | Graphics & Motion | every object (a structure, a model, a particle list, a volume; not a part)                                                                   | quality (Ultra, Quality, Balanced, Fast) of that object alone; wiggle and tumble (a toggle at 1 Å, an amplitude) where it moves: not a volume                                                                                                                                                                                                                      |
 | Group by          | a model with compartments                                                                                                                    | Compartment or Function: how the tree groups its entities; above the sections, not folded; view state (no operation, no step)                                                                                                                                                                                                                                      |
+
+A clip and what it cuts (Ludo, 2026-10-28; lane `clips-category`): a clip is one Prism cut, its tag, over the
+representations it is given (`clipping.md` §1). Of an object it cuts all, some particles (a model's entities, a list's
+targets: the representations' layers record them by the tag, clipping.md §5) or some atoms (the rest kept whole by its
+group bit). So What it cuts lists, object by object in the tree's order: an object it cuts all of; of a model, the
+largest groups it cuts all of (as the model's grouping shows them), then entities; a list's targets; a structure's
+entities, or their chains, it cuts all of; a model's compartments when the clip is of compartments (Prism's selector,
+from ⌘K or the agent: given an entity too, it keeps them). A node's Clips lists the clips that cut all of it (an
+object's: any clip on it). Cut also… offers each object, a structure's entities, a model's groups and a list's targets
+it does not cut all of (a model's entities from their own Clips: they are many). Each add or take-off is one step
+(`explorer.clipUse`: Prism's `clipping.apply`, `particles.look` cuts, `clipping.keep` and `release` in one run). The
+last thing a clip cuts has no × (greyed: a clip cuts something; remove the clip instead), as Prism's `clipping.apply`
+refuses it: in a clip's What it cuts, its only line; in a node's Clips, a clip whose every line is in the node (an
+object cut in two parts). Many objects given or taken off at once (a category's) are one `clipping.apply`; a part of a
+structure cut again is that part only (`clipping.release` with a target), another structure's kept atoms stay kept.
+Limits, Prism's: 16 clips a representation; a clip of a part only among the first six on it (Mol\*'s clipping groups).
 
 Graphics & Motion (Ludovic, 2026-10-24: on every object, what does not apply left out): `mesoscale.graphics` and
 `mesoscale.motion` with an `object` (the mesoscale extension's ops, so Prism stays as it is). A mode sets, by kind:
@@ -145,8 +170,11 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   itself. On a part (an entity, a chain): **[to decide]** the whole object it belongs to, or only that part.
 - **Color…**: a color for all of it (swatches; a model's or a group's Generate colors first).
 - **Add label**: plain text at that place, for that node (Ludovic, 2026-10-18); it becomes a row under the node.
-- **Add clip…**: a plane, sphere, box, cylinder or cone for that node (only its particles or atoms are cut); it becomes
-  a row under it. Several per node (Ludovic, 2026-10-18; up to 8 per particle list).
+- **Add clip…** (Ludo, 2026-10-28): a new clip of each shape (New plane, sphere, box, cylinder, cone) that cuts that
+  node (only its particles or atoms), then every clip of the scene (Use Plane 1…), used on it too (one step), those on
+  it already greyed. A new clip is a row of Clips (§3), its handles shown. Several per node (Ludovic, 2026-10-18; a clip
+  of a part among the first six on a particle list's or a structure's representation). A category's Add clip… lists the
+  same for every object in it.
 - **Show only** (cellVIEW's, Ludo 2026-10-28), on a part of a model or a list: **Show only this**; on a model's entity
   also **Show only its group** (the group it is under as the tree groups the model) and **Show only its compartment**
   (cellPACK's `root.<compartment>.(surface|interior).<group>`: every entity whose compartment path is the same before

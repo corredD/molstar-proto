@@ -36,15 +36,17 @@ import type { Subscription } from 'rxjs';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import { editInline } from './inline-edit.js';
 import { distancePicker, selectionModeHint } from './measure.js';
-import { colorItems, nodeMenuItems, showClipHandles } from './menu.js';
+import { colorItems, nodeMenuItems, showClipHandles, useItems } from './menu.js';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
 import { type Picked, Properties } from './properties.js';
 import {
   ancestorKeys,
   Categories,
   categoryTheme,
+  ClipsKey,
   ClipShapes,
-  clipsAt,
+  clipName,
+  clipRowsOf,
   type Parts,
   type Row,
   rowOf,
@@ -77,6 +79,14 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const model = sceneModel(area, ctx.api.stage);
   scenes.set(area, model);
   area.setOnReveal((key) => {
+    // a clip's row: in the Clips category, by its tag
+    const clip = key.startsWith('k:')
+      ? ctx.api.clipping?.cuts.value.find((c) => `k:${c.object.tag}` === key)
+      : undefined;
+    if (clip) {
+      model.reveal({ key, label: clipName(clip), kind: 'clip', clip: clip.object.tag! });
+      return;
+    }
     const stage = ctx.api.stage;
     const row = rowOf(
       area.objectsState().value,
@@ -198,7 +208,7 @@ export interface SceneModel {
   /** The row to bring into view (a pick in 3D) */
   readonly scrollTo: ObservableState<string | undefined>;
   /** Picks a node's row, unfolding the way to it */
-  reveal(p: PickedNode): void;
+  reveal(p: Picked): void;
   /** A model's grouping as its rows show it (its info's), for what acts on its groups */
   groupByOf(model: string): MesoGroupBy | undefined;
   /** The properties' sections, their open state kept from pick to pick for the session (ui.md §4) */
@@ -206,7 +216,7 @@ export interface SceneModel {
 }
 
 function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
-  const open = observableState<ReadonlySet<string>>(new Set(Categories.map((c) => `c:${c.id}`)));
+  const open = observableState<ReadonlySet<string>>(new Set([...Categories.map((c) => `c:${c.id}`), ClipsKey]));
   const picked = observableState<Picked | undefined>(undefined);
   const parts = observableState<Parts>(new Map());
   const groupings = keyedState<string, MesoGroupBy>();
@@ -284,7 +294,10 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
   const distances = api.stage?.distancesState() ?? observableState<readonly DistanceInfo[]>([]).asReadonly;
   // and Prism's cuts, each under the row it was made at
   const cuts = api.clipping?.cuts ?? observableState<ExplorerCuts>([]).asReadonly;
-  const clips = derive([cuts, objects], (c, o) => clipsAt(area, c, o));
+  // read again when what a clip cuts of a list changes (its layers), which the cuts do not compare
+  const clips = derive([cuts, objects, parts.asReadonly, area.particleLayersState()], (c, o, p) =>
+    clipRowsOf(area, c, o, p),
+  );
   // the rows folded while filtering (the filter opens all the others), forgotten when the filter changes
   const folded = observableState<ReadonlySet<string>>(new Set());
   effect(filter.asReadonly, () => {
@@ -361,12 +374,33 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
       pick(row);
       const items = categoryItems(
         api,
+        area,
         row,
         model.groupByOf,
         () => uniformOf(row),
         (sub) => openContextMenu(r, at, sub),
       );
       openContextMenu(r, at, items, onClose);
+      return;
+    }
+    // the Clips category's ⋯: a new clip of every object of the scene (the mock's New clip…)
+    if (row.key === ClipsKey) {
+      pick(row);
+      const all = area.objectsState().value.map((o) => o.ref);
+      const shapes = categoryClipItems(api, area, all).filter((i) => i.id.startsWith('clip-'));
+      openContextMenu(
+        r,
+        at,
+        [
+          {
+            id: 'clip',
+            label: 'New clip… (every object)',
+            icon: 'scissors',
+            run: () => openContextMenu(r, at, shapes),
+          },
+        ],
+        onClose,
+      );
       return;
     }
     if (row.kind === 'clip' && row.clip) {
@@ -447,7 +481,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
             rows={rows}
             picked={pickedKey}
             shown={shown}
-            more={(row) => !!row.node || !!row.objects?.length || !!row.clip}
+            more={(row) => !!row.node || !!row.objects?.length || !!row.clip || row.key === ClipsKey}
             onPick={pick}
             onToggle={(row) => toggleOpen(row.key)}
             onEyes={setShown}
@@ -488,7 +522,6 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
                 parts={parts.asReadonly}
                 groupings={model.groupings}
                 groupByOf={model.groupByOf}
-                clips={clips}
                 shell={model.sections}
               />
             )}
@@ -500,12 +533,39 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
 }
 
 /**
+ * A category's Add clip…: a new clip of every object under it (Prism's, through all their representations), by shape;
+ * then every clip of the scene, used on all of them too (one step), greyed when it cuts each already
+ */
+function categoryClipItems(api: ViewerApi, area: ExplorerApi, objects: readonly string[]): ContextMenuItem[] {
+  const node = objects.map((r) => `#${r}`).join(', ');
+  const cuts = api.clipping?.cuts.value ?? [];
+  const nodes = objects.map((ref) => ({ ref }));
+  const onAll = (tag: string) => {
+    const cut = cuts.find((c) => c.object.tag === tag);
+    return !!cut && objects.every((ref) => !!area.cutOf(cut, ref));
+  };
+  return [
+    ...Object.entries(ClipShapes).map(([shape, label]) => ({
+      id: `clip-${shape}`,
+      label: `New ${label.toLowerCase()}`,
+      run: async () => {
+        const r = await api.run('clipping.add', { shape, node });
+        const cut = (r as { value?: { index: number } }).value;
+        if (r.ok && cut) showClipHandles(api, cut.index);
+      },
+    })),
+    ...useItems(api, cuts, nodes, onAll),
+  ];
+}
+
+/**
  * A category's ⋯ (Ludo, 2026-10-28): Color… (a color theme for every object under it, one step: `mesoscale.theme`, the
- * themes its kind takes, ui.md §3; Uniform… its color picked first) and Add clip… (one cut of every object under it,
- * Prism's, through all their representations); no icons on the themes and shapes (styling.md §4)
+ * themes its kind takes, ui.md §3; Uniform… its color picked first) and Add clip… (a new clip of every object under it, or
+ * one of the scene's used on all of them); no icons on the themes and shapes (styling.md §4)
  */
 function categoryItems(
   api: ViewerApi,
+  area: ExplorerApi,
   row: Row,
   groupBy: (model: string) => MesoGroupBy | undefined,
   uniform: () => void,
@@ -517,19 +577,14 @@ function categoryItems(
     label,
     run: () => (theme === 'uniform' ? uniform() : void categoryTheme(api, objects, theme, groupBy)),
   }));
-  const node = objects.map((r) => `#${r}`).join(', ');
-  const shapes: ContextMenuItem[] = Object.entries(ClipShapes).map(([shape, label]) => ({
-    id: `clip-${shape}`,
-    label,
-    run: async () => {
-      const r = await api.run('clipping.add', { shape, node });
-      const cut = (r as { value?: { index: number } }).value;
-      if (r.ok && cut) showClipHandles(api, cut.index);
-    },
-  }));
   return [
     { id: 'color', label: 'Color…', icon: 'palette', run: () => open(themes) },
-    { id: 'clip', label: 'Add clip… (every object in it)', icon: 'scissors', run: () => open(shapes) },
+    {
+      id: 'clip',
+      label: 'Add clip… (every object in it)',
+      icon: 'scissors',
+      run: () => open(categoryClipItems(api, area, objects)),
+    },
   ];
 }
 
