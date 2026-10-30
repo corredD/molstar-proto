@@ -195,7 +195,7 @@ describe('the Clips category', () => {
 });
 
 describe("the Clips category's eye and ⋯ (with tree-eyes)", () => {
-  it("draws every clip in the scene in one step; its ⋯ has New clip…", async () => {
+  it('draws every clip in the scene in one step; its ⋯ has New clip…', async () => {
     const v = await viewer();
     const { host, refOf } = mount(v);
     const crn = refOf('1CRN');
