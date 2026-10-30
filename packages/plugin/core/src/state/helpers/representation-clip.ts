@@ -48,7 +48,8 @@ export namespace RepresentationClip {
       Vec3.exactEquals(a.rotation.axis, b.rotation.axis) &&
       a.rotation.angle === b.rotation.angle &&
       Mat4.areEqual(a.transform, b.transform, 0) &&
-      (a.tag ?? '') === (b.tag ?? '')
+      (a.tag ?? '') === (b.tag ?? '') &&
+      !!a.ghost === !!b.ghost
     );
   }
 

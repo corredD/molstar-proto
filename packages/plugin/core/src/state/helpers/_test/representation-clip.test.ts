@@ -74,5 +74,8 @@ describe('RepresentationClip', () => {
     expect(RepresentationClip.sameCut({ ...a, tag: 'clip-1' }, a)).toBe(false);
     // equal in every value takes the tag too
     expect(RepresentationClip.objectsEqual({ ...a, tag: 'clip-1' }, a)).toBe(false);
+    // its ghosts are a value of it (an object without the field is not ghosted)
+    expect(RepresentationClip.objectsEqual({ ...a, ghost: true }, a)).toBe(false);
+    expect(RepresentationClip.objectsEqual({ ...a, ghost: false }, a)).toBe(true);
   });
 });
