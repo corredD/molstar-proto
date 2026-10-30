@@ -38,7 +38,7 @@ their own packages (`@molstar/<name>-extension/prism-viewer`).
 | `clipping.remove` | Remove a cut | destructive | cut, tag |
 | `clipping.settings` | Set how cuts cut |  | variant, solidSurface |
 | `clipping.show` | Draw a cut in the scene, or not |  | cut, tag, on, options |
-| `clipping.update` | Change a cut |  | cut, tag, shape, position, normal, rotation, scale, invert |
+| `clipping.update` | Change a cut |  | cut, tag, shape, position, normal, rotation, scale, invert, ghost |
 | `component.add` | Add a component |  | target, label, representation, structure, language |
 | `component.list` | List the components | read | structure |
 | `component.modify` | Change what a component holds |  | component, target, mode, structure, language |
