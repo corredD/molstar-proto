@@ -69,7 +69,7 @@
   position: absolute;
   width: calc(8px * var(--msp-ui-scale, 1));
   height: calc(8px * var(--msp-ui-scale, 1));
-  margin: -4px; /* off-scale: centres the grip on the hairline */
+  margin: calc(-4px * var(--msp-ui-scale, 1)); /* off-scale: centres the grip on the hairline */
   border-radius: 1px;
   background: var(--msp-color-text);
   opacity: 0;

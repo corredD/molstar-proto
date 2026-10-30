@@ -164,14 +164,14 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 }
 
 .msp-viewer-volume-transfer-point {
+  top: calc(-6px * var(--msp-ui-scale, 1));
+  left: calc(-6px * var(--msp-ui-scale, 1));
   width: calc(12px * var(--msp-ui-scale, 1));
   height: calc(12px * var(--msp-ui-scale, 1));
   pointer-events: auto;
   cursor: grab;
   outline: none;
   position: absolute;
-  top: -6px;
-  left: -6px;
 
   &:after {
     content: "";
@@ -217,6 +217,7 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 
 .msp-viewer-volume-transfer-stop {
   top: calc(2px * var(--msp-ui-scale, 1));
+  left: calc(-4.5px * var(--msp-ui-scale, 1));
   width: calc(9px * var(--msp-ui-scale, 1));
   height: calc(12px * var(--msp-ui-scale, 1));
   background: var(--msp-stop);
@@ -227,7 +228,6 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
   border-radius: 3px;
   outline: none;
   position: absolute;
-  left: -4.5px;
 
   &:focus-visible {
     box-shadow: 0 0 0 1.5px var(--msp-color-bg),

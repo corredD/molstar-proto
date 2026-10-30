@@ -132,10 +132,10 @@ defineStyles('viewer/views/structure/representation-quick.module.css', `@layer m
 .msp-viewer-representation-quick-one {
   width: calc(6px * var(--msp-ui-scale, 1));
   height: calc(6px * var(--msp-ui-scale, 1));
+  margin: calc(-3px * var(--msp-ui-scale, 1)) 0 0 calc(-3px * var(--msp-ui-scale, 1));
   background: var(--msp-color-bg);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 70%);
   border-radius: 50%;
-  margin: -3px 0 0 -3px;
   position: absolute;
   top: 50%;
   left: 50%;

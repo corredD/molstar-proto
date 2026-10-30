@@ -69,9 +69,9 @@ defineStyles('viewer/views/state/audio-bar.module.css', `@layer msp.components {
   &:before {
     content: "";
     height: calc(3px * var(--msp-ui-scale, 1));
+    margin-top: calc(-1.5px * var(--msp-ui-scale, 1));
     background: var(--msp-color-pressed);
     border-radius: 1.5px;
-    margin-top: -1.5px;
     position: absolute;
     top: 50%;
     left: 0;
@@ -87,11 +87,11 @@ defineStyles('viewer/views/state/audio-bar.module.css', `@layer msp.components {
 .msp-viewer-audio-bar-fill {
   width: 100%;
   height: calc(3px * var(--msp-ui-scale, 1));
+  margin-top: calc(-1.5px * var(--msp-ui-scale, 1));
   background: var(--msp-color-accent);
   transform-origin: 0;
   will-change: transform;
   border-radius: 1.5px;
-  margin-top: -1.5px;
   position: absolute;
   top: 50%;
   left: 0;
@@ -105,15 +105,15 @@ defineStyles('viewer/views/state/audio-bar.module.css', `@layer msp.components {
 }
 
 .msp-viewer-audio-bar-knob {
+  top: 50%;
+  left: calc(-5px * var(--msp-ui-scale, 1));
   width: calc(10px * var(--msp-ui-scale, 1));
   height: calc(10px * var(--msp-ui-scale, 1));
+  margin-top: calc(-5px * var(--msp-ui-scale, 1));
   background: var(--msp-color-accent);
   box-shadow: 0 0 0 2px var(--msp-color-well);
   border-radius: 50%;
-  margin-top: -5px;
   position: absolute;
-  top: 50%;
-  left: -5px;
 }
 
 .msp-viewer-audio-bar-action {

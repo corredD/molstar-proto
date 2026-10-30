@@ -111,7 +111,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -5px; /* off-scale: a 10px hit area centred on the line */
+  left: calc(-5px * var(--msp-ui-scale, 1));
   width: calc(10px * var(--msp-ui-scale, 1));
   pointer-events: auto;
   cursor: ew-resize;
@@ -123,7 +123,7 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    left: calc(4px * var(--msp-ui-scale, 1)); /* off-scale: the 2px line in the middle of the hit area */
+    left: calc(4px * var(--msp-ui-scale, 1));
     width: calc(2px * var(--msp-ui-scale, 1));
     background: var(--msp-level, var(--msp-color-text));
   }
@@ -132,7 +132,7 @@
   &::after {
     content: "";
     position: absolute;
-    top: calc(2px * var(--msp-ui-scale, 1)); /* off-scale */
+    top: calc(2px * var(--msp-ui-scale, 1));
     left: 1px; /* off-scale */
     width: calc(8px * var(--msp-ui-scale, 1));
     height: calc(8px * var(--msp-ui-scale, 1));

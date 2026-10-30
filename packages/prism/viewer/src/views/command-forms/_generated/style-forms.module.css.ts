@@ -114,10 +114,10 @@ defineStyles('viewer/views/command-forms/style-forms.module.css', `@layer msp.co
 .msp-viewer-style-forms-one {
   width: calc(4px * var(--msp-ui-scale, 1));
   height: calc(4px * var(--msp-ui-scale, 1));
+  margin: calc(-2px * var(--msp-ui-scale, 1)) 0 0 calc(-2px * var(--msp-ui-scale, 1));
   background: var(--msp-color-bg);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 70%);
   border-radius: 50%;
-  margin: -2px 0 0 -2px;
   position: absolute;
   top: 50%;
   left: 50%;

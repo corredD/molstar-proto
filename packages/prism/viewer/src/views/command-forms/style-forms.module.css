@@ -107,7 +107,7 @@
   left: 50%;
   width: calc(4px * var(--msp-ui-scale, 1));
   height: calc(4px * var(--msp-ui-scale, 1));
-  margin: -2px 0 0 -2px; /* off-scale: centred */
+  margin: calc(-2px * var(--msp-ui-scale, 1)) 0 0 calc(-2px * var(--msp-ui-scale, 1)); /* off-scale: centred */
   border-radius: 50%;
   background: var(--msp-color-bg);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 70%);

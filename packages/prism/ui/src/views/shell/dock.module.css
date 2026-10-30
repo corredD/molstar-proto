@@ -149,11 +149,11 @@
 }
 
 .right .splitter {
-  left: -3px;
+  left: calc(-3px * var(--msp-ui-scale, 1));
 }
 
 .left .splitter {
-  right: -3px;
+  right: calc(-3px * var(--msp-ui-scale, 1));
 }
 
 .collapsedBar {

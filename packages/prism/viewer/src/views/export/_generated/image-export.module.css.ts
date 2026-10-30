@@ -74,11 +74,11 @@ defineStyles('viewer/views/export/image-export.module.css', `@layer msp.componen
 .msp-viewer-image-export-handle {
   width: calc(8px * var(--msp-ui-scale, 1));
   height: calc(8px * var(--msp-ui-scale, 1));
+  margin: calc(-4px * var(--msp-ui-scale, 1));
   background: var(--msp-color-text);
   opacity: 0;
   transition: opacity var(--msp-motion-fast) var(--msp-ease);
   border-radius: 1px;
-  margin: -4px;
   position: absolute;
 
   .msp-viewer-image-export-crop:hover > &, .msp-viewer-image-export-crop:focus-visible > &, .msp-viewer-image-export-crop[data-dragging] > & {

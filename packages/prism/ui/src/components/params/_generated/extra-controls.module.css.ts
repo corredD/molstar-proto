@@ -172,12 +172,12 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
   &:before {
     content: "";
     height: calc(3px * var(--msp-ui-scale, 1));
+    margin-top: calc(-1.5px * var(--msp-ui-scale, 1));
     background: linear-gradient(90deg,
       var(--msp-color-pressed) var(--msp-from),
       color-mix(in oklab, var(--msp-color-text-muted), transparent 45%) var(--msp-from) var(--msp-to),
       var(--msp-color-pressed) var(--msp-to));
     border-radius: 1.5px;
-    margin-top: -1.5px;
     position: absolute;
     top: 50%;
     left: 0;
@@ -203,13 +203,13 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
   &::-webkit-slider-thumb {
     width: calc(10px * var(--msp-ui-scale, 1));
     height: calc(10px * var(--msp-ui-scale, 1));
+    margin-top: calc(-3.5px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text-muted);
     -webkit-appearance: none;
     appearance: none;
     pointer-events: auto;
     cursor: pointer;
     border-radius: 50%;
-    margin-top: -3.5px;
   }
 
   &::-moz-range-track {

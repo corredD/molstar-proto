@@ -133,14 +133,14 @@ defineStyles('viewer/views/volume/volume-levels.module.css', `@layer msp.compone
 }
 
 .msp-viewer-volume-levels-marker {
+  top: 0;
+  bottom: 0;
+  left: calc(-5px * var(--msp-ui-scale, 1));
   width: calc(10px * var(--msp-ui-scale, 1));
   pointer-events: auto;
   cursor: ew-resize;
   outline: none;
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -5px;
 
   &:before {
     content: "";

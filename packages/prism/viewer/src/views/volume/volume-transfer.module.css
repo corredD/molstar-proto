@@ -130,8 +130,8 @@
 
 .point {
   position: absolute;
-  top: -6px; /* off-scale: a 12px hit area centred on the point */
-  left: -6px; /* off-scale */
+  top: calc(-6px * var(--msp-ui-scale, 1));
+  left: calc(-6px * var(--msp-ui-scale, 1));
   width: calc(12px * var(--msp-ui-scale, 1));
   height: calc(12px * var(--msp-ui-scale, 1));
   pointer-events: auto;
@@ -141,7 +141,7 @@
   &::after {
     content: "";
     position: absolute;
-    inset: calc(2px * var(--msp-ui-scale, 1)); /* off-scale */
+    inset: calc(2px * var(--msp-ui-scale, 1));
     border-radius: 50%;
     background: var(--msp-color-bg);
     box-shadow: inset 0 0 0 1.5px var(--msp-color-text);
@@ -188,8 +188,8 @@
 /* A stop: a small tab in its color hanging under the strip. */
 .stop {
   position: absolute;
-  top: calc(2px * var(--msp-ui-scale, 1)); /* off-scale */
-  left: -4.5px; /* off-scale: centred on the stop */
+  top: calc(2px * var(--msp-ui-scale, 1));
+  left: calc(-4.5px * var(--msp-ui-scale, 1));
   width: calc(9px * var(--msp-ui-scale, 1));
   height: calc(12px * var(--msp-ui-scale, 1));
   border-radius: 3px;

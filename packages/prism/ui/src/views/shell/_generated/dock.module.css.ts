@@ -175,11 +175,11 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
 }
 
 .msp-shell-dock-right .msp-shell-dock-splitter {
-  left: -3px;
+  left: calc(-3px * var(--msp-ui-scale, 1));
 }
 
 .msp-shell-dock-left .msp-shell-dock-splitter {
-  right: -3px;
+  right: calc(-3px * var(--msp-ui-scale, 1));
 }
 
 .msp-shell-dock-collapsedBar {

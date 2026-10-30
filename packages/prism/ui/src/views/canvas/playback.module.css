@@ -207,7 +207,7 @@
   &::-webkit-slider-thumb {
     width: calc(10px * var(--msp-ui-scale, 1));
     height: calc(10px * var(--msp-ui-scale, 1));
-    margin-top: -4px; /* off-scale: the thumb centred on the track */
+    margin-top: calc(-4px * var(--msp-ui-scale, 1)); /* off-scale: the thumb centred on the track */
     border-radius: 50%;
     background: var(--msp-color-text);
     appearance: none;

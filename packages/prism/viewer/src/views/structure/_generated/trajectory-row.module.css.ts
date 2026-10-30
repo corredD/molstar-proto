@@ -48,11 +48,11 @@ defineStyles('viewer/views/structure/trajectory-row.module.css', `@layer msp.com
   &::-webkit-slider-thumb {
     width: calc(10px * var(--msp-ui-scale, 1));
     height: calc(10px * var(--msp-ui-scale, 1));
+    margin-top: calc(-4px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text);
     -webkit-appearance: none;
     appearance: none;
     border-radius: 50%;
-    margin-top: -4px;
   }
 
   &::-moz-range-track {

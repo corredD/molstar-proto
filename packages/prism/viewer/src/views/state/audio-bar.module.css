@@ -61,7 +61,7 @@
     right: 0;
     left: 0;
     height: calc(3px * var(--msp-ui-scale, 1));
-    margin-top: -1.5px; /* off-scale: centred */
+    margin-top: calc(-1.5px * var(--msp-ui-scale, 1)); /* off-scale: centred */
     border-radius: 1.5px;
     background: var(--msp-color-pressed);
   }
@@ -78,7 +78,7 @@
   left: 0;
   width: 100%;
   height: calc(3px * var(--msp-ui-scale, 1));
-  margin-top: -1.5px; /* off-scale: centred */
+  margin-top: calc(-1.5px * var(--msp-ui-scale, 1)); /* off-scale: centred */
   border-radius: 1.5px;
   background: var(--msp-color-accent);
   transform-origin: left center;
@@ -95,10 +95,10 @@
 .knob {
   position: absolute;
   top: 50%;
-  left: -5px; /* off-scale: centred on the line's end */
+  left: calc(-5px * var(--msp-ui-scale, 1));
   width: calc(10px * var(--msp-ui-scale, 1));
   height: calc(10px * var(--msp-ui-scale, 1));
-  margin-top: -5px; /* off-scale */
+  margin-top: calc(-5px * var(--msp-ui-scale, 1)); /* off-scale */
   border-radius: 50%;
   background: var(--msp-color-accent);
   box-shadow: 0 0 0 2px var(--msp-color-well);

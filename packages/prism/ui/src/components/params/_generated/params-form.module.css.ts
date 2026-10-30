@@ -175,12 +175,12 @@ defineStyles('components/params/params-form.module.css', `@layer msp.components 
   &::-webkit-slider-thumb {
     width: calc(10px * var(--msp-ui-scale, 1));
     height: calc(10px * var(--msp-ui-scale, 1));
+    margin-top: calc(-3.5px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text-muted);
     -webkit-appearance: none;
     appearance: none;
     transition: transform var(--msp-motion-fast) var(--msp-ease);
     border-radius: 50%;
-    margin-top: -3.5px;
   }
 
   &:hover::-webkit-slider-thumb, &:active::-webkit-slider-thumb {

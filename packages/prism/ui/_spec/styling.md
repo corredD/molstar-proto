@@ -196,9 +196,13 @@ smaller as the panels grow. Story: Overview › Foundations › UI scale.
   rebuilds nothing, and a view that sizes by tokens needs no code to follow.
 - **What scales**: every size token (`--msp-font-size-*`, `--msp-space-*`, `--msp-row-height`, `--msp-control-height`,
   `--msp-label-width`, `--msp-icon-*`, `--msp-radius-md/lg`) is its 100 % size times the variable, and so is every box
-  size in px in a module (heights, widths, line heights, offsets, grid tracks: `calc(Npx * var(--msp-ui-scale, 1))`). An
-  icon hands its `size` to CSS (`--msp-icon-px`). **What does not**: 1px hairlines, borders, shadows, transforms, the
-  hit areas marked `off-scale`, and the sequence views (Seq\* draws them). A new size in px is written scaled.
+  size in px in a module (heights, widths, line heights, offsets, grid tracks: `calc(Npx * var(--msp-ui-scale, 1))`),
+  negative centring offsets with their box (a thumb's `margin-top`, a grip's `margin`, a hit area's `left`:
+  `ui-scale-offsets.test.ts`). An icon hands its `size` to CSS (`--msp-icon-px`). **What does not**: 1px hairlines,
+  borders, shadows, transforms, a line marked `ui-scale: fixed`, and the sequence views and what sits on their rows
+  (Seq\* draws them: its letters take the font token's 100 % size, the track gutter and `BandFadePx` stay in px). A new
+  size in px is written scaled. `off-scale` (§2.1) is the spacing scale's marker, not the UI scale's: a scaled margin
+  off the spacing scale keeps it.
 - **Whole pixels where JS places things by a size**: a virtual list's row (`--msp-list-row`, rounded: the list places
   rows by index × the measured height, and a fraction would drift) and the rail's column (`--msp-rail-width`, as the
   shell's layout puts the canvas beside it). The shell view scales its own px (the rail, the canvas edge, the corner

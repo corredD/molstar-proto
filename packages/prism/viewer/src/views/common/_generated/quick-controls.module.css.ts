@@ -113,11 +113,11 @@ defineStyles('viewer/views/common/quick-controls.module.css', `@layer msp.compon
   &::-webkit-slider-thumb {
     width: calc(10px * var(--msp-ui-scale, 1));
     height: calc(10px * var(--msp-ui-scale, 1));
+    margin-top: calc(-3.5px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text-muted);
     -webkit-appearance: none;
     appearance: none;
     border-radius: 50%;
-    margin-top: -3.5px;
   }
 
   &::-moz-range-track {
