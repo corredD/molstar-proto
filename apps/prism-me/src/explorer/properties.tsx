@@ -1460,7 +1460,7 @@ function ClipProperties(props: { subject: Subject }) {
           }}
         />
       </Line>
-      <ClipGhosts api={api} tag={tag} />
+      <ClipGhosts api={api} tag={tag} cut={cut} />
     </div>
   );
 }
@@ -1469,8 +1469,8 @@ function ClipProperties(props: { subject: Subject }) {
  * A clip's Ghosts: what it removes drawn again as outlines only (the canvas's outlines on; cellview.md §4.3), a switch
  * as Invert's, one `clipping.update` a change
  */
-function ClipGhosts(props: { api: ViewerApi; tag: string }) {
-  const { api, tag } = props;
+function ClipGhosts(props: { api: ViewerApi; tag: string; cut: ReadonlyState<ClipCut | undefined> }) {
+  const { api, tag, cut } = props;
   const form = new ParamsFormModel(
     {
       ghost: PD.Boolean(false, { label: 'Ghosts', description: 'Outline what it cuts: what it removes, as outlines' }),
@@ -1478,7 +1478,6 @@ function ClipGhosts(props: { api: ViewerApi; tag: string }) {
     undefined,
     { onChange: (values) => void api.run('clipping.update', { tag, ghost: values.ghost }) },
   );
-  const cut = mapState(api.clipping.cuts, (all) => all.find((c) => c.object.tag === tag));
   bind(cut, (c) => c && form.load({ ghost: !!c.object.ghost }));
   return <ParamsForm form={form} />;
 }
