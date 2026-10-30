@@ -214,6 +214,7 @@ describe("WebGL1's clipping flag", () => {
     const source = common_clip.slice(common_clip.indexOf('int bitwiseAnd('));
     const body = source.slice(source.indexOf('{') + 1, source.indexOf(';', source.indexOf('return ')));
     const js = body.replace(/\b(?:int|float)\s+(\w+)\s*=/g, 'let $1 =').replace(/\b(?:int|float)\(/g, 'Math.trunc(');
+    // biome-ignore lint/nursery/noImpliedEval: the shader's own text, run as JS: no WebGL1 context in the tests
     return new Function('a', 'b', `${js};`) as (a: number, b: number) => number;
   })();
 
