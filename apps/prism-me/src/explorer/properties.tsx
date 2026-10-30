@@ -46,6 +46,7 @@ import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import { PlainCut, type Way, wayOf } from './clips.js';
 import { DistanceProps } from './distance-properties.js';
 import { addClip, clippable, hideHandles, movable, showClipHandles, showHandles, showTheme } from './menu.js';
 import type { ExplorerApi, NodeRef, RepresentationInfo } from './operations.js';
@@ -191,12 +192,14 @@ const Sections: readonly Section[] = [
       (s.picked.kind === 'category' && s.picked.key !== ClipsKey) ||
       structural(s) ||
       particled(s) ||
-      (s.picked.kind === 'mesh' && !!s.picked.node),
+      (s.picked.kind === 'mesh' && !!s.picked.node) ||
+      (s.picked.kind === 'target' && !!s.picked.node),
     render: (s) => {
       const { api, area, picked } = s;
       if (picked.kind === 'category') return <CategoryLook subject={s} />;
       if (picked.kind === 'mesh') return <MeshLook api={api} node={picked.node!} />;
-      if (particled(s)) return <ParticleLook api={api} node={picked.node!} parts={s.parts} />;
+      if (picked.kind === 'target') return <Shown api={api} area={area} node={picked.node!} />;
+      if (particled(s)) return <ParticleLook api={api} area={area} node={picked.node!} parts={s.parts} />;
       return <StructureLook api={api} area={area} node={picked.node!} whole={picked.kind === 'structure'} />;
     },
   },
@@ -676,7 +679,7 @@ function common<T>(values: readonly T[]): T | undefined {
   return values.every((v) => v === first) ? first : undefined;
 }
 
-function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlyState<Parts> }) {
+function ParticleLook(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef; parts: ReadonlyState<Parts> }) {
   const { api, node } = props;
   const ids = 'particles' in node ? node.particles.entities : undefined;
   const wanted = ids ? new Set(ids) : undefined;
@@ -713,6 +716,7 @@ function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlySta
         {...Percent}
         onCommit={(emissive) => style({ emissive })}
       />
+      {'particles' in node ? <Shown api={api} area={props.area} node={node} /> : null}
       {!ids || ids.length > 1 ? (
         <div class={classes.tools}>
           <Button
@@ -738,6 +742,31 @@ function ParticleLook(props: { api: ViewerApi; node: NodeRef; parts: ReadonlySta
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A part shown in part (Look › Shown; a group, an entity, a target): a share of its particles, the same ones at every
+ * share (Prism's stable random); `particles.look`'s layer of the part, once released (one step); all: no share
+ */
+function Shown(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef }) {
+  const { api, node } = props;
+  if (!('particles' in node)) return null;
+  return (
+    <SliderField
+      label="Shown"
+      value={props.area.shownState(node)}
+      min={0}
+      max={1}
+      step={0.01}
+      {...Percent}
+      onCommit={(v) =>
+        void api.run('particles.look', {
+          particles: node.ref,
+          layers: [{ selector: node.particles, shown: v >= 1 ? null : v }],
+        })
+      }
+    />
   );
 }
 
@@ -1379,6 +1408,19 @@ function Clips(props: { subject: Subject }) {
                 last={last(c.object.tag!)}
                 onPick={() => area.revealRow(`k:${c.object.tag}`)}
                 onDrop={() => void api.run('explorer.clipUse', { tag: c.object.tag!, nodes: [node], on: false })}
+                way={
+                  area.cutOf(c, node.ref)?.particled && !('entity' in node)
+                    ? {
+                        api,
+                        tag: c.object.tag!,
+                        node,
+                        value: derive([api.clipping.cuts, layers], (all) => {
+                          const now = all.find((x) => x.object.tag === c.object.tag);
+                          return now ? wayOf(area.cutOf(now, node.ref), node) : undefined;
+                        }),
+                      }
+                    : undefined
+                }
               />
             )}
           </For>
@@ -1446,6 +1488,7 @@ function ClipProperties(props: { subject: Subject }) {
             last={derive(uses, (l) => l.length === 1)}
             onPick={() => area.revealRow(u.key)}
             onDrop={() => void api.run('explorer.clipUse', { tag, nodes: [u.node], on: false })}
+            way={u.way && { api, tag, node: u.node, value: derive(uses, (l) => l.find((x) => x.key === u.key)?.way) }}
           />
         )}
       </For>
@@ -1464,20 +1507,33 @@ function ClipProperties(props: { subject: Subject }) {
   );
 }
 
-/** An object or part a clip cuts, or a clip on a node: its name (a click picks its row), then × (no longer cut) */
+/** How a clip cuts a use's node (particles only): its way's controls act through `explorer.clipWay` */
+interface WayProps {
+  readonly api: ViewerApi;
+  readonly tag: string;
+  readonly node: NodeRef;
+  readonly value: ReadonlyState<Way | undefined>;
+}
+
+/**
+ * An object or part a clip cuts, or a clip on a node: its name (a click picks its row), on particles how the clip cuts
+ * it, then × (no longer cut)
+ */
 function UseLine(props: {
   name: string;
   pick: string;
   last: boolean | ReadonlyState<boolean>;
   onPick(): void;
   onDrop(): void;
+  way?: WayProps;
 }) {
   const last = typeof props.last === 'boolean' ? observableState(props.last).asReadonly : props.last;
-  return (
+  const line = (
     <div class={classes.use} data-clip-use={props.name}>
       <Button size="sm" variant="ghost" class={classes.fit} title={props.pick} onClick={props.onPick}>
         {props.name}
       </Button>
+      {props.way ? <WaySelect name={props.name} way={props.way} /> : null}
       <Button
         size="xs"
         variant="ghost"
@@ -1491,6 +1547,72 @@ function UseLine(props: {
         onClick={props.onDrop}
       />
     </div>
+  );
+  if (!props.way) return line;
+  return (
+    <div class={classes.tight}>
+      {line}
+      <WayBand name={props.name} way={props.way} />
+    </div>
+  );
+}
+
+/** What a clip does to a node, cellVIEW's + / 0 / − (the mock's GradedCut) */
+const WayOptions: [Way['mode'], string][] = [
+  ['keep', 'Keeps a layer'],
+  ['cut', 'Cuts it'],
+  ['wider', 'Cuts it wider'],
+];
+
+const setWay = (way: WayProps, patch: Partial<Way>) => {
+  const now = way.value.value ?? PlainCut;
+  void way.api.run('explorer.clipWay', { tag: way.tag, node: way.node, ...now, ...patch });
+};
+
+function WaySelect(props: { name: string; way: WayProps }) {
+  return (
+    <Select
+      size="sm"
+      aria-label={`What it does to ${props.name}`}
+      options={WayOptions}
+      value={mapState(props.way.value, (w) => (w ?? PlainCut).mode)}
+      onChange={(mode) => setWay(props.way, { mode: mode as Way['mode'] })}
+    />
+  );
+}
+
+/** A layer kept or a wider cut: its band (Å) and fuzziness (thins it toward the band's edge), each once released */
+function WayBand(props: { name: string; way: WayProps }) {
+  const { way } = props;
+  const graded = mapState(way.value, (w) => !!w && w.mode !== 'cut');
+  return (
+    <Show when={graded}>
+      {() => (
+        <>
+          <SliderField
+            label="Band"
+            aria-label={`${props.name}: the band's width`}
+            value={mapState(way.value, (w) => w?.band)}
+            min={5}
+            max={250}
+            step={1}
+            format={(v: number) => String(Math.round(v))}
+            unit="Å"
+            onCommit={(band) => setWay(way, { band })}
+          />
+          <SliderField
+            label="Fuzziness"
+            aria-label={`${props.name}: fuzziness`}
+            value={mapState(way.value, (w) => w?.fuzziness)}
+            min={0}
+            max={1}
+            step={0.01}
+            {...Percent}
+            onCommit={(fuzziness) => setWay(way, { fuzziness })}
+          />
+        </>
+      )}
+    </Show>
   );
 }
 
