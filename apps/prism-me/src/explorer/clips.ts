@@ -72,6 +72,9 @@ function particleRecords(state: State, rep: string, tag: string): ParticleCutPro
   return cuts?.filter((c) => c.tag === tag) ?? [];
 }
 
+/** A record's part, as Prism keys it (its ids are sorted) */
+const partKey = (r: Ids) => `${r.entities}|${r.compartments}|${r.targets}`;
+
 /** A record of every particle: no ids of any kind */
 const isCover = (r: Ids) => !r.entities.length && !r.compartments.length && !r.targets.length;
 
@@ -277,7 +280,7 @@ async function useOne(
       if (of && !of.particles) return unchanged;
       const missing = part.filter((id) => !has.has(id));
       if (!missing.length) return unchanged;
-      // a record of its own (Prism's cuts: a record a part), the clip's other parts keeping theirs
+      // a record of its own (Prism's cuts: a record a part), the plain cut; the clip's other parts keep theirs
       if (of) return look(refsOf(cells.filter(onIt)), only(missing));
       if (full(cells, MaxParticleCutIndex)) return blocked('some of its particles');
       const r = await look(refsOf(cells), only(part));
@@ -299,6 +302,10 @@ async function useOne(
       }
     }
     if (next.length === records.length && next.every((r, i) => r === records[i])) return unchanged;
+    // two records left of the same part: the last one only, in its place (Prism merges them into the first's place,
+    // which would move the part's way before a record of another kind it was after)
+    const last = new Map(next.map((r, i) => [partKey(r), i] as const));
+    const kept = next.filter((r, i) => last.get(partKey(r)) === i);
     if (!next.length) return apply(of.on, false);
     const onCells = cells.filter(onIt);
     if (!of.particles && onCells.some((c) => indexOf(c) > MaxParticleCutIndex)) return blocked('some of its particles');
@@ -306,7 +313,7 @@ async function useOne(
       node: refsOf(onCells)
         .map((r) => `#${r}`)
         .join(', '),
-      cuts: { remove: [tag], add: next },
+      cuts: { remove: [tag], add: kept },
     });
   }
 
