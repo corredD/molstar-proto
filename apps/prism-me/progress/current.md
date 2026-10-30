@@ -12,8 +12,12 @@ is not built is [../TODO.md](../TODO.md).
   - 1. Graphics modes change the LOD: merged (PR #16).
   - **6. Do hidden particles cost a frame?** (`me/hidden-cost`, a measurement): PR #17. Yes: CellPack MG 89 % hidden is
     slower than none hidden, 8-13× the same removed (a hidden instance is transparency 1, still drawn and blended). Two
-    steps proposed, nothing built: hidden left out of the transparency averages (~15 lines), then a hidden bit in the
-    GPU cull (~60 + tests). Ludo, 2026-10-29: step 1 and the bench helper on the same PR, step 2 later; building.
+    steps proposed: hidden left out of the transparency averages, then a hidden bit in the GPU cull. Ludo, 2026-10-29:
+    step 1 and the bench helper on the same PR, step 2 later. Step 1 built and reviewed (all-hidden objects drawn by no
+    pass; hidden counted only for per-instance layers at strength 1), `scripts/hidden-cost-bench.mjs` added, ready to
+    merge. 90 % hidden now: WebGPU whole 26 ms (was 58), close 46 (107); WebGL2 whole 42 (76), close 65 (132); pixels
+    identical. What is left (WebGPU whole, 1.2× none hidden) is the vertex stage, step 2's job. `layers.test.ts` "paints
+    and fades..." fails on prism-me too, not from this lane.
   - **4. Graded cuts, the library half** (`me/graded-cuts`): PR #20, reviewed (2 must-fix, 2 should-fix fixed), checked
     with real GL on WebGPU and WebGL2 through the API; a clipping table per part (16 clip objects), keep / cut / wider
     with band and fuzziness, Shown; a shared-empty-array bug fixed on the way; graded ways need the instance clip (Ludo,
