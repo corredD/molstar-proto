@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { ValueCell } from '@molstar/core/util';
 import { getTransparencyAverage, getTransparencyMin } from '@molstar/graphics/geo/geometry/transparency-data';
+import { Visual } from '../../repr/visual.js';
 import { checkOpaque, checkTransparent, DrawFact, DrawState, getCheckFacts } from '../draw-table.js';
 import { createPoints } from './points.test.js';
 
@@ -29,16 +30,34 @@ function withTransparency(array: Uint8Array) {
   return o;
 }
 
-/** The passes an object with these facts is drawn in, and its opacity in the scene's average */
+/** The passes an object with these facts is drawn in (the scene's opacity is the draw table's, its own test) */
 function passes(o: ReturnType<typeof createPoints>) {
   const facts = getCheckFacts(o.values);
   const state = DrawState.Visible;
   return {
     opaque: checkOpaque(facts, state),
     transparent: checkTransparent(facts, state),
-    opacity: 1 - o.values.transparencyAverage.ref.value,
   };
 }
+
+describe('hidden instances and the theme strength', () => {
+  it('255 is hidden only at a strength of 1', () => {
+    const o = withTransparency(layer(10, 9));
+    ValueCell.update(o.values.uInstanceGranularity, true);
+    ValueCell.update(o.values.instanceCount, 10);
+    ValueCell.update(o.values.tTransparency, { array: layer(10, 9), width: 10, height: 1 } as any);
+    const strength = (transparency: number) => ({ overpaint: 1, transparency, emissive: 1, substance: 1, wiggle: 1 });
+    const average = () => o.values.transparencyAverage.ref.value;
+    Visual.setThemeStrength(o, strength(0.5));
+    expect(average()).toBeCloseTo(0.9);
+    Visual.setThemeStrength(o, strength(1));
+    expect(average()).toBe(0);
+    // every value 255 at a strength of 0: drawn (opaque), not hidden
+    ValueCell.update(o.values.tTransparency, { array: layer(10, 10), width: 10, height: 1 } as any);
+    Visual.setThemeStrength(o, strength(0));
+    expect(average()).toBeLessThan(1);
+  });
+});
 
 describe('hidden instances (transparency 1)', () => {
   it('are left out of the averages', () => {
@@ -58,7 +77,8 @@ describe('hidden instances (transparency 1)', () => {
 
     // 255 is not hidden per group or at a theme strength below 1: counted as any value
     expect(getTransparencyAverage(layer(10, 9), 10, false)).toBeCloseTo(0.9);
-    expect(getTransparencyAverage(layer(10, 10), 10, false)).toBe(1);
+    // all 255 there is still drawn (at a strength of 0.5, half transparent), not fully transparent
+    expect(getTransparencyAverage(layer(10, 10), 10, false)).toBeLessThan(1);
 
     // no hidden instance: as before
     expect(getTransparencyAverage(layer(10, 0, 128), 10)).toBeCloseTo(128 / 255);
@@ -72,13 +92,13 @@ describe('hidden instances (transparency 1)', () => {
   });
 
   it('a 90 % hidden object takes the opaque path only', () => {
-    expect(passes(withTransparency(layer(10, 9)))).toEqual({ opaque: true, transparent: false, opacity: 1 });
+    expect(passes(withTransparency(layer(10, 9)))).toEqual({ opaque: true, transparent: false });
   });
 
   it('an all-hidden object draws nothing', () => {
     const o = withTransparency(layer(10, 10));
     expect(getCheckFacts(o.values) & DrawFact.TransparencyFull).not.toBe(0);
-    expect(passes(o)).toEqual({ opaque: false, transparent: false, opacity: 0 });
+    expect(passes(o)).toEqual({ opaque: false, transparent: false });
   });
 
   it('an all-hidden object is in no pass, back faces opaque or not', () => {
@@ -90,6 +110,5 @@ describe('hidden instances (transparency 1)', () => {
   it('an object with a real transparency of 0.5 is unchanged', () => {
     const p = passes(withTransparency(layer(10, 0, 128)));
     expect([p.opaque, p.transparent]).toEqual([true, true]);
-    expect(p.opacity).toBeCloseTo(1 - 128 / 255);
   });
 });

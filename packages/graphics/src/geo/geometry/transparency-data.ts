@@ -54,7 +54,10 @@ export function getTransparencyAverage(array: Uint8Array, count: number, hidden 
     sum += array[i];
     shown += 1;
   }
-  return shown === 0 ? (count > 0 ? 1 : 0) : sum / (255 * shown);
+  if (shown === 0) return count > 0 ? 1 : 0;
+  const average = sum / (255 * shown);
+  // 1 means every instance is hidden (and the object is drawn by no pass): not so where 255 is not hidden
+  return hidden ? average : Math.min(average, 254 / 255);
 }
 
 /** exclude fully opaque parts (and hidden instances, at the top of the range); 1 when none is left */
