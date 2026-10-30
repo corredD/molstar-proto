@@ -689,10 +689,15 @@ export function whatItCuts(area: ExplorerApi, cut: Cut, objects: readonly SceneO
     const of = area.cutOf(cut, o.ref);
     if (!of) continue;
     const whole: ClipUse = { key: `o:${o.ref}`, label: o.label, node: { ref: o.ref } };
-    if (of.particled) {
+    if (of.particled || of.particles) {
       // a row a record (Prism's, a part each), with its way; a later record's row over an earlier one's
       const rows = new Map<string, ClipUse>();
-      for (const r of of.records?.length ? of.records : []) {
+      const records: readonly (Ids & Way)[] = of.records?.length
+        ? of.records
+        : of.particles
+          ? [{ ...of.particles, ...PlainCut }]
+          : [];
+      for (const r of records) {
         const way = wayOfRecord(r);
         const some = isAll(r) ? undefined : particleUses(o, parts.get(o.ref), r);
         for (const u of some?.length ? some : [whole]) rows.set(u.key, { ...u, way });

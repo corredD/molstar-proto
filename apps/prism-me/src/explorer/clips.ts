@@ -387,7 +387,7 @@ export interface Way {
 }
 
 export const PlainCut: Way = { mode: 'cut', band: 60, fuzziness: 0 };
-export const wayOfRecord = (r: ParticleCutProps): Way => ({ mode: r.mode, band: r.band, fuzziness: r.fuzziness });
+export const wayOfRecord = (r: Way): Way => ({ mode: r.mode, band: r.band, fuzziness: r.fuzziness });
 
 /** Whether a record covers all of a part's ids (a record of every particle covers all) */
 function holds(r: ParticleCutProps, kind: keyof Ids, ids: readonly number[]): boolean {
