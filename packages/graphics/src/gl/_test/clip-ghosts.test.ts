@@ -116,4 +116,8 @@ describe('clip ghosts', () => {
     expect(depth('off')).toBe(false);
     expect(depth('on')).toBe(true);
   });
+
+  it("transparent outlines keep the outline's color unless given one of their own (the ghosts')", () => {
+    expect(PD.getDefaultValues(OutlineParams).transparentColor).toBe(null);
+  });
 });

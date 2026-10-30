@@ -59,6 +59,7 @@ export const PostprocessingSchema = {
   uFogFar: UniformSpec('f'),
   uFogColor: UniformSpec('v3'),
   uOutlineColor: UniformSpec('v3'),
+  uTransparentOutlineColor: UniformSpec('v3'),
   uOcclusionColor: UniformSpec('v3'),
   uTransparentBackground: UniformSpec('b'),
 
@@ -115,6 +116,7 @@ function getPostprocessingRenderable(
     uFogFar: ValueCell.create(10000),
     uFogColor: ValueCell.create(Vec3.create(1, 1, 1)),
     uOutlineColor: ValueCell.create(Vec3.create(0, 0, 0)),
+    uTransparentOutlineColor: ValueCell.create(Vec3.create(0, 0, 0)),
     uOcclusionColor: ValueCell.create(Vec3.create(0, 0, 0)),
     uTransparentBackground: ValueCell.create(false),
 
@@ -396,6 +398,13 @@ export class PostprocessingPass {
       ValueCell.update(
         this.renderable.values.uOutlineColor,
         Color.toVec3Normalized(this.renderable.values.uOutlineColor.ref.value, outlineProps.color),
+      );
+      ValueCell.update(
+        this.renderable.values.uTransparentOutlineColor,
+        Color.toVec3Normalized(
+          this.renderable.values.uTransparentOutlineColor.ref.value,
+          outlineProps.transparentColor ?? outlineProps.color,
+        ),
       );
 
       if (this.renderable.values.dOutlineScale.ref.value !== outlineScale) {
