@@ -13,13 +13,13 @@ is not built is [../TODO.md](../TODO.md).
   - **6. Do hidden particles cost a frame?** (`me/hidden-cost`, a measurement): PR #17. Yes: CellPack MG 89 % hidden is
     slower than none hidden, 8-13× the same removed (a hidden instance is transparency 1, still drawn and blended). Two
     steps proposed, nothing built: hidden left out of the transparency averages (~15 lines), then a hidden bit in the
-    GPU cull (~60 + tests); waits on Ludo.
+    GPU cull (~60 + tests). Ludo, 2026-10-29: step 1 and the bench helper on the same PR, step 2 later; building.
   - **4. Graded cuts, the library half** (`me/graded-cuts`): PR #20, reviewed (2 must-fix, 2 should-fix fixed), checked
     with real GL on WebGPU and WebGL2 through the API; a clipping table per part (16 clip objects), keep / cut / wider
     with band and fuzziness, Shown; a shared-empty-array bug fixed on the way; graded ways need the instance clip (Ludo,
     2026-10-29: the app switches a cut to instance when a part gets a graded way); waits on Ludo. The app half after 3.
-  - 2 + 5. The tree's eye and ⋯, and Show only: merged (PR #19). The fork's older `me/tree-eyes` (2026-10-27): Ludo to
-    decide.
+  - 2 + 5. The tree's eye and ⋯, and Show only: merged (PR #19). The fork's older `me/tree-eyes` (2026-10-27): to delete
+    (Ludo); he runs the push.
   - **3. Clips in a category of their own** (`me/clips-category`): PR #18, reviewed, checked with real GL on WebGPU and
     WebGL2; over its size stop (~+780 against ~700, review fixes; the coordinator let it open); a Prism commit
     (`clipping.release` takes a target); merges after 2 + 5; waits on Ludo.
