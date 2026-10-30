@@ -44,6 +44,8 @@ export interface CutOfObject {
   readonly particles?: Ids;
   /** Of some of its atoms only: those it cuts, on the structure's root */
   readonly atoms?: StructureElement.Loci;
+  /** Its records on the object's particles (Prism's, a part each), when it has any */
+  readonly records?: readonly ParticleCutProps[];
 }
 
 /** The representations under an object that can be cut (not the cuts' drawings), in tree order */
@@ -63,11 +65,22 @@ const isParticles = (cell: StateObjectCell) => !!cell.obj && SO.Particle.Represe
 const structureOf = (cell: StateObjectCell): Structure | undefined =>
   cell.obj && SO.Molecule.Structure.Representation3D.is(cell.obj) ? cell.obj.data.sourceData : undefined;
 
-/** The particles a cut tagged `tag` cuts on a particle representation, when of some only (its layers' record) */
-function particleCut(state: State, rep: string, tag: string): ParticleCutProps | undefined {
+/** The records of the cut tagged `tag` on a particle representation (its layers' cuts: a record a part, Prism's) */
+function particleRecords(state: State, rep: string, tag: string): ParticleCutProps[] {
   const layers = state.select(StateSelection.Generators.ofTransformer(ParticleRepresentation3DLayers, rep))[0];
   const cuts = (layers?.transform.params as { cuts?: readonly ParticleCutProps[] } | undefined)?.cuts;
-  return cuts?.find((c) => c.tag === tag);
+  return cuts?.filter((c) => c.tag === tag) ?? [];
+}
+
+/** A record of every particle: no ids of any kind */
+const isCover = (r: Ids) => !r.entities.length && !r.compartments.length && !r.targets.length;
+
+/** The ids of a cut's records, each kind's union: what it cuts of some particles; undefined when one is of all */
+function unionOf(records: readonly ParticleCutProps[]): Ids | undefined {
+  if (!records.length || records.some(isCover)) return undefined;
+  if (records.length === 1) return records[0];
+  const union = (kind: keyof Ids) => [...new Set(records.flatMap((r) => r[kind]))];
+  return { entities: union('entities'), compartments: union('compartments'), targets: union('targets') };
 }
 
 /** A cut's representations' refs, as a Set once a cut (asked once an object) */
@@ -91,8 +104,10 @@ export function cutOfObject(
   const refs = on.map((c) => c.transform.ref);
   const tag = cut.object.tag;
   const first = tag ? on.find(isParticles) : undefined;
-  const some = first && tag ? particleCut(state, first.transform.ref, tag) : undefined;
-  if (some) return { ref, on: refs, particles: some };
+  const records = first && tag ? particleRecords(state, first.transform.ref, tag) : [];
+  const some = unionOf(records);
+  if (some) return { ref, on: refs, particles: some, records };
+  if (records.length) return { ref, on: refs, records };
   // a cut keeping some atoms whole: the atoms it cuts on this object's structure, when it keeps some of this one (its
   // kept atoms may be another structure's)
   const structure = on.map(structureOf).find((s) => !!s);
@@ -257,31 +272,42 @@ async function useOne(
     const kind = kindOf(node.particles);
     const part = node.particles[kind] ?? [];
     const has = new Set(of?.particles ? of.particles[kind] : []);
-    // the record's other kinds kept (a clip of a compartment given an entity cuts both)
-    const ids = (next: readonly number[]): Ids => ({
-      ...(of?.particles ?? { entities: [], compartments: [], targets: [] }),
-      [kind]: next,
-    });
+    const only = (ids: readonly number[]): Ids => ({ entities: [], compartments: [], targets: [], [kind]: ids });
     if (on) {
       if (of && !of.particles) return unchanged;
-      if (part.every((id) => has.has(id))) return unchanged;
-      const next = [...has, ...part.filter((id) => !has.has(id))];
-      if (of) return look(refsOf(cells.filter(onIt)), ids(next));
+      const missing = part.filter((id) => !has.has(id));
+      if (!missing.length) return unchanged;
+      // a record of its own (Prism's cuts: a record a part), the clip's other parts keeping theirs
+      if (of) return look(refsOf(cells.filter(onIt)), only(missing));
       if (full(cells, MaxParticleCutIndex)) return blocked('some of its particles');
-      const r = await look(refsOf(cells), ids(next));
+      const r = await look(refsOf(cells), only(part));
       return r.ok ? apply(refsOf(cells), true) : r;
     }
     if (!of) return unchanged;
-    // all of it cut: every id of the list but the part's
-    const all = of.particles ? [...has] : allIds(cells[0], kind);
+    // each record without the part (all of it cut: a record of every particle, each its way kept)
     const drop = new Set(part);
-    if (!all.some((id) => drop.has(id))) return unchanged;
-    const next = all.filter((id) => !drop.has(id));
-    const left = ids(next);
-    if (!left.entities.length && !left.compartments.length && !left.targets.length) return apply(of.on, false);
+    const records: readonly ParticleCutProps[] = of.records?.length
+      ? of.records
+      : [{ tag, entities: [], compartments: [], targets: [], mode: 'cut', band: 60, fuzziness: 0 }];
+    const next: ParticleCutProps[] = [];
+    for (const r of records) {
+      const ids = isCover(r) ? allIds(cells[0], kind) : r[kind];
+      if (!ids.some((id) => drop.has(id))) next.push(r);
+      else {
+        const rest = ids.filter((id) => !drop.has(id));
+        if (rest.length) next.push({ ...r, [kind]: rest });
+      }
+    }
+    if (next.length === records.length && next.every((r, i) => r === records[i])) return unchanged;
+    if (!next.length) return apply(of.on, false);
     const onCells = cells.filter(onIt);
     if (!of.particles && onCells.some((c) => indexOf(c) > MaxParticleCutIndex)) return blocked('some of its particles');
-    return look(refsOf(onCells), left);
+    return ctx.api.run('particles.look', {
+      node: refsOf(onCells)
+        .map((r) => `#${r}`)
+        .join(', '),
+      cuts: { remove: [tag], add: next },
+    });
   }
 
   // some atoms of a structure (an entity, a chain): the rest kept whole by the cut
