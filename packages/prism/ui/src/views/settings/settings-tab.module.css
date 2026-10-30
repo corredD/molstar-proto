@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* The search stays at the top; the groups scroll under it. */
@@ -84,7 +85,7 @@
   align-items: center;
   gap: var(--msp-space-3);
   min-width: 0;
-  height: 32px;
+  height: calc(32px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   color: var(--msp-color-text-muted);
   text-align: left;
@@ -118,6 +119,15 @@
   /* Long labels (behaviors) take the row; the switch and its settings keep to the right. */
   &[data-wide-labels] {
     --msp-label-width: calc(100% - 64px);
+  }
+}
+
+/* A group's own row (the UI scale), before its form, spaced as the form's rows. */
+.row {
+  margin-bottom: var(--msp-space-1);
+
+  &[hidden] {
+    display: none;
   }
 }
 

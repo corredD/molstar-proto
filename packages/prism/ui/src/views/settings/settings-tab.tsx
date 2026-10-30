@@ -6,6 +6,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Icon } from '../../components/icon/icon.js';
@@ -14,7 +15,7 @@ import { ScrollArea } from '../../components/scroll-area/scroll-area.js';
 import { TextInput } from '../../components/text-input/text-input.js';
 import { Show } from '../../dom/control-flow.js';
 import type { Child } from '../../dom/jsx-types.js';
-import type { SettingsGroup, SettingsModel } from '../../model/settings.js';
+import { type SettingsGroup, type SettingsModel, settingsRowMatch } from '../../model/settings.js';
 import { observableState } from '../../reactive/observable-state.js';
 import type { ReadonlyState } from '../../reactive/readonly-state.js';
 import { derive } from '../../reactive/state.js';
@@ -22,7 +23,8 @@ import { classes } from './_generated/settings-tab.module.css.js';
 
 /**
  * The Settings tab: a search over every setting, then the groups by intent (essentials first), each a form that folds
- * open, then `more`. While searching, only matching rows show and their groups open; a group with no match hides.
+ * open (after its own rows: the UI's settings, `SettingsRow`), then `more`. While searching, only matching rows show
+ * and their groups open; a group with no match hides.
  */
 export function SettingsTab(props: {
   model: SettingsModel;
@@ -32,10 +34,7 @@ export function SettingsTab(props: {
   const { model } = props;
   const query = observableState('');
   const q = query.asReadonly;
-  const none = derive(
-    q,
-    (text) => text.trim().length > 0 && !model.groups.some((g) => paramsMatch(g.form.params, text)),
-  );
+  const none = derive(q, (text) => text.trim().length > 0 && !model.groups.some((g) => groupMatch(g, text)));
   return (
     <div class={classes.tab}>
       <div class={classes.search}>
@@ -61,13 +60,18 @@ export function SettingsTab(props: {
   );
 }
 
-/** One group: a header that folds, and its form, filtered by the search. */
+/** Whether a group has a param or a row that matches the search text. */
+function groupMatch(group: SettingsGroup, text: string): boolean {
+  return paramsMatch(group.form.params, text) || !!group.rows?.some((r) => settingsRowMatch(r, text));
+}
+
+/** One group: a header that folds, and its rows and form, filtered by the search. */
 function Group(props: { group: SettingsGroup; query: ReadonlyState<string>; open: boolean }) {
   const { group, query } = props;
   const own = observableState(props.open);
   const searching = derive(query, (t) => t.trim().length > 0);
   const open = derive([own.asReadonly, searching], (o, s) => o || s);
-  const hidden = derive(query, (t) => !paramsMatch(group.form.params, t));
+  const hidden = derive(query, (t) => !groupMatch(group, t));
   return (
     <section class={classes.group} hidden={hidden} aria-label={group.title}>
       <div class={classes.header}>
@@ -79,6 +83,15 @@ function Group(props: { group: SettingsGroup; query: ReadonlyState<string>; open
       <Show when={open} reveal>
         {() => (
           <div class={classes.body} data-wide-labels={group.wideLabels ? '' : undefined}>
+            {group.rows?.map((row) => (
+              <div
+                class={classes.row}
+                data-settings-row={row.label}
+                hidden={derive(query, (t) => !settingsRowMatch(row, t))}
+              >
+                {row.view()}
+              </div>
+            ))}
             <ParamsForm form={group.form} filter={query} />
           </div>
         )}

@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 // What a package built on prism-ui uses (the agent module, extension ports): the runtime, reactive state, the shell's
@@ -47,6 +48,7 @@ export {
 export * from './shell/fullscreen.js';
 export * from './shell/shell.js';
 export * from './shell/theme.js';
+export * from './shell/ui-scale.js';
 
 export * from './commands/items.js';
 export * from './commands/keymap.js';
@@ -113,4 +115,5 @@ export { LogView } from './views/shell/log-view.js';
 export { SectionList } from './views/shell/section-list.js';
 export { ViewHost } from './views/shell/view-host.js';
 export { SettingsTab } from './views/settings/settings-tab.js';
+export { UIScaleRow } from './views/settings/ui-scale-row.js';
 export { ShellView, type ShellViewProps } from './views/shell/shell-view.js';

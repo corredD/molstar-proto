@@ -18,6 +18,7 @@ export const classes = {
   'groupsContent': 'msp-settings-settings-tab-groupsContent',
   'header': 'msp-settings-settings-tab-header',
   'none': 'msp-settings-settings-tab-none',
+  'row': 'msp-settings-settings-tab-row',
   'search': 'msp-settings-settings-tab-search',
   'searchIcon': 'msp-settings-settings-tab-searchIcon',
   'searchInput': 'msp-settings-settings-tab-searchInput',
@@ -98,7 +99,7 @@ defineStyles('views/settings/settings-tab.module.css', `@layer msp.components {
   align-items: center;
   gap: var(--msp-space-3);
   min-width: 0;
-  height: 32px;
+  height: calc(32px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   color: var(--msp-color-text-muted);
   text-align: left;
@@ -131,6 +132,14 @@ defineStyles('views/settings/settings-tab.module.css', `@layer msp.components {
 
   &[data-wide-labels] {
     --msp-label-width: calc(100% - 64px);
+  }
+}
+
+.msp-settings-settings-tab-row {
+  margin-bottom: var(--msp-space-1);
+
+  &[hidden] {
+    display: none;
   }
 }
 

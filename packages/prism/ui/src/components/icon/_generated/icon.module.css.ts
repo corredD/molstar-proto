@@ -18,5 +18,10 @@ defineStyles('components/icon/icon.module.css', `@layer msp.components {
 .msp-icon-icon {
   flex-shrink: 0;
 }
+
+:where(.msp-icon-icon) {
+  width: calc(var(--msp-icon-px, 18px) * var(--msp-ui-scale, 1));
+  height: calc(var(--msp-icon-px, 18px) * var(--msp-ui-scale, 1));
+}
 }
 `);
