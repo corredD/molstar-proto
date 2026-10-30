@@ -31,6 +31,8 @@ fn clipRandom(p: vec3<f32>) -> f32 {
 /** Whether the row \`row\` cuts an instance at \`center\` placed at \`place\` (\`Clipping.isCut\`, OR-ed over the objects) */
 fn clipTableTest(center: vec3<f32>, row: i32, place: vec3<f32>) -> bool {
     let r = clipRandom(place);
+    // in the ghost pass, cut unless a ghosted object it does not ignore applies (\`clipGhostless\`)
+    var ghosted = false;
     for (var i = 0; i < oClipObjectCount; i++) {
         if (!isClipObjectActive(i, 0)) {
             continue;
@@ -40,6 +42,11 @@ fn clipTableTest(center: vec3<f32>, row: i32, place: vec3<f32>) -> bool {
         if (mode == 1) {
             continue;
         }
+        #if defined(dRenderVariant_depth)
+            if ((uMaterial.uClipObjectGhost & (1 << u32(i))) != 0) {
+                ghosted = true;
+            }
+        #endif
         let sd = getSignedDistance(center, i);
         let d = select(sd, -sd, isClipObjectInverted(i));
         let inside = d <= 0.0;
@@ -55,6 +62,11 @@ fn clipTableTest(center: vec3<f32>, row: i32, place: vec3<f32>) -> bool {
             return true;
         }
     }
+    #if defined(dRenderVariant_depth)
+        if (uGlobal.uRenderMask == MaskGhost && !ghosted) {
+            return true;
+        }
+    #endif
     return false;
 }
 
@@ -143,7 +155,27 @@ fn isClipObjectInverted(i: i32) -> bool {
     return inverted;
 }
 
+/** In the ghost pass, whether no ghosted object applies (\`flag\`: the objects ignored): then nothing is a ghost */
+fn clipGhostless(flag: i32) -> bool {
+    #if defined(dRenderVariant_depth)
+        if (uGlobal.uRenderMask != MaskGhost) {
+            return false;
+        }
+        for (var i = 0; i < oClipObjectCount; i++) {
+            if (isClipObjectActive(i, flag) && (uMaterial.uClipObjectGhost & (1 << u32(i))) != 0) {
+                return false;
+            }
+        }
+        return true;
+    #else
+        return false;
+    #endif
+}
+
 fn clipTest(center: vec3<f32>, flag: i32) -> bool {
+    if (clipGhostless(flag)) {
+        return true;
+    }
     for (var i = 0; i < oClipObjectCount; i++) {
         if (isClipObjectActive(i, flag)) {
             let test = getSignedDistance(center, i) <= 0.0;
@@ -259,6 +291,9 @@ fn clipObjectInterval(i: i32, pFront: vec3<f32>, pBack: vec3<f32>) -> vec2<f32> 
  * -1 if there is none
  */
 fn clipExit(pFront: vec3<f32>, pBack: vec3<f32>, sStart: f32, flag: i32) -> f32 {
+    if (clipGhostless(flag)) {
+        return -1.0;
+    }
     var s = sStart;
     for (var k = 0; k <= oClipObjectCount; k++) {
         var sNext = s;

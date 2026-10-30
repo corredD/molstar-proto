@@ -139,6 +139,17 @@ describe('ghosts of what clips cut, drawn', () => {
 
     const off = await draw(false);
     const on = await draw(true);
+    // the ghost depth at each sphere's center: the cut one only, not the one that ignores the plane (drawn whole there
+    // before a ghost needed a ghosted object it does not ignore)
+    const gl = (canvas.graphics as any).gl as WebGLRenderingContext;
+    ctx.passes.draw.depthTargetTransparent.bind();
+    const depth = Centers.map((x) => {
+      const px = new Uint8Array(4);
+      const sx = Math.round(canvas.camera.project(Vec4(), Vec3.create(x, 0, 0))[0]);
+      gl.readPixels(sx, Size / 2, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      return px.some((v) => v !== 0);
+    });
+    expect(depth).toEqual([false, true, false]);
     expect(off).toEqual([0, 0, 0]);
     // the cut sphere's ghost; none over the kept one nor the one that ignores the plane
     expect(on[1]).toBeGreaterThan(20);
