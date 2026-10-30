@@ -480,3 +480,44 @@ describe('explorer.clipUse on structure parts and some compartments (review M1, 
     expect(of.records?.map((x) => x.entities)).toEqual([[1, 2, 3, 4]]);
   });
 });
+
+describe("a clip's Clip whole (lane clip-whole)", () => {
+  it('shows Clip whole for the decorated object it cuts; a pick there runs stage.clipWhole, in step with its Clips', async () => {
+    const v = await viewer();
+    const { host, model, refOf } = mount(v);
+    const crn = refOf('1CRN');
+    const hiv = refOf('HIV');
+    await until(() => !!model.parts.value.get(hiv));
+    const d = await v.api.run('cryoet.decorate', { particles: hiv, with: 'object', object: '1crn' });
+    if (!d.ok) throw new Error(d.message);
+    await until(() => v.api.stage!.clipWholeState(hiv).value === 'pixel');
+    // a plane on HIV and on 1CRN: Clip whole for HIV only (1CRN draws no objects)
+    const r = await v.api.run('clipping.add', { shape: 'plane', node: `#${hiv}` });
+    if (!r.ok) throw new Error(r.message);
+    const tag = cuts(v)[0].object.tag!;
+    const u = await v.api.run('explorer.clipUse', { tag, nodes: [{ ref: crn }], on: true });
+    if (!u.ok) throw new Error(u.message);
+    await until(() => !!item(host, `k:${tag}`));
+    item(host, `k:${tag}`)!.querySelector<HTMLElement>('[data-tree-row]')!.click();
+    await open(host, 'clip');
+    const clip = () => section(host, 'clip')!;
+    const button = (el: HTMLElement, label: string) =>
+      Array.from(el.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.trim() === label);
+    await until(() => !!button(clip(), 'Proteins'));
+    expect(clip().querySelectorAll('[data-clip-whole]')).toHaveLength(1);
+    // Proteins: one step, the objects clipped whole
+    const n = steps(v);
+    button(clip(), 'Proteins')!.click();
+    await until(() => v.api.stage!.clipWholeState(hiv).value === 'instance');
+    expect(steps(v)).toBe(n + 1);
+    // Atoms from HIV's own Clips: the clip's follows
+    item(host, `o:${hiv}`)!.querySelector<HTMLElement>('[data-tree-row]')!.click();
+    await open(host, 'clips');
+    await until(() => !!button(section(host, 'clips')!, 'Atoms'));
+    button(section(host, 'clips')!, 'Atoms')!.click();
+    await until(() => v.api.stage!.clipWholeState(hiv).value === 'element');
+    item(host, `k:${tag}`)!.querySelector<HTMLElement>('[data-tree-row]')!.click();
+    await open(host, 'clip');
+    await until(() => button(clip(), 'Atoms')?.getAttribute('aria-pressed') === 'true');
+  });
+});
