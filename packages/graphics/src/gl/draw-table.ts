@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util/value-cell';
@@ -139,7 +140,9 @@ function writeContributions(c: DrawContributions, slot: number, values: Values, 
   const xray = (facts & DrawFact.Xray) !== 0 ? 0.5 : 1;
   const fuzzy = (facts & DrawFact.FuzzyPoints) !== 0 ? 0.5 : 1;
   const textOrImage = (facts & DrawFact.TextOrImage) !== 0 ? 0.5 : 1;
-  c.opacity[slot] = (1 - values.transparencyAverage.ref.value) * alpha * xray * fuzzy * textOrImage;
+  // all instances hidden: drawn by no pass, so no reason for the scene's blended passes
+  const opacity = values.transparencyAverage.ref.value === 1 ? 1 : 1 - values.transparencyAverage.ref.value;
+  c.opacity[slot] = opacity * alpha * xray * fuzzy * textOrImage;
   let min = 1;
   if (alpha < 1) min = Math.min(min, 1 - alpha);
   if (half) min = Math.min(min, 0.5);
@@ -210,7 +213,8 @@ const TransparentReasons =
 
 /** alpha 1, not fully transparent, not a direct volume, fuzzy points or x-ray shaded; or back faces opaque */
 export const checkOpaque = (facts: number, _state?: number) =>
-  (facts & OpaqueBlockers) === DrawFact.AlphaOne || (facts & DrawFact.BackfacesOpaque) !== 0;
+  ((facts & OpaqueBlockers) === DrawFact.AlphaOne || (facts & DrawFact.BackfacesOpaque) !== 0) &&
+  (facts & DrawFact.TransparencyFull) === 0;
 
 /**
  * not alpha 0 and not fully transparent (all instances hidden: nothing to draw), and alpha below 1, transparency, a

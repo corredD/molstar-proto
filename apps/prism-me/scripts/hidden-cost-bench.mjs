@@ -135,7 +135,7 @@ async function run(arm) {
     );
   }
 }
-const hide = (visible) =>
+const setVisible = (visible) =>
   page
     .evaluate(
       ([visible]) => window.H.v.api.run('mesoscale.style', { entities: window.H.hide.join(','), visible }),
@@ -156,9 +156,9 @@ const setAsym = async (asymIds) => {
 
 for (let i = 1; i <= rounds; i++) {
   await run('A none hidden');
-  await hide(false);
+  await setVisible(false);
   await run('B 90% hidden');
-  await hide(true);
+  await setVisible(true);
 }
 await setAsym(await page.evaluate(() => window.H.keepTargets));
 for (let i = 1; i <= rounds; i++) await run('C 90% removed');

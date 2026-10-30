@@ -423,7 +423,7 @@ namespace Renderer {
    */
   type FactTest = (facts: number, state: number) => boolean;
 
-  const checkPickable: FactTest = (_, s) => (s & DrawState.ColorOnly) === 0;
+  const checkPickable: FactTest = (f, s) => (s & DrawState.ColorOnly) === 0 && (f & DrawFact.TransparencyFull) === 0;
 
   const checkMarkingDepth: FactTest = (f) =>
     (f & (DrawFact.AlphaZero | DrawFact.TransparencyFull | DrawFact.MarkerFull)) === 0;

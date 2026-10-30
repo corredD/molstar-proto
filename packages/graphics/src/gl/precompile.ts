@@ -55,7 +55,7 @@ function getDrawFlags(values: { [k: string]: ValueCell<unknown> | undefined }) {
     ((values.emissiveAverage?.ref.value as number) ?? 0) + ((values.uEmissive?.ref.value as number) ?? 0);
   return {
     opaque: alpha === 1 && transparency !== 1,
-    transparent: alpha < 1 || transparency > 0,
+    transparent: alpha < 1 || (transparency > 0 && transparency < 1),
     emissive: emissive > 0,
   };
 }

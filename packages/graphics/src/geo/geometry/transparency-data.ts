@@ -2,6 +2,7 @@
  * Copyright (c) 2019-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util/value-cell';
@@ -41,18 +42,19 @@ const Hidden = 255;
 
 /**
  * The average transparency of the instances still shown: a hidden instance is not counted, so an object most of
- * whose instances are hidden is not drawn as a transparent one (a second pass); 1 when all are hidden
+ * whose instances are hidden is not drawn as a transparent one (a second pass); 1 when all are hidden. `hidden` false
+ * counts them as any value (where 255 is not hidden: per group, or a theme strength below 1)
  */
-export function getTransparencyAverage(array: Uint8Array, count: number): number {
+export function getTransparencyAverage(array: Uint8Array, count: number, hidden = true): number {
   if (count === 0 || array.length < count) return 0;
   let sum = 0;
   let shown = 0;
   for (let i = 0; i < count; ++i) {
-    if (array[i] === Hidden) continue;
+    if (hidden && array[i] === Hidden) continue;
     sum += array[i];
     shown += 1;
   }
-  return shown === 0 ? 1 : sum / (255 * shown);
+  return shown === 0 ? (count > 0 ? 1 : 0) : sum / (255 * shown);
 }
 
 /** exclude fully opaque parts (and hidden instances, at the top of the range); 1 when none is left */

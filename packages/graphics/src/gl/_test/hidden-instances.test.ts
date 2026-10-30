@@ -56,6 +56,10 @@ describe('hidden instances (transparency 1)', () => {
     expect(getTransparencyAverage(layer(10, 10), 10)).toBe(1);
     expect(getTransparencyMin(layer(10, 10), 10)).toBe(1);
 
+    // 255 is not hidden per group or at a theme strength below 1: counted as any value
+    expect(getTransparencyAverage(layer(10, 9), 10, false)).toBeCloseTo(0.9);
+    expect(getTransparencyAverage(layer(10, 10), 10, false)).toBe(1);
+
     // no hidden instance: as before
     expect(getTransparencyAverage(layer(10, 0, 128), 10)).toBeCloseTo(128 / 255);
     expect(getTransparencyMin(layer(10, 0, 128), 10)).toBeCloseTo(128 / 255);
@@ -75,6 +79,12 @@ describe('hidden instances (transparency 1)', () => {
     const o = withTransparency(layer(10, 10));
     expect(getCheckFacts(o.values) & DrawFact.TransparencyFull).not.toBe(0);
     expect(passes(o)).toEqual({ opaque: false, transparent: false, opacity: 0 });
+  });
+
+  it('an all-hidden object is in no pass, back faces opaque or not', () => {
+    const facts = getCheckFacts(withTransparency(layer(10, 10)).values) | DrawFact.BackfacesOpaque;
+    expect(checkOpaque(facts, DrawState.Visible)).toBe(false);
+    expect(checkTransparent(facts, DrawState.Visible)).toBe(false);
   });
 
   it('an object with a real transparency of 0.5 is unchanged', () => {
