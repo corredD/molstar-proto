@@ -449,7 +449,10 @@ export async function setWay(ctx: ApiContext, tag: string, node: NodeRef, way: W
     const base = records.length ? records : [record(none)];
     const only = (r: ParticleCutProps) =>
       (Object.keys(none) as (keyof Ids)[]).every((k) => k === kind || !r[k].length) && r[kind].length > 0;
-    next = [...base.filter((r) => !(only(r) && r[kind].every((id) => inPart.has(id)))), record({ ...none, [kind]: part })];
+    next = [
+      ...base.filter((r) => !(only(r) && r[kind].every((id) => inPart.has(id)))),
+      record({ ...none, [kind]: part }),
+    ];
   }
   if (next.length === records.length && next.every((r, i) => sameWay(r, records[i]) && sameIds(r, records[i]))) {
     return ApiResult.already('It is cut so already.');

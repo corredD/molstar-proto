@@ -462,14 +462,21 @@ export class ExplorerApi extends ApiArea {
     title: 'Set how a clip cuts something',
     params: {
       tag: PD.Text('', { description: "The clip's tag (Prism's cut: clipping.list)" }),
-      node: PD.Value<NodeRef>({ ref: '' }, { description: 'An object or part of particles: { ref }, { ref, particles }' }),
+      node: PD.Value<NodeRef>(
+        { ref: '' },
+        { description: 'An object or part of particles: { ref }, { ref, particles }' },
+      ),
       mode: PD.Select<'cut' | 'keep' | 'wider'>('cut', [
         ['keep', 'Keeps a layer on the cut face'],
         ['cut', 'Cuts it'],
         ['wider', 'Cuts it wider'],
       ]),
       band: PD.Numeric(60, { min: 0, max: 1000, step: 1 }, { description: "The band's width, Å" }),
-      fuzziness: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }, { description: "Thins the band toward its edge, 0 to 1" }),
+      fuzziness: PD.Numeric(
+        0,
+        { min: 0, max: 1, step: 0.01 },
+        { description: 'Thins the band toward its edge, 0 to 1' },
+      ),
     },
     run: ({ tag, node, mode, band, fuzziness }, ctx) => setWay(ctx, tag, node, { mode, band, fuzziness }),
   });
