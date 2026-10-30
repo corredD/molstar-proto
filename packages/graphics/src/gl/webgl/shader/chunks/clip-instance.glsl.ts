@@ -8,7 +8,7 @@ export const clip_instance = `
 #if defined(dClipVariant_instance) && defined(dClipObjects)
     vec3 mCenter = (uModel * aTransform * vec4(InvariantBoundingSphere.xyz, 1.0)).xyz;
     #if defined(dClipTable) && defined(dClipping)
-        bool clipCut = clipTableTest(mCenter / uModelScale, clipRow, aInstance);
+        bool clipCut = clipTableTest(mCenter / uModelScale, clipRow, aTransform[3].xyz);
     #else
         bool clipCut = clipTest(mCenter / uModelScale);
     #endif

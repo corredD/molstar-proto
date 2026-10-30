@@ -13,24 +13,31 @@
  */
 export const clip_table = `
 #if defined(dClipTable)
-    // a stable random in [0, 1) of an instance id: cellVIEW's Wang hash, its top 24 bits (\`Clipping.random\`)
-    float clipRandom(const in float id) {
-        #if __VERSION__ == 100
-            return fract(sin(id * 12.9898) * 43758.5453);
-        #else
-            uint h = uint(id);
+    #if __VERSION__ != 100
+        // cellVIEW's Wang hash
+        uint clipHash(in uint h) {
             h = (h ^ 61u) ^ (h >> 16u);
             h *= 9u;
             h ^= h >> 4u;
             h *= 0x27d4eb2du;
             h ^= h >> 15u;
-            return float(h >> 8u) / 16777216.0;
+            return h;
+        }
+    #endif
+
+    // a stable random in [0, 1) of an instance's place, its transform's translation (\`Clipping.randomAt\`)
+    float clipRandom(const in vec3 p) {
+        #if __VERSION__ == 100
+            return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+        #else
+            uvec3 b = floatBitsToUint(p);
+            return float(clipHash(clipHash(clipHash(b.x) ^ b.y) ^ b.z) >> 8u) / 16777216.0;
         #endif
     }
 
-    // whether the row \`row\` cuts an instance at \`center\` with the id \`id\` (\`Clipping.isCut\`, OR-ed over the objects)
-    bool clipTableTest(const in vec3 center, const in float row, const in float id) {
-        float r = clipRandom(id);
+    // whether the row \`row\` cuts an instance at \`center\` placed at \`place\` (\`Clipping.isCut\`, OR-ed over the objects)
+    bool clipTableTest(const in vec3 center, const in float row, const in vec3 place) {
+        float r = clipRandom(place);
         for (int i = 0; i < uClipObjectCount; ++i) {
             if (i == uSolidInteriorClip) continue;
             vec4 c = read_tClipTable(row * 16.0 + float(i));

@@ -11,19 +11,25 @@
  */
 export const clip_table_wgsl = /* wgsl */ `
 #if defined(dClipTable)
-/** A stable random in [0, 1) of an instance id: cellVIEW's Wang hash, its top 24 bits (\`Clipping.random\`) */
-fn clipRandom(id: u32) -> f32 {
+/** cellVIEW's Wang hash */
+fn clipHash(id: u32) -> u32 {
     var h = (id ^ 61u) ^ (id >> 16u);
     h *= 9u;
     h ^= h >> 4u;
     h *= 0x27d4eb2du;
     h ^= h >> 15u;
-    return f32(h >> 8u) / 16777216.0;
+    return h;
 }
 
-/** Whether the row \`row\` cuts an instance at \`center\` with the id \`id\` (\`Clipping.isCut\`, OR-ed over the objects) */
-fn clipTableTest(center: vec3<f32>, row: i32, id: u32) -> bool {
-    let r = clipRandom(id);
+/** A stable random in [0, 1) of an instance's place, its transform's translation (\`Clipping.randomAt\`) */
+fn clipRandom(p: vec3<f32>) -> f32 {
+    let b = bitcast<vec3<u32>>(p);
+    return f32(clipHash(clipHash(clipHash(b.x) ^ b.y) ^ b.z) >> 8u) / 16777216.0;
+}
+
+/** Whether the row \`row\` cuts an instance at \`center\` placed at \`place\` (\`Clipping.isCut\`, OR-ed over the objects) */
+fn clipTableTest(center: vec3<f32>, row: i32, place: vec3<f32>) -> bool {
+    let r = clipRandom(place);
     for (var i = 0; i < oClipObjectCount; i++) {
         if (!isClipObjectActive(i, 0)) {
             continue;
@@ -333,7 +339,7 @@ export const clip_instance_wgsl = /* wgsl */ `
 #if defined(dClipVariant_instance) && defined(dClipObjects)
     let clipCenter = (uGlobal.uModel * aTransform * vec4<f32>(invariantBoundingSphere(in).xyz, 1.0)).xyz;
     #if defined(dClipTable) && defined(dClipping)
-        let clipCut = clipTableTest(clipCenter / uGlobal.uModelScale, clipRow, u32(in.aInstance));
+        let clipCut = clipTableTest(clipCenter / uGlobal.uModelScale, clipRow, aTransform[3].xyz);
     #else
         let clipCut = clipTest(clipCenter / uGlobal.uModelScale, clipFlag);
     #endif

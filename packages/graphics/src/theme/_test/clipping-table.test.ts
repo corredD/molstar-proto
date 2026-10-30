@@ -34,6 +34,33 @@ function mockRandom(id: number): number {
 
 const cell = (mode: Clipping.Mode, band = 10, fuzziness = 0): Clipping.Cell => ({ mode, band, fuzziness });
 
+/** The spheres' vertex stage, preprocessed, with clip objects and a table or not */
+const values = (variant: 'instance' | 'pixel', table: boolean) => ({
+  dRenderVariant: 'colorBlended',
+  dGeometryType: 'spheres',
+  dColorType: 'uniform',
+  dLightCount: 1,
+  dClipObjects: true,
+  dClipObjectCount: 8,
+  dClipVariant: variant,
+  dClipping: true,
+  dClipTable: table,
+});
+const vertexWgsl = (v: ReturnType<typeof values> = values('instance', true)) => {
+  const cells: { [k: string]: ValueCell<any> } = {};
+  for (const k of Object.keys(v)) cells[k] = ValueCell.create((v as any)[k]);
+  const code = preprocessShader(resolveWgslSource(spheres_wgsl, cells), getWgslDefines(cells), {
+    expandMacros: true,
+  });
+  return code.slice(code.indexOf('fn vertexMain('), code.indexOf('fn fragmentMain('));
+};
+const vertexGlsl = (v: ReturnType<typeof values> = values('instance', true)) => {
+  const defines = getProgramDefines(SpheresShaderCode, v, ['requiredDrawBuffers', 'enabledFragDepth']);
+  defines.set('__VERSION__', '300');
+  const vert = preprocessProgram(getGlslProgram(SpheresShaderCode.name).vert, defines, v);
+  return vert.slice(vert.indexOf('void main'));
+};
+
 describe('Clipping.random', () => {
   it("is the mock's Wang hash to its top 24 bits, exact in a 32-bit float, in [0, 1)", () => {
     for (const id of [0, 1, 2, 7, 255, 256, 65535, 1 << 20, (1 << 24) - 1]) {
@@ -53,6 +80,26 @@ describe('Clipping.random', () => {
       expect(code).toMatch(/>> 15u/);
       expect(code).toMatch(/>> 8u\) \/ 16777216\.0/);
     }
+  });
+});
+
+describe('Clipping.randomAt', () => {
+  it("keys an instance by its place (the bits of its transform's translation), not its index", () => {
+    const at = (x: number, y: number, z: number) => Clipping.randomAt(Math.fround(x), Math.fround(y), Math.fround(z));
+    expect(at(10.5, -3.25, 7)).toBe(at(10.5, -3.25, 7));
+    // two instances, two places: two randoms; about uniform over many places
+    expect(at(10.5, -3.25, 7)).not.toBe(at(10.5, -3.25, 7.001));
+    let below = 0;
+    for (let i = 0; i < 1000; ++i) if (at(i * 3.1, (i % 7) * 11.3, -i * 0.7) < 0.3) below += 1;
+    expect(below).toBeGreaterThan(240);
+    expect(below).toBeLessThan(360);
+  });
+
+  it('is what the instance clips hash: the translation of aTransform, in both backends', () => {
+    expect(vertexGlsl()).toMatch(/clipTableTest\([^;]*aTransform\[3\]\.xyz\)/);
+    expect(vertexWgsl()).toMatch(/clipTableTest\([^;]*aTransform\[3\]\.xyz\)/);
+    expect(clip_table).toMatch(/floatBitsToUint/);
+    expect(clip_table_wgsl).toMatch(/bitcast<vec3<u32>>/);
   });
 });
 
@@ -141,32 +188,6 @@ describe('Clipping tables', () => {
 });
 
 describe('the instance clip with a table', () => {
-  const values = (variant: 'instance' | 'pixel', table: boolean) => ({
-    dRenderVariant: 'colorBlended',
-    dGeometryType: 'spheres',
-    dColorType: 'uniform',
-    dLightCount: 1,
-    dClipObjects: true,
-    dClipObjectCount: 8,
-    dClipVariant: variant,
-    dClipping: true,
-    dClipTable: table,
-  });
-  const vertexWgsl = (v: ReturnType<typeof values>) => {
-    const cells: { [k: string]: ValueCell<any> } = {};
-    for (const k of Object.keys(v)) cells[k] = ValueCell.create((v as any)[k]);
-    const code = preprocessShader(resolveWgslSource(spheres_wgsl, cells), getWgslDefines(cells), {
-      expandMacros: true,
-    });
-    return code.slice(code.indexOf('fn vertexMain('), code.indexOf('fn fragmentMain('));
-  };
-  const vertexGlsl = (v: ReturnType<typeof values>) => {
-    const defines = getProgramDefines(SpheresShaderCode, v, ['requiredDrawBuffers', 'enabledFragDepth']);
-    defines.set('__VERSION__', '300');
-    const vert = preprocessProgram(getGlslProgram(SpheresShaderCode.name).vert, defines, v);
-    return vert.slice(vert.indexOf('void main'));
-  };
-
   it('tests each instance by its row (WGSL and GLSL), the flag the ignored objects of the row', () => {
     for (const main of [vertexWgsl(values('instance', true)), vertexGlsl(values('instance', true))]) {
       expect(main).toMatch(/clipTableTest\(/);

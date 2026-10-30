@@ -50,19 +50,37 @@ namespace Clipping {
   /** Cells a row: the clip objects a representation can have (`Clip.MaxObjectCount`) */
   export const TableWidth = 16;
 
-  /**
-   * A stable random in [0, 1) of an instance id: cellVIEW's Wang hash (apps/prism-me/_spec/cellview.md §4.1), its top
-   * 24 bits (exact in a 32-bit float), the same as the instance clip's (`clipRandom` in the clip chunks), so an instance
-   * is thinned the same way every frame
-   */
-  export function random(id: number): number {
+  /** cellVIEW's Wang hash of a 32-bit integer (apps/prism-me/_spec/cellview.md §4.1) */
+  function wang(id: number): number {
     let h = id >>> 0;
     h = h ^ 61 ^ (h >>> 16);
     h = Math.imul(h, 9);
     h ^= h >>> 4;
     h = Math.imul(h, 0x27d4eb2d);
     h ^= h >>> 15;
-    return (h >>> 8) / 16777216;
+    return h >>> 0;
+  }
+
+  /**
+   * A stable random in [0, 1) of an id: the Wang hash's top 24 bits (exact in a 32-bit float), so a part shown in part
+   * (a particle's index) is thinned the same way every frame
+   */
+  export function random(id: number): number {
+    return (wang(id) >>> 8) / 16777216;
+  }
+
+  const bits = new Uint32Array(3);
+  const place = new Float32Array(bits.buffer);
+  /**
+   * A stable random in [0, 1) of an instance's place (its transform's translation, 32-bit floats): the Wang hash of the
+   * three floats' bits, chained, its top 24 bits. What the instance clip hashes (`clipRandom` in the clip chunks): the
+   * same for an instance whatever the frame, the view, the LOD, the GPU cull or how render objects are merged.
+   */
+  export function randomAt(x: number, y: number, z: number): number {
+    place[0] = x;
+    place[1] = y;
+    place[2] = z;
+    return (wang(wang(wang(bits[0]) ^ bits[1]) ^ bits[2]) >>> 8) / 16777216;
   }
 
   /**
