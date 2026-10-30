@@ -136,14 +136,16 @@ particles a clip cuts each object or part its way, Keeps a layer (on the cut's f
 it wider (by the band), the band (5–250 Å) and fuzziness (0–100 %: thins it toward the band's edge, the same instances
 every frame) under a graded one, each once released (`explorer.clipWay`, one step). The way is Prism's record of the
 part (`particles.look` cuts, a record a part, a later one over an earlier): a part of a clip of all the model gets its
-own record over a record of every particle, so What it cuts lists the model and the part, each its way; a node's Clips
-shows the clip's way on it. A graded way switches the cuts to instance (Ludo, 2026-10-29: "switch if graded"; Proteins
-in Clip whole), in the same step: `clipping.settings`, scene-wide, because a representation's variant is the scene's at
-every cut written (a clip moved); the plain cut leaves the variant as it is. Atoms and structures cut plainly (no way).
-Look › Shown (%) on a group, an entity or a target: a share of its particles shown, the same ones at every share
-(Prism's stable random), its layer's `shown` (`particles.look`, once released); 100 % clears it (Look's Reset leaves
-it). It reads the lowest share of the layers holding the part (its own, a group's it is in): Prism thins over every
-layer, so the lowest wins.
+own record over a record of every particle, so What it cuts lists the model and the part, each its way; a node with a
+record of its own changes it in place (its parts after it keep theirs); a node's Clips shows the clip's way on it where
+the clip cuts all of it, none when its parts differ (mixed). The scene-wide switch changes the other clips' variant too
+(Ludo's call: he asked for that cut; a per-cut variant is a library change). A graded way switches the cuts to instance
+(Ludo, 2026-10-29: "switch if graded"; Proteins in Clip whole), in the same step: `clipping.settings`, scene-wide,
+because a representation's variant is the scene's at every cut written (a clip moved); the plain cut leaves the variant
+as it is. Atoms and structures cut plainly (no way). Look › Shown (%) on a group, an entity or a target: a share of its
+particles shown, the same ones at every share (Prism's stable random), its layer's `shown` (`particles.look`, once
+released); 100 % clears it (Look's Reset leaves it). It reads the lowest share of the layers holding the part (its own,
+a group's it is in): Prism thins over every layer, so the lowest wins.
 
 Graphics & Motion (Ludovic, 2026-10-24: on every object, what does not apply left out): `mesoscale.graphics` and
 `mesoscale.motion` with an `object` (the mesoscale extension's ops, so Prism stays as it is). A mode sets, by kind:
