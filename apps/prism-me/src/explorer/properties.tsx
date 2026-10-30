@@ -1345,9 +1345,44 @@ function HandleLook(props: { area: ExplorerApi }) {
 // --- clips -----------------------------------------------------------------------------------------------------------
 
 /**
+ * A model's or list's Clip whole (ui.md Clip whole), while it draws objects: Proteins (whole objects) or Atoms (whole
+ * elements), one step (`stage.clipWhole`); in its Clips and in the Clips section of each clip that cuts it
+ */
+function ClipWhole(props: { api: ViewerApi; particles: string; label: string }) {
+  const { api, particles } = props;
+  if (!api.stage) return null;
+  const whole = api.stage.clipWholeState(particles);
+  return (
+    <Show when={mapState(whole, (w) => w !== undefined)}>
+      {() => (
+        <div data-clip-whole={particles}>
+          <Choices
+            label={props.label}
+            choices={[
+              {
+                id: 'instance',
+                label: 'Proteins',
+                title: 'A cut takes whole objects (proteins): one whose center is cut goes, the others stay whole',
+              },
+              {
+                id: 'element',
+                label: 'Atoms',
+                title: 'A cut takes whole atoms: each whose center is cut goes, the objects are carved',
+              },
+            ]}
+            active={whole}
+            onPick={(w) => void api.run('stage.clipWhole', { particles, whole: w })}
+          />
+        </div>
+      )}
+    </Show>
+  );
+}
+
+/**
  * A node's Clips (Ludo, 2026-10-28: the clips are in their own category, pointed at from here): the clips on it (each
  * picks its row; × takes it off them, one step), New clip (a shape: it cuts this), Use a clip (one of the scene's, one
- * step); a model's or list's Clip whole, the handle size
+ * step); a model's or list's Clip whole (also in each clip's section that cuts it), the handle size
  */
 function Clips(props: { subject: Subject }) {
   const { api, area, picked, parts } = props.subject;
@@ -1366,35 +1401,10 @@ function Clips(props: { subject: Subject }) {
       return !!c && allItCuts(whatItCuts(area, c, os, ps), node);
     });
   // a model's or list's objects: clipped whole (proteins) or by their elements (atoms), when it draws objects
-  const whole =
-    (picked.kind === 'mesoscale model' || picked.kind === 'particle list') && api.stage
-      ? api.stage.clipWholeState(node.ref)
-      : undefined;
+  const whole = picked.kind === 'mesoscale model' || picked.kind === 'particle list';
   return (
     <div class={classes.stack}>
-      {whole ? (
-        <Show when={mapState(whole, (w) => w !== undefined)}>
-          {() => (
-            <Choices
-              label="Clip whole"
-              choices={[
-                {
-                  id: 'instance',
-                  label: 'Proteins',
-                  title: 'A cut takes whole objects (proteins): one whose center is cut goes, the others stay whole',
-                },
-                {
-                  id: 'element',
-                  label: 'Atoms',
-                  title: 'A cut takes whole atoms: each whose center is cut goes, the objects are carved',
-                },
-              ]}
-              active={whole}
-              onPick={(w) => void api.run('stage.clipWhole', { particles: node.ref, whole: w })}
-            />
-          )}
-        </Show>
-      ) : null}
+      {whole ? <ClipWhole api={api} particles={node.ref} label="Clip whole" /> : null}
       <Show
         when={mapState(on, (l) => l.length > 0)}
         fallback={() => <Hint>No clip on it. Make one, or use one of the scene's.</Hint>}
@@ -1476,6 +1486,10 @@ function ClipProperties(props: { subject: Subject }) {
       .map((t) => [t.key, t.label] as const);
   });
   const byKey = (key: string) => clipTargetsOf(objects.value, parts.value).find((t) => t.key === key);
+  // the models and lists it cuts (all or a part of), for their Clip whole (Ludo, 2026-10-29: it is edited here too)
+  const wholes = derive([cut, objects, layers], (c, os) =>
+    c ? os.filter((o) => (o.kind === 'model' || o.kind === 'list') && !!area.cutOf(c, o.ref)) : [],
+  );
   return (
     <div class={classes.stack}>
       <ClipEditor api={api} area={area} tag={tag} />
@@ -1505,6 +1519,10 @@ function ClipProperties(props: { subject: Subject }) {
           }}
         />
       </Line>
+      {/* each model or list it cuts that draws objects: its Clip whole, the same as in its own Clips */}
+      <For each={wholes} by={(o) => `${o.ref}:${o.label}`}>
+        {(o) => <ClipWhole api={api} particles={o.ref} label={`Clip whole: ${o.label}`} />}
+      </For>
     </div>
   );
 }
