@@ -20,6 +20,16 @@
 - **Size:** ~40 production lines.
 - **Steps and models:** 1. reproduce (Sonnet) 2. fix with the test first (Opus) 3. checks (Sonnet) 4. gate (Opus).
 
+## Reproduced
+
+- Headless Chrome (Playwright, WebGL2), dev server on 1356, `?example=cellpack-hiv1`: the model's row, Clips open:
+  Clip whole with Proteins and Atoms is there, before and after New clip → Plane. The Clips category's `Plane 1` row
+  picked: its section is the clip's editor and What it cuts, with no Clip whole. So the first cause the brief names:
+  since #18 a clip's properties are its own section (`ClipProperties`), and Clip whole stayed only in the `Clips` of a
+  model or list (`properties.tsx`). `clipWholeState` and its `Show` work (the model's control shows).
+- Fix: in the clip's What it cuts, each model or list it cuts that draws objects gets Clip whole, the same control on
+  the same `stage.clipWhole` and `clipWholeState`, so the two stay in step.
+
 ## Built
 
 ## Decided
