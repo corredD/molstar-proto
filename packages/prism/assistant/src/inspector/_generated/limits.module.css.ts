@@ -60,7 +60,8 @@ defineStyles('assistant/inspector/limits.module.css', `@layer msp.components {
 }
 
 .msp-assistant-limits-rows {
-  grid-template-columns: minmax(0, 1fr) calc(120px * var(--msp-ui-scale, 1)) calc(56px * var(--msp-ui-scale, 1)) calc(160px * var(--msp-ui-scale, 1));
+  grid-template-columns: minmax(0, 1fr) calc(120px * var(--msp-ui-scale, 1)) calc(56px * var(--msp-ui-scale, 1)) calc(160px *
+      var(--msp-ui-scale, 1));
   margin-top: var(--msp-space-3);
   display: grid;
 }

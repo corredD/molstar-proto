@@ -39,7 +39,7 @@ defineStyles('stories/views/story-tab.module.css', `@layer msp.components {
 .msp-stories-story-tab-header {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 28px;
+  min-height: calc(28px * var(--msp-ui-scale, 1));
   padding-left: var(--msp-space-3);
   display: flex;
 }
@@ -53,14 +53,14 @@ defineStyles('stories/views/story-tab.module.css', `@layer msp.components {
 }
 
 .msp-stories-story-tab-scenes {
+  min-height: calc(80px * var(--msp-ui-scale, 1));
   flex: 1 1 0;
-  min-height: 80px;
 }
 
 .msp-stories-story-tab-scene {
   align-items: center;
   gap: var(--msp-space-3);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   display: flex;
@@ -75,7 +75,7 @@ defineStyles('stories/views/story-tab.module.css', `@layer msp.components {
 }
 
 .msp-stories-story-tab-number {
-  min-width: 16px;
+  min-width: calc(16px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-subtle);
   font-variant-numeric: tabular-nums;
   flex: none;

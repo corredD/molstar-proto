@@ -245,7 +245,8 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
 }
 
 .msp-assistant-trace-entry {
-  grid-template-columns: calc(10px * var(--msp-ui-scale, 1)) calc(64px * var(--msp-ui-scale, 1)) minmax(0, auto) minmax(0, 1fr) auto;
+  grid-template-columns: calc(10px * var(--msp-ui-scale, 1)) calc(64px * var(--msp-ui-scale, 1)) minmax(0, auto) minmax(0,
+      1fr) auto;
   align-items: baseline;
   gap: var(--msp-space-3);
   width: 100%;
