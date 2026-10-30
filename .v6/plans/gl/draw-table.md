@@ -47,6 +47,9 @@ come from their owners instead of being derived from the outside.
   off, double sided, single sided (`uDoubleSided` given and false), flip sided, reflection, solid interior, instance
   grid, several instances, lod levels (`DrawFact`, `getDrawFacts`). Clip
   caps stay with the renderable (`getClipInfo`), read for solid-interior rows only.
+  Transparency any and full follow the instances still shown: a hidden instance (a layer's transparency 1) is not counted
+  in `transparencyAverage`, so a mostly hidden object is opaque to the passes, and an object with every instance hidden
+  is fully transparent and drawn by neither the opaque nor the transparent pass (`checkOpaque`, `checkTransparent`).
 - **State bits**: disposed, visible, pickable, color only, opaque, write depth (`DrawState`).
 - **Maintenance**:
   - Facts: derived from the values (`getDrawFacts`, one place for what a fact means), refreshed when a cell it reads

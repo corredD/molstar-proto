@@ -18,6 +18,8 @@ import {
   DrawRow,
   DrawState,
   type DrawTable,
+  checkOpaque,
+  checkTransparent,
   getCheckFacts,
   getDrawFacts,
   getDrawState,
@@ -420,23 +422,6 @@ namespace Renderer {
    * for an object of a draw table (its row) and any other (`getObjectFacts`)
    */
   type FactTest = (facts: number, state: number) => boolean;
-
-  const OpaqueBlockers =
-    DrawFact.AlphaOne | DrawFact.TransparencyFull | DrawFact.DirectVolume | DrawFact.FuzzyPoints | DrawFact.Xray;
-  const TransparentReasons =
-    DrawFact.AlphaBelowOne |
-    DrawFact.TransparencyAny |
-    DrawFact.DirectVolume |
-    DrawFact.FuzzyPoints |
-    DrawFact.TextOrImage |
-    DrawFact.Xray;
-
-  /** alpha 1, not fully transparent, not a direct volume, fuzzy points or x-ray shaded; or back faces opaque */
-  const checkOpaque: FactTest = (f) =>
-    (f & OpaqueBlockers) === DrawFact.AlphaOne || (f & DrawFact.BackfacesOpaque) !== 0;
-
-  /** not alpha 0, and alpha below 1, transparency, a direct volume, fuzzy points, text, an image or x-ray shaded */
-  const checkTransparent: FactTest = (f) => (f & DrawFact.AlphaZero) === 0 && (f & TransparentReasons) !== 0;
 
   const checkPickable: FactTest = (_, s) => (s & DrawState.ColorOnly) === 0;
 

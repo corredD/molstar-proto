@@ -198,6 +198,27 @@ export function getCheckFacts(values: Values): number {
   return f;
 }
 
+const OpaqueBlockers =
+  DrawFact.AlphaOne | DrawFact.TransparencyFull | DrawFact.DirectVolume | DrawFact.FuzzyPoints | DrawFact.Xray;
+const TransparentReasons =
+  DrawFact.AlphaBelowOne |
+  DrawFact.TransparencyAny |
+  DrawFact.DirectVolume |
+  DrawFact.FuzzyPoints |
+  DrawFact.TextOrImage |
+  DrawFact.Xray;
+
+/** alpha 1, not fully transparent, not a direct volume, fuzzy points or x-ray shaded; or back faces opaque */
+export const checkOpaque = (facts: number, _state?: number) =>
+  (facts & OpaqueBlockers) === DrawFact.AlphaOne || (facts & DrawFact.BackfacesOpaque) !== 0;
+
+/**
+ * not alpha 0 and not fully transparent (all instances hidden: nothing to draw), and alpha below 1, transparency, a
+ * direct volume, fuzzy points, text, an image or x-ray shaded
+ */
+export const checkTransparent = (facts: number, _state?: number) =>
+  (facts & (DrawFact.AlphaZero | DrawFact.TransparencyFull)) === 0 && (facts & TransparentReasons) !== 0;
+
 /** An object's state as bits of a row (`DrawRow.State`) */
 export enum DrawState {
   Disposed = 1 << 0,
