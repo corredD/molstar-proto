@@ -389,32 +389,41 @@ export interface Way {
 export const PlainCut: Way = { mode: 'cut', band: 60, fuzziness: 0 };
 export const wayOfRecord = (r: Way): Way => ({ mode: r.mode, band: r.band, fuzziness: r.fuzziness });
 
-/** Whether a record covers all of a part's ids (a record of every particle covers all) */
-function holds(r: ParticleCutProps, kind: keyof Ids, ids: readonly number[]): boolean {
-  if (isCover(r)) return true;
-  const has = new Set(r[kind]);
-  return ids.every((id) => has.has(id));
-}
-
-/** The way a clip cuts a node: the last record covering it (Prism's: a later part wins), else the plain cut */
-export function wayOf(of: CutOfObject | undefined, node: NodeRef): Way {
+/**
+ * The way a clip cuts a node: an object, its last record of every particle; a part, the last record holding each of its
+ * ids (Prism's: a later part wins), undefined when they differ (mixed); the plain cut without records
+ */
+export function wayOf(of: CutOfObject | undefined, node: NodeRef): Way | undefined {
   const records = of?.records;
   if (!records?.length) return PlainCut;
-  if (!('particles' in node)) return records.length === 1 && isCover(records[0]) ? wayOfRecord(records[0]) : PlainCut;
+  if (!('particles' in node)) {
+    for (let i = records.length - 1; i >= 0; --i) if (isCover(records[i])) return wayOfRecord(records[i]);
+    return PlainCut;
+  }
   const kind = kindOf(node.particles);
-  const ids = node.particles[kind] ?? [];
-  for (let i = records.length - 1; i >= 0; --i) if (holds(records[i], kind, ids)) return wayOfRecord(records[i]);
-  return PlainCut;
+  let way: Way | undefined;
+  for (const id of node.particles[kind] ?? []) {
+    let r: ParticleCutProps | undefined;
+    for (let i = records.length - 1; i >= 0 && !r; --i) {
+      if (isCover(records[i]) || records[i][kind].includes(id)) r = records[i];
+    }
+    const w = r ? wayOfRecord(r) : PlainCut;
+    if (way && !sameWay(way, w)) return undefined;
+    way = w;
+  }
+  return way ?? PlainCut;
 }
 
 const sameWay = (a: Way, b: Way) => a.mode === b.mode && a.band === b.band && a.fuzziness === b.fuzziness;
+const sorted = (ids: readonly number[]) => [...ids].sort((x, y) => x - y);
 
 /**
- * A node's way in the clip tagged `tag` (Ludo, 2026-10-29): its own record with that way, last (so it wins over a
- * record of all the object, or of a group it is in); the records of its parts it holds go. A graded way (keeps a layer,
- * cuts wider) is the instance clip's: the scene's cuts switch to instance in the same step (`clipping.settings`: a
- * representation's variant is the scene's at every cut written, so one representation alone would not stay so); the
- * plain cut leaves the variant as it is. One step (`explorer.clipWay`).
+ * A node's way in the clip tagged `tag` (Ludo, 2026-10-29). With a record of its own, that record changes in place: its
+ * parts' records after it keep their ways (each its row in What it cuts). Without one, a record of its own goes last (so
+ * it wins over a record of all the object, or of a group it is in), the records of its parts it holds gone; a part of a
+ * clip of all the object gets a record of every particle, the plain cut, under it. A graded way (keeps a layer, cuts wider) is the instance clip's: the scene's cuts switch to instance in
+ * the same step (`clipping.settings`: a representation's variant is the scene's at every cut written, so one
+ * representation alone would not stay so); the plain cut leaves the variant as it is. One step (`explorer.clipWay`).
  */
 export async function setWay(ctx: ApiContext, tag: string, node: NodeRef, way: Way): Promise<ApiResult> {
   const cut = ctx.api.clipping?.cuts.value.find((c) => c.object.tag === tag);
@@ -426,49 +435,65 @@ export async function setWay(ctx: ApiContext, tag: string, node: NodeRef, way: W
   if (!cells.length || 'entity' in node) {
     return ApiResult.fail('invalid', 'Only particles are cut in graded ways.', 'Atoms and structures cut plainly.');
   }
-  const record = (ids: Ids): ParticleCutProps => ({
-    tag,
-    entities: [...ids.entities],
-    compartments: [...ids.compartments],
-    targets: [...ids.targets],
-    ...way,
-  });
   const none: Ids = { entities: [], compartments: [], targets: [] };
+  const record = (ids: Ids, w: Way = way): ParticleCutProps => ({
+    tag,
+    entities: sorted(ids.entities),
+    compartments: sorted(ids.compartments),
+    targets: sorted(ids.targets),
+    mode: w.mode,
+    band: w.band,
+    fuzziness: w.fuzziness,
+  });
   const records = of.records ?? [];
-  let next: ParticleCutProps[];
+  let own: Ids;
+  let isOwn: (r: ParticleCutProps) => boolean;
+  let isPart: (r: ParticleCutProps) => boolean;
   if (!('particles' in node)) {
-    // all of it: one record of every particle
     if (of.particles) return ApiResult.fail('invalid', 'The clip cuts some of it only: give its parts their way.');
-    next = [record(none)];
+    own = none;
+    isOwn = isCover;
+    isPart = () => true;
   } else {
     const kind = kindOf(node.particles);
-    const part = node.particles[kind] ?? [];
+    const part = sorted(node.particles[kind] ?? []);
     if (!holdsAll(of, kind, part)) return ApiResult.fail('invalid', 'The clip does not cut all of it.');
     const inPart = new Set(part);
-    // all of the object cut: a record of every particle, the plain cut, under the part's
-    const base = records.length ? records : [record(none)];
+    // a record of this kind only, of ids all in the part (the part's own: all of them)
     const only = (r: ParticleCutProps) =>
-      (Object.keys(none) as (keyof Ids)[]).every((k) => k === kind || !r[k].length) && r[kind].length > 0;
-    next = [
-      ...base.filter((r) => !(only(r) && r[kind].every((id) => inPart.has(id)))),
-      record({ ...none, [kind]: part }),
-    ];
+      (Object.keys(none) as (keyof Ids)[]).every((k) => k === kind || !r[k].length) &&
+      r[kind].length > 0 &&
+      r[kind].every((id) => inPart.has(id));
+    own = { ...none, [kind]: part };
+    isOwn = (r) => only(r) && r[kind].length === part.length;
+    isPart = only;
   }
-  if (next.length === records.length && next.every((r, i) => sameWay(r, records[i]) && sameIds(r, records[i]))) {
-    return ApiResult.already('It is cut so already.');
+  let at = -1;
+  for (let i = records.length - 1; i >= 0 && at < 0; --i) if (isOwn(records[i])) at = i;
+  let next: ParticleCutProps[];
+  if (at >= 0) {
+    next = records.map((r, i) => (i === at ? record(own) : r));
+  } else {
+    // all of the object cut: a record of every particle, the plain cut, under the part's
+    const base = records.length ? records : [record(none, PlainCut)];
+    next = [...base.filter((r) => !isPart(r)), record(own)];
   }
+  const same = next.length === records.length && next.every((r, i) => sameWay(r, records[i]) && sameIds(r, records[i]));
+  let changed = false;
   if (way.mode !== 'cut') {
-    const variant = ctx.plugin.managers.structure.component.state.options.clipObjects.variant;
-    if (variant !== 'instance') {
-      const r = await ctx.api.run('clipping.settings', { variant: 'instance' });
-      if (!r.ok) return r;
-    }
+    const r = await ctx.api.run('clipping.settings', { variant: 'instance' });
+    if (!r.ok) return r;
+    changed = !r.unchanged;
   }
-  const r = await ctx.api.run('particles.look', {
-    node: cells.map((c) => `#${c.transform.ref}`).join(', '),
-    cuts: { remove: [tag], add: next },
-  });
-  if (!r.ok) return r;
+  if (!same) {
+    const r = await ctx.api.run('particles.look', {
+      node: cells.map((c) => `#${c.transform.ref}`).join(', '),
+      cuts: { remove: [tag], add: next },
+    });
+    if (!r.ok) return r;
+    changed ||= !r.unchanged;
+  }
+  if (!changed) return ApiResult.already('It is cut so already.');
   return ApiResult.ok(WayWords[way.mode], { nodes: [node.ref] });
 }
 
