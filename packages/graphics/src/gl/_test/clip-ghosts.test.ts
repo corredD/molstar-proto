@@ -17,7 +17,7 @@ import { checkGhost, checkOpaque, DrawFact, DrawState, getCheckFacts } from '../
 import { PostprocessingParams, PostprocessingPass } from '../../canvas3d/passes/postprocessing.js';
 import { OutlineParams } from '../../canvas3d/passes/outline.js';
 import { createGl } from './gl.shim.js';
-import { createRenderer } from './renderer.test.js';
+import { createContext } from '../webgl/context.js';
 import { ShaderManager } from '../../canvas3d/helper/shader-manager.js';
 import { IlluminationParams } from '../../canvas3d/passes/illumination.js';
 import { MarkingParams } from '../../canvas3d/passes/marking.js';
@@ -75,7 +75,7 @@ describe('clip ghosts', () => {
   });
 
   it('the scene has ghosts while a visible object has a ghosted clip object', () => {
-    const { ctx } = createRenderer(createGl(32, 32, { preserveDrawingBuffer: true }));
+    const ctx = createContext(createGl(32, 32, { preserveDrawingBuffer: true }));
     const scene = Scene.create(ctx);
     const o = cutPoints(true);
     scene.add(o);
@@ -89,7 +89,7 @@ describe('clip ghosts', () => {
   });
 
   it('the transparent depth is drawn for ghosts while outlines are on, its transparent outlines with them', () => {
-    const { ctx } = createRenderer(createGl(32, 32, { preserveDrawingBuffer: true }));
+    const ctx = createContext(createGl(32, 32, { preserveDrawingBuffer: true }));
     const scene = Scene.create(ctx);
     scene.add(cutPoints(false));
     scene.commit();
@@ -105,7 +105,7 @@ describe('clip ghosts', () => {
   });
 
   it('the depth programs are required while ghosts are drawn (else the ghost draw finds none ready)', () => {
-    const { ctx } = createRenderer(createGl(32, 32, { preserveDrawingBuffer: true }));
+    const ctx = createContext(createGl(32, 32, { preserveDrawingBuffer: true }));
     const ghosted = Scene.create(ctx);
     ghosted.add(cutPoints(true));
     ghosted.commit();
