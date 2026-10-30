@@ -19,6 +19,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
+import { wayOf } from '../clips.js';
 import { explorerUI, sceneModelOf } from '../ui.js';
 
 // Graded cuts and Shown in the app (_spec/ui.md §4; lane graded-cuts-ui), set up as clips-category.test.tsx, over a headless viewer in jsdom:
@@ -290,5 +291,78 @@ describe('Look › Shown', () => {
     box(look(), 'Shown')!.dispatchEvent(new Event('change', { bubbles: true }));
     await until(() => shown.value === 1);
     expect(steps(v)).toBe(n + 2);
+  });
+});
+
+describe('explorer.clipWay on a clip of all the model (review)', () => {
+  const ok = async (v: PrismViewer, params: object) => {
+    const r = await v.api.run('explorer.clipWay', params);
+    if (!r.ok) throw new Error(r.message);
+    return r;
+  };
+  const ways = (v: PrismViewer, ref: string) =>
+    records(v, ref).map((x) => [x.entities, x.mode, x.band, x.fuzziness] as const);
+
+  it("grades the part only (M1); the model's own way and its band kept apart (M2, S4); no step when nothing changes (S5)", async () => {
+    const v = await viewer();
+    const { area, model, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    await until(() => !!model.parts.value.get(hiv));
+    const r = await v.api.run('clipping.add', { shape: 'plane', node: `#${hiv}` });
+    if (!r.ok) throw new Error(r.message);
+    const tag = cuts(v)[0].object.tag!;
+    const membrane = { ref: hiv, particles: { entities: [0] } };
+    // M1: the membrane cut wider, the rest of the model still cut plainly
+    await ok(v, { tag, node: membrane, mode: 'wider', band: 80, fuzziness: 0 });
+    expect(ways(v, hiv)).toEqual([
+      [[], 'cut', 60, 0],
+      [[0], 'wider', 80, 0],
+    ]);
+    // the model kept a layer of: its record, the membrane's left as it is
+    await ok(v, { tag, node: { ref: hiv }, mode: 'keep', band: 100, fuzziness: 0 });
+    expect(ways(v, hiv)).toEqual([
+      [[], 'keep', 100, 0],
+      [[0], 'wider', 80, 0],
+    ]);
+    // M2: the model reads its own way
+    const of = () => area.cutOf(cuts(v)[0], hiv);
+    expect(wayOf(of(), { ref: hiv })).toEqual({ mode: 'keep', band: 100, fuzziness: 0 });
+    // S4: its band changed, the membrane's way kept
+    await ok(v, { tag, node: { ref: hiv }, mode: 'keep', band: 150, fuzziness: 0 });
+    expect(ways(v, hiv)).toEqual([
+      [[], 'keep', 150, 0],
+      [[0], 'wider', 80, 0],
+    ]);
+    // S8: a group of the membrane and the capsid (CA) has no one way
+    expect(wayOf(of(), { ref: hiv, particles: { entities: [0, 1] } })).toBeUndefined();
+    // S5: a group given in the tree's order (not sorted), twice: the second, no step
+    const envelope = { ref: hiv, particles: { entities: [3, 1, 2] } };
+    await ok(v, { tag, node: envelope, mode: 'wider', band: 90, fuzziness: 0 });
+    const n = steps(v);
+    const again = await ok(v, { tag, node: envelope, mode: 'wider', band: 90, fuzziness: 0 });
+    expect(again.unchanged).toBe(true);
+    expect(steps(v)).toBe(n);
+  });
+
+  it('switches to instance again when the scene went back to pixel (S6); one undo puts the variant back (11)', async () => {
+    const v = await viewer();
+    const { model, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    await until(() => !!model.parts.value.get(hiv));
+    const r = await v.api.run('clipping.add', { shape: 'plane', node: `#${hiv}`, particles: { entities: [0] } });
+    if (!r.ok) throw new Error(r.message);
+    const tag = cuts(v)[0].object.tag!;
+    const membrane = { ref: hiv, particles: { entities: [0] } };
+    await ok(v, { tag, node: membrane, mode: 'keep', band: 60, fuzziness: 0 });
+    expect(variant(v)).toBe('instance');
+    await v.api.run('history.undo', {});
+    expect(variant(v)).toBe('pixel');
+    expect(records(v, hiv)[0].mode).toBe('cut');
+    await v.api.run('history.redo', {});
+    expect(variant(v)).toBe('instance');
+    const p = await v.api.run('clipping.settings', { variant: 'pixel' });
+    if (!p.ok) throw new Error(p.message);
+    await ok(v, { tag, node: membrane, mode: 'keep', band: 60, fuzziness: 0 });
+    expect(variant(v)).toBe('instance');
   });
 });
