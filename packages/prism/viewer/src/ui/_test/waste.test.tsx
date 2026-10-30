@@ -6,6 +6,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import * as fs from 'node:fs';
@@ -97,6 +98,12 @@ export function report(a: Audit, top = 25) {
 
 const BudgetFile = path.join(import.meta.dirname, 'waste-budget.json');
 
+/** A UI scale press there and back: the derives that come out the same, per source file (measured, shrink-only). */
+const UIScalePressGates: Record<string, number> = {
+  // The rail's hidden and overflow gates (the fit is the same), and the insets a closed panel leaves alone.
+  'prism/ui/shell/ui-scale.ts': 14,
+};
+
 interface Budget {
   /** Writes and renders that changed no DOM. */
   noDom: number;
@@ -139,6 +146,29 @@ describe('the waste audit', () => {
         over.push(`${file}: ${b.sameDerives} derives that came out the same (budget ${allowed.sameDerives})`);
     }
     expect(over, 'over the waste budget: a view follows more than decides its output (view-models.md §3)').toEqual([]);
+  });
+
+  // The UI scale (prism-ui styling.md §6): a press writes the root's variable and the shell's layout derives (the rail,
+  // the edge, the insets that follow them); every write changes the DOM, and the derives that come out the same are
+  // its gates only.
+  it('a UI scale press wastes no write and only its gates', async () => {
+    audit.start();
+    core.managers.commands.open('view.ui-larger');
+    await audit.quiet(100, 2000);
+    core.managers.commands.open('view.ui-reset');
+    await audit.quiet(100, 2000);
+    audit.stop();
+    if (process.env.WASTE_REPORT) console.log(report(audit, 50));
+    const now = bySourceFile(audit);
+    const noDom = Object.entries(now).filter(([, b]) => b.noDom > 0);
+    expect(noDom, 'a write that changed no DOM').toEqual([]);
+    const same = Object.fromEntries(
+      Object.entries(now)
+        .filter(([, b]) => b.sameDerives > 0)
+        .map(([f, b]) => [f, b.sameDerives]),
+    );
+    const over = Object.entries(same).filter(([f, n]) => n > (UIScalePressGates[f] ?? 0));
+    expect(over, 'derives that came out the same, over the press budget').toEqual([]);
   });
 
   it('catches waste (the check can fail): a binding told of every change, for a value that never changes', async () => {
