@@ -164,7 +164,8 @@ export class MesoscaleApi extends ApiArea {
 
   /**
    * The graphics mode and the motion of an object (a structure, a particle list, a volume; by state ref) as its
-   * representations have them (every one; mixed: no mode, no motion), else of the first particle list shown; following the state tree while
+   * representations have them (every one, a particle list's mode those with levels of detail; mixed: no mode, no
+   * motion), else of the first particle list shown; following the state tree while
    * watched: a read for views; undefined without such an object
    */
   graphicsState(object?: string): ReadonlyState<GraphicsInfo | undefined> {
@@ -898,31 +899,44 @@ function withMode(
   mode: GraphicsMode,
 ): Record<string, unknown> {
   const next = { ...params };
-  if (kind !== 'volume' && 'lodLevels' in params) next.lodLevels = Spheres.LodLevelsPresets[mode];
+  // levels by size on screen, as the particle and mesoscale defaults (`screen-space-lod.md`): distances are ignored there
+  if (kind !== 'volume' && 'lodLevels' in params) {
+    const { lodLevels, lodPixelSize } = Spheres.LodPixelPresets[mode];
+    next.lodLevels = lodLevels;
+    next.lodPixelSize = lodPixelSize;
+  }
   if (kind !== 'particles') next.quality = ModeSettings[mode].quality;
   if (kind === 'volume' && 'stepsPerCell' in params) next.stepsPerCell = ModeSettings[mode].stepsPerCell;
   return next;
 }
 
+/** Whether a representation's levels of detail are a mode's preset: its levels and its size on screen */
+function isLodPreset(t: Record<string, unknown>, preset: { lodLevels: unknown; lodPixelSize: number }) {
+  return JSON.stringify(t.lodLevels) === JSON.stringify(preset.lodLevels) && t.lodPixelSize === preset.lodPixelSize;
+}
+
 /**
- * An object's mode and motion as its representations have them, every one: a value they differ on is mixed, read as no
- * mode and the motion off (a representation added later, or a preset, has its own); a volume's mode only
+ * An object's mode and motion as its representations have them, every one (a particle list's mode, every one with levels
+ * of detail): a value they differ on is mixed, read as no mode and the motion off (a representation added later, or a
+ * preset, has its own); a volume's mode only
  */
 function graphicsOf(o: GraphicsObject): GraphicsInfo | undefined {
   const types = o.representations
     .map((r) => (r.transform.params as { type?: { params?: Record<string, unknown> } } | undefined)?.type?.params)
     .filter((t): t is Record<string, unknown> => !!t);
   if (!types.length) return undefined;
-  // the one value every representation has, else undefined (mixed)
-  const common = <T>(of: (t: Record<string, unknown>) => T): T | undefined => {
-    const first = JSON.stringify(of(types[0]));
-    return types.every((t) => JSON.stringify(of(t)) === first) ? of(types[0]) : undefined;
+  // the one value every representation (of `among`) has, else undefined (mixed)
+  const common = <T>(of: (t: Record<string, unknown>) => T, among = types): T | undefined => {
+    if (!among.length) return undefined;
+    const first = JSON.stringify(of(among[0]));
+    return among.every((t) => JSON.stringify(of(t)) === first) ? of(among[0]) : undefined;
   };
   const modeOf = (t: Record<string, unknown>) =>
     o.kind === 'particles'
-      ? GraphicsModes.find((m) => JSON.stringify(Spheres.LodLevelsPresets[m]) === JSON.stringify(t.lodLevels))
+      ? GraphicsModes.find((m) => isLodPreset(t, Spheres.LodPixelPresets[m]))
       : GraphicsModes.find((m) => ModeSettings[m].quality === t.quality);
-  const mode = common(modeOf);
+  // a particle list's mode is its levels of detail, read where they are (not on its fibers)
+  const mode = common(modeOf, o.kind === 'particles' ? types.filter((t) => 'lodLevels' in t) : types);
   if (o.kind === 'volume') return mode ? { mode } : {};
   return {
     ...(mode ? { mode } : {}),
