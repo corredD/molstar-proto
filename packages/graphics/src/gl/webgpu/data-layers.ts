@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { StorageBufferSpec } from '../compute.js';
@@ -25,6 +26,8 @@ export const DataLayers = {
   tClipping: 'r8',
   tWiggle: 'r8',
   tPositionGroup: 'rgba32f',
+  // last: a new layer takes the next bits of `DataLayerPagesName`, the layouts of before stay
+  tClipTable: 'rgba32f',
 } as const;
 export type DataLayer = keyof typeof DataLayers;
 /** Bytes per element of the encodings of `DataLayers` */

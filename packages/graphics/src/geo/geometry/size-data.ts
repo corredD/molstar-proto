@@ -2,6 +2,7 @@
  * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util';
@@ -110,9 +111,10 @@ export function getMaxSize(sizeData: SizeData): number {
 
 export type LocationSize = (location: Location) => number;
 
-const emptySizeTexture = { array: new Uint8Array(4), count: 1 };
+/** A new one each time: the layer's data reuses its array (`createDataArray`), which no two visuals may share */
+const emptySizeTexture = () => ({ array: new Uint8Array(4), count: 1 });
 function createEmptySizeTexture() {
-  return { tSize: ValueCell.create(emptySizeTexture) };
+  return { tSize: ValueCell.create(emptySizeTexture()) };
 }
 
 export function createValueSize(value: number, sizeData?: SizeData): SizeData {

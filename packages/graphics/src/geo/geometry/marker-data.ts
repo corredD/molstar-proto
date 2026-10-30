@@ -2,6 +2,7 @@
  * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util/value-cell';
@@ -88,18 +89,19 @@ export function createMarkers(count: number, type: MarkerType, markerData?: Mark
   }
 }
 
-const emptyMarkerTexture = { array: new Uint8Array(4), count: 1 };
+/** A new one each time: the layer's data reuses its array (`createDataArray`), which no two visuals may share */
+const emptyMarkerTexture = () => ({ array: new Uint8Array(4), count: 1 });
 export function createEmptyMarkers(markerData?: MarkerData): MarkerData {
   if (markerData) {
     ValueCell.updateIfChanged(markerData.uMarker, 0);
-    ValueCell.update(markerData.tMarker, emptyMarkerTexture);
+    ValueCell.update(markerData.tMarker, emptyMarkerTexture());
     ValueCell.updateIfChanged(markerData.markerAverage, 0);
     ValueCell.updateIfChanged(markerData.markerStatus, 0);
     return markerData;
   } else {
     return {
       uMarker: ValueCell.create(0),
-      tMarker: ValueCell.create(emptyMarkerTexture),
+      tMarker: ValueCell.create(emptyMarkerTexture()),
       markerAverage: ValueCell.create(0),
       markerStatus: ValueCell.create(0),
       markerType: ValueCell.create<string>('groupInstance'),

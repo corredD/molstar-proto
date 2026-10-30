@@ -30,6 +30,7 @@ const layer = (i: number, color: number) => ({
   color: Color(color),
   transparency: null,
   emissive: null,
+  shown: null,
 });
 
 it('the positive control (a copy per item) is caught', () => {

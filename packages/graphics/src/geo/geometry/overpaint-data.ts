@@ -2,6 +2,7 @@
  * Copyright (c) 2019-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util/value-cell';
@@ -78,14 +79,15 @@ export function createOverpaint(count: number, type: OverpaintType, overpaintDat
   }
 }
 
-const emptyOverpaintTexture = { array: new Uint8Array(4), count: 1 };
+/** A new one each time: the layer's data reuses its array (`createDataArray`), which no two visuals may share */
+const emptyOverpaintTexture = () => ({ array: new Uint8Array(4), count: 1 });
 export function createEmptyOverpaint(overpaintData?: OverpaintData): OverpaintData {
   if (overpaintData) {
-    ValueCell.update(overpaintData.tOverpaint, emptyOverpaintTexture);
+    ValueCell.update(overpaintData.tOverpaint, emptyOverpaintTexture());
     return overpaintData;
   } else {
     return {
-      tOverpaint: ValueCell.create(emptyOverpaintTexture),
+      tOverpaint: ValueCell.create(emptyOverpaintTexture()),
       dOverpaint: ValueCell.create(false),
 
       tOverpaintGrid: ValueCell.create(createNullTexture()),

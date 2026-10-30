@@ -2,6 +2,7 @@
  * Copyright (c) 2024-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util/value-cell';
@@ -87,14 +88,15 @@ export function createEmissive(count: number, type: EmissiveType, emissiveData?:
   }
 }
 
-const emptyEmissiveTexture = { array: new Uint8Array(4), count: 1 };
+/** A new one each time: the layer's data reuses its array (`createDataArray`), which no two visuals may share */
+const emptyEmissiveTexture = () => ({ array: new Uint8Array(4), count: 1 });
 export function createEmptyEmissive(emissiveData?: EmissiveData): EmissiveData {
   if (emissiveData) {
-    ValueCell.update(emissiveData.tEmissive, emptyEmissiveTexture);
+    ValueCell.update(emissiveData.tEmissive, emptyEmissiveTexture());
     return emissiveData;
   } else {
     return {
-      tEmissive: ValueCell.create(emptyEmissiveTexture),
+      tEmissive: ValueCell.create(emptyEmissiveTexture()),
       dEmissive: ValueCell.create(false),
       emissiveAverage: ValueCell.create(0),
 

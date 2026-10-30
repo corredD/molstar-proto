@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -252,6 +253,9 @@ describe('mesh wgsl', () => {
     },
     { ...base, dClipObjects: true, dClipObjectCount: 2, dClipVariant: 'pixel', dClipping: true },
     { ...base, dClipObjects: true, dClipObjectCount: 1, dClipVariant: 'instance', dClipping: true },
+    // the clipping table (per part graded cuts): the instance clip and the pixel clip's flag
+    { ...base, dClipObjects: true, dClipObjectCount: 8, dClipVariant: 'instance', dClipping: true, dClipTable: true },
+    { ...base, dClipObjects: true, dClipObjectCount: 8, dClipVariant: 'pixel', dClipping: true, dClipTable: true },
     {
       ...base,
       dRenderVariant: 'pick',
@@ -369,6 +373,12 @@ describe('quad wgsl', () => {
     ['spheres', spheres_wgsl, { ...base, ...clip, dGeometryType: 'spheres', dSolidInterior: true }],
     ['spheres', spheres_wgsl, { ...base, ...clip, dGeometryType: 'spheres', dClipPrimitive: true }],
     ['spheres', spheres_wgsl, { ...base, ...clip, dGeometryType: 'spheres', dClipVariant: 'instance' }],
+    [
+      'spheres',
+      spheres_wgsl,
+      { ...base, ...clip, dGeometryType: 'spheres', dClipVariant: 'instance', dClipTable: true, dSegmented: true },
+    ],
+    ['spheres', spheres_wgsl, { ...base, ...clip, dGeometryType: 'spheres', dSolidInterior: true, dClipTable: true }],
     ['spheres', spheres_wgsl, { ...base, ...clip, dGeometryType: 'spheres', dApproximate: true }],
     ['cylinders', cylinders_wgsl, { ...base, ...clip, dGeometryType: 'cylinders', dSolidInterior: true }],
     ['cylinders', cylinders_wgsl, { ...base, ...clip, dGeometryType: 'cylinders', dRenderVariant: 'pick' }],

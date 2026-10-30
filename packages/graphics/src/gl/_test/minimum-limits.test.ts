@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -119,6 +120,7 @@ const FeatureDefines: { [k: string]: string | boolean | number } = {
   dSubstance: true,
   dSubstanceType: 'texture',
   dClipping: true,
+  dClipTable: true,
   dWiggle: true,
   dSegmented: true,
   dXrayShaded: 'on',

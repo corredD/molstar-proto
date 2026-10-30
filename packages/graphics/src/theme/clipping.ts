@@ -1,7 +1,8 @@
 /**
- * Copyright (c) 2020-2023 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2020-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Loci } from '@molstar/model/model/loci';
@@ -14,6 +15,11 @@ export { Clipping };
 type Clipping<T extends Loci = Loci> = {
   readonly kind: T['kind'];
   readonly layers: ReadonlyArray<Clipping.Layer<T>>;
+  /**
+   * What each part does with each clip object (`Clipping.Table`): with a table, a layer's `row` is its part's row and
+   * its `groups` are not read; the instances in no layer are in row 0
+   */
+  readonly table?: Clipping.Table;
 };
 
 function Clipping<T extends Loci>(kind: T['kind'], layers: ReadonlyArray<Clipping.Layer<T>>): Clipping<T> {
@@ -21,8 +27,114 @@ function Clipping<T extends Loci>(kind: T['kind'], layers: ReadonlyArray<Clippin
 }
 
 namespace Clipping {
-  export type Layer<T extends Loci = Loci> = { readonly loci: T; readonly groups: Groups };
+  export type Layer<T extends Loci = Loci> = { readonly loci: T; readonly groups: Groups; readonly row?: number };
   export const Empty: Clipping = { kind: 'empty-loci', layers: [] };
+
+  /**
+   * What a part does with a clip object: is cut by it (`cut`, the default), `ignore`s it, keeps a layer of the band
+   * inside it (`keep`, cellVIEW's +) or is cut a band wider (`wider`, cellVIEW's −). The modes of the instance clip;
+   * the pixel clip cuts by `keep` and `wider` as by `cut`.
+   */
+  export type Mode = 'cut' | 'ignore' | 'keep' | 'wider';
+  /** The modes as the shaders read them (`Clipping.tableData`) */
+  export const ModeCode: { readonly [M in Mode]: number } = { cut: 0, ignore: 1, keep: 2, wider: 3 };
+  /**
+   * A part's way with a clip object: its mode, the band's width (Å) and the fuzziness (0 to 1) that thins the band
+   * toward its edge (`isCut`)
+   */
+  export type Cell = { readonly mode: Mode; readonly band: number; readonly fuzziness: number };
+  /** Rows of cells by clip object index (a missing cell cuts); at most `MaxTableRows` rows */
+  export type Table = ReadonlyArray<ReadonlyArray<Cell | undefined>>;
+  /** Rows a table can have: an instance's row is a byte */
+  export const MaxTableRows = 256;
+  /** Cells a row: the clip objects a representation can have (`Clip.MaxObjectCount`) */
+  export const TableWidth = 16;
+
+  /** cellVIEW's Wang hash of a 32-bit integer (apps/prism-me/_spec/cellview.md §4.1) */
+  function wang(id: number): number {
+    let h = id >>> 0;
+    h = h ^ 61 ^ (h >>> 16);
+    h = Math.imul(h, 9);
+    h ^= h >>> 4;
+    h = Math.imul(h, 0x27d4eb2d);
+    h ^= h >>> 15;
+    return h >>> 0;
+  }
+
+  /**
+   * A stable random in [0, 1) of an id: the Wang hash's top 24 bits (exact in a 32-bit float), so a part shown in part
+   * (a particle's index) is thinned the same way every frame
+   */
+  export function random(id: number): number {
+    return (wang(id) >>> 8) / 16777216;
+  }
+
+  const bits = new Uint32Array(3);
+  const place = new Float32Array(bits.buffer);
+  /**
+   * A stable random in [0, 1) of an instance's place (its transform's translation, 32-bit floats): the Wang hash of the
+   * three floats' bits, chained, its top 24 bits. What the instance clip hashes (`clipRandom` in the clip chunks): the
+   * same for an instance whatever the frame, the view, the LOD, the GPU cull or how render objects are merged.
+   */
+  export function randomAt(x: number, y: number, z: number): number {
+    place[0] = x;
+    place[1] = y;
+    place[2] = z;
+    return (wang(wang(wang(bits[0]) ^ bits[1]) ^ bits[2]) >>> 8) / 16777216;
+  }
+
+  /**
+   * Whether `cell` cuts an instance at signed distance `d` from the clip object's surface (≤ 0 inside, Å) with the
+   * stable random `r` (`random`): cellVIEW's object-space cut at full strength. In the band (`|d| ≤ band`) an instance
+   * passes (is left as a plain cut leaves it) with probability `fuzziness · |d| / band`: none at the surface,
+   * `fuzziness` at the band's edge. `keep` cuts the inside but what of the band does not pass; `wider` cuts the inside
+   * and what of the band outside does not pass. The instance clip's rule (`clipTableTest` in the clip chunks).
+   */
+  export function isCut(cell: Cell, d: number, r: number): boolean {
+    const inside = d <= 0;
+    if (cell.mode === 'ignore') return false;
+    if (cell.mode === 'cut') return inside;
+    const nd = Math.abs(d) / Math.max(cell.band, 0.01);
+    const passes = nd > 1 || r < cell.fuzziness * nd;
+    return cell.mode === 'keep' ? inside && passes : inside || !passes;
+  }
+
+  /** The table as the shaders read it: per (row, clip object) the mode code, the band and the fuzziness (`rgba32f`) */
+  export function tableData(table: Table, out?: Float32Array): Float32Array {
+    const length = table.length * TableWidth * 4;
+    const data = out && out.length >= length ? out : new Float32Array(length);
+    data.fill(0, 0, length);
+    for (let row = 0; row < table.length; ++row) {
+      const cells = table[row];
+      for (let i = 0, il = Math.min(cells.length, TableWidth); i < il; ++i) {
+        const c = cells[i];
+        if (!c) continue;
+        const o = (row * TableWidth + i) * 4;
+        data[o] = ModeCode[c.mode];
+        data[o + 1] = c.band;
+        data[o + 2] = c.fuzziness;
+      }
+    }
+    return data;
+  }
+
+  function cellsEqual(a: Cell | undefined, b: Cell | undefined) {
+    if (a === b) return true;
+    const mode = a?.mode ?? 'cut';
+    if (mode !== (b?.mode ?? 'cut')) return false;
+    if (mode !== 'keep' && mode !== 'wider') return true;
+    return a!.band === b!.band && a!.fuzziness === b!.fuzziness;
+  }
+
+  export function areTablesEqual(a: Table | undefined, b: Table | undefined) {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let row = 0; row < a.length; ++row) {
+      const n = Math.max(a[row].length, b[row].length);
+      for (let i = 0; i < n; ++i) if (!cellsEqual(a[row][i], b[row][i])) return false;
+    }
+    return true;
+  }
 
   export type Groups = BitFlags<Groups.Flag>;
   export namespace Groups {
@@ -94,8 +206,10 @@ namespace Clipping {
 
   export function areEqual(cA: Clipping, cB: Clipping) {
     if (cA.layers.length !== cB.layers.length) return false;
+    if (!areTablesEqual(cA.table, cB.table)) return false;
     for (let i = 0, il = cA.layers.length; i < il; ++i) {
       if (cA.layers[i].groups !== cB.layers[i].groups) return false;
+      if (cA.layers[i].row !== cB.layers[i].row) return false;
       if (!Loci.areEqual(cA.layers[i].loci, cB.layers[i].loci)) return false;
     }
     return true;

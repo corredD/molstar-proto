@@ -55,12 +55,7 @@ import {
 } from '../../sources/clipping/cuts.js';
 import { rotationOf } from '../../sources/clipping/gizmo/binding.js';
 import { CutPreview } from '../../sources/clipping/preview.js';
-import {
-  MaxParticleCutIndex,
-  type ParticleSelector,
-  particleSelector,
-  particlesOf,
-} from '../../sources/clipping/particles.js';
+import { type ParticleSelector, particleSelector, particlesOf } from '../../sources/clipping/particles.js';
 import { patchParticleLook } from '../../sources/particles/look.js';
 import {
   afterRemoval,
@@ -340,23 +335,14 @@ export class ClippingApi extends ApiArea {
           'Remove a cut first.',
         );
       }
-      // of some particles: a particle list's representations (by node), each with its particles' group free
+      // of some particles: a particle list's representations (by node); any of its 16 clip objects can be (the
+      // representation's clipping table, clipping.md §5), so a full one is the only bound, above
       if (some) {
         if (!node || !cells.length) {
           return ApiResult.fail(
             'invalid',
             'A cut of some particles is of particle representations.',
             "Give the list's or its representations' node (node: '#ref').",
-          );
-        }
-        const past = cells.find(
-          (c) => RepresentationClip.get(c.transform.params)!.objects.length > MaxParticleCutIndex,
-        );
-        if (past) {
-          return ApiResult.fail(
-            'blocked',
-            `Only the first ${MaxParticleCutIndex + 1} cuts on a representation can cut some of its particles: ${representationLabel(ctx.plugin.state.data, past)} has ${RepresentationClip.get(past.transform.params)!.objects.length}.`,
-            'Remove a cut from it first.',
           );
         }
         // centered on those particles

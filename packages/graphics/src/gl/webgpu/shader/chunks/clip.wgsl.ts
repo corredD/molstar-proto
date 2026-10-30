@@ -2,7 +2,74 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
+
+/**
+ * The clipping table (\`dClipTable\`, \`Clipping.Table\`): per (row, clip object) a cell of \`tClipTable\`, its mode
+ * (0 cut, 1 ignore, 2 keep, 3 wider), band (Å) and fuzziness; an instance's row is its clipping value. Expects the clip
+ * objects of \`clip_functions_wgsl\`.
+ */
+export const clip_table_wgsl = /* wgsl */ `
+#if defined(dClipTable)
+/** cellVIEW's Wang hash */
+fn clipHash(id: u32) -> u32 {
+    var h = (id ^ 61u) ^ (id >> 16u);
+    h *= 9u;
+    h ^= h >> 4u;
+    h *= 0x27d4eb2du;
+    h ^= h >> 15u;
+    return h;
+}
+
+/** A stable random in [0, 1) of an instance's place, its transform's translation (\`Clipping.randomAt\`) */
+fn clipRandom(p: vec3<f32>) -> f32 {
+    let b = bitcast<vec3<u32>>(p);
+    return f32(clipHash(clipHash(clipHash(b.x) ^ b.y) ^ b.z) >> 8u) / 16777216.0;
+}
+
+/** Whether the row \`row\` cuts an instance at \`center\` placed at \`place\` (\`Clipping.isCut\`, OR-ed over the objects) */
+fn clipTableTest(center: vec3<f32>, row: i32, place: vec3<f32>) -> bool {
+    let r = clipRandom(place);
+    for (var i = 0; i < oClipObjectCount; i++) {
+        if (!isClipObjectActive(i, 0)) {
+            continue;
+        }
+        let c = read_tClipTable(row * 16 + i);
+        let mode = i32(c.r + 0.5);
+        if (mode == 1) {
+            continue;
+        }
+        let sd = getSignedDistance(center, i);
+        let d = select(sd, -sd, isClipObjectInverted(i));
+        let inside = d <= 0.0;
+        if (mode == 0) {
+            if (inside) {
+                return true;
+            }
+            continue;
+        }
+        let nd = abs(d) / max(c.g, 0.01);
+        let passes = nd > 1.0 || r < c.b * nd;
+        if (select(inside || !passes, inside && passes, mode == 2)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** The clip objects the row \`row\` ignores, a bit each: the clipping flag of the pixel clip */
+fn clipTableIgnored(row: i32) -> i32 {
+    var mask = 0;
+    for (var i = 0; i < oClipObjectCount; i++) {
+        if (i32(read_tClipTable(row * 16 + i).r + 0.5) == 1) {
+            mask |= 1 << u32(i);
+        }
+    }
+    return mask;
+}
+#endif
+`;
 
 /**
  * Clip object signed distances, tests and ray intervals, bounded by \`oClipObjectCount\`. \`flag\` is the bit-flag of the
@@ -252,6 +319,8 @@ fn clipCapNormal(center: vec3<f32>) -> vec3<f32> {
         clipCapDistance(center + e.yyx) - clipCapDistance(center - e.yyx)
     ));
 }
+
+${clip_table_wgsl}
 #endif
 `;
 
@@ -270,7 +339,12 @@ export function clip_flag_wgsl(clipping: string) {
 export const clip_instance_wgsl = /* wgsl */ `
 #if defined(dClipVariant_instance) && defined(dClipObjects)
     let clipCenter = (uGlobal.uModel * aTransform * vec4<f32>(invariantBoundingSphere(in).xyz, 1.0)).xyz;
-    if (clipTest(clipCenter / uGlobal.uModelScale, clipFlag)) {
+    #if defined(dClipTable) && defined(dClipping)
+        let clipCut = clipTableTest(clipCenter / uGlobal.uModelScale, clipRow, aTransform[3].xyz);
+    #else
+        let clipCut = clipTest(clipCenter / uGlobal.uModelScale, clipFlag);
+    #endif
+    if (clipCut) {
         // move out of [0, w] to 'discard' in the vertex stage
         out.position.z = 2.0 * out.position.w;
     }

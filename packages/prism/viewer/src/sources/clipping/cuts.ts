@@ -13,7 +13,7 @@ import type { PluginContext } from '@molstar/plugin/context';
 import { RepresentationClip } from '@molstar/plugin/state/helpers/representation-clip';
 import { ClipVolumesShape3D, ClipVolumesTag, clipVolumeTag } from '@molstar/plugin/state/transforms/shape/clip-volumes';
 import { Structure, StructureElement } from '@molstar/model/model/structure';
-import { type ParticleSelector, particleCutOf, particlesInWords, particlesOf } from './particles.js';
+import { type ParticleSelector, particleCutInWords, particleCutOf, particlesOf } from './particles.js';
 import { keptLabel, keptLoci, layerCell, layerOf, MaxKeptIndex, structureOf } from './kept.js';
 
 // Cuts (clipping.md §1): the clip objects of the representations, read from the state tree (its record of what is
@@ -57,7 +57,15 @@ export interface Cut {
    */
   readonly atoms?: { readonly count: number; readonly label: string; readonly loci: readonly StructureElement.Loci[] };
   /** The particles it cuts, when of some only (`clipping.add` `particles`): which, how many, in words */
-  readonly particles?: { readonly selector: ParticleSelector; readonly count: number; readonly label: string };
+  readonly particles?: {
+    /** its first part, the one `clipping.add` made */
+    readonly selector: ParticleSelector;
+    /** every part (`particles.look` `cuts`), each its own way */
+    readonly parts: readonly ParticleSelector[];
+    /** the particles of all its parts */
+    readonly count: number;
+    readonly label: string;
+  };
 }
 
 /** The representations whose geometry can be clipped, in tree order (a walk from the root) */
@@ -177,8 +185,8 @@ function particlesCutBy(state: State, tag: string, targets: readonly CutTarget[]
     const cell = state.cells.get(t.ref);
     const list = cell && particlesOf(cell);
     if (!cell || !list) continue;
-    const selector = particleCutOf(state, cell, tag);
-    return selector ? { selector, ...particlesInWords(list, selector) } : undefined;
+    const parts = particleCutOf(state, cell, tag);
+    return parts ? particleCutInWords(list, parts) : undefined;
   }
   return undefined;
 }

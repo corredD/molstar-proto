@@ -32,19 +32,32 @@ const LayerParams = {
   transparency: PD.Value<number | null>(null),
   /** null: unchanged; 0 to 1 */
   emissive: PD.Value<number | null>(null),
+  /**
+   * null: all; 0 to 1, the share shown: the particles whose stable random (`Clipping.random` of their index) is at or
+   * over it are hidden, over every layer, the same ones at every share
+   */
+  shown: PD.Value<number | null>(null),
 };
 export type ParticleLayerProps = PD.Values<typeof LayerParams>;
 
 /**
- * A cut of some particles: the representation's clip object tagged `tag` applies to them only; the other particles
- * ignore it (Mol*'s clipping groups). By its tag, not its place: the objects before it may come and go. Other clip
- * objects (a cut of the whole representation) apply to every particle.
+ * A cut of some particles: the representation's clip object tagged `tag` applies to them only, its way (`mode`: cut,
+ * keep a layer of the band inside, or cut a band wider, with the band in Å and its fuzziness, `Clipping.Cell`); the
+ * other particles ignore it. A cut has a record a part, a later one over an earlier where they overlap. By its tag,
+ * not its place: the objects before it may come and go. Other clip objects (a cut of the whole representation) apply
+ * to every particle.
  */
-const CutParams = { ...SelectorParams, tag: PD.Text('', { isHidden: true }) };
+const CutParams = {
+  ...SelectorParams,
+  tag: PD.Text('', { isHidden: true }),
+  mode: PD.Select<'cut' | 'keep' | 'wider'>('cut', PD.arrayToOptions(['cut', 'keep', 'wider']), { isHidden: true }),
+  band: PD.Numeric(60, { min: 0 }, { isHidden: true }),
+  fuzziness: PD.Numeric(0, { min: 0, max: 1 }, { isHidden: true }),
+};
 export type ParticleCutProps = PD.Values<typeof CutParams>;
 
-/** Clip objects past this place have no group (Mol*'s groups one to six): their cuts cannot be of some particles */
-export const MaxParticleCutIndex = 5;
+/** Clip objects past this place cannot cut some particles: a row of the clipping table has a cell an object */
+export const MaxParticleCutIndex = Clipping.TableWidth - 1;
 
 const describe = (l: ParticleLayerProps) =>
   [
@@ -52,46 +65,87 @@ const describe = (l: ParticleLayerProps) =>
     l.color !== null ? Color.toHexStyle(l.color) : undefined,
     l.transparency !== null ? `transparency ${l.transparency}` : undefined,
     l.emissive !== null ? `emissive ${l.emissive}` : undefined,
+    (l.shown ?? null) !== null ? `shown ${Math.round(l.shown! * 100)}%` : undefined,
   ]
     .filter((s) => s)
     .join(', ') || 'No change';
 
+const ignore: Clipping.Cell = { mode: 'ignore', band: 0, fuzziness: 0 };
+
 /**
- * The clipping groups of `cuts` on a representation clipped by `objects`: each particle ignores the objects of the
- * cuts it is not in (as one layer per distinct set of ignored objects); a cut whose object is not there, or past
- * `MaxParticleCutIndex`, is left out
+ * The clipping of `cuts` on a representation clipped by `objects`, as a table (`Clipping.table`): each particle's row
+ * holds, per object some cuts are of, the way of the last cut covering it, or ignores the object; rows are the
+ * distinct combinations (row 0: in no cut, ignoring them all). A cut whose object is not there, or past
+ * `MaxParticleCutIndex`, is left out.
  */
 export function particleCutClipping(
   cuts: ReadonlyArray<ParticleCutProps>,
   particles: ParticleList,
   objects: ReadonlyArray<{ readonly tag?: string }>,
 ): Clipping {
-  const bits: { bit: number; cut: ParticleCutProps }[] = [];
+  const indexOf = new Map<string, number>();
+  for (let i = 0; i < Math.min(objects.length, MaxParticleCutIndex + 1); ++i) {
+    const tag = objects[i].tag;
+    if (tag && !indexOf.has(tag)) indexOf.set(tag, i);
+  }
+  const byObject = new Map<number, ParticleCutProps[]>();
   for (const cut of cuts) {
-    const index = cut.tag ? objects.findIndex((o) => o.tag === cut.tag) : -1;
-    if (index >= 0 && index <= MaxParticleCutIndex) bits.push({ bit: 1 << index, cut });
+    const i = cut.tag ? indexOf.get(cut.tag) : undefined;
+    if (i === undefined) continue;
+    const list = byObject.get(i);
+    if (list) list.push(cut);
+    else byObject.set(i, [cut]);
   }
-  if (!bits.length) return Clipping.Empty;
-  const all = bits.reduce((m, b) => m | b.bit, 0);
-  const ignored = new Uint8Array(particles.count).fill(all);
-  for (const { bit, cut } of bits) {
-    OrderedSet.forEach(Particle.selectLoci(particles, cut).indices, (j) => {
-      ignored[j] &= ~bit;
-    });
+  if (!byObject.size) return Clipping.Empty;
+
+  const first: Clipping.Cell[] = [];
+  for (const i of byObject.keys()) first[i] = ignore;
+  const table: Clipping.Cell[][] = [first];
+  const row = new Uint8Array(particles.count);
+  const way = new Uint8Array(particles.count);
+  for (const [i, list] of byObject) {
+    // per particle the last of the object's cuts covering it (1-based), 0 for none
+    way.fill(0);
+    for (let k = 0; k < list.length; ++k) {
+      OrderedSet.forEach(Particle.selectLoci(particles, list[k]).indices, (j) => {
+        way[j] = k + 1;
+      });
+    }
+    // a particle in none of them keeps its row (which ignores the object); the others take the row of (row, way),
+    // each made once: a lookup per particle
+    const ways = list.length + 1;
+    const next = new Int32Array(table.length * ways).fill(-1);
+    for (let j = 0; j < row.length; ++j) {
+      if (!way[j]) continue;
+      const key = row[j] * ways + way[j];
+      let r = next[key];
+      if (r < 0) {
+        if (table.length >= Clipping.MaxTableRows) {
+          throw new Error(`More than ${Clipping.MaxTableRows} distinct ways of cutting particles.`);
+        }
+        const cut = list[way[j] - 1];
+        const cells = table[row[j]].slice();
+        cells[i] = { mode: cut.mode ?? 'cut', band: cut.band ?? 60, fuzziness: cut.fuzziness ?? 0 };
+        next[key] = r = table.length;
+        table.push(cells);
+      }
+      row[j] = r;
+    }
   }
-  const byMask = new Map<number, number[]>();
-  for (let j = 0; j < ignored.length; ++j) {
-    const m = ignored[j];
-    if (m === 0) continue;
-    let list = byMask.get(m);
-    if (!list) byMask.set(m, (list = []));
+
+  const byRow = new Map<number, number[]>();
+  for (let j = 0; j < row.length; ++j) {
+    const r = row[j];
+    if (r === 0) continue;
+    let list = byRow.get(r);
+    if (!list) byRow.set(r, (list = []));
     list.push(j);
   }
   const layers: Clipping.Layer[] = [];
-  for (const [m, list] of byMask) {
-    layers.push({ loci: Particle.Loci(particles, OrderedSet.ofSortedArray(list)), groups: Clipping.Groups.create(m) });
+  for (const [r, list] of byRow) {
+    layers.push({ loci: Particle.Loci(particles, OrderedSet.ofSortedArray(list)), groups: 0, row: r });
   }
-  return { kind: 'element-loci', layers } as Clipping;
+  return { kind: 'element-loci', layers, table } as Clipping;
 }
 
 /** The clip objects a particle representation draws with */
@@ -110,6 +164,7 @@ export function particleLayerState(
   const overpaint: Overpaint.Layer[] = [];
   const transparency: Transparency.Layer[] = [];
   const emissive: Emissive.Layer[] = [];
+  const thinned: Transparency.Layer[] = [];
   for (const layer of layers) {
     const loci = Particle.selectLoci(particles, layer);
     if (Particle.isLociEmpty(loci)) continue;
@@ -117,7 +172,16 @@ export function particleLayerState(
     if (!layer.visible) transparency.push({ loci, value: 1 });
     else if (layer.transparency !== null) transparency.push({ loci, value: layer.transparency });
     if (layer.emissive !== null) emissive.push({ loci, value: layer.emissive });
+    const shown = layer.shown ?? null;
+    if (shown !== null && shown < 1) {
+      const out: number[] = [];
+      OrderedSet.forEach(loci.indices, (j) => {
+        if (Clipping.random(j) >= shown) out.push(j);
+      });
+      if (out.length) thinned.push({ loci: Particle.Loci(particles, OrderedSet.ofSortedArray(out)), value: 1 });
+    }
   }
+  transparency.push(...thinned);
   if (hidden.length) {
     const loci = Particle.selectLoci(particles, { targets: hidden });
     if (!Particle.isLociEmpty(loci)) transparency.push({ loci, value: 1 });
