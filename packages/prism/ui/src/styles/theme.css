@@ -259,6 +259,17 @@
     --msp-ease-reveal: cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  /* A browser without CSS round(): the rounded tokens unrounded (a custom property takes any value, so a plain one
+     before it in the same rule would not be a fallback; what uses an invalid one would lose its whole declaration). */
+  @supports not (width: round(1.5px, 1px)) {
+    :root,
+    :host,
+    [data-msp-theme] {
+      --msp-list-row: calc(26px * var(--msp-ui-scale, 1));
+      --msp-rail-width: calc(44px * var(--msp-ui-scale, 1));
+    }
+  }
+
   /* High contrast: muted text and borders stay readable (WCAG 2.2 AA and more), the glass is opaque. The theme, and
      any theme when the system asks for more contrast. */
   [data-msp-theme="contrast"] {

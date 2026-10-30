@@ -48,4 +48,10 @@ describe('the size tokens follow the UI scale', () => {
   it('a list row is rounded to whole pixels', () => {
     expect(token('--msp-list-row')).toBe('round(calc(26px * var(--msp-ui-scale, 1)), 1px)');
   });
+
+  it('the rounded tokens fall back, unrounded, where CSS has no round()', () => {
+    const fallback = /@supports not \(width: round\(1\.5px, 1px\)\) \{([\s\S]*?)\n {2}\}/.exec(theme)?.[1] ?? '';
+    expect(fallback).toContain('--msp-list-row: calc(26px * var(--msp-ui-scale, 1));');
+    expect(fallback).toContain('--msp-rail-width: calc(44px * var(--msp-ui-scale, 1));');
+  });
 });

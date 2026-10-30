@@ -196,6 +196,13 @@ defineStyles('styles/theme.css', `@layer msp.theme {
     --msp-ease-reveal: cubic-bezier(.4, 0, .2, 1);
   }
 
+  @supports not (width: round(1.5px, 1px)) {
+    :root, :host, [data-msp-theme] {
+      --msp-list-row: calc(26px * var(--msp-ui-scale, 1));
+      --msp-rail-width: calc(44px * var(--msp-ui-scale, 1));
+    }
+  }
+
   [data-msp-theme="contrast"] {
     --msp-color-text-muted: color-mix(in oklab, var(--msp-color-text), var(--msp-color-bg) 12%);
     --msp-color-text-subtle: color-mix(in oklab, var(--msp-color-text), var(--msp-color-bg) 25%);
