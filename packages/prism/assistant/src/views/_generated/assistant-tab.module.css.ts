@@ -58,7 +58,7 @@ defineStyles('assistant/views/assistant-tab.module.css', `@layer msp.components 
 .msp-assistant-assistant-tab-link {
   align-items: center;
   gap: var(--msp-space-3);
-  min-height: 28px;
+  min-height: calc(28px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-1) var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   text-align: left;

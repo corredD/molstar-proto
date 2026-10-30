@@ -19,15 +19,15 @@ export const classes = {
 defineStyles('viewer/sequence/track-gutter.module.css', `@layer msp.components {
 .msp-viewer-track-gutter-gutter {
   top: var(--msp-space-3);
+  width: calc(28px * var(--msp-ui-scale, 1));
   pointer-events: none;
-  width: 28px;
   position: absolute;
   left: 0;
 }
 
 .msp-viewer-track-gutter-icon {
-  width: 24px;
-  min-height: 24px;
+  width: calc(24px * var(--msp-ui-scale, 1));
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   margin-left: var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);

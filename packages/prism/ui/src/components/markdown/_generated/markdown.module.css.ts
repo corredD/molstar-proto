@@ -86,7 +86,7 @@ defineStyles('components/markdown/markdown.module.css', `@layer msp.components {
 
   & audio {
     width: 100%;
-    height: 32px;
+    height: calc(32px * var(--msp-ui-scale, 1));
   }
 }
 

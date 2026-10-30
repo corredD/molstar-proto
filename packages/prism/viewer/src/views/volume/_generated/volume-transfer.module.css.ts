@@ -77,9 +77,9 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   font-size: var(--msp-font-size-xs);
+  line-height: calc(20px * var(--msp-ui-scale, 1));
   white-space: nowrap;
   flex: none;
-  line-height: 20px;
 
   &:hover:not(:disabled) {
     background: var(--msp-color-hover);
@@ -107,7 +107,7 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-subtle);
   font-size: var(--msp-font-size-xs);
-  line-height: 18px;
+  line-height: calc(18px * var(--msp-ui-scale, 1));
 
   &:hover {
     background: var(--msp-color-hover);
@@ -120,12 +120,12 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 }
 
 .msp-viewer-volume-transfer-plot {
+  height: calc(64px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm) var(--msp-radius-sm) 0 0;
   background: var(--msp-color-well);
   cursor: crosshair;
   touch-action: none;
   contain: strict;
-  height: 64px;
   position: relative;
   overflow: hidden;
 }
@@ -164,23 +164,23 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 }
 
 .msp-viewer-volume-transfer-point {
+  width: calc(12px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   pointer-events: auto;
   cursor: grab;
   outline: none;
-  width: 12px;
-  height: 12px;
   position: absolute;
   top: -6px;
   left: -6px;
 
   &:after {
     content: "";
+    inset: calc(2px * var(--msp-ui-scale, 1));
     background: var(--msp-color-bg);
     box-shadow: inset 0 0 0 1.5px var(--msp-color-text);
     transition: transform var(--msp-motion-fast) var(--msp-ease);
     border-radius: 50%;
     position: absolute;
-    inset: 2px;
   }
 
   &:hover:after, &:focus-visible:after {
@@ -194,10 +194,10 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 }
 
 .msp-viewer-volume-transfer-strip {
+  height: calc(10px * var(--msp-ui-scale, 1));
   border-radius: 0 0 var(--msp-radius-sm) var(--msp-radius-sm);
   cursor: copy;
   touch-action: none;
-  height: 10px;
   position: relative;
 }
 
@@ -216,9 +216,10 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 }
 
 .msp-viewer-volume-transfer-stop {
+  top: calc(2px * var(--msp-ui-scale, 1));
+  width: calc(9px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   background: var(--msp-stop);
-  width: 9px;
-  height: 12px;
   box-shadow: 0 0 0 1.5px var(--msp-color-bg),
     0 0 0 2.5px color-mix(in oklab, var(--msp-color-text), transparent 60%);
   pointer-events: auto;
@@ -226,7 +227,6 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
   border-radius: 3px;
   outline: none;
   position: absolute;
-  top: 2px;
   left: -4.5px;
 
   &:focus-visible {
@@ -254,9 +254,9 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 }
 
 .msp-viewer-volume-transfer-iconTool {
+  width: calc(20px * var(--msp-ui-scale, 1));
+  height: calc(20px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 20px;
-  height: 20px;
   color: var(--msp-color-text-muted);
   place-items: center;
   display: grid;
@@ -274,7 +274,7 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 .msp-viewer-volume-transfer-picked {
   align-items: center;
   gap: var(--msp-space-1);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   font-size: var(--msp-font-size-xs);
   display: flex;
 }
@@ -292,7 +292,7 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
   align-items: center;
   gap: var(--msp-space-2);
   min-width: 0;
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1);
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-control);
@@ -305,9 +305,9 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 }
 
 .msp-viewer-volume-transfer-swatch {
+  width: calc(12px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 12px;
-  height: 12px;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 85%);
   flex: none;
 }
@@ -323,7 +323,7 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 }
 
 .msp-viewer-volume-transfer-palettes {
-  min-width: 200px;
+  min-width: calc(200px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-1);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-raised);
@@ -335,7 +335,7 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 .msp-viewer-volume-transfer-palette {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 28px;
+  min-height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   text-align: left;
@@ -348,8 +348,8 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 }
 
 .msp-viewer-volume-transfer-paletteSwatches {
+  width: calc(72px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 72px;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 88%);
   flex: none;
   display: flex;
@@ -357,8 +357,8 @@ defineStyles('viewer/views/volume/volume-transfer.module.css', `@layer msp.compo
 }
 
 .msp-viewer-volume-transfer-paletteSwatch {
+  height: calc(14px * var(--msp-ui-scale, 1));
   flex: 1;
-  height: 14px;
 }
 
 .msp-viewer-volume-transfer-paletteLabel {

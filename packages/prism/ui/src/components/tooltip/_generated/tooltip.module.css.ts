@@ -19,7 +19,7 @@ export const classes = {
 defineStyles('components/tooltip/tooltip.module.css', `@layer msp.components {
 .msp-tooltip-tooltip {
   z-index: var(--msp-z-tooltip);
-  max-width: 240px;
+  max-width: calc(240px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2) var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-text);
@@ -41,7 +41,7 @@ defineStyles('components/tooltip/tooltip.module.css', `@layer msp.components {
 }
 
 .msp-tooltip-tooltip[data-kind="row"] {
-  max-width: 320px;
+  max-width: calc(320px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2) var(--msp-inset);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-color-raised);

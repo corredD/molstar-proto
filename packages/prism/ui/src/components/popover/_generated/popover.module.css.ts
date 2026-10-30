@@ -18,8 +18,8 @@ export const classes = {
 defineStyles('components/popover/popover.module.css', `@layer msp.components {
 .msp-popover-popover {
   gap: var(--msp-space-2);
-  width: min(340px, 100vw - 16px);
-  max-height: calc(100vh - 16px);
+  width: min(calc(340px * var(--msp-ui-scale, 1)), calc(100vw - calc(16px * var(--msp-ui-scale, 1))));
+  max-height: calc(100vh - calc(16px * var(--msp-ui-scale, 1)));
   padding: var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-raised);

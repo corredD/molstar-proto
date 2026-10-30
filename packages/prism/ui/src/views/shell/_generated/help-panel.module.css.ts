@@ -95,7 +95,7 @@ defineStyles('views/shell/help-panel.module.css', `@layer msp.components {
 }
 
 .msp-shell-help-panel-key {
-  min-width: 18px;
+  min-width: calc(18px * var(--msp-ui-scale, 1));
   padding: 1px var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-control);

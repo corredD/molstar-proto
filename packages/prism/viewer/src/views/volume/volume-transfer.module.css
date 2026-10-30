@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .transfer {
@@ -38,7 +39,7 @@
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   font-size: var(--msp-font-size-xs);
-  line-height: 20px;
+  line-height: calc(20px * var(--msp-ui-scale, 1));
   white-space: nowrap;
   flex: none;
 
@@ -68,7 +69,7 @@
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-subtle);
   font-size: var(--msp-font-size-xs);
-  line-height: 18px;
+  line-height: calc(18px * var(--msp-ui-scale, 1));
 
   &:hover {
     background: var(--msp-color-hover);
@@ -83,7 +84,7 @@
 /* The map's values, the opacity curve and the colors under it. */
 .plot {
   position: relative;
-  height: 64px;
+  height: calc(64px * var(--msp-ui-scale, 1));
   overflow: hidden;
   border-radius: var(--msp-radius-sm) var(--msp-radius-sm) 0 0;
   background: var(--msp-color-well);
@@ -131,8 +132,8 @@
   position: absolute;
   top: -6px; /* off-scale: a 12px hit area centred on the point */
   left: -6px; /* off-scale */
-  width: 12px;
-  height: 12px;
+  width: calc(12px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   pointer-events: auto;
   cursor: grab;
   outline: none;
@@ -140,7 +141,7 @@
   &::after {
     content: "";
     position: absolute;
-    inset: 2px; /* off-scale */
+    inset: calc(2px * var(--msp-ui-scale, 1)); /* off-scale */
     border-radius: 50%;
     background: var(--msp-color-bg);
     box-shadow: inset 0 0 0 1.5px var(--msp-color-text);
@@ -161,7 +162,7 @@
 /* The colors as the renderer paints them along the axis; its stops under it. */
 .strip {
   position: relative;
-  height: 10px;
+  height: calc(10px * var(--msp-ui-scale, 1));
   border-radius: 0 0 var(--msp-radius-sm) var(--msp-radius-sm);
   cursor: copy;
   touch-action: none;
@@ -187,10 +188,10 @@
 /* A stop: a small tab in its color hanging under the strip. */
 .stop {
   position: absolute;
-  top: 2px; /* off-scale */
+  top: calc(2px * var(--msp-ui-scale, 1)); /* off-scale */
   left: -4.5px; /* off-scale: centred on the stop */
-  width: 9px;
-  height: 12px;
+  width: calc(9px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   border-radius: 3px;
   background: var(--msp-stop);
   box-shadow:
@@ -230,8 +231,8 @@
 .iconTool {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: calc(20px * var(--msp-ui-scale, 1));
+  height: calc(20px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
 
@@ -250,7 +251,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-1);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   font-size: var(--msp-font-size-xs);
 }
 
@@ -269,7 +270,7 @@
   align-items: center;
   gap: var(--msp-space-2);
   min-width: 0;
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1);
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-control);
@@ -281,8 +282,8 @@
 
 .swatch {
   flex: none;
-  width: 12px;
-  height: 12px;
+  width: calc(12px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 85%);
 }
@@ -300,7 +301,7 @@
 /* Colors at peaks: a popover list, each palette its swatches and its name. */
 .palettes {
   display: grid;
-  min-width: 200px;
+  min-width: calc(200px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-1);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-raised);
@@ -313,7 +314,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 28px;
+  min-height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   text-align: left;
@@ -328,7 +329,7 @@
 .paletteSwatches {
   display: flex;
   flex: none;
-  width: 72px;
+  width: calc(72px * var(--msp-ui-scale, 1));
   overflow: hidden;
   border-radius: var(--msp-radius-sm);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 88%);
@@ -336,7 +337,7 @@
 
 .paletteSwatch {
   flex: 1;
-  height: 14px;
+  height: calc(14px * var(--msp-ui-scale, 1));
 }
 
 .paletteLabel {

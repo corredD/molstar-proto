@@ -67,13 +67,13 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
   }
 
   & .msp-canvas-playback-bar {
-    height: 32px;
+    height: calc(32px * var(--msp-ui-scale, 1));
     padding: 0 var(--msp-space-1);
     gap: 0;
   }
 
   & :is(.msp-canvas-playback-rowTitle, .msp-canvas-playback-trajectoryLabel) {
-    max-width: 168px;
+    max-width: calc(168px * var(--msp-ui-scale, 1));
     padding: 0 var(--msp-space-2);
     flex: 0 auto;
     font-weight: 500;
@@ -88,11 +88,11 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
   }
 
   & .msp-canvas-playback-counter {
-    min-width: 36px;
+    min-width: calc(36px * var(--msp-ui-scale, 1));
   }
 
   & .msp-canvas-playback-time {
-    min-width: 56px;
+    min-width: calc(56px * var(--msp-ui-scale, 1));
     padding-right: var(--msp-space-1);
   }
 
@@ -128,7 +128,7 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
 .msp-canvas-playback-bar {
   align-items: center;
   gap: var(--msp-space-1);
-  height: 34px;
+  height: calc(34px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   display: flex;
 
@@ -145,14 +145,14 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
   }
 
   & svg {
-    width: 16px;
-    height: 16px;
+    width: calc(16px * var(--msp-ui-scale, 1));
+    height: calc(16px * var(--msp-ui-scale, 1));
   }
 }
 
 .msp-canvas-playback-lead {
-  width: 24px;
-  height: 24px;
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-muted);
   flex: none;
   place-items: center;
@@ -160,7 +160,7 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
 }
 
 .msp-canvas-playback-counter {
-  min-width: 44px;
+  min-width: calc(44px * var(--msp-ui-scale, 1));
   font-size: var(--msp-font-size-sm);
   font-variant-numeric: tabular-nums;
   text-align: center;
@@ -198,8 +198,8 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
 }
 
 .msp-canvas-playback-scrubber {
-  min-width: 40px;
-  height: 16px;
+  min-width: calc(40px * var(--msp-ui-scale, 1));
+  height: calc(16px * var(--msp-ui-scale, 1));
   margin: 0 var(--msp-space-2);
   -webkit-appearance: none;
   appearance: none;
@@ -208,41 +208,41 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
   flex: 1;
 
   &::-webkit-slider-runnable-track {
+    height: calc(2px * var(--msp-ui-scale, 1));
     background: linear-gradient(to right,
       var(--msp-color-text-muted) var(--msp-progress, 0%),
       var(--msp-color-border-strong) var(--msp-progress, 0%));
     border-radius: 1px;
-    height: 2px;
   }
 
   &::-webkit-slider-thumb {
+    width: calc(10px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text);
     -webkit-appearance: none;
     appearance: none;
     border-radius: 50%;
-    width: 10px;
-    height: 10px;
     margin-top: -4px;
   }
 
   &::-moz-range-track {
+    height: calc(2px * var(--msp-ui-scale, 1));
     background: var(--msp-color-border-strong);
     border-radius: 1px;
-    height: 2px;
   }
 
   &::-moz-range-progress {
+    height: calc(2px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text-muted);
     border-radius: 1px;
-    height: 2px;
   }
 
   &::-moz-range-thumb {
+    width: calc(10px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text);
     border: 0;
     border-radius: 50%;
-    width: 10px;
-    height: 10px;
   }
 
   &:focus-visible {
@@ -265,7 +265,7 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
 }
 
 .msp-canvas-playback-time {
-  min-width: 64px;
+  min-width: calc(64px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-muted);
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -289,17 +289,17 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
 }
 
 .msp-canvas-playback-dot {
+  width: calc(14px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   place-items: center;
-  width: 14px;
-  height: 24px;
   display: grid;
 
   &:before {
     content: "";
+    width: calc(6px * var(--msp-ui-scale, 1));
+    height: calc(6px * var(--msp-ui-scale, 1));
     background: var(--msp-color-border-strong);
     border-radius: 50%;
-    width: 6px;
-    height: 6px;
   }
 
   &:hover:before {
@@ -312,8 +312,8 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
 }
 
 .msp-canvas-playback-position {
+  height: calc(24px * var(--msp-ui-scale, 1));
   white-space: nowrap;
-  height: 24px;
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -334,7 +334,7 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
 }
 
 .msp-canvas-playback-listRows {
-  max-height: 220px;
+  max-height: calc(220px * var(--msp-ui-scale, 1));
 }
 
 .msp-canvas-playback-listRowsContent {
@@ -343,15 +343,15 @@ defineStyles('views/canvas/playback.module.css', `@layer msp.components {
 }
 
 .msp-canvas-playback-listRow {
+  grid-template-columns: calc(24px * var(--msp-ui-scale, 1)) 1fr;
   align-items: center;
   gap: var(--msp-space-2);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
   font-size: var(--msp-font-size-sm);
   text-align: left;
-  grid-template-columns: 24px 1fr;
   display: grid;
 
   &:hover {

@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .shell {
@@ -26,8 +27,8 @@
   &[data-mode="compact"] {
     /* Touch targets of at least 44px (accessibility.md, WCAG 2.5.5 on touch): rows and controls grow; the rest
        follows. */
-    --msp-row-height: 44px;
-    --msp-control-height: 40px;
+    --msp-row-height: calc(44px * var(--msp-ui-scale, 1));
+    --msp-control-height: calc(40px * var(--msp-ui-scale, 1));
     /* What fixed-size targets grow to (`max(<their size>, var(--msp-touch-target, 0px))`). */
     --msp-touch-target: 44px;
     grid-template-columns: minmax(0, 1fr);

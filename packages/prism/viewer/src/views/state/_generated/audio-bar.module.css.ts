@@ -25,7 +25,7 @@ defineStyles('viewer/views/state/audio-bar.module.css', `@layer msp.components {
 .msp-viewer-audio-bar-bar {
   align-items: center;
   gap: var(--msp-space-2);
-  height: 32px;
+  height: calc(32px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-well);
@@ -34,9 +34,9 @@ defineStyles('viewer/views/state/audio-bar.module.css', `@layer msp.components {
 }
 
 .msp-viewer-audio-bar-play {
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   background: var(--msp-color-accent);
-  width: 24px;
-  height: 24px;
   color: var(--msp-color-on-accent);
   transition: transform var(--msp-motion-fast) var(--msp-ease);
   border-radius: 50%;
@@ -58,19 +58,19 @@ defineStyles('viewer/views/state/audio-bar.module.css', `@layer msp.components {
 }
 
 .msp-viewer-audio-bar-track {
+  min-width: 0;
+  height: calc(16px * var(--msp-ui-scale, 1));
   cursor: pointer;
   touch-action: none;
   outline: none;
   flex: 1;
-  min-width: 0;
-  height: 16px;
   position: relative;
 
   &:before {
     content: "";
+    height: calc(3px * var(--msp-ui-scale, 1));
     background: var(--msp-color-pressed);
     border-radius: 1.5px;
-    height: 3px;
     margin-top: -1.5px;
     position: absolute;
     top: 50%;
@@ -85,12 +85,12 @@ defineStyles('viewer/views/state/audio-bar.module.css', `@layer msp.components {
 }
 
 .msp-viewer-audio-bar-fill {
+  width: 100%;
+  height: calc(3px * var(--msp-ui-scale, 1));
   background: var(--msp-color-accent);
   transform-origin: 0;
   will-change: transform;
   border-radius: 1.5px;
-  width: 100%;
-  height: 3px;
   margin-top: -1.5px;
   position: absolute;
   top: 50%;
@@ -105,9 +105,9 @@ defineStyles('viewer/views/state/audio-bar.module.css', `@layer msp.components {
 }
 
 .msp-viewer-audio-bar-knob {
+  width: calc(10px * var(--msp-ui-scale, 1));
+  height: calc(10px * var(--msp-ui-scale, 1));
   background: var(--msp-color-accent);
-  width: 10px;
-  height: 10px;
   box-shadow: 0 0 0 2px var(--msp-color-well);
   border-radius: 50%;
   margin-top: -5px;
@@ -117,9 +117,9 @@ defineStyles('viewer/views/state/audio-bar.module.css', `@layer msp.components {
 }
 
 .msp-viewer-audio-bar-action {
+  width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 22px;
-  height: 22px;
   color: var(--msp-color-text-muted);
   flex: none;
   place-items: center;

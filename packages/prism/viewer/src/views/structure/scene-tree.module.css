@@ -4,12 +4,13 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* The tree's list (a `VirtualList`: rows of one height, only the window rendered; view-models.md §3). */
 .tree {
   /* One level's indent; a deep tree (the state tree) sets less. */
-  --msp-tree-indent: 14px;
+  --msp-tree-indent: calc(14px * var(--msp-ui-scale, 1));
 }
 
 .empty {
@@ -37,7 +38,7 @@
   gap: var(--msp-space-2);
   min-width: 0;
   /* Every row of a tree is this tall (the list is virtualized: rows of one height, measured). */
-  height: max(26px, var(--msp-touch-target, 0px));
+  height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-1) 0
     calc(var(--msp-space-1) + var(--msp-tree-depth, 0) * var(--msp-tree-indent, var(--msp-icon-sm)));
   border-radius: var(--msp-radius-md);
@@ -62,8 +63,8 @@
   display: grid;
   place-items: center;
   /* 24px at least (WCAG 2.5.8), 44px on touch. */
-  width: max(24px, var(--msp-touch-target, 0px));
-  height: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-subtle);
   transition: transform var(--msp-motion-fast) var(--msp-ease);
@@ -129,8 +130,8 @@
 
 .swatch {
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: calc(8px * var(--msp-ui-scale, 1));
+  height: calc(8px * var(--msp-ui-scale, 1));
   border-radius: 50%;
   background: conic-gradient(
     var(--msp-accent-red) 0 25%,
@@ -149,8 +150,8 @@
 .action {
   display: grid;
   place-items: center;
-  width: max(24px, var(--msp-touch-target, 0px));
-  height: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   opacity: 0;
@@ -174,7 +175,7 @@
 .actionSlot {
   display: grid;
   place-items: center;
-  width: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
 }
 
 /* A hidden node keeps its eye visible: the state is worth seeing at a glance. */
@@ -215,10 +216,10 @@
 
 .menuItem {
   display: grid;
-  grid-template-columns: 14px 1fr;
+  grid-template-columns: calc(14px * var(--msp-ui-scale, 1)) 1fr;
   align-items: center;
   gap: var(--msp-space-3);
-  height: max(26px, var(--msp-touch-target, 0px));
+  height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
@@ -255,7 +256,7 @@
   align-items: baseline;
   gap: var(--msp-space-2);
   width: 100%;
-  height: max(26px, var(--msp-touch-target, 0px));
+  height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
   padding-left: calc(
     var(--msp-space-1) +
     var(--msp-tree-depth, 0) *
@@ -265,7 +266,7 @@
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-accent);
   font-size: var(--msp-font-size-sm);
-  line-height: max(26px, var(--msp-touch-target, 0px));
+  line-height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
   text-align: left;
 
   &:hover {
@@ -279,7 +280,7 @@
 }
 
 .loading {
-  height: max(26px, var(--msp-touch-target, 0px));
+  height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
   padding-left: calc(
     var(--msp-space-1) +
     var(--msp-tree-depth, 0) *
@@ -288,13 +289,13 @@
   ); /* off-scale: past the chevron and the kind icon */
   color: var(--msp-color-text-subtle);
   font-size: var(--msp-font-size-xs);
-  line-height: max(26px, var(--msp-touch-target, 0px));
+  line-height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
 }
 
 /* Destructive (Remove): in the danger color, set apart by a hairline from what comes before it (alone, no line). */
 /* An entry with its choices as icons at its end (Modify by selection): not a button itself, no hover of its own. */
 .inlineItem {
-  grid-template-columns: 14px 1fr auto;
+  grid-template-columns: calc(14px * var(--msp-ui-scale, 1)) 1fr auto;
   cursor: default;
 
   &:hover {

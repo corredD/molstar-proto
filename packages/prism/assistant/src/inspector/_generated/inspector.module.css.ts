@@ -61,8 +61,8 @@ defineStyles('assistant/inspector/inspector.module.css', `@layer msp.components 
 }
 
 .msp-assistant-inspector-split {
+  grid-template-columns: minmax(0, 1fr) calc(380px * var(--msp-ui-scale, 1));
   flex: 1 1 0;
-  grid-template-columns: minmax(0, 1fr) 380px;
   min-height: 0;
   display: grid;
 }
@@ -162,13 +162,13 @@ defineStyles('assistant/inspector/inspector.module.css', `@layer msp.components 
 }
 
 .msp-assistant-inspector-row {
+  grid-template-columns: calc(56px * var(--msp-ui-scale, 1)) minmax(0, 1fr) auto;
   align-items: baseline;
   gap: var(--msp-space-3);
   width: 100%;
-  min-height: 28px;
+  min-height: calc(28px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2) var(--msp-space-5);
   text-align: left;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
   display: grid;
 
   &:hover {
@@ -187,11 +187,11 @@ defineStyles('assistant/inspector/inspector.module.css', `@layer msp.components 
 .msp-assistant-inspector-role {
   color: var(--msp-color-text-subtle);
   font-family: var(--msp-font-mono);
+  font-size: calc(10px * var(--msp-ui-scale, 1));
   letter-spacing: .04em;
   text-align: right;
   text-transform: uppercase;
   white-space: nowrap;
-  font-size: 10px;
   overflow: hidden;
 
   .msp-assistant-inspector-row[data-failed] & {
@@ -236,13 +236,13 @@ defineStyles('assistant/inspector/inspector.module.css', `@layer msp.components 
 }
 
 .msp-assistant-inspector-time {
+  min-width: calc(52px * var(--msp-ui-scale, 1));
   text-align: right;
-  min-width: 52px;
 }
 
 .msp-assistant-inspector-tokens {
+  min-width: calc(80px * var(--msp-ui-scale, 1));
   text-align: right;
-  min-width: 80px;
 }
 
 .msp-assistant-inspector-flag {
@@ -313,10 +313,10 @@ defineStyles('assistant/inspector/inspector.module.css', `@layer msp.components 
 }
 
 .msp-assistant-inspector-dot {
+  width: calc(6px * var(--msp-ui-scale, 1));
+  height: calc(6px * var(--msp-ui-scale, 1));
   background: var(--msp-color-border-strong);
   border-radius: 50%;
-  width: 6px;
-  height: 6px;
 
   .msp-assistant-inspector-state[data-state="working"] & {
     background: var(--msp-color-text-muted);
@@ -352,8 +352,8 @@ defineStyles('assistant/inspector/inspector.module.css', `@layer msp.components 
   }
 
   .msp-assistant-inspector-row {
+    grid-template-columns: calc(44px * var(--msp-ui-scale, 1)) minmax(0, 1fr) auto;
     padding-inline: var(--msp-space-4);
-    grid-template-columns: 44px minmax(0, 1fr) auto;
   }
 
   .msp-assistant-inspector-head {

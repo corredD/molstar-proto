@@ -68,7 +68,7 @@ defineStyles('viewer/views/volume/volume-levels.module.css', `@layer msp.compone
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-subtle);
   font-size: var(--msp-font-size-xs);
-  line-height: 18px;
+  line-height: calc(18px * var(--msp-ui-scale, 1));
 
   &:hover {
     background: var(--msp-color-hover);
@@ -81,12 +81,12 @@ defineStyles('viewer/views/volume/volume-levels.module.css', `@layer msp.compone
 }
 
 .msp-viewer-volume-levels-plot {
+  height: calc(48px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-well);
   cursor: ew-resize;
   touch-action: none;
   contain: strict;
-  height: 48px;
   position: relative;
   overflow: hidden;
 }
@@ -133,10 +133,10 @@ defineStyles('viewer/views/volume/volume-levels.module.css', `@layer msp.compone
 }
 
 .msp-viewer-volume-levels-marker {
+  width: calc(10px * var(--msp-ui-scale, 1));
   pointer-events: auto;
   cursor: ew-resize;
   outline: none;
-  width: 10px;
   position: absolute;
   top: 0;
   bottom: 0;
@@ -144,24 +144,24 @@ defineStyles('viewer/views/volume/volume-levels.module.css', `@layer msp.compone
 
   &:before {
     content: "";
-    background: var(--msp-level, var(--msp-color-text));
-    width: 2px;
-    position: absolute;
     top: 0;
     bottom: 0;
-    left: 4px;
+    left: calc(4px * var(--msp-ui-scale, 1));
+    width: calc(2px * var(--msp-ui-scale, 1));
+    background: var(--msp-level, var(--msp-color-text));
+    position: absolute;
   }
 
   &:after {
     content: "";
+    top: calc(2px * var(--msp-ui-scale, 1));
+    width: calc(8px * var(--msp-ui-scale, 1));
+    height: calc(8px * var(--msp-ui-scale, 1));
     background: var(--msp-level, var(--msp-color-text));
-    width: 8px;
-    height: 8px;
     box-shadow: 0 0 0 1.5px var(--msp-color-well);
     transition: transform var(--msp-motion-fast) var(--msp-ease);
     border-radius: 50%;
     position: absolute;
-    top: 2px;
     left: 1px;
   }
 
@@ -198,10 +198,10 @@ defineStyles('viewer/views/volume/volume-levels.module.css', `@layer msp.compone
 }
 
 .msp-viewer-volume-levels-swatch {
+  width: calc(14px * var(--msp-ui-scale, 1));
+  height: calc(14px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   background: var(--msp-level, var(--msp-color-text-muted));
-  width: 14px;
-  height: 14px;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 85%);
   flex: none;
 
@@ -234,7 +234,7 @@ defineStyles('viewer/views/volume/volume-levels.module.css', `@layer msp.compone
 
 .msp-viewer-volume-levels-value {
   width: 7ch;
-  height: 22px;
+  height: calc(22px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1);
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-control);

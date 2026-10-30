@@ -77,9 +77,9 @@ defineStyles('viewer/views/structure/representation-quick.module.css', `@layer m
 }
 
 .msp-viewer-representation-quick-segment {
-  border-radius: var(--msp-radius-sm);
   min-width: 0;
-  height: 30px;
+  height: calc(30px * var(--msp-ui-scale, 1));
+  border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   flex: 1 1 0;
   place-items: center;
@@ -103,11 +103,11 @@ defineStyles('viewer/views/structure/representation-quick.module.css', `@layer m
 }
 
 .msp-viewer-representation-quick-tile {
+  min-width: 0;
+  max-width: calc(44px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-control);
-  min-width: 0;
-  max-width: 44px;
-  height: 22px;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 88%);
   transition: transform var(--msp-motion-fast) var(--msp-ease);
   flex: 1 1 0;
@@ -130,9 +130,9 @@ defineStyles('viewer/views/structure/representation-quick.module.css', `@layer m
 }
 
 .msp-viewer-representation-quick-one {
+  width: calc(6px * var(--msp-ui-scale, 1));
+  height: calc(6px * var(--msp-ui-scale, 1));
   background: var(--msp-color-bg);
-  width: 6px;
-  height: 6px;
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 70%);
   border-radius: 50%;
   margin: -3px 0 0 -3px;

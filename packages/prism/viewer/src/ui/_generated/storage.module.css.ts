@@ -57,7 +57,7 @@ defineStyles('viewer/ui/storage.module.css', `@layer msp.components {
   align-items: center;
   gap: var(--msp-space-3);
   min-width: 0;
-  height: 32px;
+  height: calc(32px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   color: var(--msp-color-text-muted);
   text-align: left;

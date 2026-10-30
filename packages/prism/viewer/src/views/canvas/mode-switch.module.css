@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* Glass for what opens above the stack (the stack's frame carries its own). */
@@ -24,8 +25,8 @@
 .segment {
   display: grid;
   place-items: center;
-  width: var(--msp-stack-row, 40px);
-  height: var(--msp-stack-row, 40px);
+  width: var(--msp-stack-row, calc(40px * var(--msp-ui-scale, 1)));
+  height: var(--msp-stack-row, calc(40px * var(--msp-ui-scale, 1)));
   color: var(--msp-color-text-muted);
 
   &:hover {
@@ -52,7 +53,7 @@
      so the pointer can travel from Select to it without leaving either. */
   position: absolute;
   bottom: 100%;
-  left: var(--msp-stack-row, 40px);
+  left: var(--msp-stack-row, calc(40px * var(--msp-ui-scale, 1)));
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -101,8 +102,8 @@
 
 .badge {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
+  right: calc(4px * var(--msp-ui-scale, 1));
+  bottom: calc(4px * var(--msp-ui-scale, 1));
   opacity: 0.8;
 }
 
@@ -111,7 +112,7 @@
   /* In the flyout, which is above the stack, over Select. */
   z-index: var(--msp-z-overlay);
   display: grid;
-  min-width: 168px;
+  min-width: calc(168px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2);
   background: var(--msp-glass-panel-bg);
   animation: level-in var(--msp-motion-fast) var(--msp-ease);
@@ -128,7 +129,7 @@
   grid-template-columns: auto 1fr;
   align-items: center;
   gap: var(--msp-space-3);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -150,7 +151,7 @@
 /* Touch targets (compact mode's 44px) only where the pointer is a finger: with a mouse the list stays tight. */
 @media (pointer: coarse) {
   .levelRow {
-    height: max(28px, var(--msp-touch-target, 0px));
+    height: max(calc(28px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   }
 }
 

@@ -84,7 +84,7 @@ defineStyles('views/shell/section-list.module.css', `@layer msp.components {
   padding: 0;
 
   & .msp-shell-section-list-header {
-    height: 32px;
+    height: calc(32px * var(--msp-ui-scale, 1));
   }
 }
 
@@ -96,7 +96,7 @@ defineStyles('views/shell/section-list.module.css', `@layer msp.components {
   }
 
   & .msp-shell-section-list-header {
-    height: 26px;
+    height: calc(26px * var(--msp-ui-scale, 1));
     font-size: var(--msp-font-size-sm);
     padding: 0;
 

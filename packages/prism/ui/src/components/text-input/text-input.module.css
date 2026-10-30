@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .input {
@@ -21,7 +22,7 @@
   font-size: var(--msp-font-size-sm);
 
   &[data-size="sm"] {
-    height: 24px;
+    height: calc(24px * var(--msp-ui-scale, 1));
   }
 
   &:hover {

@@ -27,15 +27,15 @@ defineStyles('viewer/views/structure/look-popover.module.css', `@layer msp.compo
 }
 
 .msp-viewer-look-popover-dot {
+  top: calc(3px * var(--msp-ui-scale, 1));
+  right: calc(3px * var(--msp-ui-scale, 1));
+  width: calc(6px * var(--msp-ui-scale, 1));
+  height: calc(6px * var(--msp-ui-scale, 1));
   background: var(--msp-color-accent);
-  width: 6px;
-  height: 6px;
   box-shadow: 0 0 0 1.5px var(--msp-color-raised);
   pointer-events: none;
   border-radius: 50%;
   position: absolute;
-  top: 3px;
-  right: 3px;
 }
 
 .msp-viewer-look-popover-overrides {
@@ -55,7 +55,7 @@ defineStyles('viewer/views/structure/look-popover.module.css', `@layer msp.compo
 .msp-viewer-look-popover-override {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   display: flex;
 }
 

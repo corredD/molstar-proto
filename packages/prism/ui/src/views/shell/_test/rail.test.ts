@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { readFileSync } from 'node:fs';
@@ -45,12 +46,17 @@ describe('rail steps', () => {
     expect(queries.length).toBe(stepped.length);
     stepped.forEach((step, i) => {
       expect(Number(queries[i][1]) + 1).toBe(RailSteps[i].min);
-      expect(queries[i][2]).toContain(`--msp-rail-button: ${step.button}px`);
-      expect(queries[i][2]).toContain(`--msp-rail-button-captioned: ${step.captioned}px`);
+      // The step's size times the UI scale (styling.md §7), as `fitRail` counts it.
+      expect(queries[i][2]).toContain(`--msp-rail-button: calc(${step.button}px * var(--msp-ui-scale, 1))`);
+      expect(queries[i][2]).toContain(
+        `--msp-rail-button-captioned: calc(${step.captioned}px * var(--msp-ui-scale, 1))`,
+      );
     });
     const tools = readFileSync(new URL('../canvas.module.css', import.meta.url), 'utf8');
-    expect(tools).toContain(`var(--msp-rail-button, ${RailSteps[0].button}px)`);
-    expect(tools).toContain(`var(--msp-rail-button-captioned, ${RailSteps[0].captioned}px)`);
+    expect(tools).toContain(`var(--msp-rail-button, calc(${RailSteps[0].button}px * var(--msp-ui-scale, 1)))`);
+    expect(tools).toContain(
+      `var(--msp-rail-button-captioned, calc(${RailSteps[0].captioned}px * var(--msp-ui-scale, 1)))`,
+    );
   });
 });
 
@@ -78,6 +84,16 @@ describe('fitRail', () => {
     expect(fit.hidden.has('home')).toBe(false);
     // 100px: the command menu (36), More (30) and a hairline, and one more button (30) do not fit with the second.
     expect(fit.hidden.size).toBe(standard.length - 1 - 1);
+  });
+
+  it('counts the buttons at the UI scale: the step by the height (as the container queries), the sizes scaled', () => {
+    // 900px picks the normal step; at 150 % its buttons are 60 / 69: 12 * 60 + 69 + 5 = 794 fits, at 200 % it does not.
+    const big = fitRail(standard, 900, 1.5);
+    expect(big.step.name).toBe('normal');
+    expect(big.hidden.size).toBe(0);
+    expect(fitRail(standard, 900, 2).hidden.size).toBeGreaterThan(0);
+    // 460px fits all at 100 % (above), not at 150 %.
+    expect(fitRail(standard, 460, 1.5).hidden.size).toBeGreaterThan(0);
   });
 
   it('is deterministic for a height', () => {

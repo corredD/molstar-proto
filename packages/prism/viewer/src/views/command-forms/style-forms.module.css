@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* The command menu's own forms for a component's look: the choices as a grid of ghost buttons (the menu's rows), the
@@ -38,7 +39,7 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--msp-space-2);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text);
@@ -83,8 +84,8 @@
 /* A theme's colors on the structure (its legend), as the quick settings paint them. */
 .swatch {
   position: relative;
-  width: 24px;
-  height: 14px;
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(14px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-control);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 88%);
@@ -104,8 +105,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 4px;
-  height: 4px;
+  width: calc(4px * var(--msp-ui-scale, 1));
+  height: calc(4px * var(--msp-ui-scale, 1));
   margin: -2px 0 0 -2px; /* off-scale: centred */
   border-radius: 50%;
   background: var(--msp-color-bg);
@@ -132,7 +133,7 @@
 
 .choice {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: calc(72px * var(--msp-ui-scale, 1)) minmax(0, 1fr);
   align-items: center;
   gap: var(--msp-space-2);
 }

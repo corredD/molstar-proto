@@ -25,7 +25,7 @@ export const classes = {
 defineStyles('components/icon/wordmark.module.css', `@layer msp.components {
 .msp-icon-wordmark-wordmark {
   width: calc(var(--msp-wordmark-width, 72) * 1px * var(--msp-wordmark-scale, 1));
-  height: calc(22px * var(--msp-wordmark-scale, 1));
+  height: calc(calc(22px * var(--msp-ui-scale, 1)) * var(--msp-wordmark-scale, 1));
   flex: none;
   display: block;
   position: relative;

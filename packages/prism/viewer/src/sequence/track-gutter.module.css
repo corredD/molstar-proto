@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* The tracks' left gutter: the icons sit over Seq*'s surface, in the room the tracks preset leaves. The strip lets the
@@ -12,7 +13,7 @@
   position: absolute;
   top: var(--msp-space-3);
   left: 0;
-  width: 28px;
+  width: calc(28px * var(--msp-ui-scale, 1));
   pointer-events: none;
 }
 
@@ -23,10 +24,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
+  width: calc(24px * var(--msp-ui-scale, 1));
   /* The row's height is set inline (22px rows): 24px at least (WCAG 2.5.8); not the touch target's 44, which would cover
      the next rows' icons. */
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   margin-left: var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);

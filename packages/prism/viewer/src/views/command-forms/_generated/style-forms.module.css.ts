@@ -56,7 +56,7 @@ defineStyles('viewer/views/command-forms/style-forms.module.css', `@layer msp.co
 .msp-viewer-style-forms-tile {
   align-items: center;
   gap: var(--msp-space-2);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text);
@@ -97,10 +97,10 @@ defineStyles('viewer/views/command-forms/style-forms.module.css', `@layer msp.co
 }
 
 .msp-viewer-style-forms-swatch {
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(14px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-control);
-  width: 24px;
-  height: 14px;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 88%);
   position: relative;
 }
@@ -112,9 +112,9 @@ defineStyles('viewer/views/command-forms/style-forms.module.css', `@layer msp.co
 }
 
 .msp-viewer-style-forms-one {
+  width: calc(4px * var(--msp-ui-scale, 1));
+  height: calc(4px * var(--msp-ui-scale, 1));
   background: var(--msp-color-bg);
-  width: 4px;
-  height: 4px;
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 70%);
   border-radius: 50%;
   margin: -2px 0 0 -2px;
@@ -141,9 +141,9 @@ defineStyles('viewer/views/command-forms/style-forms.module.css', `@layer msp.co
 }
 
 .msp-viewer-style-forms-choice {
+  grid-template-columns: calc(72px * var(--msp-ui-scale, 1)) minmax(0, 1fr);
   align-items: center;
   gap: var(--msp-space-2);
-  grid-template-columns: 72px minmax(0, 1fr);
   display: grid;
 }
 

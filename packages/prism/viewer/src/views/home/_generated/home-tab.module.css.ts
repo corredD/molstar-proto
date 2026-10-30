@@ -70,7 +70,7 @@ defineStyles('viewer/views/home/home-tab.module.css', `@layer msp.components {
 }
 
 .msp-viewer-home-tab-states {
-  max-height: 264px;
+  max-height: calc(264px * var(--msp-ui-scale, 1));
 }
 
 .msp-viewer-home-tab-statesContent {
@@ -109,7 +109,7 @@ defineStyles('viewer/views/home/home-tab.module.css', `@layer msp.components {
   align-items: center;
   gap: var(--msp-space-3);
   width: 100%;
-  height: 32px;
+  height: calc(32px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -193,7 +193,7 @@ defineStyles('viewer/views/home/home-tab.module.css', `@layer msp.components {
 .msp-viewer-home-tab-state {
   align-items: center;
   gap: var(--msp-space-3);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text);

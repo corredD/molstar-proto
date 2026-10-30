@@ -55,7 +55,7 @@ defineStyles('viewer/views/selection/selection-lists.module.css', `@layer msp.co
 .msp-viewer-selection-lists-head {
   align-items: center;
   gap: var(--msp-space-2);
-  height: 22px;
+  height: calc(22px * var(--msp-ui-scale, 1));
   display: flex;
 }
 
@@ -87,10 +87,10 @@ defineStyles('viewer/views/selection/selection-lists.module.css', `@layer msp.co
 }
 
 .msp-viewer-selection-lists-list {
+  max-height: calc(224px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-panel);
   contain: content;
-  max-height: 224px;
 }
 
 .msp-viewer-selection-lists-listContent {
@@ -107,7 +107,7 @@ defineStyles('viewer/views/selection/selection-lists.module.css', `@layer msp.co
 .msp-viewer-selection-lists-row {
   align-items: center;
   gap: var(--msp-space-2);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1) 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   display: flex;
@@ -118,7 +118,7 @@ defineStyles('viewer/views/selection/selection-lists.module.css', `@layer msp.co
 }
 
 .msp-viewer-selection-lists-lead {
-  width: 14px;
+  width: calc(14px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-muted);
   flex: none;
   place-items: center;
@@ -126,8 +126,8 @@ defineStyles('viewer/views/selection/selection-lists.module.css', `@layer msp.co
 }
 
 .msp-viewer-selection-lists-swatch {
-  width: 12px;
-  height: 12px;
+  width: calc(12px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   box-shadow: inset 0 0 0 1px var(--msp-glass-edge);
   border-radius: 50%;
 }
@@ -186,9 +186,9 @@ defineStyles('viewer/views/selection/selection-lists.module.css', `@layer msp.co
 }
 
 .msp-viewer-selection-lists-action {
+  width: calc(20px * var(--msp-ui-scale, 1));
+  height: calc(20px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 20px;
-  height: 20px;
   color: var(--msp-color-text-muted);
   opacity: 0;
   place-items: center;
@@ -228,7 +228,7 @@ defineStyles('viewer/views/selection/selection-lists.module.css', `@layer msp.co
 .msp-viewer-selection-lists-summaryHead {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   display: flex;
 }
 
@@ -252,9 +252,9 @@ defineStyles('viewer/views/selection/selection-lists.module.css', `@layer msp.co
 }
 
 .msp-viewer-selection-lists-summaryAction {
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 24px;
-  height: 24px;
   color: var(--msp-color-text-muted);
   flex: none;
   place-items: center;
@@ -319,7 +319,7 @@ defineStyles('viewer/views/selection/selection-lists.module.css', `@layer msp.co
 .msp-viewer-selection-lists-summaryStart {
   align-items: center;
   gap: var(--msp-space-1);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   margin-left: calc(var(--msp-icon-md) + var(--msp-space-2));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);

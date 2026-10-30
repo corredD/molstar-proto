@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { effect, onActive, onCleanup } from '../../dom/scope.js';
@@ -64,17 +65,20 @@ const NoneHidden: ReadonlySet<string> = new Set();
 /**
  * What fits in a rail `height` px tall, at the step that height uses: all of it, or, when even the smallest step is too
  * tall, the entries of the highest `priority` numbers (the later in the rail when they are equal) are left out until the
- * rest and the More button fit. A height of 0 (not measured yet) hides nothing.
+ * rest and the More button fit. A height of 0 (not measured yet) hides nothing. At a UI `scale` (styling.md §7) the step
+ * is still the height's (the CSS container queries pick it by the rail's px), and its buttons are `scale` times taller.
  */
-export function fitRail(entries: readonly RailEntry[], height: number): RailFit {
+export function fitRail(entries: readonly RailEntry[], height: number, scale = 1): RailFit {
   const step = railStep(height);
   if (height <= 0) return { step, hidden: NoneHidden };
+  const button = step.button * scale;
+  const captioned = step.captioned * scale;
   const total = (kept: readonly RailEntry[], more: boolean) => {
     const sections = new Set(kept.map((e) => e.section));
     let sum = 0;
-    for (const e of kept) sum += e.captioned ? step.captioned : step.button;
+    for (const e of kept) sum += e.captioned ? captioned : button;
     if (more) {
-      sum += step.button;
+      sum += button;
       sections.add('more');
     }
     // A hairline between sections.
@@ -206,7 +210,10 @@ export class RailLayout {
   constructor(shell: ShellModel, dock: DockModel) {
     const tools = shownItems(derive(shell.toolbar, (items) => items.filter((i) => i.place !== 'canvas')));
     this.entries = derive([dock.tabs, tools], (tabs, items) => railEntries(tabs, items));
-    const fit = derive([this.entries, this.height.asReadonly], (entries, h) => ({ entries, fit: fitRail(entries, h) }));
+    const fit = derive([this.entries, this.height.asReadonly, shell.uiScale.scale], (entries, h, s) => ({
+      entries,
+      fit: fitRail(entries, h, s),
+    }));
     this.hidden = derive(fit, (f) => f.fit.hidden, sameSet);
     this.overflow = derive(fit, (f) => f.entries.filter((e) => f.fit.hidden.has(e.id)), sameEntries);
   }

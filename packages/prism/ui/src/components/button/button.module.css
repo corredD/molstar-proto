@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .button {
@@ -73,7 +74,7 @@
 }
 
 .small {
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-inset);
   font-size: var(--msp-font-size-sm);
 }
@@ -81,13 +82,13 @@
 .tiny {
   gap: var(--msp-space-1);
   /* 24px at least (WCAG 2.5.8), 44px on touch. */
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   font-size: var(--msp-font-size-xs);
 
   & .icon {
-    width: 14px;
-    height: 14px;
+    width: calc(14px * var(--msp-ui-scale, 1));
+    height: calc(14px * var(--msp-ui-scale, 1));
   }
 }
 
@@ -97,14 +98,14 @@
 
   &.small,
   &.tiny {
-    width: max(24px, var(--msp-touch-target, 0px));
+    width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   }
 }
 
 .icon {
   display: inline-flex;
-  width: 18px;
-  height: 18px;
+  width: calc(18px * var(--msp-ui-scale, 1));
+  height: calc(18px * var(--msp-ui-scale, 1));
 
   & > svg {
     width: 100%;

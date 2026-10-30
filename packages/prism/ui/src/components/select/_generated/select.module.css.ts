@@ -51,7 +51,7 @@ defineStyles('components/select/select.module.css', `@layer msp.components {
   display: flex;
 
   &[data-size="sm"] {
-    height: 24px;
+    height: calc(24px * var(--msp-ui-scale, 1));
   }
 
   &:hover, &[aria-expanded="true"] {
@@ -86,9 +86,9 @@ defineStyles('components/select/select.module.css', `@layer msp.components {
 }
 
 .msp-select-list {
+  max-height: calc(240px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-md);
   background: color-mix(in oklab, var(--msp-color-control), transparent 40%);
-  max-height: 240px;
   box-shadow: inset 0 0 0 1px var(--msp-glass-edge);
   animation: msp-select-list-in var(--msp-motion-fast) var(--msp-ease);
 }
@@ -109,7 +109,7 @@ defineStyles('components/select/select.module.css', `@layer msp.components {
   justify-content: space-between;
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 26px;
+  min-height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2) 0 var(--msp-space-3);
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
@@ -136,7 +136,7 @@ defineStyles('components/select/select.module.css', `@layer msp.components {
 .msp-select-groupHead {
   align-items: center;
   gap: var(--msp-space-1);
-  min-height: 26px;
+  min-height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-subtle);
@@ -181,10 +181,10 @@ defineStyles('components/select/select.module.css', `@layer msp.components {
 
 .msp-select-floating {
   color: inherit;
+  width: max-content;
+  max-width: calc(100vw - calc(16px * var(--msp-ui-scale, 1)));
   background: none;
   border: 0;
-  width: max-content;
-  max-width: calc(100vw - 16px);
   margin: 0;
   padding: 0;
   position: fixed;
@@ -192,8 +192,8 @@ defineStyles('components/select/select.module.css', `@layer msp.components {
   overflow: visible;
 
   & .msp-select-option {
+    min-height: calc(24px * var(--msp-ui-scale, 1));
     white-space: nowrap;
-    min-height: 24px;
   }
 
   & > .msp-select-list {
@@ -204,8 +204,8 @@ defineStyles('components/select/select.module.css', `@layer msp.components {
 }
 
 .msp-select-menuPopover {
-  min-width: 180px;
-  max-height: calc(100vh - 16px);
+  min-width: calc(180px * var(--msp-ui-scale, 1));
+  max-height: calc(100vh - calc(16px * var(--msp-ui-scale, 1)));
   padding: var(--msp-space-1);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-raised);

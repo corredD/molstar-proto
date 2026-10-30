@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* Centred on the canvas (between its edges and what floats on the right), clicks pass through. */
@@ -32,8 +33,8 @@
    would put it on a half pixel and blur its lines). */
 .mark {
   position: absolute;
-  left: round(down, calc(50% - 85.5px), 1px);
-  top: round(down, calc(50% - 33px), 1px);
+  left: round(down, calc(50% - calc(85.5px * var(--msp-ui-scale, 1))), 1px);
+  top: round(down, calc(50% - calc(33px * var(--msp-ui-scale, 1))), 1px);
   color: var(--msp-color-text-subtle);
 }
 

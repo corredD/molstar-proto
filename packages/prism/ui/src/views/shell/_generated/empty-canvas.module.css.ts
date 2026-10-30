@@ -37,10 +37,10 @@ defineStyles('views/shell/empty-canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-empty-canvas-mark {
+  left: round(down, calc(50% - calc(85.5px * var(--msp-ui-scale, 1))), 1px);
+  top: round(down, calc(50% - calc(33px * var(--msp-ui-scale, 1))), 1px);
   color: var(--msp-color-text-subtle);
   position: absolute;
-  top: round(down, 50% - 33px, 1px);
-  left: round(down, 50% - 85.5px, 1px);
 }
 
 @keyframes msp-shell-empty-canvas-fade-in {

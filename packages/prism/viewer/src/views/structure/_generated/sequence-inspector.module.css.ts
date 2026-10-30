@@ -52,7 +52,7 @@ defineStyles('viewer/views/structure/sequence-inspector.module.css', `@layer msp
 .msp-viewer-sequence-inspector-status {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   font-size: var(--msp-font-size-xs);
   display: flex;
 }
@@ -65,17 +65,17 @@ defineStyles('viewer/views/structure/sequence-inspector.module.css', `@layer msp
 }
 
 .msp-viewer-sequence-inspector-styles {
-  width: 76px;
+  width: calc(76px * var(--msp-ui-scale, 1));
 }
 
 .msp-viewer-sequence-inspector-segment {
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
 }
 
 .msp-viewer-sequence-inspector-tiles {
-  align-items: center;
   min-width: 0;
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
+  align-items: center;
 }
 
 .msp-viewer-sequence-inspector-chainsHead {
@@ -86,8 +86,8 @@ defineStyles('viewer/views/structure/sequence-inspector.module.css', `@layer msp
 }
 
 .msp-viewer-sequence-inspector-presets {
+  width: calc(180px * var(--msp-ui-scale, 1));
   flex: none;
-  width: 180px;
 }
 
 .msp-viewer-sequence-inspector-statusText {
@@ -105,7 +105,7 @@ defineStyles('viewer/views/structure/sequence-inspector.module.css', `@layer msp
 .msp-viewer-sequence-inspector-line {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   font-size: var(--msp-font-size-xs);
   color: var(--msp-color-text-muted);
   text-align: left;
@@ -133,7 +133,7 @@ defineStyles('viewer/views/structure/sequence-inspector.module.css', `@layer msp
 .msp-viewer-sequence-inspector-row {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 32px;
+  min-height: calc(32px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2) 0 0;
   border-radius: var(--msp-radius-md);
   display: flex;
@@ -144,10 +144,10 @@ defineStyles('viewer/views/structure/sequence-inspector.module.css', `@layer msp
 }
 
 .msp-viewer-sequence-inspector-box {
+  width: calc(16px * var(--msp-ui-scale, 1));
+  height: calc(16px * var(--msp-ui-scale, 1));
   border: 1px solid var(--msp-color-border-strong);
   border-radius: var(--msp-radius-sm);
-  width: 16px;
-  height: 16px;
   color: var(--msp-color-on-accent);
   flex: none;
   place-items: center;
@@ -160,19 +160,19 @@ defineStyles('viewer/views/structure/sequence-inspector.module.css', `@layer msp
 }
 
 .msp-viewer-sequence-inspector-boxButton {
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   flex: none;
   place-items: center;
-  width: 24px;
-  height: 24px;
   display: grid;
 }
 
 .msp-viewer-sequence-inspector-dot {
+  width: calc(8px * var(--msp-ui-scale, 1));
+  height: calc(8px * var(--msp-ui-scale, 1));
   background: var(--msp-color-text-subtle);
   border-radius: 50%;
   flex: none;
-  width: 8px;
-  height: 8px;
 }
 
 .msp-viewer-sequence-inspector-polymer {
@@ -232,8 +232,8 @@ defineStyles('viewer/views/structure/sequence-inspector.module.css', `@layer msp
 }
 
 .msp-viewer-sequence-inspector-chip {
-  min-width: 28px;
-  height: 24px;
+  min-width: calc(28px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border: 1px solid var(--msp-color-border);
   border-radius: var(--msp-radius-sm);

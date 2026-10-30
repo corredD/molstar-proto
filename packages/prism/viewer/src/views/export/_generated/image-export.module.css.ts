@@ -27,7 +27,7 @@ defineStyles('viewer/views/export/image-export.module.css', `@layer msp.componen
 }
 
 .msp-viewer-image-export-stage {
-  height: 168px;
+  height: calc(168px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-well);
@@ -72,10 +72,10 @@ defineStyles('viewer/views/export/image-export.module.css', `@layer msp.componen
 }
 
 .msp-viewer-image-export-handle {
+  width: calc(8px * var(--msp-ui-scale, 1));
+  height: calc(8px * var(--msp-ui-scale, 1));
   background: var(--msp-color-text);
   opacity: 0;
-  width: 8px;
-  height: 8px;
   transition: opacity var(--msp-motion-fast) var(--msp-ease);
   border-radius: 1px;
   margin: -4px;
@@ -125,7 +125,7 @@ defineStyles('viewer/views/export/image-export.module.css', `@layer msp.componen
   bottom: var(--msp-space-2);
   align-items: center;
   gap: var(--msp-space-1);
-  height: 20px;
+  height: calc(20px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   background: var(--msp-glass-bg);
   -webkit-backdrop-filter: var(--msp-glass-filter);

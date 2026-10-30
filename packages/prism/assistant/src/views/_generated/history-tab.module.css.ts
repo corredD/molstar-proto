@@ -53,7 +53,7 @@ defineStyles('assistant/views/history-tab.module.css', `@layer msp.components {
 }
 
 .msp-assistant-history-tab-switchButton {
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -174,7 +174,7 @@ defineStyles('assistant/views/history-tab.module.css', `@layer msp.components {
 .msp-assistant-history-tab-checkpoint {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   margin-top: var(--msp-space-1);
   padding-top: var(--msp-space-1);
   box-shadow: inset 0 1px 0 var(--msp-glass-edge);
@@ -192,7 +192,7 @@ defineStyles('assistant/views/history-tab.module.css', `@layer msp.components {
 }
 
 .msp-assistant-history-tab-undo {
-  height: 22px;
+  height: calc(22px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-accent-strong);

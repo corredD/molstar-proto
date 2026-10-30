@@ -45,21 +45,21 @@ export const classes = {
 
 defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
 .msp-assistant-trace-overview {
+  grid-template-columns: calc(40px * var(--msp-ui-scale, 1)) minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--msp-space-4);
   padding: var(--msp-space-4) var(--msp-space-5);
   flex: none;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
   display: grid;
 }
 
 .msp-assistant-trace-lanes {
+  grid-template-rows: calc(12px * var(--msp-ui-scale, 1)) calc(8px * var(--msp-ui-scale, 1));
   row-gap: var(--msp-space-2);
   color: var(--msp-color-text-subtle);
   font-family: var(--msp-font-mono);
+  font-size: calc(10px * var(--msp-ui-scale, 1));
   text-align: right;
-  grid-template-rows: 12px 8px;
-  font-size: 10px;
   line-height: 1;
   display: grid;
 
@@ -78,7 +78,7 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
   align-items: stretch;
   gap: var(--msp-space-1);
   min-width: 0;
-  height: 22px;
+  height: calc(22px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1);
   border-radius: var(--msp-radius-sm);
   flex-basis: 0;
@@ -90,8 +90,8 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
 }
 
 .msp-assistant-trace-block {
+  min-width: calc(3px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  min-width: 3px;
   transition: opacity var(--msp-motion-fast) var(--msp-ease);
   flex-basis: 0;
   padding: 0;
@@ -107,16 +107,16 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
   }
 
   &[data-kind="model"] {
+    height: calc(12px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text-muted);
     align-self: flex-start;
-    height: 12px;
   }
 
   &[data-kind="tool"] {
+    height: calc(8px * var(--msp-ui-scale, 1));
     background: var(--msp-color-border-strong);
     border-radius: 4px;
     align-self: flex-end;
-    height: 8px;
   }
 
   &[data-nested] {
@@ -153,13 +153,13 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
 }
 
 .msp-assistant-trace-bar {
+  grid-template-columns: calc(16px * var(--msp-ui-scale, 1)) minmax(0, 1fr) calc(96px * var(--msp-ui-scale, 1));
   align-items: center;
   gap: var(--msp-space-3);
   color: var(--msp-color-text-subtle);
   font-family: var(--msp-font-mono);
   font-size: var(--msp-font-size-xs);
   font-variant-numeric: tabular-nums;
-  grid-template-columns: 16px minmax(0, 1fr) 96px;
   display: grid;
 
   & > :last-child {
@@ -177,7 +177,7 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
 }
 
 .msp-assistant-trace-at {
-  min-width: 56px;
+  min-width: calc(56px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-subtle);
   font-family: var(--msp-font-mono);
   font-variant-numeric: tabular-nums;
@@ -190,21 +190,21 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
 }
 
 .msp-assistant-trace-makeup {
+  height: calc(8px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   gap: 1px;
-  height: 8px;
   display: flex;
   overflow: hidden;
 }
 
 .msp-assistant-trace-part {
+  min-width: calc(2px * var(--msp-ui-scale, 1));
   flex-basis: 0;
-  min-width: 2px;
 }
 
 .msp-assistant-trace-swatch {
-  width: 8px;
-  height: 8px;
+  width: calc(8px * var(--msp-ui-scale, 1));
+  height: calc(8px * var(--msp-ui-scale, 1));
   margin-right: var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   display: inline-block;
@@ -245,13 +245,13 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
 }
 
 .msp-assistant-trace-entry {
+  grid-template-columns: calc(10px * var(--msp-ui-scale, 1)) calc(64px * var(--msp-ui-scale, 1)) minmax(0, auto) minmax(0, 1fr) auto;
   align-items: baseline;
   gap: var(--msp-space-3);
   width: 100%;
   padding: var(--msp-space-2) var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   text-align: left;
-  grid-template-columns: 10px 64px minmax(0, auto) minmax(0, 1fr) auto;
   display: grid;
 
   &:hover {
@@ -264,10 +264,10 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
 }
 
 .msp-assistant-trace-fresh {
+  width: calc(5px * var(--msp-ui-scale, 1));
+  height: calc(5px * var(--msp-ui-scale, 1));
   border-radius: 50%;
   align-self: center;
-  width: 5px;
-  height: 5px;
 
   .msp-assistant-trace-entry[data-fresh] & {
     background: var(--msp-color-text-muted);
@@ -277,9 +277,9 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
 .msp-assistant-trace-entryRole {
   color: var(--msp-color-text-subtle);
   font-family: var(--msp-font-mono);
+  font-size: calc(10px * var(--msp-ui-scale, 1));
   letter-spacing: .04em;
   text-transform: uppercase;
-  font-size: 10px;
 
   .msp-assistant-trace-entry[data-failed] & {
     color: var(--msp-color-danger);
@@ -321,9 +321,9 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
 }
 
 .msp-assistant-trace-attempt {
+  grid-template-columns: calc(24px * var(--msp-ui-scale, 1)) minmax(0, 1fr);
   align-items: center;
   gap: var(--msp-space-1) var(--msp-space-3);
-  grid-template-columns: 24px minmax(0, 1fr);
   display: grid;
 }
 
@@ -334,15 +334,15 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
 }
 
 .msp-assistant-trace-lane {
+  height: calc(10px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-control);
-  height: 10px;
   position: relative;
 }
 
 .msp-assistant-trace-segment {
+  min-width: calc(2px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  min-width: 2px;
   position: absolute;
   top: 0;
   bottom: 0;
@@ -389,8 +389,8 @@ defineStyles('assistant/inspector/trace.module.css', `@layer msp.components {
   display: flex;
 
   & i {
-    width: 14px;
-    height: 8px;
+    width: calc(14px * var(--msp-ui-scale, 1));
+    height: calc(8px * var(--msp-ui-scale, 1));
     margin-right: var(--msp-space-2);
     border-radius: var(--msp-radius-sm);
     display: inline-block;

@@ -49,10 +49,10 @@ export const classes = {
 defineStyles('assistant/views/agent-turn.module.css', `@layer msp.components {
 .msp-assistant-agent-turn-card {
   margin-top: var(--msp-space-1);
-  width: min(380px, calc(100cqw - 2 * var(--msp-space-4)));
+  width: min(calc(380px * var(--msp-ui-scale, 1)), calc(100cqw - 2 * var(--msp-space-4)));
+  max-height: min(calc(420px * var(--msp-ui-scale, 1)), 60cqh);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-glass-bg);
-  max-height: min(420px, 60cqh);
   box-shadow: var(--msp-glass-shadow);
   -webkit-backdrop-filter: var(--msp-glass-filter);
   color: var(--msp-color-text);
@@ -64,7 +64,7 @@ defineStyles('assistant/views/agent-turn.module.css', `@layer msp.components {
 .msp-assistant-agent-turn-header {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 34px;
+  min-height: calc(34px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2) 0 var(--msp-space-3);
   display: flex;
 }
@@ -114,8 +114,8 @@ defineStyles('assistant/views/agent-turn.module.css', `@layer msp.components {
   justify-content: center;
   align-items: center;
   gap: var(--msp-space-1);
+  height: calc(24px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-md);
-  height: 24px;
   color: var(--msp-color-text-muted);
   flex: none;
   display: inline-flex;
@@ -127,7 +127,7 @@ defineStyles('assistant/views/agent-turn.module.css', `@layer msp.components {
 }
 
 .msp-assistant-agent-turn-icon {
-  width: 24px;
+  width: calc(24px * var(--msp-ui-scale, 1));
 }
 
 .msp-assistant-agent-turn-stop {
@@ -168,11 +168,11 @@ defineStyles('assistant/views/agent-turn.module.css', `@layer msp.components {
 }
 
 .msp-assistant-agent-turn-run {
+  grid-template-columns: calc(14px * var(--msp-ui-scale, 1)) minmax(0, 1fr) auto;
   align-items: center;
   column-gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-1) 0;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
   display: grid;
 
   &[data-read] {
@@ -235,7 +235,7 @@ defineStyles('assistant/views/agent-turn.module.css', `@layer msp.components {
 }
 
 .msp-assistant-agent-turn-bar {
-  height: 2px;
+  height: calc(2px * var(--msp-ui-scale, 1));
   margin-top: var(--msp-space-1);
   background: var(--msp-color-control);
   border-radius: 1px;
@@ -273,7 +273,7 @@ defineStyles('assistant/views/agent-turn.module.css', `@layer msp.components {
 }
 
 .msp-assistant-agent-turn-deny, .msp-assistant-agent-turn-allow {
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   flex: none;
@@ -309,7 +309,7 @@ defineStyles('assistant/views/agent-turn.module.css', `@layer msp.components {
 .msp-assistant-agent-turn-footer {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 32px;
+  min-height: calc(32px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2) 0 var(--msp-space-3);
   box-shadow: inset 0 1px 0 var(--msp-glass-edge);
   display: flex;
@@ -336,7 +336,7 @@ defineStyles('assistant/views/agent-turn.module.css', `@layer msp.components {
 }
 
 .msp-assistant-agent-turn-trace {
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -352,7 +352,7 @@ defineStyles('assistant/views/agent-turn.module.css', `@layer msp.components {
 .msp-assistant-agent-turn-undo {
   align-items: center;
   gap: var(--msp-space-1);
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-accent-strong);

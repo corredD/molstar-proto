@@ -28,8 +28,8 @@ defineStyles('viewer/views/structure/trajectory-row.module.css', `@layer msp.com
 }
 
 .msp-viewer-trajectory-row-range {
-  min-width: 40px;
-  height: 16px;
+  min-width: calc(40px * var(--msp-ui-scale, 1));
+  height: calc(16px * var(--msp-ui-scale, 1));
   margin: 0 var(--msp-space-1);
   -webkit-appearance: none;
   appearance: none;
@@ -38,47 +38,47 @@ defineStyles('viewer/views/structure/trajectory-row.module.css', `@layer msp.com
   flex: 1;
 
   &::-webkit-slider-runnable-track {
+    height: calc(2px * var(--msp-ui-scale, 1));
     background: linear-gradient(to right,
       var(--msp-color-text-muted) var(--msp-progress, 0%),
       var(--msp-color-border-strong) var(--msp-progress, 0%));
     border-radius: 1px;
-    height: 2px;
   }
 
   &::-webkit-slider-thumb {
+    width: calc(10px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text);
     -webkit-appearance: none;
     appearance: none;
     border-radius: 50%;
-    width: 10px;
-    height: 10px;
     margin-top: -4px;
   }
 
   &::-moz-range-track {
+    height: calc(2px * var(--msp-ui-scale, 1));
     background: var(--msp-color-border-strong);
     border-radius: 1px;
-    height: 2px;
   }
 
   &::-moz-range-progress {
+    height: calc(2px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text-muted);
-    height: 2px;
   }
 
   &::-moz-range-thumb {
+    width: calc(10px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text);
     border: none;
     border-radius: 50%;
-    width: 10px;
-    height: 10px;
   }
 }
 
 .msp-viewer-trajectory-row-button {
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-md);
-  width: 24px;
-  height: 24px;
   color: var(--msp-color-text-muted);
   cursor: pointer;
   background: none;
@@ -95,8 +95,8 @@ defineStyles('viewer/views/structure/trajectory-row.module.css', `@layer msp.com
 }
 
 .msp-viewer-trajectory-row-compact .msp-viewer-trajectory-row-button {
-  width: 22px;
-  height: 22px;
+  width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
 }
 
 .msp-viewer-trajectory-row-controls {

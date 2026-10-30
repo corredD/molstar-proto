@@ -41,8 +41,8 @@ defineStyles('viewer/views/structure/contents-summary.module.css', `@layer msp.c
 }
 
 .msp-viewer-contents-summary-counts {
+  grid-template-columns: repeat(auto-fit, minmax(calc(64px * var(--msp-ui-scale, 1)), 1fr));
   gap: var(--msp-space-1);
-  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
   margin: 0;
   display: grid;
 }
@@ -81,7 +81,7 @@ defineStyles('viewer/views/structure/contents-summary.module.css', `@layer msp.c
 .msp-viewer-contents-summary-entity {
   align-items: center;
   gap: var(--msp-space-3);
-  min-height: 40px;
+  min-height: calc(40px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-1) var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   text-align: left;
@@ -113,11 +113,11 @@ defineStyles('viewer/views/structure/contents-summary.module.css', `@layer msp.c
 }
 
 .msp-viewer-contents-summary-dot {
+  width: calc(10px * var(--msp-ui-scale, 1));
+  height: calc(10px * var(--msp-ui-scale, 1));
   background: var(--msp-color-text-subtle);
   border-radius: 50%;
   flex: none;
-  width: 10px;
-  height: 10px;
 }
 
 .msp-viewer-contents-summary-polymer {

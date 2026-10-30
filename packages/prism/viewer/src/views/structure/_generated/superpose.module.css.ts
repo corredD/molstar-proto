@@ -46,7 +46,7 @@ defineStyles('viewer/views/structure/superpose.module.css', `@layer msp.componen
 .msp-viewer-superpose-entry {
   align-items: center;
   gap: var(--msp-space-2);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   text-align: left;

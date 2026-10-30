@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* The quick settings above a representation's whole form: a column of settings, set apart from the form below by
@@ -66,7 +67,7 @@
   flex: 1 1 0;
   place-items: center;
   min-width: 0;
-  height: 30px;
+  height: calc(30px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
 
@@ -93,8 +94,8 @@
   position: relative;
   flex: 1 1 0;
   min-width: 0;
-  max-width: 44px;
-  height: 22px;
+  max-width: calc(44px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-control);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 88%);
@@ -125,8 +126,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 6px;
-  height: 6px;
+  width: calc(6px * var(--msp-ui-scale, 1));
+  height: calc(6px * var(--msp-ui-scale, 1));
   margin: -3px 0 0 -3px; /* off-scale: centred */
   border-radius: 50%;
   background: var(--msp-color-bg);

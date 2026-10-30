@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .tab {
@@ -46,7 +47,7 @@
   /* Centered in the row, as the provider rows above: the same space over and under the words. */
   align-items: center;
   gap: var(--msp-space-3);
-  min-height: 28px;
+  min-height: calc(28px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-1) var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   text-align: left;

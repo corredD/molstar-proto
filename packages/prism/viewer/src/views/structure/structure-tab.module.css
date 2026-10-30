@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .tab {
@@ -26,7 +27,7 @@
   flex: 1 1 0;
   display: flex;
   flex-direction: column;
-  min-height: 80px;
+  min-height: calc(80px * var(--msp-ui-scale, 1));
 }
 
 .actions {
@@ -40,7 +41,7 @@
    read out), so nothing falls off the edge. */
 @container (width < 296px) {
   .actions > button:has(.actionLabel) {
-    width: max(24px, var(--msp-touch-target, 0px));
+    width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
     padding: 0;
   }
 
@@ -58,7 +59,7 @@
   /* Always there, at a fixed height: picking a node fills it rather than moving the tree. No box of its own (its edge
      would stick out of the title's column): a hairline sets it apart from the tree. */
   flex: none;
-  height: clamp(180px, 42%, 420px);
+  height: clamp(calc(180px * var(--msp-ui-scale, 1)), 42%, calc(420px * var(--msp-ui-scale, 1)));
   /* Against the tree, without the tab's gap (the tree's fading edge runs right up to the hairline), and to the tab's
      edges at the sides. */
   margin: calc(-1 * var(--msp-space-2)) calc(-1 * var(--msp-space-2)) 0;
@@ -96,7 +97,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 26px;
+  min-height: calc(26px * var(--msp-ui-scale, 1));
 }
 
 .inspectorTitle {
@@ -165,7 +166,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-3);
-  height: max(28px, var(--msp-touch-target, 0px));
+  height: max(calc(28px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -244,8 +245,8 @@
 .searchChipRemove {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: calc(20px * var(--msp-ui-scale, 1));
+  height: calc(20px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-md);
   color: inherit;
 
@@ -291,7 +292,7 @@
   align-items: center;
   gap: var(--msp-space-2);
   min-width: 0;
-  height: max(30px, var(--msp-touch-target, 0px));
+  height: max(calc(30px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   text-align: left;
 }
@@ -319,8 +320,8 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: 24px;
-  height: 28px;
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(28px * var(--msp-ui-scale, 1));
   margin-right: var(--msp-space-1);
   color: var(--msp-color-text-subtle);
 }
@@ -331,8 +332,8 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: calc(28px * var(--msp-ui-scale, 1));
+  height: calc(28px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   opacity: 0;

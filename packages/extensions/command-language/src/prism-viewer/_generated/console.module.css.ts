@@ -102,12 +102,12 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
 }
 
 .msp-command-language-console-entry {
+  grid-template-columns: calc(14px * var(--msp-ui-scale, 1)) minmax(0, 1fr) auto;
   align-items: start;
   column-gap: var(--msp-space-2);
   row-gap: var(--msp-space-1);
   padding: var(--msp-space-2);
   border-radius: var(--msp-radius-md);
-  grid-template-columns: 14px minmax(0, 1fr) auto;
   display: grid;
 
   &:hover {
@@ -148,12 +148,12 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-well);
   color: var(--msp-color-text-subtle);
+  font-size: calc(10px * var(--msp-ui-scale, 1));
   letter-spacing: .02em;
+  font-weight: 600;
+  line-height: calc(16px * var(--msp-ui-scale, 1));
   text-transform: uppercase;
   flex: none;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 16px;
 }
 
 .msp-command-language-console-code {
@@ -169,7 +169,7 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
 .msp-command-language-console-side {
   align-items: center;
   gap: var(--msp-space-1);
-  min-height: 20px;
+  min-height: calc(20px * var(--msp-ui-scale, 1));
   display: flex;
 }
 
@@ -180,9 +180,9 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
 }
 
 .msp-command-language-console-action {
+  width: calc(20px * var(--msp-ui-scale, 1));
+  height: calc(20px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 20px;
-  height: 20px;
   color: var(--msp-color-text-muted);
   opacity: 0;
   cursor: pointer;
@@ -235,10 +235,10 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
 }
 
 .msp-command-language-console-notice {
+  grid-template-columns: calc(14px * var(--msp-ui-scale, 1)) minmax(0, 1fr);
   column-gap: var(--msp-space-1);
   font-size: var(--msp-font-size-sm);
   overflow-wrap: anywhere;
-  grid-template-columns: 14px minmax(0, 1fr);
   align-items: start;
   line-height: 1.45;
   display: grid;
@@ -297,11 +297,11 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
   color: var(--msp-color-text);
   font-family: var(--msp-font-mono);
   font-size: var(--msp-font-size-xs);
+  line-height: calc(18px * var(--msp-ui-scale, 1));
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
   border: 0;
-  line-height: 18px;
   overflow: hidden;
 
   &:hover {
@@ -336,9 +336,9 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
   right: 0;
   bottom: calc(100% + var(--msp-space-3));
   z-index: var(--msp-z-overlay);
+  max-height: calc(280px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-lg);
   background: var(--msp-color-panel);
-  max-height: 280px;
   box-shadow: inset 0 0 0 1px var(--msp-field-edge),
     var(--msp-shadow-float);
   flex-direction: column;
@@ -377,14 +377,14 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
 }
 
 .msp-command-language-console-completion {
+  grid-template-columns: calc(36px * var(--msp-ui-scale, 1)) auto minmax(0, 1fr);
   align-items: center;
   gap: var(--msp-space-2);
   padding: var(--msp-space-1) var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   font-size: var(--msp-font-size-xs);
+  line-height: calc(18px * var(--msp-ui-scale, 1));
   cursor: pointer;
-  grid-template-columns: 36px auto minmax(0, 1fr);
-  line-height: 18px;
   display: grid;
 
   &[aria-selected="true"] {
@@ -400,9 +400,9 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
 }
 
 .msp-command-language-console-swatch {
+  width: calc(12px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 12px;
-  height: 12px;
   box-shadow: inset 0 0 0 1px var(--msp-field-edge);
 }
 
@@ -434,7 +434,7 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
 
 .msp-command-language-console-input {
   min-width: 0;
-  max-height: 160px;
+  max-height: calc(160px * var(--msp-ui-scale, 1));
   padding: calc(var(--msp-space-1) / 2) 0;
   color: var(--msp-color-text);
   font-family: var(--msp-font-mono);
@@ -453,9 +453,9 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
 }
 
 .msp-command-language-console-send {
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   background: var(--msp-color-accent);
-  width: 24px;
-  height: 24px;
   color: var(--msp-color-on-accent);
   cursor: pointer;
   transition: opacity var(--msp-motion-fast) var(--msp-ease);
@@ -482,7 +482,7 @@ defineStyles('command-language/prism-viewer/console.module.css', `@layer msp.com
   align-items: center;
   gap: var(--msp-space-2);
   min-width: 0;
-  height: 20px;
+  height: calc(20px * var(--msp-ui-scale, 1));
   font-size: var(--msp-font-size-xs);
   display: flex;
 }

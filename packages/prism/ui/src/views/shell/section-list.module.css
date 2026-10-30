@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .list {
@@ -75,7 +76,7 @@
   padding: 0;
 
   & .header {
-    height: 32px;
+    height: calc(32px * var(--msp-ui-scale, 1));
   }
 }
 
@@ -87,7 +88,7 @@
   }
 
   & .header {
-    height: 26px;
+    height: calc(26px * var(--msp-ui-scale, 1));
     padding: 0;
     font-size: var(--msp-font-size-sm);
 

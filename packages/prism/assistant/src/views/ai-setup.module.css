@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .setup,
@@ -37,7 +38,7 @@
 }
 
 .scope {
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -85,7 +86,7 @@
    label. */
 .row {
   display: grid;
-  grid-template-columns: var(--msp-label-width, 96px) minmax(0, 1fr);
+  grid-template-columns: var(--msp-label-width, calc(96px * var(--msp-ui-scale, 1))) minmax(0, 1fr);
   align-items: start;
   gap: var(--msp-space-3);
   padding-left: var(--msp-space-3);
@@ -93,7 +94,7 @@
 
 .label {
   /* On the control's line (24px). */
-  line-height: 24px;
+  line-height: calc(24px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-muted);
 }
 
@@ -109,7 +110,7 @@
 
 .action {
   flex: none;
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   background: color-mix(in oklab, var(--msp-color-accent), transparent 84%);
@@ -140,7 +141,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   padding-left: var(--msp-space-3);
 }
 
@@ -159,7 +160,7 @@
 }
 
 .link {
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -173,7 +174,7 @@
 
 .fold {
   justify-self: start;
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -212,14 +213,14 @@
 
 /* The model choice and, beside it, asking the providers for their models. */
 .modelRow {
-  grid-template-columns: var(--msp-label-width, 96px) minmax(0, 1fr) auto;
+  grid-template-columns: var(--msp-label-width, calc(96px * var(--msp-ui-scale, 1))) minmax(0, 1fr) auto;
 }
 
 .refresh {
   display: grid;
   place-items: center;
-  width: max(24px, var(--msp-touch-target, 0px));
-  height: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
 

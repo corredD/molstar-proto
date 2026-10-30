@@ -93,20 +93,20 @@ defineStyles('components/scroll-area/scroll-area.module.css', `@layer msp.compon
   position: absolute;
 
   &[data-orientation="vertical"] {
-    justify-content: center;
-    width: 10px;
-    top: 2px;
-    bottom: 2px;
+    top: calc(2px * var(--msp-ui-scale, 1));
     right: 1px;
+    bottom: calc(2px * var(--msp-ui-scale, 1));
+    width: calc(10px * var(--msp-ui-scale, 1));
+    justify-content: center;
   }
 
   &[data-orientation="horizontal"] {
+    right: calc(2px * var(--msp-ui-scale, 1));
+    bottom: 1px;
+    left: calc(2px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
     flex-direction: column;
     justify-content: center;
-    height: 10px;
-    bottom: 1px;
-    left: 2px;
-    right: 2px;
   }
 
   .msp-scroll-area-root:hover > &, .msp-scroll-area-root:focus-within > &, .msp-scroll-area-root[data-scrolling] > &, &[data-dragging] {
@@ -114,7 +114,7 @@ defineStyles('components/scroll-area/scroll-area.module.css', `@layer msp.compon
   }
 
   .msp-scroll-area-root[data-edge] > &[data-orientation="vertical"] {
-    width: 8px;
+    width: calc(8px * var(--msp-ui-scale, 1));
     right: 0;
   }
 
@@ -130,13 +130,13 @@ defineStyles('components/scroll-area/scroll-area.module.css', `@layer msp.compon
   flex: none;
 
   [data-orientation="vertical"] > & {
+    width: calc(4px * var(--msp-ui-scale, 1));
     transform-origin: 100%;
-    width: 4px;
   }
 
   [data-orientation="horizontal"] > & {
+    height: calc(4px * var(--msp-ui-scale, 1));
     transform-origin: bottom;
-    height: 4px;
   }
 
   .msp-scroll-area-scrollbar:hover > &, [data-dragging] > & {

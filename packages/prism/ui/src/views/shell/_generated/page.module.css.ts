@@ -43,7 +43,7 @@ defineStyles('views/shell/page.module.css', `@layer msp.components {
   align-items: center;
   gap: var(--msp-space-4);
   min-width: 0;
-  height: 44px;
+  height: calc(44px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-3) 0 var(--msp-space-5);
   display: flex;
 }

@@ -19,7 +19,7 @@ export const classes = {
 defineStyles('components/context-menu/context-menu.module.css', `@layer msp.components {
 .msp-context-menu-menu {
   z-index: var(--msp-z-overlay);
-  min-width: 180px;
+  min-width: calc(180px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-glass-panel-bg);
@@ -33,14 +33,14 @@ defineStyles('components/context-menu/context-menu.module.css', `@layer msp.comp
 }
 
 .msp-context-menu-row {
+  grid-template-columns: calc(15px * var(--msp-ui-scale, 1)) 1fr auto;
   align-items: center;
   gap: var(--msp-space-3);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
   text-align: left;
-  grid-template-columns: 15px 1fr auto;
   display: grid;
 
   &:hover, &:focus-visible {

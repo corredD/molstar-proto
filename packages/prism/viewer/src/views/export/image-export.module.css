@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .export {
@@ -16,7 +17,7 @@
 .stage {
   display: grid;
   place-items: center;
-  height: 168px;
+  height: calc(168px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-well);
@@ -66,8 +67,8 @@
 /* The edges' and corners' grips: small squares on the hairline, shown on hover and focus. */
 .handle {
   position: absolute;
-  width: 8px;
-  height: 8px;
+  width: calc(8px * var(--msp-ui-scale, 1));
+  height: calc(8px * var(--msp-ui-scale, 1));
   margin: -4px; /* off-scale: centres the grip on the hairline */
   border-radius: 1px;
   background: var(--msp-color-text);
@@ -135,7 +136,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--msp-space-1);
-  height: 20px;
+  height: calc(20px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: 10px;
   background: var(--msp-glass-bg);

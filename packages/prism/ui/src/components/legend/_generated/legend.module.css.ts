@@ -65,21 +65,21 @@ defineStyles('components/legend/legend.module.css', `@layer msp.components {
 }
 
 .msp-legend-swatch {
+  width: calc(12px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 12px;
-  height: 12px;
 }
 
 .msp-legend-dot {
+  width: calc(10px * var(--msp-ui-scale, 1));
+  height: calc(10px * var(--msp-ui-scale, 1));
   border-radius: 50%;
-  width: 10px;
-  height: 10px;
 }
 
 .msp-legend-line {
+  width: calc(14px * var(--msp-ui-scale, 1));
+  height: calc(3px * var(--msp-ui-scale, 1));
   border-radius: 2px;
-  width: 14px;
-  height: 3px;
 }
 
 .msp-legend-none {
@@ -98,8 +98,8 @@ defineStyles('components/legend/legend.module.css', `@layer msp.components {
 }
 
 .msp-legend-bar {
+  height: calc(8px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  height: 8px;
   display: block;
 }
 

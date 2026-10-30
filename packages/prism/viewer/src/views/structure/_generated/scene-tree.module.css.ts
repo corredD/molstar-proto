@@ -46,7 +46,7 @@ export const classes = {
 
 defineStyles('viewer/views/structure/scene-tree.module.css', `@layer msp.components {
 .msp-viewer-scene-tree-tree {
-  --msp-tree-indent: 14px;
+  --msp-tree-indent: calc(14px * var(--msp-ui-scale, 1));
 }
 
 .msp-viewer-scene-tree-empty {
@@ -68,7 +68,7 @@ defineStyles('viewer/views/structure/scene-tree.module.css', `@layer msp.compone
   align-items: center;
   gap: var(--msp-space-2);
   min-width: 0;
-  height: max(26px, var(--msp-touch-target, 0px));
+  height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-1) 0
     calc(var(--msp-space-1) + var(--msp-tree-depth, 0) * var(--msp-tree-indent, var(--msp-icon-sm)));
   border-radius: var(--msp-radius-md);
@@ -90,8 +90,8 @@ defineStyles('viewer/views/structure/scene-tree.module.css', `@layer msp.compone
 }
 
 .msp-viewer-scene-tree-expander {
-  width: max(24px, var(--msp-touch-target, 0px));
-  height: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-subtle);
   transition: transform var(--msp-motion-fast) var(--msp-ease);
@@ -155,14 +155,14 @@ defineStyles('viewer/views/structure/scene-tree.module.css', `@layer msp.compone
 }
 
 .msp-viewer-scene-tree-swatch {
+  width: calc(8px * var(--msp-ui-scale, 1));
+  height: calc(8px * var(--msp-ui-scale, 1));
   background: conic-gradient(var(--msp-accent-red) 0 25%,
     var(--msp-accent-orange) 0 50%,
     var(--msp-accent-green) 0 75%,
     var(--msp-accent-blue) 0);
   border-radius: 50%;
   flex: none;
-  width: 8px;
-  height: 8px;
 }
 
 .msp-viewer-scene-tree-actions {
@@ -172,8 +172,8 @@ defineStyles('viewer/views/structure/scene-tree.module.css', `@layer msp.compone
 }
 
 .msp-viewer-scene-tree-action {
-  width: max(24px, var(--msp-touch-target, 0px));
-  height: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   opacity: 0;
@@ -195,7 +195,7 @@ defineStyles('viewer/views/structure/scene-tree.module.css', `@layer msp.compone
 }
 
 .msp-viewer-scene-tree-actionSlot {
-  width: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   place-items: center;
   display: grid;
 }
@@ -226,14 +226,14 @@ defineStyles('viewer/views/structure/scene-tree.module.css', `@layer msp.compone
 }
 
 .msp-viewer-scene-tree-menuItem {
+  grid-template-columns: calc(14px * var(--msp-ui-scale, 1)) 1fr;
   align-items: center;
   gap: var(--msp-space-3);
-  height: max(26px, var(--msp-touch-target, 0px));
+  height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   text-align: left;
-  grid-template-columns: 14px 1fr;
   display: grid;
 
   &:hover, &:focus-visible {
@@ -264,7 +264,7 @@ defineStyles('viewer/views/structure/scene-tree.module.css', `@layer msp.compone
   align-items: baseline;
   gap: var(--msp-space-2);
   width: 100%;
-  height: max(26px, var(--msp-touch-target, 0px));
+  height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
   padding-left: calc(var(--msp-space-1) +
     var(--msp-tree-depth, 0) *
     var(--msp-tree-indent, var(--msp-icon-sm)) +
@@ -272,7 +272,7 @@ defineStyles('viewer/views/structure/scene-tree.module.css', `@layer msp.compone
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-accent);
   font-size: var(--msp-font-size-sm);
-  line-height: max(26px, var(--msp-touch-target, 0px));
+  line-height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
   text-align: left;
   display: flex;
 
@@ -287,19 +287,19 @@ defineStyles('viewer/views/structure/scene-tree.module.css', `@layer msp.compone
 }
 
 .msp-viewer-scene-tree-loading {
-  height: max(26px, var(--msp-touch-target, 0px));
+  height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
   padding-left: calc(var(--msp-space-1) +
     var(--msp-tree-depth, 0) *
     var(--msp-tree-indent, var(--msp-icon-sm)) +
     40px);
   color: var(--msp-color-text-subtle);
   font-size: var(--msp-font-size-xs);
-  line-height: max(26px, var(--msp-touch-target, 0px));
+  line-height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
 }
 
 .msp-viewer-scene-tree-inlineItem {
+  grid-template-columns: calc(14px * var(--msp-ui-scale, 1)) 1fr auto;
   cursor: default;
-  grid-template-columns: 14px 1fr auto;
 
   &:hover {
     background: none;

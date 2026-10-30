@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .add {
@@ -48,7 +49,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1) 0 var(--msp-space-2);
 
   &:hover {
@@ -71,7 +72,7 @@
 .grip {
   display: grid;
   place-items: center;
-  height: 22px;
+  height: calc(22px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-subtle);
   cursor: grab;
   touch-action: none;
@@ -142,8 +143,8 @@
 .action {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: calc(20px * var(--msp-ui-scale, 1));
+  height: calc(20px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   opacity: 0;
@@ -174,7 +175,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-3);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -220,7 +221,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-1);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-muted);
   font-size: var(--msp-font-size-sm);
   font-weight: 600;
@@ -252,7 +253,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1) 0 var(--msp-space-2);
 
   &:hover {
@@ -281,8 +282,8 @@
 .addedAction {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: calc(20px * var(--msp-ui-scale, 1));
+  height: calc(20px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   opacity: 0;

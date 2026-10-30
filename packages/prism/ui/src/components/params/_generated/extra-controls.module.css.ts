@@ -45,7 +45,7 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
   gap: var(--msp-space-2);
   width: 100%;
   min-width: 0;
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2) 0 var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-control);
@@ -98,7 +98,7 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
 }
 
 .msp-params-extra-controls-options {
-  max-height: 240px;
+  max-height: calc(240px * var(--msp-ui-scale, 1));
 }
 
 .msp-params-extra-controls-optionsContent {
@@ -108,7 +108,7 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
 .msp-params-extra-controls-option {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 26px;
+  min-height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2) 0 var(--msp-space-3);
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
@@ -157,26 +157,26 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
 }
 
 .msp-params-extra-controls-interval {
+  grid-template-columns: minmax(0, 1fr) calc(72px * var(--msp-ui-scale, 1));
   align-items: center;
   gap: var(--msp-space-2);
-  grid-template-columns: minmax(0, 1fr) 72px;
   width: 100%;
   display: grid;
 }
 
 .msp-params-extra-controls-intervalTrack {
-  height: 16px;
+  height: calc(16px * var(--msp-ui-scale, 1));
   margin-left: var(--msp-space-3);
   position: relative;
 
   &:before {
     content: "";
+    height: calc(3px * var(--msp-ui-scale, 1));
     background: linear-gradient(90deg,
       var(--msp-color-pressed) var(--msp-from),
       color-mix(in oklab, var(--msp-color-text-muted), transparent 45%) var(--msp-from) var(--msp-to),
       var(--msp-color-pressed) var(--msp-to));
     border-radius: 1.5px;
-    height: 3px;
     margin-top: -1.5px;
     position: absolute;
     top: 50%;
@@ -196,19 +196,19 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
   inset: 0;
 
   &::-webkit-slider-runnable-track {
+    height: calc(3px * var(--msp-ui-scale, 1));
     background: none;
-    height: 3px;
   }
 
   &::-webkit-slider-thumb {
+    width: calc(10px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text-muted);
     -webkit-appearance: none;
     appearance: none;
     pointer-events: auto;
     cursor: pointer;
     border-radius: 50%;
-    width: 10px;
-    height: 10px;
     margin-top: -3.5px;
   }
 
@@ -217,13 +217,13 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
   }
 
   &::-moz-range-thumb {
+    width: calc(10px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text-muted);
     pointer-events: auto;
     cursor: pointer;
     border: 0;
     border-radius: 50%;
-    width: 10px;
-    height: 10px;
   }
 
   &:focus-visible {
@@ -232,20 +232,20 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
 }
 
 .msp-params-extra-controls-intervalValue {
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-control);
   color: var(--msp-color-text);
   font-size: var(--msp-font-size-sm);
   font-variant-numeric: tabular-nums;
+  line-height: calc(24px * var(--msp-ui-scale, 1));
   text-align: right;
-  line-height: 24px;
 }
 
 .msp-params-extra-controls-strip {
-  width: 56px;
-  height: 10px;
+  width: calc(56px * var(--msp-ui-scale, 1));
+  height: calc(10px * var(--msp-ui-scale, 1));
   box-shadow: inset 0 0 0 1px var(--msp-glass-edge);
   border-radius: 2px;
   flex: none;
@@ -263,13 +263,13 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
 }
 
 .msp-params-extra-controls-spark {
+  width: calc(56px * var(--msp-ui-scale, 1));
+  height: calc(14px * var(--msp-ui-scale, 1));
   fill: none;
   stroke: currentColor;
   stroke-width: 1.2px;
   vector-effect: non-scaling-stroke;
   flex: none;
-  width: 56px;
-  height: 14px;
 }
 
 .msp-params-extra-controls-graphEditor {
@@ -279,12 +279,12 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
 }
 
 .msp-params-extra-controls-graph {
+  width: 100%;
+  height: calc(96px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-panel);
   cursor: crosshair;
   touch-action: none;
-  width: 100%;
-  height: 96px;
   display: block;
 }
 

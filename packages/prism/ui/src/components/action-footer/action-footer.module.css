@@ -4,12 +4,13 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* Edge to edge in a block padded 8px at the sides and bottom. */
 .footer {
   display: flex;
-  height: 30px;
+  height: calc(30px * var(--msp-ui-scale, 1));
   margin: var(--msp-space-1) calc(-1 * var(--msp-space-3)) calc(-1 * var(--msp-space-3));
 }
 
@@ -17,7 +18,7 @@
   flex: none;
   display: grid;
   place-items: center;
-  width: 32px;
+  width: calc(32px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-subtle);
 
   &:hover {

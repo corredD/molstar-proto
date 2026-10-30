@@ -25,7 +25,7 @@ export const classes = {
 defineStyles('views/canvas/hover-label.module.css', `@layer msp.components {
 .msp-canvas-hover-label-label {
   z-index: var(--msp-z-tooltip);
-  max-width: 280px;
+  max-width: calc(280px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2) var(--msp-space-3);
   border-radius: var(--msp-radius-lg);
   font-size: var(--msp-font-size-sm);
