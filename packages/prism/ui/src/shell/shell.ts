@@ -156,7 +156,8 @@ export interface ShellOptions {
 
 /**
  * Px a band tab's backdrop (the canvas' own color behind the sequence) fades out over below its content, so the
- * structure passes under it faded, with no hard cut. The band's view keeps this much clear at its bottom.
+ * structure passes under it faded, with no hard cut. The band's view keeps this much clear at its bottom. Unscaled on
+ * purpose: the band is Seq*'s, which does not follow the UI scale (styling.md §6).
  */
 export const BandFadePx = 28;
 
