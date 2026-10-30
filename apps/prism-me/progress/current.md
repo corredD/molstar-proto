@@ -30,7 +30,7 @@ is not built is [../TODO.md](../TODO.md).
   - #18, #20, #17, then #21-#24 merged (Ludo, 2026-10-29/30): the #18/#20 records fix, Clip whole in a clip's section,
     graded cuts and Shown % in the app, ghosts. Every cellVIEW brief by tomorrow is built; the app live on 1343. Open
     for Ludo: a graded way switches the whole scene to instance (per cut needs a library change); ghosts' limits
-    (Prism's clipping.md §6). Next: Ludo's test, then the full review of the app.
+    (Prism's clipping.md §6). Next: Ludo's full review of the app, on his workstation (2026-10-30).
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
