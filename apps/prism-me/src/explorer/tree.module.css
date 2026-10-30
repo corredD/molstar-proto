@@ -158,35 +158,47 @@
   gap: 1px;
 }
 
-/* A row's actions show on its hover or focus, always on touch (styling.md §4). */
+/* A row's eye and ⋯, always in view, each in a column of its own (Ludo, 2026-10-28): a row without one keeps its room. */
+.action,
+.slot {
+  flex: none;
+  width: max(24px, var(--msp-touch-target, 0px));
+  height: max(24px, var(--msp-touch-target, 0px));
+}
+
 .action {
+  display: grid;
+  place-items: center;
+  border-radius: var(--msp-radius-sm);
+  color: var(--msp-color-text-muted);
+
+  &:hover,
+  &.open {
+    background: var(--msp-color-pressed);
+    color: var(--msp-color-text);
+  }
+
+  /* the eye's press drags along the column (no scroll from it on touch) */
+  &[data-tree-eye] {
+    touch-action: none;
+  }
+}
+
+/* The color dot opens the row's colors: its hit area a tool's, the dot in its middle. */
+.dot {
+  flex: none;
   display: grid;
   place-items: center;
   width: max(24px, var(--msp-touch-target, 0px));
   height: max(24px, var(--msp-touch-target, 0px));
-  border-radius: var(--msp-radius-sm);
-  color: var(--msp-color-text-muted);
-  opacity: 0;
+  margin: 0 calc(-1 * var(--msp-space-3));
+  border-radius: 50%;
+  cursor: pointer;
 
-  @media (hover: none) {
-    opacity: 1;
-  }
-
-  .row:hover &,
-  &:focus-visible,
-  .touch & {
-    opacity: 1;
-  }
-
-  &:hover {
+  &:hover,
+  &.open {
     background: var(--msp-color-pressed);
-    color: var(--msp-color-text);
   }
-}
-
-/* A hidden node keeps its eye in view. */
-.keep {
-  opacity: 1;
 }
 
 .split {

@@ -25,17 +25,6 @@ Lanes in parallel where they do not overlap. The design is the mock: Storybook p
 [_spec/cellview.md](_spec/cellview.md). A library part is built on prism-me for tomorrow, in commits of its own that
 name no extension (upstreamable later, when Ludo says so).
 
-- **1. The graphics modes change the levels of detail** (app, small; now). Performance, Balanced, Quality, Ultra write
-  the pixel presets (`Spheres.LodPixelPresets[mode]`: levels and `lodPixelSize`), not the distance presets the particles
-  ignore at 3 px; the mode read back compares both. Check: on CellPack MG, Performance draws visibly fewer spheres far
-  away than Ultra, and the mode picked stays lit. Test first: a mode's `lodPixelSize` is its preset's.
-- **2. The tree's eye and ⋯** (app, `explorer/tree-view.tsx`, `rows.ts`; now). Every row shows its eye and its ⋯,
-  always, each in one column; the brush, scissors and trash go into the ⋯ (Color…, Add clip…, Remove) with the
-  right-click's items, on a category too; no Hide in the menus. A parent's eye sets every row under it, all the way
-  down, each its own after (hide the model, show one group alone); a parent's eye is its own state, never "some shown".
-  Press an eye and drag along the column: every row passed takes the first one's new state (Prism's `drag()`; one undo
-  step for the drag). A row's color dot opens its colors, as Color…. Check: the Eyes, MoreMenu and CategoryMenu stories
-  and the app behave the same; hide HIV, show only its membrane; drag down six eyes, Undo once.
 - **3. Clips in a category of their own** (app on Prism's clips; now; changes ui.md §2, §5). A Clips category after
   Structures, Particles, Volumes, Meshes holds every clip of the scene; no clip row under an object. A clip's
   properties: its shape, then What it cuts (every object or part it is given, × to take one off, Cut also… to add one).
@@ -51,8 +40,6 @@ name no extension (upstreamable later, when Ludo says so).
   same hash, Look › Shown (%) on a group, an entity or a target. Check: the GradedCut and ShownInPart stories' controls
   in the app; set the membrane to Keeps a layer and see a layer kept on the cut's face; raise fuzziness and see it thin;
   turn the camera and see the same instances; Shown 30 % on the capsid thins it, the same ones at every share.
-- **5. Show only** (app; now). On a part's ⋯: Show only this, only its group, only its compartment; Show all again. One
-  step each, through `particles.look`. Check: the ShowOnly story; Show only a ribosome entity, then Undo.
 - **6. Measure: do hidden particles cost a frame?** (library, a measurement; now). On WebGPU, CellPack MG with 90 %
   hidden against none: if close, the GPU cull skips hidden instances (a visibility table). Check: the numbers in the
   lane's progress file; if built, hiding most of a model makes it faster.
@@ -98,7 +85,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   their defaults (the object reads mixed). The scene-wide `component.options` keep one structure's own since v6 #2057
   (guarded in `mesoscale/src/_test/object-graphics.test.ts`); the quick styles and `animation.wiggle` unchecked.
 - Graphics & Motion on parts (entities, chains, groups, targets) and meshes; the starting state shown (no mode lit until
-  one is picked: `auto` quality, a list's default levels of detail).
+  one is picked: `auto` quality, a list's spacefill at no levels). A list drawn by fibers alone answers "already" to a
+  mode and lights none: no levels of detail to set (a failure, as for an object with nothing drawn).
 - The canvas resolution (pixel scale, sharpening) on screen: only ⌘K, `?graphics-mode=` and the agent set it now.
 - A volume's quality: Mol\*'s `quality` barely changes a slice or an isosurface; a stronger setting per volume
   (resolution, a smoother surface).
@@ -144,7 +132,9 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Prism's `SceneTree` over a model the explorer implements (an upstream export): the explorer's tree would be Prism's
   own (search, selection filter), not its rows repeated on `VirtualList` with the scene tree's CSS
   (`src/explorer/tree-view.tsx`, `tree.module.css`; the coordinator's default for lane `tree-view`).
-- A list's class (target row) can be hidden (right-click › Hide) but not shown again but by undo: its row has no eye
-  (lane `looks-owner`'s review, 2026-10-25).
+- The eyes, left open by lane `tree-eyes` (2026-10-29): a structure's entity and chain have no eye (Prism hides whole
+  representations; one per part would be a transparency layer at 1, read back, or a component each: a Prism change); a
+  parent's eye leaves the labels, distances and clips under it with their own eyes (the coordinator's default: Ludo may
+  want them set too).
 - Turning a cut of some particles off on one representation and on again (`clipping` on/off per representation) loses
   its particles: it comes back as a cut of the whole representation (lane `looks-owner`'s review; not probed).

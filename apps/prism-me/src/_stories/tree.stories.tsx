@@ -12,7 +12,7 @@ import { fullScene } from './fake-scene.js';
 import { PanelFrames } from './frames.js';
 
 // The tree (apps/prism-me/_spec/ui.md §3) over a scene made in memory: four categories, eyes, color dots, counts, a
-// row's actions on hover; click picks, double click focuses, right-click opens its menu, the arrows move (Prism's
+// row's eye and ⋯ always in view; click picks, double click focuses, right-click opens its menu, the arrows move (Prism's
 // `TreeNavigation`). Each story in light and dark, wide and narrow.
 
 const meta: Meta = { title: 'Explorer/Tree' };
@@ -52,7 +52,7 @@ export const MadeAtNodes: StoryObj = {
     )),
 };
 
-/** styling.md §4: a row's actions (eye, ⋯) always shown on touch (`@media (hover: none)`); on a mouse, on hover. */
+/** A row's eye and ⋯ in view on touch as on a mouse (Ludo, 2026-10-28: always, each in a column of its own). */
 export const Touch: StoryObj = {
-  render: () => story(() => <PanelFrames roots={fullScene()} picked="t:star:1" touch split={200} />),
+  render: () => story(() => <PanelFrames roots={fullScene()} picked="t:star:1" split={200} />),
 };

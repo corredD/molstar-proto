@@ -30,7 +30,8 @@ The Mesoscale Explorer on Prism. The repository's rules ([../../AGENTS.md](../..
   the watched states rebuild the whole scene list and compare it as JSON on every state change.
 - **UI from Prism's foundations** (David, 2026-10-24): the explorer's views use Prism's tokens, components and rules as
   Storybook's Overview/Foundations shows them ([styling.md §4](../../packages/prism/ui/_spec/styling.md)): flat and
-  quiet, the accent only for actions and the picked item, a row's actions on hover, cut-off text fading, the shared
+  quiet, the accent only for actions and the picked item, a row's actions on hover (but the tree's eye and ⋯, always in
+  view, each in a column of its own: Ludo, 2026-10-28, ui.md §3, story Explorer › Tree), cut-off text fading, the shared
   controls (`ParamsForm`, `Select`, `ColorPicker`, `ActionFooter`) rather than our own. A gesture previews outside the
   state and commits once on release (one undo step). A view is checked in light and dark, wide and narrow, in Storybook.
   A principle of our own goes in [_spec/ui.md](_spec/ui.md) and here, with its story.

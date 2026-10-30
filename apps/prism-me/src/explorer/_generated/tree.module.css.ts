@@ -15,25 +15,26 @@ export const classes = {
   'actions': 'msp-me-tree-actions',
   'category': 'msp-me-tree-category',
   'count': 'msp-me-tree-count',
+  'dot': 'msp-me-tree-dot',
   'empty': 'msp-me-tree-empty',
   'expander': 'msp-me-tree-expander',
   'fill': 'msp-me-tree-fill',
   'filter': 'msp-me-tree-filter',
   'header': 'msp-me-tree-header',
   'item': 'msp-me-tree-item',
-  'keep': 'msp-me-tree-keep',
   'kind': 'msp-me-tree-kind',
   'label': 'msp-me-tree-label',
   'leaf': 'msp-me-tree-leaf',
   'off': 'msp-me-tree-off',
+  'open': 'msp-me-tree-open',
   'panel': 'msp-me-tree-panel',
   'picked': 'msp-me-tree-picked',
   'properties': 'msp-me-tree-properties',
   'propertiesContent': 'msp-me-tree-propertiesContent',
   'row': 'msp-me-tree-row',
+  'slot': 'msp-me-tree-slot',
   'split': 'msp-me-tree-split',
   'swatch': 'msp-me-tree-swatch',
-  'touch': 'msp-me-tree-touch',
   'tree': 'msp-me-tree-tree',
 } as const;
 
@@ -185,31 +186,41 @@ defineStyles('me/explorer/tree.module.css', `@layer msp.components {
   display: flex;
 }
 
-.msp-me-tree-action {
+.msp-me-tree-action, .msp-me-tree-slot {
   width: max(24px, var(--msp-touch-target, 0px));
   height: max(24px, var(--msp-touch-target, 0px));
+  flex: none;
+}
+
+.msp-me-tree-action {
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
-  opacity: 0;
   place-items: center;
   display: grid;
 
-  @media (hover: none) {
-    opacity: 1;
-  }
-
-  .msp-me-tree-row:hover &, &:focus-visible, .msp-me-tree-touch & {
-    opacity: 1;
-  }
-
-  &:hover {
+  &:hover, &.msp-me-tree-open {
     background: var(--msp-color-pressed);
     color: var(--msp-color-text);
   }
+
+  &[data-tree-eye] {
+    touch-action: none;
+  }
 }
 
-.msp-me-tree-keep {
-  opacity: 1;
+.msp-me-tree-dot {
+  width: max(24px, var(--msp-touch-target, 0px));
+  height: max(24px, var(--msp-touch-target, 0px));
+  margin: 0 calc(-1 * var(--msp-space-3));
+  cursor: pointer;
+  border-radius: 50%;
+  flex: none;
+  place-items: center;
+  display: grid;
+
+  &:hover, &.msp-me-tree-open {
+    background: var(--msp-color-pressed);
+  }
 }
 
 .msp-me-tree-split {

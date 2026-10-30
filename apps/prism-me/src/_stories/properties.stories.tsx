@@ -22,7 +22,7 @@ const at = (picked: string, note?: { groupBy?: 'function' }): StoryObj => ({
   render: () => story(() => <PanelFrames roots={fullScene()} picked={picked} split={460} {...note} />),
 });
 
-/** A category: Look (its eye and a color theme for every object under it), Clips (the cuts its scissors made). */
+/** A category: Look (its eye and a color theme for every object under it), Clips (the cuts its Add clip… made). */
 export const Category = at('c:particles');
 /** A structure: Look, Representation, Position, Clips, Labels, Graphics & Motion. */
 export const Structure = at('o:1crn');

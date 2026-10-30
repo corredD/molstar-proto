@@ -16,7 +16,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MesoscaleExtension } from '../prism-viewer.js';
-import { TestParticleList } from './fixtures.js';
+import { TestFiberList, TestParticleList } from './fixtures.js';
 
 // Graphics quality and motion per object (apps/prism-me/_spec/ui.md §4, Graphics & Motion): `mesoscale.graphics` and
 // `mesoscale.motion` given an `object` (a structure, a particle list, a volume) change that object alone; without one,
@@ -99,7 +99,9 @@ describe('graphics and motion per object', () => {
     expectOk(await m.graphics({ mode: 'performance', object: before.refs.list } as never));
     const after = objects(v);
     expect(
-      after.list.every((p) => JSON.stringify(p.lodLevels) === JSON.stringify(Spheres.LodLevelsPresets.performance)),
+      after.list.every(
+        (p) => JSON.stringify(p.lodLevels) === JSON.stringify(Spheres.LodPixelPresets.performance.lodLevels),
+      ),
     ).toBe(true);
     expect(after.a).toEqual(before.a);
     expect(after.b).toEqual(before.b);
@@ -115,6 +117,71 @@ describe('graphics and motion per object', () => {
     expectOk(await m.graphics({ mode: 'balanced', object: before.refs.volume } as never));
     expect(objects(v).volume.every((p) => p.quality === 'medium')).toBe(true);
     expect(m.graphicsState(before.refs.volume).value).toEqual({ mode: 'balanced' });
+  });
+
+  // A particle list draws by size on screen (`lodPixelSize`): a mode writes its pixel preset, levels and size, and reads
+  // back by both (TODO.md, from the cellVIEW evaluation, item 1)
+  it("writes a mode's pixel levels of detail and lights that mode", async () => {
+    const v = await viewer();
+    const { refs } = objects(v);
+    const m = v.api.mesoscale!;
+    for (const mode of ['performance', 'balanced', 'ultra', 'quality'] as const) {
+      expectOk(await m.graphics({ mode, object: refs.list } as never));
+      const { lodLevels, lodPixelSize } = Spheres.LodPixelPresets[mode];
+      for (const p of objects(v).list) {
+        expect(p.lodLevels).toEqual(lodLevels);
+        expect(p.lodPixelSize).toBe(lodPixelSize);
+      }
+      expect(m.graphicsState(refs.list).value?.mode).toBe(mode);
+    }
+    // the preset's levels by distance (`lodPixelSize` 0) are no mode
+    const b = v.plugin.build();
+    for (const r of v.plugin.managers.particles.hierarchy.current.lists[0].representations) {
+      b.to(r.cell).update((old: Params) => {
+        old.type.params.lodPixelSize = 0;
+      });
+    }
+    await b.commit();
+    expect(m.graphicsState(refs.list).value?.mode).toBeUndefined();
+  });
+
+  // A cellPACK list draws its fibers too, without levels of detail: the mode is read from the representations that have
+  // them, so the picked mode stays lit
+  it('lights the mode of a list with a representation without levels of detail', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    await v.plugin.build().toRoot().apply(TestFiberList).commit();
+    expectOk(await v.api.particles.representation({ type: 'spacefill' }));
+    expectOk(await v.api.particles.representation({ type: 'fibers' }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0];
+    const types = list.representations.map((r) => paramsOf(r.cell));
+    expect(types.length).toBe(2);
+    expect(types.some((p) => !('lodLevels' in p))).toBe(true);
+    const m = v.api.mesoscale!;
+    const ref = list.cell.transform.ref;
+    expectOk(await m.graphics({ mode: 'performance', object: ref } as never));
+    expect(m.graphicsState(ref).value?.mode).toBe('performance');
+  });
+
+  // A structure's representations with levels of detail (a spacefill, a cartoon) take the same pixel preset
+  it("writes a mode's pixel levels of detail to a structure's spacefill", async () => {
+    const v = await viewer(['crn.cif']);
+    const s = v.plugin.managers.structure.hierarchy.current.structures[0];
+    await v.plugin.builders.structure.representation.addRepresentation(s.components[0].cell, { type: 'spacefill' });
+    const m = v.api.mesoscale!;
+    expectOk(await m.graphics({ mode: 'performance', object: s.cell.transform.ref } as never));
+    const { lodLevels, lodPixelSize } = Spheres.LodPixelPresets.performance;
+    const reprs = v.plugin.managers.structure.hierarchy.current.structures[0].components
+      .flatMap((c) => c.representations)
+      .map((r) => ({ type: (r.cell.transform.params as { type: { name: string } }).type.name, p: paramsOf(r.cell) }));
+    expect(reprs.some((r) => r.type === 'spacefill')).toBe(true);
+    for (const { p } of reprs.filter((r) => 'lodLevels' in r.p)) {
+      expect(p.lodLevels).toEqual(lodLevels);
+      expect(p.lodPixelSize).toBe(lodPixelSize);
+    }
   });
 
   it('wiggles and tumbles one structure, the other still', async () => {
@@ -157,7 +224,7 @@ describe('graphics and motion per object', () => {
     const v = await viewer();
     expectOk(await v.api.mesoscale!.graphics({ mode: 'performance' }));
     const after = objects(v);
-    const lod = JSON.stringify(Spheres.LodLevelsPresets.performance);
+    const lod = JSON.stringify(Spheres.LodPixelPresets.performance.lodLevels);
     expect(after.list.every((p) => JSON.stringify(p.lodLevels) === lod)).toBe(true);
     expect([...after.a, ...after.b, ...after.volume].every((p) => p.quality === 'low')).toBe(true);
   });

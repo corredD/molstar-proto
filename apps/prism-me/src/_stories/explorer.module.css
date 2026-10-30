@@ -140,21 +140,3 @@
   stroke: var(--msp-color-text-subtle);
   stroke-width: 0.6;
 }
-
-/* Proposed (Ludo, 2026-10-28): every row shows its eye and its ⋯, always, not only on hover; the other tools are in the
-   ⋯. Two tools on every row: the eye stays in one column. The tree's eye is its Hide or Show button, the ⋯ More. */
-.eyesShown :is(button[aria-label="Hide"], button[aria-label="Show"], button[aria-label="More"]) {
-  opacity: 1;
-}
-
-/* The color dot opens the colors (proposed): a pointer over it, and a hit area larger than its 8px. */
-.eyesShown [data-tree-key] span[style*="background"] {
-  position: relative;
-  cursor: pointer;
-
-  &::before {
-    content: "";
-    position: absolute;
-    inset: calc(-1 * var(--msp-space-2));
-  }
-}

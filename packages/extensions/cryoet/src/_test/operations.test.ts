@@ -220,6 +220,18 @@ describe('cryoet', () => {
     expect([target.hidden, target.cuts]).toEqual([[], []]);
   });
 
+  it("says each target's shown state, a class hidden by its own layer (the tree's eye)", async () => {
+    const v = await viewer();
+    const c = v.api.cryoet!;
+    expectOk(await c.classes({ attribute: 'class' } as never));
+    const ref = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expect((await decorations(v)).targets.map((t) => t.visible)).toEqual([true, true, true]);
+    expectOk(
+      await v.api.run('particles.look', { particles: ref, layers: [{ selector: { targets: [1] }, visible: false }] }),
+    );
+    expect((await decorations(v)).targets.map((t) => t.visible)).toEqual([true, false, true]);
+  });
+
   it('splits the targets by class and decorates each class apart, swapping one without touching the others', async () => {
     const v = await viewer();
     const c = v.api.cryoet!;
