@@ -366,3 +366,52 @@ describe('explorer.clipWay on a clip of all the model (review)', () => {
     expect(variant(v)).toBe('instance');
   });
 });
+
+describe("a node's Clips and Shown (review 7, 9, 11)", () => {
+  it("offers a way where the clip cuts all of the node only; a part's way picked there is one step", async () => {
+    const v = await viewer();
+    const { host, model, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    await until(() => !!model.parts.value.get(hiv));
+    const r = await v.api.run('clipping.add', { shape: 'plane', node: `#${hiv}`, particles: { entities: [0] } });
+    if (!r.ok) throw new Error(r.message);
+    const clips = () => section(host, 'clips')!;
+    const select = () => clips().querySelector('button[aria-haspopup=listbox][aria-label^="What it does to"]');
+    // the model: the clip listed (it is on it), no way (it cuts the membrane only)
+    await until(() => !!item(host, `o:${hiv}`));
+    item(host, `o:${hiv}`)!.querySelector<HTMLElement>('[data-tree-row]')!.click();
+    await open(host, 'clips');
+    await until(() => names(clips()).length === 1);
+    expect(select()).toBeNull();
+    // the membrane: its way, picked there
+    model.reveal({
+      key: `g:${hiv}:root.envelope.membrane`,
+      label: 'membrane',
+      kind: 'group',
+      node: { ref: hiv, particles: { entities: [0] } },
+    });
+    await until(() => !!item(host, `g:${hiv}:root.envelope.membrane`));
+    item(host, `g:${hiv}:root.envelope.membrane`)!.querySelector<HTMLElement>('[data-tree-row]')!.click();
+    await until(() => !!select());
+    const n = steps(v);
+    await choose(clips(), 'What it does to Plane 1', 'Cuts it wider');
+    await until(() => records(v, hiv)[0]?.mode === 'wider');
+    expect(steps(v)).toBe(n + 1);
+  });
+
+  it("an entity's Shown reads the share of a group it is in (the lowest share holding it)", async () => {
+    const v = await viewer();
+    const { model, refOf } = mount(v);
+    const hiv = refOf('HIV');
+    await until(() => !!model.parts.value.get(hiv));
+    const r = await v.api.run('particles.look', {
+      particles: hiv,
+      layers: [{ selector: { entities: [1, 2, 3] }, shown: 0.3 }],
+    });
+    if (!r.ok) throw new Error(r.message);
+    const ca = v.api.explorer!.shownState({ ref: hiv, particles: { entities: [1] } });
+    expect(ca.value).toBe(0.3);
+    const lipids = v.api.explorer!.shownState({ ref: hiv, particles: { entities: [0] } });
+    expect(lipids.value).toBe(1);
+  });
+});
