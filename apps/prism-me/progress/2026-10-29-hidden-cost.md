@@ -1,5 +1,8 @@
 # Do hidden particles cost a frame? (2026-10-29, lane `hidden-cost`)
 
+**Update (Ludo, 2026-10-29): step 1 of the recommendation is built in this PR, with the benchmark helper; step 2 (the
+GPU-cull bit) is for later. See "After step 1".**
+
 ## Brief
 
 - **Asked** (Ludo, [../TODO.md](../TODO.md) Next, "From the cellVIEW evaluation", item 6; wants it testable by
@@ -109,6 +112,56 @@ Hidden is not close to removed: it costs as much as drawn or more. A visibility 
    - **Expected:** on top of step 1, WebGPU whole about 26 to near C (5.7 ms), close about 46 to near C (8.5 ms): the
      whole view, where step 1 is not enough, becomes 3.7 times faster than none hidden.
 
+## After step 1 (built, same PR)
+
+Ludo's decision: build step 1 and commit the benchmark helper; step 2 comes later.
+
+- **What changed** (packages/graphics, no extension named; about 43 production lines net, the rest moved or comments):
+  - `getTransparencyAverage` (`transparency-data.ts`) leaves a hidden instance (255) out and returns 1 only when every
+    instance is hidden; `getTransparencyMin` already skipped 255.
+  - Hidden counts only for a per-instance layer at a theme strength of 1 (`visual.ts` `setTransparency`;
+    `setThemeStrength` recomputes when the strength crosses 1). Per group (interpolated boundary fragments) and below
+    strength 1 the average is as before, with all 255 kept below 1 (the object is still drawn there).
+  - A merged object leaves its all-hidden members (average 1) out of its average (`merged.ts` `updateAggregates`).
+  - `checkOpaque` and `checkTransparent` move to `draw-table.ts` (to be tested); an all-hidden object
+    (`TransparencyFull`) is in neither pass, nor in pick, and its row does not lower the scene's opacity (so no blended
+    passes for it); precompile agrees. Spec: `.v6/plans/gl/draw-table.md`; changelog
+    `.v6/changelogs/hidden-instances.md`.
+- **Tests, failing first** (`gl/_test/hidden-instances.test.ts`, `merged.test.ts`, `draw-table.test.ts`): a 90 % hidden
+  object has no transparency fact and takes the opaque path only; an all-hidden object is in no pass; an object with a
+  transparency of 0.5 is unchanged; 255 is hidden only at strength 1; the merged average; the scene's opacity. Each
+  fails on the old code (checked by putting the old function or check back). The gl shim cannot draw (`colorMask`
+  fails), so the tests assert the pass checks and the table's contributions, not draw counts.
+- **Frame time after** (`hidden-cost-bench.mjs`, 100 frames, three rounds; ms; B is hidden, before in brackets):
+
+| Backend | Camera | None hidden (A) | 90 % hidden (B)  | 90 % removed (C) | B / A | B / C |
+| ------- | ------ | --------------- | ---------------- | ---------------- | ----- | ----- |
+| WebGPU  | whole  | 21.9 (21.1)     | **26.3** (58.2)  | 5.8 (5.7)        | 1.2   | 4.5   |
+| WebGPU  | close  | 68.0 (70.7)     | **46.4** (107.4) | 8.7 (8.5)        | 0.7   | 5.3   |
+| WebGL2  | whole  | 49.6 (51.4)     | **41.7** (75.5)  | 12.4 (9.1)       | 0.8   | 3.4   |
+| WebGL2  | close  | 87.3 (84.2)     | **65.3** (131.6) | 12.9 (9.9)       | 0.7   | 5.1   |
+
+As B' predicted: close, hidden is now faster than none hidden on both backends (0.7 times); whole, WebGPU is still 1.2
+times none hidden (the vertex stage of the hidden instances, which step 2 removes), WebGL2 already below. The runs came
+on a quiet machine (load about 3); two earlier runs under load 10 to 14 (other lanes) read all arms 40 to 150 % higher
+and are not used. WebGL2 C reads 12 here against 9 before, with its arm unchanged: noise or the machine's state.
+
+- **Visual check** (real GL, both backends, `scratchpad/hc/visual.mjs`, whole and close views): with 90 % hidden, the
+  picture with the new facts and the picture with the average forced back to its old value (0.894) are pixel-identical
+  (0 pixels differ), and differ from none hidden by 281k px (whole); all entities hidden draws only the UI (no particle
+  pixels). So hidden stays hidden and the visible 10 % looks as before.
+- **Review:** lane-reviewer found, and the lane fixed test first or by test: the theme strength below 1 and group layers
+  counting 255 as hidden, the back-faces-opaque branch and pick drawing an all-hidden object, the scene's opacity
+  ignoring it, precompile, the missing author headers, the helper's `hide` name. lane-skeptic confirmed them and found
+  one more (all 255 at a strength below 1 read as fully transparent and was drawn by no pass), fixed. Left: a partly
+  hidden member weighs its full size in the merged opacity (cost only), an all-hidden object with alpha below 1 or x-ray
+  still opens the blended passes (cost only), pick depth of a hidden object at strength 1 is now skipped.
+- **Gate:** `tsc -b`, the app's tsc, `pnpm lint`, `pnpm format:check`, graphics tests (1522 pass), `test:scaling` and
+  `styles:check`, `typecheck:storybook` pass. Not clean, and not from this lane: `check:workspace` stops at
+  "@molstar/plugin-ui: Export pattern ./*.css has no matching files"; and the unit run of the five packages has one
+  failure, `layers.test.ts` "paints and fades the instances of the decorated particles" (a hidden target's alpha), which
+  fails the same with the old averages put back.
+
 ## Method (to repeat it)
 
 - **Machine:** MacBook, Apple M1 Pro (16 GPU cores), macOS 26.6.1, Google Chrome 156.0.8078.73 (`channel: 'chrome'`,
@@ -145,6 +198,15 @@ Hidden is not close to removed: it costs as much as drawn or more. A visibility 
   object of A and B; the B / C gap (8 to 13 times) is far larger than that could explain. One machine, one model,
   headless, the default look and quality, 89.4 % not exactly 90 %. The scripts are in the lane's scratchpad, not the
   repo (asked in the PR whether to commit a small helper).
+- **The helper** (Ludo, 2026-10-29): `apps/prism-me/scripts/hidden-cost-bench.mjs` runs these arms and prints the table:
+  `node scripts/esbuild/app.mjs apps/prism-me --dev --port 1355`, then
+  `node apps/prism-me/scripts/hidden-cost-bench.mjs --port 1355 --backend webgpu --example cellpack-mg --data MG.bcif`
+  (`--backend webgl2` for the other; `--frames`, `--rounds`, `--json` as in its header). The example's 53 MB file sends
+  no CORS header: download it once
+  (`curl -o MG.bcif https://d39ulgwcl2k1f0.cloudfront.net/me/cellpack/MG_1184_cellpack_atom_instances.bcif`, not
+  committed) and give it as `--data`; the helper answers the page's request for a `.bcif` or `.cif` on another host from
+  that file. Needs Chrome (`channel: 'chrome'`) and Playwright from the repo. Do not run two at once, nor other GPU
+  work: the times follow the machine's load.
 - **The core of the page script** (the rest is the Playwright launch, the route and the sequence above):
 
 ```js
