@@ -1,7 +1,8 @@
 /**
- * Copyright (c) 2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2025-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Scene } from '@molstar/graphics/gl/scene';
@@ -46,6 +47,7 @@ export class ShaderManager {
     }
     if (
       (PostprocessingPass.isTransparentDepthRequired(scene, p.postprocessing) && scene.opacityAverage < 1) ||
+      PostprocessingPass.isGhostDepthRequired(scene, p.postprocessing) ||
       !graphics.capabilities.multipleRenderTargets ||
       !graphics.capabilities.depthTexture ||
       IlluminationPass.isEnabled(graphics, p.illumination)

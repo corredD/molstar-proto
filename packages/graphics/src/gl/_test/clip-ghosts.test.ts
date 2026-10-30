@@ -18,6 +18,9 @@ import { PostprocessingParams, PostprocessingPass } from '../../canvas3d/passes/
 import { OutlineParams } from '../../canvas3d/passes/outline.js';
 import { createGl } from './gl.shim.js';
 import { createRenderer } from './renderer.test.js';
+import { ShaderManager } from '../../canvas3d/helper/shader-manager.js';
+import { IlluminationParams } from '../../canvas3d/passes/illumination.js';
+import { MarkingParams } from '../../canvas3d/passes/marking.js';
 
 // Ghosts of what is cut (cellview.md §4.3): what a ghosted clip object cuts is drawn again as outlines only, by a depth
 // draw into the transparent depth target that the outline pass reads.
@@ -93,5 +96,24 @@ describe('clip ghosts', () => {
     expect(PostprocessingPass.isGhostDepthRequired(ghosted, outline('off'))).toBe(false);
     // the app's look leaves transparent objects out of the outlines: the ghosts only are in the transparent depth
     expect(PostprocessingPass.isTransparentDepthRequired(ghosted, outline('on'))).toBe(false);
+  });
+
+  it('the depth programs are required while ghosts are drawn (else the ghost draw finds none ready)', () => {
+    const { ctx } = createRenderer(createGl(32, 32, { preserveDrawingBuffer: true }));
+    const ghosted = Scene.create(ctx);
+    ghosted.add(cutPoints(true));
+    ghosted.commit();
+    const props = (name: 'on' | 'off') => ({
+      marking: PD.getDefaultValues(MarkingParams),
+      illumination: { ...PD.getDefaultValues(IlluminationParams), enabled: false },
+      postprocessing: outline(name),
+    });
+    // with draw buffers and depth textures, depth is required for a reason of the scene's only
+    const graphics = {
+      capabilities: { ...ctx.capabilities, multipleRenderTargets: true, depthTexture: true },
+    } as typeof ctx;
+    const depth = (name: 'on' | 'off') => ShaderManager.getRequired(graphics, ghosted, props(name)).includes('depth');
+    expect(depth('off')).toBe(false);
+    expect(depth('on')).toBe(true);
   });
 });
