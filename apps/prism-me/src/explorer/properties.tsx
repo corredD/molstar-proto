@@ -1409,7 +1409,7 @@ function Clips(props: { subject: Subject }) {
                 onPick={() => area.revealRow(`k:${c.object.tag}`)}
                 onDrop={() => void api.run('explorer.clipUse', { tag: c.object.tag!, nodes: [node], on: false })}
                 way={
-                  area.cutOf(c, node.ref)?.particled && !('entity' in node)
+                  wayed(area.cutOf(c, node.ref), node)
                     ? {
                         api,
                         tag: c.object.tag!,
@@ -1460,6 +1460,8 @@ function ClipProperties(props: { subject: Subject }) {
   // read again when what it cuts of a list changes (its layers), which the cuts do not compare
   const layers = area.particleLayersState();
   const uses = derive([cut, objects, parts, layers], (c, os, ps) => (c ? whatItCuts(area, c, os, ps) : []));
+  // each row's way, by its key (a row reads its own: one Map a change, not a search a row)
+  const ways = derive(uses, (l) => new Map(l.map((u) => [u.key, u.way] as const)));
   // what it can be given more of: every object and its parts it does not cut all of
   const more = derive([cut, objects, parts, layers], (c, os, ps) => {
     if (!c) return [];
@@ -1488,7 +1490,7 @@ function ClipProperties(props: { subject: Subject }) {
             last={derive(uses, (l) => l.length === 1)}
             onPick={() => area.revealRow(u.key)}
             onDrop={() => void api.run('explorer.clipUse', { tag, nodes: [u.node], on: false })}
-            way={u.way && { api, tag, node: u.node, value: derive(uses, (l) => l.find((x) => x.key === u.key)?.way) }}
+            way={u.way && { api, tag, node: u.node, value: derive(ways, (m) => m.get(u.key)) }}
           />
         )}
       </For>
@@ -1506,6 +1508,10 @@ function ClipProperties(props: { subject: Subject }) {
     </div>
   );
 }
+
+/** Whether a clip on a node cuts it in a way (particles, and all of an object only where it cuts all of it) */
+const wayed = (of: ReturnType<ExplorerApi['cutOf']>, node: NodeRef) =>
+  !!of?.particled && !('entity' in node) && ('particles' in node || !of.particles);
 
 /** How a clip cuts a use's node (particles only): its way's controls act through `explorer.clipWay` */
 interface WayProps {
@@ -1575,7 +1581,8 @@ function WaySelect(props: { name: string; way: WayProps }) {
       size="sm"
       aria-label={`What it does to ${props.name}`}
       options={WayOptions}
-      value={mapState(props.way.value, (w) => (w ?? PlainCut).mode)}
+      // its parts cut in different ways (mixed): no option shown
+      value={mapState(props.way.value, (w) => w?.mode ?? '')}
       onChange={(mode) => setWay(props.way, { mode: mode as Way['mode'] })}
     />
   );
