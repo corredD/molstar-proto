@@ -203,7 +203,7 @@
 
 .split {
   flex: none;
-  height: calc(8px * var(--msp-ui-scale, 1)); /* off-scale: the drag target's height, not spacing */
+  height: calc(8px * var(--msp-ui-scale, 1));
   margin: 0 var(--msp-space-2);
   cursor: row-resize;
   touch-action: none;
