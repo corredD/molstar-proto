@@ -207,6 +207,11 @@ smaller as the panels grow. Story: Overview › Foundations › UI scale.
   rows by index × the measured height, and a fraction would drift) and the rail's column (`--msp-rail-width`, as the
   shell's layout puts the canvas beside it). The shell view scales its own px (the rail, the canvas edge, the corner
   room) by the same state; the rail fits its buttons at the scale (`fitRail`: the step by the height, as the container
-  queries, the sizes scaled).
+  queries, the sizes scaled). A virtual list re-places its rows on any measured difference (a row a fraction off its
+  guess drifts by row 1000).
+- **What does not follow it yet** (Prism's TODO.md): container query thresholds (`@container` takes no `var()`: the
+  bottom bar, the rail's steps, Snapshots, the Structure tab, the assistant inspector), `ShellOptions.compactWidth`
+  (720px) and the docks' default sizes: a scaled UI goes to its narrow layouts later than it should, and a panel opens
+  at its 100 % width.
 - **A preference of the person's, not a setting of the plugin**: kept in the viewer's preferences as the theme is
   (`uiScale`; a store that throws leaves 100 %), never in Canvas3D's props, a snapshot or the History.
