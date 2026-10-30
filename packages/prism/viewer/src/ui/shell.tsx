@@ -597,9 +597,9 @@ export async function mountShell(core: ViewerCore, target: HTMLElement): Promise
         {
           id: 'view.ui-larger',
           title: 'Larger UI',
-          alias: ['ui scale', 'zoom in', 'bigger text', 'readable'],
+          alias: ['ui scale', 'larger text', 'bigger text', 'readable'],
           category: 'View',
-          icon: 'zoom-in',
+          icon: 'plus',
           run: () => {
             uiScale.larger();
             return { message: '' };
@@ -608,9 +608,9 @@ export async function mountShell(core: ViewerCore, target: HTMLElement): Promise
         {
           id: 'view.ui-smaller',
           title: 'Smaller UI',
-          alias: ['ui scale', 'zoom out', 'smaller text'],
+          alias: ['ui scale', 'smaller text'],
           category: 'View',
-          icon: 'zoom-out',
+          icon: 'minus',
           run: () => {
             uiScale.smaller();
             return { message: '' };
@@ -619,7 +619,7 @@ export async function mountShell(core: ViewerCore, target: HTMLElement): Promise
         {
           id: 'view.ui-reset',
           title: 'UI at 100 %',
-          alias: ['ui scale', 'reset zoom', 'actual size'],
+          alias: ['ui scale', 'actual size', 'text size'],
           category: 'View',
           icon: 'rotate-ccw',
           run: () => {

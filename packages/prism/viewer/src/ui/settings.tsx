@@ -87,7 +87,7 @@ function modelOf(
   const appearanceRows: readonly SettingsRow[] = [
     {
       label: 'UI scale',
-      keywords: 'size zoom text larger smaller readable',
+      keywords: 'size text larger smaller readable',
       view: () => <UIScaleRow scale={uiScale} />,
     },
   ];
