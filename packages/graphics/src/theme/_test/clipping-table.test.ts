@@ -10,7 +10,7 @@ import { getProgramDefines, preprocessProgram } from '../../gl/_test/graphics-sh
 import { SpheresShaderCode } from '../../gl/shader-code.js';
 import { preprocessShader } from '../../gl/shader-preprocessor.js';
 import { getGlslProgram } from '../../gl/webgl/programs.js';
-import { clip_table } from '../../gl/webgl/shader/chunks/common-clip.glsl.js';
+import { clip_table, common_clip } from '../../gl/webgl/shader/chunks/common-clip.glsl.js';
 import { getWgslDefines } from '../../gl/webgpu/program.js';
 import { clip_table_wgsl } from '../../gl/webgpu/shader/chunks/clip.wgsl.js';
 import { resolveWgslSource } from '../../gl/webgpu/shader/programs.js';
@@ -184,5 +184,23 @@ describe('the instance clip with a table', () => {
       expect(main).toMatch(/clipTableIgnored\(/);
       expect(main).not.toMatch(/clipTableTest\(/);
     }
+  });
+});
+
+describe("WebGL1's clipping flag", () => {
+  /** WebGL1's `bitwiseAnd` of `common_clip`, run as JS (its declarations made `let`) */
+  const bitwiseAnd = (() => {
+    const source = common_clip.slice(common_clip.indexOf('int bitwiseAnd('));
+    const body = source.slice(source.indexOf('{') + 1, source.indexOf(';', source.indexOf('return ')));
+    const js = body.replace(/\b(?:int|float)\s+(\w+)\s*=/g, 'let $1 =').replace(/\b(?:int|float)\(/g, 'Math.trunc(');
+    return new Function('a', 'b', `${js};`) as (a: number, b: number) => number;
+  })();
+
+  it('keeps the bits of the 16 clip objects a table row can ignore', () => {
+    expect(bitwiseAnd(256 | 1, 256)).toBe(256);
+    expect(bitwiseAnd(256 | 1, 1)).toBe(1);
+    expect(bitwiseAnd(32768 | 4, 32768)).toBe(32768);
+    expect(bitwiseAnd(32768, 4)).toBe(0);
+    expect(bitwiseAnd(0xffff, 0x1234)).toBe(0x1234);
   });
 });

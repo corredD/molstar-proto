@@ -108,18 +108,19 @@ float clipObjectSD(const in vec3 center, const in mat4 frame, const in vec4 shap
 }
 
 #if __VERSION__ == 100
-    // 8-bit
+    // 16-bit, a bit a clip object (a clipping table's row can ignore any of 16), in floats: integers may be 16-bit
     int bitwiseAnd(in int a, in int b) {
-        int d = 128;
-        int result = 0;
-        for (int i = 0; i < 8; ++i) {
-            if (d <= 0) break;
-            if (a >= d && b >= d) result += d;
-            if (a >= d) a -= d;
-            if (b >= d) b -= d;
-            d /= 2;
+        float fa = float(a);
+        float fb = float(b);
+        float d = 32768.0;
+        float result = 0.0;
+        for (int i = 0; i < 16; ++i) {
+            if (fa >= d && fb >= d) result += d;
+            if (fa >= d) fa -= d;
+            if (fb >= d) fb -= d;
+            d *= 0.5;
         }
-        return result;
+        return int(result);
     }
 
     bool hasBit(const in int mask, const in int bit) {
