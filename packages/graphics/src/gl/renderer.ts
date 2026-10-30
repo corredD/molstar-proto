@@ -20,6 +20,7 @@ import {
   type DrawTable,
   checkOpaque,
   checkTransparent,
+  checkGhost,
   getCheckFacts,
   getDrawFacts,
   getDrawState,
@@ -99,6 +100,11 @@ interface Renderer {
   renderDepthOpaque: (group: Scene.Group, camera: ICamera) => void;
   renderDepthOpaqueBack: (group: Scene.Group, camera: ICamera) => void;
   renderDepthTransparent: (group: Scene.Group, camera: ICamera, depthTexture: Texture) => void;
+  /**
+   * The ghosts of what clips cut (`DrawFact.Ghost`), into the transparent depth target for its outlines: the cut part
+   * of each object with a ghosted clip object, in front of `depthTexture`, at the ghost alpha
+   */
+  renderDepthGhost: (group: Scene.Group, camera: ICamera, depthTexture: Texture) => void;
   renderMarkingDepth: (group: Scene.Group, camera: ICamera) => void;
   renderMarkingMask: (group: Scene.Group, camera: ICamera, depthTexture: Texture | null) => void;
   renderEmissiveOpaque: (
@@ -269,6 +275,8 @@ namespace Renderer {
     All = 0,
     Opaque = 1,
     Transparent = 2,
+    /** the ghost pass: ghosted clip objects inverted, at the ghost alpha (`MaskGhost`) */
+    Ghost = 3,
   }
 
   // depth is reversed (near 1, far 0, see `DepthRangeTag`): nearer is greater
@@ -532,6 +540,7 @@ namespace Renderer {
       check: checkTransparentCap,
       mode: 'opaque',
     }),
+    depthGhost: { variant: 'depth', check: checkGhost, draws: singleDraw(OpaqueState) },
     markingDepth: simplePassDraws('marking', checkMarkingDepth, OpaqueState, { mode: 'opaque' }),
     markingMask: simplePassDraws('marking', checkMarkingMask, OpaqueState, { mode: 'opaque' }),
     emissiveOpaque: createEmissiveOpaquePassDraws(false),
@@ -570,6 +579,7 @@ namespace Renderer {
           | 'depthOpaque'
           | 'depthOpaqueBack'
           | 'depthTransparent'
+          | 'depthGhost'
           | 'markingDepth'
           | 'markingMask'
           | 'emissiveTransparent'
@@ -1974,6 +1984,11 @@ namespace Renderer {
       drawPass(PassDraws.depthTransparent, group);
     };
 
+    const renderDepthGhost = (group: Scene.Group, camera: ICamera, depthTexture: Texture) => {
+      updateInternal(group, camera, depthTexture, null, Mask.Ghost, false);
+      drawPass(PassDraws.depthGhost, group);
+    };
+
     const renderMarkingDepth = (group: Scene.Group, camera: ICamera) => {
       updateInternal(group, camera, null, null, Mask.All, false);
       ValueCell.updateIfChanged(globalUniforms.uMarkingType, MarkingType.Depth);
@@ -2081,6 +2096,7 @@ namespace Renderer {
       renderDepthOpaque,
       renderDepthOpaqueBack,
       renderDepthTransparent,
+      renderDepthGhost,
       renderMarkingDepth,
       renderMarkingMask,
       renderEmissiveOpaque,

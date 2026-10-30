@@ -83,6 +83,9 @@ export const assign_material_color = `
             }
         #endif
         material = packDepthWithAlphaToRGBA(fragmentDepth, alpha);
+    } else if (uRenderMask == MaskGhost) {
+        // the ghosts of what clips cut, faint: the outline pass draws their edges at twice this alpha (cellview.md §4.3)
+        material = packDepthWithAlphaToRGBA(fragmentDepth, GhostAlpha);
     } else {
         material = packDepthToRGBA(fragmentDepth);
     }

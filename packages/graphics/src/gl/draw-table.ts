@@ -61,6 +61,8 @@ export enum DrawFact {
   SingleSided = 1 << 22,
   /** wiggling (`uWiggleAmplitude` or `wiggleAverage`, with speed and frequency) or tumbling: drawn anew per frame */
   Animated = 1 << 23,
+  /** `uClipObjectGhost`: a clip object whose cut part is drawn as outlines (the ghost pass) */
+  Ghost = 1 << 24,
 }
 
 /** The cells `getDrawFacts` and the row's bounds read: a change of any refreshes the row */
@@ -79,6 +81,7 @@ export const DrawFactCells = [
   'dFlipSided',
   'hasReflection',
   'dSolidInterior',
+  'uClipObjectGhost',
   'instanceGrid',
   'uInstanceCount',
   'lodLevels',
@@ -195,6 +198,7 @@ export function getCheckFacts(values: Values): number {
   else if (doubleSided !== undefined) f |= DrawFact.SingleSided;
   if (getValue(values, 'dFlipSided')) f |= DrawFact.FlipSided;
   if (getValue(values, 'hasReflection')) f |= DrawFact.HasReflection;
+  if (getValue(values, 'uClipObjectGhost')) f |= DrawFact.Ghost;
   if ((geometryType === 'mesh' || geometryType === 'textureMesh') && getValue(values, 'dSolidInterior')) {
     f |= DrawFact.SolidInterior;
   }
@@ -222,6 +226,10 @@ export const checkOpaque = (facts: number, _state?: number) =>
  */
 export const checkTransparent = (facts: number, _state?: number) =>
   (facts & (DrawFact.AlphaZero | DrawFact.TransparencyFull)) === 0 && (facts & TransparentReasons) !== 0;
+
+/** not alpha 0 and not fully transparent, with a clip object whose cut part is drawn as outlines (the ghost pass) */
+export const checkGhost = (facts: number, _state?: number) =>
+  (facts & (DrawFact.AlphaZero | DrawFact.TransparencyFull)) === 0 && (facts & DrawFact.Ghost) !== 0;
 
 /** An object's state as bits of a row (`DrawRow.State`) */
 export enum DrawState {

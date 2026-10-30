@@ -69,7 +69,14 @@ export class OutlinePass {
     }
   }
 
-  update(camera: ICamera, props: OutlineProps, depthTextureTransparent: Texture, depthTextureOpaque: Texture) {
+  /** `ghosts`: the transparent depth holds ghosts of what clips cut, outlined as transparent objects are */
+  update(
+    camera: ICamera,
+    props: OutlineProps,
+    depthTextureTransparent: Texture,
+    depthTextureOpaque: Texture,
+    ghosts = false,
+  ) {
     let needsUpdate = false;
 
     const orthographic = camera.state.mode === 'orthographic' ? 1 : 0;
@@ -77,7 +84,7 @@ export class OutlinePass {
     const invProjection = this.renderable.values.uInvProjection.ref.value;
     Mat4.invert(invProjection, camera.projection);
 
-    const transparentOutline = props.includeTransparent ?? true;
+    const transparentOutline = (props.includeTransparent ?? true) || ghosts;
     const outlineScale = Math.max(1, Math.round(props.scale * this.graphics.pixelRatio)) - 1;
     const outlineThreshold = 50 * props.threshold * this.graphics.pixelRatio;
 

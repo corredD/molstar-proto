@@ -129,8 +129,18 @@ fn isClipObjectActive(i: i32, flag: i32) -> bool {
     return i != uDraw.uSolidInteriorClip && (flag == 0 || (flag & (1 << u32(i))) == 0);
 }
 
+/**
+ * Whether clip object \`i\` cuts what is outside: a negative \`w\`; in the ghost pass (\`MaskGhost\`) a ghosted object is
+ * turned inside out, what it cuts kept and what it keeps cut (\`uClipObjectGhost\`, cellview.md §4.3)
+ */
 fn isClipObjectInverted(i: i32) -> bool {
-    return uMaterial.uClipObjectShape[i].w < 0.0;
+    let inverted = uMaterial.uClipObjectShape[i].w < 0.0;
+    #if defined(dRenderVariant_depth)
+        if (uGlobal.uRenderMask == MaskGhost && (uMaterial.uClipObjectGhost & (1 << u32(i))) != 0) {
+            return !inverted;
+        }
+    #endif
+    return inverted;
 }
 
 fn clipTest(center: vec3<f32>, flag: i32) -> bool {
