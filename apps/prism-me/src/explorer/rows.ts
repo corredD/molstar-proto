@@ -12,7 +12,7 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { IconName } from '@molstar/prism-ui';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
 import type { Category, ExplorerApi, NodeRef, SceneObject } from './operations.js';
-import { type Ids, kindOf } from './clips.js';
+import { type Ids, kindOf, PlainCut, type Way, wayOfRecord } from './clips.js';
 import { filterRows, type TreeRowView } from './tree-view.js';
 
 // The rows of the explorer's tree (_spec/ui.md §3), flat, from the scene's objects and the parts the mesoscale and
@@ -60,6 +60,8 @@ export interface ClipUse {
   /** Its name with its parent's (envelope › membrane), an object's alone */
   readonly label: string;
   readonly node: NodeRef;
+  /** On particles: how the clip cuts it (graded ways, cellVIEW's; atoms and structures are cut plainly) */
+  readonly way?: Way;
 }
 
 /** Prism's cut shapes, as the tree names them */
@@ -686,16 +688,27 @@ export function whatItCuts(area: ExplorerApi, cut: Cut, objects: readonly SceneO
   for (const o of objects) {
     const of = area.cutOf(cut, o.ref);
     if (!of) continue;
-    const some = of.particles
-      ? particleUses(o, parts.get(o.ref), of.particles)
-      : of.atoms
-        ? atomUses(area, cut, o)
-        : undefined;
+    const whole: ClipUse = { key: `o:${o.ref}`, label: o.label, node: { ref: o.ref } };
+    if (of.particled) {
+      // a row a record (Prism's, a part each), with its way; a later record's row over an earlier one's
+      const rows = new Map<string, ClipUse>();
+      for (const r of of.records?.length ? of.records : []) {
+        const way = wayOfRecord(r);
+        const some = isAll(r) ? undefined : particleUses(o, parts.get(o.ref), r);
+        for (const u of some?.length ? some : [whole]) rows.set(u.key, { ...u, way });
+      }
+      out.push(...(rows.size ? rows.values() : [{ ...whole, way: PlainCut }]));
+      continue;
+    }
+    const some = of.atoms ? atomUses(area, cut, o) : undefined;
     if (some?.length) out.push(...some);
-    else out.push({ key: `o:${o.ref}`, label: o.label, node: { ref: o.ref } });
+    else out.push(whole);
   }
   return out;
 }
+
+/** A record of every particle: no ids of any kind */
+const isAll = (r: Ids) => !r.entities.length && !r.compartments.length && !r.targets.length;
 
 /** The rows of a cut of some particles: a model's groups cut whole (the largest), then entities; a list's targets */
 function particleUses(

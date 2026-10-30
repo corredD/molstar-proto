@@ -19,9 +19,12 @@ import { TransparencyStructureRepresentation3DFromBundle } from '@molstar/plugin
 import { Grid, Volume } from '@molstar/model/model/volume';
 import { Script } from '@molstar/model/script/script';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
-import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
+import {
+  type ParticleLayerProps,
+  ParticleRepresentation3DLayers,
+} from '@molstar/plugin/state/transforms/particles/layers';
 import type { PluginContext } from '@molstar/plugin/context';
-import { StateTransform } from '@molstar/core/state';
+import { StateSelection, StateTransform } from '@molstar/core/state';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { setSubtreeVisibility } from '@molstar/plugin/behavior/static/state';
 import { type ApiAreaContext, ApiArea, ApiResult } from '@molstar/prism-viewer/api/area';
@@ -29,7 +32,7 @@ import { labelOf, loadedStructures } from '@molstar/prism-viewer/api/scope';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type {} from '@molstar/prism-viewer/features/clipping';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
-import { clippableUnder, type CutOfObject, cutOfObject, idSet, kindOf, useClip } from './clips.js';
+import { clippableUnder, type CutOfObject, cutOfObject, idSet, kindOf, setWay, useClip } from './clips.js';
 import { GizmoAppearance, type GizmoLook } from '@molstar/graphics/util/gizmo/controller';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
@@ -449,6 +452,51 @@ export class ExplorerApi extends ApiArea {
     },
     run: ({ tag, nodes, on }, ctx) => useClip(ctx, (n) => this.partAtoms(n), tag, nodes, on),
   });
+
+  /**
+   * How a clip cuts an object or part of particles (a clip's What it cuts, a node's Clips): keeps a layer, cuts it, cuts
+   * it wider, with the band and fuzziness; a graded way switches the cuts to instance (Ludo, 2026-10-29). One step.
+   */
+  readonly clipWay = this.operation({
+    id: 'explorer.clipWay',
+    title: 'Set how a clip cuts something',
+    params: {
+      tag: PD.Text('', { description: "The clip's tag (Prism's cut: clipping.list)" }),
+      node: PD.Value<NodeRef>({ ref: '' }, { description: 'An object or part of particles: { ref }, { ref, particles }' }),
+      mode: PD.Select<'cut' | 'keep' | 'wider'>('cut', [
+        ['keep', 'Keeps a layer on the cut face'],
+        ['cut', 'Cuts it'],
+        ['wider', 'Cuts it wider'],
+      ]),
+      band: PD.Numeric(60, { min: 0, max: 1000, step: 1 }, { description: "The band's width, Å" }),
+      fuzziness: PD.Numeric(0, { min: 0, max: 1, step: 0.01 }, { description: "Thins the band toward its edge, 0 to 1" }),
+    },
+    run: ({ tag, node, mode, band, fuzziness }, ctx) => setWay(ctx, tag, node, { mode, band, fuzziness }),
+  });
+
+  /** The share of a part's particles shown (Look › Shown: its layer's), 1 when all; following the layers while watched */
+  shownState(node: NodeRef): ReadonlyState<number> {
+    const state = this.ctx.plugin.state.data;
+    const selector = 'particles' in node ? node.particles : undefined;
+    const key = (s: { entities?: readonly number[]; compartments?: readonly number[]; targets?: readonly number[] }) =>
+      [s.entities, s.compartments, s.targets].map((ids) => [...(ids ?? [])].sort((a, b) => a - b).join(',')).join('|');
+    const wanted = selector ? key(selector) : '';
+    return watchedState(
+      () => {
+        for (const cell of clippableUnder(state, node.ref)) {
+          if (!cell.obj || !SO.Particle.Representation3D.is(cell.obj)) continue;
+          const layers = state.select(
+            StateSelection.Generators.ofTransformer(ParticleRepresentation3DLayers, cell.transform.ref),
+          )[0];
+          const all = (layers?.transform.params as { layers?: readonly ParticleLayerProps[] } | undefined)?.layers;
+          const layer = all?.find((l) => key(l) === wanted);
+          return layer?.shown ?? 1;
+        }
+        return 1;
+      },
+      () => state.events.changed,
+    );
+  }
 
   /** How the handles are drawn on the canvas (all of them: Prism's and the stage's), following changes */
   handleLookState(): ReadonlyState<GizmoLook> {

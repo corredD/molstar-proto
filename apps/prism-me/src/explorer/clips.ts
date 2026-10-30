@@ -46,6 +46,8 @@ export interface CutOfObject {
   readonly atoms?: StructureElement.Loci;
   /** Its records on the object's particles (Prism's, a part each), when it has any */
   readonly records?: readonly ParticleCutProps[];
+  /** On particles (a model's, a list's): it can cut them in graded ways */
+  readonly particled?: boolean;
 }
 
 /** The representations under an object that can be cut (not the cuts' drawings), in tree order */
@@ -109,8 +111,9 @@ export function cutOfObject(
   const first = tag ? on.find(isParticles) : undefined;
   const records = first && tag ? particleRecords(state, first.transform.ref, tag) : [];
   const some = unionOf(records);
-  if (some) return { ref, on: refs, particles: some, records };
-  if (records.length) return { ref, on: refs, records };
+  if (some) return { ref, on: refs, particles: some, records, particled: true };
+  if (records.length) return { ref, on: refs, records, particled: true };
+  if (first) return { ref, on: refs, particled: true };
   // a cut keeping some atoms whole: the atoms it cuts on this object's structure, when it keeps some of this one (its
   // kept atoms may be another structure's)
   const structure = on.map(structureOf).find((s) => !!s);
@@ -373,3 +376,113 @@ function allIds(cell: StateObjectCell | undefined, kind: keyof Ids): number[] {
   if (kind === 'compartments') return [...(list.compartmentInfo?.keys() ?? [])];
   return [...list.targetInfo.keys()];
 }
+
+/** How a clip cuts an object or part (cellVIEW's cut × ingredient, _spec/cellview.md §4.1): Prism's record's way */
+export interface Way {
+  readonly mode: 'cut' | 'keep' | 'wider';
+  /** Å */
+  readonly band: number;
+  /** 0 to 1 */
+  readonly fuzziness: number;
+}
+
+export const PlainCut: Way = { mode: 'cut', band: 60, fuzziness: 0 };
+export const wayOfRecord = (r: ParticleCutProps): Way => ({ mode: r.mode, band: r.band, fuzziness: r.fuzziness });
+
+/** Whether a record covers all of a part's ids (a record of every particle covers all) */
+function holds(r: ParticleCutProps, kind: keyof Ids, ids: readonly number[]): boolean {
+  if (isCover(r)) return true;
+  const has = new Set(r[kind]);
+  return ids.every((id) => has.has(id));
+}
+
+/** The way a clip cuts a node: the last record covering it (Prism's: a later part wins), else the plain cut */
+export function wayOf(of: CutOfObject | undefined, node: NodeRef): Way {
+  const records = of?.records;
+  if (!records?.length) return PlainCut;
+  if (!('particles' in node)) return records.length === 1 && isCover(records[0]) ? wayOfRecord(records[0]) : PlainCut;
+  const kind = kindOf(node.particles);
+  const ids = node.particles[kind] ?? [];
+  for (let i = records.length - 1; i >= 0; --i) if (holds(records[i], kind, ids)) return wayOfRecord(records[i]);
+  return PlainCut;
+}
+
+const sameWay = (a: Way, b: Way) => a.mode === b.mode && a.band === b.band && a.fuzziness === b.fuzziness;
+
+/**
+ * A node's way in the clip tagged `tag` (Ludo, 2026-10-29): its own record with that way, last (so it wins over a
+ * record of all the object, or of a group it is in); the records of its parts it holds go. A graded way (keeps a layer,
+ * cuts wider) is the instance clip's: the scene's cuts switch to instance in the same step (`clipping.settings`: a
+ * representation's variant is the scene's at every cut written, so one representation alone would not stay so); the
+ * plain cut leaves the variant as it is. One step (`explorer.clipWay`).
+ */
+export async function setWay(ctx: ApiContext, tag: string, node: NodeRef, way: Way): Promise<ApiResult> {
+  const cut = ctx.api.clipping?.cuts.value.find((c) => c.object.tag === tag);
+  if (!cut) return ApiResult.fail('not-found', `There is no clip ${tag}.`);
+  const state = ctx.plugin.state.data;
+  const of = cutOfObject(state, cut, node.ref);
+  if (!of) return ApiResult.fail('not-found', 'The clip does not cut it.');
+  const cells = of.on.map((r) => state.cells.get(r)!).filter((c) => c && isParticles(c));
+  if (!cells.length || 'entity' in node) {
+    return ApiResult.fail('invalid', 'Only particles are cut in graded ways.', 'Atoms and structures cut plainly.');
+  }
+  const record = (ids: Ids): ParticleCutProps => ({
+    tag,
+    entities: [...ids.entities],
+    compartments: [...ids.compartments],
+    targets: [...ids.targets],
+    ...way,
+  });
+  const none: Ids = { entities: [], compartments: [], targets: [] };
+  const records = of.records ?? [];
+  let next: ParticleCutProps[];
+  if (!('particles' in node)) {
+    // all of it: one record of every particle
+    if (of.particles) return ApiResult.fail('invalid', 'The clip cuts some of it only: give its parts their way.');
+    next = [record(none)];
+  } else {
+    const kind = kindOf(node.particles);
+    const part = node.particles[kind] ?? [];
+    if (!holdsAll(of, kind, part)) return ApiResult.fail('invalid', 'The clip does not cut all of it.');
+    const inPart = new Set(part);
+    // all of the object cut: a record of every particle, the plain cut, under the part's
+    const base = records.length ? records : [record(none)];
+    const only = (r: ParticleCutProps) =>
+      (Object.keys(none) as (keyof Ids)[]).every((k) => k === kind || !r[k].length) && r[kind].length > 0;
+    next = [...base.filter((r) => !(only(r) && r[kind].every((id) => inPart.has(id)))), record({ ...none, [kind]: part })];
+  }
+  if (next.length === records.length && next.every((r, i) => sameWay(r, records[i]) && sameIds(r, records[i]))) {
+    return ApiResult.already('It is cut so already.');
+  }
+  if (way.mode !== 'cut') {
+    const variant = ctx.plugin.managers.structure.component.state.options.clipObjects.variant;
+    if (variant !== 'instance') {
+      const r = await ctx.api.run('clipping.settings', { variant: 'instance' });
+      if (!r.ok) return r;
+    }
+  }
+  const r = await ctx.api.run('particles.look', {
+    node: cells.map((c) => `#${c.transform.ref}`).join(', '),
+    cuts: { remove: [tag], add: next },
+  });
+  if (!r.ok) return r;
+  return ApiResult.ok(WayWords[way.mode], { nodes: [node.ref] });
+}
+
+const WayWords: Readonly<Record<Way['mode'], string>> = {
+  cut: 'The clip cuts it.',
+  keep: 'The clip keeps a layer of it.',
+  wider: 'The clip cuts it wider.',
+};
+
+/** Whether what a clip cuts of an object holds all of a part's ids */
+function holdsAll(of: CutOfObject, kind: keyof Ids, ids: readonly number[]): boolean {
+  if (!of.particles) return true;
+  const has = idSet(of.particles, kind);
+  return ids.every((id) => has.has(id));
+}
+
+const sameIds = (a: Ids, b: Ids) =>
+  (['entities', 'compartments', 'targets'] as const).every(
+    (k) => a[k].length === b[k].length && a[k].every((id, i) => id === b[k][i]),
+  );
