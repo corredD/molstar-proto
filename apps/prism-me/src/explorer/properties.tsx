@@ -1316,6 +1316,41 @@ function HandleLook(props: { area: ExplorerApi }) {
 // --- clips -----------------------------------------------------------------------------------------------------------
 
 /**
+ * A model's or list's Clip whole (ui.md Clip whole), while it draws objects: Proteins (whole objects) or Atoms (whole
+ * elements), one step (`stage.clipWhole`); in its Clips and in the Clips section of each clip that cuts it
+ */
+function ClipWhole(props: { api: ViewerApi; particles: string; label: string }) {
+  const { api, particles } = props;
+  if (!api.stage) return null;
+  const whole = api.stage.clipWholeState(particles);
+  return (
+    <Show when={mapState(whole, (w) => w !== undefined)}>
+      {() => (
+        <div data-clip-whole={particles}>
+          <Choices
+            label={props.label}
+            choices={[
+              {
+                id: 'instance',
+                label: 'Proteins',
+                title: 'A cut takes whole objects (proteins): one whose center is cut goes, the others stay whole',
+              },
+              {
+                id: 'element',
+                label: 'Atoms',
+                title: 'A cut takes whole atoms: each whose center is cut goes, the objects are carved',
+              },
+            ]}
+            active={whole}
+            onPick={(w) => void api.run('stage.clipWhole', { particles, whole: w })}
+          />
+        </div>
+      )}
+    </Show>
+  );
+}
+
+/**
  * A node's Clips (Ludo, 2026-10-28: the clips are in their own category, pointed at from here): the clips on it (each
  * picks its row; × takes it off them, one step), New clip (a shape: it cuts this), Use a clip (one of the scene's, one
  * step); a model's or list's Clip whole (also in each clip's section that cuts it), the handle size
@@ -1444,41 +1479,6 @@ function ClipProperties(props: { subject: Subject }) {
         {(o) => <ClipWhole api={api} particles={o.ref} label={`Clip whole: ${o.label}`} />}
       </For>
     </div>
-  );
-}
-
-/**
- * A model's or list's Clip whole (ui.md Clip whole), while it draws objects: Proteins (whole objects) or Atoms (whole
- * elements), one step (`stage.clipWhole`); in its Clips and in the Clips section of each clip that cuts it
- */
-function ClipWhole(props: { api: ViewerApi; particles: string; label: string }) {
-  const { api, particles } = props;
-  if (!api.stage) return null;
-  const whole = api.stage.clipWholeState(particles);
-  return (
-    <Show when={mapState(whole, (w) => w !== undefined)}>
-      {() => (
-        <div data-clip-whole={particles}>
-          <Choices
-            label={props.label}
-            choices={[
-              {
-                id: 'instance',
-                label: 'Proteins',
-                title: 'A cut takes whole objects (proteins): one whose center is cut goes, the others stay whole',
-              },
-              {
-                id: 'element',
-                label: 'Atoms',
-                title: 'A cut takes whole atoms: each whose center is cut goes, the objects are carved',
-              },
-            ]}
-            active={whole}
-            onPick={(w) => void api.run('stage.clipWhole', { particles, whole: w })}
-          />
-        </div>
-      )}
-    </Show>
   );
 }
 
