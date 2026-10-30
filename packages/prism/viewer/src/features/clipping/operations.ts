@@ -429,10 +429,13 @@ export class ClippingApi extends ApiArea {
       ),
       scale: Vec3Param('Its size (Å): a sphere or cube diameter or edge; a cylinder (diameter, height, diameter)'),
       invert: OptionalParam(PD.Boolean(false, { description: 'Remove the other side, or the outside' })),
+      ghost: OptionalParam(
+        PD.Boolean(false, { description: 'Outline what it cuts: drawn again as outlines only (with outlines on)' }),
+      ),
     },
     async run(v, ctx) {
       const { cut: index } = v;
-      const { tag, shape, position, normal, rotation, scale, invert } = v as {
+      const { tag, shape, position, normal, rotation, scale, invert, ghost } = v as {
         tag?: string;
         shape?: CutShape;
         position?: readonly number[];
@@ -440,6 +443,7 @@ export class ClippingApi extends ApiArea {
         rotation?: { axis: readonly number[]; angle: number };
         scale?: readonly number[];
         invert?: boolean;
+        ghost?: boolean;
       };
       const cut = oneCut(ctx, index, tag);
       if (ApiResult.isFailure(cut)) return cut;
@@ -478,6 +482,7 @@ export class ClippingApi extends ApiArea {
         ...(normal ? { rotation: turnedTo(shaped, Vec3.fromArray(Vec3(), normal, 0)) } : {}),
         ...(scale ? { scale: Vec3.fromArray(Vec3(), scale, 0) } : {}),
         ...(invert !== undefined ? { invert } : {}),
+        ...(ghost !== undefined ? { ghost } : {}),
       };
       if (RepresentationClip.objectsEqual(o, next)) return ApiResult.already(`Cut ${cut.index} is already so.`);
       await commit(ctx, cellsOf(ctx, cut), o, next);

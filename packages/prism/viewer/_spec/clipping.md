@@ -21,9 +21,9 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
 
 - `list`; `add` (`shape`; `target` atoms, the selection by default, or `node` (volumes, shapes), or `everything`;
   `types`; `invert`; `keepWhole`; `only`; `particles`); `update` (`shape`, `position`, `normal` or `rotation`, `scale`,
-  `invert`: only what is given); `apply` (one or several representations on or off, one step; never the last off);
-  `keep` / `release` (§5; `release` of some atoms only with a `target`, the others kept whole); `show` (§6); `remove`;
-  `clear`. Each a person's step, each a command, in the `clipping` skill.
+  `invert`, `ghost`: only what is given); `apply` (one or several representations on or off, one step; never the last
+  off); `keep` / `release` (§5; `release` of some atoms only with a `target`, the others kept whole); `show` (§6);
+  `remove`; `clear`. Each a person's step, each a command, in the `clipping` skill.
 - **A cut by its number or its tag** (`cut`, `tag`): the views and the gizmos send the tag. Why: runs wait their turn,
   so a number read at a click can name another cut by the time the run starts (a double click's second remove).
 - **Params checked**: vectors are three finite numbers (a size positive), an angle finite, drawing options the drawing's
@@ -134,6 +134,11 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
 
 ## 6. Drawn in the scene
 
+- **Ghosts** (`update` `ghost`, cellVIEW's, apps/prism-me `_spec/cellview.md` §4.3): what a cut removes drawn again as
+  outlines only, faint, not pickable: Mol\*'s clip object `ghost`, a depth draw of the cut part into the transparent
+  depth that the outline pass outlines (in `outline.transparentColor`, else the outline's color). With outlines off,
+  none. Several ghosted cuts on one representation outline what all of them cut (their intersection); graded ways turn
+  inside out as a whole.
 - **`ClipVolumesShape3D`** (plugin core, imported by the feature: registered on import, Prism only): from a
   representation that can be cut to a shape provider of its clip objects (by tag) as translucent walls and solid edges
   (`ShapeProvider.transparency`, per group); options for walls, edges, colors, opacity, width, extent (a plane's disk
