@@ -25,10 +25,6 @@ Lanes in parallel where they do not overlap. The design is the mock: Storybook p
 [_spec/cellview.md](_spec/cellview.md). A library part is built on prism-me for tomorrow, in commits of its own that
 name no extension (upstreamable later, when Ludo says so).
 
-- **1. The graphics modes change the levels of detail** (app, small; now). Performance, Balanced, Quality, Ultra write
-  the pixel presets (`Spheres.LodPixelPresets[mode]`: levels and `lodPixelSize`), not the distance presets the particles
-  ignore at 3 px; the mode read back compares both. Check: on CellPack MG, Performance draws visibly fewer spheres far
-  away than Ultra, and the mode picked stays lit. Test first: a mode's `lodPixelSize` is its preset's.
 - **3. Clips in a category of their own** (app on Prism's clips; now; changes ui.md §2, §5). A Clips category after
   Structures, Particles, Volumes, Meshes holds every clip of the scene; no clip row under an object. A clip's
   properties: its shape, then What it cuts (every object or part it is given, × to take one off, Cut also… to add one).
@@ -89,7 +85,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   their defaults (the object reads mixed). The scene-wide `component.options` keep one structure's own since v6 #2057
   (guarded in `mesoscale/src/_test/object-graphics.test.ts`); the quick styles and `animation.wiggle` unchecked.
 - Graphics & Motion on parts (entities, chains, groups, targets) and meshes; the starting state shown (no mode lit until
-  one is picked: `auto` quality, a list's default levels of detail).
+  one is picked: `auto` quality, a list's spacefill at no levels). A list drawn by fibers alone answers "already" to a
+  mode and lights none: no levels of detail to set (a failure, as for an object with nothing drawn).
 - The canvas resolution (pixel scale, sharpening) on screen: only ⌘K, `?graphics-mode=` and the agent set it now.
 - A volume's quality: Mol\*'s `quality` barely changes a slice or an isosurface; a stronger setting per volume
   (resolution, a smoother surface).

@@ -78,3 +78,17 @@ export const TestPlainList = PluginStateTransform.BuiltIn({
     return new SO.Particle.List(plain as ReturnType<typeof cellpackLike>, { label: 'Plain' });
   },
 });
+
+/** A cellPACK-like list with one fiber (particles 2 to 4, a cellPACK model's RNA), for tests */
+export const TestFiberList = PluginStateTransform.BuiltIn({
+  name: 'mesoscale-test-fiber-list',
+  display: { name: 'Test Fiber List' },
+  from: SO.Root,
+  to: SO.Particle.List,
+  params: {},
+})({
+  apply() {
+    const fibers = { count: 1, offsets: Int32Array.of(0, 3), indices: Int32Array.of(2, 3, 4) };
+    return new SO.Particle.List({ ...cellpackLike(), fibers }, { label: 'HIV' });
+  },
+});
