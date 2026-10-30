@@ -719,7 +719,7 @@ export function settingsOf(plugin: PluginContext): ClipSettings {
 function describe(cut: Cut): string {
   const p = [...cut.object.position].map((x) => x.toFixed(1)).join(', ');
   const what = CutShapeLabels[cut.object.type as CutShape] ?? cut.object.type;
-  return `Cut ${cut.index}: ${what.toLowerCase()} at (${p})${cut.object.invert ? ', inverted' : ''} · ${cut.targets
+  return `Cut ${cut.index}: ${what.toLowerCase()} at (${p})${cut.object.invert ? ', inverted' : ''}${cut.object.ghost ? ', outlined (ghost)' : ''} · ${cut.targets
     .map((t) => `${t.label} (${t.ref})`)
     .join(', ')}`;
 }

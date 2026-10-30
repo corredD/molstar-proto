@@ -105,6 +105,8 @@ describe('the clipping area', () => {
 
     ok(await clipping.update({ cut: 1, ghost: true }));
     expect(ghosts().every((g) => g)).toBe(true);
+    // read back by the list (an agent sees what it set)
+    expect(((await clipping.list({})) as any).did).toContain('outlined (ghost)');
     expect((await clipping.update({ cut: 1, ghost: true })) as any).toMatchObject({ unchanged: true });
     ok(await v.api.history.undo());
     expect(ghosts().some((g) => g)).toBe(false);
