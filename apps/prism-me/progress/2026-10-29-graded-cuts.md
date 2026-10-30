@@ -43,7 +43,7 @@
   `wider`, a band in Å, a fuzziness), a data layer `tClipTable` (`rgba32f`, 16 cells a row) with `dClipTable`; with it a
   layer's `row` is written into `tClipping` (its byte the instance's row) instead of its groups. The instance clip
   (vertex stage, `clip_instance`) runs `clipTableTest`: per clip object the row's mode, cellVIEW's rule at full
-  strength, a Wang hash of `aInstance` (`clipRandom`, its top 24 bits, exact in f32); the clipping varying becomes the
+  strength, a Wang hash of the instance (`clipRandom`; of its place since `529645fe0`); the clipping varying becomes the
   row's ignored objects (`clipTableIgnored`), so the pixel clip and caps read a 16-bit flag. WGSL and GLSL; WebGL1 a
   float hash. `Clipping.random` and `Clipping.isCut` are the same rule in TS (tested against the mock's). The table is
   re-uploaded only when its cells change (`setClippingTable`).
