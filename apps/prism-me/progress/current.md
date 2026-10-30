@@ -34,7 +34,9 @@ is not built is [../TODO.md](../TODO.md).
     graded-cuts-ui lane. PR #22 (`me/clip-whole`): Clip whole in a clip's section. PR #23 (`me/graded-cuts-ui`): 4's app
     half, reviewed, real GL on both backends; contains #21 and #22 (ui.md row merged by the coordinator). Merge 21,
     22, 23. Open for Ludo: the switch to instance is scene-wide, not per cut (a per-cut variant needs a library change).
-  - **7. Ghosts** (`me/ghosts`, port 1358): design and library first, the app control after the two above.
+  - **7. Ghosts**: PR #24 (`me/ghosts`), reviewed, real GL on both backends: a clip's `ghost` flag, a depth-only draw of
+    what it cuts outlined (~128 graphics lines), Ghosts in a clip's section; contains #23 (coordinator's merge, both
+    kept). Limits in Prism's clipping.md §6 (DOF, bloom and SSAO see the ghosts; caps get none). Merge 21, 22, 23, 24.
 - **Library fix: a whole particle list's bounding sphere** (`me/particle-bounds` off `origin/master`, pushed, no PR):
   built (`0927c892b`), merged with PR #5; waits on Ludovic for upstream.
 - **Not prism-me: ChimeraX commands** (`chimerax-commands` off `origin/master`, `~/prism-me-lanes/chimerax-commands`,
