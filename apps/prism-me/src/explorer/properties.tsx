@@ -1475,7 +1475,7 @@ function ClipProperties(props: { subject: Subject }) {
         />
       </Line>
       {/* each model or list it cuts that draws objects: its Clip whole, the same as in its own Clips */}
-      <For each={wholes} by={(o) => o.ref}>
+      <For each={wholes} by={(o) => `${o.ref}:${o.label}`}>
         {(o) => <ClipWhole api={api} particles={o.ref} label={`Clip whole: ${o.label}`} />}
       </For>
     </div>

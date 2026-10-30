@@ -53,6 +53,21 @@
 
 ## Learned
 
+- The properties panel is in a shadow root: `document.body.textContent` sees none of it; Playwright's locators do. A
+  clip's section opens folded the first time (`[data-section="clip"]`'s header).
+
 ## Size
 
+- `properties.tsx` about +45 −30 (the control moved into `ClipWhole`, the clip's block 8 lines); test +41; spec,
+  changelog a few lines.
+
 ## Review
+
+- Gate: lane-reviewer 1 must-fix, 2 should-fix, 2 nits; lane-skeptic confirmed all 5, refuted none, added 1 nit.
+- Fixed: the §4 table's Clip row names Clip whole (must-fix); `.v6/changelogs/clip-whole.md`; `ClipWhole` moved before
+  `Clips` (no conflict with graded-cuts-ui's `properties.tsx` by `git merge-file`); the `For` keyed by ref and label (a
+  renamed object's name follows).
+- Left: `wholes` calls `cutOf` again where `more` did (a few objects: small); the test cuts a whole model only, not a
+  part (by reading, `cutOf` returns the model for a part clip too).
+- Merge note: graded-cuts-ui (`97c2f22c8`) rewrites the same §4 Clip row in `ui.md`: a conflict on that one row; keep
+  both additions (its ways, then "; each model or list it cuts: Clip whole").
