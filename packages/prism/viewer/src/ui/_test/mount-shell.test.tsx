@@ -6,6 +6,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -69,6 +70,66 @@ describe('the shell on a page', () => {
     c.managers.commands.open('view.theme');
     await new Promise((r) => setTimeout(r, 0));
     expect(preferences.values.has('theme')).toBe(true);
+    mounted.dispose();
+  });
+
+  // The UI scale (prism-ui styling.md §7): one variable on the shell's root, kept like the theme; never a canvas prop.
+  it('scales the UI by one variable on its root, keeps it, and leaves the canvas alone', async () => {
+    const preferences = memoryStore();
+    const c = await core(preferences);
+    const target = document.createElement('div');
+    document.body.append(target);
+    const mounted = await mountShell(c, target);
+    const settingsBefore = JSON.stringify(c.sources.settings.groups.value.map((g) => g.values));
+    expect(mounted.root.style.getPropertyValue('--msp-ui-scale')).toBe('');
+    expect(preferences.values.has('uiScale')).toBe(false);
+    c.managers.commands.open('view.ui-larger');
+    c.managers.commands.open('view.ui-larger');
+    await new Promise((r) => setTimeout(r, 0));
+    const scale = mounted.shell.uiScale.value;
+    expect(scale).toBeGreaterThan(1);
+    expect(mounted.root.style.getPropertyValue('--msp-ui-scale')).toBe(String(scale));
+    expect(preferences.values.get('uiScale')).toBe(scale);
+    // Not a setting of the plugin's: the settings (the canvas's props among them) are as they were, and the canvas host
+    // keeps no style of it.
+    expect(JSON.stringify(c.sources.settings.groups.value.map((g) => g.values))).toBe(settingsBefore);
+    expect(mounted.root.querySelector<HTMLElement>('[data-msp-canvas]')?.style.getPropertyValue('--msp-ui-scale')).toBe(
+      '',
+    );
+    mounted.dispose();
+
+    // A new shell reads it back.
+    const again = await core(preferences);
+    const target2 = document.createElement('div');
+    document.body.append(target2);
+    const remounted = await mountShell(again, target2);
+    expect(remounted.shell.uiScale.value).toBe(scale);
+    expect(remounted.root.style.getPropertyValue('--msp-ui-scale')).toBe(String(scale));
+    again.managers.commands.open('view.ui-reset');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(remounted.root.style.getPropertyValue('--msp-ui-scale')).toBe('');
+    remounted.dispose();
+  });
+
+  it('starts at 100 % when its kept scale cannot be read or written', async () => {
+    const broken: PrismStore = {
+      get: (k) => {
+        if (k === 'uiScale') throw new Error('storage blocked');
+        return undefined;
+      },
+      set: (k) => {
+        if (k === 'uiScale') throw new Error('storage blocked');
+      },
+      remove: () => {},
+    };
+    const c = await core(broken);
+    const target = document.createElement('div');
+    document.body.append(target);
+    const mounted = await mountShell(c, target);
+    expect(mounted.shell.uiScale.value).toBe(1);
+    c.managers.commands.open('view.ui-larger');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mounted.shell.uiScale.value).toBeGreaterThan(1);
     mounted.dispose();
   });
 

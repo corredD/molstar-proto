@@ -6,6 +6,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import {
@@ -31,6 +32,7 @@ import {
   ThemeModel,
   PlaybackDeck,
   TrajectoryRow,
+  UIScaleModel,
   type UITheme,
   UIThemes,
   ViewHost,
@@ -94,6 +96,15 @@ const SessionFile = /\.(molx|molj)$/i;
 /** The assistant's tab (`@molstar/prism-assistant`'s), stood in for by a placeholder until it loads. */
 const AssistantTabId = 'assistant.tab.assistant';
 
+/** A preference read or written, or undefined if the store throws (a host's store, storage blocked). */
+function tryPreference<T>(fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch {
+    return undefined;
+  }
+}
+
 export interface MountedShell {
   readonly shell: ShellModel;
   readonly root: HTMLElement;
@@ -130,6 +141,8 @@ export async function mountShell(core: ViewerCore, target: HTMLElement): Promise
       () => ink.dispose(),
       () => stopTheme(),
       () => keepTheme.unsubscribe(),
+      () => stopUIScale(),
+      () => keepUIScale.unsubscribe(),
       () => askedFullscreen.unsubscribe(),
       () => browserFullscreen.unsubscribe(),
       () => fullscreen.dispose(),
@@ -149,8 +162,18 @@ export async function mountShell(core: ViewerCore, target: HTMLElement): Promise
     };
 
     const layout = spec.ui?.layout ?? {};
+    // The UI scale the person chose last (prism-ui styling.md §7), kept in the preferences as the theme is; a store that
+    // fails to read or write leaves it at 100 % for this session. On the root, as the theme: the size tokens under it
+    // multiply by it, the canvas is not touched.
+    const preferences = spec.persist?.preferences;
+    const uiScale = new UIScaleModel(tryPreference(() => preferences?.get('uiScale')));
+    const stopUIScale = uiScale.applyTo(root);
+    const keepUIScale = uiScale.scale
+      .pipe(skip(1))
+      .subscribe((s) => tryPreference(() => preferences?.set('uiScale', s)));
     const shell = new ShellModel({
       ...layout,
+      uiScale,
       viewState: managers.viewState,
       navigation: managers.navigation,
     });
@@ -161,7 +184,6 @@ export async function mountShell(core: ViewerCore, target: HTMLElement): Promise
     const layoutPreferences = layoutStore(spec);
     if (layoutPreferences) restoreLayout(managers, layoutPreferences);
     // The theme the person chose last, kept in the preferences when the spec gives them (journal.md §6).
-    const preferences = spec.persist?.preferences;
     const kept = preferences?.get('theme');
     const theme = new ThemeModel(UIThemes.some((t) => t.id === kept) ? (kept as UITheme) : (spec.ui?.theme ?? 'light'));
     const stopTheme = theme.applyTo(root);
@@ -568,6 +590,40 @@ export async function mountShell(core: ViewerCore, target: HTMLElement): Promise
           icon: 'sun-moon',
           run: () => {
             theme.next();
+            return { message: '' };
+          },
+        },
+        // The UI scale (prism-ui styling.md §7), as Settings › Appearance steps it.
+        {
+          id: 'view.ui-larger',
+          title: 'Larger UI',
+          alias: ['ui scale', 'zoom in', 'bigger text', 'readable'],
+          category: 'View',
+          icon: 'zoom-in',
+          run: () => {
+            uiScale.larger();
+            return { message: '' };
+          },
+        },
+        {
+          id: 'view.ui-smaller',
+          title: 'Smaller UI',
+          alias: ['ui scale', 'zoom out', 'smaller text'],
+          category: 'View',
+          icon: 'zoom-out',
+          run: () => {
+            uiScale.smaller();
+            return { message: '' };
+          },
+        },
+        {
+          id: 'view.ui-reset',
+          title: 'UI at 100 %',
+          alias: ['ui scale', 'reset zoom', 'actual size'],
+          category: 'View',
+          icon: 'rotate-ccw',
+          run: () => {
+            uiScale.reset();
             return { message: '' };
           },
         },
