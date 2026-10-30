@@ -54,15 +54,12 @@ if (args.data) {
 page.on('console', (m) => {
   if (m.type() === 'error') console.error('page:', m.text().slice(0, 300));
 });
-await page.goto(
-  `http://localhost:${port}/apps/prism-me/build/?graphics-backend=${backend}&example=${example}`,
-);
+await page.goto(`http://localhost:${port}/apps/prism-me/build/?graphics-backend=${backend}&example=${example}`);
 await page.waitForFunction(() => window.molstar?.viewer, null, { timeout: 60000 });
-await page.waitForFunction(
-  () => window.molstar.viewer.plugin.canvas3d.getRenderObjects().length > 0,
-  null,
-  { timeout: 240000, polling: 1000 },
-);
+await page.waitForFunction(() => window.molstar.viewer.plugin.canvas3d.getRenderObjects().length > 0, null, {
+  timeout: 240000,
+  polling: 1000,
+});
 await page.waitForTimeout(5000);
 
 // the page side: the frames, the camera, and which entities are hidden (largest first, whole entities, up to 90.5 %)
@@ -133,7 +130,9 @@ async function run(arm) {
   for (const cam of ['whole', 'close']) {
     const r = await page.evaluate(([n, c]) => window.H.measure(n, c), [frames, cam]);
     results.push({ arm, cam, ...r });
-    console.log(`${arm} ${cam}: ${median(r.wall).toFixed(1)} ms (pipelined ${median(r.batch).toFixed(1)}), ${r.draws} draws`);
+    console.log(
+      `${arm} ${cam}: ${median(r.wall).toFixed(1)} ms (pipelined ${median(r.batch).toFixed(1)}), ${r.draws} draws`,
+    );
   }
 }
 const hide = (visible) =>
@@ -170,7 +169,9 @@ const table = [];
 for (const cam of ['whole', 'close']) {
   const by = (arm) => median(results.filter((r) => r.arm.startsWith(arm) && r.cam === cam).map((r) => median(r.wall)));
   const [a, b, c] = ['A', 'B', 'C'].map(by);
-  table.push(`| ${info.backend} | ${cam} | ${a.toFixed(1)} | ${b.toFixed(1)} | ${c.toFixed(1)} | ${(b / a).toFixed(1)} | ${(b / c).toFixed(1)} |`);
+  table.push(
+    `| ${info.backend} | ${cam} | ${a.toFixed(1)} | ${b.toFixed(1)} | ${c.toFixed(1)} | ${(b / a).toFixed(1)} | ${(b / c).toFixed(1)} |`,
+  );
 }
 console.log('\n| Backend | Camera | None hidden (A) | 90 % hidden (B) | 90 % removed (C) | B / A | B / C |');
 console.log('| ------- | ------ | --------------- | --------------- | ---------------- | ----- | ----- |');
