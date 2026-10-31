@@ -116,7 +116,7 @@ describe('mesh triangle lookup, by size', () => {
     // linear: 4×, under 8× (a quadratic reads 16×)
     expect(large.build / small.build).toBeLessThan(8);
     expect(large.bytes / small.bytes).toBeLessThan(5);
-    // about 16 bytes a triangle, under the mesh's own (about 30)
+    // about 6 bytes a triangle, under the mesh's own (about 26)
     expect(large.bytes).toBeLessThan(large.meshBytes);
     // a pick costs the same at 4×, well under a millisecond
     expect(large.p95).toBeLessThan(1);

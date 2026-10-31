@@ -162,7 +162,16 @@ describe('a mesh shape picked by triangle', () => {
     for (let i = 4; i < 8; i++) gb[i] = 1;
     ValueCell.update(mesh.groupBuffer, gb);
     const shape = ShapeUtils.enableTrianglePicking(
-      ShapeUtils.create('layers', {}, mesh, () => ColorNames.red, () => 1, (g) => `Material ${g}`, undefined, 2),
+      ShapeUtils.create(
+        'layers',
+        {},
+        mesh,
+        () => ColorNames.red,
+        () => 1,
+        (g) => `Material ${g}`,
+        undefined,
+        2,
+      ),
     );
     // the GPU said group 0; the ray's hit nearest the depth point is triangle 2, of group 1
     const loci = shape.getTriangleLoci!(groupLoci(shape as never), down(0.7, 0.2), Vec3.create(0.7, 0.2, 1), 0.1);
