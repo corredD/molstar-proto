@@ -114,33 +114,107 @@ branch), **prism-me's own +243 kB** (the app and its three extensions).
 By the prism-me PR that touched each file (first-parent history `origin/master..HEAD`, the master merges left out; a
 file touched by several PRs is counted under all of them together):
 
-| PR                    | kB   | Mostly                                                                 |
-| --------------------- | ---- | ---------------------------------------------------------------------- |
-| #28 instance-cull     | 18.2 | `cell-cull.wgsl.ts` 9.4, `merged-culler.ts` 5.0, `renderable.ts` 1.9   |
-| #25 ui-scale          | 16.1 | Prism's generated CSS modules (about 0.3–1.3 kB each), `ui-scale.ts`   |
-| #31 mesh-measure      | 11.9 | `triangle-pick.ts` 4.6, `triangle-marks.ts` 4.3, `shape.ts` 1.5        |
-| #27 dynamic-color     | 8.7  | `color-levels.wgsl.ts` 3.0, `color-levels.glsl.ts` 2.7, `color-levels.ts` 2.6 |
-| #20 + #24 cuts, ghosts| 7.5  | `common-clip.glsl.ts` 3.9, `clip.wgsl.ts` 3.6                          |
-| #20 (+ direct)        | 4.7  | particle `layers.ts` 4.2                                               |
-| #30 ghost-cull        | 4.6  | `outlines.frag.ts` 4.1, `outlines.wgsl.ts` 2.4                         |
-| #20 + #8              | 4.4  | particles `look.ts`                                                    |
-| others, each < 3 kB   | 25.6 | clipping operations, gizmos (#9, #10), `canvas3d.ts`, `draw.ts`, …     |
+| PR                     | kB   | Mostly                                                                        |
+| ---------------------- | ---- | ----------------------------------------------------------------------------- |
+| #28 instance-cull      | 18.2 | `cell-cull.wgsl.ts` 9.4, `merged-culler.ts` 5.0, `renderable.ts` 1.9          |
+| #25 ui-scale           | 16.1 | Prism's generated CSS modules (about 0.3–1.3 kB each), `ui-scale.ts`          |
+| #31 mesh-measure       | 11.9 | `triangle-pick.ts` 4.6, `triangle-marks.ts` 4.3, `shape.ts` 1.5               |
+| #27 dynamic-color      | 8.7  | `color-levels.wgsl.ts` 3.0, `color-levels.glsl.ts` 2.7, `color-levels.ts` 2.6 |
+| #20 + #24 cuts, ghosts | 7.5  | `common-clip.glsl.ts` 3.9, `clip.wgsl.ts` 3.6                                 |
+| #20 (+ direct)         | 4.7  | particle `layers.ts` 4.2                                                      |
+| #30 ghost-cull         | 4.6  | `outlines.frag.ts` 4.1, `outlines.wgsl.ts` 2.4                                |
+| #20 + #8               | 4.4  | particles `look.ts`                                                           |
+| others, each < 3 kB    | 25.6 | clipping operations, gizmos (#9, #10), `canvas3d.ts`, `draw.ts`, …            |
 
-By folder: graphics/gl +37.1, prism/viewer +18.0, prism/ui +12.7, graphics/geo +10.4, graphics/repr +6.2,
-canvas3d +5.6, plugin/core +4.6, model +2.3. **These put the stock viewer over its 5.6 MB** (master has 17 kB left):
-step 4's list.
+By folder: graphics/gl +37.1, prism/viewer +18.0, prism/ui +12.7, graphics/geo +10.4, graphics/repr +6.2, canvas3d +5.6,
+plugin/core +4.6, model +2.3. **These put the stock viewer over its 5.6 MB** (master has 17 kB left): step 4's list.
 
 ### prism-me's own: +243 kB on the branch's stock viewer
 
-| What                                                                  | kB    |
-| --------------------------------------------------------------------- | ----- |
+| What                                                                                                                                                                  | kB    |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
 | `apps/prism-me/src/explorer` (`properties.tsx` 29.9, `operations.ts` 15.2, `rows.ts` 12.3, `clips.ts` 8.8, `menu.ts` 8.7, `ui.tsx` 8.2, `tree-view.tsx` 6.8, CSS 8.4) | 104.0 |
-| stage-tools (`operations.ts` 27.9, `distance.ts` 5.5, `particle-handle.ts` 4.5)                                                   | 46.8  |
-| cryoet (`operations.ts` 25.6, `controls.tsx` 7.7)                                                                                  | 40.2  |
-| mesoscale (`operations.ts` 24.1, `prism-viewer.ts` 4.4, `controls.tsx` 2.3)                                                        | 34.5  |
-| plugin/core particle `ops.ts` 11.8 and `particle-targets.ts` 3.9 (through `tomograms.ts` → `cryoet/operations`)                  | 15.8  |
-| the app's page, spec, look, URL                                                                                                    | 4.8   |
+| stage-tools (`operations.ts` 27.9, `distance.ts` 5.5, `particle-handle.ts` 4.5)                                                                                       | 46.8  |
+| cryoet (`operations.ts` 25.6, `controls.tsx` 7.7)                                                                                                                     | 40.2  |
+| mesoscale (`operations.ts` 24.1, `prism-viewer.ts` 4.4, `controls.tsx` 2.3)                                                                                           | 34.5  |
+| plugin/core particle `ops.ts` 11.8 and `particle-targets.ts` 3.9 (through `tomograms.ts` → `cryoet/operations`)                                                       | 15.8  |
+| the app's page, spec, look, URL                                                                                                                                       | 4.8   |
 
 The three extensions' views are lazy already (`ui: async () => import('./prism-viewer-ui.js')`); their operations and
 the whole explorer (views included: "not lazy: its tab is the one open at start") are in the closure. The explorer's
 views import the cryoet and mesoscale `controls`, so those are in it too.
+
+## Step 2: what moved to lazy loading
+
+**The explorer's properties** (`2aeae20a0`): `properties.tsx` and what only it imports (`distance-properties.tsx`,
+`properties-view.tsx`, its CSS, cryoet's and mesoscale's `controls.tsx` and their CSS) are a chunk of their own,
+imported once the scene has an object or a row is picked (`loadProperties` in `explorer/ui.tsx`). At start no row is
+picked: the panel shows "Pick a row to see its properties.", as before. The tab itself stays in the start bundle: it is
+open at start, and `view.open` finds no tab that registers later.
+
+| Build                       | Start closure | Chunks at start |
+| --------------------------- | ------------- | --------------- |
+| prism-me before             | 5,928,443 B   | 106             |
+| prism-me after              | 5,883,260 B   | 114             |
+| prism-me's own share before | 243,256 B     |                 |
+| prism-me's own share after  | 198,073 B     |                 |
+
+The 8 more chunks at start are esbuild's splitting of modules shared by the start and the new chunk (HTTP/2: no
+measurable cost below).
+
+Time to the first frame, headless Chrome (WebGPU flags), the production builds served side by side on 1366 (a static
+server), `?example=cellpack-hiv1` with the list and the BinaryCIF served from a local copy (no network noise); ms from
+navigation, median of 5 fresh contexts:
+
+| Run                      | Viewer created | First frame | HIV drawn   |
+| ------------------------ | -------------- | ----------- | ----------- |
+| before                   | 314 / 300      | 347 / 342   | 1435 / 1423 |
+| after                    | 306 / 309      | 354 / 350   | 1436 / 1473 |
+| before, 20 Mbit/s, 40 ms | 2832           | 2866        | 4135        |
+| after, 20 Mbit/s, 40 ms  | 2890           | 2926        | 4208        |
+
+No difference beyond the noise (45 kB at 20 Mbit/s is 18 ms; runs vary ±60 ms). The first screenshot (HIV drawn, the
+panel open) is identical pixel for pixel before and after. On first use (the real app, the after build): the model's row
+picked shows its seven sections (Look, Representation, Decoration, Position, Clips, Labels, Graphics) and By zoom; the
+canvas's right-click menu opens with its items; `mesoscale.colorLevels` runs; no console error. Unit tests:
+`apps/prism-me` 23 files pass; `explorer/_test/lazy-properties.test.ts` guards the split (it fails on the code before).
+
+### What did not move, and why
+
+- **The three extensions' operations** (stage-tools 46.8, cryoet 32.5, mesoscale 32.2 kB, and plugin/core's particle
+  `ops.ts` and `particle-targets.ts` 15.8 kB through `tomograms.ts` → `cryoet/operations`). Their views are lazy
+  already; their areas are not, and cannot be as they are: the explorer's panel reads `api.mesoscale`, `api.cryoet` and
+  `api.stage` synchronously at start (`sceneModel`, `ScenePanel`, the menus), and the stage subscribes to the canvas's
+  right-click in its constructor. As `LazyViewerExtension`s (stubs as `LazyVideoExport`'s, every operation's flags
+  declared, `StageLabel`/`StageDistance` in `owns.transformers`, the hidden tabs in `parts`) the explorer would have to
+  follow areas that appear later, and the first right-click to load the stage. A lane of its own: about 0.13 MB.
+- **The explorer's menus** (`menu.ts` 8.7 kB and stage-tools' `drag.ts`): every menu path opens synchronously; small.
+- **prism-me's graphics additions** (color levels 8.7 kB, culling 18.2, ghost outlines 4.6, the clip shaders 7.5, the
+  triangle pick 11.9): shader sources are assembled synchronously when a program is built, and the triangle pick is on
+  the hover path. Making them load later is a change to the renderer in library code, for an upstream lane (step 4).
+- **Mol\*'s extensions in `FullPrismViewerSpec`**: command-language 127 kB with the query language 133 kB, the MVS
+  runtime and builder 188 kB, kinemage 37, model-archive 29, dnatco 28, rcsb 25, anvil 24, assembly-symmetry 24 are
+  eager in the stock viewer. As lazy stubs they would save more than prism-me's whole share, but the list is upstream's
+  (`apps/prism-viewer/src/extensions.ts`): an upstream lane, Ludo decides.
+
+## Step 3: the budget proposed (not set: Ludo approves it first)
+
+**5,900,000 bytes (5.90 MB)** for prism-me's `index.js`, from the measurement after step 2:
+
+- the stock viewer's budget, 5.60 MB, which master meets with 17 kB left;
+- plus prism-me's library commits, 0.102 MB, until they go upstream or leave the start (step 4);
+- plus prism-me's own share after step 2, 0.198 MB;
+- = 5.900 MB, against 5.883 MB measured: 17 kB left, the headroom upstream keeps.
+
+The brief's formula alone (5.60 + 0.198 = 5.80 MB) fails today by 85 kB, the library commits that put the stock viewer
+over its own budget on this branch; a budget that fails on the day it is set guards nothing. If the library commits go
+upstream and upstream's budget follows them, prism-me's becomes upstream's plus 0.20 MB.
+
+prism-viewer's own budget (5.6 MB) fails on this branch (5.69 MB): left as it is, as upstream's file (a change here
+would conflict with every master merge). Ludo decides.
+
+## Step 4: the library commits that put the stock viewer over 5.6 MB
+
+#28 instance-cull 18.2 kB; #25 ui-scale 16.1; #31 mesh-measure 11.9; #27 dynamic-color 8.7; #20 + #24 cuts and ghosts
+7.5 (+ #20 particle layers 4.7, #20 + #8 particle look 4.4); #30 ghost-cull 4.6; #10 and #28 `canvas3d.ts` 2.8; the rest
+under 2.5 each (#9, #10, #12, #17, #18, #5). Upstream has 17 kB of room: any one of the first four alone puts it over.
