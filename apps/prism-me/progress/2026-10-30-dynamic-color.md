@@ -58,10 +58,59 @@ local copy with `--data`). Times in ms, median / p90.
 
 ## Built
 
+- Step 1 only (the measurement, `recolor-bench.mjs`). **Stopped at the size check:** way (b)'s library part is over the
+  brief's ~250 lines (Size below). No code, no PR; Ludo picks an option.
+
 ## Decided
+
+- **Way (b), the blend in the shader by the fragment's view depth** (this lane, from step 1's numbers; the brief's
+  rule).
+- **Atom, not residue, as the nearest level** (proposed): cellVIEW computes a residue color and never uses it (§7.3);
+  the brief allows "residue or atom". Ludo may say otherwise.
 
 ## Learned
 
+- The theme's factory is not the cost (0.3 ms, its index cached per list); the per-particle color function is 115 to 170
+  ms over 2.1 M particles, and the commit and upload several times that.
+- The shaders already have what pixel edges need: the projection and the drawing buffer's size are global uniforms
+  (`uGlobal.uProjection`, `uDrawingBufferSize`), so a level's edge in pixels on screen becomes a depth in the shader as
+  `LodView.depthScale` does on the CPU (`renderable.ts`), with no new view plumbing. A merged item's group data is one
+  line in `BaseTexSpecs` (`merged.ts`): the segment offsets (`aSegment.z + group`) are already handled for group
+  textures.
+- No HCL, Oklab or LCh code in the shaders today; `@molstar/core/util/color/spaces/{lab,hcl}.ts` are CPU only.
+
 ## Size
+
+**Way (b) as briefed is about 360 production lines in `graphics` (300 to 420), over the ~250 limit: stopped here, before
+the library.** The yardstick: the graded-cuts table (`3c0ed1d34`, one per-instance table and its rule in both backends)
+was about 316 production lines.
+
+| Part (graphics)                                                                                              | Lines |
+| ------------------------------------------------------------------------------------------------------------ | ----- |
+| Per-target level data (new file): per atom its chain's index and count, its element's color; the compartment | 60    |
+| The particle target visual fills it (structure targets), keeps it on a theme change                          | 60    |
+| Props: levels on or off, their edges in pixels on screen (the unit in one place), values update              | 40    |
+| Schema (texture, edges, define), WebGPU bindings and uniform layout, `merged.ts` texture spec                | 20    |
+| GLSL: params, varyings, Oklab and LCh, the ladder and its blend by depth                                     | 80    |
+| WGSL: the same                                                                                               | 80    |
+| The hierarchy theme gives a target's compartment color (the far level)                                       | 20    |
+
+Tests (not counted): the level and blend at a given depth both ways, the Oklab blend against RGB, no frame asked at
+rest, WGSL/GLSL compile, merged items. The app after it (Look, the category's theme, the story with a level slider):
+about 150 lines in prism-me and the mesoscale extension.
+
+**Options for Ludo:**
+
+1. **(b) in full** (recommended): about 360 lines, both backends, per pixel, four levels (compartment → entity → chain →
+   atom), chains' hues derived from the entity's in LCh, blended in Oklab. All of the brief's check. A Mol\* graphics
+   change, with Alexander, as the brief says.
+2. **(b) with three levels**: entity → chain → atom, the far level the theme's own color (with `particle-hierarchy`
+   already the compartment's hue family). About 290 lines. Drops the compartment level of the check.
+3. **(b) on WebGPU first**: about 280 lines now (the shared parts and WGSL), GLSL in a follow-up lane (about 80). The
+   check fails on WebGL2 until then: it shows the far colors only.
+4. **(b) per instance, not per pixel** (the level by the particle's depth in the vertex stage): saves about 10 lines; a
+   large object no longer spans two levels. Not worth it.
+
+Not an option: way (a), by step 1.
 
 ## Review
