@@ -16,7 +16,10 @@ is not built is [../TODO.md](../TODO.md).
   over CellPack MG on WebGPU and WebGL2, which chooses (a) a theme's current level moved on camera change (David's) or
   (b) a shader blend by view depth (cellVIEW's, library, with Alexander). Open for Ludo: edges in screen pixels or in Å
   (the lane builds pixels by default, the unit in one place). Started 2026-10-30 (Ludo: "go"): lane `dynamic-color`
-  (`me/dynamic-color`, port 1359), step 1 first.
+  (`me/dynamic-color`, port 1359), step 1 first. Step 1 measured: recoloring CellPack MG (2.1 M) costs ~1 s (WebGPU) to
+  ~1.8 s (WebGL2) a step, 20+ frames at best, so a theme moved on zoom cannot be smooth: way (b), the shader blend by
+  view depth. Stopped at the size check: (b) is ~360 graphics lines against ~250. Waits on Ludo: full (b), three levels
+  (~290) or WebGPU first (~280); atom or residue as the nearest level; edges in pixels or Å.
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
   parallel; merged in this order (each merges `origin/prism-me` before its PR):
