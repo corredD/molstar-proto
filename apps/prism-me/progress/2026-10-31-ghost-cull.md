@@ -109,6 +109,9 @@ are the image with Ghosts against without. Before the fix, ghost pixels (of 716,
 
 ## Cause (older than #28)
 
+At `4040b4baf` (#27, before #28) the six outline shaders are identical to the base of this lane and prism-me's look has
+the same camera clipping (the 1 Å near plane): established by mechanism and identical code, not by a browser run there.
+
 The outline pass writes a transparent edge's depth into the 8-bit alpha of its target (`bestTransparentDepth`), and the
 compose passes (`getOutline`, WGSL and GLSL, postprocessing and illumination) take a transparent edge only where that
 depth is above 0. Depth is reversed (about near / z): with the near plane at 1 Å, every edge beyond about 500 Å rounds
@@ -163,7 +166,8 @@ about 126,500 ghost pixels on both backends. Turning 2° a frame, four frames, a
 same camera with occlusion off differed by 0 pixels (WebGPU and WebGL2). PetWorld's ghosts were inside the 16-bit range
 before the fix (the same counts with it and without).
 
-The other paths (ghost-check, CellPack HIV, 0.3 and 0.1 of the distance, 0° and 60°, after the fix):
+The other paths (ghost-check, CellPack HIV, 0.3 and 0.1 of the distance, 0° and 60°, after the first fix, before
+`02a39773d`):
 
 - Two phases (the app's), WebGPU, and WebGL2's CPU culling: 0 pixels lost settled; turning 2° a frame for 15 frames,
   each frame against the same camera with occlusion off: 0 pixels.
@@ -209,15 +213,15 @@ instances and spheres are drawn; the extra time is the ghost pass (a depth draw 
 split between them. #28's times are the ghosts-off column. Drawing every cut particle as a ghost is the expensive case
 Alexander named (marking off, or ghost edge strength 1); that is the next item, not a change to this fix.
 
-Before and after the fix (`zoom-bench.mjs`, CellPack HIV, quality, dpr 1, 5 batches; the before with the six outline
-shaders of `99d026f92^`; ms, still / turning 1° a frame):
+Before and after the fix (`zoom-bench.mjs`, CellPack HIV, quality, dpr 1, 5 batches; before: the six outline shaders of
+`99d026f92^`; after: at `bc5a6d902`, after the round-2 and round-3 fixes; ms, still / turning 1° a frame):
 
 | backend, Ghosts | 1                         | 0.35                        | 0.1                         |
 | --------------- | ------------------------- | --------------------------- | --------------------------- |
-| WebGPU, off     | 9.0 / 9.2 → 9.0 / 9.2     | 52.6 / 33.6 → 50.5 / 33.5   | 45.4 / 29.7 → 44.4 / 31.5   |
-| WebGPU, on      | 13.8 / 14.9 → 13.8 / 14.6 | 86.7 / 61.4 → 86.4 / 58.1   | 75.3 / 51.5 → 70.8 / 49.3   |
-| WebGL2, off     | 10.0 / 9.9 → 9.8 / 9.9    | 66.7 / 46.0 → 66.6 / 46.0   | 85.8 / 56.5 → 85.5 / 55.9   |
-| WebGL2, on      | 16.1 / 15.9 → 15.9 / 15.7 | 124.3 / 84.4 → 126.1 / 83.7 | 149.1 / 98.3 → 149.6 / 96.7 |
+| WebGPU, off     | 9.0 / 9.2 → 9.0 / 9.2     | 52.6 / 33.6 → 50.5 / 33.5   | 45.4 / 29.7 → 43.2 / 29.6   |
+| WebGPU, on      | 13.8 / 14.9 → 13.8 / 14.5 | 86.7 / 61.4 → 86.4 / 57.6   | 75.3 / 51.5 → 70.8 / 49.4   |
+| WebGL2, off     | 10.0 / 9.9 → 9.9 / 9.8    | 66.7 / 46.0 → 66.6 / 45.8   | 85.8 / 56.5 → 85.7 / 56.0   |
+| WebGL2, on      | 16.1 / 15.9 → 15.6 / 15.7 | 124.3 / 84.4 → 123.8 / 83.7 | 149.1 / 98.3 → 149.4 / 96.8 |
 
 The fix costs nothing measurable; #28's frames (Ghosts off) are kept. Ghosts on cost about 1.7× (#24's depth draw of the
 cut part and its outlines), as before.
