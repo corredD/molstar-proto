@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -28,6 +29,9 @@ import {
   type TransformData,
 } from '@molstar/graphics/geo/geometry/transform-data';
 import { createColors } from '@molstar/graphics/geo/geometry/color-data';
+import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
+import { createDataArray } from '@molstar/graphics/gl/renderable/util';
+import { Color } from '@molstar/core/util/color';
 import { createSizes } from '@molstar/graphics/geo/geometry/size-data';
 import { createMarkers, type MarkerData } from '@molstar/graphics/geo/geometry/marker-data';
 import { Interval, OrderedSet, type SortedArray } from '@molstar/core/data/int';
@@ -43,6 +47,7 @@ import { UniformSizeTheme } from '@molstar/graphics/theme/size/uniform';
 import {
   createStructureTargetGeometry,
   createStructureTargetSizes,
+  getStructureTargetNearColors,
   type StructureTargetProps,
   structureTargetGeometryPropsChanged,
   structureTargetMustRecreate,
@@ -119,6 +124,15 @@ export const ParticleTargetStructureParams = {
   ...withoutCommon(Spheres.Params),
   ...withoutCommon(Mesh.Params),
   solidInterior: PD.Boolean(true, BaseGeometry.ShadingCategory),
+  colorLevels: PD.MappedStatic(
+    'off',
+    { off: PD.EmptyGroup(), on: PD.Group(ColorLevels.Params, { isFlat: true }) },
+    {
+      description:
+        'Colors that follow the zoom: the far color (a compartment), the entity, the chain, the atom (by element), ' +
+        'blended by the size on screen of the atoms',
+    },
+  ),
   type: PD.Select<string>('spacefill', PD.arrayToOptions(['spacefill', 'blob-surface']), {
     isEssential: true,
     description: 'How the elements of the target are rendered.',
@@ -574,6 +588,33 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     return createRenderObject(geom.kind, values, state, materialId);
   }
 
+  /**
+   * The color levels of a structure target (`color-levels.md`): its atoms' near data, its particles' far colors when the
+   * colors are made again or the levels turned on; off for a uniform theme or a palette (no per-vertex color to blend)
+   */
+  function setColorLevels(values: ColorLevels.Data, theme: Theme, props: ParticleTargetProps, target: ParticleTarget) {
+    const color = 'color' in theme.color && theme.color.granularity !== 'uniform' && !theme.color.palette;
+    // the representation's levels, on its every item (material uniforms), on where it has atoms and colors to blend
+    const asked = props.colorLevels?.name === 'on';
+    const levels = asked ? (props.colorLevels!.params as ColorLevels.Props) : ColorLevels.defaults;
+    const on = asked && color && target.kind === 'structure';
+    const turnedOn = on && !values.dColorLevels.ref.value;
+    ColorLevels.setProps(values, levels, on);
+    if (!on || target.kind !== 'structure' || !('color' in theme.color)) return;
+    if (!turnedOn && !updateState.updateColor) return;
+
+    const near = getStructureTargetNearColors(target.structure);
+    ValueCell.update(values.tColorNear, { array: near, count: near.length / 4 });
+    const far = theme.color.farColor ?? theme.color.color;
+    const data = createDataArray(locationIt.instanceCount, 4, Uint8Array, values.tColorFar.ref.value.array);
+    locationIt.reset();
+    while (locationIt.hasNext) {
+      const { location, isSecondary, instanceIndex } = locationIt.move();
+      Color.toArray(far(location, isSecondary), data.array, instanceIndex * 4);
+    }
+    ValueCell.update(values.tColorFar, data);
+  }
+
   async function createOrUpdate(
     ctx: VisualContext,
     representationTheme: Theme,
@@ -705,6 +746,8 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
       geomUtils.updateValues(renderObject.values as any, props as any);
       geomUtils.updateRenderableState(renderObject.state, props as any);
     }
+
+    if (renderObject) setColorLevels(renderObject.values as unknown as ColorLevels.Data, theme, props, target);
 
     currentTargetData = data;
     currentTargetKind = target.kind;

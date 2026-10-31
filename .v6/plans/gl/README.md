@@ -61,6 +61,8 @@ Follow-ups from the review of the WebGPU branch (correctness, memory, one decisi
 
 ## In progress or paused
 
+- [color-levels.md](color-levels.md): a particle's colors by its atoms' size on screen (far, entity, chain, atom),
+  blended in Oklab in the vertex stage, no recoloring while zooming.
 - [backend-selection.md](backend-selection.md): the Viewer and the plugin default to `auto` (WebGPU where capable);
   backend sets, the bundle check, Viewer variants with one backend and runtime switching
   keeping the scene done.

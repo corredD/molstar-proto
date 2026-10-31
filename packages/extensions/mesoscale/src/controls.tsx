@@ -6,7 +6,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Button, Choices, Icon, Slider } from '@molstar/prism-ui';
+import { Button, Choices, Icon, Show, Slider } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
@@ -104,6 +104,58 @@ function MotionRows(props: {
     <div class={classes.tight}>
       {row('Wiggle', 5, 'wiggle')}
       {row('Tumble', 10, 'tumble')}
+    </div>
+  );
+}
+
+/** The edges `ZoomColors` shows: where each level's colors start, in pixels an atom covers */
+const ZoomEdges = [
+  ['Entity', 'entity'],
+  ['Chain', 'chain'],
+  ['Atom', 'atom'],
+] as const;
+
+/**
+ * A model's colors that follow the zoom (`mesoscale.colorLevels`; apps/prism-me/_spec/ui.md §4 Look): on or off, and
+ * where the entity, chain and atom colors start, in pixels an atom covers (the unit, `color-levels.md`); a slider once
+ * released (one step)
+ */
+export function ZoomColors(props: { area: MesoscaleApi; particles: string }) {
+  const levels = mapState(props.area.graphicsState(props.particles), (g) => g?.colorLevels);
+  const run = (patch: object) => void props.area.colorLevels({ particles: props.particles, ...patch } as never);
+  return (
+    <div class={classes.tight}>
+      <div class={classes.line}>
+        <div class={classes.label}>
+          <Button
+            size="xs"
+            variant="ghost"
+            pressed={mapState(levels, (l) => !!l)}
+            title="Colors that follow the zoom (compartment, entity, chain, atom): on or off"
+            onClick={() => run({ on: !levels.value })}
+          >
+            By zoom
+          </Button>
+        </div>
+      </div>
+      <Show when={mapState(levels, (l) => !!l)}>
+        {() =>
+          ZoomEdges.map(([label, key]) => (
+            <div class={classes.line}>
+              <div class={classes.label}>{label}</div>
+              <Slider
+                aria-label={`${label} colors from, pixels an atom covers`}
+                value={mapState(levels, (l) => l?.[key])}
+                min={0.1}
+                max={200}
+                scale="log"
+                unit="px"
+                onCommit={(v) => run({ [key]: v })}
+              />
+            </div>
+          ))
+        }
+      </Show>
     </div>
   );
 }

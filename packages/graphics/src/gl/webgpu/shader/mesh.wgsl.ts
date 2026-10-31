@@ -2,12 +2,14 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { animation_wgsl, assign_wiggle_wgsl } from './chunks/animation.wgsl.js';
 import { clip_flag_wgsl, clip_functions_wgsl, clip_instance_wgsl, clip_pixel_wgsl } from './chunks/clip.wgsl.js';
 import { segment_wgsl } from './chunks/segment.wgsl.js';
 import { common_wgsl } from './chunks/common.wgsl.js';
+import { color_levels_wgsl } from './chunks/color-levels.wgsl.js';
 import { light_wgsl } from './chunks/light.wgsl.js';
 import {
   apply_interior_wgsl,
@@ -42,6 +44,7 @@ ${material_functions_wgsl}
 ${segment_wgsl}
 ${clip_functions_wgsl}
 ${packing_wgsl}
+${color_levels_wgsl}
 ${grid_functions_wgsl}
 
 ${vertex_output_wgsl('    @location(9) vNormal: vec3<f32>,')}

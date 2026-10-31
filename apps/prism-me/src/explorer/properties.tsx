@@ -13,7 +13,7 @@ import { type ObjectPose, placementWith, poseOf } from '@molstar/stage-tools-ext
 import type { LabelInfo, StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, ObliqueSlice, Slice } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
-import { ImportColors, ObjectGraphics } from '@molstar/mesoscale-extension/controls';
+import { ImportColors, ObjectGraphics, ZoomColors } from '@molstar/mesoscale-extension/controls';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
@@ -717,6 +717,8 @@ function ParticleLook(props: { api: ViewerApi; area: ExplorerApi; node: NodeRef;
         onCommit={(emissive) => style({ emissive })}
       />
       {'particles' in node ? <Shown api={api} area={props.area} node={node} /> : null}
+      {/* a whole model's colors that follow the zoom (its representations', not a part's) */}
+      {!('particles' in node) && api.mesoscale ? <ZoomColors area={api.mesoscale} particles={node.ref} /> : null}
       {!ids || ids.length > 1 ? (
         <div class={classes.tools}>
           <Button

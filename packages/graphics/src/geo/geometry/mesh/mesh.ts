@@ -4,6 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util';
@@ -41,6 +42,7 @@ import { degToRad } from '@molstar/core/math/misc';
 import { createEmptySubstance } from '../substance-data.js';
 import { createEmptyEmissive } from '../emissive-data.js';
 import { createEmptyWiggle } from '../wiggle-data.js';
+import { ColorLevels } from '../color-levels.js';
 import { createInteriorValues, getInteriorParam, updateInteriorValues } from '../interior.js';
 import { getAnimationParam, createAnimationValues, updateAnimationValues } from '../animation.js';
 
@@ -833,6 +835,7 @@ export namespace Mesh {
       ...material,
       ...clipping,
       ...wiggle,
+      ...ColorLevels.createData(),
       ...transform,
 
       ...BaseGeometry.createValues(props, counts),

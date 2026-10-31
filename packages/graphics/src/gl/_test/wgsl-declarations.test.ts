@@ -256,6 +256,9 @@ describe('mesh wgsl', () => {
     // the clipping table (per part graded cuts): the instance clip and the pixel clip's flag
     { ...base, dClipObjects: true, dClipObjectCount: 8, dClipVariant: 'instance', dClipping: true, dClipTable: true },
     { ...base, dClipObjects: true, dClipObjectCount: 8, dClipVariant: 'pixel', dClipping: true, dClipTable: true },
+    // colors by size on screen (color-levels.md), merged and not
+    { ...base, dColorLevels: true },
+    { ...base, dColorLevels: true, dSegmented: true, dRenderVariant: 'tracing' },
     {
       ...base,
       dRenderVariant: 'pick',
@@ -380,6 +383,7 @@ describe('quad wgsl', () => {
     ],
     ['spheres', spheres_wgsl, { ...base, ...clip, dGeometryType: 'spheres', dSolidInterior: true, dClipTable: true }],
     ['spheres', spheres_wgsl, { ...base, ...clip, dGeometryType: 'spheres', dApproximate: true }],
+    ['spheres', spheres_wgsl, { ...base, dGeometryType: 'spheres', dColorLevels: true, dSegmented: true }],
     ['cylinders', cylinders_wgsl, { ...base, ...clip, dGeometryType: 'cylinders', dSolidInterior: true }],
     ['cylinders', cylinders_wgsl, { ...base, ...clip, dGeometryType: 'cylinders', dRenderVariant: 'pick' }],
     ['points', points_wgsl, { ...base, ...clip, dGeometryType: 'points', dPointStyle: 'square' }],

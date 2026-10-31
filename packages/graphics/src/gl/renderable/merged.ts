@@ -187,6 +187,9 @@ const BaseTexSpecs: MergedTexSpec[] = [
     itemSize: 1,
     granularity: (v) => (v.dWiggle.ref.value ? pickGranularity(v.wiggleType.ref.value) : 'none'),
   },
+  // colors by size on screen (spheres and meshes): the far color per instance, the near data per group
+  { tex: 'tColorFar', itemSize: 4, granularity: (v) => (v.dColorLevels?.ref.value ? 'instance' : 'none') },
+  { tex: 'tColorNear', itemSize: 4, granularity: (v) => (v.dColorLevels?.ref.value ? 'group' : 'none') },
 ];
 
 type VertexAttribute = { key: string; itemSize: number };
