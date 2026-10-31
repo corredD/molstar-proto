@@ -26,6 +26,7 @@ import {
   isMergedRenderObject,
 } from '@molstar/graphics/gl/render-object';
 import { MergedCullKernels } from '@molstar/graphics/gl/renderable/merged-culler';
+import type { OcclusionPyramid } from '@molstar/graphics/gl/compute/cell-cull';
 import { Scene } from '@molstar/graphics/gl/scene';
 import { Camera } from '@molstar/graphics/canvas3d/camera';
 import { Viewport } from '@molstar/graphics/canvas3d/camera/util';
@@ -452,6 +453,88 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
       plugin.dispose();
     }
   }, 60_000);
+  it('occlusion culls what is hidden also where its rectangle reaches past the view', async () => {
+    const plugin = await createPlugin();
+    try {
+      const graphics = plugin.canvas3d!.graphics;
+      // a grid in front (z 0) and one behind (z -12), one cell each; a depth pyramid of a wall between them filling the
+      // view: the grid behind is hidden, its instances at the view's edges too
+      const options = { cellSize: 200 };
+      const front = createMember(Vec3.create(-15, -15, 0), ColorNames.orange, options);
+      const back = createMember(Vec3.create(-15, -15, -12), ColorNames.green, options);
+      const gpu = createMergedRenderObject([front, back], { gpuCulling: true });
+      const scene = Scene.create(graphics);
+      scene.add(gpu);
+      scene.commit();
+
+      const camera = new Camera();
+      Viewport.set(camera.viewport, 0, 0, Size, Size);
+      const target = Vec3.create(0, 0, -6);
+      camera.setState({ target, position: Vec3.create(0, 0, 24), up: Vec3.create(0, 1, 0), radius: 20 }, 0);
+      camera.update();
+
+      // the pyramid: levels from 3 of a 64 x 64 view (8, 4, 2 and 1 texels) side by side, every texel the wall's depth
+      // (reversed, perspective) at view z -30 (between the grids, at -24 and -36)
+      const { near, far } = camera;
+      const wall = -30;
+      const depth = (-(near * far) / wall - near) / (far - near);
+      const texture = graphics.resources.texture('image-float32', 'r', 'float', 'nearest');
+      texture.load({ array: new Float32Array(15 * 8).fill(depth), width: 15, height: 8 });
+      const pyramid: OcclusionPyramid = {
+        texture,
+        levelCount: 7,
+        minLevel: 3,
+        width: Size,
+        height: Size,
+        view: Mat4.copy(Mat4(), camera.view),
+        projection: Mat4.copy(Mat4(), camera.projection),
+        near,
+        far,
+      };
+
+      const renderer = Renderer.create(graphics);
+      renderer.setOcclusionPyramid(() => pyramid);
+      const target_ = graphics.createRenderTarget(Size, Size, 'depth-stencil');
+      await graphics.resources.preparePipelines(
+        renderer.collect({ name: 'opaque' }, scene, graphics.describeTarget(target_)),
+      );
+      let list: MultiDrawBaseData[] | undefined;
+      const item = scene.renderables[0].renderItem;
+      const render = item.render;
+      item.render = (variant, globals, l) => {
+        if (l) list = l;
+        render(variant, globals, l);
+      };
+      const frame = async () => {
+        renderer.update(camera, scene, createFrame());
+        renderer.prepareCull(scene);
+        graphics.beginRenderPass(target_);
+        renderer.clear(true);
+        renderer.setViewport(0, 0, Size, Size);
+        renderer.renderOpaque(scene, camera);
+        graphics.flush();
+        await graphics.readRenderTarget(target_, 0, 0, 1, 1);
+        await graphics.resources.pending.whenReady();
+      };
+      for (let i = 0; i < 20 && !list?.[0].indirect; ++i) await frame();
+      await frame();
+      const { buffer, byteOffset, indexed } = list![0].indirect!;
+      const words = indexed ? 5 : 4;
+      const args = new Uint32Array(await buffer.readAsync(byteOffset, list![0].count * words * 4));
+      const drawn = [args[1], args[words + 1]];
+      const [inView] = countInView([front], camera, 1);
+      const [behind] = countInView([back], camera, 1);
+      // both grids reach past the view
+      expect(inView).toBeLessThan(Copies * Copies);
+      expect(behind).toBeGreaterThan(0);
+      // the front grid's instances in view drawn, none of the grid behind the wall
+      expect(drawn).toEqual([inView, 0]);
+      texture.destroy();
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
   it('merges one object alone to cull it on the GPU; by default (gpuCulling auto) not with few instances', async () => {
     const plugin = await createPlugin();
     try {
@@ -541,11 +624,11 @@ function countInView(members: GraphicsRenderObject[], camera: Camera, levelCount
   return counts;
 }
 
-async function createPlugin() {
+async function createPlugin(size = Size) {
   const plugin = await HeadlessPluginContext.create(
     { webgpu: WebGPU.module! },
     DefaultPluginSpec(),
-    { width: Size, height: Size },
+    { width: size, height: size },
     { backend: 'webgpu' },
   );
   await plugin.init();
