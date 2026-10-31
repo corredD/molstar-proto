@@ -710,7 +710,7 @@ export class DrawPass {
         (this.transparencyMode === 'wboit' && this.wboit.supported) ||
         (this.transparencyMode === 'dpoit' && this.dpoit.supported);
       // (its second phase follows the opaque pass: with opaque objects; one eye's camera, not stereo's)
-      this.twoPhase = !!this.occlusionPyramid && oit && scene.hasOpaque && !StereoCamera.is(camera);
+      this.twoPhase = !!this.occlusionPyramid && oit && scene.hasOpaque && !(camera instanceof StereoCamera);
       renderer.prepareCull(scene.primitives, this.twoPhase);
     }
 
