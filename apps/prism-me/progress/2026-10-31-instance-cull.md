@@ -212,6 +212,25 @@ of 1,024,000 differs (ties at equal depth). Its commit message's speedup is wron
 motion hold (coarser, half the resolution) when run with few batches; fixed in `zoom-test.js` (`T` waits past the hold),
 and the order alone changes nothing measurable (CellPack 0.1 12.1 ms, PetWorld 0.02 49.4 ms still).
 
+## Step 5b: clusters inside a particle (meshlet culling), measured
+
+Measured first (on this M1): 10,000 indirect draws replay in 1.1 ms (`draw-overhead/*indirect*-bundle`); clusters of 128
+/ 256 / 512 / 1024 spheres: PetWorld HIV 4,321 / 2,167 / 1,086 / 547 records, 34 / 17 / 8 / 5 MB; level-0 spheres in
+view at 0.02 by the frustum alone 5.59 M by particles, 3.10 / 3.36 / 3.60 / 3.82 M by clusters (2.27 M by atom).
+Chosen 256. Built: level 0 of members of 512 spheres or more drawn by a record per cluster, each cluster culled per
+drawn instance (`cluster-copy`, indirect workgroups from `cluster-dispatch`: a first version dispatched every (cluster,
+instance) pair and cost CellPack's whole view 6.3 to 8.5 ms). Still frames (ms, WebGPU, before / after):
+
+| model, dpr      | 1           | 0.1         | 0.02          |
+| --------------- | ----------- | ----------- | ------------- |
+| CellPack HIV, 1 | 6.3 / 6.5   | 12.2 / 10.2 | 14.0 / 12.2   |
+| CellPack HIV, 2 | 10.8 / 11.0 | 35.5 / 28.3 | 39.2 / 33.6   |
+| PetWorld HIV, 1 | 23.1 / 23.3 | 21.9 / 21.1 | 49.4 / 40.5   |
+| PetWorld HIV, 2 | 40.3 / 40.7 | 66.4 / 62.8 | 147.4 / 127.1 |
+
+Images at 1, 0.1 and 0.02 (dpr 1) against the commit before the space order: 1 pixel differs (ties). `cull-check.mjs`:
+settled, at rest after turning, and the resolution switches, no pixel differs.
+
 ## Where it stands (the app, `motion` 4x)
 
 Frame (ms), headless Chrome on the M1, still / turning 1° a frame (`zoom-bench.mjs`; prism-me's look with `motion`
