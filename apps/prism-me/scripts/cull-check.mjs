@@ -52,6 +52,10 @@ await page.waitForFunction(() => window.molstar.viewer.plugin.canvas3d.getRender
 });
 await page.waitForTimeout(5000);
 
+if (args.eval) {
+  await page.evaluate(args.eval);
+  await page.waitForTimeout(3000);
+}
 await page.evaluate((keep) => {
   window.__keepMotion = keep;
 }, args.motion !== undefined);

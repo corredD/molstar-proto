@@ -282,7 +282,42 @@ Still frames meet it on WebGPU at dpr 1 for CellPack; at rest the full-quality f
 of WebGL2 stays above (one frame; hover and other redraws at rest pay it). What would lower it changes the look at rest:
 the k-means proxy levels (Ludo's call, below).
 
-## For Ludo: k-means proxy levels (they change the look at rest)
+## Round 3 (Ludo, 2026-10-31: no proxies, no coarser detail while moving, keep the lower resolution)
+
+1. The look: `motion.lodScale` 1 (full detail always), `pixelScale` 0.5 (0.35 on 2x). Turning at full detail, without
+   occlusion while moving (round 2's choice for coarse frames): CellPack 0.1 41 / 48 ms (dpr 1 / 2), PetWorld 0.1 47 /
+   54; with one-phase occlusion while moving: 20 / 24, 25 / 39 (and its frame of popping).
+2. Two-phase occlusion (state of the art: Nanite, niagara), built: exact while moving. The first phase draws what was
+   visible last frame (per instance a bit, per cluster and instance a bit), the draw pass builds this frame's pyramid of
+   that depth, the second phase draws what it shows. Found on the way: the clusters' bits were indexed by the merged
+   `aInstance` (global, not the member's), and the pyramid's passes left their viewport for the second phase's.
+   `cull-check.mjs`, both models, 0.1 and 0.02: settled, turning, at rest after turning and the resolution switches, no
+   pixel differs.
+3. Where a full-detail turning frame spends (dpr 2, WebGPU, CellPack 0.1 / PetWorld 0.02, 17.9 / 24.9 ms): the
+   post-processing 2 to 3 ms (all off 15.5 / 23.5), SSAO and shadows 2 ms, the resolution most of the rest (at 0.2 of
+   the resolution 10.9 / 15.9 ms); PetWorld close up stays vertex-bound (its near proteins' atoms).
+
+Frame (ms), still / turning 1° a frame, full detail; round 2 (coarser while moving) in brackets, turning:
+
+| backend, model, dpr     | 1                 | 0.1                 | 0.02                |
+| ----------------------- | ----------------- | ------------------- | ------------------- |
+| WebGPU, CellPack HIV, 1 | 8.4 / 8.4 (7.4)   | 11.1 / 12.5 (9.2)   | 13.2 / 6.9 (7.2)    |
+| WebGPU, CellPack HIV, 2 | 13.1 / 7.9 (6.6)  | 30.4 / 17.9 (11.5)  | 36.0 / 11.3 (8.7)   |
+| WebGPU, PetWorld HIV, 1 | 27.0 / 19.8 (4.0) | 22.5 / 15.8 (12.9)  | 45.2 / 17.6 (15.2)  |
+| WebGPU, PetWorld HIV, 2 | 47.5 / 23.4 (5.9) | 68.4 / 18.9 (15.1)  | 136.4 / 24.9 (19.7) |
+| WebGL2, CellPack HIV, 1 | 9.8 / 9.2 (7.3)   | 75.1 / 50.6 (13.7)  | 41.2 / 30.0 (10.9)  |
+| WebGL2, CellPack HIV, 2 | 16.4 / 9.7 (7.3)  | 159.0 / 61.2 (17.4) | 96.8 / 36.4 (12.6)  |
+| WebGL2, PetWorld HIV, 1 | 34.1 / 25.9 (6.1) | 85.5 / 52.4 (18.1)  | 74.7 / 39.7 (20.7)  |
+| WebGL2, PetWorld HIV, 2 | 52.7 / 31.0 (7.7) | 188.3 / 66.0 (22.6) | 195.6 / 53.2 (27.2) |
+
+Met (≤16.7 WebGPU, ≤33 WebGL2): WebGPU turning at dpr 1 (but PetWorld 0.02, 17.6, and whole views of PetWorld), CellPack
+0.02 turning at dpr 2; still frames only CellPack at dpr 1. Not met: WebGL2 close up (CPU culling, no occlusion while
+moving: its Hi-Z test's reads lag frames), PetWorld at dpr 2, still frames at dpr 2. What is left without changing the
+look: per-sphere occlusion in the vertex stage of the second phase (atoms behind their own protein's front), a cheaper
+impostor (its depth written by the fragment stage defeats early depth tests and the M1's hidden-surface removal; WebGPU
+has no conservative depth), GPU-driven culling on WebGL2 (none fits without compute).
+
+## k-means proxy levels (dropped: Ludo, 2026-10-31)
 
 Where the still frame stays slow (PetWorld HIV close up, dpr 2, WebGL2) the remaining lever is a cheaper look at rest:
 coarse levels from k-means proxies (cellVIEW's) in place of every n-th atom, so that a coarse level can start nearer at
