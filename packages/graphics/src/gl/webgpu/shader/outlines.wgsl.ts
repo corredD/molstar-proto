@@ -90,7 +90,7 @@ fn getOutline(coords: vec2<f32>) -> Outline {
 
 /**
  * Outline edges of the opaque and transparent depth: packed outline type and transparent alpha
- * (r), the packed opaque or transparent edge depth (gb) and the transparent edge depth (a). Depth textures are always
+ * (r), the packed opaque or transparent edge depth (gb) and the square root of the transparent edge depth (a). Depth textures are always
  * available on WebGPU, so the opaque depth is never packed.
  */
 export const outlines_wgsl = /* wgsl */ `
