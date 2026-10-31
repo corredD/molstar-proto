@@ -4,6 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Herman Bergwerf <post@hbergwerf.nl>
+ * @author Ludovic Autin <autin@scripps.edu>
  *
  * This code has been modified from https://github.com/mrdoob/three.js/,
  * copyright (c) 2010-2018 three.js authors. MIT License
@@ -150,6 +151,11 @@ interface TrackballControls {
   readonly attribs: Readonly<TrackballControlsAttribs>;
   setAttribs: (attribs: Partial<TrackballControlsAttribs>) => void;
 
+  /**
+   * The drawing buffer (the viewport, the input's pixel ratio) at `scale` of its resolution (dynamic resolution while
+   * the camera moves, `Canvas3D` `motion`): drags move the camera as at full resolution, also across a change within one
+   */
+  setResolutionScale: (scale: number) => void;
   start: (t: number) => void;
   update: (t: number) => void;
   reset: () => void;
@@ -220,23 +226,36 @@ namespace TrackballControls {
     const position0 = Vec3.clone(camera.position);
     const up0 = Vec3.clone(camera.up);
 
+    /**
+     * `setResolutionScale`: page coordinates (CSS pixels) are compared with the viewport at full resolution, so that what
+     * a drag holds (`_rotPrev`, `_panStart`, …) stays valid where the resolution changes
+     */
+    let resolutionScale = 1;
+
     const mouseOnScreenVec2 = Vec2();
     function getMouseOnScreen(pageX: number, pageY: number) {
-      return Vec2.set(mouseOnScreenVec2, (pageX - viewport.x) / viewport.width, (pageY - viewport.y) / viewport.height);
+      const s = resolutionScale;
+      return Vec2.set(
+        mouseOnScreenVec2,
+        (pageX - viewport.x / s) / (viewport.width / s),
+        (pageY - viewport.y / s) / (viewport.height / s),
+      );
     }
 
     const mouseOnCircleVec2 = Vec2();
     function getMouseOnCircle(pageX: number, pageY: number) {
+      const s = resolutionScale;
+      const [x, y, width, height] = [viewport.x / s, viewport.y / s, viewport.width / s, viewport.height / s];
       return Vec2.set(
         mouseOnCircleVec2,
-        (pageX - viewport.width * 0.5 - viewport.x) / (viewport.width * 0.5),
-        (viewport.height + 2 * (viewport.y - pageY)) / viewport.width, // viewport.width intentional
+        (pageX - width * 0.5 - x) / (width * 0.5),
+        (height + 2 * (y - pageY)) / width, // width intentional
       );
     }
 
     function getRotateFactor() {
       const aspectRatio = input.width / input.height || 1;
-      return p.rotateSpeed * input.pixelRatio * aspectRatio;
+      return p.rotateSpeed * (input.pixelRatio / resolutionScale) * aspectRatio;
     }
 
     const rotAxis = Vec3();
@@ -444,7 +463,8 @@ namespace TrackballControls {
       }
 
       if (Vec2.squaredMagnitude(panMouseChange)) {
-        const factor = input.pixelRatio * p.panSpeed;
+        // the camera's zoom follows the viewport: page coordinates at full resolution (`getMouseOnScreen`)
+        const factor = (input.pixelRatio / resolutionScale) * p.panSpeed;
         panMouseChange[0] *= (1 / camera.zoom) * camera.viewport.width * factor;
         panMouseChange[1] *= (1 / camera.zoom) * camera.viewport.height * factor;
 
@@ -768,8 +788,8 @@ namespace TrackballControls {
     function onMove({ movementX, movementY }: MoveInput) {
       if (!input.pointerLock || movementX === undefined || movementY === undefined) return;
 
-      const cx = viewport.width * 0.5 - viewport.x;
-      const cy = viewport.height * 0.5 - viewport.y;
+      const cx = (viewport.width * 0.5 - viewport.x) / resolutionScale;
+      const cy = (viewport.height * 0.5 - viewport.y) / resolutionScale;
 
       Vec2.copy(_rotPrev, getMouseOnCircle(cx, cy));
       Vec2.copy(_rotCurr, getMouseOnCircle(movementX + cx, movementY + cy));
@@ -1032,6 +1052,9 @@ namespace TrackballControls {
 
     return {
       viewport,
+      setResolutionScale: (scale: number) => {
+        resolutionScale = scale;
+      },
       get isAnimating() {
         return p.animate.name !== 'off';
       },
