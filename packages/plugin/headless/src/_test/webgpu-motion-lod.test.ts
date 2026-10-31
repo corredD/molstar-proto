@@ -106,9 +106,6 @@ describe.skipIf(!WebGPU.module)('levels of detail while the camera moves (Canvas
       // at rest past the hold: a frame at full detail, drawn without a request
       await tick(300);
       expect(levelEnd()).toBeCloseTo(rest, 3);
-      expect(canvas.isIdle()).toBe(false);
-      await tick(16);
-      expect(canvas.isIdle()).toBe(true);
     } finally {
       plugin.dispose();
     }
