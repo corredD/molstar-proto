@@ -33,6 +33,13 @@ is not built is [../TODO.md](../TODO.md).
   not reproduced headless. 2 measured: levels off cost what prism-me costs, on up to +14 %; zoomed in is 1.5-4× the
   whole view on prism-me already. Plan, not built: skip the blend where a level is whole (~10 lines), then Oklab stored
   (~25). Waits on Ludo: retest on 1344, merge #27, go for the plan.
+- **Smooth when zoomed in** (lane `instance-cull`, `me/instance-cull` from #27's branch, port 1362; brief
+  [2026-10-31-instance-cull.md](2026-10-31-instance-cull.md)): Ludo, 2026-10-31: zooming in on any cellPACK or PetWorld
+  model drops the frame rate, by zoom or not; not in cellVIEW. Measured (`scripts/zoom-test.js`): the cost is the
+  spheres drawn, not the fragments (pixels change nothing, the LOD halves it). cellVIEW culls per protein and uses
+  k-means proxy levels; Mol* culls per 200 Å cell and uses strides. Ludo: "dont stop until performance is smooth" (≤16.7
+  ms WebGPU, ≤33 ms WebGL2 zoomed, on the M1) and "if in doubt or need answer, use state of the art decision": per
+  particle frustum culling first, then what the numbers show (moving quality, proxy levels). Merge #27 first.
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
   parallel; merged in this order (each merges `origin/prism-me` before its PR):
