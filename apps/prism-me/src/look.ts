@@ -18,6 +18,8 @@ export const MesoscaleCanvasLook: Partial<Canvas3DProps> = {
   // structures and the cuts' guides near the camera
   cameraClipping: { far: false } as Canvas3DProps['cameraClipping'],
   sceneRadiusFactor: 2,
+  // levels of detail 4 times coarser while the camera moves, full detail once it rests (instance-cull, step 3)
+  motion: { lodScale: 4, holdMs: 250 },
   marking: {
     enabled: true,
     highlightEdgeColor: Color(0x999999),
