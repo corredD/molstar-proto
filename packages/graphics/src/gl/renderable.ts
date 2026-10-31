@@ -22,6 +22,7 @@ import { idFactory } from '@molstar/core/util/id-factory';
 import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
+import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
 import type { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import type { GraphicsStats } from './stats.js';
@@ -413,6 +414,13 @@ export type CullValues = {
   readonly instanceGrid: ValueCell<InstanceGrid>;
   readonly boundingSphere: ValueCell<Sphere3D>;
   readonly lodLevels?: ValueCell<unknown>;
+  /**
+   * The instances' own sphere (before their transform) and the padding a coarse level's spheres grow by (`padding`
+   * times the level's scale less one): where given, the instances of a cell the view or a level boundary cuts, or that
+   * may be occluded, are culled one by one (`cullSegment`)
+   */
+  readonly invariantBoundingSphere?: ValueCell<Sphere3D>;
+  readonly padding?: ValueCell<number>;
 };
 
 export type CullSegment = {
@@ -674,6 +682,9 @@ export function createSegmentedMdbList(): SegmentedMdbList {
     }
 
     const { cellOffsets, cellSpheres, batchOffsets, batchSpheres, batchCount, batchSize } = grid;
+    // by instance for levels of detail (particles and their like: many large instances)
+    const instanceSphere = lodLevels ? values.invariantBoundingSphere?.ref.value : undefined;
+    const padding = values.padding?.ref.value ?? 0;
     const checkCellOccludedDistance = 2 * batchSize;
     setCullPlanes(frustum, cameraPlane);
 
@@ -708,7 +719,8 @@ export function createSegmentedMdbList(): SegmentedMdbList {
         continue;
       }
 
-      if (cCount === 1) {
+      // (with the instances' spheres, the cell loop below culls a cut cell's instances one by one)
+      if (cCount === 1 && instanceSphere === undefined) {
         // single-cell batch: cell sphere equals batch sphere by construction
         // (see calcTopGrid), re-testing it per-cell would be redundant
         const begin = cellOffsets[cBegin];
@@ -790,6 +802,29 @@ export function createSegmentedMdbList(): SegmentedMdbList {
           continue;
         }
 
+        // by instance where the cell is cut by the view or a level boundary, or tested for occlusion
+        if (instanceSphere !== undefined) {
+          let levels = 0;
+          if (lodLevels) {
+            for (let j = 0; j < levelCount; ++j) if (!(d + r < lodMin[j] || d - r > lodMax[j])) levels += 1;
+          }
+          const cut = !batchContained && !containedInCullFrustum(x, y, z, r);
+          if (cut || levels > 1 || isOccluded !== null) {
+            cullInstances(
+              begin,
+              end,
+              grid.cellTransform,
+              instanceSphere,
+              padding,
+              lodLevels,
+              segment,
+              drawCount,
+              isOccluded,
+            );
+            continue;
+          }
+        }
+
         if (lodLevels) {
           const dMax = d + r;
           const dMin = d - r;
@@ -803,6 +838,57 @@ export function createSegmentedMdbList(): SegmentedMdbList {
       }
     }
     return true;
+  }
+
+  /**
+   * The instances `begin` to `end` (cell order) each by its own sphere: `sphere` moved by its transform, at level j
+   * grown by `padding` times the level's scale less one; against the view, the levels' ranges and `isOccluded`
+   * (consecutive instances joined by `emit`)
+   */
+  function cullInstances(
+    begin: number,
+    end: number,
+    transforms: Float32Array,
+    sphere: Sphere3D,
+    padding: number,
+    lodLevels: LodLevelsValue | undefined,
+    segment: CullSegment,
+    drawCount: number,
+    isOccluded: ((s: Sphere3D) => boolean) | null,
+  ) {
+    const { first, offset, instanceBase } = segment;
+    const [cx, cy, cz] = sphere.center;
+    const levelCount = lodLevels ? lodLevels.length : 1;
+    for (let i = begin; i < end; ++i) {
+      const o = i * 16;
+      const t = transforms;
+      const x = t[o] * cx + t[o + 4] * cy + t[o + 8] * cz + t[o + 12];
+      const y = t[o + 1] * cx + t[o + 5] * cy + t[o + 9] * cz + t[o + 13];
+      const z = t[o + 2] * cx + t[o + 6] * cy + t[o + 10] * cz + t[o + 14];
+      const scale = Math.sqrt(
+        Math.max(
+          t[o] * t[o] + t[o + 1] * t[o + 1] + t[o + 2] * t[o + 2],
+          t[o + 4] * t[o + 4] + t[o + 5] * t[o + 5] + t[o + 6] * t[o + 6],
+          t[o + 8] * t[o + 8] + t[o + 9] * t[o + 9] + t[o + 10] * t[o + 10],
+        ),
+      );
+      const d = cullCameraDistance(x, y, z);
+      let occluded = -1;
+      for (let j = 0; j < levelCount; ++j) {
+        const r = (sphere.radius + (lodLevels ? padding * Math.max(lodLevels[j][4] - 1, 0) : 0)) * scale;
+        if (lodLevels && (d + r < lodMin[j] || d - r > lodMax[j])) continue;
+        if (!intersectsCullFrustum(x, y, z, r)) continue;
+        if (isOccluded !== null) {
+          if (occluded === -1) {
+            Vec3.set(s.center, x, y, z);
+            s.radius = r;
+            occluded = isOccluded(s) ? 1 : 0;
+          }
+          if (occluded === 1) continue;
+        }
+        emit(list[j], first, offset, lodLevels ? lodCount[j] : drawCount, 1, instanceBase + i);
+      }
+    }
   }
 
   function fullSegment(values: CullValues, segment: CullSegment, lodLevels: LodLevelsValue | undefined) {
@@ -917,6 +1003,8 @@ export function createRenderable<T extends GraphicsRenderableValues>(
     instanceGrid: values.instanceGrid,
     boundingSphere: values.boundingSphere,
     lodLevels: values.lodLevels,
+    invariantBoundingSphere: values.invariantBoundingSphere as ValueCell<Sphere3D> | undefined,
+    padding: (values as { padding?: ValueCell<number> }).padding,
   };
 
   const cullView = createCullView();

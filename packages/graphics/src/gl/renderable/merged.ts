@@ -1200,6 +1200,8 @@ export function MergedRenderable(
     instanceGrid: v.instanceGrid,
     boundingSphere: v.boundingSphere,
     lodLevels: v.lodLevels,
+    invariantBoundingSphere: v.invariantBoundingSphere as ValueCell<Sphere3D> | undefined,
+    padding: (v as { padding?: ValueCell<number> }).padding,
   }));
 
   /** what the last CPU cull read: a still frame keeps its lists (`createCullView`) */

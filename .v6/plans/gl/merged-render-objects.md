@@ -138,6 +138,15 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
 - **Not on the CPU**: which instances were drawn (the culled counts of timing stats), and the order of instances within
   a region, which varies between frames: it matters only for equal depths.
 
+## CPU culling by instance (WebGL2)
+
+Objects with levels of detail (particles and their like) culled on the CPU test, in a cell the view or a level
+boundary cuts (or tested for occlusion), each instance by its own sphere (`CullValues.invariantBoundingSphere`, grown
+at a coarse level by `padding` times its scale less one): `cullSegment`'s `cullInstances`, consecutive instances joined
+by `emit`. Measured (M1, WebGL2, still, dpr 1; Hi-Z's CPU test off / on, a task per frame for its reads): CellPack HIV
+0.1 95 to 80 / 60 ms, 0.02 80 to 50 / 42; PetWorld HIV 0.1 134 to 82 / 65, 0.02 106 to 78 / 76. Clusters per instance
+stay on the GPU (a draw per instance and cluster on the CPU: about 100k draws close up).
+
 ## GPU occlusion culling (plan, step 6.6)
 
 Cells (in `cell-cull`) and instances (in `instance-copy`) of GPU-culled merged objects also tested against a depth
