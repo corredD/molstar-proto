@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { OrderedSet } from '@molstar/core/data/int';
 import { ChunkedArray } from '@molstar/core/data/util';
 import { Ray3D } from '@molstar/core/math/geometry/primitives/ray3d';
@@ -65,6 +65,47 @@ describe('mesh triangle lookup', () => {
     expect(out.index).toBe(0);
     // too far: none
     expect(lookup.pick(out, down(2, 2), Vec3.create(2, 2, 0), 0.1)).toBe(false);
+  });
+
+  it('does not inspect every small triangle when one large triangle spans the mesh', () => {
+    const size = 64;
+    const vertices: number[] = [];
+    const indices: number[] = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = vertices.length / 3;
+        vertices.push(x, y, 0, x + 1, y, 0, x, y + 1, 0);
+        indices.push(i, i + 1, i + 2);
+      }
+    }
+    // A floor behind the fine surface; its centroid may be far from the picked point.
+    const i = vertices.length / 3;
+    vertices.push(-size, -size, -1, 3 * size, -size, -1, -size, 3 * size, -1);
+    indices.push(i, i + 1, i + 2);
+    const mesh = Mesh.create(
+      new Float32Array(vertices),
+      new Uint32Array(indices),
+      new Float32Array(vertices.length),
+      new Float32Array(vertices.length / 3),
+      vertices.length / 3,
+      indices.length / 3,
+    );
+    const lookup = getMeshTriangleLookup(mesh);
+    const out = MeshTrianglePick();
+    const intersect = vi.spyOn(Ray3D, 'intersectTriangle');
+    try {
+      expect(lookup.pick(out, down(10.2, 12.2), Vec3.create(10.2, 12.2, 0), 0.1)).toBe(true);
+      expect(out.index).toBe(12 * size + 10);
+      // Work stays local to the pick, rather than visiting all 4,096 surface triangles.
+      expect(intersect.mock.calls.length).toBeLessThan(200);
+      // The large triangle remains pickable, both by ray and by the nearest-point fallback.
+      expect(lookup.pick(out, down(10.2, 12.2), Vec3.create(10.2, 12.2, -1), 0.1)).toBe(true);
+      expect(out.index).toBe(size * size);
+      expect(lookup.pick(out, down(-size - 0.05, 0), Vec3.create(-size - 0.03, 0, -1), 0.1)).toBe(true);
+      expect(out.index).toBe(size * size);
+    } finally {
+      intersect.mockRestore();
+    }
   });
 
   it('is built once while the mesh is the same, again when its vertices change', () => {
