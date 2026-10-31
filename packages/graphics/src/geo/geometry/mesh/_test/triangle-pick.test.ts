@@ -75,6 +75,30 @@ describe('mesh triangle lookup', () => {
     expect(getMeshTriangleLookup(mesh)).not.toBe(lookup);
   });
 
+  it('leaves out triangles with a NaN or infinite vertex (a broken file) and picks the others', () => {
+    const mesh = layers();
+    const vb = mesh.vertexBuffer.ref.value;
+    // the upper square's first vertex NaN, its third infinite: its triangles 2 and 3 are out
+    vb[4 * 3] = Number.NaN;
+    vb[6 * 3 + 1] = Number.POSITIVE_INFINITY;
+    ValueCell.update(mesh.vertexBuffer, vb);
+    const lookup = getMeshTriangleLookup(mesh);
+    const out = MeshTrianglePick();
+    expect(lookup.pick(out, down(0.7, 0.2), Vec3.create(0.7, 0.2, 0), 0.1)).toBe(true);
+    expect(out.index).toBe(0);
+    expect(lookup.pick(out, down(0.2, 0.7), Vec3.create(0.2, 0.7, 0), 0.1)).toBe(true);
+    expect(out.index).toBe(1);
+  });
+
+  it('a mesh of only broken triangles picks nothing', () => {
+    const mesh = layers();
+    mesh.vertexBuffer.ref.value.fill(Number.NaN);
+    ValueCell.update(mesh.vertexBuffer, mesh.vertexBuffer.ref.value);
+    expect(getMeshTriangleLookup(mesh).pick(MeshTrianglePick(), down(0.7, 0.2), Vec3.create(0.7, 0.2, 0), 0.1)).toBe(
+      false,
+    );
+  });
+
   it('closest point on a triangle: inside, on an edge, at a vertex', () => {
     const a = Vec3.create(0, 0, 0);
     const b = Vec3.create(1, 0, 0);

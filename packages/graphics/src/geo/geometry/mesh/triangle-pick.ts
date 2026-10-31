@@ -94,6 +94,8 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
   let maxZ = -Infinity;
   let maxRadiusSq = 0;
   let sumRadiusSq = 0;
+  // the triangles with finite vertices: a NaN or an infinity (a broken file, an index past the vertices) is left out
+  let valid = 0;
   for (let t = 0; t < T; ++t) {
     const i0 = ib[3 * t] * 3;
     const i1 = ib[3 * t + 1] * 3;
@@ -110,6 +112,15 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
     const x = (ax + bx + qx) / 3;
     const y = (ay + by + qy) / 3;
     const z = (az + bz + qz) / 3;
+    const da = (ax - x) * (ax - x) + (ay - y) * (ay - y) + (az - z) * (az - z);
+    const db = (bx - x) * (bx - x) + (by - y) * (by - y) + (bz - z) * (bz - z);
+    const dc = (qx - x) * (qx - x) + (qy - y) * (qy - y) + (qz - z) * (qz - z);
+    const r = da > db ? (da > dc ? da : dc) : db > dc ? db : dc;
+    if (!Number.isFinite(x + y + z + r)) {
+      cx[t] = Number.NaN;
+      continue;
+    }
+    valid++;
     cx[t] = x;
     cy[t] = y;
     cz[t] = z;
@@ -119,28 +130,25 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
     if (x > maxX) maxX = x;
     if (y > maxY) maxY = y;
     if (z > maxZ) maxZ = z;
-    const da = (ax - x) * (ax - x) + (ay - y) * (ay - y) + (az - z) * (az - z);
-    const db = (bx - x) * (bx - x) + (by - y) * (by - y) + (bz - z) * (bz - z);
-    const dc = (qx - x) * (qx - x) + (qy - y) * (qy - y) + (qz - z) * (qz - z);
-    const r = da > db ? (da > dc ? da : dc) : db > dc ? db : dc;
     if (r > maxRadiusSq) maxRadiusSq = r;
     sumRadiusSq += r;
   }
   const min = Vec3.create(minX, minY, minZ);
   const max = Vec3.create(maxX, maxY, maxZ);
   const maxRadius = Math.sqrt(maxRadiusSq);
-  if (T === 0) {
+  if (valid === 0) {
     return { triangleCount: 0, maxRadius: 0, byteCount: 0, pick: () => false };
   }
 
   // cells about two triangles wide, fewer when the box would hold too many
   const extent = Vec3.sub(Vec3(), max, min);
-  let size = Math.max(2 * Math.sqrt(sumRadiusSq / T), 1e-6, Math.max(extent[0], extent[1], extent[2]) * 1e-6);
+  let size = Math.max(2 * Math.sqrt(sumRadiusSq / valid), 1e-6, Math.max(extent[0], extent[1], extent[2]) * 1e-6);
   const cap = Math.max(64, Math.ceil(T * CellsPerTriangle));
   let nx = 0;
   let ny = 0;
   let nz = 0;
-  for (;;) {
+  // bounded: each round grows the cells by at least 1 %, a few rounds reach the cap
+  for (let round = 0; round < 100; ++round) {
     nx = Math.floor(extent[0] / size) + 1;
     ny = Math.floor(extent[1] / size) + 1;
     nz = Math.floor(extent[2] / size) + 1;
@@ -163,14 +171,15 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
   // each triangle's cell, until sorted
   const cellOfTriangle = order;
   for (let t = 0; t < T; ++t) {
+    if (Number.isNaN(cx[t])) continue;
     const cell = cellOf(cx[t], cy[t], cz[t]);
     cellOfTriangle[t] = cell;
     starts[cell + 1]++;
   }
   for (let i = 0; i < cells; ++i) starts[i + 1] += starts[i];
   const fill = starts.slice(0, cells);
-  const sorted = new Uint32Array(T);
-  for (let t = 0; t < T; ++t) sorted[fill[cellOfTriangle[t]]++] = t;
+  const sorted = new Uint32Array(valid);
+  for (let t = 0; t < T; ++t) if (!Number.isNaN(cx[t])) sorted[fill[cellOfTriangle[t]]++] = t;
 
   const vertexOf = (out: Vec3, t: number, k: number) => Vec3.fromArray(out, vb, ib[3 * t + k] * 3);
 
