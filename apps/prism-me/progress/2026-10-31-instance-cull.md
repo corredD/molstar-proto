@@ -344,3 +344,13 @@ highlight redrawn alone returned before; no test: an image pass in the headless 
 versions never reset, the auto rule's count said to be indices, the comment on picks. Refuted: XR staying coarse. Open
 (TODO.md): wiggle and tumble slack, a canvas forcing frames while no pyramid lands, Firefox, 7qpd under the auto rule;
 the goal itself (pixel scale while moving, clusters and proxies, two-phase occlusion, WebGL2).
+
+Round 2 (`2158a99a9..`): reviewer (Opus) 1 must-fix, 10 should-fix, 5 nits; skeptic: confirmed M1, S3, S4, S7, S8, S10,
+S9 (the CPU Hi-Z test while moving), S6; plausible S1 (the dispatch's rows), S2, S5; refuted S1's "all segments" (cost
+only) and S9's docs; 3 new (N1 the object's distance range per instance on the CPU, N2 images in the hold at coarse
+levels, N3 the display density read once). Fixed: the kernels' header; clusters only within a dispatch's rows and a
+binding's size, their workgroups by clustered segments; the CPU allowance for wiggle and tumble and occlusion with the
+largest sphere (test first); no motion switch where nothing resizes the canvas; an image pass ends a motion (N2 too); no
+CPU occlusion while moving; the projection compared within a tolerance; the cluster test with a segment before the
+clustered one; spec, changelog, a stale comment. Open (TODO.md): S7 (the headless context resizes nothing: the resize
+back is not tested as no motion), N1, N3, no tests for S5 and S6 (they need a DOM canvas).

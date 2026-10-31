@@ -68,14 +68,13 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
-- Smooth close up (lane `instance-cull`, what is left; `progress/2026-10-31-instance-cull.md`): the goal holds on WebGPU
-  at dpr 1 for CellPack HIV only. In order: the pixel scale while the camera moves (dpr 2: the fragments); clusters
-  inside a particle and k-means proxies (PetWorld close up; the proxies change the look at rest: Ludo's call, with
-  images); two-phase occlusion (the frame parallax uncovers while turning); WebGL2 (its CPU Hi-Z measured with a task
-  per frame, a test per instance). The review's open items: the per-instance sphere has no slack for wiggle and tumble
-  (an animated protein at the view's edge may be culled a frame); a skipped dispatch keeps a canvas forcing frames until
-  a pyramid lands (bounded by pending work); no test of an image drawn in the motion hold at full detail; Firefox not
-  measured; `gpuCulling` auto from 10 M indices may now put the 60-copy assembly of 7qpd on the GPU (unchecked).
+- Smooth close up (lane `instance-cull`, what is left; `progress/2026-10-31-instance-cull.md`): the k-means proxy levels
+  (the look at rest: Ludo's call, images in the progress file); two-phase occlusion for canvases without `motion`; still
+  frames of PetWorld HIV close up, at dpr 2 and on WebGL2 above 16.7 / 33 ms (turning meets them but PetWorld at 0.02 on
+  WebGPU at dpr 2, 19.7 ms); Firefox not measured. The reviews' open items: the motion test does not check that the
+  resize back is no motion (the headless context resizes nothing); CPU culling by instance skips the object's own
+  distance range (draws more, not less); the look reads the display density once; no tests of the motion's no-resize
+  fallback and of an image pass ending a motion (they need a DOM canvas).
 
 - The properties (lane `properties-view`, its review's open items): a Visible line in a node's Look (ui.md §4 lists it;
   the app has the row's eye, a category its switch); a model's or group's color says Mixed when no entity has a color of
