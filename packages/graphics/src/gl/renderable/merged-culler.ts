@@ -131,6 +131,7 @@ export function createMergedCuller(
     uLodRange: ValueCell.create(Vec4()),
     uLevels: ValueCell.create(Mat4()),
     uLevelCount: levelCountCell,
+    uAnimationSlack: ValueCell.create(0),
     uHiZ: ValueCell.create(false),
     uHiZView: ValueCell.create(Mat4()),
     uHiZProjection: ValueCell.create(Mat4()),
@@ -285,6 +286,27 @@ export function createMergedCuller(
     ValueCell.updateIfChanged(argsValues.uRecordCount, levels * segmentCount);
   }
 
+  /**
+   * How far the animations may move a sphere (`animation.wgsl`): the wiggle up to its amplitude (and a group's own, at
+   * most its strength) an axis, the tumble's offset up to its amplitude an axis (divided by the sphere's radius, at least
+   * 1); rotations of the tumble pivot on the instance's sphere
+   */
+  type AnimationValues = { [k: string]: ValueCell<number | boolean> | undefined };
+  function getAnimationSlack() {
+    const v = values as unknown as AnimationValues;
+    const n = (k: string) => (v[k]?.ref.value as number | undefined) ?? 0;
+    let wiggle = 0;
+    if (n('uWiggleSpeed') > 0 && n('uWiggleFrequency') > 0) {
+      let group = 0;
+      for (const m of members as unknown as AnimationValues[]) {
+        if (m.dWiggle?.ref.value) group = Math.max(group, (m.uWiggleStrength?.ref.value as number | undefined) ?? 1);
+      }
+      wiggle = n('uWiggleAmplitude') + group;
+    }
+    const tumble = n('uTumbleSpeed') > 0 && n('uTumbleFrequency') > 0 ? n('uTumbleAmplitude') : 0;
+    return Math.sqrt(3) * (wiggle + tumble);
+  }
+
   /** the levels' distance ranges for `lod` (`LodView.getRange`) into `levelRanges`, per level a column */
   const levelRanges = Mat4.zero();
   const range: number[] = [0, 0, 0];
@@ -355,6 +377,7 @@ export function createMergedCuller(
    */
   const dispatched = new Float64Array(7 * 4 + 2).fill(NaN);
   const dispatchedLevels = Mat4.zero().fill(NaN);
+  let dispatchedSlack = NaN;
   let dispatchedVersion = -1;
   const pyramidFrustum = Frustum3D();
   const pyramidMatrix = Mat4();
@@ -367,6 +390,7 @@ export function createMergedCuller(
   const getPlane = (i: number, cameraPlane: Plane3D, frustum: Frustum3D) => (i < 6 ? frustum[i as 0] : cameraPlane);
   function isDispatched(cameraPlane: Plane3D, frustum: Frustum3D, min: number, max: number) {
     if (dispatchedVersion !== dataVersion || dispatched[28] !== min || dispatched[29] !== max) return false;
+    if (dispatchedSlack !== viewValues.uAnimationSlack.ref.value) return false;
     for (let i = 0; i < 16; ++i) if (dispatchedLevels[i] !== levelRanges[i]) return false;
     for (let i = 0; i < 7; ++i) {
       const { normal, constant } = getPlane(i, cameraPlane, frustum);
@@ -389,6 +413,7 @@ export function createMergedCuller(
     }
     dispatched[28] = min;
     dispatched[29] = max;
+    dispatchedSlack = viewValues.uAnimationSlack.ref.value;
     Mat4.copy(dispatchedLevels, levelRanges);
     dispatchedVersion = dataVersion;
   }
@@ -411,6 +436,7 @@ export function createMergedCuller(
       if (instanceCount === 0 || cellCount === 0) return false;
       const [min, max] = values.uLod.ref.value as Vec4;
       setLevelRanges(lod);
+      ValueCell.updateIfChanged(viewValues.uAnimationSlack, getAnimationSlack());
       const sameView = isDispatched(cameraPlane, frustum, min, max);
       if (sameView && isPyramidDispatched(pyramid)) return true;
       if (!getKernels()) return false;

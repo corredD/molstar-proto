@@ -161,7 +161,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (cell >= u32(uParams.uCellCount)) {
         return;
     }
-    let sphere = cellSpheres[cell];
+    let sphere = cellSpheres[cell] + vec4<f32>(0.0, 0.0, 0.0, uParams.uAnimationSlack);
     if (outside(uParams.uPlane0, sphere) || outside(uParams.uPlane1, sphere) || outside(uParams.uPlane2, sphere) ||
         outside(uParams.uPlane3, sphere) || outside(uParams.uPlane4, sphere) || outside(uParams.uPlane5, sphere)) {
         cellLevels[cell] = 0u;
@@ -202,7 +202,7 @@ ${cull_tests_wgsl}
  * The levels of \`mask\` (the cell's) at which the instance's own sphere touches the view: the frustum, the object's
  * distance range and each level's, then the depth pyramid. Its sphere is the member's (\`aSegmentSphere\`) moved by its
  * transform; at level j grown by the padding (the member's largest sphere radius) times the level's sphere scale less
- * one, so a coarse level's enlarged spheres at the view's edge are kept
+ * one, so a coarse level's enlarged spheres at the view's edge are kept, and by how far the animations may move it
  */
 fn instanceLevels(o: u32, padding: f32, cellMask: u32) -> u32 {
     let t0 = instanceData[o].xyz;
@@ -222,7 +222,7 @@ fn instanceLevels(o: u32, padding: f32, cellMask: u32) -> u32 {
         if ((cellMask & (1u << j)) == 0u) {
             continue;
         }
-        let r = (local.w + padding * max(scales[j] - 1.0, 0.0)) * scale;
+        let r = (local.w + padding * max(scales[j] - 1.0, 0.0)) * scale + uParams.uAnimationSlack;
         let sphere = vec4<f32>(center, r);
         if (outside(uParams.uPlane0, sphere) || outside(uParams.uPlane1, sphere) ||
             outside(uParams.uPlane2, sphere) || outside(uParams.uPlane3, sphere) ||

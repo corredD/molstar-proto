@@ -63,6 +63,8 @@ const CullViewSchema = {
   uLevels: UniformSpec('m4'),
   /** 0 without levels (all drawn as level 0) */
   uLevelCount: UniformSpec('i'),
+  /** how far the animations may move a sphere (wiggle, tumble), added to the tested radii */
+  uAnimationSlack: UniformSpec('f'),
   /** occlusion against the pyramid (`OcclusionPyramid`), its camera and layout */
   uHiZ: UniformSpec('b'),
   uHiZView: UniformSpec('m4'),

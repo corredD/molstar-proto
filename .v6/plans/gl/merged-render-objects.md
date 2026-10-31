@@ -80,7 +80,8 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
   its sphere against the frustum and the object's distance range and picks its levels, as `cullSegment` does per cell;
   finer cells cost threads, not draws. The copy's thread per instance of a drawn cell then tests the instance's own
   sphere (the member's `aSegmentSphere` moved by its transform; at level `j` grown by the member's `padding` times the
-  level's sphere scale less one, so a coarse level's enlarged spheres at the view's edge stay) against the frustum, the
+  level's sphere scale less one, so a coarse level's enlarged spheres at the view's edge stay; cells and instances
+  also by how far the animations may move a sphere, `uAnimationSlack`: √3 times the wiggle's and tumble's amplitudes) against the frustum, the
   distance range, each of the cell's levels and the depth pyramid (`instanceLevels`), and copies it at the levels it
   passed. Why: zoomed into a mesoscale model the cells (and gridless members) hold particles out of view or out of a
   level's range; per instance, CellPack HIV at 0.1 and 0.02 of the distance drew a third fewer level-0 spheres
