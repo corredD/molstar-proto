@@ -182,13 +182,14 @@ for densely packed scenes (mesoscale), where most of what is in view is hidden b
 - **A pyramid per drawn frame** (`OcclusionPyramid.version`): a dispatch is skipped only against the build it tested
   last. At a still camera what was drawn may change (an object hidden, a coarser level refined): what it hid shows in
   the next pyramid and is drawn again. A still camera costs a dispatch per drawn frame, none while nothing draws.
-- **One phase first**: the next frame's cells tested against the previous frame's pyramid with its view and projection
+- **One phase** (without order-independent transparency, in stereo, without opaque objects; with `motion`, none while
+  moving): the next frame's cells tested against the previous frame's pyramid with its view and projection
   (the CPU test's projection of a padded sphere, its level by the screen size, ported to WGSL; now a level finer, up to 4 x 4 texels compared).
   A cell that comes into view behind what moved shows a frame late (a frame of popping while the camera moves; the CPU
   test, with its readback lag, pops longer). Still frames are stable: what is drawn stays drawn, what it hides stays hidden.
-- **Two phases later, if the popping shows**: draw the cells visible last frame, build the pyramid from that depth,
-  test the rest against it and draw what is newly visible (a second set of records per level and segment, the opaque
-  pass split in two). Exact, at the cost of a pyramid build within the frame.
+- **Two phases** (built, see above): what was visible last frame, the pyramid of its depth, the rest against it. Open:
+  solid-interior caps of instances first shown in the second phase are drawn the frame after (the second phase draws
+  no caps).
 - **What occludes**: opaque depth only (transparent objects are occluded, never occlude). Off where a pass needs what
   is hidden: illumination (path tracing reads hidden geometry for shadows and reflections; the CPU test is off there
   too), and views without a pyramid of their own (they draw the CPU lists, as now).
@@ -226,8 +227,9 @@ Steps:
 3. **Grid size** (dropped): cells of 50 or 20 Å against 200 gained about 6% zoomed (step 1: 20.6 to 19.4 ms, distance
    levels), far less than the pixel levels; not pursued.
 4. **Draw lists** (dropped with step 6.5).
-5. **Two phases** (dropped): rotating 2° a frame (`-rotating`), 3 of 921,600 pixels differ from the frames without
-   occlusion, zoomed; no popping shows.
+5. **Two phases** (dropped then, built since: mesoscale close up popped a frame while turning, `apps/prism-me`'s
+   instance-cull lane): rotating 2° a frame (`-rotating`), 3 of 921,600 pixels differed from the frames without
+   occlusion, zoomed (`postsyn`).
 6. **WebGL2, the CPU test** (measured, dropped): the benchmark's frames ran in one task, where WebGL's fences never
    signal (a sync's status changes between tasks only): the CPU test never had levels (every read timed out after
    `maxFrameLag`); on WebGPU only a read landing in the warm-up served the still frames (step 1's 12%). The Hi-Z cases

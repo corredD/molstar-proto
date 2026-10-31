@@ -105,7 +105,7 @@ export const HiZParams = {
   minLevel: PD.Numeric(3, { min: 1, max: 10, step: 1 }),
   gpu: PD.Boolean(true, {
     description:
-      "Occlusion culling on the GPU of the objects culled there (gpuCulling), against the previous frame's depth without reading it back; also with Hi-Z off.",
+      "Occlusion culling on the GPU of the objects culled there (gpuCulling), against this frame's depth in two phases (order-independent transparency) or the previous frame's, without reading it back; also with Hi-Z off.",
   }),
 };
 export type HiZProps = PD.Values<typeof HiZParams>;
