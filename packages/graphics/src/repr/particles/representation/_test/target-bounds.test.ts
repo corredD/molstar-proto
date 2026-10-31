@@ -121,4 +121,27 @@ describe('the decorations of a list that moves', () => {
       repr.destroy();
     });
   }
+
+  it('keep a merged object as its members are, before a renderable syncs it (WebGPU, Ludo 2026-10-31)', async () => {
+    // a scene adds a merged object a frame after the representation made it: updated in between (a scale right after
+    // the decoration), its renderable is made from its values, which must be its members' already
+    const list = particleList(2);
+    const repr = await representation(list, true);
+    const merged = repr.renderObjects[0];
+    const moved = transformed(list, 10, turn);
+    await repr.createOrUpdate({}, moved).run();
+    expect(repr.renderObjects[0]).toBe(merged);
+    const fresh = await representation(moved, true);
+    const expected = fresh.renderObjects[0].values;
+    const actual = merged.values;
+    const floats = expected.instanceCount.ref.value * 16;
+    expect(Array.from(actual.aTransform.ref.value.subarray(0, floats))).toEqual(
+      Array.from(expected.aTransform.ref.value.subarray(0, floats)),
+    );
+    expect(
+      Vec3.distance(actual.boundingSphere.ref.value.center, expected.boundingSphere.ref.value.center),
+    ).toBeLessThan(1e-3);
+    fresh.destroy();
+    repr.destroy();
+  });
 });
