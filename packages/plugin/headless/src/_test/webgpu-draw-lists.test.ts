@@ -216,6 +216,11 @@ describe.skipIf(!WebGPU.module)('draw lists on WebGPU', () => {
       expect(graphics.quadIndices.get(1)!.itemCount).toBeGreaterThan(first);
       expect(error?.message ?? '').toBe('');
       expect(replayed.some((v, i) => i % 4 !== 3 && v > 0)).toBe(true);
+      // recorded again with the grown buffer and replayed, not drawn directly frame after frame
+      const { replayed: before } = graphics.stats.drawLists;
+      await frame();
+      await frame();
+      expect(graphics.stats.drawLists.replayed).toBeGreaterThan(before);
       expect(replayed).toEqual(await drawLists(false));
     } finally {
       plugin.dispose();
