@@ -48,24 +48,26 @@ function Levels() {
     s < props.entity ? 'far (compartment)' : s < props.chain ? 'entity' : s < props.atom ? 'chain' : 'atom (element)',
   );
   return (
-    <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; width: 520px">
-      <div style="display: flex; align-items: center; gap: 8px">
-        <span style="width: 120px">Atom on screen</span>
-        <Slider
-          aria-label="Pixels an atom covers"
-          value={size.asReadonly}
-          min={0.5}
-          max={100}
-          scale="log"
-          unit="px"
-          onPreview={(v) => size.set(v)}
-          onCommit={(v) => size.set(v)}
-        />
+    <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; max-width: 520px; box-sizing: border-box">
+      <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
+        <span style="flex: none">Atom on screen</span>
+        <div style="flex: 1; min-width: 0">
+          <Slider
+            aria-label="Pixels an atom covers"
+            value={size.asReadonly}
+            min={0.5}
+            max={100}
+            scale="log"
+            unit="px"
+            onPreview={(v) => size.set(v)}
+            onCommit={(v) => size.set(v)}
+          />
+        </div>
       </div>
       <span style="color: var(--msp-color-text-muted)">{mapState(level, (l) => `Mostly: ${l}`)}</span>
       {Proteins.map((p) => (
-        <div style="display: flex; align-items: center; gap: 8px">
-          <span style="width: 120px">{p.name}</span>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px">
+          <span style="width: 120px; flex: none">{p.name}</span>
           {Array.from({ length: p.chains }, (_, c) => (
             <span style="display: flex; gap: 2px; margin-right: 6px">
               {Atoms.map((e) => (
