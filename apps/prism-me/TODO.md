@@ -68,13 +68,15 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
-- Smooth close up (lane `instance-cull`, what is left; `progress/2026-10-31-instance-cull.md`): the k-means proxy levels
-  (the look at rest: Ludo's call, images in the progress file); two-phase occlusion for canvases without `motion`; still
-  frames of PetWorld HIV close up, at dpr 2 and on WebGL2 above 16.7 / 33 ms (turning meets them but PetWorld at 0.02 on
-  WebGPU at dpr 2, 19.7 ms); Firefox not measured. The reviews' open items: the motion test does not check that the
-  resize back is no motion (the headless context resizes nothing); CPU culling by instance skips the object's own
-  distance range (draws more, not less); the look reads the display density once; no tests of the motion's no-resize
-  fallback and of an image pass ending a motion (they need a DOM canvas).
+- Smooth close up (lane `instance-cull`, what is left; `progress/2026-10-31-instance-cull.md`): full detail always
+  (Ludo); WebGPU turning frames over 16.7 ms at dpr 2 (CellPack 0.1, PetWorld) and PetWorld's still frames; WebGL2 close
+  up over 33 ms (CPU culling, no occlusion while moving); the impostor's fragment depth (no early depth tests, no
+  hidden-surface removal on the M1); Firefox not measured. The reviews' open items: second-phase instances get their
+  solid-interior caps a frame late; the 'two-phase occlusion' test reaches no clusters and the one-phase path lost its
+  canvas image test (the canvas tests now run two phases); pyramids built for multi-sample sub-renders with nothing to
+  cull; the motion test does not check that the resize back is no motion (the headless context resizes nothing); CPU
+  culling by instance skips the object's own distance range (draws more, not less); the look reads the display density
+  once; no tests of the motion's no-resize fallback and of an image pass ending a motion (they need a DOM canvas).
 
 - The properties (lane `properties-view`, its review's open items): a Visible line in a node's Look (ui.md §4 lists it;
   the app has the row's eye, a category its switch); a model's or group's color says Mixed when no entity has a color of

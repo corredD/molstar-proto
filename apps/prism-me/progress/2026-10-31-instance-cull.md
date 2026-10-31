@@ -389,3 +389,8 @@ largest sphere (test first); no motion switch where nothing resizes the canvas; 
 CPU occlusion while moving; the projection compared within a tolerance; the cluster test with a segment before the
 clustered one; spec, changelog, a stale comment. Open (TODO.md): S7 (the headless context resizes nothing: the resize
 back is not tested as no motion), N1, N3, no tests for S5 and S6 (they need a DOM canvas).
+
+Round 3 (`30a22c0ca..`): reviewer (Opus) 3 must-fix, 5 should-fix, 4 nits (no skeptic run: the fixes follow from
+reading). Fixed: a debug map left in the culler (M1); two phases only with opaque objects (M2: without, GPU-culled
+transparent objects never drew) and one camera (S2: stereo built the pyramid with the mono camera); the docs and
+changelog (M3); a dead variable. Open (TODO.md): S1 caps a frame late, S3/S4 tests, S5 extra pyramid builds, N2-N4.
