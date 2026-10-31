@@ -55,7 +55,9 @@ is not built is [../TODO.md](../TODO.md).
     WebGL2 (40-192). Look at rest unchanged. Open for Ludo: k-means proxy levels instead of every n-th atom (images in
     `2026-10-31-instance-cull/`: 15 % / 23 % pixels differ, a bit more compact, streaks on PetWorld's membrane).
   - Ludo, 2026-10-31, on round 2: "doesnt look good, we dont need the kmeans proxy, and we dont want lower res when
-    turning and zooming". Recorded: no k-means proxies; no lower resolution while moving. Action to decide.
+    turning and zooming". Then, asked: the problem is the coarser detail while moving; "you can keep the resolution
+    trick". Decided: no k-means proxies; no coarser levels while moving (prism-me's motion LOD scale 1); lower
+    resolution while moving stays. Lane resumed for round 3 within these.
 
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
