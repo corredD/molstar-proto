@@ -453,7 +453,7 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
       plugin.dispose();
     }
   }, 60_000);
-  it('occlusion culls what is hidden also where its rectangle reaches past the view', async () => {
+  it('occlusion culls what is hidden also where its rectangle reaches past the view, and draws it again once revealed at the same view', async () => {
     const plugin = await createPlugin();
     try {
       const graphics = plugin.canvas3d!.graphics;
@@ -480,7 +480,8 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
       const depth = (-(near * far) / wall - near) / (far - near);
       const texture = graphics.resources.texture('image-float32', 'r', 'float', 'nearest');
       texture.load({ array: new Float32Array(15 * 8).fill(depth), width: 15, height: 8 });
-      const pyramid: OcclusionPyramid = {
+      let pyramid: OcclusionPyramid = {
+        version: 1,
         texture,
         levelCount: 7,
         minLevel: 3,
@@ -529,6 +530,14 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
       expect(behind).toBeGreaterThan(0);
       // the front grid's instances in view drawn, none of the grid behind the wall
       expect(drawn).toEqual([inView, 0]);
+
+      // the wall gone at the same view (another object hidden, a coarser level refined): the next pyramid shows what is
+      // behind, and what it hid is drawn again
+      texture.load({ array: new Float32Array(15 * 8).fill(0), width: 15, height: 8 });
+      pyramid = { ...pyramid, version: pyramid.version + 1 };
+      await frame();
+      const again = new Uint32Array(await buffer.readAsync(byteOffset, list![0].count * words * 4));
+      expect([again[1], again[words + 1]]).toEqual([inView, behind]);
       texture.destroy();
     } finally {
       plugin.dispose();
