@@ -44,10 +44,11 @@ name no extension (upstreamable later, when Ludo says so).
 
 - Cuttlefish's coverage-driven hues (cellview.md §7.3, dead in cellVIEW too); a residue level; the edges in Å instead of
   pixels if Ludo wants it (`colorLevelSize` and `ColorLevels.atomSize`, `color-levels.md`); the levels on structures
-  (not particles) and on volume or shape targets; a GLSL/WGSL compile with `dColorLevels` and a shader-against-rule test
-  in the repo (review S4); per pixel instead of per atom if Ludo wants it. The on-cost zoomed in (0 to 14 %): skip the
-  blend where it is whole, then Oklab stored (progress/2026-10-30-dynamic-color.md, After Ludo's test, plan for 2).
-  WebKit (Safari) draws only the RNA of CellPack HIV on WebGPU, on `prism-me` too.
+  (not particles) and on volume or shape targets; a WGSL compile with `dColorLevels` on Dawn and a shader-against-rule
+  test in the repo (review S4; the GLSL mesh program compiles natively, the sphere program where the backend has frag
+  depth); per pixel instead of per atom if Ludo wants it. The on-cost zoomed in (up to 14 %): skip the blend where it is
+  whole, then Oklab stored (progress/2026-10-30-dynamic-color.md, After Ludo's test, plan for 2). WebKit (Safari) draws
+  only the RNA of CellPack HIV on WebGPU, on `prism-me` too.
 
 ## Library fixes ready for upstream
 
@@ -60,6 +61,9 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Gizmo: `rotate` axes option, `poseOfFrame`/`frameOfPose` (`ded144e8d`).
 - MRC reader: mode 6, mode 12 (float16), `.rec`/`.st`/`.mrcs`/`.ali` (`33dbca0c5`, `59ef5aa38`).
 - A whole particle list's bounding sphere filled the wrong way (`me/particle-bounds`, `0927c892b`; in 5.x too).
+- WebGPU: a draw list recorded while the shared quad indices grew replayed the released buffer, nothing drawn until a
+  change (`8a159bd86`, test `c424c0bdf`, lane `dynamic-color`; master has the same code). Its test runs only with
+  `pnpm native:install -- --webgpu` (CI installs no Dawn).
 
 ## Backlog
 

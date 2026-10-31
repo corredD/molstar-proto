@@ -184,8 +184,9 @@ great." And: "when zoomed in looking at spacefill performance decreased largely.
 - **After the fix:** PetWorld HIV draws on Chrome WebGPU (3 of 3, no error) and on WebKit; CellPack HIV unchanged.
 - **Firefox (WebGL2):** no failure found headless: both examples draw, the levels work on CellPack HIV (compartments,
   entities, chains, elements as zoomed). On PetWorld HIV, By zoom was refused ("cannot be colored by zoom": no
-  compartments, its entities by target): likely what "doesn't work" was. By zoom now colors such a model by entity, then
-  chains and atoms (`f4e83e40d`, test first); checked on Chrome, Firefox and WebKit.
+  compartments; its entities are per particle): likely what "doesn't work" was. By zoom now colors such a model by
+  entity, then chains and atoms (`f4e83e40d`, test first; a model with entities by target only is refused, Particle
+  Entity reading them per particle: the fix review's M1); checked on Chrome, Firefox and WebKit.
 - **WebKit (Safari): CellPack HIV draws only its RNA**, levels off, on `prism-me` and here alike, no console error: not
   this lane's, left open (TODO.md). Not reproduced: Safari's flicker (headless shows no motion).
 - **Guards added:** the sphere and mesh programs with the levels off hold none of their code (GLSL and WGSL), and
@@ -208,13 +209,15 @@ tenth and a fiftieth of it (0.02: close to one capsid protein). `prism-me` | thi
 \* `prism-me` draws nothing there (item 1). Two more runs of CellPack HIV on WebGL2 (`prism-me` | off): 28.8 | 29.6,
 100.9 | 97.4, 68.6 | 65.5 and 32.2 | 34.1, 110.3 | 101.6, 65.8 | 70.3: run to run ±10 %, the machine shared.
 
-- **Levels off cost what `prism-me` costs**, within the noise: the off programs are those of before (the guard above),
-  and the lane's data is empty there.
-- **Levels on cost 0 to 14 %** zoomed in (largest: CellPack HIV WebGPU at 0.1, +9 ms; PetWorld HIV WebGL2 at 0.02, +7
-  ms): the vertex stage's two fetches and five Oklab conversions per vertex (four per sphere quad), whatever the level.
-- **Zoomed in is 3 to 4 times the whole view on `prism-me` already** (CellPack HIV WebGPU 18.6 → 73.1 ms): more spheres
-  at level 0 and fill (`screen-space-lod.md`: zoomed in is vertex-bound). Most likely what Ludo saw; and on WebGPU
-  PetWorld HIV, `prism-me` drew nothing at all, so anything drawn is slower.
+- **Levels off cost what `prism-me` costs**, within the noise (±10 % run to run; PetWorld HIV WebGL2 off is 4 to 6 %
+  above in its three cells, CellPack HIV WebGL2 19 to 21 % above in one run and below in the reruns): the off programs
+  are those of before (the guard above), and the lane's data is empty there.
+- **Levels on cost −13 to +14 % against off, within the noise but for the largest** zoomed in (largest: CellPack HIV
+  WebGPU at 0.1, +9 ms; PetWorld HIV WebGL2 at 0.02, +7 ms): the vertex stage's two fetches and four Oklab conversions
+  per vertex (four per sphere quad), whatever the level.
+- **Zoomed in is 2 to 4 times the whole view on `prism-me` already** (CellPack HIV WebGPU 18.6 → 73.1 ms; PetWorld HIV
+  WebGL2 62.9 → 116.9): more spheres at level 0 and fill (`screen-space-lod.md`: zoomed in is vertex-bound). Most likely
+  what Ludo saw; and on WebGPU PetWorld HIV, `prism-me` drew nothing at all, so anything drawn is slower.
 
 **Plan (options, not built):**
 
@@ -244,7 +247,7 @@ confirmed all 15, none refuted (S3 down to a nit, M1 to low-medium). Each fixed 
 | M1 atom size NaN behind the camera (a mesh crossing its plane)                                              | must-fix (low-medium) | fixed `e6ff852e8` (test `0ac7a4be8`)                                            |
 | M2 an item off left the shared material uniforms at zero                                                    | must-fix              | fixed `ce9897229` (test `06bbc6fde`)                                            |
 | S3 no test that no frame is asked at rest                                                                   | nit                   | open: nothing in the diff asks a frame; 0 draws measured at rest in the browser |
-| S4 no GLSL/WGSL compile nor shader-against-rule test in the repo                                            | should-fix (low)      | open (TODO.md): both compiled and checked in the browser                        |
+| S4 no GLSL/WGSL compile nor shader-against-rule test in the repo                                            | should-fix (low)      | partly: `a8f757b25`, `af89b2d0c` (GLSL); WGSL on Dawn and against the rule open |
 | S5 refill paths untested                                                                                    | should-fix (low)      | test `7a9527c58` (no bug)                                                       |
 | S6 another theme left the levels on                                                                         | should-fix            | fixed `98720d0ce` (test `2f40f9ec2`), ui.md `4b13f61c2`                         |
 | S7 By zoom over Look's colors silently hidden                                                               | should-fix            | said so `98720d0ce` (test `2f40f9ec2`)                                          |
@@ -252,3 +255,17 @@ confirmed all 15, none refuted (S3 down to a nit, M1 to low-medium). Each fixed 
 | S9 per pixel changed without asking; size reported as at the limit                                          | should-fix (process)  | said plainly above (Decided, Size), for Ludo                                    |
 | Nits: slider range, plan status, blob surfaces and chains in the plan                                       | nit                   | fixed `afe4b72db`, `0e5f9135e`                                                  |
 | Nits: chains keyed by asym id with ligands and waters; story inline styles; `tColorNear` re-sent per update | nit                   | open                                                                            |
+
+**Fix review** (after Ludo's test; reviewer over `55fc4a5e6..1cfe7cdd5`): 1 must-fix, 3 should-fix, 5 nits.
+
+| Finding                                                                                      | Outcome                                                                |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| M1 by zoom took a model with entities by target only, drawn grey; the PetWorld fixture wrong | fixed `366035f5a` (test first `2c347cc66`)                             |
+| S1 the WebGPU fix is a library fix master needs: its own lane                                | listed in TODO.md Library fixes; the changelog says it                 |
+| S2 the draw-list test would pass if recordings failed every frame                            | replays asserted `e23163f53`                                           |
+| S3 the native compile skipped here (no frag depth)                                           | per object, the mesh's runs, shown to catch a broken chunk `af89b2d0c` |
+| N1 the version sum in two places                                                             | `fa6437a44`                                                            |
+| N2 another target's recording of the same frame could hold the old buffer                    | open (implausible: the same draws)                                     |
+| N3 "drawn by its structures" is any target representation                                    | comment `366035f5a`                                                    |
+| N4 specs: far level under Particle Entity, features.md                                       | plan, features.md, ui.md §3                                            |
+| N5 S4's status, the progress numbers                                                         | TODO.md and the numbers above                                          |
