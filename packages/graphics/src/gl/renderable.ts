@@ -309,6 +309,19 @@ export function appendMdbDrawKey(list: readonly MultiDrawBaseData[], out: DrawKe
   }
 }
 
+/** `l`'s arrays twice as long, their entries kept */
+function growMdbData(l: MultiDrawBaseData) {
+  const n = Math.max(16, l.instanceCounts.length * 2);
+  const grow = <T extends Int32Array | Uint32Array>(a: T, out: T) => (out.set(a), out);
+  const m = l as { -readonly [K in keyof MultiDrawBaseData]: MultiDrawBaseData[K] };
+  m.firsts = grow(l.firsts as Int32Array, new Int32Array(n));
+  m.counts = grow(l.counts as Int32Array, new Int32Array(n));
+  m.offsets = grow(l.offsets as Int32Array, new Int32Array(n));
+  m.instanceCounts = grow(l.instanceCounts as Int32Array, new Int32Array(n));
+  m.baseVertices = grow(l.baseVertices as Int32Array, new Int32Array(n));
+  m.baseInstances = grow(l.baseInstances as Uint32Array, new Uint32Array(n));
+}
+
 function getMdbData(cellCount: number, mdbData?: MultiDrawBaseData): MultiDrawBaseData {
   if (mdbData && mdbData.instanceCounts.length >= cellCount) {
     return mdbData;
@@ -617,6 +630,8 @@ export function createSegmentedMdbList(): SegmentedMdbList {
     ) {
       l.instanceCounts[o - 1] += instanceCount;
     } else {
+      // full (draws per instance take more than the cells prepared for): twice the room
+      if (o === l.instanceCounts.length) growMdbData(l);
       l.firsts[o] = first;
       l.offsets[o] = offset;
       l.counts[o] = count;
