@@ -91,6 +91,10 @@ is not built is [../TODO.md](../TODO.md).
 - **Lane `ghost-cull`** (Ludo, 2026-10-31): "the ghost on cellpack rendering, disappears at some distance and on the
   side of the screen." Suspected: #28's culling (occlusion, LOD range, edges) applied to #24's ghost pass.
   `me/ghost-cull`, port 1365; brief [2026-10-31-ghost-cull.md](2026-10-31-ghost-cull.md) on its branch. Running.
+- **After the 3 lanes** (Ludo, 2026-10-31, from Alexander): "also you generally want to switch marking off or at least
+  set ghost edge strength to 1 - otherwise you render everything at least twice... the transparent stuff is not cheap
+  either...". To do: prism-me's look (`marking` off, or `ghostEdgeStrength` 1), measured with `zoom-bench.mjs` before
+  and after; check what highlight and select still show. Not started.
 - **Exosome example** (Ludo, 2026-10-31: does not load on Chrome): its file is on `mesoscope.scripps.edu`, which refuses
   connections (curl: connection refused on 443). Not prism-me.
 
