@@ -159,17 +159,15 @@ once).
 
 ## Screenshots
 
-| WebGPU                                                             | WebGL2                                                             |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| ![one triangle](2026-10-31-mesh-measure/webgpu-0-one-triangle.jpg) | ![one triangle](2026-10-31-mesh-measure/webgl2-0-one-triangle.jpg) |
-| ![hover](2026-10-31-mesh-measure/webgpu-1-hover.jpg)               | ![hover](2026-10-31-mesh-measure/webgl2-1-hover.jpg)               |
-| ![two triangles](2026-10-31-mesh-measure/webgpu-2-triangles.jpg)   | ![two triangles](2026-10-31-mesh-measure/webgl2-2-triangles.jpg)   |
-| ![the right-click](2026-10-31-mesh-measure/webgpu-3-menu.jpg)      | ![the right-click](2026-10-31-mesh-measure/webgl2-3-menu.jpg)      |
-| ![angle](2026-10-31-mesh-measure/webgpu-4-angle.jpg)               | ![angle](2026-10-31-mesh-measure/webgl2-4-angle.jpg)               |
-| ![moved](2026-10-31-mesh-measure/webgpu-5-moved.jpg)               | ![moved](2026-10-31-mesh-measure/webgl2-5-moved.jpg)               |
-
-| ![unpaired point completed](2026-10-31-mesh-measure/webgpu-6-unpaired.jpg) |
-![unpaired point completed](2026-10-31-mesh-measure/webgl2-6-unpaired.jpg) |
+| WebGPU                                                                     | WebGL2                                                                     |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| ![one triangle](2026-10-31-mesh-measure/webgpu-0-one-triangle.jpg)         | ![one triangle](2026-10-31-mesh-measure/webgl2-0-one-triangle.jpg)         |
+| ![hover](2026-10-31-mesh-measure/webgpu-1-hover.jpg)                       | ![hover](2026-10-31-mesh-measure/webgl2-1-hover.jpg)                       |
+| ![two triangles](2026-10-31-mesh-measure/webgpu-2-triangles.jpg)           | ![two triangles](2026-10-31-mesh-measure/webgl2-2-triangles.jpg)           |
+| ![the right-click](2026-10-31-mesh-measure/webgpu-3-menu.jpg)              | ![the right-click](2026-10-31-mesh-measure/webgl2-3-menu.jpg)              |
+| ![angle](2026-10-31-mesh-measure/webgpu-4-angle.jpg)                       | ![angle](2026-10-31-mesh-measure/webgl2-4-angle.jpg)                       |
+| ![moved](2026-10-31-mesh-measure/webgpu-5-moved.jpg)                       | ![moved](2026-10-31-mesh-measure/webgl2-5-moved.jpg)                       |
+| ![unpaired point completed](2026-10-31-mesh-measure/webgpu-6-unpaired.jpg) | ![unpaired point completed](2026-10-31-mesh-measure/webgl2-6-unpaired.jpg) |
 
 Rechecked on the final head (after the third review, both backends, port 1364): the same values (7.65 Å, 25.67 Å,
 17.34°; moved 8 Å: 29.25 Å, 15.46°); after the angle, the unpaired triangle 425 and the next click (GLY 20) make 31.66 Å
@@ -244,3 +242,19 @@ and the wording nits from that pass.
 
 The 72-triangle test asserts the triangles a pick tests (`MeshTriangleLookup.lastVisited`, new), which the old code did
 not have; the reviewer's probe (2,294 tests) is the failing case it stands for.
+
+## Fourth review (Claude's reviewer and skeptic on the third review's fixes, range `9031a7bb2..af6dc6932`)
+
+1 must-fix, 2 should-fix, 3 nits; each fixed with a test that failed first, but M1 (its test hangs the old build until
+it runs out of memory: the reviewer's probe, not rerun).
+
+| Finding                                                                                                   | Severity   | Fixed                                                                                           |
+| --------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------- |
+| M1. A vertex at 1e20 overflows the 32-bit reach to Infinity, the grade loop never ends (out of memory)    | must-fix   | finite as stored (`Math.fround`), grades bounded (±16); a test                                  |
+| S2. The cached lookup kept the reaches (4 B/triangle beyond `byteCount`) through a shared closure context | should-fix | the build in a function of its own; measured: retained = `byteCount`                            |
+| S3. An RMS "typical" let wide triangles above ~6 % of the mesh into the fine grade (3,729 tests a pick)   | should-fix | grades on both sides of the median reach; a 44 % floor test (1,553 tests before, under 100 now) |
+| Nit: the build's transient bytes and "the mean"                                                           | nit        | the design note: about 29 B/triangle, the median                                                |
+| Nit: the screenshot table's last row broken                                                               | nit        | fixed                                                                                           |
+| Nit: only OBJ tested for a pick kept across a move or a recolor                                           | nit        | a PLY test across a move and a scale (VTP by reading: its getter keeps `_mesh`)                 |
+
+The build is slower with the grades: 44 ms at 1 M (from 24–26 ms before them), once, at the first hover.
