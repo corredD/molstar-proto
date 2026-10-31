@@ -32,6 +32,26 @@ const tmpTriangleRay = Ray3D();
 /** How far (in pixels at its depth) a mesh's triangle is looked for around a pick's depth point */
 const TrianglePickPixels = 8;
 
+/**
+ * The ray through the pointer, from a pick's depth point: it lies on the pointer's ray (the pick unprojects the
+ * pointer's window coordinates at the depth read there). Perspective: from the eye through it; orthographic: along the
+ * view, from before it.
+ */
+export function pointerRay(
+  out: Ray3D,
+  camera: { readonly mode: 'perspective' | 'orthographic'; readonly position: Vec3; readonly target: Vec3 },
+  position: Vec3,
+): Ray3D {
+  if (camera.mode === 'orthographic') {
+    Vec3.normalize(out.direction, Vec3.sub(out.direction, camera.target, camera.position));
+    Vec3.scaleAndAdd(out.origin, position, out.direction, -(Vec3.distance(camera.position, position) + 1));
+  } else {
+    Vec3.copy(out.origin, camera.position);
+    Vec3.normalize(out.direction, Vec3.sub(out.direction, position, camera.position));
+  }
+  return out;
+}
+
 export const Canvas3dInteractionHelperParams = {
   maxFps: PD.Numeric(30, { min: 10, max: 60, step: 10 }),
   preferAtomPixelPadding: PD.Numeric(
@@ -327,22 +347,9 @@ export class Canvas3dInteractionHelper {
     return { repr, loci };
   }
 
-  /**
-   * The ray through the pointer, from a pick's depth point (it is on the pointer's ray: the pointer's window
-   * coordinates at the depth read there), or the input's own ray (XR)
-   */
+  /** The ray through the pointer (`pointerRay`), or the input's own ray (XR) */
   private pointerRay(position: Vec3): Ray3D {
-    if (this.ray) return this.ray;
-    const { state } = this.camera;
-    const ray = tmpTriangleRay;
-    if (state.mode === 'orthographic') {
-      Vec3.normalize(ray.direction, Vec3.sub(ray.direction, state.target, state.position));
-      Vec3.scaleAndAdd(ray.origin, position, ray.direction, -(Vec3.distance(state.position, position) + 1));
-    } else {
-      Vec3.copy(ray.origin, state.position);
-      Vec3.normalize(ray.direction, Vec3.sub(ray.direction, position, state.position));
-    }
-    return ray;
+    return this.ray ?? pointerRay(tmpTriangleRay, this.camera.state, position);
   }
 
   resetTime(t: number) {
