@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { createWebGPUComputeContext } from './compute.js';
@@ -1038,6 +1039,7 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
       current.failed ??= `the ${what} changing`;
     });
     const arenaReplacements = ring.arenaReplacements;
+    const drawResources = drawContext.quadIndices.id + drawContext.sharedTextures.version;
     recording = current;
     try {
       draw();
@@ -1046,6 +1048,11 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
     }
     // draws recorded before bind the released buffer
     if (ring.arenaReplacements !== arenaReplacements) current.failed ??= 'a uniform arena growing';
+    // a shared resource replaced while recording (the quad indices grown by a later draw): the draws before it bind the
+    // released one, and the snapshot taken after the recording would hold it current
+    if (drawContext.quadIndices.id + drawContext.sharedTextures.version !== drawResources) {
+      current.failed ??= 'a shared draw resource replaced';
+    }
     const bundle = encoder.finish();
     return current.failed ? undefined : bundle;
   }
