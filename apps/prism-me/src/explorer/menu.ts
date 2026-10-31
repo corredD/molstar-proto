@@ -375,12 +375,18 @@ export async function addLabel(
   if (ref && reveal) reveal({ key: `l:${ref}`, label: picked.label, kind: 'label', node: { ref } });
 }
 
-/** A distance's right-click: the camera on its two points, remove */
+/** A measurement's right-click (a distance's, an angle's, a dihedral's): the camera on its points, remove */
 function distanceItems(api: ViewerApi, area: ExplorerApi, picked: PickedNode): ContextMenuItem[] {
   const { node, label } = picked;
-  const name = api.stage?.distancesState().value.find((d) => d.ref === node.ref)?.label ?? label;
+  const info = api.stage?.distancesState().value.find((d) => d.ref === node.ref);
+  const name = info?.label ?? label;
   return [
-    { id: 'focus', label: `Focus on the distance ${name}`, icon: 'scan', run: () => area.focus(node) },
+    {
+      id: 'focus',
+      label: `Focus on the ${info?.measure ?? 'distance'} ${name}`,
+      icon: 'scan',
+      run: () => area.focus(node),
+    },
     {
       id: 'remove-distance',
       label: 'Remove',
