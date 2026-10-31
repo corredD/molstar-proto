@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import {
@@ -119,12 +120,18 @@ export function mergeRenderObjectsByType<V>(
       else byType.set(e.renderObject.type, [e]);
     }
     byType.forEach((group, type) => {
-      // culled on the GPU where many instances per draw (a segment and level): merged for it, also one object alone
+      // culled on the GPU where many instances per draw (a segment and level) or many vertices: merged for it, also one
+      // object alone
       let instances = 0;
-      for (const e of group) instances += e.renderObject.values.instanceCount.ref.value;
+      let vertices = 0;
+      for (const e of group) {
+        const count: number = e.renderObject.values.instanceCount.ref.value;
+        instances += count;
+        vertices += count * (e.renderObject.values.drawCount.ref.value as number);
+      }
       const levels = (group[0].renderObject.values as { lodLevels?: { ref: { value: unknown[] } } }).lodLevels;
       const draws = group.length * Math.max(1, levels?.ref.value.length ?? 0);
-      const gpu = gpuSupported && resolveGpuCulling(gpuCulling, instances, draws);
+      const gpu = gpuSupported && resolveGpuCulling(gpuCulling, instances, draws, vertices);
       const merge = gpu || (group.length >= 2 && resolveRenderMerged(renderMerged, group.length));
       if (!merge) return;
 

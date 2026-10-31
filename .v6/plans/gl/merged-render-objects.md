@@ -107,7 +107,9 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
   segment); the copy about 112 bytes per drawn instance; memory about 112 bytes per instance per level plus one.
 - **Occlusion**: per cell against the previous frame's Hi-Z levels (GPU textures, `textureLoad`, r32f), below.
 - **When on** (`auto`, the default): from `AutoGpuCullingMinInstances` (20k) instances and `AutoGpuCullingThreshold`
-  (30) per draw (segment and level). A GPU-culled object costs about 0.1 ms per frame of its own (its dispatches and
+  (30) per draw (segment and level); or from `AutoGpuCullingMinVertices` (10 M) vertices at full detail (instances
+  times draw count) with at least 30 instances: few instances of large members (PetWorld's proteins), where the
+  instance test drops millions of vertices close up (PetWorld HIV at 0.1 of the distance, M1, WebGPU: 119 to 75 ms). A GPU-culled object costs about 0.1 ms per frame of its own (its dispatches and
   the Hi-Z levels it asks for), the CPU's culling about 10 ns per instance in frames whose view changed (less where a
   batch is emitted whole). Measured (WebGPU, RTX, rotating, CPU submit, CPU / GPU culling): one unit of 100, 1000 and
   10k copies 0.17 / 0.33, 0.15 / 0.25, 0.11 / 0.23 ms; 100 units of 100 copies 0.24 / 0.29; of 1000 copies 1.12 /
