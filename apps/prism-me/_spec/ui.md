@@ -230,7 +230,9 @@ right-click ("Measure the angle of the latest 3 points", "… the dihedral of th
 there are as many); `stage.angle` and `stage.dihedral` for ⌘K and the agent. Drawn by Mol*'s `AngleRepresentation` and
 `DihedralRepresentation`, the same cell kind as a distance (`StageDistance`, with its third and fourth points), so their
 rows, eyes, properties and right-click are a distance's; their rows say "Angle 109.47°", "Dihedral -60.00°". The latest
-points go with the first one (Esc, a plain click, selection mode left).
+points go with the first one (Esc, a plain click, selection mode left). The clicks stay what they are: every second one
+makes its distance (the first and second points, the third and fourth), so an angle from three clicks comes with one
+distance and a dihedral from four with two; each is removed by its row (the lane's default, to ask Ludo).
 
 - **In selection mode** (its button under the 3D view) (Ludovic, 2026-10-24): that mode already selects everything in
   the scene; there, two ⌘+clicks on a Mac, two Ctrl+clicks elsewhere, also make a distance. A modifier click selects
