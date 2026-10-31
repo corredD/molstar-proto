@@ -1283,6 +1283,16 @@ namespace Canvas3D {
     }
 
     function render(force: boolean, xrFrame?: XRFrame) {
+      try {
+        return renderFrame(force, xrFrame);
+      } finally {
+        // other passes of the renderer (images, a frame of their own) draw at full detail; picks in the frame reuse its
+        // culling (what is shown)
+        renderer.setLodScale(1);
+      }
+    }
+
+    function renderFrame(force: boolean, xrFrame?: XRFrame) {
       if (graphics.isContextLost) return false;
       if (graphics.xr.session && !xrFrame) return false;
 
@@ -1433,8 +1443,6 @@ namespace Canvas3D {
         didRender = redrawMarking(false, getTemporalSamplesPerFrame(p.multiSample.sampleLevel));
       }
 
-      // other passes of the renderer (picking, images) draw at full detail
-      renderer.setLodScale(1);
       return didRender;
     }
 
