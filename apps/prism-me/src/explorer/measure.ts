@@ -97,7 +97,7 @@ export function distancePicker(
     }
     const [a, b, c, d] = points.map((p) => ({ loci: p.loci }));
     const [node, nodeB, nodeC, nodeD] = points.map((p) => p.picked.key);
-    letGo();
+    // the unpaired point stays: the next click still completes its distance (ui.md §7)
     const r = await api.run(`stage.${kind}`, {
       a,
       b,

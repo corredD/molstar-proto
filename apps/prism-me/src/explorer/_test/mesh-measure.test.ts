@@ -163,6 +163,22 @@ describe('measuring from mesh triangles in the explorer', () => {
     );
   });
 
+  it('keeps the unpaired point when an angle is measured, so the next click pairs with it', async () => {
+    const v = await viewer();
+    const { p } = picker(v);
+    for (const loci of [triangle(v, 0, [0.5, 0.2]), residue(v, 10), triangle(v, 1, [0.1, 0.8])]) {
+      await p.click({ loci, measure: true });
+    }
+    const waiting = p.pending.value;
+    expect(waiting).toBeTruthy();
+    expect(measurements(v).filter((m) => m.measure === 'distance')).toHaveLength(1);
+    await p.measureLatest('angle');
+    expect(p.pending.value).toBe(waiting);
+    await p.click({ loci: residue(v, 20), measure: true });
+    expect(measurements(v).filter((m) => m.measure === 'distance')).toHaveLength(2);
+    expect(p.pending.value).toBeUndefined();
+  });
+
   it("says a latest point's object was removed, and measures nothing", async () => {
     const v = await viewer();
     const { p, posted } = picker(v);
