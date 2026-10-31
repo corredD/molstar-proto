@@ -2,7 +2,8 @@
 
 ## Status
 
-- **Current**: building (lane `dynamic-color`, 2026-10-30). Step 1 measured (below); the design is this file.
+- **Current**: built (lane `dynamic-color`, 2026-10-30), checked on CellPack HIV in WebGPU and WebGL2. Step 1 measured
+  (below). Open: a GLSL/WGSL compile and a shader-against-rule test in the repo; per pixel, if wanted.
 
 ## Why
 
@@ -41,6 +42,8 @@
 - **Applied in the vertex stage**, on `vColor`, before overpaint (a Look color painted over a part still wins): at the
   sphere's center or the mesh vertex. Why not per pixel: no new varying (WebGL2's 15 and WebGPU's 16 are near full),
   and an atom is a few pixels at the near levels; a protein still spans levels, atom by atom.
+- **A blob surface** (a mesh target) takes a vertex's group, one representative atom: its atom level is that atom's
+  element. Chains are a target's `label_asym_id`s, its ligands and waters included.
 - **Who fills it**: the particle target visual for structure targets (`colorLevels` in its structure params), the near
   data once per target structure (cached), the far data when the theme changes. Off for a uniform theme or a palette
   (no `vColor`), and for shape and volume targets (no atoms).
