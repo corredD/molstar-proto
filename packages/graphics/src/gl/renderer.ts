@@ -834,7 +834,8 @@ namespace Renderer {
      * with the model scale and the occlusion test, the view what was derived from it (the tables' visibility, the draw
      * lists' snapshots) compares by value: passes of several cameras alternate in a frame (e.g. the camera helper's)
      */
-    const viewPlanes = new Float64Array(28);
+    /** the frustum's planes, the camera plane, and the levels of detail's scales (`LodView`): what a cull reads */
+    const viewPlanes = new Float64Array(30);
     const setViewPlane = (o: number, plane: Plane3D) => {
       const { normal, constant } = plane;
       viewPlanes[o] = normal[0];
@@ -845,9 +846,12 @@ namespace Renderer {
     const setViewPlanes = () => {
       for (let i = 0; i < 6; ++i) setViewPlane(i * 4, frustum[i as Frustum3D.PlaneIndex]);
       setViewPlane(24, cameraPlane);
+      // levels by size on screen: a resolution or a scale (`setLodScale`) at the same camera draws other levels
+      viewPlanes[28] = lodView.depthScale;
+      viewPlanes[29] = lodView.pixelSize;
     };
     const isSameView = (planes: Float64Array) => {
-      for (let i = 0; i < 28; ++i) if (planes[i] !== viewPlanes[i]) return false;
+      for (let i = 0; i < 30; ++i) if (planes[i] !== viewPlanes[i]) return false;
       return true;
     };
 
@@ -872,7 +876,7 @@ namespace Renderer {
       if (!v) {
         v = {
           tableVersion: -1,
-          view: new Float64Array(28).fill(NaN),
+          view: new Float64Array(30).fill(NaN),
           modelScale: NaN,
           isOccluded: null,
           frame: undefined,
@@ -1340,7 +1344,7 @@ namespace Renderer {
       valid: false,
       tableVersion: -1,
       valuesEpoch: -1,
-      view: new Float64Array(28).fill(NaN),
+      view: new Float64Array(30).fill(NaN),
       modelScale: NaN,
       near: NaN,
       caps: false,
