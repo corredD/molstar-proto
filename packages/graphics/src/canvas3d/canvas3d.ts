@@ -1456,7 +1456,10 @@ namespace Canvas3D {
 
         if (shouldRender || multiSampleChanged || markingUpdated) {
           renderer.setOcclusionTest(hiZ.occlusionTest);
-          renderer.setOcclusionPyramid(getOcclusionPyramid);
+          // with `motion`, no occlusion while the camera moves nor in the frame it rests: a pyramid of another view
+          // shows what moved into view a frame late, one of a coarser frame hides what its gaps show; frames drawn
+          // coarser at a lower resolution cost little without it (`merged-render-objects.md`)
+          renderer.setOcclusionPyramid(moving || rested ? null : getOcclusionPyramid);
 
           let cam: Camera | StereoCamera = camera;
           if (p.camera.stereo.name === 'on' || xrChanged) {
