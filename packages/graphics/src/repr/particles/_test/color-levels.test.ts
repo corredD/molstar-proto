@@ -132,4 +132,14 @@ describe('color levels of particle structure targets', () => {
     expect((await visualOf(structure, { name: 'off', params: {} })).values.dColorLevels.ref.value).toBe(false);
     expect((await visualOf(structure, levelsOn, 'uniform')).values.dColorLevels.ref.value).toBe(false);
   });
+
+  it("an item off keeps its representation's uniforms: they are material uniforms, shared by its items (review M2)", async () => {
+    const structure = await load1cbs();
+    const on = (await visualOf(structure, levelsOn)).values;
+    const off = (await visualOf(structure, levelsOn, 'uniform')).values;
+    expect(off.dColorLevels.ref.value).toBe(false);
+    expect(Array.from(off.uColorLevelEdges.ref.value)).toEqual(Array.from(on.uColorLevelEdges.ref.value));
+    expect(off.uColorLevelBand.ref.value).toBe(on.uColorLevelBand.ref.value);
+    expect(off.uColorLevelChainHue.ref.value).toBe(on.uColorLevelChainHue.ref.value);
+  });
 });
