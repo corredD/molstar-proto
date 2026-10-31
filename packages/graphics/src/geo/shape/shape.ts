@@ -237,7 +237,7 @@ export function getTriangleBoundingSphere(
   return boundingSphere;
 }
 
-/** The group of a triangle: its first vertex's (a group varying across it is the pick's provoking vertex's) */
+/** The group of a triangle: its first vertex's, the same on every backend (a pick by triangle is put in it) */
 export function triangleGroup(mesh: Mesh, index: number): number {
   return mesh.groupBuffer.ref.value[mesh.indexBuffer.ref.value[3 * index]];
 }
@@ -265,8 +265,9 @@ export function enableTrianglePicking(shape: Shape<Mesh>) {
     Vec3.transformMat4(tmpNear, near, tmpInv);
     const scale = Mat4.getMaxScaleOnAxis(m) || 1;
     if (!getMeshTriangleLookup(shape.geometry).pick(tmpPick, tmpRay, tmpNear, tolerance / scale)) return loci;
-    const triangle = { instance: g.instance, index: tmpPick.index, uv: [tmpPick.u, tmpPick.v] as const };
-    return ShapeGroup.Loci(shape, loci.groups, [triangle]);
+    // in the triangle's own group: the hit may be in a neighbour material, and a vertex group is the provoking
+    // vertex's on the GPU (the last in WebGL, the first in WebGPU)
+    return triangleLoci(shape, { instance: g.instance, index: tmpPick.index, uv: [tmpPick.u, tmpPick.v] });
   };
   return shape;
 }

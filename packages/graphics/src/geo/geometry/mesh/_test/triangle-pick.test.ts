@@ -155,6 +155,22 @@ describe('a mesh shape picked by triangle', () => {
     expect(sphere.radius).toBeCloseTo(Math.hypot(3, 8));
   });
 
+  it("gives the found triangle's own group, not the GPU's (a neighbour material, a vertex group)", () => {
+    // the upper square in group 1
+    const mesh = layers();
+    const gb = mesh.groupBuffer.ref.value;
+    for (let i = 4; i < 8; i++) gb[i] = 1;
+    ValueCell.update(mesh.groupBuffer, gb);
+    const shape = ShapeUtils.enableTrianglePicking(
+      ShapeUtils.create('layers', {}, mesh, () => ColorNames.red, () => 1, (g) => `Material ${g}`, undefined, 2),
+    );
+    // the GPU said group 0; the ray's hit nearest the depth point is triangle 2, of group 1
+    const loci = shape.getTriangleLoci!(groupLoci(shape as never), down(0.7, 0.2), Vec3.create(0.7, 0.2, 1), 0.1);
+    expect(loci.triangles?.[0].index).toBe(2);
+    expect(OrderedSet.toArray(loci.groups[0].ids)).toEqual([1]);
+    expect(Loci.areEqual(loci, ShapeUtils.triangleLoci(shape, { instance: 0, index: 2 }))).toBe(true);
+  });
+
   it('keeps the group pick when no triangle is near', () => {
     const shape = shapeOf();
     const loci = groupLoci(shape);
