@@ -201,4 +201,37 @@ for (const lodScale of [1, 4]) {
   if (d.differ) save(`rest-m${lodScale}-occluded`, rest), save(`rest-m${lodScale}-all`, all);
   console.log(JSON.stringify({ atRestAfterTurning: f, motion: lodScale > 1, differ: d.differ }));
 }
+// the frames where the resolution switches (motion on, occlusion off): the first frame of a turn against the next at
+// the same camera (both at half the resolution), the frame the camera rests in against the next (both full)
+{
+  await page.evaluate(() => {
+    const c = window.molstar.viewer.plugin.canvas3d;
+    c.setProps({ motion: { lodScale: 4, pixelScale: 0.5 } });
+    window.C.occlusion(false);
+  });
+  await page.evaluate((f) => window.C.at(f, 0), f);
+  await page.evaluate(() => window.C.idle(30));
+  const tickOnce = () =>
+    page.evaluate(async () => {
+      const c = window.molstar.viewer.plugin.canvas3d;
+      c.tick(performance.now(), { isSynchronous: true });
+      await c.graphics.waitForGpuCommandsComplete();
+    });
+  await page.evaluate(([f, a]) => window.C.at(f, a), [f, turn]);
+  await tickOnce();
+  const grab = await shot();
+  await tickOnce();
+  const grabNext = await shot();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 400)));
+  await tickOnce();
+  const rest = await shot();
+  await tickOnce();
+  const restNext = await shot();
+  const g = await page.evaluate(([a, b]) => window.C.diff(a, b), [grab, grabNext]);
+  const r = await page.evaluate(([a, b]) => window.C.diff(a, b), [rest, restNext]);
+  if (g.differ) save('switch-grab', grab), save('switch-grab-next', grabNext);
+  if (r.differ) save('switch-rest', rest), save('switch-rest-next', restNext);
+  console.log(JSON.stringify({ resolutionSwitch: f, grabDiffers: g.differ, restDiffers: r.differ }));
+  await page.evaluate(() => window.C.occlusion(true));
+}
 await browser.close();
