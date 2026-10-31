@@ -1,4 +1,4 @@
-# cellVIEW's scene tree and cut mapping (reference)
+# cellVIEW's scene tree, cut mapping and dynamic coloring (reference)
 
 What cellVIEW (cellPACKgpu, the Unity viewer: `~/Dev/cellpackgpu`, commit `1f0bbd67`) does, read from its code, as the
 reference for porting its ideas to prism-me. It records cellVIEW's behaviour, not prism-me's decisions: those are in
@@ -186,3 +186,53 @@ misreads them.
   frame (`Scripts/Utils/RenderUtils.cs:215`).
 - **Quadratic UI:** linear parent lookups per node at build (`TreeViewController.cs:580, 689`), `List.Contains` per item
   in the lookups (`CPUBuffers.cs:250-300`), leaves collected again per node (`:438-464`).
+
+## 7. Dynamic coloring by distance
+
+cellVIEW's colors change with the distance to the camera: far away a protein shows its compartment's or entity's color,
+closer its chains, closest its atoms, the levels blended so that a zoom never pops. The method is Chameleon (Waldin et
+al., VCBM 2016, doi:10.2312/vcbm.20161266) and Cuttlefish after it (Waldin et al., Computer Graphics Forum 38(6) 2019,
+doi:10.1111/cgf.13611); this section is the code, not the papers.
+
+- **Per pixel, after the geometry:** a screen-space pass colors every pixel from the instance id, atom id and depth
+  buffers (`Scripts/Utils/ColorCompositeUtils.cs:105-221`, `Scripts/Shaders/ColorComposite.shader`). The level comes
+  from that pixel's eye depth, clamped to `DistanceMax` (`ColorComposite.shader:347`), so one large object can span two
+  levels and blend across itself.
+- **The mode** is `IngredientsColorBy` (`_ShowIngredientsColor`), from the app's protein color menu
+  (`Scripts/Misc/UImanager.cs:8518-8520`); 0 (the default) and 3 are the HCL path, 4 the ladder, 1 and 2 the compartment
+  color.
+
+### 7.1 The ladder (mode 4)
+
+Five levels, near to far: atom (element) → Goodsell (the chain color, darker off carbon) → chain → entity (ingredient) →
+compartment (`ColorComposite.shader:741-761`; Goodsell `:727`). The level is the first whose far edge is beyond the
+pixel's depth; the edges are cumulative shares of `DistanceMax` (`LevelRanges[i] · DistanceMax`,
+`ColorCompositeUtils.cs:161-175`; up to 16 levels in a 4×4 matrix, `ColorComposite.shader:168-172`), and the blend
+toward the next level is the depth's position between the two edges, linear (`:355-375`). With `UseDistanceLevels` off,
+one `LevelLerpFactor` sets the level (its integer part) and the blend (its fraction) for the whole screen (`:349-350`):
+a manual slider. The levels are set in the Unity inspector, not in the app.
+
+### 7.2 The HCL path (modes 0 and 3: Chameleon)
+
+`GetDynamicColor` (`ColorComposite.shader:190-334`) starts from one hue a compartment, spaced evenly round the circle
+(`Scripts/Global Objects/ColorManager.cs:115-122`), and spreads an entity's hue within its compartment's wedge by the
+entity's index (`ColorComposite.shader:229-235`; mode 0 starts from the entity's own color, in HCL, `:236-244`). Closer
+than 2500 units a multi-chain protein spreads its chains' hues across a wedge of up to 180°, growing to full at 15 units
+(`:250-279`); closer than 15 units the color blends toward the atom's element color, fully at 2 (`:325-331`). A
+secondary structure shift exists (`:281-305`) but is forced off (`ColorCompositeUtils.cs:131`). Hue, chroma and
+luminance are interpolated in HCL (`d3_hcl_lab`, `:321`), so the shifts keep the perceived lightness.
+
+### 7.3 Defects (not to port)
+
+- **The distances are constants:** `GetDynamicColor` declares 2500, 15, 50 and 2 as locals
+  (`ColorComposite.shader:250-256`), so the `_ChainDistance`, `_ResidueDistance` and `_AtomDistance` uniforms
+  (`ColorCompositeUtils.cs:137-140`) do nothing; `_ChainDistance` was meant to follow the geometry's first LOD distance
+  (`LodLevels[0].x`). Absolute distances would not carry across scenes of other sizes in any case.
+- **The ladder's blend steps:** the depth and the edges are ints (`ColorComposite.shader:372-374`), so the blend moves
+  in whole scene units; and it interpolates in RGB, where the HCL path does not.
+- **No residue level:** the ladder computes the residue color and never uses it (`ColorComposite.shader:720`).
+- **Colors differ every load:** entity chroma and chain luminance are `Random.Range`, unseeded
+  (`ColorManager.cs:153, 182`).
+- **Dead code:** the screen-coverage counts that were to adapt the hue wedges to what is on screen (Cuttlefish's color
+  as a shared resource) are not called (`Scripts/Rendering/SceneRenderer.cs:728-729, 1661-1662`;
+  `Scripts/DrawBillboards.cs:745`); `getDepthLuminanceManuFormula` has no caller (`ColorComposite.shader:19-82`).
