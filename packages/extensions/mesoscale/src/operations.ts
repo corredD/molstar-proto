@@ -513,7 +513,11 @@ export class MesoscaleApi extends ApiArea {
       }
       if (!nodes.length) return ApiResult.already('The colors already follow the zoom so.');
       await b.commit();
-      return ApiResult.ok(on === false ? 'Colors no longer follow the zoom.' : 'Colors follow the zoom.', { nodes });
+      if (on === false) return ApiResult.ok('Colors no longer follow the zoom.', { nodes });
+      // the colors set in Look are an overpaint: they paint over the levels where they are
+      const painted = (one ? [one] : lists(ctx)).some((l) => !!clearedColors(ctx, l));
+      const note = painted ? ' The colors set in Look paint over them: Look › Reset shows them.' : '';
+      return ApiResult.ok(`Colors follow the zoom.${note}`, { nodes });
     },
   });
 
@@ -719,7 +723,9 @@ export class MesoscaleApi extends ApiArea {
           const colorTheme = themeFor(ctx, p.o, r, p.theme);
           if (!colorTheme) continue;
           any = true;
-          const next = { ...params, colorTheme, ...(p.levels ? { type: withColorLevels(params.type, true) } : {}) };
+          // the levels go with By zoom: on with it, off with any other theme of a model's
+          const levels = p.levels || p.o.kind === 'particles';
+          const next = { ...params, colorTheme, ...(levels ? { type: withColorLevels(params.type, !!p.levels) } : {}) };
           writes.push({ o: p.o, r, next, same: JSON.stringify(params) === JSON.stringify(next) });
         }
         if (!any) nothing.push(p.o.name);
