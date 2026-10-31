@@ -538,6 +538,40 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
       await frame();
       const again = new Uint32Array(await buffer.readAsync(byteOffset, list![0].count * words * 4));
       expect([again[1], again[words + 1]]).toEqual([inView, behind]);
+
+      // the wall again, in a pyramid of the view before a turn (the camera moved since): what reached past that view's
+      // edge was not in it, and may show now; it is drawn
+      texture.load({ array: new Float32Array(15 * 8).fill(depth), width: 15, height: 8 });
+      const before = new Camera();
+      Viewport.set(before.viewport, 0, 0, Size, Size);
+      before.setState({ ...camera.state, position: Vec3.create(-8, 0, 24), target: Vec3.create(-8, 0, -6) }, 0);
+      before.update();
+      pyramid = {
+        ...pyramid,
+        version: pyramid.version + 1,
+        view: Mat4.copy(Mat4(), before.view),
+        projection: Mat4.copy(Mat4(), before.projection),
+      };
+      await frame();
+      const turned = new Uint32Array(await buffer.readAsync(byteOffset, list![0].count * words * 4));
+      // the instances of the grid behind whose sphere reaches past the view before the turn (its rectangle there), and
+      // are in view now
+      let reaching = 0;
+      const frustum = Frustum3D.fromProjectionMatrix(Frustum3D(), camera.projectionView);
+      const b = back.values.invariantBoundingSphere.ref.value;
+      const transforms = back.values.aTransform.ref.value;
+      for (let i = 0; i < Copies * Copies; ++i) {
+        const c = Vec3.transformMat4(Vec3(), b.center, Mat4.fromArray(Mat4(), transforms, i * 16));
+        if (!Frustum3D.intersectsSphere3D(frustum, Sphere3D.create(c, b.radius))) continue;
+        const v = Vec3.transformMat4(Vec3(), c, before.view);
+        const ndc = Vec3.transformMat4(Vec3(), c, before.projectionView);
+        const r = (b.radius * before.projection[0]) / -v[2];
+        if (Math.abs(ndc[0]) + r > 1 || Math.abs(ndc[1]) + r > 1) reaching += 1;
+      }
+      expect(turned[1]).toBe(inView);
+      expect(reaching).toBeGreaterThan(0);
+      expect(turned[words + 1]).toBeGreaterThanOrEqual(reaching);
+      expect(turned[words + 1]).toBeLessThan(behind);
       texture.destroy();
     } finally {
       plugin.dispose();
