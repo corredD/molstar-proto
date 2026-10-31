@@ -3,12 +3,14 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { common } from './chunks/common.glsl.js';
 import { read_from_texture } from './chunks/read-from-texture.glsl.js';
 import { common_vert_params } from './chunks/common-vert-params.glsl.js';
 import { color_vert_params } from './chunks/color-vert-params.glsl.js';
+import { color_levels } from './chunks/color-levels.glsl.js';
 import { common_clip } from './chunks/common-clip.glsl.js';
 import { common_animation } from './chunks/common-animation.glsl.js';
 import { texture3d_from_2d_linear } from './chunks/texture3d-from-2d-linear.glsl.js';
@@ -28,6 +30,7 @@ ${common}
 ${read_from_texture}
 ${common_vert_params}
 ${color_vert_params}
+${color_levels}
 ${common_clip}
 ${common_animation}
 ${texture3d_from_2d_linear}

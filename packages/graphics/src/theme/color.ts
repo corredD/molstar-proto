@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Color } from '@molstar/core/util/color';
@@ -53,6 +54,8 @@ type ColorThemeShared<P extends PD.Params, G extends ColorType> = {
 type ColorThemeLocation<P extends PD.Params> = {
   readonly granularity: ColorTypeLocation;
   readonly color: LocationColor;
+  /** a coarser color of the location, the farthest of the color levels (`ColorLevels`): a particle's compartment */
+  readonly farColor?: LocationColor;
 } & ColorThemeShared<P, ColorTypeLocation>;
 
 type ColorThemeGrid<P extends PD.Params> = {

@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { createWebGPUComputeContext } from './compute.js';
@@ -1022,6 +1023,11 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
     return undefined;
   }
 
+  /** `GraphicsContext.drawResourcesVersion`: both only advance, their sum advances with either */
+  function getDrawResourcesVersion() {
+    return drawContext.quadIndices.id + drawContext.sharedTextures.version;
+  }
+
   function recordRenderBundle(draw: () => void): GPURenderBundle | undefined {
     const target = passTarget;
     if (!target) throw new Error('recording a render bundle outside of a render pass');
@@ -1038,6 +1044,7 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
       current.failed ??= `the ${what} changing`;
     });
     const arenaReplacements = ring.arenaReplacements;
+    const drawResources = getDrawResourcesVersion();
     recording = current;
     try {
       draw();
@@ -1046,6 +1053,11 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
     }
     // draws recorded before bind the released buffer
     if (ring.arenaReplacements !== arenaReplacements) current.failed ??= 'a uniform arena growing';
+    // a shared resource replaced while recording (the quad indices grown by a later draw): the draws before it bind the
+    // released one, and the snapshot taken after the recording would hold it current
+    if (getDrawResourcesVersion() !== drawResources) {
+      current.failed ??= 'a shared draw resource replaced';
+    }
     const bundle = encoder.finish();
     return current.failed ? undefined : bundle;
   }
@@ -1085,6 +1097,9 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
       state: ReturnType<ReturnType<typeof asWebGPUGlobalBindings>['getState']>;
       /** `UniformRing.arenaReplacements` when recorded: a replaced arena buffer may be bound by the bundle */
       arenaReplacements: number;
+      /** `getDrawResourcesVersion` when recorded: a replaced shared resource (the quad indices grown by a later chunk's
+       * draws, or another target's) may be bound by the bundle */
+      drawResources: number;
     };
     const recordings = new Map<string, Recording>();
     return {
@@ -1098,7 +1113,8 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
           state.buffer !== recorded.buffer ||
           state.offset !== recorded.offset ||
           state.textures !== recorded.textures ||
-          recording.arenaReplacements !== ring.arenaReplacements
+          recording.arenaReplacements !== ring.arenaReplacements ||
+          recording.drawResources !== getDrawResourcesVersion()
         ) {
           recordings.delete(passTarget.key);
           return false;
@@ -1114,7 +1130,12 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
         recordings.delete(target.key);
         if (bundle) {
           if (recordings.size >= MaxDrawListTargets) recordings.delete(recordings.keys().next().value!);
-          recordings.set(target.key, { bundle, state, arenaReplacements: ring.arenaReplacements });
+          recordings.set(target.key, {
+            bundle,
+            state,
+            arenaReplacements: ring.arenaReplacements,
+            drawResources: getDrawResourcesVersion(),
+          });
           executeRenderBundles([bundle]);
         } else {
           draw();
@@ -1423,8 +1444,7 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
       return submitCount;
     },
     get drawResourcesVersion() {
-      // both only advance: their sum advances with either
-      return drawContext.quadIndices.id + drawContext.sharedTextures.version;
+      return getDrawResourcesVersion();
     },
     quadIndices: drawContext.quadIndices,
     sharedTextures: drawContext.sharedTextures,

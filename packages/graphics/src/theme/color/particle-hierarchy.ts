@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Color } from '@molstar/core/util/color';
@@ -81,6 +82,8 @@ interface HierarchyColors {
   /** Per-particle index into `colors`, -1 for particles without a compartment. */
   colorIndex: Int32Array;
   colors: Color[];
+  /** Per slot of `colors` its compartment's base color (the color levels' far color) */
+  farColors: Color[];
   /** Base color and label per compartment. */
   baseColors: Color[];
   baseLabels: string[];
@@ -225,6 +228,7 @@ function buildHierarchyColors(particles: HierarchicalParticleList, props: Props)
   const { colorIndex, compartmentIds, hasNoEntity, entityCounts } = getHierarchyIndex(particles, props.by);
 
   const colors: Color[] = [];
+  const farColors: Color[] = [];
   const baseLabels: string[] = [];
   const compartmentCount = compartmentIds.length;
   const baseColors = getBaseColors(compartmentCount, props);
@@ -234,6 +238,7 @@ function buildHierarchyColors(particles: HierarchicalParticleList, props: Props)
     baseLabels.push(compartmentLabel);
 
     if (hasNoEntity[ci]) colors.push(baseColors[ci]);
+    while (farColors.length < colors.length + entityCounts[ci]) farColors.push(baseColors[ci]);
 
     const entityCount = entityCounts[ci];
     const groupColors = getDistinctGroupColors(entityCount, baseColors[ci], props.variability, props.shift);
@@ -242,7 +247,7 @@ function buildHierarchyColors(particles: HierarchicalParticleList, props: Props)
     }
   }
 
-  return { colorIndex, colors, baseColors, baseLabels };
+  return { colorIndex, colors, farColors, baseColors, baseLabels };
 }
 
 export function getParticleHierarchyColorThemeParams(ctx: ThemeDataContext) {
@@ -255,10 +260,11 @@ export function ParticleHierarchyColorTheme(
 ): ColorTheme<ParticleHierarchyColorThemeParams> {
   let color: LocationColor;
   let legend: ScaleLegend | TableLegend | undefined;
+  let farColor: LocationColor | undefined;
 
   const particles = getParticleList(ctx);
   if (particles) {
-    const { colorIndex, colors, baseColors, baseLabels } = buildHierarchyColors(particles, props);
+    const { colorIndex, colors, farColors, baseColors, baseLabels } = buildHierarchyColors(particles, props);
 
     legend = TableLegend(baseColors.map((c, i) => [baseLabels[i], c] as [string, Color]));
 
@@ -269,6 +275,12 @@ export function ParticleHierarchyColorTheme(
       }
       return DefaultColor;
     };
+    // the color levels' far color: a particle's compartment base color
+    farColor = (location: Location): Color => {
+      if (!Particle.isLocation(location)) return DefaultColor;
+      const ci = colorIndex[location.index];
+      return ci >= 0 ? farColors[ci] : DefaultColor;
+    };
   } else {
     color = () => DefaultColor;
   }
@@ -277,6 +289,7 @@ export function ParticleHierarchyColorTheme(
     factory: ParticleHierarchyColorTheme,
     granularity: 'instance',
     color,
+    farColor,
     props,
     description: Description,
     legend,

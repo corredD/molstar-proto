@@ -673,6 +673,21 @@ export const WiggleSchema = {
 export type WiggleSchema = typeof WiggleSchema;
 export type WiggleValues = Values<WiggleSchema>;
 
+/** Colors by size on screen (`ColorLevels`, `color-levels.md`), on spheres and meshes */
+export const ColorLevelsSchema = {
+  /** per instance its far color */
+  tColorFar: DataSpec('rgba8', ['dColorLevels']),
+  /** per group its element color (`rgb`) and its chain's offset (`a`) */
+  tColorNear: DataSpec('rgba8', ['dColorLevels']),
+  dColorLevels: DefineSpec('boolean'),
+  /** `log2` of the edges (entity, chain, atom), in pixels an atom covers */
+  uColorLevelEdges: MaterialUniformSpec('v3'),
+  uColorLevelBand: MaterialUniformSpec('f'),
+  uColorLevelChainHue: MaterialUniformSpec('f'),
+} as const;
+export type ColorLevelsSchema = typeof ColorLevelsSchema;
+export type ColorLevelsValues = Values<ColorLevelsSchema>;
+
 export const BaseSchema = {
   dGeometryType: DefineSpec('string', [
     'cylinders',
