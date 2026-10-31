@@ -28,6 +28,8 @@ export const DataLayers = {
   tPositionGroup: 'rgba32f',
   // last: a new layer takes the next bits of `DataLayerPagesName`, the layouts of before stay
   tClipTable: 'rgba32f',
+  tColorFar: 'rgba8',
+  tColorNear: 'rgba8',
 } as const;
 export type DataLayer = keyof typeof DataLayers;
 /** Bytes per element of the encodings of `DataLayers` */

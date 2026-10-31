@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { type Renderable, type RenderableState, createRenderable } from '../renderable.js';
@@ -25,12 +26,14 @@ import {
   type GlobalDefines,
   InteriorSchema,
   AnimationSchema,
+  ColorLevelsSchema,
 } from './schema.js';
 import { MeshShaderCode } from '../shader-code.js';
 import { ValueCell } from '@molstar/core/util';
 
 export const MeshSchema = {
   ...BaseSchema,
+  ...ColorLevelsSchema,
   aGroup: AttributeSpec('float32', 1, 0),
   aPosition: AttributeSpec('float32', 3, 0),
   aNormal: AttributeSpec('float32', 3, 0),

@@ -2,6 +2,7 @@
  * Copyright (c) 2019-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { type Renderable, type RenderableState, createRenderable } from '../renderable.js';
@@ -24,12 +25,14 @@ import {
   GlobalDefineSchema,
   InteriorSchema,
   AnimationSchema,
+  ColorLevelsSchema,
 } from './schema.js';
 import { SpheresShaderCode } from '../shader-code.js';
 import { ValueCell } from '@molstar/core/util';
 
 export const SpheresSchema = {
   ...BaseSchema,
+  ...ColorLevelsSchema,
   ...SizeSchema,
 
   tPositionGroup: DataSpec('rgba32f'),

@@ -2,6 +2,7 @@
  * Copyright (c) 2019-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { common } from './chunks/common.glsl.js';
@@ -9,6 +10,7 @@ import { assign_quad_position_group } from './chunks/assign-quad-position-group.
 import { read_from_texture } from './chunks/read-from-texture.glsl.js';
 import { common_vert_params } from './chunks/common-vert-params.glsl.js';
 import { color_vert_params } from './chunks/color-vert-params.glsl.js';
+import { color_levels } from './chunks/color-levels.glsl.js';
 import { common_clip } from './chunks/common-clip.glsl.js';
 import { common_animation } from './chunks/common-animation.glsl.js';
 import { assign_color_varying } from './chunks/assign-color-varying.glsl.js';
@@ -25,6 +27,7 @@ ${common}
 ${read_from_texture}
 ${common_vert_params}
 ${color_vert_params}
+${color_levels}
 ${common_clip}
 ${common_animation}
 
@@ -106,15 +109,15 @@ void main(void){
     position = applyWiggle(position, group, aInstance);
     mat4 transform = applyTumble(aTransform, aInstance, float(uObjectId));
 
+    vec4 position4 = vec4(position, 1.0);
+    vModelPosition = (uModel * transform * position4).xyz; // for clipping in frag shader, the color levels
+
     ${assign_color_varying}
     ${assign_marker_varying}
     ${assign_clipping_varying}
     ${assign_size}
 
     vRadius = size * uModelScale;
-
-    vec4 position4 = vec4(position, 1.0);
-    vModelPosition = (uModel * transform * position4).xyz; // for clipping in frag shader
 
     float d;
     if (uLod.w != 0.0 && (uLod.x != 0.0 || uLod.y != 0.0)) {

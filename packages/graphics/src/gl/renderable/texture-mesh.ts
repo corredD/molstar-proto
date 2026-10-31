@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { type Renderable, type RenderableState, createRenderable } from '../renderable.js';
@@ -24,6 +25,7 @@ import {
   GlobalDefineSchema,
   InteriorSchema,
   AnimationSchema,
+  ColorLevelsSchema,
 } from './schema.js';
 import { MeshShaderCode } from '../shader-code.js';
 import { StorageBufferSpec } from '../compute.js';
@@ -31,6 +33,8 @@ import { ValueCell } from '@molstar/core/util';
 
 export const TextureMeshSchema = {
   ...BaseSchema,
+  // read by the mesh programs it shares, never set
+  ...ColorLevelsSchema,
   uGeoTexDim: UniformSpec('v2', 'buffered'),
   tPosition: TextureSpec('texture', 'rgba', 'float', 'nearest'),
   tGroup: TextureSpec('texture', 'rgba', 'float', 'nearest'),

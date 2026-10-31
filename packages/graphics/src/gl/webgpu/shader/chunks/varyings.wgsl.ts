@@ -7,6 +7,7 @@
 
 import { clip_flag_wgsl } from './clip.wgsl.js';
 import { assign_data_index_wgsl } from './read-from-texture.wgsl.js';
+import { assign_color_levels_wgsl } from './color-levels.wgsl.js';
 
 /**
  * \`VertexOutput\` with the varyings shared by the graphics programs at locations 0 to 8 and 15, and the program's
@@ -186,6 +187,7 @@ export const assign_varyings_wgsl = /* wgsl */ `
             let colorGridPosition = select(${GridPosition}, ${GridModelPosition}, uObject.uColorIndexType == 1);
             out.vColor = vec4<f32>(${grid_value_wgsl('tColorGrid', 'colorGridPosition')}.rgb, 1.0);
         #endif
+        ${assign_color_levels_wgsl}
 
         #if defined(dUsePalette)
             // the color data hold palette indices, see \`ColorTheme.Palette\`

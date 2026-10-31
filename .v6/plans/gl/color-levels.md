@@ -35,7 +35,7 @@
 - **The data** (`ColorLevelsSchema`, spheres and mesh, `dColorLevels`):
   - `tColorFar` (`rgba8`, per instance): the far color, the theme's `farColor` (`particle-hierarchy`: the compartment's
     base color), else its color.
-  - `tColorNear` (`rgba8`, per group): the atom's element color in `rgb`, the chain offset in `a` (`(o + 1) / 2`).
+  - `tColorNear` (`rgba8`, per group): the atom's element color in `rgb`, the chain offset in `a` (`128 + 127 o`, so that one chain is exactly 0).
   - `uColorLevelEdges` (`log2` of the edges), `uColorLevelBand`, `uColorLevelChainHue` (material uniforms).
   - The entity color is the theme's own (`tColor`, `vColor`).
 - **Applied in the vertex stage**, on `vColor`, before overpaint (a Look color painted over a part still wins): at the

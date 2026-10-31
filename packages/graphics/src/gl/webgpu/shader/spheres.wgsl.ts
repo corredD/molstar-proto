@@ -2,12 +2,14 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { animation_wgsl, assign_wiggle_wgsl } from './chunks/animation.wgsl.js';
 import { clip_flag_wgsl, clip_functions_wgsl, clip_instance_wgsl, clip_pixel_wgsl } from './chunks/clip.wgsl.js';
 import { segment_wgsl } from './chunks/segment.wgsl.js';
 import { common_wgsl } from './chunks/common.wgsl.js';
+import { color_levels_wgsl } from './chunks/color-levels.wgsl.js';
 import { light_wgsl } from './chunks/light.wgsl.js';
 import {
   apply_interior_wgsl,
@@ -47,6 +49,7 @@ ${material_functions_wgsl}
 ${segment_wgsl}
 ${clip_functions_wgsl}
 ${packing_wgsl}
+${color_levels_wgsl}
 
 ${vertex_output_wgsl(`    @location(9) vRadius: f32,
     @location(10) vPoint: vec3<f32>,
@@ -131,14 +134,14 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
     let aTransform = mat4x4<f32>(in.aTransform0, in.aTransform1, in.aTransform2, in.aTransform3);
     let transform = applyTumble(aTransform, in.aInstance, f32(uObject.uObjectId), invariantBoundingSphere(in));
 
+    let position4 = vec4<f32>(position, 1.0);
+    out.vModelPosition = (uGlobal.uModel * transform * position4).xyz; // for clipping in the fragment stage, the color levels
+
     ${assign_varyings_wgsl}
     ${assign_size_wgsl}
 
     let modelScale = uGlobal.uModelScale;
     var radius = size * modelScale;
-
-    let position4 = vec4<f32>(position, 1.0);
-    out.vModelPosition = (uGlobal.uModel * transform * position4).xyz; // for clipping in the fragment stage
 
     let lod = uDraw.uLod;
     let hasLod = lod.w != 0.0 && (lod.x != 0.0 || lod.y != 0.0);

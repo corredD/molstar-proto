@@ -40,6 +40,11 @@ export namespace ColorLevels {
     return count > 1 ? (2 * index) / (count - 1) - 1 : 0;
   }
 
+  /** A chain's offset as a byte: 128 + 127 offset, so that one chain is exactly 0 in the shaders */
+  export function offsetByte(offset: number) {
+    return Math.round(128 + 127 * offset);
+  }
+
   const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
   const toSrgb = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
 
@@ -106,7 +111,7 @@ export namespace ColorLevels {
   export type Data = {
     /** per instance its far color (`ColorTheme.farColor`, else its color) */
     tColorFar: ValueCell<DataArray<Uint8Array>>;
-    /** per group its element color (`rgb`) and its chain's offset (`a`, `(offset + 1) / 2`) */
+    /** per group its element color (`rgb`) and its chain's offset (`a`, `offsetByte`) */
     tColorNear: ValueCell<DataArray<Uint8Array>>;
     dColorLevels: ValueCell<boolean>;
     /** `log2` of the edges (entity, chain, atom) */
