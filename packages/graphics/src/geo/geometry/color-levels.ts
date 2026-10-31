@@ -33,7 +33,8 @@ export namespace ColorLevels {
   /** The pixels an atom covers at view depth `depth` (`projection11` is `P[1][1]`, `height` in CSS pixels) */
   export function atomSize(depth: number, projection11: number, height: number, orthographic: boolean) {
     const pixel = 2 / (projection11 * height);
-    return AtomSize / (orthographic ? pixel : pixel * depth);
+    // behind the camera (a mesh crossing its plane) as just in front of it: the nearest level, never NaN
+    return AtomSize / (orthographic ? pixel : pixel * Math.max(depth, 0.01));
   }
 
   /** A chain's offset among `count` chains, from -1 to 1 (0 for one chain) */

@@ -40,7 +40,7 @@ export const color_levels_wgsl = /* wgsl */ `
     fn colorLevelSize(modelPosition: vec3<f32>) -> f32 {
         var pixel = 2.0 * uGlobal.uPixelRatio / (uGlobal.uProjection[1][1] * uGlobal.uDrawingBufferSize.y);
         if (uGlobal.uIsOrtho == 0.0) {
-            pixel *= (dot(uGlobal.uCameraPlane.xyz, modelPosition) + uGlobal.uCameraPlane.w) / uGlobal.uModelScale;
+            pixel *= max((dot(uGlobal.uCameraPlane.xyz, modelPosition) + uGlobal.uCameraPlane.w) / uGlobal.uModelScale, 0.01);
         }
         return 3.4 / pixel;
     }

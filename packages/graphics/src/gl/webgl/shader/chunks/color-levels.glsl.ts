@@ -39,7 +39,7 @@ export const color_levels = `
     // the pixels an atom (3.4 Å, \`ColorLevels.AtomSize\`) covers: the unit, in one place
     float colorLevelSize(const in vec3 modelPosition) {
         float pixel = 2.0 * uPixelRatio / (uProjection[1][1] * uDrawingBufferSize.y);
-        if (uIsOrtho == 0.0) pixel *= (dot(uCameraPlane.xyz, modelPosition) + uCameraPlane.w) / uModelScale;
+        if (uIsOrtho == 0.0) pixel *= max((dot(uCameraPlane.xyz, modelPosition) + uCameraPlane.w) / uModelScale, 0.01);
         return 3.4 / pixel;
     }
 
