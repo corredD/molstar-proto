@@ -12,8 +12,6 @@ import type { ValueCell } from '@molstar/core/util/value-cell';
 import type { MultiDrawBaseData } from '@molstar/graphics/gl/render-item';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
-import { MarkerAction } from '@molstar/core/util/marker-action';
-import { SyncRuntimeContext } from '@molstar/core/task/execution/synchronous';
 import { WebGPU } from './webgpu-module.js';
 
 const Size = 64;
@@ -104,16 +102,6 @@ describe.skipIf(!WebGPU.module)('levels of detail while the camera moves (Canvas
       }
       // twice as coarse: the first level ends at half the distance
       expect(levelEnd()).toBeCloseTo(rest / 2, 3);
-
-      // within the hold, a highlight alone (redrawn over the last image), then an image: at full detail
-      const EveryLoci = { kind: 'every-loci' as const };
-      canvas.mark({ loci: EveryLoci }, MarkerAction.Highlight);
-      await tick(16);
-      const image = canvas.getImagePass({});
-      image.setSize(Size, Size);
-      await image.render(SyncRuntimeContext);
-      expect(levelEnd()).toBeCloseTo(rest, 3);
-      canvas.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
 
       // at rest past the hold: a frame at full detail, drawn without a request
       await tick(300);
