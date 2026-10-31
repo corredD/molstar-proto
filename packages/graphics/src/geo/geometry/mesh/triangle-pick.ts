@@ -75,13 +75,17 @@ const closest = { u: 0, v: 0 };
 const CellsPerTriangle = 0.5;
 
 /**
- * Triangles are graded by size, each grade a grid of its own (a loose grid hierarchy): grade 0 up to `GradeFactor`
- * times a typical triangle's reach, each next grade `GradeFactor` times wider. A pick looks in each grade as far as
- * that grade's widest triangle reaches, so a few wide triangles (a floor under a patch, long slivers) cost their own
- * cells, not a wide look into the fine ones. A mesh of one size has one grade.
+ * Triangles are graded by size, each grade a grid of its own (a loose grid hierarchy): a grade holds the triangles
+ * whose reach (centroid to farthest vertex) is within a factor `GradeFactor`, the grades counted in steps of it from a
+ * typical reach (the median, which a share of wide triangles below half does not move). A pick looks in each grade as
+ * far as that grade's widest triangle reaches, so wide triangles (a floor under a patch, long slivers) cost their own
+ * cells, not a wide look into the fine ones. A mesh of one size has one or two grades.
  */
 const GradeFactor = 4;
-
+/** Grades on each side of the typical one; wider or finer triangles share the end grades (slower, still right) */
+const GradeSteps = 16;
+/** How many reaches the typical one is the median of (evenly spread over the mesh) */
+const TypicalSamples = 4097;
 /** A grid of some triangles, by the cell of their centroid (a counting sort: `sorted` cell after cell, `starts`) */
 interface Grade {
   readonly min: Vec3;
@@ -164,24 +168,20 @@ function createGrade(
 }
 
 /**
- * The lookup: the triangles graded by size (`GradeFactor`), each grade sorted by the grid cell of its triangles'
- * centroids (a counting sort), the cells' starts. Not Mol*'s `GridLookup3D`, on purpose: it keeps the centroids and its
- * buckets (about 20 bytes a triangle, and 12 times slower to build: measured, .v6/plans/gl/triangle-picking.md); this
- * keeps 4 bytes a triangle and 2 for the cells, a pick reading the vertices of the few triangles near it from the
- * mesh's buffers. A surface fills few cells of its box: the cells are capped by the triangle count.
+ * The grades of a mesh's triangles (`GradeFactor`), each sorted by the grid cell of its triangles' centroids (a
+ * counting sort), and the widest reach; undefined when no triangle is whole. Its own function: what it holds for the
+ * build (centroids, reaches: about 24 bytes a triangle at most, with the grades' own sorting) is let go after it, never
+ * kept by the lookup's closures. Arithmetic inline: millions of triangles (AGENTS.md, a hot loop on purpose).
  */
-function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number): MeshTriangleLookup {
-  const T = triangleCount;
-  // the centroids and the triangles' reach from them, kept for the build (16 bytes a triangle, let go after it).
-  // Arithmetic inline: millions of triangles (AGENTS.md, a hot loop on purpose)
+function buildGrades(vb: Float32Array, ib: Uint32Array, T: number): { grades: Grade[]; maxRadius: number } | undefined {
   const cx = new Float32Array(T);
   const cy = new Float32Array(T);
   const cz = new Float32Array(T);
   // a triangle's centroid-to-vertex distance, squared; NaN when the triangle is left out
   const radiusSq = new Float32Array(T);
   let maxRadiusSq = 0;
-  let sumRadiusSq = 0;
-  // the triangles with finite vertices: a NaN or an infinity (a broken file, an index past the vertices) is left out
+  // the triangles whose centroid and reach are finite as stored (32-bit): a NaN, an infinity or an overflow (a broken
+  // file, an index past the vertices, a vertex at 1e20) is left out
   let valid = 0;
   for (let t = 0; t < T; ++t) {
     const i0 = ib[3 * t] * 3;
@@ -196,13 +196,13 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
     const qx = vb[i2],
       qy = vb[i2 + 1],
       qz = vb[i2 + 2];
-    const x = (ax + bx + qx) / 3;
-    const y = (ay + by + qy) / 3;
-    const z = (az + bz + qz) / 3;
+    const x = Math.fround((ax + bx + qx) / 3);
+    const y = Math.fround((ay + by + qy) / 3);
+    const z = Math.fround((az + bz + qz) / 3);
     const da = (ax - x) * (ax - x) + (ay - y) * (ay - y) + (az - z) * (az - z);
     const db = (bx - x) * (bx - x) + (by - y) * (by - y) + (bz - z) * (bz - z);
     const dc = (qx - x) * (qx - x) + (qy - y) * (qy - y) + (qz - z) * (qz - z);
-    const r = da > db ? (da > dc ? da : dc) : db > dc ? db : dc;
+    const r = Math.fround(da > db ? (da > dc ? da : dc) : db > dc ? db : dc);
     if (!Number.isFinite(x + y + z + r)) {
       cx[t] = Number.NaN;
       radiusSq[t] = Number.NaN;
@@ -214,45 +214,47 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
     cy[t] = y;
     cz[t] = z;
     if (r > maxRadiusSq) maxRadiusSq = r;
-    sumRadiusSq += r;
   }
-  const maxRadius = Math.sqrt(maxRadiusSq);
-  if (valid === 0) {
-    return { triangleCount: 0, maxRadius: 0, byteCount: 0, lastVisited: 0, pick: () => false };
-  }
+  if (valid === 0) return undefined;
 
-  // a typical triangle's reach: the mean of those not far wider than the mean (a few huge ones must not set it)
-  const outlierCut = 64 * (sumRadiusSq / valid);
-  let typicalSum = 0;
-  let typicalN = 0;
-  for (let t = 0; t < T; ++t) {
-    const r = radiusSq[t];
-    if (!(r <= outlierCut)) continue;
-    typicalSum += r;
-    typicalN++;
-  }
-  const typical = Math.max(Math.sqrt(typicalN > 0 ? typicalSum / typicalN : sumRadiusSq / valid), 1e-12);
-  // each triangle's grade: 0 up to GradeFactor typical reaches, each next GradeFactor times wider
-  const gradeOf = (t: number) => {
-    const ratio = Math.sqrt(radiusSq[t]) / (GradeFactor * typical);
-    return ratio <= 1 ? 0 : Math.ceil(Math.log(ratio) / Math.log(GradeFactor));
+  // the typical reach: the median of an even spread of the triangles'
+  const step = Math.max(1, Math.floor(T / TypicalSamples));
+  const samples: number[] = [];
+  for (let t = 0; t < T; t += step) if (!Number.isNaN(radiusSq[t])) samples.push(radiusSq[t]);
+  samples.sort((p, q) => p - q);
+  const typicalSq = samples.length ? samples[samples.length >> 1] : maxRadiusSq;
+  const logTypical = Math.log(Math.max(typicalSq, 1e-30));
+  const logStep = 2 * Math.log(GradeFactor);
+  /** A triangle's grade: 0 for the finest, `GradeSteps` for those within a factor of the typical reach */
+  const gradeOf = (r: number) => {
+    const g = r > 0 ? Math.floor((Math.log(r) - logTypical) / logStep) + GradeSteps : 0;
+    return g < 0 ? 0 : g > 2 * GradeSteps ? 2 * GradeSteps : g;
   };
-  const counts: number[] = [];
+  const counts = new Uint32Array(2 * GradeSteps + 1);
+  for (let t = 0; t < T; ++t) if (!Number.isNaN(cx[t])) counts[gradeOf(radiusSq[t])]++;
+  const members = Array.from(counts, (n) => new Uint32Array(n));
+  const filled = new Uint32Array(counts.length);
   for (let t = 0; t < T; ++t) {
     if (Number.isNaN(cx[t])) continue;
-    const g = gradeOf(t);
-    while (counts.length <= g) counts.push(0);
-    counts[g]++;
-  }
-  const members = counts.map((n) => new Uint32Array(n));
-  const filled = counts.map(() => 0);
-  for (let t = 0; t < T; ++t) {
-    if (Number.isNaN(cx[t])) continue;
-    const g = gradeOf(t);
+    const g = gradeOf(radiusSq[t]);
     members[g][filled[g]++] = t;
   }
   const grades: Grade[] = [];
   for (const m of members) if (m.length) grades.push(createGrade(m, cx, cy, cz, radiusSq));
+  return { grades, maxRadius: Math.sqrt(maxRadiusSq) };
+}
+
+/**
+ * The lookup: the triangles' grades (`buildGrades`). Not Mol*'s `GridLookup3D`, on purpose: it keeps the centroids and
+ * its buckets (about 20 bytes a triangle, and 12 times slower to build: measured, .v6/plans/gl/triangle-picking.md);
+ * this keeps 4 bytes a triangle and 2 for the cells, a pick reading the vertices of the few triangles near it from the
+ * mesh's buffers. A surface fills few cells of its box: the cells are capped by the triangle count.
+ */
+function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number): MeshTriangleLookup {
+  const T = triangleCount;
+  const built = buildGrades(vb, ib, T);
+  if (!built) return { triangleCount: 0, maxRadius: 0, byteCount: 0, lastVisited: 0, pick: () => false };
+  const { grades, maxRadius } = built;
   let byteCount = 0;
   for (const g of grades) byteCount += g.starts.byteLength + g.sorted.byteLength;
 

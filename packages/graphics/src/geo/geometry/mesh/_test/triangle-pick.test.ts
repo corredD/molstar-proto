@@ -149,6 +149,44 @@ describe('mesh triangle lookup', () => {
     expect(lookup.lastVisited).toBeLessThan(100);
   });
 
+  it('stays local when wide triangles are a large share of the mesh (a floor of 44 %)', () => {
+    const size = 64;
+    const vertices: number[] = [];
+    const indices: number[] = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = vertices.length / 3;
+        vertices.push(x, y, 0, x + 1, y, 0, x, y + 1, 0);
+        indices.push(i, i + 1, i + 2);
+      }
+    }
+    // 40 x 40 quads 32 wide (3,200 triangles, 44 % of the mesh), stacked in layers below the patch
+    for (let layer = 0; layer < 4; layer++) {
+      for (let y = 0; y < 20; y++) {
+        for (let x = 0; x < 20; x++) {
+          const [x0, y0, w] = [-320 + 32 * x, -320 + 32 * y, 32];
+          const i = vertices.length / 3;
+          const z = -1 - layer;
+          vertices.push(x0, y0, z, x0 + w, y0, z, x0 + w, y0 + w, z, x0, y0 + w, z);
+          indices.push(i, i + 1, i + 2, i, i + 2, i + 3);
+        }
+      }
+    }
+    const mesh = Mesh.create(
+      new Float32Array(vertices),
+      new Uint32Array(indices),
+      new Float32Array(vertices.length),
+      new Float32Array(vertices.length / 3),
+      vertices.length / 3,
+      indices.length / 3,
+    );
+    const lookup = getMeshTriangleLookup(mesh);
+    const out = MeshTrianglePick();
+    expect(lookup.pick(out, down(10.2, 12.2), Vec3.create(10.2, 12.2, 0), 0.1)).toBe(true);
+    expect(out.index).toBe(12 * size + 10);
+    expect(lookup.lastVisited).toBeLessThan(100);
+  });
+
   it('does not widen the grid when a wide triangle has its centroid outside the surface', () => {
     const size = 32;
     const vertices: number[] = [];
@@ -207,6 +245,15 @@ describe('mesh triangle lookup', () => {
     expect(out.index).toBe(0);
     expect(lookup.pick(out, down(0.2, 0.7), Vec3.create(0.2, 0.7, 0), 0.1)).toBe(true);
     expect(out.index).toBe(1);
+  });
+
+  it('leaves out a triangle whose reach overflows a 32-bit float (a vertex at 1e20), and picks the others', () => {
+    const vb = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1e20, 0, 0, 0, 1, 0]);
+    const mesh = Mesh.create(vb, new Uint32Array([0, 1, 2, 3, 4, 5]), new Float32Array(18), new Float32Array(6), 6, 2);
+    const lookup = getMeshTriangleLookup(mesh);
+    const out = MeshTrianglePick();
+    expect(lookup.pick(out, down(0.2, 0.2), Vec3.create(0.2, 0.2, 0), 0.1)).toBe(true);
+    expect(out.index).toBe(0);
   });
 
   it('a mesh of only broken triangles picks nothing', () => {
