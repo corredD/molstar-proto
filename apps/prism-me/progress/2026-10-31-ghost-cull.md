@@ -153,6 +153,16 @@ about 126,500 ghost pixels on both backends. Turning 2° a frame, four frames, a
 same camera with occlusion off differed by 0 pixels (WebGPU and WebGL2). PetWorld's ghosts were inside the 16-bit range
 before the fix (the same counts with it and without).
 
+The other paths (ghost-check, CellPack HIV, 0.3 and 0.1 of the distance, 0° and 60°, after the fix):
+
+- Two phases (the app's), WebGPU, and WebGL2's CPU culling: 0 pixels lost settled; turning 2° a frame for 15 frames,
+  each frame against the same camera with occlusion off: 0 pixels.
+- One phase (`transparency: 'blended'`, no order-independent transparency): 0 settled; turning, one frame of 348 pixels
+  at 0.3 (0 at 0.1): #28's one-phase frame of popping (the previous frame's pyramid), the rest of the scene's as well.
+- Clip whole (`clipping.settings` instance): 0 lost settled.
+- GPU culling off (the CPU's cells), WebGPU and WebGL2, CellPack and PetWorld, 1 to 0.03 at 0°, 30°, 60°: 0 to 3 pixels
+  differ from GPU culling. Clusters are in every WebGPU row (CellPack's members over 512 spheres).
+
 ## Graded way
 
 WebGPU, the same 0.35 / 60° view, after `clipping.settings` instance and `explorer.clipWay` wider (band 90 Å, fuzziness
