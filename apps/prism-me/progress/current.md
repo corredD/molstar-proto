@@ -102,6 +102,17 @@ is not built is [../TODO.md](../TODO.md).
   `me/ghost-cull`, port 1365; brief [2026-10-31-ghost-cull.md](2026-10-31-ghost-cull.md) on its branch. The cause is
   transparent-outline depth in 8 bits, older than #28. **PR #30**, not merged. The in-front test and outline fog are
   fixed. Occlusion of the ghost pass is unchanged on purpose. Alexander's marking note stays the next item.
+- **Grok took over `mesh-measure` and `ghost-cull`** (Ludo, 2026-10-31) while the lanes were stopped on the spend limit
+  (about 11:15 to 13:40): mesh 12:34-13:19, ghost 12:50-13:42, and it opened #30 and #31 at 13:27. Its commits carry
+  Ludo's name and the Claude trailer, so the history does not show it. Independent reviews:
+  - #31 (mesh): good, careful work; 0 must-fix, 5 should-fix (wide triangles beyond 64 fall back to a wide search and
+    the docs say the limit is gone; a false comment and a dead fallback in `sameDrawnMesh`; an untested retarget; ui.md
+    §7).
+  - #30 (ghost): not ready; 2 must-fix (transparent-only outlines drawn over opaque ones up to 1,686 Å in front; edges
+    near the far plane unfogged, opaque outlines too), tests that only grep the shaders, the screen-edge half
+    unmeasured.
+  - Both sent back to their lanes to fix, re-gate and re-review; PR bodies to say which commits were Grok's. Do not
+    merge until then.
 - **After the 3 lanes** (Ludo, 2026-10-31, from Alexander): "also you generally want to switch marking off or at least
   set ghost edge strength to 1 - otherwise you render everything at least twice... the transparent stuff is not cheap
   either...". To do: prism-me's look (`marking` off, or `ghostEdgeStrength` 1), measured with `zoom-bench.mjs` before
