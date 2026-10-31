@@ -17,7 +17,7 @@ import { WebGPU } from './webgpu-module.js';
 const Size = 64;
 
 describe.skipIf(!WebGPU.module)('levels of detail while the camera moves (Canvas3D motion)', () => {
-  it('draws coarser levels while the camera changes, full detail once it rests', async () => {
+  it('draws coarser levels at a lower resolution while the camera changes, full detail once it rests', async () => {
     const plugin = await HeadlessPluginContext.create(
       { webgpu: WebGPU.module! },
       DefaultPluginSpec(),
@@ -75,10 +75,14 @@ describe.skipIf(!WebGPU.module)('levels of detail while the camera moves (Canvas
         },
       });
       const canvas = plugin.canvas3d!;
+      // the resolution the canvas asks of its context (the headless one resizes nothing)
+      const scales: number[] = [];
+      (plugin.canvas3dContext as { setMotionPixelScale?: (s: number) => void }).setMotionPixelScale = (s) =>
+        scales.push(s);
       // perspective: levels by distance from the camera
       canvas.setProps({
         camera: { ...canvas.props.camera, mode: 'perspective' },
-        motion: { lodScale: 2, holdMs: 250 },
+        motion: { lodScale: 2, pixelScale: 0.5, holdMs: 250 },
       });
       let time = now();
       const tick = async (ms: number) => {
@@ -93,6 +97,8 @@ describe.skipIf(!WebGPU.module)('levels of detail while the camera moves (Canvas
       const rest = levelEnd();
       expect(rest).toBeGreaterThan(0);
 
+      // (the camera framing the scene at first was a motion too)
+      scales.length = 0;
       // the camera turning: a frame per 16 ms, each a new view
       const { target, position } = canvas.camera.state;
       for (let i = 1; i <= 3; ++i) {
@@ -100,12 +106,17 @@ describe.skipIf(!WebGPU.module)('levels of detail while the camera moves (Canvas
         canvas.camera.setState({ target: Vec3.clone(target), position: p }, 0);
         await tick(16);
       }
-      // twice as coarse: the first level ends at half the distance
+      // twice as coarse: the first level ends at half the distance; the drawing buffer at half its resolution
       expect(levelEnd()).toBeCloseTo(rest / 2, 3);
+      expect(scales).toEqual([0.5]);
 
       // at rest past the hold: a frame at full detail, drawn without a request
       await tick(300);
       expect(levelEnd()).toBeCloseTo(rest, 3);
+      expect(scales).toEqual([0.5, 1]);
+      // the resize back is no motion: it stays at full resolution
+      for (let i = 0; i < 5; ++i) await tick(16);
+      expect(scales).toEqual([0.5, 1]);
     } finally {
       plugin.dispose();
     }
