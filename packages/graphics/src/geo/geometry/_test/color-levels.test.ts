@@ -79,6 +79,16 @@ describe('ColorLevels', () => {
     expect(ColorLevels.atomSize(10, 0.01, 720, true)).toBe(ColorLevels.atomSize(1000, 0.01, 720, true));
   });
 
+  it('is a number behind the camera too: the size of the nearest atom, never NaN (a mesh crossing the camera plane)', () => {
+    const p11 = 1 / Math.tan(Math.PI / 8);
+    for (const depth of [0, -5]) {
+      const size = ColorLevels.atomSize(depth, p11, 720, false);
+      expect(size).toBeGreaterThan(0);
+      expect(Number.isFinite(size)).toBe(true);
+      expect(Number.isNaN(ColorLevels.blend(far, entity, element, 0, size, props))).toBe(false);
+    }
+  });
+
   it("encodes a chain's offset among a target's chains from -1 to 1, 0 for one chain", () => {
     expect(ColorLevels.chainOffset(0, 1)).toBe(0);
     expect(ColorLevels.chainOffset(0, 3)).toBe(-1);
