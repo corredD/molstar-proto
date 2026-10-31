@@ -1194,7 +1194,6 @@ export function MergedRenderable(
   /** two-phase occlusion: the second phase's lists (`setCullPhase` 2), drawn where it has one this frame */
   let cullPhase = 0;
   let gpuLists2: MultiDrawBaseData[] = [];
-  let hasSecond = false;
   const getLists = () => (mode === 'gpu' ? (cullPhase === 2 ? gpuLists2 : gpuLists) : getCpuLists());
 
   // the members' cells culling reads every frame, resolved once: values objects have too many keys for fast named reads
@@ -1348,18 +1347,12 @@ export function MergedRenderable(
         ) => {
           // once per frame, for its first view; other views of the frame draw the CPU culling's lists
           if (frame === gpuFrame) return true;
-          hasSecond = false;
           gpuFrame = culler.dispatch(cameraPlane, frustum, lod, pyramid, twoPhase) ? frame : undefined;
           if (gpuFrame) setGpuView(cameraPlane, frustum);
           return !!gpuFrame;
         }
       : undefined,
-    prepareCullSecond: culler
-      ? (pyramid?: OcclusionPyramid) => {
-          hasSecond = culler.dispatchSecond(pyramid);
-          return hasSecond;
-        }
-      : undefined,
+    prepareCullSecond: culler ? (pyramid?: OcclusionPyramid) => culler.dispatchSecond(pyramid) : undefined,
     setCullPhase: (phase: number) => {
       cullPhase = phase;
     },

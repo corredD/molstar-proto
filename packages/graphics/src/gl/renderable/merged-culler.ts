@@ -758,14 +758,6 @@ export function createMergedCuller(
       kernels![8].dispatch(groups(records));
       if (clusterCount > 0) kernels![9].dispatch(groups(clusterCount));
       compute.endComputePass();
-      // DEBUG-2P
-      ((globalThis as any).__c2 ??= new Map()).set(counters, {
-        counters: counters.ref.value,
-        counters1: counters1.ref.value,
-        records,
-        pyr: !!pyramid,
-        n: ((globalThis as any).__c2.get(counters)?.n ?? 0) + 1,
-      });
       return true;
     },
     getLists: (levels, second = false) => {
