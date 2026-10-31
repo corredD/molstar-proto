@@ -108,6 +108,47 @@ describe('mesh triangle lookup', () => {
     }
   });
 
+  it('stays local with many wide triangles (a floor of 72 under the patch, more than any fixed list)', () => {
+    const size = 64;
+    const vertices: number[] = [];
+    const indices: number[] = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = vertices.length / 3;
+        vertices.push(x, y, 0, x + 1, y, 0, x, y + 1, 0);
+        indices.push(i, i + 1, i + 2);
+      }
+    }
+    // a floor of 6 x 6 quads (72 triangles), each 32 wide, below the patch
+    const floor = size * size;
+    for (let y = 0; y < 6; y++) {
+      for (let x = 0; x < 6; x++) {
+        const [x0, y0, w] = [-32 + 32 * x, -32 + 32 * y, 32];
+        const i = vertices.length / 3;
+        vertices.push(x0, y0, -1, x0 + w, y0, -1, x0 + w, y0 + w, -1, x0, y0 + w, -1);
+        indices.push(i, i + 1, i + 2, i, i + 2, i + 3);
+      }
+    }
+    const mesh = Mesh.create(
+      new Float32Array(vertices),
+      new Uint32Array(indices),
+      new Float32Array(vertices.length),
+      new Float32Array(vertices.length / 3),
+      vertices.length / 3,
+      indices.length / 3,
+    );
+    const lookup = getMeshTriangleLookup(mesh);
+    const out = MeshTrianglePick();
+    expect(lookup.pick(out, down(10.2, 12.2), Vec3.create(10.2, 12.2, 0), 0.1)).toBe(true);
+    expect(out.index).toBe(12 * size + 10);
+    // local: a few cells of the patch and of the floor, not thousands of the 4,168 triangles
+    expect(lookup.lastVisited).toBeLessThan(100);
+    // the floor under the point: its quad (1, 1) has corners (0, 0) and (32, 32), (10.2, 12.2) in its second triangle
+    expect(lookup.pick(out, down(10.2, 12.2), Vec3.create(10.2, 12.2, -1), 0.1)).toBe(true);
+    expect(out.index).toBe(floor + 2 * (1 * 6 + 1) + 1);
+    expect(lookup.lastVisited).toBeLessThan(100);
+  });
+
   it('does not widen the grid when a wide triangle has its centroid outside the surface', () => {
     const size = 32;
     const vertices: number[] = [];

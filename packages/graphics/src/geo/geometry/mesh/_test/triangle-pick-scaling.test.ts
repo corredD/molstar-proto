@@ -45,6 +45,33 @@ function sphere(n: number): Mesh {
   return Mesh.create(vb, ib, new Float32Array(vb.length), new Float32Array(vertexCount), vertexCount, ib.length / 3);
 }
 
+/**
+ * The sphere with a floor of `k` wide triangles across its middle (z = 0), each about 50 typical triangles wide: a
+ * mesh of mixed sizes (a membrane over a slab)
+ */
+function withFloor(mesh: Mesh, k: number): Mesh {
+  const quads = Math.ceil(Math.sqrt(k / 2));
+  const w = 1000 / quads;
+  const vb0 = mesh.vertexBuffer.ref.value.subarray(0, mesh.vertexCount * 3);
+  const ib0 = mesh.indexBuffer.ref.value.subarray(0, mesh.triangleCount * 3);
+  const v0 = mesh.vertexCount;
+  const vb = new Float32Array(vb0.length + quads * quads * 12);
+  const ib = new Uint32Array(ib0.length + quads * quads * 6);
+  vb.set(vb0);
+  ib.set(ib0);
+  let v = v0;
+  let o = vb0.length;
+  let t = ib0.length;
+  for (let y = 0; y < quads; y++) {
+    for (let x = 0; x < quads; x++, v += 4, o += 12, t += 6) {
+      const [x0, y0] = [-500 + w * x, -500 + w * y];
+      vb.set([x0, y0, 0, x0 + w, y0, 0, x0 + w, y0 + w, 0, x0, y0 + w, 0], o);
+      ib.set([v, v + 1, v + 2, v, v + 2, v + 3], t);
+    }
+  }
+  return Mesh.create(vb, ib, new Float32Array(vb.length), new Float32Array(v), v, ib.length / 3);
+}
+
 /** The fastest of a few runs (ms) */
 function fastest(f: () => void, runs = 3) {
   let best = Infinity;
@@ -70,8 +97,8 @@ function picks(count: number) {
   return out;
 }
 
-function measure(n: number) {
-  const mesh = sphere(n);
+function measure(n: number, floor = 0) {
+  const mesh = floor ? withFloor(sphere(n), floor) : sphere(n);
   const meshBytes =
     mesh.vertexBuffer.ref.value.byteLength +
     mesh.normalBuffer.ref.value.byteLength +
@@ -86,13 +113,16 @@ function measure(n: number) {
   const rays = picks(2000);
   const out = MeshTrianglePick();
   const times: number[] = [];
+  const visits: number[] = [];
   let hits = 0;
   for (const { ray, near } of rays) {
     const t = performance.now();
     if (lookup.pick(out, ray, near, 2)) hits++;
     times.push(performance.now() - t);
+    visits.push(lookup.lastVisited);
   }
   times.sort((a, b) => a - b);
+  visits.sort((a, b) => a - b);
   return {
     triangles: mesh.triangleCount,
     build,
@@ -100,6 +130,7 @@ function measure(n: number) {
     meshBytes,
     p50: times[times.length >> 1],
     p95: times[Math.floor(times.length * 0.95)],
+    visitsP95: visits[Math.floor(visits.length * 0.95)],
     hits,
   };
 }
@@ -120,5 +151,28 @@ describe('mesh triangle lookup, by size', () => {
     expect(large.bytes).toBeLessThan(large.meshBytes);
     // a pick costs the same at 4×, well under a millisecond
     expect(large.p95).toBeLessThan(1);
+  }, 120_000);
+
+  it('stays local with many wide triangles (a floor of n / 1000 across the sphere), at n and 4n', () => {
+    const n = Number(process.env.TRIANGLE_PICK_N) || 250_000;
+    const small = measure(n, n / 1000);
+    const large = measure(4 * n, (4 * n) / 1000);
+    console.log('triangle lookup with a floor', JSON.stringify({ small, large }));
+    expect(small.hits).toBe(2000);
+    expect(large.hits).toBe(2000);
+    expect(large.build / small.build).toBeLessThan(8);
+    // a pick tests about as many triangles at 4n: what is near it, not the floor's reach into the fine grid
+    expect(large.visitsP95).toBeLessThan(2 * small.visitsP95 + 10);
+    expect(large.p95).toBeLessThan(1);
+  }, 120_000);
+
+  it('the ratio bound catches a quadratic (the guard control)', () => {
+    const quadratic = (m: number) =>
+      fastest(() => {
+        let s = 0;
+        for (let i = 0; i < m; i++) for (let j = 0; j < m; j++) s += i ^ j;
+        if (s < 0) throw new Error('unreachable');
+      });
+    expect(quadratic(8000) / quadratic(2000)).toBeGreaterThan(8);
   }, 120_000);
 });
