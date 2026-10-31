@@ -9,7 +9,6 @@ import { ValueCell } from '@molstar/core/util';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
 import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
-import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import type { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import type { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
 import type { ComputeContext, ComputeKernel, KernelRequest, StorageBuffer } from '../compute.js';
@@ -132,7 +131,12 @@ export function createMergedCuller(
     uHiZDepthRange: ValueCell.create(Vec2()),
     uHiZViewport: ValueCell.create(Vec2()),
     uHiZLevelCount: ValueCell.create(0),
-    uHiZSameView: ValueCell.create(false),
+    uHiZPlane0: ValueCell.create(Vec4()),
+    uHiZPlane1: ValueCell.create(Vec4()),
+    uHiZPlane2: ValueCell.create(Vec4()),
+    uHiZPlane3: ValueCell.create(Vec4()),
+    uHiZPlane4: ValueCell.create(Vec4()),
+    uHiZPlane5: ValueCell.create(Vec4()),
     uHiZMinLevel: ValueCell.create(0),
     tHiZ: ValueCell.create(createEmptyHiZ(resources)),
   };
@@ -346,18 +350,8 @@ export function createMergedCuller(
   const dispatched = new Float64Array(7 * 4 + 2).fill(NaN);
   const dispatchedLevels = Mat4.zero().fill(NaN);
   let dispatchedVersion = -1;
-  /** whether the pyramid's camera is the frustum's (the planes of its projection and view, as the renderer's) */
   const pyramidFrustum = Frustum3D();
   const pyramidMatrix = Mat4();
-  function isSameView(pyramid: OcclusionPyramid, frustum: Frustum3D) {
-    Frustum3D.fromProjectionMatrix(pyramidFrustum, Mat4.mul(pyramidMatrix, pyramid.projection, pyramid.view));
-    for (let i = 0; i < 6; ++i) {
-      const a = pyramidFrustum[i as 0];
-      const b = frustum[i as 0];
-      if (!Vec3.exactEquals(a.normal, b.normal) || a.constant !== b.constant) return false;
-    }
-    return true;
-  }
 
   /** the pyramid build the last dispatch tested against (`OcclusionPyramid.version`), -1 for none */
   let dispatchedPyramid = -1;
@@ -423,7 +417,14 @@ export function createMergedCuller(
           Vec2.set(cellValues.uHiZViewport.ref.value, pyramid.width, pyramid.height),
         );
         ValueCell.updateIfChanged(cellValues.uHiZLevelCount, pyramid.levelCount);
-        ValueCell.updateIfChanged(cellValues.uHiZSameView, isSameView(pyramid, frustum));
+        // the pyramid's frustum: the planes of its projection and view, as the renderer's
+        Frustum3D.fromProjectionMatrix(pyramidFrustum, Mat4.mul(pyramidMatrix, pyramid.projection, pyramid.view));
+        setPlane(cellValues.uHiZPlane0, pyramidFrustum[0]);
+        setPlane(cellValues.uHiZPlane1, pyramidFrustum[1]);
+        setPlane(cellValues.uHiZPlane2, pyramidFrustum[2]);
+        setPlane(cellValues.uHiZPlane3, pyramidFrustum[3]);
+        setPlane(cellValues.uHiZPlane4, pyramidFrustum[4]);
+        setPlane(cellValues.uHiZPlane5, pyramidFrustum[5]);
         ValueCell.updateIfChanged(cellValues.uHiZMinLevel, pyramid.minLevel);
       }
       ValueCell.updateIfChanged(cellValues.tHiZ, pyramid?.texture ?? emptyHiZ);

@@ -52,6 +52,49 @@ fn hiZDepth(x: i32, y: i32) -> f32 {
     return hiZViewZ(textureLoad(tHiZ, vec2<i32>(x, y), 0).r);
 }
 
+fn outsideView(sphere: vec4<f32>) -> bool {
+    return outside(uParams.uPlane0, sphere) || outside(uParams.uPlane1, sphere) || outside(uParams.uPlane2, sphere) ||
+        outside(uParams.uPlane3, sphere) || outside(uParams.uPlane4, sphere) || outside(uParams.uPlane5, sphere);
+}
+
+/**
+ * The largest signed distance to \`plane\` (inside positive) of the part of \`sphere\` beyond \`beyond\` (its signed
+ * distance \`d\` there, |d| < radius): at the sphere's point farthest along the plane's normal where that is beyond,
+ * else on the circle where the sphere meets \`beyond\`
+ */
+fn capReach(plane: vec4<f32>, beyond: vec4<f32>, sphere: vec4<f32>, d: f32) -> f32 {
+    if (all(plane == beyond)) {
+        // the same plane (a still view): nothing beyond it is in view
+        return -1.0;
+    }
+    let top = sphere.xyz + plane.xyz * sphere.w;
+    if (dot(beyond.xyz, top) + beyond.w <= 0.0) {
+        return dot(plane.xyz, sphere.xyz) + plane.w + sphere.w;
+    }
+    let center = sphere.xyz - beyond.xyz * d;
+    let along = plane.xyz - beyond.xyz * dot(plane.xyz, beyond.xyz);
+    return dot(plane.xyz, center) + plane.w + sqrt(max(sphere.w * sphere.w - d * d, 0.0)) * length(along);
+}
+
+/**
+ * Whether a part of the sphere beyond the pyramid's frustum plane \`beyond\` (not in the pyramid) may be in the view
+ * culled for: the part beyond against each of the view's planes, the whole sphere where all of it is beyond (at the
+ * pyramid's own view nothing beyond its planes is)
+ */
+fn showsBeyond(beyond: vec4<f32>, sphere: vec4<f32>) -> bool {
+    let d = dot(beyond.xyz, sphere.xyz) + beyond.w;
+    if (d >= sphere.w) {
+        return false;
+    }
+    if (d <= -sphere.w) {
+        return !outsideView(sphere);
+    }
+    let eps = 1e-4 * sphere.w;
+    return capReach(uParams.uPlane0, beyond, sphere, d) > eps && capReach(uParams.uPlane1, beyond, sphere, d) > eps &&
+        capReach(uParams.uPlane2, beyond, sphere, d) > eps && capReach(uParams.uPlane3, beyond, sphere, d) > eps &&
+        capReach(uParams.uPlane4, beyond, sphere, d) > eps && capReach(uParams.uPlane5, beyond, sphere, d) > eps;
+}
+
 fn occluded(sphere: vec4<f32>) -> bool {
     if (uParams.uHiZ == 0u) {
         return false;
@@ -60,6 +103,14 @@ fn occluded(sphere: vec4<f32>) -> bool {
     let r = sphere.w * 1.2 + 1.52;
     let z = vp.z + r;
     if (-z < uParams.uHiZDepthRange.x) {
+        return false;
+    }
+    // what was outside the pyramid's view is not in it: not occluded where such a part is in view now (after a turn;
+    // at the pyramid's own view nothing beyond its planes is)
+    let padded = vec4<f32>(sphere.xyz, r);
+    if (showsBeyond(uParams.uHiZPlane0, padded) || showsBeyond(uParams.uHiZPlane1, padded) ||
+        showsBeyond(uParams.uHiZPlane2, padded) || showsBeyond(uParams.uHiZPlane3, padded) ||
+        showsBeyond(uParams.uHiZPlane4, padded) || showsBeyond(uParams.uHiZPlane5, padded)) {
         return false;
     }
     let aabb = hiZProjectSphere(vp, r);
@@ -79,19 +130,11 @@ fn occluded(sphere: vec4<f32>) -> bool {
         offset += 1 << u32(levels - 1 - i);
     }
     let ts = 1 << u32(levels - 1 - lod);
-    // the texels the rectangle covers; where it reaches past the pyramid's view, clamped to it if that is the view
-    // drawn (what is outside is not drawn), else not occluded (what was outside then is not in the pyramid)
-    let ux0 = i32(floor(aabb.x * f32(ts)));
-    let ux1 = i32(floor(aabb.z * f32(ts)));
-    let uy0 = i32(floor(aabb.y * f32(ts)));
-    let uy1 = i32(floor(aabb.w * f32(ts)));
-    if (uParams.uHiZSameView == 0u && (ux0 < 0 || uy0 < 0 || ux1 >= ts || uy1 >= ts)) {
-        return false;
-    }
-    let x0 = max(ux0, 0);
-    let x1 = min(ux1, ts - 1);
-    let y0 = max(uy0, 0);
-    let y1 = min(uy1, ts - 1);
+    // the texels the rectangle covers, clamped to the pyramid's view (what is beyond it is not in view, above)
+    let x0 = max(i32(floor(aabb.x * f32(ts))), 0);
+    let x1 = min(i32(floor(aabb.z * f32(ts))), ts - 1);
+    let y0 = max(i32(floor(aabb.y * f32(ts))), 0);
+    let y1 = min(i32(floor(aabb.w * f32(ts))), ts - 1);
     if (x1 < x0 || y1 < y0 || x1 - x0 > 3 || y1 - y0 > 3) {
         return false;
     }

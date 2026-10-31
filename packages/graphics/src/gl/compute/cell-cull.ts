@@ -71,8 +71,13 @@ const CullViewSchema = {
   uHiZDepthRange: UniformSpec('v2'),
   uHiZViewport: UniformSpec('v2'),
   uHiZLevelCount: UniformSpec('i'),
-  /** whether the pyramid's camera is the one culled for (a still view): rectangles reaching past it are clamped */
-  uHiZSameView: UniformSpec('b'),
+  /** the planes of the pyramid's view (`[nx, ny, nz, constant]`): what was beyond them is not in it */
+  uHiZPlane0: UniformSpec('v4'),
+  uHiZPlane1: UniformSpec('v4'),
+  uHiZPlane2: UniformSpec('v4'),
+  uHiZPlane3: UniformSpec('v4'),
+  uHiZPlane4: UniformSpec('v4'),
+  uHiZPlane5: UniformSpec('v4'),
   uHiZMinLevel: UniformSpec('i'),
   tHiZ: TextureSpec('texture', 'r', 'float', 'nearest'),
 };

@@ -554,19 +554,24 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
       };
       await frame();
       const turned = new Uint32Array(await buffer.readAsync(byteOffset, list![0].count * words * 4));
-      // the instances of the grid behind whose sphere reaches past the view before the turn (its rectangle there), and
-      // are in view now
+      // the instances of the grid behind with a point outside the view before the turn and inside it now (points on a
+      // grid through each sphere): not in the pyramid, maybe in view
       let reaching = 0;
       const frustum = Frustum3D.fromProjectionMatrix(Frustum3D(), camera.projectionView);
+      const frustumBefore = Frustum3D.fromProjectionMatrix(Frustum3D(), before.projectionView);
       const b = back.values.invariantBoundingSphere.ref.value;
       const transforms = back.values.aTransform.ref.value;
+      const point = Sphere3D.create(Vec3(), 0);
       for (let i = 0; i < Copies * Copies; ++i) {
         const c = Vec3.transformMat4(Vec3(), b.center, Mat4.fromArray(Mat4(), transforms, i * 16));
-        if (!Frustum3D.intersectsSphere3D(frustum, Sphere3D.create(c, b.radius))) continue;
-        const v = Vec3.transformMat4(Vec3(), c, before.view);
-        const ndc = Vec3.transformMat4(Vec3(), c, before.projectionView);
-        const r = (b.radius * before.projection[0]) / -v[2];
-        if (Math.abs(ndc[0]) + r > 1 || Math.abs(ndc[1]) + r > 1) reaching += 1;
+        let found = false;
+        for (let k = 0; k < 9 * 9 * 9 && !found; ++k) {
+          const o = Vec3.create((k % 9) - 4, (Math.floor(k / 9) % 9) - 4, Math.floor(k / 81) - 4);
+          if (Vec3.magnitude(o) > 4) continue;
+          Vec3.scaleAndAdd(point.center, c, o, b.radius / 4);
+          found = Frustum3D.intersectsSphere3D(frustum, point) && !Frustum3D.intersectsSphere3D(frustumBefore, point);
+        }
+        if (found) reaching += 1;
       }
       expect(turned[1]).toBe(inView);
       expect(reaching).toBeGreaterThan(0);
