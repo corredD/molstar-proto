@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -10,6 +11,8 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Mat4, Vec2, Vec3 } from '@molstar/core/math/linear-algebra';
 import { now } from '@molstar/core/util/now';
 import { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
+import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
+import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { createTransform } from '@molstar/graphics/geo/geometry/transform-data';
 import { BaseGeometry } from '@molstar/graphics/geo/geometry/base';
@@ -34,7 +37,7 @@ const Size = 64;
 const Copies = 6;
 
 /** Five spheres, as `copies` × `copies` instances on a grid in the xy plane, the grid's origin at `offset` */
-function createMember(offset: Vec3, color: number) {
+function createMember(offset: Vec3, color: number, options: Partial<PD.Values<Spheres.Params>> = {}) {
   const centers = new Float32Array([0, 0, 0, 1.2, 0, 0, 0, 1.2, 0, -1.2, 0, 0, 0, -1.2, 0]);
   const groups = new Float32Array([0, 1, 2, 3, 4]);
   const spheres = Spheres.create(centers, groups, 5);
@@ -44,7 +47,7 @@ function createMember(offset: Vec3, color: number) {
     Mat4.toArray(Mat4.fromTranslation(Mat4(), t), transforms, i * 16);
   }
   // cells of a few instances each (the default 200 Å holds a member's whole grid)
-  const props = { ...PD.getDefaultValues(Spheres.Params), cellSize: 8, batchSize: 32 };
+  const props = { ...PD.getDefaultValues(Spheres.Params), cellSize: 8, batchSize: 32, ...options };
   // with the invariant sphere (the five spheres') the instances get a grid
   const sphere = Sphere3D.create(Vec3(), 2.5);
   const transform = createTransform(transforms, Copies * Copies, sphere, props.cellSize, props.batchSize);
@@ -159,6 +162,128 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
       expect(prepared).toBe(0);
       renderer.prepareCull(gpuScene);
       expect(prepared).toBe(1);
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
+  it('draws only the instances whose own sphere touches the view, at the levels their distance reaches', async () => {
+    const plugin = await createPlugin();
+    try {
+      const graphics = plugin.canvas3d!.graphics;
+      // one cell per member (its whole grid): the cell is drawn, its instances outside the view are not; two levels
+      // by distance (the second's spheres twice the size), the boundary across the grid
+      const options = {
+        cellSize: 200,
+        lodLevels: [
+          { minDistance: 1, maxDistance: 18, overlap: 0, stride: 1, scaleBias: 1 },
+          { minDistance: 18, maxDistance: 10000000, overlap: 0, stride: 2, scaleBias: 1 },
+        ],
+      };
+      const members = [
+        createMember(Vec3.create(0, 0, 0), ColorNames.orange, options),
+        createMember(Vec3.create(2.5, 2.5, -8), ColorNames.green, options),
+      ];
+      const cpu = createMergedRenderObject(members);
+      const gpu = createMergedRenderObject(members, { gpuCulling: true });
+      const cpuScene = Scene.create(graphics);
+      cpuScene.add(cpu);
+      cpuScene.commit();
+      const gpuScene = Scene.create(graphics);
+      gpuScene.add(gpu);
+      gpuScene.commit();
+
+      // a corner of the grid in view, at a slant: instances near and far, inside and outside the view
+      const camera = new Camera();
+      Viewport.set(camera.viewport, 0, 0, Size, Size);
+      const { center, radius } = cpuScene.boundingSphere;
+      const target = Vec3.add(Vec3(), center, Vec3.create(-radius * 0.4, -radius * 0.4, 0));
+      camera.setState(
+        {
+          target,
+          position: Vec3.add(Vec3(), target, Vec3.create(-6, -6, 14)),
+          up: Vec3.create(0, 1, 0),
+          radius: radius * 0.3,
+        },
+        0,
+      );
+      camera.update();
+
+      const renderer = Renderer.create(graphics);
+      const target_ = graphics.createRenderTarget(Size, Size, 'depth-stencil');
+      for (const scene of [cpuScene, gpuScene]) {
+        await graphics.resources.preparePipelines(
+          renderer.collect({ name: 'opaque' }, scene, graphics.describeTarget(target_)),
+        );
+      }
+      const drawn = new Map<Scene, MultiDrawBaseData[]>();
+      for (const scene of [cpuScene, gpuScene]) {
+        const item = scene.renderables[0].renderItem;
+        const render = item.render;
+        item.render = (variant, globals, list) => {
+          if (list) drawn.set(scene, list);
+          render(variant, globals, list);
+        };
+      }
+      const frame = async (scene: Scene) => {
+        renderer.update(camera, scene, createFrame());
+        renderer.prepareCull(scene);
+        graphics.beginRenderPass(target_);
+        renderer.clear(true);
+        renderer.setViewport(0, 0, Size, Size);
+        renderer.renderOpaque(scene, camera);
+        graphics.flush();
+        const pixels = Array.from(await graphics.readRenderTarget(target_, 0, 0, Size, Size));
+        await graphics.resources.pending.whenReady();
+        return pixels;
+      };
+      for (let i = 0; i < 20 && !drawn.get(gpuScene)?.[0].indirect; ++i) await frame(gpuScene);
+      const gpuImage = await frame(gpuScene);
+      const gpuLists = drawn.get(gpuScene)!;
+      expect(gpuLists[0].indirect).toBeDefined();
+      const cpuImage = await frame(cpuScene);
+
+      // expected per level: the instances whose sphere (padded for the level's sphere scale) touches the frustum and
+      // the level's distance range
+      const frustum = Frustum3D.fromProjectionMatrix(Frustum3D(), camera.projectionView);
+      const cameraPlane = Plane3D.copy(Plane3D(), frustum[Frustum3D.PlaneIndex.Near]);
+      cameraPlane.constant -= Plane3D.distanceToPoint(cameraPlane, camera.state.position);
+      const expected = [0, 0];
+      let total = 0;
+      for (const m of members) {
+        const v = m.values;
+        const levels = v.lodLevels.ref.value;
+        const b = v.invariantBoundingSphere.ref.value;
+        const padding = v.padding.ref.value;
+        const transforms = v.aTransform.ref.value;
+        for (let i = 0; i < v.instanceCount.ref.value; ++i) {
+          total += 1;
+          const c = Vec3.transformMat4(Vec3(), b.center, Mat4.fromArray(Mat4(), transforms, i * 16));
+          for (let j = 0; j < 2; ++j) {
+            const r = b.radius + padding * Math.max(levels[j][4] - 1, 0);
+            const d = Plane3D.distanceToPoint(cameraPlane, c);
+            if (d + r < levels[j][0] || d - r > levels[j][1]) continue;
+            if (!Frustum3D.intersectsSphere3D(frustum, Sphere3D.create(c, r))) continue;
+            expected[j] += 1;
+          }
+        }
+      }
+      const words = 5;
+      const counts: number[] = [];
+      for (const list of gpuLists) {
+        const { buffer, byteOffset } = list.indirect!;
+        const args = new Uint32Array(await buffer.readAsync(byteOffset, list.count * words * 4));
+        let n = 0;
+        for (let i = 0; i < list.count; ++i) n += args[i * words + 1];
+        counts.push(n);
+      }
+      // both levels drawn, neither of all instances
+      expect(expected[0]).toBeGreaterThan(0);
+      expect(expected[1]).toBeGreaterThan(0);
+      expect(expected[0] + expected[1]).toBeLessThan(total);
+      expect(counts).toEqual(expected);
+      expect(new Set(cpuImage).size).toBeGreaterThan(2);
+      expect(gpuImage).toEqual(cpuImage);
     } finally {
       plugin.dispose();
     }
