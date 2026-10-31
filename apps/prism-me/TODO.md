@@ -68,6 +68,15 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
+- Smooth close up (lane `instance-cull`, what is left; `progress/2026-10-31-instance-cull.md`): the goal holds on WebGPU
+  at dpr 1 for CellPack HIV only. In order: the pixel scale while the camera moves (dpr 2: the fragments); clusters
+  inside a particle and k-means proxies (PetWorld close up; the proxies change the look at rest: Ludo's call, with
+  images); two-phase occlusion (the frame parallax uncovers while turning); WebGL2 (its CPU Hi-Z measured with a task
+  per frame, a test per instance). The review's open items: the per-instance sphere has no slack for wiggle and tumble
+  (an animated protein at the view's edge may be culled a frame); a skipped dispatch keeps a canvas forcing frames until
+  a pyramid lands (bounded by pending work); no test of an image drawn in the motion hold at full detail; Firefox not
+  measured; `gpuCulling` auto from 10 M indices may now put the 60-copy assembly of 7qpd on the GPU (unchecked).
+
 - The properties (lane `properties-view`, its review's open items): a Visible line in a node's Look (ui.md §4 lists it;
   the app has the row's eye, a category its switch); a model's or group's color says Mixed when no entity has a color of
   its own (`common` cannot tell none from mixed); the Labels section lists the labels made at the row's key, not the

@@ -243,3 +243,11 @@ About 400 production lines (graphics: the WGSL tests and edges, the culler's set
 renderer's scale and counts) and 600 of tests and scripts; no size given in the brief.
 
 ## Review
+
+Reviewer (Opus): 4 must-fix, 3 should-fix, 5 nits; skeptic: 4 confirmed, 1 confirmed narrower, 3 plausible, 1 refuted, 2
+new. Fixed: the scaling guard (`mesoscale/_test/merged-culler.scaling.ts`), the spec lines left from before (per cell
+and per instance, a level finer), `zoom-test.js`'s header, the level-of-detail scale reset on every exit of a render (a
+highlight redrawn alone returned before; no test: an image pass in the headless harness showed nothing), the pyramid
+versions never reset, the auto rule's count said to be indices, the comment on picks. Refuted: XR staying coarse. Open
+(TODO.md): wiggle and tumble slack, a canvas forcing frames while no pyramid lands, Firefox, 7qpd under the auto rule;
+the goal itself (pixel scale while moving, clusters and proxies, two-phase occlusion, WebGL2).
