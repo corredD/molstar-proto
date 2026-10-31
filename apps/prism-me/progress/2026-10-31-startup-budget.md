@@ -91,3 +91,56 @@ works. But a guard that always fails means nothing. Ludo approved this lane afte
 
 - Then `gh pr create -R corredD/molstar-proto --base prism-me`. The PR body ends with
   `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Do not merge.
+
+## Step 1: the measurement (nothing changed)
+
+Production builds with `--metafile`, the start closure as `scripts/esbuild/start-closure.mjs` counts it (the entry and
+every chunk it imports statically), per input module from the metafile's `bytesInOutput`. `origin/master` at `fb8772a88`
+(a detached worktree, `~/prism-me-lanes/startup-budget-master`); this branch at `f5e46c55b` (master is merged in: the
+merge base is `fb8772a88`). prism-me does not exist on master: its own share is measured against this branch's stock
+viewer.
+
+| Build                         | Start closure | Chunks | Budget  |                    |
+| ----------------------------- | ------------- | ------ | ------- | ------------------ |
+| prism-viewer, `origin/master` | 5,582,977 B   | 100    | 5.60 MB | passes, 17 kB left |
+| prism-viewer, this branch     | 5,685,187 B   | 100    | 5.60 MB | fails by 85 kB     |
+| prism-me, this branch         | 5,928,443 B   | 106    | 3.40 MB | fails              |
+
+So the 5.93 MB is three parts: **upstream 5.583 MB**, **prism-me's library commits +102 kB** (the stock viewer on this
+branch), **prism-me's own +243 kB** (the app and its three extensions).
+
+### prism-me's library commits: +102 kB on the stock viewer
+
+By the prism-me PR that touched each file (first-parent history `origin/master..HEAD`, the master merges left out; a
+file touched by several PRs is counted under all of them together):
+
+| PR                    | kB   | Mostly                                                                 |
+| --------------------- | ---- | ---------------------------------------------------------------------- |
+| #28 instance-cull     | 18.2 | `cell-cull.wgsl.ts` 9.4, `merged-culler.ts` 5.0, `renderable.ts` 1.9   |
+| #25 ui-scale          | 16.1 | Prism's generated CSS modules (about 0.3–1.3 kB each), `ui-scale.ts`   |
+| #31 mesh-measure      | 11.9 | `triangle-pick.ts` 4.6, `triangle-marks.ts` 4.3, `shape.ts` 1.5        |
+| #27 dynamic-color     | 8.7  | `color-levels.wgsl.ts` 3.0, `color-levels.glsl.ts` 2.7, `color-levels.ts` 2.6 |
+| #20 + #24 cuts, ghosts| 7.5  | `common-clip.glsl.ts` 3.9, `clip.wgsl.ts` 3.6                          |
+| #20 (+ direct)        | 4.7  | particle `layers.ts` 4.2                                               |
+| #30 ghost-cull        | 4.6  | `outlines.frag.ts` 4.1, `outlines.wgsl.ts` 2.4                         |
+| #20 + #8              | 4.4  | particles `look.ts`                                                    |
+| others, each < 3 kB   | 25.6 | clipping operations, gizmos (#9, #10), `canvas3d.ts`, `draw.ts`, …     |
+
+By folder: graphics/gl +37.1, prism/viewer +18.0, prism/ui +12.7, graphics/geo +10.4, graphics/repr +6.2,
+canvas3d +5.6, plugin/core +4.6, model +2.3. **These put the stock viewer over its 5.6 MB** (master has 17 kB left):
+step 4's list.
+
+### prism-me's own: +243 kB on the branch's stock viewer
+
+| What                                                                  | kB    |
+| --------------------------------------------------------------------- | ----- |
+| `apps/prism-me/src/explorer` (`properties.tsx` 29.9, `operations.ts` 15.2, `rows.ts` 12.3, `clips.ts` 8.8, `menu.ts` 8.7, `ui.tsx` 8.2, `tree-view.tsx` 6.8, CSS 8.4) | 104.0 |
+| stage-tools (`operations.ts` 27.9, `distance.ts` 5.5, `particle-handle.ts` 4.5)                                                   | 46.8  |
+| cryoet (`operations.ts` 25.6, `controls.tsx` 7.7)                                                                                  | 40.2  |
+| mesoscale (`operations.ts` 24.1, `prism-viewer.ts` 4.4, `controls.tsx` 2.3)                                                        | 34.5  |
+| plugin/core particle `ops.ts` 11.8 and `particle-targets.ts` 3.9 (through `tomograms.ts` → `cryoet/operations`)                  | 15.8  |
+| the app's page, spec, look, URL                                                                                                    | 4.8   |
+
+The three extensions' views are lazy already (`ui: async () => import('./prism-viewer-ui.js')`); their operations and
+the whole explorer (views included: "not lazy: its tab is the one open at start") are in the closure. The explorer's
+views import the cryoet and mesoscale `controls`, so those are in it too.
