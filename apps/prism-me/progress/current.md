@@ -81,13 +81,13 @@ is not built is [../TODO.md](../TODO.md).
   structure in a corner), on WebGL2 they show scaled and vanish as soon as the camera moves in (0.3 of the distance).
   Likely the decorations' render objects keep bounds from before the scale (one at center 161,179,190, radius 309). Not
   yet known if #28 made it worse. Proposed with the decorate fix: one lane, decorations under a list transform.
-- **Lane `decorate-transform`**: **PR #29**, both bugs fixed, gate and review passed. Causes:
-  `ParticleListTransform`/`ParticleListOffsets` short-cut on `sourceData`; stage-tools' `decoratorUnder` looked only
-  under the list (a second scale gave 10 → 100); the target visual's update kept its old bounding sphere (a "too slow"
-  TODO, upstream and 5.x too); a merged render object kept its first values on WebGPU (upstream v6); `applyTransform`
-  set merged objects' transform (radius 0 in a handle preview). Ludo's steps headless, both backends, both orders:
-  nothing disappears. Open: a list's drag preview does not redraw headless (Ludo to check in the app); `scaleByRadius`
-  targets' bounds; upstreaming the two graphics fixes waits for Ludo.
+- **Lane `decorate-transform`**: **PR #29** merged by Ludo (2026-10-31), both bugs fixed, gate and review passed.
+  Causes: `ParticleListTransform`/`ParticleListOffsets` short-cut on `sourceData`; stage-tools' `decoratorUnder` looked
+  only under the list (a second scale gave 10 → 100); the target visual's update kept its old bounding sphere (a "too
+  slow" TODO, upstream and 5.x too); a merged render object kept its first values on WebGPU (upstream v6);
+  `applyTransform` set merged objects' transform (radius 0 in a handle preview). Ludo's steps headless, both backends,
+  both orders: nothing disappears. Open: a list's drag preview does not redraw headless (Ludo to check in the app);
+  `scaleByRadius` targets' bounds; upstreaming the two graphics fixes waits for Ludo.
 
 - **Lane `mesh-measure`** (Ludo, 2026-10-31): "measurement between obj/shape at the triangle highlight/selection and
   other selection. Right now, mesh selection is global not at the triangle level." Triangle picking on OBJ/PLY/VTP
