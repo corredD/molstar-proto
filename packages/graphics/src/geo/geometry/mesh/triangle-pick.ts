@@ -230,13 +230,20 @@ function buildGrades(vb: Float32Array, ib: Uint32Array, T: number): { grades: Gr
     const g = r > 0 ? Math.floor((Math.log(r) - logTypical) / logStep) + GradeSteps : 0;
     return g < 0 ? 0 : g > 2 * GradeSteps ? 2 * GradeSteps : g;
   };
+  // each triangle's grade, found once (a logarithm a triangle)
+  const gradeOfTriangle = new Uint8Array(T);
   const counts = new Uint32Array(2 * GradeSteps + 1);
-  for (let t = 0; t < T; ++t) if (!Number.isNaN(cx[t])) counts[gradeOf(radiusSq[t])]++;
+  for (let t = 0; t < T; ++t) {
+    if (Number.isNaN(cx[t])) continue;
+    const g = gradeOf(radiusSq[t]);
+    gradeOfTriangle[t] = g;
+    counts[g]++;
+  }
   const members = Array.from(counts, (n) => new Uint32Array(n));
   const filled = new Uint32Array(counts.length);
   for (let t = 0; t < T; ++t) {
     if (Number.isNaN(cx[t])) continue;
-    const g = gradeOf(radiusSq[t]);
+    const g = gradeOfTriangle[t];
     members[g][filled[g]++] = t;
   }
   const grades: Grade[] = [];
