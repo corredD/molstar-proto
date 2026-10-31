@@ -109,9 +109,13 @@ is not built is [../TODO.md](../TODO.md).
     dead fallback dropped; tests failing first; ui.md §7), then a fourth review (1 must-fix: a vertex at 1e20 hung the
     build, fixed). Gate, heavy scaling and the browser recheck pass. **Ready to merge** (head 9d4f12914). Build now 44
     ms at 1 M triangles (was 26), a pick 30 µs. The PR body says which commits were Grok's.
-  - #30 (ghost): not ready; 2 must-fix (transparent-only outlines drawn over opaque ones up to 1,686 Å in front; edges
-    near the far plane unfogged, opaque outlines too), tests that only grep the shaders, the screen-edge half
-    unmeasured.
+  - #30 (ghost): Grok's 2 must-fix are fixed and its grep tests replaced by rendered tests (GL and Dawn) that fail
+    without each fix. Cause, older than #28: a transparent edge's depth in 8 bits, 0 beyond about 500 Å at the 1 Å near
+    plane, so far ghosts and the farther sides vanished; not culling (0 pixels lost on every culling path). Also fixed:
+    a band of ghost color over a nearer particle (#24). Screen edges at 0.3: 0-6,920 → 22-32k ghost pixels. Frame times
+    unchanged. **Ready to merge** (head deae6dbc8). Open: ghosts black with illumination on (#24); the graphics commits
+    as an upstream lane (Ludo decides). `typecheck:storybook` fails on prism-me itself (`src/api/styles.ts`,
+    `transparentColor` from #24): a separate fix.
   - Both sent back to their lanes to fix, re-gate and re-review; PR bodies to say which commits were Grok's. Do not
     merge until then.
 - **After the 3 lanes** (Ludo, 2026-10-31, from Alexander): "also you generally want to switch marking off or at least
