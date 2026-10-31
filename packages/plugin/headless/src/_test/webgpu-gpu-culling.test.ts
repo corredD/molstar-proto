@@ -583,6 +583,92 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
     }
   }, 60_000);
 
+  it('a canvas draws again after a camera change, without requests, until occlusion tested a pyramid of its view', async () => {
+    const plugin = await createPlugin(128);
+    try {
+      // copies of a solid wall (12 x 12 atoms closer than their radii) one behind the other along z
+      const f = (v: number) => v.toFixed(3).padStart(8);
+      const atoms: string[] = [];
+      for (let i = 0; i < 144; ++i) {
+        const [x, y] = [(i % 12) * 1.2, Math.floor(i / 12) * 1.2];
+        atoms.push(
+          `ATOM  ${String(i + 1).padStart(5)}  CA  ALA A${String(i + 1).padStart(4)}    ${f(x)}${f(y)}${f(0)}  1.00  0.00           C`,
+        );
+      }
+      const biomt: string[] = ['REMARK 350 BIOMOLECULE: 1', 'REMARK 350 APPLY THE FOLLOWING TO CHAINS: A'];
+      for (let k = 0; k < 12; ++k) {
+        const n = String(k + 1).padStart(4);
+        biomt.push(`REMARK 350   BIOMT1 ${n}  1.000000  0.000000  0.000000        0.00000`);
+        biomt.push(`REMARK 350   BIOMT2 ${n}  0.000000  1.000000  0.000000        0.00000`);
+        biomt.push(`REMARK 350   BIOMT3 ${n}  0.000000  0.000000  1.000000 ${f(-8 * k)}`);
+      }
+      const pdb = `${biomt.join('\n')}\n${atoms.join('\n')}\nEND\n`;
+      const data = await plugin.builders.data.rawData({ data: pdb, label: 'test' });
+      const trajectory = await plugin.builders.structure.parseTrajectory(data, 'pdb');
+      const model = await plugin.builders.structure.createModel(trajectory);
+      const structure = await plugin.builders.structure.createStructure(model, {
+        name: 'assembly',
+        params: { id: '1' },
+      });
+      const graphics = plugin.canvas3d!.graphics;
+      const create = graphics.createGraphicsRenderItem;
+      let list: MultiDrawBaseData[] | undefined;
+      // the frames that draw the object (render items are created as the canvas commits the objects)
+      let renders = 0;
+      graphics.createGraphicsRenderItem = (...args) => {
+        const item = create(...args);
+        const render = item.render;
+        item.render = (variant, globals, l) => {
+          if (l?.[0]?.indirect) list = l;
+          if (variant === 'color') renders += 1;
+          render(variant, globals, l);
+        };
+        return item;
+      };
+      await plugin.builders.structure.representation.addRepresentation(structure, {
+        type: 'spacefill',
+        typeParams: { renderMerged: true, gpuCulling: true, cellSize: 3, batchSize: 12 },
+      });
+      const canvas = plugin.canvas3d!;
+      canvas.setProps({
+        multiSample: { ...canvas.props.multiSample, mode: 'off' },
+        hiZ: { ...canvas.props.hiZ, enabled: false, gpu: true },
+        // every frame renders its items (no recorded replays)
+        renderer: { ...canvas.props.renderer, drawLists: false },
+      });
+      canvas.handleResize();
+      let time = now();
+      const tick = async (request: boolean) => {
+        canvas.commit(true);
+        if (request) canvas.requestDraw();
+        canvas.tick((time += 16) as now.Timestamp, { isSynchronous: true });
+        await canvas.graphics.resources.pending.whenReady();
+      };
+      for (let i = 0; i < 20 && !list; ++i) await tick(true);
+      for (let i = 0; i < 5; ++i) await tick(true);
+      // nothing changed: nothing drawn
+      renders = 0;
+      for (let i = 0; i < 3; ++i) await tick(false);
+      expect(renders).toBe(0);
+      // looking along -z at the front copy, the others behind it
+      const { center } = canvas.boundingSphere;
+      canvas.camera.setState(
+        { target: Vec3.clone(center), position: Vec3.create(center[0], center[1], 8), up: Vec3.create(0, 1, 0) },
+        0,
+      );
+      // the frame of the new view culled against the old view's pyramid; then without requests a frame against a
+      // pyramid of this view, then none
+      await tick(false);
+      renders = 0;
+      await tick(false);
+      expect(renders).toBe(1);
+      for (let i = 0; i < 3; ++i) await tick(false);
+      expect(renders).toBe(1);
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
   it('merges one object alone to cull it on the GPU; by default (gpuCulling auto) not with few instances', async () => {
     const plugin = await createPlugin();
     try {
