@@ -40,6 +40,14 @@ is not built is [../TODO.md](../TODO.md).
   k-means proxy levels; Mol* culls per 200 Å cell and uses strides. Ludo: "dont stop until performance is smooth" (≤16.7
   ms WebGPU, ≤33 ms WebGL2 zoomed, on the M1) and "if in doubt or need answer, use state of the art decision": per
   particle frustum culling first, then what the numbers show (moving quality, proxy levels). Merge #27 first.
+  - Round 1: **PR #28** (merge #27 first). Per-particle frustum, LOD-range and Hi-Z tests on the GPU; PetWorld moved to
+    GPU culling (`gpuCulling: 'auto'` from 10 M indices and ≥30 instances); a stale-occlusion bug fixed (a still camera
+    tested occlusion once against a pyramid with holes: the main win); LODs 4x coarser while moving, full detail 250 ms
+    after it stops. WebGPU at 0.1, dpr 1, still/turning: CellPack 83 → 12/20 ms, PetWorld 119 → 22/31 ms. Not yet met:
+    dpr 2 (CellPack 36/59, PetWorld 67/94), WebGL2 (CellPack 88/37, PetWorld dpr 2 342/251), Firefox not measured.
+    Settled images identical; while turning, up to ~1.4k pixels late a frame at 0.02 (one-phase occlusion).
+  - Round 2 (running, per Ludo's no-stop rule): lower resolution while moving, clusters inside a particle, two-phase
+    occlusion, WebGL2, the wiggle allowance. k-means proxy levels change the look at rest: images for Ludo first.
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
   parallel; merged in this order (each merges `origin/prism-me` before its PR):
