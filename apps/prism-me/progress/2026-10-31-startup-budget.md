@@ -181,13 +181,13 @@ canvas's right-click menu opens with its items; `mesoscale.colorLevels` runs; no
 
 ### What did not move, and why
 
-- **The three extensions' operations** (stage-tools 46.8, cryoet 32.5, mesoscale 32.2 kB, and plugin/core's particle
+- **The three extensions' operations** (stage-tools 46.8, cryoet 30.7, mesoscale 31.4 kB, and plugin/core's particle
   `ops.ts` and `particle-targets.ts` 15.8 kB through `tomograms.ts` → `cryoet/operations`). Their views are lazy
   already; their areas are not, and cannot be as they are: the explorer's panel reads `api.mesoscale`, `api.cryoet` and
   `api.stage` synchronously at start (`sceneModel`, `ScenePanel`, the menus), and the stage subscribes to the canvas's
   right-click in its constructor. As `LazyViewerExtension`s (stubs as `LazyVideoExport`'s, every operation's flags
   declared, `StageLabel`/`StageDistance` in `owns.transformers`, the hidden tabs in `parts`) the explorer would have to
-  follow areas that appear later, and the first right-click to load the stage. A lane of its own: about 0.13 MB.
+  follow areas that appear later, and the first right-click to load the stage. A lane of its own: about 0.12 MB.
 - **The explorer's menus** (`menu.ts` 8.7 kB and stage-tools' `drag.ts`): every menu path opens synchronously; small.
 - **prism-me's graphics additions** (color levels 8.7 kB, culling 18.2, ghost outlines 4.6, the clip shaders 7.5, the
   triangle pick 11.9): shader sources are assembled synchronously when a program is built, and the triangle pick is on
@@ -218,3 +218,10 @@ would conflict with every master merge). Ludo decides.
 #28 instance-cull 18.2 kB; #25 ui-scale 16.1; #31 mesh-measure 11.9; #27 dynamic-color 8.7; #20 + #24 cuts and ghosts
 7.5 (+ #20 particle layers 4.7, #20 + #8 particle look 4.4); #30 ghost-cull 4.6; #10 and #28 `canvas3d.ts` 2.8; the rest
 under 2.5 each (#9, #10, #12, #17, #18, #5). Upstream has 17 kB of room: any one of the first four alone puts it over.
+
+## The gate
+
+`npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `node scripts/workspace/assets.mjs`
+(no change) and `pnpm check:workspace` pass; `pnpm test:unit apps/prism-me` 23 files, 140 tests pass; the app's
+`test:scaling` (2 files, 5 tests), `styles:check` and `typecheck:storybook` pass. Prism viewer's `typecheck:storybook`
+fails in `packages/prism/viewer/src/api/styles.ts:114` (from #24, as the brief says): not fixed here.
