@@ -59,6 +59,7 @@ One group per triangle instead, at 1 M triangles (500 k vertices): unindexed, 3 
 normal, group) are 84 MB against 14 MB, with a color and a marker texel a triangle; the provoking-vertex reorder (about
 one vertex a triangle, 28 MB) depends on the backend's provoking vertex, and vertex colors would no longer
 interpolate.
+
 ## Open
 
 - A preview move (`setState({ transform })`) is not read by the pick: during a drag the triangle is found where the

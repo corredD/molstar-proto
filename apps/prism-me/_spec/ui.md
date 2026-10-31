@@ -216,7 +216,21 @@ voxel under the click, on an isosurface or a slice ("map.mrc voxel (i, j, k)"); 
 `structure`, which takes a volume whole) it is the whole volume's center ("map.mrc (center)"), following "the
 granularity of what is selected". Its position is Mol*'s (the voxel's or the grid's sphere, in the volume's frame). A
 voxel is picked on an isosurface, a slice or a direct volume (where it looks solid: Mol*'s `surfaceOpacity`; the same
-`Volume.Cell` pick). A segment of a segmentation counts as the whole volume.
+`Volume.Cell` pick). A segment of a segmentation counts as the whole volume. And meshes (Ludo, 2026-10-31): a file's
+mesh (OBJ, PLY, VTP) is hovered, highlighted and selected by triangle (.v6/plans/gl/triangle-picking.md), and a mesh
+point is the point picked on the triangle under the click ("membrane.obj triangle 1234"), kept as the triangle and its
+barycentric weights, so it follows the mesh's moves and scales; at Mol*'s `structure` granularity the click takes the
+whole mesh, which is not a point (said). Why the picked point and not the triangle's centroid or a vertex: it is where
+the person clicked (ChimeraX's surface markers and 3D Slicer's model markups do the same), up to half a triangle or an
+edge away otherwise.
+
+An angle (at the middle of three points) and a dihedral (about the middle two of four), between the same points (Ludo,
+2026-10-31): from the latest three or four ⌘/Ctrl+clicked points, Mol*'s "from the latest picks", by the canvas's
+right-click ("Measure the angle of the latest 3 points", "… the dihedral of the latest 4 points", first in the menu when
+there are as many); `stage.angle` and `stage.dihedral` for ⌘K and the agent. Drawn by Mol*'s `AngleRepresentation` and
+`DihedralRepresentation`, the same cell kind as a distance (`StageDistance`, with its third and fourth points), so their
+rows, eyes, properties and right-click are a distance's; their rows say "Angle 109.47°", "Dihedral -60.00°". The latest
+points go with the first one (Esc, a plain click, selection mode left).
 
 - **In selection mode** (its button under the 3D view) (Ludovic, 2026-10-24): that mode already selects everything in
   the scene; there, two ⌘+clicks on a Mac, two Ctrl+clicks elsewhere, also make a distance. A modifier click selects
@@ -250,9 +264,9 @@ voxel is picked on an isosurface, a slice or a direct volume (where it looks sol
   the model, as a label; a key no row has: under its first object's row), its kind told before its value ("Distance
   12.34 Å"), with its eye. A click on its line in 3D picks the row (its text is not pickable: Mol*'s text geometry sets
   `pickable: false`).
-- **Its properties** (Distance): the value, its two points (a click picks the point's row), text size and line width
-  (times its own, 0.1–100: readable at a volume's scale; Ludovic, 2026-10-25), opacity; a log slider and its number box;
-  one step a release.
+- **Its properties** (Measurement; the header names its kind): the value, its points (a click picks the point's row),
+  text size and line width (times its own, 0.1–100: readable at a volume's scale; Ludovic, 2026-10-25), opacity; a log
+  slider and its number box; one step a release.
 - **Its right-click** (on the row or on the line): Focus (the camera on its two points), Hide, Remove.
 - ⌘K and the agent: `stage.distance` takes a point as a pick (`{ loci }`), a structure target (`A:10@CA`) or a particle
   (`<list ref>#<index>`); `stage.editDistance` changes or removes one. A point is named "THR 1 CA (A)" (an atom), "LYS

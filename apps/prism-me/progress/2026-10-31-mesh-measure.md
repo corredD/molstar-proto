@@ -76,3 +76,111 @@ other selection. Right now, mesh selection is global not at the triangle level."
 
 - Then `gh pr create -R corredD/molstar-proto --base prism-me`. The PR body ends with
   `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Do not merge.
+
+## Built
+
+1. **Triangle picking** (library; .v6/plans/gl/triangle-picking.md). The GPU pick still gives the object, the instance,
+   the group and the depth point; `Canvas3dInteractionHelper.getLoci` narrows a group pick of a shape that opted in
+   (`Shape.getTriangleLoci`, `enableTrianglePicking`; OBJ, PLY and VTP do) to the triangle under the pointer: the
+   pointer's ray (the eye through the depth point) against the triangles near the depth point, the hit nearest to the
+   depth point, else the nearest triangle. The loci is a `ShapeGroup.Loci` with `triangles` (`{ instance, index, uv }`),
+   so what reads only `groups` (the gizmo, MVS, labels) is unchanged. A shape representation marks a triangle loci by
+   itself: copies of the highlighted and selected triangles, in their group's color with Mol\*'s marker, a hair off each
+   side of the surface, one render object made empty with the representation, not pickable; never the group. Marks stay
+   through a move or scale of the mesh. Whole-mesh select: Mol\*'s `structure` granularity turns the pick into the whole
+   shape (one click), and the existing object actions (the row, its menu) are unchanged.
+2. **The point on a triangle**: the picked surface point, kept as barycentric weights of the triangle in the mesh's
+   space and evaluated through the current instance transform (decided below).
+3. **Measurements between any picks** (stage-tools, prism-me): `stage.distance` takes a triangle pick; `stage.angle` and
+   `stage.dihedral` are new (⌘K commands, agent tools `measure_angle`, `measure_dihedral`). One cell kind for the three
+   (`StageDistance` with optional third and fourth points: old sessions open), drawn by Mol\*'s distance, angle and
+   dihedral representations; depends on its objects, so moving or scaling the mesh (`stage.move`, `cryoet.mesh` scale:
+   the shape provider's transforms) re-evaluates it. In the explorer: ⌘/Ctrl+click triangles as any point (two make a
+   distance, as before); the canvas's right-click offers "Measure the angle of the latest 3 points" and "… the dihedral
+   of the latest 4 points"; rows say "Angle 17.34°", the properties' header names the kind.
+
+## Decided
+
+- **The GPU picks the group, the CPU finds the triangle; marks are copies** (state of the art for picking without
+  `primitive_id`: an ID buffer for the object, a CPU raycast against a spatial index for the element, as three-mesh-bvh
+  and ParaView's cell picking; WebGL2 and core WebGPU have no primitive id). One group per triangle was measured on
+  paper and rejected: a flat group is the provoking vertex's (the last in WebGL, the first in WebGPU), an indexed closed
+  mesh has half as many vertices as triangles, so it needs an unindexed mesh (84 MB of vertices against 14 MB at 1 M
+  triangles), and vertex colors would stop interpolating.
+- **The picked point** (brief step 2), as ChimeraX's surface markers and 3D Slicer's model markups: it is where the
+  person clicked; a centroid is up to half a triangle away, a vertex up to an edge. Stored as `uv` on the triangle, so
+  it follows moves and scales exactly and is saved in a session. Its bounds' center is the point, as Mol\*'s measurement
+  representations measure between centers; the radius reaches the triangle's vertices (the text's size).
+- **Not Prism's `measure.*` operations** (the brief's "through Prism's measurement operations"): Prism's area is Mol\*'s
+  `StructureMeasurementManager`, which takes structure loci only (`StructureSelectionFromBundle`); prism-me already
+  measures particles and voxels through stage-tools (2026-10-24, measure-distance), so triangles, angles and dihedrals
+  go there too. Atom-to-atom through Prism's `measure.*` is untouched.
+- **Angle and dihedral from the latest points** (the classic Mol\* "from the latest picks", Prism's `measure.*` without
+  targets) by the right-click: the approved two-⌘+click distance is unchanged; a third gesture would collide with it.
+- **A compact grid, not `GridLookup3D`**: the counting sort keeps 6 bytes a triangle against 20 and builds 12× faster
+  (measured below).
+- **Opt in per shape**: Mol\*'s planes, boxes, gizmo handles and the measurement shapes are meshes whose groups are
+  their meaning. A mesh point on a shape that did not opt in (a unit cell) is refused.
+
+## Measured
+
+M1 Max, Chrome headless on Metal, a UV sphere of radius 500 Å (a membrane's density), one material.
+
+| Triangles | Lookup build | Lookup bytes          | Mesh's own (CPU) | A pick (p50 / p95) |
+| --------- | ------------ | --------------------- | ---------------- | ------------------ |
+| 1 M       | 24 ms        | 6.0 MB (6 B/triangle) | 26 MB            | 30 µs / 76 µs      |
+| 4 M       | 86 ms        | 24 MB                 | 104 MB           | 47 µs / 120 µs     |
+
+(`triangle-pick-scaling.test.ts`, heavy lane, `TRIANGLE_PICK_N=1000000`; with `GridLookup3D`: 297 ms and 20 MB at 1 M.)
+In the app with 1 M triangles, on WebGPU and WebGL2: the narrowing under 0.1 ms p95 a hover; the same triangle indices
+found on both backends; frames 16.7 ms p50 with and without a highlighted triangle (vsync); one more draw call. Pointer
+move to hover event, median of 12: 46 ms by group (one material: nothing changes, no redraw) against 57 ms by triangle
+(each move moves the highlight); the first hover builds the lookup, and on WebGL2 compiles the copies' program (280 ms
+once).
+
+## Tests
+
+- core `ray3d.test.ts` (intersectTriangle); model `shape-triangle.test.ts` (equality, bounds, label, granularity);
+  graphics `triangle-pick.test.ts` (the hit nearest the depth point, the miss, the cache, a moved and scaled instance),
+  `triangle-marks.test.ts` (only the triangle marked, hover moves, toggles, a move keeps the marks, a group-picked mesh
+  as before), `formats/shape/_test/triangle-picking.test.ts` (OBJ and PLY opt in, the wireframe does not),
+  `triangle-pick-scaling.test.ts` (heavy: n and 4n, linear, bytes, pick time); stage-tools `mesh-measure.test.ts`
+  (triangle–atom, triangle–triangle and "already", following `stage.move` and a scale, angle and dihedral, triangle–
+  particle, the whole mesh refused); prism-me `explorer/_test/mesh-measure.test.ts` (⌘/Ctrl+clicks on triangles, the
+  angle and dihedral of the latest points, let go). The existing atom-to-atom tests pass unchanged.
+- Headless Chrome on WebGPU and WebGL2 (port 1364, 1CRN and an OBJ sphere made in the page), real mouse and ⌘+clicks in
+  selection mode: hover a triangle (only it highlights), two triangles selected and measured (7.65 Å), a triangle to ARG
+  10 (25.67 Å), the angle from the right-click (17.34°), the mesh moved 8 Å: 29.25 Å and 15.46°, the triangle-to-
+  triangle distance unchanged.
+
+## Screenshots
+
+| WebGPU                                                             | WebGL2                                                             |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| ![one triangle](2026-10-31-mesh-measure/webgpu-0-one-triangle.jpg) | ![one triangle](2026-10-31-mesh-measure/webgl2-0-one-triangle.jpg) |
+| ![hover](2026-10-31-mesh-measure/webgpu-1-hover.jpg)               | ![hover](2026-10-31-mesh-measure/webgl2-1-hover.jpg)               |
+| ![two triangles](2026-10-31-mesh-measure/webgpu-2-triangles.jpg)   | ![two triangles](2026-10-31-mesh-measure/webgl2-2-triangles.jpg)   |
+| ![the right-click](2026-10-31-mesh-measure/webgpu-3-menu.jpg)      | ![the right-click](2026-10-31-mesh-measure/webgl2-3-menu.jpg)      |
+| ![angle](2026-10-31-mesh-measure/webgpu-4-angle.jpg)               | ![angle](2026-10-31-mesh-measure/webgl2-4-angle.jpg)               |
+| ![moved](2026-10-31-mesh-measure/webgpu-5-moved.jpg)               | ![moved](2026-10-31-mesh-measure/webgl2-5-moved.jpg)               |
+
+A million triangles, one hovered: ![1 M](2026-10-31-mesh-measure/webgpu-million-triangles.jpg)
+
+## Library or prism-me
+
+- **Library, upstream candidates** (commits that name no extension): core `Ray3D.intersectTriangle`; model
+  `ShapeGroup.Loci.triangles`, `Shape.getTriangleLoci` and `getTriangleBoundingSphere`, the label; graphics the triangle
+  lookup, `enableTrianglePicking`, `triangleLoci`, the interaction helper's narrowing, `TriangleMarks` in the shape
+  representation, OBJ/PLY/VTP opting in. Listed in TODO.md, Library fixes ready for upstream.
+- **prism-me**: stage-tools (triangle points, `stage.angle`, `stage.dihedral`, commands, skill) and the explorer
+  (picker, right-click, rows, properties).
+
+## Size
+
+Production about 1270 lines added, 150 removed (library about 790 of them); tests about 990. The brief gave no size.
+
+## Open
+
+In TODO.md (Backlog, "Meshes by triangle"): live follow during a drag, picks during a preview move, overpaint and focus
+by triangle, selected triangles outside Prism's Selection tab and sessions, a vertex-colored triangle's mark color,
+mixed triangle sizes.
