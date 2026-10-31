@@ -10,12 +10,13 @@ is not built is [../TODO.md](../TODO.md).
   2026-10-30, "really important": Settings › Appearance › UI scale, − and +, the UI larger and the 3D untouched; Prism's
   size tokens scaled by one variable, its commits upstreamable. PR #25, reviewed (no must-fix stood; 7 findings fixed or
   to TODO; the drift test found a virtual-list bug, fixed); not yet seen in a browser; served on 1344; waits on Ludo.
-- **Queued: 8. Dynamic coloring by distance** (cellVIEW's Chameleon; Ludo, 2026-10-30, "add to the queue"; brief in
-  TODO.md `Next` and cellview.md §7, PR #26, docs only, waits on Ludo). Levels like the LOD (far: compartment or entity;
-  closer: chain; closest: residue or atom), blended so a zoom never pops. Step 1 a measurement: re-running
-  `particle-hierarchy` over CellPack MG on WebGPU and WebGL2, which chooses (a) a theme's current level moved on camera
-  change (David's) or (b) a shader blend by view depth (cellVIEW's, library, with Alexander). Open for Ludo: edges in
-  screen pixels or in Å. Not started.
+- **8. Dynamic coloring by distance** (cellVIEW's Chameleon; Ludo, 2026-10-30, "add to the queue"; brief in TODO.md
+  `Next` and cellview.md §7, PR #26, docs only, waits on Ludo). Levels like the LOD (far: compartment or entity; closer:
+  chain; closest: residue or atom), blended so a zoom never pops. Step 1 a measurement: re-running `particle-hierarchy`
+  over CellPack MG on WebGPU and WebGL2, which chooses (a) a theme's current level moved on camera change (David's) or
+  (b) a shader blend by view depth (cellVIEW's, library, with Alexander). Open for Ludo: edges in screen pixels or in Å
+  (the lane builds pixels by default, the unit in one place). Started 2026-10-30 (Ludo: "go"): lane `dynamic-color`
+  (`me/dynamic-color`, port 1359), step 1 first.
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
   parallel; merged in this order (each merges `origin/prism-me` before its PR):
