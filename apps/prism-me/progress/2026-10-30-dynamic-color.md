@@ -58,15 +58,17 @@ local copy with `--data`). Times in ms, median / p90.
 
 ## Built
 
-- Step 1 only (the measurement, `recolor-bench.mjs`). **Stopped at the size check:** way (b)'s library part is over the
-  brief's ~250 lines (Size below). No code, no PR; Ludo picks an option.
+- Step 1 (the measurement, `recolor-bench.mjs`), then a stop at the size check (Size below); Ludo picked option 1 the
+  same day.
 
 ## Decided
 
+- **Option 1, (b) in full** (Ludo, 2026-10-30): both backends, per pixel, four levels compartment → entity → chain →
+  atom, blended in Oklab; the size limit lifted to ~420 graphics lines for this lane (stop and report past it).
+- **The nearest level is the atom, by element** (Ludo, 2026-10-30).
+- **The edges in pixels on screen** (Ludo, 2026-10-30), the unit kept in one place.
 - **Way (b), the blend in the shader by the fragment's view depth** (this lane, from step 1's numbers; the brief's
   rule).
-- **Atom, not residue, as the nearest level** (proposed): cellVIEW computes a residue color and never uses it (§7.3);
-  the brief allows "residue or atom". Ludo may say otherwise.
 
 ## Learned
 
