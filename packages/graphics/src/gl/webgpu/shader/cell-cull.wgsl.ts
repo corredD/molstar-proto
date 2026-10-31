@@ -320,6 +320,92 @@ fn main(
 }
 `;
 
+/**
+ * Per (drawn level-0 instance, cluster of its segment): the cluster's sphere (consecutive spheres of the segment's
+ * level 0, close in space) moved by the instance's transform, tested as the instances are (frustum, distance ranges,
+ * level 0's, the depth pyramid); where it passes, the instance copied from the segment's level-0 region into the
+ * cluster's (a slot by an atomic counter per cluster). A workgroup row per cluster (\`id.y\`), its threads the level-0
+ * slots of the segment
+ */
+export const cluster_copy_wgsl = /* wgsl */ `
+${cull_tests_wgsl}
+
+fn copySlot(src: u32, dst: u32) {
+    transforms[dst * 4u] = transforms[src * 4u];
+    transforms[dst * 4u + 1u] = transforms[src * 4u + 1u];
+    transforms[dst * 4u + 2u] = transforms[src * 4u + 2u];
+    transforms[dst * 4u + 3u] = transforms[src * 4u + 3u];
+    instances[dst] = instances[src];
+    segments[dst * 3u] = segments[src * 3u];
+    segments[dst * 3u + 1u] = segments[src * 3u + 1u];
+    segments[dst * 3u + 2u] = segments[src * 3u + 2u];
+    spheres[dst] = spheres[src];
+    lods[dst] = lods[src];
+}
+
+@compute @workgroup_size(WorkgroupSizeX)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    let cluster = id.y;
+    if (cluster >= u32(uParams.uClusterCount)) {
+        return;
+    }
+    // the cluster's sphere (local, its atoms' radius included), its segment, the segment's level-0 region, its own
+    let local = clusters[cluster * 2u];
+    let info = bitcast<vec4<u32>>(clusters[cluster * 2u + 1u]);
+    let i = id.x;
+    if (i >= counters[info.x]) {
+        return;
+    }
+    let src = info.y + i;
+    let t0 = transforms[src * 4u].xyz;
+    let t1 = transforms[src * 4u + 1u].xyz;
+    let t2 = transforms[src * 4u + 2u].xyz;
+    let t3 = transforms[src * 4u + 3u].xyz;
+    let center = t0 * local.x + t1 * local.y + t2 * local.z + t3;
+    let scale = sqrt(max(dot(t0, t0), max(dot(t1, t1), dot(t2, t2))));
+    let sphere = vec4<f32>(center, local.w * scale + uParams.uAnimationSlack);
+    if (outsideView(sphere)) {
+        return;
+    }
+    let d = dot(uParams.uCameraPlane.xyz, center) + uParams.uCameraPlane.w;
+    let range = uParams.uLodRange;
+    if (range.z > 0.0 && (d + sphere.w < range.x || d - sphere.w > range.y)) {
+        return;
+    }
+    if (u32(uParams.uLevelCount) > 0u) {
+        let level = uParams.uLevels[0];
+        if (d + sphere.w < level.x || d - sphere.w > level.y) {
+            return;
+        }
+    }
+    if (occluded(sphere)) {
+        return;
+    }
+    let slot = atomicAdd(&clusterCounters[cluster], 1u);
+    copySlot(src, info.z + slot);
+}
+`;
+
+/**
+ * The workgroups of \`cluster-copy\`: a row per cluster, as many columns as the most instances drawn at level 0 of a
+ * segment (\`instance-copy\`'s counters) need: the rows of segments out of view or coarse run no thread
+ */
+export const cluster_dispatch_wgsl = /* wgsl */ `
+@compute @workgroup_size(WorkgroupSizeX)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x != 0u) {
+        return;
+    }
+    var most = 0u;
+    for (var s = 0u; s < u32(uParams.uSegmentCount); s++) {
+        most = max(most, counters[s]);
+    }
+    dispatchArgs[0] = (most + WorkgroupSizeX - 1u) / WorkgroupSizeX;
+    dispatchArgs[1] = u32(uParams.uClusterCount);
+    dispatchArgs[2] = 1u;
+}
+`;
+
 /** Per (level, segment) record: the instances drawn as its instance count */
 export const cull_args_wgsl = /* wgsl */ `
 @compute @workgroup_size(WorkgroupSizeX)

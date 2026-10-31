@@ -14,7 +14,13 @@ import {
   mc_chunk_push_wgsl,
 } from './marching-cubes-chunks.wgsl.js';
 import { scan_add_wgsl, scan_block_wgsl } from './prefix-sum.wgsl.js';
-import { cell_cull_wgsl, cull_args_wgsl, instance_copy_wgsl } from './cell-cull.wgsl.js';
+import {
+  cell_cull_wgsl,
+  cluster_copy_wgsl,
+  cluster_dispatch_wgsl,
+  cull_args_wgsl,
+  instance_copy_wgsl,
+} from './cell-cull.wgsl.js';
 import { denoise_wgsl } from './denoise.wgsl.js';
 
 /** WGSL compute kernels by the name of their `KernelCode`, like `programs.ts` for render programs */
@@ -33,6 +39,8 @@ const Kernels = new Map<string, string>([
   ['gd-write', gd_write_wgsl],
   ['cell-cull', cell_cull_wgsl],
   ['instance-copy', instance_copy_wgsl],
+  ['cluster-copy', cluster_copy_wgsl],
+  ['cluster-dispatch', cluster_dispatch_wgsl],
   ['cull-args', cull_args_wgsl],
   ['illumination-denoise', denoise_wgsl],
 ]);

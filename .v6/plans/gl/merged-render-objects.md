@@ -87,6 +87,15 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
   level's range; per instance, CellPack HIV at 0.1 and 0.02 of the distance drew a third fewer level-0 spheres
   (`apps/prism-me/progress/2026-10-31-instance-cull.md`). The test costs nothing where its thread already runs; the
   dropped variant read every instance through compacted indices per vertex (below).
+- **Clusters inside an instance** (level 0 of members of 512 spheres or more, as meshlet culling): each level's own
+  spheres are in space order (`setPositionGroup`), cut evenly in clusters of at most 256 (`ClusterSpheres`), a local
+  sphere each (its atoms' padding included). `cluster-copy` (a row of threads per cluster, as many columns as the most
+  level-0 instances of a segment drawn: `cluster-dispatch` writes them, dispatched indirectly) tests each drawn level-0
+  instance's cluster sphere as the instances are and copies the instance into the cluster's region (sized by the
+  segment's instances, after the identity region); level 0 of a clustered segment draws a record per cluster (its
+  range of spheres) instead of the segment's. Why: a protein partly in view or behind its own front drew all its atoms.
+  Measured (M1, WebGPU, still, dpr 1 / 2): PetWorld HIV at 0.02 49 to 41 / 147 to 127 ms, CellPack HIV at 0.1 12 to
+  10 / 36 to 28 ms; images as before. Memory: 112 bytes per instance and cluster (PetWorld HIV 17 MB).
 - **Compaction by copy**: a thread per instance of a drawn cell copies its instanced attributes (transform, instance
   id, segment data, about 112 bytes) into compacted buffers, a slot per level in its segment's region (`atomicAdd` on a
   counter per level and segment); the compacted buffers are the render item's instanced vertex buffers. The programs

@@ -15,6 +15,10 @@ import type { ComputeContext, ComputeKernel, KernelRequest, StorageBuffer } from
 import {
   CellCullKernel,
   CellCullSchema,
+  ClusterCopyKernel,
+  ClusterCopySchema,
+  ClusterDispatchKernel,
+  ClusterDispatchSchema,
   CullArgsKernel,
   CullArgsSchema,
   InstanceCopyKernel,
@@ -80,11 +84,22 @@ export interface MergedCuller {
 export const MergedCullKernels: readonly KernelRequest[] = [
   { code: CellCullKernel, schema: CellCullSchema },
   { code: InstanceCopyKernel, schema: InstanceCopySchema },
+  { code: ClusterCopyKernel, schema: ClusterCopySchema },
+  { code: ClusterDispatchKernel, schema: ClusterDispatchSchema },
   { code: CullArgsKernel, schema: CullArgsSchema },
 ];
 
 /** Floats per instance of the compacted attributes, by name */
 const AttributeFloats = { aTransform: 16, aInstance: 1, aSegment: 3, aSegmentSphere: 4, aSegmentLod: 4 } as const;
+
+/**
+ * Spheres a cluster holds at most: level 0 of a member of at least `MinClusteredSpheres` spheres is drawn by clusters of
+ * consecutive spheres (in space order within each level's own, `setPositionGroup`), each culled per instance
+ * (`cluster-copy`); 256: PetWorld HIV's proteins 2,167 records and 17 MB, a 40% smaller level 0 in view close up than by
+ * instances alone (`apps/prism-me/progress/2026-10-31-instance-cull.md`)
+ */
+export const ClusterSpheres = 256;
+export const MinClusteredSpheres = 2 * ClusterSpheres;
 
 const EmptyInt = new Int32Array(0);
 const EmptyUint = new Uint32Array(0);
@@ -110,6 +125,10 @@ export function createMergedCuller(
   const cellLevels = buffer('culled cell levels');
   const counters = buffer('culled counters');
   const args = buffer('culled draw arguments');
+  const clusters = buffer('culled clusters');
+  const clusterCounters = buffer('culled cluster counters');
+  const clusterArgs = buffer('culled cluster draw arguments');
+  const clusterDispatch = buffer('culled cluster dispatch');
   const attributes = {
     aTransform: buffer('culled transforms'),
     aInstance: buffer('culled instances'),
@@ -171,6 +190,30 @@ export function createMergedCuller(
     counters,
     args,
   };
+  const clusterValues = {
+    ...viewValues,
+    uClusterCount: ValueCell.create(0),
+    clusters,
+    counters,
+    clusterCounters,
+    transforms: attributes.aTransform,
+    instances: attributes.aInstance,
+    segments: attributes.aSegment,
+    spheres: attributes.aSegmentSphere,
+    lods: attributes.aSegmentLod,
+  };
+  const clusterDispatchValues = {
+    uSegmentCount: ValueCell.create(0),
+    uClusterCount: ValueCell.create(0),
+    counters,
+    dispatchArgs: clusterDispatch,
+  };
+  const clusterArgsValues = {
+    uRecordCount: ValueCell.create(0),
+    uRecordWords: ValueCell.create(words),
+    counters: clusterCounters,
+    args: clusterArgs,
+  };
   let kernels: ComputeKernel[] | undefined;
   let preparing = false;
   const getKernels = () => {
@@ -186,6 +229,9 @@ export function createMergedCuller(
       compute.createKernel(CellCullKernel, CellCullSchema, cellValues),
       compute.createKernel(InstanceCopyKernel, InstanceCopySchema, copyValues),
       compute.createKernel(CullArgsKernel, CullArgsSchema, argsValues),
+      compute.createKernel(ClusterCopyKernel, ClusterCopySchema, clusterValues),
+      compute.createKernel(CullArgsKernel, CullArgsSchema, clusterArgsValues),
+      compute.createKernel(ClusterDispatchKernel, ClusterDispatchSchema, clusterDispatchValues),
     ];
     return true;
   };
@@ -202,6 +248,7 @@ export function createMergedCuller(
   let cellCount = 0;
   let levelCount = 0;
   let identityBase = 0;
+  let clusterCount = 0;
 
   function syncLayout() {
     const lodLevels = members[0].lodLevels?.ref.value as LodLevelsValue | undefined;
@@ -235,6 +282,60 @@ export function createMergedCuller(
     }
     cellCount = spheres.length / 4;
 
+    // the clusters of level 0 (members of grids and levels, of `MinClusteredSpheres` spheres or more): per level's own
+    // range of spheres, cut evenly in at most `ClusterSpheres`; a region after the identity's per cluster
+    const clusterData: number[] = [];
+    const clusterRecords: number[] = [];
+    const clustered = new Uint8Array(segmentCount);
+    let regionBase = identityBase + instanceCount;
+    for (let s = 0; s < segmentCount && levelCount > 0; ++s) {
+      const member = members[s] as MergeableValues & { tPositionGroup?: ValueCell<{ array: Float32Array }> };
+      const memberLevels = member.lodLevels?.ref.value as LodLevelsValue | undefined;
+      const positions = member.tPositionGroup?.ref.value.array;
+      if (!memberLevels || !positions || member.instanceGrid.ref.value.cellSize <= 1) continue;
+      const count = memberLevels[0][3] / 6;
+      if (count < MinClusteredSpheres) continue;
+      clustered[s] = 1;
+      const n = segments.instanceCounts[s];
+      const padding =
+        ((member as { padding?: ValueCell<number> }).padding?.ref.value ?? 0) * Math.max(1, memberLevels[0][4]);
+      const edges = Array.from(new Set([0, count, ...memberLevels.map((l) => Math.min(count, l[3] / 6))])).sort(
+        (a, b) => a - b,
+      );
+      for (let e = 0; e + 1 < edges.length; ++e) {
+        const [a, b] = [edges[e], edges[e + 1]];
+        const pieces = Math.ceil((b - a) / ClusterSpheres);
+        const size = Math.ceil((b - a) / pieces);
+        for (let start = a; start < b; start += size) {
+          const end = Math.min(b, start + size);
+          const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+          for (let i = start; i < end; ++i) {
+            for (let k = 0; k < 3; ++k) {
+              const v = positions[i * 4 + k];
+              if (v < box[k]) box[k] = v;
+              if (v > box[3 + k]) box[3 + k] = v;
+            }
+          }
+          const c = [0, 1, 2].map((k) => (box[k] + box[3 + k]) / 2);
+          let r = 0;
+          for (let i = start; i < end; ++i) {
+            const dx = positions[i * 4] - c[0];
+            const dy = positions[i * 4 + 1] - c[1];
+            const dz = positions[i * 4 + 2] - c[2];
+            r = Math.max(r, dx * dx + dy * dy + dz * dz);
+          }
+          clusterData.push(c[0], c[1], c[2], Math.sqrt(r) + padding, s, segments.instanceBases[s], regionBase, 0);
+          // the record: the cluster's spheres, from the segment's first, its region's instances
+          const first = indexed ? segments.elementOffsets[s] / 4 + start * 6 : segments.drawBases[s] + start * 6;
+          if (indexed) clusterRecords.push((end - start) * 6, 0, first, 0, regionBase);
+          else clusterRecords.push((end - start) * 6, 0, first, regionBase);
+          regionBase += n;
+        }
+      }
+    }
+    clusterCount = clusterData.length / 8;
+    const clusterSlots = regionBase - identityBase - instanceCount;
+
     ensure(instanceData, instanceCount * InstanceDataVec4s * 16);
     ensure(instanceCells, instanceCount * 8);
     ensure(segmentBases, segmentCount * 8);
@@ -243,7 +344,23 @@ export function createMergedCuller(
     ensure(counters, levels * segmentCount * 4);
     ensure(args, levels * segmentCount * stride);
     for (const [name, floats] of Object.entries(AttributeFloats)) {
-      ensure(attributes[name as keyof typeof AttributeFloats], (levels + 1) * instanceCount * floats * 4);
+      ensure(
+        attributes[name as keyof typeof AttributeFloats],
+        ((levels + 1) * instanceCount + clusterSlots) * floats * 4,
+      );
+    }
+    ensure(clusters, clusterCount * 32);
+    ensure(clusterCounters, clusterCount * 4);
+    ensure(clusterArgs, clusterCount * stride);
+    if (clusterCount > 0) {
+      // the floats as written, the segment and regions as their bits
+      const data = new Float32Array(clusterData);
+      const bits = new Uint32Array(data.buffer);
+      for (let k = 0; k < clusterCount; ++k) {
+        for (let q = 4; q < 8; ++q) bits[k * 8 + q] = clusterData[k * 8 + q];
+      }
+      clusters.ref.value.write(data);
+      clusterArgs.ref.value.write(new Uint32Array(clusterRecords));
     }
     instanceCells.ref.value.write(cellOf);
     // per segment its first instance and its padding (the per-instance test grows coarse levels' spheres by it)
@@ -267,6 +384,8 @@ export function createMergedCuller(
         const memberLevels = member.lodLevels?.ref.value as LodLevelsValue | undefined;
         const o = (j * segmentCount + s) * words;
         records[o] = levelCount === 0 || gridless || !memberLevels ? drawCount : memberLevels[j][3];
+        // level 0 of a clustered segment drawn by its clusters' records
+        if (j === 0 && clustered[s]) records[o] = 0;
         const first = j * instanceCount + segments.instanceBases[s];
         if (indexed) {
           records[o + 2] = segments.elementOffsets[s] / 4;
@@ -284,6 +403,10 @@ export function createMergedCuller(
     ValueCell.updateIfChanged(copyValues.uInstanceCount, instanceCount);
     ValueCell.updateIfChanged(copyValues.uSegmentCount, segmentCount);
     ValueCell.updateIfChanged(argsValues.uRecordCount, levels * segmentCount);
+    ValueCell.updateIfChanged(clusterValues.uClusterCount, clusterCount);
+    ValueCell.updateIfChanged(clusterArgsValues.uRecordCount, clusterCount);
+    ValueCell.updateIfChanged(clusterDispatchValues.uSegmentCount, segmentCount);
+    ValueCell.updateIfChanged(clusterDispatchValues.uClusterCount, clusterCount);
   }
 
   /**
@@ -335,7 +458,7 @@ export function createMergedCuller(
   const getLayoutKey = () => {
     let key = `${values.instanceCount.ref.value},${segments.count}`;
     for (const m of members) {
-      key += `,${m.instanceGrid.ref.version},${m.boundingSphere.ref.version},${m.drawCount.ref.value},${m.lodLevels?.ref.version ?? -1},${(m as { padding?: ValueCell<number> }).padding?.ref.version ?? -1}`;
+      key += `,${m.instanceGrid.ref.version},${m.boundingSphere.ref.version},${m.drawCount.ref.value},${m.lodLevels?.ref.version ?? -1},${(m as { padding?: ValueCell<number> }).padding?.ref.version ?? -1},${(m as { tPositionGroup?: ValueCell<unknown> }).tPositionGroup?.ref.version ?? -1}`;
     }
     return key;
   };
@@ -479,10 +602,17 @@ export function createMergedCuller(
       const records = Math.max(1, levelCount) * segmentCount;
       const groups = (n: number) => Math.ceil(n / CellCullKernel.workgroupSize[0]);
       counters.ref.value.clear(0, records * 4);
+      if (clusterCount > 0) clusterCounters.ref.value.clear(0, clusterCount * 4);
       compute.beginComputePass({ label: 'merged cell culling' });
       kernels![0].dispatch(groups(cellCount));
       kernels![1].dispatch(groups(instanceCount));
+      if (clusterCount > 0) {
+        // as many columns as the most level-0 instances of a segment drawn need (none out of view)
+        kernels![5].dispatch(1);
+        kernels![3].dispatchIndirect(clusterDispatch.ref.value);
+      }
       kernels![2].dispatch(groups(records));
+      if (clusterCount > 0) kernels![4].dispatch(groups(clusterCount));
       compute.endComputePass();
       setDispatched(cameraPlane, frustum, min, max);
       // the pyramid was drawn from the last dispatch's culling: at this view and levels where they are the same
@@ -490,7 +620,7 @@ export function createMergedCuller(
       return true;
     },
     getLists: (levels) => {
-      const key = `${segmentCount},${levelCount},${args.ref.value.id}`;
+      const key = `${segmentCount},${levelCount},${args.ref.value.id},${clusterCount},${clusterArgs.ref.value.id}`;
       if (levels === listsLevels && key === listsKey) return lists;
       listsLevels = levels;
       listsKey = key;
@@ -505,12 +635,32 @@ export function createMergedCuller(
         uniforms: level.uniforms,
         indirect: { buffer: args.ref.value, byteOffset: j * segmentCount * stride, indexed },
       }));
+      // level 0 of the clustered segments: a record per cluster
+      if (clusterCount > 0) {
+        lists.push({
+          ...lists[0],
+          count: clusterCount,
+          indirect: { buffer: clusterArgs.ref.value, byteOffset: 0, indexed },
+        });
+      }
       return lists;
     },
     destroy: () => {
       if (kernels) for (const k of kernels) k.destroy();
       emptyHiZ.destroy();
-      const cells = [instanceData, instanceCells, segmentBases, cellSpheres, cellLevels, counters, args];
+      const cells = [
+        instanceData,
+        instanceCells,
+        segmentBases,
+        cellSpheres,
+        cellLevels,
+        counters,
+        args,
+        clusters,
+        clusterCounters,
+        clusterArgs,
+        clusterDispatch,
+      ];
       for (const cell of [...cells, ...Object.values(attributes)]) cell.ref.value.destroy();
     },
   };

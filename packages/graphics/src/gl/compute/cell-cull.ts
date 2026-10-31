@@ -15,7 +15,8 @@ import type { Texture } from '../texture.js';
  * `cell-cull` tests each cell (a thread per cell) and writes the levels it is drawn at; `instance-copy` tests each
  * instance of a drawn cell by its own sphere at those levels (a thread per instance: the frustum, the distance ranges,
  * the depth pyramid) and copies it into the compacted instance buffers, a slot per level in its segment's region (an
- * atomic counter per level and segment); `cull-args` writes the instance counts into the
+ * atomic counter per level and segment); `cluster-copy` copies each drawn level-0 instance of a segment cut in clusters
+ * again into the region of each of its clusters in view; `cull-args` writes the instance counts into the
  * indirect records (their other words written once per layout, `merged-culler.ts`). Counters and records are
  * level-major: level `j` of segment `s` is `j * segmentCount + s`, so a level's records are one list; its region
  * starts at instance `j * instanceCount + instanceBase(s)`
@@ -23,6 +24,8 @@ import type { Texture } from '../texture.js';
 export const CellCullKernel = KernelCode('cell-cull', [64]);
 export const InstanceCopyKernel = KernelCode('instance-copy', [64]);
 export const CullArgsKernel = KernelCode('cull-args', [64]);
+export const ClusterCopyKernel = KernelCode('cluster-copy', [64]);
+export const ClusterDispatchKernel = KernelCode('cluster-dispatch', [64]);
 
 /** Levels the kernels handle, as `aSegmentLod` (4 components) */
 export const MaxCullLevels = 4;
@@ -113,6 +116,31 @@ export const InstanceCopySchema = {
   segments: StorageBufferSpec('f32', 'read-write'),
   spheres: StorageBufferSpec('vec4<f32>', 'read-write'),
   lods: StorageBufferSpec('vec4<f32>', 'read-write'),
+};
+
+export const ClusterCopySchema = {
+  ...CullViewSchema,
+  uClusterCount: UniformSpec('i'),
+  /** per cluster two vec4: its local sphere; its segment, its segment's level-0 region and its own (`bitcast<u32>`) */
+  clusters: StorageBufferSpec('vec4<f32>', 'read'),
+  /** the instance counts of the records, level 0 first (`instance-copy`'s counters) */
+  counters: StorageBufferSpec('u32', 'read'),
+  /** per cluster the instances drawn, zeroed before */
+  clusterCounters: StorageBufferSpec('atomic<u32>', 'read-write'),
+  /** the compacted instanced attributes, read at level 0 and written at the clusters' regions */
+  transforms: StorageBufferSpec('vec4<f32>', 'read-write'),
+  instances: StorageBufferSpec('f32', 'read-write'),
+  segments: StorageBufferSpec('f32', 'read-write'),
+  spheres: StorageBufferSpec('vec4<f32>', 'read-write'),
+  lods: StorageBufferSpec('vec4<f32>', 'read-write'),
+};
+
+export const ClusterDispatchSchema = {
+  uSegmentCount: UniformSpec('i'),
+  uClusterCount: UniformSpec('i'),
+  counters: StorageBufferSpec('u32', 'read'),
+  /** `cluster-copy`'s workgroups (x, y, z) */
+  dispatchArgs: StorageBufferSpec('u32', 'read-write'),
 };
 
 export const CullArgsSchema = {
