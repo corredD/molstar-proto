@@ -172,7 +172,7 @@ describe("every row's eye and ⋯ (Ludo, 2026-10-28)", () => {
     // a category's Color…: its themes, one step for every object under it
     const steps = v.api.history.steps.value.length;
     await clickItem('Color…');
-    expect(labelsOf(menuItems())).toEqual(['By object', 'By entity', 'Generate colors', 'Uniform…']);
+    expect(labelsOf(menuItems())).toEqual(['By object', 'By entity', 'Generate colors', 'By zoom', 'Uniform…']);
     await clickItem('By object');
     await until(() => v.api.history.steps.value.length === steps + 1);
   });
