@@ -102,7 +102,8 @@ await page.evaluate((cutIndex) => {
       c.camera.setState({ ...snap, position: p }, 0);
     },
     occlusion: (on) => c.setProps({ hiZ: { ...c.props.hiZ, gpu: on } }),
-    ghost: (on) => window.molstar.api.run('clipping.update', { cut: cutIndex, ghost: on }),
+    // the eval's cut where it made another (`window.cutIndex`)
+    ghost: (on) => window.molstar.api.run('clipping.update', { cut: window.cutIndex ?? cutIndex, ghost: on }),
     stats: () => ({
       gpuCulled: c['renderer']?.gpuCulledCount,
     }),
