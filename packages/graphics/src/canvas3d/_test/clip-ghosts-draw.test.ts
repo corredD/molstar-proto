@@ -143,6 +143,112 @@ async function setup(mode: 'orthographic' | 'perspective', scale = 1, extraProps
   return { graphics, ctx, canvas, draw };
 }
 
+type Ball = { readonly center: Vec3; readonly radius: number };
+
+/**
+ * Spheres `balls` on a canvas of `size` pixels drawing outlines (ghosts in `Ghost`), a plane removing z < 0 (ghosted or
+ * not); the camera at `position` looking at the origin, after the reset (then `after`'s props);
+ * `draw(ghost)` returns the canvas's pixels (rows bottom to top)
+ */
+async function behindScene(options: {
+  size: number;
+  balls: readonly Ball[];
+  position: Vec3;
+  /** props set after the camera reset (e.g. its clipping radius) */
+  after?: object;
+  fov?: number;
+  fog?: boolean;
+}) {
+  const { size, balls, position, fov = 45, fog = false } = options;
+  const graphics = getGLContext(size, size);
+  const ctx = Canvas3DContext.fromGraphics(document.createElement('canvas'), graphics, new DefaultAssetManager());
+  const canvas = Canvas3D.create(ctx);
+  canvas.setProps({
+    renderer: { backgroundColor: Color(0xffffff) },
+    multiSample: { mode: 'off' },
+    camera: { mode: 'perspective', fov, helper: { axes: { name: 'off', params: {} } } },
+    cameraFog: fog ? { name: 'on', params: { intensity: 50 } } : { name: 'off', params: {} },
+    postprocessing: {
+      enabled: true,
+      occlusion: { name: 'off', params: {} },
+      shadow: { name: 'off', params: {} },
+      outline: {
+        name: 'on',
+        params: {
+          scale: 1,
+          threshold: 0.33,
+          color: Color(0x000000),
+          includeTransparent: false,
+          transparentColor: Ghost,
+        },
+      },
+    },
+  } as any);
+  const state = MeshBuilder.createState(512, 256);
+  state.currentGroup = 0;
+  addSphere(state, Vec3.create(0, 0, 0), 1, 3);
+  const mesh = MeshBuilder.getMesh(state);
+  const transforms = balls.map(({ center, radius }) =>
+    Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), center), Mat4.fromUniformScaling(Mat4(), radius)),
+  );
+  const shape = () =>
+    Shape.create(
+      's',
+      {},
+      mesh,
+      () => Color(0x3f7fbf),
+      () => 1,
+      () => 's',
+      1,
+      transforms,
+    );
+  // a plane's normal is its local y: turned to -z, it removes z < 0
+  const behind = (ghost: boolean) => ({ ...plane(ghost), rotation: { axis: Vec3.create(1, 0, 0), angle: -90 } });
+  const repr = ShapeRepresentation(shape, Mesh.Utils, { graphics: canvas.graphics });
+  const update = (ghost: boolean) =>
+    repr
+      .createOrUpdate(
+        { ...PD.getDefaultValues(Mesh.Params), clip: { variant: 'pixel', objects: [behind(ghost)] } } as any,
+        {},
+      )
+      .run();
+  const frame = () => {
+    canvas.commit(true);
+    canvas.requestDraw();
+    canvas.tick(0 as any, { isSynchronous: true } as any);
+  };
+  await update(false);
+  canvas.add(repr);
+  canvas.requestCameraReset({ durationMs: 0 });
+  frame();
+  canvas.camera.setState({ target: Vec3.create(0, 0, 0), position, up: Vec3.create(0, 1, 0) }, 0);
+  if (options.after) canvas.setProps(options.after as any);
+  const draw = async (ghost: boolean) => {
+    await update(ghost);
+    frame();
+    const gl = (canvas.graphics as any).gl as WebGLRenderingContext;
+    const pixels = new Uint8Array(size * size * 4);
+    gl.readPixels(0, 0, size, size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    return pixels;
+  };
+  /** the sphere's projected center and radius (pixels) */
+  const project = ({ center, radius }: Ball) => {
+    const c = canvas.camera.project(Vec4(), center);
+    const view = Vec3.sub(Vec3(), center, canvas.camera.state.position);
+    const side = Vec3.normalize(Vec3(), Vec3.cross(Vec3(), view, Vec3.create(0, 1, 0)));
+    const e = canvas.camera.project(Vec4(), Vec3.scaleAndAdd(Vec3(), center, side, radius));
+    return { x: c[0], y: c[1], r: Math.hypot(e[0] - c[0], e[1] - c[1]) };
+  };
+  const dispose = () => {
+    canvas.dispose();
+    graphics.destroy();
+  };
+  return { canvas, draw, project, dispose };
+}
+
+const changedAt = (a: Uint8Array, b: Uint8Array, o: number) =>
+  [0, 1, 2].some((k) => Math.abs(a[o + k] - b[o + k]) > 16);
+
 describe('ghosts of what clips cut, drawn', () => {
   const available = !!tryGetGLContext(Size, Size);
 
@@ -189,5 +295,103 @@ describe('ghosts of what clips cut, drawn', () => {
     expect(on[2]).toBe(0);
     canvas.dispose();
     graphics.destroy();
+  });
+  // a kept sphere in front of a larger cut one, far from the camera (near 1 Å): the ghost depth has a hole where the kept
+  // sphere covers it, and its edge lies just inside the kept silhouette; drawn there, the ghost painted a band of its
+  // color over the kept sphere (the hole is not an edge of the ghost: it goes on behind)
+  (available ? it : it.skip)('draw no ghost over an opaque sphere in front of it', async () => {
+    const Kept = { center: Vec3.create(0, 0, 100), radius: 100 };
+    const scene = await behindScene({
+      size: Size,
+      balls: [Kept, { center: Vec3.create(0, 0, -500), radius: 300 }],
+      position: Vec3.create(0, 0, 2100),
+      // the clipping radius past the camera, as inside a cell's sphere: the near plane at its minimum
+      after: { sceneRadiusFactor: 10, cameraClipping: { radius: 0 } },
+    });
+    const off = await scene.draw(false);
+    const on = await scene.draw(true);
+    expect(scene.canvas.camera.near).toBe(1);
+    const k = scene.project(Kept);
+    let inside = 0;
+    let all = 0;
+    for (let y = 0; y < Size; ++y) {
+      for (let x = 0; x < Size; ++x) {
+        if (!changedAt(on, off, (y * Size + x) * 4)) continue;
+        all++;
+        if (Math.hypot(x - k.x, y - k.y) < k.r - 0.5) inside++;
+      }
+    }
+    // the cut sphere's ghost (its silhouette, beyond the kept one), nothing over the kept sphere
+    expect(k.r).toBeGreaterThan(5);
+    expect(all).toBeGreaterThan(20);
+    expect(inside).toBe(0);
+    scene.dispose();
+  });
+
+  // the same, the cut sphere some 130 Å behind the kept one's silhouette: their edges' depths, both 16 bits, compared
+  // after an 8-bit square root, tied (within hundreds of Å at near 1 Å) and the ghost was drawn over the kept sphere's
+  // opaque outline
+  (available ? it : it.skip)('draw no ghost over the opaque outline of a sphere in front of it', async () => {
+    const size = 512;
+    const Kept = { center: Vec3.create(0, 0, 100), radius: 100 };
+    const scene = await behindScene({
+      size,
+      balls: [Kept, { center: Vec3.create(0, 0, -310), radius: 300 }],
+      position: Vec3.create(0, 0, 2100),
+      // the clipping radius past the camera, as inside a cell's sphere: the near plane at its minimum
+      after: { sceneRadiusFactor: 10, cameraClipping: { radius: 0 } },
+    });
+    const off = await scene.draw(false);
+    const on = await scene.draw(true);
+    expect(scene.canvas.camera.near).toBe(1);
+    const k = scene.project(Kept);
+    // the kept sphere's outline: dark without ghosts, within 3 px of its silhouette
+    let outline = 0;
+    let painted = 0;
+    for (let y = 0; y < size; ++y) {
+      for (let x = 0; x < size; ++x) {
+        const o = (y * size + x) * 4;
+        if (Math.abs(Math.hypot(x - k.x, y - k.y) - k.r) > 3 || off[o] > 60) continue;
+        outline++;
+        if (changedAt(on, off, o)) painted++;
+      }
+    }
+    expect(outline).toBeGreaterThan(50);
+    expect(painted).toBe(0);
+    scene.dispose();
+  });
+
+  // an outline at the back of the scene, within the last Å before the far plane: its 16-bit depth packs to 0, read as no
+  // depth, it was drawn unfogged, black over the fog (fog at the far plane is whole)
+  (available ? it : it.skip)('fog an outline at the far plane', async () => {
+    // a small sphere at the back of a scene of radius about 1000 Å (kept: the plane removes z < 0, the camera's side), the
+    // camera 300 Å from its center (near at 1 Å, far at 1300 Å), a narrow view so that the sphere fills some pixels
+    const Back = { center: Vec3.create(0, 0, 994), radius: 6 };
+    const scene = await behindScene({
+      size: Size,
+      balls: [Back, { center: Vec3.create(0, 0, -1000), radius: 1 }],
+      position: Vec3.create(0, 0, -300),
+      fov: 4,
+      fog: true,
+    });
+    // the clipping radius 1000 Å (a share of the scene's): far 1300 Å from the camera, 6 Å behind the sphere's rim
+    const sceneRadius = scene.canvas.boundingSphere.radius;
+    scene.canvas.setProps({ cameraClipping: { radius: 100 * (1 - 1000 / sceneRadius) } } as any);
+    const off = await scene.draw(false);
+    const b = scene.project(Back);
+    const far = scene.canvas.camera.far;
+    expect(scene.canvas.camera.near).toBe(1);
+    expect(far - (300 + Back.center[2])).toBeLessThan(12);
+    let dark = 0;
+    for (let y = 0; y < Size; ++y) {
+      for (let x = 0; x < Size; ++x) {
+        const o = (y * Size + x) * 4;
+        if (Math.hypot(x - b.x, y - b.y) > b.r + 3) continue;
+        if (off[o] < 200 || off[o + 1] < 200 || off[o + 2] < 200) dark++;
+      }
+    }
+    expect(b.r).toBeGreaterThan(5);
+    expect(dark).toBe(0);
+    scene.dispose();
   });
 });

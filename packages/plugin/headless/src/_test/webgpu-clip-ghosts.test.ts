@@ -56,6 +56,96 @@ const plane = (ghost: boolean) => ({
   ghost,
 });
 
+type Ball = { readonly center: Vec3; readonly radius: number };
+
+/**
+ * Spheres `balls` on a WebGPU canvas of `size` pixels drawing outlines (ghosts in `Ghost`), a plane removing z < 0
+ * (ghosted or not); the camera at `position` on the z axis looking at the origin, after the reset (then `after`'s
+ * props); `draw(ghost)` the image (rows top to bottom)
+ */
+async function behindScene(options: {
+  size: number;
+  balls: readonly Ball[];
+  position: Vec3;
+  fov?: number;
+  fog?: boolean;
+  after?: (canvas: NonNullable<HeadlessPluginContext['canvas3d']>) => void;
+}) {
+  const { size, balls, position, fov = 45, fog = false } = options;
+  const plugin = await HeadlessPluginContext.create(
+    { webgpu: WebGPU.module! },
+    DefaultPluginSpec(),
+    { width: size, height: size },
+    { backend: 'webgpu' },
+  );
+  await plugin.init();
+  const canvas = plugin.canvas3d!;
+  const postprocessing = {
+    enabled: true,
+    occlusion: { name: 'off', params: {} },
+    shadow: { name: 'off', params: {} },
+    outline: {
+      name: 'on',
+      params: { scale: 1, threshold: 0.33, color: Color(0x000000), includeTransparent: false, transparentColor: Ghost },
+    },
+  } as any;
+  canvas.setProps({
+    renderer: { ...canvas.props.renderer, backgroundColor: Color(0xffffff) },
+    multiSample: { ...canvas.props.multiSample, mode: 'off' },
+    camera: { ...canvas.props.camera, mode: 'perspective', fov },
+    cameraFog: fog ? { name: 'on', params: { intensity: 50 } } : { name: 'off', params: {} },
+    postprocessing,
+  } as any);
+  const state = MeshBuilder.createState(512, 256);
+  state.currentGroup = 0;
+  addSphere(state, Vec3.create(0, 0, 0), 1, 3);
+  const mesh = MeshBuilder.getMesh(state);
+  const transforms = balls.map(({ center, radius }) =>
+    Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), center), Mat4.fromUniformScaling(Mat4(), radius)),
+  );
+  const shape = () =>
+    Shape.create(
+      's',
+      {},
+      mesh,
+      () => Color(0x3f7fbf),
+      () => 1,
+      () => 's',
+      transforms,
+    );
+  // a plane's normal is its local y: turned to -z, it removes z < 0
+  const behind = (ghost: boolean) => ({ ...plane(ghost), rotation: { axis: Vec3.create(1, 0, 0), angle: -90 } });
+  const repr = ShapeRepresentation(shape, Mesh.Utils, { graphics: canvas.graphics });
+  const update = (ghost: boolean) =>
+    repr
+      .createOrUpdate(
+        { ...PD.getDefaultValues(Mesh.Params), clip: { variant: 'pixel', objects: [behind(ghost)] } } as any,
+        {},
+      )
+      .run();
+  await update(false);
+  canvas.add(repr);
+  canvas.requestCameraReset({ durationMs: 0 });
+  canvas.commit(true);
+  await plugin.getImageRaw({ width: size, height: size }, postprocessing);
+  canvas.camera.setState({ target: Vec3.create(0, 0, 0), position, up: Vec3.create(0, 1, 0) }, 0);
+  options.after?.(canvas);
+  const draw = async (ghost: boolean) => {
+    await update(ghost);
+    return (await plugin.getImageRaw({ width: size, height: size }, postprocessing)).data;
+  };
+  /** an on-axis sphere's projected radius (pixels) */
+  const radiusOf = ({ center, radius }: Ball) => {
+    const c = canvas.camera.project(Vec4(), center);
+    const e = canvas.camera.project(Vec4(), Vec3.create(radius, 0, center[2]));
+    return Math.abs(e[0] - c[0]);
+  };
+  return { plugin, canvas, draw, radiusOf };
+}
+
+const changedAt = (a: ArrayLike<number>, b: ArrayLike<number>, o: number) =>
+  [0, 1, 2].some((k) => Math.abs(a[o + k] - b[o + k]) > 16);
+
 describe.skipIf(!WebGPU.module)('ghosts of what clips cut on WebGPU', () => {
   it('outline far ghosts with the near plane at its minimum', async () => {
     const plugin = await HeadlessPluginContext.create(
@@ -129,6 +219,75 @@ describe.skipIf(!WebGPU.module)('ghosts of what clips cut on WebGPU', () => {
       expect(on[0]).toBe(0);
     } finally {
       plugin.dispose();
+    }
+  });
+  // a kept sphere in front of a larger cut one far from the camera: the ghost depth's hole behind the kept sphere is no
+  // edge of the ghost (drawn, it painted a band of the ghost's color over the kept sphere)
+  it('draw no ghost over an opaque sphere in front of it', async () => {
+    const Kept = { center: Vec3.create(0, 0, 100), radius: 100 };
+    const scene = await behindScene({
+      size: Size,
+      balls: [Kept, { center: Vec3.create(0, 0, -500), radius: 300 }],
+      position: Vec3.create(0, 0, 2100),
+      after: (canvas) =>
+        canvas.setProps({ sceneRadiusFactor: 10, cameraClipping: { ...canvas.props.cameraClipping, radius: 0 } }),
+    });
+    try {
+      const off = await scene.draw(false);
+      const on = await scene.draw(true);
+      expect(scene.canvas.camera.near).toBe(1);
+      const r = scene.radiusOf(Kept);
+      const c = (Size - 1) / 2;
+      let inside = 0;
+      let all = 0;
+      for (let y = 0; y < Size; ++y) {
+        for (let x = 0; x < Size; ++x) {
+          if (!changedAt(on, off, (y * Size + x) * 4)) continue;
+          all++;
+          if (Math.hypot(x - c, y - c) < r - 1) inside++;
+        }
+      }
+      expect(r).toBeGreaterThan(5);
+      expect(all).toBeGreaterThan(20);
+      expect(inside).toBe(0);
+    } finally {
+      scene.plugin.dispose();
+    }
+  });
+
+  // an outline within the last Å before the far plane (its 16-bit depth packs to 0): fogged, not drawn black over the fog
+  it('fog an outline at the far plane', async () => {
+    const Back = { center: Vec3.create(0, 0, 994), radius: 6 };
+    const scene = await behindScene({
+      size: Size,
+      balls: [Back, { center: Vec3.create(0, 0, -1000), radius: 1 }],
+      position: Vec3.create(0, 0, -300),
+      fov: 4,
+      fog: true,
+      // the clipping radius 1000 Å (a share of the scene's): far 1300 Å from the camera, 6 Å behind the sphere's rim
+      after: (canvas) =>
+        canvas.setProps({
+          cameraClipping: { ...canvas.props.cameraClipping, radius: 100 * (1 - 1000 / canvas.boundingSphere.radius) },
+        }),
+    });
+    try {
+      const off = await scene.draw(false);
+      expect(scene.canvas.camera.near).toBe(1);
+      expect(scene.canvas.camera.far - (300 + Back.center[2])).toBeLessThan(12);
+      const r = scene.radiusOf(Back);
+      const c = (Size - 1) / 2;
+      let dark = 0;
+      for (let y = 0; y < Size; ++y) {
+        for (let x = 0; x < Size; ++x) {
+          const o = (y * Size + x) * 4;
+          if (Math.hypot(x - c, y - c) > r + 3) continue;
+          if (off[o] < 200 || off[o + 1] < 200 || off[o + 2] < 200) dark++;
+        }
+      }
+      expect(r).toBeGreaterThan(5);
+      expect(dark).toBe(0);
+    } finally {
+      scene.plugin.dispose();
     }
   });
 });

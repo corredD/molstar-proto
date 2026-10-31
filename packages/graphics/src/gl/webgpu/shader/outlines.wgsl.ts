@@ -37,6 +37,8 @@ struct Outline {
     opaqueDepth: f32,
     transparentDepth: f32,
     alpha: f32,
+    /** the transparent depth came from a "both" edge: an 8-bit square root (else 16 bits) */
+    transparentBoth: bool,
 };
 
 fn outlineQuantizedDepth(depth: f32) -> f32 {
@@ -45,11 +47,34 @@ fn outlineQuantizedDepth(depth: f32) -> f32 {
     return q * q;
 }
 
+/**
+ * Whether the opaque outline is in front of the transparent one: their 16-bit depths compared as they are, or both
+ * rounded to the 8-bit square root where the transparent one came from a "both" edge (else a far ghost behind an opaque
+ * silhouette ties with it and is drawn over it)
+ */
+fn outlineOpaqueInFront(o: Outline) -> bool {
+    if (o.transparentBoth) {
+        return outlineQuantizedDepth(o.opaqueDepth) > outlineQuantizedDepth(o.transparentDepth);
+    }
+    return o.opaqueDepth > o.transparentDepth;
+}
+
+/**
+ * An outline's fog: none with fog off (fog near and far equal: smoothstep undefined); a depth packed to 0 (in the last
+ * few Å before the far plane with the near plane at 1 Å) taken at the 16-bit floor, the farthest depth it can hold
+ */
+fn outlineFog(depth: f32) -> f32 {
+    if (uObject.uFogFar <= uObject.uFogNear) {
+        return 0.0;
+    }
+    return smoothstep(uObject.uFogNear, uObject.uFogFar, abs(getViewZ(max(depth, 1.0 / 65536.0))));
+}
+
 fn getOutline(coords: vec2<f32>) -> Outline {
     let invTexSize = 1.0 / uObject.uTexSize;
     let squaredOutlineScale = oOutlineScale * oOutlineScale;
 
-    var o = Outline(false, false, 0.0, 0.0, 0.0);
+    var o = Outline(false, false, 0.0, 0.0, 0.0, false);
     for (var y = -oOutlineScale; y <= oOutlineScale; y++) {
         for (var x = -oOutlineScale; x <= oOutlineScale; x++) {
             if (x * x + y * y > squaredOutlineScale) {
@@ -81,6 +106,7 @@ fn getOutline(coords: vec2<f32>) -> Outline {
                 o.hasTransparent = true;
                 o.transparentDepth = sampleTransparentDepth;
                 o.alpha = sampleAlpha;
+                o.transparentBoth = isBoth;
             }
         }
     }
@@ -192,6 +218,14 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
     // disable transparent outline close to opaque elements
     if (transparentOutlineFlag > 0.0 && abs(selfViewZOpaque - getViewZ(bestTransparentDepth)) < pixelSizeOpaque) {
         transparentOutlineFlag = 0.0;
+    }
+
+    // nor where the opaque surface here is in front of it (depth is reversed): the transparent depth's hole where an
+    // opaque surface in front covers it (a ghost behind a kept particle) is no edge of it
+    if (transparentOutlineFlag > 0.0 && selfDepthOpaque > bestTransparentDepth) {
+        transparentOutlineFlag = 0.0;
+        bestTransparentDepth = 0.0;
+        bestTransparentAlpha = 0.0;
     }
 
     // lazy curvature veto: only computed if an outline was found and the center is not background

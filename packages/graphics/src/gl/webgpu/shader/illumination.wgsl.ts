@@ -391,11 +391,6 @@ fn isBackground(depth: f32) -> bool {
     return depth == 0.0;
 }
 
-fn outlineFog(depth: f32) -> f32 {
-    // a packed far edge is depth 0, which is the far plane, so fog would take it all; fog off makes smoothstep NaN
-    if (depth == 0.0 || uObject.uFogFar <= uObject.uFogNear) { return 0.0; }
-    return smoothstep(uObject.uFogNear, uObject.uFogFar, abs(getViewZ(depth)));
-}
 
 ${compose_fragment_wgsl}`;
 
@@ -541,7 +536,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
 
         #if defined(dBlendTransparency)
             if (outline.hasTransparent) {
-                if (outline.hasOpaque && outlineQuantizedDepth(outline.opaqueDepth) > outlineQuantizedDepth(outline.transparentDepth)) {
+                if (outline.hasOpaque && outlineOpaqueInFront(outline)) {
                     blendTransparency = false;
                 } else {
                     let finalOutlineAlpha = clamp(outline.alpha * 2.0, 0.0, 1.0);

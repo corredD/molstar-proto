@@ -8,6 +8,7 @@
  */
 
 import { common } from './chunks/common.glsl.js';
+import { outline_read_glsl } from './outlines.frag.js';
 
 export const postprocessing_frag = `
 precision highp float;
@@ -40,62 +41,7 @@ bool isBackground(const in float depth) {
     return depth == 0.0;
 }
 
-// the 8-bit square root a "both" edge stores, so an in-front test compares like with like
-float outlineQuantizedDepth(const in float depth) {
-    float q = floor(sqrt(max(depth, 0.0)) * 255.0 + 0.5) / 255.0;
-    return q * q;
-}
-
-// a packed far edge is depth 0, which is the far plane, so fog would take it all; fog off makes smoothstep NaN
-float outlineFog(const in float depth) {
-    if (depth == 0.0 || uFogFar <= uFogNear) return 0.0;
-    return smoothstep(uFogNear, uFogFar, abs(getViewZ(depth)));
-}
-
-int squaredOutlineScale = dOutlineScale * dOutlineScale;
-void getOutline(const in vec2 coords, out bool hasOpaque, out bool hasTransparent, out float opaqueDepth, out float transparentDepth, out float alpha) {
-    vec2 invTexSize = 1.0 / uTexSize;
-
-    hasOpaque = false;
-    hasTransparent = false;
-    opaqueDepth = 0.0;
-    transparentDepth = 0.0;
-    alpha = 0.0;
-    for (int y = -dOutlineScale; y <= dOutlineScale; y++) {
-        for (int x = -dOutlineScale; x <= dOutlineScale; x++) {
-            if (x * x + y * y > squaredOutlineScale) {
-                continue;
-            }
-
-            vec2 sampleCoords = coords + vec2(float(x), float(y)) * invTexSize;
-
-            vec4 sampleOutlineCombined = texture2D(tOutlines, sampleCoords);
-            float sampleEdgeDepth = unpackRGToUnitInterval(sampleOutlineCombined.gb);
-            vec2 sampleFlagWithAlpha = unpack2x4(sampleOutlineCombined.r);
-
-            float sampleFlag = sampleFlagWithAlpha.x;
-            float sampleAlpha = clamp(sampleFlagWithAlpha.y * 0.5, 0.01, 1.0);
-            bool isTransparent = sampleFlag > 0.45 && sampleFlag < 0.55;
-            bool isBoth = sampleFlag > 0.70 && sampleFlag < 0.80;
-            // a transparent edge alone: its depth in 16 bits (gb); with an opaque one, in 8 (a, its square root, see
-            // outlines.frag); there by its flag, whatever its depth (reversed: far edges round toward 0)
-            float sampleTransparentDepth = isTransparent ? sampleEdgeDepth : sampleOutlineCombined.a * sampleOutlineCombined.a;
-
-            if ((sampleFlag > 0.20 && sampleFlag < 0.30) || isBoth) { // opaque || both
-                if (!hasOpaque || sampleEdgeDepth > opaqueDepth) {
-                    hasOpaque = true;
-                    opaqueDepth = sampleEdgeDepth;
-                }
-            }
-
-            if ((isTransparent || isBoth) && (!hasTransparent || sampleTransparentDepth > transparentDepth)) {
-                hasTransparent = true;
-                transparentDepth = sampleTransparentDepth;
-                alpha = sampleAlpha;
-            }
-        }
-    }
-}
+${outline_read_glsl}
 
 // occlusion at \`coords\` of a pixel at view z \`viewZ\`, depth-aware upsampled from a lower SSAO resolution
 float getSsao(vec2 coords, float viewZ) {
@@ -173,7 +119,8 @@ void main(void) {
         float outlineOpaqueDepth;
         float outlineTransparentDepth;
         float outlineAlpha;
-        getOutline(coords, hasOpaque, hasTransparent, outlineOpaqueDepth, outlineTransparentDepth, outlineAlpha);
+        bool outlineTransparentBoth;
+        getOutline(coords, hasOpaque, hasTransparent, outlineOpaqueDepth, outlineTransparentDepth, outlineAlpha, outlineTransparentBoth);
 
         if (hasOpaque) {
             float fogFactor = outlineFog(outlineOpaqueDepth);
@@ -187,7 +134,7 @@ void main(void) {
 
         #ifdef dBlendTransparency
             if (hasTransparent) {
-                if (hasOpaque && outlineQuantizedDepth(outlineOpaqueDepth) > outlineQuantizedDepth(outlineTransparentDepth)) {
+                if (hasOpaque && outlineOpaqueInFront(outlineOpaqueDepth, outlineTransparentDepth, outlineTransparentBoth)) {
                     blendTransparency = false;
                 } else {
                     float finalOutlineAlpha = clamp(outlineAlpha * 2.0, 0.0, 1.0);
