@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { depth_wgsl } from './chunks/depth.wgsl.js';
@@ -52,8 +53,7 @@ fn getOutline(coords: vec2<f32>) -> Outline {
             let sampleCoords = coords + vec2<f32>(f32(x), f32(y)) * invTexSize;
 
             let sampleOutlineCombined = read_tOutlines(sampleCoords);
-            let sampleOpaqueDepth = unpackRGToUnitInterval(sampleOutlineCombined.gb);
-            let sampleTransparentDepth = sampleOutlineCombined.a;
+            let sampleEdgeDepth = unpackRGToUnitInterval(sampleOutlineCombined.gb);
             let sampleFlagWithAlpha = unpack2x4(sampleOutlineCombined.r);
 
             let sampleFlag = sampleFlagWithAlpha.x;
@@ -62,13 +62,16 @@ fn getOutline(coords: vec2<f32>) -> Outline {
             let isOpaque = sampleFlag > 0.20 && sampleFlag < 0.30;
             let isTransparent = sampleFlag > 0.45 && sampleFlag < 0.55;
             let isBoth = sampleFlag > 0.70 && sampleFlag < 0.80;
+            // a transparent edge alone: its depth in 16 bits (gb); with an opaque one, in 8 (a, its square root, see
+            // \`outlines_wgsl\`); there by its flag, whatever its depth (reversed: far edges round toward 0)
+            let sampleTransparentDepth = select(sampleOutlineCombined.a * sampleOutlineCombined.a, sampleEdgeDepth, isTransparent);
 
-            if ((isOpaque || isBoth) && sampleOpaqueDepth > o.opaqueDepth) {
+            if ((isOpaque || isBoth) && (!o.hasOpaque || sampleEdgeDepth > o.opaqueDepth)) {
                 o.hasOpaque = true;
-                o.opaqueDepth = sampleOpaqueDepth;
+                o.opaqueDepth = sampleEdgeDepth;
             }
 
-            if ((isTransparent || isBoth) && sampleTransparentDepth > o.transparentDepth) {
+            if ((isTransparent || isBoth) && (!o.hasTransparent || sampleTransparentDepth > o.transparentDepth)) {
                 o.hasTransparent = true;
                 o.transparentDepth = sampleTransparentDepth;
                 o.alpha = sampleAlpha;
@@ -232,6 +235,9 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
     // limited to [0.0, 0.5] to improve alpha precision since a wider range isn't needed
     let alpha = clamp(bestTransparentAlpha, 0.0, 0.5) * 2.0;
     let packedFlagWithAlpha = pack2x4(vec2<f32>(outlineTypeFlag, alpha));
-    return vec4<f32>(packedFlagWithAlpha, depthPacked.x, depthPacked.y, bestTransparentDepth);
+    // the transparent edge's depth in 8 bits as its square root: reversed depth (about near / z) of what lies beyond 500
+    // times the near plane rounds to 0 in 8 bits, its square root beyond some 260,000 times (a transparent edge alone
+    // reads gb, 16 bits)
+    return vec4<f32>(packedFlagWithAlpha, depthPacked.x, depthPacked.y, sqrt(bestTransparentDepth));
 }
 `;

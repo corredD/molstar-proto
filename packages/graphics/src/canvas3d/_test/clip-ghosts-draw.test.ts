@@ -32,11 +32,12 @@ const Ghost = Color(0xff0000);
 /** The spheres' x: kept, cut, ignoring the plane */
 const Centers = [-3, 3, 6];
 
-function spheres() {
+/** The three spheres, of radius `scale` at `Centers` times `scale` */
+function spheres(scale = 1) {
   const state = MeshBuilder.createState(256, 128);
   state.currentGroup = 0;
-  addSphere(state, Vec3.create(0, 0, 0), 1, 3);
-  const transforms = Centers.map((x) => Mat4.fromTranslation(Mat4(), Vec3.create(x, 0, 0)));
+  addSphere(state, Vec3.create(0, 0, 0), scale, 3);
+  const transforms = Centers.map((x) => Mat4.fromTranslation(Mat4(), Vec3.create(x * scale, 0, 0)));
   return Shape.create(
     's',
     {},
@@ -61,14 +62,14 @@ const plane = (ghost: boolean) => ({
 });
 
 /** The pixels tinted by the ghost color (red over white, at the ghosts' alpha), by the sphere nearest on screen */
-function ghostPixels(canvas: Canvas3D) {
+function ghostPixels(canvas: Canvas3D, scale = 1) {
   canvas.commit(true);
   canvas.requestDraw();
   canvas.tick(0 as any, { isSynchronous: true } as any);
   const gl = (canvas.graphics as any).gl as WebGLRenderingContext;
   const pixels = new Uint8Array(Size * Size * 4);
   gl.readPixels(0, 0, Size, Size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-  const xs = Centers.map((x) => canvas.camera.project(Vec4(), Vec3.create(x, 0, 0))[0]);
+  const xs = Centers.map((x) => canvas.camera.project(Vec4(), Vec3.create(x * scale, 0, 0))[0]);
   const bySphere = [0, 0, 0];
   for (let y = 0; y < Size; ++y) {
     for (let x = 0; x < Size; ++x) {
@@ -83,60 +84,70 @@ function ghostPixels(canvas: Canvas3D) {
   return bySphere;
 }
 
+/**
+ * The three spheres (`spheres(scale)`) on a canvas drawing ghosts in `Ghost` with outlines; `draw(ghost)` draws them with
+ * the plane, ghosted or not, and counts the ghost's pixels by sphere (`ghostPixels`)
+ */
+async function setup(mode: 'orthographic' | 'perspective', scale = 1, extraProps: object = {}) {
+  const graphics = getGLContext(Size, Size);
+  const ctx = Canvas3DContext.fromGraphics(document.createElement('canvas'), graphics, new DefaultAssetManager());
+  const canvas = Canvas3D.create(ctx);
+  canvas.setProps({
+    renderer: { backgroundColor: Color(0xffffff) },
+    multiSample: { mode: 'off' },
+    camera: { mode, helper: { axes: { name: 'off', params: {} } } },
+    postprocessing: {
+      enabled: true,
+      occlusion: { name: 'off', params: {} },
+      shadow: { name: 'off', params: {} },
+      outline: {
+        name: 'on',
+        params: {
+          scale: 1,
+          threshold: 0.33,
+          color: Color(0x000000),
+          includeTransparent: false,
+          transparentColor: Ghost,
+        },
+      },
+    },
+    ...extraProps,
+  } as any);
+  const repr = ShapeRepresentation(() => spheres(scale), Mesh.Utils, { graphics: canvas.graphics });
+  const draw = async (ghost: boolean) => {
+    await repr
+      .createOrUpdate(
+        { ...PD.getDefaultValues(Mesh.Params), clip: { variant: 'pixel', objects: [plane(ghost)] } } as any,
+        {},
+      )
+      .run();
+    // the right sphere ignores the plane: kept whole, never a ghost
+    Visual.setClipping(
+      repr.renderObjects[0],
+      { kind: 'every-loci', layers: [{ loci: EveryLoci, groups: 1 }] },
+      (_, apply) => apply(Interval.ofBounds(2, 3)),
+      true,
+    );
+    return ghostPixels(canvas, scale);
+  };
+  await repr
+    .createOrUpdate(
+      { ...PD.getDefaultValues(Mesh.Params), clip: { variant: 'pixel', objects: [plane(false)] } } as any,
+      {},
+    )
+    .run();
+  canvas.add(repr);
+  canvas.requestCameraReset({ durationMs: 0 });
+  canvas.commit(true);
+
+  return { graphics, ctx, canvas, draw };
+}
+
 describe('ghosts of what clips cut, drawn', () => {
   const available = !!tryGetGLContext(Size, Size);
 
   (available ? it : it.skip)('outline the cut part only, in the transparent outline color', async () => {
-    const graphics = getGLContext(Size, Size);
-    const ctx = Canvas3DContext.fromGraphics(document.createElement('canvas'), graphics, new DefaultAssetManager());
-    const canvas = Canvas3D.create(ctx);
-    canvas.setProps({
-      renderer: { backgroundColor: Color(0xffffff) },
-      multiSample: { mode: 'off' },
-      camera: { mode: 'orthographic', helper: { axes: { name: 'off', params: {} } } },
-      postprocessing: {
-        enabled: true,
-        occlusion: { name: 'off', params: {} },
-        shadow: { name: 'off', params: {} },
-        outline: {
-          name: 'on',
-          params: {
-            scale: 1,
-            threshold: 0.33,
-            color: Color(0x000000),
-            includeTransparent: false,
-            transparentColor: Ghost,
-          },
-        },
-      },
-    } as any);
-    const repr = ShapeRepresentation(spheres, Mesh.Utils, { graphics: canvas.graphics });
-    const draw = async (ghost: boolean) => {
-      await repr
-        .createOrUpdate(
-          { ...PD.getDefaultValues(Mesh.Params), clip: { variant: 'pixel', objects: [plane(ghost)] } } as any,
-          {},
-        )
-        .run();
-      // the right sphere ignores the plane: kept whole, never a ghost
-      Visual.setClipping(
-        repr.renderObjects[0],
-        { kind: 'every-loci', layers: [{ loci: EveryLoci, groups: 1 }] },
-        (_, apply) => apply(Interval.ofBounds(2, 3)),
-        true,
-      );
-      return ghostPixels(canvas);
-    };
-    await repr
-      .createOrUpdate(
-        { ...PD.getDefaultValues(Mesh.Params), clip: { variant: 'pixel', objects: [plane(false)] } } as any,
-        {},
-      )
-      .run();
-    canvas.add(repr);
-    canvas.requestCameraReset({ durationMs: 0 });
-    canvas.commit(true);
-
+    const { graphics, ctx, canvas, draw } = await setup('orthographic');
     const off = await draw(false);
     const on = await draw(true);
     // the ghost depth at each sphere's center: the cut one only, not the one that ignores the plane (drawn whole there
@@ -152,6 +163,27 @@ describe('ghosts of what clips cut, drawn', () => {
     expect(depth).toEqual([false, true, false]);
     expect(off).toEqual([0, 0, 0]);
     // the cut sphere's ghost; none over the kept one nor the one that ignores the plane
+    expect(on[1]).toBeGreaterThan(20);
+    expect(on[0]).toBe(0);
+    expect(on[2]).toBe(0);
+    canvas.dispose();
+    graphics.destroy();
+  });
+  // the transparent edges' depth went through 8 bits of the outline target: reversed depth (about near / z) of what lies
+  // beyond some 500 times the near plane rounded to 0 there, read as no edge, so a camera inside the scene's sphere (near
+  // at its 1 Å minimum, cellPACK zoomed in) lost the ghosts farther than about 500 Å
+  (available ? it : it.skip)('outline far ghosts with the near plane at its minimum (perspective)', async () => {
+    const { graphics, canvas, draw } = await setup('perspective', 100);
+    // drawn once (the camera reset), then the clipping radius past the camera, as inside a cell's sphere: the near
+    // plane at its minimum
+    await draw(false);
+    canvas.setProps({ sceneRadiusFactor: 10, cameraClipping: { radius: 0 } } as any);
+    const off = await draw(false);
+    const on = await draw(true);
+    // the near plane at its minimum, the cut sphere over 1000 Å away
+    expect(canvas.camera.near).toBe(1);
+    expect(Vec3.distance(canvas.camera.state.position, Vec3.create(300, 0, 0))).toBeGreaterThan(1000);
+    expect(off).toEqual([0, 0, 0]);
     expect(on[1]).toBeGreaterThan(20);
     expect(on[0]).toBe(0);
     expect(on[2]).toBe(0);

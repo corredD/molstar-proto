@@ -58,21 +58,25 @@ void getOutline(const in vec2 coords, out bool hasOpaque, out bool hasTransparen
             vec2 sampleCoords = coords + vec2(float(x), float(y)) * invTexSize;
 
             vec4 sampleOutlineCombined = texture2D(tOutlines, sampleCoords);
-            float sampleOpaqueDepth = unpackRGToUnitInterval(sampleOutlineCombined.gb);
-            float sampleTransparentDepth = sampleOutlineCombined.a;
+            float sampleEdgeDepth = unpackRGToUnitInterval(sampleOutlineCombined.gb);
             vec2 sampleFlagWithAlpha = unpack2x4(sampleOutlineCombined.r);
 
             float sampleFlag = sampleFlagWithAlpha.x;
             float sampleAlpha = clamp(sampleFlagWithAlpha.y * 0.5, 0.01, 1.0);
+            bool isTransparent = sampleFlag > 0.45 && sampleFlag < 0.55;
+            bool isBoth = sampleFlag > 0.70 && sampleFlag < 0.80;
+            // a transparent edge alone: its depth in 16 bits (gb); with an opaque one, in 8 (a, its square root, see
+            // outlines.frag); there by its flag, whatever its depth (reversed: far edges round toward 0)
+            float sampleTransparentDepth = isTransparent ? sampleEdgeDepth : sampleOutlineCombined.a * sampleOutlineCombined.a;
 
-            if ((sampleFlag > 0.20 && sampleFlag < 0.30) || (sampleFlag > 0.70 && sampleFlag < 0.80)) { // transparent || both
-                if (sampleOpaqueDepth > opaqueDepth) {
+            if ((sampleFlag > 0.20 && sampleFlag < 0.30) || isBoth) { // opaque || both
+                if (!hasOpaque || sampleEdgeDepth > opaqueDepth) {
                     hasOpaque = true;
-                    opaqueDepth = sampleOpaqueDepth;
+                    opaqueDepth = sampleEdgeDepth;
                 }
             }
 
-            if ((((sampleFlag > 0.45 && sampleFlag < 0.55) || (sampleFlag > 0.70 && sampleFlag < 0.80))) && sampleTransparentDepth > transparentDepth) { // transparent || both
+            if ((isTransparent || isBoth) && (!hasTransparent || sampleTransparentDepth > transparentDepth)) {
                 hasTransparent = true;
                 transparentDepth = sampleTransparentDepth;
                 alpha = sampleAlpha;

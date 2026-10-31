@@ -5,6 +5,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
  * @author Sebastian Bittrich <sebastian.m.bittrich@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { common } from './chunks/common.glsl.js';
@@ -169,6 +170,9 @@ void main(void) {
 
     float alpha = clamp(bestTransparentAlpha, 0.0, 0.5) * 2.0; // limiting to range [0.0, 0.5] to improve alpha precision since we don't need a wider range
     float packedFlagWithAlpha = pack2x4(vec2(outlineTypeFlag, alpha)); // pack outlineType with alpha
-    gl_FragColor = vec4(packedFlagWithAlpha, depthPacked.x, depthPacked.y, bestTransparentDepth);
+    // the transparent edge's depth in 8 bits as its square root: reversed depth (about near / z) of what lies beyond 500
+    // times the near plane rounds to 0 in 8 bits, its square root beyond some 260,000 times (a transparent edge alone
+    // reads gb, 16 bits)
+    gl_FragColor = vec4(packedFlagWithAlpha, depthPacked.x, depthPacked.y, sqrt(bestTransparentDepth));
 }
 `;
