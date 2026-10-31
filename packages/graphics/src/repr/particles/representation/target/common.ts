@@ -594,11 +594,13 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
    */
   function setColorLevels(values: ColorLevels.Data, theme: Theme, props: ParticleTargetProps, target: ParticleTarget) {
     const color = 'color' in theme.color && theme.color.granularity !== 'uniform' && !theme.color.palette;
-    const on = color && props.colorLevels?.name === 'on' && target.kind === 'structure';
-    const levels = on ? (props.colorLevels!.params as ColorLevels.Props) : undefined;
-    const turnedOn = !!levels && !values.dColorLevels.ref.value;
-    ColorLevels.setProps(values, levels);
-    if (!levels || target.kind !== 'structure' || !('color' in theme.color)) return;
+    // the representation's levels, on its every item (material uniforms), on where it has atoms and colors to blend
+    const asked = props.colorLevels?.name === 'on';
+    const levels = asked ? (props.colorLevels!.params as ColorLevels.Props) : ColorLevels.defaults;
+    const on = asked && color && target.kind === 'structure';
+    const turnedOn = on && !values.dColorLevels.ref.value;
+    ColorLevels.setProps(values, levels, on);
+    if (!on || target.kind !== 'structure' || !('color' in theme.color)) return;
     if (!turnedOn && !updateState.updateColor) return;
 
     const near = getStructureTargetNearColors(target.structure);

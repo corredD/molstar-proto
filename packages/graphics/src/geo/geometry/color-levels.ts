@@ -136,10 +136,12 @@ export namespace ColorLevels {
     };
   }
 
-  /** Sets the uniforms of `props`, on, or off where undefined (the data kept) */
-  export function setProps(data: Data, props: Props | undefined) {
-    ValueCell.updateIfChanged(data.dColorLevels, !!props);
-    if (!props) return;
+  /**
+   * Sets the uniforms of `props` and turns the levels on or off (the data kept). The uniforms are written either way:
+   * they are material uniforms, shared by the items of one material, some of them on and some off
+   */
+  export function setProps(data: Data, props: Props, on: boolean) {
+    ValueCell.updateIfChanged(data.dColorLevels, on);
     const edges = Vec3.create(Math.log2(props.entity), Math.log2(props.chain), Math.log2(props.atom));
     if (!Vec3.exactEquals(edges, data.uColorLevelEdges.ref.value)) ValueCell.update(data.uColorLevelEdges, edges);
     ValueCell.updateIfChanged(data.uColorLevelBand, props.band);
