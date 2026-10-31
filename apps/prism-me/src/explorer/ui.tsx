@@ -38,7 +38,7 @@ import { editInline } from './inline-edit.js';
 import { distancePicker, selectionModeHint } from './measure.js';
 import { colorItems, nodeMenuItems, showClipHandles, useItems } from './menu.js';
 import type { CanvasClick, ExplorerApi, PickedNode } from './operations.js';
-import { type Picked, Properties } from './properties.js';
+import type { Picked } from './properties.js';
 import {
   ancestorKeys,
   Categories,
@@ -72,6 +72,19 @@ import {
 
 /** The explorer's tab */
 export const SceneTab = 'explorer.tab.scene';
+
+let propertiesModule: Promise<typeof import('./properties.js')> | undefined;
+/**
+ * The properties of the row picked (properties.tsx, with the cryo-ET and mesoscale controls): a chunk of their own,
+ * which the first frame does not need (no row is picked at start; Prism's lazy views, app.md §1); imported once
+ */
+export function loadProperties(): Promise<typeof import('./properties.js')> {
+  propertiesModule ??= import('./properties.js').catch((e: unknown) => {
+    propertiesModule = undefined;
+    throw e;
+  });
+  return propertiesModule;
+}
 
 export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
   const area = ctx.api.explorer;
@@ -459,6 +472,18 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     if (key !== undefined) scroll.request();
   });
 
+  // the properties' module, imported once a row can be picked (the scene has an object) or one is: none at start
+  const properties = observableState<typeof import('./properties.js') | undefined>(undefined);
+  const want = (needed: boolean) => {
+    if (!needed || properties.value) return;
+    loadProperties().then(
+      (m) => properties.set(m),
+      (e: unknown) => console.error('The properties did not load', e),
+    );
+  };
+  effect(objects, (o) => want(o.length > 0));
+  effect(picked.asReadonly, (p) => want(!!p));
+
   // the properties' height, dragged on the line above them or moved by its arrows (tree-view.tsx)
   const height = frameState(240);
 
@@ -517,15 +542,19 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
             fallback={() => <p class={classes.empty}>Pick a row to see its properties.</p>}
           >
             {() => (
-              <Properties
-                api={api}
-                area={area}
-                picked={picked.asReadonly}
-                parts={parts.asReadonly}
-                groupings={model.groupings}
-                groupByOf={model.groupByOf}
-                shell={model.sections}
-              />
+              <Show when={properties.asReadonly}>
+                {(m) => (
+                  <m.Properties
+                    api={api}
+                    area={area}
+                    picked={picked.asReadonly}
+                    parts={parts.asReadonly}
+                    groupings={model.groupings}
+                    groupByOf={model.groupByOf}
+                    shell={model.sections}
+                  />
+                )}
+              </Show>
             )}
           </Show>
         </ScrollArea>
