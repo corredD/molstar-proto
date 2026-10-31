@@ -146,48 +146,65 @@ views import the cryoet and mesoscale `controls`, so those are in it too.
 
 ## Step 2: what moved to lazy loading
 
-**The explorer's properties** (`2aeae20a0`): `properties.tsx` and what only it imports (`distance-properties.tsx`,
-`properties-view.tsx`, its CSS, cryoet's and mesoscale's `controls.tsx` and their CSS) are a chunk of their own,
-imported once the scene has an object or a row is picked (`loadProperties` in `explorer/ui.tsx`). At start no row is
-picked: the panel shows "Pick a row to see its properties.", as before. The tab itself stays in the start bundle: it is
-open at start, and `view.open` finds no tab that registers later.
+**The explorer's properties** (`2aeae20a0`, with Loading… and Retry in `fbdd94ed0`): `properties.tsx` and what only it
+imports (`distance-properties.tsx`, `properties-view.tsx`, its CSS, cryoet's and mesoscale's `controls.tsx` and their
+CSS) are a chunk of their own, imported once the scene has an object or a row is picked (`loadProperties` in
+`explorer/ui.tsx`). At start no row is picked: the panel shows "Pick a row to see its properties.", as before. The tab
+itself stays in the start bundle: it is open at start, and `view.open` finds no tab that registers later. While the
+chunk comes the pane says Loading…; if it fails, that it could not be loaded, with Retry (as Prism's lazy parts).
 
 | Build                       | Start closure | Chunks at start |
 | --------------------------- | ------------- | --------------- |
 | prism-me before             | 5,928,443 B   | 106             |
-| prism-me after              | 5,883,260 B   | 114             |
+| prism-me after              | 5,883,579 B   | 114             |
 | prism-me's own share before | 243,256 B     |                 |
-| prism-me's own share after  | 198,073 B     |                 |
+| prism-me's own share after  | 198,392 B     |                 |
 
-The 8 more chunks at start are esbuild's splitting of modules shared by the start and the new chunk (HTTP/2: no
-measurable cost below).
+**Deferred, not saved:** the chunk loads as soon as the scene has its first object, so a session that opens anything
+fetches it while its data downloads. The budget counts the start closure only; the page's total JS is the same (about
+6.2 MB once the properties are loaded). The 8 more chunks at start are esbuild's splitting of the modules the start and
+the new chunk share.
 
-Time to the first frame, headless Chrome (WebGPU flags), the production builds served side by side on 1366 (a static
-server), `?example=cellpack-hiv1` with the list and the BinaryCIF served from a local copy (no network noise); ms from
-navigation, median of 5 fresh contexts:
+Time to the first frame, headless Chrome (WebGPU flags), the production builds served side by side on 1366,
+`?example=cellpack-hiv1` with the list and the BinaryCIF served from a local copy (no network noise); ms from
+navigation, each cell the median of 5 fresh contexts (each column's median on its own), three interleaved rounds:
 
-| Run                      | Viewer created | First frame | HIV drawn   |
-| ------------------------ | -------------- | ----------- | ----------- |
-| before                   | 314 / 300      | 347 / 342   | 1435 / 1423 |
-| after                    | 306 / 309      | 354 / 350   | 1436 / 1473 |
-| before, 20 Mbit/s, 40 ms | 2832           | 2866        | 4135        |
-| after, 20 Mbit/s, 40 ms  | 2890           | 2926        | 4208        |
+| Server, network                              | Build  | Viewer created         | First frame            | HIV drawn              |
+| -------------------------------------------- | ------ | ---------------------- | ---------------------- | ---------------------- |
+| HTTP/1.0 (`python -m http.server`), local    | before | 314, 300               | 347, 342               | 1435, 1423             |
+|                                              | after  | 306, 309               | 354, 350               | 1436, 1473             |
+| HTTP/1.0, 20 Mbit/s, 40 ms                   | before | 2832; 2828, 2832, 2839 | 2866; 2869, 2866, 2867 | 4135; 4155, 4141, 4119 |
+|                                              | after  | 2890; 2880, 2895, 2890 | 2926; 2922, 2929, 2911 | 4208; 4168, 4179, 4174 |
+| HTTP/2 (TLS, node `http2`), 20 Mbit/s, 40 ms | before | 2768, 2768, 2766       | 2797, 2799, 2799       | 3980, 3969, 3974       |
+|                                              | after  | 2753, 2753, 2741       | 2783, 2793, 2775       | 3981, 4000, 3995       |
 
-No difference beyond the noise (45 kB at 20 Mbit/s is 18 ms; runs vary ±60 ms). The first screenshot (HIV drawn, the
-panel open) is identical pixel for pixel before and after. On first use (the real app, the after build): the model's row
-picked shows its seven sections (Look, Representation, Decoration, Position, Clips, Labels, Graphics) and By zoom; the
-canvas's right-click menu opens with its items; `mesoscale.colorLevels` runs; no console error. Unit tests:
-`apps/prism-me` 23 files pass; `explorer/_test/lazy-properties.test.ts` guards the split (it fails on the code before).
+- Local: no difference beyond run to run.
+- **HTTP/1.0 with a network: after is about 55 ms slower** to the viewer and the first frame, consistently (every run of
+  three rounds): the 8 more start chunks are 8 more requests, a connection each, at 40 ms a round trip; more than the 18
+  ms that 45 kB less saves at 20 Mbit/s.
+- **HTTP/2 with the same network: after is 15–25 ms faster** to the viewer, 6–24 ms to the first frame (the 45 kB); HIV
+  drawn 1–31 ms later (the deferred chunk shares the line with the data).
+- So the gain depends on the server: the lab website's (HTTP/2 on GitHub Pages and most hosts) decides; on an HTTP/1
+  server this split costs more than it saves. Not measured on the lab website itself.
+
+The first screenshot (HIV drawn, the panel open) is identical pixel for pixel before and after. On first use (the real
+app, the after build, again after the review fixes): the model's row picked shows its seven sections (Look,
+Representation, Decoration, Position, Clips, Labels, Graphics) and By zoom; the canvas's right-click menu opens with its
+items; `mesoscale.colorLevels` runs; no console error. Tests: `explorer/_test/lazy-properties.test.ts` reads esbuild's
+graph of the app and fails on a static import of the properties or the controls (also after a comment, on a line with
+other code, by package name) and on the dynamic import removed; `explorer/_test/properties-load.test.tsx` checks
+Loading…, the failure with Retry, and Retry loading it, one import at a time.
 
 ### What did not move, and why
 
-- **The three extensions' operations** (stage-tools 46.8, cryoet 30.7, mesoscale 31.4 kB, and plugin/core's particle
-  `ops.ts` and `particle-targets.ts` 15.8 kB through `tomograms.ts` → `cryoet/operations`). Their views are lazy
-  already; their areas are not, and cannot be as they are: the explorer's panel reads `api.mesoscale`, `api.cryoet` and
-  `api.stage` synchronously at start (`sceneModel`, `ScenePanel`, the menus), and the stage subscribes to the canvas's
-  right-click in its constructor. As `LazyViewerExtension`s (stubs as `LazyVideoExport`'s, every operation's flags
-  declared, `StageLabel`/`StageDistance` in `owns.transformers`, the hidden tabs in `parts`) the explorer would have to
-  follow areas that appear later, and the first right-click to load the stage. A lane of its own: about 0.12 MB.
+- **The three extensions' operations** (the folders' start bytes after step 2: stage-tools 46.8, cryoet 30.7, mesoscale
+  31.4 kB, and plugin/core's particle `ops.ts` and `particle-targets.ts` 15.8 kB through `tomograms.ts` →
+  `cryoet/operations`). Their views are lazy already; their areas are not, and cannot be as they are: the explorer's
+  panel reads `api.mesoscale`, `api.cryoet` and `api.stage` synchronously at start (`sceneModel`, `ScenePanel`, the
+  menus), and the stage subscribes to the canvas's right-click in its constructor. As `LazyViewerExtension`s (stubs as
+  `LazyVideoExport`'s, every operation's flags declared, `StageLabel`/`StageDistance` in `owns.transformers`, the hidden
+  tabs in `parts`) the explorer would have to follow areas that appear later, and the first right-click to load the
+  stage. A lane of its own: about 0.12 MB.
 - **The explorer's menus** (`menu.ts` 8.7 kB and stage-tools' `drag.ts`): every menu path opens synchronously; small.
 - **prism-me's graphics additions** (color levels 8.7 kB, culling 18.2, ghost outlines 4.6, the clip shaders 7.5, the
   triangle pick 11.9): shader sources are assembled synchronously when a program is built, and the triangle pick is on
@@ -203,8 +220,9 @@ canvas's right-click menu opens with its items; `mesoscale.colorLevels` runs; no
 
 - the stock viewer's budget, 5.60 MB, which master meets with 17 kB left;
 - plus prism-me's library commits, 0.102 MB, until they go upstream or leave the start (step 4);
-- plus prism-me's own share after step 2, 0.198 MB;
-- = 5.900 MB, against 5.883 MB measured: 17 kB left, the headroom upstream keeps.
+- plus prism-me's own share after step 2, 0.198 MB (198,392 B);
+- = 5,900,602 B, rounded down to 5.90 MB, against 5,883,579 B measured: 16 kB left, about the headroom upstream keeps
+  (17 kB).
 
 The brief's formula alone (5.60 + 0.198 = 5.80 MB) fails today by 85 kB, the library commits that put the stock viewer
 over its own budget on this branch; a budget that fails on the day it is set guards nothing. If the library commits go
@@ -217,11 +235,31 @@ would conflict with every master merge). Ludo decides.
 
 #28 instance-cull 18.2 kB; #25 ui-scale 16.1; #31 mesh-measure 11.9; #27 dynamic-color 8.7; #20 + #24 cuts and ghosts
 7.5 (+ #20 particle layers 4.7, #20 + #8 particle look 4.4); #30 ghost-cull 4.6; #10 and #28 `canvas3d.ts` 2.8; the rest
-under 2.5 each (#9, #10, #12, #17, #18, #5). Upstream has 17 kB of room: any one of the first four alone puts it over.
+under 2.5 each (#9, #10, #12, #17, #18, #5). Upstream has 17,023 B of room: #28 alone puts it over; #25, #31 and #27
+each fit, any two do not.
 
 ## The gate
 
 `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `node scripts/workspace/assets.mjs`
-(no change) and `pnpm check:workspace` pass; `pnpm test:unit apps/prism-me` 23 files, 140 tests pass; the app's
+(no change) and `pnpm check:workspace` pass; `pnpm test:unit apps/prism-me` 24 files, 141 tests pass; the app's
 `test:scaling` (2 files, 5 tests), `styles:check` and `typecheck:storybook` pass. Prism viewer's `typecheck:storybook`
 fails in `packages/prism/viewer/src/api/styles.ts:114` (from #24, as the brief says): not fixed here.
+
+## Review
+
+Lane-reviewer (10 findings), then lane-skeptic (7 confirmed, 3 refuted, 4 of its own):
+
+- 1, 2, N1–N3 (confirmed): the source-scan guard missed the dynamic import's removal (`typeof import` matched), the
+  controls imported by package name, an import after a comment or after code on its line. Fixed in `175db5883`: the
+  guard reads esbuild's graph of the app (other packages external, about 1 s); each of those mutants fails it.
+- 3, 10 (confirmed): a pending or failed chunk left a blank pane (a `console.error` only), and each scene change while
+  it loaded asked again. Fixed in `fbdd94ed0`: Loading…, "could not be loaded" with Retry, one import at a time; its
+  test fails on the code before.
+- 4 (confirmed): the first timing table could not say "unchanged" (one throttled pair, slower), and "HTTP/2" was not
+  what the server spoke (HTTP/1.0). Measured again: three interleaved rounds, HTTP/1.0 and HTTP/2 (Step 2's table):
+  slower on HTTP/1.0, faster on HTTP/2. The bytes are deferred, not saved: said.
+- 5 (confirmed): Step 4's "any one of the first four" was wrong; corrected.
+- 6 (confirmed): TODO.md's budget item was stale; updated with what this lane leaves open.
+- 7 (no change): the sum is 5,900,602 B, the proposal rounds down; said.
+- 8, 9 (refuted): the extensions' figures count their CSS too; both chunk counts are start-closure counts.
+- N4: the static server on 1366 is stopped at the end of the lane.

@@ -98,8 +98,13 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   the label, Add a clip, On top: styling.md §4); a viewer test waits on the real clock (300 ms) to show a run of picks
   makes one step; the extensions' `styles:check` is not in CI (`.github/workflows/node.yml` runs Prism's).
 
-- The production build is over its size budget (`node scripts/esbuild/app.mjs apps/prism-me --prd`: index.js 5.78 MB
-  against 3.40 MB), on prism-me before PR #9 too.
+- The production build is over its size budget (`node scripts/esbuild/app.mjs apps/prism-me --prd`: index.js 5.88 MB
+  against 3.40 MB, after lane startup-budget; `progress/2026-10-31-startup-budget.md`). The budget proposed there, 5.90
+  MB, waits for Ludo. Left open by that lane: the three extensions as lazy areas (about 0.12 MB: the explorer reads
+  their areas at start, the stage's right-click); the explorer's menus (about 10 kB); prism-me's library commits that
+  put the stock viewer over its 5.6 MB (+0.102 MB: #28, #25, #31, #27, …), for upstream lanes; Mol\*'s extensions eager
+  in `FullPrismViewerSpec` (command-language and the query language, MVS, …), upstream's list; prism-viewer's own budget
+  failing on this branch (5.69 MB).
 - Two fakes of the gizmo canvas: Prism's `@molstar/prism-viewer/testing/gizmo-canvas` (PR #9) and the gizmo library's
   own `fakeCanvas` (`packages/graphics/src/util/gizmo/_test/controller.test.ts:32`); one, in graphics' testing folder,
   when the gizmo library goes upstream (Ludo, 2026-10-26: kept for now).
