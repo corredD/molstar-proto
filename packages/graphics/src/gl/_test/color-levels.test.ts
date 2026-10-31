@@ -51,28 +51,31 @@ describe('color levels in the programs', () => {
     });
   }
 
-  const ctx = tryGetGLContext(32, 32, { fragDepth: true });
-  (ctx ? it : it.skip)('compile with the levels on and off (native GL)', { tags: ['medium'] }, async () => {
-    const ctx = getGLContext(32, 32);
-    const levelsOn = (o: GraphicsRenderObject) => {
-      const v = o.values as unknown as { dColorLevels: ValueCell<boolean>; dColorType: ValueCell<string> };
-      ValueCell.update(v.dColorType, 'texture');
-      ValueCell.update(v.dColorLevels, true);
-      return o;
-    };
-    setDebugMode(true);
-    try {
-      for (const objects of [
-        [createSpheres(), createMesh()],
-        [levelsOn(createSpheres()), levelsOn(createMesh())],
-      ]) {
-        const scene = Scene.create(ctx);
-        for (const o of objects) scene.add(o);
-        expect(() => scene.commit()).not.toThrow();
+  // spheres need frag depth (impostors), meshes do not: each compiled where the backend can
+  for (const [name, create, required] of [
+    ['spheres', createSpheres, { fragDepth: true }],
+    ['mesh', createMesh, {}],
+  ] as const) {
+    const ctx = tryGetGLContext(32, 32, required);
+    (ctx ? it : it.skip)(`${name}: compiles with the levels on and off (native GL)`, { tags: ['medium'] }, async () => {
+      const ctx = getGLContext(32, 32);
+      const levelsOn = (o: GraphicsRenderObject) => {
+        const v = o.values as unknown as { dColorLevels: ValueCell<boolean>; dColorType: ValueCell<string> };
+        ValueCell.update(v.dColorType, 'texture');
+        ValueCell.update(v.dColorLevels, true);
+        return o;
+      };
+      setDebugMode(true);
+      try {
+        for (const object of [create(), levelsOn(create())]) {
+          const scene = Scene.create(ctx);
+          scene.add(object);
+          expect(() => scene.commit()).not.toThrow();
+        }
+      } finally {
+        setDebugMode(false);
+        ctx.destroy();
       }
-    } finally {
-      setDebugMode(false);
-      ctx.destroy();
-    }
-  });
+    });
+  }
 });
