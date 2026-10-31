@@ -55,6 +55,8 @@ await page.evaluate(() => {
   const pl = window.molstar.viewer.plugin;
   const c = pl.canvas3d;
   pl.animationLoop.stop();
+  // full detail and resolution while moving: the frames compared are the ones at rest (motion: the last section)
+  c.setProps({ motion: { lodScale: 1, pixelScale: 1 } });
   const snap = c.camera.getSnapshot();
   const frame = async () => {
     c.requestDraw();
@@ -179,9 +181,13 @@ for (let i = 1; i <= turns; i++) {
 console.log(JSON.stringify({ turning: f, degreesPerFrame: turn, frames: turns, worst, mean: total / turns }));
 
 // at rest after turning, as the app leaves it: turned frame by frame with occlusion, then ticks without requests for a
-// second (the frames the canvas asks for itself); against the settled image without occlusion. With `motion` off and on
+// second (the frames the canvas asks for itself); against the settled image without occlusion. With `motion` off and
+// on (4x coarser, half the resolution)
 for (const lodScale of [1, 4]) {
-  await page.evaluate((m) => window.molstar.viewer.plugin.canvas3d.setProps({ motion: { lodScale: m } }), lodScale);
+  await page.evaluate(
+    (m) => window.molstar.viewer.plugin.canvas3d.setProps({ motion: { lodScale: m, pixelScale: m > 1 ? 0.5 : 1 } }),
+    lodScale,
+  );
   await page.evaluate((f) => window.C.at(f, 0), f);
   await settle();
   for (let i = 1; i <= 10; i++) await page.evaluate(([f, a]) => (window.C.at(f, a), window.C.frames(1)), [f, i * turn]);
@@ -193,6 +199,6 @@ for (const lodScale of [1, 4]) {
   await page.evaluate(() => window.C.occlusion(true));
   const d = await page.evaluate(([a, b]) => window.C.diff(a, b), [rest, all]);
   if (d.differ) save(`rest-m${lodScale}-occluded`, rest), save(`rest-m${lodScale}-all`, all);
-  console.log(JSON.stringify({ atRestAfterTurning: f, motionLodScale: lodScale, differ: d.differ }));
+  console.log(JSON.stringify({ atRestAfterTurning: f, motion: lodScale > 1, differ: d.differ }));
 }
 await browser.close();
