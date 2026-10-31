@@ -388,7 +388,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
 /**
  * The workgroups of \`cluster-copy\`: a row per cluster, as many columns as the most instances drawn at level 0 of a
- * segment (\`instance-copy\`'s counters) need: the rows of segments out of view or coarse run no thread
+ * clustered segment (\`instance-copy\`'s counters) need: the rows of segments out of view or coarse run no thread
  */
 export const cluster_dispatch_wgsl = /* wgsl */ `
 @compute @workgroup_size(WorkgroupSizeX)
@@ -398,7 +398,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     var most = 0u;
     for (var s = 0u; s < u32(uParams.uSegmentCount); s++) {
-        most = max(most, counters[s]);
+        if (clustered[s] != 0u) {
+            most = max(most, counters[s]);
+        }
     }
     dispatchArgs[0] = (most + WorkgroupSizeX - 1u) / WorkgroupSizeX;
     dispatchArgs[1] = u32(uParams.uClusterCount);

@@ -139,6 +139,8 @@ export const ClusterDispatchSchema = {
   uSegmentCount: UniformSpec('i'),
   uClusterCount: UniformSpec('i'),
   counters: StorageBufferSpec('u32', 'read'),
+  /** per segment 1 where it is drawn by clusters */
+  clustered: StorageBufferSpec('u32', 'read'),
   /** `cluster-copy`'s workgroups (x, y, z) */
   dispatchArgs: StorageBufferSpec('u32', 'read-write'),
 };

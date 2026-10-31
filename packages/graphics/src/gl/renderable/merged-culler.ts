@@ -101,6 +101,9 @@ const AttributeFloats = { aTransform: 16, aInstance: 1, aSegment: 3, aSegmentSph
 export const ClusterSpheres = 256;
 export const MinClusteredSpheres = 2 * ClusterSpheres;
 
+/** WebGPU's least `maxComputeWorkgroupsPerDimension`: `cluster-copy`'s rows, a cluster each */
+const MaxWorkgroupsPerDimension = 65535;
+
 const EmptyInt = new Int32Array(0);
 const EmptyUint = new Uint32Array(0);
 
@@ -129,6 +132,7 @@ export function createMergedCuller(
   const clusterCounters = buffer('culled cluster counters');
   const clusterArgs = buffer('culled cluster draw arguments');
   const clusterDispatch = buffer('culled cluster dispatch');
+  const clusteredSegments = buffer('culled clustered segments');
   const attributes = {
     aTransform: buffer('culled transforms'),
     aInstance: buffer('culled instances'),
@@ -206,6 +210,7 @@ export function createMergedCuller(
     uSegmentCount: ValueCell.create(0),
     uClusterCount: ValueCell.create(0),
     counters,
+    clustered: clusteredSegments,
     dispatchArgs: clusterDispatch,
   };
   const clusterArgsValues = {
@@ -334,7 +339,16 @@ export function createMergedCuller(
       }
     }
     clusterCount = clusterData.length / 8;
-    const clusterSlots = regionBase - identityBase - instanceCount;
+    let clusterSlots = regionBase - identityBase - instanceCount;
+    // none where the clusters exceed a dispatch's rows or the attributes a binding (`aTransform`, 64 bytes a slot)
+    if (
+      clusterCount > MaxWorkgroupsPerDimension ||
+      ((levels + 1) * instanceCount + clusterSlots) * 64 > compute.maxStorageBufferSize
+    ) {
+      clusterCount = 0;
+      clusterSlots = 0;
+      clustered.fill(0);
+    }
 
     ensure(instanceData, instanceCount * InstanceDataVec4s * 16);
     ensure(instanceCells, instanceCount * 8);
@@ -352,6 +366,8 @@ export function createMergedCuller(
     ensure(clusters, clusterCount * 32);
     ensure(clusterCounters, clusterCount * 4);
     ensure(clusterArgs, clusterCount * stride);
+    ensure(clusteredSegments, segmentCount * 4);
+    clusteredSegments.ref.value.write(Uint32Array.from(clustered));
     if (clusterCount > 0) {
       // the floats as written, the segment and regions as their bits
       const data = new Float32Array(clusterData);
@@ -660,6 +676,7 @@ export function createMergedCuller(
         clusterCounters,
         clusterArgs,
         clusterDispatch,
+        clusteredSegments,
       ];
       for (const cell of [...cells, ...Object.values(attributes)]) cell.ref.value.destroy();
     },
