@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { depth_wgsl } from './chunks/depth.wgsl.js';
@@ -523,7 +524,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
         let outline = getOutline(coords);
 
         if (outline.hasOpaque) {
-            let outlineFogFactor = smoothstep(uObject.uFogNear, uObject.uFogFar, abs(getViewZ(outline.opaqueDepth)));
+            let outlineFogFactor = outlineFog(outline.opaqueDepth);
             if (!transparentBackground) {
                 color = vec4<f32>(mix(uObject.uOutlineColor, uObject.uFogColor, outlineFogFactor), color.a);
             } else {
@@ -534,11 +535,11 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
 
         #if defined(dBlendTransparency)
             if (outline.hasTransparent) {
-                if (outline.hasOpaque && outline.opaqueDepth > outline.transparentDepth) {
+                if (outline.hasOpaque && outlineOpaqueInFront(outline)) {
                     blendTransparency = false;
                 } else {
                     let finalOutlineAlpha = clamp(outline.alpha * 2.0, 0.0, 1.0);
-                    let outlineFogFactor = smoothstep(uObject.uFogNear, uObject.uFogFar, abs(getViewZ(outline.transparentDepth)));
+                    let outlineFogFactor = outlineFog(outline.transparentDepth);
                     let finalAlpha = max(transparentColor.a, finalOutlineAlpha * (1.0 - outlineFogFactor));
                     transparentColor = vec4<f32>(uObject.uOutlineColor * finalAlpha, finalAlpha);
                 }

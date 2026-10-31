@@ -8,6 +8,7 @@
  */
 
 import { common } from './chunks/common.glsl.js';
+import { outline_read_glsl } from './outlines.frag.js';
 
 export const postprocessing_frag = `
 precision highp float;
@@ -40,46 +41,7 @@ bool isBackground(const in float depth) {
     return depth == 0.0;
 }
 
-int squaredOutlineScale = dOutlineScale * dOutlineScale;
-void getOutline(const in vec2 coords, out bool hasOpaque, out bool hasTransparent, out float opaqueDepth, out float transparentDepth, out float alpha) {
-    vec2 invTexSize = 1.0 / uTexSize;
-
-    hasOpaque = false;
-    hasTransparent = false;
-    opaqueDepth = 0.0;
-    transparentDepth = 0.0;
-    alpha = 0.0;
-    for (int y = -dOutlineScale; y <= dOutlineScale; y++) {
-        for (int x = -dOutlineScale; x <= dOutlineScale; x++) {
-            if (x * x + y * y > squaredOutlineScale) {
-                continue;
-            }
-
-            vec2 sampleCoords = coords + vec2(float(x), float(y)) * invTexSize;
-
-            vec4 sampleOutlineCombined = texture2D(tOutlines, sampleCoords);
-            float sampleOpaqueDepth = unpackRGToUnitInterval(sampleOutlineCombined.gb);
-            float sampleTransparentDepth = sampleOutlineCombined.a;
-            vec2 sampleFlagWithAlpha = unpack2x4(sampleOutlineCombined.r);
-
-            float sampleFlag = sampleFlagWithAlpha.x;
-            float sampleAlpha = clamp(sampleFlagWithAlpha.y * 0.5, 0.01, 1.0);
-
-            if ((sampleFlag > 0.20 && sampleFlag < 0.30) || (sampleFlag > 0.70 && sampleFlag < 0.80)) { // transparent || both
-                if (sampleOpaqueDepth > opaqueDepth) {
-                    hasOpaque = true;
-                    opaqueDepth = sampleOpaqueDepth;
-                }
-            }
-
-            if ((((sampleFlag > 0.45 && sampleFlag < 0.55) || (sampleFlag > 0.70 && sampleFlag < 0.80))) && sampleTransparentDepth > transparentDepth) { // transparent || both
-                hasTransparent = true;
-                transparentDepth = sampleTransparentDepth;
-                alpha = sampleAlpha;
-            }
-        }
-    }
-}
+${outline_read_glsl}
 
 // occlusion at \`coords\` of a pixel at view z \`viewZ\`, depth-aware upsampled from a lower SSAO resolution
 float getSsao(vec2 coords, float viewZ) {
@@ -157,11 +119,11 @@ void main(void) {
         float outlineOpaqueDepth;
         float outlineTransparentDepth;
         float outlineAlpha;
-        getOutline(coords, hasOpaque, hasTransparent, outlineOpaqueDepth, outlineTransparentDepth, outlineAlpha);
+        bool outlineTransparentBoth;
+        getOutline(coords, hasOpaque, hasTransparent, outlineOpaqueDepth, outlineTransparentDepth, outlineAlpha, outlineTransparentBoth);
 
         if (hasOpaque) {
-            float viewDist = abs(getViewZ(outlineOpaqueDepth));
-            float fogFactor = smoothstep(uFogNear, uFogFar, viewDist);
+            float fogFactor = outlineFog(outlineOpaqueDepth);
             if (!uTransparentBackground) {
                 color.rgb = mix(uOutlineColor, uFogColor, fogFactor);
             } else {
@@ -172,12 +134,11 @@ void main(void) {
 
         #ifdef dBlendTransparency
             if (hasTransparent) {
-                if (hasOpaque && outlineOpaqueDepth > outlineTransparentDepth) {
+                if (hasOpaque && outlineOpaqueInFront(outlineOpaqueDepth, outlineTransparentDepth, outlineTransparentBoth)) {
                     blendTransparency = false;
                 } else {
                     float finalOutlineAlpha = clamp(outlineAlpha * 2.0, 0.0, 1.0);
-                    float viewDist = abs(getViewZ(outlineTransparentDepth));
-                    float fogFactor = smoothstep(uFogNear, uFogFar, viewDist);
+                    float fogFactor = outlineFog(outlineTransparentDepth);
                     float finalAlpha = max(transparentColor.a, finalOutlineAlpha * (1.0 - fogFactor));
                     transparentColor.a = finalAlpha;
                     transparentColor.rgb = uTransparentOutlineColor * finalAlpha;
