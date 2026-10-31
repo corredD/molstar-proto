@@ -19,7 +19,9 @@ import {
   cell_cull_wgsl,
   cluster_copy_wgsl,
   cluster_dispatch_wgsl,
+  cull_args_second_wgsl,
   cull_args_wgsl,
+  cull_snapshot_wgsl,
   instance_copy_wgsl,
 } from './cell-cull.wgsl.js';
 import { denoise_wgsl } from './denoise.wgsl.js';
@@ -42,6 +44,8 @@ const Kernels = new Map<string, string>([
   ['instance-copy', instance_copy_wgsl],
   ['cluster-copy', cluster_copy_wgsl],
   ['cluster-dispatch', cluster_dispatch_wgsl],
+  ['cull-snapshot', cull_snapshot_wgsl],
+  ['cull-args-second', cull_args_second_wgsl],
   ['cull-args', cull_args_wgsl],
   ['illumination-denoise', denoise_wgsl],
 ]);

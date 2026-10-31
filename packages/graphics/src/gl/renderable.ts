@@ -187,7 +187,15 @@ export interface Renderable<T extends RenderableValues> {
     frame: Frame,
     lod: LodView,
     pyramid?: OcclusionPyramid,
+    twoPhase?: boolean,
   ) => boolean;
+  /**
+   * Two-phase occlusion (after `prepareCull` with `twoPhase`): the second phase culled against `pyramid` (this frame's);
+   * true where it has a second phase to draw (`setCullPhase`)
+   */
+  prepareCullSecond?: (pyramid?: OcclusionPyramid) => boolean;
+  /** The phase it draws (two-phase occlusion): 2 the second phase's lists, else all it draws */
+  setCullPhase?: (phase: number) => void;
   /**
    * Culled on the GPU (`prepareCull`): whether its occlusion test was against a pyramid drawn at the view and levels it
    * culled for (see `MergedCuller.settled`); undefined or true otherwise

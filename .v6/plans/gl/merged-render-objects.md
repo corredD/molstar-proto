@@ -169,12 +169,16 @@ for densely packed scenes (mesoscale), where most of what is in view is hidden b
   M1: 22 to 45 ms a frame); with the cap test 37 ms, and at most 13 (CellPack) and 206 (PetWorld) pixels differ in a
   frame while turning at 0.1 (`apps/prism-me/scripts/cull-check.mjs`; what parallax uncovers behind a near particle
   shows a frame late, the one-phase test's limit).
-- **No occlusion while moving with `motion`** (`Canvas3D`): moving frames and the frame the camera rests in draw
-  without a pyramid (nor Hi-Z's CPU test); the next frame tests one of its own view. Exact (no frame of popping: what parallax uncovers, a
-  coarse frame's spheres hiding fine gaps), and nearly free where moving frames are coarser at a lower resolution
-  (turning, M1, WebGPU: CellPack HIV 0.1 7.8 to 9.3 ms dpr 1, 18.3 to 21.4 dpr 2; PetWorld HIV 0.02 14.7 to 15.3, 38.4
-  to 39.4); chosen over two-phase occlusion (a pyramid within the frame, the opaque pass split), which the frames
-  without `motion` would still need (their one-phase popping stays).
+- **Two phases** (as Nanite and niagara; with order-independent transparency, whose opaque depth is a texture): the
+  first phase draws the instances (and level-0 clusters) visible last frame, tested against the view and levels but no
+  pyramid; `DrawPass` then builds this frame's pyramid of that depth (`occlusionPyramid`), the culler tests the rest
+  against it (`dispatchSecond`, `uPhase` 2: per instance a visibility bit in `instanceCells.z`, per cluster and instance
+  in `clusterBits`) and the second phase draws what it shows (`Renderer.renderOpaqueSecond`, records after the first
+  phase's instances: `cull-snapshot`, `cull-args-second`). Exact in every frame, moving or not (no frame of popping),
+  so `motion` keeps occlusion while moving. Measured (M1, WebGPU, turning 1° a frame at full detail, dpr 1 / 2): CellPack
+  HIV 0.1 41 to 12.5 / 48 to 18 ms, PetWorld HIV 0.02 33 to 18 / 43 to 25 ms; still frames cost a dispatch and a pyramid
+  more (CellPack whole view 6.5 to 8.4 ms). Without order-independent transparency, one phase against the previous
+  frame's pyramid (below).
 - **A pyramid per drawn frame** (`OcclusionPyramid.version`): a dispatch is skipped only against the build it tested
   last. At a still camera what was drawn may change (an object hidden, a coarser level refined): what it hid shows in
   the next pyramid and is drawn again. A still camera costs a dispatch per drawn frame, none while nothing draws.

@@ -1052,6 +1052,15 @@ namespace Canvas3D {
       controls.setResolutionScale(scale);
     }
 
+    /** this frame's pyramid of the opaque depth drawn so far (two-phase occlusion, `DrawPass.occlusionPyramid`) */
+    function buildOcclusionPyramid() {
+      const before = hiZ.gpuPyramid?.version;
+      hiZ.setGpuCulling(true);
+      hiZ.render(camera);
+      const pyramid = hiZ.gpuPyramid;
+      return pyramid && pyramid.version !== before ? pyramid : undefined;
+    }
+
     function isViewChanged() {
       let changed = false;
       for (let i = 0; i < 16; ++i) {
@@ -1472,6 +1481,9 @@ namespace Canvas3D {
         const multiSampleChanged = multiSampleHelper.update(markingUpdated || shouldRender, p.multiSample) && !xrFrame;
 
         if (shouldRender || multiSampleChanged || markingUpdated) {
+          // two-phase occlusion of the objects culled on the GPU: this frame's pyramid of the first phase's depth (exact,
+          // also while moving)
+          passes.draw.occlusionPyramid = hiZ.props.gpu ? buildOcclusionPyramid : null;
           renderer.setOcclusionTest(moving || rested ? null : hiZ.occlusionTest);
           // with `motion`, no occlusion while the camera moves nor in the frame it rests: a pyramid of another view
           // shows what moved into view a frame late, one of a coarser frame hides what its gaps show; frames drawn

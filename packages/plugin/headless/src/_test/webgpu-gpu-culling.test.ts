@@ -718,7 +718,128 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
     }
   }, 60_000);
 
-  it('a canvas draws again after a camera change, without requests, until occlusion tested a pyramid of its view', async () => {
+  it('two-phase occlusion: the second phase draws what the pyramid of this frame shows and the first did not', async () => {
+    const plugin = await createPlugin();
+    try {
+      const graphics = plugin.canvas3d!.graphics;
+      // a grid in front (z 0) and one behind (z -12), one cell each
+      const options = { cellSize: 200 };
+      const front = createMember(Vec3.create(-15, -15, 0), ColorNames.orange, options);
+      const back = createMember(Vec3.create(-15, -15, -12), ColorNames.green, options);
+      const gpu = createMergedRenderObject([front, back], { gpuCulling: true });
+      const scene = Scene.create(graphics);
+      scene.add(gpu);
+      scene.commit();
+      const camera = new Camera();
+      Viewport.set(camera.viewport, 0, 0, Size, Size);
+      camera.setState(
+        { target: Vec3.create(0, 0, -6), position: Vec3.create(0, 0, 24), up: Vec3.create(0, 1, 0), radius: 20 },
+        0,
+      );
+      camera.update();
+      // pyramids of the view: a wall between the grids (view z -30), or nothing (the far plane)
+      const { near, far } = camera;
+      const pyramid = (z: number | undefined, version: number): OcclusionPyramid => {
+        const texture = graphics.resources.texture('image-float32', 'r', 'float', 'nearest');
+        const depth = z === undefined ? 0 : (-(near * far) / z - near) / (far - near);
+        texture.load({ array: new Float32Array(15 * 8).fill(depth), width: 15, height: 8 });
+        return {
+          version,
+          texture,
+          levelCount: 7,
+          minLevel: 3,
+          width: Size,
+          height: Size,
+          view: Mat4.copy(Mat4(), camera.view),
+          projection: Mat4.copy(Mat4(), camera.projection),
+          near,
+          far,
+        };
+      };
+      const wall = pyramid(-30, 1);
+      const open = pyramid(undefined, 2);
+      const renderer = Renderer.create(graphics);
+      const target = graphics.createRenderTarget(Size, Size, 'depth-stencil');
+      await graphics.resources.preparePipelines(
+        renderer.collect({ name: 'opaque' }, scene, graphics.describeTarget(target)),
+      );
+      let all: MultiDrawBaseData[] | undefined;
+      let second: MultiDrawBaseData[] | undefined;
+      const item = scene.renderables[0].renderItem;
+      const render = item.render;
+      let phase = 1;
+      item.render = (variant, globals, l) => {
+        if (l?.[0]?.indirect) {
+          if (phase === 2) second = l;
+          else all = l;
+        }
+        render(variant, globals, l);
+      };
+      const counts = async (l: MultiDrawBaseData[]) => {
+        const { buffer, byteOffset, indexed } = l[0].indirect!;
+        const words = indexed ? 5 : 4;
+        const a = new Uint32Array(await buffer.readAsync(byteOffset, l[0].count * words * 4));
+        return [a[1], a[words + 1]];
+      };
+      // a frame: the first phase (the instances visible last frame), the second against `p`; the counts drawn by each
+      // (the first phase's: all minus the second's)
+      const frame = async (p: OcclusionPyramid) => {
+        renderer.update(camera, scene, createFrame());
+        renderer.prepareCull(scene, true);
+        graphics.beginRenderPass(target);
+        renderer.clear(true);
+        renderer.setViewport(0, 0, Size, Size);
+        phase = 1;
+        renderer.renderOpaque(scene, camera);
+        const hasSecond = renderer.prepareCullSecond(scene, p) > 0;
+        graphics.beginRenderPass(target);
+        phase = 2;
+        if (hasSecond) renderer.renderOpaqueSecond(scene, camera);
+        graphics.flush();
+        image = Array.from(await graphics.readRenderTarget(target, 0, 0, Size, Size));
+        await graphics.resources.pending.whenReady();
+        const total = await counts(all!);
+        const later = hasSecond ? await counts(second!) : [0, 0];
+        return { first: [total[0] - later[0], total[1] - later[1]], second: later };
+      };
+      let image: number[] = [];
+      for (let i = 0; i < 20 && !all; ++i) await frame(open);
+      const [inView] = countInView([front], camera, 1);
+      const [behind] = countInView([back], camera, 1);
+      expect(inView).toBeGreaterThan(0);
+      expect(behind).toBeGreaterThan(0);
+      // nothing occluding: both grids visible, drawn by the first phase once known
+      camera.setState({ ...camera.state, position: Vec3.create(0, 0, 24.001) }, 0);
+      camera.update();
+      expect(await frame(open)).toEqual({ first: [inView, behind], second: [0, 0] });
+      // the wall: the grid behind no longer visible (drawn by the first phase, the visible last frame)
+      camera.setState({ ...camera.state, position: Vec3.create(0, 0, 24) }, 0);
+      camera.update();
+      expect(await frame(wall)).toEqual({ first: [inView, behind], second: [0, 0] });
+      // the next frame's first phase draws the front grid alone; the wall gone, the second phase the grid behind
+      camera.setState({ ...camera.state, position: Vec3.create(0, 0, 24.001) }, 0);
+      camera.update();
+      expect(await frame(open)).toEqual({ first: [inView, 0], second: [0, behind] });
+      // the image of both phases: what one phase without occlusion draws
+      const twoPhases = image;
+      renderer.update(camera, scene, createFrame());
+      renderer.prepareCull(scene);
+      graphics.beginRenderPass(target);
+      renderer.clear(true);
+      renderer.setViewport(0, 0, Size, Size);
+      renderer.renderOpaque(scene, camera);
+      graphics.flush();
+      const onePhase = Array.from(await graphics.readRenderTarget(target, 0, 0, Size, Size));
+      expect(new Set(onePhase).size).toBeGreaterThan(2);
+      expect(twoPhases).toEqual(onePhase);
+      wall.texture.destroy();
+      open.texture.destroy();
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
+  it('one phase: a canvas draws again after a camera change, without requests, until occlusion tested a pyramid of its view', async () => {
     const plugin = await createPlugin(128);
     try {
       // copies of a solid wall (12 x 12 atoms closer than their radii) one behind the other along z
@@ -765,6 +886,8 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
         typeParams: { renderMerged: true, gpuCulling: true, cellSize: 3, batchSize: 12 },
       });
       const canvas = plugin.canvas3d!;
+      // one phase (two-phase occlusion needs order-independent transparency's opaque depth)
+      plugin.canvas3dContext!.setProps({ transparency: 'blended' });
       canvas.setProps({
         multiSample: { ...canvas.props.multiSample, mode: 'off' },
         hiZ: { ...canvas.props.hiZ, enabled: false, gpu: true },

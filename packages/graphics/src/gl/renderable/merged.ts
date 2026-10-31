@@ -1191,7 +1191,11 @@ export function MergedRenderable(
     }
     return shiftedLists;
   }
-  const getLists = () => (mode === 'gpu' ? gpuLists : getCpuLists());
+  /** two-phase occlusion: the second phase's lists (`setCullPhase` 2), drawn where it has one this frame */
+  let cullPhase = 0;
+  let gpuLists2: MultiDrawBaseData[] = [];
+  let hasSecond = false;
+  const getLists = () => (mode === 'gpu' ? (cullPhase === 2 ? gpuLists2 : gpuLists) : getCpuLists());
 
   // the members' cells culling reads every frame, resolved once: values objects have too many keys for fast named reads
   const memberCull: CullValues[] = members.map((v) => ({
@@ -1263,6 +1267,7 @@ export function MergedRenderable(
       // culled on the GPU before the passes (`prepareCull`): the level lists for their uniforms only
       mdb.prepare(memberCull[0].lodLevels, 0, true, lod);
       gpuLists = culler.getLists(mdb.list);
+      gpuLists2 = culler.getLists(mdb.list, true);
       mode = 'gpu';
       lastCullFrame = frame;
       drawVersion = getDrawVersion();
@@ -1333,14 +1338,31 @@ export function MergedRenderable(
     },
     cullSimple,
     prepareCull: culler
-      ? (cameraPlane: Plane3D, frustum: Frustum3D, frame: Frame, lod: LodView, pyramid?: OcclusionPyramid) => {
+      ? (
+          cameraPlane: Plane3D,
+          frustum: Frustum3D,
+          frame: Frame,
+          lod: LodView,
+          pyramid?: OcclusionPyramid,
+          twoPhase?: boolean,
+        ) => {
           // once per frame, for its first view; other views of the frame draw the CPU culling's lists
           if (frame === gpuFrame) return true;
-          gpuFrame = culler.dispatch(cameraPlane, frustum, lod, pyramid) ? frame : undefined;
+          hasSecond = false;
+          gpuFrame = culler.dispatch(cameraPlane, frustum, lod, pyramid, twoPhase) ? frame : undefined;
           if (gpuFrame) setGpuView(cameraPlane, frustum);
           return !!gpuFrame;
         }
       : undefined,
+    prepareCullSecond: culler
+      ? (pyramid?: OcclusionPyramid) => {
+          hasSecond = culler.dispatchSecond(pyramid);
+          return hasSecond;
+        }
+      : undefined,
+    setCullPhase: (phase: number) => {
+      cullPhase = phase;
+    },
     get gpuCullSettled() {
       return culler?.settled ?? true;
     },

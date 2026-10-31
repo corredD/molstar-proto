@@ -26,6 +26,8 @@ export const InstanceCopyKernel = KernelCode('instance-copy', [64]);
 export const CullArgsKernel = KernelCode('cull-args', [64]);
 export const ClusterCopyKernel = KernelCode('cluster-copy', [64]);
 export const ClusterDispatchKernel = KernelCode('cluster-dispatch', [64]);
+export const CullSnapshotKernel = KernelCode('cull-snapshot', [64]);
+export const CullArgsSecondKernel = KernelCode('cull-args-second', [64]);
 
 /** Levels the kernels handle, as `aSegmentLod` (4 components) */
 export const MaxCullLevels = 4;
@@ -101,10 +103,12 @@ export const InstanceCopySchema = {
   ...CullViewSchema,
   uInstanceCount: UniformSpec('i'),
   uSegmentCount: UniformSpec('i'),
+  /** two-phase occlusion: 0 none (one dispatch), 1 the instances visible last frame, 2 the others */
+  uPhase: UniformSpec('i'),
   /** the instances' data (`packInstanceData`) */
   instanceData: StorageBufferSpec('vec4<f32>', 'read'),
-  /** per instance its cell and segment */
-  instanceCells: StorageBufferSpec('vec2<u32>', 'read'),
+  /** per instance its cell, segment and whether visible last frame (written by phase 2) */
+  instanceCells: StorageBufferSpec('vec4<u32>', 'read-write'),
   /** per segment its first instance and its padding (the largest sphere radius, as `bitcast<u32>`) */
   segmentBases: StorageBufferSpec('vec2<u32>', 'read'),
   cellLevels: StorageBufferSpec('u32', 'read'),
@@ -121,12 +125,18 @@ export const InstanceCopySchema = {
 export const ClusterCopySchema = {
   ...CullViewSchema,
   uClusterCount: UniformSpec('i'),
+  /** as `InstanceCopySchema.uPhase` */
+  uPhase: UniformSpec('i'),
   /** per cluster two vec4: its local sphere; its segment, its segment's level-0 region and its own (`bitcast<u32>`) */
   clusters: StorageBufferSpec('vec4<f32>', 'read'),
   /** the instance counts of the records, level 0 first (`instance-copy`'s counters) */
   counters: StorageBufferSpec('u32', 'read'),
+  /** the counters after phase 1 (`cull-snapshot`) */
+  counters1: StorageBufferSpec('u32', 'read'),
   /** per cluster the instances drawn, zeroed before */
   clusterCounters: StorageBufferSpec('atomic<u32>', 'read-write'),
+  /** per (cluster, instance) whether visible last frame */
+  clusterBits: StorageBufferSpec('u32', 'read-write'),
   /** the compacted instanced attributes, read at level 0 and written at the clusters' regions */
   transforms: StorageBufferSpec('vec4<f32>', 'read-write'),
   instances: StorageBufferSpec('f32', 'read-write'),
@@ -143,6 +153,22 @@ export const ClusterDispatchSchema = {
   clustered: StorageBufferSpec('u32', 'read'),
   /** `cluster-copy`'s workgroups (x, y, z) */
   dispatchArgs: StorageBufferSpec('u32', 'read-write'),
+};
+
+export const CullSnapshotSchema = {
+  uRecordCount: UniformSpec('i'),
+  counters: StorageBufferSpec('u32', 'read'),
+  snapshot: StorageBufferSpec('u32', 'read-write'),
+};
+
+export const CullArgsSecondSchema = {
+  uRecordCount: UniformSpec('i'),
+  uRecordWords: UniformSpec('i'),
+  counters: StorageBufferSpec('u32', 'read'),
+  snapshot: StorageBufferSpec('u32', 'read'),
+  /** the records of both phases (their first instances) */
+  all: StorageBufferSpec('u32', 'read'),
+  args: StorageBufferSpec('u32', 'read-write'),
 };
 
 export const CullArgsSchema = {

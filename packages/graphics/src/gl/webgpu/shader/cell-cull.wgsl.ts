@@ -284,6 +284,17 @@ fn main(
         if (mask != 0u) {
             mask = instanceLevels(o, bitcast<f32>(segmentBases[segment].y), mask);
         }
+        // two-phase occlusion (\`uPhase\`): 1 the instances visible last frame (no occlusion test); 2 the others, tested
+        // against this frame's pyramid, and what is visible now for the next frame
+        let phase = u32(uParams.uPhase);
+        if (phase == 1u && cs.z == 0u) {
+            mask = 0u;
+        } else if (phase == 2u) {
+            instanceCells[instance].z = select(0u, 1u, mask != 0u);
+            if (cs.z != 0u) {
+                mask = 0u;
+            }
+        }
     }
     // the segment of the workgroup's first instance (always valid)
     let wgSegment = instanceCells[wid.x * WorkgroupSizeX].y;
@@ -357,6 +368,19 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
     let src = info.y + i;
+    // two-phase occlusion (\`uPhase\`): per (cluster, instance) whether visible last frame (\`info.w\`: the cluster's
+    // first, then by the instance's index in its member: \`aInstance\` less the segment's first, \`info.y\`)
+    let phase = u32(uParams.uPhase);
+    let bit = info.w + u32(instances[src]) - info.y;
+    var was = 0u;
+    if (phase != 0u) {
+        was = clusterBits[bit];
+    }
+    // phase 2: instances drawn at level 0 in phase 1 (their slots first) drew the clusters visible last frame
+    let drawnBefore = phase == 2u && i < counters1[info.x] && was != 0u;
+    if (phase == 1u && was == 0u) {
+        return;
+    }
     let t0 = transforms[src * 4u].xyz;
     let t1 = transforms[src * 4u + 1u].xyz;
     let t2 = transforms[src * 4u + 2u].xyz;
@@ -364,21 +388,25 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let center = t0 * local.x + t1 * local.y + t2 * local.z + t3;
     let scale = sqrt(max(dot(t0, t0), max(dot(t1, t1), dot(t2, t2))));
     let sphere = vec4<f32>(center, local.w * scale + uParams.uAnimationSlack);
-    if (outsideView(sphere)) {
-        return;
-    }
+    var visible = !outsideView(sphere);
     let d = dot(uParams.uCameraPlane.xyz, center) + uParams.uCameraPlane.w;
     let range = uParams.uLodRange;
     if (range.z > 0.0 && (d + sphere.w < range.x || d - sphere.w > range.y)) {
-        return;
+        visible = false;
     }
     if (u32(uParams.uLevelCount) > 0u) {
         let level = uParams.uLevels[0];
         if (d + sphere.w < level.x || d - sphere.w > level.y) {
-            return;
+            visible = false;
         }
     }
-    if (occluded(sphere)) {
+    if (visible && occluded(sphere)) {
+        visible = false;
+    }
+    if (phase == 2u) {
+        clusterBits[bit] = select(0u, 1u, visible);
+    }
+    if (!visible || drawnBefore) {
         return;
     }
     let slot = atomicAdd(&clusterCounters[cluster], 1u);
@@ -405,6 +433,36 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     dispatchArgs[0] = (most + WorkgroupSizeX - 1u) / WorkgroupSizeX;
     dispatchArgs[1] = u32(uParams.uClusterCount);
     dispatchArgs[2] = 1u;
+}
+`;
+
+/** The counters after the first phase of two-phase occlusion: where the second phase's instances start */
+export const cull_snapshot_wgsl = /* wgsl */ `
+@compute @workgroup_size(WorkgroupSizeX)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    let k = id.x;
+    if (k >= u32(uParams.uRecordCount)) {
+        return;
+    }
+    snapshot[k] = counters[k];
+}
+`;
+
+/**
+ * Per record, the second phase of two-phase occlusion: its instances after the first phase's (the record's first
+ * instance moved past them, the count the rest)
+ */
+export const cull_args_second_wgsl = /* wgsl */ `
+@compute @workgroup_size(WorkgroupSizeX)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    let k = id.x;
+    if (k >= u32(uParams.uRecordCount)) {
+        return;
+    }
+    let w = u32(uParams.uRecordWords);
+    let f = w - 1u;
+    args[k * w + 1u] = counters[k] - snapshot[k];
+    args[k * w + f] = all[k * w + f] + snapshot[k];
 }
 `;
 

@@ -19,6 +19,10 @@ import {
   ClusterCopySchema,
   ClusterDispatchKernel,
   ClusterDispatchSchema,
+  CullArgsSecondKernel,
+  CullArgsSecondSchema,
+  CullSnapshotKernel,
+  CullSnapshotSchema,
   CullArgsKernel,
   CullArgsSchema,
   InstanceCopyKernel,
@@ -68,15 +72,31 @@ export interface MergedCuller {
    * frame's); false where the kernels
    * are not ready yet (compiling in the background)
    */
-  dispatch: (cameraPlane: Plane3D, frustum: Frustum3D, lod: LodView, pyramid?: OcclusionPyramid) => boolean;
+  dispatch: (
+    cameraPlane: Plane3D,
+    frustum: Frustum3D,
+    lod: LodView,
+    pyramid?: OcclusionPyramid,
+    twoPhase?: boolean,
+  ) => boolean;
+  /**
+   * Two-phase occlusion (after `dispatch` with `twoPhase`, the first phase's draws): the instances and clusters not
+   * visible last frame, tested against `pyramid` (this frame's, of the first phase's depth; none: all of them in view),
+   * into the second phase's records (`getLists` with `second`); what is visible now for the next frame. False where
+   * there is no second phase this frame (none dispatched, or the last's results stand)
+   */
+  dispatchSecond: (pyramid?: OcclusionPyramid) => boolean;
   /**
    * Whether the last dispatch tested occlusion against a pyramid drawn at its view and levels (or none): else a frame
    * culled against another view's (after a camera change, a level scale) may leave out what shows; a frame more settles
    * it (`Renderer.gpuCullUnsettledCount`)
    */
   readonly settled: boolean;
-  /** per level its indirect list, with the uniforms of the level lists of the CPU culling (`levels`) */
-  getLists: (levels: readonly MultiDrawBaseData[]) => MultiDrawBaseData[];
+  /**
+   * per level its indirect list, with the uniforms of the level lists of the CPU culling (`levels`); `second`: the
+   * second phase's (two-phase occlusion), else all instances drawn
+   */
+  getLists: (levels: readonly MultiDrawBaseData[], second?: boolean) => MultiDrawBaseData[];
   destroy: () => void;
 }
 
@@ -86,6 +106,8 @@ export const MergedCullKernels: readonly KernelRequest[] = [
   { code: InstanceCopyKernel, schema: InstanceCopySchema },
   { code: ClusterCopyKernel, schema: ClusterCopySchema },
   { code: ClusterDispatchKernel, schema: ClusterDispatchSchema },
+  { code: CullSnapshotKernel, schema: CullSnapshotSchema },
+  { code: CullArgsSecondKernel, schema: CullArgsSecondSchema },
   { code: CullArgsKernel, schema: CullArgsSchema },
 ];
 
@@ -133,6 +155,12 @@ export function createMergedCuller(
   const clusterArgs = buffer('culled cluster draw arguments');
   const clusterDispatch = buffer('culled cluster dispatch');
   const clusteredSegments = buffer('culled clustered segments');
+  // two-phase occlusion: the counters after phase 1, the second phase's records, the clusters' visibility
+  const counters1 = buffer('culled counters, first phase');
+  const clusterCounters1 = buffer('culled cluster counters, first phase');
+  const args2 = buffer('culled draw arguments, second phase');
+  const clusterArgs2 = buffer('culled cluster draw arguments, second phase');
+  const clusterBits = buffer('culled cluster visibility');
   const attributes = {
     aTransform: buffer('culled transforms'),
     aInstance: buffer('culled instances'),
@@ -177,6 +205,7 @@ export function createMergedCuller(
     ...viewValues,
     uInstanceCount: ValueCell.create(0),
     uSegmentCount: ValueCell.create(0),
+    uPhase: ValueCell.create(0),
     instanceData,
     instanceCells,
     segmentBases,
@@ -197,9 +226,12 @@ export function createMergedCuller(
   const clusterValues = {
     ...viewValues,
     uClusterCount: ValueCell.create(0),
+    uPhase: ValueCell.create(0),
     clusters,
     counters,
+    counters1,
     clusterCounters,
+    clusterBits,
     transforms: attributes.aTransform,
     instances: attributes.aInstance,
     segments: attributes.aSegment,
@@ -212,6 +244,28 @@ export function createMergedCuller(
     counters,
     clustered: clusteredSegments,
     dispatchArgs: clusterDispatch,
+  };
+  const snapshotValues = { uRecordCount: ValueCell.create(0), counters, snapshot: counters1 };
+  const clusterSnapshotValues = {
+    uRecordCount: ValueCell.create(0),
+    counters: clusterCounters,
+    snapshot: clusterCounters1,
+  };
+  const argsSecondValues = {
+    uRecordCount: ValueCell.create(0),
+    uRecordWords: ValueCell.create(words),
+    counters,
+    snapshot: counters1,
+    all: args,
+    args: args2,
+  };
+  const clusterArgsSecondValues = {
+    uRecordCount: ValueCell.create(0),
+    uRecordWords: ValueCell.create(words),
+    counters: clusterCounters,
+    snapshot: clusterCounters1,
+    all: clusterArgs,
+    args: clusterArgs2,
   };
   const clusterArgsValues = {
     uRecordCount: ValueCell.create(0),
@@ -237,6 +291,10 @@ export function createMergedCuller(
       compute.createKernel(ClusterCopyKernel, ClusterCopySchema, clusterValues),
       compute.createKernel(CullArgsKernel, CullArgsSchema, clusterArgsValues),
       compute.createKernel(ClusterDispatchKernel, ClusterDispatchSchema, clusterDispatchValues),
+      compute.createKernel(CullSnapshotKernel, CullSnapshotSchema, snapshotValues),
+      compute.createKernel(CullSnapshotKernel, CullSnapshotSchema, clusterSnapshotValues),
+      compute.createKernel(CullArgsSecondKernel, CullArgsSecondSchema, argsSecondValues),
+      compute.createKernel(CullArgsSecondKernel, CullArgsSecondSchema, clusterArgsSecondValues),
     ];
     return true;
   };
@@ -265,7 +323,8 @@ export function createMergedCuller(
 
     // the cells: per member those of its grid with instances, or one of all its instances without a grid
     const spheres: number[] = [];
-    const cellOf = new Uint32Array(instanceCount * 2);
+    // per instance its cell, its segment, whether visible last frame (two-phase occlusion), unused
+    const cellOf = new Uint32Array(instanceCount * 4);
     for (let s = 0; s < segmentCount; ++s) {
       const member = members[s];
       const base = segments.instanceBases[s];
@@ -274,7 +333,7 @@ export function createMergedCuller(
         const b = member.boundingSphere.ref.value as Sphere3D;
         const c = spheres.length / 4;
         spheres.push(b.center[0], b.center[1], b.center[2], b.radius);
-        for (let i = 0; i < segments.instanceCounts[s]; ++i) cellOf.set([c, s], (base + i) * 2);
+        for (let i = 0; i < segments.instanceCounts[s]; ++i) cellOf.set([c, s], (base + i) * 4);
         continue;
       }
       const { cellOffsets, cellSpheres: gridSpheres, cellCount: gridCells } = grid;
@@ -282,7 +341,7 @@ export function createMergedCuller(
         if (cellOffsets[k + 1] === cellOffsets[k]) continue;
         const c = spheres.length / 4;
         for (let q = 0; q < 4; ++q) spheres.push(gridSpheres[k * 4 + q]);
-        for (let i = cellOffsets[k]; i < cellOffsets[k + 1]; ++i) cellOf.set([c, s], (base + i) * 2);
+        for (let i = cellOffsets[k]; i < cellOffsets[k + 1]; ++i) cellOf.set([c, s], (base + i) * 4);
       }
     }
     cellCount = spheres.length / 4;
@@ -329,7 +388,16 @@ export function createMergedCuller(
             const dz = positions[i * 4 + 2] - c[2];
             r = Math.max(r, dx * dx + dy * dy + dz * dz);
           }
-          clusterData.push(c[0], c[1], c[2], Math.sqrt(r) + padding, s, segments.instanceBases[s], regionBase, 0);
+          clusterData.push(
+            c[0],
+            c[1],
+            c[2],
+            Math.sqrt(r) + padding,
+            s,
+            segments.instanceBases[s],
+            regionBase,
+            regionBase - identityBase - instanceCount,
+          );
           // the record: the cluster's spheres, from the segment's first, its region's instances
           const first = indexed ? segments.elementOffsets[s] / 4 + start * 6 : segments.drawBases[s] + start * 6;
           if (indexed) clusterRecords.push((end - start) * 6, 0, first, 0, regionBase);
@@ -351,7 +419,7 @@ export function createMergedCuller(
     }
 
     ensure(instanceData, instanceCount * InstanceDataVec4s * 16);
-    ensure(instanceCells, instanceCount * 8);
+    ensure(instanceCells, instanceCount * 16);
     ensure(segmentBases, segmentCount * 8);
     ensure(cellSpheres, cellCount * 16);
     ensure(cellLevels, cellCount * 4);
@@ -367,6 +435,12 @@ export function createMergedCuller(
     ensure(clusterCounters, clusterCount * 4);
     ensure(clusterArgs, clusterCount * stride);
     ensure(clusteredSegments, segmentCount * 4);
+    ensure(counters1, levels * segmentCount * 4);
+    ensure(clusterCounters1, clusterCount * 4);
+    ensure(args2, levels * segmentCount * stride);
+    ensure(clusterArgs2, clusterCount * stride);
+    ensure(clusterBits, clusterSlots * 4);
+    clusterBits.ref.value.clear(0, Math.max(4, clusterSlots * 4));
     clusteredSegments.ref.value.write(Uint32Array.from(clustered));
     if (clusterCount > 0) {
       // the floats as written, the segment and regions as their bits
@@ -377,6 +451,7 @@ export function createMergedCuller(
       }
       clusters.ref.value.write(data);
       clusterArgs.ref.value.write(new Uint32Array(clusterRecords));
+      clusterArgs2.ref.value.write(new Uint32Array(clusterRecords));
     }
     instanceCells.ref.value.write(cellOf);
     // per segment its first instance and its padding (the per-instance test grows coarse levels' spheres by it)
@@ -413,6 +488,7 @@ export function createMergedCuller(
       }
     }
     args.ref.value.write(records);
+    args2.ref.value.write(records);
 
     ValueCell.updateIfChanged(levelCountCell, levelCount);
     ValueCell.updateIfChanged(cellValues.uCellCount, cellCount);
@@ -423,6 +499,10 @@ export function createMergedCuller(
     ValueCell.updateIfChanged(clusterArgsValues.uRecordCount, clusterCount);
     ValueCell.updateIfChanged(clusterDispatchValues.uSegmentCount, segmentCount);
     ValueCell.updateIfChanged(clusterDispatchValues.uClusterCount, clusterCount);
+    ValueCell.updateIfChanged(snapshotValues.uRecordCount, levels * segmentCount);
+    ValueCell.updateIfChanged(argsSecondValues.uRecordCount, levels * segmentCount);
+    ValueCell.updateIfChanged(clusterSnapshotValues.uRecordCount, clusterCount);
+    ValueCell.updateIfChanged(clusterArgsSecondValues.uRecordCount, clusterCount);
   }
 
   const getSlack = () =>
@@ -540,7 +620,71 @@ export function createMergedCuller(
   }
 
   let settled = true;
+  /** whether the last dispatch was two-phase, and its second phase not dispatched yet */
+  let dispatchedTwoPhase = false;
+  let secondPending = false;
+  const groups = (n: number) => Math.ceil(n / CellCullKernel.workgroupSize[0]);
+
+  /** the occlusion test's pyramid (`OcclusionPyramid`), none: no occlusion */
+  function setPyramid(pyramid: OcclusionPyramid | undefined) {
+    ValueCell.updateIfChanged(cellValues.uHiZ, !!pyramid);
+    if (pyramid) {
+      ValueCell.update(cellValues.uHiZView, Mat4.copy(cellValues.uHiZView.ref.value, pyramid.view));
+      ValueCell.update(cellValues.uHiZProjection, Mat4.copy(cellValues.uHiZProjection.ref.value, pyramid.projection));
+      ValueCell.update(
+        cellValues.uHiZDepthRange,
+        Vec2.set(cellValues.uHiZDepthRange.ref.value, pyramid.near, pyramid.far),
+      );
+      ValueCell.update(
+        cellValues.uHiZViewport,
+        Vec2.set(cellValues.uHiZViewport.ref.value, pyramid.width, pyramid.height),
+      );
+      ValueCell.updateIfChanged(cellValues.uHiZLevelCount, pyramid.levelCount);
+      // the pyramid's frustum: the planes of its projection and view, as the renderer's
+      Frustum3D.fromProjectionMatrix(pyramidFrustum, Mat4.mul(pyramidMatrix, pyramid.projection, pyramid.view));
+      setPlane(cellValues.uHiZPlane0, pyramidFrustum[0]);
+      setPlane(cellValues.uHiZPlane1, pyramidFrustum[1]);
+      setPlane(cellValues.uHiZPlane2, pyramidFrustum[2]);
+      setPlane(cellValues.uHiZPlane3, pyramidFrustum[3]);
+      setPlane(cellValues.uHiZPlane4, pyramidFrustum[4]);
+      setPlane(cellValues.uHiZPlane5, pyramidFrustum[5]);
+      ValueCell.updateIfChanged(cellValues.uHiZMinLevel, pyramid.minLevel);
+    }
+    ValueCell.updateIfChanged(cellValues.tHiZ, pyramid?.texture ?? emptyHiZ);
+  }
+
+  /** the instances' and clusters' copies (a phase, or the one), then the records of all instances drawn */
+  function copyPass(records: number) {
+    kernels![1].dispatch(groups(instanceCount));
+    if (clusterCount > 0) {
+      // as many columns as the most level-0 instances of a clustered segment drawn need (none out of view)
+      kernels![5].dispatch(1);
+      kernels![3].dispatchIndirect(clusterDispatch.ref.value);
+    }
+    kernels![2].dispatch(groups(records));
+    if (clusterCount > 0) kernels![4].dispatch(groups(clusterCount));
+  }
   let lists: MultiDrawBaseData[] = [];
+  let lists2: MultiDrawBaseData[] = [];
+  /** per level an indirect list of `levelArgs`, and level 0's clusters' of `clusterRecords` */
+  function createLists(levels: readonly MultiDrawBaseData[], levelArgs: StorageBuffer, clusterRecords: StorageBuffer) {
+    const out: MultiDrawBaseData[] = levels.slice(0, Math.max(1, levelCount)).map((level, j) => ({
+      firsts: EmptyInt,
+      counts: EmptyInt,
+      offsets: EmptyInt,
+      instanceCounts: EmptyInt,
+      baseVertices: EmptyInt,
+      baseInstances: EmptyUint,
+      count: segmentCount,
+      uniforms: level.uniforms,
+      indirect: { buffer: levelArgs, byteOffset: j * segmentCount * stride, indexed },
+    }));
+    // level 0 of the clustered segments: a record per cluster
+    if (clusterCount > 0) {
+      out.push({ ...out[0], count: clusterCount, indirect: { buffer: clusterRecords, byteOffset: 0, indexed } });
+    }
+    return out;
+  }
   let listsLevels: readonly MultiDrawBaseData[] | undefined;
   let listsKey = '';
 
@@ -553,39 +697,24 @@ export function createMergedCuller(
       return settled;
     },
     sync,
-    dispatch: (cameraPlane, frustum, lod, pyramid) => {
+    dispatch: (cameraPlane, frustum, lod, pyramid, twoPhase = false) => {
       if (instanceCount === 0 || cellCount === 0) return false;
       const [min, max] = values.uLod.ref.value as Vec4;
       setLevelRanges(lod);
       ValueCell.updateIfChanged(viewValues.uAnimationSlack, getSlack());
       const sameView = isDispatched(cameraPlane, frustum, min, max);
-      if (sameView && isPyramidDispatched(pyramid)) return true;
-      if (!getKernels()) return false;
-      dispatchedPyramid = pyramid?.version ?? -1;
-      ValueCell.updateIfChanged(cellValues.uHiZ, !!pyramid);
-      if (pyramid) {
-        ValueCell.update(cellValues.uHiZView, Mat4.copy(cellValues.uHiZView.ref.value, pyramid.view));
-        ValueCell.update(cellValues.uHiZProjection, Mat4.copy(cellValues.uHiZProjection.ref.value, pyramid.projection));
-        ValueCell.update(
-          cellValues.uHiZDepthRange,
-          Vec2.set(cellValues.uHiZDepthRange.ref.value, pyramid.near, pyramid.far),
-        );
-        ValueCell.update(
-          cellValues.uHiZViewport,
-          Vec2.set(cellValues.uHiZViewport.ref.value, pyramid.width, pyramid.height),
-        );
-        ValueCell.updateIfChanged(cellValues.uHiZLevelCount, pyramid.levelCount);
-        // the pyramid's frustum: the planes of its projection and view, as the renderer's
-        Frustum3D.fromProjectionMatrix(pyramidFrustum, Mat4.mul(pyramidMatrix, pyramid.projection, pyramid.view));
-        setPlane(cellValues.uHiZPlane0, pyramidFrustum[0]);
-        setPlane(cellValues.uHiZPlane1, pyramidFrustum[1]);
-        setPlane(cellValues.uHiZPlane2, pyramidFrustum[2]);
-        setPlane(cellValues.uHiZPlane3, pyramidFrustum[3]);
-        setPlane(cellValues.uHiZPlane4, pyramidFrustum[4]);
-        setPlane(cellValues.uHiZPlane5, pyramidFrustum[5]);
-        ValueCell.updateIfChanged(cellValues.uHiZMinLevel, pyramid.minLevel);
+      // one phase: a frame of the same view, data and pyramid culls as the last; two phases every frame (what was visible
+      // last frame converges to what is visible: a frame after a jump draws more than it shows)
+      if (!twoPhase && !dispatchedTwoPhase && sameView && isPyramidDispatched(pyramid)) {
+        secondPending = false;
+        return true;
       }
-      ValueCell.updateIfChanged(cellValues.tHiZ, pyramid?.texture ?? emptyHiZ);
+      if (!getKernels()) return false;
+      dispatchedTwoPhase = twoPhase;
+      // two-phase: no occlusion in phase 1 (the instances visible last frame), the pyramid of this frame in phase 2
+      const first = twoPhase ? undefined : pyramid;
+      dispatchedPyramid = first?.version ?? -1;
+      setPyramid(first);
       setPlane(cellValues.uPlane0, frustum[0]);
       setPlane(cellValues.uPlane1, frustum[1]);
       setPlane(cellValues.uPlane2, frustum[2]);
@@ -596,52 +725,58 @@ export function createMergedCuller(
       ValueCell.update(cellValues.uLevels, Mat4.copy(cellValues.uLevels.ref.value, levelRanges));
       const hasLod = min !== 0 || max !== 0;
       ValueCell.update(cellValues.uLodRange, Vec4.set(cellValues.uLodRange.ref.value, min, max, hasLod ? 1 : 0, 0));
+      ValueCell.updateIfChanged(copyValues.uPhase, twoPhase ? 1 : 0);
+      ValueCell.updateIfChanged(clusterValues.uPhase, twoPhase ? 1 : 0);
 
       const records = Math.max(1, levelCount) * segmentCount;
-      const groups = (n: number) => Math.ceil(n / CellCullKernel.workgroupSize[0]);
       counters.ref.value.clear(0, records * 4);
       if (clusterCount > 0) clusterCounters.ref.value.clear(0, clusterCount * 4);
       compute.beginComputePass({ label: 'merged cell culling' });
       kernels![0].dispatch(groups(cellCount));
-      kernels![1].dispatch(groups(instanceCount));
-      if (clusterCount > 0) {
-        // as many columns as the most level-0 instances of a segment drawn need (none out of view)
-        kernels![5].dispatch(1);
-        kernels![3].dispatchIndirect(clusterDispatch.ref.value);
+      copyPass(records);
+      if (twoPhase) {
+        // where the second phase's instances start
+        kernels![6].dispatch(groups(records));
+        if (clusterCount > 0) kernels![7].dispatch(groups(clusterCount));
       }
-      kernels![2].dispatch(groups(records));
-      if (clusterCount > 0) kernels![4].dispatch(groups(clusterCount));
       compute.endComputePass();
       setDispatched(cameraPlane, frustum, min, max);
+      secondPending = twoPhase;
       // the pyramid was drawn from the last dispatch's culling: at this view and levels where they are the same
-      settled = !pyramid || sameView;
+      settled = twoPhase || !pyramid || sameView;
       return true;
     },
-    getLists: (levels) => {
-      const key = `${segmentCount},${levelCount},${args.ref.value.id},${clusterCount},${clusterArgs.ref.value.id}`;
-      if (levels === listsLevels && key === listsKey) return lists;
-      listsLevels = levels;
-      listsKey = key;
-      lists = levels.slice(0, Math.max(1, levelCount)).map((level, j) => ({
-        firsts: EmptyInt,
-        counts: EmptyInt,
-        offsets: EmptyInt,
-        instanceCounts: EmptyInt,
-        baseVertices: EmptyInt,
-        baseInstances: EmptyUint,
-        count: segmentCount,
-        uniforms: level.uniforms,
-        indirect: { buffer: args.ref.value, byteOffset: j * segmentCount * stride, indexed },
-      }));
-      // level 0 of the clustered segments: a record per cluster
-      if (clusterCount > 0) {
-        lists.push({
-          ...lists[0],
-          count: clusterCount,
-          indirect: { buffer: clusterArgs.ref.value, byteOffset: 0, indexed },
-        });
+    dispatchSecond: (pyramid) => {
+      if (!secondPending || !kernels) return false;
+      secondPending = false;
+      setPyramid(pyramid);
+      ValueCell.updateIfChanged(copyValues.uPhase, 2);
+      ValueCell.updateIfChanged(clusterValues.uPhase, 2);
+      const records = Math.max(1, levelCount) * segmentCount;
+      compute.beginComputePass({ label: 'merged cell culling, second phase' });
+      copyPass(records);
+      kernels![8].dispatch(groups(records));
+      if (clusterCount > 0) kernels![9].dispatch(groups(clusterCount));
+      compute.endComputePass();
+      // DEBUG-2P
+      ((globalThis as any).__c2 ??= new Map()).set(counters, {
+        counters: counters.ref.value,
+        counters1: counters1.ref.value,
+        records,
+        pyr: !!pyramid,
+        n: ((globalThis as any).__c2.get(counters)?.n ?? 0) + 1,
+      });
+      return true;
+    },
+    getLists: (levels, second = false) => {
+      const key = `${segmentCount},${levelCount},${args.ref.value.id},${clusterCount},${clusterArgs.ref.value.id},${args2.ref.value.id},${clusterArgs2.ref.value.id}`;
+      if (levels !== listsLevels || key !== listsKey) {
+        listsLevels = levels;
+        listsKey = key;
+        lists = createLists(levels, args.ref.value, clusterArgs.ref.value);
+        lists2 = createLists(levels, args2.ref.value, clusterArgs2.ref.value);
       }
-      return lists;
+      return second ? lists2 : lists;
     },
     destroy: () => {
       if (kernels) for (const k of kernels) k.destroy();
@@ -659,6 +794,11 @@ export function createMergedCuller(
         clusterArgs,
         clusterDispatch,
         clusteredSegments,
+        counters1,
+        clusterCounters1,
+        args2,
+        clusterArgs2,
+        clusterBits,
       ];
       for (const cell of [...cells, ...Object.values(attributes)]) cell.ref.value.destroy();
     },
