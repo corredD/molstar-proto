@@ -131,7 +131,7 @@ export const AutoGpuCullingThreshold = 30;
 export const AutoGpuCullingMinInstances = 20000;
 
 /**
- * Vertices at full detail (instances times their draw count) from which `gpuCulling: 'auto'` culls on the GPU, with at
+ * Vertices at full detail (instances times their draw count: indices of indexed geometry, 6 a sphere) from which `gpuCulling: 'auto'` culls on the GPU, with at
  * least `AutoGpuCullingThreshold` instances: the GPU tests each instance by its own sphere (frustum, levels, the depth
  * pyramid), the CPU only cells; for few instances of large members (mesoscale models of thousands of proteins) that
  * drops millions of vertices close up (PetWorld HIV zoomed to 0.1 of the distance on an M1, WebGPU: 119 to 75 ms a
