@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -83,6 +84,18 @@ describe('particle color themes', () => {
     const byFunction = colorsOf(ParticleHierarchyColorTheme(ctx, { ...props, by: 'function' }), particles);
     expect(reads.count).toBeGreaterThan(0);
     expect(byFunction[0]).toBe(byFunction[1]);
+  });
+
+  it("particle-hierarchy's far color is a particle's compartment base color (color-levels.md)", () => {
+    const particles = particleList({ count: 0 });
+    const theme = ParticleHierarchyColorTheme({ particles }, PD.getDefaultValues(ParticleHierarchyColorThemeParams));
+    const far = colorsOf({ color: theme.farColor! }, particles);
+    // one color per compartment, the one its particles without an entity have; none for no compartment
+    expect(far.slice(0, 3)).toEqual([far[0], far[0], far[0]]);
+    expect(far[3]).toBe(far[4]);
+    expect(far[4]).toBe(colorsOf(theme, particles)[4]);
+    expect(far[0]).not.toBe(far[3]);
+    expect(far[5]).toBe(0xcccccc);
   });
 
   it('particle-entity indexes the particles once per list and grouping (perf-audit-2 09/P6)', () => {

@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Color } from '@molstar/core/util/color';
@@ -255,6 +256,7 @@ export function ParticleHierarchyColorTheme(
 ): ColorTheme<ParticleHierarchyColorThemeParams> {
   let color: LocationColor;
   let legend: ScaleLegend | TableLegend | undefined;
+  let farColor: LocationColor | undefined;
 
   const particles = getParticleList(ctx);
   if (particles) {
@@ -269,6 +271,11 @@ export function ParticleHierarchyColorTheme(
       }
       return DefaultColor;
     };
+    // the color levels' far color: a particle's compartment base color
+    const { compartments } = particles;
+    const baseOf = new Map(getHierarchyIndex(particles, props.by).compartmentIds.map((c, i) => [c, baseColors[i]]));
+    farColor = (location: Location): Color =>
+      Particle.isLocation(location) ? (baseOf.get(compartments[location.index]) ?? DefaultColor) : DefaultColor;
   } else {
     color = () => DefaultColor;
   }
@@ -277,6 +284,7 @@ export function ParticleHierarchyColorTheme(
     factory: ParticleHierarchyColorTheme,
     granularity: 'instance',
     color,
+    farColor,
     props,
     description: Description,
     legend,
