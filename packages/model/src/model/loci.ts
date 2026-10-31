@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { StructureElement } from './structure.js';
@@ -192,6 +193,9 @@ namespace Loci {
     } else if (loci.kind === 'shape-loci') {
       return Sphere3D.copy(boundingSphere, loci.shape.geometry.boundingSphere);
     } else if (loci.kind === 'group-loci') {
+      if (loci.triangles && loci.shape.getTriangleBoundingSphere) {
+        return loci.shape.getTriangleBoundingSphere(loci.triangles, boundingSphere);
+      }
       return loci.shape.getGroupBoundingSphere?.(loci.groups, boundingSphere);
     } else if (loci.kind === 'data-loci') {
       return loci.getBoundingSphere?.(boundingSphere);
