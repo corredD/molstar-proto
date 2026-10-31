@@ -8,7 +8,8 @@
 // canvas: per fraction of the camera's distance (1, 0.1, 0.02), settled (frames drawn until the view is stable) with the
 // GPU's occlusion test against without it, and with GPU culling against the CPU's cells (the edges of the view: what
 // each particle's own sphere test keeps); then turning (a few degrees a frame), each frame with occlusion against the
-// same camera without (what a frame of popping shows). Prints the pixels that differ (by more than 16 of 255 in a
+// same camera without (what a frame of popping shows); at rest after turning, what the canvas leaves without requests
+// (motion off and on). Prints the pixels that differ (by more than 16 of 255 in a
 // channel) per comparison. Method and results: apps/prism-me/progress/2026-10-31-instance-cull.md.
 //
 //   node apps/prism-me/scripts/cull-check.mjs --port 1362 --example cellpack-hiv1
@@ -64,6 +65,14 @@ await page.evaluate(() => {
     snap,
     frames: async (n) => {
       for (let i = 0; i < n; i++) await frame();
+    },
+    // as the app's loop: ticks 16 ms apart without a request (only what the canvas asks for itself is drawn)
+    idle: async (n) => {
+      for (let i = 0; i < n; i++) {
+        c.tick(performance.now(), { isSynchronous: true });
+        await c.graphics.waitForGpuCommandsComplete();
+        await new Promise((r) => setTimeout(r, 16));
+      }
     },
     at: (f, degrees = 0) => {
       const t = snap.target;
@@ -168,4 +177,22 @@ for (let i = 1; i <= turns; i++) {
   total += d.differ;
 }
 console.log(JSON.stringify({ turning: f, degreesPerFrame: turn, frames: turns, worst, mean: total / turns }));
+
+// at rest after turning, as the app leaves it: turned frame by frame with occlusion, then ticks without requests for a
+// second (the frames the canvas asks for itself); against the settled image without occlusion. With `motion` off and on
+for (const lodScale of [1, 4]) {
+  await page.evaluate((m) => window.molstar.viewer.plugin.canvas3d.setProps({ motion: { lodScale: m } }), lodScale);
+  await page.evaluate((f) => window.C.at(f, 0), f);
+  await settle();
+  for (let i = 1; i <= 10; i++) await page.evaluate(([f, a]) => (window.C.at(f, a), window.C.frames(1)), [f, i * turn]);
+  await page.evaluate(() => window.C.idle(60));
+  const rest = await shot();
+  await page.evaluate(() => window.C.occlusion(false));
+  await settle();
+  const all = await shot();
+  await page.evaluate(() => window.C.occlusion(true));
+  const d = await page.evaluate(([a, b]) => window.C.diff(a, b), [rest, all]);
+  if (d.differ) save(`rest-m${lodScale}-occluded`, rest), save(`rest-m${lodScale}-all`, all);
+  console.log(JSON.stringify({ atRestAfterTurning: f, motionLodScale: lodScale, differ: d.differ }));
+}
 await browser.close();
