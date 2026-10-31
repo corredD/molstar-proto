@@ -117,12 +117,13 @@ other selection. Right now, mesh selection is global not at the triangle level."
   go there too. Atom-to-atom through Prism's `measure.*` is untouched.
 - **Angle and dihedral from the latest points** (the classic Mol\* "from the latest picks", Prism's `measure.*` without
   targets) by the right-click: the approved two-⌘+click distance is unchanged; a third gesture would collide with it.
-- **A compact grid, not `GridLookup3D`**: the counting sort keeps 6 bytes a triangle against 20 and builds 12× faster
-  (measured below).
-- **A triangle much wider than the rest is not in the grid** (Ludo's lane, the hover must stay local): the query grows
-  by the widest triangle the grid holds, so one floor under a fine surface made every hover test all 4,097 triangles.
-  Wider than 8 times a typical triangle, it is tested on every pick (the widest 64); the grid then searches with the
-  widest of the rest, and one of the wide ones is still found far from its centroid. A mesh of one size is unchanged.
+- **A compact grid, not `GridLookup3D`**: the counting sort keeps 6 bytes a triangle against 20 and builds 7× faster
+  (12× before the grades) (measured below).
+- **Triangles graded by size, each grade a grid of its own** (the hover must stay local): one grid searches as far as
+  its widest triangle reaches, so one floor under a fine surface made every hover test all 4,097 triangles. Grok first
+  kept the widest 64 out of the grid (it did not hold past 64: third review); the grades, in steps of 4 on both sides of
+  the median reach, hold for any number or share of wide triangles (fourth review). A mesh of one size has one or two
+  grades.
 - **Opt in per shape**: Mol\*'s planes, boxes, gizmo handles and the measurement shapes are meshes whose groups are
   their meaning. A mesh point on a shape that did not opt in (a unit cell) is refused.
 
@@ -257,4 +258,6 @@ it runs out of memory: the reviewer's probe, not rerun).
 | Nit: the screenshot table's last row broken                                                               | nit        | fixed                                                                                           |
 | Nit: only OBJ tested for a pick kept across a move or a recolor                                           | nit        | a PLY test across a move and a scale (VTP by reading: its getter keeps `_mesh`)                 |
 
-The build is slower with the grades: 44 ms at 1 M (from 24–26 ms before them), once, at the first hover.
+The skeptic confirmed all six (M1, S2, S3 by run; the nits by reading; none refuted) and added one: this file's
+"Decided" still described the 64-wide list (fixed). The build is slower with the grades: 44 ms at 1 M (from 24–26 ms
+before them), once, at the first hover.
