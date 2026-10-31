@@ -209,6 +209,25 @@ describe('measurements from a mesh triangle', () => {
     expect((r.value as { distance: number }).distance).toBeCloseTo(30, 4);
   });
 
+  it("opens a session's distance made before angles (its params only a and b): a distance, the same one again", async () => {
+    const v = await viewer();
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell;
+    const ref = structure.transform.ref;
+    const a = { ref, label: 'A', key: `o:${ref}`, bundle: StructureElement.Bundle.fromLoci(atom(v, 10).loci) };
+    const b = { ref, label: 'B', key: `o:${ref}`, bundle: StructureElement.Bundle.fromLoci(atom(v, 20).loci) };
+    // as a pre-lane session holds it: no `c`, no `d`
+    await v.plugin.state.data
+      .build()
+      .toRoot()
+      .apply(StageDistance, { a, b, node: `o:${ref}` } as never, { dependsOn: [ref] })
+      .commit();
+    const [d] = v.api.stage!.distancesState().value;
+    expect(d.measure).toBe('distance');
+    expect(d.label).toBe(`${Vec3.distance(atom(v, 10).at, atom(v, 20).at).toFixed(2)} Å`);
+    const again = await v.api.run('stage.distance', { a: { loci: atom(v, 10).loci }, b: { loci: atom(v, 20).loci } });
+    expect(again.ok && again.unchanged).toBe(true);
+  });
+
   it('refuses a mesh point that is not a triangle (the whole mesh)', async () => {
     const v = await viewer();
     const r = await v.api.run('stage.distance', {
