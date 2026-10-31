@@ -80,6 +80,15 @@
 - **Cylinder impostors**: box corners in front of the near plane are clamped onto it (were moved back by twice the
   length, which could cross the far plane and drop a cylinder whose tip touches the near plane;
   `geometry/cylinders/star` lost one cylinder on both backends, its known difference is gone).
+- **The outline target** (RGBA8; `outlines_wgsl`, `outlines.frag.ts`, read by `getOutline` in the compose passes): r
+  the edge type (opaque, transparent, both) and the transparent alpha, gb a 16-bit depth (the opaque edge's, or the
+  transparent edge's where it is alone), a the square root of the transparent edge's depth. Reversed depth is about
+  near / z: in 8 bits it rounds to 0 beyond about 500 × near (with the near plane at 1 Å, a camera inside a large scene,
+  every transparent outline and ghost beyond 500 Å was lost), its square root beyond about 260,000 × near. So an edge
+  counts by its type, whatever its depth; the in-front test compares the 16-bit depths, both rounded to the square root
+  only where the transparent one came from a "both" texel; a depth packed to 0 (the last Å before the far plane) is
+  fogged at the 16-bit floor. A transparent edge behind the opaque surface at its own texel is no edge (the hole a
+  nearer opaque surface leaves in a ghost's depth).
 - **Checks**: the visual suite passes on all profiles; WebGL images against the previous ones differ in the cylinder
   star (the fix above) and in a few pixels of SSAO, outlines and illumination (depth quantization in packed channels);
   the Viewer smoke test checks that picked positions lie at the picked element; the render benchmark with `--gpu-timing`

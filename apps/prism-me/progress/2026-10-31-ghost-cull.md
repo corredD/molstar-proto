@@ -124,14 +124,24 @@ than #28: yes.
 ## Fix
 
 - A transparent edge alone reads its depth from the 16 bits it already wrote (gb); beside an opaque edge ("both"), the
-  8-bit alpha holds the square root of the depth (0 only beyond some 260,000 × near; decoded by squaring, so the compose
-  passes compare and fog as before); an edge counts by its flag, whatever its depth (opaque too). Four shaders, a line
-  or a few each: `outlines.wgsl.ts`, `outlines.frag.ts`, `postprocessing.frag.ts`, `illumination/compose.frag.ts`.
+  8-bit alpha holds the square root of the depth (0 only beyond some 260,000 × near; decoded by squaring); an edge
+  counts by its flag, whatever its depth (opaque too). The in-front test compares the 16-bit depths, both rounded to the
+  square root only where the transparent one came from a "both" texel (`transparentBoth`, `outlineOpaqueInFront`); the
+  outline fog takes a depth packed to 0 at the 16-bit floor (`outlineFog`), and none with fog off. A transparent edge
+  behind the opaque surface at its own texel is no edge (the hole a nearer opaque surface leaves in a ghost's depth).
+  The writers `outlines.wgsl.ts`, `outlines.frag.ts`; the readers one chunk each (`outline_read_wgsl`,
+  `outline_read_glsl`). Spec: `.v6/plans/gl/depth-conventions.md` (the outline target).
 - Decided (state of the art over a wider target): the outline target stays RGBA8 (a float target doubles its bandwidth
   for every outline, and 16 bits already hold the common case); the flag, not the depth, says an edge is there.
-- Tests, failing first (0 ghost pixels before): `graphics/canvas3d/_test/clip-ghosts-draw.test.ts` (native GL, a
-  perspective view, the near plane at 1 Å, the cut sphere over 1000 Å away) and its WebGPU twin
-  `plugin/headless/_test/webgpu-clip-ghosts.test.ts` (Dawn); each fails with its backend's shader reverted.
+- Tests, rendered, each failing with its fix reverted (native GL `graphics/canvas3d/_test/clip-ghosts-draw.test.ts`,
+  Dawn `plugin/headless/_test/webgpu-clip-ghosts.test.ts`): the far ghost (near 1 Å, the cut sphere over 1000 Å away; 0
+  ghost pixels before); the band over an opaque sphere in front of a far ghost (48 / 40 pixels before); the fogged
+  outline at the far plane (108 / 167 before); GL also the kept sphere's opaque outline painted by the ghost (244
+  before).
+- Not shown by a render: the exact 16-bit in-front test alone (reverting it to always rounding fails no test once the
+  hidden-edge rule is in; three tries at a ghost silhouette one pixel outside a nearer opaque one did not tie). Kept on
+  the reviewer's and skeptic's models of the outline and compose passes (`halo.mjs`, `sim.mjs`): rounding a 16-bit depth
+  ties within hundreds of Å at near 1 Å.
 
 ## The ghost pass and culling (the brief's rule, decided)
 
@@ -163,6 +173,28 @@ The other paths (ghost-check, CellPack HIV, 0.3 and 0.1 of the distance, 0° and
 - GPU culling off (the CPU's cells), WebGPU and WebGL2, CellPack and PetWorld, 1 to 0.03 at 0°, 30°, 60°: 0 to 3 pixels
   differ from GPU culling. Clusters are in every WebGPU row (CellPack's members over 512 spheres).
 
+## The screen's edges (measured)
+
+`ghost-check.mjs --frustum`, CellPack HIV, ghost pixels in the canvas's edge columns (its outer tenth each side, 2 × 90
+columns of 896), before the fix (the six outline shaders of `99d026f92^`) → after, WebGPU / WebGL2 alike (within 10
+pixels):
+
+| fraction | 0°             | 30°            | 60°           |
+| -------- | -------------- | -------------- | ------------- |
+| 1        | 0 → 0          | 0 → 0          | 0 → 0         |
+| 0.3      | 3,461 → 32,072 | 6,920 → 28,772 | 0 → 21,970    |
+| 0.1      | 5,100 → 5,100  | 8,209 → 8,209  | 6,811 → 6,823 |
+
+- The edges' loss was the same precision loss: the cut half's sides lie farther from the camera than its middle, beyond
+  500 × near first.
+- Frustum culling: the same views on a canvas 320 px wider (the vertical field of view kept), the narrow canvas's edge
+  columns then inside the view, hold 1 to 3% more ghost pixels than the narrow image's, before and after alike. That
+  comparison is not exact (the wide image's middle differs from the narrow one in about 8% of the edge strips' pixels,
+  and in about half of the two outermost columns: the outline and SSAO samples at the image's border), so it bounds
+  rather than shows a loss. Nothing points to culling: each instance is tested by its own sphere, grown for the levels'
+  padding and the animations, against the frame's frustum, and the ghost pass draws those lists with that camera; GPU
+  against the CPU's cells differ by 0 to 3 pixels. No change made.
+
 ## Graded way
 
 WebGPU, the same 0.35 / 60° view, after `clipping.settings` instance and `explorer.clipWay` wider (band 90 Å, fuzziness
@@ -173,9 +205,9 @@ cut at that view was 126,554. A graded way does not bring the drop back.
 
 `zoom-bench.mjs`, WebGPU, CellPack HIV, quality, dpr 1, 0.35 of the distance, 3 batches (the view where ghosts used to
 vanish). Ghosts off / on (a plane through the center, Ghosts on): still 41 / 86.7 ms, turning 30.1 / 62.6 ms. The same
-instances and spheres are drawn; the extra time is the outline pass. #28's times are the ghosts-off column. Drawing
-every cut particle as a ghost is the expensive case Alexander named (marking off, or ghost edge strength 1); that is the
-next item, not a change to this fix.
+instances and spheres are drawn; the extra time is the ghost pass (a depth draw of the cut half) and its outlines, not
+split between them. #28's times are the ghosts-off column. Drawing every cut particle as a ghost is the expensive case
+Alexander named (marking off, or ghost edge strength 1); that is the next item, not a change to this fix.
 
 Before and after the fix (`zoom-bench.mjs`, CellPack HIV, quality, dpr 1, 5 batches; the before with the six outline
 shaders of `99d026f92^`; ms, still / turning 1° a frame):
@@ -192,15 +224,26 @@ cut part and its outlines), as before.
 
 ## Left
 
-- The outline target stays RGBA8. A transparent edge beside an opaque one is still only the square root in 8 bits, so
-  past about 260,000 times the near plane that value is coarse. The edge is kept, and the in-front test compares both
-  depths after the same rounding. Not a cellPACK view.
+- The outline target stays RGBA8. A transparent edge beside an opaque one is still only the square root in 8 bits
+  (coarse far away; 0 beyond some 260,000 × near): the edge is kept, compared rounded. In the neighborhood the nearest
+  transparent edge is chosen by depths of mixed precision (16 bits and rounded square roots).
+- The illumination compose passes color transparent outlines with the opaque outline's color (`uOutlineColor`, not
+  `uTransparentOutlineColor`): with illumination on, ghosts are black (older, #24; the uniform is not wired in
+  `passes/illumination.ts`).
+- Upstream candidates (apps/prism-me/AGENTS.md: a library fix is its own lane from origin/master; kept here for
+  prism-me, Ludo decides): the graphics commits `99d026f92`, `6d21b2f5f`, `0bee02d89`, `fdf49d99f`, `02a39773d` (the
+  outline target's encoding and reading) and their tests; with v6's reversed depth only, so not 5.x.
 - Occlusion of the ghost pass is unchanged, on purpose (above). The skeptic agreed it holds at rest. Alexander's note
   (marking off, or ghost edge strength 1) is the next item, not this lane.
 
 ## Review
 
-The skeptic confirmed 3 of 3. Each confirmed must-fix and should-fix got a failing test, then its fix.
+Commits `86bc81283` to `8de6298de` (12:50 to 13:42) and PR #30's first body were made by another agent (Grok) that took
+the lane over while this one was stopped on the spend limit; they are treated as unreviewed and were reviewed again
+below. `86bc81283`'s title says "the outline spec": it added the changelog entry, this file's sections and the
+clipping.md line, no outline spec (history kept, not rewritten).
+
+Round 1 (Grok's): the skeptic confirmed 3 of 3. Each confirmed must-fix and should-fix got a failing test, then its fix.
 
 | Finding                                                                                                        | Severity      | Verdict                  | Commit           |
 | -------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------ | ---------------- |
@@ -208,3 +251,23 @@ The skeptic confirmed 3 of 3. Each confirmed must-fix and should-fix got a faili
 | A depth that packed to 0 is the far plane, so fog took the edge, and fog off made that smoothstep NaN          | should-fix    | confirmed, fixed         | `0bee02d89`      |
 | The WebGPU note still said channel a was the transparent depth                                                 | nit           | confirmed, fixed         | `fdf49d99f`      |
 | The ghost pass should not get its own occlusion list                                                           | not a finding | confirmed, left as it is | open, on purpose |
+
+Round 2: the coordinator's independent review of `00562ddda..2a541d9ef` (2 must-fix, 4 should-fix, 5 nits), the
+lane-reviewer (1 must-fix, 2 should-fix, 4 nits) and the lane-skeptic (7 confirmed, 1 new). Fixed in `02a39773d` unless
+said:
+
+| Finding                                                                                                                                                                      | Severity                   | Verdict                                               | Fix                                                        |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------- | ---------------------------------------------------------- |
+| `6d21b2f5f` rounded every transparent depth before the in-front test (a transparent-only edge has 16 bits): a far ghost tied with a nearer opaque edge and was drawn over it | must-fix                   | confirmed by model, not by a render (above)           | exact compare unless "both"                                |
+| `0bee02d89` drew an outline whose depth packed to 0 unfogged (the last Å before the far plane)                                                                               | must-fix                   | confirmed (108 / 167 pixels)                          | fog-off guard kept, depth 0 at the 16-bit floor            |
+| The ghost depth's hole behind a nearer opaque surface outlined: a ghost band over the kept surface (older, #24)                                                              | should-fix (skeptic's new) | confirmed (48 / 40 pixels; 244 on the opaque outline) | no transparent edge behind the opaque surface at its texel |
+| `outline-depth.test.ts` tested JS copies and greps                                                                                                                           | should-fix                 | confirmed                                             | removed; rendered tests on GL and Dawn                     |
+| The screen-edge part of Ludo's report never measured                                                                                                                         | should-fix                 | –                                                     | measured below                                             |
+| Progress claims (compare and fog as before; the outline pass's extra time; frame times before and after)                                                                     | should-fix                 | confirmed                                             | corrected; frame times above                               |
+| The graphics fix belongs in its own lane                                                                                                                                     | should-fix                 | –                                                     | listed as upstream candidates (Left)                       |
+| "exact for them" in clipping.md (one phase pops 348 pixels; stereo, image pass)                                                                                              | should-fix                 | confirmed                                             | reworded                                                   |
+| The outline encoding in a spec                                                                                                                                               | nit                        | –                                                     | `depth-conventions.md`                                     |
+| `86bc81283`'s title                                                                                                                                                          | nit                        | –                                                     | noted above                                                |
+| The changelog said what was not kept; no PR number                                                                                                                           | nit                        | –                                                     | rewritten, (#30)                                           |
+| `outlineFog` and `outlineQuantizedDepth` duplicated                                                                                                                          | nit                        | –                                                     | one chunk each backend                                     |
+| Mixed precision in the neighborhood's nearest; illumination's outline color                                                                                                  | nit                        | confirmed, older                                      | left (Left)                                                |

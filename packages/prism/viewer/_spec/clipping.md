@@ -141,8 +141,9 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
   inside out as a whole. What ignores a ghosted cut (outside its parts, kept whole) has no ghost. Images, text and
   direct volumes have none, nor the solid surface's caps. The ghosts share the transparent depth: depth of field,
   emissive bloom and transparent SSAO see them as faint transparent surfaces. They are culled with what is drawn
-  (frustum, levels, the depth pyramid of the opaque depth, both phases): exact for them, as the ghost pass discards what
-  lies behind that same depth (lane `ghost-cull`, measured on cellPACK and PetWorld).
+  (frustum, levels, the depth pyramid of the opaque depth): at rest and in two phases nothing visible is lost, as the
+  ghost pass discards what lies behind that same depth; in one phase, stereo and the image pass they lag or pop as the
+  rest of the scene does. The outline target's encoding: `.v6/plans/gl/depth-conventions.md`.
 - **`ClipVolumesShape3D`** (plugin core, imported by the feature: registered on import, Prism only): from a
   representation that can be cut to a shape provider of its clip objects (by tag) as translucent walls and solid edges
   (`ShapeProvider.transparency`, per group); options for walls, edges, colors, opacity, width, extent (a plane's disk
