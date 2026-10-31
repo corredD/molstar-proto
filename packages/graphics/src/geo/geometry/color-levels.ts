@@ -28,6 +28,7 @@ export namespace ColorLevels {
     chainHue: PD.Numeric(90, { min: 0, max: 360, step: 1 }, { description: 'Hue range of the chains, in degrees' }),
   };
   export type Props = PD.Values<typeof Params>;
+  export const defaults: Props = PD.getDefaultValues(Params);
 
   /** The pixels an atom covers at view depth `depth` (`projection11` is `P[1][1]`, `height` in CSS pixels) */
   export function atomSize(depth: number, projection11: number, height: number, orthographic: boolean) {
