@@ -185,6 +185,23 @@ export const Canvas3DParams = {
     { description: 'The time before the user is not considered interacting anymore.' },
   ),
 
+  motion: PD.Group({
+    lodScale: PD.Numeric(
+      1,
+      { min: 1, max: 8, step: 0.5 },
+      {
+        description:
+          'While the camera moves, levels of detail by size on screen (`lodPixelSize`) this many times coarser, as at a ' +
+          'resolution that many times lower; full detail once it rests (`holdMs`). 1: off.',
+      },
+    ),
+    holdMs: PD.Numeric(
+      250,
+      { min: 0, max: 2000, step: 10 },
+      { description: 'The time without a camera change after which the camera rests (a wheel zooms in steps).' },
+    ),
+  }),
+
   multiSample: PD.Group(MultiSampleParams),
   postprocessing: PD.Group(PostprocessingParams),
   marking: PD.Group(MarkingParams),
@@ -984,6 +1001,9 @@ namespace Canvas3D {
     let height = 128;
 
     let forceNextRender = false;
+    /** when the camera last changed, and the level-of-detail scale of the frame drawn last (`motion`) */
+    let lastCameraChange = -Infinity;
+    let motionLodScale = 1;
     let currentTime = 0;
 
     // The idle state (`isIdle`): set by a tick that found nothing to do, cleared, with one `wake`, by whatever gives the
@@ -1289,8 +1309,16 @@ namespace Canvas3D {
       const xrChanged = xrManager.update(xrFrame);
       if (!xrChanged && xrFrame) return false;
 
+      // coarser levels of detail while the camera moves (`motion`), full detail in the frame it rests
+      if (cameraChanged) lastCameraChange = currentTime;
+      const moving = p.motion.lodScale > 1 && currentTime - lastCameraChange < p.motion.holdMs;
+      const rested = motionLodScale > 1 && !moving;
+      motionLodScale = moving ? p.motion.lodScale : 1;
+      renderer.setLodScale(motionLodScale);
+
       const activeAnimation = renderer.props.enableAnimation && scene.hasAnimation;
-      const shouldRender = force || cameraChanged || resized || forceNextRender || xrChanged || activeAnimation;
+      const shouldRender =
+        force || cameraChanged || resized || forceNextRender || xrChanged || activeAnimation || rested;
       forceNextRender = false;
 
       // only a new frameId when something that can affect culling actually changed, so idle
@@ -1402,6 +1430,8 @@ namespace Canvas3D {
         didRender = redrawMarking(false, getTemporalSamplesPerFrame(p.multiSample.sampleLevel));
       }
 
+      // other passes of the renderer (picking, images) draw at full detail
+      renderer.setLodScale(1);
       return didRender;
     }
 
@@ -1513,6 +1543,8 @@ namespace Canvas3D {
         !camera.transition.inTransition &&
         !controls.isAnimating &&
         !controls.isMoving &&
+        // a coarser frame is drawn again at full detail once the camera rests
+        motionLodScale === 1 &&
         !isActivelyInteracting &&
         !hiZ.isPending &&
         !interactionHelper.isPending &&
@@ -2173,6 +2205,7 @@ namespace Canvas3D {
         pickPadding: p.pickPadding,
         userInteractionReleaseMs: p.userInteractionReleaseMs,
         viewport: p.viewport,
+        motion: { ...p.motion },
 
         postprocessing: { ...p.postprocessing },
         marking: { ...p.marking },
@@ -2566,6 +2599,7 @@ namespace Canvas3D {
           pickHelper.setPickPadding(p.pickPadding);
         }
         if (props.userInteractionReleaseMs !== undefined) p.userInteractionReleaseMs = props.userInteractionReleaseMs;
+        if (props.motion !== undefined) p.motion = { ...p.motion, ...props.motion };
         if (props.viewport !== undefined) {
           const doNotUpdate =
             p.viewport === props.viewport ||
