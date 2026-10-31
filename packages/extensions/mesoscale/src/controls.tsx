@@ -146,8 +146,8 @@ export function ZoomColors(props: { area: MesoscaleApi; particles: string }) {
               <Slider
                 aria-label={`${label} colors from, pixels an atom covers`}
                 value={mapState(levels, (l) => l?.[key])}
-                min={0.5}
-                max={100}
+                min={0.1}
+                max={200}
                 scale="log"
                 unit="px"
                 onCommit={(v) => run({ [key]: v })}
