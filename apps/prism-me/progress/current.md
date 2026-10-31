@@ -88,6 +88,9 @@ is not built is [../TODO.md](../TODO.md).
   meshes (today a material, a vertex or the whole mesh), then distance/angle/dihedral between triangles, atoms and
   particles. `me/mesh-measure`, port 1364; brief [2026-10-31-mesh-measure.md](2026-10-31-mesh-measure.md) on its branch.
   Running.
+- **Lane `ghost-cull`** (Ludo, 2026-10-31): "the ghost on cellpack rendering, disappears at some distance and on the
+  side of the screen." Suspected: #28's culling (occlusion, LOD range, edges) applied to #24's ghost pass.
+  `me/ghost-cull`, port 1365; brief [2026-10-31-ghost-cull.md](2026-10-31-ghost-cull.md) on its branch. Running.
 - **Exosome example** (Ludo, 2026-10-31: does not load on Chrome): its file is on `mesoscope.scripps.edu`, which refuses
   connections (curl: connection refused on 443). Not prism-me.
 
