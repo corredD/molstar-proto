@@ -119,6 +119,10 @@ other selection. Right now, mesh selection is global not at the triangle level."
   targets) by the right-click: the approved two-⌘+click distance is unchanged; a third gesture would collide with it.
 - **A compact grid, not `GridLookup3D`**: the counting sort keeps 6 bytes a triangle against 20 and builds 12× faster
   (measured below).
+- **A triangle much wider than the rest is not in the grid** (Ludo's lane, the hover must stay local): the query grows
+  by the widest triangle the grid holds, so one floor under a fine surface made every hover test all 4,097 triangles.
+  Wider than 8 times a typical triangle, it is tested on every pick (the widest 64); the grid then searches with the
+  widest of the rest, and one of the wide ones is still found far from its centroid. A mesh of one size is unchanged.
 - **Opt in per shape**: Mol\*'s planes, boxes, gizmo handles and the measurement shapes are meshes whose groups are
   their meaning. A mesh point on a shape that did not opt in (a unit cell) is refused.
 
