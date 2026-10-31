@@ -58,6 +58,11 @@ is not built is [../TODO.md](../TODO.md).
     turning and zooming". Then, asked: the problem is the coarser detail while moving; "you can keep the resolution
     trick". Decided: no k-means proxies; no coarser levels while moving (prism-me's motion LOD scale 1); lower
     resolution while moving stays. Lane resumed for round 3 within these.
+  - Round 3 (on PR #28): full detail while moving; two-phase occlusion (exact, no popping). Full detail, still / turning
+    ms: WebGPU dpr 1 CellPack 0.1 11/12.5, PetWorld 0.02 45/17.6; dpr 2 CellPack 0.1 30/18, PetWorld 0.02 136/25; WebGL2
+    dpr 2 close up 97-196 / 36-66. Turning met on WebGPU dpr 1 (but PetWorld 0.02), not at dpr 2 nor on WebGL2.
+  - Round 4 (running): close round 3's gate (skeptic, full re-run), then a cheaper impostor (depth write), per-sphere
+    occlusion, WebGL2 close up.
 
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
