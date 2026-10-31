@@ -93,10 +93,13 @@ is not built is [../TODO.md](../TODO.md).
   other selection. Right now, mesh selection is global not at the triangle level." Triangle picking on OBJ/PLY/VTP
   meshes (today a material, a vertex or the whole mesh), then distance/angle/dihedral between triangles, atoms and
   particles. `me/mesh-measure`, port 1364; brief [2026-10-31-mesh-measure.md](2026-10-31-mesh-measure.md) on its branch.
-  Running.
+  **PR #31**, not merged. The gate's seven findings are fixed, including a wide triangle whose centroid sits outside the
+  surface (that hover stays local).
 - **Lane `ghost-cull`** (Ludo, 2026-10-31): "the ghost on cellpack rendering, disappears at some distance and on the
   side of the screen." Suspected: #28's culling (occlusion, LOD range, edges) applied to #24's ghost pass.
-  `me/ghost-cull`, port 1365; brief [2026-10-31-ghost-cull.md](2026-10-31-ghost-cull.md) on its branch. Running.
+  `me/ghost-cull`, port 1365; brief [2026-10-31-ghost-cull.md](2026-10-31-ghost-cull.md) on its branch. The cause is
+  transparent-outline depth in 8 bits, older than #28. **PR #30**, not merged. The in-front test and outline fog are
+  fixed. Occlusion of the ghost pass is unchanged on purpose. Alexander's marking note stays the next item.
 - **After the 3 lanes** (Ludo, 2026-10-31, from Alexander): "also you generally want to switch marking off or at least
   set ghost edge strength to 1 - otherwise you render everything at least twice... the transparent stuff is not cheap
   either...". To do: prism-me's look (`marking` off, or `ghostEdgeStrength` 1), measured with `zoom-bench.mjs` before
