@@ -277,11 +277,29 @@ brackets, still):
 | WebGL2, PetWorld HIV, 1 | 30.8 / 6.1 (30.4) | 75.1 / 18.1 (129.6) | 71.4 / 20.7 (101.3) |
 | WebGL2, PetWorld HIV, 2 | 49.1 / 7.5 (49.6) | 166.2 / 22.1 (342)  | 190.1 / 26.4 (285)  |
 
-(The dpr-1 WebGL2 rows are with the 2x look's predecessor, 0.5 and 4x; dpr 1 uses those.) Turning meets the goal (16.7
-ms WebGPU, 33 ms WebGL2) everywhere but PetWorld HIV at 0.02 on WebGPU at dpr 2 (19.7). Still frames meet it on WebGPU
-at dpr 1 for CellPack; at rest the full-quality frame of PetWorld close up, of dpr 2 and of WebGL2 stays above (one
-frame; hover and other redraws at rest pay it). What would lower it changes the look at rest: the k-means proxy levels
-(Ludo's call, below).
+Turning meets the goal (16.7 ms WebGPU, 33 ms WebGL2) everywhere but PetWorld HIV at 0.02 on WebGPU at dpr 2 (19.7).
+Still frames meet it on WebGPU at dpr 1 for CellPack; at rest the full-quality frame of PetWorld close up, of dpr 2 and
+of WebGL2 stays above (one frame; hover and other redraws at rest pay it). What would lower it changes the look at rest:
+the k-means proxy levels (Ludo's call, below).
+
+## For Ludo: k-means proxy levels (they change the look at rest)
+
+Where the still frame stays slow (PetWorld HIV close up, dpr 2, WebGL2) the remaining lever is a cheaper look at rest:
+coarse levels from k-means proxies (cellVIEW's) in place of every n-th atom, so that a coarse level can start nearer at
+the same look. A preview (`apps/prism-me/scripts/proxy-preview.mjs`: in the page the spheres a coarse level draws
+replaced by the k-means centers of all the target's atoms, k its count, 6 Lloyd steps; same radius and scale), whole
+view, the camera after the load (canvas crop 400 x 400):
+
+| model, level | every n-th atom (now)                                        | k-means proxies                                              |
+| ------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| CellPack, 2  | ![](2026-10-31-instance-cull/cellpack-hiv-whole-current.jpg) | ![](2026-10-31-instance-cull/cellpack-hiv-whole-proxies.jpg) |
+| PetWorld, 1  | ![](2026-10-31-instance-cull/petworld-hiv-whole-current.jpg) | ![](2026-10-31-instance-cull/petworld-hiv-whole-proxies.jpg) |
+
+15% (CellPack) and 23% (PetWorld) of the pixels differ. The proxies keep each protein's shape a little more compact
+(CellPack's capsid, its matrix proteins); PetWorld's membrane shows the clusters' pattern as streaks. Not built: the
+levels would no longer nest (a level draws a prefix of the spheres now), so each level's own range, its first index in
+the records and cells, and the k-means at load (on the GPU in cellVIEW). Ludo: keep every n-th atom, or build the
+proxies (and then: their radius from each cluster's extent, as cellVIEW)?
 
 ## Built
 
