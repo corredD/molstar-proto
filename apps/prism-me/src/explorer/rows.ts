@@ -110,6 +110,9 @@ function sameRefs(a: readonly string[] | undefined, b: readonly string[] | undef
 
 // --- the rows ---------------------------------------------------------------------------------------------------------
 
+/** A measurement's row names its kind */
+const MeasureNames: Record<string, string> = { distance: 'Distance', angle: 'Angle', dihedral: 'Dihedral' };
+
 export function rowsOf(
   objects: readonly SceneObject[],
   parts: Parts,
@@ -153,7 +156,7 @@ export function rowsOf(
   for (const d of distances) {
     under(d.node, d.a.ref, {
       key: `d:${d.ref}`,
-      label: `Distance ${d.label}`,
+      label: `${MeasureNames[d.measure] ?? 'Distance'} ${d.label}`,
       kind: 'distance',
       own: true,
       visible: d.visible,

@@ -100,12 +100,11 @@ export function distancePicker(
     measureLatest,
     menuItems() {
       const n = recent.value.length;
-      const name = (i: number) => recent.value[n - i].picked.label;
       const items: ContextMenuItem[] = [];
       if (n >= 3) {
         items.push({
           id: 'measure-angle',
-          label: `Measure the angle at ${name(2)} (latest 3 points)`,
+          label: 'Measure the angle of the latest 3 points (at the middle one)',
           icon: 'measure-angle',
           run: () => void measureLatest('angle'),
         });
@@ -113,7 +112,7 @@ export function distancePicker(
       if (n >= 4) {
         items.push({
           id: 'measure-dihedral',
-          label: `Measure the dihedral about ${name(3)}–${name(2)} (latest 4 points)`,
+          label: 'Measure the dihedral of the latest 4 points (about the middle two)',
           icon: 'measure-angle',
           run: () => void measureLatest('dihedral'),
         });
