@@ -141,10 +141,13 @@ for densely packed scenes (mesoscale), where most of what is in view is hidden b
 - **The pyramid**: `HiZPass` builds it after the opaque pass from `depthTextureOpaque` (`r32f` levels, those from
   `minLevel` side by side in one atlas texture, read back for the CPU test). On the GPU the atlas is read directly
   (`textureLoad`): no readback, no lag beyond the frame.
+- **A pyramid per drawn frame** (`OcclusionPyramid.version`): a dispatch is skipped only against the build it tested
+  last. At a still camera what was drawn may change (an object hidden, a coarser level refined): what it hid shows in
+  the next pyramid and is drawn again. A still camera costs a dispatch per drawn frame, none while nothing draws.
 - **One phase first**: the next frame's cells tested against the previous frame's pyramid with its view and projection
   (the CPU test's projection of a padded sphere, its level by the screen size, four texels compared, ported to WGSL).
   A cell that comes into view behind what moved shows a frame late (a frame of popping while the camera moves; the CPU
-  test, with its readback lag, pops longer). Still frames are stable (the skip stays valid: a pyramid of the same view).
+  test, with its readback lag, pops longer). Still frames are stable: what is drawn stays drawn, what it hides stays hidden.
 - **Two phases later, if the popping shows**: draw the cells visible last frame, build the pyramid from that depth,
   test the rest against it and draw what is newly visible (a second set of records per level and segment, the opaque
   pass split in two). Exact, at the cost of a pyramid build within the frame.

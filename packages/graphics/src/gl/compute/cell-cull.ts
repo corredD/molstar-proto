@@ -33,6 +33,8 @@ export const MaxCullLevels = 4;
  * with; depth reversed (the near plane at 1)
  */
 export interface OcclusionPyramid {
+  /** a new value per build: what was drawn may differ at the same camera */
+  readonly version: number;
   readonly texture: Texture;
   readonly levelCount: number;
   readonly minLevel: number;

@@ -337,21 +337,17 @@ export function createMergedCuller(
 
   /**
    * What the last dispatch culled with: the planes, the distance range, the levels' ranges, `dataVersion` and the
-   * pyramid's camera; while they are the same its compacted attributes and records are current (a still camera culls
-   * nothing again, once tested against a pyramid of its own view)
+   * pyramid's build; while they are the same its compacted attributes and records are current. Each drawn frame builds
+   * a pyramid: a still camera without one culls nothing again, with one it tests against what the last frame drew (an
+   * object hidden or refined at the same view reveals what it hid, `merged-render-objects.md` GPU occlusion culling)
    */
   const dispatched = new Float64Array(7 * 4 + 2).fill(NaN);
   const dispatchedLevels = Mat4.zero().fill(NaN);
   let dispatchedVersion = -1;
-  const dispatchedPyramid = new Float64Array(32).fill(NaN);
-  let dispatchedHiZ = false;
+  /** the pyramid build the last dispatch tested against (`OcclusionPyramid.version`), -1 for none */
+  let dispatchedPyramid = -1;
   function isPyramidDispatched(pyramid: OcclusionPyramid | undefined) {
-    if (!pyramid) return !dispatchedHiZ;
-    if (!dispatchedHiZ) return false;
-    for (let i = 0; i < 16; ++i) {
-      if (dispatchedPyramid[i] !== pyramid.view[i] || dispatchedPyramid[16 + i] !== pyramid.projection[i]) return false;
-    }
-    return true;
+    return pyramid ? pyramid.version === dispatchedPyramid : dispatchedPyramid === -1;
   }
   const getPlane = (i: number, cameraPlane: Plane3D, frustum: Frustum3D) => (i < 6 ? frustum[i as 0] : cameraPlane);
   function isDispatched(cameraPlane: Plane3D, frustum: Frustum3D, min: number, max: number) {
@@ -398,11 +394,9 @@ export function createMergedCuller(
       setLevelRanges(lod);
       if (isDispatched(cameraPlane, frustum, min, max) && isPyramidDispatched(pyramid)) return true;
       if (!getKernels()) return false;
-      dispatchedHiZ = !!pyramid;
+      dispatchedPyramid = pyramid?.version ?? -1;
       ValueCell.updateIfChanged(cellValues.uHiZ, !!pyramid);
       if (pyramid) {
-        dispatchedPyramid.set(pyramid.view, 0);
-        dispatchedPyramid.set(pyramid.projection, 16);
         ValueCell.update(cellValues.uHiZView, Mat4.copy(cellValues.uHiZView.ref.value, pyramid.view));
         ValueCell.update(cellValues.uHiZProjection, Mat4.copy(cellValues.uHiZProjection.ref.value, pyramid.projection));
         ValueCell.update(

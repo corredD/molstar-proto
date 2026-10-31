@@ -2,6 +2,7 @@
  * Copyright (c) 2023-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { createRenderBuilder, type PassBuilder } from './pass-builder.js';
@@ -276,6 +277,7 @@ export class HiZPass {
     if (b.drawing && pending.trackedCount === trackedCount) {
       const { width, height } = this.viewport;
       this.pyramid = {
+        version: (this.pyramid?.version ?? 0) + 1,
         texture: this.tex,
         levelCount: this.levelData.length,
         minLevel: this.props.minLevel,
