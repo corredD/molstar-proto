@@ -227,6 +227,60 @@ describe.skipIf(!WebGPU.module)('draw lists on WebGPU', () => {
     }
   }, 60_000);
 
+  it('record again every chunk where the shared quad indices grew in a later chunk (more than 64 objects)', async () => {
+    // a list of more objects than a chunk holds: an earlier chunk recorded with the first buffer, a later one grew it;
+    // the earlier chunk's recording must not replay the released buffer (the fix review's skeptic, NEW-1)
+    const atoms = (n: number, dx: number, dy: number) =>
+      `${Array.from({ length: n }, (_, i) => {
+        const f = (v: number) => v.toFixed(3).padStart(8);
+        const serial = String((i % 99999) + 1).padStart(5);
+        const residue = String((i % 9999) + 1).padStart(4);
+        const [x, y, z] = [dx + (i % 20) * 0.5, dy + (Math.floor(i / 20) % 20) * 0.5, Math.floor(i / 400) * 0.5];
+        return `ATOM  ${serial}  CA  ALA A${residue}    ${f(x)}${f(y)}${f(z)}  1.00  0.00           C`;
+      }).join('\n')}\nEND\n`;
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu: WebGPU.module! },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      const add = async (pdb: string) => {
+        const data = await plugin.builders.data.rawData({ data: pdb, label: 'test' });
+        const trajectory = await plugin.builders.structure.parseTrajectory(data, 'pdb');
+        const model = await plugin.builders.structure.createModel(trajectory);
+        const structure = await plugin.builders.structure.createStructure(model);
+        await plugin.builders.structure.representation.addRepresentation(structure, { type: 'spacefill' });
+      };
+      const canvas = plugin.canvas3d!;
+      const graphics = canvas.graphics as WebGPUContext;
+      let time = now();
+      const frame = async () => {
+        canvas.commit(true);
+        canvas.requestDraw();
+        canvas.tick((time += 1000) as now.Timestamp, { isSynchronous: true });
+        await graphics.resources.pending.whenReady();
+      };
+      graphics.quadIndices.get(1);
+      const first = graphics.quadIndices.get(1)!.itemCount;
+      for (let k = 0; k < 70; ++k) await add(atoms(10 + (k % 7), (k % 10) * 6, Math.floor(k / 10) * 6));
+      await add(atoms(first + 100, 0, 60));
+      canvas.requestCameraReset();
+      canvas.setProps({
+        multiSample: { ...canvas.props.multiSample, mode: 'off' },
+        renderer: { ...canvas.props.renderer, drawLists: true },
+      });
+      graphics.device.pushErrorScope('validation');
+      for (let i = 0; i < 8; ++i) await frame();
+      const error = await graphics.device.popErrorScope();
+      expect(graphics.quadIndices.get(1)!.itemCount).toBeGreaterThan(first);
+      expect(error?.message ?? '').toBe('');
+    } finally {
+      plugin.dispose();
+    }
+  }, 300_000);
+
   it('replay with changed markers written, not recorded again (hover)', async () => {
     const plugin = await HeadlessPluginContext.create(
       { webgpu: WebGPU.module! },
