@@ -72,12 +72,48 @@ const closest = { u: 0, v: 0 };
 /** At most this many grid cells a triangle (the cells' starts are kept: half a cell a triangle, 2 bytes) */
 const CellsPerTriangle = 0.5;
 
+/** How many of the widest triangles a pick tests on their own, rather than through the grid */
+const MaxWide = 64;
+
+/**
+ * The triangles much wider than the rest, the widest `MaxWide` of them. A centroid grid's query has to grow by the
+ * widest triangle it holds, so one triangle the size of the mesh makes every hover read every cell. Empty for a mesh
+ * of one size (nothing here is allocated per pick). `radiusSq` is NaN for a triangle the build left out.
+ */
+function wideTriangles(radiusSq: Float32Array, T: number, sumRadiusSq: number, valid: number): Uint32Array {
+  const rms = Math.sqrt(sumRadiusSq / valid);
+  // one huge triangle must not set what "typical" is
+  const outlierCut = 64 * rms * rms;
+  let localSum = 0;
+  let localN = 0;
+  for (let t = 0; t < T; ++t) {
+    const r = radiusSq[t];
+    if (!(r <= outlierCut)) continue;
+    localSum += r;
+    localN++;
+  }
+  const typicalSq = localN > 0 ? localSum / localN : sumRadiusSq / valid;
+  // wider than 8 typical triangles: it does not belong in the centroid grid
+  const wideCut = 64 * typicalSq;
+  let n = 0;
+  for (let t = 0; t < T; ++t) if (radiusSq[t] > wideCut) n++;
+  if (n === 0) return new Uint32Array(0);
+  const all = new Uint32Array(n);
+  let k = 0;
+  for (let t = 0; t < T; ++t) if (radiusSq[t] > wideCut) all[k++] = t;
+  if (n <= MaxWide) return all;
+  const order = Array.from(all);
+  order.sort((i, j) => radiusSq[j] - radiusSq[i]);
+  return Uint32Array.from(order.slice(0, MaxWide));
+}
+
 /**
  * The lookup: the triangles sorted by the grid cell of their centroid (a counting sort), the cells' starts. Not
  * Mol*'s `GridLookup3D`, on purpose: it keeps the centroids and its buckets (about 20 bytes a triangle, and 12 times
  * slower to build: measured, .v6/plans/gl/triangle-picking.md); this keeps 4 bytes a triangle and 2 for the cells, a
  * pick reading the vertices of the few hundred triangles near it from the mesh's buffers. A surface fills few cells of
- * its box: the cells are capped by the triangle count.
+ * its box: the cells are capped by the triangle count. A triangle much wider than the rest is not in the grid (see
+ * `wideTriangles`): the query grows by the widest triangle the grid holds.
  */
 function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number): MeshTriangleLookup {
   const T = triangleCount;
@@ -94,6 +130,8 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
   let maxZ = -Infinity;
   let maxRadiusSq = 0;
   let sumRadiusSq = 0;
+  // a triangle's centroid-to-vertex distance, squared; NaN when the triangle is left out
+  const radiusSq = new Float32Array(T);
   // the triangles with finite vertices: a NaN or an infinity (a broken file, an index past the vertices) is left out
   let valid = 0;
   for (let t = 0; t < T; ++t) {
@@ -118,8 +156,10 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
     const r = da > db ? (da > dc ? da : dc) : db > dc ? db : dc;
     if (!Number.isFinite(x + y + z + r)) {
       cx[t] = Number.NaN;
+      radiusSq[t] = Number.NaN;
       continue;
     }
+    radiusSq[t] = r;
     valid++;
     cx[t] = x;
     cy[t] = y;
@@ -140,9 +180,57 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
     return { triangleCount: 0, maxRadius: 0, byteCount: 0, pick: () => false };
   }
 
+  // Triangles much wider than the rest are not stored in the grid. The query grows by the widest
+  // triangle the grid holds, so one triangle the size of the mesh would make every pick read every
+  // cell. Those few (the widest, at most 64) are tested on every pick. A mesh of one size, the
+  // common one, takes none of this: `listed` is empty and the grid below is unchanged.
+  const listed = wideTriangles(radiusSq, T, sumRadiusSq, valid);
+  let searchRadius = maxRadius;
+  const skip = listed.length > 0 ? new Uint8Array(T) : undefined;
+  if (skip) {
+    for (let i = 0; i < listed.length; ++i) skip[listed[i]] = 1;
+    minX = Infinity;
+    minY = Infinity;
+    minZ = Infinity;
+    maxX = -Infinity;
+    maxY = -Infinity;
+    maxZ = -Infinity;
+    let gridMax = 0;
+    sumRadiusSq = 0;
+    valid = 0;
+    for (let t = 0; t < T; ++t) {
+      if (skip[t] || Number.isNaN(cx[t])) continue;
+      const x = cx[t];
+      const y = cy[t];
+      const z = cz[t];
+      const r = radiusSq[t];
+      valid++;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
+      if (r > gridMax) gridMax = r;
+      sumRadiusSq += r;
+    }
+    searchRadius = valid > 0 ? Math.sqrt(gridMax) : 0;
+    if (valid === 0) {
+      minX = 0;
+      minY = 0;
+      minZ = 0;
+      maxX = 0;
+      maxY = 0;
+      maxZ = 0;
+    }
+  }
+
   // cells about two triangles wide, fewer when the box would hold too many
   const extent = Vec3.sub(Vec3(), max, min);
-  let size = Math.max(2 * Math.sqrt(sumRadiusSq / valid), 1e-6, Math.max(extent[0], extent[1], extent[2]) * 1e-6);
+  let size =
+    valid > 0
+      ? Math.max(2 * Math.sqrt(sumRadiusSq / valid), 1e-6, Math.max(extent[0], extent[1], extent[2]) * 1e-6)
+      : 1;
   const cap = Math.max(64, Math.ceil(T * CellsPerTriangle));
   let nx = 0;
   let ny = 0;
@@ -171,7 +259,7 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
   // each triangle's cell, until sorted
   const cellOfTriangle = order;
   for (let t = 0; t < T; ++t) {
-    if (Number.isNaN(cx[t])) continue;
+    if (Number.isNaN(cx[t]) || (skip && skip[t])) continue;
     const cell = cellOf(cx[t], cy[t], cz[t]);
     cellOfTriangle[t] = cell;
     starts[cell + 1]++;
@@ -179,7 +267,9 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
   for (let i = 0; i < cells; ++i) starts[i + 1] += starts[i];
   const fill = starts.slice(0, cells);
   const sorted = new Uint32Array(valid);
-  for (let t = 0; t < T; ++t) if (!Number.isNaN(cx[t])) sorted[fill[cellOfTriangle[t]]++] = t;
+  for (let t = 0; t < T; ++t) {
+    if (!Number.isNaN(cx[t]) && !(skip && skip[t])) sorted[fill[cellOfTriangle[t]]++] = t;
+  }
 
   const vertexOf = (out: Vec3, t: number, k: number) => Vec3.fromArray(out, vb, ib[3 * t + k] * 3);
 
@@ -239,21 +329,23 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
   return {
     triangleCount: T,
     maxRadius,
-    byteCount: starts.byteLength + sorted.byteLength,
+    byteCount: starts.byteLength + sorted.byteLength + listed.byteLength,
     pick(out, ray, near, tolerance) {
       pickRay = ray;
       pickNear = near;
       pickOut = out;
-      const reach = tolerance + maxRadius;
+      const reach = tolerance + searchRadius;
       // the ray's hit nearest to the depth point (not the first along the ray: a clipped or cut-away front is not
-      // what the pick saw)
+      // what the pick saw). The wide triangles are not in the grid: each pick tests them too.
       best = -1;
       bestD = tolerance * tolerance;
       eachNear(near, reach, visitHit);
+      for (let i = 0; i < listed.length; ++i) visitHit(listed[i]);
       if (best < 0) {
         // no hit near the depth point: the triangle nearest to it
         bestD = tolerance * tolerance;
         eachNear(near, reach, visitNearest);
+        for (let i = 0; i < listed.length; ++i) visitNearest(listed[i]);
       }
       if (best < 0) return false;
       out.index = best;

@@ -77,8 +77,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   the item "A distance follows its objects" below), and a pick during that preview finds the triangle where the mesh
   was; overpaint, transparency and a camera focus by a triangle apply to its group; a mesh's selected triangles are
   marks only (not in Prism's Selection tab, not saved in a session); a vertex-colored mesh's marked triangle is in its
-  first vertex's color; a mesh of a few huge triangles among small ones looks in a wide radius (its largest triangle's);
-  the explorer's angle and dihedral are from the latest points only (no picking of the vertex by hand).
+  first vertex's color; the explorer's angle and dihedral are from the latest points only (no picking of the vertex by
+  hand).
 
 - Smooth close up (lane `instance-cull`, what is left; `progress/2026-10-31-instance-cull.md`): full detail always
   (Ludo); WebGPU turning frames over 16.7 ms at dpr 2 (CellPack 0.1, PetWorld) and PetWorld's still frames; WebGL2 close
