@@ -169,7 +169,19 @@ next item, not a change to this fix.
 
 ## Left
 
-- The outline target stays RGBA8. A transparent edge beside an opaque one still loses its depth beyond about 260,000
-  times the near plane (the square root in 8 bits). Not a cellPACK view.
-- Occlusion of the ghost pass is unchanged, on purpose (above). Alexander's note (marking off, or ghost edge strength 1)
-  is the next item, not this lane.
+- The outline target stays RGBA8. A transparent edge beside an opaque one is still only the square root in 8 bits, so
+  past about 260,000 times the near plane that value is coarse. The edge is kept, and the in-front test compares both
+  depths after the same rounding. Not a cellPACK view.
+- Occlusion of the ghost pass is unchanged, on purpose (above). The skeptic agreed it holds at rest. Alexander's note
+  (marking off, or ghost edge strength 1) is the next item, not this lane.
+
+## Review
+
+The skeptic confirmed 3 of 3. Each confirmed must-fix and should-fix got a failing test, then its fix.
+
+| Finding                                                                                                        | Severity      | Verdict                  | Commit           |
+| -------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------ | ---------------- |
+| A "both" edge compared a 16-bit opaque depth with an 8-bit square root, so a ghost a few Å in front was hidden | must-fix      | confirmed, fixed         | `6d21b2f5f`      |
+| A depth that packed to 0 is the far plane, so fog took the edge, and fog off made that smoothstep NaN          | should-fix    | confirmed, fixed         | `0bee02d89`      |
+| The WebGPU note still said channel a was the transparent depth                                                 | nit           | confirmed, fixed         | `fdf49d99f`      |
+| The ghost pass should not get its own occlusion list                                                           | not a finding | confirmed, left as it is | open, on purpose |
