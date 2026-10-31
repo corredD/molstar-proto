@@ -89,12 +89,14 @@ is not built is [../TODO.md](../TODO.md).
   both orders: nothing disappears. Open: a list's drag preview does not redraw headless (Ludo to check in the app);
   `scaleByRadius` targets' bounds; upstreaming the two graphics fixes waits for Ludo.
 
-- **Lane `mesh-measure`** (Ludo, 2026-10-31): "measurement between obj/shape at the triangle highlight/selection and
-  other selection. Right now, mesh selection is global not at the triangle level." Triangle picking on OBJ/PLY/VTP
-  meshes (today a material, a vertex or the whole mesh), then distance/angle/dihedral between triangles, atoms and
-  particles. `me/mesh-measure`, port 1364; brief [2026-10-31-mesh-measure.md](2026-10-31-mesh-measure.md) on its branch.
-  **PR #31**, not merged. The gate's seven findings are fixed, including a wide triangle whose centroid sits outside the
-  surface (that hover stays local).
+- **Lane `mesh-measure`**: **PR #31**, gate and review passed. OBJ/PLY/VTP picked by triangle (the GPU's group narrowed
+  on the CPU by the pointer's ray; a counting-sort grid, 6 B a triangle, 26 ms to build at 1 M, a pick 29 µs); marks
+  drawn as copies of the triangles (colors and segment looks unchanged). The point measured: the picked surface point
+  (barycentric, follows moves and scales, saved). Distance/angle/dihedral between triangles, atoms, particles, voxels
+  via stage-tools (`stage.angle`, `stage.dihedral` new). For Ludo: an angle or dihedral from clicks keeps the clicks'
+  distances (default). Open: follows a move on release only; selected triangles not in the Selection tab nor sessions;
+  overpaint/transparency per triangle; marks' z-fighting unchecked on GPU.
+
 - **Lane `ghost-cull`** (Ludo, 2026-10-31): "the ghost on cellpack rendering, disappears at some distance and on the
   side of the screen." Suspected: #28's culling (occlusion, LOD range, edges) applied to #24's ghost pass.
   `me/ghost-cull`, port 1365; brief [2026-10-31-ghost-cull.md](2026-10-31-ghost-cull.md) on its branch. The cause is
