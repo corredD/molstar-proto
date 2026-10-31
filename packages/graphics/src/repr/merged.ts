@@ -151,6 +151,9 @@ export function mergeRenderObjectsByType<V>(
         for (const e of group) recordMergeFingerprint(e.renderObject);
       }
 
+      // a merged object kept is synced with its members here, not only when its renderable updates: a scene that
+      // adds it later (a frame after it was made, updated in between) makes its renderable from its values as they are
+      if (same) prev!.object.merged.sync();
       const entry = same
         ? prev!
         : {

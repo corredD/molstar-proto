@@ -260,6 +260,26 @@ describe('ParticleListTransform', () => {
     const same = plugin.state.data.cells.get(scaled.ref)!.obj as SO.Particle.List;
     expect(same.data.coordinates).toBe((list.obj as SO.Particle.List).data.coordinates);
   });
+
+  it('takes a decoration inserted above it: decorating after a scale (Ludo, 2026-10-31)', async () => {
+    const { plugin, list, volume } = await setup();
+    const vol = await volume(4);
+    const scaled = await plugin.build().to(list).insert(ParticleListTransform, { scale: 10 }).commit();
+    const before = (scaled.obj as SO.Particle.List).data;
+    // `cryoet.decorate`: the decoration goes right under the list, the scale under it
+    await plugin
+      .build()
+      .to(list)
+      .apply(ParticleListWithTargets, { targets: [{ targetId: 0, source: ref(vol.ref) }] })
+      .commit();
+    const data = (plugin.state.data.cells.get(scaled.ref)!.obj as SO.Particle.List).data;
+    expect(data.targetMapping?.get(0)?.kind).toBe('volume');
+    expect(data.coordinates[3]).toBeCloseTo(100);
+    expect(data).not.toBe(before);
+    // nothing changed above it, nor its params: the same list
+    await plugin.build().to(scaled).update({ scale: 10 }).commit();
+    expect((plugin.state.data.cells.get(scaled.ref)!.obj as SO.Particle.List).data).toBe(data);
+  });
 });
 
 describe('ParticleListOffsets', () => {
@@ -299,6 +319,33 @@ describe('ParticleListOffsets', () => {
       .commit();
     const all = (plugin.state.data.cells.get(other.ref)!.obj as SO.Particle.List).data;
     expect(Array.from(all.coordinates.slice(3, 6)).map((x) => Math.round(x * 1e4) / 1e4)).toEqual([0, 11, 0]);
+  });
+
+  it('takes a decoration inserted above it', async () => {
+    const { plugin, list, volume } = await setup();
+    const vol = await volume(4);
+    const offset = await plugin
+      .build()
+      .to(list)
+      .insert(ParticleListOffsets, {
+        offsets: [{ targets: [], translation: Vec3.create(0, 0, 1), euler: Vec3.create(0, 0, 0) }],
+      })
+      .commit();
+    await plugin
+      .build()
+      .to(list)
+      .apply(ParticleListWithTargets, { targets: [{ targetId: 0, source: ref(vol.ref) }] })
+      .commit();
+    const data = (plugin.state.data.cells.get(offset.ref)!.obj as SO.Particle.List).data;
+    expect(data.targetMapping?.get(0)?.kind).toBe('volume');
+    expect(data.coordinates[5]).toBeCloseTo(1);
+    // nothing changed above it, nor its params: the same list
+    await plugin
+      .build()
+      .to(offset)
+      .update({ offsets: [{ targets: [], translation: Vec3.create(0, 0, 1), euler: Vec3.create(0, 0, 0) }] })
+      .commit();
+    expect((plugin.state.data.cells.get(offset.ref)!.obj as SO.Particle.List).data).toBe(data);
   });
 
   it("offsets one instance alone (by its index), after its target's offset", async () => {
