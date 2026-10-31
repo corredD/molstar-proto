@@ -75,7 +75,7 @@ describe('colors that follow the zoom (mesoscale.colorLevels)', () => {
     expect(levels(v)).toEqual([off]);
   });
 
-  it('says so where nothing is drawn by its structures (a spacefill), or a list has no entities per particle', async () => {
+  it('says so where nothing is drawn by its structures (a spacefill)', async () => {
     const v = await viewer(TestParticleList, 'spacefill');
     expect(await v.api.run('mesoscale.colorLevels', { on: true })).toMatchObject({ ok: false, code: 'not-found' });
     const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
@@ -118,5 +118,16 @@ describe('colors that follow the zoom (mesoscale.colorLevels)', () => {
     expectOk(await v.api.run('mesoscale.theme', { objects: [list], theme: 'zoom' }));
     expect(reps(v).map((p) => p.colorTheme.name)).toEqual(['particle-entity']);
     expect(levels(v)).toEqual([{ name: 'on', params: ColorLevels.defaults }]);
+  });
+
+  it('refuses by zoom where the entities are by target only: Particle Entity reads them per particle (review M1)', async () => {
+    const v = await viewer(TestTargetList);
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0];
+    const data = list.cell.obj!.data as { entities?: Int32Array; compartments?: Int32Array };
+    // a list as the fixture without its per-particle entities and compartments
+    data.entities = undefined;
+    data.compartments = undefined;
+    const r = await v.api.run('mesoscale.theme', { objects: [list.cell.transform.ref], theme: 'zoom' });
+    expect(r).toMatchObject({ ok: false });
   });
 });

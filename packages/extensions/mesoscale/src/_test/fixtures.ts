@@ -120,7 +120,7 @@ export const TestTargetList = PluginStateTransform.BuiltIn({
   },
 });
 
-/** As `TestTargetList`, its entities by target only, no compartments (as PetWorld's), for tests */
+/** As `TestTargetList`, entities per particle and no compartments (as PetWorld's), for tests */
 export const TestPetworldTargetList = PluginStateTransform.BuiltIn({
   name: 'mesoscale-test-petworld-target-list',
   display: { name: 'Test PetWorld Target List' },
@@ -135,6 +135,8 @@ export const TestPetworldTargetList = PluginStateTransform.BuiltIn({
     const targetMapping = new Map<number, ParticleTarget>(
       [0, 1, 2, 3].map((t) => [t, { kind: 'structure', structure }]),
     );
-    return new SO.Particle.List({ ...list, targetMapping } as ParticleList, { label: 'PetWorld' });
+    return new SO.Particle.List({ ...list, entities: list.targets, targetMapping } as ParticleList, {
+      label: 'PetWorld',
+    });
   },
 });
