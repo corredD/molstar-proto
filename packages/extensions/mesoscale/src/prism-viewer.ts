@@ -68,7 +68,7 @@ export const MesoscaleSkill: ViewerSkill = {
       id: 'color_mesoscale_by_zoom',
       operation: 'mesoscale.colorLevels',
       description:
-        "Colors a mesoscale model by the zoom: its compartments far away, its entities, chains and atoms (by element) closer; the edges in pixels an atom covers.",
+        'Colors a mesoscale model by the zoom: its compartments far away, its entities, chains and atoms (by element) closer; the edges in pixels an atom covers.',
     },
     {
       id: 'open_mesoscale_example',
