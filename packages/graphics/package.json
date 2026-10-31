@@ -27,6 +27,7 @@
     "./gl/compute/marching-cubes/_test/*": null,
     "./props/computed/representations/_test/*": null,
     "./repr/_test/*": null,
+    "./repr/particles/_test/*": null,
     "./repr/particles/representation/_test/*": null,
     "./repr/shape/_test/*": null,
     "./repr/structure/_test/*": null,
