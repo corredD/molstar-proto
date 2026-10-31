@@ -107,17 +107,23 @@ is not built is [../TODO.md](../TODO.md).
   Ludo's name and the Claude trailer, so the history does not show it. Independent reviews:
   - #31 (mesh): good, careful work; 5 should-fix, all fixed by the lane (wide triangles in size grades, no 64 limit; the
     dead fallback dropped; tests failing first; ui.md §7), then a fourth review (1 must-fix: a vertex at 1e20 hung the
-    build, fixed). Gate, heavy scaling and the browser recheck pass. **Ready to merge** (head 9d4f12914). Build now 44
-    ms at 1 M triangles (was 26), a pick 30 µs. The PR body says which commits were Grok's.
+    build, fixed). Gate, heavy scaling and the browser recheck pass. **Merged** by Ludo (2026-10-31). Build now 44 ms at
+    1 M triangles (was 26), a pick 30 µs. The PR body says which commits were Grok's.
   - #30 (ghost): Grok's 2 must-fix are fixed and its grep tests replaced by rendered tests (GL and Dawn) that fail
     without each fix. Cause, older than #28: a transparent edge's depth in 8 bits, 0 beyond about 500 Å at the 1 Å near
     plane, so far ghosts and the farther sides vanished; not culling (0 pixels lost on every culling path). Also fixed:
     a band of ghost color over a nearer particle (#24). Screen edges at 0.3: 0-6,920 → 22-32k ghost pixels. Frame times
-    unchanged. **Ready to merge** (head deae6dbc8). Open: ghosts black with illumination on (#24); the graphics commits
-    as an upstream lane (Ludo decides). `typecheck:storybook` fails on prism-me itself (`src/api/styles.ts`,
+    unchanged. **Merged** by Ludo (2026-10-31). Open: ghosts black with illumination on (#24); the graphics commits as
+    an upstream lane (Ludo decides). `typecheck:storybook` fails on prism-me itself (`src/api/styles.ts`,
     `transparentColor` from #24): a separate fix.
   - Both sent back to their lanes to fix, re-gate and re-review; PR bodies to say which commits were Grok's. Do not
     merge until then.
+- **Publish to the lab website** (Ludo, 2026-10-31): on his word, `~/prism-me-lanes/publish-web.sh` builds
+  `origin/prism-me`, mirrors it into `labwebsite/web/public/playground/molstar-dev/mesoscale-explorer` (replace) and
+  asks the herdr `web` session to commit and push. The production build is over prism-me's budget (5.93 MB > 3.40 MB):
+  the budget is stale (set 2026-10-18 from the viewer's 3.2 MB; upstream #2026 raised the viewer's to 5.5-5.6 MB); the
+  stock viewer is 5.69 MB > 5.6 on this branch. Lane `startup-budget` proposed (measure, lazy-load prism-me's share,
+  Ludo sets the budget); waits on Ludo.
 - **After the 3 lanes** (Ludo, 2026-10-31, from Alexander): "also you generally want to switch marking off or at least
   set ghost edge strength to 1 - otherwise you render everything at least twice... the transparent stuff is not cheap
   either...". To do: prism-me's look (`marking` off, or `ghostEdgeStrength` 1), measured with `zoom-bench.mjs` before
