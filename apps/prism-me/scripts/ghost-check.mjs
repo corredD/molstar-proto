@@ -19,7 +19,8 @@
 // --nocpu 1 to skip the GPU-culling-off reference (slow: rebuilds the objects), --eval JavaScript run in the page after
 // the cut (window.cutIndex; e.g. another path: Clip whole, one-phase occlusion, a graded cut), --turns frames turned 2°
 // each at every fraction (each frame against the same camera drawn without occlusion: a frame of popping), --notsettled
-// 1 to skip the settled views.
+// 1 to skip the settled views, --frustum 1 to compare the ghosts in the screen's edge columns with the same views on a
+// wider canvas (what the edges of the view lose).
 
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -122,6 +123,33 @@ await page.evaluate((cutIndex) => {
       }
       return n;
     },
+    // pixels of the canvas-sized region of \`a\` from column \`x0\` that differ from \`b\`: all, and in \`b\`'s edge columns
+    // (its outer tenth on each side)
+    edges: async (a, b, x0 = 0) => {
+      const load = async (s) => {
+        const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${s}`)).blob());
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const g = canvas.getContext('2d');
+        g.drawImage(bitmap, 0, 0);
+        return { data: g.getImageData(0, 0, bitmap.width, bitmap.height).data, width: bitmap.width };
+      };
+      const [x, y] = [await load(a), await load(b)];
+      const w = y.width;
+      const h = y.data.length / 4 / w;
+      let n = 0;
+      let edge = 0;
+      for (let r = 0; r < h; r++) {
+        for (let c = 0; c < w; c++) {
+          const i = (r * x.width + c + x0) * 4;
+          const j = (r * w + c) * 4;
+          const d = [0, 1, 2].some((k) => Math.abs(x.data[i + k] - y.data[j + k]) > 16);
+          if (!d) continue;
+          n++;
+          if (c < w / 10 || c >= w - w / 10) edge++;
+        }
+      }
+      return { n, edge };
+    },
   };
 }, cut.index);
 
@@ -151,6 +179,7 @@ const setGpuCulling = (value) =>
 
 const views = fractions.flatMap((f) => angles.map((a) => [f, a]));
 const images = new Map();
+const noGhosts = new Map();
 const rows = [];
 for (const [f, a] of args.notsettled ? [] : views) {
   const key = `${f}-${a}`;
@@ -171,10 +200,13 @@ for (const [f, a] of args.notsettled ? [] : views) {
   save(`${key}-no-occlusion`, noOcclusion);
   save(`${key}-no-ghost`, noGhost);
   images.set(key, drawn);
+  noGhosts.set(key, noGhost);
+  const ghosts = await page.evaluate(([x, y]) => window.G.edges(x, y), [drawn, noGhost]);
   const row = {
     f,
     a,
     ghostPixels: await page.evaluate(([x, y]) => window.G.diff(x, y), [noOcclusion, noGhost]),
+    ghostEdgePixels: ghosts.edge,
     lostToOcclusion: await page.evaluate(([x, y]) => window.G.diff(x, y), [drawn, noOcclusion]),
   };
   rows.push(row);
@@ -208,6 +240,63 @@ for (const f of args.turns ? fractions : []) {
   const row = { f, turns: +args.turns, worstFrameDiffers: worst, totalDiffers: total };
   rows.push(row);
   console.log(JSON.stringify(row));
+}
+if (args.frustum && !args.notsettled) {
+  // the same views on a canvas 320 px wider (the vertical field of view kept): its middle is the narrow canvas, whose
+  // edge columns lie inside the wide one's view; the ghost pixels in them, narrow against wide, are what the narrow
+  // view's edges lost (frustum culling, the edge clamps)
+  const narrow = await canvas.boundingBox();
+  await page.setViewportSize({ width: 1280 + 320, height: 800 });
+  await page.evaluate(() => window.molstar.viewer.plugin.canvas3d.handleResize());
+  await page.waitForTimeout(2000);
+  const wide = await (await page.$('canvas')).boundingBox();
+  const x0 = Math.round((wide.width - narrow.width) / 2);
+  for (const [i, [f, a]] of views.entries()) {
+    const key = `${f}-${a}`;
+    await view(f, a);
+    const drawn = (await (await page.$('canvas')).screenshot()).toString('base64');
+    await page.evaluate(() => window.G.ghost(false));
+    await page.waitForTimeout(500);
+    await settle();
+    const noGhost = (await (await page.$('canvas')).screenshot()).toString('base64');
+    await page.evaluate(() => window.G.ghost(true));
+    await page.waitForTimeout(500);
+    await settle();
+    save(`${key}-wide`, drawn);
+    // the wide view's ghosts in the narrow canvas's edge columns, and how the middle of the wide image differs from the
+    // narrow one (ghosts on)
+    const ghosts = await page.evaluate(
+      async ([d, n, x0, narrow]) => {
+        const crop = async (s) => {
+          const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${s}`)).blob());
+          const c = new OffscreenCanvas(narrow, bitmap.height);
+          c.getContext('2d').drawImage(bitmap, -x0, 0);
+          const blob = await c.convertToBlob({ type: 'image/png' });
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          let bin = '';
+          for (let k = 0; k < bytes.length; k++) bin += String.fromCharCode(bytes[k]);
+          return btoa(bin);
+        };
+        return window.G.edges(await crop(d), await crop(n));
+      },
+      [drawn, noGhost, x0, Math.round(narrow.width)],
+    );
+    const middle = await page.evaluate(([w, n, x0]) => window.G.edges(w, n, x0), [drawn, images.get(key), x0]);
+    rows[i].wideGhostEdgePixels = ghosts.edge;
+    rows[i].wideMiddleDiffers = middle.n;
+    console.log(
+      JSON.stringify({
+        f,
+        a,
+        ghostEdgePixels: rows[i].ghostEdgePixels,
+        wideGhostEdgePixels: ghosts.edge,
+        wideMiddleDiffers: middle.n,
+      }),
+    );
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => window.molstar.viewer.plugin.canvas3d.handleResize());
+  await page.waitForTimeout(2000);
 }
 if (!args.nocpu && !args.notsettled) {
   await setGpuCulling(false);
