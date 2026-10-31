@@ -4,12 +4,13 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Interval, OrderedSet } from '@molstar/core/data/int';
+import { Interval } from '@molstar/core/data/int';
+import { Sphere3D } from '@molstar/core/math/geometry';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { ValueCell } from '@molstar/core/util';
 import { MarkerAction } from '@molstar/core/util/marker-action';
 import type { ParamDefinition as PD } from '@molstar/core/util/param-definition';
-import { isEveryLoci, type Loci } from '@molstar/model/model/loci';
+import { DataLoci, isEveryLoci, type Loci } from '@molstar/model/model/loci';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { createColors } from '@molstar/graphics/geo/geometry/color-data';
 import { createMarkers } from '@molstar/graphics/geo/geometry/marker-data';
@@ -45,13 +46,8 @@ export class TriangleMarks {
   ) {
     this.source = source;
     this.version = meshVersion(source.geometry);
-    this.renderObject = ShapeUtils.createRenderObject(this.overlayShape([]), props) as GraphicsRenderObject<'mesh'>;
+    this.renderObject = ShapeUtils.createRenderObject(this.overlayShape(0), props) as GraphicsRenderObject<'mesh'>;
     this.renderObject.state.pickable = false;
-  }
-
-  /** Marked triangles: highlighted or selected */
-  get count() {
-    return this.keys().length;
   }
 
   /** The mesh's props changed (its alpha, material, clipping…): the marked triangles take them */
@@ -128,55 +124,99 @@ export class TriangleMarks {
     return changed;
   }
 
-  private keys() {
-    const keys = new Set(this.highlighted.keys());
-    for (const k of this.selected.keys()) keys.add(k);
-    // in the mesh's order: the same marks, the same copies
-    return [...keys].sort((a, b) => a - b);
+  /** The marked triangles' keys, in the mesh's order (the same marks, the same copies), into `this.keys` */
+  private collectKeys() {
+    const keys = this.keys;
+    keys.length = 0;
+    for (const k of this.highlighted.keys()) keys.push(k);
+    for (const k of this.selected.keys()) if (!this.highlighted.has(k)) keys.push(k);
+    keys.sort(byNumber);
+    return keys;
   }
 
-  /** The shape of the copies: one group a marked triangle, colored as its own group */
-  private overlayShape(triangles: readonly ShapeGroup.Triangle[]) {
-    const source = this.source;
-    const groups = triangles.map((t) => ShapeUtils.triangleGroup(source.geometry, t.index));
-    return ShapeUtils.create(
-      `${source.name}-marked-triangles`,
-      source.sourceData,
-      this.mesh,
-      (g) => source.getColor(groups[g], triangles[g].instance),
-      () => 1,
-      (g) => source.getLabel(groups[g], triangles[g].instance),
-      [identity],
-      triangles.length,
-    );
+  /** The copies' groups as their triangles' own and their instances, read by the copies' shape (`overlay`) */
+  private readonly groups: number[] = [];
+  private readonly instances: number[] = [];
+  private readonly keys: number[] = [];
+  /** The copies' shape, made once: one group a marked triangle, colored as its own group */
+  private overlay: Shape<Mesh> | undefined;
+
+  private overlayShape(count: number): Shape<Mesh> {
+    const { groups, instances } = this;
+    if (!this.overlay || this.overlay.sourceData !== this.source.sourceData) {
+      // its source read when called: a new source shape (a move) needs no new copies' shape
+      this.overlay = ShapeUtils.create(
+        `${this.source.name}-marked-triangles`,
+        this.source.sourceData,
+        this.mesh,
+        (g) => this.source.getColor(groups[g], instances[g]),
+        () => 1,
+        (g) => this.source.getLabel(groups[g], instances[g]),
+        [identity],
+        count,
+      );
+    }
+    (this.overlay as { groupCount: number }).groupCount = count;
+    return this.overlay;
   }
+
+  /** The buffers of the copies, grown by doubling, reused from mark to mark (a hover marks at each move) */
+  private buffers = {
+    vb: new Float32Array(0),
+    nb: new Float32Array(0),
+    gb: new Float32Array(0),
+    ib: new Uint32Array(0),
+  };
+
+  private buffersFor(k: number) {
+    if (this.buffers.ib.length < k * 6) {
+      const n = Math.max(k, 2 * (this.buffers.ib.length / 6), 4);
+      this.buffers = {
+        vb: new Float32Array(n * 18),
+        nb: new Float32Array(n * 18),
+        gb: new Float32Array(n * 6),
+        ib: new Uint32Array(n * 6),
+      };
+    }
+    return this.buffers;
+  }
+
+  /** Marks the copies `marked` holds (`Visual.mark`'s apply, made once) */
+  private readonly applyTo =
+    (marked: Map<number, ShapeGroup.Triangle>) => (_: Loci, apply: (i: Interval) => boolean) => {
+      let any = false;
+      const keys = this.keys;
+      for (let j = 0, k = keys.length; j < k; ++j)
+        if (marked.has(keys[j]) && apply(Interval.ofSingleton(j))) any = true;
+      return any;
+    };
+  private readonly applyHighlighted = this.applyTo(this.highlighted);
+  private readonly applySelected = this.applyTo(this.selected);
 
   private rebuild() {
-    const keys = this.keys();
-    const triangles = keys.map((k) => this.selected.get(k) ?? this.highlighted.get(k)!);
-    const k = triangles.length;
-    const vb = new Float32Array(k * 18);
-    const nb = new Float32Array(k * 18);
-    const gb = new Float32Array(k * 6);
-    const ib = new Uint32Array(k * 6);
+    const keys = this.collectKeys();
+    const k = keys.length;
+    const { vb, nb, gb, ib } = this.buffersFor(k);
     const { vertexBuffer, normalBuffer, indexBuffer } = this.source.geometry;
     const sv = vertexBuffer.ref.value;
     const sn = normalBuffer.ref.value;
     const si = indexBuffer.ref.value;
-    const p = [Vec3(), Vec3(), Vec3()];
-    const nrm = [Vec3(), Vec3(), Vec3()];
-    const face = Vec3();
+    const { groups, instances } = this;
+    groups.length = k;
+    instances.length = k;
     for (let j = 0; j < k; ++j) {
-      const t = triangles[j];
+      const t = this.selected.get(keys[j]) ?? this.highlighted.get(keys[j])!;
+      groups[j] = ShapeUtils.triangleGroup(this.source.geometry, t.index);
+      instances[j] = t.instance;
       const m = this.source.transforms[t.instance] ?? identity;
       for (let v = 0; v < 3; ++v) {
         const vi = si[3 * t.index + v];
-        Vec3.transformMat4(p[v], Vec3.fromArray(p[v], sv, vi * 3), m);
-        Vec3.transformDirection(nrm[v], Vec3.fromArray(nrm[v], sn, vi * 3), m);
+        Vec3.transformMat4(P[v], Vec3.fromArray(P[v], sv, vi * 3), m);
+        Vec3.transformDirection(N[v], Vec3.fromArray(N[v], sn, vi * 3), m);
       }
-      Vec3.triangleNormal(face, p[0], p[1], p[2]);
+      Vec3.triangleNormal(Face, P[0], P[1], P[2]);
       const edge = Math.sqrt(
-        Math.max(Vec3.squaredDistance(p[0], p[1]), Vec3.squaredDistance(p[1], p[2]), Vec3.squaredDistance(p[2], p[0])),
+        Math.max(Vec3.squaredDistance(P[0], P[1]), Vec3.squaredDistance(P[1], P[2]), Vec3.squaredDistance(P[2], P[0])),
       );
       // two copies, one a hair off each side
       for (let side = 0; side < 2; ++side) {
@@ -184,12 +224,12 @@ export class TriangleMarks {
         const base = (2 * j + side) * 3;
         for (let v = 0; v < 3; ++v) {
           const o = (base + v) * 3;
-          vb[o] = p[v][0] + face[0] * offset;
-          vb[o + 1] = p[v][1] + face[1] * offset;
-          vb[o + 2] = p[v][2] + face[2] * offset;
-          nb[o] = nrm[v][0];
-          nb[o + 1] = nrm[v][1];
-          nb[o + 2] = nrm[v][2];
+          vb[o] = P[v][0] + Face[0] * offset;
+          vb[o + 1] = P[v][1] + Face[1] * offset;
+          vb[o + 2] = P[v][2] + Face[2] * offset;
+          nb[o] = N[v][0];
+          nb[o + 1] = N[v][1];
+          nb[o + 2] = N[v][2];
           gb[base + v] = j;
           ib[base + v] = base + v;
         }
@@ -197,7 +237,7 @@ export class TriangleMarks {
     }
     Mesh.create(vb, ib, nb, gb, k * 6, k * 2, this.mesh);
 
-    const shape = this.overlayShape(triangles);
+    const shape = this.overlayShape(k);
     const values = this.renderObject.values;
     ValueCell.updateIfChanged(values.drawCount, k * 6);
     ValueCell.updateIfChanged(values.uVertexCount, k * 6);
@@ -206,20 +246,27 @@ export class TriangleMarks {
     const positionIt = Mesh.Utils.createPositionIterator(this.mesh, values);
     createColors(locationIt, positionIt, ShapeUtils.getTheme(shape).color, values);
     createMarkers(k, 'groupInstance', values);
-    const each = (marked: Map<number, ShapeGroup.Triangle>) => (_: Loci, apply: (i: Interval) => boolean) => {
-      let any = false;
-      for (let j = 0; j < k; ++j) if (marked.has(keys[j]) && apply(Interval.ofSingleton(j))) any = true;
-      return any;
-    };
-    // the loci is only a key for `Visual.mark`: the indices come from `each`
-    const loci = ShapeGroup.Loci(shape, [{ ids: OrderedSet.ofSingleton(0), instance: 0 }]);
-    if (this.highlighted.size) Visual.mark(this.renderObject, loci, MarkerAction.Highlight, each(this.highlighted));
-    if (this.selected.size) Visual.mark(this.renderObject, loci, MarkerAction.Select, each(this.selected));
+    // the loci is only a key for `Visual.mark`: the indices come from the apply
+    if (this.highlighted.size) Visual.mark(this.renderObject, MarkKey, MarkerAction.Highlight, this.applyHighlighted);
+    if (this.selected.size) Visual.mark(this.renderObject, MarkKey, MarkerAction.Select, this.applySelected);
     // its instance's bounds (culling) from the copies
     ShapeUtils.createTransform([identity], this.mesh.boundingSphere, this.props.cellSize, this.props.batchSize, values);
     Mesh.Utils.updateBoundingSphere(values, this.mesh);
   }
 }
+
+const byNumber = (a: number, b: number) => a - b;
+const P = [Vec3(), Vec3(), Vec3()];
+const N = [Vec3(), Vec3(), Vec3()];
+const Face = Vec3();
+/** A non-empty loci for `Visual.mark` (which skips empty ones); what it marks comes from the apply */
+const MarkKey: Loci = DataLoci(
+  'triangle-marks',
+  undefined,
+  [0],
+  () => Sphere3D(),
+  () => '',
+);
 
 function meshVersion(mesh: Mesh) {
   return `${mesh.vertexBuffer.ref.version}:${mesh.indexBuffer.ref.version}:${mesh.triangleCount}`;

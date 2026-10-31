@@ -111,6 +111,15 @@ describe('a mesh marked by triangle', () => {
     expect(Math.round(vb[3 * 1 + 1] * 100) / 100).toBe(1);
   });
 
+  it('reuses its buffers from hover to hover (nothing new a pointer move but what grows)', async () => {
+    const { repr, meshShape } = await make();
+    repr.mark(triangle(meshShape, 0), MarkerAction.Highlight);
+    const before = (objects(repr).marks.values as any).aPosition.ref.value;
+    repr.mark(triangle(meshShape, 0), MarkerAction.RemoveHighlight);
+    repr.mark(triangle(meshShape, 1), MarkerAction.Highlight);
+    expect((objects(repr).marks.values as any).aPosition.ref.value).toBe(before);
+  });
+
   it('moves the highlight from triangle to triangle of the same group, and clears it', async () => {
     const { repr, meshShape } = await make();
     repr.mark(triangle(meshShape, 0), MarkerAction.Highlight);
