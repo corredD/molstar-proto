@@ -51,12 +51,18 @@ import { ParticleHandles } from './particle-handle.js';
 import { drawnObject } from './drawn.js';
 import {
   type DistancePoint,
-  distanceOf,
   isStageDistanceData,
+  type MeasureKind,
+  meshShapeOf,
+  measureOf,
+  measureValue,
   pointLoci,
   pointOf,
+  pointsOf,
   StageDistance,
+  type StageDistanceData,
   type StageDistanceProps,
+  valueLabel,
 } from './distance.js';
 import { isStageLabelData, labelLook, StageLabel, StageLabelParams, type StageLabelProps } from './label.js';
 
@@ -726,37 +732,52 @@ export class StageApi extends ApiArea {
       nodeB: PD.Text('', { description: "The explorer's row of the second point (its key)" }),
     },
     async run(v, ctx) {
-      const a = await distancePoint(ctx, v.a, v.structure, v.node, 'first');
-      if (ApiResult.isFailure(a)) return a;
-      const b = await distancePoint(ctx, v.b, v.structure, v.nodeB, 'second');
-      if (ApiResult.isFailure(b)) return b;
-      const la = pointLoci(ctx.plugin, a);
-      const lb = pointLoci(ctx.plugin, b);
-      if (!la || !lb) return ApiResult.fail('invalid', 'A point selects nothing.');
-      const value = distanceOf(la.loci, lb.loci);
-      const node = v.node || `o:${a.ref}`;
-      // the same two points, either way round, from any row: the same distance
-      const pair = [pointId(a), pointId(b)].sort().join('\n');
-      const sameRef = [...ctx.plugin.state.data.cells.values()].find((c) => {
-        if (c.transform.transformer !== StageDistance) return false;
-        const p = c.transform.params as StageDistanceProps;
-        return [pointId(p.a), pointId(p.b)].sort().join('\n') === pair;
-      })?.transform.ref;
-      const same = sameRef ? distancesOf(ctx).find((d) => d.ref === sameRef) : undefined;
-      if (same && !ctx.copy) {
-        return ApiResult.already(`It is already measured: ${same.label}.`, {
-          value: { ref: same.ref, distance: same.distance },
-        });
-      }
-      const build = ctx.plugin.state.data.build();
-      const dependsOn = a.ref === b.ref ? [a.ref] : [a.ref, b.ref];
-      const made = build.toRoot().apply(StageDistance, { a, b, node }, { dependsOn });
-      await build.commit();
-      return ApiResult.ok(
-        `Measured ${value.toFixed(2)} Å between ${a.label} and ${b.label}.`,
-        { nodes: [made.ref] },
-        { value: { ref: made.ref, distance: value } },
-      );
+      return measure(ctx, [v.a, v.b], v.structure, [v.node, v.nodeB]);
+    },
+  });
+
+  readonly angle = this.operation({
+    id: 'stage.angle',
+    title: 'Measure an angle',
+    params: {
+      a: PD.Value<DistanceTarget>('', {
+        description:
+          "The first point: an atom, a residue (A:10@CA, A:10) on a structure, or a particle as '<list ref>#<index>'; a pick (a mesh's triangle, a voxel)",
+      }),
+      b: PD.Value<DistanceTarget>('', { description: 'The middle point (the vertex), as the first' }),
+      c: PD.Value<DistanceTarget>('', { description: 'The third point, as the first' }),
+      structure: PD.Text('', {
+        description: 'The structure of a text point (by label or state ref); empty: the only one',
+      }),
+      node: PD.Text('', {
+        description: "The explorer's row it is listed under (its key); empty: the first point's object",
+      }),
+    },
+    async run(v, ctx) {
+      return measure(ctx, [v.a, v.b, v.c], v.structure, [v.node]);
+    },
+  });
+
+  readonly dihedral = this.operation({
+    id: 'stage.dihedral',
+    title: 'Measure a dihedral angle',
+    params: {
+      a: PD.Value<DistanceTarget>('', {
+        description:
+          "The first point: an atom, a residue (A:10@CA, A:10) on a structure, or a particle as '<list ref>#<index>'; a pick (a mesh's triangle, a voxel)",
+      }),
+      b: PD.Value<DistanceTarget>('', { description: 'The second point (the axis starts here), as the first' }),
+      c: PD.Value<DistanceTarget>('', { description: 'The third point (the axis ends here), as the first' }),
+      d: PD.Value<DistanceTarget>('', { description: 'The fourth point, as the first' }),
+      structure: PD.Text('', {
+        description: 'The structure of a text point (by label or state ref); empty: the only one',
+      }),
+      node: PD.Text('', {
+        description: "The explorer's row it is listed under (its key); empty: the first point's object",
+      }),
+    },
+    async run(v, ctx) {
+      return measure(ctx, [v.a, v.b, v.c, v.d], v.structure, [v.node]);
     },
   });
 
@@ -1139,10 +1160,24 @@ async function distancePoint(
     }
   }
   if (!loci || isEmptyLoci(loci)) return ApiResult.fail('invalid', `The ${which} point is missing.`);
-  const pick = pickOf(ctx, loci);
-  if (pick.kind !== 'target') {
-    return ApiResult.fail('invalid', `The ${which} point is not on a structure, a particle list or a volume.`);
+  // a mesh's triangle: the mesh's representation, the point picked on the triangle
+  const picked = stagePicked(ctx, loci);
+  if (picked?.kind === 'shape') {
+    const triangle = ShapeGroup.isLoci(loci) && loci.triangles?.length === 1 ? loci.triangles[0] : undefined;
+    if (!triangle) {
+      return ApiResult.fail(
+        'invalid',
+        `The ${which} point is a whole mesh.`,
+        'Pick a triangle of it (a click on the mesh at a finer granularity than the structure).',
+      );
+    }
+    // a mesh picked by triangle (a file's), not a shape whose groups are its parts (a unit cell, a measurement)
+    if (!meshShapeOf(ctx.plugin, picked.ref)) return notAPoint(which);
+    const mesh = rootLabel(ctx, picked.ref) ?? ctx.plugin.state.data.cells.get(picked.ref)?.obj?.label ?? 'Mesh';
+    return pointOf(loci, { ref: picked.ref, label: `${mesh} triangle ${triangle.index}`, key }) ?? notAPoint(which);
   }
+  const pick = pickOf(ctx, loci);
+  if (pick.kind !== 'target') return notAPoint(which);
   const what = pointName(loci);
   const indices = Particle.isLoci(loci) ? loci.indices : undefined;
   const label =
@@ -1154,7 +1189,64 @@ async function distancePoint(
         ? `${pick.target.label} ${voxelName(loci)}`
         : what;
   const point = pointOf(loci, { ref: pick.target.ref, label: label || pick.target.label, key });
-  return point ?? ApiResult.fail('invalid', `The ${which} point is not on a structure, a particle list or a volume.`);
+  return point ?? notAPoint(which);
+}
+
+const notAPoint = (which: string) =>
+  ApiResult.fail('invalid', `The ${which} point is not on a structure, a particle list, a volume or a mesh.`);
+
+const Ordinals = ['first', 'second', 'third', 'fourth'];
+
+/**
+ * A measurement between points (2: a distance, 3: an angle at the second, 4: a dihedral about the middle two), listed
+ * under its first point's row (`nodes[0]`, else its object's); the same points again (a distance either way round)
+ * are "already"
+ */
+async function measure(
+  ctx: ApiContext,
+  targets: readonly DistanceTarget[],
+  structure: string,
+  nodes: readonly string[],
+): Promise<ApiResult<{ ref: string; distance?: number; angle?: number }>> {
+  const points: DistancePoint[] = [];
+  for (let i = 0; i < targets.length; ++i) {
+    const p = await distancePoint(ctx, targets[i], structure, nodes[i] ?? '', Ordinals[i]);
+    if (ApiResult.isFailure(p)) return p;
+    points.push(p);
+  }
+  const at = points.map((p) => pointLoci(ctx.plugin, p));
+  if (at.some((p) => !p)) return ApiResult.fail('invalid', 'A point selects nothing.');
+  const kind = measureOf(points.length);
+  const value = measureValue(at.map((p) => p!.loci));
+  const node = nodes[0] || `o:${points[0].ref}`;
+  const id = measureId(kind, points);
+  const sameRef = [...ctx.plugin.state.data.cells.values()].find((c) => {
+    if (c.transform.transformer !== StageDistance) return false;
+    const p = c.transform.params as StageDistanceProps;
+    return measureId(measureOf(pointsOf(p).length), pointsOf(p)) === id;
+  })?.transform.ref;
+  const same = sameRef ? distancesOf(ctx).find((d) => d.ref === sameRef) : undefined;
+  const result = (ref: string, v: number) => (kind === 'distance' ? { ref, distance: v } : { ref, angle: v });
+  if (same && !ctx.copy)
+    return ApiResult.already(`It is already measured: ${same.label}.`, { value: result(same.ref, same.distance) });
+  const build = ctx.plugin.state.data.build();
+  const dependsOn = [...new Set(points.map((p) => p.ref))];
+  const [a, b, c, d] = points;
+  const params = { a, b, c: c ?? null, d: d ?? null, node };
+  const made = build.toRoot().apply(StageDistance, params, { dependsOn });
+  await build.commit();
+  const names = points.map((p) => p.label);
+  const between =
+    kind === 'distance'
+      ? `between ${names[0]} and ${names[1]}`
+      : kind === 'angle'
+        ? `at ${names[1]}, from ${names[0]} to ${names[2]}`
+        : `about ${names[1]}–${names[2]}, from ${names[0]} to ${names[3]}`;
+  return ApiResult.ok(
+    `Measured ${valueLabel(kind, value)} ${between}.`,
+    { nodes: [made.ref] },
+    { value: result(made.ref, value) },
+  );
 }
 
 /** A volume point's name: "voxel (i, j, k)" (its grid coordinates, the first of several), else "(center)" */
@@ -1191,22 +1283,40 @@ const pointId = (p: DistancePoint) =>
     p.particles ?? null,
     p.bundle ?? null,
     p.volume ? [p.voxels ?? null, p.instance ?? 0] : null,
+    // a triangle's point, to a thousandth of it
+    p.triangle ? [p.triangle.instance, p.triangle.index, ...p.triangle.uv.map((x) => Math.round(x * 1000))] : null,
   ]);
+
+/**
+ * A measurement's identity: a distance's two points either way round; an angle's ends either way round about the same
+ * vertex; a dihedral's four in order or reversed (the same angle)
+ */
+function measureId(kind: MeasureKind, points: readonly DistancePoint[]) {
+  const ids = points.map(pointId);
+  if (kind === 'distance') return `${kind}\n${[...ids].sort().join('\n')}`;
+  const reversed = [...ids].reverse();
+  const key = ids.join('\n') < reversed.join('\n') ? ids : reversed;
+  return `${kind}\n${key.join('\n')}`;
+}
 
 /** A point as views list it: its object, name and row */
 const brief = (p: DistancePoint) => ({ ref: p.ref, label: p.label, key: p.key });
 
-/** A distance of the stage, as views list it */
+/** A measurement of the stage (a distance, an angle, a dihedral), as views list it */
 export interface DistanceInfo {
   readonly ref: string;
+  readonly measure: MeasureKind;
   /** The explorer's row it is listed under (its key) */
   readonly node: string;
-  /** Its value (Å) */
+  /** Its value (Å; an angle's, degrees) */
   readonly distance: number;
-  /** "12.34 Å" */
+  /** "12.34 Å", "109.47°" */
   readonly label: string;
   readonly a: { readonly ref: string; readonly label: string; readonly key: string };
   readonly b: { readonly ref: string; readonly label: string; readonly key: string };
+  /** An angle's and a dihedral's other points */
+  readonly c?: { readonly ref: string; readonly label: string; readonly key: string };
+  readonly d?: { readonly ref: string; readonly label: string; readonly key: string };
   readonly textSize: number;
   readonly lineWidth: number;
   readonly opacity: number;
@@ -1221,13 +1331,18 @@ function distancesOf(ctx: Pick<ApiContext, 'plugin'>): DistanceInfo[] {
     const data = cell.obj?.data.sourceData;
     // measured once by the transform, not at every read
     const distance = isStageDistanceData(data) ? data.value : NaN;
+    const kind = isStageDistanceData(data) ? (data as StageDistanceData).measure : measureOf(pointsOf(p).length);
+    const names = { distance: 'Distance', angle: 'Angle', dihedral: 'Dihedral' } as const;
     out.push({
       ref: cell.transform.ref,
+      measure: kind,
       node: p.node,
       distance,
-      label: Number.isFinite(distance) ? `${distance.toFixed(2)} Å` : 'Distance',
+      label: Number.isFinite(distance) ? valueLabel(kind, distance) : names[kind],
       a: brief(p.a),
       b: brief(p.b),
+      ...(p.c ? { c: brief(p.c) } : {}),
+      ...(p.c && p.d ? { d: brief(p.d) } : {}),
       textSize: p.textSize,
       lineWidth: p.lineWidth,
       opacity: p.opacity,
