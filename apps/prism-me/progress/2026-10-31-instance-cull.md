@@ -317,6 +317,33 @@ look: per-sphere occlusion in the vertex stage of the second phase (atoms behind
 impostor (its depth written by the fragment stage defeats early depth tests and the M1's hidden-surface removal; WebGPU
 has no conservative depth), GPU-driven culling on WebGL2 (none fits without compute).
 
+## Round 4 (in progress): where a full-detail frame's fragments go
+
+Gate of round 3 closed: the prism-me tsc, check:workspace, prism-me (130) and graphics (1585) unit tests, styles:check,
+typecheck:storybook pass; `test:scaling` passes (mesoscale's `colorLevels` case failed once at load 9.9 with other lanes
+running, passed alone). Skeptic on round 3's findings: M1, M2, N1 fixed; S2's fix tested the eyes' cameras (never a
+`StereoCamera`): fixed again where the frame's camera is known; S1, S3, S4, S5, N4 confirmed open; N2, N3 refuted. A
+test now fails without M2's gate (transparent GPU-culled objects alone draw).
+
+Measured (WebGPU, M1, still / turning, PetWorld HIV 0.1 and 0.02; experiments in the shader, not kept; back-to-back
+runs, the machine shared: 21.8-23.1 / 42.6-42.8 ms still, 15.4 / 16.7-16.9 turning at dpr 1):
+
+| sphere fragment shader                                      | dpr 1, 0.1 / 0.02 still | dpr 2, 0.1 / 0.02 still |
+| ----------------------------------------------------------- | ----------------------- | ----------------------- |
+| as now                                                      | 22 / 43                 | 66 / 131                |
+| depth written, shading trivial (a constant from the normal) | 13.3 / 26.5             | 35.8 / 78.4             |
+| no depth written (rasterized quad depth), shading as now    | 12.1 / 31.6             | 32.5 / 84.8             |
+| the opaque pass's alpha `discard` removed                   | 22.1 / 44.3             | –                       |
+
+So the depth write itself is not the cost: the shading is (lighting mostly), done for every fragment because the depth
+written by the fragment stage defeats early depth tests. The state-of-the-art fix that keeps the image: a depth pre-pass
+(the impostor's depth written once, trivially shaded), then the color pass with its depth attachment read-only, each
+fragment's computed depth compared with the pre-pass's before shading (discarded behind it): shading about once a pixel.
+Expected from the table: 40-45% off still frames (PetWorld 0.02 at dpr 2 131 to about 80 ms), which still leaves dpr 2
+close up above 16.7 ms: the spheres' count and area at full resolution and detail. Not built yet: a new pass (pipelines,
+precompile, read-only depth attachments) through the renderer and draw pass. WebGL2 cannot sample a depth attachment it
+draws with: the pre-pass would need a copy.
+
 ## k-means proxy levels (dropped: Ludo, 2026-10-31)
 
 Where the still frame stays slow (PetWorld HIV close up, dpr 2, WebGL2) the remaining lever is a cheaper look at rest:
