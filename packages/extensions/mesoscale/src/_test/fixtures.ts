@@ -5,7 +5,8 @@
  */
 
 import { CustomProperties } from '@molstar/model/model/custom-property';
-import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
+import type { Structure } from '@molstar/model/model/structure';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 
 /** A cellPACK-like list: entities by target, compartments per particle */
@@ -90,5 +91,31 @@ export const TestFiberList = PluginStateTransform.BuiltIn({
   apply() {
     const fibers = { count: 1, offsets: Int32Array.of(0, 3), indices: Int32Array.of(2, 3, 4) };
     return new SO.Particle.List({ ...cellpackLike(), fibers }, { label: 'HIV' });
+  },
+});
+
+let targetStructure: Structure | undefined;
+
+/** The structure `TestTargetList` puts at every target (1CRN as a test loaded it) */
+export function setTestTargetStructure(structure: Structure) {
+  targetStructure = structure;
+}
+
+/** A cellPACK-like list whose targets are a structure, with entities per particle (as cellPACK's), for tests */
+export const TestTargetList = PluginStateTransform.BuiltIn({
+  name: 'mesoscale-test-target-list',
+  display: { name: 'Test Target List' },
+  from: SO.Root,
+  to: SO.Particle.List,
+  params: {},
+})({
+  apply() {
+    if (!targetStructure) throw new Error('setTestTargetStructure first');
+    const list = cellpackLike();
+    const structure = targetStructure;
+    const targetMapping = new Map<number, ParticleTarget>(
+      [0, 1, 2, 3].map((t) => [t, { kind: 'structure', structure }]),
+    );
+    return new SO.Particle.List({ ...list, entities: list.targets, targetMapping }, { label: 'HIV' });
   },
 });

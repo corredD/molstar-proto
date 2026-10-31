@@ -9,6 +9,7 @@ import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { VisualQuality } from '@molstar/graphics/geo/geometry/base';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
+import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { type StateObjectCell, StateTransform } from '@molstar/core/state';
@@ -64,6 +65,8 @@ export interface GraphicsInfo {
   readonly mode?: GraphicsMode;
   readonly wiggle?: number;
   readonly tumble?: number;
+  /** A particle list's colors that follow the zoom (`mesoscale.colorLevels`): their edges, null off, none mixed */
+  readonly colorLevels?: ColorLevels.Props | null;
 }
 
 /** What a graphics mode sets on each kind of object (apps/prism-me/_spec/ui.md §4, Graphics & Motion) */
@@ -462,6 +465,58 @@ export class MesoscaleApi extends ApiArea {
     },
   });
 
+  /**
+   * Colors that follow the zoom (`color-levels.md`; apps/prism-me/_spec/ui.md §4 Look): a particle list's structure
+   * targets colored by the size on screen of their atoms, the far color (a compartment's with Particle Hierarchy), the
+   * entity's, the chain's, the atom's; an edge given turns them on. Every representation of the list(s), one step
+   */
+  readonly colorLevels = this.operation({
+    id: 'mesoscale.colorLevels',
+    title: 'Colors that follow the zoom',
+    params: {
+      on: OptionalParam(PD.Boolean(true, { description: 'On or off; an edge given turns them on' })),
+      entity: OptionalParam(ColorLevels.Params.entity),
+      chain: OptionalParam(ColorLevels.Params.chain),
+      atom: OptionalParam(ColorLevels.Params.atom),
+      band: OptionalParam(ColorLevels.Params.band),
+      chainHue: OptionalParam(ColorLevels.Params.chainHue),
+      particles: PD.Text('', { description: 'A particle list (a model) by label or state ref; empty: every one' }),
+    },
+    async run(values, ctx) {
+      const { on, particles, ...given } = values as { on?: boolean; particles: string } & Partial<ColorLevels.Props>;
+      const edges = Object.fromEntries(Object.entries(given).filter(([, x]) => x !== undefined));
+      if (on === undefined && !Object.keys(edges).length) {
+        return ApiResult.fail('invalid', 'Nothing to change.', 'Give on, or an edge (entity, chain, atom).');
+      }
+      const one = particles.trim() ? oneList(ctx, particles) : undefined;
+      if (isFailure(one)) return one;
+      const reps = (one ? [one] : lists(ctx))
+        .flatMap((l) => l.representations.map((r) => r.cell))
+        .filter(
+          (r) => !!(r.transform.params as { type?: { params?: { structure?: object } } }).type?.params?.structure,
+        );
+      if (!reps.length) {
+        return ApiResult.fail('not-found', 'No particles are drawn by their structures.', 'Show a model as targets.');
+      }
+      const b = ctx.plugin.state.data.build();
+      const nodes: string[] = [];
+      for (const r of reps) {
+        const old = r.transform.params as { type: ParticleType };
+        const next = { ...old, type: withColorLevels(old.type, on ?? true, edges) };
+        const levels = next.type.params.structure.colorLevels?.params as Partial<ColorLevels.Props>;
+        if (levels.entity! >= levels.chain! || levels.chain! >= levels.atom!) {
+          return ApiResult.fail('invalid', 'The edges go entity < chain < atom.', 'Nothing was changed.');
+        }
+        if (JSON.stringify(next) === JSON.stringify(old)) continue;
+        b.to(r).update(next);
+        nodes.push(r.transform.ref);
+      }
+      if (!nodes.length) return ApiResult.already('The colors already follow the zoom so.');
+      await b.commit();
+      return ApiResult.ok(on === false ? 'Colors no longer follow the zoom.' : 'Colors follow the zoom.', { nodes });
+    },
+  });
+
   readonly example = this.operation({
     id: 'mesoscale.example',
     title: 'Open a mesoscale example',
@@ -611,7 +666,7 @@ export class MesoscaleApi extends ApiArea {
         }
         const named = (name: string, params: Record<string, unknown> = {}) => ({ name, params });
         if (o.kind === 'structure') {
-          if (theme === 'generate') return doesNotTake(o.name, label);
+          if (theme === 'generate' || theme === 'zoom') return doesNotTake(o.name, label);
           const name = theme === 'entity' ? 'entity-id' : theme === 'chain' ? 'chain-id' : 'uniform';
           plans.push({ kind: 'reps', o, theme: named(name, name === 'uniform' ? { value: mine } : {}) });
         } else if (o.kind === 'particles') {
@@ -619,6 +674,13 @@ export class MesoscaleApi extends ApiArea {
           const data = particleData(o.cell, o.representations);
           const entities = !!data?.entityInfo?.size;
           const list = lists.get(o.cell.transform.ref);
+          if (theme === 'zoom') {
+            // compartment, entity (Particle Hierarchy: entities per particle) and chain and atom by size on screen
+            if (!data?.entities || !data.compartments) return doesNotTake(o.name, label);
+            const look = list ? clearedColors(ctx, list) : undefined;
+            plans.push({ kind: 'reps', o, theme: named('particle-hierarchy'), levels: true, look });
+            continue;
+          }
           if (theme === 'generate' && entities && data) {
             // the colors `mesoscale.colors` generates, by the model's grouping (the tree's when given)
             const by = groupBy[o.cell.transform.ref] ?? defaultGroupBy(data);
@@ -646,7 +708,7 @@ export class MesoscaleApi extends ApiArea {
       }
       // each representation's theme, planned too: an object with none it can take has nothing to color (a volume's
       // slices show the data; a list not drawn), said rather than "already so"
-      const writes: { o: GraphicsObject; r: StateObjectCell; params: object; next: object; same: boolean }[] = [];
+      const writes: { o: GraphicsObject; r: StateObjectCell; next: object; same: boolean }[] = [];
       const nothing: string[] = [];
       for (const p of plans) {
         if (p.kind !== 'reps') continue;
@@ -654,10 +716,11 @@ export class MesoscaleApi extends ApiArea {
         for (const r of p.o.representations) {
           const params = r.transform.params as { type?: { name?: string }; colorTheme?: { name: string } };
           if (p.only && params.type?.name !== p.only) continue;
-          const next = themeFor(ctx, p.o, r, p.theme);
-          if (!next) continue;
+          const colorTheme = themeFor(ctx, p.o, r, p.theme);
+          if (!colorTheme) continue;
           any = true;
-          writes.push({ o: p.o, r, params, next, same: JSON.stringify(params.colorTheme) === JSON.stringify(next) });
+          const next = { ...params, colorTheme, ...(p.levels ? { type: withColorLevels(params.type, true) } : {}) };
+          writes.push({ o: p.o, r, next, same: JSON.stringify(params) === JSON.stringify(next) });
         }
         if (!any) nothing.push(p.o.name);
       }
@@ -673,7 +736,7 @@ export class MesoscaleApi extends ApiArea {
       const changed = new Set<string>();
       for (const w of writes) {
         if (w.same) continue;
-        b.to(w.r).update({ ...w.params, colorTheme: w.next });
+        b.to(w.r).update(w.next);
         nodes.push(w.r.transform.ref);
         changed.add(w.o.cell.transform.ref);
       }
@@ -754,6 +817,7 @@ const ObjectsThemes = [
   ['chain', 'By chain'],
   ['generate', 'Generate colors'],
   ['uniform', 'Uniform'],
+  ['zoom', 'By zoom'],
 ] as const;
 type ObjectsTheme = (typeof ObjectsThemes)[number][0];
 
@@ -767,6 +831,8 @@ type ThemePlan =
       readonly only?: string;
       /** Its look colors cleared (they paint over the theme) */
       readonly look?: readonly LookLayer[];
+      /** Its colors following the zoom (`mesoscale.colorLevels`), with the theme */
+      readonly levels?: boolean;
     }
   /** A model's generated colors, its look (no theme of its own) */
   | { readonly kind: 'look'; readonly o: GraphicsObject; readonly look: readonly LookLayer[] }
@@ -938,11 +1004,37 @@ function graphicsOf(o: GraphicsObject): GraphicsInfo | undefined {
   // a particle list's mode is its levels of detail, read where they are (not on its fibers)
   const mode = common(modeOf, o.kind === 'particles' ? types.filter((t) => 'lodLevels' in t) : types);
   if (o.kind === 'volume') return mode ? { mode } : {};
+  const levelsOf = (t: Record<string, unknown>) => {
+    const levels = (t as Partial<ParticleType['params']>).structure?.colorLevels;
+    return levels?.name === 'on' ? (levels.params as ColorLevels.Props) : null;
+  };
+  const colorLevels = common(
+    levelsOf,
+    types.filter((t) => 'structure' in t),
+  );
   return {
     ...(mode ? { mode } : {}),
+    ...(colorLevels !== undefined ? { colorLevels } : {}),
     wiggle: common((t) => findAnimation(t)?.wiggleAmplitude ?? 0) ?? 0,
     tumble: common((t) => findAnimation(t)?.tumbleAmplitude ?? 0) ?? 0,
   };
+}
+
+/** A particle representation's type params, as `mesoscale.colorLevels` reads and writes them */
+type ParticleType = { params: { structure: { colorLevels?: { name: string; params: object } } } };
+
+/**
+ * A particle representation's `type` with its structure targets' color levels on (`edges` over its own, else the
+ * defaults) or off; as given without a structure group (a spacefill)
+ */
+function withColorLevels<T>(type: T, on: boolean, edges: Partial<ColorLevels.Props> = {}): T {
+  const structure = (type as Partial<ParticleType> | undefined)?.params?.structure;
+  if (!structure) return type;
+  const old = structure.colorLevels;
+  const params = { ...ColorLevels.defaults, ...(old?.name === 'on' ? old.params : {}), ...edges };
+  const colorLevels = on ? { name: 'on', params } : { name: 'off', params: {} };
+  const t = type as ParticleType;
+  return { ...t, params: { ...t.params, structure: { ...structure, colorLevels } } } as T;
 }
 
 /** Sets `wiggleAmplitude` and `tumbleAmplitude` of every `animation` group in a representation's params */

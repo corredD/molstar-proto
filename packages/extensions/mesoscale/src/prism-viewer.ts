@@ -65,6 +65,12 @@ export const MesoscaleSkill: ViewerSkill = {
       description: 'Wiggles the atoms and tumbles the particles of a mesoscale model, or of one structure (object).',
     },
     {
+      id: 'color_mesoscale_by_zoom',
+      operation: 'mesoscale.colorLevels',
+      description:
+        "Colors a mesoscale model by the zoom: its compartments far away, its entities, chains and atoms (by element) closer; the edges in pixels an atom covers.",
+    },
+    {
       id: 'open_mesoscale_example',
       operation: 'mesoscale.example',
       description: "Opens one of the Mesoscale Explorer's examples by id.",
@@ -73,7 +79,7 @@ export const MesoscaleSkill: ViewerSkill = {
       id: 'color_objects_by_theme',
       operation: 'mesoscale.theme',
       description:
-        'Colors several objects at once by a theme (by object, entity, chain, generated colors, one color), each kind by what it takes: structures, particle models and lists, volumes (their isosurfaces), meshes.',
+        'Colors several objects at once by a theme (by object, entity, chain, generated colors, one color, by zoom), each kind by what it takes: structures, particle models and lists, volumes (their isosurfaces), meshes.',
     },
     {
       id: 'set_mesoscale_graphics',
@@ -121,6 +127,12 @@ export const MesoscaleExtension: ViewerExtension = {
         category,
         icon: 'sparkles',
         alias: ['wiggle', 'tumble', 'procedural animation', 'motion'],
+        action: 'Apply',
+      }),
+      operationCommand(api, m.colorLevels, {
+        category,
+        icon: 'palette',
+        alias: ['color levels', 'colors by zoom', 'dynamic coloring', 'chameleon'],
         action: 'Apply',
       }),
       operationCommand(api, m.example, {
