@@ -10,12 +10,68 @@ is not built is [../TODO.md](../TODO.md).
   2026-10-30, "really important": Settings › Appearance › UI scale, − and +, the UI larger and the 3D untouched; Prism's
   size tokens scaled by one variable, its commits upstreamable. PR #25, reviewed (no must-fix stood; 7 findings fixed or
   to TODO; the drift test found a virtual-list bug, fixed); not yet seen in a browser; served on 1344; waits on Ludo.
-- **Queued: 8. Dynamic coloring by distance** (cellVIEW's Chameleon; Ludo, 2026-10-30, "add to the queue"; brief in
-  TODO.md `Next` and cellview.md §7, PR #26, docs only, waits on Ludo). Levels like the LOD (far: compartment or entity;
-  closer: chain; closest: residue or atom), blended so a zoom never pops. Step 1 a measurement: re-running
-  `particle-hierarchy` over CellPack MG on WebGPU and WebGL2, which chooses (a) a theme's current level moved on camera
-  change (David's) or (b) a shader blend by view depth (cellVIEW's, library, with Alexander). Open for Ludo: edges in
-  screen pixels or in Å. Not started.
+- **8. Dynamic coloring by distance** (cellVIEW's Chameleon; Ludo, 2026-10-30, "add to the queue"; brief in TODO.md
+  `Next` and cellview.md §7, PR #26, docs only, waits on Ludo). Levels like the LOD (far: compartment or entity; closer:
+  chain; closest: residue or atom), blended so a zoom never pops. Step 1 a measurement: re-running `particle-hierarchy`
+  over CellPack MG on WebGPU and WebGL2, which chooses (a) a theme's current level moved on camera change (David's) or
+  (b) a shader blend by view depth (cellVIEW's, library, with Alexander). Open for Ludo: edges in screen pixels or in Å
+  (the lane builds pixels by default, the unit in one place). Started 2026-10-30 (Ludo: "go"): lane `dynamic-color`
+  (`me/dynamic-color`, port 1359), step 1 first. Step 1 measured: recoloring CellPack MG (2.1 M) costs ~1 s (WebGPU) to
+  ~1.8 s (WebGL2) a step, 20+ frames at best, so a theme moved on zoom cannot be smooth: way (b), the shader blend by
+  view depth. Stopped at the size check: (b) is ~360 graphics lines against ~250. Waits on Ludo: full (b), three levels
+  (~290) or WebGPU first (~280); atom or residue as the nearest level; edges in pixels or Å. Ludo, 2026-10-30: full (b),
+  four levels, atom nearest, edges in pixels on screen; the limit lifted to ~420. PR #27, reviewed (2 must-fix, 7
+  should-fix fixed or stated; skeptic confirmed all), real GL on both backends, 0 frames at rest. Waits on Ludo: the
+  blend per atom (vertex stage), not per pixel, changed by the lane without asking (per pixel costs two varyings, both
+  backends near their limit); graphics +449 against ~420 (the TS rule not counted in the estimate). Served on 1344.
+  Ludo's test, 2026-10-30: Firefox (WebGL) does not work; Safari draws only the outline and flickers; Chrome draws
+  normally only once By zoom is on (the levels-off path likely broken too), the coloring then "works great"; zoomed in
+  on spacefill the frame rate drops a lot. Ludo: fix 1 in the lane, a plan for 2 (measured, not built). Done on #27: 1
+  was a WebGPU draw-list bug already in prism-me (and master: a recording replayed a released quad index buffer;
+  PetWorld HIV blank on WebGPU), fixed with tests, to go upstream from master as its own lane; By zoom on a model
+  without compartments colors by entity. Open, on prism-me too: WebKit draws only CellPack HIV's RNA; Safari's flicker
+  not reproduced headless. 2 measured: levels off cost what prism-me costs, on up to +14 %; zoomed in is 1.5-4× the
+  whole view on prism-me already. Plan, not built: skip the blend where a level is whole (~10 lines), then Oklab stored
+  (~25). Waits on Ludo: retest on 1344, merge #27, go for the plan.
+- **Smooth when zoomed in** (lane `instance-cull`, `me/instance-cull` from #27's branch, port 1362; brief
+  [2026-10-31-instance-cull.md](2026-10-31-instance-cull.md)): Ludo, 2026-10-31: zooming in on any cellPACK or PetWorld
+  model drops the frame rate, by zoom or not; not in cellVIEW. Measured (`scripts/zoom-test.js`): the cost is the
+  spheres drawn, not the fragments (pixels change nothing, the LOD halves it). cellVIEW culls per protein and uses
+  k-means proxy levels; Mol* culls per 200 Å cell and uses strides. Ludo: "dont stop until performance is smooth" (≤16.7
+  ms WebGPU, ≤33 ms WebGL2 zoomed, on the M1) and "if in doubt or need answer, use state of the art decision": per
+  particle frustum culling first, then what the numbers show (moving quality, proxy levels). Merge #27 first.
+  - Round 1: **PR #28** (merge #27 first). Per-particle frustum, LOD-range and Hi-Z tests on the GPU; PetWorld moved to
+    GPU culling (`gpuCulling: 'auto'` from 10 M indices and ≥30 instances); a stale-occlusion bug fixed (a still camera
+    tested occlusion once against a pyramid with holes: the main win); LODs 4x coarser while moving, full detail 250 ms
+    after it stops. WebGPU at 0.1, dpr 1, still/turning: CellPack 83 → 12/20 ms, PetWorld 119 → 22/31 ms. Not yet met:
+    dpr 2 (CellPack 36/59, PetWorld 67/94), WebGL2 (CellPack 88/37, PetWorld dpr 2 342/251), Firefox not measured.
+    Settled images identical; while turning, up to ~1.4k pixels late a frame at 0.02 (one-phase occlusion).
+  - Round 2 (on PR #28): lower resolution while moving (`motion.pixelScale`, prism-me 0.5, on dpr 2 0.35 and 6x levels;
+    the trackball compensates), level 0 of large members drawn per cluster of 256 spheres in space order, culled per
+    instance on the GPU; no occlusion while moving or in the resting frame, then occlusion against its own view (exact,
+    no popping with `motion`); WebGL2 culls each instance of a cut cell on the CPU; culled spheres grow by
+    wiggle/tumble. Turning now ≤16.7 ms on WebGPU everywhere but PetWorld 0.02 dpr 2 (19.7), ≤33 ms on WebGL2
+    everywhere. Still frames over budget: PetWorld close up (WebGPU dpr 1 21-41, dpr 2 63-127), CellPack dpr 2 (28-34),
+    WebGL2 (40-192). Look at rest unchanged. Open for Ludo: k-means proxy levels instead of every n-th atom (images in
+    `2026-10-31-instance-cull/`: 15 % / 23 % pixels differ, a bit more compact, streaks on PetWorld's membrane).
+  - Ludo, 2026-10-31, on round 2: "doesnt look good, we dont need the kmeans proxy, and we dont want lower res when
+    turning and zooming". Then, asked: the problem is the coarser detail while moving; "you can keep the resolution
+    trick". Decided: no k-means proxies; no coarser levels while moving (prism-me's motion LOD scale 1); lower
+    resolution while moving stays. Lane resumed for round 3 within these.
+  - Round 3 (on PR #28): full detail while moving; two-phase occlusion (exact, no popping). Full detail, still / turning
+    ms: WebGPU dpr 1 CellPack 0.1 11/12.5, PetWorld 0.02 45/17.6; dpr 2 CellPack 0.1 30/18, PetWorld 0.02 136/25; WebGL2
+    dpr 2 close up 97-196 / 36-66. Turning met on WebGPU dpr 1 (but PetWorld 0.02), not at dpr 2 nor on WebGL2.
+  - Round 4 (stopped, context full; continue in a fresh lane session from the brief's "Round 4 (in progress)"): round
+    3's gate closed (skeptic: stereo was not gated, now fixed; S1 caps a frame late, S3-S5, N4 open). Measured on
+    PetWorld still: the cost is the shading of every overlapping fragment (a shader depth write disables early depth
+    tests), not the write: shading reduced 22/43 → 13/27 ms (dpr 1, 0.1/0.02). Next, designed: a depth pre-pass, then
+    shading only the fragment equal to it (about 40 % off still frames); then per-sphere occlusion, WebGL2 close up.
+    Goal not met. Ludo, 2026-10-31: no depth pre-pass.
+- **Decorating particles fails** (Ludo, 2026-10-31): "target does not apply to cryoet data portal particles". The
+  message is `particles.representation` type `target` on a list with no targets yet ("Applicable: spacefill,
+  orientation"). Headless on 1343/1344/1345, `cryoet.decorate` (pdb, object, none, again) and `particles.targets` all
+  work; the command "Show particles as…" offers Target on an undecorated list. Asked Ludo for the steps and the build.
+
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
   parallel; merged in this order (each merges `origin/prism-me` before its PR):
