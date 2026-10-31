@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -77,6 +78,37 @@ function referenceDraws(grid: InstanceGrid, levels: LodLevelsValue, frustum: Fru
   return draws;
 }
 
+/** The draws per level by each instance's own sphere (radius 2, consecutive instances joined) */
+function referenceInstanceDraws(
+  grid: InstanceGrid,
+  levels: LodLevelsValue,
+  frustum: Frustum3D,
+  cameraPlane: Plane3D,
+  slack = 0,
+) {
+  const draws: number[][] = levels.map(() => []);
+  const s = Sphere3D.create(Vec3(), 2 + slack);
+  const count = grid.cellOffsets[grid.cellCount];
+  for (let i = 0; i < count; ++i) {
+    Vec3.set(
+      s.center,
+      grid.cellTransform[i * 16 + 12],
+      grid.cellTransform[i * 16 + 13],
+      grid.cellTransform[i * 16 + 14],
+    );
+    if (!Frustum3D.intersectsSphere3D(frustum, s)) continue;
+    const d = Plane3D.distanceToPoint(cameraPlane, s.center);
+    for (let j = 0; j < levels.length; ++j) {
+      if (d + s.radius < levels[j][0] || d - s.radius > levels[j][1]) continue;
+      const list = draws[j];
+      const last = list.length - 2;
+      if (last >= 0 && list[last] + list[last + 1] === i) list[last + 1] += 1;
+      else list.push(i, 1);
+    }
+  }
+  return draws;
+}
+
 describe('culling a segment', () => {
   const grid = createGrid();
   const values: CullValues = {
@@ -140,5 +172,95 @@ describe('culling a segment', () => {
     expect(draws).toEqual(reference);
     // something drawn, and in the views with levels at more than one level
     expect(reference.flat().length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    [
+      'partly outside the view',
+      [300, 95, -100],
+      [
+        [0, 250, 0, 600, 1],
+        [250, 1e7, 0, 60, 2],
+      ],
+    ],
+    [
+      'inside, levels',
+      [95, 95, 40],
+      [
+        [0, 60, 0, 600, 1],
+        [60, 120, 0, 60, 2],
+        [120, 1e7, 0, 6, 4],
+      ],
+    ],
+  ] as const)(
+    "with the instances' spheres, draws each instance whose own sphere is in view and range: %s",
+    (_, eye, levels) => {
+      const { frustum, cameraPlane } = view(Vec3.create(eye[0], eye[1], eye[2]), Vec3.create(95, 95, 95));
+      const value = levels.map((l) => [...l]) as unknown as LodLevelsValue;
+      const lodLevels = ValueCell.create(value);
+      const mdb = createSegmentedMdbList();
+      // room for one draw: the lists grow for the draws per instance (renderables prepare one per cell)
+      const prepared = mdb.prepare(lodLevels, 1, false, LodView());
+      const invariantBoundingSphere = ValueCell.create(Sphere3D.create(Vec3(), 2));
+      mdb.cullSegment(
+        { ...values, lodLevels, invariantBoundingSphere, padding: ValueCell.create(0) },
+        ZeroCullSegment,
+        prepared,
+        cameraPlane,
+        frustum,
+        null,
+        createGraphicsStats(),
+        false,
+      );
+      const draws = mdb.list.map((l) => {
+        const out: number[] = [];
+        for (let i = 0; i < l.count; ++i) out.push(l.baseInstances[i], l.instanceCounts[i]);
+        return out;
+      });
+      const reference = referenceInstanceDraws(grid, value, frustum, cameraPlane);
+      expect(draws).toEqual(reference);
+      // fewer instances than the cells give
+      const cells = referenceDraws(grid, value, frustum, cameraPlane);
+      const sum = (d: number[][]) =>
+        d.reduce((a, l) => a + l.filter((_, i) => i % 2 === 1).reduce((x, y) => x + y, 0), 0);
+      expect(sum(reference)).toBeLessThan(sum(cells));
+    },
+  );
+
+  it('with wiggling atoms, draws the instances whose spheres grown by the wiggle reach into view', () => {
+    const { frustum, cameraPlane } = view(Vec3.create(300, 95, -100), Vec3.create(95, 95, 95));
+    const value = [[0, 1e7, 0, 600, 1]] as unknown as LodLevelsValue;
+    const lodLevels = ValueCell.create(value);
+    const mdb = createSegmentedMdbList();
+    const prepared = mdb.prepare(lodLevels, 1, false, LodView());
+    // wiggle up to 5 Å an axis (its speed and frequency on)
+    const animation = {
+      uWiggleAmplitude: ValueCell.create(5),
+      uWiggleSpeed: ValueCell.create(1),
+      uWiggleFrequency: ValueCell.create(1),
+    };
+    mdb.cullSegment(
+      {
+        ...values,
+        lodLevels,
+        invariantBoundingSphere: ValueCell.create(Sphere3D.create(Vec3(), 2)),
+        padding: ValueCell.create(0),
+        animation,
+      },
+      ZeroCullSegment,
+      prepared,
+      cameraPlane,
+      frustum,
+      null,
+      createGraphicsStats(),
+      false,
+    );
+    const draws = mdb.list.map((l) => {
+      const out: number[] = [];
+      for (let i = 0; i < l.count; ++i) out.push(l.baseInstances[i], l.instanceCounts[i]);
+      return out;
+    });
+    expect(draws).toEqual(referenceInstanceDraws(grid, value, frustum, cameraPlane, Math.sqrt(3) * 5));
+    expect(draws).not.toEqual(referenceInstanceDraws(grid, value, frustum, cameraPlane));
   });
 });

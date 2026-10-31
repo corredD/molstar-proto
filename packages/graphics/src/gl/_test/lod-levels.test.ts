@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -43,6 +44,13 @@ describe('levels of detail by size on screen', () => {
     const ortho = LodView.set(LodView(), Mat4.ortho(Mat4(), -200, 200, 150, -150, 1, 1000), 600, true);
     expect(ortho.depthScale).toBe(0);
     expect(ortho.pixelSize).toBeCloseTo(0.5, 12);
+  });
+
+  it('a coarser view while the camera moves: the Å a pixel covers times the scale, as at a lower resolution', () => {
+    const view = LodView.set(LodView(), perspective(), 720, false, 2);
+    expect(view.depthScale).toBeCloseTo((2 * 2 * Math.tan(Fov / 2)) / 720, 12);
+    const ortho = LodView.set(LodView(), Mat4.ortho(Mat4(), -200, 200, 150, -150, 1, 1000), 600, true, 3);
+    expect(ortho.pixelSize).toBeCloseTo(1.5, 12);
   });
 
   it('ranges in distances: as they are, divided by the depth scale, one level orthographic', () => {

@@ -10,6 +10,7 @@
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import { RenderState } from '@molstar/graphics/gl/render-state';
 import type { RenderTarget } from '@molstar/graphics/gl/render-target';
+import type { OcclusionPyramid } from '@molstar/graphics/gl/compute/cell-cull';
 import type { Renderer } from '@molstar/graphics/gl/renderer';
 import type { Scene } from '@molstar/graphics/gl/scene';
 import type { Texture } from '@molstar/graphics/gl/texture';
@@ -77,6 +78,32 @@ export class DrawPass {
   private volumeScale = 1;
 
   private transparencyMode: TransparencyMode = 'blended';
+
+  /**
+   * Two-phase occlusion of the objects culled on the GPU (`Renderer.prepareCullSecond`): builds this frame's depth
+   * pyramid from the opaque depth drawn so far (`depthTextureOpaque`), undefined where it was not built; null (or
+   * unset): one phase (the previous frame's pyramid, `Renderer.setOcclusionPyramid`)
+   */
+  occlusionPyramid: ((camera: ICamera) => OcclusionPyramid | undefined) | null = null;
+  /** whether this frame culls in two phases (`occlusionPyramid`, order-independent transparency's opaque depth) */
+  private twoPhase = false;
+  /** the frame draws a stereo camera's eyes (`render`) */
+  private stereo = false;
+
+  /**
+   * The second phase (two-phase occlusion): this frame's pyramid of the first phase's opaque depth, the objects culled
+   * on the GPU culled again against it, what it shows drawn into `target` (its depth attached)
+   */
+  private renderOpaqueSecond(b: PassBuilder, renderer: Renderer, camera: ICamera, scene: Scene, target: RenderTarget) {
+    if (!b.drawing || !this.twoPhase || !this.occlusionPyramid || renderer.gpuCulledCount === 0) return;
+    const pyramid = this.occlusionPyramid(camera);
+    if (renderer.prepareCullSecond(scene.primitives, pyramid) === 0) return;
+    b.begin(target, { label: 'opaque, second phase' });
+    // the pyramid's passes set their own viewport
+    const { x, y, width, height } = camera.viewport;
+    renderer.setViewport(x, y, width, height);
+    b.renderer({ name: 'opaque' }, scene.primitives, () => renderer.renderOpaqueSecond(scene.primitives, camera));
+  }
   /** `transparency` as this context draws it: blended where the mode is not supported */
   resolveTransparency(transparency: TransparencyMode): TransparencyMode {
     if (transparency === 'wboit' && !this.wboit.supported) return 'blended';
@@ -412,6 +439,7 @@ export class DrawPass {
     // render opaque primitives
     if (scene.hasOpaque) {
       b.renderer({ name: 'opaque' }, scene.primitives, () => renderer.renderOpaque(scene.primitives, camera));
+      this.renderOpaqueSecond(b, renderer, camera, scene, this.colorTarget);
     }
 
     this.depthTextureOpaque.detachFramebuffer(this.colorTarget.framebuffer, 'depth');
@@ -486,6 +514,7 @@ export class DrawPass {
     // render opaque primitives
     if (scene.hasOpaque) {
       b.renderer({ name: 'opaque' }, scene.primitives, () => renderer.renderOpaque(scene.primitives, camera));
+      this.renderOpaqueSecond(b, renderer, camera, scene, this.colorTarget);
     }
 
     this.renderTransparentDepth(b, renderer, camera, scene, postprocessingProps);
@@ -677,8 +706,14 @@ export class DrawPass {
       const { x, y, width, height } = camera.viewport;
       renderer.setViewport(x, y, width, height);
       renderer.update(camera, scene, frame);
-      // no pass open yet: GPU culling for the frame's passes with this camera (others draw the CPU culling's lists)
-      renderer.prepareCull(scene.primitives);
+      // no pass open yet: GPU culling for the frame's passes with this camera (others draw the CPU culling's lists);
+      // in two phases where a pyramid can be built from the opaque depth (order-independent transparency)
+      const oit =
+        (this.transparencyMode === 'wboit' && this.wboit.supported) ||
+        (this.transparencyMode === 'dpoit' && this.dpoit.supported);
+      // (its second phase follows the opaque pass: with opaque objects; one eye's camera, not stereo's)
+      this.twoPhase = !!this.occlusionPyramid && oit && scene.hasOpaque && !this.stereo;
+      renderer.prepareCull(scene.primitives, this.twoPhase);
     }
 
     if (transparentBackground && !antialiasingEnabled && !dofEnabled && !offscreen && !postprocessingEnabled) {
@@ -922,6 +957,8 @@ export class DrawPass {
       renderer.setPixelRatio(this.graphics.pixelRatio);
     }
 
+    // two-phase occlusion builds its pyramid with the canvas's camera: one phase for the eyes
+    this.stereo = StereoCamera.is(camera);
     if (StereoCamera.is(camera)) {
       const timing = isTimingMode && b.drawing;
       if (timing) this.graphics.timer.group('StereoCamera.left');

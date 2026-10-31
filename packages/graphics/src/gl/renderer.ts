@@ -90,9 +90,20 @@ interface Renderer {
    * Culls on the GPU (merged render objects, `Renderable.prepareCull`) with the planes of the last `update`: outside of
    * passes (compute), before the passes of the frame that draw with it; others draw the CPU culling's lists
    */
-  prepareCull: (scene: Scene.Group) => void;
+  prepareCull: (scene: Scene.Group, twoPhase?: boolean) => void;
+  /**
+   * Two-phase occlusion (after `prepareCull` with `twoPhase` and the first phase's opaque draws): the objects culled on
+   * the GPU culled again against `pyramid`, this frame's (of the first phase's depth); the number with a second phase
+   * to draw (`renderOpaqueSecond`)
+   */
+  prepareCullSecond: (scene: Scene.Group, pyramid?: OcclusionPyramid) => number;
   /** The objects the last `prepareCull` culled on the GPU */
   readonly gpuCulledCount: number;
+  /**
+   * Of those, the ones whose occlusion test was against a pyramid of another view or levels (`gpuCullSettled`): a frame
+   * more at the same view settles them (what they left out shows)
+   */
+  readonly gpuCullUnsettledCount: number;
   setTime: (time: number) => void;
 
   renderPick: (group: Scene.Group, camera: ICamera, variant: 'pick' | 'depth', pickType: PickType) => void;
@@ -117,6 +128,8 @@ interface Renderer {
   renderTracing: (group: Scene.Group, camera: ICamera) => void;
   renderBlended: (group: Scene, camera: ICamera) => void;
   renderOpaque: (group: Scene.Group, camera: ICamera) => void;
+  /** The second phase of two-phase occlusion (`prepareCullSecond`): its objects' newly visible instances, opaque */
+  renderOpaqueSecond: (group: Scene.Group, camera: ICamera) => void;
   renderBlendedTransparent: (group: Scene.Group, camera: ICamera) => void;
   renderVolume: (group: Scene.Group, camera: ICamera, depthTexture: Texture) => void;
   renderWboitTransparent: (group: Scene.Group, camera: ICamera, depthTexture: Texture) => void;
@@ -155,6 +168,11 @@ interface Renderer {
   setTransparentBackground: (value: boolean) => void;
   setDrawingBufferSize: (width: number, height: number) => void;
   setPixelRatio: (value: number) => void;
+  /**
+   * Levels of detail by size on screen drawn `value` times coarser (1: as they are), from the next `update`: as at a
+   * resolution that many times lower (e.g. while the camera moves, `Canvas3D` `motion`)
+   */
+  setLodScale: (value: number) => void;
   setOcclusionTest: (f: ((s: Sphere3D) => boolean) | null) => void;
   /**
    * The depth pyramid GPU culling tests occlusion against (`prepareCull`, the previous frame's), null for none (e.g.
@@ -556,6 +574,8 @@ namespace Renderer {
     },
     tracing: simplePassDraws('tracing', checkOpaque, OpaqueState, { mode: 'opaque' }),
     opaque: simplePassDraws('color', checkOpaque, OpaqueState, { mode: 'opaque' }),
+    /** the second phase of two-phase occlusion: recorded apart from `opaque` (its own draws, no caps) */
+    opaqueSecond: { variant: 'color', check: checkOpaque, draws: singleDraw(OpaqueState) },
     blendedTransparent: createBlendedTransparentPassDraws(false),
     blendedTransparentBackground: createBlendedTransparentPassDraws(true),
     volume: { variant: 'color', select: isDirectVolume, check: checkAll, draws: singleDraw(VolumeState) },
@@ -661,6 +681,8 @@ namespace Renderer {
     const cameraPosition = Vec3();
     const cameraTarget = Vec3();
     const cameraPlane = Plane3D();
+    /** `setLodScale` */
+    let lodScale = 1;
     const viewOffset = Vec2();
     const frustum = Frustum3D();
     const lodView = LodView();
@@ -827,7 +849,8 @@ namespace Renderer {
      * with the model scale and the occlusion test, the view what was derived from it (the tables' visibility, the draw
      * lists' snapshots) compares by value: passes of several cameras alternate in a frame (e.g. the camera helper's)
      */
-    const viewPlanes = new Float64Array(28);
+    /** the frustum's planes, the camera plane, and the levels of detail's scales (`LodView`): what a cull reads */
+    const viewPlanes = new Float64Array(30);
     const setViewPlane = (o: number, plane: Plane3D) => {
       const { normal, constant } = plane;
       viewPlanes[o] = normal[0];
@@ -838,9 +861,12 @@ namespace Renderer {
     const setViewPlanes = () => {
       for (let i = 0; i < 6; ++i) setViewPlane(i * 4, frustum[i as Frustum3D.PlaneIndex]);
       setViewPlane(24, cameraPlane);
+      // levels by size on screen: a resolution or a scale (`setLodScale`) at the same camera draws other levels
+      viewPlanes[28] = lodView.depthScale;
+      viewPlanes[29] = lodView.pixelSize;
     };
     const isSameView = (planes: Float64Array) => {
-      for (let i = 0; i < 28; ++i) if (planes[i] !== viewPlanes[i]) return false;
+      for (let i = 0; i < 30; ++i) if (planes[i] !== viewPlanes[i]) return false;
       return true;
     };
 
@@ -865,7 +891,7 @@ namespace Renderer {
       if (!v) {
         v = {
           tableVersion: -1,
-          view: new Float64Array(28).fill(NaN),
+          view: new Float64Array(30).fill(NaN),
           modelScale: NaN,
           isOccluded: null,
           frame: undefined,
@@ -958,6 +984,8 @@ namespace Renderer {
 
     /** assumes `isVisible` returned true, which also set `boundingSphere` */
     const drawObject = (r: GraphicsRenderable, variant: GraphicsRenderVariant, flag: Flag, passState: RenderState) => {
+      // the second phase of two-phase occlusion draws its objects only
+      if (drawingSecondPhase && !secondPhase.has(r)) return;
       cullObject(r);
       const state = getObjectState(drawFacts, variant, flag, passState);
       if (!state) return;
@@ -1106,14 +1134,33 @@ namespace Renderer {
     let updateScale = 1;
     let getOcclusionPyramid: (() => OcclusionPyramid | undefined) | null = null;
     let gpuCulledCount = 0;
-    const prepareCull = (scene: Scene.Group) => {
+    let gpuCullUnsettledCount = 0;
+    /** the objects with a second phase this frame (two-phase occlusion), and whether its draws are under way */
+    const secondPhase = new Set<GraphicsRenderable>();
+    let drawingSecondPhase = false;
+    const prepareCull = (scene: Scene.Group, twoPhase = false) => {
       gpuCulledCount = 0;
+      gpuCullUnsettledCount = 0;
+      secondPhase.clear();
       if (updateScale !== 1) return;
       const pyramid = getOcclusionPyramid?.();
       const { renderables } = scene;
       for (let i = 0, il = renderables.length; i < il; ++i) {
-        if (renderables[i].prepareCull?.(cameraPlane, frustum, currentFrame, lodView, pyramid)) gpuCulledCount += 1;
+        const r = renderables[i];
+        if (!r.prepareCull?.(cameraPlane, frustum, currentFrame, lodView, pyramid, twoPhase)) continue;
+        gpuCulledCount += 1;
+        if (r.gpuCullSettled === false) gpuCullUnsettledCount += 1;
       }
+    };
+
+    const prepareCullSecond = (scene: Scene.Group, pyramid?: OcclusionPyramid) => {
+      secondPhase.clear();
+      const { renderables } = scene;
+      for (let i = 0, il = renderables.length; i < il; ++i) {
+        const r = renderables[i];
+        if (r.prepareCullSecond?.(pyramid)) secondPhase.add(r);
+      }
+      return secondPhase.size;
     };
 
     const update = (camera: ICamera, scene: Scene, frame: Frame) => {
@@ -1152,6 +1199,7 @@ namespace Renderer {
         camera.projection,
         camera.viewport.height / ctx.pixelRatio,
         camera.state.mode === 'orthographic',
+        lodScale,
       );
 
       Plane3D.copy(cameraPlane, frustum[Frustum3D.PlaneIndex.Near]);
@@ -1332,7 +1380,7 @@ namespace Renderer {
       valid: false,
       tableVersion: -1,
       valuesEpoch: -1,
-      view: new Float64Array(28).fill(NaN),
+      view: new Float64Array(30).fill(NaN),
       modelScale: NaN,
       near: NaN,
       caps: false,
@@ -2037,6 +2085,19 @@ namespace Renderer {
       drawPass(PassDraws.opaque, group);
     };
 
+    const renderOpaqueSecond = (group: Scene.Group, camera: ICamera) => {
+      for (const r of secondPhase) r.setCullPhase?.(2);
+      drawingSecondPhase = true;
+      try {
+        updateInternal(group, camera, null, null, Mask.Opaque, false);
+        // drawn directly (no draw list): its objects change with what the first phase drew
+        renderPass(PassDraws.opaqueSecond, group);
+      } finally {
+        drawingSecondPhase = false;
+        for (const r of secondPhase) r.setCullPhase?.(0);
+      }
+    };
+
     const renderBlendedTransparent = (group: Scene.Group, camera: ICamera) => {
       updateInternal(group, camera, null, null, Mask.Transparent, false);
       drawPass(transparentBackground ? PassDraws.blendedTransparentBackground : PassDraws.blendedTransparent, group);
@@ -2090,6 +2151,9 @@ namespace Renderer {
       get gpuCulledCount() {
         return gpuCulledCount;
       },
+      get gpuCullUnsettledCount() {
+        return gpuCullUnsettledCount;
+      },
 
       renderPick,
       renderDepth,
@@ -2104,6 +2168,8 @@ namespace Renderer {
       renderTracing,
       renderBlended,
       renderOpaque,
+      renderOpaqueSecond,
+      prepareCullSecond,
       renderBlendedTransparent,
       renderVolume,
       renderWboitTransparent,
@@ -2228,6 +2294,9 @@ namespace Renderer {
       },
       setPixelRatio: (value: number) => {
         ValueCell.update(globalUniforms.uPixelRatio, value);
+      },
+      setLodScale: (value: number) => {
+        lodScale = value;
       },
       setOcclusionTest: (f: ((s: Sphere3D) => boolean) | null) => {
         isOccluded = f;

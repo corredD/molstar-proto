@@ -76,9 +76,26 @@ For merged render objects on WebGPU with compute and `indirectInstanceRanges` (`
 `canCullOnGpu`); CPU culling (`cullSegment`) stays for WebGL and devices without them. A plain instanced object is
 culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
 
-- **Cells, not instances**: a thread per cell of the members' instance grids (a member without a grid one cell) tests
+- **Cells, then instances**: a thread per cell of the members' instance grids (a member without a grid one cell) tests
   its sphere against the frustum and the object's distance range and picks its levels, as `cullSegment` does per cell;
-  finer cells cost threads, not draws. Testing each instance cost more than it saved.
+  finer cells cost threads, not draws. The copy's thread per instance of a drawn cell then tests the instance's own
+  sphere (the member's `aSegmentSphere` moved by its transform; at level `j` grown by the member's `padding` times the
+  level's sphere scale less one, so a coarse level's enlarged spheres at the view's edge stay; cells and instances
+  also by how far the animations may move a sphere, `uAnimationSlack`: √3 times the wiggle's and tumble's amplitudes) against the frustum, the
+  distance range, each of the cell's levels and the depth pyramid (`instanceLevels`), and copies it at the levels it
+  passed. Why: zoomed into a mesoscale model the cells (and gridless members) hold particles out of view or out of a
+  level's range; per instance, CellPack HIV at 0.1 and 0.02 of the distance drew a third fewer level-0 spheres
+  (`apps/prism-me/progress/2026-10-31-instance-cull.md`). The test costs nothing where its thread already runs; the
+  dropped variant read every instance through compacted indices per vertex (below).
+- **Clusters inside an instance** (level 0 of members of 512 spheres or more, as meshlet culling): each level's own
+  spheres are in space order (`setPositionGroup`), cut evenly in clusters of at most 256 (`ClusterSpheres`), a local
+  sphere each (its atoms' padding included). `cluster-copy` (a row of threads per cluster, as many columns as the most
+  level-0 instances of a segment drawn: `cluster-dispatch` writes them, dispatched indirectly) tests each drawn level-0
+  instance's cluster sphere as the instances are and copies the instance into the cluster's region (sized by the
+  segment's instances, after the identity region); level 0 of a clustered segment draws a record per cluster (its
+  range of spheres) instead of the segment's. Why: a protein partly in view or behind its own front drew all its atoms.
+  Measured (M1, WebGPU, still, dpr 1 / 2): PetWorld HIV at 0.02 49 to 41 / 147 to 127 ms, CellPack HIV at 0.1 12 to
+  10 / 36 to 28 ms; images as before. Memory: 112 bytes per instance and cluster (PetWorld HIV 17 MB).
 - **Compaction by copy**: a thread per instance of a drawn cell copies its instanced attributes (transform, instance
   id, segment data, about 112 bytes) into compacted buffers, a slot per level in its segment's region (`atomicAdd` on a
   counter per level and segment); the compacted buffers are the render item's instanced vertex buffers. The programs
@@ -98,9 +115,11 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
   while the camera moves, were GPU-culled objects not view dependent (step 5 below, dropped).
 - **Cost**: levels times segments indirect draws every frame, about 0.28 µs each (as the CPU culling's draws per
   segment); the copy about 112 bytes per drawn instance; memory about 112 bytes per instance per level plus one.
-- **Occlusion**: per cell against the previous frame's Hi-Z levels (GPU textures, `textureLoad`, r32f), below.
+- **Occlusion**: per cell and per instance against the previous frame's Hi-Z levels (GPU textures, `textureLoad`, r32f), below.
 - **When on** (`auto`, the default): from `AutoGpuCullingMinInstances` (20k) instances and `AutoGpuCullingThreshold`
-  (30) per draw (segment and level). A GPU-culled object costs about 0.1 ms per frame of its own (its dispatches and
+  (30) per draw (segment and level); or from `AutoGpuCullingMinVertices` (10 M) vertices at full detail (instances
+  times draw count) with at least 30 instances: few instances of large members (PetWorld's proteins), where the
+  instance test drops millions of vertices close up (PetWorld HIV at 0.1 of the distance, M1, WebGPU: 119 to 75 ms). A GPU-culled object costs about 0.1 ms per frame of its own (its dispatches and
   the Hi-Z levels it asks for), the CPU's culling about 10 ns per instance in frames whose view changed (less where a
   batch is emitted whole). Measured (WebGPU, RTX, rotating, CPU submit, CPU / GPU culling): one unit of 100, 1000 and
   10k copies 0.17 / 0.33, 0.15 / 0.25, 0.11 / 0.23 ms; 100 units of 100 copies 0.24 / 0.29; of 1000 copies 1.12 /
@@ -119,9 +138,19 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
 - **Not on the CPU**: which instances were drawn (the culled counts of timing stats), and the order of instances within
   a region, which varies between frames: it matters only for equal depths.
 
+## CPU culling by instance (WebGL2)
+
+Objects with levels of detail (particles and their like) culled on the CPU test, in a cell the view or a level
+boundary cuts (or tested for occlusion), each instance by its own sphere (`CullValues.invariantBoundingSphere`, grown
+at a coarse level by `padding` times its scale less one): `cullSegment`'s `cullInstances`, consecutive instances joined
+by `emit`. Measured (M1, WebGL2, still, dpr 1; Hi-Z's CPU test off / on, a task per frame for its reads): CellPack HIV
+0.1 95 to 80 / 60 ms, 0.02 80 to 50 / 42; PetWorld HIV 0.1 134 to 82 / 65, 0.02 106 to 78 / 76. Clusters per instance
+stay on the GPU (a draw per instance and cluster on the CPU: about 100k draws close up).
+
 ## GPU occlusion culling (plan, step 6.6)
 
-Cells of GPU-culled merged objects also tested against a depth pyramid on the GPU, in `cell-cull` after the frustum:
+Cells (in `cell-cull`) and instances (in `instance-copy`) of GPU-culled merged objects also tested against a depth
+pyramid on the GPU after the frustum:
 for densely packed scenes (mesoscale), where most of what is in view is hidden behind the front.
 
 - **Why**: `postsynstubby_2` (PetWorld, mesoscale preset, `merging/postsyn-*`) is bound by its opaque pass (4.7 ms
@@ -132,13 +161,35 @@ for densely packed scenes (mesoscale), where most of what is in view is hidden b
 - **The pyramid**: `HiZPass` builds it after the opaque pass from `depthTextureOpaque` (`r32f` levels, those from
   `minLevel` side by side in one atlas texture, read back for the CPU test). On the GPU the atlas is read directly
   (`textureLoad`): no readback, no lag beyond the frame.
-- **One phase first**: the next frame's cells tested against the previous frame's pyramid with its view and projection
-  (the CPU test's projection of a padded sphere, its level by the screen size, four texels compared, ported to WGSL).
+- **The view's edges**: a sphere's rectangle is clamped to the pyramid's view, unless a part of the sphere beyond the
+  pyramid's frustum (not in the pyramid) is in the view culled for (`showsBeyond`: per pyramid plane the cap beyond it,
+  its farthest reach along each of the view's planes; nothing at the pyramid's own view). Why: clamped while turning,
+  a protein entering the view behind another showed a frame late (PetWorld HIV at 0.1, 2° a frame: 15k of 717k pixels
+  in one frame); not occluded wherever its rectangle reached past the view, turning cost twice (CellPack HIV at 0.1,
+  M1: 22 to 45 ms a frame); with the cap test 37 ms, and at most 13 (CellPack) and 206 (PetWorld) pixels differ in a
+  frame while turning at 0.1 (`apps/prism-me/scripts/cull-check.mjs`; what parallax uncovers behind a near particle
+  shows a frame late, the one-phase test's limit).
+- **Two phases** (as Nanite and niagara; with order-independent transparency, whose opaque depth is a texture): the
+  first phase draws the instances (and level-0 clusters) visible last frame, tested against the view and levels but no
+  pyramid; `DrawPass` then builds this frame's pyramid of that depth (`occlusionPyramid`), the culler tests the rest
+  against it (`dispatchSecond`, `uPhase` 2: per instance a visibility bit in `instanceCells.z`, per cluster and instance
+  in `clusterBits`) and the second phase draws what it shows (`Renderer.renderOpaqueSecond`, records after the first
+  phase's instances: `cull-snapshot`, `cull-args-second`). Exact in every frame, moving or not (no frame of popping),
+  so `motion` keeps occlusion while moving. Measured (M1, WebGPU, turning 1° a frame at full detail, dpr 1 / 2): CellPack
+  HIV 0.1 41 to 12.5 / 48 to 18 ms, PetWorld HIV 0.02 33 to 18 / 43 to 25 ms; still frames cost a dispatch and a pyramid
+  more (CellPack whole view 6.5 to 8.4 ms). Without order-independent transparency, one phase against the previous
+  frame's pyramid (below).
+- **A pyramid per drawn frame** (`OcclusionPyramid.version`): a dispatch is skipped only against the build it tested
+  last. At a still camera what was drawn may change (an object hidden, a coarser level refined): what it hid shows in
+  the next pyramid and is drawn again. A still camera costs a dispatch per drawn frame, none while nothing draws.
+- **One phase** (without order-independent transparency, in stereo, without opaque objects; with `motion`, none while
+  moving): the next frame's cells tested against the previous frame's pyramid with its view and projection
+  (the CPU test's projection of a padded sphere, its level by the screen size, ported to WGSL; now a level finer, up to 4 x 4 texels compared).
   A cell that comes into view behind what moved shows a frame late (a frame of popping while the camera moves; the CPU
-  test, with its readback lag, pops longer). Still frames are stable (the skip stays valid: a pyramid of the same view).
-- **Two phases later, if the popping shows**: draw the cells visible last frame, build the pyramid from that depth,
-  test the rest against it and draw what is newly visible (a second set of records per level and segment, the opaque
-  pass split in two). Exact, at the cost of a pyramid build within the frame.
+  test, with its readback lag, pops longer). Still frames are stable: what is drawn stays drawn, what it hides stays hidden.
+- **Two phases** (built, see above): what was visible last frame, the pyramid of its depth, the rest against it. Open:
+  solid-interior caps of instances first shown in the second phase are drawn the frame after (the second phase draws
+  no caps).
 - **What occludes**: opaque depth only (transparent objects are occluded, never occlude). Off where a pass needs what
   is hidden: illumination (path tracing reads hidden geometry for shadows and reflections; the CPU test is off there
   too), and views without a pyramid of their own (they draw the CPU lists, as now).
@@ -176,8 +227,9 @@ Steps:
 3. **Grid size** (dropped): cells of 50 or 20 Å against 200 gained about 6% zoomed (step 1: 20.6 to 19.4 ms, distance
    levels), far less than the pixel levels; not pursued.
 4. **Draw lists** (dropped with step 6.5).
-5. **Two phases** (dropped): rotating 2° a frame (`-rotating`), 3 of 921,600 pixels differ from the frames without
-   occlusion, zoomed; no popping shows.
+5. **Two phases** (dropped then, built since: mesoscale close up popped a frame while turning, `apps/prism-me`'s
+   instance-cull lane): rotating 2° a frame (`-rotating`), 3 of 921,600 pixels differed from the frames without
+   occlusion, zoomed (`postsyn`).
 6. **WebGL2, the CPU test** (measured, dropped): the benchmark's frames ran in one task, where WebGL's fences never
    signal (a sync's status changes between tasks only): the CPU test never had levels (every read timed out after
    `maxFrameLag`); on WebGPU only a read landing in the warm-up served the still frames (step 1's 12%). The Hi-Z cases
@@ -339,11 +391,11 @@ Steps:
       a precompile list names a GPU-culled object (`ObjectSignature.gpuCulled`: recorded lists, and lists derived from
       params where `gpuCulling` is on; 'auto' depends on the instances, derived as culled on the CPU); checked on Dawn (`webgpu-gpu-culling`: a context with nothing in its scene
       has them after precompiling a recorded list; fails without). Hi-Z: step 6.
-   4. Levels per instance (dropped): a cell across a level boundary draws its instances at both levels' ranges; about
-      4% of the vertices of the cell path are such duplicates (`postsyn`, pixel levels), not worth a test per instance.
+   4. Levels per instance (done with the instance test, above): a cell across a level boundary drew its instances at
+      both levels' ranges (about 4% of the vertices, `postsyn`); the copy's thread tests each instance's range.
    5. Draw lists, GPU-culled objects not view dependent (dropped): draw lists are off by default, and a GPU-culled
       object's submit is 0.15–0.25 ms without them.
-   6. Occlusion on the GPU (done): per cell, above (GPU occlusion culling, steps 1 and 2).
+   6. Occlusion on the GPU (done): per cell and per instance, above (GPU occlusion culling, steps 1 and 2).
    7. The threshold (done): `gpuCulling: 'auto'` by default (above, When on); an object alone is merged to be culled
       on the GPU (`canMergeRenderObjects` with one member), WebGL keeps it as it is. Checked by `merged.test` (which
       objects merge, and how) and on Dawn (`webgpu-gpu-culling`: one object merged alone, and not with 40 instances
