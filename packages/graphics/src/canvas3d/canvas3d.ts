@@ -284,9 +284,10 @@ interface Canvas3DContext {
   syncPixelScale(): void;
   /**
    * The drawing buffer at `scale` of the pixel scale (dynamic resolution while the camera moves, `Canvas3D` `motion`):
-   * the input and the canvas resized with it (`Attribs.handleResize`), not a change of the props (`changed`)
+   * the input and the canvas resized with it (`Attribs.handleResize`), not a change of the props (`changed`); false,
+   * the scale kept at 1, where the drawing buffer did not resize (no `handleResize` resizing the canvas)
    */
-  setMotionPixelScale?: (scale: number) => void;
+  setMotionPixelScale?: (scale: number) => boolean;
   setProps: (props?: Partial<Canvas3DContext.Props>) => void;
   /**
    * Replaces the graphics context with that of the first of `backends` that can be created, on a new canvas element
@@ -690,10 +691,19 @@ namespace Canvas3DContext {
         return getPixelScale(p) * motionPixelScale;
       },
       setMotionPixelScale: (scale: number) => {
-        if (scale === motionPixelScale) return;
+        if (scale === motionPixelScale) return true;
+        const { width, height } = graphics.getDrawingBufferSize();
         motionPixelScale = scale;
         syncPixelScale();
         a.handleResize();
+        const size = graphics.getDrawingBufferSize();
+        if (scale !== 1 && size.width === width && size.height === height) {
+          // nothing resized the canvas: the input and graphics back at the canvas's scale
+          motionPixelScale = 1;
+          syncPixelScale();
+          return false;
+        }
+        return true;
       },
 
       syncPixelScale,
@@ -1029,6 +1039,19 @@ namespace Canvas3D {
     let motionPixelScale = 1;
     /** the view and vertical projection scale last compared (`isViewChanged`) */
     const lastView = new Float64Array(17).fill(NaN);
+    /**
+     * The drawing buffer at `scale` (`Canvas3DContext.setMotionPixelScale`): the canvas resized, and the passes and
+     * viewport with it before the frame draws; drags as at full resolution. Kept at 1 where the canvas did not resize
+     */
+    function setMotionPixelScale(scale: number) {
+      if (!ctx.setMotionPixelScale?.(scale)) return;
+      motionPixelScale = scale;
+      handleResize(false);
+      resizeRequested = false;
+      camera.update();
+      controls.setResolutionScale(scale);
+    }
+
     function isViewChanged() {
       let changed = false;
       for (let i = 0; i < 16; ++i) {
@@ -1037,7 +1060,11 @@ namespace Canvas3D {
           changed = true;
         }
       }
-      if (lastView[16] !== camera.projection[5]) {
+      // (relative: an orthographic projection's differs by an ulp between viewport heights)
+      if (
+        Math.abs(lastView[16] - camera.projection[5]) > 1e-6 * Math.abs(camera.projection[5]) ||
+        isNaN(lastView[16])
+      ) {
         lastView[16] = camera.projection[5];
         changed = true;
       }
@@ -1367,17 +1394,7 @@ namespace Canvas3D {
       motionLodScale = moving ? p.motion.lodScale : 1;
       renderer.setLodScale(motionLodScale);
       const pixelScale = moving ? p.motion.pixelScale : 1;
-      if (pixelScale !== motionPixelScale) {
-        motionPixelScale = pixelScale;
-        // the canvas resized, and the passes and viewport with it before this frame draws; drags as at full resolution
-        if (ctx.setMotionPixelScale) {
-          ctx.setMotionPixelScale(pixelScale);
-          handleResize(false);
-          resizeRequested = false;
-          camera.update();
-          controls.setResolutionScale(pixelScale);
-        }
-      }
+      if (pixelScale !== motionPixelScale) setMotionPixelScale(pixelScale);
 
       const activeAnimation = renderer.props.enableAnimation && scene.hasAnimation;
       const shouldRender =
@@ -1455,7 +1472,7 @@ namespace Canvas3D {
         const multiSampleChanged = multiSampleHelper.update(markingUpdated || shouldRender, p.multiSample) && !xrFrame;
 
         if (shouldRender || multiSampleChanged || markingUpdated) {
-          renderer.setOcclusionTest(hiZ.occlusionTest);
+          renderer.setOcclusionTest(moving || rested ? null : hiZ.occlusionTest);
           // with `motion`, no occlusion while the camera moves nor in the frame it rests: a pyramid of another view
           // shows what moved into view a frame late, one of a coarser frame hides what its gaps show; frames drawn
           // coarser at a lower resolution cost little without it (`merged-render-objects.md`)
@@ -2739,6 +2756,12 @@ namespace Canvas3D {
         if (attribs.warmUp !== undefined) a.warmUp = attribs.warmUp;
       },
       getImagePass: (props: Partial<ImageProps> = {}) => {
+        // an image at full resolution and detail: a motion under way ends (its hold is a property of the view)
+        if (motionPixelScale !== 1 || motionLodScale !== 1) {
+          lastCameraChange = -Infinity;
+          motionLodScale = 1;
+          setMotionPixelScale(1);
+        }
         const pass = new ImagePass(graphics, assetManager, renderer, scene, camera, helper, props);
         imagePasses.add(new WeakRef(pass));
         return pass;
