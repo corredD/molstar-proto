@@ -177,6 +177,19 @@ instances and spheres are drawn; the extra time is the outline pass. #28's times
 every cut particle as a ghost is the expensive case Alexander named (marking off, or ghost edge strength 1); that is the
 next item, not a change to this fix.
 
+Before and after the fix (`zoom-bench.mjs`, CellPack HIV, quality, dpr 1, 5 batches; the before with the six outline
+shaders of `99d026f92^`; ms, still / turning 1° a frame):
+
+| backend, Ghosts | 1                         | 0.35                        | 0.1                         |
+| --------------- | ------------------------- | --------------------------- | --------------------------- |
+| WebGPU, off     | 9.0 / 9.2 → 9.0 / 9.2     | 52.6 / 33.6 → 50.5 / 33.5   | 45.4 / 29.7 → 44.4 / 31.5   |
+| WebGPU, on      | 13.8 / 14.9 → 13.8 / 14.6 | 86.7 / 61.4 → 86.4 / 58.1   | 75.3 / 51.5 → 70.8 / 49.3   |
+| WebGL2, off     | 10.0 / 9.9 → 9.8 / 9.9    | 66.7 / 46.0 → 66.6 / 46.0   | 85.8 / 56.5 → 85.5 / 55.9   |
+| WebGL2, on      | 16.1 / 15.9 → 15.9 / 15.7 | 124.3 / 84.4 → 126.1 / 83.7 | 149.1 / 98.3 → 149.6 / 96.7 |
+
+The fix costs nothing measurable; #28's frames (Ghosts off) are kept. Ghosts on cost about 1.7× (#24's depth draw of the
+cut part and its outlines), as before.
+
 ## Left
 
 - The outline target stays RGBA8. A transparent edge beside an opaque one is still only the square root in 8 bits, so
