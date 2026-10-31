@@ -91,4 +91,24 @@ describe('colors that follow the zoom (mesoscale.colorLevels)', () => {
     expect(levels(v)).toEqual([{ name: 'on', params: ColorLevels.defaults }]);
     expect(steps(v)).toBe(before + 1);
   });
+
+  it('another theme after By zoom turns the levels off, in the same step (review S6)', async () => {
+    const v = await viewer();
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.theme', { objects: [list], theme: 'zoom' }));
+    const before = steps(v);
+    expectOk(await v.api.run('mesoscale.theme', { objects: [list], theme: 'entity' }));
+    expect(reps(v).map((p) => p.colorTheme.name)).toEqual(['particle-entity']);
+    expect(levels(v)).toEqual([off]);
+    expect(steps(v)).toBe(before + 1);
+  });
+
+  it('says that the colors set in Look paint over the levels (review S7)', async () => {
+    const v = await viewer();
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expectOk(await v.api.mesoscale!.colors({ scheme: 'generate', particles: list } as never));
+    const r = await v.api.run('mesoscale.colorLevels', { on: true });
+    expectOk(r);
+    expect(r.did).toMatch(/Look/);
+  });
 });
