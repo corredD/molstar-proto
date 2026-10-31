@@ -192,6 +192,47 @@ describe('a mesh marked by triangle', () => {
     expect(drawCount(repr.renderObjects[1])).toBe(0);
   });
 
+  it('removes a highlight made before the mesh moved, when that same loci is cleared', async () => {
+    const mesh = square();
+    const at = (x: number) =>
+      ShapeUtils.enableTrianglePicking(
+        ShapeUtils.create(
+          'square',
+          {},
+          mesh,
+          () => ColorNames.red,
+          () => 1,
+          () => '',
+          [Mat4.fromTranslation(Mat4(), Vec3.create(x, 0, 0))],
+          1,
+        ),
+      );
+    let shape = at(0);
+    const linesShape = ShapeUtils.create(
+      'square-wireframe',
+      {},
+      Lines.fromMesh(mesh),
+      () => ColorNames.red,
+      () => 1,
+      () => '',
+      undefined,
+      1,
+    );
+    const repr = ShapeMultiRepresentation('Test', Params, {
+      mesh: ShapeRepresentation(() => shape, Mesh.Utils),
+      wireframe: ShapeRepresentation(() => linesShape, Lines.Utils),
+    });
+    await repr.createOrUpdate({ ...PD.getDefaultValues(Params), visuals: ['mesh', 'wireframe'] }, {}).run();
+    const loci = triangle(shape, 0);
+    expect(repr.mark(loci, MarkerAction.Highlight)).toBe(true);
+    shape = at(8);
+    await repr.createOrUpdate({}, {}).run();
+    expect(drawCount(objects(repr).marks)).toBe(6);
+    // the loci still names the shape from before the move; leaving the triangle must clear it
+    expect(repr.mark(loci, MarkerAction.RemoveHighlight)).toBe(true);
+    expect(drawCount(objects(repr).marks)).toBe(0);
+  });
+
   it('a mesh picked by group has no marked triangles: a group loci marks its group as before', async () => {
     const { repr, meshShape } = await make(false);
     expect(repr.renderObjects.map((o) => o.type)).toEqual(['mesh', 'lines']);

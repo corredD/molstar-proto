@@ -340,7 +340,11 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
     mark(loci: Loci, action: MarkerAction) {
       if (!MarkerActions.is(_state.markerActions, action)) return false;
       if (ShapeGroup.isLoci(loci) || Shape.isLoci(loci)) {
-        if (loci.shape !== _shape) return false;
+        // a move builds a new shape of the same mesh: a loci from before it still names its triangles
+        if (loci.shape !== _shape) {
+          if (!_shape || loci.shape.geometry !== _shape.geometry) return false;
+          loci = retargetLoci(loci, _shape);
+        }
       } else if (!isEveryLoci(loci)) {
         return false;
       }
@@ -454,9 +458,15 @@ export function ShapeMultiRepresentation<D, P extends PD.Params>(
     getAllLoci: multi.getAllLoci,
     eachLocation: multi.eachLocation,
     mark(loci: Loci, action: MarkerAction) {
-      // a loci on another representation's shape (another mesh file) is not ours: only our own visuals' are re-pointed
-      if ((Shape.isLoci(loci) || ShapeGroup.isLoci(loci)) && !names.some((n) => reprs[n].shape === loci.shape)) {
-        return false;
+      // a loci on another mesh is not ours. The same mesh rebuilt (a move: a new shape, the same geometry) is,
+      // and retargetLoci points it at the shape now shown, so a highlight from before the move can be removed.
+      if (Shape.isLoci(loci) || ShapeGroup.isLoci(loci)) {
+        const geometry = loci.shape.geometry;
+        const ours = names.some((n) => {
+          const shape = reprs[n].shape;
+          return !!shape && (shape === loci.shape || shape.geometry === geometry);
+        });
+        if (!ours) return false;
       }
       let marked = false;
       for (const name of names) {

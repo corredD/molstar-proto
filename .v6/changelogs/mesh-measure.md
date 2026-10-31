@@ -8,7 +8,7 @@
 - One very wide triangle whose center sits outside the surface does not coarsen that grid: a hover still reads only
   the cells near the pointer.
 - A shape representation marks triangles by themselves (copies of the marked triangles drawn over the mesh), never
-  their group.
+  their group. A highlight made before the mesh moves still clears when that same loci is removed.
 - `Ray3D.intersectTriangle` (Möller–Trumbore, either side).
 
 ## prism-me: Stage tools

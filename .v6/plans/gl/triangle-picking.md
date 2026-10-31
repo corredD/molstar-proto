@@ -40,8 +40,9 @@ layers and its labels.
 - **Marked triangles are drawn again** (`repr/shape/triangle-marks.ts`): the mesh's marker is by group and instance,
   so a marked triangle is a copy, in its group's color, with the marker on (Mol\*'s highlight and select looks), a hair
   off each side of the surface (0.5 % of its longest edge) so the side in view draws over the mesh. One render object
-  made with the representation (empty), not pickable, shown and moved with the mesh. A triangle loci never marks its
-  group; the whole shape or everything clears the copies.
+  made with the representation (empty), not pickable, shown and moved with the mesh. A loci from before the move (the
+  old shape, the same mesh) still clears its triangle. A triangle loci never marks its group; the whole shape or
+  everything clears the copies.
 
 ## Cost
 
