@@ -927,6 +927,38 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
     }
   }, 60_000);
 
+  it('two-phase occlusion: transparent objects alone draw (no opaque pass to build the pyramid in)', async () => {
+    const plugin = await createPlugin();
+    try {
+      const structure = await copiesStructure(plugin);
+      await plugin.builders.structure.representation.addRepresentation(structure, {
+        type: 'spacefill',
+        typeParams: { renderMerged: true, gpuCulling: true, alpha: 0.5 },
+      });
+      const canvas = plugin.canvas3d!;
+      // order-independent transparency: two phases where there is an opaque pass
+      plugin.canvas3dContext!.setProps({ transparency: 'wboit' });
+      canvas.setProps({ multiSample: { ...canvas.props.multiSample, mode: 'off' } });
+      canvas.handleResize();
+      const passes = plugin.renderer.canvas3dContext!.passes;
+      let time = now();
+      const frames = async (count: number) => {
+        for (let i = 0; i < count; ++i) {
+          canvas.commit(true);
+          canvas.requestDraw();
+          canvas.tick((time += 1000) as now.Timestamp, { isSynchronous: true });
+          await canvas.graphics.resources.pending.whenReady();
+        }
+        return Array.from(await canvas.graphics.readRenderTarget(passes.draw.drawTarget, 0, 0, Size, Size));
+      };
+      const image = await frames(20);
+      // the copies drawn: more than the background
+      expect(new Set(image).size).toBeGreaterThan(2);
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
   it('merges one object alone to cull it on the GPU; by default (gpuCulling auto) not with few instances', async () => {
     const plugin = await createPlugin();
     try {
