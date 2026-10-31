@@ -2,6 +2,7 @@
  * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { OcclusionPyramid } from './compute/cell-cull.js';
@@ -362,9 +363,12 @@ export function LodView(): LodView {
 }
 
 export namespace LodView {
-  /** `2 / P[1][1]` is `2 tan(fov / 2)` (perspective) or the view's height (orthographic), `height` in CSS pixels */
-  export function set(out: LodView, projection: Mat4, height: number, orthographic: boolean) {
-    const s = height > 0 ? 2 / (projection[5] * height) : 0;
+  /**
+   * `2 / P[1][1]` is `2 tan(fov / 2)` (perspective) or the view's height (orthographic), `height` in CSS pixels; `scale`
+   * above 1 coarser, as at a resolution that many times lower (`Renderer.setLodScale`)
+   */
+  export function set(out: LodView, projection: Mat4, height: number, orthographic: boolean, scale = 1) {
+    const s = height > 0 ? (2 * scale) / (projection[5] * height) : 0;
     out.depthScale = orthographic ? 0 : s;
     out.pixelSize = orthographic ? s : 0;
     return out;

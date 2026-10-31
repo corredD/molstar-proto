@@ -155,6 +155,11 @@ interface Renderer {
   setTransparentBackground: (value: boolean) => void;
   setDrawingBufferSize: (width: number, height: number) => void;
   setPixelRatio: (value: number) => void;
+  /**
+   * Levels of detail by size on screen drawn `value` times coarser (1: as they are), from the next `update`: as at a
+   * resolution that many times lower (e.g. while the camera moves, `Canvas3D` `motion`)
+   */
+  setLodScale: (value: number) => void;
   setOcclusionTest: (f: ((s: Sphere3D) => boolean) | null) => void;
   /**
    * The depth pyramid GPU culling tests occlusion against (`prepareCull`, the previous frame's), null for none (e.g.
@@ -661,6 +666,8 @@ namespace Renderer {
     const cameraPosition = Vec3();
     const cameraTarget = Vec3();
     const cameraPlane = Plane3D();
+    /** `setLodScale` */
+    let lodScale = 1;
     const viewOffset = Vec2();
     const frustum = Frustum3D();
     const lodView = LodView();
@@ -1152,6 +1159,7 @@ namespace Renderer {
         camera.projection,
         camera.viewport.height / ctx.pixelRatio,
         camera.state.mode === 'orthographic',
+        lodScale,
       );
 
       Plane3D.copy(cameraPlane, frustum[Frustum3D.PlaneIndex.Near]);
@@ -2228,6 +2236,9 @@ namespace Renderer {
       },
       setPixelRatio: (value: number) => {
         ValueCell.update(globalUniforms.uPixelRatio, value);
+      },
+      setLodScale: (value: number) => {
+        lodScale = value;
       },
       setOcclusionTest: (f: ((s: Sphere3D) => boolean) | null) => {
         isOccluded = f;
