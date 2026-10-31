@@ -40,6 +40,12 @@ bool isBackground(const in float depth) {
     return depth == 0.0;
 }
 
+// the 8-bit square root a "both" edge stores, so an in-front test compares like with like
+float outlineQuantizedDepth(const in float depth) {
+    float q = floor(sqrt(max(depth, 0.0)) * 255.0 + 0.5) / 255.0;
+    return q * q;
+}
+
 int squaredOutlineScale = dOutlineScale * dOutlineScale;
 void getOutline(const in vec2 coords, out bool hasOpaque, out bool hasTransparent, out float opaqueDepth, out float transparentDepth, out float alpha) {
     vec2 invTexSize = 1.0 / uTexSize;
@@ -176,7 +182,7 @@ void main(void) {
 
         #ifdef dBlendTransparency
             if (hasTransparent) {
-                if (hasOpaque && outlineOpaqueDepth > outlineTransparentDepth) {
+                if (hasOpaque && outlineQuantizedDepth(outlineOpaqueDepth) > outlineQuantizedDepth(outlineTransparentDepth)) {
                     blendTransparency = false;
                 } else {
                     float finalOutlineAlpha = clamp(outlineAlpha * 2.0, 0.0, 1.0);

@@ -39,6 +39,12 @@ struct Outline {
     alpha: f32,
 };
 
+fn outlineQuantizedDepth(depth: f32) -> f32 {
+    // the 8-bit square root a "both" edge stores, so an in-front test compares like with like
+    let q = floor(sqrt(max(depth, 0.0)) * 255.0 + 0.5) / 255.0;
+    return q * q;
+}
+
 fn getOutline(coords: vec2<f32>) -> Outline {
     let invTexSize = 1.0 / uObject.uTexSize;
     let squaredOutlineScale = oOutlineScale * oOutlineScale;

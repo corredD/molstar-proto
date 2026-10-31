@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { depth_wgsl } from './chunks/depth.wgsl.js';
@@ -534,7 +535,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
 
         #if defined(dBlendTransparency)
             if (outline.hasTransparent) {
-                if (outline.hasOpaque && outline.opaqueDepth > outline.transparentDepth) {
+                if (outline.hasOpaque && outlineQuantizedDepth(outline.opaqueDepth) > outlineQuantizedDepth(outline.transparentDepth)) {
                     blendTransparency = false;
                 } else {
                     let finalOutlineAlpha = clamp(outline.alpha * 2.0, 0.0, 1.0);
