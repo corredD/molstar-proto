@@ -76,6 +76,7 @@ import {
   type CullValues,
   type Frame,
   createClipInfoCache,
+  type AnimationValues,
 } from '../renderable.js';
 
 export type MergeableValues = RenderableValues & BaseValues;
@@ -1202,6 +1203,12 @@ export function MergedRenderable(
     lodLevels: v.lodLevels,
     invariantBoundingSphere: v.invariantBoundingSphere as ValueCell<Sphere3D> | undefined,
     padding: (v as { padding?: ValueCell<number> }).padding,
+    // the merged object's animation (its material), the member's per-group wiggle
+    animation: {
+      ...(merged.values as unknown as AnimationValues),
+      dWiggle: (v as unknown as AnimationValues).dWiggle,
+      uWiggleStrength: (v as unknown as AnimationValues).uWiggleStrength,
+    },
   }));
 
   /** what the last CPU cull read: a still frame keeps its lists (`createCullView`) */

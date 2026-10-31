@@ -38,7 +38,7 @@ import { IndirectRecordBytes, type MultiDrawBaseData } from '../render-item.js';
 import type { GraphicsResources } from '../context.js';
 import type { Texture } from '../texture.js';
 import { Vec2 } from '@molstar/core/math/linear-algebra/3d/vec2';
-import { type LodLevelsValue, LodView } from '../renderable.js';
+import { type AnimationValues, getAnimationSlack, type LodLevelsValue, LodView } from '../renderable.js';
 import { InstanceDataVec4s, type Merged, type MergeableValues, packInstanceData } from './merged.js';
 
 /**
@@ -425,26 +425,8 @@ export function createMergedCuller(
     ValueCell.updateIfChanged(clusterDispatchValues.uClusterCount, clusterCount);
   }
 
-  /**
-   * How far the animations may move a sphere (`animation.wgsl`): the wiggle up to its amplitude (and a group's own, at
-   * most its strength) an axis, the tumble's offset up to its amplitude an axis (divided by the sphere's radius, at least
-   * 1); rotations of the tumble pivot on the instance's sphere
-   */
-  type AnimationValues = { [k: string]: ValueCell<number | boolean> | undefined };
-  function getAnimationSlack() {
-    const v = values as unknown as AnimationValues;
-    const n = (k: string) => (v[k]?.ref.value as number | undefined) ?? 0;
-    let wiggle = 0;
-    if (n('uWiggleSpeed') > 0 && n('uWiggleFrequency') > 0) {
-      let group = 0;
-      for (const m of members as unknown as AnimationValues[]) {
-        if (m.dWiggle?.ref.value) group = Math.max(group, (m.uWiggleStrength?.ref.value as number | undefined) ?? 1);
-      }
-      wiggle = n('uWiggleAmplitude') + group;
-    }
-    const tumble = n('uTumbleSpeed') > 0 && n('uTumbleFrequency') > 0 ? n('uTumbleAmplitude') : 0;
-    return Math.sqrt(3) * (wiggle + tumble);
-  }
+  const getSlack = () =>
+    getAnimationSlack(values as unknown as AnimationValues, members as unknown as AnimationValues[]);
 
   /** the levels' distance ranges for `lod` (`LodView.getRange`) into `levelRanges`, per level a column */
   const levelRanges = Mat4.zero();
@@ -575,7 +557,7 @@ export function createMergedCuller(
       if (instanceCount === 0 || cellCount === 0) return false;
       const [min, max] = values.uLod.ref.value as Vec4;
       setLevelRanges(lod);
-      ValueCell.updateIfChanged(viewValues.uAnimationSlack, getAnimationSlack());
+      ValueCell.updateIfChanged(viewValues.uAnimationSlack, getSlack());
       const sameView = isDispatched(cameraPlane, frustum, min, max);
       if (sameView && isPyramidDispatched(pyramid)) return true;
       if (!getKernels()) return false;

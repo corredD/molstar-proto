@@ -434,7 +434,31 @@ export type CullValues = {
    */
   readonly invariantBoundingSphere?: ValueCell<Sphere3D>;
   readonly padding?: ValueCell<number>;
+  /** the animation's values (wiggle, tumble): the instances' spheres grow by how far they move them (`getAnimationSlack`) */
+  readonly animation?: AnimationValues;
 };
+
+/** Values the animations read (`animation.wgsl`): their amplitudes, speeds and frequencies, per-group wiggle */
+export type AnimationValues = { readonly [k: string]: ValueCell<unknown> | undefined };
+
+/**
+ * How far the animations may move a sphere (`animation.wgsl`): the wiggle up to its amplitude (and a group's own, at
+ * most its strength: `groups`, the members') an axis, the tumble's offset up to its amplitude an axis (divided by the
+ * sphere's radius, at least 1); the tumble's rotations pivot on the instance's sphere
+ */
+export function getAnimationSlack(values: AnimationValues, groups: readonly AnimationValues[] = [values]) {
+  const n = (k: string) => (values[k]?.ref.value as number | undefined) ?? 0;
+  let wiggle = 0;
+  if (n('uWiggleSpeed') > 0 && n('uWiggleFrequency') > 0) {
+    let group = 0;
+    for (const g of groups) {
+      if (g.dWiggle?.ref.value) group = Math.max(group, (g.uWiggleStrength?.ref.value as number | undefined) ?? 1);
+    }
+    wiggle = n('uWiggleAmplitude') + group;
+  }
+  const tumble = n('uTumbleSpeed') > 0 && n('uTumbleFrequency') > 0 ? n('uTumbleAmplitude') : 0;
+  return Math.sqrt(3) * (wiggle + tumble);
+}
 
 export type CullSegment = {
   /** first vertex of the segment, for non-indexed draws */
@@ -521,6 +545,12 @@ function setCullPlanes(frustum: Frustum3D, cameraPlane: Plane3D) {
 }
 
 /** As `Frustum3D.intersectsSphere3D` with the planes of `setCullPlanes` */
+/** `s` with its radius grown by `by` */
+function grow(s: Sphere3D, by: number) {
+  s.radius += by;
+  return s;
+}
+
 function intersectsCullFrustum(x: number, y: number, z: number, r: number) {
   const p = cullPlanes;
   for (let i = 0; i < 24; i += 4) {
@@ -700,6 +730,8 @@ export function createSegmentedMdbList(): SegmentedMdbList {
     // by instance for levels of detail (particles and their like: many large instances)
     const instanceSphere = lodLevels ? values.invariantBoundingSphere?.ref.value : undefined;
     const padding = values.padding?.ref.value ?? 0;
+    // how far the animations may move the spheres: batches, cells and instances grow by it
+    const slack = instanceSphere && values.animation ? getAnimationSlack(values.animation) : 0;
     const checkCellOccludedDistance = 2 * batchSize;
     setCullPlanes(frustum, cameraPlane);
 
@@ -713,7 +745,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
       const bx = batchSpheres[k * 4];
       const by = batchSpheres[k * 4 + 1];
       const bz = batchSpheres[k * 4 + 2];
-      const br = batchSpheres[k * 4 + 3];
+      const br = batchSpheres[k * 4 + 3] + slack;
       const bd = cullCameraDistance(bx, by, bz);
       if (hasLod && (bd + br < minDistance || bd - br > maxDistance)) {
         if (isTimingMode) {
@@ -727,7 +759,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
         }
         continue;
       }
-      if (isOccluded !== null && isOccluded(s3fromArray(s, batchSpheres, k * 4))) {
+      if (isOccluded !== null && isOccluded(grow(s3fromArray(s, batchSpheres, k * 4), slack))) {
         if (isTimingMode) {
           stats.culled.occlusion += cellOffsets[cEnd] - cellOffsets[cBegin];
         }
@@ -798,7 +830,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
         const x = cellSpheres[c * 4];
         const y = cellSpheres[c * 4 + 1];
         const z = cellSpheres[c * 4 + 2];
-        const r = cellSpheres[c * 4 + 3];
+        const r = cellSpheres[c * 4 + 3] + slack;
         const d = cullCameraDistance(x, y, z);
         if (hasLod && (d + r < minDistance || d - r > maxDistance)) {
           if (isTimingMode) stats.culled.lod += count;
@@ -811,7 +843,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
         if (
           isOccluded !== null &&
           d - r < checkCellOccludedDistance &&
-          isOccluded(s3fromArray(s, cellSpheres, c * 4))
+          isOccluded(grow(s3fromArray(s, cellSpheres, c * 4), slack))
         ) {
           if (isTimingMode) stats.culled.occlusion += count;
           continue;
@@ -831,6 +863,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
               grid.cellTransform,
               instanceSphere,
               padding,
+              slack,
               lodLevels,
               segment,
               drawCount,
@@ -866,6 +899,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
     transforms: Float32Array,
     sphere: Sphere3D,
     padding: number,
+    slack: number,
     lodLevels: LodLevelsValue | undefined,
     segment: CullSegment,
     drawCount: number,
@@ -888,19 +922,24 @@ export function createSegmentedMdbList(): SegmentedMdbList {
         ),
       );
       const d = cullCameraDistance(x, y, z);
-      let occluded = -1;
+      // the levels it passes, then occlusion once with the largest of their spheres (as the GPU's `instanceLevels`)
+      let mask = 0;
+      let radius = 0;
       for (let j = 0; j < levelCount; ++j) {
-        const r = (sphere.radius + (lodLevels ? padding * Math.max(lodLevels[j][4] - 1, 0) : 0)) * scale;
+        const r = (sphere.radius + (lodLevels ? padding * Math.max(lodLevels[j][4] - 1, 0) : 0)) * scale + slack;
         if (lodLevels && (d + r < lodMin[j] || d - r > lodMax[j])) continue;
         if (!intersectsCullFrustum(x, y, z, r)) continue;
-        if (isOccluded !== null) {
-          if (occluded === -1) {
-            Vec3.set(s.center, x, y, z);
-            s.radius = r;
-            occluded = isOccluded(s) ? 1 : 0;
-          }
-          if (occluded === 1) continue;
-        }
+        mask |= 1 << j;
+        if (r > radius) radius = r;
+      }
+      if (mask === 0) continue;
+      if (isOccluded !== null) {
+        Vec3.set(s.center, x, y, z);
+        s.radius = radius;
+        if (isOccluded(s)) continue;
+      }
+      for (let j = 0; j < levelCount; ++j) {
+        if ((mask & (1 << j)) === 0) continue;
         emit(list[j], first, offset, lodLevels ? lodCount[j] : drawCount, 1, instanceBase + i);
       }
     }
@@ -1020,6 +1059,7 @@ export function createRenderable<T extends GraphicsRenderableValues>(
     lodLevels: values.lodLevels,
     invariantBoundingSphere: values.invariantBoundingSphere as ValueCell<Sphere3D> | undefined,
     padding: (values as { padding?: ValueCell<number> }).padding,
+    animation: values as unknown as AnimationValues,
   };
 
   const cullView = createCullView();
