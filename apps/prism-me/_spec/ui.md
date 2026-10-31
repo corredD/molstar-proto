@@ -227,12 +227,16 @@ edge away otherwise.
 An angle (at the middle of three points) and a dihedral (about the middle two of four), between the same points (Ludo,
 2026-10-31): from the latest three or four ⌘/Ctrl+clicked points, Mol*'s "from the latest picks", by the canvas's
 right-click ("Measure the angle of the latest 3 points", "… the dihedral of the latest 4 points", first in the menu when
-there are as many); `stage.angle` and `stage.dihedral` for ⌘K and the agent. Drawn by Mol*'s `AngleRepresentation` and
-`DihedralRepresentation`, the same cell kind as a distance (`StageDistance`, with its third and fourth points), so their
-rows, eyes, properties and right-click are a distance's; their rows say "Angle 109.47°", "Dihedral -60.00°". The latest
-points go with the first one (Esc, a plain click, selection mode left). The clicks stay what they are: every second one
-makes its distance (the first and second points, the third and fourth), so an angle from three clicks comes with one
-distance and a dihedral from four with two; each is removed by its row (the lane's default, to ask Ludo).
+there are as many); `stage.angle` and `stage.dihedral` for ⌘K and the agent, each point with its own row (`node`,
+`nodeB`, `nodeC`, `nodeD`: the explorer passes each click's row, so the properties' point buttons reveal that point's
+row). Drawn by Mol*'s `AngleRepresentation` and `DihedralRepresentation`, the same cell kind as a distance
+(`StageDistance`, with its third and fourth points), so their rows, eyes, properties and right-click are a distance's;
+their rows say "Angle 109.47°", "Dihedral -60.00°"; the row is under the first point's. The latest points go with the
+first one (Esc, a plain click, selection mode left). The clicks stay what they are: every second one makes its distance
+(the first and second points, the third and fourth), so an angle from three clicks comes with one distance and a
+dihedral from four with two; each is removed by its row (the lane's default, to ask Ludo). Measuring an angle or a
+dihedral from the right-click keeps an unpaired point (a third click waiting for its fourth): the next ⌘/Ctrl+click
+still completes its distance.
 
 - **In selection mode** (its button under the 3D view) (Ludovic, 2026-10-24): that mode already selects everything in
   the scene; there, two ⌘+clicks on a Mac, two Ctrl+clicks elsewhere, also make a distance. A modifier click selects

@@ -186,13 +186,15 @@ Production about 1270 lines added, 150 removed (library about 790 of them); test
 ## Open
 
 In TODO.md (Backlog, "Meshes by triangle"): live follow during a drag, picks during a preview move, overpaint and focus
-by triangle, selected triangles outside Prism's Selection tab and sessions, a vertex-colored triangle's mark color. A
-triangle much wider than the rest is tested on its own, and the grid is the rest.
+by triangle, selected triangles outside Prism's Selection tab and sessions, a vertex-colored triangle's mark color. Wide
+triangles: ended by the size grades (third review, fix 1; a floor of 1,058 wide triangles costs a pick nothing more at 1
+M and 4 M), so the Backlog item 0d74a346b removed stays removed.
 
 ## Review
 
 Two passes. The wide-triangle findings were reproduced by a failing test, then fixed. The app findings were confirmed by
-the skeptic (5 of 5), then fixed the same way. Nothing left open from this gate.
+the skeptic (5 of 5), then fixed the same way. Left open from this gate: the 64-triangle limit of the wide list (found
+by the third review below, now fixed).
 
 | Finding                                                                                                                | Severity   | Verdict          | Commit      |
 | ---------------------------------------------------------------------------------------------------------------------- | ---------- | ---------------- | ----------- |
@@ -207,3 +209,30 @@ the skeptic (5 of 5), then fixed the same way. Nothing left open from this gate.
 An earlier gate on this branch is already in the commits: NaN triangles, a wireframe-only mesh, the triangle's own
 group, reused mark buffers, the pointer ray, an angle's clicks also making their distances, a session's old distance,
 and the wording nits from that pass.
+
+## Who did what
+
+- Claude (Opus, this lane's agent): the lane up to `1b97f6fdf` (the build, the first gate, the first reviewer and
+  skeptic pass and their fixes, the #29 merge), and the third review's fixes below.
+- Grok, another agent, took the lane over while Claude was stopped on the spend limit (12:34–13:19) and opened PR #31
+  (13:27): `4b4d86cf3`, `0d74a346b`, `5a76e72e6`, `582c8d038`, `8269e9585`, `e2c6fb4e8`, `d47a9e7df`, `1a37f84d8`,
+  `0e071b62e`, `7d52b4af8`, `9031a7bb2`. Those commits are reviewed by the third review only.
+- Commit hygiene in Grok's commits, left as they are (history is never rewritten): `5a76e72e6` and `9031a7bb2` have
+  code-like titles but touch only this progress file; `7d52b4af8` also carries the Prettier reflow of `e2c6fb4e8` and
+  `0e071b62e`.
+
+## Third review (independent, range `1b97f6fdf..9031a7bb2`): 0 must-fix, 5 should-fix, 3 nits
+
+| Finding                                                                                | Severity   | Fixed by (Claude)                                           |
+| -------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------- |
+| 1. The wide list stopped at 64: 72 wide triangles brought back 2,294 tests a pick      | should-fix | size grades, each its own grid; a test of 72; a heavy guard |
+| 2. Docs: the TODO item removed, "Nothing left open", the design note's Open            | should-fix | the design note, this file, the changelog                   |
+| 3. `sameDrawnMesh`'s file fallback never reached (the same Mesh is refilled), too wide | should-fix | the fallback removed, the comment true                      |
+| 4. `8269e9585`'s bare-representation retarget had no test failing without it           | should-fix | a test of a bare `ShapeRepresentation` (fails without it)   |
+| 5. ui.md §7 did not say the unpaired point stays, nor each point's row                 | should-fix | ui.md §7                                                    |
+| Nit: the heavy guard and the cost table not rerun; the build's transient bytes         | nit        | rerun, the table and the changelog updated                  |
+| Nit: commit hygiene                                                                    | nit        | noted above                                                 |
+| Nit: an exact tie went to a wide triangle by visit order                               | nit        | ties go to the lower triangle index                         |
+
+The 72-triangle test asserts the triangles a pick tests (`MeshTriangleLookup.lastVisited`, new), which the old code did
+not have; the reviewer's probe (2,294 tests) is the failing case it stands for.
