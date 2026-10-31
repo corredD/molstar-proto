@@ -26,7 +26,13 @@ is not built is [../TODO.md](../TODO.md).
   backends near their limit); graphics +449 against ~420 (the TS rule not counted in the estimate). Served on 1344.
   Ludo's test, 2026-10-30: Firefox (WebGL) does not work; Safari draws only the outline and flickers; Chrome draws
   normally only once By zoom is on (the levels-off path likely broken too), the coloring then "works great"; zoomed in
-  on spacefill the frame rate drops a lot. Ludo: fix 1 in the lane, a plan for 2 (measured, not built).
+  on spacefill the frame rate drops a lot. Ludo: fix 1 in the lane, a plan for 2 (measured, not built). Done on #27: 1
+  was a WebGPU draw-list bug already in prism-me (and master: a recording replayed a released quad index buffer;
+  PetWorld HIV blank on WebGPU), fixed with tests, to go upstream from master as its own lane; By zoom on a model
+  without compartments colors by entity. Open, on prism-me too: WebKit draws only CellPack HIV's RNA; Safari's flicker
+  not reproduced headless. 2 measured: levels off cost what prism-me costs, on up to +14 %; zoomed in is 1.5-4× the
+  whole view on prism-me already. Plan, not built: skip the blend where a level is whole (~10 lines), then Oklab stored
+  (~25). Waits on Ludo: retest on 1344, merge #27, go for the plan.
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
   parallel; merged in this order (each merges `origin/prism-me` before its PR):
