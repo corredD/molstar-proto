@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util';
@@ -89,6 +90,43 @@ export function createCenterGroupData(
   };
 }
 
+/** spreads the low 10 bits of `x` to every third bit */
+function spreadBits(x: number) {
+  x &= 0x3ff;
+  x = (x | (x << 16)) & 0x30000ff;
+  x = (x | (x << 8)) & 0x300f00f;
+  x = (x | (x << 4)) & 0x30c30c3;
+  x = (x | (x << 2)) & 0x9249249;
+  return x;
+}
+
+/** sorts item indices `items` by the Morton code of their centers (10 bits an axis over the items' box) */
+function sortBySpace(items: number[], centers: Float32Array) {
+  const n = items.length;
+  if (n < 2) return;
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (const j of items) {
+    for (let k = 0; k < 3; ++k) {
+      const v = centers[j * 3 + k];
+      if (v < min[k]) min[k] = v;
+      if (v > max[k]) max[k] = v;
+    }
+  }
+  const scale = [0, 1, 2].map((k) => (max[k] > min[k] ? 1023 / (max[k] - min[k]) : 0));
+  const keys = new Float64Array(n);
+  const order = new Uint32Array(n);
+  for (let i = 0; i < n; ++i) {
+    const j = items[i];
+    const q = (k: number) => Math.floor((centers[j * 3 + k] - min[k]) * scale[k]);
+    keys[i] = (spreadBits(q(0)) | (spreadBits(q(1)) << 1) | (spreadBits(q(2)) << 2)) >>> 0;
+    order[i] = i;
+  }
+  order.sort((a, b) => keys[a] - keys[b] || a - b);
+  const sorted = Array.from(order, (i) => items[i]);
+  for (let i = 0; i < n; ++i) items[i] = sorted[i];
+}
+
 /**
  * Writes center and group per item to `out`; returns the vertex offsets (6 per item) of the levels
  * of detail when `strides` are given
@@ -113,9 +151,14 @@ export function setPositionGroup(
 
   const offsets = [0];
 
+  // per level the items it adds (those of its stride not in a coarser one), in space order (Morton): items near in the
+  // list are near in space, so that consecutive ranges make compact clusters (`getPositionGroupClusters`); a level
+  // draws the same items in any order
+  const items: number[] = [];
   let o = 0;
   for (let i = 0, il = strides.length; i < il; ++i) {
     const s = strides[i];
+    items.length = 0;
     for (let j = 0; j < count; ++j) {
       let handled = false;
       for (let k = 0; k < i; ++k) {
@@ -124,13 +167,15 @@ export function setPositionGroup(
           break;
         }
       }
-      if (!handled && j % s === 0) {
-        array[o * 4 + 0] = centers[j * 3 + 0];
-        array[o * 4 + 1] = centers[j * 3 + 1];
-        array[o * 4 + 2] = centers[j * 3 + 2];
-        array[o * 4 + 3] = groups[j];
-        o += 1;
-      }
+      if (!handled && j % s === 0) items.push(j);
+    }
+    sortBySpace(items, centers);
+    for (const j of items) {
+      array[o * 4 + 0] = centers[j * 3 + 0];
+      array[o * 4 + 1] = centers[j * 3 + 1];
+      array[o * 4 + 2] = centers[j * 3 + 2];
+      array[o * 4 + 3] = groups[j];
+      o += 1;
     }
     offsets.push(o * 6);
   }
