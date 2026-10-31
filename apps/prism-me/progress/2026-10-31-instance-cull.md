@@ -110,6 +110,53 @@ CPU then, so it is the baseline.) Instances drawn (read back from the counters, 
   PetWorld 50 / 54 ms at 0.1 / 0.02. So at rest, at `quality`, 16.7 ms is out of reach without changing the look; the
   goal's frames are reached while the camera moves (step 3), the rest frame keeps today's look.
 
+## Step 2b: the pyramid of a still view, measured
+
+Found while measuring the switch of the pixel scale: a still view's frames cost 14 ms where the batched method said 65
+(CellPack HIV at 0.1). The culler skipped a dispatch while the pyramid's camera was the one it tested last: after a
+camera jump the first dispatch tested the pyramid of the old view, the next one the pyramid of a frame drawn from that
+(with holes where it culled wrongly), and then never again. Fixed (`OcclusionPyramid.version`: a dispatch per drawn
+frame against the newest build; a still canvas draws nothing); what a change at a still view reveals is drawn again (an
+object hidden, a level refined). With it the occlusion converges in 3 to 4 frames.
+
+The edges, while turning: a rectangle reaching past the pyramid's view was clamped (my step 2): a particle entering the
+view behind another showed a frame late (PetWorld HIV at 0.1, 2° a frame: 15,308 of 716,800 pixels in a frame). Now
+clamped only where no part of the sphere beyond the pyramid's frustum is in view (the cap beyond each plane). Not
+occluded wherever it reached past, a turning frame cost twice (CellPack 0.1: 22 to 45 ms); with the cap test 37 ms.
+`cull-check.mjs` (new): settled images with occlusion against without, and GPU culling against the CPU's cells, at 1,
+0.1 and 0.02, both models: no pixel differs. Turning 2° a frame (the frame with occlusion against the same camera
+without), the worst frame: at 0.1 13 (CellPack) and 206 (PetWorld) pixels of 716,800; at 0.02 1,397 and 953 (what
+parallax uncovers behind a near particle shows a frame late: the one-phase test's limit).
+
+Frame (ms), WebGPU, still / turning 1° a frame (`zoom-test.js` `M()`):
+
+| model, dpr      | 1           | 0.1         | 0.02        |
+| --------------- | ----------- | ----------- | ----------- |
+| CellPack HIV, 1 | 6.4 / 6.6   | 12.1 / 36.8 | 14.1 / 24.7 |
+| CellPack HIV, 2 | 10.8 / 10.8 | 35.4 / –    | 39.1 / –    |
+| PetWorld HIV, 1 | 23.3 / 23.4 | 22.0 / 51.1 | 50.3 / 53.5 |
+| PetWorld HIV, 2 | 41.2 / 41.0 | 66.4 / –    | 147.9 / –   |
+
+WebGL2 unchanged (CPU culling): CellPack dpr 1 88 / 70 ms, dpr 2 191 / 200 ms; PetWorld dpr 1 129 / 102, dpr 2 342
+/ 285.
+
+## Step 3: coarser while the camera moves (built, the first part)
+
+`Canvas3D` `motion` (`lodScale`, `holdMs` 250): while the camera changed within the hold, levels by size on screen drawn
+`lodScale` times coarser (`Renderer.setLodScale`, `LodView`'s scale: as at a resolution that many times lower), then one
+frame at full detail without a request. Found on the way: a draw list's recording held the view's planes alone, so a
+scale (or a resolution) at the same camera replayed the old levels (fixed: the view's Å per pixel with the planes).
+Turning frames (ms, WebGPU, before the cap test; still frames unchanged):
+
+| model, dpr      | 0.1, m 2 / m 4 | 0.02, m 2 / m 4 |
+| --------------- | -------------- | --------------- |
+| CellPack HIV, 1 | 31.5 / 21.0    | 23.2 / 16.6     |
+| CellPack HIV, 2 | 83.3 / 61.7    | 63.3 / 47.9     |
+| PetWorld HIV, 1 | 48.6 / 31.9    | 52.2 / 40.0     |
+| PetWorld HIV, 2 | 130.2 / 97.4   | 153.3 / 131.3   |
+
+At dpr 2 the fragments bound the frame: the levels alone don't reach 16.7 ms; next, the pixel scale while moving.
+
 ## Built
 
 ## Decided

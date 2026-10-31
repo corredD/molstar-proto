@@ -65,6 +65,13 @@
   of stride 8 times the finer one covers a doubling of the pixel size; four cover 8x, beyond it the coarsest draws
   spheres smaller than `D` (they shrink with the distance, as now). Measured (step 1): strides growing by 10 (scale
   biases 1, 3, 2.7, 2.3) reach the whole view of the PetWorld model at `D` 3; no more levels needed for it.
+- **Coarser while the camera moves** (`Canvas3D` `motion`): `lodScale` above 1 multiplies the view's Å per pixel
+  (`LodView.set`'s scale, `Renderer.setLodScale`) while the camera changed within `holdMs`, as `D` times the scale: the
+  same levels at a resolution that many times lower; the frame after the hold draws full detail without a request. A
+  draw list's recording holds the view's scales with its planes (a scale at the same camera draws other levels). Why:
+  close up, `quality` at rest is out of reach at 60 fps on an M1 (the spheres and their fragments,
+  `apps/prism-me/progress/2026-10-31-instance-cull.md`); a coarser look while moving, as dynamic-resolution renderers
+  do, keeps the rest frame as it is. Off by default (1); the Mesoscale Explorer sets it.
 - **Params**: `lodPixelSize` (`D`, CSS pixels), 0 for the levels' Å distances (v5 states and apps unchanged); above 0
   the levels' distances are ignored. The level value carries it (`LodLevelsValue.pixel`, boundaries in Å per pixel),
   so merging (its key), the culling and the shaders see one value. The presets get pixel variants (strides and scale
