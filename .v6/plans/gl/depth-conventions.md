@@ -87,7 +87,8 @@
   every transparent outline and ghost beyond 500 Å was lost), its square root beyond about 260,000 × near. So an edge
   counts by its type, whatever its depth; the in-front test compares the 16-bit depths, both rounded to the square root
   only where the transparent one came from a "both" texel; a depth packed to 0 (the last Å before the far plane) is
-  fogged at the 16-bit floor. A transparent edge behind the opaque surface at its own texel is no edge (the hole a
+  fogged at the 16-bit floor (a lower bound on its fog: with far / near beyond 65,536 the floor's depth lies well
+  before the far plane, near 1 Å and far 200,000 Å at about 49,000 Å). A transparent edge behind the opaque surface at its own texel is no edge (the hole a
   nearer opaque surface leaves in a ghost's depth).
 - **Checks**: the visual suite passes on all profiles; WebGL images against the previous ones differ in the cylinder
   star (the fix above) and in a few pixels of SSAO, outlines and illumination (depth quantization in packed channels);

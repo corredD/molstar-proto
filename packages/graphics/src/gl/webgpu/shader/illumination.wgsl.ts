@@ -391,7 +391,6 @@ fn isBackground(depth: f32) -> bool {
     return depth == 0.0;
 }
 
-
 ${compose_fragment_wgsl}`;
 
 /** `smartDeNoise(uv)`: the traced color denoised with normal weights, for the compose pass with `dDenoise` */

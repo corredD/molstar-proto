@@ -136,8 +136,8 @@ than #28: yes.
 - Tests, rendered, each failing with its fix reverted (native GL `graphics/canvas3d/_test/clip-ghosts-draw.test.ts`,
   Dawn `plugin/headless/_test/webgpu-clip-ghosts.test.ts`): the far ghost (near 1 Å, the cut sphere over 1000 Å away; 0
   ghost pixels before); the band over an opaque sphere in front of a far ghost (48 / 40 pixels before); the fogged
-  outline at the far plane (108 / 167 before); GL also the kept sphere's opaque outline painted by the ghost (244
-  before).
+  outline at the far plane (108 / 167 pixels against `0bee02d89`) and, without fog, drawn (none on the base's shaders);
+  GL also the kept sphere's opaque outline painted by the ghost (244 before).
 - Not shown by a render: the exact 16-bit in-front test alone (reverting it to always rounding fails no test once the
   hidden-edge rule is in; three tries at a ghost silhouette one pixel outside a nearer opaque one did not tie). Kept on
   the reviewer's and skeptic's models of the outline and compose passes (`halo.mjs`, `sim.mjs`): rounding a 16-bit depth
@@ -271,3 +271,16 @@ said:
 | The changelog said what was not kept; no PR number                                                                                                                           | nit                        | –                                                     | rewritten, (#30)                                           |
 | `outlineFog` and `outlineQuantizedDepth` duplicated                                                                                                                          | nit                        | –                                                     | one chunk each backend                                     |
 | Mixed precision in the neighborhood's nearest; illumination's outline color                                                                                                  | nit                        | confirmed, older                                      | left (Left)                                                |
+
+Round 3, on the whole lane after `02a39773d`: the lane-reviewer (0 must-fix, 2 should-fix, 3 nits) and the lane-skeptic
+(3 confirmed, 1 plausible, 0 refuted). Fixed in the commit after `7bed72077`:
+
+| Finding                                                                                              | Severity         | Verdict                                                                                                   | Fix                                                                                                                     |
+| ---------------------------------------------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| The hidden-edge rule changes ordinary transparent outlines (`includeTransparent: true`), untested    | should-fix → nit | plausible: by reading the lost band is the same artifact, a transparent object in front keeps its outline | the changelog says it for every transparent outline; no test added (left)                                               |
+| The fog test passed on the base too (it dropped edges at depth 0); 108 / 167 was against `0bee02d89` | should-fix       | confirmed                                                                                                 | a positive check: without fog the far-plane outline is drawn (GL and Dawn fail on the base's shaders); record corrected |
+| The fog floor lies well before the far plane when far / near > 65,536                                | nit              | confirmed (49,361 Å at near 1, far 200,000)                                                               | stated in depth-conventions.md as a lower bound                                                                         |
+| Blank lines left in two WGSL files                                                                   | nit              | confirmed                                                                                                 | removed                                                                                                                 |
+
+The rendered tests on the base's six outline shaders (`origin/prism-me`): the far ghost, the band and the far-plane
+outline fail on both backends; the opaque outline painted by a ghost passes there (the base draws no far ghost at all).

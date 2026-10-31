@@ -130,9 +130,11 @@ async function behindScene(options: {
   await plugin.getImageRaw({ width: size, height: size }, postprocessing);
   canvas.camera.setState({ target: Vec3.create(0, 0, 0), position, up: Vec3.create(0, 1, 0) }, 0);
   options.after?.(canvas);
-  const draw = async (ghost: boolean) => {
+  /** the image, with outlines or without */
+  const draw = async (ghost: boolean, outlines = true) => {
     await update(ghost);
-    return (await plugin.getImageRaw({ width: size, height: size }, postprocessing)).data;
+    const props = outlines ? postprocessing : { ...postprocessing, outline: { name: 'off', params: {} } };
+    return (await plugin.getImageRaw({ width: size, height: size }, props)).data;
   };
   /** an on-axis sphere's projected radius (pixels) */
   const radiusOf = ({ center, radius }: Ball) => {
@@ -255,8 +257,9 @@ describe.skipIf(!WebGPU.module)('ghosts of what clips cut on WebGPU', () => {
     }
   });
 
-  // an outline within the last Å before the far plane (its 16-bit depth packs to 0): fogged, not drawn black over the fog
-  it('fog an outline at the far plane', async () => {
+  // an outline within the last Å before the far plane (its 16-bit depth packs to 0): fogged, not drawn black over the fog;
+  // without fog drawn (the base dropped an edge at depth 0)
+  it('fog an outline at the far plane, and draw it without fog', async () => {
     const Back = { center: Vec3.create(0, 0, 994), radius: 6 };
     const scene = await behindScene({
       size: Size,
@@ -286,6 +289,17 @@ describe.skipIf(!WebGPU.module)('ghosts of what clips cut on WebGPU', () => {
       }
       expect(r).toBeGreaterThan(5);
       expect(dark).toBe(0);
+      scene.canvas.setProps({ cameraFog: { name: 'off', params: {} } } as any);
+      const outlined = await scene.draw(false);
+      const plain = await scene.draw(false, false);
+      let outline = 0;
+      for (let y = 0; y < Size; ++y) {
+        for (let x = 0; x < Size; ++x) {
+          if (Math.hypot(x - c, y - c) > r + 3) continue;
+          if (changedAt(outlined, plain, (y * Size + x) * 4)) outline++;
+        }
+      }
+      expect(outline).toBeGreaterThan(10);
     } finally {
       scene.plugin.dispose();
     }

@@ -59,7 +59,6 @@ fn getFogFactor(depth: f32) -> f32 {
     return smoothstep(uObject.uFogNear, uObject.uFogFar, abs(getViewZ(depth)));
 }
 
-
 @fragment
 fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
     let coords = fragmentUv(in.position, uObject.uTexSize);

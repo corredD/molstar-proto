@@ -361,9 +361,9 @@ describe('ghosts of what clips cut, drawn', () => {
     scene.dispose();
   });
 
-  // an outline at the back of the scene, within the last Å before the far plane: its 16-bit depth packs to 0, read as no
-  // depth, it was drawn unfogged, black over the fog (fog at the far plane is whole)
-  (available ? it : it.skip)('fog an outline at the far plane', async () => {
+  // an outline at the back of the scene, within the last Å before the far plane: its 16-bit depth packs to 0. Fogged as
+  // there (0bee02d89 drew it unfogged, black over the fog); without fog drawn (the base dropped an edge at depth 0)
+  (available ? it : it.skip)('fog an outline at the far plane, and draw it without fog', async () => {
     // a small sphere at the back of a scene of radius about 1000 Å (kept: the plane removes z < 0, the camera's side), the
     // camera 300 Å from its center (near at 1 Å, far at 1300 Å), a narrow view so that the sphere fills some pixels
     const Back = { center: Vec3.create(0, 0, 994), radius: 6 };
@@ -392,6 +392,20 @@ describe('ghosts of what clips cut, drawn', () => {
     }
     expect(b.r).toBeGreaterThan(5);
     expect(dark).toBe(0);
+    // without fog: the outline drawn (the image with outlines against without, around the sphere)
+    scene.canvas.setProps({ cameraFog: { name: 'off', params: {} } } as any);
+    const outlined = await scene.draw(false);
+    const pp = scene.canvas.props.postprocessing;
+    scene.canvas.setProps({ postprocessing: { ...pp, outline: { name: 'off', params: {} } } } as any);
+    const plain = await scene.draw(false);
+    let outline = 0;
+    for (let y = 0; y < Size; ++y) {
+      for (let x = 0; x < Size; ++x) {
+        if (Math.hypot(x - b.x, y - b.y) > b.r + 3) continue;
+        if (changedAt(outlined, plain, (y * Size + x) * 4)) outline++;
+      }
+    }
+    expect(outline).toBeGreaterThan(10);
     scene.dispose();
   });
 });
