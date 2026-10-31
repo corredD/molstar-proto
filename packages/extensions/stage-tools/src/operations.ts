@@ -55,6 +55,7 @@ import {
   hiddenMeshShapes,
   isStageDistanceData,
   type MeasureKind,
+  MeasureNames,
   meshShapeOf,
   measureOf,
   measureValue,
@@ -1344,13 +1345,12 @@ function distancesOf(ctx: Pick<ApiContext, 'plugin'>): DistanceInfo[] {
     // measured once by the transform, not at every read
     const distance = isStageDistanceData(data) ? data.value : NaN;
     const kind = isStageDistanceData(data) ? (data as StageDistanceData).measure : measureOf(pointsOf(p).length);
-    const names = { distance: 'Distance', angle: 'Angle', dihedral: 'Dihedral' } as const;
     out.push({
       ref: cell.transform.ref,
       measure: kind,
       node: p.node,
       distance,
-      label: Number.isFinite(distance) ? valueLabel(kind, distance) : names[kind],
+      label: Number.isFinite(distance) ? valueLabel(kind, distance) : MeasureNames[kind],
       a: brief(p.a),
       b: brief(p.b),
       ...(p.c ? { c: brief(p.c) } : {}),

@@ -11,6 +11,7 @@ import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { IconName } from '@molstar/prism-ui';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
+import { MeasureNames } from '@molstar/stage-tools-extension/distance';
 import type { Category, ExplorerApi, NodeRef, SceneObject } from './operations.js';
 import { type Ids, isCover, kindOf, PlainCut, type Way, wayOfRecord } from './clips.js';
 import { filterRows, type TreeRowView } from './tree-view.js';
@@ -109,9 +110,6 @@ function sameRefs(a: readonly string[] | undefined, b: readonly string[] | undef
 }
 
 // --- the rows ---------------------------------------------------------------------------------------------------------
-
-/** A measurement's row names its kind */
-const MeasureNames: Record<string, string> = { distance: 'Distance', angle: 'Angle', dihedral: 'Dihedral' };
 
 export function rowsOf(
   objects: readonly SceneObject[],

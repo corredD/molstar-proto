@@ -272,7 +272,8 @@ function representationOf(plugin: PluginContext, measure: MeasureKind) {
   return DistanceRepresentation(ctx, () => DistanceParams);
 }
 
-const displayName = { distance: 'Distance', angle: 'Angle', dihedral: 'Dihedral' } as const;
+/** A measurement's kind as people read it */
+export const MeasureNames = { distance: 'Distance', angle: 'Angle', dihedral: 'Dihedral' } as const;
 
 export type StageDistance = typeof StageDistance;
 export const StageDistance = PluginStateTransform.BuiltIn({
@@ -290,7 +291,7 @@ export const StageDistance = PluginStateTransform.BuiltIn({
       await repr.createOrUpdate(props as never, data as never).runInContext(ctx);
       return new SO.Shape.Representation3D(
         { repr: repr as never, sourceData: data },
-        { label: valueLabel(measure, value), description: displayName[measure] },
+        { label: valueLabel(measure, value), description: MeasureNames[measure] },
       );
     });
   },
