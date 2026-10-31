@@ -12,7 +12,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExtension } from '../prism-viewer.js';
-import { TestParticleList, TestTargetList, setTestTargetStructure } from './fixtures.js';
+import { TestParticleList, TestPetworldTargetList, TestTargetList, setTestTargetStructure } from './fixtures.js';
 
 // Colors that follow the zoom (`mesoscale.colorLevels`, `mesoscale.theme` by zoom; color-levels.md, apps/prism-me/_spec/
 // ui.md §4 Look): a cellPACK-like list whose four targets are 1CRN (data/examples), drawn as targets.
@@ -110,5 +110,13 @@ describe('colors that follow the zoom (mesoscale.colorLevels)', () => {
     const r = await v.api.run('mesoscale.colorLevels', { on: true });
     expectOk(r);
     expect(r.did).toMatch(/Look/);
+  });
+
+  it('by zoom on a model without compartments (PetWorld): its entities, then chains and atoms (PetWorld HIV, the first example)', async () => {
+    const v = await viewer(TestPetworldTargetList);
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.theme', { objects: [list], theme: 'zoom' }));
+    expect(reps(v).map((p) => p.colorTheme.name)).toEqual(['particle-entity']);
+    expect(levels(v)).toEqual([{ name: 'on', params: ColorLevels.defaults }]);
   });
 });

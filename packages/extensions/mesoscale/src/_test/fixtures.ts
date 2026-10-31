@@ -119,3 +119,22 @@ export const TestTargetList = PluginStateTransform.BuiltIn({
     return new SO.Particle.List({ ...list, entities: list.targets, targetMapping }, { label: 'HIV' });
   },
 });
+
+/** As `TestTargetList`, its entities by target only, no compartments (as PetWorld's), for tests */
+export const TestPetworldTargetList = PluginStateTransform.BuiltIn({
+  name: 'mesoscale-test-petworld-target-list',
+  display: { name: 'Test PetWorld Target List' },
+  from: SO.Root,
+  to: SO.Particle.List,
+  params: {},
+})({
+  apply() {
+    if (!targetStructure) throw new Error('setTestTargetStructure first');
+    const { compartments: _c, compartmentInfo: _ci, ...list } = cellpackLike();
+    const structure = targetStructure;
+    const targetMapping = new Map<number, ParticleTarget>(
+      [0, 1, 2, 3].map((t) => [t, { kind: 'structure', structure }]),
+    );
+    return new SO.Particle.List({ ...list, targetMapping } as ParticleList, { label: 'PetWorld' });
+  },
+});
