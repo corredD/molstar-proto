@@ -79,10 +79,10 @@ there.
 - **A category's ⋯**: Color… (its color theme for every object under it: the themes its kind takes, each object by its
   own, `mesoscale.theme`, one step; Ludo, 2026-10-27): Structures by object, entity, chain or one color; Particles by
   object, entity (a list with no entities: by object), generated colors, by zoom (Particle Hierarchy, the colors
-  following the zoom: Particle Entity for a model without compartments; drawn by its structures; any other theme turns
-  the following off) or one color; Volumes (their isosurfaces: slices show the data) and Meshes by object or one color;
-  one color (Uniform…) picked in Prism's color picker at the ⋯ and applied once (one step); and Add clip… (a new clip of
-  every object under it, or one of the scene's used on all of them).
+  following the zoom: Particle Entity for a model without compartments, its entities per particle; drawn as targets; any
+  other theme turns the following off) or one color; Volumes (their isosurfaces: slices show the data) and Meshes by
+  object or one color; one color (Uniform…) picked in Prism's color picker at the ⋯ and applied once (one step); and Add
+  clip… (a new clip of every object under it, or one of the scene's used on all of them).
 - **The Clips category** (lane `clips-category`): its eye draws every clip in the scene, or none (one step), open when
   all are drawn; its ⋯ has New clip… (a new clip of every object of the scene). A clip's row: its eye its drawing, its ⋯
   Remove.

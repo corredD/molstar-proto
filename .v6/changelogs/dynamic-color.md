@@ -6,3 +6,7 @@
   octaves. Nothing is recolored while zooming. `ColorTheme.farColor` (optional; `particle-hierarchy`: the compartment's
   base color). Particle target representations: `structure.colorLevels`. The Mesoscale Explorer on Prism:
   `mesoscale.colorLevels`, a model's Look › By zoom, the particles' category theme By zoom. (#27)
+- WebGPU: a draw list recorded while the shared quad indices grew (a small object drawn, then a larger one) no longer
+  replays the released buffer: PetWorld HIV in the Mesoscale Explorer on Prism drew nothing until a change. (#27)
+- The Mesoscale Explorer on Prism: By zoom on a model without compartments (PetWorld's) colors by entity, then chains
+  and atoms. (#27)

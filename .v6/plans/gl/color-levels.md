@@ -35,7 +35,7 @@
   the params), its lightness by `0.05 o`: cellVIEW's chain wedge (§7.2), so a chain still reads as its entity.
 - **The data** (`ColorLevelsSchema`, spheres and mesh, `dColorLevels`):
   - `tColorFar` (`rgba8`, per instance): the far color, the theme's `farColor` (`particle-hierarchy`: the compartment's
-    base color), else its color.
+    base color), else its color (`particle-entity`, a model without compartments: far and entity the same).
   - `tColorNear` (`rgba8`, per group): the atom's element color in `rgb`, the chain offset in `a` (`128 + 127 o`, so that one chain is exactly 0).
   - `uColorLevelEdges` (`log2` of the edges), `uColorLevelBand`, `uColorLevelChainHue` (material uniforms).
   - The entity color is the theme's own (`tColor`, `vColor`).
