@@ -69,10 +69,14 @@ is not built is [../TODO.md](../TODO.md).
     tests), not the write: shading reduced 22/43 → 13/27 ms (dpr 1, 0.1/0.02). Next, designed: a depth pre-pass, then
     shading only the fragment equal to it (about 40 % off still frames); then per-sphere occlusion, WebGL2 close up.
     Goal not met. Ludo, 2026-10-31: no depth pre-pass.
-- **Decorating particles fails** (Ludo, 2026-10-31): "target does not apply to cryoet data portal particles". The
-  message is `particles.representation` type `target` on a list with no targets yet ("Applicable: spacefill,
-  orientation"). Headless on 1343/1344/1345, `cryoet.decorate` (pdb, object, none, again) and `particles.targets` all
-  work; the command "Show particles as…" offers Target on an undecorated list. Asked Ludo for the steps and the build.
+- **Decorating particles fails** (Ludo, 2026-10-31): "Target does not apply to CryoET Data Portal particles" after the
+  list's Scale was changed. Cause, reproduced headless: `stage.scale` adds `ParticleListTransform` (a decorator) on the
+  list; decorating then inserts `ParticleListWithTargets` under it, and `ParticleListTransform.update`
+  (`plugin/core/src/state/transforms/particles/ops.ts:465`) returns Unchanged when its params and `sourceData` are the
+  same, so its output keeps the list without targets. Workaround: decorate first, then scale. Fix proposed: update
+  whenever its input list changed (a failing test first); likely an upstream fix too.
+- **Exosome example** (Ludo, 2026-10-31: does not load on Chrome): its file is on `mesoscope.scripps.edu`, which refuses
+  connections (curl: connection refused on 443). Not prism-me.
 
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
