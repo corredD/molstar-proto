@@ -332,7 +332,15 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
     const plugin = await createPlugin();
     try {
       const graphics = plugin.canvas3d!.graphics;
-      const members = [createLargeMember(3)];
+      // a small member of many instances first (not clustered: the large one's segment, instances and regions after it)
+      const small = createMember(Vec3.create(4, 4, 2), ColorNames.green, {
+        cellSize: 200,
+        lodLevels: [
+          { minDistance: 1, maxDistance: 1000, overlap: 0, stride: 1, scaleBias: 1 },
+          { minDistance: 1000, maxDistance: 10000000, overlap: 0, stride: 4, scaleBias: 1 },
+        ],
+      });
+      const members = [small, createLargeMember(3)];
       const cpu = createMergedRenderObject(members);
       const gpu = createMergedRenderObject(members, { gpuCulling: true });
       const cpuScene = Scene.create(graphics);
