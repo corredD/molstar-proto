@@ -29,6 +29,7 @@ import { Particle, type ParticleList } from '@molstar/model/model/particles/part
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { Grid, Volume } from '@molstar/model/model/volume';
 import { OrderedSet } from '@molstar/core/data/int';
+import { Task } from '@molstar/core/task';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { isEmptyLoci, Loci } from '@molstar/model/model/loci';
 import { Bond, type Structure, StructureElement, StructureProperties, Unit } from '@molstar/model/model/structure';
@@ -51,6 +52,7 @@ import { ParticleHandles } from './particle-handle.js';
 import { drawnObject } from './drawn.js';
 import {
   type DistancePoint,
+  hiddenMeshShapes,
   isStageDistanceData,
   type MeasureKind,
   meshShapeOf,
@@ -1223,7 +1225,8 @@ async function measure(
     if (ApiResult.isFailure(p)) return p;
     points.push(p);
   }
-  const at = points.map((p) => pointLoci(ctx.plugin, p));
+  const meshes = await Task.create('Measure', (runtime) => hiddenMeshShapes(ctx.plugin, points, runtime)).run();
+  const at = points.map((p) => pointLoci(ctx.plugin, p, meshes));
   if (at.some((p) => !p)) return ApiResult.fail('invalid', 'A point selects nothing.');
   const kind = measureOf(points.length);
   const value = measureValue(at.map((p) => p!.loci));

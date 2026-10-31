@@ -156,6 +156,27 @@ describe('measurements from a mesh triangle', () => {
     expect(pointOf(v, 0, [0.5, 0.2])[2]).toBeCloseTo(160);
   });
 
+  it('keeps measuring from a mesh shown as a wireframe only, and follows its moves then', async () => {
+    const v = await viewer();
+    const ca = atom(v, 10);
+    expectOk(await v.api.run('stage.distance', { a: { loci: triangle(v, 0, [0.5, 0.2]) }, b: { loci: ca.loci } }));
+    const { ref } = mesh(v);
+    await v.plugin.state.data
+      .build()
+      .to(ref)
+      .update((p: any) => ({ ...p, visuals: ['wireframe'] }))
+      .commit();
+    expectOk(
+      await v.api.run('stage.move', {
+        target: ref,
+        matrix: Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 30))),
+      }),
+    );
+    const cell = v.plugin.state.data.cells.get(measured(v).ref)!;
+    expect(cell.status).toBe('ok');
+    expect(measured(v).data.value).toBeCloseTo(Vec3.distance(Vec3.create(7, 2, 80), ca.at), 3);
+  });
+
   it('measures an angle and a dihedral between triangles and atoms, in degrees, as Mol* draws them', async () => {
     const v = await viewer();
     const ca = atom(v, 10);

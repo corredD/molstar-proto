@@ -8,7 +8,7 @@ import { OrderedSet } from '@molstar/core/data/int';
 import { Sphere3D } from '@molstar/core/math/geometry';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { StateTransformer } from '@molstar/core/state';
-import { Task } from '@molstar/core/task';
+import { type RuntimeContext, Task } from '@molstar/core/task';
 import { Color } from '@molstar/core/util/color';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { radToDeg } from '@molstar/core/math/misc';
@@ -110,7 +110,12 @@ export function isStageDistanceData(x: unknown): x is StageDistanceData {
 }
 
 /** A point's loci on its object as drawn (moved, decorated), and the size of what it is; undefined when gone */
-export function pointLoci(plugin: PluginContext, p: DistancePoint): { loci: Loci; radius: number } | undefined {
+export function pointLoci(
+  plugin: PluginContext,
+  p: DistancePoint,
+  /** Meshes not drawn as surfaces now (a wireframe only), by their representation's ref: `hiddenMeshShapes` */
+  meshes?: ReadonlyMap<string, Shape<Mesh>>,
+): { loci: Loci; radius: number } | undefined {
   const obj = drawnObject({ plugin }, p.ref);
   if (p.bundle && SO.Molecule.Structure.is(obj)) {
     const loci = StructureElement.Bundle.toLoci(p.bundle, obj.data as Structure);
@@ -130,7 +135,7 @@ export function pointLoci(plugin: PluginContext, p: DistancePoint): { loci: Loci
     return { loci, radius: size ?? Loci.getBoundingSphere(loci)?.radius ?? 5 };
   }
   if (p.triangle) {
-    const shape = meshShapeOf(plugin, p.ref);
+    const shape = meshShapeOf(plugin, p.ref) ?? meshes?.get(p.ref);
     if (!shape || p.triangle.index < 0 || p.triangle.index >= shape.geometry.triangleCount) return undefined;
     if (!shape.transforms[p.triangle.instance]) return undefined;
     const loci = triangleLoci(shape, p.triangle);
@@ -215,8 +220,32 @@ function measureProps<P extends PD.Params>(
   };
 }
 
-function dataOf(plugin: PluginContext, params: StageDistanceProps) {
-  const points = pointsOf(params).map((p) => pointLoci(plugin, p));
+/**
+ * The shapes of the meshes a measurement's triangles are on whose representation does not draw the surface now (its
+ * visuals a wireframe only: Mol*'s multi-representation lists the shown visuals' loci only), from the mesh's provider
+ * (its getter is memoized: the shape it draws with these props, its transforms current)
+ */
+export async function hiddenMeshShapes(
+  plugin: PluginContext,
+  points: readonly DistancePoint[],
+  runtime: RuntimeContext,
+): Promise<Map<string, Shape<Mesh>>> {
+  const out = new Map<string, Shape<Mesh>>();
+  const { cells } = plugin.state.data;
+  for (const p of points) {
+    if (!p.triangle || out.has(p.ref) || meshShapeOf(plugin, p.ref)) continue;
+    const repr = cells.get(p.ref);
+    const provider = repr && cells.get(repr.transform.parent)?.obj;
+    if (!SO.Shape.Representation3D.is(repr?.obj) || !SO.Shape.Provider.is(provider)) continue;
+    const shape = await provider.data.getShape(runtime, provider.data.data, repr.obj.data.repr.props as never);
+    if (shape.geometry.kind === 'mesh' && shape.getTriangleLoci) out.set(p.ref, shape as Shape<Mesh>);
+  }
+  return out;
+}
+
+async function dataOf(plugin: PluginContext, params: StageDistanceProps, runtime: RuntimeContext) {
+  const meshes = await hiddenMeshShapes(plugin, pointsOf(params), runtime);
+  const points = pointsOf(params).map((p) => pointLoci(plugin, p, meshes));
   if (points.some((p) => !p)) throw new Error('A point of the measurement is gone.');
   const at = points as { loci: Loci; radius: number }[];
   const loci = at.map((p) => p.loci);
@@ -256,7 +285,7 @@ export const StageDistance = PluginStateTransform.BuiltIn({
   canAutoUpdate: () => true,
   apply({ params }, plugin: PluginContext) {
     return Task.create('Measurement', async (ctx) => {
-      const { data, props, value, measure } = dataOf(plugin, params);
+      const { data, props, value, measure } = await dataOf(plugin, params, ctx);
       const repr = representationOf(plugin, measure);
       await repr.createOrUpdate(props as never, data as never).runInContext(ctx);
       return new SO.Shape.Representation3D(
@@ -267,7 +296,7 @@ export const StageDistance = PluginStateTransform.BuiltIn({
   },
   update({ b, newParams }, plugin: PluginContext) {
     return Task.create('Measurement', async (ctx) => {
-      const { data, props, value, measure } = dataOf(plugin, newParams);
+      const { data, props, value, measure } = await dataOf(plugin, newParams, ctx);
       // the same number of points (an edit of its look, a move of an object): the same representation
       if ((b.data.sourceData as StageDistanceData | undefined)?.measure !== measure) {
         return StateTransformer.UpdateResult.Recreate;
