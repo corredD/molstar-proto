@@ -75,6 +75,12 @@ is not built is [../TODO.md](../TODO.md).
   (`plugin/core/src/state/transforms/particles/ops.ts:465`) returns Unchanged when its params and `sourceData` are the
   same, so its output keeps the list without targets. Workaround: decorate first, then scale. Fix proposed: update
   whenever its input list changed (a failing test first); likely an upstream fix too.
+- **Scaled and decorated, zooming in clips everything** (Ludo, 2026-10-31, after decorating then scaling to 10):
+  reproduced headless (CryoET ribosomes decorated with 2PLV, `stage.scale` 10). The camera's bounds are the scaled
+  list's (radius 6,124 Å), but the decorations are drawn wrong: on WebGPU they do not show at all (only the 2PLV
+  structure in a corner), on WebGL2 they show scaled and vanish as soon as the camera moves in (0.3 of the distance).
+  Likely the decorations' render objects keep bounds from before the scale (one at center 161,179,190, radius 309). Not
+  yet known if #28 made it worse. Proposed with the decorate fix: one lane, decorations under a list transform.
 - **Exosome example** (Ludo, 2026-10-31: does not load on Chrome): its file is on `mesoscope.scripps.edu`, which refuses
   connections (curl: connection refused on 443). Not prism-me.
 
