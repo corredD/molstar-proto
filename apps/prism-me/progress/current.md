@@ -81,6 +81,8 @@ is not built is [../TODO.md](../TODO.md).
   structure in a corner), on WebGL2 they show scaled and vanish as soon as the camera moves in (0.3 of the distance).
   Likely the decorations' render objects keep bounds from before the scale (one at center 161,179,190, radius 309). Not
   yet known if #28 made it worse. Proposed with the decorate fix: one lane, decorations under a list transform.
+- **Lane `decorate-transform`** (Ludo, 2026-10-31: yes): both bugs above, `me/decorate-transform`, port 1363; brief
+  [2026-10-31-decorate-transform.md](2026-10-31-decorate-transform.md) on its branch. Running.
 - **Exosome example** (Ludo, 2026-10-31: does not load on Chrome): its file is on `mesoscope.scripps.edu`, which refuses
   connections (curl: connection refused on 443). Not prism-me.
 
