@@ -823,6 +823,9 @@ importers:
       '@types/webxr':
         specifier: 'catalog:'
         version: 0.5.24
+      esbuild:
+        specifier: 'catalog:'
+        version: 0.28.1
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

@@ -44,6 +44,7 @@
     "@storybook/web-components-vite": "catalog:",
     "@types/node": "catalog:",
     "@types/webxr": "catalog:",
+    "esbuild": "catalog:",
     "typescript": "catalog:"
   },
   "molstar": {
