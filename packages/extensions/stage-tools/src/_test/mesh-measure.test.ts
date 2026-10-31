@@ -157,6 +157,52 @@ describe('measurements from a mesh triangle', () => {
     expect(recolored.ok && recolored.unchanged).toBe(true);
   });
 
+  it('a PLY: a triangle picked before a move and a scale still measures, where the mesh is now', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), StageToolsExtension] },
+    });
+    viewers.push(v);
+    const crn = readFileSync(resolve(import.meta.dirname, '../../../../../data/examples/1crn.cif'));
+    const ply = [
+      'ply',
+      'format ascii 1.0',
+      'element vertex 3',
+      'property float x',
+      'property float y',
+      'property float z',
+      'element face 1',
+      'property list uchar int vertex_indices',
+      'end_header',
+      '0 0 50',
+      '10 0 50',
+      '10 10 50',
+      '3 0 1 2',
+    ].join('\n');
+    expectOk(await v.api.load.files({ files: [new File([crn], '1crn.cif'), new File([ply], 'square.ply')] }));
+    const ca = atom(v, 10);
+    const picked = triangle(v, 0, [0.5, 0.2]);
+    const { ref } = mesh(v);
+    const shapeCell = v.plugin.state.data.cells.get(v.plugin.state.data.cells.get(ref)!.transform.parent)!;
+    expectOk(
+      await v.api.run('stage.move', {
+        target: ref,
+        matrix: Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 30))),
+      }),
+    );
+    await v.plugin.state.data
+      .build()
+      .to(shapeCell)
+      .update((p: any) => ({
+        ...p,
+        transforms: [Mat4.mul(Mat4(), Mat4.fromUniformScaling(Mat4(), 2), p.transforms[0])],
+      }))
+      .commit();
+    const r = await v.api.run('stage.distance', { a: { loci: picked }, b: { loci: ca.loci } });
+    expectOk(r);
+    expect((r.value as { distance: number }).distance).toBeCloseTo(Vec3.distance(Vec3.create(14, 4, 160), ca.at), 3);
+  });
+
   it('follows the mesh when it is moved and when it is scaled', async () => {
     const v = await viewer();
     const ca = atom(v, 10);
