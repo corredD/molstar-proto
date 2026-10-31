@@ -80,6 +80,36 @@ whose own sphere touches the view and the level's distance range. Load average 4
 - **So the step that can reach the goal tests occlusion per particle**, not only the frustum: hidden particles cost
   neither vertices nor fragments. Step 2 builds both in `instance-copy` (below).
 
+## Step 2: per-particle culling on the GPU, measured
+
+Built (WebGPU): `instance-copy` tests each instance of a drawn cell by its own sphere (frustum, distance ranges, each of
+the cell's levels, the depth pyramid); the GPU occlusion test clamps a rectangle to the view (one reaching past it was
+never occluded) and reads a level finer (up to 4 x 4 texels); `gpuCulling: 'auto'` also from 10 M vertices at full
+detail and 30 instances (PetWorld's 19 objects of few large proteins stayed on the CPU's cells). Frame (ms), headless
+Chrome, `zoom-bench.mjs`, before / after:
+
+| model, backend, dpr     | 1           | 0.1           | 0.02         |
+| ----------------------- | ----------- | ------------- | ------------ |
+| CellPack HIV, WebGPU, 1 | 8.9 / 6.0   | 83.1 / 65.2   | 70.5 / 31.4  |
+| CellPack HIV, WebGPU, 2 | 11.9 / 10.5 | 167.5 / 146.1 | 183.9 / 76.9 |
+| PetWorld HIV, WebGPU, 1 | 26.0 / 23.3 | 119.2 / 75.1  | 93.6 / 65.5  |
+| PetWorld HIV, WebGPU, 2 | 45.6 / –    | 324.1 / –     | 271.1 / –    |
+| CellPack HIV, WebGL2, 2 | 15.1        | 191           | 199.6        |
+| PetWorld HIV, WebGL2, 2 | 49.6        | 341.9         | 284.8        |
+
+(PetWorld at dpr 2 "before" was measured with the step-2 code on, before the auto rule: its objects were still on the
+CPU then, so it is the baseline.) Instances drawn (read back from the counters, CellPack HIV): 1 176k to 155k of 229k,
+0.1 47k to 48k, 0.02 13.5k to 10k (the frustum-only counts at 0.1: 46k).
+
+- **The depth pyramid barely occludes zoomed in**: a texel keeps the farthest depth it covers, and between the atoms of
+  the front particles some pixel of almost every texel shows deep into the model: mesoscale packing is porous at the
+  pyramid's resolution. What is seen through a gap must be drawn anyway; the culling draws what is in view.
+- **Postprocessing is cheap** (all off: 0.1 from 65 to 62.5 ms); the cost is the spheres: their vertices (pixel scale
+  0.25: 0.1 at 34 ms, 0.02 at 15) and their fragments (the rest; at dpr 2 most of the frame).
+- **The bound of a coarser look**: `performance` (D 6, pixel scale 0.5) at dpr 2, i.e. native 1x: CellPack 36 / 23 ms,
+  PetWorld 50 / 54 ms at 0.1 / 0.02. So at rest, at `quality`, 16.7 ms is out of reach without changing the look; the
+  goal's frames are reached while the camera moves (step 3), the rest frame keeps today's look.
+
 ## Built
 
 ## Decided

@@ -55,7 +55,11 @@ if (mode !== 'quality') {
   await page.waitForTimeout(3000);
 }
 await page.evaluate(fs.readFileSync(new URL('./zoom-test.js', import.meta.url), 'utf8'));
-if (args.eval) await page.evaluate(args.eval);
+if (args.eval) {
+  await page.evaluate(args.eval);
+  // what it changed compiles (a frame waits for nothing pending)
+  await page.waitForTimeout(5000);
+}
 
 // the page side: the camera at a fraction of its distance, and the counts from the render objects' instances
 await page.evaluate(() => {
