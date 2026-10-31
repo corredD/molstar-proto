@@ -328,6 +328,74 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
     }
   }, 60_000);
 
+  it('draws level 0 of large members by clusters, each culled per instance, as the CPU culling draws', async () => {
+    const plugin = await createPlugin();
+    try {
+      const graphics = plugin.canvas3d!.graphics;
+      const members = [createLargeMember(3)];
+      const cpu = createMergedRenderObject(members);
+      const gpu = createMergedRenderObject(members, { gpuCulling: true });
+      const cpuScene = Scene.create(graphics);
+      cpuScene.add(cpu);
+      cpuScene.commit();
+      const gpuScene = Scene.create(graphics);
+      gpuScene.add(gpu);
+      gpuScene.commit();
+      // a corner of the first copy in view, close: parts of it out of view
+      const camera = new Camera();
+      Viewport.set(camera.viewport, 0, 0, Size, Size);
+      camera.setState({ target: Vec3.create(6, 6, 0), position: Vec3.create(6, 6, 20), up: Vec3.create(0, 1, 0) }, 0);
+      camera.update();
+      const renderer = Renderer.create(graphics);
+      const target_ = graphics.createRenderTarget(Size, Size, 'depth-stencil');
+      for (const scene of [cpuScene, gpuScene]) {
+        await graphics.resources.preparePipelines(
+          renderer.collect({ name: 'opaque' }, scene, graphics.describeTarget(target_)),
+        );
+      }
+      const drawn = new Map<Scene, MultiDrawBaseData[]>();
+      for (const scene of [cpuScene, gpuScene]) {
+        const item = scene.renderables[0].renderItem;
+        const render = item.render;
+        item.render = (variant, globals, list) => {
+          if (list) drawn.set(scene, list);
+          render(variant, globals, list);
+        };
+      }
+      const frame = async (scene: Scene) => {
+        renderer.update(camera, scene, createFrame());
+        renderer.prepareCull(scene);
+        graphics.beginRenderPass(target_);
+        renderer.clear(true);
+        renderer.setViewport(0, 0, Size, Size);
+        renderer.renderOpaque(scene, camera);
+        graphics.flush();
+        const pixels = Array.from(await graphics.readRenderTarget(target_, 0, 0, Size, Size));
+        await graphics.resources.pending.whenReady();
+        return pixels;
+      };
+      for (let i = 0; i < 20 && !drawn.get(gpuScene)?.[0].indirect; ++i) await frame(gpuScene);
+      const gpuImage = await frame(gpuScene);
+      const cpuImage = await frame(cpuScene);
+      const lists = drawn.get(gpuScene)!;
+      // the levels' lists, then level 0's clusters: 4096 spheres in 16 (the coarse level's 1024 in 4, the rest in 12)
+      expect(lists.length).toBe(3);
+      const clusters = lists[2];
+      expect(clusters.count).toBe(16);
+      const { buffer, indexed } = clusters.indirect!;
+      const words = indexed ? 5 : 4;
+      const args = new Uint32Array(await buffer.readAsync(0, clusters.count * words * 4));
+      const pairs = Array.from({ length: clusters.count }, (_, k) => args[k * words + 1]);
+      // the first copy alone in view, some of its clusters out of it
+      expect(Math.max(...pairs)).toBe(1);
+      expect(pairs.reduce((a, b) => a + b, 0)).toBeLessThan(16);
+      expect(new Set(cpuImage).size).toBeGreaterThan(2);
+      expect(gpuImage).toEqual(cpuImage);
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
   it('draws and picks in a canvas with draw lists (passes that update the renderer inside their render pass)', async () => {
     const plugin = await HeadlessPluginContext.create(
       { webgpu: WebGPU.module! },
@@ -815,6 +883,35 @@ function countInView(members: GraphicsRenderObject[], camera: Camera, levelCount
     }
   }
   return counts;
+}
+
+/** 64 x 64 spheres a unit apart in the xy plane, `copies` instances along x, one cell; levels by distance (all, 1 in 4) */
+function createLargeMember(copies: number) {
+  const centers = new Float32Array(4096 * 3);
+  const groups = new Float32Array(4096);
+  for (let i = 0; i < 4096; ++i) {
+    centers.set([i % 64, Math.floor(i / 64), 0], i * 3);
+    groups[i] = i;
+  }
+  const spheres = Spheres.create(centers, groups, 4096);
+  const transforms = new Float32Array(copies * 16);
+  for (let i = 0; i < copies; ++i) {
+    Mat4.toArray(Mat4.fromTranslation(Mat4(), Vec3.create(i * 80, 0, 0)), transforms, i * 16);
+  }
+  const props = {
+    ...PD.getDefaultValues(Spheres.Params),
+    cellSize: 800,
+    batchSize: 1600,
+    lodLevels: [
+      { minDistance: 1, maxDistance: 1000, overlap: 0, stride: 1, scaleBias: 1 },
+      { minDistance: 1000, maxDistance: 10000000, overlap: 0, stride: 4, scaleBias: 1 },
+    ],
+  };
+  const sphere = Sphere3D.create(Vec3.create(31.5, 31.5, 0), 46);
+  const transform = createTransform(transforms, copies, sphere, props.cellSize, props.batchSize);
+  const simple = BaseGeometry.createSimple(ColorNames.orange as never, 1, transform);
+  const values = Spheres.Utils.createValues(spheres, simple.transform, simple.locationIterator, simple.theme, props);
+  return createRenderObject('spheres', values, Spheres.Utils.createRenderableState(props), -1);
 }
 
 async function createPlugin(size = Size) {
