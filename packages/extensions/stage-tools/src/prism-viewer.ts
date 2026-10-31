@@ -23,15 +23,16 @@ declare module '@molstar/prism-viewer/api' {
 
 export const StageSkill: ViewerSkill = {
   id: 'stage',
-  title: 'Labels, distances and moves',
-  summary: 'put plain-text labels and distances in the scene, move objects',
+  title: 'Labels, measurements and moves',
+  summary: 'put plain-text labels, distances, angles and dihedrals in the scene, move objects',
   guidance: [
     'Skill stage: add_label puts plain text in front of an object (target: its state ref), change_label edits its',
     'text, size, color, plate or tether, moves, hides or removes it. move_object moves or turns a structure, particle',
     'list, volume or mesh by a matrix, after where it is. scale_particles sets the Å per unit of a particle list (its',
     "positions in a tomogram's pixels: the pixel size). measure_distance draws the distance between two points (an",
-    "atom or a residue of a structure, A:10@CA; a particle, '<list ref>#<index>'); change_distance sizes, hides or",
-    "removes one. Cuts are the clipping skill's.",
+    "atom or a residue of a structure, A:10@CA; a particle, '<list ref>#<index>'; a pick: a mesh's triangle, a",
+    'voxel); measure_angle the angle at the middle of three, measure_dihedral the dihedral about the middle two of',
+    "four; change_distance sizes, hides or removes any of them. Cuts are the clipping skill's.",
   ].join('\n'),
   tools: [
     { id: 'add_label', operation: 'stage.label', description: 'Adds a plain-text label in front of an object.' },
@@ -42,7 +43,21 @@ export const StageSkill: ViewerSkill = {
       operation: 'stage.distance',
       description: 'Measures and draws the distance between two points: atoms, residues, chains or particles.',
     },
-    { id: 'change_distance', operation: 'stage.editDistance', description: 'Sizes, hides or removes a distance.' },
+    {
+      id: 'measure_angle',
+      operation: 'stage.angle',
+      description: 'Measures and draws the angle at the middle of three points (atoms, particles, mesh triangles).',
+    },
+    {
+      id: 'measure_dihedral',
+      operation: 'stage.dihedral',
+      description: 'Measures and draws the dihedral angle about the middle two of four points.',
+    },
+    {
+      id: 'change_distance',
+      operation: 'stage.editDistance',
+      description: 'Sizes, hides or removes a distance, an angle or a dihedral.',
+    },
     {
       id: 'scale_particles',
       operation: 'stage.scale',
@@ -68,6 +83,20 @@ export const StageToolsExtension: ViewerExtension = {
         icon: 'measure-distance',
         title: 'Measure a distance between two points…',
         alias: ['distance', 'measure', 'ruler'],
+        action: 'Measure',
+      }),
+      operationCommand(api, s.angle, {
+        category: 'Measure',
+        icon: 'measure-angle',
+        title: 'Measure an angle between three points…',
+        alias: ['angle', 'measure angle'],
+        action: 'Measure',
+      }),
+      operationCommand(api, s.dihedral, {
+        category: 'Measure',
+        icon: 'measure-angle',
+        title: 'Measure a dihedral between four points…',
+        alias: ['dihedral', 'torsion', 'measure dihedral'],
         action: 'Measure',
       }),
       operationCommand(api, s.editDistance, {

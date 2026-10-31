@@ -11,6 +11,7 @@ import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { IconName } from '@molstar/prism-ui';
 import type { DistanceInfo, LabelInfo } from '@molstar/stage-tools-extension/operations';
+import { MeasureNames } from '@molstar/stage-tools-extension/distance';
 import type { Category, ExplorerApi, NodeRef, SceneObject } from './operations.js';
 import { type Ids, isCover, kindOf, PlainCut, type Way, wayOfRecord } from './clips.js';
 import { filterRows, type TreeRowView } from './tree-view.js';
@@ -153,7 +154,7 @@ export function rowsOf(
   for (const d of distances) {
     under(d.node, d.a.ref, {
       key: `d:${d.ref}`,
-      label: `Distance ${d.label}`,
+      label: `${MeasureNames[d.measure] ?? 'Distance'} ${d.label}`,
       kind: 'distance',
       own: true,
       visible: d.visible,

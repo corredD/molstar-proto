@@ -4,6 +4,7 @@ import * as ShapeUtils from '@molstar/graphics/geo/shape/shape';
  *
  * @author Schäfer, Marco <marco.schaefer@uni-tuebingen.de>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { type RuntimeContext, Task } from '@molstar/core/task';
@@ -266,20 +267,23 @@ function createShape(plyData: PlyData, mesh: Mesh, coloring: Coloring, grouping:
   const { ids, map, label } = grouping;
   const { source, transforms } = plyData;
   const groupCount = arrayMax(ids) + 1;
-  return ShapeUtils.create(
-    'ply-mesh',
-    source,
-    mesh,
-    (groupId: number) => {
-      const idx = kind === 'material' ? groupId : map[groupId];
-      return Color.fromRgb(red.value(idx), green.value(idx), blue.value(idx));
-    },
-    () => 1, // size: constant
-    (groupId: number) => {
-      return `${label} ${ids[groupId]}`;
-    },
-    transforms,
-    groupCount,
+  // picked by triangle (.v6/plans/gl/triangle-picking.md): a segmentation's group is a material or a vertex
+  return ShapeUtils.enableTrianglePicking(
+    ShapeUtils.create(
+      'ply-mesh',
+      source,
+      mesh,
+      (groupId: number) => {
+        const idx = kind === 'material' ? groupId : map[groupId];
+        return Color.fromRgb(red.value(idx), green.value(idx), blue.value(idx));
+      },
+      () => 1, // size: constant
+      (groupId: number) => {
+        return `${label} ${ids[groupId]}`;
+      },
+      transforms,
+      groupCount,
+    ),
   );
 }
 

@@ -42,6 +42,8 @@ const KindNames: Readonly<Record<string, string>> = {
   clip: 'Clip',
   label: 'Label',
   distance: 'Distance',
+  angle: 'Angle',
+  dihedral: 'Dihedral',
 };
 
 /** A row's kind as the header names it (an unknown one: as it is, capitalized) */

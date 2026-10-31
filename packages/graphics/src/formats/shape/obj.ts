@@ -3,6 +3,7 @@ import * as ShapeUtils from '@molstar/graphics/geo/shape/shape';
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { type RuntimeContext, Task } from '@molstar/core/task';
@@ -349,15 +350,18 @@ function createShape(
   // when colors.length is 0 to avoid a zero group count).
   const groupCount = usePositionGroups ? positionCount : colors.length > 0 ? colors.length : undefined;
 
-  return ShapeUtils.create(
-    'obj-mesh',
-    source,
-    mesh,
-    (groupId: number) => getColor(groupId),
-    () => 1,
-    (groupId: number) => getLabel(groupId),
-    transforms,
-    groupCount,
+  // picked by triangle (.v6/plans/gl/triangle-picking.md): a segmentation's group is a material or a vertex
+  return ShapeUtils.enableTrianglePicking(
+    ShapeUtils.create(
+      'obj-mesh',
+      source,
+      mesh,
+      (groupId: number) => getColor(groupId),
+      () => 1,
+      (groupId: number) => getLabel(groupId),
+      transforms,
+      groupCount,
+    ),
   );
 }
 
