@@ -79,9 +79,15 @@ function referenceDraws(grid: InstanceGrid, levels: LodLevelsValue, frustum: Fru
 }
 
 /** The draws per level by each instance's own sphere (radius 2, consecutive instances joined) */
-function referenceInstanceDraws(grid: InstanceGrid, levels: LodLevelsValue, frustum: Frustum3D, cameraPlane: Plane3D) {
+function referenceInstanceDraws(
+  grid: InstanceGrid,
+  levels: LodLevelsValue,
+  frustum: Frustum3D,
+  cameraPlane: Plane3D,
+  slack = 0,
+) {
   const draws: number[][] = levels.map(() => []);
-  const s = Sphere3D.create(Vec3(), 2);
+  const s = Sphere3D.create(Vec3(), 2 + slack);
   const count = grid.cellOffsets[grid.cellCount];
   for (let i = 0; i < count; ++i) {
     Vec3.set(
@@ -220,4 +226,41 @@ describe('culling a segment', () => {
       expect(sum(reference)).toBeLessThan(sum(cells));
     },
   );
+
+  it('with wiggling atoms, draws the instances whose spheres grown by the wiggle reach into view', () => {
+    const { frustum, cameraPlane } = view(Vec3.create(300, 95, -100), Vec3.create(95, 95, 95));
+    const value = [[0, 1e7, 0, 600, 1]] as unknown as LodLevelsValue;
+    const lodLevels = ValueCell.create(value);
+    const mdb = createSegmentedMdbList();
+    const prepared = mdb.prepare(lodLevels, 1, false, LodView());
+    // wiggle up to 5 Å an axis (its speed and frequency on)
+    const animation = {
+      uWiggleAmplitude: ValueCell.create(5),
+      uWiggleSpeed: ValueCell.create(1),
+      uWiggleFrequency: ValueCell.create(1),
+    };
+    mdb.cullSegment(
+      {
+        ...values,
+        lodLevels,
+        invariantBoundingSphere: ValueCell.create(Sphere3D.create(Vec3(), 2)),
+        padding: ValueCell.create(0),
+        animation,
+      },
+      ZeroCullSegment,
+      prepared,
+      cameraPlane,
+      frustum,
+      null,
+      createGraphicsStats(),
+      false,
+    );
+    const draws = mdb.list.map((l) => {
+      const out: number[] = [];
+      for (let i = 0; i < l.count; ++i) out.push(l.baseInstances[i], l.instanceCounts[i]);
+      return out;
+    });
+    expect(draws).toEqual(referenceInstanceDraws(grid, value, frustum, cameraPlane, Math.sqrt(3) * 5));
+    expect(draws).not.toEqual(referenceInstanceDraws(grid, value, frustum, cameraPlane));
+  });
 });
