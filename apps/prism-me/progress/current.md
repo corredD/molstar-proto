@@ -89,14 +89,30 @@ is not built is [../TODO.md](../TODO.md).
   both orders: nothing disappears. Open: a list's drag preview does not redraw headless (Ludo to check in the app);
   `scaleByRadius` targets' bounds; upstreaming the two graphics fixes waits for Ludo.
 
-- **Lane `mesh-measure`** (Ludo, 2026-10-31): "measurement between obj/shape at the triangle highlight/selection and
-  other selection. Right now, mesh selection is global not at the triangle level." Triangle picking on OBJ/PLY/VTP
-  meshes (today a material, a vertex or the whole mesh), then distance/angle/dihedral between triangles, atoms and
-  particles. `me/mesh-measure`, port 1364; brief [2026-10-31-mesh-measure.md](2026-10-31-mesh-measure.md) on its branch.
-  Running.
+- **Lane `mesh-measure`**: **PR #31**, gate and review passed. OBJ/PLY/VTP picked by triangle (the GPU's group narrowed
+  on the CPU by the pointer's ray; a counting-sort grid, 6 B a triangle, 26 ms to build at 1 M, a pick 29 µs); marks
+  drawn as copies of the triangles (colors and segment looks unchanged). The point measured: the picked surface point
+  (barycentric, follows moves and scales, saved). Distance/angle/dihedral between triangles, atoms, particles, voxels
+  via stage-tools (`stage.angle`, `stage.dihedral` new). For Ludo: an angle or dihedral from clicks keeps the clicks'
+  distances (default). Open: follows a move on release only; selected triangles not in the Selection tab nor sessions;
+  overpaint/transparency per triangle; marks' z-fighting unchecked on GPU.
+
 - **Lane `ghost-cull`** (Ludo, 2026-10-31): "the ghost on cellpack rendering, disappears at some distance and on the
   side of the screen." Suspected: #28's culling (occlusion, LOD range, edges) applied to #24's ghost pass.
-  `me/ghost-cull`, port 1365; brief [2026-10-31-ghost-cull.md](2026-10-31-ghost-cull.md) on its branch. Running.
+  `me/ghost-cull`, port 1365; brief [2026-10-31-ghost-cull.md](2026-10-31-ghost-cull.md) on its branch. The cause is
+  transparent-outline depth in 8 bits, older than #28. **PR #30**, not merged. The in-front test and outline fog are
+  fixed. Occlusion of the ghost pass is unchanged on purpose. Alexander's marking note stays the next item.
+- **Grok took over `mesh-measure` and `ghost-cull`** (Ludo, 2026-10-31) while the lanes were stopped on the spend limit
+  (about 11:15 to 13:40): mesh 12:34-13:19, ghost 12:50-13:42, and it opened #30 and #31 at 13:27. Its commits carry
+  Ludo's name and the Claude trailer, so the history does not show it. Independent reviews:
+  - #31 (mesh): good, careful work; 0 must-fix, 5 should-fix (wide triangles beyond 64 fall back to a wide search and
+    the docs say the limit is gone; a false comment and a dead fallback in `sameDrawnMesh`; an untested retarget; ui.md
+    §7).
+  - #30 (ghost): not ready; 2 must-fix (transparent-only outlines drawn over opaque ones up to 1,686 Å in front; edges
+    near the far plane unfogged, opaque outlines too), tests that only grep the shaders, the screen-edge half
+    unmeasured.
+  - Both sent back to their lanes to fix, re-gate and re-review; PR bodies to say which commits were Grok's. Do not
+    merge until then.
 - **After the 3 lanes** (Ludo, 2026-10-31, from Alexander): "also you generally want to switch marking off or at least
   set ghost edge strength to 1 - otherwise you render everything at least twice... the transparent stuff is not cheap
   either...". To do: prism-me's look (`marking` off, or `ghostEdgeStrength` 1), measured with `zoom-bench.mjs` before
