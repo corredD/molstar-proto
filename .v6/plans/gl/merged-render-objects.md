@@ -105,7 +105,7 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
   while the camera moves, were GPU-culled objects not view dependent (step 5 below, dropped).
 - **Cost**: levels times segments indirect draws every frame, about 0.28 µs each (as the CPU culling's draws per
   segment); the copy about 112 bytes per drawn instance; memory about 112 bytes per instance per level plus one.
-- **Occlusion**: per cell against the previous frame's Hi-Z levels (GPU textures, `textureLoad`, r32f), below.
+- **Occlusion**: per cell and per instance against the previous frame's Hi-Z levels (GPU textures, `textureLoad`, r32f), below.
 - **When on** (`auto`, the default): from `AutoGpuCullingMinInstances` (20k) instances and `AutoGpuCullingThreshold`
   (30) per draw (segment and level); or from `AutoGpuCullingMinVertices` (10 M) vertices at full detail (instances
   times draw count) with at least 30 instances: few instances of large members (PetWorld's proteins), where the
@@ -130,7 +130,8 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
 
 ## GPU occlusion culling (plan, step 6.6)
 
-Cells of GPU-culled merged objects also tested against a depth pyramid on the GPU, in `cell-cull` after the frustum:
+Cells (in `cell-cull`) and instances (in `instance-copy`) of GPU-culled merged objects also tested against a depth
+pyramid on the GPU after the frustum:
 for densely packed scenes (mesoscale), where most of what is in view is hidden behind the front.
 
 - **Why**: `postsynstubby_2` (PetWorld, mesoscale preset, `merging/postsyn-*`) is bound by its opaque pass (4.7 ms
@@ -153,7 +154,7 @@ for densely packed scenes (mesoscale), where most of what is in view is hidden b
   last. At a still camera what was drawn may change (an object hidden, a coarser level refined): what it hid shows in
   the next pyramid and is drawn again. A still camera costs a dispatch per drawn frame, none while nothing draws.
 - **One phase first**: the next frame's cells tested against the previous frame's pyramid with its view and projection
-  (the CPU test's projection of a padded sphere, its level by the screen size, four texels compared, ported to WGSL).
+  (the CPU test's projection of a padded sphere, its level by the screen size, ported to WGSL; now a level finer, up to 4 x 4 texels compared).
   A cell that comes into view behind what moved shows a frame late (a frame of popping while the camera moves; the CPU
   test, with its readback lag, pops longer). Still frames are stable: what is drawn stays drawn, what it hides stays hidden.
 - **Two phases later, if the popping shows**: draw the cells visible last frame, build the pyramid from that depth,
@@ -363,7 +364,7 @@ Steps:
       both levels' ranges (about 4% of the vertices, `postsyn`); the copy's thread tests each instance's range.
    5. Draw lists, GPU-culled objects not view dependent (dropped): draw lists are off by default, and a GPU-culled
       object's submit is 0.15–0.25 ms without them.
-   6. Occlusion on the GPU (done): per cell, above (GPU occlusion culling, steps 1 and 2).
+   6. Occlusion on the GPU (done): per cell and per instance, above (GPU occlusion culling, steps 1 and 2).
    7. The threshold (done): `gpuCulling: 'auto'` by default (above, When on); an object alone is merged to be culled
       on the GPU (`canMergeRenderObjects` with one member), WebGL keeps it as it is. Checked by `merged.test` (which
       objects merge, and how) and on Dawn (`webgpu-gpu-culling`: one object merged alone, and not with 40 instances
