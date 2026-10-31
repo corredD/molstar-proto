@@ -20,7 +20,10 @@ is not built is [../TODO.md](../TODO.md).
   ~1.8 s (WebGL2) a step, 20+ frames at best, so a theme moved on zoom cannot be smooth: way (b), the shader blend by
   view depth. Stopped at the size check: (b) is ~360 graphics lines against ~250. Waits on Ludo: full (b), three levels
   (~290) or WebGPU first (~280); atom or residue as the nearest level; edges in pixels or Å. Ludo, 2026-10-30: full (b),
-  four levels, atom nearest, edges in pixels on screen; the limit lifted to ~420; building.
+  four levels, atom nearest, edges in pixels on screen; the limit lifted to ~420. PR #27, reviewed (2 must-fix, 7
+  should-fix fixed or stated; skeptic confirmed all), real GL on both backends, 0 frames at rest. Waits on Ludo: the
+  blend per atom (vertex stage), not per pixel, changed by the lane without asking (per pixel costs two varyings, both
+  backends near their limit); graphics +449 against ~420 (the TS rule not counted in the estimate). Served on 1344.
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
   parallel; merged in this order (each merges `origin/prism-me` before its PR):
