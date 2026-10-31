@@ -59,6 +59,12 @@ fn getFogFactor(depth: f32) -> f32 {
     return smoothstep(uObject.uFogNear, uObject.uFogFar, abs(getViewZ(depth)));
 }
 
+fn outlineFog(depth: f32) -> f32 {
+    // a packed far edge is depth 0, which is the far plane, so fog would take it all; fog off makes smoothstep NaN
+    if (depth == 0.0 || uObject.uFogFar <= uObject.uFogNear) { return 0.0; }
+    return smoothstep(uObject.uFogNear, uObject.uFogFar, abs(getViewZ(depth)));
+}
+
 @fragment
 fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
     let coords = fragmentUv(in.position, uObject.uTexSize);
@@ -121,7 +127,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
         let outline = getOutline(coords);
 
         if (outline.hasOpaque) {
-            let outlineFogFactor = getFogFactor(outline.opaqueDepth);
+            let outlineFogFactor = outlineFog(outline.opaqueDepth);
             if (!transparentBackground) {
                 color = vec4<f32>(mix(uObject.uOutlineColor, uObject.uFogColor, outlineFogFactor), color.a);
             } else {
@@ -135,7 +141,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
                     blendTransparency = false;
                 } else {
                     let finalOutlineAlpha = clamp(outline.alpha * 2.0, 0.0, 1.0);
-                    let outlineFogFactor = getFogFactor(outline.transparentDepth);
+                    let outlineFogFactor = outlineFog(outline.transparentDepth);
                     let finalAlpha = max(transparentColor.a, finalOutlineAlpha * (1.0 - outlineFogFactor));
                     transparentColor = vec4<f32>(uObject.uTransparentOutlineColor * finalAlpha, finalAlpha);
                 }

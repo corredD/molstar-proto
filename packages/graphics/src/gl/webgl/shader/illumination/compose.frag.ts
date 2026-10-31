@@ -150,6 +150,12 @@ float outlineQuantizedDepth(const in float depth) {
     return q * q;
 }
 
+// a packed far edge is depth 0, which is the far plane, so fog would take it all; fog off makes smoothstep NaN
+float outlineFog(const in float depth) {
+    if (depth == 0.0 || uFogFar <= uFogNear) return 0.0;
+    return smoothstep(uFogNear, uFogFar, abs(getViewZ(depth)));
+}
+
 int squaredOutlineScale = dOutlineScale * dOutlineScale;
 void getOutline(const in vec2 coords, out bool hasOpaque, out bool hasTransparent, out float opaqueDepth, out float transparentDepth, out float alpha) {
     vec2 invTexSize = 1.0 / uTexSize;
@@ -257,8 +263,7 @@ void main() {
         getOutline(coords, hasOpaque, hasTransparent, outlineOpaqueDepth, outlineTransparentDepth, outlineAlpha);
 
         if (hasOpaque) {
-            float viewDist = abs(getViewZ(outlineOpaqueDepth));
-            float fogFactor = smoothstep(uFogNear, uFogFar, viewDist);
+            float fogFactor = outlineFog(outlineOpaqueDepth);
             if (!uTransparentBackground) {
                 color.rgb = mix(uOutlineColor, uFogColor, fogFactor);
             } else {
@@ -273,8 +278,7 @@ void main() {
                     blendTransparency = false;
                 } else {
                     float finalOutlineAlpha = clamp(outlineAlpha * 2.0, 0.0, 1.0);
-                    float viewDist = abs(getViewZ(outlineTransparentDepth));
-                    float fogFactor = smoothstep(uFogNear, uFogFar, viewDist);
+                    float fogFactor = outlineFog(outlineTransparentDepth);
                     float finalAlpha = max(transparentColor.a, finalOutlineAlpha * (1.0 - fogFactor));
                     transparentColor.a = finalAlpha;
                     transparentColor.rgb = uOutlineColor * finalAlpha;

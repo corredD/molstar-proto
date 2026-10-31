@@ -41,6 +41,17 @@ describe('outline in-front test', () => {
     expect(outlineQuantizedDepth(opaque) > outlineQuantizedDepth(ghost)).toBe(false);
   });
 
+  it('keeps an outline whose depth packed to 0, and one drawn with fog off', () => {
+    // depth 0 is the far plane, so fog (on by default) takes the whole edge; fog off makes smoothstep NaN
+    const fog = (depth: number, near: number, far: number) => (depth === 0 || far <= near ? 0 : 1);
+    expect(fog(0, 100, 1000)).toBe(0);
+    expect(fog(0.2, 100, 100)).toBe(0);
+    for (const file of Shaders) {
+      const src = readFileSync(resolve(import.meta.dirname, '..', file), 'utf8');
+      expect(src, file).toContain('outlineFog');
+    }
+  });
+
   it('compares the two depths after that round trip, in every compose shader', () => {
     for (const file of Shaders) {
       const src = readFileSync(resolve(import.meta.dirname, '..', file), 'utf8');

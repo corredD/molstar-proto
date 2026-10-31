@@ -391,6 +391,12 @@ fn isBackground(depth: f32) -> bool {
     return depth == 0.0;
 }
 
+fn outlineFog(depth: f32) -> f32 {
+    // a packed far edge is depth 0, which is the far plane, so fog would take it all; fog off makes smoothstep NaN
+    if (depth == 0.0 || uObject.uFogFar <= uObject.uFogNear) { return 0.0; }
+    return smoothstep(uObject.uFogNear, uObject.uFogFar, abs(getViewZ(depth)));
+}
+
 ${compose_fragment_wgsl}`;
 
 /** `smartDeNoise(uv)`: the traced color denoised with normal weights, for the compose pass with `dDenoise` */
@@ -524,7 +530,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
         let outline = getOutline(coords);
 
         if (outline.hasOpaque) {
-            let outlineFogFactor = smoothstep(uObject.uFogNear, uObject.uFogFar, abs(getViewZ(outline.opaqueDepth)));
+            let outlineFogFactor = outlineFog(outline.opaqueDepth);
             if (!transparentBackground) {
                 color = vec4<f32>(mix(uObject.uOutlineColor, uObject.uFogColor, outlineFogFactor), color.a);
             } else {
@@ -539,7 +545,7 @@ fn fragmentMain(in: VertexOutput) -> @location(0) vec4<f32> {
                     blendTransparency = false;
                 } else {
                     let finalOutlineAlpha = clamp(outline.alpha * 2.0, 0.0, 1.0);
-                    let outlineFogFactor = smoothstep(uObject.uFogNear, uObject.uFogFar, abs(getViewZ(outline.transparentDepth)));
+                    let outlineFogFactor = outlineFog(outline.transparentDepth);
                     let finalAlpha = max(transparentColor.a, finalOutlineAlpha * (1.0 - outlineFogFactor));
                     transparentColor = vec4<f32>(uObject.uOutlineColor * finalAlpha, finalAlpha);
                 }
