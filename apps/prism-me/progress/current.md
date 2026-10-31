@@ -54,6 +54,8 @@ is not built is [../TODO.md](../TODO.md).
     everywhere. Still frames over budget: PetWorld close up (WebGPU dpr 1 21-41, dpr 2 63-127), CellPack dpr 2 (28-34),
     WebGL2 (40-192). Look at rest unchanged. Open for Ludo: k-means proxy levels instead of every n-th atom (images in
     `2026-10-31-instance-cull/`: 15 % / 23 % pixels differ, a bit more compact, streaks on PetWorld's membrane).
+  - Ludo, 2026-10-31, on round 2: "doesnt look good, we dont need the kmeans proxy, and we dont want lower res when
+    turning and zooming". Recorded: no k-means proxies; no lower resolution while moving. Action to decide.
 
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
