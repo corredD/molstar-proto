@@ -40,31 +40,11 @@ name no extension (upstreamable later, when Ludo says so).
   equalizer, the mock's ApertureCut story); proxy spheres per target (k-means) against stride decimation; deferred
   shading from ID buffers. Each starts as a measurement or a design note.
 
-### Dynamic coloring by distance (Ludo, 2026-10-30)
+### Left from colors that follow the zoom (brief 8, built in lane `dynamic-color`)
 
-- **8. Colors that follow the zoom** (library + app; cellVIEW's Chameleon, [_spec/cellview.md](_spec/cellview.md) §7): a
-  color theme with levels, as the LOD has: far away a particle is colored by its compartment or entity, closer by chain,
-  closest by residue or atom, and the levels blend so that a zoom never pops. Check: on HIV, zoom from the whole virion
-  to one capsid protein; the colors go compartment → entity → chain → atom with no jump, the same at the same distance
-  both ways; at rest the viewer asks for no frame; the setting is in Look (and the category's color theme), with the
-  levels' edges adjustable.
-  - **Today nothing below the particle has a color:** every particle color theme is per instance
-    (`granularity: 'instance'`, `graphics/src/theme/color/particle-*.ts`), so chain, residue and atom levels are library
-    work whichever way is taken, and one color per instance × atom cannot be stored (millions × hundreds).
-  - **Step 1, a measurement (as brief 6 was):** re-running `particle-hierarchy` over CellPack MG, ms on WebGPU and
-    WebGL2. It decides between the ways, written in the lane's progress file before code:
-    - _A theme with a current level, moved by a behavior on camera change_ (David's suggestion; or MolViewSpec's
-      animation, driven by zoom rather than time): app-sized, but one level for the whole scene, and a smooth blend
-      means recoloring every particle at every zoom step, so it is smooth only if step 1 is well under a frame.
-    - _The blend in the shader, by the fragment's view depth_ (cellVIEW's way): near levels derived in the shader from
-      the instance color and the target's per-element attributes (chain index, residue, element), as cellVIEW derives
-      chain hues from the entity hue (§7.2); one object can span two levels; no recoloring while zooming. A Mol\*
-      graphics change, its commits upstreamable, with Alexander. Forward rendering has the view depth: this does not
-      wait on the deferred-shading research.
-  - **Not to port** (§7.3): constant distances, RGB blending, the stepped blend, unseeded random colors. Blend in a
-    perceptual space (HCL or Oklab). Open for Ludo: the edges in pixels on screen (as `lodPixelSize`) or in Å.
-  - **Testable before the viewer:** a Storybook story with a manual level slider (cellVIEW's `LevelLerpFactor`) over a
-    few proteins' colors. Left for later: Cuttlefish's coverage-driven hues (§7.3, dead in cellVIEW too).
+- Cuttlefish's coverage-driven hues (cellview.md §7.3, dead in cellVIEW too); a residue level; the edges in Å instead of
+  pixels if Ludo wants it (`colorLevelSize` and `ColorLevels.atomSize`, `color-levels.md`); the levels on structures
+  (not particles) and on volume or shape targets.
 
 ## Library fixes ready for upstream
 
