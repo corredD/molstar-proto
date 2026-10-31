@@ -195,6 +195,15 @@ export const Canvas3DParams = {
           'resolution that many times lower; full detail once it rests (`holdMs`). 1: off.',
       },
     ),
+    pixelScale: PD.Numeric(
+      1,
+      { min: 0.25, max: 1, step: 0.05 },
+      {
+        description:
+          'While the camera moves, the drawing buffer at this scale of its resolution (the canvas resized, the input ' +
+          'with it); full resolution once it rests. 1: off.',
+      },
+    ),
     holdMs: PD.Numeric(
       250,
       { min: 0, max: 2000, step: 10 },
@@ -273,6 +282,11 @@ interface Canvas3DContext {
   readonly pixelScale: number;
 
   syncPixelScale(): void;
+  /**
+   * The drawing buffer at `scale` of the pixel scale (dynamic resolution while the camera moves, `Canvas3D` `motion`):
+   * the input and the canvas resized with it (`Attribs.handleResize`), not a change of the props (`changed`)
+   */
+  setMotionPixelScale?: (scale: number) => void;
   setProps: (props?: Partial<Canvas3DContext.Props>) => void;
   /**
    * Replaces the graphics context with that of the first of `backends` that can be created, on a new canvas element
@@ -445,8 +459,10 @@ namespace Canvas3DContext {
     const p = { ...DefaultProps, ...props };
     let canvas = _canvas;
     let graphics = _graphics;
+    /** `setMotionPixelScale` */
+    let motionPixelScale = 1;
     const syncPixelScale = () => {
-      const pixelScale = getPixelScale(p);
+      const pixelScale = getPixelScale(p) * motionPixelScale;
       input.setPixelScale(pixelScale);
       graphics.setPixelScale(pixelScale);
     };
@@ -671,7 +687,13 @@ namespace Canvas3DContext {
       assetManager,
       changed,
       get pixelScale() {
-        return getPixelScale(p);
+        return getPixelScale(p) * motionPixelScale;
+      },
+      setMotionPixelScale: (scale: number) => {
+        if (scale === motionPixelScale) return;
+        motionPixelScale = scale;
+        syncPixelScale();
+        a.handleResize();
       },
 
       syncPixelScale,
@@ -1004,6 +1026,23 @@ namespace Canvas3D {
     /** when the camera last changed, and the level-of-detail scale of the frame drawn last (`motion`) */
     let lastCameraChange = -Infinity;
     let motionLodScale = 1;
+    let motionPixelScale = 1;
+    /** the view and vertical projection scale last compared (`isViewChanged`) */
+    const lastView = new Float64Array(17).fill(NaN);
+    function isViewChanged() {
+      let changed = false;
+      for (let i = 0; i < 16; ++i) {
+        if (lastView[i] !== camera.view[i]) {
+          lastView[i] = camera.view[i];
+          changed = true;
+        }
+      }
+      if (lastView[16] !== camera.projection[5]) {
+        lastView[16] = camera.projection[5];
+        changed = true;
+      }
+      return changed;
+    }
     let currentTime = 0;
 
     // The idle state (`isIdle`): set by a tick that found nothing to do, cleared, with one `wake`, by whatever gives the
@@ -1319,12 +1358,21 @@ namespace Canvas3D {
       const xrChanged = xrManager.update(xrFrame);
       if (!xrChanged && xrFrame) return false;
 
-      // coarser levels of detail while the camera moves (`motion`), full detail in the frame it rests
-      if (cameraChanged) lastCameraChange = currentTime;
-      const moving = p.motion.lodScale > 1 && currentTime - lastCameraChange < p.motion.holdMs;
-      const rested = motionLodScale > 1 && !moving;
+      // coarser levels of detail and a lower resolution while the camera moves (`motion`), full in the frame it rests;
+      // moving: the view changed (not the viewport: a resolution change would be a motion of its own)
+      if (cameraChanged && isViewChanged()) lastCameraChange = currentTime;
+      const motionOn = p.motion.lodScale > 1 || p.motion.pixelScale < 1;
+      const moving = motionOn && currentTime - lastCameraChange < p.motion.holdMs;
+      const rested = (motionLodScale > 1 || motionPixelScale < 1) && !moving;
       motionLodScale = moving ? p.motion.lodScale : 1;
       renderer.setLodScale(motionLodScale);
+      const pixelScale = moving ? p.motion.pixelScale : 1;
+      if (pixelScale !== motionPixelScale) {
+        motionPixelScale = pixelScale;
+        // the canvas resized (the next frame draws at it), drags as at full resolution
+        ctx.setMotionPixelScale?.(pixelScale);
+        controls.setResolutionScale(pixelScale);
+      }
 
       const activeAnimation = renderer.props.enableAnimation && scene.hasAnimation;
       const shouldRender =
@@ -1556,6 +1604,7 @@ namespace Canvas3D {
         !controls.isMoving &&
         // a coarser frame is drawn again at full detail once the camera rests
         motionLodScale === 1 &&
+        motionPixelScale === 1 &&
         !isActivelyInteracting &&
         !hiZ.isPending &&
         !interactionHelper.isPending &&
