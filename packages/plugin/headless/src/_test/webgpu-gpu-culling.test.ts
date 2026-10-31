@@ -57,7 +57,7 @@ function createMember(offset: Vec3, color: number, options: Partial<PD.Values<Sp
 }
 
 describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
-  it('draws the cells the CPU culling draws, from indirect lists', async () => {
+  it('draws the instances of the cells the CPU culling draws whose own sphere touches the view, from indirect lists', async () => {
     const plugin = await HeadlessPluginContext.create(
       { webgpu: WebGPU.module! },
       DefaultPluginSpec(),
@@ -145,7 +145,9 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
       const args = new Uint32Array(await buffer.readAsync(byteOffset, gpuList.count * words * 4));
       let gpuInstances = 0;
       for (let i = 0; i < gpuList.count; ++i) gpuInstances += args[i * words + 1];
-      expect(gpuInstances).toBe(cpuInstances);
+      // of the cells' instances, those whose own sphere touches the view (the cells hold a few each)
+      expect(gpuInstances).toBe(countInView(members, camera, 1)[0]);
+      expect(gpuInstances).toBeLessThanOrEqual(cpuInstances);
       expect(new Set(cpuImage).size).toBeGreaterThan(2);
       expect(gpuImage).toEqual(cpuImage);
 
@@ -243,31 +245,8 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
       expect(gpuLists[0].indirect).toBeDefined();
       const cpuImage = await frame(cpuScene);
 
-      // expected per level: the instances whose sphere (padded for the level's sphere scale) touches the frustum and
-      // the level's distance range
-      const frustum = Frustum3D.fromProjectionMatrix(Frustum3D(), camera.projectionView);
-      const cameraPlane = Plane3D.copy(Plane3D(), frustum[Frustum3D.PlaneIndex.Near]);
-      cameraPlane.constant -= Plane3D.distanceToPoint(cameraPlane, camera.state.position);
-      const expected = [0, 0];
-      let total = 0;
-      for (const m of members) {
-        const v = m.values;
-        const levels = v.lodLevels.ref.value;
-        const b = v.invariantBoundingSphere.ref.value;
-        const padding = v.padding.ref.value;
-        const transforms = v.aTransform.ref.value;
-        for (let i = 0; i < v.instanceCount.ref.value; ++i) {
-          total += 1;
-          const c = Vec3.transformMat4(Vec3(), b.center, Mat4.fromArray(Mat4(), transforms, i * 16));
-          for (let j = 0; j < 2; ++j) {
-            const r = b.radius + padding * Math.max(levels[j][4] - 1, 0);
-            const d = Plane3D.distanceToPoint(cameraPlane, c);
-            if (d + r < levels[j][0] || d - r > levels[j][1]) continue;
-            if (!Frustum3D.intersectsSphere3D(frustum, Sphere3D.create(c, r))) continue;
-            expected[j] += 1;
-          }
-        }
-      }
+      const expected = countInView(members, camera, 2);
+      const total = members.length * Copies * Copies;
       const words = 5;
       const counts: number[] = [];
       for (const list of gpuLists) {
@@ -531,6 +510,36 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
     }
   }, 60_000);
 });
+
+/**
+ * Per level the instances of `members` whose own sphere (the member's moved by the instance's transform, at level j
+ * grown by the padding times the level's sphere scale less one) touches the frustum and the level's distance range
+ */
+function countInView(members: GraphicsRenderObject[], camera: Camera, levelCount: number) {
+  const frustum = Frustum3D.fromProjectionMatrix(Frustum3D(), camera.projectionView);
+  const cameraPlane = Plane3D.copy(Plane3D(), frustum[Frustum3D.PlaneIndex.Near]);
+  cameraPlane.constant -= Plane3D.distanceToPoint(cameraPlane, camera.state.position);
+  const counts = new Array<number>(levelCount).fill(0);
+  for (const m of members) {
+    const v = m.values as GraphicsRenderObject<'spheres'>['values'];
+    const levels = v.lodLevels.ref.value;
+    const b = v.invariantBoundingSphere.ref.value;
+    const padding = v.padding.ref.value;
+    const transforms = v.aTransform.ref.value;
+    for (let i = 0; i < v.instanceCount.ref.value; ++i) {
+      const c = Vec3.transformMat4(Vec3(), b.center, Mat4.fromArray(Mat4(), transforms, i * 16));
+      const d = Plane3D.distanceToPoint(cameraPlane, c);
+      for (let j = 0; j < levelCount; ++j) {
+        const level = levels[j];
+        const r = b.radius + (level ? padding * Math.max(level[4] - 1, 0) : 0);
+        if (level && (d + r < level[0] || d - r > level[1])) continue;
+        if (!Frustum3D.intersectsSphere3D(frustum, Sphere3D.create(c, r))) continue;
+        counts[j] += 1;
+      }
+    }
+  }
+  return counts;
+}
 
 async function createPlugin() {
   const plugin = await HeadlessPluginContext.create(

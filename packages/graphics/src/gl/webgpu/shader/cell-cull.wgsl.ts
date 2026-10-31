@@ -2,15 +2,16 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { InstanceDataVec4s } from '../../renderable/merged.js';
 
 /**
- * Per cell: its sphere tested against the frustum and the object's distance range as `cullSegment` tests cells; the
- * levels whose distance range it overlaps as bits (see `cell-cull.ts`)
+ * The tests of a sphere (world space) both culling kernels share: against a frustum plane, and against the previous
+ * frame's depth pyramid (`HiZPass.isOccluded`)
  */
-export const cell_cull_wgsl = /* wgsl */ `
+const cull_tests_wgsl = /* wgsl */ `
 fn outside(plane: vec4<f32>, sphere: vec4<f32>) -> bool {
     return dot(plane.xyz, sphere.xyz) + plane.w < -sphere.w;
 }
@@ -88,7 +89,14 @@ fn occluded(sphere: vec4<f32>) -> bool {
     return z <= hiZDepth(x0 + offset, y0) && z <= hiZDepth(x1 + offset, y0) && z <= hiZDepth(x0 + offset, y1) &&
         z <= hiZDepth(x1 + offset, y1);
 }
+`;
 
+/**
+ * Per cell: its sphere tested against the frustum and the object's distance range as `cullSegment` tests cells; the
+ * levels whose distance range it overlaps as bits (see `cell-cull.ts`)
+ */
+export const cell_cull_wgsl = /* wgsl */ `
+${cull_tests_wgsl}
 @compute @workgroup_size(WorkgroupSizeX)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let cell = id.x;
@@ -124,12 +132,63 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 `;
 
 /**
- * Per instance of a drawn cell: its data copied into a slot of its segment's region at each level of the cell. The
- * instances of a workgroup are consecutive, mostly of one segment: those of the workgroup's first segment take their
+ * Per instance of a drawn cell: its own sphere tested at the cell's levels (`instanceLevels`), its data copied into a
+ * slot of its segment's region at each level it passed. The instances of a workgroup are consecutive, mostly of one segment: those of the workgroup's first segment take their
  * slots from a workgroup counter, reserved by one global atomic per level (100k instances on a counter per segment
  * contend otherwise); the others take theirs from the global counter
  */
 export const instance_copy_wgsl = /* wgsl */ `
+${cull_tests_wgsl}
+
+/**
+ * The levels of \`mask\` (the cell's) at which the instance's own sphere touches the view: the frustum, the object's
+ * distance range and each level's, then the depth pyramid. Its sphere is the member's (\`aSegmentSphere\`) moved by its
+ * transform; at level j grown by the padding (the member's largest sphere radius) times the level's sphere scale less
+ * one, so a coarse level's enlarged spheres at the view's edge are kept
+ */
+fn instanceLevels(o: u32, padding: f32, cellMask: u32) -> u32 {
+    let t0 = instanceData[o].xyz;
+    let t1 = instanceData[o + 1u].xyz;
+    let t2 = instanceData[o + 2u].xyz;
+    let t3 = instanceData[o + 3u].xyz;
+    let local = instanceData[o + 5u];
+    let scales = instanceData[o + 6u];
+    let center = t0 * local.x + t1 * local.y + t2 * local.z + t3;
+    let scale = sqrt(max(dot(t0, t0), max(dot(t1, t1), dot(t2, t2))));
+    let d = dot(uParams.uCameraPlane.xyz, center) + uParams.uCameraPlane.w;
+    let range = uParams.uLodRange;
+    let levels = u32(uParams.uLevelCount);
+    var mask = 0u;
+    var radius = 0.0;
+    for (var j = 0u; j < 4u; j++) {
+        if ((cellMask & (1u << j)) == 0u) {
+            continue;
+        }
+        let r = (local.w + padding * max(scales[j] - 1.0, 0.0)) * scale;
+        let sphere = vec4<f32>(center, r);
+        if (outside(uParams.uPlane0, sphere) || outside(uParams.uPlane1, sphere) ||
+            outside(uParams.uPlane2, sphere) || outside(uParams.uPlane3, sphere) ||
+            outside(uParams.uPlane4, sphere) || outside(uParams.uPlane5, sphere)) {
+            continue;
+        }
+        if (range.z > 0.0 && (d + r < range.x || d - r > range.y)) {
+            continue;
+        }
+        if (levels > 0u) {
+            let level = uParams.uLevels[j];
+            if (d + r < level.x || d - r > level.y) {
+                continue;
+            }
+        }
+        mask |= 1u << j;
+        radius = max(radius, r);
+    }
+    if (mask != 0u && occluded(vec4<f32>(center, radius))) {
+        return 0u;
+    }
+    return mask;
+}
+
 var<workgroup> wgCount: atomic<u32>;
 var<workgroup> wgBase: u32;
 
@@ -159,15 +218,18 @@ fn main(
     let valid = instance < instanceCount;
     var mask = 0u;
     var segment = 0u;
+    let o = instance * ${InstanceDataVec4s}u;
     if (valid) {
         let cs = instanceCells[instance];
-        mask = cellLevels[cs.x];
         segment = cs.y;
+        mask = cellLevels[cs.x];
+        if (mask != 0u) {
+            mask = instanceLevels(o, bitcast<f32>(segmentBases[segment].y), mask);
+        }
     }
     // the segment of the workgroup's first instance (always valid)
     let wgSegment = instanceCells[wid.x * WorkgroupSizeX].y;
     let firstSegment = segment == wgSegment;
-    let o = instance * ${InstanceDataVec4s}u;
     for (var j = 0u; j < 4u; j++) {
         let drawn = (mask & (1u << j)) != 0u;
         if (local == 0u) {
@@ -193,7 +255,7 @@ fn main(
                 slot = atomicAdd(&counters[j * segmentCount + segment], 1u);
             }
             let s = select(segment, wgSegment, firstSegment);
-            copyInstance(o, j * instanceCount + segmentBases[s] + slot);
+            copyInstance(o, j * instanceCount + segmentBases[s].x + slot);
         }
         workgroupBarrier();
     }

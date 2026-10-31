@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util';
@@ -112,7 +113,8 @@ export function createMergedCuller(
   };
 
   const levelCountCell = ValueCell.create(0);
-  const cellValues = {
+  /** the view, the levels and the pyramid: the cell test's and the instance test's */
+  const viewValues = {
     uPlane0: ValueCell.create(Vec4()),
     uPlane1: ValueCell.create(Vec4()),
     uPlane2: ValueCell.create(Vec4()),
@@ -123,7 +125,6 @@ export function createMergedCuller(
     uLodRange: ValueCell.create(Vec4()),
     uLevels: ValueCell.create(Mat4()),
     uLevelCount: levelCountCell,
-    uCellCount: ValueCell.create(0),
     uHiZ: ValueCell.create(false),
     uHiZView: ValueCell.create(Mat4()),
     uHiZProjection: ValueCell.create(Mat4()),
@@ -132,11 +133,12 @@ export function createMergedCuller(
     uHiZLevelCount: ValueCell.create(0),
     uHiZMinLevel: ValueCell.create(0),
     tHiZ: ValueCell.create(createEmptyHiZ(resources)),
-    cellSpheres,
-    cellLevels,
   };
+  const cellValues = { ...viewValues, uCellCount: ValueCell.create(0), cellSpheres, cellLevels };
   const emptyHiZ = cellValues.tHiZ.ref.value;
   const copyValues = {
+    // the same cells as the cell test's: one write serves both kernels
+    ...viewValues,
     uInstanceCount: ValueCell.create(0),
     uSegmentCount: ValueCell.create(0),
     instanceData,
@@ -222,7 +224,7 @@ export function createMergedCuller(
 
     ensure(instanceData, instanceCount * InstanceDataVec4s * 16);
     ensure(instanceCells, instanceCount * 8);
-    ensure(segmentBases, segmentCount * 4);
+    ensure(segmentBases, segmentCount * 8);
     ensure(cellSpheres, cellCount * 16);
     ensure(cellLevels, cellCount * 4);
     ensure(counters, levels * segmentCount * 4);
@@ -231,7 +233,14 @@ export function createMergedCuller(
       ensure(attributes[name as keyof typeof AttributeFloats], (levels + 1) * instanceCount * floats * 4);
     }
     instanceCells.ref.value.write(cellOf);
-    segmentBases.ref.value.write(Uint32Array.from(segments.instanceBases.slice(0, segmentCount)));
+    // per segment its first instance and its padding (the per-instance test grows coarse levels' spheres by it)
+    const bases = new Uint32Array(segmentCount * 2);
+    const paddings = new Float32Array(bases.buffer);
+    for (let s = 0; s < segmentCount; ++s) {
+      bases[s * 2] = segments.instanceBases[s];
+      paddings[s * 2 + 1] = (members[s] as { padding?: ValueCell<number> }).padding?.ref.value ?? 0;
+    }
+    segmentBases.ref.value.write(bases);
     cellSpheres.ref.value.write(new Float32Array(spheres));
 
     // the records' words but the instance count: the level's count, first vertex or index, the region's first instance
@@ -292,7 +301,7 @@ export function createMergedCuller(
   const getLayoutKey = () => {
     let key = `${values.instanceCount.ref.value},${segments.count}`;
     for (const m of members) {
-      key += `,${m.instanceGrid.ref.version},${m.boundingSphere.ref.version},${m.drawCount.ref.value},${m.lodLevels?.ref.version ?? -1}`;
+      key += `,${m.instanceGrid.ref.version},${m.boundingSphere.ref.version},${m.drawCount.ref.value},${m.lodLevels?.ref.version ?? -1},${(m as { padding?: ValueCell<number> }).padding?.ref.version ?? -1}`;
     }
     return key;
   };

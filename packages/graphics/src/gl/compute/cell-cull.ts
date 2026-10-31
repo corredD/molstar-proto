@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { KernelCode, StorageBufferSpec } from '../compute.js';
@@ -11,9 +12,10 @@ import type { Texture } from '../texture.js';
 
 /**
  * GPU culling of merged render objects by the cells of their instance grids (`merged-render-objects.md` GPU culling):
- * `cell-cull` tests each cell (a thread per cell) and writes the levels it is drawn at; `instance-copy` copies each
- * instance of a drawn cell (a thread per instance) into the compacted instance buffers, a slot per level in its
- * segment's region (an atomic counter per level and segment); `cull-args` writes the instance counts into the
+ * `cell-cull` tests each cell (a thread per cell) and writes the levels it is drawn at; `instance-copy` tests each
+ * instance of a drawn cell by its own sphere at those levels (a thread per instance: the frustum, the distance ranges,
+ * the depth pyramid) and copies it into the compacted instance buffers, a slot per level in its segment's region (an
+ * atomic counter per level and segment); `cull-args` writes the instance counts into the
  * indirect records (their other words written once per layout, `merged-culler.ts`). Counters and records are
  * level-major: level `j` of segment `s` is `j * segmentCount + s`, so a level's records are one list; its region
  * starts at instance `j * instanceCount + instanceBase(s)`
@@ -43,7 +45,8 @@ export interface OcclusionPyramid {
   readonly far: number;
 }
 
-export const CellCullSchema = {
+/** What both tests read: the view, the distance ranges and the depth pyramid */
+const CullViewSchema = {
   /** the frustum's planes (`[nx, ny, nz, constant]`) */
   uPlane0: UniformSpec('v4'),
   uPlane1: UniformSpec('v4'),
@@ -58,7 +61,6 @@ export const CellCullSchema = {
   uLevels: UniformSpec('m4'),
   /** 0 without levels (all drawn as level 0) */
   uLevelCount: UniformSpec('i'),
-  uCellCount: UniformSpec('i'),
   /** occlusion against the pyramid (`OcclusionPyramid`), its camera and layout */
   uHiZ: UniformSpec('b'),
   uHiZView: UniformSpec('m4'),
@@ -69,6 +71,11 @@ export const CellCullSchema = {
   uHiZLevelCount: UniformSpec('i'),
   uHiZMinLevel: UniformSpec('i'),
   tHiZ: TextureSpec('texture', 'r', 'float', 'nearest'),
+};
+
+export const CellCullSchema = {
+  ...CullViewSchema,
+  uCellCount: UniformSpec('i'),
   /** per cell its sphere */
   cellSpheres: StorageBufferSpec('vec4<f32>', 'read'),
   /** per cell the levels it is drawn at, a bit each (0: culled) */
@@ -76,14 +83,16 @@ export const CellCullSchema = {
 };
 
 export const InstanceCopySchema = {
+  /** each instance's own sphere tested as the cells' (`instanceLevels`) */
+  ...CullViewSchema,
   uInstanceCount: UniformSpec('i'),
   uSegmentCount: UniformSpec('i'),
   /** the instances' data (`packInstanceData`) */
   instanceData: StorageBufferSpec('vec4<f32>', 'read'),
   /** per instance its cell and segment */
   instanceCells: StorageBufferSpec('vec2<u32>', 'read'),
-  /** per segment its first instance */
-  segmentBases: StorageBufferSpec('u32', 'read'),
+  /** per segment its first instance and its padding (the largest sphere radius, as `bitcast<u32>`) */
+  segmentBases: StorageBufferSpec('vec2<u32>', 'read'),
   cellLevels: StorageBufferSpec('u32', 'read'),
   /** per (level, segment) the instances drawn, zeroed before */
   counters: StorageBufferSpec('atomic<u32>', 'read-write'),

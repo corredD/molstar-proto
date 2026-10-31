@@ -76,9 +76,16 @@ For merged render objects on WebGPU with compute and `indirectInstanceRanges` (`
 `canCullOnGpu`); CPU culling (`cullSegment`) stays for WebGL and devices without them. A plain instanced object is
 culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
 
-- **Cells, not instances**: a thread per cell of the members' instance grids (a member without a grid one cell) tests
+- **Cells, then instances**: a thread per cell of the members' instance grids (a member without a grid one cell) tests
   its sphere against the frustum and the object's distance range and picks its levels, as `cullSegment` does per cell;
-  finer cells cost threads, not draws. Testing each instance cost more than it saved.
+  finer cells cost threads, not draws. The copy's thread per instance of a drawn cell then tests the instance's own
+  sphere (the member's `aSegmentSphere` moved by its transform; at level `j` grown by the member's `padding` times the
+  level's sphere scale less one, so a coarse level's enlarged spheres at the view's edge stay) against the frustum, the
+  distance range, each of the cell's levels and the depth pyramid (`instanceLevels`), and copies it at the levels it
+  passed. Why: zoomed into a mesoscale model the cells (and gridless members) hold particles out of view or out of a
+  level's range; per instance, CellPack HIV at 0.1 and 0.02 of the distance drew a third fewer level-0 spheres
+  (`apps/prism-me/progress/2026-10-31-instance-cull.md`). The test costs nothing where its thread already runs; the
+  dropped variant read every instance through compacted indices per vertex (below).
 - **Compaction by copy**: a thread per instance of a drawn cell copies its instanced attributes (transform, instance
   id, segment data, about 112 bytes) into compacted buffers, a slot per level in its segment's region (`atomicAdd` on a
   counter per level and segment); the compacted buffers are the render item's instanced vertex buffers. The programs
@@ -339,8 +346,8 @@ Steps:
       a precompile list names a GPU-culled object (`ObjectSignature.gpuCulled`: recorded lists, and lists derived from
       params where `gpuCulling` is on; 'auto' depends on the instances, derived as culled on the CPU); checked on Dawn (`webgpu-gpu-culling`: a context with nothing in its scene
       has them after precompiling a recorded list; fails without). Hi-Z: step 6.
-   4. Levels per instance (dropped): a cell across a level boundary draws its instances at both levels' ranges; about
-      4% of the vertices of the cell path are such duplicates (`postsyn`, pixel levels), not worth a test per instance.
+   4. Levels per instance (done with the instance test, above): a cell across a level boundary drew its instances at
+      both levels' ranges (about 4% of the vertices, `postsyn`); the copy's thread tests each instance's range.
    5. Draw lists, GPU-culled objects not view dependent (dropped): draw lists are off by default, and a GPU-culled
       object's submit is 0.15–0.25 ms without them.
    6. Occlusion on the GPU (done): per cell, above (GPU occlusion culling, steps 1 and 2).
