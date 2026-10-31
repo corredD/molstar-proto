@@ -186,5 +186,24 @@ Production about 1270 lines added, 150 removed (library about 790 of them); test
 ## Open
 
 In TODO.md (Backlog, "Meshes by triangle"): live follow during a drag, picks during a preview move, overpaint and focus
-by triangle, selected triangles outside Prism's Selection tab and sessions, a vertex-colored triangle's mark color,
-mixed triangle sizes.
+by triangle, selected triangles outside Prism's Selection tab and sessions, a vertex-colored triangle's mark color. A
+triangle much wider than the rest is tested on its own, and the grid is the rest.
+
+## Review
+
+Two passes. The wide-triangle findings were reproduced by a failing test, then fixed. The app findings were confirmed by
+the skeptic (5 of 5), then fixed the same way. Nothing left open from this gate.
+
+| Finding                                                                                                                | Severity   | Verdict          | Commit      |
+| ---------------------------------------------------------------------------------------------------------------------- | ---------- | ---------------- | ----------- |
+| The pick grid's box stayed the wide centroid, so a floor centered off the surface made every hover read every triangle | must-fix   | confirmed, fixed | `582c8d038` |
+| A highlight made before the mesh moved did not clear                                                                   | must-fix   | confirmed, fixed | `8269e9585` |
+| A triangle picked before a move, scale or recolor was refused                                                          | must-fix   | confirmed, fixed | `e2c6fb4e8` |
+| An angle and a dihedral stored only the first point's row                                                              | must-fix   | confirmed, fixed | `d47a9e7df` |
+| Measuring an angle dropped the unpaired point, so the next click did not complete its distance                         | should-fix | confirmed, fixed | `1a37f84d8` |
+| At structure granularity a click on a whole mesh started a distance                                                    | should-fix | confirmed, fixed | `0e071b62e` |
+| "An dihedral", and changing an angle said "distance"                                                                   | nit        | confirmed, fixed | `7d52b4af8` |
+
+An earlier gate on this branch is already in the commits: NaN triangles, a wireframe-only mesh, the triangle's own
+group, reused mark buffers, the pointer ray, an angle's clicks also making their distances, a session's old distance,
+and the wording nits from that pass.
