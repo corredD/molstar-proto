@@ -73,12 +73,14 @@ import {
 /** The explorer's tab */
 export const SceneTab = 'explorer.tab.scene';
 
-let propertiesModule: Promise<typeof import('./properties.js')> | undefined;
+type PropertiesModule = typeof import('./properties.js');
+
+let propertiesModule: Promise<PropertiesModule> | undefined;
 /**
  * The properties of the row picked (properties.tsx, with the cryo-ET and mesoscale controls): a chunk of their own,
  * which the first frame does not need (no row is picked at start; Prism's lazy views, app.md §1); imported once
  */
-export function loadProperties(): Promise<typeof import('./properties.js')> {
+export function loadProperties(): Promise<PropertiesModule> {
   propertiesModule ??= import('./properties.js').catch((e: unknown) => {
     propertiesModule = undefined;
     throw e;
@@ -86,7 +88,8 @@ export function loadProperties(): Promise<typeof import('./properties.js')> {
   return propertiesModule;
 }
 
-export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
+/** `load`: the properties' chunk (tests give their own, to see it pending and failing) */
+export function explorerUI(ctx: ViewerUIContext, load = loadProperties): ViewerExtensionUI {
   const area = ctx.api.explorer;
   if (!area) return {};
   const model = sceneModel(area, ctx.api.stage);
@@ -199,7 +202,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
         title: 'Scene',
         icon: 'list-tree',
         order: 0,
-        render: domView(() => <ScenePanel ctx={ctx} area={area} model={model} />),
+        render: domView(() => <ScenePanel ctx={ctx} area={area} model={model} load={load} />),
       },
     ],
   };
@@ -257,7 +260,12 @@ function sceneModel(area: ExplorerApi, stage: ViewerApi['stage']): SceneModel {
 }
 
 /** The person's picked row */
-function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: SceneModel }) {
+function ScenePanel(props: {
+  ctx: ViewerUIContext;
+  area: ExplorerApi;
+  model: SceneModel;
+  load: () => Promise<PropertiesModule>;
+}) {
   const { ctx, area, model } = props;
   const api = ctx.api;
   const objects = area.objectsState();
@@ -472,14 +480,21 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     if (key !== undefined) scroll.request();
   });
 
-  // the properties' module, imported once a row can be picked (the scene has an object) or one is: none at start
-  const properties = observableState<typeof import('./properties.js') | undefined>(undefined);
-  const want = (needed: boolean) => {
-    if (!needed || properties.value) return;
-    loadProperties().then(
+  // the properties' module, imported once a row can be picked (the scene has an object) or one is: none at start. As
+  // Prism's lazy parts (extensions.tsx): said while it loads, and when it fails, with Retry; one import at a time
+  const properties = observableState<PropertiesModule | 'loading' | 'failed' | undefined>(undefined);
+  const loadNow = () => {
+    properties.set('loading');
+    props.load().then(
       (m) => properties.set(m),
-      (e: unknown) => console.error('The properties did not load', e),
+      (e: unknown) => {
+        console.error('The properties did not load', e);
+        properties.set('failed');
+      },
     );
+  };
+  const want = (needed: boolean) => {
+    if (needed && properties.value === undefined) loadNow();
   };
   effect(objects, (o) => want(o.length > 0));
   effect(picked.asReadonly, (p) => want(!!p));
@@ -543,17 +558,28 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
           >
             {() => (
               <Show when={properties.asReadonly}>
-                {(m) => (
-                  <m.Properties
-                    api={api}
-                    area={area}
-                    picked={picked.asReadonly}
-                    parts={parts.asReadonly}
-                    groupings={model.groupings}
-                    groupByOf={model.groupByOf}
-                    shell={model.sections}
-                  />
-                )}
+                {(m) =>
+                  m === 'loading' ? (
+                    <p class={classes.empty}>Loading…</p>
+                  ) : m === 'failed' ? (
+                    <div class={classes.empty}>
+                      <p>The properties could not be loaded.</p>
+                      <Button size="sm" onClick={loadNow}>
+                        Retry
+                      </Button>
+                    </div>
+                  ) : (
+                    <m.Properties
+                      api={api}
+                      area={area}
+                      picked={picked.asReadonly}
+                      parts={parts.asReadonly}
+                      groupings={model.groupings}
+                      groupByOf={model.groupByOf}
+                      shell={model.sections}
+                    />
+                  )
+                }
               </Show>
             )}
           </Show>
