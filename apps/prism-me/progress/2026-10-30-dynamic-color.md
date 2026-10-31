@@ -161,6 +161,8 @@ Not an option: way (a), by step 1.
 
 ## Review
 
+PR #27 (https://github.com/corredD/molstar-proto/pull/27), to `prism-me`; Ludo merges.
+
 Reviewer (Opus) then skeptic (Opus) over `origin/prism-me...a5ca3b936`: 2 must-fix, 7 should-fix, 6 nits; the skeptic
 confirmed all 15, none refuted (S3 down to a nit, M1 to low-medium). Each fixed test first, a commit each:
 
