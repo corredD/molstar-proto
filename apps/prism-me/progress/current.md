@@ -105,9 +105,10 @@ is not built is [../TODO.md](../TODO.md).
 - **Grok took over `mesh-measure` and `ghost-cull`** (Ludo, 2026-10-31) while the lanes were stopped on the spend limit
   (about 11:15 to 13:40): mesh 12:34-13:19, ghost 12:50-13:42, and it opened #30 and #31 at 13:27. Its commits carry
   Ludo's name and the Claude trailer, so the history does not show it. Independent reviews:
-  - #31 (mesh): good, careful work; 0 must-fix, 5 should-fix (wide triangles beyond 64 fall back to a wide search and
-    the docs say the limit is gone; a false comment and a dead fallback in `sameDrawnMesh`; an untested retarget; ui.md
-    §7).
+  - #31 (mesh): good, careful work; 5 should-fix, all fixed by the lane (wide triangles in size grades, no 64 limit; the
+    dead fallback dropped; tests failing first; ui.md §7), then a fourth review (1 must-fix: a vertex at 1e20 hung the
+    build, fixed). Gate, heavy scaling and the browser recheck pass. **Ready to merge** (head 9d4f12914). Build now 44
+    ms at 1 M triangles (was 26), a pick 30 µs. The PR body says which commits were Grok's.
   - #30 (ghost): not ready; 2 must-fix (transparent-only outlines drawn over opaque ones up to 1,686 Å in front; edges
     near the far plane unfogged, opaque outlines too), tests that only grep the shaders, the screen-edge half
     unmeasured.
