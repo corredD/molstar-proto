@@ -932,23 +932,15 @@ export function stagePicked(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StageP
 }
 
 /**
- * A click's shape and the one drawn now. A recolor builds a new shape of the same geometry; a move or a scale
- * rebuilds the provider (no `update`), so the geometry is new too and the file is what stays
- * (apps/prism-me/_spec/ui.md §7).
+ * A click's shape and the one drawn now: the same, or a new shape of the same mesh. A recolor, a move or a scale
+ * builds a new shape, but OBJ, PLY and VTP refill the same `Mesh` (their getters pass it back to the builder), so its
+ * triangles are the ones picked (apps/prism-me/_spec/ui.md §7). Only a mesh picked by triangle: a unit cell stays
+ * itself.
  */
 function sameDrawnMesh(current: Shape, picked: Shape): boolean {
   if (current === picked) return true;
-  // only a mesh picked by triangle is rebuilt out from under a kept loci; a unit cell stays itself
   if (!current.getTriangleLoci || !picked.getTriangleLoci) return false;
-  if (current.geometry === picked.geometry) return true;
-  return meshFile(current) === meshFile(picked);
-}
-
-/** The file a mesh shape was built from. OBJ wraps it (`{ source }`); PLY and VTP are it. */
-function meshFile(shape: Shape): unknown {
-  const data = shape.sourceData as { source?: unknown } | undefined;
-  if (data && typeof data === 'object' && data.source && typeof data.source === 'object') return data.source;
-  return shape.sourceData;
+  return current.geometry === picked.geometry;
 }
 
 /** What a right-click picked, for the stage's menu: its target, and a particle's target, entity and name */
