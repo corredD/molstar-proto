@@ -14,6 +14,7 @@
       "import": "./lib/*.js"
     },
     "./canvas3d/_test/*": null,
+    "./canvas3d/controls/_test/*": null,
     "./canvas3d/passes/_test/*": null,
     "./formats/shape/_test/*": null,
     "./geo/_test/*": null,
