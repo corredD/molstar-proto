@@ -12,14 +12,18 @@ import type { PluginSpec } from '@molstar/plugin/spec';
 // mesoscale model is shown in by default: multiscale ambient occlusion, soft shadows, outlines, edges for the hovered
 // and picked, a far camera, a little more exposure.
 
+/** A display of 2 device pixels a CSS pixel or more (Retina) */
+const HighDensity = typeof window !== 'undefined' && (window.devicePixelRatio || 1) >= 2;
+
 export const MesoscaleCanvasLook: Partial<Canvas3DProps> = {
   multiSample: { mode: 'off' } as Canvas3DProps['multiSample'],
   // no far clipping (a whole cell); the near plane as Mol*'s default: the explorer's 50 Å minimum clipped small
   // structures and the cuts' guides near the camera
   cameraClipping: { far: false } as Canvas3DProps['cameraClipping'],
   sceneRadiusFactor: 2,
-  // levels of detail 4 times coarser and half the resolution while the camera moves, full once it rests (instance-cull)
-  motion: { lodScale: 4, pixelScale: 0.5, holdMs: 250 },
+  // coarser levels of detail at a lower resolution while the camera moves, full once it rests (instance-cull): on a
+  // high-density display (2x) about 0.7 of a CSS pixel and 6 times coarser, else half the resolution, 4 times
+  motion: HighDensity ? { lodScale: 6, pixelScale: 0.35, holdMs: 250 } : { lodScale: 4, pixelScale: 0.5, holdMs: 250 },
   marking: {
     enabled: true,
     highlightEdgeColor: Color(0x999999),
