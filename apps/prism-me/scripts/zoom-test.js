@@ -28,7 +28,9 @@
   // ms a frame at the current camera: batches of 20 frames, one GPU wait each (a browser that reports the GPU done on a
   // timer, as Firefox's WebGPU every 100 ms, rounds one frame but not 20), the median of the batches
   window.T = async (batches = 5) => {
-    for (let i = 0; i < 5; i++) await frame();
+    // past the motion hold (`motion.holdMs`): frames right after the camera moved draw coarser, at a lower resolution
+    const rest = performance.now() + (c.props.motion?.holdMs ?? 0) + 150;
+    for (let i = 0; i < 5 || performance.now() < rest; i++) await frame();
     const w = [];
     for (let k = 0; k < batches; k++) {
       const t = performance.now();
