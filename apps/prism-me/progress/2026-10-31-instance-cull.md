@@ -101,6 +101,8 @@ Chrome, `zoom-bench.mjs`, before / after:
 CPU then, so it is the baseline.) Instances drawn (read back from the counters, CellPack HIV): 1 176k to 155k of 229k,
 0.1 47k to 48k, 0.02 13.5k to 10k (the frustum-only counts at 0.1: 46k).
 
+- (Corrected in step 2b: the pyramid did occlude; the culler skipped every dispatch after the first against a pyramid
+  with holes. The two bullets below are what was believed then.)
 - **The depth pyramid barely occludes zoomed in**: a texel keeps the farthest depth it covers, and between the atoms of
   the front particles some pixel of almost every texel shows deep into the model: mesoscale packing is porous at the
   pyramid's resolution. What is seen through a gap must be drawn anyway; the culling draws what is in view.
@@ -157,12 +159,87 @@ Turning frames (ms, WebGPU, before the cap test; still frames unchanged):
 
 At dpr 2 the fragments bound the frame: the levels alone don't reach 16.7 ms; next, the pixel scale while moving.
 
+## Design note: clusters inside a particle, and k-means proxies (for Ludo and Alexander)
+
+What is left once particles are culled one by one: a particle partly in view, or partly behind another, draws all its
+spheres. PetWorld's proteins have thousands of atoms each: at 0.02 of the distance a few proteins fill the view (still
+50 ms at dpr 1, 148 at dpr 2), most of their atoms out of view or behind their own front. cellVIEW never culls inside a
+protein either; it keeps the near ones cheap by its proxy levels.
+
+- **Clusters (state of the art: Nanite's clusters, meshlet culling)**: per target, its atoms split into clusters of 64
+  to 128 spheres (k-means on the positions, as cellVIEW's `KMeansClustering.compute`), each with a bounding sphere, the
+  atoms of a cluster consecutive in the geometry. The instance test (`instance-copy`) then emits per drawn instance its
+  clusters, tested against the frustum and the pyramid as the instances are (a second compaction: instance × cluster,
+  the draw an indirect record per level and member, vertices from the cluster's range). Expected: a protein at the
+  view's edge or behind its neighbors draws only its clusters in view; close up the spheres drawn would drop by the
+  share of each near protein out of view (the counters show it per level). Cost at load: k-means per target (cellVIEW
+  runs it on the GPU); memory a sphere and a range per cluster.
+- **k-means proxies as the coarse levels (cellVIEW's)**: the cluster centers are the proxy spheres of a level (15 %, 10
+  %, 5 % of the atoms, then 12, then a grid), radius from the cluster's extent, in place of `lodLevels`' strides (every
+  n-th atom, grown by `stride^(1 / scaleBias)`). Proxies follow the shape: a coarse level could start nearer at the same
+  look, which is what makes a still frame cheaper; it changes the look at rest (Ludo's call, with images before and
+  after at 1, 0.1 and 0.02). Fits `lodLevels` as levels whose spheres come from another buffer per level (the merged
+  object's vertices per level and member, as now; the level's count is the proxy count).
+- **Two-phase occlusion** (the exact one, Nanite and niagara): draw what was visible last frame, build the pyramid of
+  this frame, test the rest against it and draw what shows; removes the frame of popping parallax uncovers (step 2b: at
+  0.02 up to 1,397 pixels in a frame while turning 2° a frame). Splits the opaque pass and builds the pyramid within the
+  frame; not built here.
+
+## Where it stands (the app, `motion` 4x)
+
+Frame (ms), headless Chrome on the M1, still / turning 1° a frame (`zoom-bench.mjs`; prism-me's look with `motion`
+`lodScale` 4); before this lane in brackets (still):
+
+| backend, model, dpr     | 1                  | 0.1                 | 0.02                |
+| ----------------------- | ------------------ | ------------------- | ------------------- |
+| WebGPU, CellPack HIV, 1 | 6.3 / 6.0 (8.9)    | 12.1 / 20.1 (83.1)  | 14.1 / 15.8 (70.5)  |
+| WebGPU, CellPack HIV, 2 | 10.8 / 10.8 (11.9) | 35.5 / 59.0 (167.5) | 39.2 / 45.5 (183.9) |
+| WebGPU, PetWorld HIV, 1 | 23.3 / 8.4 (26.0)  | 22.2 / 30.6 (119.2) | 50.3 / 39.4 (93.6)  |
+| WebGPU, PetWorld HIV, 2 | 41.1 / 21.7 (45.6) | 66.5 / 94.2 (324.1) | 147.9 / 129.9 (271) |
+| WebGL2, CellPack HIV, 1 | 9.3 / 8.5 (9.6)    | 87.6 / 36.9 (88.0)  | 70.2 / 56.0 (70.3)  |
+| WebGL2, CellPack HIV, 2 | 14.7 / 14.7 (15.1) | 191 / 108 (191)     | 200 / 183 (200)     |
+| WebGL2, PetWorld HIV, 1 | 30.4 / 11.1 (30.6) | 129 / 79.9 (129)    | 101 / 83.2 (101)    |
+| WebGL2, PetWorld HIV, 2 | 49.7 / 27.6 (49.6) | 342 / 251 (342)     | 285 / 267 (285)     |
+
+The goal (16.7 ms WebGPU, 33 ms WebGL2, zoomed in, at `quality`): met on WebGPU at dpr 1 for CellPack HIV still and
+nearly turning (20 / 16 ms); not met for PetWorld HIV, nor at dpr 2 (the fragments of the near spheres: 4x the pixels),
+nor on WebGL2 (CPU culling at cells, unchanged at rest). What is left, in order: the pixel scale while moving (dpr 2;
+the canvas element resized by the plugin, the input's scale kept), clusters inside a particle (PetWorld close up), the
+k-means proxies (the look at rest: Ludo's call), two-phase occlusion (the parallax frame), WebGL2 (the CPU Hi-Z test
+measured with a task per frame, a test per instance).
+
 ## Built
+
+- `instance-copy` tests each instance by its own sphere (view, ranges, levels, pyramid); the occlusion test a level
+  finer, clamped at the edges with the cap test after a turn; a dispatch per pyramid build (`OcclusionPyramid.version`),
+  `gpuCullUnsettledCount` and the frames that settle a view at rest; `gpuCulling: 'auto'` from 10 M vertices.
+- `Canvas3D` `motion`, `Renderer.setLodScale`, `LodView.set`'s scale; the draw lists' view with its scales.
+- prism-me's look sets `motion` 4x; `zoom-bench.mjs`, `cull-check.mjs`; `zoom-test.js` fixed (pixel scale) and `M()`.
 
 ## Decided
 
+- Per-instance frustum, levels and occlusion in the copy's thread (GPU-driven culling as Nanite's instance pass and
+  niagara): the thread ran anyway; the spec's dropped variant read instances per vertex.
+- One-phase occlusion against the previous frame's pyramid, made exact at rest (frames forced until a pyramid of the
+  view was tested) and conservative at the view's edges (the cap test); two-phase (exact while moving) left open.
+- Coarser while moving, full at rest (dynamic quality as in Potree, Cesium, game engines' dynamic resolution): the rest
+  frame keeps prism-me's look; the trigger is the camera changing with a 250 ms hold (a wheel zooms in steps). 4x: the
+  smallest scale that brought CellPack's turning frame near 16 ms at dpr 1 (2x: 31 ms).
+- `gpuCulling: 'auto'` on from 10 M vertices: PetWorld's 19 objects of few large proteins were on the CPU.
+- Library default of `motion` off (upstreamable without a change of look); the app sets it.
+
 ## Learned
 
+- The skip of a still dispatch was the cost close up, not porous packing: tested once against a pyramid with holes, it
+  never tested again (65 ms to 12 at 0.1).
+- `zoom-test.js`'s pixel-scale sweep changed nothing (Canvas3D has no pixel scale): close up the fragments are half the
+  frame at dpr 1, most of it at dpr 2.
+- Recorded draw lists keyed the view by its planes: any level-of-detail change at the same camera (a resize too)
+  replayed old levels.
+
 ## Size
+
+About 400 production lines (graphics: the WGSL tests and edges, the culler's settle and planes, Canvas3D `motion`, the
+renderer's scale and counts) and 600 of tests and scripts; no size given in the brief.
 
 ## Review
