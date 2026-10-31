@@ -24,6 +24,9 @@ is not built is [../TODO.md](../TODO.md).
   should-fix fixed or stated; skeptic confirmed all), real GL on both backends, 0 frames at rest. Waits on Ludo: the
   blend per atom (vertex stage), not per pixel, changed by the lane without asking (per pixel costs two varyings, both
   backends near their limit); graphics +449 against ~420 (the TS rule not counted in the estimate). Served on 1344.
+  Ludo's test, 2026-10-30: Firefox (WebGL) does not work; Safari draws only the outline and flickers; Chrome draws
+  normally only once By zoom is on (the levels-off path likely broken too), the coloring then "works great"; zoomed in
+  on spacefill the frame rate drops a lot. Ludo: fix 1 in the lane, a plan for 2 (measured, not built).
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
   parallel; merged in this order (each merges `origin/prism-me` before its PR):
