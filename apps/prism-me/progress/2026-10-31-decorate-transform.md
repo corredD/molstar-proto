@@ -156,7 +156,24 @@ Nothing disappears after the fixes, on either backend.
   the representation keeps the object; not done: no GL or WebGPU in this machine's tests to prove it.
 - The two graphics fixes go upstream (master lane, then molstar/molstar) when Ludo says so.
 
+### Review (lane-reviewer, then lane-skeptic)
+
+The reviewer reverted each fix in a scratch copy. Each test failed without its fix.
+
+- **Should-fix, confirmed by the skeptic and fixed (4af9a48cd).** The target representation's `applyTransform` set the
+  representation's transform on its merged objects too. A merged object shares `matrix` and `transform` with its first
+  member only, so its own instances and bounds were made from those: zeros and radius 0. That means culled and out of
+  the scene's bounds during a handle's preview and after it. An update under a preview also undid the merged sync of
+  9ec9bf2d5. It predates the lane (f149a9071, prism-me's own). The members are now set and the merged objects synced
+  from them, as `units-representation` does. Test: `target-bounds.test.ts`, a merged object under the representation's
+  transform, before and after an update, equals a fresh one's, before any sync.
+- **Nit, refuted by the skeptic.** `inputChanged` records the input before the work. A throw puts the cell in error,
+  which clears its cache, and the next pass recreates it.
+- Re-checked headless after the fix: decorate then scale, zooms and move on WebGPU and WebGL2 give the same coverage as
+  in the table above.
+
 ### Size
 
-Production: about 60 lines (ops.ts 25, common.ts 7, merged.ts 3, stage-tools 15, changelogs). Tests: about 290 lines
-(three files). Over the brief's two bugs: the WebGPU merge race and stage-tools' lookup took the room.
+Production: about 70 lines (ops.ts 25, common.ts 7, merged.ts 3, target representation 10, stage-tools 15, changelogs).
+Tests: about 320 lines (three files). Over the brief's two bugs: the WebGPU merge race and stage-tools' lookup took the
+room.
