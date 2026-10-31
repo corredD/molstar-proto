@@ -210,12 +210,12 @@ tenth and a fiftieth of it (0.02: close to one capsid protein). `prism-me` | thi
 100.9 | 97.4, 68.6 | 65.5 and 32.2 | 34.1, 110.3 | 101.6, 65.8 | 70.3: run to run ±10 %, the machine shared.
 
 - **Levels off cost what `prism-me` costs**, within the noise (±10 % run to run; PetWorld HIV WebGL2 off is 4 to 6 %
-  above in its three cells, CellPack HIV WebGL2 19 to 21 % above in one run and below in the reruns): the off programs
+  above in its three cells, CellPack HIV WebGL2 8 to 21 % above in one run and below in the reruns): the off programs
   are those of before (the guard above), and the lane's data is empty there.
 - **Levels on cost −13 to +14 % against off, within the noise but for the largest** zoomed in (largest: CellPack HIV
   WebGPU at 0.1, +9 ms; PetWorld HIV WebGL2 at 0.02, +7 ms): the vertex stage's two fetches and four Oklab conversions
   per vertex (four per sphere quad), whatever the level.
-- **Zoomed in is 2 to 4 times the whole view on `prism-me` already** (CellPack HIV WebGPU 18.6 → 73.1 ms; PetWorld HIV
+- **Zoomed in is 1.5 to 4 times the whole view on `prism-me` already** (CellPack HIV WebGPU 18.6 → 73.1 ms; PetWorld HIV
   WebGL2 62.9 → 116.9): more spheres at level 0 and fill (`screen-space-lod.md`: zoomed in is vertex-bound). Most likely
   what Ludo saw; and on WebGPU PetWorld HIV, `prism-me` drew nothing at all, so anything drawn is slower.
 
@@ -269,3 +269,10 @@ confirmed all 15, none refuted (S3 down to a nit, M1 to low-medium). Each fixed 
 | N3 "drawn by its structures" is any target representation                                    | comment `366035f5a`                                                    |
 | N4 specs: far level under Particle Entity, features.md                                       | plan, features.md, ui.md §3                                            |
 | N5 S4's status, the progress numbers                                                         | TODO.md and the numbers above                                          |
+
+**Fix review's skeptic** (over the fixes up to `9ef364ced`): every finding confirmed (N2 plausible), none refuted; a new
+must-fix, NEW-1: a list of more than 64 objects records by chunks, and an earlier chunk's recording (the first quad
+index buffer) replayed after a later chunk grew it. Fixed: each recording keeps the draw resources' version and does not
+replay past it (`d42241bbb`, its test failing first just before it), which also closes N2. Left: S1 (the library fix's
+own lane from master, TODO.md), the spheres' native compile where the backend has no frag depth, the PetWorld test's
+colors (it checks the theme and the levels, not the drawn colors).

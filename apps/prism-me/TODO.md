@@ -62,7 +62,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - MRC reader: mode 6, mode 12 (float16), `.rec`/`.st`/`.mrcs`/`.ali` (`33dbca0c5`, `59ef5aa38`).
 - A whole particle list's bounding sphere filled the wrong way (`me/particle-bounds`, `0927c892b`; in 5.x too).
 - WebGPU: a draw list recorded while the shared quad indices grew replayed the released buffer, nothing drawn until a
-  change (`8a159bd86`, test `c424c0bdf`, lane `dynamic-color`; master has the same code). Its test runs only with
+  change; and an earlier chunk's recording after a later chunk grew it (`8a159bd86`, `d42241bbb`, tests in
+  `webgpu-draw-lists.test.ts`, lane `dynamic-color`; master has the same code). Its test runs only with
   `pnpm native:install -- --webgpu` (CI installs no Dawn).
 
 ## Backlog
