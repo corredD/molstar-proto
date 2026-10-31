@@ -93,6 +93,11 @@ interface Renderer {
   prepareCull: (scene: Scene.Group) => void;
   /** The objects the last `prepareCull` culled on the GPU */
   readonly gpuCulledCount: number;
+  /**
+   * Of those, the ones whose occlusion test was against a pyramid of another view or levels (`gpuCullSettled`): a frame
+   * more at the same view settles them (what they left out shows)
+   */
+  readonly gpuCullUnsettledCount: number;
   setTime: (time: number) => void;
 
   renderPick: (group: Scene.Group, camera: ICamera, variant: 'pick' | 'depth', pickType: PickType) => void;
@@ -1117,13 +1122,18 @@ namespace Renderer {
     let updateScale = 1;
     let getOcclusionPyramid: (() => OcclusionPyramid | undefined) | null = null;
     let gpuCulledCount = 0;
+    let gpuCullUnsettledCount = 0;
     const prepareCull = (scene: Scene.Group) => {
       gpuCulledCount = 0;
+      gpuCullUnsettledCount = 0;
       if (updateScale !== 1) return;
       const pyramid = getOcclusionPyramid?.();
       const { renderables } = scene;
       for (let i = 0, il = renderables.length; i < il; ++i) {
-        if (renderables[i].prepareCull?.(cameraPlane, frustum, currentFrame, lodView, pyramid)) gpuCulledCount += 1;
+        const r = renderables[i];
+        if (!r.prepareCull?.(cameraPlane, frustum, currentFrame, lodView, pyramid)) continue;
+        gpuCulledCount += 1;
+        if (r.gpuCullSettled === false) gpuCullUnsettledCount += 1;
       }
     };
 
@@ -2101,6 +2111,9 @@ namespace Renderer {
       prepareCull,
       get gpuCulledCount() {
         return gpuCulledCount;
+      },
+      get gpuCullUnsettledCount() {
+        return gpuCullUnsettledCount;
       },
 
       renderPick,

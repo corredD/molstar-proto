@@ -65,6 +65,12 @@ export interface MergedCuller {
    * are not ready yet (compiling in the background)
    */
   dispatch: (cameraPlane: Plane3D, frustum: Frustum3D, lod: LodView, pyramid?: OcclusionPyramid) => boolean;
+  /**
+   * Whether the last dispatch tested occlusion against a pyramid drawn at its view and levels (or none): else a frame
+   * culled against another view's (after a camera change, a level scale) may leave out what shows; a frame more settles
+   * it (`Renderer.gpuCullUnsettledCount`)
+   */
+  readonly settled: boolean;
   /** per level its indirect list, with the uniforms of the level lists of the CPU culling (`levels`) */
   getLists: (levels: readonly MultiDrawBaseData[]) => MultiDrawBaseData[];
   destroy: () => void;
@@ -387,6 +393,7 @@ export function createMergedCuller(
     dispatchedVersion = dataVersion;
   }
 
+  let settled = true;
   let lists: MultiDrawBaseData[] = [];
   let listsLevels: readonly MultiDrawBaseData[] | undefined;
   let listsKey = '';
@@ -396,12 +403,16 @@ export function createMergedCuller(
     get identityBase() {
       return identityBase;
     },
+    get settled() {
+      return settled;
+    },
     sync,
     dispatch: (cameraPlane, frustum, lod, pyramid) => {
       if (instanceCount === 0 || cellCount === 0) return false;
       const [min, max] = values.uLod.ref.value as Vec4;
       setLevelRanges(lod);
-      if (isDispatched(cameraPlane, frustum, min, max) && isPyramidDispatched(pyramid)) return true;
+      const sameView = isDispatched(cameraPlane, frustum, min, max);
+      if (sameView && isPyramidDispatched(pyramid)) return true;
       if (!getKernels()) return false;
       dispatchedPyramid = pyramid?.version ?? -1;
       ValueCell.updateIfChanged(cellValues.uHiZ, !!pyramid);
@@ -448,6 +459,8 @@ export function createMergedCuller(
       kernels![2].dispatch(groups(records));
       compute.endComputePass();
       setDispatched(cameraPlane, frustum, min, max);
+      // the pyramid was drawn from the last dispatch's culling: at this view and levels where they are the same
+      settled = !pyramid || sameView;
       return true;
     },
     getLists: (levels) => {

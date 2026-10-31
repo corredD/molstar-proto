@@ -1332,6 +1332,9 @@ export function MergedRenderable(
           return !!gpuFrame;
         }
       : undefined,
+    get gpuCullSettled() {
+      return culler?.settled ?? true;
+    },
     render: (variant: GraphicsRenderVariant, globals: GlobalBindings) => {
       renderItem.render(variant, globals, getLists());
     },

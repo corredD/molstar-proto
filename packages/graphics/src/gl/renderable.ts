@@ -187,6 +187,11 @@ export interface Renderable<T extends RenderableValues> {
     lod: LodView,
     pyramid?: OcclusionPyramid,
   ) => boolean;
+  /**
+   * Culled on the GPU (`prepareCull`): whether its occlusion test was against a pyramid drawn at the view and levels it
+   * culled for (see `MergedCuller.settled`); undefined or true otherwise
+   */
+  readonly gpuCullSettled?: boolean;
   render: (variant: GraphicsRenderVariant, globals: GlobalBindings) => void;
   /** Cached clip info, `undefined` if there are no clip objects */
   getClipInfo: () => ClipInfo | undefined;

@@ -1417,6 +1417,9 @@ namespace Canvas3D {
           // the GPU's occlusion test of the objects culled there needs the levels (also with Hi-Z off)
           hiZ.setGpuCulling(renderer.gpuCulledCount > 0);
           hiZ.render(camera);
+          // occlusion tested against another view's pyramid (the camera changed, a level scale): a frame more at this
+          // view draws what it left out, also once the camera rests
+          if (renderer.gpuCullUnsettledCount > 0) forceNextRender = true;
           if (isTimingMode) graphics.timer.groupEnd('Canvas3D.render');
 
           // if only marking has updated, do not set the flag to dirty
