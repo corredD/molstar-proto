@@ -46,8 +46,15 @@ is not built is [../TODO.md](../TODO.md).
     after it stops. WebGPU at 0.1, dpr 1, still/turning: CellPack 83 → 12/20 ms, PetWorld 119 → 22/31 ms. Not yet met:
     dpr 2 (CellPack 36/59, PetWorld 67/94), WebGL2 (CellPack 88/37, PetWorld dpr 2 342/251), Firefox not measured.
     Settled images identical; while turning, up to ~1.4k pixels late a frame at 0.02 (one-phase occlusion).
-  - Round 2 (running, per Ludo's no-stop rule): lower resolution while moving, clusters inside a particle, two-phase
-    occlusion, WebGL2, the wiggle allowance. k-means proxy levels change the look at rest: images for Ludo first.
+  - Round 2 (on PR #28): lower resolution while moving (`motion.pixelScale`, prism-me 0.5, on dpr 2 0.35 and 6x levels;
+    the trackball compensates), level 0 of large members drawn per cluster of 256 spheres in space order, culled per
+    instance on the GPU; no occlusion while moving or in the resting frame, then occlusion against its own view (exact,
+    no popping with `motion`); WebGL2 culls each instance of a cut cell on the CPU; culled spheres grow by
+    wiggle/tumble. Turning now ≤16.7 ms on WebGPU everywhere but PetWorld 0.02 dpr 2 (19.7), ≤33 ms on WebGL2
+    everywhere. Still frames over budget: PetWorld close up (WebGPU dpr 1 21-41, dpr 2 63-127), CellPack dpr 2 (28-34),
+    WebGL2 (40-192). Look at rest unchanged. Open for Ludo: k-means proxy levels instead of every n-th atom (images in
+    `2026-10-31-instance-cull/`: 15 % / 23 % pixels differ, a bit more compact, streaks on PetWorld's membrane).
+
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
   parallel; merged in this order (each merges `origin/prism-me` before its PR):
