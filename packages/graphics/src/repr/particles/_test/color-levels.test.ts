@@ -142,4 +142,44 @@ describe('color levels of particle structure targets', () => {
     expect(off.uColorLevelBand.ref.value).toBe(on.uColorLevelBand.ref.value);
     expect(off.uColorLevelChainHue.ref.value).toBe(on.uColorLevelChainHue.ref.value);
   });
+
+  it('fills the far colors again for a new theme, and after off then on (review S5)', async () => {
+    const structure = await load1cbs();
+    const { visual, particles } = await visualOf(structure, levelsOn);
+    const target = particles.targetMapping!.get(0)!;
+    const params = PD.getDefaultValues(ParticleTargetRepresentationParams);
+    const propsOf = (colorLevels: unknown) =>
+      createParticleTargetPropsProvider({
+        ...params,
+        structure: { ...params.structure, colorLevels } as typeof params.structure,
+      })(target);
+    const hierarchy = PD.getDefaultValues(ParticleHierarchyColorThemeParams);
+    const shifted = ParticleHierarchyColorTheme(
+      { particles },
+      { ...hierarchy, compartmentPalette: { name: 'auto', params: { compartmentShift: 50 } } },
+    );
+    const theme = { color: shifted, size: UniformSizeTheme({}, { value: 1 }) } as unknown as Theme;
+    const update = (colorLevels: unknown) =>
+      visual.createOrUpdate(
+        { runtime: SyncRuntimeContext },
+        theme,
+        propsOf(colorLevels),
+        particles,
+        Interval.ofLength(3),
+        target,
+      );
+    const far = () => {
+      const { array } = (visual.renderObject!.values as unknown as ColorLevels.Data).tColorFar.ref.value;
+      return [0, 1, 2].map((i) => Color.fromArray(array, i * 4));
+    };
+    const expected = [0, 1, 2].map((index) =>
+      shifted.farColor!({ kind: 'particle-location', particles, index } as never, false),
+    );
+
+    await update(levelsOn);
+    expect(far()).toEqual(expected);
+    await update({ name: 'off', params: {} });
+    await update(levelsOn);
+    expect(far()).toEqual(expected);
+  });
 });
