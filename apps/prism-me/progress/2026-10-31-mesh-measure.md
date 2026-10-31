@@ -168,6 +168,14 @@ once).
 | ![angle](2026-10-31-mesh-measure/webgpu-4-angle.jpg)               | ![angle](2026-10-31-mesh-measure/webgl2-4-angle.jpg)               |
 | ![moved](2026-10-31-mesh-measure/webgpu-5-moved.jpg)               | ![moved](2026-10-31-mesh-measure/webgl2-5-moved.jpg)               |
 
+| ![unpaired point completed](2026-10-31-mesh-measure/webgpu-6-unpaired.jpg) |
+![unpaired point completed](2026-10-31-mesh-measure/webgl2-6-unpaired.jpg) |
+
+Rechecked on the final head (after the third review, both backends, port 1364): the same values (7.65 Å, 25.67 Å,
+17.34°; moved 8 Å: 29.25 Å, 15.46°); after the angle, the unpaired triangle 425 and the next click (GLY 20) make 31.66 Å
+(Grok's `1a37f84d8`); the angle keeps each point's row (the mesh's, CRAMBIN's, the mesh's: `d47a9e7df`); a ⌘+click at
+the `structure` granularity on the mesh makes nothing (`0e071b62e`).
+
 A million triangles, one hovered: ![1 M](2026-10-31-mesh-measure/webgpu-million-triangles.jpg)
 
 ## Library or prism-me
