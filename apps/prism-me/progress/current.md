@@ -66,7 +66,7 @@ is not built is [../TODO.md](../TODO.md).
     PetWorld still: the cost is the shading of every overlapping fragment (a shader depth write disables early depth
     tests), not the write: shading reduced 22/43 → 13/27 ms (dpr 1, 0.1/0.02). Next, designed: a depth pre-pass, then
     shading only the fragment equal to it (about 40 % off still frames); then per-sphere occlusion, WebGL2 close up.
-    Goal not met.
+    Goal not met. Ludo, 2026-10-31: no depth pre-pass.
 - **Decorating particles fails** (Ludo, 2026-10-31): "target does not apply to cryoet data portal particles". The
   message is `particles.representation` type `target` on a list with no targets yet ("Applicable: spacefill,
   orientation"). Headless on 1343/1344/1345, `cryoet.decorate` (pdb, object, none, again) and `particles.targets` all
