@@ -83,6 +83,11 @@ is not built is [../TODO.md](../TODO.md).
   yet known if #28 made it worse. Proposed with the decorate fix: one lane, decorations under a list transform.
 - **Lane `decorate-transform`** (Ludo, 2026-10-31: yes): both bugs above, `me/decorate-transform`, port 1363; brief
   [2026-10-31-decorate-transform.md](2026-10-31-decorate-transform.md) on its branch. Running.
+- **Lane `mesh-measure`** (Ludo, 2026-10-31): "measurement between obj/shape at the triangle highlight/selection and
+  other selection. Right now, mesh selection is global not at the triangle level." Triangle picking on OBJ/PLY/VTP
+  meshes (today a material, a vertex or the whole mesh), then distance/angle/dihedral between triangles, atoms and
+  particles. `me/mesh-measure`, port 1364; brief [2026-10-31-mesh-measure.md](2026-10-31-mesh-measure.md) on its branch.
+  Running.
 - **Exosome example** (Ludo, 2026-10-31: does not load on Chrome): its file is on `mesoscope.scripps.edu`, which refuses
   connections (curl: connection refused on 443). Not prism-me.
 
