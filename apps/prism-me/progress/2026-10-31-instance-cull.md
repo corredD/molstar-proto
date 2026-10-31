@@ -231,28 +231,57 @@ instance) pair and cost CellPack's whole view 6.3 to 8.5 ms). Still frames (ms, 
 Images at 1, 0.1 and 0.02 (dpr 1) against the commit before the space order: 1 pixel differs (ties). `cull-check.mjs`:
 settled, at rest after turning, and the resolution switches, no pixel differs.
 
-## Where it stands (the app, `motion` 4x)
+## Step 5c: no occlusion while moving (in place of two-phase occlusion), measured
 
-Frame (ms), headless Chrome on the M1, still / turning 1° a frame (`zoom-bench.mjs`; prism-me's look with `motion`
-`lodScale` 4); before this lane in brackets (still):
+Measured first: turning frames (coarser, at half the resolution) cost about the same without the pyramid (CellPack 0.1
+7.8 / 9.0, PetWorld 0.02 14.7 / 15.1 ms at dpr 1). So with `motion` the canvas draws moving frames and the frame it
+rests in without occlusion; the next frame tests a pyramid of its own view. `cull-check.mjs --motion` while turning: no
+pixel differs from the same frames without occlusion (before: up to 1,397). Decided over two-phase occlusion (a pyramid
+within the frame, the opaque pass split): exact for the app at no measurable cost; frames without `motion` (the
+library's default) keep the one-phase test's frame of popping.
 
-| backend, model, dpr     | 1                  | 0.1                 | 0.02                |
-| ----------------------- | ------------------ | ------------------- | ------------------- |
-| WebGPU, CellPack HIV, 1 | 6.3 / 6.0 (8.9)    | 12.1 / 20.1 (83.1)  | 14.1 / 15.8 (70.5)  |
-| WebGPU, CellPack HIV, 2 | 10.8 / 10.8 (11.9) | 35.5 / 59.0 (167.5) | 39.2 / 45.5 (183.9) |
-| WebGPU, PetWorld HIV, 1 | 23.3 / 8.4 (26.0)  | 22.2 / 30.6 (119.2) | 50.3 / 39.4 (93.6)  |
-| WebGPU, PetWorld HIV, 2 | 41.1 / 21.7 (45.6) | 66.5 / 94.2 (324.1) | 147.9 / 129.9 (271) |
-| WebGL2, CellPack HIV, 1 | 9.3 / 8.5 (9.6)    | 87.6 / 36.9 (88.0)  | 70.2 / 56.0 (70.3)  |
-| WebGL2, CellPack HIV, 2 | 14.7 / 14.7 (15.1) | 191 / 108 (191)     | 200 / 183 (200)     |
-| WebGL2, PetWorld HIV, 1 | 30.4 / 11.1 (30.6) | 129 / 79.9 (129)    | 101 / 83.2 (101)    |
-| WebGL2, PetWorld HIV, 2 | 49.7 / 27.6 (49.6) | 342 / 251 (342)     | 285 / 267 (285)     |
+## Step 5d: WebGL2, measured and built
 
-The goal (16.7 ms WebGPU, 33 ms WebGL2, zoomed in, at `quality`): met on WebGPU at dpr 1 for CellPack HIV still and
-nearly turning (20 / 16 ms); not met for PetWorld HIV, nor at dpr 2 (the fragments of the near spheres: 4x the pixels),
-nor on WebGL2 (CPU culling at cells, unchanged at rest). What is left, in order: the pixel scale while moving (dpr 2;
-the canvas element resized by the plugin, the input's scale kept), clusters inside a particle (PetWorld close up), the
-k-means proxies (the look at rest: Ludo's call), two-phase occlusion (the parallax frame), WebGL2 (the CPU Hi-Z test
-measured with a task per frame, a test per instance).
+Hi-Z's CPU test (per cell, a task per frame so its reads land): CellPack 0.1 95 / 89 ms, PetWorld 0.1 134 / 129: about
+5%. Built: the CPU culling of objects with levels tests the instances of a cut cell one by one (`cullInstances`; found
+on the way: the draw lists' arrays were sized by cells, the draws past them lost; they grow now). With it (Hi-Z's CPU
+test off / on): CellPack 0.1 80 / 60, 0.02 50 / 42; PetWorld 0.1 82 / 65, 0.02 78 / 76 ms. Hi-Z's CPU test stays off by
+default (its reads lag frames; at rest no frame follows to use them). GPU-driven culling on WebGL2 (transform feedback,
+its counts read back frames late) not built: the state of the art for it is compute (WebGPU).
+
+## Step 5e: the wiggle and tumble allowance; 7qpd
+
+Cells and instances grow by √3 times the wiggle's and tumble's amplitudes (`uAnimationSlack`): an animated particle at
+the view's edge is kept (test: 4 of 16 instances drawn before). 7qpd's 60-copy assembly: 11.5 k atoms, 60 copies, 4.1 M
+indices: under the auto rule's 10 M, it stays on the CPU.
+
+## Step 5f: the look's motion on a 2x display
+
+On a display of 2 device pixels a CSS pixel the look moves at 0.35 of the resolution (about 0.7 of a CSS pixel) and 6x
+coarser (else 0.5 and 4x). The first frame of a turn at dpr 2 differs from the next at the same camera by its ambient
+occlusion (77,650 of 2.87 M pixels, a frame; images alike).
+
+## Where it stands (round 2)
+
+Frame (ms), headless Chrome on the M1, still / turning 1° a frame (`zoom-bench.mjs`, prism-me's look; before the lane in
+brackets, still):
+
+| backend, model, dpr     | 1                 | 0.1                 | 0.02                |
+| ----------------------- | ----------------- | ------------------- | ------------------- |
+| WebGPU, CellPack HIV, 1 | 6.5 / 7.4 (8.9)   | 10.3 / 9.2 (83.1)   | 12.2 / 7.2 (70.5)   |
+| WebGPU, CellPack HIV, 2 | 11.0 / 6.6 (11.9) | 28.3 / 11.5 (167.5) | 33.6 / 8.7 (183.9)  |
+| WebGPU, PetWorld HIV, 1 | 23.3 / 4.0 (26.0) | 21.0 / 12.9 (119.2) | 40.5 / 15.2 (93.6)  |
+| WebGPU, PetWorld HIV, 2 | 40.7 / 5.9 (45.6) | 62.8 / 15.1 (324.1) | 127.1 / 19.7 (271)  |
+| WebGL2, CellPack HIV, 1 | 9.2 / 7.3 (9.6)   | 72.0 / 13.7 (88.0)  | 39.5 / 10.9 (70.3)  |
+| WebGL2, CellPack HIV, 2 | 13.8 / 7.3 (15.1) | 155.1 / 17.4 (191)  | 91.4 / 12.7 (199.6) |
+| WebGL2, PetWorld HIV, 1 | 30.8 / 6.1 (30.4) | 75.1 / 18.1 (129.6) | 71.4 / 20.7 (101.3) |
+| WebGL2, PetWorld HIV, 2 | 49.1 / 7.5 (49.6) | 166.2 / 22.1 (342)  | 190.1 / 26.4 (285)  |
+
+(The dpr-1 WebGL2 rows are with the 2x look's predecessor, 0.5 and 4x; dpr 1 uses those.) Turning meets the goal (16.7
+ms WebGPU, 33 ms WebGL2) everywhere but PetWorld HIV at 0.02 on WebGPU at dpr 2 (19.7). Still frames meet it on WebGPU
+at dpr 1 for CellPack; at rest the full-quality frame of PetWorld close up, of dpr 2 and of WebGL2 stays above (one
+frame; hover and other redraws at rest pay it). What would lower it changes the look at rest: the k-means proxy levels
+(Ludo's call, below).
 
 ## Built
 
