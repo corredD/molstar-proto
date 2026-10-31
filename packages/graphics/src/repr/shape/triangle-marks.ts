@@ -33,6 +33,8 @@ export class TriangleMarks {
   readonly renderObject: GraphicsRenderObject<'mesh'>;
   private readonly mesh = Mesh.createEmpty();
   private source: Shape<Mesh>;
+  /** The source mesh's vertices and triangles as marked (`meshVersion`) */
+  private version: string;
   /** By `instance * triangleCount + index` */
   private readonly highlighted = new Map<number, ShapeGroup.Triangle>();
   private readonly selected = new Map<number, ShapeGroup.Triangle>();
@@ -42,6 +44,7 @@ export class TriangleMarks {
     private props: PD.Values<Mesh.Params>,
   ) {
     this.source = source;
+    this.version = meshVersion(source.geometry);
     this.renderObject = ShapeUtils.createRenderObject(this.overlayShape([]), props) as GraphicsRenderObject<'mesh'>;
     this.renderObject.state.pickable = false;
   }
@@ -59,12 +62,20 @@ export class TriangleMarks {
     this.renderObject.state.pickable = false;
   }
 
-  /** A new shape of the mesh: its triangles may be others, the marks go */
+  /**
+   * A new shape: of the same mesh (moved, scaled: new transforms), the marks stay, drawn where it is now; of another
+   * mesh, its triangles are others: the marks go
+   */
   setShape(source: Shape<Mesh>) {
     if (source === this.source) return;
+    // the same mesh, its triangles unchanged (a reader may fill the same mesh again)
+    const same = source.geometry === this.source.geometry && meshVersion(source.geometry) === this.version;
     this.source = source;
-    this.highlighted.clear();
-    this.selected.clear();
+    this.version = meshVersion(source.geometry);
+    if (!same) {
+      this.highlighted.clear();
+      this.selected.clear();
+    }
     this.rebuild();
   }
 
@@ -208,6 +219,10 @@ export class TriangleMarks {
     ShapeUtils.createTransform([identity], this.mesh.boundingSphere, this.props.cellSize, this.props.batchSize, values);
     Mesh.Utils.updateBoundingSphere(values, this.mesh);
   }
+}
+
+function meshVersion(mesh: Mesh) {
+  return `${mesh.vertexBuffer.ref.version}:${mesh.indexBuffer.ref.version}:${mesh.triangleCount}`;
 }
 
 function setIn(map: Map<number, ShapeGroup.Triangle>, key: number, t: ShapeGroup.Triangle) {
