@@ -45,7 +45,9 @@ name no extension (upstreamable later, when Ludo says so).
 - Cuttlefish's coverage-driven hues (cellview.md §7.3, dead in cellVIEW too); a residue level; the edges in Å instead of
   pixels if Ludo wants it (`colorLevelSize` and `ColorLevels.atomSize`, `color-levels.md`); the levels on structures
   (not particles) and on volume or shape targets; a GLSL/WGSL compile with `dColorLevels` and a shader-against-rule test
-  in the repo (review S4); per pixel instead of per atom if Ludo wants it.
+  in the repo (review S4); per pixel instead of per atom if Ludo wants it. The on-cost zoomed in (0 to 14 %): skip the
+  blend where it is whole, then Oklab stored (progress/2026-10-30-dynamic-color.md, After Ludo's test, plan for 2).
+  WebKit (Safari) draws only the RNA of CellPack HIV on WebGPU, on `prism-me` too.
 
 ## Library fixes ready for upstream
 

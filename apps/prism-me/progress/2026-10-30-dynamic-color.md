@@ -159,6 +159,79 @@ about 150 lines in prism-me and the mesoscale extension.
 
 Not an option: way (a), by step 1.
 
+## After Ludo's test (2026-10-30)
+
+Ludo, on PR #27: "in firefox it doesn't work i think it because it run webgl. In safari nothing draw only the outline
+and everything is flickering. On chrome after enable by Zoom then things start to draw normally and the coloring works
+great." And: "when zoomed in looking at spacefill performance decreased largely."
+
+### 1. Not drawn until a change: a WebGPU draw-list bug of `prism-me`, fixed here
+
+- **Reproduced** with Playwright (Chrome on WebGPU and WebGL2, Firefox on WebGL2, WebKit on WebGPU), `prism-me`
+  (`origin/prism-me`, port 1361) against this branch (port 1360), levels off at load:
+  - **PetWorld HIV (the first example) on WebGPU: blank on both**, every frame
+    `[Buffer "quad indices"] used in submit while destroyed` (Chrome, 3 runs of 3 each); WebKit:
+    `Invalid CommandEncoder`, blank. WebGL2 (Chrome, Firefox) draws it. CellPack HIV draws everywhere but in WebKit
+    (below).
+  - So not this lane's: `prism-me` has it. Turning By zoom on changed the draws, which recorded them again: hence "after
+    enable by Zoom things start to draw normally".
+- **Cause** (`gl/webgpu/context.ts` `recordRenderBundle`, `gl/renderer.ts` the draw lists): a recording's first draws
+  bound the shared quad index buffer, a later draw of the same recording (a larger object) grew it, the old one released
+  after the submit; the snapshot taken after the recording read the new `drawResourcesVersion`, so the recording was
+  current and replayed every frame with the released buffer, its submit failing. The fix: a recording during which a
+  shared draw resource is replaced fails (as for a uniform arena growing), and the next frame records with the grown
+  buffer (`8a159bd86`; test `c424c0bdf`, failing first, on Dawn in Node: `pnpm native:install -- --webgpu`).
+- **After the fix:** PetWorld HIV draws on Chrome WebGPU (3 of 3, no error) and on WebKit; CellPack HIV unchanged.
+- **Firefox (WebGL2):** no failure found headless: both examples draw, the levels work on CellPack HIV (compartments,
+  entities, chains, elements as zoomed). On PetWorld HIV, By zoom was refused ("cannot be colored by zoom": no
+  compartments, its entities by target): likely what "doesn't work" was. By zoom now colors such a model by entity, then
+  chains and atoms (`f4e83e40d`, test first); checked on Chrome, Firefox and WebKit.
+- **WebKit (Safari): CellPack HIV draws only its RNA**, levels off, on `prism-me` and here alike, no console error: not
+  this lane's, left open (TODO.md). Not reproduced: Safari's flicker (headless shows no motion).
+- **Guards added:** the sphere and mesh programs with the levels off hold none of their code (GLSL and WGSL), and
+  compile on the native GL backend off and on (`a8f757b25`).
+- **Seen, not this lane's:** flat grey discs at close zoom (spheres cut by the near plane, their interior caps) on
+  `prism-me` too.
+
+### 2. Zoomed-in frames: measured, a plan (not built)
+
+Frame time in ms (median of 60, after 40), Chrome headless, M1 Pro, 1280×800, at the distance after load (1) and at a
+tenth and a fiftieth of it (0.02: close to one capsid protein). `prism-me` | this branch levels off | on:
+
+| Model, backend       | 1                      | 0.1                     | 0.02                  |
+| -------------------- | ---------------------- | ----------------------- | --------------------- |
+| CellPack HIV, WebGPU | 18.6 \| 15.9 \| 16.7   | 73.1 \| 68.7 \| 78.0    | 44.3 \| 44.5 \| 45.9  |
+| CellPack HIV, WebGL2 | 32.4 \| 39.3 \| 34.0   | 99.1 \| 106.6 \| 106.1  | 63.3 \| 75.1 \| 71.6  |
+| PetWorld HIV, WebGPU | 19.0\* \| 41.1 \| 38.3 | 88.6 \| 86.1 \| 87.6    | 63.6 \| 65.3 \| 66.4  |
+| PetWorld HIV, WebGL2 | 62.9 \| 66.6 \| 66.4   | 116.9 \| 122.8 \| 129.8 | 92.4 \| 96.3 \| 103.5 |
+
+\* `prism-me` draws nothing there (item 1). Two more runs of CellPack HIV on WebGL2 (`prism-me` | off): 28.8 | 29.6,
+100.9 | 97.4, 68.6 | 65.5 and 32.2 | 34.1, 110.3 | 101.6, 65.8 | 70.3: run to run ±10 %, the machine shared.
+
+- **Levels off cost what `prism-me` costs**, within the noise: the off programs are those of before (the guard above),
+  and the lane's data is empty there.
+- **Levels on cost 0 to 14 %** zoomed in (largest: CellPack HIV WebGPU at 0.1, +9 ms; PetWorld HIV WebGL2 at 0.02, +7
+  ms): the vertex stage's two fetches and five Oklab conversions per vertex (four per sphere quad), whatever the level.
+- **Zoomed in is 3 to 4 times the whole view on `prism-me` already** (CellPack HIV WebGPU 18.6 → 73.1 ms): more spheres
+  at level 0 and fill (`screen-space-lod.md`: zoomed in is vertex-bound). Most likely what Ludo saw; and on WebGPU
+  PetWorld HIV, `prism-me` drew nothing at all, so anything drawn is slower.
+
+**Plan (options, not built):**
+
+1. **Skip the blend where it is whole** (both stages saturated: below the entity band, the far color; beyond the atom
+   band, the element's): one branch in `colorLevels`, GLSL and WGSL, about 10 lines; zoomed in most spheres are past the
+   atom band. Saves most of the on-cost there, none in between.
+2. **Oklab stored, not computed:** the far and element colors written in Oklab (bytes, scaled) by the visual, so the
+   shader converts only the entity color and the result: about 25 lines (TS encode, both shaders), the near data's cache
+   unchanged. Saves about half the per-vertex math everywhere.
+3. **Per instance, not per vertex, on WebGPU:** the level and the far/entity/chain blend in the instance-copy compute
+   (one per sphere, not four), the element blend kept per vertex: larger (about 80 lines, WebGPU only), and it changes
+   the cell-cull path. Not worth it before 1 and 2 are measured.
+4. **The zoomed-in base cost** (not this lane's): the LOD preset (`balanced` or `performance` in Graphics & Motion
+   halves it, `screen-space-lod.md`) and the near-plane caps; for the graphics lanes.
+
+Recommended: 1, then 2 if the on-cost still shows (both under 40 lines), measured with `recolor-bench.mjs`'s method.
+
 ## Review
 
 PR #27 (https://github.com/corredD/molstar-proto/pull/27), to `prism-me`; Ludo merges.
