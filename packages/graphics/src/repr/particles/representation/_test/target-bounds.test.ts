@@ -144,4 +144,33 @@ describe('the decorations of a list that moves', () => {
     fresh.destroy();
     repr.destroy();
   });
+  it("keep a merged object as its members are under the representation's transform (a handle's drag, review)", async () => {
+    // the representation's transform (a handle's preview) set on the members; the merged object follows them, not
+    // made again from the cells it shares with its first member (zeros, radius 0: culled, out of the scene's bounds)
+    const list = particleList(2);
+    const repr = await representation(list, true);
+    const merged = repr.renderObjects[0];
+    const drawn = Mat4.fromTranslation(Mat4(), Vec3.create(1000, 0, 0));
+    const expectAsFresh = async (l: ParticleList) => {
+      const fresh = await representation(l, true);
+      fresh.setState({ transform: drawn });
+      const expected = fresh.renderObjects[0].values;
+      (fresh.renderObjects[0] as MergedGraphicsRenderObject).merged.sync();
+      const floats = expected.instanceCount.ref.value * 16;
+      expect(Array.from(merged.values.aTransform.ref.value.subarray(0, floats))).toEqual(
+        Array.from(expected.aTransform.ref.value.subarray(0, floats)),
+      );
+      const [a, e] = [merged.values.boundingSphere.ref.value, expected.boundingSphere.ref.value];
+      expect(Vec3.distance(a.center, e.center)).toBeLessThan(1e-3);
+      expect(a.radius).toBeCloseTo(e.radius, 3);
+      fresh.destroy();
+    };
+    repr.setState({ transform: drawn });
+    await expectAsFresh(list);
+    const moved = transformed(list, 10, turn);
+    await repr.createOrUpdate({}, moved).run();
+    expect(repr.renderObjects[0]).toBe(merged);
+    await expectAsFresh(moved);
+    repr.destroy();
+  });
 });
