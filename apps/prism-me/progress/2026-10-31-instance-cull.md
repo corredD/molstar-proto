@@ -185,6 +185,25 @@ protein either; it keeps the near ones cheap by its proxy levels.
   0.02 up to 1,397 pixels in a frame while turning 2° a frame). Splits the opaque pass and builds the pyramid within the
   frame; not built here.
 
+## Step 4: half the resolution while moving (dynamic resolution), measured
+
+`Canvas3D` `motion.pixelScale` (prism-me: 0.5): while the camera moves the context resizes the canvas and the input to
+that scale of the resolution (`Canvas3DContext.setMotionPixelScale`, through the plugin's resize), full at rest. Motion
+is a change of the view (and of the vertical projection), not of the viewport: the resize back is no motion. The
+trackball compares page coordinates with the viewport at full resolution (`setResolutionScale`): a drag moves the camera
+as at full resolution, also across the switch within the drag (before: a jump of 89 Å in the test's drag). Turning
+frames, WebGPU (ms, before / after; still frames unchanged):
+
+| model, dpr      | 0.1         | 0.02        |
+| --------------- | ----------- | ----------- |
+| CellPack HIV, 1 | 20.1 / 8.3  | 15.8 / 6.5  |
+| CellPack HIV, 2 | 59.0 / 20.1 | 45.5 / 15.9 |
+| PetWorld HIV, 1 | 30.6 / 12.6 | 39.4 / 15.1 |
+| PetWorld HIV, 2 | 94.2 / 30.6 | 130 / 39.6  |
+
+`cull-check.mjs` at dpr 2: at rest after turning, motion off and on, no pixel differs (the image at rest is the full
+resolution's); the turning comparison now with motion off (its frames at full resolution).
+
 ## Where it stands (the app, `motion` 4x)
 
 Frame (ms), headless Chrome on the M1, still / turning 1° a frame (`zoom-bench.mjs`; prism-me's look with `motion`
