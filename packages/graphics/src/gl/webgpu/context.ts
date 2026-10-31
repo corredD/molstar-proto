@@ -1097,6 +1097,9 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
       state: ReturnType<ReturnType<typeof asWebGPUGlobalBindings>['getState']>;
       /** `UniformRing.arenaReplacements` when recorded: a replaced arena buffer may be bound by the bundle */
       arenaReplacements: number;
+      /** `getDrawResourcesVersion` when recorded: a replaced shared resource (the quad indices grown by a later chunk's
+       * draws, or another target's) may be bound by the bundle */
+      drawResources: number;
     };
     const recordings = new Map<string, Recording>();
     return {
@@ -1110,7 +1113,8 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
           state.buffer !== recorded.buffer ||
           state.offset !== recorded.offset ||
           state.textures !== recorded.textures ||
-          recording.arenaReplacements !== ring.arenaReplacements
+          recording.arenaReplacements !== ring.arenaReplacements ||
+          recording.drawResources !== getDrawResourcesVersion()
         ) {
           recordings.delete(passTarget.key);
           return false;
@@ -1126,7 +1130,12 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
         recordings.delete(target.key);
         if (bundle) {
           if (recordings.size >= MaxDrawListTargets) recordings.delete(recordings.keys().next().value!);
-          recordings.set(target.key, { bundle, state, arenaReplacements: ring.arenaReplacements });
+          recordings.set(target.key, {
+            bundle,
+            state,
+            arenaReplacements: ring.arenaReplacements,
+            drawResources: getDrawResourcesVersion(),
+          });
           executeRenderBundles([bundle]);
         } else {
           draw();
