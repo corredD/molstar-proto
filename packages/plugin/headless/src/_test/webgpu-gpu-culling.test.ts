@@ -269,6 +269,65 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
     }
   }, 60_000);
 
+  it('keeps the instances whose wiggling spheres may reach into the view', async () => {
+    const plugin = await createPlugin();
+    try {
+      const graphics = plugin.canvas3d!.graphics;
+      // one cell per member, its atoms wiggling up to 5 Å an axis
+      const animation = { ...PD.getDefaultValues(Spheres.Params).animation, wiggleAmplitude: 5 };
+      const members = [createMember(Vec3.create(0, 0, 0), ColorNames.orange, { cellSize: 200, animation })];
+      const gpu = createMergedRenderObject(members, { gpuCulling: true });
+      const scene = Scene.create(graphics);
+      scene.add(gpu);
+      scene.commit();
+      // a corner of the grid in view
+      const camera = new Camera();
+      Viewport.set(camera.viewport, 0, 0, Size, Size);
+      const { center, radius } = scene.boundingSphere;
+      const target = Vec3.add(Vec3(), center, Vec3.create(-radius * 0.4, -radius * 0.4, 0));
+      camera.setState(
+        { target, position: Vec3.add(Vec3(), target, Vec3.create(0, 0, 14)), up: Vec3.create(0, 1, 0) },
+        0,
+      );
+      camera.update();
+      const renderer = Renderer.create(graphics);
+      const target_ = graphics.createRenderTarget(Size, Size, 'depth-stencil');
+      await graphics.resources.preparePipelines(
+        renderer.collect({ name: 'opaque' }, scene, graphics.describeTarget(target_)),
+      );
+      let list: MultiDrawBaseData[] | undefined;
+      const item = scene.renderables[0].renderItem;
+      const render = item.render;
+      item.render = (variant, globals, l) => {
+        if (l) list = l;
+        render(variant, globals, l);
+      };
+      const frame = async () => {
+        renderer.update(camera, scene, createFrame());
+        renderer.prepareCull(scene);
+        graphics.beginRenderPass(target_);
+        renderer.clear(true);
+        renderer.setViewport(0, 0, Size, Size);
+        renderer.renderOpaque(scene, camera);
+        graphics.flush();
+        await graphics.readRenderTarget(target_, 0, 0, 1, 1);
+        await graphics.resources.pending.whenReady();
+      };
+      for (let i = 0; i < 20 && !list?.[0].indirect; ++i) await frame();
+      await frame();
+      const { buffer, byteOffset, indexed } = list![0].indirect!;
+      const words = indexed ? 5 : 4;
+      const args = new Uint32Array(await buffer.readAsync(byteOffset, list![0].count * words * 4));
+      // the instances whose sphere, grown by the wiggle (5 Å an axis), touches the view
+      const [still] = countInView(members, camera, 1);
+      const [wiggling] = countInView(members, camera, 1, Math.sqrt(3) * 5);
+      expect(wiggling).toBeGreaterThan(still);
+      expect(args[1]).toBe(wiggling);
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
   it('draws and picks in a canvas with draw lists (passes that update the renderer inside their render pass)', async () => {
     const plugin = await HeadlessPluginContext.create(
       { webgpu: WebGPU.module! },
@@ -732,7 +791,7 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
  * Per level the instances of `members` whose own sphere (the member's moved by the instance's transform, at level j
  * grown by the padding times the level's sphere scale less one) touches the frustum and the level's distance range
  */
-function countInView(members: GraphicsRenderObject[], camera: Camera, levelCount: number) {
+function countInView(members: GraphicsRenderObject[], camera: Camera, levelCount: number, slack = 0) {
   const frustum = Frustum3D.fromProjectionMatrix(Frustum3D(), camera.projectionView);
   const cameraPlane = Plane3D.copy(Plane3D(), frustum[Frustum3D.PlaneIndex.Near]);
   cameraPlane.constant -= Plane3D.distanceToPoint(cameraPlane, camera.state.position);
@@ -748,7 +807,7 @@ function countInView(members: GraphicsRenderObject[], camera: Camera, levelCount
       const d = Plane3D.distanceToPoint(cameraPlane, c);
       for (let j = 0; j < levelCount; ++j) {
         const level = levels[j];
-        const r = b.radius + (level ? padding * Math.max(level[4] - 1, 0) : 0);
+        const r = b.radius + (level ? padding * Math.max(level[4] - 1, 0) : 0) + slack;
         if (level && (d + r < level[0] || d - r > level[1])) continue;
         if (!Frustum3D.intersectsSphere3D(frustum, Sphere3D.create(c, r))) continue;
         counts[j] += 1;
