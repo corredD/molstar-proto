@@ -233,6 +233,34 @@ describe('a mesh marked by triangle', () => {
     expect(drawCount(objects(repr).marks)).toBe(0);
   });
 
+  it('a bare shape representation clears a highlight made before its mesh moved (the old shape named)', async () => {
+    const mesh = square();
+    const at = (x: number) =>
+      ShapeUtils.enableTrianglePicking(
+        ShapeUtils.create(
+          'square',
+          {},
+          mesh,
+          () => ColorNames.red,
+          () => 1,
+          () => '',
+          [Mat4.fromTranslation(Mat4(), Vec3.create(x, 0, 0))],
+          1,
+        ),
+      );
+    let shape = at(0);
+    const repr = ShapeRepresentation(() => shape, Mesh.Utils);
+    await repr.createOrUpdate(PD.getDefaultValues(Mesh.Params), {}).run();
+    const before = triangle(shape, 0);
+    repr.mark(before, MarkerAction.Highlight);
+    shape = at(10);
+    await repr.createOrUpdate({}, {}).run();
+    expect(drawCount(repr.renderObjects[1])).toBe(6);
+    // the hover's previous loci still names the old shape
+    expect(repr.mark(before, MarkerAction.RemoveHighlight)).toBe(true);
+    expect(drawCount(repr.renderObjects[1])).toBe(0);
+  });
+
   it('a mesh picked by group has no marked triangles: a group loci marks its group as before', async () => {
     const { repr, meshShape } = await make(false);
     expect(repr.renderObjects.map((o) => o.type)).toEqual(['mesh', 'lines']);
