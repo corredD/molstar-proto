@@ -6,6 +6,7 @@
 
 import type { ContextMenuItem } from '@molstar/prism-ui';
 import { isEmptyLoci, type Loci } from '@molstar/model/model/loci';
+import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
@@ -38,6 +39,13 @@ export interface DistancePicker {
   click(click: CanvasClick): Promise<boolean>;
   /** Lets the points go: the first one, and the latest (an angle's, a dihedral's) */
   cancel(): void;
+}
+
+/** A mesh picked by triangle, taken as the whole shape: structure granularity, not one triangle (ui.md §7) */
+function wholeMesh(loci: Loci): boolean {
+  if (!Shape.isLoci(loci) && !ShapeGroup.isLoci(loci)) return false;
+  if (!loci.shape.getTriangleLoci) return false;
+  return !(ShapeGroup.isLoci(loci) && loci.triangles?.length === 1);
 }
 
 /** The gesture that measures: ⌘+click on a Mac, Ctrl+click elsewhere */
@@ -144,6 +152,14 @@ export function distancePicker(
       // normalized first (a bond: its atoms; the selection granularity), so its row is the point's
       const loci = isEmptyLoci(click.loci) ? click.loci : area.measurePoint(click.loci);
       const picked = isEmptyLoci(loci) ? undefined : area.pickedOf(loci);
+      // a triangle-picked mesh taken whole (structure granularity): not a point, and a point already waiting stays
+      // (ui.md §7)
+      if (wholeMesh(loci)) {
+        options.post?.(
+          `A whole mesh is not a point. Pick a triangle of it (a finer granularity than the structure).`,
+        );
+        return true;
+      }
       if (!picked || picked.kind === 'distance' || picked.kind === 'label') {
         options.post?.(
           `A distance is measured between atoms, residues, chains, particles, volumes and mesh triangles: ${gesture()} one.`,

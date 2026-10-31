@@ -163,6 +163,24 @@ describe('measuring from mesh triangles in the explorer', () => {
     );
   });
 
+  it('does not start a distance from a whole mesh, and keeps a point already waiting', async () => {
+    const v = await viewer();
+    const { p, posted } = picker(v);
+    v.plugin.managers.interactivity.setProps({ granularity: 'structure' });
+    expect(await p.click({ loci: triangle(v, 0, [0.5, 0.2]), measure: true })).toBe(true);
+    expect(p.pending.value).toBeUndefined();
+    expect(posted.at(-1)).toMatch(/whole mesh/);
+    expect(measurements(v)).toHaveLength(0);
+
+    v.plugin.managers.interactivity.setProps({ granularity: 'residue' });
+    expect(await p.click({ loci: residue(v, 10), measure: true })).toBe(true);
+    const waiting = p.pending.value;
+    v.plugin.managers.interactivity.setProps({ granularity: 'structure' });
+    expect(await p.click({ loci: triangle(v, 1, [0.1, 0.8]), measure: true })).toBe(true);
+    expect(p.pending.value).toBe(waiting);
+    expect(measurements(v)).toHaveLength(0);
+  });
+
   it('keeps the unpaired point when an angle is measured, so the next click pairs with it', async () => {
     const v = await viewer();
     const { p } = picker(v);
