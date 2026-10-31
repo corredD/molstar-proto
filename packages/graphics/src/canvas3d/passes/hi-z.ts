@@ -110,6 +110,9 @@ export const HiZParams = {
 };
 export type HiZProps = PD.Values<typeof HiZParams>;
 
+/** Builds of every pyramid (`OcclusionPyramid.version`): never reset, so that a build after `clear` is a new version */
+let pyramidBuilds = 0;
+
 export class HiZPass {
   private readonly viewport = Viewport();
 
@@ -277,7 +280,7 @@ export class HiZPass {
     if (b.drawing && pending.trackedCount === trackedCount) {
       const { width, height } = this.viewport;
       this.pyramid = {
-        version: (this.pyramid?.version ?? 0) + 1,
+        version: ++pyramidBuilds,
         texture: this.tex,
         levelCount: this.levelData.length,
         minLevel: this.props.minLevel,
