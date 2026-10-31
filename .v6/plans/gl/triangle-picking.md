@@ -16,10 +16,11 @@ layers and its labels.
   has about half as many vertices as triangles; a flat group is its provoking vertex's, the last in WebGL and the
   first in WebGPU), so it would need an unindexed mesh: 3× to 6× the vertex memory, vertex colors no longer
   interpolated, per-material layers per triangle.
-- **The lookup** (`geo/geometry/mesh/triangle-pick.ts`): a `GridLookup3D` over the triangles' centroids, queried at
-  the depth point with the largest centroid-to-vertex distance added, built at the first pick of a mesh and kept while
-  its vertex and index buffers are the same versions (a `WeakMap` on the mesh). Nothing allocated per pick but the
-  loci.
+- **The lookup** (`geo/geometry/mesh/triangle-pick.ts`): the triangles sorted by the grid cell of their centroid (a
+  counting sort; cells about two triangles wide, at most half a cell a triangle), queried at the depth point with the
+  largest centroid-to-vertex distance added; built at the first pick of a mesh and kept while its vertex and index
+  buffers are the same versions (a `WeakMap` on the mesh). Not `GridLookup3D`: it keeps the centroids and its buckets
+  (20 bytes a triangle against 6) and built 12× slower. Nothing allocated per pick but the loci.
 - **Opt in per shape**, never by geometry: Mol\*'s planes, boxes and handles are meshes whose groups are their meaning.
   A wireframe of a mesh is not picked by triangle.
 - **The loci** is a `ShapeGroup.Loci` with `triangles` (`{ instance, index, uv }`): what reads only `groups` (labels by
@@ -40,8 +41,24 @@ layers and its labels.
 
 ## Cost
 
-Measured on the dev build, M1 Max, Chrome (numbers in `apps/prism-me/progress/2026-10-31-mesh-measure.md`).
+Measured 2026-10-31 on an M1 Max, Chrome (headless, Metal), a UV sphere of radius 500 Å (a membrane's density), one
+material. The lookup: `triangle-pick-scaling.test.ts` (heavy lane; `TRIANGLE_PICK_N=1000000` for these sizes).
 
+| Triangles | Lookup build | Lookup bytes          | Mesh's own (CPU) | A pick (p50 / p95) |
+| --------- | ------------ | --------------------- | ---------------- | ------------------ |
+| 1 M       | 24 ms        | 6.0 MB (6 B/triangle) | 26 MB            | 30 µs / 76 µs      |
+| 4 M       | 86 ms        | 24 MB                 | 104 MB           | 47 µs / 120 µs     |
+
+`GridLookup3D` in its place: 297 ms and 20 MB at 1 M. In the app (1 M triangles, WebGPU and WebGL2): the narrowing
+under 0.1 ms (p95) a hover; the same triangles found on both backends; frames unchanged with a triangle highlighted
+(16.7 ms p50, vsync, both); one more draw call (the marked copies, 2 triangles a mark). Pointer move to hover event
+46 ms (median of 12) by group, where one material never changes, against 57 ms by triangle, where each move moves the
+highlight (a redraw); the first hover builds the lookup (and, on WebGL2, compiles the copies' program: 280 ms once).
+
+One group per triangle instead, at 1 M triangles (500 k vertices): unindexed, 3 M vertices of 28 bytes (position,
+normal, group) are 84 MB against 14 MB, with a color and a marker texel a triangle; the provoking-vertex reorder (about
+one vertex a triangle, 28 MB) depends on the backend's provoking vertex, and vertex colors would no longer
+interpolate.
 ## Open
 
 - A preview move (`setState({ transform })`) is not read by the pick: during a drag the triangle is found where the
