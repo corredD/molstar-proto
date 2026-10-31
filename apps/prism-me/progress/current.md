@@ -33,6 +33,7 @@ is not built is [../TODO.md](../TODO.md).
   not reproduced headless. 2 measured: levels off cost what prism-me costs, on up to +14 %; zoomed in is 1.5-4× the
   whole view on prism-me already. Plan, not built: skip the blend where a level is whole (~10 lines), then Oklab stored
   (~25). Waits on Ludo: retest on 1344, merge #27, go for the plan.
+- **Colors by zoom** (PR #27, with the WebGPU draw-list fix): merged by Ludo, 2026-10-31. #28 has prism-me merged in.
 - **Smooth when zoomed in** (lane `instance-cull`, `me/instance-cull` from #27's branch, port 1362; brief
   [2026-10-31-instance-cull.md](2026-10-31-instance-cull.md)): Ludo, 2026-10-31: zooming in on any cellPACK or PetWorld
   model drops the frame rate, by zoom or not; not in cellVIEW. Measured (`scripts/zoom-test.js`): the cost is the
