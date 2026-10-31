@@ -44,7 +44,7 @@ const swatch = (color: Color) =>
 function Levels() {
   const size = observableState(1);
   const props = ColorLevels.defaults;
-  const level = mapState(size, (s) =>
+  const level = mapState(size.asReadonly, (s) =>
     s < props.entity ? 'far (compartment)' : s < props.chain ? 'entity' : s < props.atom ? 'chain' : 'atom (element)',
   );
   return (
@@ -70,7 +70,7 @@ function Levels() {
             <span style="display: flex; gap: 2px; margin-right: 6px">
               {Atoms.map((e) => (
                 <span
-                  style={mapState(size, (s) =>
+                  style={mapState(size.asReadonly, (s) =>
                     swatch(
                       ColorLevels.blend(
                         p.far,
