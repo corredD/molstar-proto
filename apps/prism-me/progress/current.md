@@ -61,8 +61,16 @@ is not built is [../TODO.md](../TODO.md).
   - Round 3 (on PR #28): full detail while moving; two-phase occlusion (exact, no popping). Full detail, still / turning
     ms: WebGPU dpr 1 CellPack 0.1 11/12.5, PetWorld 0.02 45/17.6; dpr 2 CellPack 0.1 30/18, PetWorld 0.02 136/25; WebGL2
     dpr 2 close up 97-196 / 36-66. Turning met on WebGPU dpr 1 (but PetWorld 0.02), not at dpr 2 nor on WebGL2.
-  - Round 4 (running): close round 3's gate (skeptic, full re-run), then a cheaper impostor (depth write), per-sphere
-    occlusion, WebGL2 close up.
+  - Round 4 (stopped, context full; continue in a fresh lane session from the brief's "Round 4 (in progress)"): round
+    3's gate closed (skeptic: stereo was not gated, now fixed; S1 caps a frame late, S3-S5, N4 open). Measured on
+    PetWorld still: the cost is the shading of every overlapping fragment (a shader depth write disables early depth
+    tests), not the write: shading reduced 22/43 → 13/27 ms (dpr 1, 0.1/0.02). Next, designed: a depth pre-pass, then
+    shading only the fragment equal to it (about 40 % off still frames); then per-sphere occlusion, WebGL2 close up.
+    Goal not met.
+- **Decorating particles fails** (Ludo, 2026-10-31): "target does not apply to cryoet data portal particles". The
+  message is `particles.representation` type `target` on a list with no targets yet ("Applicable: spacefill,
+  orientation"). Headless on 1343/1344/1345, `cryoet.decorate` (pdb, object, none, again) and `particles.targets` all
+  work; the command "Show particles as…" offers Target on an undecorated list. Asked Ludo for the steps and the build.
 
 - **From the cellVIEW evaluation** (Ludo, 2026-10-28: all of it, testable by 2026-10-29; briefs in
   [../TODO.md](../TODO.md) `Next`; PR #15 merged with the spec, the evaluation and the mock). Started 2026-10-29, in
