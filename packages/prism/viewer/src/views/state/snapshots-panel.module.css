@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* The Structure tab's shape (structure-tab.module.css): header actions, a list that scrolls, an editor at a fixed height. */
@@ -30,7 +31,7 @@
 /* The header's buttons, as the Structure tab's: an icon and a word while they fit, the icons alone when narrow. */
 @container (width < 280px) {
   .actions > button:has(.actionLabel) {
-    width: 24px;
+    width: calc(24px * var(--msp-ui-scale, 1));
     padding: 0;
   }
 
@@ -79,7 +80,7 @@
 /* The snapshots: rows like the scene tree's (scene-tree.module.css). */
 .list {
   flex: 1 1 0;
-  min-height: 80px;
+  min-height: calc(80px * var(--msp-ui-scale, 1));
 }
 
 .listContent {
@@ -106,7 +107,7 @@
   align-items: center;
   gap: var(--msp-space-3);
   min-width: 0;
-  height: max(28px, var(--msp-touch-target, 0px));
+  height: max(calc(28px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-1) 0 0;
   border-radius: var(--msp-radius-md);
 
@@ -158,8 +159,8 @@
 .grip {
   display: grid;
   place-items: center;
-  width: 14px;
-  height: 22px;
+  width: calc(14px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-subtle);
   cursor: grab;
   touch-action: none;
@@ -211,8 +212,8 @@
 
 .thumb {
   flex: none;
-  width: 22px;
-  height: 16px;
+  width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(16px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   box-shadow: inset 0 0 0 1px var(--msp-glass-edge);
 }
@@ -260,8 +261,8 @@
 .action {
   display: grid;
   place-items: center;
-  width: max(24px, var(--msp-touch-target, 0px));
-  height: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   opacity: 0;
@@ -286,10 +287,10 @@
 /* A row's menu: inline under the row, like the scene tree's. */
 .menuItem {
   display: grid;
-  grid-template-columns: 14px 1fr;
+  grid-template-columns: calc(14px * var(--msp-ui-scale, 1)) 1fr;
   align-items: center;
   gap: var(--msp-space-3);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
@@ -323,7 +324,7 @@
 /* The editor: always there at a fixed height, a hairline above it (the Structure tab's inspector). */
 .inspector {
   flex: none;
-  height: clamp(200px, 45%, 440px);
+  height: clamp(calc(200px * var(--msp-ui-scale, 1)), 45%, calc(440px * var(--msp-ui-scale, 1)));
   margin: 0 calc(-1 * var(--msp-space-2));
   border-top: 1px solid var(--msp-glass-edge);
 }
@@ -356,7 +357,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 26px;
+  min-height: calc(26px * var(--msp-ui-scale, 1));
 }
 
 .inspectorTitle {
@@ -388,7 +389,7 @@
   grid-template-columns: var(--msp-label-width) minmax(0, 1fr);
   align-items: center;
   gap: var(--msp-space-3);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
 }
 
 .label {
@@ -410,7 +411,7 @@
 }
 
 .textarea {
-  min-height: 72px;
+  min-height: calc(72px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2) var(--msp-space-3);
   border: 0;
   border-radius: var(--msp-radius-md);

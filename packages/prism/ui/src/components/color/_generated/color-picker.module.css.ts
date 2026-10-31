@@ -42,20 +42,20 @@ defineStyles('components/color/color-picker.module.css', `@layer msp.components 
 }
 
 .msp-color-color-picker-field {
+  height: calc(96px * var(--msp-ui-scale, 1));
   background: linear-gradient(#ffffffe6, #fff0 50%, #0000 50%, #000000e6), linear-gradient(to right, red, #ff0, #0f0, #0ff, #00f, #f0f, red);
-  height: 96px;
 }
 
 .msp-color-color-picker-greys {
+  height: calc(12px * var(--msp-ui-scale, 1));
   background: linear-gradient(to right, #000, #fff);
-  height: 12px;
 }
 
 .msp-color-color-picker-marker {
+  width: calc(10px * var(--msp-ui-scale, 1));
+  height: calc(10px * var(--msp-ui-scale, 1));
   pointer-events: none;
   border-radius: 50%;
-  width: 10px;
-  height: 10px;
   position: absolute;
   translate: -50% -50%;
   box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.5px #00000080;
@@ -68,9 +68,9 @@ defineStyles('components/color/color-picker.module.css', `@layer msp.components 
 }
 
 .msp-color-color-picker-swatch {
+  height: calc(16px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   min-width: 0;
-  height: 16px;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 88%);
   transition: transform var(--msp-motion-fast) var(--msp-ease);
 
@@ -96,16 +96,16 @@ defineStyles('components/color/color-picker.module.css', `@layer msp.components 
 }
 
 .msp-color-color-picker-preview {
+  width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 22px;
-  height: 22px;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 88%);
   flex: none;
 }
 
 .msp-color-color-picker-text {
   min-width: 0;
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-control);

@@ -36,10 +36,10 @@ defineStyles('viewer/views/common/quick-controls.module.css', `@layer msp.compon
 }
 
 .msp-viewer-quick-controls-swatch {
-  border-radius: var(--msp-radius-sm);
   min-width: 0;
-  max-width: 22px;
-  height: 18px;
+  max-width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(18px * var(--msp-ui-scale, 1));
+  border-radius: var(--msp-radius-sm);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--msp-color-text), transparent 88%);
   transition: transform var(--msp-motion-fast) var(--msp-ease);
   flex: 1 1 0;
@@ -55,9 +55,9 @@ defineStyles('viewer/views/common/quick-controls.module.css', `@layer msp.compon
 }
 
 .msp-viewer-quick-controls-more {
+  width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 22px;
-  height: 22px;
   color: var(--msp-color-text-muted);
   flex: none;
   place-items: center;
@@ -81,7 +81,7 @@ defineStyles('viewer/views/common/quick-controls.module.css', `@layer msp.compon
 .msp-viewer-quick-controls-range {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-subtle);
   font-size: var(--msp-font-size-xs);
   display: flex;
@@ -94,50 +94,50 @@ defineStyles('viewer/views/common/quick-controls.module.css', `@layer msp.compon
 
 .msp-viewer-quick-controls-slider {
   --msp-range-fill: color-mix(in oklab, var(--msp-color-text-muted), transparent 45%);
+  min-width: 0;
+  height: calc(16px * var(--msp-ui-scale, 1));
   -webkit-appearance: none;
   appearance: none;
   cursor: pointer;
   background: none;
   flex: 1;
-  min-width: 0;
-  height: 16px;
 
   &::-webkit-slider-runnable-track {
+    height: calc(3px * var(--msp-ui-scale, 1));
     background: linear-gradient(to right,
       var(--msp-range-fill) var(--msp-progress, 0%),
       var(--msp-color-pressed) var(--msp-progress, 0%));
     border-radius: 1.5px;
-    height: 3px;
   }
 
   &::-webkit-slider-thumb {
+    width: calc(10px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
+    margin-top: calc(-3.5px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text-muted);
     -webkit-appearance: none;
     appearance: none;
     border-radius: 50%;
-    width: 10px;
-    height: 10px;
-    margin-top: -3.5px;
   }
 
   &::-moz-range-track {
+    height: calc(3px * var(--msp-ui-scale, 1));
     background: var(--msp-color-pressed);
     border-radius: 1.5px;
-    height: 3px;
   }
 
   &::-moz-range-progress {
+    height: calc(3px * var(--msp-ui-scale, 1));
     background: var(--msp-range-fill);
     border-radius: 1.5px;
-    height: 3px;
   }
 
   &::-moz-range-thumb {
+    width: calc(10px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text-muted);
     border: 0;
     border-radius: 50%;
-    width: 10px;
-    height: 10px;
   }
 }
 

@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Observable } from 'rxjs';
@@ -22,6 +23,7 @@ import {
 import { batch, type ObservableState, observableState } from '../reactive/observable-state.js';
 import { ReactiveModel } from '../reactive/reactive-model.js';
 import type { ReadonlyState } from '../reactive/readonly-state.js';
+import { UIScaleModel } from './ui-scale.js';
 
 export { type DockId, DockIds, type ShellMode } from '../managers/view-state.js';
 
@@ -144,11 +146,18 @@ export interface ShellOptions {
    * has no control for it and it is not part of the kept layout.
    */
   toolbar?: 'auto' | 'expanded' | 'collapsed';
+  /**
+   * How large the UI is drawn (styling.md §6): the host makes it (with the person's kept value) and sets it on the
+   * element the UI is themed by (`UIScaleModel.applyTo`); the shell's view scales its own px by it (the rail, the
+   * canvas edge). Absent, 100 %.
+   */
+  uiScale?: UIScaleModel;
 }
 
 /**
  * Px a band tab's backdrop (the canvas' own color behind the sequence) fades out over below its content, so the
- * structure passes under it faded, with no hard cut. The band's view keeps this much clear at its bottom.
+ * structure passes under it faded, with no hard cut. The band's view keeps this much clear at its bottom. Unscaled on
+ * purpose: the band is Seq*'s, which does not follow the UI scale (styling.md §6).
  */
 export const BandFadePx = 28;
 
@@ -346,9 +355,12 @@ export class ShellModel extends ReactiveModel {
   readonly #compactWidth: number;
   readonly #toolbarOption: 'auto' | 'expanded' | 'collapsed';
   readonly #toolbarCollapsed = observableState(false);
+  /** How large the UI is drawn (styling.md §6; `ShellOptions.uiScale`). */
+  readonly uiScale: UIScaleModel;
 
   constructor(options: ShellOptions = {}) {
     super();
+    this.uiScale = options.uiScale ?? new UIScaleModel();
     this.#compactWidth = options.compactWidth ?? 720;
     this.#toolbarOption = options.toolbar ?? 'auto';
     this.#viewState = options.viewState ?? new ViewStateManager(layoutOptions(options));

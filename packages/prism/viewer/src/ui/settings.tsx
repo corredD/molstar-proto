@@ -6,11 +6,22 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { bind, domView, onCleanup, SectionList, SettingsTab, type ShellTab, Show } from '@molstar/prism-ui';
+import {
+  bind,
+  domView,
+  onCleanup,
+  SectionList,
+  SettingsTab,
+  type ShellTab,
+  Show,
+  type UIScaleModel,
+  UIScaleRow,
+} from '@molstar/prism-ui';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
-import type { SettingsGroup, SettingsModel } from '@molstar/prism-ui/model/settings';
+import type { SettingsGroup, SettingsModel, SettingsRow } from '@molstar/prism-ui/model/settings';
 import { distinctUntilChanged, map, type Observable } from 'rxjs';
 import type { ViewerApi } from '../api/area.js';
 import type { ViewerManagers } from '../api/managers.js';
@@ -57,7 +68,7 @@ export function settingsTab(
       );
       return (
         <Show when={shape} fallback={() => <SettingsTab model={{ groups: [] }} more={more} />}>
-          {() => <SettingsTab model={modelOf(current(), live, api)} more={more} />}
+          {() => <SettingsTab model={modelOf(current(), live, api, ctx.shell.uiScale)} more={more} />}
         </Show>
       );
     }),
@@ -69,7 +80,17 @@ function modelOf(
   groups: readonly SettingsGroupState[],
   live: Observable<SettingsGroupState[]>,
   api: ViewerApi,
+  uiScale: UIScaleModel,
 ): SettingsModel {
+  // The UI's own settings, first in Appearance (prism-ui styling.md §6): not the plugin's, so not through `settings.set`
+  // nor a step in the History.
+  const appearanceRows: readonly SettingsRow[] = [
+    {
+      label: 'UI scale',
+      keywords: 'size text larger smaller readable',
+      view: () => <UIScaleRow scale={uiScale} />,
+    },
+  ];
   const forms = new Map<string, ParamsFormModel>();
   // The fields edited in each group, until their debounce is over and they are sent.
   const edited = new Map<string, Set<string>>();
@@ -110,12 +131,30 @@ function modelOf(
       },
     });
     forms.set(g.id, form);
-    return { id: g.id, title: g.title, icon: g.icon, form, wideLabels: g.wideLabels };
+    return {
+      id: g.id,
+      title: g.title,
+      icon: g.icon,
+      form,
+      wideLabels: g.wideLabels,
+      ...(g.id === 'appearance' ? { rows: appearanceRows } : {}),
+    };
   });
 
   bind(live, (gs) => {
     latest = gs;
     for (const g of gs) if (!busy.get(g.id) && !edits.has(g.id)) load(g.id);
   });
+  // No canvas (it could not start), no canvas groups: Appearance holds the UI's rows alone, last (the host's groups keep
+  // their order, the first open).
+  if (!groups.some((g) => g.id === 'appearance')) {
+    model.push({
+      id: 'appearance',
+      title: 'Appearance',
+      icon: 'palette',
+      form: new ParamsFormModel({}, {}),
+      rows: appearanceRows,
+    });
+  }
   return { groups: model };
 }

@@ -56,7 +56,7 @@ defineStyles('viewer/views/home/kept-records.module.css', `@layer msp.components
   align-items: center;
   gap: var(--msp-space-3);
   min-width: 0;
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2) 0 var(--msp-inset);
   color: var(--msp-color-text);
   text-align: left;

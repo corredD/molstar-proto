@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { classes } from './_generated/icon.module.css.js';
@@ -52,6 +53,9 @@ export function Icon(props: IconProps): SVGSVGElement {
   const size = String(props.size ?? DEFAULT_SIZE);
   svg.setAttribute('width', size);
   svg.setAttribute('height', size);
+  // The size again for CSS, which multiplies it by the UI scale (icon.module.css, styling.md §6); the attributes stay
+  // for where Prism's styles are not loaded, and a class that sizes the icon still wins.
+  svg.style.setProperty('--msp-icon-px', `${size}px`);
   svg.setAttribute('class', props.class ? `${classes.icon} ${props.class}` : classes.icon);
   if (props.label !== undefined) {
     svg.setAttribute('role', 'img');

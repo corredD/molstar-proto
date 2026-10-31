@@ -21,13 +21,13 @@ export const classes = {
 
 defineStyles('components/action-footer/action-footer.module.css', `@layer msp.components {
 .msp-action-footer-footer {
-  height: 30px;
+  height: calc(30px * var(--msp-ui-scale, 1));
   margin: var(--msp-space-1) calc(-1 * var(--msp-space-3)) calc(-1 * var(--msp-space-3));
   display: flex;
 }
 
 .msp-action-footer-reset {
-  width: 32px;
+  width: calc(32px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-subtle);
   flex: none;
   place-items: center;

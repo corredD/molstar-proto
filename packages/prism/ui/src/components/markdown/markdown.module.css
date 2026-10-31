@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .markdown {
@@ -80,7 +81,7 @@
 
   & audio {
     width: 100%;
-    height: 32px;
+    height: calc(32px * var(--msp-ui-scale, 1));
   }
 }
 

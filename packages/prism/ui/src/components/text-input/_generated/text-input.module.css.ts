@@ -29,7 +29,7 @@ defineStyles('components/text-input/text-input.module.css', `@layer msp.componen
   margin: 0;
 
   &[data-size="sm"] {
-    height: 24px;
+    height: calc(24px * var(--msp-ui-scale, 1));
   }
 
   &:hover {

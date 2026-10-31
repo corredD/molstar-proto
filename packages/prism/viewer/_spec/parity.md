@@ -68,7 +68,7 @@ state behind a row: [state.md](state.md). The code is the truth for how.
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
 | sequence viewer          | the sequence band; its structure, tracks and chains in the structure tree's Sequence node ([sequence.md](sequence.md) §8.1) | `sequence.*`             |
 | Snapshots                | Snapshots tab                                                                                                               | `snapshot.*`             |
-| Settings, behaviors tree | Settings tab's groups                                                                                                       | `settings.*`             |
+| Settings, behaviors tree | Settings tab's groups; Appearance leads with the UI's own UI scale (prism-ui styling.md §6, not a plugin setting)           | `settings.*`             |
 | Help                     | Help tab: prose (`views/help/help-prose.tsx`), bindings (`ui/bindings.ts`)                                                  | —                        |
 | layout                   | the shell                                                                                                                   | `options.ui.*`, `view.*` |
 | keyboard                 | the plugin's canvas keys; scoped command shortcuts (README decision 29)                                                     | —                        |

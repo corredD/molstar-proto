@@ -189,6 +189,13 @@ section); an entry leaves when it is done (its spec section says so then). The s
   performance story.
 - The subscription guard covers prism-ui only (`ui/src/_test/subscriptions.test.ts`); the other Prism packages want it.
 - The `--msp-ink` tokens are unused outside the canvas layer.
+- The UI scale ([styling.md §6](ui/_spec/styling.md)) does not reach: the container queries' thresholds (`@container`
+  takes no `var()`: the canvas's bottom bar at 560px, `canvas.module.css`; the rail's steps at 619 and 529px,
+  `dock.module.css`, though `fitRail` counts its buttons at the scale; Snapshots at 280px, the Structure tab at 296px;
+  the assistant inspector's at 560–760px), so a scaled UI switches to its narrow layouts later than it should;
+  `ShellOptions.compactWidth` (720px), the same; the docks' default sizes (the right panel's 340px, kept sizes apart),
+  so at 150 % a panel feels narrow until widened; sizes set inline in TSX (`style={{}}`); an allocation case for `Icon`
+  in `test:perf` (it now writes `--msp-icon-px`; mount-time, not a hot step).
 
 ## Missing: the agent and the assistant
 

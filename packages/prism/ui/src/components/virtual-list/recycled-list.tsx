@@ -6,6 +6,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { nextSlice, sliceHasRoom } from '../../dom/control-flow.js';
@@ -233,7 +234,8 @@ export function RecycledList<T>(props: {
   let measured: HTMLElement | undefined;
   const rows = observeResize(undefined, (list) => {
     const h = list[list.length - 1].contentRect.height;
-    if (h > 0 && Math.abs(h - rowHeight.value) > 0.5) rowHeight.set(h);
+    // Any difference (styling.md §6): a row 0.4px off its guess drifts 400px by row 1000.
+    if (h > 0 && Math.abs(h - rowHeight.value) > 0.001) rowHeight.set(h);
   });
   const observe = (el: HTMLElement) => {
     if (measured || !rows) return;

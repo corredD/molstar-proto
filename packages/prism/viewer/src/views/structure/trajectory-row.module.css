@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* A trajectory's scrubber, ‹ ▶ ›: on its row (compact, the row's height) and in the inspector. Quiet as the canvas'
@@ -18,8 +19,8 @@
 
 .range {
   flex: 1;
-  min-width: 40px;
-  height: 16px;
+  min-width: calc(40px * var(--msp-ui-scale, 1));
+  height: calc(16px * var(--msp-ui-scale, 1));
   margin: 0 var(--msp-space-1);
   background: transparent;
   appearance: none;
@@ -27,7 +28,7 @@
   cursor: pointer;
 
   &::-webkit-slider-runnable-track {
-    height: 2px;
+    height: calc(2px * var(--msp-ui-scale, 1));
     border-radius: 1px;
     background: linear-gradient(
       to right,
@@ -37,9 +38,9 @@
   }
 
   &::-webkit-slider-thumb {
-    width: 10px;
-    height: 10px;
-    margin-top: -4px; /* off-scale: the thumb centred on the track */
+    width: calc(10px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
+    margin-top: calc(-4px * var(--msp-ui-scale, 1)); /* off-scale: the thumb centred on the track */
     border-radius: 50%;
     background: var(--msp-color-text);
     appearance: none;
@@ -47,19 +48,19 @@
   }
 
   &::-moz-range-track {
-    height: 2px;
+    height: calc(2px * var(--msp-ui-scale, 1));
     border-radius: 1px;
     background: var(--msp-color-border-strong);
   }
 
   &::-moz-range-progress {
-    height: 2px;
+    height: calc(2px * var(--msp-ui-scale, 1));
     background: var(--msp-color-text-muted);
   }
 
   &::-moz-range-thumb {
-    width: 10px;
-    height: 10px;
+    width: calc(10px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
     border: none;
     border-radius: 50%;
     background: var(--msp-color-text);
@@ -70,8 +71,8 @@
   display: inline-grid;
   flex: none;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0;
   border: none;
   border-radius: var(--msp-radius-md);
@@ -88,8 +89,8 @@
 
 /* On the row: the row's height, its buttons as small as the row's own. */
 .compact .button {
-  width: 22px;
-  height: 22px;
+  width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
 }
 
 .controls {

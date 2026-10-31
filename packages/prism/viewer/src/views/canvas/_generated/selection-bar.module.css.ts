@@ -30,8 +30,8 @@ defineStyles('viewer/views/canvas/selection-bar.module.css', `@layer msp.compone
 }
 
 .msp-viewer-selection-bar-unfocus {
-  width: max(34px, var(--msp-touch-target, 0px));
-  height: max(34px, var(--msp-touch-target, 0px));
+  width: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-lg);
   background: var(--msp-glass-bg);
   box-shadow: var(--msp-glass-shadow);
@@ -49,7 +49,7 @@ defineStyles('viewer/views/canvas/selection-bar.module.css', `@layer msp.compone
 }
 
 .msp-viewer-selection-bar-bar {
-  height: max(34px, var(--msp-touch-target, 0px));
+  height: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-lg);
   background: var(--msp-glass-bg);
   box-shadow: var(--msp-glass-shadow);
@@ -85,16 +85,16 @@ defineStyles('viewer/views/canvas/selection-bar.module.css', `@layer msp.compone
 }
 
 .msp-viewer-selection-bar-menuMark {
+  right: calc(5px * var(--msp-ui-scale, 1));
+  bottom: calc(5px * var(--msp-ui-scale, 1));
   opacity: .45;
   border-top: 4px solid #0000;
   border-right: 4px solid;
   position: absolute;
-  bottom: 5px;
-  right: 5px;
 }
 
 .msp-viewer-selection-bar-action {
-  width: max(34px, var(--msp-touch-target, 0px));
+  width: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: 0 var(--msp-radius-lg) var(--msp-radius-lg) 0;
   height: 100%;
   color: var(--msp-color-text-muted);
@@ -118,7 +118,7 @@ defineStyles('viewer/views/canvas/selection-bar.module.css', `@layer msp.compone
 }
 
 .msp-viewer-selection-bar-menuCard {
-  min-width: 200px;
+  min-width: calc(200px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-glass-panel-bg);

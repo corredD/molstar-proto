@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .contents {
@@ -15,7 +16,7 @@
 /* The counts: figures side by side, each its value over its name. */
 .counts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(calc(64px * var(--msp-ui-scale, 1)), 1fr));
   gap: var(--msp-space-1);
   margin: 0;
 }
@@ -56,7 +57,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-3);
-  min-height: 40px;
+  min-height: calc(40px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-1) var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   text-align: left;
@@ -90,8 +91,8 @@
 /* The entity's kind: a dot in its color. */
 .dot {
   flex: none;
-  width: 10px;
-  height: 10px;
+  width: calc(10px * var(--msp-ui-scale, 1));
+  height: calc(10px * var(--msp-ui-scale, 1));
   border-radius: 50%;
   background: var(--msp-color-text-subtle);
 }

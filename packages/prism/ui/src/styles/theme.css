@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /*
@@ -198,24 +199,29 @@
     /* Type. */
     --msp-font-sans: "Helvetica Neue", "Segoe UI", Helvetica, "Source Sans Pro", Arial, sans-serif;
     --msp-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-    --msp-font-size-xs: 11px;
-    --msp-font-size-sm: 12px;
-    --msp-font-size-md: 14px;
-    --msp-font-size-lg: 16px;
+    --msp-font-size-xs: calc(11px * var(--msp-ui-scale, 1));
+    --msp-font-size-sm: calc(12px * var(--msp-ui-scale, 1));
+    --msp-font-size-md: calc(14px * var(--msp-ui-scale, 1));
+    --msp-font-size-lg: calc(16px * var(--msp-ui-scale, 1));
     --msp-line-height: 1.4;
 
-    /* Size. */
-    --msp-row-height: 32px;
-    --msp-control-height: 28px;
-    --msp-label-width: 110px;
+    /* Size. Every size token is its 100 % size times the UI scale (styling.md §6: `--msp-ui-scale`, set by the shell on
+       the element the UI is themed by), so what sizes by tokens grows with it; 1px hairlines and shadows do not. */
+    --msp-row-height: calc(32px * var(--msp-ui-scale, 1));
+    --msp-control-height: calc(28px * var(--msp-ui-scale, 1));
+    --msp-label-width: calc(110px * var(--msp-ui-scale, 1));
+    /* A virtual list's row (the trees): whole pixels at every scale, as the list places rows by index × height. */
+    --msp-list-row: round(calc(26px * var(--msp-ui-scale, 1)), 1px);
+    /* The rail's column: whole pixels, as the shell's layout (shell-view.tsx `RailWidth`) places the canvas by it. */
+    --msp-rail-width: round(calc(44px * var(--msp-ui-scale, 1)), 1px);
     /* Spacing (Overview › Foundations › Spacing): the scale, and the rules named after it. Every padding, margin and
        gap is one of these (styles:check rejects other px there, but 1px hairlines and values marked off-scale). */
-    --msp-space-1: 2px; /* between rows of a list, between a label and its hint */
-    --msp-space-2: 4px; /* inside a row (icon to text), between controls in a group */
-    --msp-space-3: 8px; /* between groups in a form, a card's inner gap */
-    --msp-space-4: 12px; /* a card's padding, between sections */
-    --msp-space-5: 16px; /* between blocks of a page */
-    --msp-space-6: 24px; /* empty states, large separations */
+    --msp-space-1: calc(2px * var(--msp-ui-scale, 1)); /* between rows of a list, between a label and its hint */
+    --msp-space-2: calc(4px * var(--msp-ui-scale, 1)); /* inside a row (icon to text), between controls in a group */
+    --msp-space-3: calc(8px * var(--msp-ui-scale, 1)); /* between groups in a form, a card's inner gap */
+    --msp-space-4: calc(12px * var(--msp-ui-scale, 1)); /* a card's padding, between sections */
+    --msp-space-5: calc(16px * var(--msp-ui-scale, 1)); /* between blocks of a page */
+    --msp-space-6: calc(24px * var(--msp-ui-scale, 1)); /* empty states, large separations */
     /* Where text starts inside a control or a row (fields, selects, buttons, tree rows): text lines up across them. */
     --msp-inset: var(--msp-space-3);
     /* A panel's content inset at its sides and bottom: rows and blocks inside pad to --msp-inset, so their text lines
@@ -224,13 +230,13 @@
     /* The canvas's margin for what floats over it (the rail, the toolbar, cards, the status column). */
     --msp-canvas-edge: var(--msp-space-3);
     /* Icon widths, for indents that line text up after an icon (a tree's chevron, a row's kind icon). */
-    --msp-icon-sm: 14px;
-    --msp-icon-md: 15px;
+    --msp-icon-sm: calc(14px * var(--msp-ui-scale, 1));
+    --msp-icon-md: calc(15px * var(--msp-ui-scale, 1));
     /* Radii: lg for every surface floating over the canvas (cards, pills, the rail), md for controls and rows inside
        a surface, sm only for small inline marks (code, chips in text). */
     --msp-radius-sm: 2px;
-    --msp-radius-md: 4px;
-    --msp-radius-lg: 8px;
+    --msp-radius-md: calc(4px * var(--msp-ui-scale, 1));
+    --msp-radius-lg: calc(8px * var(--msp-ui-scale, 1));
 
     /* Elevation and layers. */
     --msp-shadow-float: 0 2px 8px rgb(0 0 0 / 0.18);
@@ -251,6 +257,17 @@
     /* Content that opens or closes: eases in as well as out, so the growth is even (the quick ease above is mostly
        done in its first frames, which reads as a jump on a tall block). */
     --msp-ease-reveal: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* A browser without CSS round(): the rounded tokens unrounded (a custom property takes any value, so a plain one
+     before it in the same rule would not be a fallback; what uses an invalid one would lose its whole declaration). */
+  @supports not (width: round(1.5px, 1px)) {
+    :root,
+    :host,
+    [data-msp-theme] {
+      --msp-list-row: calc(26px * var(--msp-ui-scale, 1));
+      --msp-rail-width: calc(44px * var(--msp-ui-scale, 1));
+    }
   }
 
   /* High contrast: muted text and borders stay readable (WCAG 2.2 AA and more), the glass is opaque. The theme, and

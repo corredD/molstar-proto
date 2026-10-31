@@ -62,9 +62,9 @@ defineStyles('viewer/views/structure/structure-tab.module.css', `@layer msp.comp
 }
 
 .msp-viewer-structure-tab-tree {
+  min-height: calc(80px * var(--msp-ui-scale, 1));
   flex-direction: column;
   flex: 1 1 0;
-  min-height: 80px;
   display: flex;
 }
 
@@ -77,7 +77,7 @@ defineStyles('viewer/views/structure/structure-tab.module.css', `@layer msp.comp
 
 @container (width < 296px) {
   .msp-viewer-structure-tab-actions > button:has(.msp-viewer-structure-tab-actionLabel) {
-    width: max(24px, var(--msp-touch-target, 0px));
+    width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
     padding: 0;
   }
 
@@ -92,7 +92,7 @@ defineStyles('viewer/views/structure/structure-tab.module.css', `@layer msp.comp
 }
 
 .msp-viewer-structure-tab-inspector {
-  height: clamp(180px, 42%, 420px);
+  height: clamp(calc(180px * var(--msp-ui-scale, 1)), 42%, calc(420px * var(--msp-ui-scale, 1)));
   margin: calc(-1 * var(--msp-space-2)) calc(-1 * var(--msp-space-2)) 0;
   border-top: 1px solid var(--msp-glass-edge);
   flex: none;
@@ -125,7 +125,7 @@ defineStyles('viewer/views/structure/structure-tab.module.css', `@layer msp.comp
 .msp-viewer-structure-tab-inspectorHeader {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 26px;
+  min-height: calc(26px * var(--msp-ui-scale, 1));
   display: flex;
 }
 
@@ -189,7 +189,7 @@ defineStyles('viewer/views/structure/structure-tab.module.css', `@layer msp.comp
 .msp-viewer-structure-tab-inspectorAction {
   align-items: center;
   gap: var(--msp-space-3);
-  height: max(28px, var(--msp-touch-target, 0px));
+  height: max(calc(28px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -263,9 +263,9 @@ defineStyles('viewer/views/structure/structure-tab.module.css', `@layer msp.comp
 }
 
 .msp-viewer-structure-tab-searchChipRemove {
+  width: calc(20px * var(--msp-ui-scale, 1));
+  height: calc(20px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-md);
-  width: 20px;
-  height: 20px;
   color: inherit;
   place-items: center;
   display: grid;
@@ -308,7 +308,7 @@ defineStyles('viewer/views/structure/structure-tab.module.css', `@layer msp.comp
   align-items: center;
   gap: var(--msp-space-2);
   min-width: 0;
-  height: max(30px, var(--msp-touch-target, 0px));
+  height: max(calc(30px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   text-align: left;
   flex: 1;
@@ -335,8 +335,8 @@ defineStyles('viewer/views/structure/structure-tab.module.css', `@layer msp.comp
 }
 
 .msp-viewer-structure-tab-childChevron {
-  width: 24px;
-  height: 28px;
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(28px * var(--msp-ui-scale, 1));
   margin-right: var(--msp-space-1);
   color: var(--msp-color-text-subtle);
   flex: none;
@@ -345,9 +345,9 @@ defineStyles('viewer/views/structure/structure-tab.module.css', `@layer msp.comp
 }
 
 .msp-viewer-structure-tab-childEye {
+  width: calc(28px * var(--msp-ui-scale, 1));
+  height: calc(28px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 28px;
-  height: 28px;
   color: var(--msp-color-text-muted);
   opacity: 0;
   flex: none;

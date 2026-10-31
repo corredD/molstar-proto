@@ -6,6 +6,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Structure } from '@molstar/model/model/structure';
@@ -72,6 +73,15 @@ const FadePx = 18;
 
 const NoLines: readonly string[] = [];
 
+/**
+ * A size token's 100 % px: `12px`, or the scaled form `calc(12px * …)` (prism-ui styling.md §6). Seq* draws its letters
+ * at the unscaled size: the band does not follow the UI scale.
+ */
+export function tokenBasePx(token: string): number | undefined {
+  const px = /^\s*(?:calc\(\s*)?(\d*\.?\d+)px/.exec(token)?.[1];
+  return px ? Number(px) : undefined;
+}
+
 /** A Seq* hover label as the shell's lines: the title, then `key: value` per line. */
 export function labelLines(label: HoverLabel | null): readonly string[] {
   if (!label) return NoLines;
@@ -121,8 +131,8 @@ export function SequenceControl(props: SequenceControlProps) {
     const css = getComputedStyle(surface);
     const mono = css.getPropertyValue('--msp-font-mono').trim();
     const ui = css.getPropertyValue('--msp-font-sans').trim();
-    const size = Number.parseFloat(css.getPropertyValue('--msp-font-size-sm'));
-    if (mono && ui) viewer.setFonts({ mono, ui, ...(size > 0 ? { size } : {}) });
+    const size = tokenBasePx(css.getPropertyValue('--msp-font-size-sm'));
+    if (mono && ui) viewer.setFonts({ mono, ui, ...(size !== undefined && size > 0 ? { size } : {}) });
   });
 
   // The link while this control is rendered (link.ts): subscribed on mount, dropped on cleanup.

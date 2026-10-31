@@ -4,8 +4,15 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .icon {
   flex-shrink: 0;
+}
+
+/* Its `size` times the UI scale (styling.md §6). No specificity (`:where`): a class that sizes an icon wins. */
+:where(.icon) {
+  width: calc(var(--msp-icon-px, 18px) * var(--msp-ui-scale, 1));
+  height: calc(var(--msp-icon-px, 18px) * var(--msp-ui-scale, 1));
 }

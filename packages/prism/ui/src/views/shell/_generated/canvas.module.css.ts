@@ -84,9 +84,9 @@ export const classes = {
 
 defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 .msp-shell-canvas-frame {
+  width: var(--msp-rail-width);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-glass-bg);
-  width: 44px;
   box-shadow: var(--msp-glass-shadow);
   -webkit-backdrop-filter: var(--msp-glass-filter);
   flex-direction: column;
@@ -109,7 +109,7 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 
 .msp-shell-canvas-tool {
   width: 100%;
-  height: max(var(--msp-rail-button, 40px), var(--msp-touch-target, 0px));
+  height: max(var(--msp-rail-button, calc(40px * var(--msp-ui-scale, 1))), var(--msp-touch-target, 0px));
   color: var(--msp-color-text-muted);
   place-items: center;
   display: grid;
@@ -128,10 +128,11 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 
 .msp-shell-canvas-card {
   top: var(--msp-canvas-edge);
-  right: var(--msp-canvas-panel-right, 64px);
+  right: var(--msp-canvas-panel-right, calc(64px * var(--msp-ui-scale, 1)));
   bottom: calc(var(--msp-canvas-edge) + var(--msp-corner-room, 0px));
   z-index: var(--msp-z-overlay);
-  width: min(var(--msp-right-panel-width, 340px), calc(100% - 96px));
+  width: min(var(--msp-right-panel-width, calc(340px * var(--msp-ui-scale, 1))),
+    calc(100% - calc(96px * var(--msp-ui-scale, 1))));
   border-radius: var(--msp-radius-lg);
   contain: content;
   animation: msp-shell-canvas-card-in var(--msp-motion-base) var(--msp-ease);
@@ -149,7 +150,7 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 
   [data-pinned] & {
     top: 0;
-    right: calc(var(--msp-canvas-rail-inset, 52px) - var(--msp-canvas-edge));
+    right: calc(var(--msp-canvas-rail-inset, calc(52px * var(--msp-ui-scale, 1))) - var(--msp-canvas-edge));
     background: var(--msp-pinned-bg);
     --msp-surface: var(--msp-pinned-bg);
     -webkit-backdrop-filter: none;
@@ -169,7 +170,7 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 .msp-shell-canvas-cardHeader {
   align-items: center;
   gap: var(--msp-space-3);
-  height: 40px;
+  height: calc(40px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-3) 0 var(--msp-space-4);
   font-weight: 600;
   display: flex;
@@ -219,7 +220,7 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-railToggle {
-  right: calc((44px - var(--msp-stack-row)) / 2);
+  right: calc((var(--msp-rail-width) - var(--msp-stack-row)) / 2);
   bottom: var(--msp-canvas-edge);
   z-index: var(--msp-z-overlay);
   pointer-events: auto;
@@ -263,40 +264,40 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
   height: var(--msp-stack-row);
 
   [data-mode="compact"] & svg {
-    width: 18px;
-    height: 18px;
+    width: calc(18px * var(--msp-ui-scale, 1));
+    height: calc(18px * var(--msp-ui-scale, 1));
   }
 
   flex: none;
 }
 
 .msp-shell-canvas-stack :is(.msp-shell-canvas-tool, button) > svg:first-child {
-  width: 18px;
-  height: 18px;
+  width: calc(18px * var(--msp-ui-scale, 1));
+  height: calc(18px * var(--msp-ui-scale, 1));
 }
 
 .msp-shell-canvas-tool[data-captioned] {
   justify-content: center;
   gap: var(--msp-space-1);
-  height: var(--msp-rail-button-captioned, 46px);
+  height: var(--msp-rail-button-captioned, calc(46px * var(--msp-ui-scale, 1)));
   flex-direction: column;
   display: flex;
 }
 
 .msp-shell-canvas-tool > svg, .msp-shell-canvas-tool > .msp-shell-canvas-face > svg {
-  width: var(--msp-rail-icon, 20px);
-  height: var(--msp-rail-icon, 20px);
+  width: var(--msp-rail-icon, calc(20px * var(--msp-ui-scale, 1)));
+  height: var(--msp-rail-icon, calc(20px * var(--msp-ui-scale, 1)));
 }
 
 .msp-shell-canvas-tool[data-captioned] > svg, .msp-shell-canvas-tool[data-captioned] > .msp-shell-canvas-face > svg {
-  width: var(--msp-rail-icon-captioned, 16px);
-  height: var(--msp-rail-icon-captioned, 16px);
+  width: var(--msp-rail-icon-captioned, calc(16px * var(--msp-ui-scale, 1)));
+  height: var(--msp-rail-icon-captioned, calc(16px * var(--msp-ui-scale, 1)));
 }
 
 .msp-shell-canvas-caption {
   color: var(--msp-color-text-subtle);
+  font-size: calc(10px * var(--msp-ui-scale, 1));
   font-variant-numeric: tabular-nums;
-  font-size: 10px;
   line-height: 1;
 }
 
@@ -309,12 +310,12 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-menuMark {
+  right: calc(5px * var(--msp-ui-scale, 1));
+  bottom: calc(5px * var(--msp-ui-scale, 1));
   opacity: .45;
   border-top: 4px solid #0000;
   border-right: 4px solid;
   position: absolute;
-  bottom: 5px;
-  right: 5px;
 }
 
 .msp-shell-canvas-toolMenu {
@@ -333,7 +334,7 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-toolMenuCard {
-  min-width: 200px;
+  min-width: calc(200px * var(--msp-ui-scale, 1));
   max-height: calc(var(--msp-menu-room) - var(--msp-space-3));
   padding: var(--msp-space-2);
   border-radius: var(--msp-radius-lg);
@@ -354,15 +355,15 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-toolMenuRow {
+  grid-template-columns: calc(16px * var(--msp-ui-scale, 1)) 1fr auto;
   align-items: center;
   gap: var(--msp-space-3);
-  min-height: 32px;
+  min-height: calc(32px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2) var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
   font-size: var(--msp-font-size-sm);
   text-align: left;
-  grid-template-columns: 16px 1fr auto;
   display: grid;
 
   &:hover:not(:disabled), &:focus-visible {
@@ -431,13 +432,14 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
   top: var(--msp-canvas-top-inset, var(--msp-canvas-edge));
   left: var(--msp-canvas-edge);
   gap: var(--msp-space-3);
-  width: min(320px, 100% - 96px);
+  width: min(calc(320px * var(--msp-ui-scale, 1)), calc(100% - calc(96px * var(--msp-ui-scale, 1))));
   display: grid;
   position: absolute;
 }
 
 :where([data-mode="compact"]) .msp-shell-canvas-lead {
-  width: min(320px, calc(100% - 36px - 3 * var(--msp-canvas-edge)));
+  width: min(calc(320px * var(--msp-ui-scale, 1)),
+    calc(100% - calc(36px * var(--msp-ui-scale, 1)) - 3 * var(--msp-canvas-edge)));
 }
 
 .msp-shell-canvas-bottom {
@@ -488,7 +490,7 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-chip {
-  height: 30px;
+  height: calc(30px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-4);
   border-radius: var(--msp-radius-lg);
   font-size: var(--msp-font-size-md);
@@ -511,7 +513,7 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
   align-items: center;
   gap: var(--msp-space-2);
   max-width: 100%;
-  height: max(34px, var(--msp-touch-target, 0px));
+  height: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 0 0 var(--msp-space-3);
   border-radius: var(--msp-radius-lg);
   color: var(--msp-color-text);
@@ -556,10 +558,10 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-progress {
+  width: calc(48px * var(--msp-ui-scale, 1));
+  height: calc(4px * var(--msp-ui-scale, 1));
   background: var(--msp-color-border);
   border-radius: 2px;
-  width: 48px;
-  height: 4px;
   overflow: hidden;
 
   & > div {
@@ -594,7 +596,7 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-pillButton {
-  width: max(34px, var(--msp-touch-target, 0px));
+  width: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   height: 100%;
   color: var(--msp-color-text-muted);
   flex: none;
@@ -609,9 +611,9 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-countdown {
+  width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
   pointer-events: none;
-  width: 22px;
-  height: 22px;
   position: absolute;
   top: 50%;
   left: 50%;
@@ -657,7 +659,7 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 
 .msp-shell-canvas-status .msp-shell-canvas-pill {
   height: auto;
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   padding-left: var(--msp-space-3);
   box-shadow: none;
   -webkit-backdrop-filter: none;
@@ -667,8 +669,8 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-status .msp-shell-canvas-pillButton {
-  width: 24px;
-  height: 24px;
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   margin-left: var(--msp-space-1);
   border-radius: var(--msp-radius-md);
 }
@@ -691,8 +693,8 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-railMenuButton {
-  width: 44px;
-  height: max(40px, var(--msp-touch-target, 0px));
+  width: var(--msp-rail-width);
+  height: max(calc(40px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
   place-items: center;
@@ -708,7 +710,7 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
   right: 0;
   bottom: calc(100% + var(--msp-space-2));
   z-index: var(--msp-z-overlay);
-  min-width: 220px;
+  min-width: calc(220px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-color-panel);
@@ -730,9 +732,9 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-cardDocked {
+  height: min(45cqh, calc(420px * var(--msp-ui-scale, 1)));
   contain: content;
   flex-direction: column;
-  height: min(45cqh, 420px);
   min-height: 0;
   display: flex;
   overflow: hidden;
@@ -758,7 +760,7 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 
 .msp-shell-canvas-busyCard {
   gap: var(--msp-space-3);
-  width: min(360px, 100%);
+  width: min(calc(360px * var(--msp-ui-scale, 1)), 100%);
   padding: var(--msp-space-4);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-color-panel);
@@ -797,9 +799,9 @@ defineStyles('views/shell/canvas.module.css', `@layer msp.components {
 }
 
 .msp-shell-canvas-busyTrack {
+  height: calc(4px * var(--msp-ui-scale, 1));
   background: var(--msp-color-control);
   border-radius: 2px;
-  height: 4px;
   overflow: hidden;
 }
 

@@ -19,7 +19,7 @@ defineStyles('styles/reset.css', `@property --msp-fade {
 @supports (animation-timeline: scroll()) {
   @keyframes msp-fade-overflow {
     from, to {
-      --msp-fade: 20px;
+      --msp-fade: calc(20px * var(--msp-ui-scale, 1));
     }
   }
 }
@@ -43,13 +43,13 @@ defineStyles('styles/reset.css', `@property --msp-fade {
     }
 
     to {
-      --msp-fade-top: 16px;
+      --msp-fade-top: calc(16px * var(--msp-ui-scale, 1));
     }
   }
 
   @keyframes msp-fade-scroll-bottom {
     from {
-      --msp-fade-bottom: 16px;
+      --msp-fade-bottom: calc(16px * var(--msp-ui-scale, 1));
     }
 
     to {

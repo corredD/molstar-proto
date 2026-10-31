@@ -49,12 +49,12 @@ defineStyles('assistant/inspector/parts.module.css', `@layer msp.components {
 .msp-assistant-parts-tab {
   align-items: baseline;
   gap: var(--msp-space-2);
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
+  line-height: calc(24px * var(--msp-ui-scale, 1));
   flex: none;
-  line-height: 24px;
   display: inline-flex;
 
   &:hover {
@@ -114,8 +114,8 @@ defineStyles('assistant/inspector/parts.module.css', `@layer msp.components {
 }
 
 .msp-assistant-parts-fact {
+  grid-template-columns: calc(96px * var(--msp-ui-scale, 1)) minmax(0, 1fr);
   gap: var(--msp-space-3);
-  grid-template-columns: 96px minmax(0, 1fr);
   line-height: 1.45;
   display: grid;
 
@@ -172,9 +172,9 @@ defineStyles('assistant/inspector/parts.module.css', `@layer msp.components {
 }
 
 .msp-assistant-parts-meter {
+  height: calc(3px * var(--msp-ui-scale, 1));
   background: var(--msp-color-control);
   border-radius: 2px;
-  height: 3px;
   display: block;
   overflow: hidden;
 }
@@ -200,8 +200,8 @@ defineStyles('assistant/inspector/parts.module.css', `@layer msp.components {
 }
 
 .msp-assistant-parts-budgetBar {
+  width: calc(64px * var(--msp-ui-scale, 1));
   flex: none;
-  width: 64px;
 
   @container (width <= 640px) {
     display: none;

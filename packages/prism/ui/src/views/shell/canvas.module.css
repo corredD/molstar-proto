@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* Floating chrome over the canvas: compact, translucent, out of the way. */
@@ -14,7 +15,7 @@
 .frame {
   display: flex;
   flex-direction: column;
-  width: 44px;
+  width: var(--msp-rail-width);
   overflow: hidden;
   border-radius: var(--msp-radius-lg);
   background: var(--msp-glass-bg);
@@ -48,7 +49,7 @@
   display: grid;
   place-items: center;
   width: 100%;
-  height: max(var(--msp-rail-button, 40px), var(--msp-touch-target, 0px));
+  height: max(var(--msp-rail-button, calc(40px * var(--msp-ui-scale, 1))), var(--msp-touch-target, 0px));
   color: var(--msp-color-text-muted);
 
   &:hover {
@@ -69,13 +70,16 @@
      everything that opens on the right (export, save state, canvas settings). */
   position: absolute;
   top: var(--msp-canvas-edge);
-  right: var(--msp-canvas-panel-right, 64px);
+  right: var(--msp-canvas-panel-right, calc(64px * var(--msp-ui-scale, 1)));
   /* Above the corner (the toolbar), as the floating panel is. */
   bottom: calc(var(--msp-canvas-edge) + var(--msp-corner-room, 0px));
   z-index: var(--msp-z-overlay);
   display: flex;
   flex-direction: column;
-  width: min(var(--msp-right-panel-width, 340px), calc(100% - 96px));
+  width: min(
+    var(--msp-right-panel-width, calc(340px * var(--msp-ui-scale, 1))),
+    calc(100% - calc(96px * var(--msp-ui-scale, 1)))
+  );
   border-radius: var(--msp-radius-lg);
   overflow: hidden;
   /* Its size is its place's, and it clips: what changes inside stays inside (styling.md §5). */
@@ -96,7 +100,7 @@
   [data-pinned] & {
     top: 0;
     /* Right against the rail (its inset less the margin). */
-    right: calc(var(--msp-canvas-rail-inset, 52px) - var(--msp-canvas-edge));
+    right: calc(var(--msp-canvas-rail-inset, calc(52px * var(--msp-ui-scale, 1))) - var(--msp-canvas-edge));
     bottom: 0;
     border-radius: 0;
     background: var(--msp-pinned-bg);
@@ -119,7 +123,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-3);
-  height: 40px;
+  height: calc(40px * var(--msp-ui-scale, 1));
   /* The title at 12px: the column the content's text starts in (4px inset, 8px of the boxes' own). */
   padding: 0 var(--msp-space-3) 0 var(--msp-space-4);
   font-weight: 600;
@@ -184,7 +188,7 @@
    the rail, ending above the corner row, slides in around it. */
 .railToggle {
   position: absolute;
-  right: calc((44px - var(--msp-stack-row)) / 2);
+  right: calc((var(--msp-rail-width) - var(--msp-stack-row)) / 2);
   bottom: var(--msp-canvas-edge);
   z-index: var(--msp-z-overlay);
   pointer-events: auto;
@@ -237,15 +241,15 @@
 
   /* Compact: the icons a size down with the buttons. */
   [data-mode="compact"] & svg {
-    width: 18px;
-    height: 18px;
+    width: calc(18px * var(--msp-ui-scale, 1));
+    height: calc(18px * var(--msp-ui-scale, 1));
   }
   flex: none;
 }
 
 .stack :is(.tool, button) > svg:first-child {
-  width: 18px;
-  height: 18px;
+  width: calc(18px * var(--msp-ui-scale, 1));
+  height: calc(18px * var(--msp-ui-scale, 1));
 }
 
 /* A tool with a caption (the command menu's ⌘K): the icon, the shortcut under it. */
@@ -254,25 +258,25 @@
   flex-direction: column;
   justify-content: center;
   gap: var(--msp-space-1);
-  height: var(--msp-rail-button-captioned, 46px);
+  height: var(--msp-rail-button-captioned, calc(46px * var(--msp-ui-scale, 1)));
 }
 
 /* The rail's steps (dock.module.css) size the icons too; the stack's own rule below is the more specific. */
 .tool > svg,
 .tool > .face > svg {
-  width: var(--msp-rail-icon, 20px);
-  height: var(--msp-rail-icon, 20px);
+  width: var(--msp-rail-icon, calc(20px * var(--msp-ui-scale, 1)));
+  height: var(--msp-rail-icon, calc(20px * var(--msp-ui-scale, 1)));
 }
 
 .tool[data-captioned] > svg,
 .tool[data-captioned] > .face > svg {
-  width: var(--msp-rail-icon-captioned, 16px);
-  height: var(--msp-rail-icon-captioned, 16px);
+  width: var(--msp-rail-icon-captioned, calc(16px * var(--msp-ui-scale, 1)));
+  height: var(--msp-rail-icon-captioned, calc(16px * var(--msp-ui-scale, 1)));
 }
 
 .caption {
   color: var(--msp-color-text-subtle);
-  font-size: 10px;
+  font-size: calc(10px * var(--msp-ui-scale, 1));
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -289,8 +293,8 @@
 
 .menuMark {
   position: absolute;
-  right: 5px;
-  bottom: 5px;
+  right: calc(5px * var(--msp-ui-scale, 1));
+  bottom: calc(5px * var(--msp-ui-scale, 1));
   border-right: 4px solid currentColor;
   border-top: 4px solid transparent;
   opacity: 0.45;
@@ -316,7 +320,7 @@
 .toolMenuCard {
   display: flex;
   flex-direction: column;
-  min-width: 200px;
+  min-width: calc(200px * var(--msp-ui-scale, 1));
   max-height: calc(var(--msp-menu-room) - var(--msp-space-3));
   padding: var(--msp-space-2);
   border-radius: var(--msp-radius-lg);
@@ -340,10 +344,10 @@
 
 .toolMenuRow {
   display: grid;
-  grid-template-columns: 16px 1fr auto;
+  grid-template-columns: calc(16px * var(--msp-ui-scale, 1)) 1fr auto;
   align-items: center;
   gap: var(--msp-space-3);
-  min-height: 32px;
+  min-height: calc(32px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2) var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -429,13 +433,16 @@
   left: var(--msp-canvas-edge);
   display: grid;
   gap: var(--msp-space-3);
-  width: min(320px, calc(100% - 96px));
+  width: min(calc(320px * var(--msp-ui-scale, 1)), calc(100% - calc(96px * var(--msp-ui-scale, 1))));
 }
 
 /* A narrow shell: the canvas stack shares the top, the column ends before it. */
 :where([data-mode="compact"]) .lead {
   /* Clear of the stack (36px) and the frame margins. */
-  width: min(320px, calc(100% - 36px - 3 * var(--msp-canvas-edge)));
+  width: min(
+    calc(320px * var(--msp-ui-scale, 1)),
+    calc(100% - calc(36px * var(--msp-ui-scale, 1)) - 3 * var(--msp-canvas-edge))
+  );
 }
 
 /* The bottom of the canvas: the status on the left, the corner (the selection above the toolbar) on the right. Its right
@@ -493,7 +500,7 @@
 
 /* Selection and focus are the work in hand: a little more presence than messages. */
 .chip {
-  height: 30px;
+  height: calc(30px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-4);
   border-radius: var(--msp-radius-lg);
   font-size: var(--msp-font-size-md);
@@ -520,7 +527,7 @@
   gap: var(--msp-space-2);
   max-width: 100%;
   /* One height for everything along the bottom of the canvas (status, tasks, the selection bar). */
-  height: max(34px, var(--msp-touch-target, 0px));
+  height: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   overflow: hidden;
   padding: 0 0 0 var(--msp-space-3);
   border-radius: var(--msp-radius-lg);
@@ -566,8 +573,8 @@
 }
 
 .progress {
-  width: 48px;
-  height: 4px;
+  width: calc(48px * var(--msp-ui-scale, 1));
+  height: calc(4px * var(--msp-ui-scale, 1));
   border-radius: 2px;
   background: var(--msp-color-border);
   overflow: hidden;
@@ -610,7 +617,7 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: max(34px, var(--msp-touch-target, 0px));
+  width: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   height: 100%;
   color: var(--msp-color-text-muted);
 
@@ -626,8 +633,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 22px;
-  height: 22px;
+  width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
   transform: translate(-50%, -50%) rotate(-90deg);
   pointer-events: none;
 
@@ -677,7 +684,7 @@
   /* Its text's own height (no box to center in). Indented as a framed pill's content would be (no frame to set it
      off the canvas edge). */
   height: auto;
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   padding-left: var(--msp-space-3);
   background: none;
   box-shadow: none;
@@ -690,8 +697,8 @@
 
 /* Frameless, its ✕ is a small rounded square around the icon, not a slice of a pill. */
 .status .pillButton {
-  width: 24px;
-  height: 24px;
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   margin-left: var(--msp-space-1);
   border-radius: var(--msp-radius-md);
 }
@@ -719,8 +726,8 @@
 .railMenuButton {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: max(40px, var(--msp-touch-target, 0px));
+  width: var(--msp-rail-width);
+  height: max(calc(40px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
 
@@ -737,7 +744,7 @@
   bottom: calc(100% + var(--msp-space-2));
   z-index: var(--msp-z-overlay);
   display: grid;
-  min-width: 220px;
+  min-width: calc(220px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-color-panel);
@@ -765,7 +772,7 @@
 .cardDocked {
   display: flex;
   flex-direction: column;
-  height: min(45cqh, 420px);
+  height: min(45cqh, calc(420px * var(--msp-ui-scale, 1)));
   min-height: 0;
   overflow: hidden;
   /* Its size is its place's, and it clips: what changes inside stays inside (styling.md §5). */
@@ -795,7 +802,7 @@
 .busyCard {
   display: grid;
   gap: var(--msp-space-3);
-  width: min(360px, 100%);
+  width: min(calc(360px * var(--msp-ui-scale, 1)), 100%);
   padding: var(--msp-space-4);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-color-panel);
@@ -834,7 +841,7 @@
 }
 
 .busyTrack {
-  height: 4px;
+  height: calc(4px * var(--msp-ui-scale, 1));
   overflow: hidden;
   border-radius: 2px;
   background: var(--msp-color-control);

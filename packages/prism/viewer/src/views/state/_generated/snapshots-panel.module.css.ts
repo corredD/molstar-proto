@@ -70,7 +70,7 @@ defineStyles('viewer/views/state/snapshots-panel.module.css', `@layer msp.compon
 
 @container (width < 280px) {
   .msp-viewer-snapshots-panel-actions > button:has(.msp-viewer-snapshots-panel-actionLabel) {
-    width: 24px;
+    width: calc(24px * var(--msp-ui-scale, 1));
     padding: 0;
   }
 
@@ -114,8 +114,8 @@ defineStyles('viewer/views/state/snapshots-panel.module.css', `@layer msp.compon
 }
 
 .msp-viewer-snapshots-panel-list {
+  min-height: calc(80px * var(--msp-ui-scale, 1));
   flex: 1 1 0;
-  min-height: 80px;
 }
 
 .msp-viewer-snapshots-panel-listContent {
@@ -141,7 +141,7 @@ defineStyles('viewer/views/state/snapshots-panel.module.css', `@layer msp.compon
   align-items: center;
   gap: var(--msp-space-3);
   min-width: 0;
-  height: max(28px, var(--msp-touch-target, 0px));
+  height: max(calc(28px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-1) 0 0;
   border-radius: var(--msp-radius-md);
   display: flex;
@@ -189,8 +189,8 @@ defineStyles('viewer/views/state/snapshots-panel.module.css', `@layer msp.compon
 }
 
 .msp-viewer-snapshots-panel-grip {
-  width: 14px;
-  height: 22px;
+  width: calc(14px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-subtle);
   cursor: grab;
   touch-action: none;
@@ -239,9 +239,9 @@ defineStyles('viewer/views/state/snapshots-panel.module.css', `@layer msp.compon
 }
 
 .msp-viewer-snapshots-panel-thumb {
+  width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(16px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 22px;
-  height: 16px;
   box-shadow: inset 0 0 0 1px var(--msp-glass-edge);
   flex: none;
 }
@@ -285,8 +285,8 @@ defineStyles('viewer/views/state/snapshots-panel.module.css', `@layer msp.compon
 }
 
 .msp-viewer-snapshots-panel-action {
-  width: max(24px, var(--msp-touch-target, 0px));
-  height: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   opacity: 0;
@@ -308,14 +308,14 @@ defineStyles('viewer/views/state/snapshots-panel.module.css', `@layer msp.compon
 }
 
 .msp-viewer-snapshots-panel-menuItem {
+  grid-template-columns: calc(14px * var(--msp-ui-scale, 1)) 1fr;
   align-items: center;
   gap: var(--msp-space-3);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   text-align: left;
-  grid-template-columns: 14px 1fr;
   display: grid;
 
   &:hover, &:focus-visible {
@@ -342,7 +342,7 @@ defineStyles('viewer/views/state/snapshots-panel.module.css', `@layer msp.compon
 }
 
 .msp-viewer-snapshots-panel-inspector {
-  height: clamp(200px, 45%, 440px);
+  height: clamp(calc(200px * var(--msp-ui-scale, 1)), 45%, calc(440px * var(--msp-ui-scale, 1)));
   margin: 0 calc(-1 * var(--msp-space-2));
   border-top: 1px solid var(--msp-glass-edge);
   flex: none;
@@ -373,7 +373,7 @@ defineStyles('viewer/views/state/snapshots-panel.module.css', `@layer msp.compon
 .msp-viewer-snapshots-panel-inspectorHeader {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 26px;
+  min-height: calc(26px * var(--msp-ui-scale, 1));
   display: flex;
 }
 
@@ -403,7 +403,7 @@ defineStyles('viewer/views/state/snapshots-panel.module.css', `@layer msp.compon
   grid-template-columns: var(--msp-label-width) minmax(0, 1fr);
   align-items: center;
   gap: var(--msp-space-3);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   display: grid;
 }
 
@@ -424,7 +424,7 @@ defineStyles('viewer/views/state/snapshots-panel.module.css', `@layer msp.compon
 }
 
 .msp-viewer-snapshots-panel-textarea {
-  min-height: 72px;
+  min-height: calc(72px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2) var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-control);

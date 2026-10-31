@@ -65,7 +65,7 @@ defineStyles('me/explorer/tree.module.css', `@layer msp.components {
 }
 
 .msp-me-tree-tree {
-  --msp-tree-indent: 14px;
+  --msp-tree-indent: calc(14px * var(--msp-ui-scale, 1));
   flex: 1 1 0;
   min-height: 0;
 }
@@ -89,7 +89,7 @@ defineStyles('me/explorer/tree.module.css', `@layer msp.components {
   align-items: center;
   gap: var(--msp-space-2);
   min-width: 0;
-  height: max(26px, var(--msp-touch-target, 0px));
+  height: max(var(--msp-list-row), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-1) 0
     calc(var(--msp-space-1) + var(--msp-tree-depth, 0) * var(--msp-tree-indent, var(--msp-icon-sm)));
   border-radius: var(--msp-radius-md);
@@ -119,8 +119,8 @@ defineStyles('me/explorer/tree.module.css', `@layer msp.components {
 }
 
 .msp-me-tree-expander {
-  width: max(24px, var(--msp-touch-target, 0px));
-  height: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-subtle);
   transition: transform var(--msp-motion-fast) var(--msp-ease);
@@ -147,10 +147,10 @@ defineStyles('me/explorer/tree.module.css', `@layer msp.components {
 }
 
 .msp-me-tree-swatch {
+  width: calc(8px * var(--msp-ui-scale, 1));
+  height: calc(8px * var(--msp-ui-scale, 1));
   border-radius: 50%;
   flex: none;
-  width: 8px;
-  height: 8px;
 }
 
 .msp-me-tree-label {
@@ -187,8 +187,8 @@ defineStyles('me/explorer/tree.module.css', `@layer msp.components {
 }
 
 .msp-me-tree-action, .msp-me-tree-slot {
-  width: max(24px, var(--msp-touch-target, 0px));
-  height: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   flex: none;
 }
 
@@ -209,8 +209,8 @@ defineStyles('me/explorer/tree.module.css', `@layer msp.components {
 }
 
 .msp-me-tree-dot {
-  width: max(24px, var(--msp-touch-target, 0px));
-  height: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   margin: 0 calc(-1 * var(--msp-space-3));
   cursor: pointer;
   border-radius: 50%;
@@ -224,7 +224,7 @@ defineStyles('me/explorer/tree.module.css', `@layer msp.components {
 }
 
 .msp-me-tree-split {
-  height: 8px;
+  height: calc(8px * var(--msp-ui-scale, 1));
   margin: 0 var(--msp-space-2);
   cursor: row-resize;
   touch-action: none;

@@ -1,0 +1,35 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+/* Settings › Appearance › UI scale (styling.md §6): laid out as a form's row, the label's column then − value +. */
+.row {
+  display: grid;
+  grid-template-columns: var(--msp-label-width) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--msp-space-3);
+  min-height: var(--msp-control-height);
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--msp-color-text-muted);
+  font-size: var(--msp-font-size-sm);
+  white-space: nowrap;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: var(--msp-space-2);
+}
+
+/* The value between the buttons, one width whatever its digits, so the + does not move as it is pressed. */
+.value {
+  min-width: 5ch;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}

@@ -33,8 +33,8 @@ defineStyles('views/shell/shell.module.css', `@layer msp.components {
   container-type: size;
 
   &[data-mode="compact"] {
-    --msp-row-height: 44px;
-    --msp-control-height: 40px;
+    --msp-row-height: calc(44px * var(--msp-ui-scale, 1));
+    --msp-control-height: calc(40px * var(--msp-ui-scale, 1));
     --msp-touch-target: 44px;
     grid-template: "top"
                    "viewport" minmax(0, 1fr)

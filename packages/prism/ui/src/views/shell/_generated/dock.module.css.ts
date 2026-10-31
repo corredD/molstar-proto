@@ -75,8 +75,8 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
   }
 
   & .msp-shell-dock-tab {
-    width: 28px;
-    height: 28px;
+    width: calc(28px * var(--msp-ui-scale, 1));
+    height: calc(28px * var(--msp-ui-scale, 1));
   }
 }
 
@@ -101,7 +101,7 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
 .msp-shell-dock-header {
   align-items: center;
   gap: var(--msp-space-3);
-  height: 40px;
+  height: calc(40px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-3) 0 var(--msp-space-4);
   font-weight: 600;
   display: flex;
@@ -141,8 +141,8 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
 }
 
 .msp-shell-dock-tab {
-  width: max(36px, var(--msp-touch-target, 0px));
-  height: max(36px, var(--msp-touch-target, 0px));
+  width: max(calc(36px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(36px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
   place-items: center;
@@ -162,9 +162,9 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
 
 .msp-shell-dock-splitter {
   z-index: 1;
+  width: calc(6px * var(--msp-ui-scale, 1));
   cursor: col-resize;
   touch-action: none;
-  width: 6px;
   position: absolute;
   top: 0;
   bottom: 0;
@@ -175,17 +175,17 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
 }
 
 .msp-shell-dock-right .msp-shell-dock-splitter {
-  left: -3px;
+  left: calc(-3px * var(--msp-ui-scale, 1));
 }
 
 .msp-shell-dock-left .msp-shell-dock-splitter {
-  right: -3px;
+  right: calc(-3px * var(--msp-ui-scale, 1));
 }
 
 .msp-shell-dock-collapsedBar {
   align-items: center;
   gap: var(--msp-space-3);
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   flex: 1;
   display: flex;
@@ -208,7 +208,7 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
 
   & .msp-shell-dock-content {
     width: auto;
-    height: min(45cqh, 420px);
+    height: min(45cqh, calc(420px * var(--msp-ui-scale, 1)));
   }
 
   & .msp-shell-dock-strip {
@@ -260,13 +260,13 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
 
   & .msp-shell-dock-tab {
     width: 100%;
-    height: max(var(--msp-rail-button, 40px), var(--msp-touch-target, 0px));
+    height: max(var(--msp-rail-button, calc(40px * var(--msp-ui-scale, 1))), var(--msp-touch-target, 0px));
     border-radius: 0;
   }
 
   & .msp-shell-dock-tab > svg {
-    width: var(--msp-rail-icon, 20px);
-    height: var(--msp-rail-icon, 20px);
+    width: var(--msp-rail-icon, calc(20px * var(--msp-ui-scale, 1)));
+    height: var(--msp-rail-icon, calc(20px * var(--msp-ui-scale, 1)));
   }
 
   & .msp-shell-dock-tab[aria-selected="true"] {
@@ -275,7 +275,7 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
   }
 
   & .msp-shell-dock-header {
-    height: max(var(--msp-rail-head, 40px), var(--msp-touch-target, 0px));
+    height: max(var(--msp-rail-head, calc(40px * var(--msp-ui-scale, 1))), var(--msp-touch-target, 0px));
   }
 }
 
@@ -371,9 +371,9 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
   }
 
   & .msp-shell-dock-collapsedBar {
+    height: calc(28px * var(--msp-ui-scale, 1));
     border-radius: var(--msp-radius-lg);
     background: var(--msp-glass-bg);
-    height: 28px;
     box-shadow: var(--msp-glass-shadow);
     -webkit-backdrop-filter: var(--msp-glass-filter);
     flex: none;
@@ -436,24 +436,24 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
 
 @container (height <= 619px) {
   .msp-shell-dock-rail > * {
-    --msp-rail-button: 34px;
-    --msp-rail-button-captioned: 40px;
-    --msp-rail-icon: 18px;
-    --msp-rail-icon-captioned: 15px;
+    --msp-rail-button: calc(34px * var(--msp-ui-scale, 1));
+    --msp-rail-button-captioned: calc(40px * var(--msp-ui-scale, 1));
+    --msp-rail-icon: calc(18px * var(--msp-ui-scale, 1));
+    --msp-rail-icon-captioned: calc(15px * var(--msp-ui-scale, 1));
   }
 }
 
 @container (height <= 529px) {
   .msp-shell-dock-rail > * {
-    --msp-rail-button: 30px;
-    --msp-rail-button-captioned: 36px;
-    --msp-rail-icon: 16px;
-    --msp-rail-icon-captioned: 14px;
+    --msp-rail-button: calc(30px * var(--msp-ui-scale, 1));
+    --msp-rail-button-captioned: calc(36px * var(--msp-ui-scale, 1));
+    --msp-rail-icon: calc(16px * var(--msp-ui-scale, 1));
+    --msp-rail-icon-captioned: calc(14px * var(--msp-ui-scale, 1));
   }
 }
 
 .msp-shell-dock-railMenu {
-  right: calc(44px + var(--msp-space-2));
+  right: calc(var(--msp-rail-width) + var(--msp-space-2));
   z-index: var(--msp-z-overlay);
   max-height: 100%;
   animation: msp-shell-dock-rail-menu-in var(--msp-motion-fast) var(--msp-ease);
@@ -500,8 +500,8 @@ defineStyles('views/shell/dock.module.css', `@layer msp.components {
   align-items: center;
 
   & > svg {
-    width: 14px;
-    height: 14px;
+    width: calc(14px * var(--msp-ui-scale, 1));
+    height: calc(14px * var(--msp-ui-scale, 1));
   }
 }
 }

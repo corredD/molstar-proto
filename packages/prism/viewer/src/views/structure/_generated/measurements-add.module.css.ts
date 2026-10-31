@@ -76,7 +76,7 @@ defineStyles('viewer/views/structure/measurements-add.module.css', `@layer msp.c
 .msp-viewer-measurements-add-point {
   align-items: center;
   gap: var(--msp-space-2);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1) 0 var(--msp-space-2);
   display: flex;
 
@@ -97,7 +97,7 @@ defineStyles('viewer/views/structure/measurements-add.module.css', `@layer msp.c
 }
 
 .msp-viewer-measurements-add-grip {
-  height: 22px;
+  height: calc(22px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-subtle);
   cursor: grab;
   touch-action: none;
@@ -163,9 +163,9 @@ defineStyles('viewer/views/structure/measurements-add.module.css', `@layer msp.c
 }
 
 .msp-viewer-measurements-add-action {
+  width: calc(20px * var(--msp-ui-scale, 1));
+  height: calc(20px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 20px;
-  height: 20px;
   color: var(--msp-color-text-muted);
   opacity: 0;
   place-items: center;
@@ -193,7 +193,7 @@ defineStyles('viewer/views/structure/measurements-add.module.css', `@layer msp.c
 .msp-viewer-measurements-add-kind {
   align-items: center;
   gap: var(--msp-space-3);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -238,7 +238,7 @@ defineStyles('viewer/views/structure/measurements-add.module.css', `@layer msp.c
 .msp-viewer-measurements-add-optionsToggle {
   align-items: center;
   gap: var(--msp-space-1);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-muted);
   font-size: var(--msp-font-size-sm);
   font-weight: 600;
@@ -269,7 +269,7 @@ defineStyles('viewer/views/structure/measurements-add.module.css', `@layer msp.c
 .msp-viewer-measurements-add-addedRow {
   align-items: center;
   gap: var(--msp-space-2);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1) 0 var(--msp-space-2);
   display: flex;
 
@@ -295,9 +295,9 @@ defineStyles('viewer/views/structure/measurements-add.module.css', `@layer msp.c
 }
 
 .msp-viewer-measurements-add-addedAction {
+  width: calc(20px * var(--msp-ui-scale, 1));
+  height: calc(20px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
-  width: 20px;
-  height: 20px;
   color: var(--msp-color-text-muted);
   opacity: 0;
   place-items: center;

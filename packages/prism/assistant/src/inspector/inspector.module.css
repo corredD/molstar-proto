@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* The Inspector's page body: a list and its detail side by side (Trace, Tools), or one column (Limits). Flat on the
@@ -27,7 +28,7 @@
 .split {
   flex: 1 1 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) calc(380px * var(--msp-ui-scale, 1));
   min-height: 0;
 }
 
@@ -133,11 +134,11 @@
 /* A row: its role in quiet mono, what it is, and its numbers at the end. */
 .row {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
+  grid-template-columns: calc(56px * var(--msp-ui-scale, 1)) minmax(0, 1fr) auto;
   align-items: baseline;
   gap: var(--msp-space-3);
   width: 100%;
-  min-height: 28px;
+  min-height: calc(28px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2) var(--msp-space-5);
   text-align: left;
 
@@ -158,7 +159,7 @@
   overflow: hidden;
   color: var(--msp-color-text-subtle);
   font-family: var(--msp-font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--msp-ui-scale, 1));
   letter-spacing: 0.04em;
   text-align: right;
   text-transform: uppercase;
@@ -209,12 +210,12 @@
 
 /* The meta's numbers in columns of their own, so they line up from row to row. */
 .time {
-  min-width: 52px;
+  min-width: calc(52px * var(--msp-ui-scale, 1));
   text-align: right;
 }
 
 .tokens {
-  min-width: 80px;
+  min-width: calc(80px * var(--msp-ui-scale, 1));
   text-align: right;
 }
 
@@ -289,8 +290,8 @@
 }
 
 .dot {
-  width: 6px;
-  height: 6px;
+  width: calc(6px * var(--msp-ui-scale, 1));
+  height: calc(6px * var(--msp-ui-scale, 1));
   border-radius: 50%;
   background: var(--msp-color-border-strong);
 
@@ -330,7 +331,7 @@
   }
 
   .row {
-    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-columns: calc(44px * var(--msp-ui-scale, 1)) minmax(0, 1fr) auto;
     padding-inline: var(--msp-space-4);
   }
 

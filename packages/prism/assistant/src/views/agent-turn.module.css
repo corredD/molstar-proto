@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* Flat glass over the canvas, like the other cards; under the status line's tasks. */
@@ -11,8 +12,8 @@
   display: flex;
   margin-top: var(--msp-space-1);
   flex-direction: column;
-  width: min(380px, calc(100cqw - 2 * var(--msp-space-4)));
-  max-height: min(420px, 60cqh);
+  width: min(calc(380px * var(--msp-ui-scale, 1)), calc(100cqw - 2 * var(--msp-space-4)));
+  max-height: min(calc(420px * var(--msp-ui-scale, 1)), 60cqh);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-glass-bg);
   box-shadow: var(--msp-glass-shadow);
@@ -26,7 +27,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 34px;
+  min-height: calc(34px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2) 0 var(--msp-space-3);
 }
 
@@ -79,7 +80,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--msp-space-1);
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
 
@@ -90,7 +91,7 @@
 }
 
 .icon {
-  width: 24px;
+  width: calc(24px * var(--msp-ui-scale, 1));
 }
 
 .stop {
@@ -135,10 +136,10 @@
 /* A run: its mark, what it does, how long it took; its outcome under it, a thin progress line while it reports one. */
 .run {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
+  grid-template-columns: calc(14px * var(--msp-ui-scale, 1)) minmax(0, 1fr) auto;
   align-items: center;
   column-gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-1) 0;
 
   &[data-read] {
@@ -204,7 +205,7 @@
 
 .bar {
   grid-column: 2 / -1;
-  height: 2px;
+  height: calc(2px * var(--msp-ui-scale, 1));
   margin-top: var(--msp-space-1);
   overflow: hidden;
   border-radius: 1px;
@@ -244,7 +245,7 @@
 .deny,
 .allow {
   flex: none;
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
 
@@ -281,7 +282,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 32px;
+  min-height: calc(32px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2) 0 var(--msp-space-3);
   box-shadow: inset 0 1px 0 var(--msp-glass-edge);
 }
@@ -310,7 +311,7 @@
 /* The way to the turn's trace: a quiet word, beside Undo turn. */
 .trace {
   flex: none;
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -326,7 +327,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--msp-space-1);
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-accent-strong);

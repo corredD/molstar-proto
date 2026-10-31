@@ -108,7 +108,7 @@ defineStyles('viewer/views/state/remote-states-panel.module.css', `@layer msp.co
   align-items: center;
   gap: var(--msp-space-3);
   min-width: 0;
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   color: var(--msp-color-text-muted);
   text-align: left;
@@ -147,8 +147,8 @@ defineStyles('viewer/views/state/remote-states-panel.module.css', `@layer msp.co
 }
 
 .msp-viewer-remote-states-panel-action {
-  width: 22px;
-  height: 22px;
+  width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
   margin-right: var(--msp-space-1);
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
@@ -181,14 +181,14 @@ defineStyles('viewer/views/state/remote-states-panel.module.css', `@layer msp.co
 }
 
 .msp-viewer-remote-states-panel-menuItem {
+  grid-template-columns: calc(14px * var(--msp-ui-scale, 1)) 1fr;
   align-items: center;
   gap: var(--msp-space-3);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   text-align: left;
-  grid-template-columns: 14px 1fr;
   display: grid;
 
   &:hover, &:focus-visible {

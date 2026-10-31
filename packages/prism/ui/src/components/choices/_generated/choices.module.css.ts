@@ -33,8 +33,8 @@ defineStyles('components/choices/choices.module.css', `@layer msp.components {
 }
 
 .msp-choices-row {
+  grid-template-columns: repeat(auto-fit, minmax(min(calc(64px * var(--msp-ui-scale, 1)), 100%), 1fr));
   gap: var(--msp-space-1);
-  grid-template-columns: repeat(auto-fit, minmax(min(64px, 100%), 1fr));
   display: grid;
 }
 
@@ -43,7 +43,7 @@ defineStyles('components/choices/choices.module.css', `@layer msp.components {
   align-items: center;
   gap: var(--msp-space-2);
   min-width: 0;
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-control);

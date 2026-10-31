@@ -84,20 +84,20 @@ defineStyles('components/button/button.module.css', `@layer msp.components {
 }
 
 .msp-button-small {
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-inset);
   font-size: var(--msp-font-size-sm);
 }
 
 .msp-button-tiny {
   gap: var(--msp-space-1);
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   font-size: var(--msp-font-size-xs);
 
   & .msp-button-icon {
-    width: 14px;
-    height: 14px;
+    width: calc(14px * var(--msp-ui-scale, 1));
+    height: calc(14px * var(--msp-ui-scale, 1));
   }
 }
 
@@ -106,13 +106,13 @@ defineStyles('components/button/button.module.css', `@layer msp.components {
   padding: 0;
 
   &.msp-button-small, &.msp-button-tiny {
-    width: max(24px, var(--msp-touch-target, 0px));
+    width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   }
 }
 
 .msp-button-icon {
-  width: 18px;
-  height: 18px;
+  width: calc(18px * var(--msp-ui-scale, 1));
+  height: calc(18px * var(--msp-ui-scale, 1));
   display: inline-flex;
 
   & > svg {

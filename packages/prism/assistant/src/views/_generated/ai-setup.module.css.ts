@@ -69,7 +69,7 @@ defineStyles('assistant/views/ai-setup.module.css', `@layer msp.components {
 }
 
 .msp-assistant-ai-setup-scope {
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -114,7 +114,7 @@ defineStyles('assistant/views/ai-setup.module.css', `@layer msp.components {
 }
 
 .msp-assistant-ai-setup-row {
-  grid-template-columns: var(--msp-label-width, 96px) minmax(0, 1fr);
+  grid-template-columns: var(--msp-label-width, calc(96px * var(--msp-ui-scale, 1))) minmax(0, 1fr);
   align-items: start;
   gap: var(--msp-space-3);
   padding-left: var(--msp-space-3);
@@ -122,8 +122,8 @@ defineStyles('assistant/views/ai-setup.module.css', `@layer msp.components {
 }
 
 .msp-assistant-ai-setup-label {
+  line-height: calc(24px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-muted);
-  line-height: 24px;
 }
 
 .msp-assistant-ai-setup-grow {
@@ -137,7 +137,7 @@ defineStyles('assistant/views/ai-setup.module.css', `@layer msp.components {
 }
 
 .msp-assistant-ai-setup-action {
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   background: color-mix(in oklab, var(--msp-color-accent), transparent 84%);
@@ -167,7 +167,7 @@ defineStyles('assistant/views/ai-setup.module.css', `@layer msp.components {
 .msp-assistant-ai-setup-providerHead {
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
   padding-left: var(--msp-space-3);
   display: flex;
 }
@@ -187,7 +187,7 @@ defineStyles('assistant/views/ai-setup.module.css', `@layer msp.components {
 }
 
 .msp-assistant-ai-setup-link {
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -200,7 +200,7 @@ defineStyles('assistant/views/ai-setup.module.css', `@layer msp.components {
 }
 
 .msp-assistant-ai-setup-fold {
-  height: max(24px, var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -238,12 +238,12 @@ defineStyles('assistant/views/ai-setup.module.css', `@layer msp.components {
 }
 
 .msp-assistant-ai-setup-modelRow {
-  grid-template-columns: var(--msp-label-width, 96px) minmax(0, 1fr) auto;
+  grid-template-columns: var(--msp-label-width, calc(96px * var(--msp-ui-scale, 1))) minmax(0, 1fr) auto;
 }
 
 .msp-assistant-ai-setup-refresh {
-  width: max(24px, var(--msp-touch-target, 0px));
-  height: max(24px, var(--msp-touch-target, 0px));
+  width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
   place-items: center;

@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /*
@@ -34,7 +35,7 @@
   @keyframes msp-fade-overflow {
     from,
     to {
-      --msp-fade: 20px;
+      --msp-fade: calc(20px * var(--msp-ui-scale, 1));
     }
   }
 }
@@ -72,13 +73,13 @@
       --msp-fade-top: 0px;
     }
     to {
-      --msp-fade-top: 16px;
+      --msp-fade-top: calc(16px * var(--msp-ui-scale, 1));
     }
   }
 
   @keyframes msp-fade-scroll-bottom {
     from {
-      --msp-fade-bottom: 16px;
+      --msp-fade-bottom: calc(16px * var(--msp-ui-scale, 1));
     }
     to {
       --msp-fade-bottom: 0px;

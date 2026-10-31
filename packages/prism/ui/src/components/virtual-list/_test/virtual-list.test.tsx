@@ -7,10 +7,12 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from '../../../dom/render.js';
+import { flushFrame } from '../../../reactive/frame-state.js';
 import { observableState } from '../../../reactive/observable-state.js';
 import { VirtualList } from '../virtual-list.js';
 
@@ -85,6 +87,53 @@ describe('VirtualList', () => {
     for (const o of observers) if (o.target === win) o.cb([{ contentRect: { height: 3 * 30 } }]);
     const content = container.querySelector('[class*="content"]') as HTMLElement;
     expect(content.style.height).toBe(`${500 * 30}px`);
+    dispose();
+    vi.unstubAllGlobals();
+  });
+
+  // The UI scale (styling.md §6): rows a fraction of a pixel off the first guess (a row of 26px at 101.5 %, a row not
+  // on `--msp-list-row`) are placed by their measured height, or row 1000 lands rows away from where it is drawn.
+  it('places row 1000 by the measured height, however close it is to the guess', async () => {
+    const observers: { cb: (entries: any[]) => void; target?: Element }[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(readonly cb: (entries: any[]) => void) {}
+        observe(target: Element) {
+          observers.push({ cb: this.cb, target });
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const rh = 26.4;
+    const items = observableState<readonly Item[]>(Array.from({ length: 2000 }, (_, i) => ({ id: i, label: `r${i}` })));
+    const container = document.createElement('div');
+    document.body.append(container);
+    const dispose = render(
+      () => (
+        <VirtualList items={items.asReadonly} itemKey={(r) => r.id} rowHeight={26}>
+          {(r) => <div class="row">{r.label}</div>}
+        </VirtualList>
+      ),
+      container,
+    );
+    const win = container.querySelector('[class*="window"]') as HTMLElement;
+    for (const o of observers) if (o.target === win) o.cb([{ contentRect: { height: win.childElementCount * rh } }]);
+    const content = container.querySelector('[class*="content"]') as HTMLElement;
+    expect(content.style.height).toBe(`${2000 * rh}px`);
+    // Scrolled to row 1000: the window starts at a row, at that row's measured place.
+    const viewport = content.parentElement as HTMLElement;
+    Object.defineProperty(viewport, 'clientHeight', { value: 300, configurable: true });
+    viewport.scrollTop = 1000 * rh;
+    viewport.dispatchEvent(new Event('scroll'));
+    await new Promise((r) => setTimeout(r, 200));
+    flushFrame();
+    const y = Number(/translateY\(([\d.]+)px\)/.exec(win.style.transform)?.[1]);
+    const first = Math.round(y / rh);
+    expect(first).toBeGreaterThan(900);
+    expect(first).toBeLessThanOrEqual(1000);
+    expect(y).toBeCloseTo(first * rh, 6);
     dispose();
     vi.unstubAllGlobals();
   });

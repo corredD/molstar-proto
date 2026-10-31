@@ -6,6 +6,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { activity, Show } from '../../dom/control-flow.js';
@@ -123,13 +124,20 @@ export function ShellView(props: ShellViewProps) {
   // behind its lines, fading out below them (BandFadePx); the canvas' chrome goes below the lines.
   // What floats at the top (the sequence card, or the text of a band) takes this much: the snapshots and the canvas stack
   // go below it (a band's faded bottom is not in the way).
+  // The rail and the frame's margin at the UI scale (styling.md §6): the CSS sizes them by the tokens, which the scale
+  // multiplies; the layout here follows. The rail is whole pixels (the canvas ends at it).
+  const uiScale = shell.uiScale.scale;
+  const railWidth = derive(uiScale, (s) => Math.round(RailWidth * s));
+  const edge = derive(uiScale, (s) => Edge * s);
   const topInset = derive(
-    [dockFacets(shell, top).size, top.active, floatingTop, expanded],
-    (size, tab, f, e) =>
-      `${f && tab && !e ? (tab.frame === 'none' ? size - BandFadePx + Edge : Edge + size + Edge) : Edge}px`,
+    [dockFacets(shell, top).size, top.active, floatingTop, expanded, edge],
+    (size, tab, f, e, edge) =>
+      `${f && tab && !e ? (tab.frame === 'none' ? size - BandFadePx + edge : edge + size + edge) : edge}px`,
   );
   // A compact rail's column hidden: the canvas takes its width.
-  const railPx = derive([floating, shell.railShown, expanded], (f, shown, e) => ((f && !shown) || e ? 0 : RailWidth));
+  const railPx = derive([floating, shell.railShown, expanded, railWidth], (f, shown, e, rail) =>
+    (f && !shown) || e ? 0 : rail,
+  );
   // A compact rail lies over the canvas' edge (it does not take the canvas' width, so opening it moves nothing): the
   // canvas runs to the edge, and the corner keeps clear of the rail's column (where its toggle sits) whether it shows.
   const compactRail = derive([floating, shell.compactRail, expanded], (f, c, e) => f && c && !e);
@@ -150,23 +158,23 @@ export function ShellView(props: ShellViewProps) {
   );
   // What floats on the right takes this much of the canvas: the bottom bar and the hover label keep clear of it.
   const rightInset = derive(
-    [rightDock.size, right.active, shell.overlay, floating, pinned, railPx, expanded, compact],
+    [rightDock.size, right.active, shell.overlay, floating, pinned, railPx, expanded, compact, edge],
     // The docked rail is the canvas's right edge, and the open panel is too, or an overlay card open in its place: what
     // sits beside either keeps the frame margin. Pinned, both are outside the canvas: only the margin is left. Compact,
     // the rail is the bottom bar.
-    (size, active, overlay, f, p, rail, e, c) =>
-      `${p || e ? Edge : (c ? 0 : rail) + Edge + (f && (active || !!overlay) ? size + Edge : 0)}px`,
+    (size, active, overlay, f, p, rail, e, c, edge) =>
+      `${p || e ? edge : (c ? 0 : rail) + edge + (f && (active || !!overlay) ? size + edge : 0)}px`,
   );
   const cornerInset = derive(
-    [pinned, compact, railTake, compactRail, expanded],
-    (p, c, rail, overlay, e) => `${p || c || e ? Edge : (overlay ? RailWidth : rail) + Edge}px`,
+    [pinned, compact, railTake, compactRail, expanded, railWidth, edge],
+    (p, c, rail, overlay, e, width, edge) => `${p || c || e ? edge : (overlay ? width : rail) + edge}px`,
   );
   // An open floating right panel: overlays then open in its place instead of stacking glass on glass.
   const rightPanelOpen = derive([right.active, floating, expanded], (active, f, e) =>
     f && active && !e ? 'open' : undefined,
   );
   const rightPanelWidth = rightDock.sizePx;
-  const railInset = derive(railPx, (px) => `${px + Edge}px`);
+  const railInset = derive([railPx, edge], (px, edge) => `${px + edge}px`);
   // The canvas: quiet (transparent, its axes and all) from the start and while the empty canvas's mark and splash are
   // up, coming in gradually over its own color when something is in it (shell.module.css `.canvas[data-quiet]`); a
   // load the mark never showed for finds it shown. Keys scoped to the canvas work while the focus is in it
@@ -191,10 +199,11 @@ export function ShellView(props: ShellViewProps) {
         class={classes.viewport}
         // The canvas and what floats over it (the sequence band, cards): the hover label follows the pointer here.
         data-msp-viewport=""
-        // What never changes; what follows the layout is written by the shell's watches below.
+        // What never changes (but by the UI scale, which CSS applies); what follows the layout is written by the shell's
+        // watches below.
         style={{
-          '--msp-canvas-edge': `${Edge}px`,
-          '--msp-corner-room': `${CornerRoom}px`,
+          '--msp-canvas-edge': `calc(${Edge}px * var(--msp-ui-scale, 1))`,
+          '--msp-corner-room': `calc(${CornerRoom}px * var(--msp-ui-scale, 1))`,
           '--msp-band-fade': `${BandFadePx}px`,
           '--msp-band-dissolve': `${BandDissolvePx}px`,
         }}

@@ -44,7 +44,7 @@ defineStyles('viewer/views/state-tree/state-tree-tab.module.css', `@layer msp.co
 }
 
 .msp-viewer-state-tree-tab-tree {
-  --msp-tree-indent: 8px;
+  --msp-tree-indent: calc(8px * var(--msp-ui-scale, 1));
 }
 }
 `);

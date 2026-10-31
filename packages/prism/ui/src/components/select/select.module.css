@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .select {
@@ -29,7 +30,7 @@
   text-align: left;
 
   &[data-size="sm"] {
-    height: 24px;
+    height: calc(24px * var(--msp-ui-scale, 1));
   }
 
   &:hover,
@@ -69,7 +70,7 @@
 /* The options, inline under what opened them (Mol*'s action menu): a quiet surface with a hairline edge, the current
    one checked. */
 .list {
-  max-height: 240px;
+  max-height: calc(240px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-md);
   background: color-mix(in oklab, var(--msp-color-control), transparent 40%);
   /* A hairline, as the panels' edges: in a block of the same tone it would blend in otherwise. */
@@ -94,7 +95,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--msp-space-2);
-  min-height: 26px;
+  min-height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2) 0 var(--msp-space-3);
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
@@ -123,7 +124,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-1);
-  min-height: 26px;
+  min-height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-subtle);
@@ -178,10 +179,10 @@
   background: none;
   color: inherit;
   width: max-content;
-  max-width: calc(100vw - 16px);
+  max-width: calc(100vw - calc(16px * var(--msp-ui-scale, 1)));
 
   & .option {
-    min-height: 24px;
+    min-height: calc(24px * var(--msp-ui-scale, 1));
     white-space: nowrap;
   }
 
@@ -196,9 +197,9 @@
 /* A menu in a popover (`MenuPopover`): raised, as the options of a select. */
 .menuPopover {
   display: grid;
-  min-width: 180px;
+  min-width: calc(180px * var(--msp-ui-scale, 1));
   /* Taller than the window (sub-entries opened in place): it scrolls rather than run off it. */
-  max-height: calc(100vh - 16px);
+  max-height: calc(100vh - calc(16px * var(--msp-ui-scale, 1)));
   overflow-y: auto;
   padding: var(--msp-space-1);
   border-radius: var(--msp-radius-md);

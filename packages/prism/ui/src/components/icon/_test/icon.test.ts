@@ -6,6 +6,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -79,6 +80,12 @@ describe('Icon', () => {
     expect(svg.getAttribute('role')).toBe('img');
     expect(svg.getAttribute('aria-label')).toBe('Visible');
     expect(svg.hasAttribute('aria-hidden')).toBe(false);
+  });
+
+  it('gives its size to CSS, so it follows the UI scale (styling.md §6)', () => {
+    const svg = Icon({ name: 'house', size: 14 });
+    expect(svg.getAttribute('width')).toBe('14');
+    expect(svg.style.getPropertyValue('--msp-icon-px')).toBe('14px');
   });
 
   it('throws for unknown names', () => {

@@ -6,6 +6,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { For } from '../../dom/control-flow.js';
@@ -247,7 +248,8 @@ export function VirtualList<T>(props: {
             const count = el.childElementCount;
             if (count <= 0 || h <= 0 || revealEnd !== undefined) return;
             const rh = h / count;
-            if (Math.abs(rh - rowHeight.value) > 0.5) rowHeight.set(rh);
+            // Any difference (styling.md §6): a row 0.4px off its guess drifts 400px by row 1000.
+            if (Math.abs(rh - rowHeight.value) > 0.001) rowHeight.set(rh);
           });
         }}
       >

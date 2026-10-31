@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* Ink on paper, quick: the inverse of the panel colors, small and opaque so it reads over anything. */
@@ -12,7 +13,7 @@
   top: 0;
   left: 0;
   z-index: var(--msp-z-tooltip);
-  max-width: 240px;
+  max-width: calc(240px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2) var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-text);
@@ -34,7 +35,7 @@
 /* Beside a tree row (Claude Code's sidebar does the same): a card at the row's text size, the whole text, wrapping when
    long; the panel's colors and the glass edge, so it reads as more of the row, not as a hint. */
 .tooltip[data-kind="row"] {
-  max-width: 320px;
+  max-width: calc(320px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2) var(--msp-inset);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-color-raised);

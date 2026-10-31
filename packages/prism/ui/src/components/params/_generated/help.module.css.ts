@@ -43,8 +43,8 @@ defineStyles('components/params/help.module.css', `@layer msp.components {
 }
 
 .msp-params-help-toggle {
-  width: 16px;
-  height: 16px;
+  width: calc(16px * var(--msp-ui-scale, 1));
+  height: calc(16px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-subtle);
   opacity: 0;
   border-radius: 50%;
@@ -55,8 +55,8 @@ defineStyles('components/params/help.module.css', `@layer msp.components {
 
   &:after {
     content: "";
-    width: max(24px, var(--msp-touch-target, 0px));
-    height: max(24px, var(--msp-touch-target, 0px));
+    width: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+    height: max(calc(24px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
     position: absolute;
     top: 50%;
     left: 50%;
@@ -98,8 +98,8 @@ defineStyles('components/params/help.module.css', `@layer msp.components {
 }
 
 .msp-params-help-table {
+  grid-template-columns: repeat(auto-fill, minmax(calc(96px * var(--msp-ui-scale, 1)), 1fr));
   gap: var(--msp-space-1) var(--msp-space-3);
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   margin: 0;
   padding: 0;
   list-style: none;
@@ -114,8 +114,8 @@ defineStyles('components/params/help.module.css', `@layer msp.components {
 }
 
 .msp-params-help-swatch {
-  width: 12px;
-  height: 12px;
+  width: calc(12px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   box-shadow: inset 0 0 0 1px var(--msp-glass-edge);
   border-radius: 2px;
   flex: none;
@@ -138,7 +138,7 @@ defineStyles('components/params/help.module.css', `@layer msp.components {
 }
 
 .msp-params-help-bar {
-  height: 10px;
+  height: calc(10px * var(--msp-ui-scale, 1));
   box-shadow: inset 0 0 0 1px var(--msp-glass-edge);
   border-radius: 2px;
 }

@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* One quiet row: play or pause, the time, the line, the length, stop and close. */
@@ -11,7 +12,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  height: 32px;
+  height: calc(32px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-well);
@@ -23,8 +24,8 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   border-radius: 50%;
   background: var(--msp-color-accent);
   color: var(--msp-color-on-accent);
@@ -48,7 +49,7 @@
   position: relative;
   flex: 1;
   min-width: 0;
-  height: 16px;
+  height: calc(16px * var(--msp-ui-scale, 1));
   cursor: pointer;
   touch-action: none;
   outline: none;
@@ -59,8 +60,8 @@
     top: 50%;
     right: 0;
     left: 0;
-    height: 3px;
-    margin-top: -1.5px; /* off-scale: centred */
+    height: calc(3px * var(--msp-ui-scale, 1));
+    margin-top: calc(-1.5px * var(--msp-ui-scale, 1)); /* off-scale: centred */
     border-radius: 1.5px;
     background: var(--msp-color-pressed);
   }
@@ -76,8 +77,8 @@
   top: 50%;
   left: 0;
   width: 100%;
-  height: 3px;
-  margin-top: -1.5px; /* off-scale: centred */
+  height: calc(3px * var(--msp-ui-scale, 1));
+  margin-top: calc(-1.5px * var(--msp-ui-scale, 1)); /* off-scale: centred */
   border-radius: 1.5px;
   background: var(--msp-color-accent);
   transform-origin: left center;
@@ -94,10 +95,10 @@
 .knob {
   position: absolute;
   top: 50%;
-  left: -5px; /* off-scale: centred on the line's end */
-  width: 10px;
-  height: 10px;
-  margin-top: -5px; /* off-scale */
+  left: calc(-5px * var(--msp-ui-scale, 1));
+  width: calc(10px * var(--msp-ui-scale, 1));
+  height: calc(10px * var(--msp-ui-scale, 1));
+  margin-top: calc(-5px * var(--msp-ui-scale, 1)); /* off-scale */
   border-radius: 50%;
   background: var(--msp-color-accent);
   box-shadow: 0 0 0 2px var(--msp-color-well);
@@ -107,8 +108,8 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: calc(22px * var(--msp-ui-scale, 1));
+  height: calc(22px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
 

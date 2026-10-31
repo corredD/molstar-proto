@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* Transparent: the text color is the surrounding one (the canvas layer's ink), so it reads on a light or a dark canvas. */
@@ -46,20 +47,20 @@
 }
 
 .swatch {
-  width: 12px;
-  height: 12px;
+  width: calc(12px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
 }
 
 .dot {
-  width: 10px;
-  height: 10px;
+  width: calc(10px * var(--msp-ui-scale, 1));
+  height: calc(10px * var(--msp-ui-scale, 1));
   border-radius: 50%;
 }
 
 .line {
-  width: 14px;
-  height: 3px;
+  width: calc(14px * var(--msp-ui-scale, 1));
+  height: calc(3px * var(--msp-ui-scale, 1));
   border-radius: 2px;
 }
 
@@ -81,7 +82,7 @@
 
 .bar {
   display: block;
-  height: 8px;
+  height: calc(8px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
 }
 

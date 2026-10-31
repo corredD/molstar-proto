@@ -4,13 +4,15 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* The tracks' left gutter: the icons sit over Seq*'s surface, in the room the tracks preset leaves. The strip lets the
-   pointer through; an icon takes it only while it shows. Opacity only changes on hover (styling.md §5). */
+   pointer through; an icon takes it only while it shows. Opacity only changes on hover (styling.md §5). Over Seq*'s
+   rows (22px, set inline), so in px that do not follow the UI scale (styling.md §6), as Seq* does not. */
 .gutter {
   position: absolute;
-  top: var(--msp-space-3);
+  top: 8px;
   left: 0;
   width: 28px;
   pointer-events: none;
@@ -27,8 +29,8 @@
   /* The row's height is set inline (22px rows): 24px at least (WCAG 2.5.8); not the touch target's 44, which would cover
      the next rows' icons. */
   min-height: 24px;
-  margin-left: var(--msp-space-2);
-  border-radius: var(--msp-radius-md);
+  margin-left: 4px; /* off-scale: over Seq*'s rows, which do not scale */
+  border-radius: 4px;
   color: var(--msp-color-text-muted);
   opacity: 0;
   pointer-events: none;
@@ -50,6 +52,12 @@
   }
 }
 
+/* At its own size at every UI scale (an icon hands its size to CSS, which scales it: styling.md §6). */
+.icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* A touch screen has no hover: every row's icon shows (the inactive ones quieter) and takes a tap. */
 @media (hover: none) {
   .icon {
@@ -68,11 +76,11 @@
   position: absolute;
   top: 0;
   left: 0;
-  margin-left: var(--msp-space-2);
-  padding: 0 var(--msp-space-1);
-  border-radius: var(--msp-radius-md);
+  margin-left: 4px; /* off-scale: over Seq*'s rows, which do not scale */
+  padding: 0 2px; /* off-scale */
+  border-radius: 4px;
   color: var(--msp-color-text-subtle);
-  font-size: var(--msp-font-size-xs);
+  font-size: 11px;
   white-space: nowrap;
   pointer-events: auto;
 

@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 // `@molstar/prism-ui/core`: the DOM-free part of the library (spec library.md §1), what a headless app imports: reactive
@@ -38,6 +39,7 @@ export {
 
 export * from './shell/shell.js';
 export * from './shell/theme.js';
+export * from './shell/ui-scale.js';
 
 export * from './commands/items.js';
 export * from './commands/keymap.js';

@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* Fills the panel's body, as the Structure tab does: the scene list scrolls, the caption below. */
@@ -22,7 +23,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 28px;
+  min-height: calc(28px * var(--msp-ui-scale, 1));
   padding-left: var(--msp-space-3);
 }
 
@@ -36,7 +37,7 @@
 
 .scenes {
   flex: 1 1 0;
-  min-height: 80px;
+  min-height: calc(80px * var(--msp-ui-scale, 1));
 }
 
 /* A scene: its number, its title; the current one picked (the accent, as the picked tree row). */
@@ -44,7 +45,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-3);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
 
@@ -59,7 +60,7 @@
 
 .number {
   flex: none;
-  min-width: 16px;
+  min-width: calc(16px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-subtle);
   font-variant-numeric: tabular-nums;
 }

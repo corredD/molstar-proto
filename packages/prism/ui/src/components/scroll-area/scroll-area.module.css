@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* The area: sized by its parent (or its content, up to a max-height); holds the viewport and the overlay bars. */
@@ -92,18 +93,18 @@
   user-select: none;
 
   &[data-orientation="vertical"] {
-    top: 2px;
+    top: calc(2px * var(--msp-ui-scale, 1));
     right: 1px;
-    bottom: 2px;
-    width: 10px;
+    bottom: calc(2px * var(--msp-ui-scale, 1));
+    width: calc(10px * var(--msp-ui-scale, 1));
     justify-content: center;
   }
 
   &[data-orientation="horizontal"] {
-    right: 2px;
+    right: calc(2px * var(--msp-ui-scale, 1));
     bottom: 1px;
-    left: 2px;
-    height: 10px;
+    left: calc(2px * var(--msp-ui-scale, 1));
+    height: calc(10px * var(--msp-ui-scale, 1));
     flex-direction: column;
     justify-content: center;
   }
@@ -120,7 +121,7 @@
   /* At the panel's edge: the thumb in the gutter the area took (its last 4px), not over the content. */
   .root[data-edge] > &[data-orientation="vertical"] {
     right: 0;
-    width: 8px;
+    width: calc(8px * var(--msp-ui-scale, 1));
   }
 
   .root:not([data-overflow-y]) > &[data-orientation="vertical"],
@@ -137,12 +138,12 @@
   transition: scale var(--msp-motion-fast) var(--msp-ease);
 
   [data-orientation="vertical"] > & {
-    width: 4px;
+    width: calc(4px * var(--msp-ui-scale, 1));
     transform-origin: right;
   }
 
   [data-orientation="horizontal"] > & {
-    height: 4px;
+    height: calc(4px * var(--msp-ui-scale, 1));
     transform-origin: bottom;
   }
 

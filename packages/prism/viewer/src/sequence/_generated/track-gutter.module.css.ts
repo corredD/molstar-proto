@@ -18,23 +18,23 @@ export const classes = {
 
 defineStyles('viewer/sequence/track-gutter.module.css', `@layer msp.components {
 .msp-viewer-track-gutter-gutter {
-  top: var(--msp-space-3);
   pointer-events: none;
   width: 28px;
   position: absolute;
+  top: 8px;
   left: 0;
 }
 
 .msp-viewer-track-gutter-icon {
   width: 24px;
   min-height: 24px;
-  margin-left: var(--msp-space-2);
-  border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
   opacity: 0;
   pointer-events: none;
+  border-radius: 4px;
   justify-content: center;
   align-items: center;
+  margin-left: 4px;
   display: flex;
   position: absolute;
   top: 0;
@@ -55,6 +55,11 @@ defineStyles('viewer/sequence/track-gutter.module.css', `@layer msp.components {
   }
 }
 
+.msp-viewer-track-gutter-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 @media (hover: none) {
   .msp-viewer-track-gutter-icon {
     opacity: .6;
@@ -67,13 +72,13 @@ defineStyles('viewer/sequence/track-gutter.module.css', `@layer msp.components {
 }
 
 .msp-viewer-track-gutter-hint {
-  margin-left: var(--msp-space-2);
-  padding: 0 var(--msp-space-1);
-  border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-subtle);
-  font-size: var(--msp-font-size-xs);
   white-space: nowrap;
   pointer-events: auto;
+  border-radius: 4px;
+  margin-left: 4px;
+  padding: 0 2px;
+  font-size: 11px;
   position: absolute;
   top: 0;
   left: 0;

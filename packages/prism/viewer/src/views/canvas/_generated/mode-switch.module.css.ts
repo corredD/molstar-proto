@@ -37,8 +37,8 @@ defineStyles('viewer/views/canvas/mode-switch.module.css', `@layer msp.component
 }
 
 .msp-viewer-mode-switch-segment {
-  width: var(--msp-stack-row, 40px);
-  height: var(--msp-stack-row, 40px);
+  width: var(--msp-stack-row, calc(40px * var(--msp-ui-scale, 1)));
+  height: var(--msp-stack-row, calc(40px * var(--msp-ui-scale, 1)));
   color: var(--msp-color-text-muted);
   place-items: center;
   display: grid;
@@ -62,7 +62,7 @@ defineStyles('viewer/views/canvas/mode-switch.module.css', `@layer msp.component
 
 .msp-viewer-mode-switch-level {
   bottom: 100%;
-  left: var(--msp-stack-row, 40px);
+  left: var(--msp-stack-row, calc(40px * var(--msp-ui-scale, 1)));
   padding-bottom: var(--msp-space-3);
   opacity: 0;
   visibility: hidden;
@@ -102,15 +102,15 @@ defineStyles('viewer/views/canvas/mode-switch.module.css', `@layer msp.component
 }
 
 .msp-viewer-mode-switch-badge {
+  right: calc(4px * var(--msp-ui-scale, 1));
+  bottom: calc(4px * var(--msp-ui-scale, 1));
   opacity: .8;
   position: absolute;
-  bottom: 4px;
-  right: 4px;
 }
 
 .msp-viewer-mode-switch-levels {
   z-index: var(--msp-z-overlay);
-  min-width: 168px;
+  min-width: calc(168px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2);
   background: var(--msp-glass-panel-bg);
   animation: msp-viewer-mode-switch-level-in var(--msp-motion-fast) var(--msp-ease);
@@ -126,7 +126,7 @@ defineStyles('viewer/views/canvas/mode-switch.module.css', `@layer msp.component
 .msp-viewer-mode-switch-levelRow {
   align-items: center;
   gap: var(--msp-space-3);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -148,7 +148,7 @@ defineStyles('viewer/views/canvas/mode-switch.module.css', `@layer msp.component
 
 @media (pointer: coarse) {
   .msp-viewer-mode-switch-levelRow {
-    height: max(28px, var(--msp-touch-target, 0px));
+    height: max(calc(28px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   }
 }
 

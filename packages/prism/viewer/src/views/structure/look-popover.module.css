@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* The sliders button: a dot at its corner while overrides are in place. */
@@ -13,10 +14,10 @@
 
 .dot {
   position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 6px;
-  height: 6px;
+  top: calc(3px * var(--msp-ui-scale, 1));
+  right: calc(3px * var(--msp-ui-scale, 1));
+  width: calc(6px * var(--msp-ui-scale, 1));
+  height: calc(6px * var(--msp-ui-scale, 1));
   border-radius: 50%;
   background: var(--msp-color-accent);
   box-shadow: 0 0 0 1.5px var(--msp-color-raised);
@@ -42,7 +43,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
 }
 
 .overrideLabel {

@@ -77,10 +77,10 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
 }
 
 .msp-command-menu-menu {
+  width: min(calc(560px * var(--msp-ui-scale, 1)), 100%);
+  max-height: min(calc(480px * var(--msp-ui-scale, 1)), 76vh);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-color-panel);
-  width: min(560px, 100%);
-  max-height: min(480px, 76vh);
   box-shadow: var(--msp-glass-shadow),
     0 12px 32px #0000001f;
   font-size: var(--msp-font-size-sm);
@@ -100,7 +100,7 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
 .msp-command-menu-head {
   align-items: center;
   gap: var(--msp-space-3);
-  height: 40px;
+  height: calc(40px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-4);
   border-bottom: 1px solid var(--msp-glass-edge);
   flex: none;
@@ -131,7 +131,7 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
 .msp-command-menu-command {
   align-items: center;
   gap: var(--msp-space-2);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   background: color-mix(in oklab, var(--msp-color-accent), transparent 85%);
@@ -195,14 +195,14 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
 }
 
 .msp-command-menu-row {
+  grid-template-columns: calc(16px * var(--msp-ui-scale, 1)) minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--msp-space-3);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text);
   cursor: default;
-  grid-template-columns: 16px minmax(0, 1fr) auto auto;
   grid-auto-flow: column;
   display: grid;
 
@@ -278,7 +278,7 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
 }
 
 .msp-command-menu-value {
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-control);
@@ -309,7 +309,7 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
 .msp-command-menu-view {
   align-items: center;
   gap: var(--msp-space-1);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -326,7 +326,7 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
 .msp-command-menu-run {
   align-items: center;
   gap: var(--msp-space-2);
-  height: 28px;
+  height: calc(28px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-accent);
@@ -367,8 +367,8 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
 }
 
 .msp-command-menu-footer kbd, .msp-command-menu-keys, .msp-command-menu-run kbd {
-  min-width: 18px;
-  height: 18px;
+  min-width: calc(18px * var(--msp-ui-scale, 1));
+  height: calc(18px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1);
   border-radius: var(--msp-radius-sm);
   background: var(--msp-color-bg);
@@ -377,8 +377,8 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
   color: var(--msp-color-text-muted);
   font: inherit;
   font-family: var(--msp-font-mono);
+  font-size: calc(10px * var(--msp-ui-scale, 1));
   place-items: center;
-  font-size: 10px;
   line-height: 1;
   display: inline-grid;
 }
@@ -386,7 +386,7 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
 .msp-command-menu-crumb {
   align-items: center;
   gap: var(--msp-space-1);
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1) 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);
@@ -405,9 +405,10 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
 }
 
 .msp-command-menu-ask {
+  grid-template-columns: calc(16px * var(--msp-ui-scale, 1)) auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--msp-space-3);
-  min-height: 32px;
+  min-height: calc(32px * var(--msp-ui-scale, 1));
   margin: 0 var(--msp-space-2) var(--msp-space-2);
   padding: 0 var(--msp-inset);
   border-radius: var(--msp-radius-md);
@@ -415,7 +416,6 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
   font-size: var(--msp-font-size-sm);
   text-align: left;
   flex: none;
-  grid-template-columns: 16px auto minmax(0, 1fr) auto;
   display: grid;
 
   &:hover, &[data-default] {
@@ -423,8 +423,8 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
   }
 
   &[data-setup] {
+    grid-template-columns: calc(16px * var(--msp-ui-scale, 1)) minmax(0, 1fr);
     color: var(--msp-color-text-muted);
-    grid-template-columns: 16px minmax(0, 1fr);
 
     & .msp-command-menu-askIcon {
       color: var(--msp-color-text-subtle);
@@ -498,7 +498,7 @@ defineStyles('views/command-menu/command-menu.module.css', `@layer msp.component
 }
 
 .msp-command-menu-sharedOption {
-  height: 22px;
+  height: calc(22px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-md);
   color: var(--msp-color-text-muted);

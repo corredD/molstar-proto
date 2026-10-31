@@ -38,7 +38,7 @@ defineStyles('assistant/inspector/limits.module.css', `@layer msp.components {
 .msp-assistant-limits-content {
   align-content: start;
   gap: var(--msp-space-6);
-  max-width: 760px;
+  max-width: calc(760px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-5) var(--msp-space-5) var(--msp-space-6);
   display: grid;
 }
@@ -60,8 +60,9 @@ defineStyles('assistant/inspector/limits.module.css', `@layer msp.components {
 }
 
 .msp-assistant-limits-rows {
+  grid-template-columns: minmax(0, 1fr) calc(120px * var(--msp-ui-scale, 1)) calc(56px * var(--msp-ui-scale, 1)) calc(160px *
+      var(--msp-ui-scale, 1));
   margin-top: var(--msp-space-3);
-  grid-template-columns: minmax(0, 1fr) 120px 56px 160px;
   display: grid;
 }
 
@@ -103,20 +104,20 @@ defineStyles('assistant/inspector/limits.module.css', `@layer msp.components {
 }
 
 .msp-assistant-limits-usedBar {
+  width: calc(96px * var(--msp-ui-scale, 1));
   flex: none;
-  width: 96px;
 }
 
 .msp-assistant-limits-input, .msp-assistant-limits-value {
   width: 100%;
-  height: 24px;
+  height: calc(24px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-3);
   border-radius: var(--msp-radius-md);
   font-family: var(--msp-font-mono);
   font-size: var(--msp-font-size-sm);
   font-variant-numeric: tabular-nums;
+  line-height: calc(24px * var(--msp-ui-scale, 1));
   text-align: right;
-  line-height: 24px;
 }
 
 .msp-assistant-limits-input {
@@ -163,7 +164,7 @@ defineStyles('assistant/inspector/limits.module.css', `@layer msp.components {
   }
 
   .msp-assistant-limits-rows {
-    grid-template-columns: minmax(0, 1fr) 48px auto;
+    grid-template-columns: minmax(0, 1fr) calc(48px * var(--msp-ui-scale, 1)) auto;
   }
 
   .msp-assistant-limits-label {

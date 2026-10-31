@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* What a Selection section made (style layers, superpositions): a caption with Clear all, then rows in the well, as the
@@ -21,7 +22,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  height: 22px;
+  height: calc(22px * var(--msp-ui-scale, 1));
 }
 
 .caption {
@@ -53,7 +54,7 @@
 
 /* There can be many: the list keeps a height (about eight rows) and scrolls by itself. */
 .list {
-  max-height: 224px;
+  max-height: calc(224px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-md);
   background: var(--msp-color-panel);
   contain: content;
@@ -74,7 +75,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-1) 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);
 
@@ -88,13 +89,13 @@
   flex: none;
   display: grid;
   place-items: center;
-  width: 14px;
+  width: calc(14px * var(--msp-ui-scale, 1));
   color: var(--msp-color-text-muted);
 }
 
 .swatch {
-  width: 12px;
-  height: 12px;
+  width: calc(12px * var(--msp-ui-scale, 1));
+  height: calc(12px * var(--msp-ui-scale, 1));
   border-radius: 50%;
   box-shadow: inset 0 0 0 1px var(--msp-glass-edge);
 }
@@ -158,8 +159,8 @@
 .action {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: calc(20px * var(--msp-ui-scale, 1));
+  height: calc(20px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
   opacity: 0;
@@ -205,7 +206,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-2);
-  min-height: 24px;
+  min-height: calc(24px * var(--msp-ui-scale, 1));
 }
 
 .summaryIcon {
@@ -231,8 +232,8 @@
   flex: none;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: calc(24px * var(--msp-ui-scale, 1));
+  height: calc(24px * var(--msp-ui-scale, 1));
   border-radius: var(--msp-radius-sm);
   color: var(--msp-color-text-muted);
 
@@ -298,7 +299,7 @@
   display: flex;
   align-items: center;
   gap: var(--msp-space-1);
-  height: 26px;
+  height: calc(26px * var(--msp-ui-scale, 1));
   margin-left: calc(var(--msp-icon-md) + var(--msp-space-2));
   padding: 0 var(--msp-space-2);
   border-radius: var(--msp-radius-sm);

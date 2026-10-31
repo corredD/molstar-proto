@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 /* The Storage section of Settings: folded, a row; open, in the well (as the Settings groups). */
@@ -31,7 +32,7 @@
   align-items: center;
   gap: var(--msp-space-3);
   min-width: 0;
-  height: 32px;
+  height: calc(32px * var(--msp-ui-scale, 1));
   padding: 0 var(--msp-space-2);
   color: var(--msp-color-text-muted);
   text-align: left;

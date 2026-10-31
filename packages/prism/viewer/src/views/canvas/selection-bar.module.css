@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 .context {
@@ -18,8 +19,8 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: max(34px, var(--msp-touch-target, 0px));
-  height: max(34px, var(--msp-touch-target, 0px));
+  width: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
+  height: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   border-radius: var(--msp-radius-lg);
   background: var(--msp-glass-bg);
   box-shadow: var(--msp-glass-shadow);
@@ -38,7 +39,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  height: max(34px, var(--msp-touch-target, 0px));
+  height: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   padding: 0;
   border-radius: var(--msp-radius-lg);
   background: var(--msp-glass-bg);
@@ -77,8 +78,8 @@
 /* The canvas stack's mark for a button with a menu (prism-ui canvas.module.css `.menuMark`) */
 .menuMark {
   position: absolute;
-  right: 5px;
-  bottom: 5px;
+  right: calc(5px * var(--msp-ui-scale, 1));
+  bottom: calc(5px * var(--msp-ui-scale, 1));
   border-right: 4px solid currentColor;
   border-top: 4px solid transparent;
   opacity: 0.45;
@@ -89,7 +90,7 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: max(34px, var(--msp-touch-target, 0px));
+  width: max(calc(34px * var(--msp-ui-scale, 1)), var(--msp-touch-target, 0px));
   height: 100%;
   border-radius: 0 var(--msp-radius-lg) var(--msp-radius-lg) 0;
   color: var(--msp-color-text-muted);
@@ -113,7 +114,7 @@
 
 .menuCard {
   display: grid;
-  min-width: 200px;
+  min-width: calc(200px * var(--msp-ui-scale, 1));
   padding: var(--msp-space-2);
   border-radius: var(--msp-radius-lg);
   background: var(--msp-glass-panel-bg);
