@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -19,7 +20,11 @@ import {
 } from '@molstar/model/model/particles/particle-list';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import { Theme } from '@molstar/graphics/theme/theme';
-import { type GraphicsRenderObject, getNextMaterialId } from '@molstar/graphics/gl/render-object';
+import {
+  type GraphicsRenderObject,
+  type MergedGraphicsRenderObject,
+  getNextMaterialId,
+} from '@molstar/graphics/gl/render-object';
 import { Subject } from 'rxjs';
 import { Mat4 } from '@molstar/core/math/linear-algebra';
 import { Visual } from '../../../visual.js';
@@ -169,18 +174,15 @@ export function ParticleTargetRepresentation(
   }
 
   /**
-   * The representation's transform on what it draws: each target's visual and the merged render objects (each has its
-   * own model matrix; a merged one is drawn instead of its members)
+   * The representation's transform on what it draws: each target's visual, then the merged render objects synced from
+   * them (as `units-representation` does). Not set on a merged object itself: it shares `matrix` and `transform` with
+   * its first member only, so its own instances and bounds would be made from those (zeros, radius 0: culled)
    */
   function applyTransform(transform: Mat4) {
-    const done = new Set<GraphicsRenderObject>();
     for (const visual of targetVisuals.values()) {
-      if (visual.renderObject) {
-        Visual.setTransform(visual.renderObject, transform);
-        done.add(visual.renderObject);
-      }
+      if (visual.renderObject) Visual.setTransform(visual.renderObject, transform);
     }
-    for (const ro of renderObjects) if (!done.has(ro)) Visual.setTransform(ro, transform);
+    for (const ro of renderObjects) (ro as Partial<MergedGraphicsRenderObject>).merged?.sync();
   }
 
   function setState(state: Partial<Representation.State>) {

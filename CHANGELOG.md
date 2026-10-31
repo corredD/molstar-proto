@@ -10,6 +10,10 @@ here.
 
 ## [Unreleased]
 
+- Fix the instanced objects of particle targets left with their bounds where the particles were when the list moved in
+  place (a scale, a move): the camera's clipping planes and the culling dropped them when zooming in
+- Fix a merged render object kept by a representation update drawn as its members were before the update when the scene
+  added it after that update (WebGPU: a particle list decorated, then scaled at once)
 - Fix `Euler.set` (and `Euler.fromVec3`, which uses it) writing all three angles into the first component
 - [Breaking] Component options keep overrides: `StructureComponentManager.setOptions` changes only the representations
   that had the previous value of a changed option (a representation given its own material, quality, … keeps it);

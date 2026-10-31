@@ -716,8 +716,6 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
           renderObject.values as unknown as TransformData,
         );
         const geomUtils = Geometry.getUtils(geometry!);
-        // TODO: needs update? how to do efficeintly? geomUtils is too slow
-        // geomUtils.updateBoundingSphere(renderObject.values as any, geometry!);
         positionIt = geomUtils.createPositionIterator(geometry!, renderObject.values as any);
         if ('lodLevels' in renderObject.values) {
           // instanceGrid (and its cellCount) was just rebuilt above; bump the `lodLevels`
@@ -743,6 +741,13 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
         }
       }
       const geomUtils = Geometry.getUtils(geometry!);
+      if (updateState.updateMatrix || updateState.updateSize) {
+        // the bounds of the moved (or resized) instances, as the render object was made (`createValues`): from the
+        // geometry's own sphere and the instances' transforms (and sizes: the spheres' padding), O(instances + sizes).
+        // Else they stay where the particles were, and the camera's planes and the culling drop the instances once
+        // the list is scaled or moved (Ludo, 2026-10-31).
+        geomUtils.updateBoundingSphere(renderObject.values as any, geometry!);
+      }
       geomUtils.updateValues(renderObject.values as any, props as any);
       geomUtils.updateRenderableState(renderObject.state, props as any);
     }

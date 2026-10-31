@@ -425,6 +425,20 @@ const ParticleListWithTargets = PluginStateTransform.BuiltIn({
   },
 });
 
+/** The list a decorator last took: what is above it may change it (a decorator inserted there), its source not */
+type InputCache = { input?: ParticleList };
+
+/**
+ * Whether `input` is another list than the one the decorator last took, recording it. Not its `sourceData`: a
+ * decoration inserted above keeps the source and adds the targets (the model's `ModelWithCoordinates` does the same)
+ */
+function inputChanged(cache: unknown, input: ParticleList) {
+  const c = cache as InputCache;
+  if (c.input === input) return false;
+  c.input = input;
+  return true;
+}
+
 export { ParticleListTransform };
 type ParticleListTransform = typeof ParticleListTransform;
 /**
@@ -452,17 +466,19 @@ const ParticleListTransform = PluginStateTransform.BuiltIn({
     ),
   },
 })({
-  apply({ a, params }) {
+  apply({ a, params, cache }) {
+    (cache as InputCache).input = a.data;
     return new SO.Particle.List(transformParticles(a.data, params.transform, params.scale ?? 1), {
       label: a.label,
       description: a.description,
     });
   },
-  update({ a, b, newParams, oldParams }) {
+  update({ a, b, newParams, oldParams, cache }) {
+    const changed = inputChanged(cache, a.data);
     if (
+      !changed &&
       Mat4.areEqual(newParams.transform, oldParams.transform, 1e-9) &&
-      (newParams.scale ?? 1) === (oldParams.scale ?? 1) &&
-      b.data.sourceData === a.data.sourceData
+      (newParams.scale ?? 1) === (oldParams.scale ?? 1)
     ) {
       return StateTransformer.UpdateResult.Unchanged;
     }
@@ -518,17 +534,19 @@ const ParticleListOffsets = PluginStateTransform.BuiltIn({
     ),
   },
 })({
-  apply({ a, params }) {
+  apply({ a, params, cache }) {
+    (cache as InputCache).input = a.data;
     return new SO.Particle.List(offsetParticles(a.data, params.offsets, params.instances ?? []), {
       label: a.label,
       description: a.description,
     });
   },
-  update({ a, b, newParams, oldParams }) {
+  update({ a, b, newParams, oldParams, cache }) {
+    const changed = inputChanged(cache, a.data);
     if (
+      !changed &&
       JSON.stringify(newParams.offsets) === JSON.stringify(oldParams.offsets) &&
-      JSON.stringify(newParams.instances ?? []) === JSON.stringify(oldParams.instances ?? []) &&
-      b.data.sourceData === a.data.sourceData
+      JSON.stringify(newParams.instances ?? []) === JSON.stringify(oldParams.instances ?? [])
     ) {
       return StateTransformer.UpdateResult.Unchanged;
     }
