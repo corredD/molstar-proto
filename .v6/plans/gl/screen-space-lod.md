@@ -71,7 +71,12 @@
   draw list's recording holds the view's scales with its planes (a scale at the same camera draws other levels). Why:
   close up, `quality` at rest is out of reach at 60 fps on an M1 (the spheres and their fragments,
   `apps/prism-me/progress/2026-10-31-instance-cull.md`); a coarser look while moving, as dynamic-resolution renderers
-  do, keeps the rest frame as it is. Off by default (1); the Mesoscale Explorer sets it.
+  do, keeps the rest frame as it is. Off by default (1); the Mesoscale Explorer sets it. `motion.pixelScale` below 1
+  (dynamic resolution) has the context resize the canvas and the input to that scale while moving
+  (`Canvas3DContext.setMotionPixelScale`, none where nothing resizes the canvas), the passes resized within the frame
+  that switches; motion is a change of the view and of the projection's vertical scale, not of the viewport; the
+  trackball compares page coordinates with the viewport at full resolution (`setResolutionScale`), so a drag moves the
+  same across a switch; an image pass ends a motion. The Mesoscale Explorer: 4x and 0.5, on a 2x display 6x and 0.35.
 - **Params**: `lodPixelSize` (`D`, CSS pixels), 0 for the levels' Å distances (v5 states and apps unchanged); above 0
   the levels' distances are ignored. The level value carries it (`LodLevelsValue.pixel`, boundaries in Å per pixel),
   so merging (its key), the culling and the shaders see one value. The presets get pixel variants (strides and scale

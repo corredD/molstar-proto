@@ -152,7 +152,7 @@ export function setPositionGroup(
   const offsets = [0];
 
   // per level the items it adds (those of its stride not in a coarser one), in space order (Morton): items near in the
-  // list are near in space, so that consecutive ranges make compact clusters (`getPositionGroupClusters`); a level
+  // list are near in space, so that consecutive ranges make compact clusters (the GPU culling's, `merged-culler.ts`); a level
   // draws the same items in any order
   const items: number[] = [];
   let o = 0;

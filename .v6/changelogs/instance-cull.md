@@ -7,5 +7,13 @@
   again, and a canvas draws the frames that settle it after the camera rests.
 - `gpuCulling: 'auto'` also culls on the GPU from 10 M vertices at full detail and 30 instances (PetWorld's proteins).
 - `Canvas3D` `motion` (`lodScale`, `holdMs`): levels of detail by size on screen coarser while the camera moves, full
-  detail once it rests (`Renderer.setLodScale`); off by default, the Mesoscale Explorer sets 4.
+  detail once it rests (`Renderer.setLodScale`); `motion.pixelScale`, a lower resolution while moving (the canvas and
+  input resized through `Canvas3DContext.setMotionPixelScale`, the trackball's drags unchanged:
+  `TrackballControls.setResolutionScale`); no occlusion while moving. Off by default; the Mesoscale Explorer sets 4x
+  and 0.5 (6x and 0.35 on a 2x display).
 - A draw list replays no recording of other levels of detail at the same camera (the view's scale is part of it).
+- Large members (512 spheres or more) draw level 0 by clusters of spheres, each culled per instance on the GPU
+  (`cluster-copy`); each level's spheres in space order.
+- Culled spheres grow by how far wiggle and tumble move them (GPU and CPU).
+- CPU culling (WebGL2) tests the instances of a cut cell one by one for objects with levels of detail; draw lists grow
+  where they need more room.

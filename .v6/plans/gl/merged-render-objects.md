@@ -170,7 +170,7 @@ for densely packed scenes (mesoscale), where most of what is in view is hidden b
   frame while turning at 0.1 (`apps/prism-me/scripts/cull-check.mjs`; what parallax uncovers behind a near particle
   shows a frame late, the one-phase test's limit).
 - **No occlusion while moving with `motion`** (`Canvas3D`): moving frames and the frame the camera rests in draw
-  without a pyramid; the next frame tests one of its own view. Exact (no frame of popping: what parallax uncovers, a
+  without a pyramid (nor Hi-Z's CPU test); the next frame tests one of its own view. Exact (no frame of popping: what parallax uncovers, a
   coarse frame's spheres hiding fine gaps), and nearly free where moving frames are coarser at a lower resolution
   (turning, M1, WebGPU: CellPack HIV 0.1 7.8 to 9.3 ms dpr 1, 18.3 to 21.4 dpr 2; PetWorld HIV 0.02 14.7 to 15.3, 38.4
   to 39.4); chosen over two-phase occlusion (a pyramid within the frame, the opaque pass split), which the frames
