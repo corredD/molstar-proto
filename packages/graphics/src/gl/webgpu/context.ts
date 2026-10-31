@@ -1023,6 +1023,11 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
     return undefined;
   }
 
+  /** `GraphicsContext.drawResourcesVersion`: both only advance, their sum advances with either */
+  function getDrawResourcesVersion() {
+    return drawContext.quadIndices.id + drawContext.sharedTextures.version;
+  }
+
   function recordRenderBundle(draw: () => void): GPURenderBundle | undefined {
     const target = passTarget;
     if (!target) throw new Error('recording a render bundle outside of a render pass');
@@ -1039,7 +1044,7 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
       current.failed ??= `the ${what} changing`;
     });
     const arenaReplacements = ring.arenaReplacements;
-    const drawResources = drawContext.quadIndices.id + drawContext.sharedTextures.version;
+    const drawResources = getDrawResourcesVersion();
     recording = current;
     try {
       draw();
@@ -1050,7 +1055,7 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
     if (ring.arenaReplacements !== arenaReplacements) current.failed ??= 'a uniform arena growing';
     // a shared resource replaced while recording (the quad indices grown by a later draw): the draws before it bind the
     // released one, and the snapshot taken after the recording would hold it current
-    if (drawContext.quadIndices.id + drawContext.sharedTextures.version !== drawResources) {
+    if (getDrawResourcesVersion() !== drawResources) {
       current.failed ??= 'a shared draw resource replaced';
     }
     const bundle = encoder.finish();
@@ -1430,8 +1435,7 @@ export function createWebGPUContext(device: GPUDevice, options: WebGPUContextOpt
       return submitCount;
     },
     get drawResourcesVersion() {
-      // both only advance: their sum advances with either
-      return drawContext.quadIndices.id + drawContext.sharedTextures.version;
+      return getDrawResourcesVersion();
     },
     quadIndices: drawContext.quadIndices,
     sharedTextures: drawContext.sharedTextures,
