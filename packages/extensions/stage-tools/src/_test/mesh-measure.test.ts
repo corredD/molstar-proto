@@ -130,6 +130,36 @@ describe('measurements from a mesh triangle', () => {
     expect(again.ok && again.unchanged).toBe(true);
   });
 
+  it('measures a triangle picked before the mesh is moved or recolored', async () => {
+    const v = await viewer();
+    const ca = atom(v, 10);
+    const picked = triangle(v, 0, [0.5, 0.2]);
+    const { ref } = mesh(v);
+    expectOk(
+      await v.api.run('stage.move', {
+        target: ref,
+        matrix: Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 30))),
+      }),
+    );
+    // the click's loci still names the shape from before the move
+    const moved = await v.api.run('stage.distance', { a: { loci: picked }, b: { loci: ca.loci } });
+    expectOk(moved);
+    expect((moved.value as { distance: number }).distance).toBeCloseTo(
+      Vec3.distance(Vec3.create(7, 2, 80), ca.at),
+      3,
+    );
+
+    const again = triangle(v, 0, [0.5, 0.2]);
+    const repr = mesh(v).ref;
+    await v.plugin.state.data
+      .build()
+      .to(repr)
+      .update((p: any) => ({ ...p, coloring: { name: 'uniform', params: { color: 0xff00aa } } }))
+      .commit();
+    const recolored = await v.api.run('stage.distance', { a: { loci: again }, b: { loci: ca.loci } });
+    expect(recolored.ok && recolored.unchanged).toBe(true);
+  });
+
   it('follows the mesh when it is moved and when it is scaled', async () => {
     const v = await viewer();
     const ca = atom(v, 10);

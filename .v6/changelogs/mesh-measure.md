@@ -14,6 +14,7 @@
 ## prism-me: Stage tools
 
 - Measurements from a mesh's triangle, at the point picked on it, following the mesh's moves and scales; between
-  triangles, atoms, residues, particles and voxels.
+  triangles, atoms, residues, particles and voxels. A triangle picked before the mesh is moved, scaled or recolored
+  still measures.
 - An angle and a dihedral between any of these points: `stage.angle`, `stage.dihedral`, and in the explorer the latest
   three or four ⌘/Ctrl+clicked points by the canvas's right-click.

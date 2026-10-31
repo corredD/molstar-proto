@@ -917,10 +917,30 @@ export function stagePicked(ctx: Pick<ApiContext, 'plugin'>, loci: Loci): StageP
   for (const cell of cells.values()) {
     if (cell.state.isGhost || !SO.Shape.Representation3D.is(cell.obj)) continue;
     const all = cell.obj.data.repr.getAllLoci();
-    if (all.some((l) => (Shape.isLoci(l) || ShapeGroup.isLoci(l)) && l.shape === loci.shape))
+    if (all.some((l) => (Shape.isLoci(l) || ShapeGroup.isLoci(l)) && sameDrawnMesh(l.shape, loci.shape)))
       return { kind: 'shape', ref: cell.transform.ref };
   }
   return undefined;
+}
+
+/**
+ * A click's shape and the one drawn now. A recolor builds a new shape of the same geometry; a move or a scale
+ * rebuilds the provider (no `update`), so the geometry is new too and the file is what stays
+ * (apps/prism-me/_spec/ui.md §7).
+ */
+function sameDrawnMesh(current: Shape, picked: Shape): boolean {
+  if (current === picked) return true;
+  // only a mesh picked by triangle is rebuilt out from under a kept loci; a unit cell stays itself
+  if (!current.getTriangleLoci || !picked.getTriangleLoci) return false;
+  if (current.geometry === picked.geometry) return true;
+  return meshFile(current) === meshFile(picked);
+}
+
+/** The file a mesh shape was built from. OBJ wraps it (`{ source }`); PLY and VTP are it. */
+function meshFile(shape: Shape): unknown {
+  const data = shape.sourceData as { source?: unknown } | undefined;
+  if (data && typeof data === 'object' && data.source && typeof data.source === 'object') return data.source;
+  return shape.sourceData;
 }
 
 /** What a right-click picked, for the stage's menu: its target, and a particle's target, entity and name */
