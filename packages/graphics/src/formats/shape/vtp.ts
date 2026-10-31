@@ -369,15 +369,18 @@ function createShape(
   const baseTransforms = vtpData.transforms ?? _identityTransforms;
   const transforms = baseTransforms.map((t) => Mat4.mul(Mat4(), t, scaleT));
   const { numberOfPoints } = vtpData.source;
-  return ShapeUtils.create(
-    'vtp-mesh',
-    vtpData.source,
-    mesh,
-    colorFn,
-    () => 1,
-    (gid: number) => (gid >= 0 ? `Vertex ${gid}` : ''),
-    transforms,
-    numberOfPoints,
+  // picked by triangle (.v6/plans/gl/triangle-picking.md): a segmentation's group is a material or a vertex
+  return ShapeUtils.enableTrianglePicking(
+    ShapeUtils.create(
+      'vtp-mesh',
+      vtpData.source,
+      mesh,
+      colorFn,
+      () => 1,
+      (gid: number) => (gid >= 0 ? `Vertex ${gid}` : ''),
+      transforms,
+      numberOfPoints,
+    ),
   );
 }
 

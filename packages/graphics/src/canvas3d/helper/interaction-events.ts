@@ -3,6 +3,7 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { PickingId } from '@molstar/graphics/geo/geometry/picking';
@@ -13,6 +14,7 @@ import { Vec2, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { Camera } from '../camera.js';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Bond } from '@molstar/model/model/structure';
+import { ShapeGroup } from '@molstar/model/model/shape';
 import type { TrackballControls } from '../controls/trackball.js';
 import { Ray3D } from '@molstar/core/math/geometry/primitives/ray3d';
 import type { AsyncPickData, PickData } from '../passes/pick.js';
@@ -25,6 +27,10 @@ type ClickEvent = import('../canvas3d.js').Canvas3D.ClickEvent;
 const tmpPosA = Vec3();
 const tmpPos = Vec3();
 const tmpNorm = Vec3();
+const tmpTriangleRay = Ray3D();
+
+/** How far (in pixels at its depth) a mesh's triangle is looked for around a pick's depth point */
+const TrianglePickPixels = 8;
 
 export const Canvas3dInteractionHelperParams = {
   maxFps: PD.Numeric(30, { min: 10, max: 60, step: 10 }),
@@ -313,7 +319,30 @@ export class Canvas3dInteractionHelper {
         return { repr, loci: Bond.toFirstStructureElementLoci(loci) };
       }
     }
+    // a mesh picked by triangle: the triangle under the pointer and the point on it (`Shape.getTriangleLoci`)
+    if (position && repr && ShapeGroup.isLoci(loci) && loci.shape.getTriangleLoci) {
+      const tolerance = this.camera.getPixelSize(position) * TrianglePickPixels;
+      return { repr, loci: loci.shape.getTriangleLoci(loci, this.pointerRay(position), position, tolerance) };
+    }
     return { repr, loci };
+  }
+
+  /**
+   * The ray through the pointer, from a pick's depth point (it is on the pointer's ray: the pointer's window
+   * coordinates at the depth read there), or the input's own ray (XR)
+   */
+  private pointerRay(position: Vec3): Ray3D {
+    if (this.ray) return this.ray;
+    const { state } = this.camera;
+    const ray = tmpTriangleRay;
+    if (state.mode === 'orthographic') {
+      Vec3.normalize(ray.direction, Vec3.sub(ray.direction, state.target, state.position));
+      Vec3.scaleAndAdd(ray.origin, position, ray.direction, -(Vec3.distance(state.position, position) + 1));
+    } else {
+      Vec3.copy(ray.origin, state.position);
+      Vec3.normalize(ray.direction, Vec3.sub(ray.direction, position, state.position));
+    }
+    return ray;
   }
 
   resetTime(t: number) {
