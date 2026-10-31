@@ -66,10 +66,11 @@ fn occluded(sphere: vec4<f32>) -> bool {
     let w = aabb.z - aabb.x;
     let h = aabb.w - aabb.y;
     let pr = max(w * uParams.uHiZViewport.x, h * uParams.uHiZViewport.y);
-    let lod = i32(ceil(log2(pr / 2.0)));
+    // a level finer than the one where the rectangle is at most a texel: up to four texels per axis
     let levels = uParams.uHiZLevelCount;
     let minLevel = uParams.uHiZMinLevel;
-    if (lod >= levels || lod < minLevel) {
+    let lod = max(i32(ceil(log2(pr / 2.0))) - 1, minLevel);
+    if (lod >= levels) {
         return false;
     }
     // the levels from \`minLevel\` side by side: level i of size 2^(levels - 1 - i)
@@ -78,16 +79,22 @@ fn occluded(sphere: vec4<f32>) -> bool {
         offset += 1 << u32(levels - 1 - i);
     }
     let ts = 1 << u32(levels - 1 - lod);
-    // the texels the rectangle covers: at most two per axis at this level (its size at most a texel)
-    let x0 = i32(floor(aabb.x * f32(ts)));
-    let x1 = i32(floor(aabb.z * f32(ts)));
-    let y0 = i32(floor(aabb.y * f32(ts)));
-    let y1 = i32(floor(aabb.w * f32(ts)));
-    if (x0 < 0 || y0 < 0 || x1 >= ts || y1 >= ts || x1 - x0 > 1 || y1 - y0 > 1) {
+    // the texels the rectangle covers, clamped to the view (what is outside is not drawn)
+    let x0 = max(i32(floor(aabb.x * f32(ts))), 0);
+    let x1 = min(i32(floor(aabb.z * f32(ts))), ts - 1);
+    let y0 = max(i32(floor(aabb.y * f32(ts))), 0);
+    let y1 = min(i32(floor(aabb.w * f32(ts))), ts - 1);
+    if (x1 < x0 || y1 < y0 || x1 - x0 > 3 || y1 - y0 > 3) {
         return false;
     }
-    return z <= hiZDepth(x0 + offset, y0) && z <= hiZDepth(x1 + offset, y0) && z <= hiZDepth(x0 + offset, y1) &&
-        z <= hiZDepth(x1 + offset, y1);
+    for (var y = y0; y <= y1; y++) {
+        for (var x = x0; x <= x1; x++) {
+            if (z > hiZDepth(x + offset, y)) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 `;
 
