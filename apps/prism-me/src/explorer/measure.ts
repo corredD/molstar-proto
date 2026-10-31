@@ -88,6 +88,13 @@ export function distancePicker(
       options.post?.(`An ${kind} needs ${n} points: ${gesture()} them in selection mode first.`);
       return;
     }
+    // a point's object removed since: said, as for a distance's first point
+    const objects = new Set(area.objectsState().value.map((o) => o.ref));
+    if (points.some((p) => !objects.has(p.picked.node.ref))) {
+      cancel();
+      options.post?.(`A point's object was removed: ${gesture()} the points again.`);
+      return;
+    }
     const [a, b, c, d] = points.map((p) => ({ loci: p.loci }));
     letGo();
     const r = await api.run(`stage.${kind}`, { a, b, c, ...(d ? { d } : {}), node: points[0].picked.key });

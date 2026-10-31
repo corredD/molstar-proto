@@ -155,6 +155,23 @@ describe('measuring from mesh triangles in the explorer', () => {
     );
   });
 
+  it("says a latest point's object was removed, and measures nothing", async () => {
+    const v = await viewer();
+    const { p, posted } = picker(v);
+    for (const loci of [triangle(v, 0, [0.5, 0.2]), residue(v, 10), triangle(v, 1, [0.1, 0.8])]) {
+      await p.click({ loci, measure: true });
+    }
+    // the mesh's file removed (its root data)
+    const { tree } = v.plugin.state.data;
+    let root = mesh(v).ref;
+    while (tree.transforms.get(root)!.parent !== '-=root=-') root = tree.transforms.get(root)!.parent;
+    await v.plugin.state.data.build().delete(root).commit();
+    const before = measurements(v).length;
+    await p.measureLatest('angle');
+    expect(posted.at(-1)).toMatch(/object was removed/);
+    expect(measurements(v)).toHaveLength(before);
+  });
+
   it('lets the latest points go with the first one (Esc, a plain click): no angle offered then', async () => {
     const v = await viewer();
     const { p, posted } = picker(v);
