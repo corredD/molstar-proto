@@ -995,14 +995,23 @@ function listScale(ctx: Pick<ApiContext, 'plugin'>, target: string): number {
   return (old?.transform.params as { scale?: number } | undefined)?.scale ?? 1;
 }
 
-/** The decorator of a transformer right under a cell (a particle list's or a volume's transform), if any */
+/**
+ * The decorator of a transformer in the chain of decorators under a cell (a particle list's or a volume's transform),
+ * if any: not only right under it, as a decorator inserted later goes above it (a list decorated after its scale,
+ * Ludo 2026-10-31: else a second transform, its scale and move scaled again)
+ */
 function decoratorUnder(ctx: Pick<ApiContext, 'plugin'>, ref: string, transformer: unknown) {
   const { cells, tree } = ctx.plugin.state.data;
-  return tree.children
-    .get(ref)
-    .toArray()
-    .map((c) => cells.get(c))
-    .find((c) => c?.transform.transformer === transformer);
+  for (let at = ref; ; ) {
+    const next = tree.children
+      .get(at)
+      .toArray()
+      .map((c) => cells.get(c))
+      .find((c) => c?.transform.transformer.definition.isDecorator);
+    if (!next) return undefined;
+    if (next.transform.transformer === transformer) return next;
+    at = next.transform.ref;
+  }
 }
 
 /** A volume's transform as a matrix (its decorator's: a matrix, or its parts about the origin) */

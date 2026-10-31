@@ -81,13 +81,26 @@ is not built is [../TODO.md](../TODO.md).
   structure in a corner), on WebGL2 they show scaled and vanish as soon as the camera moves in (0.3 of the distance).
   Likely the decorations' render objects keep bounds from before the scale (one at center 161,179,190, radius 309). Not
   yet known if #28 made it worse. Proposed with the decorate fix: one lane, decorations under a list transform.
-- **Lane `decorate-transform`** (Ludo, 2026-10-31: yes): both bugs above, `me/decorate-transform`, port 1363; brief
-  [2026-10-31-decorate-transform.md](2026-10-31-decorate-transform.md) on its branch. Running.
+- **Lane `decorate-transform`**: **PR #29** merged by Ludo (2026-10-31), both bugs fixed, gate and review passed.
+  Causes: `ParticleListTransform`/`ParticleListOffsets` short-cut on `sourceData`; stage-tools' `decoratorUnder` looked
+  only under the list (a second scale gave 10 → 100); the target visual's update kept its old bounding sphere (a "too
+  slow" TODO, upstream and 5.x too); a merged render object kept its first values on WebGPU (upstream v6);
+  `applyTransform` set merged objects' transform (radius 0 in a handle preview). Ludo's steps headless, both backends,
+  both orders: nothing disappears. Open: a list's drag preview does not redraw headless (Ludo to check in the app);
+  `scaleByRadius` targets' bounds; upstreaming the two graphics fixes waits for Ludo.
+
 - **Lane `mesh-measure`** (Ludo, 2026-10-31): "measurement between obj/shape at the triangle highlight/selection and
   other selection. Right now, mesh selection is global not at the triangle level." Triangle picking on OBJ/PLY/VTP
   meshes (today a material, a vertex or the whole mesh), then distance/angle/dihedral between triangles, atoms and
   particles. `me/mesh-measure`, port 1364; brief [2026-10-31-mesh-measure.md](2026-10-31-mesh-measure.md) on its branch.
   Running.
+- **Lane `ghost-cull`** (Ludo, 2026-10-31): "the ghost on cellpack rendering, disappears at some distance and on the
+  side of the screen." Suspected: #28's culling (occlusion, LOD range, edges) applied to #24's ghost pass.
+  `me/ghost-cull`, port 1365; brief [2026-10-31-ghost-cull.md](2026-10-31-ghost-cull.md) on its branch. Running.
+- **After the 3 lanes** (Ludo, 2026-10-31, from Alexander): "also you generally want to switch marking off or at least
+  set ghost edge strength to 1 - otherwise you render everything at least twice... the transparent stuff is not cheap
+  either...". To do: prism-me's look (`marking` off, or `ghostEdgeStrength` 1), measured with `zoom-bench.mjs` before
+  and after; check what highlight and select still show. Not started.
 - **Exosome example** (Ludo, 2026-10-31: does not load on Chrome): its file is on `mesoscope.scripps.edu`, which refuses
   connections (curl: connection refused on 443). Not prism-me.
 
