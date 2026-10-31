@@ -2,6 +2,7 @@
  * Copyright (c) 2023-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { createRenderBuilder, type PassBuilder } from './pass-builder.js';
@@ -104,10 +105,13 @@ export const HiZParams = {
   minLevel: PD.Numeric(3, { min: 1, max: 10, step: 1 }),
   gpu: PD.Boolean(true, {
     description:
-      "Occlusion culling on the GPU of the objects culled there (gpuCulling), against the previous frame's depth without reading it back; also with Hi-Z off.",
+      "Occlusion culling on the GPU of the objects culled there (gpuCulling), against this frame's depth in two phases (order-independent transparency) or the previous frame's, without reading it back; also with Hi-Z off.",
   }),
 };
 export type HiZProps = PD.Values<typeof HiZParams>;
+
+/** Builds of every pyramid (`OcclusionPyramid.version`): never reset, so that a build after `clear` is a new version */
+let pyramidBuilds = 0;
 
 export class HiZPass {
   private readonly viewport = Viewport();
@@ -276,6 +280,7 @@ export class HiZPass {
     if (b.drawing && pending.trackedCount === trackedCount) {
       const { width, height } = this.viewport;
       this.pyramid = {
+        version: ++pyramidBuilds,
         texture: this.tex,
         levelCount: this.levelData.length,
         minLevel: this.props.minLevel,

@@ -57,6 +57,7 @@ export const CategoryThemes: Readonly<Record<string, readonly (readonly [string,
     ['object', 'By object'],
     ['entity', 'By entity'],
     ['generate', 'Generate colors'],
+    ['zoom', 'By zoom'],
     ['uniform', 'Uniform…'],
   ],
   'c:volumes': [

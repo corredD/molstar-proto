@@ -4,6 +4,7 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Cai Huiyu <szmun.caihy@gmail.com>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util';
@@ -39,6 +40,7 @@ import {
 } from '@molstar/graphics/gl/compute/marching-cubes/chunks';
 import { createEmptyEmissive } from '../emissive-data.js';
 import { createEmptyWiggle } from '../wiggle-data.js';
+import { ColorLevels } from '../color-levels.js';
 import { createInteriorValues, getInteriorParam, updateInteriorValues } from '../interior.js';
 import { getAnimationParam, createAnimationValues, updateAnimationValues } from '../animation.js';
 
@@ -491,6 +493,7 @@ export namespace TextureMesh {
       ...substance,
       ...clipping,
       ...wiggle,
+      ...ColorLevels.createData(),
       ...transform,
 
       ...BaseGeometry.createValues(props, counts),

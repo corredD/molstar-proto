@@ -2,13 +2,17 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
 import type { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { type SizeData, createGroupSize, createValueSize } from '@molstar/graphics/geo/geometry/size-data';
 import { type Location, NullLocation } from '@molstar/model/model/location';
-import { StructureElement, type Structure } from '@molstar/model/model/structure';
+import { StructureElement, StructureProperties, Unit, type Structure } from '@molstar/model/model/structure';
+import { Color } from '@molstar/core/util/color';
+import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
+import { ElementSymbolColors, elementSymbolColor } from '@molstar/graphics/theme/color/element-symbol';
 import type { Theme } from '@molstar/graphics/theme/theme';
 import type { SizeTheme } from '@molstar/graphics/theme/size';
 import { PhysicalSizeTheme, getPhysicalRadius } from '@molstar/graphics/theme/size/physical';
@@ -131,4 +135,38 @@ export function structureTargetSizeFactorChanged(
   graphics?: GraphicsContext,
 ): boolean {
   return structureTargetUseImpostor(newProps, graphics) && newProps.sizeFactor !== oldProps.sizeFactor;
+}
+
+const nearData = new WeakMap<Structure, Uint8Array>();
+
+/**
+ * Per element of a structure target (its group) the color levels' near data (`ColorLevels.Data.tColorNear`): its
+ * element's color (a coarse element a carbon's) and its chain's offset among the target's chains; made once per target
+ */
+export function getStructureTargetNearColors(structure: Structure): Uint8Array {
+  let data = nearData.get(structure);
+  if (data) return data;
+  const { units, elementCount } = structure;
+  const { unitIndices, elementIndices } = structure.serialMapping;
+  const location = StructureElement.Location.create(structure);
+  const chains = new Map<string, number>();
+  const chainOf = new Int32Array(elementCount);
+  data = new Uint8Array(elementCount * 4);
+  for (let i = 0; i < elementCount; ++i) {
+    location.unit = units[unitIndices[i]];
+    location.element = elementIndices[i];
+    const asym = StructureProperties.chain.label_asym_id(location);
+    let chain = chains.get(asym);
+    if (chain === undefined) chains.set(asym, (chain = chains.size));
+    chainOf[i] = chain;
+    const color = Unit.isAtomic(location.unit)
+      ? elementSymbolColor(ElementSymbolColors, StructureProperties.atom.type_symbol(location))
+      : ElementSymbolColors.C;
+    Color.toArray(color, data, i * 4);
+  }
+  for (let i = 0; i < elementCount; ++i) {
+    data[i * 4 + 3] = ColorLevels.offsetByte(ColorLevels.chainOffset(chainOf[i], chains.size));
+  }
+  nearData.set(structure, data);
+  return data;
 }

@@ -440,7 +440,13 @@ describe("a category's Color… (its brush, Ludo 2026-10-27; in its ⋯, Ludo 20
     await until(() => !!item(host, 'c:particles'));
     const steps = v.api.history.steps.value.length;
     const items = await viaMore(host, 'c:particles', 'Color…');
-    expect(items.map((m) => m.textContent?.trim())).toEqual(['By object', 'By entity', 'Generate colors', 'Uniform…']);
+    expect(items.map((m) => m.textContent?.trim())).toEqual([
+      'By object',
+      'By entity',
+      'Generate colors',
+      'By zoom',
+      'Uniform…',
+    ]);
     expect(items.some((m) => m.querySelector('svg'))).toBe(false);
     items[0].click();
     const themes = () =>

@@ -185,6 +185,32 @@ export const Canvas3DParams = {
     { description: 'The time before the user is not considered interacting anymore.' },
   ),
 
+  motion: PD.Group({
+    lodScale: PD.Numeric(
+      1,
+      { min: 1, max: 8, step: 0.5 },
+      {
+        description:
+          'While the camera moves, levels of detail by size on screen (`lodPixelSize`) this many times coarser, as at a ' +
+          'resolution that many times lower; full detail once it rests (`holdMs`). 1: off.',
+      },
+    ),
+    pixelScale: PD.Numeric(
+      1,
+      { min: 0.25, max: 1, step: 0.05 },
+      {
+        description:
+          'While the camera moves, the drawing buffer at this scale of its resolution (the canvas resized, the input ' +
+          'with it); full resolution once it rests. 1: off.',
+      },
+    ),
+    holdMs: PD.Numeric(
+      250,
+      { min: 0, max: 2000, step: 10 },
+      { description: 'The time without a camera change after which the camera rests (a wheel zooms in steps).' },
+    ),
+  }),
+
   multiSample: PD.Group(MultiSampleParams),
   postprocessing: PD.Group(PostprocessingParams),
   marking: PD.Group(MarkingParams),
@@ -256,6 +282,12 @@ interface Canvas3DContext {
   readonly pixelScale: number;
 
   syncPixelScale(): void;
+  /**
+   * The drawing buffer at `scale` of the pixel scale (dynamic resolution while the camera moves, `Canvas3D` `motion`):
+   * the input and the canvas resized with it (`Attribs.handleResize`), not a change of the props (`changed`); false,
+   * the scale kept at 1, where the drawing buffer did not resize (no `handleResize` resizing the canvas)
+   */
+  setMotionPixelScale?: (scale: number) => boolean;
   setProps: (props?: Partial<Canvas3DContext.Props>) => void;
   /**
    * Replaces the graphics context with that of the first of `backends` that can be created, on a new canvas element
@@ -428,8 +460,10 @@ namespace Canvas3DContext {
     const p = { ...DefaultProps, ...props };
     let canvas = _canvas;
     let graphics = _graphics;
+    /** `setMotionPixelScale` */
+    let motionPixelScale = 1;
     const syncPixelScale = () => {
-      const pixelScale = getPixelScale(p);
+      const pixelScale = getPixelScale(p) * motionPixelScale;
       input.setPixelScale(pixelScale);
       graphics.setPixelScale(pixelScale);
     };
@@ -654,7 +688,22 @@ namespace Canvas3DContext {
       assetManager,
       changed,
       get pixelScale() {
-        return getPixelScale(p);
+        return getPixelScale(p) * motionPixelScale;
+      },
+      setMotionPixelScale: (scale: number) => {
+        if (scale === motionPixelScale) return true;
+        const { width, height } = graphics.getDrawingBufferSize();
+        motionPixelScale = scale;
+        syncPixelScale();
+        a.handleResize();
+        const size = graphics.getDrawingBufferSize();
+        if (scale !== 1 && size.width === width && size.height === height) {
+          // nothing resized the canvas: the input and graphics back at the canvas's scale
+          motionPixelScale = 1;
+          syncPixelScale();
+          return false;
+        }
+        return true;
       },
 
       syncPixelScale,
@@ -984,6 +1033,52 @@ namespace Canvas3D {
     let height = 128;
 
     let forceNextRender = false;
+    /** when the camera last changed, and the level-of-detail scale of the frame drawn last (`motion`) */
+    let lastCameraChange = -Infinity;
+    let motionLodScale = 1;
+    let motionPixelScale = 1;
+    /** the view and vertical projection scale last compared (`isViewChanged`) */
+    const lastView = new Float64Array(17).fill(NaN);
+    /**
+     * The drawing buffer at `scale` (`Canvas3DContext.setMotionPixelScale`): the canvas resized, and the passes and
+     * viewport with it before the frame draws; drags as at full resolution. Kept at 1 where the canvas did not resize
+     */
+    function setMotionPixelScale(scale: number) {
+      if (!ctx.setMotionPixelScale?.(scale)) return;
+      motionPixelScale = scale;
+      handleResize(false);
+      resizeRequested = false;
+      camera.update();
+      controls.setResolutionScale(scale);
+    }
+
+    /** this frame's pyramid of the opaque depth drawn so far (two-phase occlusion, `DrawPass.occlusionPyramid`) */
+    function buildOcclusionPyramid() {
+      const before = hiZ.gpuPyramid?.version;
+      hiZ.setGpuCulling(true);
+      hiZ.render(camera);
+      const pyramid = hiZ.gpuPyramid;
+      return pyramid && pyramid.version !== before ? pyramid : undefined;
+    }
+
+    function isViewChanged() {
+      let changed = false;
+      for (let i = 0; i < 16; ++i) {
+        if (lastView[i] !== camera.view[i]) {
+          lastView[i] = camera.view[i];
+          changed = true;
+        }
+      }
+      // (relative: an orthographic projection's differs by an ulp between viewport heights)
+      if (
+        Math.abs(lastView[16] - camera.projection[5]) > 1e-6 * Math.abs(camera.projection[5]) ||
+        isNaN(lastView[16])
+      ) {
+        lastView[16] = camera.projection[5];
+        changed = true;
+      }
+      return changed;
+    }
     let currentTime = 0;
 
     // The idle state (`isIdle`): set by a tick that found nothing to do, cleared, with one `wake`, by whatever gives the
@@ -1263,6 +1358,16 @@ namespace Canvas3D {
     }
 
     function render(force: boolean, xrFrame?: XRFrame) {
+      try {
+        return renderFrame(force, xrFrame);
+      } finally {
+        // other passes of the renderer (images, a frame of their own) draw at full detail; picks in the frame reuse its
+        // culling (what is shown)
+        renderer.setLodScale(1);
+      }
+    }
+
+    function renderFrame(force: boolean, xrFrame?: XRFrame) {
       if (graphics.isContextLost) return false;
       if (graphics.xr.session && !xrFrame) return false;
 
@@ -1289,8 +1394,20 @@ namespace Canvas3D {
       const xrChanged = xrManager.update(xrFrame);
       if (!xrChanged && xrFrame) return false;
 
+      // coarser levels of detail and a lower resolution while the camera moves (`motion`), full in the frame it rests;
+      // moving: the view changed (not the viewport: a resolution change would be a motion of its own)
+      if (cameraChanged && isViewChanged()) lastCameraChange = currentTime;
+      const motionOn = p.motion.lodScale > 1 || p.motion.pixelScale < 1;
+      const moving = motionOn && currentTime - lastCameraChange < p.motion.holdMs;
+      const rested = (motionLodScale > 1 || motionPixelScale < 1) && !moving;
+      motionLodScale = moving ? p.motion.lodScale : 1;
+      renderer.setLodScale(motionLodScale);
+      const pixelScale = moving ? p.motion.pixelScale : 1;
+      if (pixelScale !== motionPixelScale) setMotionPixelScale(pixelScale);
+
       const activeAnimation = renderer.props.enableAnimation && scene.hasAnimation;
-      const shouldRender = force || cameraChanged || resized || forceNextRender || xrChanged || activeAnimation;
+      const shouldRender =
+        force || cameraChanged || resized || forceNextRender || xrChanged || activeAnimation || rested;
       forceNextRender = false;
 
       // only a new frameId when something that can affect culling actually changed, so idle
@@ -1364,8 +1481,14 @@ namespace Canvas3D {
         const multiSampleChanged = multiSampleHelper.update(markingUpdated || shouldRender, p.multiSample) && !xrFrame;
 
         if (shouldRender || multiSampleChanged || markingUpdated) {
-          renderer.setOcclusionTest(hiZ.occlusionTest);
-          renderer.setOcclusionPyramid(getOcclusionPyramid);
+          // two-phase occlusion of the objects culled on the GPU: this frame's pyramid of the first phase's depth (exact,
+          // also while moving)
+          passes.draw.occlusionPyramid = hiZ.props.gpu ? buildOcclusionPyramid : null;
+          renderer.setOcclusionTest(moving || rested ? null : hiZ.occlusionTest);
+          // with `motion`, no occlusion while the camera moves nor in the frame it rests: a pyramid of another view
+          // shows what moved into view a frame late, one of a coarser frame hides what its gaps show; frames drawn
+          // coarser at a lower resolution cost little without it (`merged-render-objects.md`)
+          renderer.setOcclusionPyramid(moving || rested ? null : getOcclusionPyramid);
 
           let cam: Camera | StereoCamera = camera;
           if (p.camera.stereo.name === 'on' || xrChanged) {
@@ -1389,6 +1512,9 @@ namespace Canvas3D {
           // the GPU's occlusion test of the objects culled there needs the levels (also with Hi-Z off)
           hiZ.setGpuCulling(renderer.gpuCulledCount > 0);
           hiZ.render(camera);
+          // occlusion tested against another view's pyramid (the camera changed, a level scale): a frame more at this
+          // view draws what it left out, also once the camera rests
+          if (renderer.gpuCullUnsettledCount > 0) forceNextRender = true;
           if (isTimingMode) graphics.timer.groupEnd('Canvas3D.render');
 
           // if only marking has updated, do not set the flag to dirty
@@ -1513,6 +1639,9 @@ namespace Canvas3D {
         !camera.transition.inTransition &&
         !controls.isAnimating &&
         !controls.isMoving &&
+        // a coarser frame is drawn again at full detail once the camera rests
+        motionLodScale === 1 &&
+        motionPixelScale === 1 &&
         !isActivelyInteracting &&
         !hiZ.isPending &&
         !interactionHelper.isPending &&
@@ -2173,6 +2302,7 @@ namespace Canvas3D {
         pickPadding: p.pickPadding,
         userInteractionReleaseMs: p.userInteractionReleaseMs,
         viewport: p.viewport,
+        motion: { ...p.motion },
 
         postprocessing: { ...p.postprocessing },
         marking: { ...p.marking },
@@ -2566,6 +2696,7 @@ namespace Canvas3D {
           pickHelper.setPickPadding(p.pickPadding);
         }
         if (props.userInteractionReleaseMs !== undefined) p.userInteractionReleaseMs = props.userInteractionReleaseMs;
+        if (props.motion !== undefined) p.motion = { ...p.motion, ...props.motion };
         if (props.viewport !== undefined) {
           const doNotUpdate =
             p.viewport === props.viewport ||
@@ -2637,6 +2768,12 @@ namespace Canvas3D {
         if (attribs.warmUp !== undefined) a.warmUp = attribs.warmUp;
       },
       getImagePass: (props: Partial<ImageProps> = {}) => {
+        // an image at full resolution and detail: a motion under way ends (its hold is a property of the view)
+        if (motionPixelScale !== 1 || motionLodScale !== 1) {
+          lastCameraChange = -Infinity;
+          motionLodScale = 1;
+          setMotionPixelScale(1);
+        }
         const pass = new ImagePass(graphics, assetManager, renderer, scene, camera, helper, props);
         imagePasses.add(new WeakRef(pass));
         return pass;

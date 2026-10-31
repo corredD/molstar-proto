@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -12,6 +13,7 @@ import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
   AutoGpuCullingMinInstances,
+  AutoGpuCullingMinVertices,
   AutoGpuCullingThreshold,
   resolveGpuCulling,
 } from '@molstar/graphics/geo/geometry/base';
@@ -49,6 +51,15 @@ describe('merging render objects', () => {
     expect(resolveGpuCulling('auto', AutoGpuCullingThreshold * draws - 1, draws)).toBe(false);
     expect(resolveGpuCulling(true, 1, 4)).toBe(true);
     expect(resolveGpuCulling(false, 1e6, 1)).toBe(false);
+  });
+
+  it('culls on the GPU from many vertices drawn at full detail, with enough instances to cull one by one', () => {
+    const vertices = AutoGpuCullingMinVertices;
+    // few instances of large members (mesoscale: PetWorld's proteins), per instance a test that drops millions of vertices
+    expect(resolveGpuCulling('auto', AutoGpuCullingThreshold, 19 * 4, vertices)).toBe(true);
+    expect(resolveGpuCulling('auto', AutoGpuCullingThreshold, 19 * 4, vertices - 1)).toBe(false);
+    // one large object alone: nothing to cull by instance
+    expect(resolveGpuCulling('auto', AutoGpuCullingThreshold - 1, 4, vertices * 10)).toBe(false);
   });
 
   it('merges an object alone to cull it on the GPU, where the device does and it pays', () => {

@@ -14,6 +14,7 @@
       "import": "./lib/*.js"
     },
     "./canvas3d/_test/*": null,
+    "./canvas3d/controls/_test/*": null,
     "./canvas3d/passes/_test/*": null,
     "./formats/shape/_test/*": null,
     "./geo/_test/*": null,
@@ -27,6 +28,7 @@
     "./gl/compute/marching-cubes/_test/*": null,
     "./props/computed/representations/_test/*": null,
     "./repr/_test/*": null,
+    "./repr/particles/_test/*": null,
     "./repr/particles/representation/_test/*": null,
     "./repr/shape/_test/*": null,
     "./repr/structure/_test/*": null,

@@ -130,9 +130,27 @@ export const AutoGpuCullingThreshold = 30;
  */
 export const AutoGpuCullingMinInstances = 20000;
 
-/** Resolves the `gpuCulling` param value for `instanceCount` instances drawn by `drawCount` segments times levels */
-export function resolveGpuCulling(value: GpuCullingValue, instanceCount: number, drawCount: number): boolean {
+/**
+ * Vertices at full detail (instances times their draw count: indices of indexed geometry, 6 a sphere) from which `gpuCulling: 'auto'` culls on the GPU, with at
+ * least `AutoGpuCullingThreshold` instances: the GPU tests each instance by its own sphere (frustum, levels, the depth
+ * pyramid), the CPU only cells; for few instances of large members (mesoscale models of thousands of proteins) that
+ * drops millions of vertices close up (PetWorld HIV zoomed to 0.1 of the distance on an M1, WebGPU: 119 to 75 ms a
+ * frame; `merged-render-objects.md`, GPU culling)
+ */
+export const AutoGpuCullingMinVertices = 10_000_000;
+
+/**
+ * Resolves the `gpuCulling` param value for `instanceCount` instances drawn by `drawCount` segments times levels,
+ * `vertexCount` their vertices at full detail
+ */
+export function resolveGpuCulling(
+  value: GpuCullingValue,
+  instanceCount: number,
+  drawCount: number,
+  vertexCount = 0,
+): boolean {
   if (value === 'auto') {
+    if (instanceCount >= AutoGpuCullingThreshold && vertexCount >= AutoGpuCullingMinVertices) return true;
     return instanceCount >= Math.max(AutoGpuCullingMinInstances, AutoGpuCullingThreshold * Math.max(1, drawCount));
   }
   return value;
@@ -199,7 +217,7 @@ export namespace BaseGeometry {
     gpuCulling: PD.Select<GpuCullingValue>('auto', GpuCullingOptions, {
       ...CullingLodCategory,
       description:
-        'Cull and choose the level of detail per cell of instances on the GPU where the device supports it (WebGPU with compute and indirect draws by first instance), merging the render objects for it. When set to `auto`, enabled with many instances (`AutoGpuCullingMinInstances`), and many per draw (`AutoGpuCullingThreshold`).',
+        'Cull and choose the level of detail per cell and per instance on the GPU where the device supports it (WebGPU with compute and indirect draws by first instance), merging the render objects for it. When set to `auto`, enabled with many instances (`AutoGpuCullingMinInstances`) and many per draw (`AutoGpuCullingThreshold`), or many vertices (`AutoGpuCullingMinVertices`).',
     }),
     lod: PD.Vec3(Vec3(), undefined, {
       ...CullingLodCategory,

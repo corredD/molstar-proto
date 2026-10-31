@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { KernelCode, StorageBufferSpec } from '../compute.js';
@@ -11,9 +12,11 @@ import type { Texture } from '../texture.js';
 
 /**
  * GPU culling of merged render objects by the cells of their instance grids (`merged-render-objects.md` GPU culling):
- * `cell-cull` tests each cell (a thread per cell) and writes the levels it is drawn at; `instance-copy` copies each
- * instance of a drawn cell (a thread per instance) into the compacted instance buffers, a slot per level in its
- * segment's region (an atomic counter per level and segment); `cull-args` writes the instance counts into the
+ * `cell-cull` tests each cell (a thread per cell) and writes the levels it is drawn at; `instance-copy` tests each
+ * instance of a drawn cell by its own sphere at those levels (a thread per instance: the frustum, the distance ranges,
+ * the depth pyramid) and copies it into the compacted instance buffers, a slot per level in its segment's region (an
+ * atomic counter per level and segment); `cluster-copy` copies each drawn level-0 instance of a segment cut in clusters
+ * again into the region of each of its clusters in view; `cull-args` writes the instance counts into the
  * indirect records (their other words written once per layout, `merged-culler.ts`). Counters and records are
  * level-major: level `j` of segment `s` is `j * segmentCount + s`, so a level's records are one list; its region
  * starts at instance `j * instanceCount + instanceBase(s)`
@@ -21,6 +24,10 @@ import type { Texture } from '../texture.js';
 export const CellCullKernel = KernelCode('cell-cull', [64]);
 export const InstanceCopyKernel = KernelCode('instance-copy', [64]);
 export const CullArgsKernel = KernelCode('cull-args', [64]);
+export const ClusterCopyKernel = KernelCode('cluster-copy', [64]);
+export const ClusterDispatchKernel = KernelCode('cluster-dispatch', [64]);
+export const CullSnapshotKernel = KernelCode('cull-snapshot', [64]);
+export const CullArgsSecondKernel = KernelCode('cull-args-second', [64]);
 
 /** Levels the kernels handle, as `aSegmentLod` (4 components) */
 export const MaxCullLevels = 4;
@@ -31,6 +38,8 @@ export const MaxCullLevels = 4;
  * with; depth reversed (the near plane at 1)
  */
 export interface OcclusionPyramid {
+  /** a new value per build: what was drawn may differ at the same camera */
+  readonly version: number;
   readonly texture: Texture;
   readonly levelCount: number;
   readonly minLevel: number;
@@ -43,7 +52,8 @@ export interface OcclusionPyramid {
   readonly far: number;
 }
 
-export const CellCullSchema = {
+/** What both tests read: the view, the distance ranges and the depth pyramid */
+const CullViewSchema = {
   /** the frustum's planes (`[nx, ny, nz, constant]`) */
   uPlane0: UniformSpec('v4'),
   uPlane1: UniformSpec('v4'),
@@ -58,7 +68,8 @@ export const CellCullSchema = {
   uLevels: UniformSpec('m4'),
   /** 0 without levels (all drawn as level 0) */
   uLevelCount: UniformSpec('i'),
-  uCellCount: UniformSpec('i'),
+  /** how far the animations may move a sphere (wiggle, tumble), added to the tested radii */
+  uAnimationSlack: UniformSpec('f'),
   /** occlusion against the pyramid (`OcclusionPyramid`), its camera and layout */
   uHiZ: UniformSpec('b'),
   uHiZView: UniformSpec('m4'),
@@ -67,8 +78,20 @@ export const CellCullSchema = {
   uHiZDepthRange: UniformSpec('v2'),
   uHiZViewport: UniformSpec('v2'),
   uHiZLevelCount: UniformSpec('i'),
+  /** the planes of the pyramid's view (`[nx, ny, nz, constant]`): what was beyond them is not in it */
+  uHiZPlane0: UniformSpec('v4'),
+  uHiZPlane1: UniformSpec('v4'),
+  uHiZPlane2: UniformSpec('v4'),
+  uHiZPlane3: UniformSpec('v4'),
+  uHiZPlane4: UniformSpec('v4'),
+  uHiZPlane5: UniformSpec('v4'),
   uHiZMinLevel: UniformSpec('i'),
   tHiZ: TextureSpec('texture', 'r', 'float', 'nearest'),
+};
+
+export const CellCullSchema = {
+  ...CullViewSchema,
+  uCellCount: UniformSpec('i'),
   /** per cell its sphere */
   cellSpheres: StorageBufferSpec('vec4<f32>', 'read'),
   /** per cell the levels it is drawn at, a bit each (0: culled) */
@@ -76,14 +99,18 @@ export const CellCullSchema = {
 };
 
 export const InstanceCopySchema = {
+  /** each instance's own sphere tested as the cells' (`instanceLevels`) */
+  ...CullViewSchema,
   uInstanceCount: UniformSpec('i'),
   uSegmentCount: UniformSpec('i'),
+  /** two-phase occlusion: 0 none (one dispatch), 1 the instances visible last frame, 2 the others */
+  uPhase: UniformSpec('i'),
   /** the instances' data (`packInstanceData`) */
   instanceData: StorageBufferSpec('vec4<f32>', 'read'),
-  /** per instance its cell and segment */
-  instanceCells: StorageBufferSpec('vec2<u32>', 'read'),
-  /** per segment its first instance */
-  segmentBases: StorageBufferSpec('u32', 'read'),
+  /** per instance its cell, segment and whether visible last frame (written by phase 2) */
+  instanceCells: StorageBufferSpec('vec4<u32>', 'read-write'),
+  /** per segment its first instance and its padding (the largest sphere radius, as `bitcast<u32>`) */
+  segmentBases: StorageBufferSpec('vec2<u32>', 'read'),
   cellLevels: StorageBufferSpec('u32', 'read'),
   /** per (level, segment) the instances drawn, zeroed before */
   counters: StorageBufferSpec('atomic<u32>', 'read-write'),
@@ -93,6 +120,55 @@ export const InstanceCopySchema = {
   segments: StorageBufferSpec('f32', 'read-write'),
   spheres: StorageBufferSpec('vec4<f32>', 'read-write'),
   lods: StorageBufferSpec('vec4<f32>', 'read-write'),
+};
+
+export const ClusterCopySchema = {
+  ...CullViewSchema,
+  uClusterCount: UniformSpec('i'),
+  /** as `InstanceCopySchema.uPhase` */
+  uPhase: UniformSpec('i'),
+  /** per cluster two vec4: its local sphere; its segment, its segment's level-0 region and its own (`bitcast<u32>`) */
+  clusters: StorageBufferSpec('vec4<f32>', 'read'),
+  /** the instance counts of the records, level 0 first (`instance-copy`'s counters) */
+  counters: StorageBufferSpec('u32', 'read'),
+  /** the counters after phase 1 (`cull-snapshot`) */
+  counters1: StorageBufferSpec('u32', 'read'),
+  /** per cluster the instances drawn, zeroed before */
+  clusterCounters: StorageBufferSpec('atomic<u32>', 'read-write'),
+  /** per (cluster, instance) whether visible last frame */
+  clusterBits: StorageBufferSpec('u32', 'read-write'),
+  /** the compacted instanced attributes, read at level 0 and written at the clusters' regions */
+  transforms: StorageBufferSpec('vec4<f32>', 'read-write'),
+  instances: StorageBufferSpec('f32', 'read-write'),
+  segments: StorageBufferSpec('f32', 'read-write'),
+  spheres: StorageBufferSpec('vec4<f32>', 'read-write'),
+  lods: StorageBufferSpec('vec4<f32>', 'read-write'),
+};
+
+export const ClusterDispatchSchema = {
+  uSegmentCount: UniformSpec('i'),
+  uClusterCount: UniformSpec('i'),
+  counters: StorageBufferSpec('u32', 'read'),
+  /** per segment 1 where it is drawn by clusters */
+  clustered: StorageBufferSpec('u32', 'read'),
+  /** `cluster-copy`'s workgroups (x, y, z) */
+  dispatchArgs: StorageBufferSpec('u32', 'read-write'),
+};
+
+export const CullSnapshotSchema = {
+  uRecordCount: UniformSpec('i'),
+  counters: StorageBufferSpec('u32', 'read'),
+  snapshot: StorageBufferSpec('u32', 'read-write'),
+};
+
+export const CullArgsSecondSchema = {
+  uRecordCount: UniformSpec('i'),
+  uRecordWords: UniformSpec('i'),
+  counters: StorageBufferSpec('u32', 'read'),
+  snapshot: StorageBufferSpec('u32', 'read'),
+  /** the records of both phases (their first instances) */
+  all: StorageBufferSpec('u32', 'read'),
+  args: StorageBufferSpec('u32', 'read-write'),
 };
 
 export const CullArgsSchema = {
