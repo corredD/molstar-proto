@@ -223,6 +223,10 @@ function createLookup(vb: Float32Array, ib: Uint32Array, triangleCount: number):
       maxY = 0;
       maxZ = 0;
     }
+    // `min` and `max` were the whole mesh, the wide centroid included. The grid must be the rest:
+    // a centroid outside the surface would make every cell coarse and every hover read every triangle.
+    Vec3.set(min, minX, minY, minZ);
+    Vec3.set(max, maxX, maxY, maxZ);
   }
 
   // cells about two triangles wide, fewer when the box would hold too many

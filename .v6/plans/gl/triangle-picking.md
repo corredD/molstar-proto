@@ -22,7 +22,8 @@ layers and its labels.
   while its vertex and index buffers are the same versions (a `WeakMap` on the mesh). A triangle wider than 8 times a
   typical one is not in the grid (the widest 64): it would set that distance for every pick, and one floor under a fine
   surface would make every hover read every cell. A pick tests those few on their own, so one of them is still found
-  far from its centroid. Not `GridLookup3D`: it keeps the centroids and its buckets (20 bytes a triangle against 6) and
+  far from its centroid. The grid's box is the other triangles: a wide centroid outside the surface does not coarsen
+  the cells. Not `GridLookup3D`: it keeps the centroids and its buckets (20 bytes a triangle against 6) and
   built 12× slower. Nothing allocated per pick but the loci.
 - **Opt in per shape**, never by geometry: Mol\*'s planes, boxes and handles are meshes whose groups are their meaning.
   A wireframe of a mesh is not picked by triangle.

@@ -108,6 +108,43 @@ describe('mesh triangle lookup', () => {
     }
   });
 
+  it('does not widen the grid when a wide triangle has its centroid outside the surface', () => {
+    const size = 32;
+    const vertices: number[] = [];
+    const indices: number[] = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = vertices.length / 3;
+        vertices.push(x, y, 0, x + 1, y, 0, x, y + 1, 0);
+        indices.push(i, i + 1, i + 2);
+      }
+    }
+    // Its centroid is near (10000, 10000), far outside the patch. That must not size the grid.
+    const i = vertices.length / 3;
+    vertices.push(0, 0, -5, 30000, 0, -5, 0, 30000, -5);
+    indices.push(i, i + 1, i + 2);
+    const mesh = Mesh.create(
+      new Float32Array(vertices),
+      new Uint32Array(indices),
+      new Float32Array(vertices.length),
+      new Float32Array(vertices.length / 3),
+      vertices.length / 3,
+      indices.length / 3,
+    );
+    const lookup = getMeshTriangleLookup(mesh);
+    const out = MeshTrianglePick();
+    const intersect = vi.spyOn(Ray3D, 'intersectTriangle');
+    try {
+      expect(lookup.pick(out, down(10.2, 12.2), Vec3.create(10.2, 12.2, 0), 0.1)).toBe(true);
+      expect(out.index).toBe(12 * size + 10);
+      expect(intersect.mock.calls.length).toBeLessThan(200);
+      expect(lookup.pick(out, down(10, 10), Vec3.create(10, 10, -5), 0.1)).toBe(true);
+      expect(out.index).toBe(size * size);
+    } finally {
+      intersect.mockRestore();
+    }
+  });
+
   it('is built once while the mesh is the same, again when its vertices change', () => {
     const mesh = layers();
     const lookup = getMeshTriangleLookup(mesh);

@@ -5,6 +5,8 @@
   `ShapeGroup.Loci` with `triangles` (its picked point as barycentric weights), its bounds centered on that point. Its
   groups (materials, vertex colors) are unchanged. 1 M triangles: the lookup 24 ms to build once, 6 MB, a pick under
   0.1 ms.
+- One very wide triangle whose center sits outside the surface does not coarsen that grid: a hover still reads only
+  the cells near the pointer.
 - A shape representation marks triangles by themselves (copies of the marked triangles drawn over the mesh), never
   their group.
 - `Ray3D.intersectTriangle` (Möller–Trumbore, either side).
