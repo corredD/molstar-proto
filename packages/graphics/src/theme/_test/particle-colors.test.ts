@@ -87,7 +87,8 @@ describe('particle color themes', () => {
   });
 
   it("particle-hierarchy's far color is a particle's compartment base color (color-levels.md)", () => {
-    const particles = particleList({ count: 0 });
+    const reads = { count: 0 };
+    const particles = particleList(reads);
     const theme = ParticleHierarchyColorTheme({ particles }, PD.getDefaultValues(ParticleHierarchyColorThemeParams));
     const far = colorsOf({ color: theme.farColor! }, particles);
     // one color per compartment, the one its particles without an entity have; none for no compartment
@@ -96,6 +97,10 @@ describe('particle color themes', () => {
     expect(far[4]).toBe(colorsOf(theme, particles)[4]);
     expect(far[0]).not.toBe(far[3]);
     expect(far[5]).toBe(0xcccccc);
+    // read from the index made once, as its color: not the compartments again per particle (review S8)
+    reads.count = 0;
+    colorsOf({ color: theme.farColor! }, particles);
+    expect(reads.count).toBe(0);
   });
 
   it('particle-entity indexes the particles once per list and grouping (perf-audit-2 09/P6)', () => {
