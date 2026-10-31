@@ -1369,9 +1369,14 @@ namespace Canvas3D {
       const pixelScale = moving ? p.motion.pixelScale : 1;
       if (pixelScale !== motionPixelScale) {
         motionPixelScale = pixelScale;
-        // the canvas resized (the next frame draws at it), drags as at full resolution
-        ctx.setMotionPixelScale?.(pixelScale);
-        controls.setResolutionScale(pixelScale);
+        // the canvas resized, and the passes and viewport with it before this frame draws; drags as at full resolution
+        if (ctx.setMotionPixelScale) {
+          ctx.setMotionPixelScale(pixelScale);
+          handleResize(false);
+          resizeRequested = false;
+          camera.update();
+          controls.setResolutionScale(pixelScale);
+        }
       }
 
       const activeAnimation = renderer.props.enableAnimation && scene.hasAnimation;
