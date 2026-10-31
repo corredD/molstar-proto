@@ -96,8 +96,17 @@ export function distancePicker(
       return;
     }
     const [a, b, c, d] = points.map((p) => ({ loci: p.loci }));
+    const [node, nodeB, nodeC, nodeD] = points.map((p) => p.picked.key);
     letGo();
-    const r = await api.run(`stage.${kind}`, { a, b, c, ...(d ? { d } : {}), node: points[0].picked.key });
+    const r = await api.run(`stage.${kind}`, {
+      a,
+      b,
+      c,
+      ...(d ? { d, nodeD } : {}),
+      node,
+      nodeB,
+      nodeC,
+    });
     made(r, kind === 'angle' ? 'Angle' : 'Dihedral');
   };
   return {

@@ -140,8 +140,13 @@ describe('measuring from mesh triangles in the explorer', () => {
     expect(angle.distance).toBeCloseTo(expected, 2);
     expect(angle.label).toBe(`${expected.toFixed(2)}°`);
     expect([angle.a.label, angle.c?.label]).toEqual(['square.obj triangle 0', 'square.obj triangle 1']);
-    // the first point's row
+    // the first point's row, and each point's own row (the properties button reveals it)
     expect(angle.node).toBe(`o:${mesh(v).ref}`);
+    expect([angle.a.key, angle.b.key, angle.c?.key]).toEqual([
+      `o:${mesh(v).ref}`,
+      p.recent.value[1].picked.key,
+      `o:${mesh(v).ref}`,
+    ]);
 
     // a fourth point: the latest four make a dihedral
     const r20 = residue(v, 20);
@@ -152,6 +157,9 @@ describe('measuring from mesh triangles in the explorer', () => {
     expect(dihedral.distance).toBeCloseTo(
       radToDeg(Vec3.dihedralAngle(center(t0), center(r10), center(t1), center(r20))),
       2,
+    );
+    expect([dihedral.a.key, dihedral.b.key, dihedral.c?.key, dihedral.d?.key]).toEqual(
+      p.recent.value.map((point) => point.picked.key),
     );
   });
 

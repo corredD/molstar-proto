@@ -17,4 +17,5 @@
   triangles, atoms, residues, particles and voxels. A triangle picked before the mesh is moved, scaled or recolored
   still measures.
 - An angle and a dihedral between any of these points: `stage.angle`, `stage.dihedral`, and in the explorer the latest
-  three or four ⌘/Ctrl+clicked points by the canvas's right-click.
+  three or four ⌘/Ctrl+clicked points by the canvas's right-click. Each point keeps its row, so its properties button
+  reveals that row.

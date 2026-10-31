@@ -755,9 +755,11 @@ export class StageApi extends ApiArea {
       node: PD.Text('', {
         description: "The explorer's row it is listed under (its key); empty: the first point's object",
       }),
+      nodeB: PD.Text('', { description: "The explorer's row of the second point (its key)" }),
+      nodeC: PD.Text('', { description: "The explorer's row of the third point (its key)" }),
     },
     async run(v, ctx) {
-      return measure(ctx, [v.a, v.b, v.c], v.structure, [v.node]);
+      return measure(ctx, [v.a, v.b, v.c], v.structure, [v.node, v.nodeB, v.nodeC]);
     },
   });
 
@@ -778,9 +780,12 @@ export class StageApi extends ApiArea {
       node: PD.Text('', {
         description: "The explorer's row it is listed under (its key); empty: the first point's object",
       }),
+      nodeB: PD.Text('', { description: "The explorer's row of the second point (its key)" }),
+      nodeC: PD.Text('', { description: "The explorer's row of the third point (its key)" }),
+      nodeD: PD.Text('', { description: "The explorer's row of the fourth point (its key)" }),
     },
     async run(v, ctx) {
-      return measure(ctx, [v.a, v.b, v.c, v.d], v.structure, [v.node]);
+      return measure(ctx, [v.a, v.b, v.c, v.d], v.structure, [v.node, v.nodeB, v.nodeC, v.nodeD]);
     },
   });
 

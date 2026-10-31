@@ -227,6 +227,44 @@ describe('measurements from a mesh triangle', () => {
     expect((dihedral.value as { angle: number }).angle).toBeCloseTo(expectedDihedral, 2);
   });
 
+  it("keeps every point's row on an angle and a dihedral", async () => {
+    const v = await viewer();
+    const ca = atom(v, 10);
+    const ca2 = atom(v, 20);
+    const t0 = { loci: triangle(v, 0, [0.5, 0.2]) };
+    const t1 = { loci: triangle(v, 1, [0.1, 0.8]) };
+    const angle = await v.api.run('stage.angle', {
+      a: t0,
+      b: { loci: ca.loci },
+      c: t1,
+      node: 'row-a',
+      nodeB: 'row-b',
+      nodeC: 'row-c',
+    });
+    expectOk(angle);
+    const measuredAngle = v.api.stage!.distancesState().value.find((m) => m.measure === 'angle')!;
+    expect([measuredAngle.a.key, measuredAngle.b.key, measuredAngle.c?.key]).toEqual(['row-a', 'row-b', 'row-c']);
+
+    const dihedral = await v.api.run('stage.dihedral', {
+      a: t0,
+      b: { loci: ca.loci },
+      c: { loci: ca2.loci },
+      d: t1,
+      node: 'd-a',
+      nodeB: 'd-b',
+      nodeC: 'd-c',
+      nodeD: 'd-d',
+    });
+    expectOk(dihedral);
+    const measuredDihedral = v.api.stage!.distancesState().value.find((m) => m.measure === 'dihedral')!;
+    expect([measuredDihedral.a.key, measuredDihedral.b.key, measuredDihedral.c?.key, measuredDihedral.d?.key]).toEqual([
+      'd-a',
+      'd-b',
+      'd-c',
+      'd-d',
+    ]);
+  });
+
   it('measures a triangle to a particle', async () => {
     const v = await viewer();
     const star = (rows: string) =>
