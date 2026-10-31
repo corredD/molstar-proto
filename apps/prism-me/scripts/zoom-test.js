@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
 // Paste in the browser console of prism-me (any port). Zoom where you want, then run `await S()`.
 // It stops the animation loop, times frames at the current camera (`T()`) and turning about it (`M()`, 1° a frame),
 // sweeps the pixel scale and the graphics mode, and puts everything back.
