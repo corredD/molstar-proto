@@ -15,7 +15,8 @@
 //   node apps/prism-me/scripts/cull-check.mjs --port 1362 --example cellpack-hiv1
 //
 // Options: --port (1362), --backend (webgpu), --example (cellpack-hiv1), --fractions (1,0.1,0.02), --turn degrees a frame
-// (2), --turns frames (20), --dpr (1), --shots a folder for the images that differ.
+// (2), --turns frames (20), --dpr (1), --shots a folder for the images that differ, --motion 1 to turn with the look's
+// motion (coarser, at a lower resolution while moving).
 
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -51,12 +52,16 @@ await page.waitForFunction(() => window.molstar.viewer.plugin.canvas3d.getRender
 });
 await page.waitForTimeout(5000);
 
+await page.evaluate((keep) => {
+  window.__keepMotion = keep;
+}, args.motion !== undefined);
 await page.evaluate(() => {
   const pl = window.molstar.viewer.plugin;
   const c = pl.canvas3d;
   pl.animationLoop.stop();
-  // full detail and resolution while moving: the frames compared are the ones at rest (motion: the last section)
-  c.setProps({ motion: { lodScale: 1, pixelScale: 1 } });
+  // full detail and resolution while moving: the frames compared are the ones at rest (motion: the last section;
+  // `--motion` keeps the look's for the turning section)
+  if (!window.__keepMotion) c.setProps({ motion: { lodScale: 1, pixelScale: 1 } });
   const snap = c.camera.getSnapshot();
   const frame = async () => {
     c.requestDraw();
