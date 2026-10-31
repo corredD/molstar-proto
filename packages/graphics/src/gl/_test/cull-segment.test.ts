@@ -193,7 +193,8 @@ describe('culling a segment', () => {
       const value = levels.map((l) => [...l]) as unknown as LodLevelsValue;
       const lodLevels = ValueCell.create(value);
       const mdb = createSegmentedMdbList();
-      const prepared = mdb.prepare(lodLevels, grid.cellOffsets[grid.cellCount], false, LodView());
+      // room for one draw: the lists grow for the draws per instance (renderables prepare one per cell)
+      const prepared = mdb.prepare(lodLevels, 1, false, LodView());
       const invariantBoundingSphere = ValueCell.create(Sphere3D.create(Vec3(), 2));
       mdb.cullSegment(
         { ...values, lodLevels, invariantBoundingSphere, padding: ValueCell.create(0) },
