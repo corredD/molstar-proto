@@ -204,6 +204,14 @@ frames, WebGPU (ms, before / after; still frames unchanged):
 `cull-check.mjs` at dpr 2: at rest after turning, motion off and on, no pixel differs (the image at rest is the full
 resolution's); the turning comparison now with motion off (its frames at full resolution).
 
+## Step 5a: space order within the levels (for clusters)
+
+`setPositionGroup` writes each level's items in Morton order (a level draws the same items): consecutive ranges are
+compact in space, what clusters need. Images at 1, 0.1 and 0.02 (both models, dpr 1) against the commit before: 1 pixel
+of 1,024,000 differs (ties at equal depth). Its commit message's speedup is wrong: `T()` timed frames still in the
+motion hold (coarser, half the resolution) when run with few batches; fixed in `zoom-test.js` (`T` waits past the hold),
+and the order alone changes nothing measurable (CellPack 0.1 12.1 ms, PetWorld 0.02 49.4 ms still).
+
 ## Where it stands (the app, `motion` 4x)
 
 Frame (ms), headless Chrome on the M1, still / turning 1° a frame (`zoom-bench.mjs`; prism-me's look with `motion`
