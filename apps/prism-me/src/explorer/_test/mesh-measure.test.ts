@@ -214,6 +214,13 @@ describe('measuring from mesh triangles in the explorer', () => {
     expect(measurements(v)).toHaveLength(before);
   });
 
+  it('says a dihedral needs four points', async () => {
+    const v = await viewer();
+    const { p, posted } = picker(v);
+    await p.measureLatest('dihedral');
+    expect(posted.at(-1)).toMatch(/^A dihedral needs 4 points/);
+  });
+
   it('lets the latest points go with the first one (Esc, a plain click): no angle offered then', async () => {
     const v = await viewer();
     const { p, posted } = picker(v);

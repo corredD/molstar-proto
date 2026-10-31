@@ -144,10 +144,7 @@ describe('measurements from a mesh triangle', () => {
     // the click's loci still names the shape from before the move
     const moved = await v.api.run('stage.distance', { a: { loci: picked }, b: { loci: ca.loci } });
     expectOk(moved);
-    expect((moved.value as { distance: number }).distance).toBeCloseTo(
-      Vec3.distance(Vec3.create(7, 2, 80), ca.at),
-      3,
-    );
+    expect((moved.value as { distance: number }).distance).toBeCloseTo(Vec3.distance(Vec3.create(7, 2, 80), ca.at), 3);
 
     const again = triangle(v, 0, [0.5, 0.2]);
     const repr = mesh(v).ref;
@@ -263,6 +260,24 @@ describe('measurements from a mesh triangle', () => {
       'd-c',
       'd-d',
     ]);
+  });
+
+  it('names an angle when that measurement is changed or removed', async () => {
+    const v = await viewer();
+    const ca = atom(v, 10);
+    const angle = await v.api.run('stage.angle', {
+      a: { loci: triangle(v, 0, [0.5, 0.2]) },
+      b: { loci: ca.loci },
+      c: { loci: triangle(v, 1, [0.1, 0.8]) },
+    });
+    expectOk(angle);
+    const ref = v.api.stage!.distancesState().value.find((m) => m.measure === 'angle')!.ref;
+    const changed = await v.api.run('stage.editDistance', { distance: ref, textSize: 2 });
+    expectOk(changed);
+    expect(changed.did).toMatch(/^Changed the angle /);
+    const removed = await v.api.run('stage.editDistance', { distance: ref, remove: true });
+    expectOk(removed);
+    expect(removed.did).toMatch(/^Removed the angle /);
   });
 
   it('measures a triangle to a particle', async () => {

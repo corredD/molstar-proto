@@ -815,9 +815,12 @@ export class StageApi extends ApiArea {
         return ApiResult.fail('not-found', `There is no distance '${v.distance}'.`);
       }
       const name = cell.obj?.label ?? 'distance';
+      const what = isStageDistanceData(cell.obj?.data.sourceData)
+        ? (cell.obj!.data.sourceData as StageDistanceData).measure
+        : 'distance';
       if (v.remove) {
         await state.build().delete(v.distance).commit();
-        return ApiResult.ok(`Removed the distance ${name}.`, { nodes: [v.distance] });
+        return ApiResult.ok(`Removed the ${what} ${name}.`, { nodes: [v.distance] });
       }
       const old = cell.transform.params as StageDistanceProps;
       const next: StageDistanceProps = {
@@ -835,8 +838,8 @@ export class StageApi extends ApiArea {
         setSubtreeVisibility(state, v.distance, !v.visible);
         nodes.push(v.distance);
       }
-      if (!nodes.length) return ApiResult.already('The distance is already so.');
-      return ApiResult.ok(`Changed the distance ${name}.`, { nodes });
+      if (!nodes.length) return ApiResult.already(`The ${what} is already so.`);
+      return ApiResult.ok(`Changed the ${what} ${name}.`, { nodes });
     },
   });
 }

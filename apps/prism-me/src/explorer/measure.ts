@@ -93,7 +93,9 @@ export function distancePicker(
     const n = kind === 'angle' ? 3 : 4;
     const points = recent.value.slice(-n);
     if (points.length < n) {
-      options.post?.(`An ${kind} needs ${n} points: ${gesture()} them in selection mode first.`);
+      options.post?.(
+        `${kind === 'dihedral' ? 'A' : 'An'} ${kind} needs ${n} points: ${gesture()} them in selection mode first.`,
+      );
       return;
     }
     // a point's object removed since: said, as for a distance's first point
@@ -155,9 +157,7 @@ export function distancePicker(
       // a triangle-picked mesh taken whole (structure granularity): not a point, and a point already waiting stays
       // (ui.md §7)
       if (wholeMesh(loci)) {
-        options.post?.(
-          `A whole mesh is not a point. Pick a triangle of it (a finer granularity than the structure).`,
-        );
+        options.post?.(`A whole mesh is not a point. Pick a triangle of it (a finer granularity than the structure).`);
         return true;
       }
       if (!picked || picked.kind === 'distance' || picked.kind === 'label') {

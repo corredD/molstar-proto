@@ -20,3 +20,4 @@
   three or four ⌘/Ctrl+clicked points by the canvas's right-click. Each point keeps its row, so its properties button
   reveals that row. Measuring the angle or the dihedral leaves the unpaired point, so the next click still completes
   its distance. A click that takes a whole mesh (structure granularity) is said, and does not start a distance.
+  Changing or removing an angle or a dihedral says that, and a dihedral says "A dihedral".
