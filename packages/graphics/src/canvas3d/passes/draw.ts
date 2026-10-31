@@ -87,6 +87,8 @@ export class DrawPass {
   occlusionPyramid: ((camera: ICamera) => OcclusionPyramid | undefined) | null = null;
   /** whether this frame culls in two phases (`occlusionPyramid`, order-independent transparency's opaque depth) */
   private twoPhase = false;
+  /** the frame draws a stereo camera's eyes (`render`) */
+  private stereo = false;
 
   /**
    * The second phase (two-phase occlusion): this frame's pyramid of the first phase's opaque depth, the objects culled
@@ -710,7 +712,7 @@ export class DrawPass {
         (this.transparencyMode === 'wboit' && this.wboit.supported) ||
         (this.transparencyMode === 'dpoit' && this.dpoit.supported);
       // (its second phase follows the opaque pass: with opaque objects; one eye's camera, not stereo's)
-      this.twoPhase = !!this.occlusionPyramid && oit && scene.hasOpaque && !(camera instanceof StereoCamera);
+      this.twoPhase = !!this.occlusionPyramid && oit && scene.hasOpaque && !this.stereo;
       renderer.prepareCull(scene.primitives, this.twoPhase);
     }
 
@@ -955,6 +957,8 @@ export class DrawPass {
       renderer.setPixelRatio(this.graphics.pixelRatio);
     }
 
+    // two-phase occlusion builds its pyramid with the canvas's camera: one phase for the eyes
+    this.stereo = StereoCamera.is(camera);
     if (StereoCamera.is(camera)) {
       const timing = isTimingMode && b.drawing;
       if (timing) this.graphics.timer.group('StereoCamera.left');
