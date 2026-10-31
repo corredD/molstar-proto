@@ -44,7 +44,8 @@ name no extension (upstreamable later, when Ludo says so).
 
 - Cuttlefish's coverage-driven hues (cellview.md §7.3, dead in cellVIEW too); a residue level; the edges in Å instead of
   pixels if Ludo wants it (`colorLevelSize` and `ColorLevels.atomSize`, `color-levels.md`); the levels on structures
-  (not particles) and on volume or shape targets.
+  (not particles) and on volume or shape targets; a GLSL/WGSL compile with `dColorLevels` and a shader-against-rule test
+  in the repo (review S4); per pixel instead of per atom if Ludo wants it.
 
 ## Library fixes ready for upstream
 

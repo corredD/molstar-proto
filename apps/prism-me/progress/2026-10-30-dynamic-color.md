@@ -82,9 +82,13 @@ local copy with `--data`). Times in ms, median / p90.
 - **The edges in pixels on screen** (Ludo, 2026-10-30), the unit kept in one place.
 - **Way (b), the blend in the shader by the fragment's view depth** (this lane, from step 1's numbers; the brief's
   rule).
-- **In the vertex stage, not per pixel** (this lane, design): the level is taken at the sphere's center (or the mesh
-  vertex), so no new varying (WebGL2's 15 and WebGPU's 16 are near full); an atom is a few pixels at the near levels,
-  and a protein still spans levels atom by atom. Before overpaint, so Look's colors still paint over it.
+- **In the vertex stage, not per pixel: a change to Ludo's choice, for him to confirm** (this lane, design, not asked
+  before building). Ludo chose (b) "per pixel"; the level is taken at the sphere's center (or the mesh vertex), so no
+  new varying (WebGL2's 15 and WebGPU's 16 are near full). An atom is a few pixels at the near levels, and a protein
+  still spans levels atom by atom (not option 4's per particle). Per pixel would add two varyings (far and near colors)
+  and move the blend to the fragment stage. Before overpaint, so Look's colors still paint over it.
+- **By zoom is a theme's** (this lane, from the review): another category theme turns the levels off in the same step;
+  Look's colors paint over them, and `mesoscale.colorLevels` says so.
 - **The unit**: pixels an atom (3.4 Å) covers, CSS pixels as `lodPixelSize`; in one function per language
   (`ColorLevels.atomSize`, `colorLevelSize` in GLSL and WGSL): edges in Å would change these three and the labels.
 - **Defaults** (this lane, from HIV in the browser): entity 3 px, chain 10, atom 30, a band of one octave, chain hues
@@ -95,6 +99,14 @@ local copy with `--data`). Times in ms, median / p90.
 
 ## Learned
 
+- **Checked in the app** (Playwright, headless Chrome, CellPack HIV, 1000×800, WebGPU and WebGL2, a Sonnet agent; the
+  category theme By zoom through `mesoscale.theme`): compartments at the whole virion, entities at 0.3 of the distance,
+  chains' hues at 0.1, elements from 0.04; no jump, no artifact, no console error. WebGL2: zooming in and out, the
+  images at each distance pixel-identical. WebGPU: identical from 0.04 in; at 0.3 and 0.1 they differ (23 % and 4 % of
+  pixels), and differ the same with the feature off: WebGPU's culling, not the colors. 0 frames drawn at rest, on or
+  off. The two backends alike. Flat grey discs at close zoom are there with the feature off too (not this lane's).
+- **The story** (Explorer › Colors by zoom › Level Slider): compartment, entity, chain hues, elements as the slider
+  goes; light and dark; wraps at 400 px (fixed in the lane).
 - The theme's factory is not the cost (0.3 ms, its index cached per list); the per-particle color function is 115 to 170
   ms over 2.1 M particles, and the commit and upload several times that.
 - The shaders already have what pixel edges need: the projection and the drawing buffer's size are global uniforms
@@ -106,11 +118,12 @@ local copy with `--data`). Times in ms, median / p90.
 
 ## Size
 
-**Built:** `graphics` production +437 −7 raw (with about 13 author lines and the doc comments; at the ~420 Ludo set), of
-which the rule and data 150, the GLSL 67 and the WGSL 69, the visual and its near data 80, schema, layers, merged and
-geometries 40, the theme's far color 11. Over the first estimate (360) by the TS rule (`ColorLevels`, the shaders' test
-oracle and the story's colors), which the estimate had not counted. `mesoscale` +164 −8, prism-me +4 (the Look line and
-the theme). Tests and the story: graphics +241, mesoscale +174, prism-me +250.
+**Built: over the limit.** `graphics` production +449 −9 raw (with about 13 author lines and the doc comments), past the
+~420 Ludo set: +437 when the feature was built, +12 with the review's fixes. Reported here after building, not before,
+as the rule asked: the overrun is the TS rule (`ColorLevels`, the shaders' test oracle and the story's colors, about 150
+lines), which the first estimate (360) had not counted. Of it: the rule and data 150, the GLSL 67 and the WGSL 69, the
+visual and its near data 80, schema, layers, merged and geometries 40, the theme's far color 16. `mesoscale` +170 −8,
+prism-me +4 (the Look line and the theme). Tests and the story: graphics +300, mesoscale +195, prism-me +250.
 
 **At the size check (before Ludo's choice):**
 
@@ -147,3 +160,20 @@ about 150 lines in prism-me and the mesoscale extension.
 Not an option: way (a), by step 1.
 
 ## Review
+
+Reviewer (Opus) then skeptic (Opus) over `origin/prism-me...a5ca3b936`: 2 must-fix, 7 should-fix, 6 nits; the skeptic
+confirmed all 15, none refuted (S3 down to a nit, M1 to low-medium). Each fixed test first, a commit each:
+
+| Finding                                                                                                     | Severity              | Outcome                                                                         |
+| ----------------------------------------------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------- |
+| M1 atom size NaN behind the camera (a mesh crossing its plane)                                              | must-fix (low-medium) | fixed `e6ff852e8` (test `0ac7a4be8`)                                            |
+| M2 an item off left the shared material uniforms at zero                                                    | must-fix              | fixed `ce9897229` (test `06bbc6fde`)                                            |
+| S3 no test that no frame is asked at rest                                                                   | nit                   | open: nothing in the diff asks a frame; 0 draws measured at rest in the browser |
+| S4 no GLSL/WGSL compile nor shader-against-rule test in the repo                                            | should-fix (low)      | open (TODO.md): both compiled and checked in the browser                        |
+| S5 refill paths untested                                                                                    | should-fix (low)      | test `7a9527c58` (no bug)                                                       |
+| S6 another theme left the levels on                                                                         | should-fix            | fixed `98720d0ce` (test `2f40f9ec2`), ui.md `4b13f61c2`                         |
+| S7 By zoom over Look's colors silently hidden                                                               | should-fix            | said so `98720d0ce` (test `2f40f9ec2`)                                          |
+| S8 far color a Map lookup per particle                                                                      | should-fix (low)      | fixed `565a6fc7f` (test `eea74ac5e`)                                            |
+| S9 per pixel changed without asking; size reported as at the limit                                          | should-fix (process)  | said plainly above (Decided, Size), for Ludo                                    |
+| Nits: slider range, plan status, blob surfaces and chains in the plan                                       | nit                   | fixed `afe4b72db`, `0e5f9135e`                                                  |
+| Nits: chains keyed by asym id with ligands and waters; story inline styles; `tColorNear` re-sent per update | nit                   | open                                                                            |
