@@ -79,11 +79,19 @@ fn occluded(sphere: vec4<f32>) -> bool {
         offset += 1 << u32(levels - 1 - i);
     }
     let ts = 1 << u32(levels - 1 - lod);
-    // the texels the rectangle covers, clamped to the view (what is outside is not drawn)
-    let x0 = max(i32(floor(aabb.x * f32(ts))), 0);
-    let x1 = min(i32(floor(aabb.z * f32(ts))), ts - 1);
-    let y0 = max(i32(floor(aabb.y * f32(ts))), 0);
-    let y1 = min(i32(floor(aabb.w * f32(ts))), ts - 1);
+    // the texels the rectangle covers; where it reaches past the pyramid's view, clamped to it if that is the view
+    // drawn (what is outside is not drawn), else not occluded (what was outside then is not in the pyramid)
+    let ux0 = i32(floor(aabb.x * f32(ts)));
+    let ux1 = i32(floor(aabb.z * f32(ts)));
+    let uy0 = i32(floor(aabb.y * f32(ts)));
+    let uy1 = i32(floor(aabb.w * f32(ts)));
+    if (uParams.uHiZSameView == 0u && (ux0 < 0 || uy0 < 0 || ux1 >= ts || uy1 >= ts)) {
+        return false;
+    }
+    let x0 = max(ux0, 0);
+    let x1 = min(ux1, ts - 1);
+    let y0 = max(uy0, 0);
+    let y1 = min(uy1, ts - 1);
     if (x1 < x0 || y1 < y0 || x1 - x0 > 3 || y1 - y0 > 3) {
         return false;
     }

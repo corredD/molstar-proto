@@ -71,6 +71,8 @@ const CullViewSchema = {
   uHiZDepthRange: UniformSpec('v2'),
   uHiZViewport: UniformSpec('v2'),
   uHiZLevelCount: UniformSpec('i'),
+  /** whether the pyramid's camera is the one culled for (a still view): rectangles reaching past it are clamped */
+  uHiZSameView: UniformSpec('b'),
   uHiZMinLevel: UniformSpec('i'),
   tHiZ: TextureSpec('texture', 'r', 'float', 'nearest'),
 };

@@ -141,6 +141,11 @@ for densely packed scenes (mesoscale), where most of what is in view is hidden b
 - **The pyramid**: `HiZPass` builds it after the opaque pass from `depthTextureOpaque` (`r32f` levels, those from
   `minLevel` side by side in one atlas texture, read back for the CPU test). On the GPU the atlas is read directly
   (`textureLoad`): no readback, no lag beyond the frame.
+- **The view's edges**: a sphere's rectangle reaching past the pyramid's view is clamped to it where the pyramid is of
+  the view culled for (a still camera: what is outside is not drawn); after a turn, what was outside the pyramid's view
+  is not in it, and the sphere is not occluded. Why: clamped while turning, a protein entering the view behind another
+  showed a frame late (PetWorld HIV at 0.1, 2° a frame: 15k of 717k pixels in one frame; none since,
+  `apps/prism-me/scripts/cull-check.mjs`). Turning costs more for it (CellPack HIV at 0.1, M1: 22 to 45 ms a frame).
 - **A pyramid per drawn frame** (`OcclusionPyramid.version`): a dispatch is skipped only against the build it tested
   last. At a still camera what was drawn may change (an object hidden, a coarser level refined): what it hid shows in
   the next pyramid and is drawn again. A still camera costs a dispatch per drawn frame, none while nothing draws.
