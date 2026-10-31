@@ -3,6 +3,7 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { PickingId } from '@molstar/graphics/geo/geometry/picking';
@@ -13,6 +14,7 @@ import { Vec2, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { Camera } from '../camera.js';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Bond } from '@molstar/model/model/structure';
+import { ShapeGroup } from '@molstar/model/model/shape';
 import type { TrackballControls } from '../controls/trackball.js';
 import { Ray3D } from '@molstar/core/math/geometry/primitives/ray3d';
 import type { AsyncPickData, PickData } from '../passes/pick.js';
@@ -25,6 +27,30 @@ type ClickEvent = import('../canvas3d.js').Canvas3D.ClickEvent;
 const tmpPosA = Vec3();
 const tmpPos = Vec3();
 const tmpNorm = Vec3();
+const tmpTriangleRay = Ray3D();
+
+/** How far (in pixels at its depth) a mesh's triangle is looked for around a pick's depth point */
+const TrianglePickPixels = 8;
+
+/**
+ * The ray through the pointer, from a pick's depth point: it lies on the pointer's ray (the pick unprojects the
+ * pointer's window coordinates at the depth read there). Perspective: from the eye through it; orthographic: along the
+ * view, from before it.
+ */
+export function pointerRay(
+  out: Ray3D,
+  camera: { readonly mode: 'perspective' | 'orthographic'; readonly position: Vec3; readonly target: Vec3 },
+  position: Vec3,
+): Ray3D {
+  if (camera.mode === 'orthographic') {
+    Vec3.normalize(out.direction, Vec3.sub(out.direction, camera.target, camera.position));
+    Vec3.scaleAndAdd(out.origin, position, out.direction, -(Vec3.distance(camera.position, position) + 1));
+  } else {
+    Vec3.copy(out.origin, camera.position);
+    Vec3.normalize(out.direction, Vec3.sub(out.direction, position, camera.position));
+  }
+  return out;
+}
 
 export const Canvas3dInteractionHelperParams = {
   maxFps: PD.Numeric(30, { min: 10, max: 60, step: 10 }),
@@ -313,7 +339,17 @@ export class Canvas3dInteractionHelper {
         return { repr, loci: Bond.toFirstStructureElementLoci(loci) };
       }
     }
+    // a mesh picked by triangle: the triangle under the pointer and the point on it (`Shape.getTriangleLoci`)
+    if (position && repr && ShapeGroup.isLoci(loci) && loci.shape.getTriangleLoci) {
+      const tolerance = this.camera.getPixelSize(position) * TrianglePickPixels;
+      return { repr, loci: loci.shape.getTriangleLoci(loci, this.pointerRay(position), position, tolerance) };
+    }
     return { repr, loci };
+  }
+
+  /** The ray through the pointer (`pointerRay`), or the input's own ray (XR) */
+  private pointerRay(position: Vec3): Ray3D {
+    return this.ray ?? pointerRay(tmpTriangleRay, this.camera.state, position);
   }
 
   resetTime(t: number) {

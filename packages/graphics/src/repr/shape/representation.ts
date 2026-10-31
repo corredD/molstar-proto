@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import * as ShapeUtils from '@molstar/graphics/geo/shape/shape';
@@ -31,6 +32,8 @@ import { type RuntimeContext, Task } from '@molstar/core/task';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { isDebugMode } from '@molstar/core/util/debug';
 import { getGeometrySignatures, type SignatureContext } from '../signatures.js';
+import type { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
+import { TriangleMarks } from './triangle-marks.js';
 
 export interface ShapeRepresentation<D, G extends Geometry, P extends Geometry.Params<G>> extends Representation<D, P> {
   /** The shape the representation was last built from, absent before the first update */
@@ -67,6 +70,8 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
   const materialId = getNextMaterialId();
   const renderObjects: GraphicsRenderObject<G['kind']>[] = [];
   let _renderObject: GraphicsRenderObject<G['kind']> | undefined;
+  /** A mesh picked by triangle: its marked triangles, drawn on top of it (`TriangleMarks`) */
+  let _triangleMarks: TriangleMarks | undefined;
   let _shape: Shape<G>;
   let geometryVersion = -1;
   const _theme = Theme.createEmpty();
@@ -162,6 +167,12 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
         _renderObject = createRenderObject(_shape.geometry.kind, values, state, materialId);
         if (_renderObject) renderObjects.push(_renderObject); // add new renderObject to list
         positionIt = geometryUtils.createPositionIterator(_shape.geometry, _renderObject.values);
+        // made with the representation (empty), so its render objects are the same for its life
+        _triangleMarks = undefined;
+        if (_shape.geometry.kind === 'mesh' && _shape.getTriangleLoci) {
+          _triangleMarks = new TriangleMarks(_shape as unknown as Shape<Mesh>, newProps as never);
+          renderObjects.push(_triangleMarks.renderObject as unknown as GraphicsRenderObject<G['kind']>);
+        }
       } else {
         if (!_renderObject) {
           throw new Error('expected renderObject to be available');
@@ -220,6 +231,10 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
 
         geometryUtils.updateValues(_renderObject.values, newProps);
         geometryUtils.updateRenderableState(_renderObject.state, newProps);
+        if (_triangleMarks) {
+          if (shape) _triangleMarks.setShape(_shape as unknown as Shape<Mesh>);
+          _triangleMarks.setProps(newProps as never);
+        }
 
         // needs to be done after size and values are updated
         if (updateState.updateTransform || updateState.createGeometry) {
@@ -325,11 +340,19 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
     mark(loci: Loci, action: MarkerAction) {
       if (!MarkerActions.is(_state.markerActions, action)) return false;
       if (ShapeGroup.isLoci(loci) || Shape.isLoci(loci)) {
-        if (loci.shape !== _shape) return false;
+        // a move builds a new shape of the same mesh: a loci from before it still names its triangles
+        if (loci.shape !== _shape) {
+          if (!_shape || loci.shape.geometry !== _shape.geometry) return false;
+          loci = retargetLoci(loci, _shape);
+        }
       } else if (!isEveryLoci(loci)) {
         return false;
       }
-      return Visual.mark(_renderObject, loci, action, lociApply);
+      // triangles: marked by themselves, never their group (another visual of the mesh, a wireframe, marks none)
+      if (ShapeGroup.isLoci(loci) && loci.triangles) return _triangleMarks?.mark(loci, action) ?? false;
+      const changed = Visual.mark(_renderObject, loci, action, lociApply);
+      // the whole mesh or everything: its marked triangles too
+      return (_triangleMarks?.mark(loci, action) ?? false) || changed;
     },
     setState(state: Partial<Representation.State>) {
       if (builder.modifyState) state = builder.modifyState(state);
@@ -338,6 +361,13 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
         if (state.visible !== undefined) Visual.setVisibility(_renderObject, state.visible);
         if (state.pickable !== undefined) Visual.setPickable(_renderObject, state.pickable);
         if (state.colorOnly !== undefined) Visual.setColorOnly(_renderObject, state.colorOnly);
+        // the marked triangles are shown and moved with the mesh, never picked
+        const marks = _triangleMarks?.renderObject;
+        if (marks) {
+          if (state.visible !== undefined) Visual.setVisibility(marks, state.visible);
+          if (state.colorOnly !== undefined) Visual.setColorOnly(marks, state.colorOnly);
+          if (state.transform !== undefined) Visual.setTransform(marks, state.transform);
+        }
         if (state.overpaint !== undefined) {
           Visual.setOverpaint(_renderObject, state.overpaint, lociApply, true);
         }
@@ -369,6 +399,10 @@ export function ShapeRepresentation<D, G extends Geometry, P extends Geometry.Pa
       if (_renderObject) {
         _renderObject.state.disposed = true;
         _renderObject = undefined;
+      }
+      if (_triangleMarks) {
+        _triangleMarks.renderObject.state.disposed = true;
+        _triangleMarks = undefined;
       }
     },
   };
@@ -424,9 +458,15 @@ export function ShapeMultiRepresentation<D, P extends PD.Params>(
     getAllLoci: multi.getAllLoci,
     eachLocation: multi.eachLocation,
     mark(loci: Loci, action: MarkerAction) {
-      // a loci on another representation's shape (another mesh file) is not ours: only our own visuals' are re-pointed
-      if ((Shape.isLoci(loci) || ShapeGroup.isLoci(loci)) && !names.some((n) => reprs[n].shape === loci.shape)) {
-        return false;
+      // a loci on another mesh is not ours. The same mesh rebuilt (a move: a new shape, the same geometry) is,
+      // and retargetLoci points it at the shape now shown, so a highlight from before the move can be removed.
+      if (Shape.isLoci(loci) || ShapeGroup.isLoci(loci)) {
+        const geometry = loci.shape.geometry;
+        const ours = names.some((n) => {
+          const shape = reprs[n].shape;
+          return !!shape && (shape === loci.shape || shape.geometry === geometry);
+        });
+        if (!ours) return false;
       }
       let marked = false;
       for (const name of names) {
@@ -449,7 +489,9 @@ export function ShapeMultiRepresentation<D, P extends PD.Params>(
 function retargetLoci(loci: Loci, shape: Shape | undefined): Loci {
   if (!shape) return loci;
   if (Shape.isLoci(loci)) return loci.shape === shape ? loci : Shape.Loci(shape);
-  if (ShapeGroup.isLoci(loci)) return loci.shape === shape ? loci : ShapeGroup.Loci(shape, loci.groups);
+  if (ShapeGroup.isLoci(loci)) {
+    return loci.shape === shape ? loci : ShapeGroup.Loci(shape, loci.groups, loci.triangles);
+  }
   return loci;
 }
 

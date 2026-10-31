@@ -174,6 +174,8 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
         // the part's own move is not there: these are
         items.splice(0, items.length, ...local, ...items.filter((i) => i.id !== 'move'));
       }
+      // an angle or a dihedral from the latest measuring clicks, first: what the clicks were for
+      items.unshift(...picker.menuItems());
       close = openContextMenu(root, { x: request.x, y: request.y }, items);
     }, true);
   }

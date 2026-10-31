@@ -12,8 +12,9 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ExplorerApi, NodeRef } from './operations.js';
 import { Hint, Line, propertiesClasses as classes } from './properties-view.js';
 
-// A distance's properties (_spec/ui.md §7): its two points (a click picks the point's row), its text size,
-// line width and opacity (`stage.editDistance`, one step a release). Lines as the properties' (properties-view.tsx).
+// A measurement's properties (_spec/ui.md §7): a distance's two points, an angle's three, a dihedral's four (a click
+// picks the point's row), its text size, line width and opacity (`stage.editDistance`, one step a release). Lines as
+// the properties' (properties-view.tsx).
 
 /** A fraction shown as a percent */
 const Percent = {
@@ -21,6 +22,25 @@ const Percent = {
   parse: (text: string) => Number.parseFloat(text.replace(',', '.')) / 100,
   unit: '%',
 } as const;
+
+/** A measurement's points and their names */
+const Titles = {
+  distance: [
+    ['a', 'From'],
+    ['b', 'To'],
+  ],
+  angle: [
+    ['a', 'From'],
+    ['b', 'At'],
+    ['c', 'To'],
+  ],
+  dihedral: [
+    ['a', 'From'],
+    ['b', 'Axis from'],
+    ['c', 'Axis to'],
+    ['d', 'To'],
+  ],
+} as const satisfies Record<string, readonly (readonly ['a' | 'b' | 'c' | 'd', string])[]>;
 
 /** A factor: "×1.5" */
 const Times = { format: (v: number) => String(Math.round(v * 100) / 100), unit: '×' } as const;
@@ -32,7 +52,9 @@ export function DistanceProps(props: { api: ViewerApi; area: ExplorerApi; node: 
   const ref = props.node.ref;
   const distance = mapState(stage.distancesState(), (l) => l.find((d) => d.ref === ref));
   const edit = (values: Record<string, unknown>) => void api.run('stage.editDistance', { distance: ref, ...values });
-  const point = (which: 'a' | 'b', title: string) => (
+  // its kind does not change: its points' lines are made once
+  const points = Titles[distance.value?.measure ?? 'distance'];
+  const point = (which: 'a' | 'b' | 'c' | 'd', title: string) => (
     <Line label={title}>
       <Button
         size="sm"
@@ -43,7 +65,7 @@ export function DistanceProps(props: { api: ViewerApi; area: ExplorerApi; node: 
           if (p) area.revealRow(p.key || (which === 'a' && distance.value?.node) || `o:${p.ref}`);
         }}
       >
-        {mapState(distance, (d) => d?.[which].label ?? '')}
+        {mapState(distance, (d) => d?.[which]?.label ?? '')}
       </Button>
     </Line>
   );
@@ -52,8 +74,7 @@ export function DistanceProps(props: { api: ViewerApi; area: ExplorerApi; node: 
       <Line label="Value">
         <span>{mapState(distance, (d) => d?.label ?? '')}</span>
       </Line>
-      {point('a', 'From')}
-      {point('b', 'To')}
+      {points.map(([which, title]) => point(which, title))}
       <Field
         label="Text size"
         value={mapState(distance, (d) => d?.textSize ?? 1)}

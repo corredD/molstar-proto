@@ -121,7 +121,7 @@ export function Properties(props: {
           <PropertiesFrame
             shell={props.shell}
             name={nameOf(subject)}
-            kind={picked.kind}
+            kind={headerKind(props.api, picked)}
             subject={subject}
             above={
               picked.node && picked.kind === 'mesoscale model' ? (
@@ -134,6 +134,13 @@ export function Properties(props: {
       }}
     </For>
   );
+}
+
+/** The header's kind: a measurement's own (a distance, an angle, a dihedral), else the row's */
+function headerKind(api: ViewerApi, picked: Picked): string {
+  if (picked.kind !== 'distance' || !picked.node) return picked.kind;
+  const ref = picked.node.ref;
+  return api.stage?.distancesState().value.find((d) => d.ref === ref)?.measure ?? picked.kind;
 }
 
 /** A label's name is its text, a clip's its shape: as they change */
@@ -346,7 +353,7 @@ const Sections: readonly Section[] = [
   },
   {
     id: 'distance',
-    title: 'Distance',
+    title: 'Measurement',
     when: ({ picked }) => picked.kind === 'distance' && !!picked.node,
     render: ({ api, area, picked }) => <DistanceProps api={api} area={area} node={picked.node!} />,
   },

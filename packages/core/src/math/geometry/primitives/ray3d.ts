@@ -1,8 +1,9 @@
 /**
- * Copyright (c) 2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2025-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Mat4 } from '../../linear-algebra/3d/mat4.js';
@@ -135,6 +136,39 @@ namespace Ray3D {
 
   export function isIntersectingBox3D(ray: Ray3D, box: Box3D): boolean {
     return _intersectBox3D(ray, box) >= 0;
+  }
+
+  //
+
+  const tmpE1 = Vec3();
+  const tmpE2 = Vec3();
+  const tmpP = Vec3();
+  const tmpT = Vec3();
+  const tmpQ = Vec3();
+  /**
+   * Where the ray hits the triangle `a`, `b`, `c` from either side (Möller–Trumbore): `out` is `(u, v, t)`, the hit's
+   * barycentric weights of `b` and `c` (the weight of `a` is `1 - u - v`) and its distance along the ray, in units of
+   * the direction's length. False when the ray misses it, runs along it or starts past it.
+   */
+  export function intersectTriangle(out: Vec3, ray: Ray3D, a: Vec3, b: Vec3, c: Vec3): boolean {
+    const { origin, direction } = ray;
+    Vec3.sub(tmpE1, b, a);
+    Vec3.sub(tmpE2, c, a);
+    Vec3.cross(tmpP, direction, tmpE2);
+    const det = Vec3.dot(tmpE1, tmpP);
+    // parallel to the plane (relative to the edges' size, so the test does not depend on the units)
+    if (Math.abs(det) <= 1e-12 * Vec3.squaredMagnitude(tmpE1) * Vec3.magnitude(tmpE2)) return false;
+    const inv = 1 / det;
+    Vec3.sub(tmpT, origin, a);
+    const u = Vec3.dot(tmpT, tmpP) * inv;
+    if (u < 0 || u > 1) return false;
+    Vec3.cross(tmpQ, tmpT, tmpE1);
+    const v = Vec3.dot(direction, tmpQ) * inv;
+    if (v < 0 || u + v > 1) return false;
+    const t = Vec3.dot(tmpE2, tmpQ) * inv;
+    if (t < 0) return false;
+    Vec3.set(out, u, v, t);
+    return true;
   }
 }
 

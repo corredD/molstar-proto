@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Unit, StructureElement, StructureProperties as Props, type Bond } from './structure.js';
@@ -41,9 +42,13 @@ export function lociLabel(loci: Loci, options: Partial<LabelOptions> = {}): stri
       return bond ? bondLabel(bond, options) : '';
     case 'shape-loci':
       return loci.shape.name;
-    case 'group-loci':
+    case 'group-loci': {
       const g = loci.groups[0];
-      return g ? loci.shape.getLabel(OrderedSet.start(g.ids), g.instance) : '';
+      if (!g) return '';
+      const group = loci.shape.getLabel(OrderedSet.start(g.ids), g.instance);
+      const t = loci.triangles;
+      return t?.length ? `${group} | ${t.length === 1 ? `Triangle ${t[0].index}` : `${t.length} triangles`}` : group;
+    }
     case 'every-loci':
       return 'Everything';
     case 'empty-loci':

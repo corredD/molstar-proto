@@ -581,9 +581,9 @@ export class ExplorerApi extends ApiArea {
   focus(node: NodeRef) {
     const plugin = this.ctx.plugin;
     const cell = plugin.state.data.cells.get(node.ref);
-    // a distance: its two points
+    // a measurement: its points
     if (SO.Shape.Representation3D.is(cell?.obj) && isStageDistanceData(cell.obj.data.sourceData)) {
-      plugin.managers.camera.focusLoci([...cell.obj.data.sourceData.pairs[0].loci]);
+      plugin.managers.camera.focusLoci([...cell.obj.data.sourceData.points]);
       return;
     }
     if (SO.Volume.Data.is(cell?.obj)) {
