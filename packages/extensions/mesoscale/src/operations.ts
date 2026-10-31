@@ -679,14 +679,14 @@ export class MesoscaleApi extends ApiArea {
           const entities = !!data?.entityInfo?.size;
           const list = lists.get(o.cell.transform.ref);
           if (theme === 'zoom') {
-            // compartment (Particle Hierarchy: compartments and entities per particle), else entity (PetWorld's, by
-            // target), then chain and atom by size on screen
+            // compartment (Particle Hierarchy: compartments and entities per particle), else entity (Particle Entity:
+            // entities per particle, PetWorld's), then chain and atom by size on screen
             const hierarchy = !!data?.entities && !!data.compartments;
-            // drawn by its structures (targets): a spacefill has no atoms to color
+            // drawn as targets (a structure group in its params): a spacefill has no atoms to color
             const targets = o.representations.some(
               (r) => !!(r.transform.params as { type?: Partial<ParticleType> }).type?.params?.structure,
             );
-            if ((!hierarchy && !entities) || !targets) return doesNotTake(o.name, label);
+            if (!data?.entities || !targets) return doesNotTake(o.name, label);
             const look = list ? clearedColors(ctx, list) : undefined;
             const theme = named(hierarchy ? 'particle-hierarchy' : 'particle-entity');
             plans.push({ kind: 'reps', o, theme, levels: true, look });
