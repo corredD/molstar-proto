@@ -1,5 +1,6 @@
 // Paste in the browser console of prism-me (any port). Zoom where you want, then run `await S()`.
-// It stops the animation loop, times frames at the current camera, and puts everything back.
+// It stops the animation loop, times frames at the current camera (`T()`) and turning about it (`M()`, 1° a frame),
+// sweeps the pixel scale and the graphics mode, and puts everything back.
 {
   const pl = molstar.viewer.plugin;
   const c = pl.canvas3d;
@@ -35,13 +36,55 @@
     w.sort((a, b) => a - b);
     return +w[batches >> 1].toFixed(1);
   };
+  // the camera turned by `degrees` about its up axis through the target (Rodrigues), every frame a new view
+  const turn = (degrees) => {
+    const { position: p, target: t, up: u } = c.camera.state;
+    const a = (degrees * Math.PI) / 180;
+    const [cos, sin] = [Math.cos(a), Math.sin(a)];
+    const l = Math.hypot(u[0], u[1], u[2]);
+    const k = [u[0] / l, u[1] / l, u[2] / l];
+    const v = [p[0] - t[0], p[1] - t[1], p[2] - t[2]];
+    const kv = k[0] * v[0] + k[1] * v[1] + k[2] * v[2];
+    const x = [k[1] * v[2] - k[2] * v[1], k[2] * v[0] - k[0] * v[2], k[0] * v[1] - k[1] * v[0]];
+    const r = [0, 1, 2].map((i) => t[i] + v[i] * cos + x[i] * sin + k[i] * kv * (1 - cos));
+    c.camera.setState({ position: r }, 0);
+  };
+  // ms a frame while the camera turns (`degrees` a frame, then back): what dragging costs; batched as `T`
+  window.M = async (batches = 5, degrees = 1) => {
+    const start = c.camera.getSnapshot();
+    try {
+      for (let i = 0; i < 5; i++) {
+        turn(degrees);
+        await frame();
+      }
+      const w = [];
+      for (let k = 0; k < batches; k++) {
+        const t = performance.now();
+        for (let i = 0; i < 19; i++) {
+          turn(degrees);
+          c.tick(performance.now(), { isSynchronous: true });
+        }
+        turn(degrees);
+        await frame();
+        w.push((performance.now() - t) / 20);
+      }
+      w.sort((a, b) => a - b);
+      return +w[batches >> 1].toFixed(1);
+    } finally {
+      c.camera.setState(start, 0);
+    }
+  };
   // the sweep: resolution (fragments) and graphics mode (spheres drawn)
   window.S = async () => {
     pl.animationLoop.stop();
     const px0 = ctx.pixelScale;
     const out = {};
-    say('measuring: 6 steps of 105 frames each, do not move the camera…');
+    say('measuring: 8 steps of 105 frames each, do not move the camera…');
     try {
+      out.still = await T();
+      say(`still: ${out.still} ms`);
+      out.turning = await M();
+      say(`turning: ${out.turning} ms`);
       for (const s of [1, 0.5, 0.25]) {
         setPixelScale(s);
         await frame();
@@ -69,5 +112,5 @@
     say(JSON.stringify(out));
     return out;
   };
-  say('ready: zoom in, then type  await S()  (about 30 s; each step prints a line)');
+  say('ready: zoom in, then type  await S()  (about 40 s; each step prints a line)');
 }

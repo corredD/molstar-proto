@@ -199,7 +199,10 @@ for (const f of fractions) {
       try {
         window.Z.at(f);
         const ms = await window.T(n);
-        return { f, ms, ...window.Z.counts() };
+        const counts = window.Z.counts();
+        // while turning 1° a frame about the target (`M`): every frame a new view
+        const turning = await window.M(n);
+        return { f, ms, turning, ...counts };
       } finally {
         pl.animationLoop.start();
       }
