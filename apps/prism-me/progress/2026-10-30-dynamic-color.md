@@ -60,6 +60,19 @@ local copy with `--data`). Times in ms, median / p90.
 
 - Step 1 (the measurement, `recolor-bench.mjs`), then a stop at the size check (Size below); Ludo picked option 1 the
   same day.
+- **Library** (`graphics`, commits naming no extension; plan `.v6/plans/gl/color-levels.md`): `ColorLevels`, the rule
+  (an atom's size on screen in CSS pixels, three edges blended over octaves, Oklab; the chain's hue turned from the
+  entity's) and its data; `ColorLevelsSchema` on spheres and meshes (`tColorFar` per instance, `tColorNear` per group,
+  two data layers, merged as instance and group textures); the vertex stage blends `vColor` in GLSL and WGSL, before
+  overpaint; `ColorTheme.farColor` (`particle-hierarchy`: the compartment's base color); the particle target visual
+  fills a target's near data once (its atoms' element colors, its chains' offsets) and its particles' far colors when
+  the colors change (`structure.colorLevels` param).
+- **Extension** (`mesoscale`): `mesoscale.colorLevels` (on, off, edges; one step; command and agent tool),
+  `mesoscale.theme` by zoom (Particle Hierarchy with the levels on), `graphicsState().colorLevels`, `ZoomColors`
+  control; a scaling guard over N lists.
+- **App** (prism-me): a model's Look › By zoom and, when on, its entity, chain and atom edges (log sliders, px); the
+  particles' category theme By zoom; the story Explorer › Colors by zoom › Level Slider; ui.md §3, §4, features.md,
+  TODO.md (brief 8 out of Next, what is left kept).
 
 ## Decided
 
@@ -69,6 +82,16 @@ local copy with `--data`). Times in ms, median / p90.
 - **The edges in pixels on screen** (Ludo, 2026-10-30), the unit kept in one place.
 - **Way (b), the blend in the shader by the fragment's view depth** (this lane, from step 1's numbers; the brief's
   rule).
+- **In the vertex stage, not per pixel** (this lane, design): the level is taken at the sphere's center (or the mesh
+  vertex), so no new varying (WebGL2's 15 and WebGPU's 16 are near full); an atom is a few pixels at the near levels,
+  and a protein still spans levels atom by atom. Before overpaint, so Look's colors still paint over it.
+- **The unit**: pixels an atom (3.4 Å) covers, CSS pixels as `lodPixelSize`; in one function per language
+  (`ColorLevels.atomSize`, `colorLevelSize` in GLSL and WGSL): edges in Å would change these three and the labels.
+- **Defaults** (this lane, from HIV in the browser): entity 3 px, chain 10, atom 30, a band of one octave, chain hues
+  over 90°. On CellPack HIV (1000×800): the whole virion shows its compartments, at a fifth of the distance its
+  entities, at a fiftieth atoms by element.
+- **Off for a uniform theme or a palette** (no per-vertex color), and for shape and volume targets (no atoms); coarse
+  elements take a carbon's color at the atom level.
 
 ## Learned
 
@@ -82,6 +105,14 @@ local copy with `--data`). Times in ms, median / p90.
 - No HCL, Oklab or LCh code in the shaders today; `@molstar/core/util/color/spaces/{lab,hcl}.ts` are CPU only.
 
 ## Size
+
+**Built:** `graphics` production +437 −7 raw (with about 13 author lines and the doc comments; at the ~420 Ludo set), of
+which the rule and data 150, the GLSL 67 and the WGSL 69, the visual and its near data 80, schema, layers, merged and
+geometries 40, the theme's far color 11. Over the first estimate (360) by the TS rule (`ColorLevels`, the shaders' test
+oracle and the story's colors), which the estimate had not counted. `mesoscale` +164 −8, prism-me +4 (the Look line and
+the theme). Tests and the story: graphics +241, mesoscale +174, prism-me +250.
+
+**At the size check (before Ludo's choice):**
 
 **Way (b) as briefed is about 360 production lines in `graphics` (300 to 420), over the ~250 limit: stopped here, before
 the library.** The yardstick: the graded-cuts table (`3c0ed1d34`, one per-instance table and its rule in both backends)
