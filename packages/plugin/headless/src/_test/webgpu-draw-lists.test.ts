@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -150,6 +151,72 @@ describe.skipIf(!WebGPU.module)('draw lists on WebGPU', () => {
       // replayed again with the new buffer
       expect(await frame()).toEqual(before);
       expect(stats.drawLists.replayed).toBeGreaterThan(replayed);
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
+  it('record again where the shared quad indices grew while recording (a small object drawn, then a large one)', async () => {
+    // prism-me, PetWorld HIV on WebGPU (Ludo, 2026-10-30): blank until a change, every frame "quad indices used in
+    // submit while destroyed": the recording bound the first buffer for its first draws, a later draw grew it, and the
+    // recording, made current after it, replayed the released buffer
+    const atoms = (n: number, dx: number) =>
+      `${Array.from({ length: n }, (_, i) => {
+        const f = (v: number) => v.toFixed(3).padStart(8);
+        const serial = String((i % 99999) + 1).padStart(5);
+        const residue = String((i % 9999) + 1).padStart(4);
+        const [x, y, z] = [dx + (i % 20) * 0.5, (Math.floor(i / 20) % 20) * 0.5, Math.floor(i / 400) * 0.5];
+        return `ATOM  ${serial}  CA  ALA A${residue}    ${f(x)}${f(y)}${f(z)}  1.00  0.00           C`;
+      }).join('\n')}\nEND\n`;
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu: WebGPU.module! },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      const add = async (pdb: string) => {
+        const data = await plugin.builders.data.rawData({ data: pdb, label: 'test' });
+        const trajectory = await plugin.builders.structure.parseTrajectory(data, 'pdb');
+        const model = await plugin.builders.structure.createModel(trajectory);
+        const structure = await plugin.builders.structure.createStructure(model);
+        await plugin.builders.structure.representation.addRepresentation(structure, { type: 'spacefill' });
+      };
+      const canvas = plugin.canvas3d!;
+      const graphics = canvas.graphics as WebGPUContext;
+      const passes = plugin.renderer.canvas3dContext!.passes;
+      let time = now();
+      const frame = async () => {
+        canvas.commit(true);
+        canvas.requestDraw();
+        canvas.tick((time += 1000) as now.Timestamp, { isSynchronous: true });
+        await graphics.resources.pending.whenReady();
+        return Array.from(await graphics.readRenderTarget(passes.draw.drawTarget, 0, 0, Size, Size));
+      };
+      const drawLists = async (on: boolean) => {
+        canvas.setProps({
+          multiSample: { ...canvas.props.multiSample, mode: 'off' },
+          renderer: { ...canvas.props.renderer, drawLists: on },
+        });
+        let image = await frame();
+        for (let i = 0; i < 6; ++i) image = await frame();
+        return image;
+      };
+      // the first buffer, its least items: the small object's draws bind it
+      graphics.quadIndices.get(1);
+      const first = graphics.quadIndices.get(1)!.itemCount;
+      await add(Pdb);
+      await add(atoms(first + 100, 12));
+      canvas.requestCameraReset();
+      // validation errors of the frames, in a scope of their own (Dawn's are not dispatched as events in Node)
+      graphics.device.pushErrorScope('validation');
+      const replayed = await drawLists(true);
+      const error = await graphics.device.popErrorScope();
+      expect(graphics.quadIndices.get(1)!.itemCount).toBeGreaterThan(first);
+      expect(error?.message ?? '').toBe('');
+      expect(replayed.some((v, i) => i % 4 !== 3 && v > 0)).toBe(true);
+      expect(replayed).toEqual(await drawLists(false));
     } finally {
       plugin.dispose();
     }
