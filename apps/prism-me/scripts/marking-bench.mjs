@@ -88,7 +88,9 @@ await page.evaluate(async () => {
   const c = pl.canvas3d;
   const api = window.molstar.api;
   const snap = c.camera.getSnapshot();
-  const look = { marking: { ...c.props.marking }, transparency: c.props.transparency };
+  // the transparency mode is the context's (`Canvas3DContext`), not the canvas'
+  const ctx = pl.canvas3dContext;
+  const look = { marking: { ...c.props.marking }, transparency: ctx.props.transparency };
   const frame = async () => {
     c.requestDraw();
     c.tick(performance.now(), { isSynchronous: true });
@@ -131,8 +133,9 @@ await page.evaluate(async () => {
           enabled: k.marking,
           ghostEdgeStrength: k.ghostEdgeStrength ?? look.marking.ghostEdgeStrength,
         },
-        transparency: k.transparency ?? look.transparency,
       });
+      const transparency = k.transparency ?? look.transparency;
+      if (ctx.props.transparency !== transparency) ctx.setProps({ transparency });
       setDefine('dXrayShaded', k.xray ? 'on' : 'off');
     },
     /** frames until one starts no work (a pipeline compiling skips its draws) and nothing is pending */
@@ -326,18 +329,22 @@ for (const name of cases) {
   for (const f of fractions) {
     await page.evaluate((f) => window.B.at(f), f);
     await page.waitForTimeout(800);
-    // a warm-up at the view (its culling settled, its pyramid built, the turn's levels): the first measure was slower
-    await page.evaluate(async (n) => {
-      const pl = window.molstar.viewer.plugin;
-      pl.animationLoop.stop();
-      try {
-        await window.B.settle();
-        await window.T(n);
-        await window.M(n);
-      } finally {
-        pl.animationLoop.start();
-      }
-    }, Math.max(1, batches >> 1));
+    // a warm-up at the view (its culling settled, its pyramid built, the turn's levels): the first measure was
+    // slower
+    await page.evaluate(
+      async (n) => {
+        const pl = window.molstar.viewer.plugin;
+        pl.animationLoop.stop();
+        try {
+          await window.B.settle();
+          await window.T(n);
+          await window.M(n);
+        } finally {
+          pl.animationLoop.start();
+        }
+      },
+      Math.max(1, batches >> 1),
+    );
     for (let run = 0; run < runs; run++) {
       // the order alternates by run: the machine's drift falls on both
       const order = run % 2 ? [false, true] : [true, false];
