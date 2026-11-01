@@ -70,7 +70,6 @@ async function setup(options: { ghostEdgeStrength: number; transparency: 'wboit'
   canvas.setProps({
     renderer: { backgroundColor: Color(0xffffff) },
     multiSample: { mode: 'off' },
-    transparency: options.transparency,
     camera: { mode: 'perspective', helper: { axes: { name: 'off', params: {} } } },
     postprocessing: {
       enabled: true,
@@ -89,6 +88,8 @@ async function setup(options: { ghostEdgeStrength: number; transparency: 'wboit'
       selectEdgeStrength: 1,
     },
   } as any);
+  // the transparency mode is the context's
+  ctx.setProps({ transparency: options.transparency });
   let shape: Shape<Spheres> | undefined;
   const repr = ShapeRepresentation(() => (shape = spheres()), Spheres.Utils, { graphics: canvas.graphics });
   await repr.createOrUpdate({ ...PD.getDefaultValues(Spheres.Params) } as any, {}).run();

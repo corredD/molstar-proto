@@ -83,7 +83,6 @@ async function setup(options: Options) {
   canvas.setProps({
     renderer: { ...canvas.props.renderer, backgroundColor: Color(0xffffff) },
     multiSample: { ...canvas.props.multiSample, mode: 'off' },
-    transparency: options.transparency,
     camera: { ...canvas.props.camera, mode: 'perspective' },
     postprocessing,
     marking: {
@@ -97,6 +96,9 @@ async function setup(options: Options) {
       selectEdgeStrength: 1,
     },
   } as any);
+  // the transparency mode is the context's
+  plugin.canvas3dContext!.setProps({ transparency: options.transparency });
+  expect(plugin.canvas3dContext!.props.transparency).toBe(options.transparency);
   const repr = ShapeRepresentation(spheres, Spheres.Utils, { graphics: canvas.graphics });
   const params = { ...PD.getDefaultValues(Spheres.Params), xrayShaded: options.xray ? 'on' : 'off' };
   await repr.createOrUpdate(params as any, {}).run();
