@@ -36,7 +36,9 @@
 
 - **Vertex stage** (`spheres.vert`, `spheres.wgsl`): six vertices per sphere (two triangles, no elements), each pulls
   the sphere from `tPositionGroup` and computes the projected bounding rectangle (`sphereProjection`: two square roots,
-  four divisions) and `uInvProjection * gl_Position`; the quad lies at the sphere's center depth.
+  four divisions) and `uInvProjection * gl_Position`; the quad lies at the sphere's center depth. An unmarked sphere in
+  the marking mask, and a sphere the color or tracing pass would discard whole, return before that projection. A fully
+  opaque sphere in the opaque pass still always projects, which is what the measurements below time.
 - **Fragment stage**: a ray-sphere intersection (`SphereImpostor`), `discard` where the ray misses (the quad corners,
   21% of the quad area for a circle), then the full material and lighting; the depth is written (`gl_FragDepth`,
   `frag_depth`). The shaders contain further runtime discards (opaque/transparent masks, LOD fade, clipping).
