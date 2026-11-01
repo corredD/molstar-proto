@@ -226,8 +226,8 @@ kind in `clip-ghosts-draw.test.ts` before it ships. Left for Ludo to start.
 ## Who
 
 Claude wrote the brief and the bench. Grok ran the eight measurements, committed the bench (`4e5590f0f`), wrote the
-sphere skip and its test (`1b1b7fe72`), remeasured CellPack after the change (`459d33398`), and locked the test
-(`94ae9dcef`) after the review.
+sphere skip and its test (`1b1b7fe72`), remeasured CellPack after the change (`459d33398`), locked the test
+(`94ae9dcef`) after the review, and added inverted x-ray (`8782d0952`) after the skeptic.
 
 ## The gate
 
@@ -245,21 +245,20 @@ On `459d33398`, from this worktree, `mise exec`:
 - Prism viewer's `typecheck:storybook` fails in `packages/prism/viewer/src/api/styles.ts:114` (`transparentColor`, from
   #24), as the brief says. Not fixed here.
 
-The two commits after that are the test and one sentence of the impostor plan. The test file was run again (6 passed)
-and `biome check` is clean.
+The commits after that are the test lock, the plan sentence, and inverted x-ray. The test file was run again after each
+(6 passed) and `biome check` is clean.
 
 ## Review
 
-Lane-reviewer: 0 must-fix, 2 should-fix, 1 nit. Both should-fixes are the test not locking the rule the shader copies.
-Confirmed by reading the test and the shaders: the strings the finding names were absent from the test, and the shaders
-have them (GLSL recomputes `vT` and multiplies strength, because WebGL1 cannot read the varying; WGSL reads
-`out.vTransparency`, which the varyings already scale). The lane-skeptic was still reading when this was written.
+Lane-reviewer: 0 must-fix, 2 should-fix, 1 nit. Lane-skeptic: 2 confirmed, 1 refuted, 1 new nit. The shaders already had
+the rule. The holes were the test.
 
-| Finding                                                                                                                                                                                  | Severity   | Verdict                                                                    | Commit / open |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------- | ------------- |
-| The transparency test does not require the 0.09 cutoff, the strength scale, or the transparent-pass compare, so deleting them still passes and a sphere near 0.086 can leave both passes | should-fix | confirmed by reading; the assertions fail if those lines go                | `94ae9dcef`   |
-| The WGSL case does not cover opaque back faces, a per-vertex transparency, or the marking variant                                                                                        | should-fix | confirmed by reading; those preprocesses now require the clip to be absent | `94ae9dcef`   |
-| `.v6/plans/gl/sphere-impostors.md` still said every sphere vertex computes the projection                                                                                                | nit        | fixed                                                                      | `5ac8652d6`   |
+| Finding                                                                                                                                                                                  | Severity   | Verdict                                                                                                                                                                      | Commit / open |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| The transparency test does not require the 0.09 cutoff, the strength scale, or the transparent-pass compare, so deleting them still passes and a sphere near 0.086 can leave both passes | should-fix | confirmed. The strength hole is the GLSL re-read only; WGSL reads `out.vTransparency`, already scaled                                                                        | `94ae9dcef`   |
+| The WGSL case does not cover opaque back faces, a per-vertex transparency, or the marking variant                                                                                        | should-fix | confirmed                                                                                                                                                                    | `94ae9dcef`   |
+| `.v6/plans/gl/sphere-impostors.md` still said every sphere vertex computes the projection                                                                                                | nit        | refuted: that paragraph is the pre-change cost snapshot, and a fully opaque sphere still projects. The sentence now also names the exception; the measurements are unchanged | `5ac8652d6`   |
+| Inverted x-ray was not in the test. Narrowing the guard to `dXrayShaded_on` would still pass, and an inverted sphere with texture transparency would leave the only pass that draws it   | nit        | confirmed. `on` and `inverted` both keep the clip out                                                                                                                        | `8782d0952`   |
 
 ## Built
 
