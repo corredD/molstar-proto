@@ -72,9 +72,20 @@ describe('sphere transparency pass', () => {
   it('skips an instance the pass would discard, before the projection', () => {
     const color = glsl('spheres', 'colorBlended', extra);
     const at = color.indexOf(PassClip);
+    const projection = color.indexOf('sphereProjection(mvPosition');
     expect(at).toBeGreaterThan(-1);
-    expect(color.indexOf('sphereProjection(mvPosition')).toBeGreaterThan(at);
-    expect(color).toContain('uRenderMask == MaskOpaque && ta < 1.0');
+    expect(projection).toBeGreaterThan(at);
+    // The fragment forces ta to 1 below 0.09, after strength. Drop either and a
+    // sphere near that cutoff leaves both passes.
+    for (const rule of [
+      'vT *= uTransparencyStrength',
+      'vT < 0.09',
+      'uRenderMask == MaskOpaque && ta < 1.0',
+      'uRenderMask == MaskTransparent && ta == 1.0',
+    ]) {
+      expect(color.indexOf(rule), rule).toBeGreaterThan(-1);
+      expect(projection, rule).toBeGreaterThan(color.indexOf(rule));
+    }
   });
 
   it('stays out of the variants where alpha is decided per fragment', () => {
@@ -95,10 +106,42 @@ describe('sphere transparency pass', () => {
     ]);
     const color = preprocessShader(spheres_wgsl, defines);
     const at = color.indexOf('uMaterial.uAlpha == 1.0 && uObject.uAlphaThickness == 0.0');
+    const projection = color.indexOf('sphereProjection(mvPosition');
     expect(at).toBeGreaterThan(-1);
-    expect(color.indexOf('sphereProjection(mvPosition')).toBeGreaterThan(at);
+    expect(projection).toBeGreaterThan(at);
+    // out.vTransparency is already scaled by strength. The clip must use that value.
+    for (const rule of [
+      'var vT = out.vTransparency',
+      'vT < 0.09',
+      'uGlobal.uRenderMask == MaskOpaque && ta < 1.0',
+      'uGlobal.uRenderMask == MaskTransparent && ta == 1.0',
+      'read_tTransparency(transparencyIndex).r * uMaterial.uTransparencyStrength',
+    ]) {
+      expect(color.indexOf(rule), rule).toBeGreaterThan(-1);
+      expect(projection, rule).toBeGreaterThan(color.indexOf(rule));
+    }
     const xray = preprocessShader(spheres_wgsl, new Map([...defines, ['dXrayShaded_on', '']]));
     expect(xray).not.toContain('uObject.uAlphaThickness == 0.0');
+    const back = preprocessShader(spheres_wgsl, new Map([...defines, ['dTransparentBackfaces_opaque', '']]));
+    expect(back).not.toContain('uObject.uAlphaThickness == 0.0');
+    const perVertex = preprocessShader(
+      spheres_wgsl,
+      new Map([
+        ['dRenderVariant_colorBlended', ''],
+        ['dTransparency', ''],
+        ['dTransparencyType_vertexInstance', ''],
+      ]),
+    );
+    expect(perVertex).not.toContain('uObject.uAlphaThickness == 0.0');
+    const marking = preprocessShader(
+      spheres_wgsl,
+      new Map([
+        ['dRenderVariant_marking', ''],
+        ['dTransparency', ''],
+        ['dTransparencyType_texture', ''],
+      ]),
+    );
+    expect(marking).not.toContain('uObject.uAlphaThickness == 0.0');
     const mesh = preprocessShader(mesh_wgsl, defines);
     expect(mesh).not.toContain('uObject.uAlphaThickness == 0.0');
   });
