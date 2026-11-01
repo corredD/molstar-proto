@@ -136,10 +136,11 @@ is not built is [../TODO.md](../TODO.md).
     correct on both backends. 2 must-fix (a library change on a prism-me lane, against AGENTS.md; a test that greps the
     shader and stays green with the skip deleted), 4 should-fix (no before/after pixel proof; one fraction of three
     measured; a wrong comment and a cheaper varying read; two causes in one commit), 3 nits.
-  - Ludo, 2026-10-31: the start-up improvement is not worth it for now (#32 parked). Asked: did #33 improve performance,
-    does it answer Alexander? #33: Ludo, 2026-10-31: keep it on prism-me, marked so it can be isolated into a master
-    lane later (library commits apart, listed by SHA in TODO.md's upstream list). Lane resumed on the review's findings
-    (a rendered test, pixel proof, all distances, the varying read, who did what).
+  - Ludo, 2026-10-31: the start-up improvement is not worth it for now; #32 closed (Ludo), the branch
+    `me/startup-budget` kept with the measurement. Asked: did #33 improve performance, does it answer Alexander? #33:
+    Ludo, 2026-10-31: keep it on prism-me, marked so it can be isolated into a master lane later (library commits apart,
+    listed by SHA in TODO.md's upstream list). Lane resumed on the review's findings (a rendered test, pixel proof, all
+    distances, the varying read, who did what).
 - **After the 3 lanes** (Ludo, 2026-10-31, from Alexander): "also you generally want to switch marking off or at least
   set ghost edge strength to 1 - otherwise you render everything at least twice... the transparent stuff is not cheap
   either...". Lane `marking-cost` (Ludo, 2026-10-31: go; `me/marking-cost`): PR #33. `ghostEdgeStrength` is already 1,
