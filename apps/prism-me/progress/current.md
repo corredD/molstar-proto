@@ -170,6 +170,9 @@ is not built is [../TODO.md](../TODO.md).
   here is its per-instance culling, not two-phase. Classic culls in 200 Å cells too, yet beat prism-me before #28 by
   25–35 ms (cause unverified). Open: prism-me's WebGL2 zoomed in (no GPU path) and its whole view (2x classic). Scripts
   and runs: session scratchpad `zoomcmp/` (not in the repo).
+- **Review posted on upstream #2061** (Ludo, 2026-11-01: "post it"):
+  https://github.com/molstar/molstar/pull/2061#pullrequestreview-5730198026 at 7427374b7, 3 must-fix, 3 should-fix
+  (inline), nits and the raster numbers with the eligibility question in the body. Waiting on Alexander's answer.
 - **#2061's sphere raster measured** (Ludo's workstation, Quadro RTX 8000, 2026-11-01; the M1 Pro has no
   `atomic-vec2u-min-max`, Apple 9 GPUs only): Alexander's bench, merged GPU-culled particles, zoomed 2.5–3.6× faster
   (PetWorld 9.61 → 2.68 ms at 0.03, MG_1184 6.69 → 2.73), whole view no gain, rotating whole slightly slower. Not used
