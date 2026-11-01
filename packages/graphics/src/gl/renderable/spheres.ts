@@ -46,6 +46,8 @@ export const SpheresSchema = {
   dSolidInterior: DefineSpec('boolean'),
   dClipPrimitive: DefineSpec('boolean'),
   dApproximate: DefineSpec('boolean'),
+  /** every sphere projected, also those the pass discards whole (by default they leave in the vertex stage): tests */
+  dNoVertexSkip: DefineSpec('boolean'),
   uAlphaThickness: UniformSpec('f'),
   uBumpFrequency: UniformSpec('f', 'material'),
   uBumpAmplitude: UniformSpec('f', 'material'),

@@ -11,14 +11,15 @@ import { spheres_wgsl } from '../webgpu/shader/spheres.wgsl.js';
 import { preprocessShader } from '../shader-preprocessor.js';
 import { GraphicsShaders, getProgramDefines, preprocessProgram } from './graphics-shaders.js';
 
-// The marking mask draws marked fragments only (`apply-marking` discards marker 0). A sphere's quad
-// shares one marker, so an unmarked instance can leave before the projection. A mesh triangle's
-// vertices can differ, and clipping one of them would change the primitive: the mesh keeps the
-// fragment discard. The depth pass (`uMarkingType` 1) keeps unmarked spheres, so the guard stays.
+// Which variants carry the vertex-stage skip of spheres the pass discards whole (sphere-impostors.md): a lock on the
+// guards only. That the skip draws the same image is the rendered tests' (`canvas3d/_test/sphere-skip-draw.test.ts`,
+// native GL; `plugin/headless/_test/webgpu-sphere-skip.test.ts`, Dawn).
 
-const Clip = 'uMarkingType != 1 && marker == 0.0';
-/** The color pass drops this instance: nothing it would rasterize survives the mask. */
-const PassClip = 'uAlpha == 1.0 && uAlphaThickness == 0.0';
+const MarkSkip = 'uMarkingType != 1 && marker == 0.0';
+const PassSkip = 'uAlpha == 1.0 && uAlphaThickness == 0.0';
+const MarkSkipWgsl = 'uGlobal.uMarkingType != 1 && markerValue == 0.0';
+const PassSkipWgsl = 'uMaterial.uAlpha == 1.0 && uObject.uAlphaThickness == 0.0';
+const Transparency = { dTransparency: true, dTransparencyType: 'texture' };
 
 function glsl(name: string, variant: string, extra: Record<string, string | boolean> = {}) {
   const shader = GraphicsShaders.find(([n]) => n === name);
@@ -29,123 +30,81 @@ function glsl(name: string, variant: string, extra: Record<string, string | bool
   return preprocessProgram(program.vert, defines, values);
 }
 
-describe('sphere marking mask', () => {
-  it('clips an unmarked instance before the projection, and the color shader does not', () => {
-    const marking = glsl('spheres', 'marking');
-    const at = marking.indexOf(Clip);
-    expect(at).toBeGreaterThan(-1);
-    expect(marking.indexOf('sphereProjection(mvPosition')).toBeGreaterThan(at);
-    expect(glsl('spheres', 'colorBlended')).not.toContain(Clip);
-  });
+function wgsl(code: string, ...defines: string[]) {
+  return preprocessShader(code, new Map(defines.map((d) => [d, ''])));
+}
 
-  it('does not clip a mesh vertex (its triangle can mix markers)', () => {
-    expect(glsl('mesh', 'marking')).not.toContain(Clip);
-  });
+/** The skip at `guard` leaves before the projection: its position out of the clip volume, then a return */
+function expectSkipBeforeProjection(code: string, guard: string, out: string) {
+  const at = code.indexOf(guard);
+  const projection = code.indexOf('sphereProjection(mvPosition');
+  expect(at).toBeGreaterThan(-1);
+  expect(projection).toBeGreaterThan(at);
+  const skip = code.slice(at, projection);
+  expect(skip).toMatch(new RegExp(`${out} = vec4(<f32>)?\\(2\\.0, 2\\.0, 2\\.0, 1\\.0\\);\\s*return`));
+}
 
-  it('does the same in WGSL, and the mesh shader does not', () => {
-    const marking = preprocessShader(
-      spheres_wgsl,
-      new Map([
-        ['dRenderVariant_marking', ''],
-        ['dNeedsMarker', ''],
-      ]),
+describe('the spheres skipped in the vertex stage', () => {
+  it('the marking mask: in the marking variant of spheres, before the projection; not in the mesh', () => {
+    expectSkipBeforeProjection(glsl('spheres', 'marking'), MarkSkip, 'gl_Position');
+    expect(glsl('spheres', 'colorBlended')).not.toContain(MarkSkip);
+    expect(glsl('mesh', 'marking')).not.toContain(MarkSkip);
+    expect(glsl('spheres', 'marking', { dNoVertexSkip: true })).not.toContain(MarkSkip);
+
+    expectSkipBeforeProjection(
+      wgsl(spheres_wgsl, 'dRenderVariant_marking', 'dNeedsMarker'),
+      MarkSkipWgsl,
+      'out.position',
     );
-    const at = marking.indexOf('uGlobal.uMarkingType != 1 && markerValue == 0.0');
-    expect(at).toBeGreaterThan(-1);
-    expect(marking.indexOf('sphereProjection(mvPosition')).toBeGreaterThan(at);
-    const color = preprocessShader(spheres_wgsl, new Map([['dRenderVariant_colorBlended', '']]));
-    expect(color).not.toContain('uGlobal.uMarkingType != 1');
-    const mesh = preprocessShader(
-      mesh_wgsl,
-      new Map([
-        ['dRenderVariant_marking', ''],
-        ['dNeedsMarker', ''],
-      ]),
-    );
-    expect(mesh).not.toContain('uGlobal.uMarkingType != 1');
+    expect(wgsl(spheres_wgsl, 'dRenderVariant_colorBlended')).not.toContain(MarkSkipWgsl);
+    expect(wgsl(mesh_wgsl, 'dRenderVariant_marking', 'dNeedsMarker')).not.toContain('uGlobal.uMarkingType != 1');
+    expect(wgsl(spheres_wgsl, 'dRenderVariant_marking', 'dNeedsMarker', 'dNoVertexSkip')).not.toContain(MarkSkipWgsl);
   });
-});
 
-describe('sphere transparency pass', () => {
-  const extra = { dTransparency: true, dTransparencyType: 'texture' };
-
-  it('skips an instance the pass would discard, before the projection', () => {
-    const color = glsl('spheres', 'colorBlended', extra);
-    const at = color.indexOf(PassClip);
-    const projection = color.indexOf('sphereProjection(mvPosition');
-    expect(at).toBeGreaterThan(-1);
-    expect(projection).toBeGreaterThan(at);
-    // The fragment forces ta to 1 below 0.09, after strength. Drop either and a
-    // sphere near that cutoff leaves both passes.
-    for (const rule of [
-      'vT *= uTransparencyStrength',
-      'vT < 0.09',
-      'uRenderMask == MaskOpaque && ta < 1.0',
-      'uRenderMask == MaskTransparent && ta == 1.0',
+  it('the opaque and transparent passes: with a transparency, not where alpha is decided per fragment or vertex', () => {
+    expectSkipBeforeProjection(glsl('spheres', 'colorBlended', Transparency), PassSkip, 'gl_Position');
+    // a transparency by volume: the value the varying samples at the sphere's center, before the skip reads it
+    const volume = glsl('spheres', 'colorBlended', { dTransparency: true, dTransparencyType: 'volumeInstance' });
+    expectSkipBeforeProjection(volume, PassSkip, 'gl_Position');
+    expect(volume.indexOf('vTransparency = texture3dFrom2dLinear(tTransparencyGrid')).toBeGreaterThan(-1);
+    expect(volume.indexOf(PassSkip)).toBeGreaterThan(volume.indexOf('vTransparency = texture3dFrom2dLinear'));
+    for (const extra of [
+      { dXrayShaded: 'on' },
+      { dXrayShaded: 'inverted' },
+      { dTransparentBackfaces: 'opaque' },
+      { dTransparencyType: 'vertexInstance' },
+      { dNoVertexSkip: true },
     ]) {
-      expect(color.indexOf(rule), rule).toBeGreaterThan(-1);
-      expect(projection, rule).toBeGreaterThan(color.indexOf(rule));
+      expect(glsl('spheres', 'colorBlended', { ...Transparency, ...extra }), JSON.stringify(extra)).not.toContain(
+        PassSkip,
+      );
     }
-  });
+    expect(glsl('spheres', 'marking', Transparency)).not.toContain(PassSkip);
+    expect(glsl('mesh', 'colorBlended', Transparency)).not.toContain(PassSkip);
 
-  it('stays out of the variants where alpha is decided per fragment', () => {
-    expect(glsl('spheres', 'colorBlended', { ...extra, dXrayShaded: 'on' })).not.toContain(PassClip);
-    expect(glsl('spheres', 'colorBlended', { ...extra, dXrayShaded: 'inverted' })).not.toContain(PassClip);
-    expect(glsl('spheres', 'colorBlended', { ...extra, dTransparentBackfaces: 'opaque' })).not.toContain(PassClip);
-    expect(glsl('spheres', 'colorBlended', { dTransparency: true, dTransparencyType: 'vertexInstance' })).not.toContain(
-      PassClip,
+    const base = ['dRenderVariant_colorBlended', 'dTransparency', 'dTransparencyType_texture'];
+    expectSkipBeforeProjection(wgsl(spheres_wgsl, ...base), PassSkipWgsl, 'out.position');
+    const volumeWgsl = wgsl(
+      spheres_wgsl,
+      'dRenderVariant_colorBlended',
+      'dTransparency',
+      'dTransparencyType_volumeInstance',
     );
-    expect(glsl('spheres', 'marking', extra)).not.toContain(PassClip);
-    expect(glsl('mesh', 'colorBlended', extra)).not.toContain(PassClip);
-  });
-
-  it('does the same in WGSL', () => {
-    const defines = new Map([
-      ['dRenderVariant_colorBlended', ''],
-      ['dTransparency', ''],
-      ['dTransparencyType_texture', ''],
-    ]);
-    const color = preprocessShader(spheres_wgsl, defines);
-    const at = color.indexOf('uMaterial.uAlpha == 1.0 && uObject.uAlphaThickness == 0.0');
-    const projection = color.indexOf('sphereProjection(mvPosition');
-    expect(at).toBeGreaterThan(-1);
-    expect(projection).toBeGreaterThan(at);
-    // out.vTransparency is already scaled by strength. The clip must use that value.
-    for (const rule of [
-      'var vT = out.vTransparency',
-      'vT < 0.09',
-      'uGlobal.uRenderMask == MaskOpaque && ta < 1.0',
-      'uGlobal.uRenderMask == MaskTransparent && ta == 1.0',
-      'read_tTransparency(transparencyIndex).r * uMaterial.uTransparencyStrength',
-    ]) {
-      expect(color.indexOf(rule), rule).toBeGreaterThan(-1);
-      expect(projection, rule).toBeGreaterThan(color.indexOf(rule));
+    expectSkipBeforeProjection(volumeWgsl, PassSkipWgsl, 'out.position');
+    expect(volumeWgsl.indexOf(PassSkipWgsl)).toBeGreaterThan(volumeWgsl.indexOf('out.vTransparency = '));
+    for (const extra of ['dXrayShaded_on', 'dXrayShaded_inverted', 'dTransparentBackfaces_opaque', 'dNoVertexSkip']) {
+      expect(wgsl(spheres_wgsl, ...base, extra), extra).not.toContain(PassSkipWgsl);
     }
-    const xray = preprocessShader(spheres_wgsl, new Map([...defines, ['dXrayShaded_on', '']]));
-    expect(xray).not.toContain('uObject.uAlphaThickness == 0.0');
-    const inverted = preprocessShader(spheres_wgsl, new Map([...defines, ['dXrayShaded_inverted', '']]));
-    expect(inverted).not.toContain('uObject.uAlphaThickness == 0.0');
-    const back = preprocessShader(spheres_wgsl, new Map([...defines, ['dTransparentBackfaces_opaque', '']]));
-    expect(back).not.toContain('uObject.uAlphaThickness == 0.0');
-    const perVertex = preprocessShader(
+    const perVertex = wgsl(
       spheres_wgsl,
-      new Map([
-        ['dRenderVariant_colorBlended', ''],
-        ['dTransparency', ''],
-        ['dTransparencyType_vertexInstance', ''],
-      ]),
+      'dRenderVariant_colorBlended',
+      'dTransparency',
+      'dTransparencyType_vertexInstance',
     );
-    expect(perVertex).not.toContain('uObject.uAlphaThickness == 0.0');
-    const marking = preprocessShader(
-      spheres_wgsl,
-      new Map([
-        ['dRenderVariant_marking', ''],
-        ['dTransparency', ''],
-        ['dTransparencyType_texture', ''],
-      ]),
+    expect(perVertex).not.toContain(PassSkipWgsl);
+    expect(wgsl(spheres_wgsl, 'dRenderVariant_marking', 'dTransparency', 'dTransparencyType_texture')).not.toContain(
+      PassSkipWgsl,
     );
-    expect(marking).not.toContain('uObject.uAlphaThickness == 0.0');
-    const mesh = preprocessShader(mesh_wgsl, defines);
-    expect(mesh).not.toContain('uObject.uAlphaThickness == 0.0');
+    expect(wgsl(mesh_wgsl, ...base)).not.toContain(PassSkipWgsl);
   });
 });

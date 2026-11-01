@@ -115,36 +115,26 @@ void main(void){
     ${assign_color_varying}
     ${assign_marker_varying}
 
-    #if defined(dRenderVariant_marking)
-        // The mask keeps marked fragments only. An unmarked sphere quad shares one marker,
-        // so it leaves before the projection. The depth pass (uMarkingType 1) keeps the
-        // unmarked ones: they occlude. Read the texture again: WebGL1 cannot read a varying
-        // it has just written. A triangle or a bond can differ per vertex, so this stays here.
+    // A sphere's quad shares one marker and one transparency (its vertices one instance and group): a sphere the pass
+    // discards whole in the fragment stage leaves before the projection, read back from the varyings it discards by
+    // (sphere-impostors.md). dNoVertexSkip: every sphere projected (tests compare the images).
+    #if defined(dRenderVariant_marking) && !defined(dNoVertexSkip)
+        // the mask (not the depth, uMarkingType 1: unmarked spheres occlude there) keeps marked fragments only
         float marker = uMarker;
         #if defined(dNeedsMarker)
-            if (uMarker == -1.0) marker = floor(read_tMarker(granularityIndex(aInstance, group)).r * 255.0 + 0.5);
+            if (uMarker == -1.0) marker = floor(vMarker * 255.0 + 0.5);
         #endif
         if (uMarkingType != 1 && marker == 0.0) {
             gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
             return;
         }
     #endif
-    #if (defined(dRenderVariant_color) || defined(dRenderVariant_tracing)) && defined(dTransparency) && !defined(dXrayShaded) && !defined(dTransparentBackfaces_opaque) && !defined(dTransparencyType_vertexInstance)
-        // The quad shares one transparency. Skip the instance the pass would discard whole
-        // (opaque pass when ta < 1, transparent pass when ta == 1). Not where alpha is
-        // per fragment: x-ray, alpha thickness, opaque back faces, a per-vertex value.
+    #if (defined(dRenderVariant_color) || defined(dRenderVariant_tracing)) && defined(dTransparency) && !defined(dXrayShaded) && !defined(dTransparentBackfaces_opaque) && !defined(dTransparencyType_vertexInstance) && !defined(dNoVertexSkip)
+        // the opaque pass discards alpha below 1, the transparent pass alpha 1 (ta 1 below 0.09); not where alpha is
+        // per fragment (x-ray, alpha thickness, opaque back faces) or per vertex. Clear of the cutoff by a margin: the
+        // fragment stage reads the value interpolated
         if (uAlpha == 1.0 && uAlphaThickness == 0.0) {
-            float vT = 0.0;
-            #if defined(dTransparencyType_texture)
-                vT = read_tTransparency(granularityIndex(aInstance, group)).r;
-            #elif defined(dTransparencyType_volumeInstance)
-                vec3 tgridPos = (uTransparencyGridTransform.w * (vModelPosition / uModelScale - uTransparencyGridTransform.xyz)) / uTransparencyGridDim;
-                vT = texture3dFrom2dLinear(tTransparencyGrid, tgridPos, uTransparencyGridDim, uTransparencyGridTexDim).r;
-            #endif
-            vT *= uTransparencyStrength;
-            float ta = 1.0 - vT;
-            if (vT < 0.09) ta = 1.0;
-            if ((uRenderMask == MaskOpaque && ta < 1.0) || (uRenderMask == MaskTransparent && ta == 1.0)) {
+            if ((uRenderMask == MaskOpaque && vTransparency >= 0.09 + 1e-5) || (uRenderMask == MaskTransparent && vTransparency < 0.09 - 1e-5)) {
                 gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
                 return;
             }

@@ -139,10 +139,11 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
 
     ${assign_varyings_wgsl}
 
-    #if defined(dRenderVariant_marking)
-        // The mask keeps marked fragments only. An unmarked sphere quad shares one marker,
-        // so it leaves before the projection. The depth pass (uMarkingType 1) keeps the
-        // unmarked ones: they occlude. A triangle or a bond can differ per vertex.
+    // A sphere's quad shares one marker and one transparency (its vertices one instance and group): a sphere the pass
+    // discards whole in the fragment stage leaves before the projection, read back from the varyings it discards by
+    // (sphere-impostors.md). \`dNoVertexSkip\`: every sphere projected (tests compare the images).
+    #if defined(dRenderVariant_marking) && !defined(dNoVertexSkip)
+        // the mask (not the depth, uMarkingType 1: unmarked spheres occlude there) keeps marked fragments only
         var markerValue = uObject.uMarker;
         #if defined(dNeedsMarker)
             if (uObject.uMarker == -1.0) { markerValue = floor(out.vMarker * 255.0 + 0.5); }
@@ -152,14 +153,13 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
             return out;
         }
     #endif
-    #if (defined(dRenderVariant_color) || defined(dRenderVariant_tracing)) && defined(dTransparency) && !defined(dXrayShaded) && !defined(dTransparentBackfaces_opaque) && !defined(dTransparencyType_vertexInstance)
-        // The quad shares one transparency. Skip the instance the pass would discard whole.
-        // Not where alpha is per fragment: x-ray, alpha thickness, opaque back faces, a per-vertex value.
+    #if (defined(dRenderVariant_color) || defined(dRenderVariant_tracing)) && defined(dTransparency) && !defined(dXrayShaded) && !defined(dTransparentBackfaces_opaque) && !defined(dTransparencyType_vertexInstance) && !defined(dNoVertexSkip)
+        // the opaque pass discards alpha below 1, the transparent pass alpha 1 (\`ta\` 1 below 0.09); not where alpha is
+        // per fragment (x-ray, alpha thickness, opaque back faces) or per vertex. Clear of the cutoff by a margin: the
+        // fragment stage reads the value interpolated
         if (uMaterial.uAlpha == 1.0 && uObject.uAlphaThickness == 0.0) {
-            var vT = out.vTransparency;
-            var ta = 1.0 - vT;
-            if (vT < 0.09) { ta = 1.0; }
-            if ((uGlobal.uRenderMask == MaskOpaque && ta < 1.0) || (uGlobal.uRenderMask == MaskTransparent && ta == 1.0)) {
+            let skipT = out.vTransparency;
+            if ((uGlobal.uRenderMask == MaskOpaque && skipT >= 0.09 + 1e-5) || (uGlobal.uRenderMask == MaskTransparent && skipT < 0.09 - 1e-5)) {
                 out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
                 return out;
             }
