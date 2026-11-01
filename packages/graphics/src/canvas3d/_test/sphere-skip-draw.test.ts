@@ -130,6 +130,11 @@ async function setup(options: { ghostEdgeStrength: number; transparency: 'wboit'
       if (canvas.graphics.resources.pending.isReady()) break;
       await canvas.graphics.resources.pending.whenReady();
     }
+    // a program done between the last tick and the check: frames more
+    for (let i = 0; i < 2; ++i) {
+      canvas.requestDraw();
+      canvas.tick(0 as any, { isSynchronous: true } as any);
+    }
     const gl = (canvas.graphics as any).gl as WebGLRenderingContext;
     const pixels = new Uint8Array(Size * Size * 4);
     gl.readPixels(0, 0, Size, Size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);

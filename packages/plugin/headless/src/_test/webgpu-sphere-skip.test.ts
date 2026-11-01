@@ -192,8 +192,9 @@ describe.skipIf(!WebGPU.module)('spheres skipped in the vertex stage (WebGPU)', 
     ['inverted x-ray, dpoit', { ghostEdgeStrength: 1, transparency: 'dpoit', xray: 'inverted' }],
     // alpha below 1: a sphere below the cutoff is transparent, drawn by the transparent pass
     ['alpha 0.5, wboit', { ghostEdgeStrength: 1, transparency: 'wboit', alpha: 0.5, mark: MarkerAction.Highlight }],
-    // thin spheres more transparent in the transparent pass, whatever their transparency; no pixel shows that guard:
-    // the opaque pass draws those spheres, their transparent fragments at the same depth are dropped
+    // thin spheres more transparent in the transparent pass, whatever their transparency; with a float depth (here) no
+    // pixel shows that guard: the opaque pass draws those spheres, their transparent fragments at the same depth are
+    // dropped; with a quantized depth (WebGPU without depth32float-stencil8, WebGL1) about half of them pass
     ['alpha thickness, wboit', { ghostEdgeStrength: 1, transparency: 'wboit', alphaThickness: 4 }],
     // the strength scales the transparency before the cutoff: the 0.5 group at 0.075 is drawn opaque
     ['transparency strength 0.15, blended', { ghostEdgeStrength: 1, transparency: 'blended', strength: 0.15 }],
