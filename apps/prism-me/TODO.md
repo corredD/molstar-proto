@@ -74,8 +74,9 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   triangle or a bond can mix markers; x-ray, alpha thickness, opaque back faces and a per-vertex transparency stay on
   the fragment discard). Commits that touch only `packages/` and `.v6/`: `1b1b7fe72` (Grok's, both skips in one commit),
   `94ae9dcef`, `5ac8652d6`, `8782d0952` (Grok's), `a341b7560` (the varyings read back, the cutoff's margin,
-  `dNoVertexSkip`, the native GL test), `f53bdab16` (the Dawn test), and the changelog and plan commit after them. The
-  GLSL half applies to 5.x: a lane from master also needs a root `CHANGELOG.md` line. Upstream when Ludo says so.
+  `dNoVertexSkip`, the native GL test), `f53bdab16` (the Dawn test), `74c2bb29c`, `1527fa1b4`, `e7ec993a0` (the tests),
+  `270ccd791` (the changelog `.v6/changelogs/marking-cost.md`, first added in `459d33398` with app files, and the plan).
+  The GLSL half applies to 5.x: a lane from master also needs a root `CHANGELOG.md` line. Upstream when Ludo says so.
 
 ## Backlog
 
