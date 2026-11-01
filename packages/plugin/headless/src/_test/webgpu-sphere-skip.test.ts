@@ -60,7 +60,11 @@ function spheres() {
 type Options = {
   ghostEdgeStrength: number;
   transparency: 'wboit' | 'dpoit' | 'blended';
-  xray?: boolean;
+  xray?: true | 'inverted';
+  /** the object's alpha, alpha thickness, transparency strength (the skip's guards: per fragment where not 1, 0, 1) */
+  alpha?: number;
+  alphaThickness?: number;
+  strength?: number;
   mark?: MarkerAction;
 };
 
@@ -100,7 +104,13 @@ async function setup(options: Options) {
   plugin.canvas3dContext!.setProps({ transparency: options.transparency });
   expect(plugin.canvas3dContext!.props.transparency).toBe(options.transparency);
   const repr = ShapeRepresentation(spheres, Spheres.Utils, { graphics: canvas.graphics });
-  const params = { ...PD.getDefaultValues(Spheres.Params), xrayShaded: options.xray ? 'on' : 'off' };
+  const params = {
+    ...PD.getDefaultValues(Spheres.Params),
+    // `true`, not 'on': the param's values (`createValues`)
+    xrayShaded: options.xray ?? false,
+    alpha: options.alpha ?? 1,
+    alphaThickness: options.alphaThickness ?? 0,
+  };
   await repr.createOrUpdate(params as any, {}).run();
   const object = repr.renderObjects[0];
   // a transparency per group and instance (`groupInstance`): the layers' loci stand for their ranges
@@ -115,6 +125,10 @@ async function setup(options: Options) {
     },
     true,
   );
+  if (options.strength !== undefined) ValueCell.update(object.values.uTransparencyStrength, options.strength);
+  // the guards' inputs as the case asks
+  expect(object.values.dXrayShaded.ref.value).toBe(options.xray === true ? 'on' : (options.xray ?? 'off'));
+  expect(object.values.uAlpha.ref.value).toBe(options.alpha ?? 1);
   canvas.add(repr);
   canvas.requestCameraReset({ durationMs: 0 });
   canvas.commit(true);
@@ -175,6 +189,14 @@ describe.skipIf(!WebGPU.module)('spheres skipped in the vertex stage (WebGPU)', 
     ['selected, ghost edge 0.3, dpoit', { ghostEdgeStrength: 0.3, transparency: 'dpoit', mark: MarkerAction.Select }],
     ['nothing marked, blended', { ghostEdgeStrength: 1, transparency: 'blended' }],
     ['x-ray, wboit', { ghostEdgeStrength: 1, transparency: 'wboit', xray: true, mark: MarkerAction.Highlight }],
+    ['inverted x-ray, dpoit', { ghostEdgeStrength: 1, transparency: 'dpoit', xray: 'inverted' }],
+    // alpha below 1: a sphere below the cutoff is transparent, drawn by the transparent pass
+    ['alpha 0.5, wboit', { ghostEdgeStrength: 1, transparency: 'wboit', alpha: 0.5, mark: MarkerAction.Highlight }],
+    // thin spheres more transparent in the transparent pass, whatever their transparency; no pixel shows that guard:
+    // the opaque pass draws those spheres, their transparent fragments at the same depth are dropped
+    ['alpha thickness, wboit', { ghostEdgeStrength: 1, transparency: 'wboit', alphaThickness: 4 }],
+    // the strength scales the transparency before the cutoff: the 0.5 group at 0.075 is drawn opaque
+    ['transparency strength 0.15, blended', { ghostEdgeStrength: 1, transparency: 'blended', strength: 0.15 }],
   ];
   for (const [name, options] of cases) {
     it(`draws the image of every sphere projected: ${name}`, async () => {
@@ -185,7 +207,7 @@ describe.skipIf(!WebGPU.module)('spheres skipped in the vertex stage (WebGPU)', 
         // the marked spheres' edges are drawn, every group's color is seen (the opaque, the one below the cutoff drawn
         // opaque, the half transparent blended)
         if (options.mark !== undefined) expect(s.count(skipped, Highlight)).toBeGreaterThan(20);
-        if (!options.xray) {
+        if (!options.xray && (options.alpha ?? 1) === 1 && !options.alphaThickness) {
           for (const g of [0, 3, 4]) expect(s.count(skipped, Groups[g].color), `group ${g}`).toBeGreaterThan(20);
         }
         expect(new Set(Array.from(skipped)).size).toBeGreaterThan(10);
