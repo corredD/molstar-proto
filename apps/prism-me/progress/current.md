@@ -126,6 +126,17 @@ is not built is [../TODO.md](../TODO.md).
   #32. The properties load as their own chunk; the start bundle is 45 kB smaller (5.93 → 5.88 MB). The budget is not
   set. Proposed 5.90 MB (5.60 stock + 0.102 library + 0.198 prism-me, rounded down; 5.80 would fail by the library).
   Every commit on that branch is Claude's; Grok opened the PR. Waits on Ludo. The server on 1366 is stopped.
+- **Grok finished `startup-budget` (#32) and `marking-cost` (#33)** while the lanes were stopped on the spend limit
+  (2026-10-31, about 16:00-19:04); its commits again carry the Claude trailer. Independent reviews:
+  - #32: figures reproduced exactly (viewer master 5.58 MB, branch 5.69; prism-me 5.93 → 5.88); the explorer's
+    properties lazy-loaded (-45 kB at start, deferred not saved, about +55 ms over HTTP/1.0); budget proposed 5.90 MB,
+    not set. 1 must-fix (who wrote it, unverifiable review record), 3 should-fix (the real Retry reset untested; ui.md
+    §4 states; Storybook check), 5 nits.
+  - #33: the sphere-shader skip (unmarked spheres leave the marking mask; fully transparent ones the color pass) traced
+    correct on both backends. 2 must-fix (a library change on a prism-me lane, against AGENTS.md; a test that greps the
+    shader and stays green with the skip deleted), 4 should-fix (no before/after pixel proof; one fraction of three
+    measured; a wrong comment and a cheaper varying read; two causes in one commit), 3 nits.
+  - Waits on Ludo: the budget number; where #33's shader change goes (prism-me or a master lane).
 - **After the 3 lanes** (Ludo, 2026-10-31, from Alexander): "also you generally want to switch marking off or at least
   set ghost edge strength to 1 - otherwise you render everything at least twice... the transparent stuff is not cheap
   either...". Lane `marking-cost` (Ludo, 2026-10-31: go; `me/marking-cost`): PR #33. `ghostEdgeStrength` is already 1,
