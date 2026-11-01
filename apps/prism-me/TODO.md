@@ -69,10 +69,13 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Meshes picked, highlighted and selected by triangle, and `Ray3D.intersectTriangle` (lane `mesh-measure`, built on
   prism-me in commits that name no extension: `ae323fe5a` core, `ebe4913d0` model, `f078afd6e`, `772faf324`,
   `8af312ac4`, `104e24625` graphics; .v6/plans/gl/triangle-picking.md).
-- Sphere impostors: an unmarked instance leaves the marking mask before the projection, and a sphere the color pass
-  would discard whole leaves that pass (lane `marking-cost`, `1b1b7fe72`). Spheres only. A mesh triangle or a bond can
-  mix markers, and x-ray, alpha thickness, opaque back faces and a per-vertex transparency stay on the fragment discard.
-  Upstream from master when Ludo says so.
+- Sphere impostors: a sphere a pass discards whole leaves in the vertex stage, an unmarked one in the marking mask and
+  one the opaque or transparent pass discards by its transparency (lane `marking-cost`, PR #33; spheres only: a mesh
+  triangle or a bond can mix markers; x-ray, alpha thickness, opaque back faces and a per-vertex transparency stay on
+  the fragment discard). Commits that touch only `packages/` and `.v6/`: `1b1b7fe72` (Grok's, both skips in one commit),
+  `94ae9dcef`, `5ac8652d6`, `8782d0952` (Grok's), `a341b7560` (the varyings read back, the cutoff's margin,
+  `dNoVertexSkip`, the native GL test), `f53bdab16` (the Dawn test), and the changelog and plan commit after them. The
+  GLSL half applies to 5.x: a lane from master also needs a root `CHANGELOG.md` line. Upstream when Ludo says so.
 
 ## Backlog
 

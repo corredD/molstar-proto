@@ -1,0 +1,91 @@
+{
+  "example": "petworld-hiv",
+  "backend": "webgl2",
+  "dpr": 1,
+  "viewport": "896x800",
+  "largest": {
+    "id": 11,
+    "name": "NC",
+    "count": 4600
+  },
+  "rows": [
+    {
+      "case": "transparency-dpoit",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      }
+    },
+    {
+      "case": "transparency-dpoit",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      }
+    },
+    {
+      "case": "transparency-dpoit",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      }
+    }
+  ]
+}

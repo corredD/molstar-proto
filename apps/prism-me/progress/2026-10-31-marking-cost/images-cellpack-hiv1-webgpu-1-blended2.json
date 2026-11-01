@@ -1,0 +1,91 @@
+{
+  "example": "cellpack-hiv1",
+  "backend": "webgpu",
+  "dpr": 1,
+  "viewport": "896x800",
+  "largest": {
+    "id": 0,
+    "name": "inner_membrane",
+    "count": 114460
+  },
+  "rows": [
+    {
+      "case": "transparency-blended",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 7628,
+        "of": 716800,
+        "max": 106
+      },
+      "skip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency-blended",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency-blended",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": null,
+        "calls": null,
+        "turning": null,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    }
+  ]
+}

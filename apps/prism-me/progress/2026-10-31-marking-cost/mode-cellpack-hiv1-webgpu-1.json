@@ -1,0 +1,205 @@
+{
+  "example": "cellpack-hiv1",
+  "backend": "webgpu",
+  "dpr": 1,
+  "viewport": "896x800",
+  "largest": {
+    "id": 0,
+    "name": "inner_membrane",
+    "count": 114460
+  },
+  "rows": [
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 239,
+        "of": 716800,
+        "max": 7
+      },
+      "skip": {
+        "marked": [],
+        "still": 11.8,
+        "calls": {
+          "draws": 2858,
+          "instances": 32
+        },
+        "turning": 11.8,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 13.4,
+        "calls": {
+          "draws": 2858,
+          "instances": 32
+        },
+        "turning": 14.1,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 14.5,
+        "calls": {
+          "draws": 2858,
+          "instances": 32
+        },
+        "turning": 12.5,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 17.9,
+        "calls": {
+          "draws": 2858,
+          "instances": 32
+        },
+        "turning": 14.8,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency-dpoit",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 16.9,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 15.3,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 19.9,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 19,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency-dpoit",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 15.9,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 15.4,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 25.7,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 21.4,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency-blended",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 7455,
+        "of": 716800,
+        "max": 84
+      },
+      "skip": {
+        "marked": [],
+        "still": 10,
+        "calls": {
+          "draws": 21,
+          "instances": 21
+        },
+        "turning": 11.3,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 11.8,
+        "calls": {
+          "draws": 21,
+          "instances": 21
+        },
+        "turning": 13.7,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency-blended",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 12.9,
+        "calls": {
+          "draws": 21,
+          "instances": 21
+        },
+        "turning": 61.1,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 16.1,
+        "calls": {
+          "draws": 21,
+          "instances": 21
+        },
+        "turning": 77.9,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    }
+  ]
+}

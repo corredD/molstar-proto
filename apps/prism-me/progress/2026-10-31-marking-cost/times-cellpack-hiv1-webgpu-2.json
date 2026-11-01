@@ -1,0 +1,1219 @@
+{
+  "example": "cellpack-hiv1",
+  "backend": "webgpu",
+  "dpr": 2,
+  "viewport": "1792x1600",
+  "largest": {
+    "id": 0,
+    "name": "inner_membrane",
+    "count": 114460
+  },
+  "rows": [
+    {
+      "case": "none",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 13.3,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 7.9,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 13.3,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 7.9,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 13.4,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 8,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 13.5,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 7.9,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 13.3,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 7.9,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 13.4,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 7.9,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 30.8,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 18.3,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 30.8,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 19.3,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 30.8,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 18.1,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 34.5,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 18.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 32,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 18,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 30.5,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 18.7,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 39.6,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 12.4,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 38,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 12.4,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 38.7,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 13.9,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 36.3,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 12.3,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 38.2,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 12.8,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 37.4,
+        "calls": {
+          "draws": 2859,
+          "instances": 33
+        },
+        "turning": 12.8,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 16.5,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 9.8,
+        "change": {
+          "on": 2.8,
+          "off": 1.2
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 18.5,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 11.4,
+        "change": {
+          "on": 4.3,
+          "off": 1.1
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 15.8,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 9,
+        "change": {
+          "on": 2.3,
+          "off": 0.9
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 17.7,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 10.6,
+        "change": {
+          "on": 4.2,
+          "off": 1
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 15.2,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 9,
+        "change": {
+          "on": 2.2,
+          "off": 1
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 17.2,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 10.7,
+        "change": {
+          "on": 4.2,
+          "off": 1
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 32.8,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 20.4,
+        "change": {
+          "on": 15.8,
+          "off": 1.5
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 41.5,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 25.4,
+        "change": {
+          "on": 62.9,
+          "off": 1.7
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 33,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 20.2,
+        "change": {
+          "on": 15.6,
+          "off": 1.6
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 41.5,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 25.6,
+        "change": {
+          "on": 63.1,
+          "off": 1.8
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 32.9,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 20.3,
+        "change": {
+          "on": 15.2,
+          "off": 1.6
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 41.5,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 25.1,
+        "change": {
+          "on": 63.2,
+          "off": 2.1
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 38,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 13.3,
+        "change": {
+          "on": 6.8,
+          "off": 1
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 49.5,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 16.9,
+        "change": {
+          "on": 15.3,
+          "off": 1.1
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 37.7,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 13.8,
+        "change": {
+          "on": 6.9,
+          "off": 1.2
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 49.8,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 16.5,
+        "change": {
+          "on": 36.8,
+          "off": 1.4
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 38.4,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 13.2,
+        "change": {
+          "on": 6.5,
+          "off": 1
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 49.8,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 16.4,
+        "change": {
+          "on": 36.4,
+          "off": 1.6
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 14.7,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 8.6,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 17.1,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 10.3,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 15.2,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 8.6,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 17.2,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 10.5,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 16.4,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 8.6,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 16.7,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 10.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 31.7,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 19.3,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 39.9,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 24.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 34.2,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 20.1,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 40.9,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 23.9,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 34.3,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 20.3,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 41.4,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 25.3,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 39,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 13.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 51.8,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 16.8,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 43,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 14.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 50.6,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 17,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 41.6,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 13.1,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 50.8,
+        "calls": {
+          "draws": 2865,
+          "instances": 39
+        },
+        "turning": 16.9,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 940,
+        "of": 2867200,
+        "max": 3
+      },
+      "skip": {
+        "marked": [],
+        "still": 17.4,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 9.7,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 18.6,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 12.4,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 967,
+        "of": 2867200,
+        "max": 4
+      },
+      "skip": {
+        "marked": [],
+        "still": 17.7,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 10.4,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 19,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 11.8,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 963,
+        "of": 2867200,
+        "max": 3
+      },
+      "skip": {
+        "marked": [],
+        "still": 17.1,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 9.2,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 20.3,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 11.4,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 32.5,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 20.6,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 42.9,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 25.8,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 32.5,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 20.4,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 43,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 26.1,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 32.5,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 21.1,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 43.1,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 25.5,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 38.5,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 13.8,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 53.7,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 17.1,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 38.5,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 14,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 53.6,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 17,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 2867200,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 38.6,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 13.8,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 53.8,
+        "calls": {
+          "draws": 2860,
+          "instances": 34
+        },
+        "turning": 17.3,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    }
+  ]
+}

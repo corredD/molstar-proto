@@ -1,0 +1,1003 @@
+{
+  "example": "cellpack-hiv1",
+  "backend": "webgl2",
+  "dpr": 1,
+  "viewport": "896x800",
+  "largest": {
+    "id": 0,
+    "name": "inner_membrane",
+    "count": 114460
+  },
+  "rows": [
+    {
+      "case": "none",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 10.1,
+        "calls": null,
+        "turning": 9.1,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 9.8,
+        "calls": null,
+        "turning": 9.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 9.8,
+        "calls": null,
+        "turning": 9.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 9.8,
+        "calls": null,
+        "turning": 9.3,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 9.9,
+        "calls": null,
+        "turning": 9.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 9.8,
+        "calls": null,
+        "turning": 9.1,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 75.2,
+        "calls": null,
+        "turning": 50.8,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 75.5,
+        "calls": null,
+        "turning": 51,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 75.1,
+        "calls": null,
+        "turning": 52,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 75.8,
+        "calls": null,
+        "turning": 51.6,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 77.9,
+        "calls": null,
+        "turning": 51,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 76.2,
+        "calls": null,
+        "turning": 50.8,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 40.8,
+        "calls": null,
+        "turning": 30.3,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 41,
+        "calls": null,
+        "turning": 31.4,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 41.7,
+        "calls": null,
+        "turning": 30.8,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 40.9,
+        "calls": null,
+        "turning": 31.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 41.7,
+        "calls": null,
+        "turning": 31.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 43.8,
+        "calls": null,
+        "turning": 31.5,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 12.5,
+        "calls": null,
+        "turning": 10.9,
+        "change": {
+          "on": 2.9,
+          "off": 1.1
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 11.9,
+        "calls": null,
+        "turning": 11.1,
+        "change": {
+          "on": 5.1,
+          "off": 1.2
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 11.4,
+        "calls": null,
+        "turning": 10.6,
+        "change": {
+          "on": 2.6,
+          "off": 1
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 12.2,
+        "calls": null,
+        "turning": 12.2,
+        "change": {
+          "on": 5.7,
+          "off": 1.3
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 10.8,
+        "calls": null,
+        "turning": 10.5,
+        "change": {
+          "on": 3.2,
+          "off": 1.1
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 11.7,
+        "calls": null,
+        "turning": 10.8,
+        "change": {
+          "on": 4.9,
+          "off": 1.1
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 88.5,
+        "calls": null,
+        "turning": 59.7,
+        "change": {
+          "on": 16.2,
+          "off": 1.2
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 105.1,
+        "calls": null,
+        "turning": 74,
+        "change": {
+          "on": 38.4,
+          "off": 1.4
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 83.1,
+        "calls": null,
+        "turning": 59.3,
+        "change": {
+          "on": 15.7,
+          "off": 1.2
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 105.3,
+        "calls": null,
+        "turning": 73.9,
+        "change": {
+          "on": 37.7,
+          "off": 1.3
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 83.5,
+        "calls": null,
+        "turning": 59.7,
+        "change": {
+          "on": 15.7,
+          "off": 1.1
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 101.5,
+        "calls": null,
+        "turning": 72.3,
+        "change": {
+          "on": 37.3,
+          "off": 1.3
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 44.5,
+        "calls": null,
+        "turning": 34.4,
+        "change": {
+          "on": 7.4,
+          "off": 1
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 52.6,
+        "calls": null,
+        "turning": 40.8,
+        "change": {
+          "on": 18.5,
+          "off": 1.1
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 44.5,
+        "calls": null,
+        "turning": 34.3,
+        "change": {
+          "on": 7.4,
+          "off": 1
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 52.8,
+        "calls": null,
+        "turning": 40.5,
+        "change": {
+          "on": 14.9,
+          "off": 1.1
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 44.6,
+        "calls": null,
+        "turning": 33.9,
+        "change": {
+          "on": 7.5,
+          "off": 1
+        },
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 52.5,
+        "calls": null,
+        "turning": 40.5,
+        "change": {
+          "on": 14.7,
+          "off": 1.1
+        },
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 10.8,
+        "calls": null,
+        "turning": 10.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 12,
+        "calls": null,
+        "turning": 10.7,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 10.8,
+        "calls": null,
+        "turning": 10.1,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 12.3,
+        "calls": null,
+        "turning": 10.7,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 10.7,
+        "calls": null,
+        "turning": 10.7,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 11.6,
+        "calls": null,
+        "turning": 10.8,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 95,
+        "calls": null,
+        "turning": 67,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 116.1,
+        "calls": null,
+        "turning": 80.7,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 94.7,
+        "calls": null,
+        "turning": 66.5,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 115.6,
+        "calls": null,
+        "turning": 81.5,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 94.7,
+        "calls": null,
+        "turning": 67.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 115.6,
+        "calls": null,
+        "turning": 81.2,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 52.1,
+        "calls": null,
+        "turning": 40.4,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 61.2,
+        "calls": null,
+        "turning": 45,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 51.3,
+        "calls": null,
+        "turning": 39.9,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 61,
+        "calls": null,
+        "turning": 44.8,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0692, 0.5],
+        "still": 51.4,
+        "calls": null,
+        "turning": 38.8,
+        "change": null,
+        "transparency": [0, 0, 0]
+      },
+      "noskip": {
+        "marked": [0.0692, 0.5],
+        "still": 61,
+        "calls": null,
+        "turning": 45,
+        "change": null,
+        "transparency": [0, 0, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 11.8,
+        "calls": null,
+        "turning": 10.7,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 13.9,
+        "calls": null,
+        "turning": 13.2,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 11.6,
+        "calls": null,
+        "turning": 10.8,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 13.9,
+        "calls": null,
+        "turning": 13,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 11.7,
+        "calls": null,
+        "turning": 10.8,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 13.9,
+        "calls": null,
+        "turning": 13.1,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 93.2,
+        "calls": null,
+        "turning": 68.4,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 124.8,
+        "calls": null,
+        "turning": 87.2,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 92.6,
+        "calls": null,
+        "turning": 68.3,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 124.7,
+        "calls": null,
+        "turning": 88,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 93.1,
+        "calls": null,
+        "turning": 68.3,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 125.2,
+        "calls": null,
+        "turning": 87.9,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 50.8,
+        "calls": null,
+        "turning": 38.3,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 64.8,
+        "calls": null,
+        "turning": 49.7,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 51.6,
+        "calls": null,
+        "turning": 38.6,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 64.8,
+        "calls": null,
+        "turning": 49.9,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 51.4,
+        "calls": null,
+        "turning": 38.6,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 65,
+        "calls": null,
+        "turning": 49.5,
+        "change": null,
+        "transparency": [0.249, 0.248, 0]
+      }
+    }
+  ]
+}

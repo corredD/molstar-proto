@@ -7,8 +7,8 @@
 // What do marking and transparency cost in prism-me's look, and what does the sphere skip (spheres a pass discards whole
 // leave in the vertex stage, sphere-impostors.md) save? Loads a mesoscale example in headless Chrome (Playwright) and
 // per case (nothing marked, a hover, a selection, marking off; a clip with and without Ghosts; an entity shown in part;
-// an entity with transparency, by wboit or dpoit; x-ray; the marking depth with a ghost edge below 1) and per fraction
-// of the camera's distance (1, 0.1, 0.02) prints, with the skip and without it (`dNoVertexSkip` on every sphere object:
+// an entity with transparency, by wboit, dpoit or blended; x-ray; the marking depth with a ghost edge below 1) and per
+// fraction of the camera's distance (1, 0.1, 0.02) prints, with the skip and without it (`dNoVertexSkip` on every sphere object:
 // the shaders as before the skip, in the same page), the frame time still and turning 1° a frame (`zoom-test.js`'s
 // batched `T()` and `M()`), for a hover the time of a marking change at rest (on and off apart: with marking on the
 // marking pass redrawn over the last image, with it off the whole frame), and the pixels of the image at rest that
@@ -56,6 +56,7 @@ const Cases = {
   shown: { marking: true, scene: 'shown' },
   transparency: { marking: true, scene: 'transparency' },
   'transparency-dpoit': { marking: true, scene: 'transparency', transparency: 'dpoit' },
+  'transparency-blended': { marking: true, scene: 'transparency', transparency: 'blended' },
   xray: { marking: true, mark: 'hover', xray: true },
 };
 const cases = args.cases ? args.cases.split(',') : Object.keys(Cases);
