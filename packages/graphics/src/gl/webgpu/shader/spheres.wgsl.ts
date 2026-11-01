@@ -138,6 +138,34 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
     out.vModelPosition = (uGlobal.uModel * transform * position4).xyz; // for clipping in the fragment stage, the color levels
 
     ${assign_varyings_wgsl}
+
+    #if defined(dRenderVariant_marking)
+        // The mask keeps marked fragments only. An unmarked sphere quad shares one marker,
+        // so it leaves before the projection. The depth pass (uMarkingType 1) keeps the
+        // unmarked ones: they occlude. A triangle or a bond can differ per vertex.
+        var markerValue = uObject.uMarker;
+        #if defined(dNeedsMarker)
+            if (uObject.uMarker == -1.0) { markerValue = floor(out.vMarker * 255.0 + 0.5); }
+        #endif
+        if (uGlobal.uMarkingType != 1 && markerValue == 0.0) {
+            out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+            return out;
+        }
+    #endif
+    #if (defined(dRenderVariant_color) || defined(dRenderVariant_tracing)) && defined(dTransparency) && !defined(dXrayShaded) && !defined(dTransparentBackfaces_opaque) && !defined(dTransparencyType_vertexInstance)
+        // The quad shares one transparency. Skip the instance the pass would discard whole.
+        // Not where alpha is per fragment: x-ray, alpha thickness, opaque back faces, a per-vertex value.
+        if (uMaterial.uAlpha == 1.0 && uObject.uAlphaThickness == 0.0) {
+            var vT = out.vTransparency;
+            var ta = 1.0 - vT;
+            if (vT < 0.09) { ta = 1.0; }
+            if ((uGlobal.uRenderMask == MaskOpaque && ta < 1.0) || (uGlobal.uRenderMask == MaskTransparent && ta == 1.0)) {
+                out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+                return out;
+            }
+        }
+    #endif
+
     ${assign_size_wgsl}
 
     let modelScale = uGlobal.uModelScale;

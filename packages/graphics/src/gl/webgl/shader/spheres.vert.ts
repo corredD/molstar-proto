@@ -114,6 +114,43 @@ void main(void){
 
     ${assign_color_varying}
     ${assign_marker_varying}
+
+    #if defined(dRenderVariant_marking)
+        // The mask keeps marked fragments only. An unmarked sphere quad shares one marker,
+        // so it leaves before the projection. The depth pass (uMarkingType 1) keeps the
+        // unmarked ones: they occlude. Read the texture again: WebGL1 cannot read a varying
+        // it has just written. A triangle or a bond can differ per vertex, so this stays here.
+        float marker = uMarker;
+        #if defined(dNeedsMarker)
+            if (uMarker == -1.0) marker = floor(read_tMarker(granularityIndex(aInstance, group)).r * 255.0 + 0.5);
+        #endif
+        if (uMarkingType != 1 && marker == 0.0) {
+            gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+            return;
+        }
+    #endif
+    #if (defined(dRenderVariant_color) || defined(dRenderVariant_tracing)) && defined(dTransparency) && !defined(dXrayShaded) && !defined(dTransparentBackfaces_opaque) && !defined(dTransparencyType_vertexInstance)
+        // The quad shares one transparency. Skip the instance the pass would discard whole
+        // (opaque pass when ta < 1, transparent pass when ta == 1). Not where alpha is
+        // per fragment: x-ray, alpha thickness, opaque back faces, a per-vertex value.
+        if (uAlpha == 1.0 && uAlphaThickness == 0.0) {
+            float vT = 0.0;
+            #if defined(dTransparencyType_texture)
+                vT = read_tTransparency(granularityIndex(aInstance, group)).r;
+            #elif defined(dTransparencyType_volumeInstance)
+                vec3 tgridPos = (uTransparencyGridTransform.w * (vModelPosition / uModelScale - uTransparencyGridTransform.xyz)) / uTransparencyGridDim;
+                vT = texture3dFrom2dLinear(tTransparencyGrid, tgridPos, uTransparencyGridDim, uTransparencyGridTexDim).r;
+            #endif
+            vT *= uTransparencyStrength;
+            float ta = 1.0 - vT;
+            if (vT < 0.09) ta = 1.0;
+            if ((uRenderMask == MaskOpaque && ta < 1.0) || (uRenderMask == MaskTransparent && ta == 1.0)) {
+                gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+                return;
+            }
+        }
+    #endif
+
     ${assign_clipping_varying}
     ${assign_size}
 
