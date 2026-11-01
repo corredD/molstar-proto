@@ -486,6 +486,7 @@ export namespace Spheres {
       dSolidInterior: ValueCell.create(props.solidInterior),
       dClipPrimitive: ValueCell.create(props.clipPrimitive),
       dApproximate: ValueCell.create(props.approximate),
+      dNoVertexSkip: ValueCell.create(false),
       uAlphaThickness: ValueCell.create(props.alphaThickness),
       uBumpFrequency: ValueCell.create(props.bumpFrequency),
       uBumpAmplitude: ValueCell.create(props.bumpAmplitude),

@@ -1,0 +1,169 @@
+{
+  "example": "petworld-hiv",
+  "backend": "webgl2",
+  "dpr": 1,
+  "viewport": "896x800",
+  "largest": {
+    "id": 11,
+    "name": "NC",
+    "count": 4600
+  },
+  "rows": [
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 44,
+        "calls": null,
+        "turning": 32.2,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 41.8,
+        "calls": null,
+        "turning": 34,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 93.1,
+        "calls": null,
+        "turning": 59.4,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 105,
+        "calls": null,
+        "turning": 64.2,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      }
+    },
+    {
+      "case": "transparency-dpoit",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 50.5,
+        "calls": null,
+        "turning": 38.4,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 49.4,
+        "calls": null,
+        "turning": 39.3,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      }
+    },
+    {
+      "case": "transparency-dpoit",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 126.6,
+        "calls": null,
+        "turning": 75.6,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 134.1,
+        "calls": null,
+        "turning": 80.3,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      }
+    },
+    {
+      "case": "transparency-blended",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 44.5,
+        "calls": null,
+        "turning": 32.8,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 41.8,
+        "calls": null,
+        "turning": 33.7,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      }
+    },
+    {
+      "case": "transparency-blended",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 92.5,
+        "calls": null,
+        "turning": 59.9,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 100.6,
+        "calls": null,
+        "turning": 62.9,
+        "change": null,
+        "transparency": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.498, 0, 0, 0, 0, 0, 0]
+      }
+    }
+  ]
+}

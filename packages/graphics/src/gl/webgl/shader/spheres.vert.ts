@@ -114,6 +114,33 @@ void main(void){
 
     ${assign_color_varying}
     ${assign_marker_varying}
+
+    // A sphere's quad shares one marker and one transparency (its vertices one instance and group): a sphere the pass
+    // discards whole in the fragment stage leaves before the projection, read back from the varyings it discards by
+    // (sphere-impostors.md). dNoVertexSkip: every sphere projected (tests compare the images).
+    #if defined(dRenderVariant_marking) && !defined(dNoVertexSkip)
+        // the mask (not the depth, uMarkingType 1: unmarked spheres occlude there) keeps marked fragments only
+        float marker = uMarker;
+        #if defined(dNeedsMarker)
+            if (uMarker == -1.0) marker = floor(vMarker * 255.0 + 0.5);
+        #endif
+        if (uMarkingType != 1 && marker == 0.0) {
+            gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+            return;
+        }
+    #endif
+    #if (defined(dRenderVariant_color) || defined(dRenderVariant_tracing)) && defined(dTransparency) && !defined(dXrayShaded) && !defined(dTransparentBackfaces_opaque) && !defined(dTransparencyType_vertexInstance) && !defined(dNoVertexSkip)
+        // the opaque pass discards alpha below 1, the transparent pass alpha 1 (ta 1 below 0.09); not where alpha is
+        // per fragment (x-ray, alpha thickness, opaque back faces) or per vertex. Clear of the cutoff by a margin: the
+        // fragment stage reads the value interpolated
+        if (uAlpha == 1.0 && uAlphaThickness == 0.0) {
+            if ((uRenderMask == MaskOpaque && vTransparency >= 0.09 + 1e-5) || (uRenderMask == MaskTransparent && vTransparency < 0.09 - 1e-5)) {
+                gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+                return;
+            }
+        }
+    #endif
+
     ${assign_clipping_varying}
     ${assign_size}
 
