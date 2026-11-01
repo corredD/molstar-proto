@@ -69,8 +69,17 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Meshes picked, highlighted and selected by triangle, and `Ray3D.intersectTriangle` (lane `mesh-measure`, built on
   prism-me in commits that name no extension: `ae323fe5a` core, `ebe4913d0` model, `f078afd6e`, `772faf324`,
   `8af312ac4`, `104e24625` graphics; .v6/plans/gl/triangle-picking.md).
+- Sphere impostors: an unmarked instance leaves the marking mask before the projection, and a sphere the color pass
+  would discard whole leaves that pass (lane `marking-cost`, `1b1b7fe72`). Spheres only. A mesh triangle or a bond can
+  mix markers, and x-ray, alpha thickness, opaque back faces and a per-vertex transparency stay on the fragment discard.
+  Upstream from master when Ludo says so.
 
 ## Backlog
+
+- A sphere a clip plane misses entirely (its center is past the plane by more than its radius): skip it in the color
+  pass, and skip one the plane misses in the ghost pass (lane `marking-cost`, not built;
+  `progress/2026-10-31-marking-cost.md`). A cone or a scaled sphere is not a safe radius test. It needs a rendered pixel
+  test of the kind in `clip-ghosts-draw.test.ts` before it ships. That test draws mesh Shape spheres, not impostors.
 
 - Meshes by triangle (lane `mesh-measure`, what is left; `progress/2026-10-31-mesh-measure.md`): a measurement follows a
   mesh's move on release, not live during the drag (the preview is the representation's transform, outside the state;
