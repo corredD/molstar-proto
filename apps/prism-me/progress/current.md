@@ -149,7 +149,15 @@ is not built is [../TODO.md](../TODO.md).
   unmarked sphere leaves the marking mask before the projection, and a sphere the color pass would discard whole leaves
   that pass. CellPack hover at a tenth of the distance, still: WebGPU dpr 1 16.7 → 11.6 ms (an unmarked frame is 11.2),
   WebGL2 dpr 2 213 → 171 (unmarked 168). Clip and ghosts still dominate and were not changed. The skip is a library
-  change, an upstream candidate. Waits on Ludo. The server on 1367 is stopped.
+  change, an upstream candidate. Waits on Ludo. The server on 1367 is stopped. Review round done (2026-11-01,
+  `656b623c1`): the GLSL reads its varyings back, 1e-5 clear of the 0.09 cutoff, `dNoVertexSkip` turns it off; a
+  rendered Dawn test (10 cases, each image equal to the unskipped one, each broken skip fails it); bench skip on/off in
+  one page: 0 pixels differ on WebGL2 (78 images), WebGPU only within its own frame-to-frame OIT noise. Median of 3:
+  CellPack hover 0.1 WebGPU dpr 1 14.8 → 11.9, dpr 2 41.5 → 32.9, WebGL2 dpr 2 237 → 190; PetWorld hover 0.02 dpr 1 78.7
+  → 54.3, dpr 2 245 → 157. One regression left open: PetWorld WebGL2 whole view with a transparency, +3 / +8 ms. Library
+  commits listed by SHA in TODO.md. Reviewer 1 must-fix (x-ray test drew no x-ray) fixed; skeptic 0 refuted.
+  Look-changing options (marking off, dpoit, blended, cheaper ghost) not built: recommendation keep marking on and
+  wboit. Waits on Ludo's merge.
 - **Exosome example** (Ludo, 2026-10-31: does not load on Chrome): its file is on `mesoscope.scripps.edu`, which refuses
   connections (curl: connection refused on 443). Not prism-me.
 
