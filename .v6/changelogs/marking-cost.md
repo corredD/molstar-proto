@@ -1,12 +1,12 @@
-## Graphics: sphere impostors skip work the pass would throw away
+## Graphics: sphere impostors skip what a pass discards whole (#33)
 
-- An unmarked sphere leaves the marking mask before the projection. Hovering in CellPack HIV (the membrane, 114k
-  instances, at a tenth of the camera distance) goes from 16.7 to 11.6 ms on WebGPU at dpr 1, where an unmarked frame
-  is 11.2; from 42.5 to 31.7 ms at dpr 2; from 101.5 to 84.1 ms on WebGL2 at dpr 1; from 213.4 to 171.1 ms at dpr 2.
-  The depth pass still draws those spheres, so they keep occluding. A mesh or a bond is unchanged: one triangle can
-  mix markers.
-- A sphere the color pass would discard whole leaves that pass: the opaque pass when the sphere is transparent, the
-  transparent pass when it is opaque. Only where every fragment agrees (not x-ray, not an alpha thickness, not opaque
-  back faces, not a per-vertex transparency). The same membrane at transparency 0.5: 14.9 to 12.0 ms, 41.9 to 33.2,
-  111.7 to 86.7, 251 to 170.1, on those four configs. What remains is the transparent instances actually drawn.
-- The picture is unchanged. This is a library change, an upstream candidate.
+- A sphere a pass would discard in every fragment now leaves in the vertex stage, before its projection: an unmarked
+  sphere in the marking mask, a sphere the opaque pass (its transparency at or above the 0.09 cutoff) or the transparent
+  passes (below it) would discard. Only where alpha is that value alone: alpha 1, no alpha thickness, not x-ray, not
+  opaque back faces, not a per-vertex transparency; never in the marking depth (unmarked spheres occlude there). Meshes,
+  cylinders and lines are unchanged: a triangle's vertices can differ.
+- The image is unchanged (WebGL2: 0 pixels differ in 78 images of CellPack HIV and PetWorld HIV; WebGPU: within the
+  frame-to-frame noise of its order-independent transparency). A hover in CellPack HIV at a tenth of the camera
+  distance: 14.8 to 11.9 ms on WebGPU at dpr 1 (11.5 with nothing marked), 41.5 to 32.9 at dpr 2, 237 to 190 on WebGL2
+  at dpr 2; an entity at transparency 0.5: 15.1 to 12.2, 43.0 to 32.5, 251 to 186.
+- `dNoVertexSkip` (spheres) projects every sphere, for tests that compare the images.

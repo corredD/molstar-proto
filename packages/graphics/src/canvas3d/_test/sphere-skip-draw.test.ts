@@ -119,12 +119,17 @@ async function setup(options: { ghostEdgeStrength: number; transparency: 'wboit'
     MarkerAction.Highlight,
   );
 
-  const draw = (skip: boolean) => {
+  const draw = async (skip: boolean) => {
     ValueCell.updateIfChanged(object.values.dNoVertexSkip, !skip);
     canvas.update(repr);
     canvas.commit(true);
-    canvas.requestDraw();
-    canvas.tick(0 as any, { isSynchronous: true } as any);
+    // draws skipped while their programs compile: frames until nothing is pending
+    for (let i = 0; i < 10; ++i) {
+      canvas.requestDraw();
+      canvas.tick(0 as any, { isSynchronous: true } as any);
+      if (canvas.graphics.resources.pending.isReady()) break;
+      await canvas.graphics.resources.pending.whenReady();
+    }
     const gl = (canvas.graphics as any).gl as WebGLRenderingContext;
     const pixels = new Uint8Array(Size * Size * 4);
     gl.readPixels(0, 0, Size, Size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
@@ -160,8 +165,8 @@ describe.skipIf(!canDraw)('spheres skipped in the vertex stage (native GL)', () 
       it(`draws the image of every sphere projected: ghost edge ${ghostEdgeStrength}, ${transparency}`, async () => {
         const s = (await setup({ ghostEdgeStrength, transparency }))!;
         try {
-          const all = s.draw(false);
-          const skipped = s.draw(true);
+          const all = await s.draw(false);
+          const skipped = await s.draw(true);
           // the marked spheres' edges are drawn, every group's color is seen (the opaque, the half transparent, the
           // one below the cutoff drawn opaque)
           expect(s.count(skipped, Highlight)).toBeGreaterThan(20);
@@ -179,7 +184,7 @@ describe.skipIf(!canDraw)('spheres skipped in the vertex stage (native GL)', () 
     const full = (await setup({ ghostEdgeStrength: 1, transparency: 'wboit' }))!;
     try {
       // fewer full-strength edge pixels where the hidden edge is drawn faint
-      expect(weak.count(weak.draw(true), Highlight)).toBeLessThan(full.count(full.draw(true), Highlight));
+      expect(weak.count(await weak.draw(true), Highlight)).toBeLessThan(full.count(await full.draw(true), Highlight));
     } finally {
       weak.canvas.dispose();
       full.canvas.dispose();
