@@ -158,6 +158,18 @@ is not built is [../TODO.md](../TODO.md).
   commits listed by SHA in TODO.md. Reviewer 1 must-fix (x-ray test drew no x-ray) fixed; skeptic 0 refuted.
   Look-changing options (marking off, dpoit, blended, cheaper ghost) not built: recommendation keep marking on and
   wboit. Waits on Ludo's merge.
+- **Upstream #2061 (Alexander, v6 graphics) reviewed and measured** (2026-11-01; not posted; review in
+  `~/molstar_pr_review/PR2061-review.md`). Review: 1 must-fix (WebGL1 Gaussian volume lit by group ids), 4 should-fix
+  (clip class under a non-uniform clip transform, raster chunk rows overlap, raster kernel cache leak, per-vertex
+  colours vs `lodLevels`); David's review covers none of them but the headers. Against prism-me: #2061 replaces #28's
+  two-phase core; #28's clusters, Morton order, edge cap and motion props to rebuild on its API; #29/#30/#31 kept; #33
+  complementary (its WGSL reads `vMarker`/`vTransparency`, renamed in #2061). Zoom bench (M1 Pro, Chrome 156, dpr 1,
+  CellPack HIV still, 1 / 0.1 / 0.02, ms): WebGPU classic master 4.8 / 47.5 / 47.9, classic+#2061 4.3 / 35.1 / 19.9,
+  prism-me 9.9 / 13.6 / 15.9, prism-me before #28 8.9 / 83.0 / 70.5; WebGL2 59.9 / 54.9 (classic), 42.2 / 24.2 (+#2061),
+  prism-me 83.5 / 46.6 at 0.1 / 0.02. The sphere raster never runs on the M1 (no `atomic-vec2u-min-max`); #2061's gain
+  here is its per-instance culling, not two-phase. Classic culls in 200 Å cells too, yet beat prism-me before #28 by
+  25–35 ms (cause unverified). Open: prism-me's WebGL2 zoomed in (no GPU path) and its whole view (2x classic). Scripts
+  and runs: session scratchpad `zoomcmp/` (not in the repo).
 - **Exosome example** (Ludo, 2026-10-31: does not load on Chrome): its file is on `mesoscope.scripps.edu`, which refuses
   connections (curl: connection refused on 443). Not prism-me.
 
