@@ -4,25 +4,31 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-// What do marking and transparency cost in prism-me's look? Loads a mesoscale example in headless Chrome (Playwright)
-// and per case (marking on or off; nothing marked, a hover, a selection; a clip with and without Ghosts; an entity shown
-// in part; an entity with transparency) and per fraction of the camera's distance (1, 0.1, 0.02) prints the frame time
-// still and turning 1° a frame (`zoom-test.js`'s batched `T()` and `M()`), and for the hover and selection cases the
-// time of a marking change at rest (a hover on and off: with marking on the marking pass redrawn over the last image,
-// with it off the whole frame). Method and results: apps/prism-me/progress/2026-10-31-marking-cost.md.
+// What do marking and transparency cost in prism-me's look, and what does the sphere skip (spheres a pass discards whole
+// leave in the vertex stage, sphere-impostors.md) save? Loads a mesoscale example in headless Chrome (Playwright) and
+// per case (nothing marked, a hover, a selection, marking off; a clip with and without Ghosts; an entity shown in part;
+// an entity with transparency, by wboit or dpoit; x-ray; the marking depth with a ghost edge below 1) and per fraction
+// of the camera's distance (1, 0.1, 0.02) prints, with the skip and without it (`dNoVertexSkip` on every sphere object:
+// the shaders as before the skip, in the same page), the frame time still and turning 1° a frame (`zoom-test.js`'s
+// batched `T()` and `M()`), for a hover the time of a marking change at rest (on and off apart: with marking on the
+// marking pass redrawn over the last image, with it off the whole frame), and the pixels of the image at rest that
+// differ between the two. Method and results: apps/prism-me/progress/2026-10-31-marking-cost.md.
 //
 //   node scripts/esbuild/app.mjs apps/prism-me --dev --port 1367     # in another shell
 //   node apps/prism-me/scripts/marking-bench.mjs --port 1367 --backend webgpu --example cellpack-hiv1
 //
 // Options: --port (1367), --backend webgpu|webgl2 (webgpu), --example (cellpack-hiv1), --fractions (1,0.1,0.02),
-// --batches of 20 frames (5), --dpr (1), --cases (all; a comma list of the names below), --json a file for the numbers,
-// --eval JavaScript run in the page after the load (e.g. a prop to compare).
+// --batches of 20 frames (5), --runs (1; runs alternate the order, the skip first then last), --dpr (1), --cases (all;
+// a comma list of the names below), --notimes 1 (images only), --json a file for the numbers, --shots a folder for the
+// images at rest (with the skip, and `-noskip` without), --same 1 the skip in both measures (the noise floor of the
+// images and times), --eval JavaScript run in the page after the load.
 
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 
 const require = createRequire(new URL('../../../package.json', import.meta.url));
 const { chromium } = require('playwright');
+const { PNG } = require('pngjs');
 
 const args = Object.fromEntries(
   process.argv.slice(2).flatMap((a, i, all) => (a.startsWith('--') ? [[a.slice(2), all[i + 1]]] : [])),
@@ -32,19 +38,25 @@ const backend = args.backend ?? 'webgpu';
 const example = args.example ?? 'cellpack-hiv1';
 const fractions = (args.fractions ?? '1,0.1,0.02').split(',').map(Number);
 const batches = +(args.batches ?? 5);
+const runs = +(args.runs ?? 1);
+const dpr = +(args.dpr ?? 1);
+const times = !args.notimes;
 
-// each case: marking on or off, what is marked, and the scene's change (set up, then undone)
+// each case: marking on or off, what is marked, the scene's change (set up, then undone), canvas props, x-ray
 const Cases = {
   none: { marking: true },
   'none-off': { marking: false },
   hover: { marking: true, mark: 'hover' },
   'hover-off': { marking: false, mark: 'hover' },
+  'hover-depth': { marking: true, mark: 'hover', ghostEdgeStrength: 0.3 },
   select: { marking: true, mark: 'select' },
   'select-off': { marking: false, mark: 'select' },
   clip: { marking: true, scene: 'clip' },
   ghosts: { marking: true, scene: 'ghosts' },
   shown: { marking: true, scene: 'shown' },
   transparency: { marking: true, scene: 'transparency' },
+  'transparency-dpoit': { marking: true, scene: 'transparency', transparency: 'dpoit' },
+  xray: { marking: true, mark: 'hover', xray: true },
 };
 const cases = args.cases ? args.cases.split(',') : Object.keys(Cases);
 
@@ -53,7 +65,7 @@ const browser = await chromium.launch({
   headless: true,
   args: ['--enable-unsafe-webgpu', '--enable-features=WebGPU', '--ignore-gpu-blocklist', '--use-angle=metal'],
 });
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: +(args.dpr ?? 1) });
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: dpr });
 page.on('console', (m) => {
   if (m.type() === 'error') console.error('page:', m.text().slice(0, 300));
 });
@@ -76,6 +88,7 @@ await page.evaluate(async () => {
   const c = pl.canvas3d;
   const api = window.molstar.api;
   const snap = c.camera.getSnapshot();
+  const look = { marking: { ...c.props.marking }, transparency: c.props.transparency };
   const frame = async () => {
     c.requestDraw();
     c.tick(performance.now(), { isSynchronous: true });
@@ -85,7 +98,24 @@ await page.evaluate(async () => {
   const info = (await api.run('mesoscale.entities', {})).value;
   const largest = [...(info?.entities ?? [])].sort((a, b) => b.count - a.count)[0];
   let clip;
-  let selected;
+  /** every sphere object's values (a merged object's and its members') */
+  const sphereValues = () =>
+    c
+      .getRenderObjects()
+      .flatMap((r) => [r.values, ...(r.members ?? [])])
+      .filter((v) => v.dNoVertexSkip);
+  /** a define of every sphere object, its renderables updated where it changed */
+  const setDefine = (name, value) => {
+    let changed = false;
+    for (const v of sphereValues()) {
+      if (v[name].ref.value !== value) {
+        v[name].ref.value = value;
+        v[name].ref.version += 1;
+        changed = true;
+      }
+    }
+    if (changed) c.update();
+  };
   window.B = {
     largest: largest && { id: largest.id, name: largest.name, count: largest.count },
     at: (f) => {
@@ -93,17 +123,42 @@ await page.evaluate(async () => {
       const q = snap.position;
       c.camera.setState({ ...snap, position: [0, 1, 2].map((k) => t[k] + (q[k] - t[k]) * f) }, 0);
     },
-    marking: (on) => c.setProps({ marking: { ...c.props.marking, enabled: on } }),
+    /** the case's marking and transparency mode over the look's, its x-ray */
+    props: (k) => {
+      c.setProps({
+        marking: {
+          ...look.marking,
+          enabled: k.marking,
+          ghostEdgeStrength: k.ghostEdgeStrength ?? look.marking.ghostEdgeStrength,
+        },
+        transparency: k.transparency ?? look.transparency,
+      });
+      setDefine('dXrayShaded', k.xray ? 'on' : 'off');
+    },
+    /** frames until one starts no work (a pipeline compiling skips its draws) and nothing is pending */
+    settle: async () => {
+      const pending = c.graphics.resources.pending;
+      for (let i = 0; i < 100; i++) {
+        const tracked = pending.trackedCount;
+        await frame();
+        if (pending.trackedCount === tracked && pending.isReady()) break;
+        await pending.whenReady();
+      }
+      for (let i = 0; i < 5; i++) await frame();
+    },
+    /** with the skip or without (`dNoVertexSkip`), its programs compiled */
+    skip: async (on) => {
+      setDefine('dNoVertexSkip', !on);
+      await window.B.settle();
+    },
     // the marked share of each object with marks (`markerAverage`)
-    marked: () => ({
-      objects: c
+    marked: () =>
+      c
         .getRenderObjects()
         .filter((r) => r.state.visible && r.values.markerAverage?.ref.value > 0)
         .map((r) => +r.values.markerAverage.ref.value.toPrecision(3)),
-    }),
-    hoverLoci: () => pl.behaviors.interaction.hover.value?.current?.loci,
     // the marks of a case, the same loci at every fraction (picked once, at the canvas' center): a hover through the
-    // plugin's highlights (its granularity), a selection as its marker
+    // plugin's highlights (its granularity), a selection as its marker on the same loci
     mark: (what) => {
       const loci = window.B.loci;
       if (!loci) return false;
@@ -116,33 +171,36 @@ await page.evaluate(async () => {
       if (window.B.loci) c.mark({ loci: window.B.loci }, 0x8 /* MarkerAction.Deselect */);
     },
     // ms of a marking change at rest, as a hover on and off: the highlight set and cleared in turn, then a tick without
-    // a draw request (with marking on the marking pass redrawn over the last image, off the whole frame)
-    markChange: async (n = 40) => {
+    // a draw request (with marking on the marking pass redrawn over the last image, off the whole frame); the medians of
+    // the hovers on and off apart
+    markChange: async (n = 20) => {
       const loci = window.B.loci;
       if (!loci) return null;
       const h = pl.managers.interactivity.lociHighlights;
-      const step = async (i) => {
-        if (i % 2) h.highlightOnly({ loci });
+      const step = async (on) => {
+        if (on) h.highlightOnly({ loci });
         else h.clearHighlights();
         c.tick(performance.now(), { isSynchronous: true });
         if (c.graphics.waitForGpuCommandsCompleteSync) c.graphics.waitForGpuCommandsCompleteSync();
         else await c.graphics.waitForGpuCommandsComplete();
       };
-      for (let i = 0; i < 6; i++) await step(i);
-      const w = [];
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < 6; i++) await step(i % 2 === 1);
+      const w = [[], []];
+      for (let i = 0; i < 2 * n; i++) {
+        const on = i % 2 === 1;
         const t = performance.now();
-        await step(i);
-        w.push(performance.now() - t);
+        await step(on);
+        w[on ? 1 : 0].push(performance.now() - t);
       }
       h.highlightOnly({ loci });
       await frame();
-      w.sort((a, b) => a - b);
-      return +w[n >> 1].toFixed(1);
+      const median = (a) => +a.sort((x, y) => x - y)[a.length >> 1].toFixed(1);
+      return { on: median(w[1]), off: median(w[0]) };
     },
-    // the draw calls and instances of one frame (WebGL2: the CPU's culled lists; WebGPU: indirect draws count their
-    // records, not the instances the GPU kept)
+    // the draw calls and instances of a frame (WebGPU: an indirect record a call, its instances unknown on the CPU);
+    // WebGL counts them in timing mode only (`?timing-mode=1`, which times every pass): null there
     calls: async () => {
+      if (c.graphics.capabilities?.backend !== 'webgpu') return null;
       const k = c.graphics.stats.calls;
       await frame();
       for (const key of Object.keys(k)) k[key] = 0;
@@ -201,47 +259,108 @@ console.log(
 await page.mouse.move(box.x + box.width + 100, box.y + 20);
 await page.waitForTimeout(1000);
 
-const rows = [];
-for (const name of cases) {
-  const k = Cases[name];
-  if (!k) throw new Error(`no case ${name}`);
-  await page.evaluate((on) => window.B.marking(on), k.marking);
-  if (k.scene) {
-    await page.evaluate((s) => window.B.scene(s, true), k.scene);
-    await page.waitForTimeout(4000);
+/** the pixels that differ between two PNG buffers, and the largest channel difference */
+const differ = (a, b) => {
+  const x = PNG.sync.read(a);
+  const y = PNG.sync.read(b);
+  let n = 0;
+  let max = 0;
+  for (let i = 0; i < x.data.length; i += 4) {
+    const d = Math.max(
+      Math.abs(x.data[i] - y.data[i]),
+      Math.abs(x.data[i + 1] - y.data[i + 1]),
+      Math.abs(x.data[i + 2] - y.data[i + 2]),
+    );
+    if (d > 0) n++;
+    if (d > max) max = d;
   }
-  for (const f of fractions) {
-    await page.evaluate((f) => window.B.at(f), f);
-    await page.waitForTimeout(800);
-    const r = await page.evaluate(
-      async ([n, mark]) => {
+  return { pixels: n, of: x.width * x.height, max };
+};
+
+/** one measure at the case and view: still (then the image at rest), calls, turning, a hover's change */
+const measure = async (k, skip) => {
+  await page.evaluate((on) => window.B.skip(on), skip);
+  const r = await page.evaluate(
+    async ([n, mark, times]) => {
+      const pl = window.molstar.viewer.plugin;
+      pl.animationLoop.stop();
+      if (mark) window.B.mark(mark);
+      const still = await window.T(times ? n : 1);
+      // read after a frame: the averages are computed as the scene draws
+      return { marked: window.B.marked(), still: times ? still : null, calls: times ? await window.B.calls() : null };
+    },
+    [batches, k.mark, times],
+  );
+  // the image at rest (the loop stopped: the last frame drawn)
+  const image = await (await page.$('canvas')).screenshot();
+  Object.assign(
+    r,
+    await page.evaluate(
+      async ([n, mark, times]) => {
         const pl = window.molstar.viewer.plugin;
-        pl.animationLoop.stop();
         try {
-          if (mark) window.B.mark(mark);
-          const still = await window.T(n);
-          // read after a frame: the averages are computed as the scene draws
-          const marked = window.B.marked();
-          const calls = await window.B.calls();
-          const turning = await window.M(n);
-          const change = mark === 'hover' ? await window.B.markChange() : null;
-          return { marked, still, turning, change, calls, transparency: window.B.transparency() };
+          const turning = times ? await window.M(n) : null;
+          const change = times && mark === 'hover' ? await window.B.markChange() : null;
+          return { turning, change, transparency: window.B.transparency() };
         } finally {
           window.B.clearMarks();
           pl.animationLoop.start();
         }
       },
-      [batches, k.mark],
-    );
-    const row = { case: name, f, ...r };
-    rows.push(row);
-    console.log(JSON.stringify(row));
+      [batches, k.mark, times],
+    ),
+  );
+  return { r, image };
+};
+
+const rows = [];
+for (const name of cases) {
+  const k = Cases[name];
+  if (!k) throw new Error(`no case ${name}`);
+  await page.evaluate((k) => window.B.props(k), k);
+  if (k.scene) {
+    await page.evaluate((s) => window.B.scene(s, true), k.scene);
+    await page.waitForTimeout(4000);
+    await page.evaluate(() => window.B.settle());
+  }
+  for (const f of fractions) {
+    await page.evaluate((f) => window.B.at(f), f);
+    await page.waitForTimeout(800);
+    // a warm-up at the view (its culling settled, its pyramid built, the turn's levels): the first measure was slower
+    await page.evaluate(async (n) => {
+      const pl = window.molstar.viewer.plugin;
+      pl.animationLoop.stop();
+      try {
+        await window.B.settle();
+        await window.T(n);
+        await window.M(n);
+      } finally {
+        pl.animationLoop.start();
+      }
+    }, Math.max(1, batches >> 1));
+    for (let run = 0; run < runs; run++) {
+      // the order alternates by run: the machine's drift falls on both
+      const order = run % 2 ? [false, true] : [true, false];
+      const out = {};
+      // --same 1: the skip both times (the images' noise floor)
+      for (const skip of order) out[skip ? 'skip' : 'noskip'] = await measure(k, args.same ? true : skip);
+      const diff = differ(out.skip.image, out.noskip.image);
+      if (args.shots && run === 0) {
+        fs.mkdirSync(args.shots, { recursive: true });
+        const base = `${args.shots}/${example}-${backend}-${dpr}-${name}-${f}`;
+        fs.writeFileSync(`${base}.png`, out.skip.image);
+        fs.writeFileSync(`${base}-noskip.png`, out.noskip.image);
+      }
+      const row = { case: name, f, run, diff, skip: out.skip.r, noskip: out.noskip.r };
+      rows.push(row);
+      console.log(JSON.stringify(row));
+    }
   }
   if (k.scene) {
     await page.evaluate((s) => window.B.scene(s, false), k.scene);
     await page.waitForTimeout(3000);
   }
 }
-await page.evaluate(() => window.B.marking(true));
+await page.evaluate(() => window.B.props({ marking: true }));
 await browser.close();
 if (args.json) fs.writeFileSync(args.json, JSON.stringify({ example, ...info, rows }, null, 1));
