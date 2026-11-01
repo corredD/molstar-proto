@@ -90,6 +90,7 @@ describe('sphere transparency pass', () => {
 
   it('stays out of the variants where alpha is decided per fragment', () => {
     expect(glsl('spheres', 'colorBlended', { ...extra, dXrayShaded: 'on' })).not.toContain(PassClip);
+    expect(glsl('spheres', 'colorBlended', { ...extra, dXrayShaded: 'inverted' })).not.toContain(PassClip);
     expect(glsl('spheres', 'colorBlended', { ...extra, dTransparentBackfaces: 'opaque' })).not.toContain(PassClip);
     expect(glsl('spheres', 'colorBlended', { dTransparency: true, dTransparencyType: 'vertexInstance' })).not.toContain(
       PassClip,
@@ -122,6 +123,8 @@ describe('sphere transparency pass', () => {
     }
     const xray = preprocessShader(spheres_wgsl, new Map([...defines, ['dXrayShaded_on', '']]));
     expect(xray).not.toContain('uObject.uAlphaThickness == 0.0');
+    const inverted = preprocessShader(spheres_wgsl, new Map([...defines, ['dXrayShaded_inverted', '']]));
+    expect(inverted).not.toContain('uObject.uAlphaThickness == 0.0');
     const back = preprocessShader(spheres_wgsl, new Map([...defines, ['dTransparentBackfaces_opaque', '']]));
     expect(back).not.toContain('uObject.uAlphaThickness == 0.0');
     const perVertex = preprocessShader(
