@@ -122,14 +122,19 @@ is not built is [../TODO.md](../TODO.md).
   `origin/prism-me`, mirrors it into `labwebsite/web/public/playground/molstar-dev/mesoscale-explorer` (replace) and
   asks the herdr `web` session to commit and push. The production build is over prism-me's budget (5.93 MB > 3.40 MB):
   the budget is stale (set 2026-10-18 from the viewer's 3.2 MB; upstream #2026 raised the viewer's to 5.5-5.6 MB); the
-  stock viewer is 5.69 MB > 5.6 on this branch. Lane `startup-budget` running (Ludo, 2026-10-31: go;
-  `me/startup-budget`, port 1366): measure, lazy-load prism-me's share, propose the budget; Ludo approves the number.
+  stock viewer is 5.69 MB > 5.6 on this branch. Lane `startup-budget` (Ludo, 2026-10-31: go; `me/startup-budget`): PR
+  #32. The properties load as their own chunk; the start bundle is 45 kB smaller (5.93 → 5.88 MB). The budget is not
+  set. Proposed 5.90 MB (5.60 stock + 0.102 library + 0.198 prism-me, rounded down; 5.80 would fail by the library).
+  Every commit on that branch is Claude's; Grok opened the PR. Waits on Ludo. The server on 1366 is stopped.
 - **After the 3 lanes** (Ludo, 2026-10-31, from Alexander): "also you generally want to switch marking off or at least
   set ghost edge strength to 1 - otherwise you render everything at least twice... the transparent stuff is not cheap
-  either...". To do: prism-me's look (`marking` off, or `ghostEdgeStrength` 1), measured with `zoom-bench.mjs` before
-  and after; check what highlight and select still show. Lane `marking-cost` running (Ludo, 2026-10-31: go;
-  `me/marking-cost`, port 1367): `ghostEdgeStrength` is already 1; it measures marking and transparency, keeps the image
-  in what it builds, and brings images for any change of look.
+  either...". Lane `marking-cost` (Ludo, 2026-10-31: go; `me/marking-cost`): PR #33. `ghostEdgeStrength` is already 1,
+  and with nothing marked the mask is not drawn, so idle marking is within about 1 ms of marking off. A hover with
+  marking off redraws the whole frame and is slower, so the look was not changed. What was built, image unchanged: an
+  unmarked sphere leaves the marking mask before the projection, and a sphere the color pass would discard whole leaves
+  that pass. CellPack hover at a tenth of the distance, still: WebGPU dpr 1 16.7 → 11.6 ms (an unmarked frame is 11.2),
+  WebGL2 dpr 2 213 → 171 (unmarked 168). Clip and ghosts still dominate and were not changed. The skip is a library
+  change, an upstream candidate. Waits on Ludo. The server on 1367 is stopped.
 - **Exosome example** (Ludo, 2026-10-31: does not load on Chrome): its file is on `mesoscope.scripps.edu`, which refuses
   connections (curl: connection refused on 443). Not prism-me.
 
