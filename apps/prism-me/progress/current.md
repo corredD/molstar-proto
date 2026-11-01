@@ -170,6 +170,13 @@ is not built is [../TODO.md](../TODO.md).
   here is its per-instance culling, not two-phase. Classic culls in 200 Å cells too, yet beat prism-me before #28 by
   25–35 ms (cause unverified). Open: prism-me's WebGL2 zoomed in (no GPU path) and its whole view (2x classic). Scripts
   and runs: session scratchpad `zoomcmp/` (not in the repo).
+- **#2061's sphere raster measured** (Ludo's workstation, Quadro RTX 8000, 2026-11-01; the M1 Pro has no
+  `atomic-vec2u-min-max`, Apple 9 GPUs only): Alexander's bench, merged GPU-culled particles, zoomed 2.5–3.6× faster
+  (PetWorld 9.61 → 2.68 ms at 0.03, MG_1184 6.69 → 2.73), whole view no gain, rotating whole slightly slower. Not used
+  by the classic Mesoscale Explorer. For prism-me: `isSphereRasterEligible` (`sphere-raster-pass.ts:35`) refuses a whole
+  object with a transparency layer, x-ray, wiggle/tumble, an LOD fade or a clipping layer it can't apply, so
+  hiding/ghosting one particle or a graded cut would send the merged model back to impostors; ties in with hidden-cost
+  step 2. A test merge of 7427374b7 into prism-me: ~85 conflict regions in 25 files (merged-culler 21).
 - **Exosome example** (Ludo, 2026-10-31: does not load on Chrome): its file is on `mesoscope.scripps.edu`, which refuses
   connections (curl: connection refused on 443). Not prism-me.
 
