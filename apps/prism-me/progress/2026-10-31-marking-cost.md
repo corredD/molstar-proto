@@ -226,4 +226,44 @@ kind in `clip-ghosts-draw.test.ts` before it ships. Left for Ludo to start.
 ## Who
 
 Claude wrote the brief and the bench. Grok ran the eight measurements, committed the bench (`4e5590f0f`), wrote the
-sphere skip and its test (`1b1b7fe72`), and remeasured CellPack after the change.
+sphere skip and its test (`1b1b7fe72`), remeasured CellPack after the change (`459d33398`), and locked the test
+(`94ae9dcef`) after the review.
+
+## The gate
+
+On `459d33398`, from this worktree, `mise exec`:
+
+- `npx tsc -b` and `npx tsc --noEmit -p apps/prism-me` pass.
+- `pnpm lint`, `pnpm format:check`, `node scripts/workspace/assets.mjs` (no change) and `pnpm check:workspace` pass.
+- `pnpm exec vitest run packages/graphics --maxWorkers=2`: 135 files passed, 10 skipped, 1624 tests passed, 94 skipped.
+  The skipped files are the real-GL draws (`spheres.test.ts` and its neighbours) and cases inside files that skip
+  without a GL context. `marking-mask-clip.test.ts` is 6 passed.
+- Headless WebGPU (`pnpm native:install -- --webgpu`, then
+  `pnpm native:run -- pnpm exec vitest run packages/plugin/headless/src/_test/webgpu- --maxWorkers=2`): 31 files, 73
+  tests, none skipped.
+- The app's `test:scaling`: 2 files, 5 tests. `styles:check` and `typecheck:storybook` pass.
+- Prism viewer's `typecheck:storybook` fails in `packages/prism/viewer/src/api/styles.ts:114` (`transparentColor`, from
+  #24), as the brief says. Not fixed here.
+
+The two commits after that are the test and one sentence of the impostor plan. The test file was run again (6 passed)
+and `biome check` is clean.
+
+## Review
+
+Lane-reviewer: 0 must-fix, 2 should-fix, 1 nit. Both should-fixes are the test not locking the rule the shader copies.
+Confirmed by reading the test and the shaders: the strings the finding names were absent from the test, and the shaders
+have them (GLSL recomputes `vT` and multiplies strength, because WebGL1 cannot read the varying; WGSL reads
+`out.vTransparency`, which the varyings already scale). The lane-skeptic was still reading when this was written.
+
+| Finding                                                                                                                                                                                  | Severity   | Verdict                                                                    | Commit / open |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------- | ------------- |
+| The transparency test does not require the 0.09 cutoff, the strength scale, or the transparent-pass compare, so deleting them still passes and a sphere near 0.086 can leave both passes | should-fix | confirmed by reading; the assertions fail if those lines go                | `94ae9dcef`   |
+| The WGSL case does not cover opaque back faces, a per-vertex transparency, or the marking variant                                                                                        | should-fix | confirmed by reading; those preprocesses now require the clip to be absent | `94ae9dcef`   |
+| `.v6/plans/gl/sphere-impostors.md` still said every sphere vertex computes the projection                                                                                                | nit        | fixed                                                                      | `5ac8652d6`   |
+
+## Built
+
+The image is unchanged. Hover and a half-transparent membrane on CellPack now cost about an unmarked frame (the table
+above). Clip and ghosts were not touched. The look was not changed: marking off is not faster, and a hover with it off
+redraws the whole frame. The sphere skip is a library change, an upstream candidate (TODO.md); the plane-instance skip
+is left open for Ludo. No budget was raised.
