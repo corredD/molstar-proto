@@ -79,6 +79,8 @@ import {
   type Frame,
   createClipInfoCache,
   type AnimationValues,
+  getAnimationCells,
+  getAnimationSlack,
 } from '../renderable.js';
 
 export type MergeableValues = RenderableValues & BaseValues;
@@ -1259,13 +1261,16 @@ export function MergedRenderable(
     clipObjects: v.clipObjects,
     dClipVariant: v.dClipVariant,
     invariantBoundingSphere: v.invariantBoundingSphere,
-    // the merged object's animation (its material), the member's per-group wiggle
-    animation: {
-      ...(merged.values as unknown as AnimationValues),
+  }));
+  // how far the animations may move a member's spheres (`getAnimationSlack`): the merged object's animation (its
+  // material), the member's per-group wiggle
+  const animation = getAnimationCells(merged.values as unknown as AnimationValues);
+  const memberWiggle: AnimationValues[][] = members.map((v) => [
+    {
       dWiggle: (v as unknown as AnimationValues).dWiggle,
       uWiggleStrength: (v as unknown as AnimationValues).uWiggleStrength,
     },
-  }));
+  ]);
 
   /**
    * what the last CPU cull read: a still frame keeps its lists (`createCullView`); the members' cells by the version
@@ -1353,6 +1358,7 @@ export function MergedRenderable(
         isOccluded,
         stats,
         true,
+        getAnimationSlack(animation, memberWiggle[i]),
       );
     }
 

@@ -18,6 +18,7 @@ import { Clip } from '@molstar/core/util/clip';
 import {
   type CullValues,
   createSegmentedMdbList,
+  getAnimationSlack,
   type LodLevelsValue,
   LodView,
   ZeroCullSegment,
@@ -175,6 +176,7 @@ describe('culling a segment', () => {
       null,
       createGraphicsStats(),
       false,
+      0,
     );
     const draws = mdb.list.map((l) => {
       const out: number[] = [];
@@ -200,7 +202,8 @@ describe('culling a segment', () => {
     const cull = (v: CullValues) => {
       const mdb = createSegmentedMdbList();
       const prepared = mdb.prepare(lodLevels, grid.cellCount, false, LodView());
-      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false);
+      const slack = v.animation ? getAnimationSlack(v.animation) : 0;
+      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false, slack);
       return mdb.list.map((l) => {
         const out: number[] = [];
         for (let i = 0; i < l.count; ++i) out.push(l.baseInstances[i], l.instanceCounts[i]);
@@ -253,6 +256,7 @@ describe('culling a segment', () => {
         null,
         createGraphicsStats(),
         false,
+        0,
       );
       const draws = mdb.list.map((l) => {
         const out: number[] = [];
@@ -298,6 +302,7 @@ describe('culling a segment', () => {
       null,
       createGraphicsStats(),
       false,
+      0,
     );
     const draws = mdb.list.map((l) => {
       const out: number[] = [];
@@ -339,7 +344,7 @@ describe('culling a segment', () => {
     const cull = (v: CullValues) => {
       const mdb = createSegmentedMdbList();
       const prepared = mdb.prepare(lodLevels, grid.cellCount, false, LodView());
-      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false);
+      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false, 0);
       const out: number[] = [];
       for (let i = 0; i < mdb.list[0].count; ++i) out.push(mdb.list[0].baseInstances[i], mdb.list[0].instanceCounts[i]);
       return out;
@@ -394,7 +399,7 @@ describe('culling a segment', () => {
     const drawn = (v: CullValues) => {
       const mdb = createSegmentedMdbList();
       const prepared = mdb.prepare(lodLevels, grid.cellCount, false, LodView());
-      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false);
+      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false, 0);
       const slots = new Uint8Array(grid.cellOffsets[grid.cellCount]);
       const l = mdb.list[0];
       for (let i = 0; i < l.count; ++i) slots.fill(1, l.baseInstances[i], l.baseInstances[i] + l.instanceCounts[i]);

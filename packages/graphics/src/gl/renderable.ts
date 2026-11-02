@@ -453,12 +453,37 @@ export type CullValues = {
   /** instance clipping tests an instance's center: the grid's spheres shrunk to the centers (`getCullClipShrink`) */
   readonly dClipVariant?: ValueCell<string>;
   readonly invariantBoundingSphere?: ValueCell<Sphere3D>;
-  /** the animation's values (wiggle, tumble): batches and cells grow by how far they move them (`getAnimationSlack`) */
+  /**
+   * the animation's cells (wiggle, tumble; `getAnimationCells`): batches and cells grow by how far they move them
+   * (`getAnimationSlack`, given to `cullSegment`)
+   */
   readonly animation?: AnimationValues;
 };
 
 /** Values the animations read (`animation.wgsl`): their amplitudes, speeds and frequencies, per-group wiggle */
 export type AnimationValues = { readonly [k: string]: ValueCell<unknown> | undefined };
+
+/** The cells `getAnimationSlack` reads */
+const AnimationKeys = [
+  'uWiggleSpeed',
+  'uWiggleFrequency',
+  'uWiggleAmplitude',
+  'dWiggle',
+  'uWiggleStrength',
+  'uTumbleSpeed',
+  'uTumbleFrequency',
+  'uTumbleAmplitude',
+] as const;
+
+/**
+ * The cells of `values` `getAnimationSlack` reads, resolved once: values objects have too many keys for fast named
+ * reads (the cells stay, updates replace their values)
+ */
+export function getAnimationCells(values: AnimationValues): AnimationValues {
+  const cells: { [k: string]: ValueCell<unknown> | undefined } = {};
+  for (const k of AnimationKeys) cells[k] = values[k];
+  return cells;
+}
 
 /**
  * How far the animations may move a sphere (`animation.wgsl`): the wiggle up to its amplitude (and a group's own, at
@@ -578,7 +603,8 @@ export interface SegmentedMdbList {
    * (`lodLevels` gives the segment's vertex counts per level).
    * Returns false without appending if the segment has no usable grid.
    * With `wholeSegmentFallback` gridless segments are instead culled as a
-   * whole using their bounding sphere.
+   * whole using their bounding sphere. `slack`: how far the animations may move the segment's spheres
+   * (`getAnimationSlack`), its batches and cells grow by it.
    */
   cullSegment: (
     values: CullValues,
@@ -589,6 +615,7 @@ export interface SegmentedMdbList {
     isOccluded: ((s: Sphere3D) => boolean) | null,
     stats: GraphicsStats,
     wholeSegmentFallback: boolean,
+    slack: number,
   ) => boolean;
   /** append draw entries for the whole segment without culling */
   fullSegment: (values: CullValues, segment: CullSegment, lodLevels: LodLevelsValue | undefined) => void;
@@ -758,6 +785,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
     isOccluded: ((s: Sphere3D) => boolean) | null,
     stats: GraphicsStats,
     wholeSegmentFallback: boolean,
+    slack: number,
   ): boolean {
     const drawCount = values.drawCount.ref.value;
     const instanceCount = values.instanceCount.ref.value;
@@ -807,8 +835,6 @@ export function createSegmentedMdbList(): SegmentedMdbList {
     }
 
     const { cellOffsets, cellSpheres, batchOffsets, batchSpheres, batchCount, batchSize } = grid;
-    // how far the animations may move the spheres: batches and cells grow by it
-    const slack = values.animation ? getAnimationSlack(values.animation) : 0;
     const checkCellOccludedDistance = 2 * batchSize;
     const clipClasses = clip
       ? getGridClipClasses(grid, clip, values.clipObjects!.ref.version, getCullClipShrink(values))
@@ -1073,7 +1099,7 @@ export function createRenderable<T extends GraphicsRenderableValues>(
     clipObjects: values.clipObjects,
     dClipVariant: values.dClipVariant,
     invariantBoundingSphere: values.invariantBoundingSphere,
-    animation: values as unknown as AnimationValues,
+    animation: getAnimationCells(values as unknown as AnimationValues),
   };
 
   const cullView = createCullView();
@@ -1096,7 +1122,8 @@ export function createRenderable<T extends GraphicsRenderableValues>(
     if (grid.cellSize <= 1) return;
 
     const lodLevels = mdb.prepare(cullValues.lodLevels, grid.cellCount, false, lod);
-    mdb.cullSegment(cullValues, ZeroCullSegment, lodLevels, cameraPlane, frustum, isOccluded, stats, false);
+    const slack = getAnimationSlack(cullValues.animation!);
+    mdb.cullSegment(cullValues, ZeroCullSegment, lodLevels, cameraPlane, frustum, isOccluded, stats, false, slack);
 
     cullEnabled = true;
     lastCullFrame = frame;
