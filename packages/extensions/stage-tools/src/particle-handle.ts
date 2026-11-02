@@ -6,6 +6,7 @@
 
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { StateObjectCell } from '@molstar/core/state';
+import type { Representation } from '@molstar/graphics/repr/representation';
 import type { GizmoItem } from '@molstar/graphics/util/gizmo/controller';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { Grid } from '@molstar/model/model/volume';
@@ -254,10 +255,13 @@ export class ParticleHandles {
     const l = t && this.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === t.list);
     if (!l) return;
     for (const r of l.representations) {
-      const repr = (r.cell.obj?.data as { repr?: { createOrUpdate(p: object, d?: ParticleList): any } } | undefined)
-        ?.repr;
+      const repr = (r.cell.obj?.data as { repr?: Representation<ParticleList> } | undefined)?.repr;
       const data = particles ?? (r.cell.obj?.data as { sourceData?: ParticleList } | undefined)?.sourceData;
-      if (repr && data) await this.plugin.runTask(repr.createOrUpdate({}, data));
+      if (!repr || !data) continue;
+      await this.plugin.runTask(repr.createOrUpdate({}, data));
+      // the new values given to the canvas, as the state's update would (its renderables upload them there): a redraw
+      // request alone draws the particles where they were, until the release's commit
+      this.plugin.canvas3d?.update(repr);
     }
     this.plugin.canvas3d?.requestDraw();
   }
