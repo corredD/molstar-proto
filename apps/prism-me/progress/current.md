@@ -173,12 +173,13 @@ is not built is [../TODO.md](../TODO.md).
 - **Review posted on upstream #2061** (Ludo, 2026-11-01: "post it"):
   https://github.com/molstar/molstar/pull/2061#pullrequestreview-5730198026 at 7427374b7, 3 must-fix, 3 should-fix
   (inline), nits and the raster numbers with the eligibility question in the body. Waiting on Alexander's answer.
-- **Lane `merge-master`**: PR #36 (`me/merge-master` → `prism-me`, 2026-11-02), waiting on Ludo. Merge of upstream
-  master c1b8ecb82 (#2060, #2061) with master's design where #2061 supersedes #28, prism-me's orthogonal features kept,
-  the gate's fixes, #34 (`no-raster-auto`) and #35 (`webgpu-zoom-regression`) merged into it, and #33 adapted (two
-  renamed varyings). Still frames faster everywhere on the M1; turning close up on WebGPU slower (CellPack 12.9 → 21.6
-  ms at 0.1): proposed lane. Upstream candidates on Ludo's word: #35's occlusion edge clamp; WebGL images ignoring a
-  clipping layer (`image.vert`).
+- **Master merged** (#36, Ludo, 2026-11-02; with #33, #34, #35). Lanes closed and their worktrees removed: merge-master,
+  no-raster-auto, webgpu-zoom-regression, marking-cost, plus the scratch worktrees pr2061, master-base,
+  startup-budget-master, marking-merge-check. Kept: `publish` (publish-web.sh), `chimerax-commands` and
+  `particle-bounds` (branches from master, not in prism-me, not upstreamed). Proposed, not started: the WebGPU turning
+  cost close up (CellPack 12.9 → 21.6 ms at 0.1). Upstream candidates on Ludo's word: #35's occlusion edge clamp; WebGL
+  images ignoring a clipping layer (`image.vert`). Parked: volume lighting
+  ([../plans/2026-11-02-volume-lighting.md](../plans/2026-11-02-volume-lighting.md)).
 - **Upstream #2061 merged** (Alexander, 2026-11-02 00:37 UTC, merge c1b8ecb82; giagitom approved). Before merging he
   pushed one fix commit per finding: 1e91e2a62 (WebGL1 Gaussian volume), 885192691 (clip spectral norm), 123f2935e
   (raster rows), 5182289b0 (raster releases items), 879496397 (colours/sizes vs LOD order), bf755a4ce (two-phase after a
