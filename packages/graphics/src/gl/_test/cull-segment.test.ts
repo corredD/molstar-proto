@@ -18,6 +18,7 @@ import { Clip } from '@molstar/core/util/clip';
 import {
   type CullValues,
   createSegmentedMdbList,
+  getAnimationSlack,
   type LodLevelsValue,
   LodView,
   ZeroCullSegment,
@@ -175,6 +176,7 @@ describe('culling a segment', () => {
       null,
       createGraphicsStats(),
       false,
+      0,
     );
     const draws = mdb.list.map((l) => {
       const out: number[] = [];
@@ -200,7 +202,8 @@ describe('culling a segment', () => {
     const cull = (v: CullValues) => {
       const mdb = createSegmentedMdbList();
       const prepared = mdb.prepare(lodLevels, grid.cellCount, false, LodView());
-      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false);
+      const slack = v.animation ? getAnimationSlack(v.animation) : 0;
+      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false, slack);
       return mdb.list.map((l) => {
         const out: number[] = [];
         for (let i = 0; i < l.count; ++i) out.push(l.baseInstances[i], l.instanceCounts[i]);
@@ -255,6 +258,7 @@ describe('culling a segment', () => {
         null,
         createGraphicsStats(),
         false,
+        0,
       );
       const draws = mdb.list.map((l) => {
         const out: number[] = [];
@@ -300,6 +304,7 @@ describe('culling a segment', () => {
       null,
       createGraphicsStats(),
       false,
+      0,
     );
     const draws = mdb.list.map((l) => {
       const out: number[] = [];
@@ -341,7 +346,7 @@ describe('culling a segment', () => {
     const cull = (v: CullValues) => {
       const mdb = createSegmentedMdbList();
       const prepared = mdb.prepare(lodLevels, grid.cellCount, false, LodView());
-      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false);
+      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false, 0);
       const out: number[] = [];
       for (let i = 0; i < mdb.list[0].count; ++i) out.push(mdb.list[0].baseInstances[i], mdb.list[0].instanceCounts[i]);
       return out;
@@ -363,6 +368,59 @@ describe('culling a segment', () => {
 
     // with a clipping layer (its flags exempt groups) nothing is culled by the clip objects
     expect(cull({ ...clipped, dClipping: ValueCell.create(true) })).toEqual(all);
+  });
+
+  // the GPU kernel classifies the sphere grown by the allowance (`cell-cull.wgsl`): a cell the clip object cuts whole
+  // only without it may wiggle out of the cut part
+  it('with wiggling atoms, leaves out what clip objects clip whole of the spheres grown by the wiggle', () => {
+    const { frustum, cameraPlane } = view(Vec3.create(95, 95, -300), Vec3.create(95, 95, 95));
+    const level = [[0, 1e7, 0, 600, 1]] as unknown as LodLevelsValue;
+    const lodLevels = ValueCell.create(level);
+    const objects = Clip.getClip({
+      variant: 'pixel',
+      objects: [
+        {
+          type: 'plane',
+          invert: false,
+          position: Vec3.create(95, 95, 95),
+          rotation: { axis: Vec3.create(1, 0, 0), angle: 20 },
+          scale: Vec3.create(1, 1, 1),
+          transform: Mat4.identity(),
+        },
+      ],
+    } as Clip.Props).objects;
+    const clipped: CullValues = {
+      ...values,
+      lodLevels,
+      dClipObjects: ValueCell.create(true),
+      dClipping: ValueCell.create(false),
+      clipObjects: ValueCell.create(objects),
+    };
+    const cull = (slack: number) => {
+      const mdb = createSegmentedMdbList();
+      const prepared = mdb.prepare(lodLevels, grid.cellCount, false, LodView());
+      mdb.cullSegment(
+        clipped,
+        ZeroCullSegment,
+        prepared,
+        cameraPlane,
+        frustum,
+        null,
+        createGraphicsStats(),
+        false,
+        slack,
+      );
+      const out: number[] = [];
+      for (let i = 0; i < mdb.list[0].count; ++i) out.push(mdb.list[0].baseInstances[i], mdb.list[0].instanceCounts[i]);
+      return out;
+    };
+    // wiggle up to 8 Å an axis
+    const slack = Math.sqrt(3) * 8;
+    const draws = cull(slack);
+    expect(draws).toEqual(referenceDraws(grid, level, frustum, cameraPlane, objects, slack)[0]);
+    expect(draws).not.toEqual(referenceDraws(grid, level, frustum, cameraPlane, objects)[0]);
+    // still: as before
+    expect(cull(0)).toEqual(referenceDraws(grid, level, frustum, cameraPlane, objects)[0]);
   });
 
   // instance clipping tests an instance's center: the cells' and batches' spheres shrunk to their centers
@@ -396,7 +454,7 @@ describe('culling a segment', () => {
     const drawn = (v: CullValues) => {
       const mdb = createSegmentedMdbList();
       const prepared = mdb.prepare(lodLevels, grid.cellCount, false, LodView());
-      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false);
+      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false, 0);
       const slots = new Uint8Array(grid.cellOffsets[grid.cellCount]);
       const l = mdb.list[0];
       for (let i = 0; i < l.count; ++i) slots.fill(1, l.baseInstances[i], l.baseInstances[i] + l.instanceCounts[i]);

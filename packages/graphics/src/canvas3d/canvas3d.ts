@@ -1424,6 +1424,9 @@ namespace Canvas3D {
       const motionOn = p.motion.lodScale > 1 || p.motion.pixelScale < 1;
       const moving = motionOn && currentTime - lastCameraChange < p.motion.holdMs;
       const rested = (motionLodScale > 1 || motionPixelScale < 1) && !moving;
+      // the Hi-Z levels are of the moving frames' coarse levels: the frame at rest tests none (the camera is still, no
+      // frame follows to test its own), but where GPU culling's second phase tests the frame's own (`hiZ.twoPhase`)
+      if (rested && !(hiZ.props.gpu && hiZ.props.twoPhase)) hiZ.clear();
       motionLodScale = moving ? p.motion.lodScale : 1;
       renderer.setLodScale(motionLodScale);
       const pixelScale = moving ? p.motion.pixelScale : 1;
@@ -2188,9 +2191,13 @@ namespace Canvas3D {
      */
     let layerMovesOnly = false;
 
-    /** committed objects recorded and made ready (warm-up, frames held for props being prepared) */
+    /**
+     * committed objects recorded and made ready (warm-up, frames held for props being prepared); the prepared objects
+     * of what was committed released
+     */
     function prepareCommitted(renderables: ReadonlyArray<GraphicsRenderable>) {
       precompileRecorder.record(renderables);
+      releasePreparedObjects();
       // frames held for the props (`holdFramesUntilPrepared`) wait for the new scene too: the hold's prepare had the
       // previous one, so the first frame after it would compile (and skip) the draws of what was added meanwhile
       if (propsPreparing > 0) holdFramesUntilPrepared();
@@ -2217,12 +2224,7 @@ namespace Canvas3D {
         return false;
       }
       commitQueueSize.next(0);
-      precompileRecorder.record(scene.renderables);
-      releasePreparedObjects();
-      // frames held for the props (`holdFramesUntilPrepared`) wait for the new scene too: the hold's prepare had the
-      // previous one, so the first frame after it would compile (and skip) the draws of what was added meanwhile
-      if (propsPreparing > 0) holdFramesUntilPrepared();
-      scheduleWarmUp();
+      prepareCommitted(scene.renderables);
       const keepCamera = layerMovesOnly;
       layerMovesOnly = false;
 
