@@ -78,6 +78,7 @@ import {
   type CullValues,
   type Frame,
   createClipInfoCache,
+  type AnimationValues,
 } from '../renderable.js';
 
 export type MergeableValues = RenderableValues & BaseValues;
@@ -1258,6 +1259,12 @@ export function MergedRenderable(
     clipObjects: v.clipObjects,
     dClipVariant: v.dClipVariant,
     invariantBoundingSphere: v.invariantBoundingSphere,
+    // the merged object's animation (its material), the member's per-group wiggle
+    animation: {
+      ...(merged.values as unknown as AnimationValues),
+      dWiggle: (v as unknown as AnimationValues).dWiggle,
+      uWiggleStrength: (v as unknown as AnimationValues).uWiggleStrength,
+    },
   }));
 
   /**

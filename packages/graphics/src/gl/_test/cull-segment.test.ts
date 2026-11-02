@@ -67,6 +67,7 @@ function referenceDraws(
   frustum: Frustum3D,
   cameraPlane: Plane3D,
   clip?: Clip.Objects,
+  slack = 0,
 ) {
   const draws: number[][] = levels.map(() => []);
   const s = Sphere3D();
@@ -75,6 +76,7 @@ function referenceDraws(
     const count = grid.cellOffsets[c + 1] - begin;
     if (count === 0) continue;
     Sphere3D.fromArray(s, grid.cellSpheres, c * 4);
+    s.radius += slack;
     if (!Frustum3D.intersectsSphere3D(frustum, s)) continue;
     if (clip && Clip.classifySphere(clip, s) === Clip.SphereClass.All) continue;
     const d = Plane3D.distanceToPoint(cameraPlane, s.center);
@@ -185,6 +187,33 @@ describe('culling a segment', () => {
     expect(reference.flat().length).toBeGreaterThan(0);
   });
 
+  it('with wiggling atoms, draws the cells whose spheres grown by the wiggle reach into view', () => {
+    const { frustum, cameraPlane } = view(Vec3.create(300, 95, -100), Vec3.create(95, 95, 95));
+    const value = [[0, 1e7, 0, 600, 1]] as unknown as LodLevelsValue;
+    const lodLevels = ValueCell.create(value);
+    // wiggle up to 5 Å an axis (its speed and frequency on)
+    const animation = {
+      uWiggleAmplitude: ValueCell.create(5),
+      uWiggleSpeed: ValueCell.create(1),
+      uWiggleFrequency: ValueCell.create(1),
+    };
+    const cull = (v: CullValues) => {
+      const mdb = createSegmentedMdbList();
+      const prepared = mdb.prepare(lodLevels, grid.cellCount, false, LodView());
+      mdb.cullSegment(v, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false);
+      return mdb.list.map((l) => {
+        const out: number[] = [];
+        for (let i = 0; i < l.count; ++i) out.push(l.baseInstances[i], l.instanceCounts[i]);
+        return out;
+      });
+    };
+    const draws = cull({ ...values, lodLevels, animation });
+    expect(draws).toEqual(referenceDraws(grid, value, frustum, cameraPlane, undefined, Math.sqrt(3) * 5));
+    expect(draws).not.toEqual(referenceDraws(grid, value, frustum, cameraPlane));
+    // still: as before
+    expect(cull({ ...values, lodLevels })).toEqual(referenceDraws(grid, value, frustum, cameraPlane));
+  });
+
   // rework: CPU culling by instance for objects with levels of detail (07dbe3a12, 8c5e17359; dropped in the merge of
   // master: `cullSegment` culls by cell, the instances' own spheres and `padding` are not read)
   it.skip.each([
@@ -240,7 +269,8 @@ describe('culling a segment', () => {
     },
   );
 
-  // rework: the wiggle and tumble allowance of CPU culling by instance (4ac650258; `animation` is not read)
+  // rework: the wiggle and tumble allowance of CPU culling by instance (4ac650258; cells and batches grow by it, the
+  // test above, not instances: there is no culling by instance)
   it.skip('with wiggling atoms, draws the instances whose spheres grown by the wiggle reach into view', () => {
     const { frustum, cameraPlane } = view(Vec3.create(300, 95, -100), Vec3.create(95, 95, 95));
     const value = [[0, 1e7, 0, 600, 1]] as unknown as LodLevelsValue;

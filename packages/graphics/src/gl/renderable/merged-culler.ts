@@ -35,7 +35,7 @@ import {
 } from '../compute/cell-cull.js';
 import { IndirectRecordBytes, type MultiDrawBaseData } from '../render-item.js';
 import type { GraphicsResources } from '../context.js';
-import { type LodLevelsValue, LodView } from '../renderable.js';
+import { type AnimationValues, getAnimationSlack, type LodLevelsValue, LodView } from '../renderable.js';
 import { InstanceDataVec4s, type Merged, type MergeableValues, packInstanceData } from './merged.js';
 import { packAffineRows } from '../affine-rows.js';
 
@@ -722,27 +722,6 @@ export function createMergedCuller(
    * the level's range, and a level's where all the instances go to the raster (`rasterized` holds at their nearest
    * point, and so further away). False where nothing changed
    */
-  /**
-   * How far the animations may move a sphere (`animation.wgsl`): the wiggle up to its amplitude (and a group's own, at
-   * most its strength) an axis, the tumble's offset up to its amplitude an axis (divided by the sphere's radius, at
-   * least 1); rotations of the tumble pivot on the instance's sphere
-   */
-  function getAnimationSlack() {
-    type AnimationValues = { [k: string]: ValueCell<unknown> | undefined };
-    const v = values as unknown as AnimationValues;
-    const n = (k: string) => (v[k]?.ref.value as number | undefined) ?? 0;
-    let wiggle = 0;
-    if (n('uWiggleSpeed') > 0 && n('uWiggleFrequency') > 0) {
-      let group = 0;
-      for (const m of members as unknown as AnimationValues[]) {
-        if (m.dWiggle?.ref.value) group = Math.max(group, (m.uWiggleStrength?.ref.value as number | undefined) ?? 1);
-      }
-      wiggle = n('uWiggleAmplitude') + group;
-    }
-    const tumble = n('uTumbleSpeed') > 0 && n('uTumbleFrequency') > 0 ? n('uTumbleAmplitude') : 0;
-    return Math.sqrt(3) * (wiggle + tumble);
-  }
-
   function predictRecords(cameraPlane: Plane3D, frustum: Frustum3D, raster: MergedRasterParams | undefined) {
     const levels = Math.max(1, levelCount);
     const size = (rasterRegions ? 2 : 1) * levels * segmentCount;
@@ -855,7 +834,10 @@ export function createMergedCuller(
       secondDispatched = false;
       const [min, max] = values.uLod.ref.value as Vec4;
       setLevelRanges(lod);
-      ValueCell.updateIfChanged(cellValues.uAnimationSlack, getAnimationSlack());
+      ValueCell.updateIfChanged(
+        cellValues.uAnimationSlack,
+        getAnimationSlack(values as unknown as AnimationValues, members as unknown as AnimationValues[]),
+      );
       const rasterChanged =
         copyValues.uRasterRadius.ref.value !== (raster?.radius ?? 0) ||
         copyValues.uRasterScale.ref.value !== (raster?.scale ?? 0) ||
