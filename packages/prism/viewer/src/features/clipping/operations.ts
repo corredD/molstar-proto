@@ -815,8 +815,10 @@ async function commit(
         ) ?? -1;
       if (at >= 0) remapLayer(state, b, cell, [at]);
     }
-    // a cut written takes the scene's variant (clipping.settings), so every cut representation cuts the same way
-    b.to(cell).update(withObject(cell.transform.params, previous, next, settingsOf(ctx.plugin).variant) as never);
+    // a cut put on a representation takes the scene's variant (clipping.settings), so every cut representation cuts
+    // the same way; a cut moved or changed keeps the variant the representation has (an app may set it for one alone)
+    const variant = previous ? undefined : settingsOf(ctx.plugin).variant;
+    b.to(cell).update(withObject(cell.transform.params, previous, next, variant) as never);
   }
   await ctx.plugin.runTask(state.updateTree(b));
   await reconcileDrawings(ctx);

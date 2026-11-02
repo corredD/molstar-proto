@@ -42,9 +42,11 @@ code is in `src/sources/clipping` (the viewer's boundary: only sources and opera
 - **A refused edit** reloads the form from the cut (no state change would).
 - **Settings** (`settings`): `variant` (pixel: through, pixel by pixel; instance: whole copies left out by their center)
   and `solidSurface` (a cut surface closed by a cap). The variant is one for the scene: the component options' clip and
-  every cut representation's (their own clip, which the options leave), and a cut written takes it (`withObject`). Why:
-  Mol\* keeps it per representation, so a per-cut choice would change the other cuts on the same representations. Solid
-  surface is the look's default (api.md §2, "Look"): a representation with its own keeps it.
+  every cut representation's (their own clip, which the options leave), and a cut put on a representation takes it
+  (`withObject`); a cut moved or changed keeps the variant its representations have (an app may set one alone:
+  prism-me's Clip whole, `stage.clipWhole`; a drag's release reset it). Why: Mol\* keeps it per representation, so a
+  per-cut choice would change the other cuts on the same representations. Solid surface is the look's default (api.md
+  §2, "Look"): a representation with its own keeps it.
 
 ## 3. The section
 
