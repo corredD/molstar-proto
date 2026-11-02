@@ -162,6 +162,12 @@ function objectRadius(target: ParticleTarget | undefined): number {
   return sphere?.radius ?? 0;
 }
 
+/** The size of a particle's handle: at least as big as what it moves (`particleRadius`, the list's for the particle) */
+export function handleSize(target: ParticleTarget | undefined, particleRadius: number): number {
+  // past the object drawn on the particle (its radius), else the particle's own
+  return Math.max(objectRadius(target) * 1.6, particleRadius * 3, MinHandleSize);
+}
+
 /** The local handle on a particle while shown: its list, the particle, what it edits */
 export class ParticleHandles {
   readonly #target = observableState<ParticleHandleTarget | undefined>(undefined);
@@ -269,9 +275,7 @@ export class ParticleHandles {
     const t = this.#target.value;
     const data = t ? this.#particles(t.list) : undefined;
     if (!t || !data || t.index >= data.count) return [];
-    // at least as big as what it moves: past the object drawn on the particle (its radius), else the particle's own
-    const r = data.radii?.[t.index] ?? 0;
-    const size = Math.max(objectRadius(data.targetMapping?.get(data.targets[t.index])) * 1.6, r * 3, MinHandleSize);
+    const size = handleSize(data.targetMapping?.get(data.targets[t.index]), data.radii?.[t.index] ?? 0);
     return [
       {
         key: `${t.list}:${t.index}`,
