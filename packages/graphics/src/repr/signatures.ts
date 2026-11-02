@@ -239,8 +239,8 @@ export function withMergedSignatures(
         (props.gpuCulling ?? false) as GpuCullingValue,
         instances,
         objects * Math.max(1, levels),
+        graphics?.capabilities.atomicMinMax64 ? spheres : 0,
         spheres,
-        !!graphics?.capabilities.atomicMinMax64,
       );
     const gpu = resolve(0);
     const gpuSpheres = resolve(spheres ?? 0);

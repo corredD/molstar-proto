@@ -151,17 +151,18 @@ export const AutoGpuCullingMinSpheres = 1_000_000;
 
 /**
  * Resolves the `gpuCulling` param value for `instanceCount` instances drawn by `drawCount` segments times levels;
- * `spheres`: the spheres of those instances, were they spheres; `raster`: whether the device has the sphere raster
+ * `rasterSpheres`: the spheres of those instances the sphere raster could draw, 0 where the device has no raster;
+ * `spheres`: the spheres of those instances, were they spheres, on any device
  */
 export function resolveGpuCulling(
   value: GpuCullingValue,
   instanceCount: number,
   drawCount: number,
+  rasterSpheres = 0,
   spheres = 0,
-  raster = false,
 ): boolean {
   if (value === 'auto') {
-    if (raster && spheres >= AutoGpuCullingMinRasterSpheres) return true;
+    if (rasterSpheres >= AutoGpuCullingMinRasterSpheres) return true;
     const perDraw = instanceCount >= AutoGpuCullingThreshold * Math.max(1, drawCount);
     return perDraw && (instanceCount >= AutoGpuCullingMinInstances || spheres >= AutoGpuCullingMinSpheres);
   }

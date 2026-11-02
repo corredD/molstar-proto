@@ -138,8 +138,8 @@ export function mergeRenderObjectsByType<V>(
           spheres += instanceCount.ref.value * uVertexCount.ref.value;
         }
       }
-      const raster = !!graphics?.capabilities.atomicMinMax64;
-      const gpu = gpuSupported && resolveGpuCulling(gpuCulling, instances, draws, spheres, raster);
+      const rasterSpheres = graphics?.capabilities.atomicMinMax64 ? spheres : 0;
+      const gpu = gpuSupported && resolveGpuCulling(gpuCulling, instances, draws, rasterSpheres, spheres);
       const merge = gpu || (group.length >= 2 && resolveRenderMerged(renderMerged, group.length));
       if (!merge) return;
 
