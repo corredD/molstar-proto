@@ -1051,9 +1051,11 @@ export function createCullView() {
   };
 }
 
-/** The cells of `values` culling reads (`createCullView`) */
+/** The cells of `values` culling reads (`createCullView`), the animation's with them (its allowance, `cullSegment`) */
 export function getCullCells(values: CullValues): (ValueCell<unknown> | undefined)[] {
+  const animation = values.animation ? Object.values(values.animation) : [];
   return [
+    ...animation,
     values.drawCount,
     values.instanceCount,
     values.uLod,
