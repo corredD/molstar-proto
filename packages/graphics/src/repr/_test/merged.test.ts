@@ -59,11 +59,11 @@ describe('merging render objects', () => {
 
   it('culls on the GPU from many spheres the raster could draw', () => {
     const min = AutoGpuCullingMinRasterSpheres;
-    expect(resolveGpuCulling('auto', 100, 100, min, true)).toBe(true);
-    expect(resolveGpuCulling('auto', 100, 100, min - 1, true)).toBe(false);
-    expect(resolveGpuCulling(false, 100, 100, min, true)).toBe(false);
-    // without the raster as many spheres are not enough
-    expect(resolveGpuCulling('auto', 100, 100, min)).toBe(false);
+    expect(resolveGpuCulling('auto', 100, 100, min)).toBe(true);
+    expect(resolveGpuCulling('auto', 100, 100, min - 1)).toBe(false);
+    expect(resolveGpuCulling(false, 100, 100, min)).toBe(false);
+    // without the raster (no raster spheres) as many spheres are not enough
+    expect(resolveGpuCulling('auto', 100, 100, 0, min)).toBe(false);
   });
 
   it('culls on the GPU from many spheres without the raster, with many instances per draw', () => {
@@ -73,12 +73,12 @@ describe('merging render objects', () => {
     const draws = 19 * 4;
     const instances = AutoGpuCullingThreshold * draws;
     expect(instances).toBeLessThan(AutoGpuCullingMinInstances);
-    expect(resolveGpuCulling('auto', instances, draws, min)).toBe(true);
-    expect(resolveGpuCulling('auto', instances, draws, min - 1)).toBe(false);
+    expect(resolveGpuCulling('auto', instances, draws, 0, min)).toBe(true);
+    expect(resolveGpuCulling('auto', instances, draws, 0, min - 1)).toBe(false);
     // few instances per draw (a PDB entry's units, one object each): nothing to cull by instance
-    expect(resolveGpuCulling('auto', instances - 1, draws, min * 10)).toBe(false);
+    expect(resolveGpuCulling('auto', instances - 1, draws, 0, min * 10)).toBe(false);
     // one large object alone
-    expect(resolveGpuCulling('auto', AutoGpuCullingThreshold - 1, 1, min * 10)).toBe(false);
+    expect(resolveGpuCulling('auto', AutoGpuCullingThreshold - 1, 1, 0, min * 10)).toBe(false);
   });
 
   it('merges a few instances of many spheres to cull them on the GPU, without the raster', () => {
