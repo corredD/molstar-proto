@@ -79,17 +79,19 @@ not toggled: the clamp alone explains the regression and puts both models below 
   turn reveals by parallax among spheres that reach past the view, which zoomed in is nearly all of them (PetWorld at
   0.02, 3 frames of 2°: 13,173 of 716,800 pixels; 94 still missing at rest after; master 0).
 - **Kept**: clamped only where the pyramid is of the view culled for (its frustum's planes the culled ones: the second
-  phase, a still camera; `uHiZClamp`, set by the culler), 9cfe6151e. Exact with one phase and two (no pixel differs from
-  no occlusion, still or after 3 turning frames, both models, at 1, 0.1, 0.02; master's own one-phase lag on CellPack,
-  up to 1,290 pixels, unchanged). Turning 1° a frame it costs little against the cap test (CellPack 0.1 / 0.02 20.9 /
-  12.6 against 19.0 / 12.2 ms), no cap math and no plane uniforms.
+  phase, a still camera; `uHiZClamp`, set by the culler), 9cfe6151e. Nothing lost that master draws: with two phases
+  (the default) no pixel differs from no occlusion, still or after 3 turning frames, both models, at 1, 0.1 and 0.02;
+  with one phase still frames the same, turning frames master's own one-phase lag (CellPack up to 1,290 pixels)
+  unchanged. Turning 1° a frame it costs little against the cap test (CellPack 0.1 / 0.02 20.9 / 12.6 against 19.0 /
+  12.2 ms), no cap math and no plane uniforms.
 - **The sphere raster** includes the same `occluded()`: its `hiZClampable()` is false (master's rule; one phase for
   unmerged objects, and its kernels never compile on this M1, so left unchanged).
 - **Upstreamable**: master's own defect (a performance gap, not a wrong image): master never clamps although at the
-  pyramid's own view (every second phase, every still frame) the clamp is exact. The patch:
-  `git diff c146545a9 9cfe6151e -- packages/graphics packages/plugin/headless` (two commits, 6f7305d78 then 9cfe6151e
-  over the same files; squashed for upstream). The test uses prism-me's `countInView` helper (not on master): it goes
-  with the test.
+  pyramid's own view (every second phase, every still frame) the clamp is exact. The patch is the lane's code commits
+  over master's files, without the merge of the integration branch between them: `git diff 6d1833f2d <head> -- packages`
+  (6f7305d78 the cap test, 9cfe6151e the same-view rule in its place, 241f9c025 the second phase's test, 5b685898f the
+  texel indices; 5 files). Squashed into one commit when it goes upstream (a lane from `origin/master`, on Ludo's word).
+  The re-enabled test uses prism-me's `countInView` helper (not on master): it goes with the test.
 
 ## Results
 
@@ -118,6 +120,21 @@ lane (1367). PetWorld in F and G with `gpuCulling: true` (E merged it by #28's r
 - `merge-master.md`'s changelog line "No longer in prism-me: ... the occlusion test's rectangle clamped at the view's
   edges" holds no longer once this merges (the coordinator's file).
 - Rework items 3 (padding), 5 (Morton) and 4 (clusters) not built: the still-frame regression needs none of them.
+
+## Review
+
+Reviewer (Opus) then skeptic (Opus) on `origin/me/merge-master...HEAD`: 0 must-fix, 3 should-fix, 2 nits; the skeptic
+confirmed S1-S3 and N1, refuted N2 as reachable (kept as a nit), added N3 and N4.
+
+| finding                                                                                       | verdict                   | done                                                       |
+| --------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------------------------------------- |
+| S1 the upstream patch range crossed the merge (13 files, not 5)                               | confirmed                 | range fixed above (docs)                                   |
+| S2 the changelog claimed no-occlusion images with one phase while turning                     | confirmed                 | changelog and Step 2 reworded (docs)                       |
+| S3 nothing tested the clamp in the second phase                                               | confirmed (probe runs)    | 241f9c025: fails with the second phase's flag left false   |
+| N1 the plans do not record the rule                                                           | confirmed                 | `two-phase-culling.md` "What reaches past the view" (docs) |
+| N2 x0, y0 not held in the level                                                               | refuted as reachable; nit | 5b685898f                                                  |
+| N3 the bounds check after the loop no longer fires                                            | confirmed                 | 5b685898f                                                  |
+| N4 `hiZProjectSphere` ignores an off-centre projection (jitter, crop): master's, pre-existing | plausible                 | left open (master's code; noted for upstream)              |
 
 ## Learned
 
