@@ -13,7 +13,7 @@ import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
   AutoGpuCullingMinInstances,
-  AutoGpuCullingMinVertices,
+  AutoGpuCullingMinRasterSpheres,
   AutoGpuCullingThreshold,
   resolveGpuCulling,
 } from '@molstar/graphics/geo/geometry/base';
@@ -53,8 +53,17 @@ describe('merging render objects', () => {
     expect(resolveGpuCulling(false, 1e6, 1)).toBe(false);
   });
 
-  it('culls on the GPU from many vertices drawn at full detail, with enough instances to cull one by one', () => {
-    const vertices = AutoGpuCullingMinVertices;
+  it('culls on the GPU from many spheres the raster could draw', () => {
+    const min = AutoGpuCullingMinRasterSpheres;
+    expect(resolveGpuCulling('auto', 100, 100, min)).toBe(true);
+    expect(resolveGpuCulling('auto', 100, 100, min - 1)).toBe(false);
+    expect(resolveGpuCulling(false, 100, 100, min)).toBe(false);
+  });
+
+  // rework: gpuCulling auto from many vertices on devices without the sphere raster (3636fff0f, dropped for master's
+  // raster rule d65fc4bfd; `AutoGpuCullingMinVertices` was 10 M, the fourth argument was the vertices at full detail)
+  it.skip('culls on the GPU from many vertices drawn at full detail, with enough instances to cull one by one', () => {
+    const vertices = 10_000_000;
     // few instances of large members (mesoscale: PetWorld's proteins), per instance a test that drops millions of vertices
     expect(resolveGpuCulling('auto', AutoGpuCullingThreshold, 19 * 4, vertices)).toBe(true);
     expect(resolveGpuCulling('auto', AutoGpuCullingThreshold, 19 * 4, vertices - 1)).toBe(false);

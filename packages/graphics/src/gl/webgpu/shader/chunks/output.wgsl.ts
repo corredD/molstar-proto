@@ -176,9 +176,9 @@ export function depth_output_wgsl(materialOpacity = '1.0') {
             discard;
         #endif
         #if defined(dTransparency)
-            var dta = 1.0 - in.vTransparency;
+            var dta = 1.0 - in.vTransparencyEmissive.x;
             #if defined(dVaryingGroup)
-                if (in.vTransparency < 0.1) {
+                if (in.vTransparencyEmissive.x < 0.1) {
                     dta = 1.0; // hard cutoff to avoid artifacts
                 }
             #endif
@@ -194,7 +194,7 @@ export function depth_output_wgsl(materialOpacity = '1.0') {
     } else if (depthRenderMask == MaskTransparent) {
         var alpha = depthAlpha;
         #if defined(dTransparency)
-            alpha *= 1.0 - in.vTransparency;
+            alpha *= 1.0 - in.vTransparencyEmissive.x;
         #endif
         #if defined(dXrayShaded)
             alpha = calcXrayShadedAlpha(alpha, normal);
@@ -220,7 +220,7 @@ export function depth_output_wgsl(materialOpacity = '1.0') {
 export const emissive_output_wgsl = /* wgsl */ `
     var emissiveValue = uMaterial.uEmissive;
     #if defined(dEmissive)
-        emissiveValue += in.vEmissive;
+        emissiveValue += in.vTransparencyEmissive.y;
     #endif
     var emissiveAlpha = uMaterial.uAlpha;
     #if defined(dXrayShaded)
@@ -238,7 +238,7 @@ export const emissive_output_wgsl = /* wgsl */ `
     }
     // glow with the object's own color so emissive isn't double-counted via the lit buffer
     #if defined(dUsePalette)
-        var emissiveColor = sample_tPalette(vec2<f32>(in.vPaletteV, 0.5)).rgb;
+        var emissiveColor = sample_tPalette(vec2<f32>(in.vColor.w, 0.5)).rgb;
     #elif defined(dColorType_uniform)
         var emissiveColor = uMaterial.uColor;
     #elif defined(dColorType_varying)
@@ -252,8 +252,8 @@ export const emissive_output_wgsl = /* wgsl */ `
     let emissiveFactor = emissiveValue * emissiveAlpha;
     var emissiveMaterial = vec4<f32>(emissiveColor * emissiveFactor, emissiveFactor);
     #if defined(dTransparency)
-        var emissiveTa = 1.0 - in.vTransparency;
-        if (in.vTransparency < 0.09) {
+        var emissiveTa = 1.0 - in.vTransparencyEmissive.x;
+        if (in.vTransparencyEmissive.x < 0.09) {
             emissiveTa = 1.0; // hard cutoff looks better
         }
         emissiveMaterial *= emissiveTa;

@@ -2,48 +2,36 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
- * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Clip } from '@molstar/core/util/clip';
+import { ClipStorageVec4s, getCullClipCount, getInstanceClipCount, packStorageClipObjects } from '../clip-storage.js';
 import { ValueCell } from '@molstar/core/util';
+import { isDebugMode } from '@molstar/core/util/debug';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
-import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
+import type { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import type { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import type { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
 import type { ComputeContext, ComputeKernel, KernelRequest, StorageBuffer } from '../compute.js';
 import {
   CellCullKernel,
   CellCullSchema,
-  ClusterCopyKernel,
-  ClusterCopySchema,
-  ClusterDispatchKernel,
-  ClusterDispatchSchema,
-  CullArgsSecondKernel,
-  CullArgsSecondSchema,
-  CullSnapshotKernel,
-  CullSnapshotSchema,
   CullArgsKernel,
   CullArgsSchema,
   InstanceCopyKernel,
   InstanceCopySchema,
   MaxCullLevels,
   type OcclusionPyramid,
+  createEmptyHiZ,
+  createHiZValues,
+  setHiZValues,
 } from '../compute/cell-cull.js';
-
-/** A 1×1 pyramid texture, bound while the cells are not tested for occlusion */
-function createEmptyHiZ(resources: GraphicsResources): Texture {
-  const texture = resources.texture('image-float32', 'r', 'float', 'nearest');
-  // loaded: storage of its own (a defined texture gets it lazily)
-  texture.load({ array: new Float32Array(1), width: 1, height: 1 });
-  return texture;
-}
 import { IndirectRecordBytes, type MultiDrawBaseData } from '../render-item.js';
 import type { GraphicsResources } from '../context.js';
-import type { Texture } from '../texture.js';
-import { Vec2 } from '@molstar/core/math/linear-algebra/3d/vec2';
-import { type AnimationValues, getAnimationSlack, type LodLevelsValue, LodView } from '../renderable.js';
+import { type LodLevelsValue, LodView } from '../renderable.js';
 import { InstanceDataVec4s, type Merged, type MergeableValues, packInstanceData } from './merged.js';
+import { packAffineRows } from '../affine-rows.js';
 
 /**
  * GPU culling of a merged render object by the cells of its members' instance grids (`merged-render-objects.md` GPU
@@ -60,8 +48,6 @@ export interface MergedCuller {
     readonly aTransform: ValueCell<StorageBuffer>;
     readonly aInstance: ValueCell<StorageBuffer>;
     readonly aSegment: ValueCell<StorageBuffer>;
-    readonly aSegmentSphere: ValueCell<StorageBuffer>;
-    readonly aSegmentLod: ValueCell<StorageBuffer>;
   };
   /** the first instance of the identity region */
   readonly identityBase: number;
@@ -77,54 +63,182 @@ export interface MergedCuller {
     frustum: Frustum3D,
     lod: LodView,
     pyramid?: OcclusionPyramid,
-    twoPhase?: boolean,
+    raster?: MergedRasterParams,
   ) => boolean;
+  /** whether `dispatchSecond` is to run for the last `dispatch`: it culled anew, against a pyramid */
+  readonly secondPending: boolean;
   /**
-   * Two-phase occlusion (after `dispatch` with `twoPhase`, the first phase's draws): the instances and clusters not
-   * visible last frame, tested against `pyramid` (this frame's, of the first phase's depth; none: all of them in view),
-   * into the second phase's records (`getLists` with `second`); what is visible now for the next frame. False where
-   * there is no second phase this frame (none dispatched, or the last's results stand)
+   * The second phase of the last `dispatch` (no pass open): the instances it left out tested against `pyramid`, of the
+   * frame's depth so far with the frame's camera, those visible for `getSecondLists`; what the first drew stays hidden
+   * or not as it is, its depth part of the frame's, so what this leaves out is hidden in the finished frame. Afterwards
+   * `getLists` draw both. No pyramid: nothing, the frame stays as the first phase left it
    */
-  dispatchSecond: (pyramid?: OcclusionPyramid) => boolean;
+  dispatchSecond: (pyramid: OcclusionPyramid | undefined) => boolean;
+  /** whether `dispatchSecond` ran for the last `dispatch` */
+  readonly secondDispatched: boolean;
+  /** `getLists` for the instances of the second phase alone */
+  getSecondLists: (levels: readonly MultiDrawBaseData[], withRaster?: boolean) => MultiDrawBaseData[];
+  /** per level its indirect list, with the uniforms of the level lists of the CPU culling (`levels`) */
+  getLists: (levels: readonly MultiDrawBaseData[], withRaster?: boolean) => MultiDrawBaseData[];
   /**
-   * Whether the last dispatch tested occlusion against a pyramid drawn at its view and levels (or none): else a frame
-   * culled against another view's (after a camera change, a level scale) may leave out what shows; a frame more settles
-   * it (`Renderer.gpuCullUnsettledCount`)
+   * what the sphere raster draws from (`sphere-raster.ts`): the instances of the raster regions of the last `dispatch`;
+   * undefined where it had no raster parameters
    */
-  readonly settled: boolean;
-  /**
-   * per level its indirect list, with the uniforms of the level lists of the CPU culling (`levels`); `second`: the
-   * second phase's (two-phase occlusion), else all instances drawn
-   */
-  getLists: (levels: readonly MultiDrawBaseData[], second?: boolean) => MultiDrawBaseData[];
+  getRasterInput: () => MergedRasterInput | undefined;
+  /** whether the lists draw only the records with instances (`compactRecords`) */
+  readonly recordsCompact: boolean;
+  /** advances where the records the lists draw changed: recordings of them no longer hold */
+  readonly recordsVersion: number;
   destroy: () => void;
+}
+
+/**
+ * The compacted instances of a dispatch for kernels drawing them (the sphere raster): a region per level and segment,
+ * its count, vertex count and first vertex in `records` (the indirect records, level-major: `j * segmentCount + s`)
+ */
+export interface MergedRasterInput {
+  /** the transforms' affine rows, three vec4s an instance */
+  readonly transforms: StorageBuffer;
+  /** `aInstance`, a float an instance */
+  readonly instances: StorageBuffer;
+  /** `aSegment`, a vec4 an instance */
+  readonly segments: StorageBuffer;
+  readonly records: StorageBuffer;
+  /** the second phase's records (`MergedCuller.dispatchSecond`), as `records` */
+  readonly secondRecords: StorageBuffer;
+  /** whether the second phase ran for this dispatch */
+  readonly secondDispatched: boolean;
+  /** u32 words a record (the first instance its last) */
+  readonly recordWords: number;
+  /** the levels' lists (at least 1), the levels of the first member (0 without) */
+  readonly levels: number;
+  readonly levelCount: number;
+  readonly lodLevels: LodLevelsValue | undefined;
+  readonly instanceCount: number;
+  readonly segmentCount: number;
+  /** chunks of 64 spheres of all regions full (each segment's instances at each level) */
+  readonly chunkCapacity: number;
+  /** advances with each dispatch: what the regions hold changed */
+  readonly dispatchVersion: number;
+  /** the raster regions' first record and first slot (after the levels' regions) */
+  readonly recordBase: number;
+  readonly slotBase: number;
+}
+
+/**
+ * The sphere raster's split of a dispatch (`sphere-compute-raster.md`, the split per instance): instances whose largest
+ * sphere is at most `radius` pixels at their nearest point, in front of the `near` plane, go into raster regions after
+ * the levels' (`MergedRasterInput`); the impostors draw the rest (`getLists` without them)
+ */
+export interface MergedRasterParams {
+  readonly radius: number;
+  /** pixels per Å of radius over the distance: the projection's focal scale times half the viewport */
+  readonly scale: number;
+  readonly near: number;
+}
+
+/**
+ * The cells culled on the GPU per side of a grid cell: the grid's cells (`cellSize`, 200 Å by default) also order the
+ * CPU culling's draws, where finer cells split its ranges into more draws (a grid of 50 Å: 2.3x the draws zoomed into
+ * `postsynstubby_2`); on the GPU cells cost threads, not draws, and finer cells occlude better (4 a side: the opaque
+ * pass 16-19% less there; 8 no better)
+ */
+const GpuCellDivisions = 4;
+
+const SplitBuckets = GpuCellDivisions * GpuCellDivisions * GpuCellDivisions;
+const splitBox = new Float64Array(SplitBuckets * 6);
+const splitCount = new Uint32Array(SplitBuckets);
+const splitCellOf = new Int32Array(SplitBuckets);
+let splitBucket = new Uint8Array(0);
+let splitCenters = new Float64Array(0);
+
+/**
+ * The instances `start` to `end` of a grid cell (`transforms`, the grid's order) split into cells of side `fine` by
+ * their centers (`invariant`'s, transformed): each cell's sphere, as the grid's (the box of the centers expanded by the
+ * invariant radius), appended to `spheres`; `assign` given each instance's cell
+ */
+function splitCell(
+  transforms: Float32Array,
+  invariant: Sphere3D,
+  start: number,
+  end: number,
+  fine: number,
+  spheres: number[],
+  assign: (instance: number, cell: number) => void,
+) {
+  const n = end - start;
+  if (splitBucket.length < n) {
+    splitBucket = new Uint8Array(n);
+    splitCenters = new Float64Array(n * 3);
+  }
+  const [cx, cy, cz] = invariant.center;
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  for (let j = 0; j < n; ++j) {
+    const o = (start + j) * 16;
+    const x = transforms[o] * cx + transforms[o + 4] * cy + transforms[o + 8] * cz + transforms[o + 12];
+    const y = transforms[o + 1] * cx + transforms[o + 5] * cy + transforms[o + 9] * cz + transforms[o + 13];
+    const z = transforms[o + 2] * cx + transforms[o + 6] * cy + transforms[o + 10] * cz + transforms[o + 14];
+    splitCenters[j * 3] = x;
+    splitCenters[j * 3 + 1] = y;
+    splitCenters[j * 3 + 2] = z;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (z < minZ) minZ = z;
+  }
+  splitCount.fill(0);
+  const d = GpuCellDivisions;
+  const index = (v: number, min: number) => Math.min(d - 1, Math.floor((v - min) / fine));
+  for (let j = 0; j < n; ++j) {
+    const x = splitCenters[j * 3];
+    const y = splitCenters[j * 3 + 1];
+    const z = splitCenters[j * 3 + 2];
+    const b = index(x, minX) + d * (index(y, minY) + d * index(z, minZ));
+    splitBucket[j] = b;
+    const o = b * 6;
+    if (splitCount[b] === 0) {
+      splitBox[o] = splitBox[o + 3] = x;
+      splitBox[o + 1] = splitBox[o + 4] = y;
+      splitBox[o + 2] = splitBox[o + 5] = z;
+    } else {
+      if (x < splitBox[o]) splitBox[o] = x;
+      if (y < splitBox[o + 1]) splitBox[o + 1] = y;
+      if (z < splitBox[o + 2]) splitBox[o + 2] = z;
+      if (x > splitBox[o + 3]) splitBox[o + 3] = x;
+      if (y > splitBox[o + 4]) splitBox[o + 4] = y;
+      if (z > splitBox[o + 5]) splitBox[o + 5] = z;
+    }
+    splitCount[b] += 1;
+  }
+  const r = invariant.radius;
+  for (let b = 0; b < SplitBuckets; ++b) {
+    if (splitCount[b] === 0) continue;
+    splitCellOf[b] = spheres.length / 4;
+    const o = b * 6;
+    // the sphere around the box expanded by the radius (`Sphere3D.fromBox3D`)
+    const hx = (splitBox[o + 3] - splitBox[o]) / 2 + r;
+    const hy = (splitBox[o + 4] - splitBox[o + 1]) / 2 + r;
+    const hz = (splitBox[o + 5] - splitBox[o + 2]) / 2 + r;
+    spheres.push(
+      (splitBox[o] + splitBox[o + 3]) / 2,
+      (splitBox[o + 1] + splitBox[o + 4]) / 2,
+      (splitBox[o + 2] + splitBox[o + 5]) / 2,
+      Math.sqrt(hx * hx + hy * hy + hz * hz),
+    );
+  }
+  for (let j = 0; j < n; ++j) assign(start + j, splitCellOf[splitBucket[j]]);
 }
 
 /** The culling's kernels, the same for every object: prepared once a culler is created, or by `Canvas3D.precompile` */
 export const MergedCullKernels: readonly KernelRequest[] = [
   { code: CellCullKernel, schema: CellCullSchema },
   { code: InstanceCopyKernel, schema: InstanceCopySchema },
-  { code: ClusterCopyKernel, schema: ClusterCopySchema },
-  { code: ClusterDispatchKernel, schema: ClusterDispatchSchema },
-  { code: CullSnapshotKernel, schema: CullSnapshotSchema },
-  { code: CullArgsSecondKernel, schema: CullArgsSecondSchema },
   { code: CullArgsKernel, schema: CullArgsSchema },
 ];
 
 /** Floats per instance of the compacted attributes, by name */
-const AttributeFloats = { aTransform: 16, aInstance: 1, aSegment: 3, aSegmentSphere: 4, aSegmentLod: 4 } as const;
-
-/**
- * Spheres a cluster holds at most: level 0 of a member of at least `MinClusteredSpheres` spheres is drawn by clusters of
- * consecutive spheres (in space order within each level's own, `setPositionGroup`), each culled per instance
- * (`cluster-copy`); 256: PetWorld HIV's proteins 2,167 records and 17 MB, a 40% smaller level 0 in view close up than by
- * instances alone (`apps/prism-me/progress/2026-10-31-instance-cull.md`)
- */
-export const ClusterSpheres = 256;
-export const MinClusteredSpheres = 2 * ClusterSpheres;
-
-/** WebGPU's least `maxComputeWorkgroupsPerDimension`: `cluster-copy`'s rows, a cluster each */
-const MaxWorkgroupsPerDimension = 65535;
+const AttributeFloats = { aTransform: 12, aInstance: 1, aSegment: 4 } as const;
 
 const EmptyInt = new Int32Array(0);
 const EmptyUint = new Uint32Array(0);
@@ -145,33 +259,20 @@ export function createMergedCuller(
   const buffer = (label: string) => ValueCell.create(createBuffer(16, label));
   const instanceData = buffer('culled instance data');
   const instanceCells = buffer('culled instance cells');
-  const segmentBases = buffer('culled segment bases');
+  const segmentData = buffer('culled segment data');
   const cellSpheres = buffer('culled cell spheres');
   const cellLevels = buffer('culled cell levels');
   const counters = buffer('culled counters');
   const args = buffer('culled draw arguments');
-  const clusters = buffer('culled clusters');
-  const clusterCounters = buffer('culled cluster counters');
-  const clusterArgs = buffer('culled cluster draw arguments');
-  const clusterDispatch = buffer('culled cluster dispatch');
-  const clusteredSegments = buffer('culled clustered segments');
-  // two-phase occlusion: the counters after phase 1, the second phase's records, the clusters' visibility
-  const counters1 = buffer('culled counters, first phase');
-  const clusterCounters1 = buffer('culled cluster counters, first phase');
-  const args2 = buffer('culled draw arguments, second phase');
-  const clusterArgs2 = buffer('culled cluster draw arguments, second phase');
-  const clusterBits = buffer('culled cluster visibility');
+  const secondArgs = buffer('culled draw arguments, second phase');
   const attributes = {
     aTransform: buffer('culled transforms'),
     aInstance: buffer('culled instances'),
     aSegment: buffer('culled segments'),
-    aSegmentSphere: buffer('culled segment spheres'),
-    aSegmentLod: buffer('culled segment levels'),
   };
 
   const levelCountCell = ValueCell.create(0);
-  /** the view, the levels and the pyramid: the cell test's and the instance test's */
-  const viewValues = {
+  const cellValues = {
     uPlane0: ValueCell.create(Vec4()),
     uPlane1: ValueCell.create(Vec4()),
     uPlane2: ValueCell.create(Vec4()),
@@ -182,96 +283,42 @@ export function createMergedCuller(
     uLodRange: ValueCell.create(Vec4()),
     uLevels: ValueCell.create(Mat4()),
     uLevelCount: levelCountCell,
-    uAnimationSlack: ValueCell.create(0),
-    uHiZ: ValueCell.create(false),
-    uHiZView: ValueCell.create(Mat4()),
-    uHiZProjection: ValueCell.create(Mat4()),
-    uHiZDepthRange: ValueCell.create(Vec2()),
-    uHiZViewport: ValueCell.create(Vec2()),
-    uHiZLevelCount: ValueCell.create(0),
-    uHiZPlane0: ValueCell.create(Vec4()),
-    uHiZPlane1: ValueCell.create(Vec4()),
-    uHiZPlane2: ValueCell.create(Vec4()),
-    uHiZPlane3: ValueCell.create(Vec4()),
-    uHiZPlane4: ValueCell.create(Vec4()),
-    uHiZPlane5: ValueCell.create(Vec4()),
-    uHiZMinLevel: ValueCell.create(0),
-    tHiZ: ValueCell.create(createEmptyHiZ(resources)),
+    uCellCount: ValueCell.create(0),
+    ...createHiZValues(createEmptyHiZ(resources)),
+    uClipObjectCount: ValueCell.create(0),
+    uClipBase: ValueCell.create(0),
+    segmentData,
+    cellSpheres,
+    cellLevels,
   };
-  const cellValues = { ...viewValues, uCellCount: ValueCell.create(0), cellSpheres, cellLevels };
   const emptyHiZ = cellValues.tHiZ.ref.value;
+  // the sphere tests' uniforms shared with the cells' kernel (the same cells, set once per dispatch)
+  const { uCellCount: _, cellSpheres: __, cellLevels: ___, ...sphereTestValues } = cellValues;
   const copyValues = {
-    // the same cells as the cell test's: one write serves both kernels
-    ...viewValues,
+    ...sphereTestValues,
     uInstanceCount: ValueCell.create(0),
     uSegmentCount: ValueCell.create(0),
+    uRasterRadius: ValueCell.create(0),
+    uRasterScale: ValueCell.create(0),
+    uRasterNear: ValueCell.create(0),
+    uRasterLevels: ValueCell.create(0),
+    uClipInstance: ValueCell.create(0),
     uPhase: ValueCell.create(0),
     instanceData,
     instanceCells,
-    segmentBases,
     cellLevels,
     counters,
     transforms: attributes.aTransform,
     instances: attributes.aInstance,
     segments: attributes.aSegment,
-    spheres: attributes.aSegmentSphere,
-    lods: attributes.aSegmentLod,
   };
   const argsValues = {
     uRecordCount: ValueCell.create(0),
     uRecordWords: ValueCell.create(words),
+    uPhase: copyValues.uPhase,
     counters,
     args,
-  };
-  const clusterValues = {
-    ...viewValues,
-    uClusterCount: ValueCell.create(0),
-    uPhase: ValueCell.create(0),
-    clusters,
-    counters,
-    counters1,
-    clusterCounters,
-    clusterBits,
-    transforms: attributes.aTransform,
-    instances: attributes.aInstance,
-    segments: attributes.aSegment,
-    spheres: attributes.aSegmentSphere,
-    lods: attributes.aSegmentLod,
-  };
-  const clusterDispatchValues = {
-    uSegmentCount: ValueCell.create(0),
-    uClusterCount: ValueCell.create(0),
-    counters,
-    clustered: clusteredSegments,
-    dispatchArgs: clusterDispatch,
-  };
-  const snapshotValues = { uRecordCount: ValueCell.create(0), counters, snapshot: counters1 };
-  const clusterSnapshotValues = {
-    uRecordCount: ValueCell.create(0),
-    counters: clusterCounters,
-    snapshot: clusterCounters1,
-  };
-  const argsSecondValues = {
-    uRecordCount: ValueCell.create(0),
-    uRecordWords: ValueCell.create(words),
-    counters,
-    snapshot: counters1,
-    all: args,
-    args: args2,
-  };
-  const clusterArgsSecondValues = {
-    uRecordCount: ValueCell.create(0),
-    uRecordWords: ValueCell.create(words),
-    counters: clusterCounters,
-    snapshot: clusterCounters1,
-    all: clusterArgs,
-    args: clusterArgs2,
-  };
-  const clusterArgsValues = {
-    uRecordCount: ValueCell.create(0),
-    uRecordWords: ValueCell.create(words),
-    counters: clusterCounters,
-    args: clusterArgs,
+    second: secondArgs,
   };
   let kernels: ComputeKernel[] | undefined;
   let preparing = false;
@@ -288,13 +335,6 @@ export function createMergedCuller(
       compute.createKernel(CellCullKernel, CellCullSchema, cellValues),
       compute.createKernel(InstanceCopyKernel, InstanceCopySchema, copyValues),
       compute.createKernel(CullArgsKernel, CullArgsSchema, argsValues),
-      compute.createKernel(ClusterCopyKernel, ClusterCopySchema, clusterValues),
-      compute.createKernel(CullArgsKernel, CullArgsSchema, clusterArgsValues),
-      compute.createKernel(ClusterDispatchKernel, ClusterDispatchSchema, clusterDispatchValues),
-      compute.createKernel(CullSnapshotKernel, CullSnapshotSchema, snapshotValues),
-      compute.createKernel(CullSnapshotKernel, CullSnapshotSchema, clusterSnapshotValues),
-      compute.createKernel(CullArgsSecondKernel, CullArgsSecondSchema, argsSecondValues),
-      compute.createKernel(CullArgsSecondKernel, CullArgsSecondSchema, clusterArgsSecondValues),
     ];
     return true;
   };
@@ -311,7 +351,16 @@ export function createMergedCuller(
   let cellCount = 0;
   let levelCount = 0;
   let identityBase = 0;
-  let clusterCount = 0;
+  let chunkCapacity = 0;
+  /** whether the layout has raster regions (from the first dispatch with raster parameters on) */
+  let rasterRegions = false;
+  /** `getSegmentData` of the layout */
+  let segmentDataCopy: Float32Array | undefined;
+  /** the largest scale of each segment's instances (`rasterized` scales the largest sphere by the instance's) */
+  let segmentScales = new Float32Array(0);
+  let rasterDispatched = false;
+  let secondPending = false;
+  let secondDispatched = false;
 
   function syncLayout() {
     const lodLevels = members[0].lodLevels?.ref.value as LodLevelsValue | undefined;
@@ -319,12 +368,13 @@ export function createMergedCuller(
     const levels = Math.max(1, levelCount);
     instanceCount = values.instanceCount.ref.value;
     segmentCount = segments.count;
-    identityBase = levels * instanceCount;
+    // the levels' regions, with raster regions those again
+    const regions = (rasterRegions ? 2 : 1) * levels;
+    identityBase = regions * instanceCount;
 
     // the cells: per member those of its grid with instances, or one of all its instances without a grid
     const spheres: number[] = [];
-    // per instance its cell, its segment, whether visible last frame (two-phase occlusion), unused
-    const cellOf = new Uint32Array(instanceCount * 4);
+    const cellOf = new Uint32Array(instanceCount * 2);
     for (let s = 0; s < segmentCount; ++s) {
       const member = members[s];
       const base = segments.instanceBases[s];
@@ -333,151 +383,62 @@ export function createMergedCuller(
         const b = member.boundingSphere.ref.value as Sphere3D;
         const c = spheres.length / 4;
         spheres.push(b.center[0], b.center[1], b.center[2], b.radius);
-        for (let i = 0; i < segments.instanceCounts[s]; ++i) cellOf.set([c, s], (base + i) * 4);
+        for (let i = 0; i < segments.instanceCounts[s]; ++i) cellOf.set([c, s], (base + i) * 2);
         continue;
       }
       const { cellOffsets, cellSpheres: gridSpheres, cellCount: gridCells } = grid;
+      const transforms = member.aTransform.ref.value as Float32Array;
+      const invariant = member.invariantBoundingSphere.ref.value as Sphere3D;
+      const fine = grid.cellSize / GpuCellDivisions;
       for (let k = 0; k < gridCells; ++k) {
-        if (cellOffsets[k + 1] === cellOffsets[k]) continue;
-        const c = spheres.length / 4;
-        for (let q = 0; q < 4; ++q) spheres.push(gridSpheres[k * 4 + q]);
-        for (let i = cellOffsets[k]; i < cellOffsets[k + 1]; ++i) cellOf.set([c, s], (base + i) * 4);
+        const start = cellOffsets[k];
+        const end = cellOffsets[k + 1];
+        if (start === end) continue;
+        if (end - start === 1) {
+          const c = spheres.length / 4;
+          for (let q = 0; q < 4; ++q) spheres.push(gridSpheres[k * 4 + q]);
+          cellOf.set([c, s], (base + start) * 2);
+          continue;
+        }
+        splitCell(transforms, invariant, start, end, fine, spheres, (i, c) => cellOf.set([c, s], (base + i) * 2));
       }
     }
     cellCount = spheres.length / 4;
 
-    // the clusters of level 0 (members of grids and levels, of `MinClusteredSpheres` spheres or more): per level's own
-    // range of spheres, cut evenly in at most `ClusterSpheres`; a region after the identity's per cluster
-    const clusterData: number[] = [];
-    const clusterRecords: number[] = [];
-    const clustered = new Uint8Array(segmentCount);
-    let regionBase = identityBase + instanceCount;
-    for (let s = 0; s < segmentCount && levelCount > 0; ++s) {
-      const member = members[s] as MergeableValues & { tPositionGroup?: ValueCell<{ array: Float32Array }> };
-      const memberLevels = member.lodLevels?.ref.value as LodLevelsValue | undefined;
-      const positions = member.tPositionGroup?.ref.value.array;
-      if (!memberLevels || !positions || member.instanceGrid.ref.value.cellSize <= 1) continue;
-      const count = memberLevels[0][3] / 6;
-      if (count < MinClusteredSpheres) continue;
-      clustered[s] = 1;
-      const n = segments.instanceCounts[s];
-      const padding =
-        ((member as { padding?: ValueCell<number> }).padding?.ref.value ?? 0) * Math.max(1, memberLevels[0][4]);
-      const edges = Array.from(new Set([0, count, ...memberLevels.map((l) => Math.min(count, l[3] / 6))])).sort(
-        (a, b) => a - b,
-      );
-      for (let e = 0; e + 1 < edges.length; ++e) {
-        const [a, b] = [edges[e], edges[e + 1]];
-        const pieces = Math.ceil((b - a) / ClusterSpheres);
-        const size = Math.ceil((b - a) / pieces);
-        for (let start = a; start < b; start += size) {
-          const end = Math.min(b, start + size);
-          const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
-          for (let i = start; i < end; ++i) {
-            for (let k = 0; k < 3; ++k) {
-              const v = positions[i * 4 + k];
-              if (v < box[k]) box[k] = v;
-              if (v > box[3 + k]) box[3 + k] = v;
-            }
-          }
-          const c = [0, 1, 2].map((k) => (box[k] + box[3 + k]) / 2);
-          let r = 0;
-          for (let i = start; i < end; ++i) {
-            const dx = positions[i * 4] - c[0];
-            const dy = positions[i * 4 + 1] - c[1];
-            const dz = positions[i * 4 + 2] - c[2];
-            r = Math.max(r, dx * dx + dy * dy + dz * dz);
-          }
-          clusterData.push(
-            c[0],
-            c[1],
-            c[2],
-            Math.sqrt(r) + padding,
-            s,
-            segments.instanceBases[s],
-            regionBase,
-            regionBase - identityBase - instanceCount,
-          );
-          // the record: the cluster's spheres, from the segment's first, its region's instances
-          const first = indexed ? segments.elementOffsets[s] / 4 + start * 6 : segments.drawBases[s] + start * 6;
-          if (indexed) clusterRecords.push((end - start) * 6, 0, first, 0, regionBase);
-          else clusterRecords.push((end - start) * 6, 0, first, regionBase);
-          regionBase += n;
-        }
-      }
-    }
-    clusterCount = clusterData.length / 8;
-    let clusterSlots = regionBase - identityBase - instanceCount;
-    // none where the clusters exceed a dispatch's rows or the attributes a binding (`aTransform`, 64 bytes a slot)
-    if (
-      clusterCount > MaxWorkgroupsPerDimension ||
-      ((levels + 1) * instanceCount + clusterSlots) * 64 > compute.maxStorageBufferSize
-    ) {
-      clusterCount = 0;
-      clusterSlots = 0;
-      clustered.fill(0);
-    }
-
     ensure(instanceData, instanceCount * InstanceDataVec4s * 16);
-    ensure(instanceCells, instanceCount * 16);
-    ensure(segmentBases, segmentCount * 8);
+    ensure(instanceCells, instanceCount * 8);
+    // the clip objects after the segments (`syncClip`)
+    ensure(segmentData, segmentCount * 48 + Clip.MaxObjectCount * ClipStorageVec4s * 16);
     ensure(cellSpheres, cellCount * 16);
     ensure(cellLevels, cellCount * 4);
-    ensure(counters, levels * segmentCount * 4);
-    ensure(args, levels * segmentCount * stride);
+    ensure(counters, regions * segmentCount * 4);
+    ensure(args, regions * segmentCount * stride);
+    ensure(secondArgs, regions * segmentCount * stride);
     for (const [name, floats] of Object.entries(AttributeFloats)) {
-      ensure(
-        attributes[name as keyof typeof AttributeFloats],
-        ((levels + 1) * instanceCount + clusterSlots) * floats * 4,
-      );
-    }
-    ensure(clusters, clusterCount * 32);
-    ensure(clusterCounters, clusterCount * 4);
-    ensure(clusterArgs, clusterCount * stride);
-    ensure(clusteredSegments, segmentCount * 4);
-    ensure(counters1, levels * segmentCount * 4);
-    ensure(clusterCounters1, clusterCount * 4);
-    ensure(args2, levels * segmentCount * stride);
-    ensure(clusterArgs2, clusterCount * stride);
-    ensure(clusterBits, clusterSlots * 4);
-    clusterBits.ref.value.clear(0, Math.max(4, clusterSlots * 4));
-    clusteredSegments.ref.value.write(Uint32Array.from(clustered));
-    if (clusterCount > 0) {
-      // the floats as written, the segment and regions as their bits
-      const data = new Float32Array(clusterData);
-      const bits = new Uint32Array(data.buffer);
-      for (let k = 0; k < clusterCount; ++k) {
-        for (let q = 4; q < 8; ++q) bits[k * 8 + q] = clusterData[k * 8 + q];
-      }
-      clusters.ref.value.write(data);
-      clusterArgs.ref.value.write(new Uint32Array(clusterRecords));
-      clusterArgs2.ref.value.write(new Uint32Array(clusterRecords));
+      ensure(attributes[name as keyof typeof AttributeFloats], (regions + 1) * instanceCount * floats * 4);
     }
     instanceCells.ref.value.write(cellOf);
-    // per segment its first instance and its padding (the per-instance test grows coarse levels' spheres by it)
-    const bases = new Uint32Array(segmentCount * 2);
-    const paddings = new Float32Array(bases.buffer);
-    for (let s = 0; s < segmentCount; ++s) {
-      bases[s * 2] = segments.instanceBases[s];
-      paddings[s * 2 + 1] = (members[s] as { padding?: ValueCell<number> }).padding?.ref.value ?? 0;
-    }
-    segmentBases.ref.value.write(bases);
+    segmentData.ref.value.write(getSegmentData());
+    syncClip(true);
     cellSpheres.ref.value.write(new Float32Array(spheres));
 
     // the records' words but the instance count: the level's count, first vertex or index, the region's first instance
-    const records = new Uint32Array(levels * segmentCount * words);
-    for (let j = 0; j < levels; ++j) {
+    const records = new Uint32Array(regions * segmentCount * words);
+    chunkCapacity = 0;
+    for (let k = 0; k < regions; ++k) {
+      // a raster region as its level's
+      const j = k % levels;
       for (let s = 0; s < segmentCount; ++s) {
         const member = members[s];
         const drawCount: number = member.drawCount.ref.value;
         // gridless members draw at full detail at each level they overlap, as the CPU culling (`cullSegment`)
         const gridless = member.instanceGrid.ref.value.cellSize <= 1;
         const memberLevels = member.lodLevels?.ref.value as LodLevelsValue | undefined;
-        const o = (j * segmentCount + s) * words;
+        const o = (k * segmentCount + s) * words;
         records[o] = levelCount === 0 || gridless || !memberLevels ? drawCount : memberLevels[j][3];
-        // level 0 of a clustered segment drawn by its clusters' records
-        if (j === 0 && clustered[s]) records[o] = 0;
-        const first = j * instanceCount + segments.instanceBases[s];
+        // quads of 6 vertices (or indices) a sphere
+        if (k === j) chunkCapacity += Math.ceil(records[o] / 6 / 64) * segments.instanceCounts[s];
+        const first = k * instanceCount + segments.instanceBases[s];
         if (indexed) {
           records[o + 2] = segments.elementOffsets[s] / 4;
           records[o + 4] = first;
@@ -488,25 +449,15 @@ export function createMergedCuller(
       }
     }
     args.ref.value.write(records);
-    args2.ref.value.write(records);
+    secondArgs.ref.value.write(records);
 
     ValueCell.updateIfChanged(levelCountCell, levelCount);
     ValueCell.updateIfChanged(cellValues.uCellCount, cellCount);
     ValueCell.updateIfChanged(copyValues.uInstanceCount, instanceCount);
     ValueCell.updateIfChanged(copyValues.uSegmentCount, segmentCount);
-    ValueCell.updateIfChanged(argsValues.uRecordCount, levels * segmentCount);
-    ValueCell.updateIfChanged(clusterValues.uClusterCount, clusterCount);
-    ValueCell.updateIfChanged(clusterArgsValues.uRecordCount, clusterCount);
-    ValueCell.updateIfChanged(clusterDispatchValues.uSegmentCount, segmentCount);
-    ValueCell.updateIfChanged(clusterDispatchValues.uClusterCount, clusterCount);
-    ValueCell.updateIfChanged(snapshotValues.uRecordCount, levels * segmentCount);
-    ValueCell.updateIfChanged(argsSecondValues.uRecordCount, levels * segmentCount);
-    ValueCell.updateIfChanged(clusterSnapshotValues.uRecordCount, clusterCount);
-    ValueCell.updateIfChanged(clusterArgsSecondValues.uRecordCount, clusterCount);
+    ValueCell.updateIfChanged(argsValues.uRecordCount, regions * segmentCount);
+    ValueCell.updateIfChanged(copyValues.uRasterLevels, rasterRegions ? levels : 0);
   }
-
-  const getSlack = () =>
-    getAnimationSlack(values as unknown as AnimationValues, members as unknown as AnimationValues[]);
 
   /** the levels' distance ranges for `lod` (`LodView.getRange`) into `levelRanges`, per level a column */
   const levelRanges = Mat4.zero();
@@ -521,27 +472,105 @@ export function createMergedCuller(
     }
   }
 
+  /**
+   * per segment its invariant sphere, its first instance and largest sphere's radius (`padding`: the largest size times
+   * the size factor), its level scales (as `tSegment`'s) (`segmentData`)
+   */
+  function getSegmentData() {
+    const out = new Float32Array(segmentCount * 12);
+    const bases = new Uint32Array(out.buffer);
+    for (let s = 0; s < segmentCount; ++s) {
+      const member = members[s];
+      const { center, radius } = member.invariantBoundingSphere.ref.value as Sphere3D;
+      out.set([center[0], center[1], center[2], radius], s * 12);
+      bases[s * 12 + 4] = segments.instanceBases[s];
+      out[s * 12 + 5] = (member as { padding?: ValueCell<number> }).padding?.ref.value ?? 0;
+      const gridless = member.instanceGrid.ref.value.cellSize <= 1;
+      const memberLevels = !gridless ? (member.lodLevels?.ref.value as LodLevelsValue | undefined) : undefined;
+      for (let j = 0; j < 4; ++j) out[s * 12 + 8 + j] = memberLevels?.[j]?.[4] ?? 1;
+    }
+    return out;
+  }
+
+  /**
+   * The clip objects cells and instances are culled by where they clip them whole (`getCullClipCount`), instances' centers
+   * clipped too with instance clipping (`getInstanceClipCount`, the vertex stage's), after the segments in
+   * `segmentData`; where they changed (or `force`, the buffer written anew) written, true
+   */
+  const clipVersions = [-1, -1, -1, -1];
+  function syncClip(force: boolean) {
+    const count = getCullClipCount(values);
+    const frame = values.uClipObjectFrame.ref.version;
+    const shape = values.uClipObjectShape.ref.version;
+    const instance = getInstanceClipCount(values) > 0 ? 1 : 0;
+    const v = clipVersions;
+    if (!force && v[0] === count && v[1] === frame && v[2] === shape && v[3] === instance) return false;
+    v[0] = count;
+    v[1] = frame;
+    v[2] = shape;
+    v[3] = instance;
+    if (count > 0) {
+      const data = new Float32Array(count * ClipStorageVec4s * 4);
+      packStorageClipObjects(values, data);
+      segmentData.ref.value.write(data, segmentCount * 48);
+    }
+    ValueCell.updateIfChanged(cellValues.uClipObjectCount, count);
+    ValueCell.updateIfChanged(cellValues.uClipBase, segmentCount * 3);
+    ValueCell.updateIfChanged(copyValues.uClipInstance, instance);
+    return true;
+  }
+
   /** the instances' data for the kernel, and their own order after the regions (the identity region) */
   function syncInstances() {
     const data = new Float32Array(instanceCount * InstanceDataVec4s * 4);
     packInstanceData(values, data);
+    setSegmentScales();
     instanceData.ref.value.write(data);
     for (const [name, floats] of Object.entries(AttributeFloats)) {
-      const array = (values[name].ref.value as Float32Array).subarray(0, instanceCount * floats);
+      const value = values[name].ref.value as Float32Array;
+      // the transforms as their rows (`affine-rows.ts`), as the regions hold them
+      const array =
+        name === 'aTransform'
+          ? packAffineRows(value, instanceCount, new Float32Array(instanceCount * floats))
+          : value.subarray(0, instanceCount * floats);
       attributes[name as keyof typeof AttributeFloats].ref.value.write(array, identityBase * floats * 4);
     }
   }
 
-  /** what the cells and records are written from: the grids, the counts and the levels */
+  /** debug mode: what the raster split classifies by (`rasterized`), logged where it changed */
+  let rasterInputsLogged = '';
+  function logRasterInputs(raster: MergedRasterParams) {
+    const data = getSegmentData();
+    const range = (o: number) => {
+      let min = Infinity;
+      let max = -Infinity;
+      for (let s = 0; s < segmentCount; ++s) {
+        min = Math.min(min, data[s * 12 + o]);
+        max = Math.max(max, data[s * 12 + o]);
+      }
+      return `${min.toFixed(2)}-${max.toFixed(2)}`;
+    };
+    const levels: string[] = [];
+    for (let j = 0; j < Math.max(1, levelCount); ++j) {
+      levels.push(`${levelRanges[j * 4].toFixed(1)}-${levelRanges[j * 4 + 1].toFixed(1)} x${range(8 + j)}`);
+    }
+    const text =
+      `sphere raster split: ${JSON.stringify(raster)}, ${segmentCount} segments, invariant radius ${range(3)}, ` +
+      `largest sphere ${range(5)}, levels (distances, scales) ${levels.join('; ')}`;
+    if (text !== rasterInputsLogged) console.log(text);
+    rasterInputsLogged = text;
+  }
+
+  /** what the cells and records are written from: the grids and the instances they split, the counts and the levels */
   const getLayoutKey = () => {
-    let key = `${values.instanceCount.ref.value},${segments.count}`;
+    let key = `${values.instanceCount.ref.value},${segments.count},${rasterRegions}`;
     for (const m of members) {
-      key += `,${m.instanceGrid.ref.version},${m.boundingSphere.ref.version},${m.drawCount.ref.value},${m.lodLevels?.ref.version ?? -1},${(m as { padding?: ValueCell<number> }).padding?.ref.version ?? -1},${(m as { tPositionGroup?: ValueCell<unknown> }).tPositionGroup?.ref.version ?? -1}`;
+      key += `,${m.instanceGrid.ref.version},${m.aTransform.ref.version},${m.invariantBoundingSphere.ref.version},${m.boundingSphere.ref.version},${m.drawCount.ref.value},${m.lodLevels?.ref.version ?? -1}`;
     }
     return key;
   };
   const getInstanceVersions = () =>
-    `${values.aTransform.ref.version},${values.aInstance.ref.version},${values.aSegment.ref.version},${values.aSegmentSphere.ref.version},${values.aSegmentLod.ref.version}`;
+    `${values.aTransform.ref.version},${values.aInstance.ref.version},${values.aSegment.ref.version}`;
   let layoutKey = '';
   let instanceVersions = '';
   /** advanced where the layout or the instances changed: a dispatch culled with an older one is not current */
@@ -552,6 +581,7 @@ export function createMergedCuller(
     if (layoutChanged) {
       layoutKey = key;
       syncLayout();
+      segmentDataCopy = getSegmentData();
     }
     const versions = getInstanceVersions();
     if (layoutChanged || versions !== instanceVersions) {
@@ -572,26 +602,32 @@ export function createMergedCuller(
 
   /**
    * What the last dispatch culled with: the planes, the distance range, the levels' ranges, `dataVersion` and the
-   * pyramid's build; while they are the same its compacted attributes and records are current. Each drawn frame builds
-   * a pyramid: a still camera without one culls nothing again, with one it tests against what the last frame drew (an
-   * object hidden or refined at the same view reveals what it hid, `merged-render-objects.md` GPU occlusion culling)
+   * pyramid's camera; while they are the same its compacted attributes and records are current (a still camera culls
+   * nothing again, once tested twice against a pyramid of its own view: the first such pyramid is of a frame culled
+   * against another view's, which can lack occluders and occlude less; a round counts a new build only, a pyramid
+   * served again while the Hi-Z pass skips its builds is still of the frame it was built in)
    */
   const dispatched = new Float64Array(7 * 4 + 2).fill(NaN);
   const dispatchedLevels = Mat4.zero().fill(NaN);
-  let dispatchedSlack = NaN;
   let dispatchedVersion = -1;
-  const pyramidFrustum = Frustum3D();
-  const pyramidMatrix = Mat4();
-
-  /** the pyramid build the last dispatch tested against (`OcclusionPyramid.version`), -1 for none */
-  let dispatchedPyramid = -1;
+  const dispatchedPyramid = new Float64Array(32).fill(NaN);
+  let dispatchedHiZ = false;
+  let dispatchedPyramidVersion = -1;
+  /** dispatches in a row against pyramids of the same camera, each a new build */
+  let pyramidRounds = 0;
+  function isPyramidCamera(pyramid: OcclusionPyramid) {
+    for (let i = 0; i < 16; ++i) {
+      if (dispatchedPyramid[i] !== pyramid.view[i] || dispatchedPyramid[16 + i] !== pyramid.projection[i]) return false;
+    }
+    return true;
+  }
   function isPyramidDispatched(pyramid: OcclusionPyramid | undefined) {
-    return pyramid ? pyramid.version === dispatchedPyramid : dispatchedPyramid === -1;
+    if (!pyramid) return !dispatchedHiZ;
+    return dispatchedHiZ && pyramidRounds >= 2 && isPyramidCamera(pyramid);
   }
   const getPlane = (i: number, cameraPlane: Plane3D, frustum: Frustum3D) => (i < 6 ? frustum[i as 0] : cameraPlane);
   function isDispatched(cameraPlane: Plane3D, frustum: Frustum3D, min: number, max: number) {
     if (dispatchedVersion !== dataVersion || dispatched[28] !== min || dispatched[29] !== max) return false;
-    if (dispatchedSlack !== viewValues.uAnimationSlack.ref.value) return false;
     for (let i = 0; i < 16; ++i) if (dispatchedLevels[i] !== levelRanges[i]) return false;
     for (let i = 0; i < 7; ++i) {
       const { normal, constant } = getPlane(i, cameraPlane, frustum);
@@ -614,61 +650,147 @@ export function createMergedCuller(
     }
     dispatched[28] = min;
     dispatched[29] = max;
-    dispatchedSlack = viewValues.uAnimationSlack.ref.value;
     Mat4.copy(dispatchedLevels, levelRanges);
     dispatchedVersion = dataVersion;
   }
 
-  let settled = true;
-  /** whether the last dispatch was two-phase, and its second phase not dispatched yet */
-  let dispatchedTwoPhase = false;
-  let secondPending = false;
-  const groups = (n: number) => Math.ceil(n / CellCullKernel.workgroupSize[0]);
-
-  /** the occlusion test's pyramid (`OcclusionPyramid`), none: no occlusion */
-  function setPyramid(pyramid: OcclusionPyramid | undefined) {
-    ValueCell.updateIfChanged(cellValues.uHiZ, !!pyramid);
-    if (pyramid) {
-      ValueCell.update(cellValues.uHiZView, Mat4.copy(cellValues.uHiZView.ref.value, pyramid.view));
-      ValueCell.update(cellValues.uHiZProjection, Mat4.copy(cellValues.uHiZProjection.ref.value, pyramid.projection));
-      ValueCell.update(
-        cellValues.uHiZDepthRange,
-        Vec2.set(cellValues.uHiZDepthRange.ref.value, pyramid.near, pyramid.far),
-      );
-      ValueCell.update(
-        cellValues.uHiZViewport,
-        Vec2.set(cellValues.uHiZViewport.ref.value, pyramid.width, pyramid.height),
-      );
-      ValueCell.updateIfChanged(cellValues.uHiZLevelCount, pyramid.levelCount);
-      // the pyramid's frustum: the planes of its projection and view, as the renderer's
-      Frustum3D.fromProjectionMatrix(pyramidFrustum, Mat4.mul(pyramidMatrix, pyramid.projection, pyramid.view));
-      setPlane(cellValues.uHiZPlane0, pyramidFrustum[0]);
-      setPlane(cellValues.uHiZPlane1, pyramidFrustum[1]);
-      setPlane(cellValues.uHiZPlane2, pyramidFrustum[2]);
-      setPlane(cellValues.uHiZPlane3, pyramidFrustum[3]);
-      setPlane(cellValues.uHiZPlane4, pyramidFrustum[4]);
-      setPlane(cellValues.uHiZPlane5, pyramidFrustum[5]);
-      ValueCell.updateIfChanged(cellValues.uHiZMinLevel, pyramid.minLevel);
-    }
-    ValueCell.updateIfChanged(cellValues.tHiZ, pyramid?.texture ?? emptyHiZ);
-  }
-
-  /** the instances' and clusters' copies (a phase, or the one), then the records of all instances drawn */
-  function copyPass(records: number) {
-    kernels![1].dispatch(groups(instanceCount));
-    if (clusterCount > 0) {
-      // as many columns as the most level-0 instances of a clustered segment drawn need (none out of view)
-      kernels![5].dispatch(1);
-      kernels![3].dispatchIndirect(clusterDispatch.ref.value);
-    }
-    kernels![2].dispatch(groups(records));
-    if (clusterCount > 0) kernels![4].dispatch(groups(clusterCount));
-  }
+  /** the levels' lists, then the raster regions' where there are; `levelLists` the levels' of them (the same lists) */
   let lists: MultiDrawBaseData[] = [];
-  let lists2: MultiDrawBaseData[] = [];
-  /** per level an indirect list of `levelArgs`, and level 0's clusters' of `clusterRecords` */
-  function createLists(levels: readonly MultiDrawBaseData[], levelArgs: StorageBuffer, clusterRecords: StorageBuffer) {
-    const out: MultiDrawBaseData[] = levels.slice(0, Math.max(1, levelCount)).map((level, j) => ({
+  let levelLists: MultiDrawBaseData[] = [];
+  let listsLevels: readonly MultiDrawBaseData[] | undefined;
+  let listsKey = '';
+
+  /**
+   * A still camera culls nothing again (`isDispatched`), so its records stay: read back once, each list then draws only
+   * those with instances. A draw costs whether it draws or not, outside the GPU's timers: with thousands of units and
+   * levels, most of them empty (the raster's instances are in its regions), the larger part of a frame. Any dispatch
+   * or new lists restore all records
+   */
+  let recordsGeneration = 0;
+  let recordsRead = -1;
+  let recordsCompact = false;
+  let recordsVersion = 0;
+  let dispatchVersion = 0;
+  /**
+   * The records a dispatch can fill, per list (the levels', then the raster regions') and segment: without those the
+   * segment's bounds rule out, so that a moving camera does not issue them either (`predictRecords`)
+   */
+  let predicted = new Uint8Array(0);
+  let predictedNext = new Uint8Array(0);
+  function setListRecords() {
+    recordsVersion += 1;
+    for (let k = 0; k < lists.length; ++k) {
+      const l = lists[k];
+      const records = new Uint32Array(segmentCount);
+      let n = 0;
+      for (let s = 0; s < segmentCount; ++s) if (predicted[k * segmentCount + s]) records[n++] = s;
+      l.count = n;
+      l.indirect = { ...l.indirect!, records: records.subarray(0, n), recordsVersion };
+    }
+  }
+  function setSegmentScales() {
+    if (segmentScales.length !== segmentCount) segmentScales = new Float32Array(segmentCount);
+    const t = values.aTransform.ref.value as Float32Array;
+    for (let s = 0; s < segmentCount; ++s) {
+      let max = 0;
+      const begin = segments.instanceBases[s];
+      for (let i = begin, il = begin + segments.instanceCounts[s]; i < il; ++i) {
+        const o = i * 16;
+        max = Math.max(
+          max,
+          t[o] * t[o] + t[o + 1] * t[o + 1] + t[o + 2] * t[o + 2],
+          t[o + 4] * t[o + 4] + t[o + 5] * t[o + 5] + t[o + 6] * t[o + 6],
+          t[o + 8] * t[o + 8] + t[o + 9] * t[o + 9] + t[o + 10] * t[o + 10],
+        );
+      }
+      segmentScales[s] = Math.sqrt(max);
+    }
+  }
+  /**
+   * From each segment's bounds, which hold its instances' spheres: conservative (a margin for the kernels' 32-bit
+   * floats), the kernels decide per cell and instance. A record is left out where the bounds lie outside the frustum or
+   * the level's range, and a level's where all the instances go to the raster (`rasterized` holds at their nearest
+   * point, and so further away). False where nothing changed
+   */
+  function predictRecords(cameraPlane: Plane3D, frustum: Frustum3D, raster: MergedRasterParams | undefined) {
+    const levels = Math.max(1, levelCount);
+    const size = (rasterRegions ? 2 : 1) * levels * segmentCount;
+    if (predictedNext.length !== size) predictedNext = new Uint8Array(size);
+    const next = predictedNext.fill(0);
+    const segmentInfo = segmentDataCopy!;
+    for (let s = 0; s < segmentCount; ++s) {
+      const { center: c, radius } = members[s].boundingSphere.ref.value as Sphere3D;
+      const r = radius * 1.001 + 1e-3;
+      let inside = true;
+      for (let i = 0; i < 6 && inside; ++i) {
+        const { normal, constant } = frustum[i as 0];
+        inside = normal[0] * c[0] + normal[1] * c[1] + normal[2] * c[2] + constant >= -r;
+      }
+      if (!inside) continue;
+      const n = cameraPlane.normal;
+      const d = n[0] * c[0] + n[1] * c[1] + n[2] * c[2] + cameraPlane.constant;
+      for (let j = 0; j < levels; ++j) {
+        const min = levelCount ? levelRanges[j * 4] : -Infinity;
+        const max = levelCount ? levelRanges[j * 4 + 1] : Infinity;
+        if (d + r < min || d - r > max) continue;
+        let toRaster = false;
+        if (raster) {
+          next[(levels + j) * segmentCount + s] = 1;
+          const largest = segmentInfo[s * 12 + 5] * segmentScales[s] * segmentInfo[s * 12 + 8 + Math.min(j, 3)] * 1.001;
+          const nearest = Math.max(d - r, min);
+          toRaster =
+            segmentInfo[s * 12 + 3] > 0 &&
+            nearest - largest > raster.near &&
+            largest * raster.scale <= raster.radius * Math.sqrt(Math.max(nearest * nearest - largest * largest, 0));
+        }
+        if (!toRaster) next[j * segmentCount + s] = 1;
+      }
+    }
+    let same = next.length === predicted.length;
+    for (let i = 0; same && i < next.length; ++i) same = next[i] === predicted[i];
+    if (same) return false;
+    predictedNext = predicted;
+    predicted = next;
+    return true;
+  }
+  function restoreRecords() {
+    recordsGeneration += 1;
+    if (!recordsCompact) return;
+    recordsCompact = false;
+    setListRecords();
+  }
+  function compactRecords() {
+    if (recordsRead === recordsGeneration || recordsCompact || lists.length === 0) return;
+    recordsRead = recordsGeneration;
+    const generation = recordsGeneration;
+    args.ref.value
+      .readAsync()
+      .then((data) => {
+        if (generation !== recordsGeneration) return;
+        const words = new Uint32Array(data);
+        for (const l of lists) {
+          const records = new Uint32Array(segmentCount);
+          let n = 0;
+          const base = l.indirect!.byteOffset / 4;
+          for (let s = 0; s < segmentCount; ++s) {
+            if (words[base + (s * stride) / 4 + 1] > 0) records[n++] = s;
+          }
+          l.count = n;
+          l.indirect = { ...l.indirect!, records: records.subarray(0, n), recordsVersion: recordsVersion + 1 };
+        }
+        recordsCompact = true;
+        recordsVersion += 1;
+      })
+      // the full lists stay: the same image
+      .catch(() => {});
+  }
+
+  function buildLists(levels: readonly MultiDrawBaseData[], key: string) {
+    restoreRecords();
+    listsLevels = levels;
+    listsKey = key;
+    const n = Math.max(1, levelCount);
+    const list = (level: MultiDrawBaseData, k: number): MultiDrawBaseData => ({
       firsts: EmptyInt,
       counts: EmptyInt,
       offsets: EmptyInt,
@@ -677,44 +799,61 @@ export function createMergedCuller(
       baseInstances: EmptyUint,
       count: segmentCount,
       uniforms: level.uniforms,
-      indirect: { buffer: levelArgs, byteOffset: j * segmentCount * stride, indexed },
-    }));
-    // level 0 of the clustered segments: a record per cluster
-    if (clusterCount > 0) {
-      out.push({ ...out[0], count: clusterCount, indirect: { buffer: clusterRecords, byteOffset: 0, indexed } });
-    }
-    return out;
+      indirect: { buffer: args.ref.value, byteOffset: k * segmentCount * stride, indexed },
+    });
+    levelLists = levels.slice(0, n).map((level, j) => list(level, j));
+    lists = rasterRegions ? [...levelLists, ...levelLists.map((level, j) => list(level, n + j))] : levelLists;
+    if (predicted.length === lists.length * segmentCount) setListRecords();
   }
-  let listsLevels: readonly MultiDrawBaseData[] | undefined;
-  let listsKey = '';
 
   return {
     attributes,
     get identityBase() {
       return identityBase;
     },
-    get settled() {
-      return settled;
-    },
     sync,
-    dispatch: (cameraPlane, frustum, lod, pyramid, twoPhase = false) => {
+    dispatch: (cameraPlane, frustum, lod, pyramid, raster) => {
       if (instanceCount === 0 || cellCount === 0) return false;
+      if (raster && !rasterRegions) {
+        rasterRegions = true;
+        sync();
+      }
+      // clipped instances culled: a change of the clip objects culls again
+      if (syncClip(false)) dataVersion += 1;
+      secondPending = false;
+      secondDispatched = false;
       const [min, max] = values.uLod.ref.value as Vec4;
       setLevelRanges(lod);
-      ValueCell.updateIfChanged(viewValues.uAnimationSlack, getSlack());
-      const sameView = isDispatched(cameraPlane, frustum, min, max);
-      // one phase: a frame of the same view, data and pyramid culls as the last; two phases every frame (what was visible
-      // last frame converges to what is visible: a frame after a jump draws more than it shows)
-      if (!twoPhase && !dispatchedTwoPhase && sameView && isPyramidDispatched(pyramid)) {
-        secondPending = false;
+      const rasterChanged =
+        copyValues.uRasterRadius.ref.value !== (raster?.radius ?? 0) ||
+        copyValues.uRasterScale.ref.value !== (raster?.scale ?? 0) ||
+        copyValues.uRasterNear.ref.value !== (raster?.near ?? 0);
+      const viewChanged = !isDispatched(cameraPlane, frustum, min, max);
+      if (!rasterChanged && !viewChanged && isPyramidDispatched(pyramid)) {
+        compactRecords();
         return true;
       }
       if (!getKernels()) return false;
-      dispatchedTwoPhase = twoPhase;
-      // two-phase: no occlusion in phase 1 (the instances visible last frame), the pyramid of this frame in phase 2
-      const first = twoPhase ? undefined : pyramid;
-      dispatchedPyramid = first?.version ?? -1;
-      setPyramid(first);
+      restoreRecords();
+      if (predictRecords(cameraPlane, frustum, raster)) setListRecords();
+      dispatchVersion += 1;
+      ValueCell.updateIfChanged(copyValues.uRasterRadius, raster?.radius ?? 0);
+      ValueCell.updateIfChanged(copyValues.uRasterScale, raster?.scale ?? 0);
+      ValueCell.updateIfChanged(copyValues.uRasterNear, raster?.near ?? 0);
+      rasterDispatched = !!raster;
+      if (isDebugMode && raster) logRasterInputs(raster);
+      if (!pyramid) pyramidRounds = 0;
+      // a view of its own: levels of an earlier one (a draw compiling, none of this view yet) left out what stays out
+      // until culled again
+      else if (viewChanged || !dispatchedHiZ || !isPyramidCamera(pyramid)) pyramidRounds = 1;
+      else if (pyramid.version !== dispatchedPyramidVersion) pyramidRounds += 1;
+      dispatchedHiZ = !!pyramid;
+      if (pyramid) {
+        dispatchedPyramidVersion = pyramid.version;
+        dispatchedPyramid.set(pyramid.view, 0);
+        dispatchedPyramid.set(pyramid.projection, 16);
+      }
+      setHiZValues(cellValues, pyramid, emptyHiZ);
       setPlane(cellValues.uPlane0, frustum[0]);
       setPlane(cellValues.uPlane1, frustum[1]);
       setPlane(cellValues.uPlane2, frustum[2]);
@@ -725,73 +864,90 @@ export function createMergedCuller(
       ValueCell.update(cellValues.uLevels, Mat4.copy(cellValues.uLevels.ref.value, levelRanges));
       const hasLod = min !== 0 || max !== 0;
       ValueCell.update(cellValues.uLodRange, Vec4.set(cellValues.uLodRange.ref.value, min, max, hasLod ? 1 : 0, 0));
-      ValueCell.updateIfChanged(copyValues.uPhase, twoPhase ? 1 : 0);
-      ValueCell.updateIfChanged(clusterValues.uPhase, twoPhase ? 1 : 0);
 
-      const records = Math.max(1, levelCount) * segmentCount;
+      const records = (rasterRegions ? 2 : 1) * Math.max(1, levelCount) * segmentCount;
+      const groups = (n: number) => Math.ceil(n / CellCullKernel.workgroupSize[0]);
       counters.ref.value.clear(0, records * 4);
-      if (clusterCount > 0) clusterCounters.ref.value.clear(0, clusterCount * 4);
       compute.beginComputePass({ label: 'merged cell culling' });
       kernels![0].dispatch(groups(cellCount));
-      copyPass(records);
-      if (twoPhase) {
-        // where the second phase's instances start
-        kernels![6].dispatch(groups(records));
-        if (clusterCount > 0) kernels![7].dispatch(groups(clusterCount));
-      }
+      kernels![1].dispatch(groups(instanceCount));
+      kernels![2].dispatch(groups(records));
       compute.endComputePass();
       setDispatched(cameraPlane, frustum, min, max);
-      secondPending = twoPhase;
-      // the pyramid was drawn from the last dispatch's culling: at this view and levels where they are the same
-      settled = twoPhase || !pyramid || sameView;
+      // without a pyramid the first phase left out nothing occluded
+      secondPending = !!pyramid;
       return true;
+    },
+    get secondPending() {
+      return secondPending;
     },
     dispatchSecond: (pyramid) => {
-      if (!secondPending || !kernels) return false;
+      if (!secondPending) return false;
       secondPending = false;
-      setPyramid(pyramid);
-      ValueCell.updateIfChanged(copyValues.uPhase, 2);
-      ValueCell.updateIfChanged(clusterValues.uPhase, 2);
-      const records = Math.max(1, levelCount) * segmentCount;
+      if (!pyramid || !kernels) return false;
+      setHiZValues(cellValues, pyramid, emptyHiZ);
+      ValueCell.updateIfChanged(copyValues.uPhase, 1);
+      const records = (rasterRegions ? 2 : 1) * Math.max(1, levelCount) * segmentCount;
+      const groups = (n: number) => Math.ceil(n / CellCullKernel.workgroupSize[0]);
       compute.beginComputePass({ label: 'merged cell culling, second phase' });
-      copyPass(records);
-      kernels![8].dispatch(groups(records));
-      if (clusterCount > 0) kernels![9].dispatch(groups(clusterCount));
+      kernels[0].dispatch(groups(cellCount));
+      kernels[1].dispatch(groups(instanceCount));
+      kernels[2].dispatch(groups(records));
       compute.endComputePass();
+      ValueCell.updateIfChanged(copyValues.uPhase, 0);
+      secondDispatched = true;
       return true;
     },
-    getLists: (levels, second = false) => {
-      const key = `${segmentCount},${levelCount},${args.ref.value.id},${clusterCount},${clusterArgs.ref.value.id},${args2.ref.value.id},${clusterArgs2.ref.value.id}`;
-      if (levels !== listsLevels || key !== listsKey) {
-        listsLevels = levels;
-        listsKey = key;
-        lists = createLists(levels, args.ref.value, clusterArgs.ref.value);
-        lists2 = createLists(levels, args2.ref.value, clusterArgs2.ref.value);
-      }
-      return second ? lists2 : lists;
+    get secondDispatched() {
+      return secondDispatched;
+    },
+    getSecondLists: (levels, withRaster = true) => {
+      const key = `${segmentCount},${levelCount},${args.ref.value.id},${rasterRegions}`;
+      if (levels !== listsLevels || key !== listsKey) buildLists(levels, key);
+      const buffer = secondArgs.ref.value;
+      return (withRaster ? lists : levelLists).map((l) => ({ ...l, indirect: { ...l.indirect!, buffer } }));
+    },
+    getLists: (levels, withRaster = true) => {
+      // the raster regions too where they exist and the raster does not draw them (another view, not ready); the
+      // levels' lists the same objects either way, so that their draws (and recordings of them) stay the same
+      const key = `${segmentCount},${levelCount},${args.ref.value.id},${rasterRegions}`;
+      if (levels !== listsLevels || key !== listsKey) buildLists(levels, key);
+      return withRaster ? lists : levelLists;
+    },
+    getRasterInput: () => {
+      if (!rasterRegions || !rasterDispatched) return undefined;
+      const levels = Math.max(1, levelCount);
+      return {
+        transforms: attributes.aTransform.ref.value,
+        instances: attributes.aInstance.ref.value,
+        segments: attributes.aSegment.ref.value,
+        records: args.ref.value,
+        secondRecords: secondArgs.ref.value,
+        get secondDispatched() {
+          return secondDispatched;
+        },
+        recordWords: words,
+        levels,
+        levelCount,
+        lodLevels: members[0].lodLevels?.ref.value as LodLevelsValue | undefined,
+        instanceCount,
+        segmentCount,
+        chunkCapacity,
+        dispatchVersion,
+        recordBase: levels * segmentCount,
+        slotBase: levels * instanceCount,
+      };
+    },
+    get recordsCompact() {
+      return recordsCompact;
+    },
+    get recordsVersion() {
+      return recordsVersion;
     },
     destroy: () => {
       if (kernels) for (const k of kernels) k.destroy();
       emptyHiZ.destroy();
-      const cells = [
-        instanceData,
-        instanceCells,
-        segmentBases,
-        cellSpheres,
-        cellLevels,
-        counters,
-        args,
-        clusters,
-        clusterCounters,
-        clusterArgs,
-        clusterDispatch,
-        clusteredSegments,
-        counters1,
-        clusterCounters1,
-        args2,
-        clusterArgs2,
-        clusterBits,
-      ];
+      const cells = [instanceData, instanceCells, segmentData, cellSpheres, cellLevels, counters, args, secondArgs];
       for (const cell of [...cells, ...Object.values(attributes)]) cell.ref.value.destroy();
     },
   };

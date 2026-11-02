@@ -2,7 +2,6 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
- * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { color_accumulate_wgsl, color_normalize_wgsl } from './color-smoothing.wgsl.js';
@@ -15,16 +14,14 @@ import {
   mc_chunk_push_wgsl,
 } from './marching-cubes-chunks.wgsl.js';
 import { scan_add_wgsl, scan_block_wgsl } from './prefix-sum.wgsl.js';
-import {
-  cell_cull_wgsl,
-  cluster_copy_wgsl,
-  cluster_dispatch_wgsl,
-  cull_args_second_wgsl,
-  cull_args_wgsl,
-  cull_snapshot_wgsl,
-  instance_copy_wgsl,
-} from './cell-cull.wgsl.js';
+import { cell_cull_wgsl, cull_args_wgsl, instance_copy_wgsl } from './cell-cull.wgsl.js';
 import { denoise_wgsl } from './denoise.wgsl.js';
+import {
+  sphere_raster_args_wgsl,
+  sphere_raster_cull_wgsl,
+  sphere_raster_regions_wgsl,
+  sphere_raster_wgsl,
+} from './sphere-raster.wgsl.js';
 
 /** WGSL compute kernels by the name of their `KernelCode`, like `programs.ts` for render programs */
 const Kernels = new Map<string, string>([
@@ -42,12 +39,12 @@ const Kernels = new Map<string, string>([
   ['gd-write', gd_write_wgsl],
   ['cell-cull', cell_cull_wgsl],
   ['instance-copy', instance_copy_wgsl],
-  ['cluster-copy', cluster_copy_wgsl],
-  ['cluster-dispatch', cluster_dispatch_wgsl],
-  ['cull-snapshot', cull_snapshot_wgsl],
-  ['cull-args-second', cull_args_second_wgsl],
   ['cull-args', cull_args_wgsl],
   ['illumination-denoise', denoise_wgsl],
+  ['sphere-raster-cull', sphere_raster_cull_wgsl],
+  ['sphere-raster-regions', sphere_raster_regions_wgsl],
+  ['sphere-raster-args', sphere_raster_args_wgsl],
+  ['sphere-raster', sphere_raster_wgsl],
 ]);
 
 /** Registers the WGSL source of a kernel; the bindings are declared from its schema, see `getWgslKernelDeclarations` */
