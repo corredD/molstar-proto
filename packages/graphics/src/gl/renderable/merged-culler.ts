@@ -16,7 +16,7 @@ import { ValueCell } from '@molstar/core/util';
 import { isDebugMode } from '@molstar/core/util/debug';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
-import type { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
+import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import type { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import type { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
 import type { ComputeContext, ComputeKernel, KernelRequest, StorageBuffer } from '../compute.js';
@@ -292,6 +292,12 @@ export function createMergedCuller(
     uAnimationSlack: ValueCell.create(0),
     uCellCount: ValueCell.create(0),
     ...createHiZValues(createEmptyHiZ(resources)),
+    uHiZPlane0: ValueCell.create(Vec4()),
+    uHiZPlane1: ValueCell.create(Vec4()),
+    uHiZPlane2: ValueCell.create(Vec4()),
+    uHiZPlane3: ValueCell.create(Vec4()),
+    uHiZPlane4: ValueCell.create(Vec4()),
+    uHiZPlane5: ValueCell.create(Vec4()),
     uClipObjectCount: ValueCell.create(0),
     uClipBase: ValueCell.create(0),
     segmentData,
@@ -607,6 +613,24 @@ export function createMergedCuller(
     ValueCell.update(cell, v);
   };
 
+  const hiZPlanes = [
+    cellValues.uHiZPlane0,
+    cellValues.uHiZPlane1,
+    cellValues.uHiZPlane2,
+    cellValues.uHiZPlane3,
+    cellValues.uHiZPlane4,
+    cellValues.uHiZPlane5,
+  ];
+  const pyramidFrustum = Frustum3D();
+  const pyramidMatrix = Mat4();
+  /** `setHiZValues` and the planes of the pyramid's view, as the renderer's frustum of a camera */
+  function setPyramid(pyramid: OcclusionPyramid | undefined) {
+    setHiZValues(cellValues, pyramid, emptyHiZ);
+    if (!pyramid) return;
+    Frustum3D.fromProjectionMatrix(pyramidFrustum, Mat4.mul(pyramidMatrix, pyramid.projection, pyramid.view));
+    for (let i = 0; i < 6; ++i) setPlane(hiZPlanes[i], pyramidFrustum[i as 0]);
+  }
+
   /**
    * What the last dispatch culled with: the planes, the distance range, the levels' ranges, `dataVersion` and the
    * pyramid's camera; while they are the same its compacted attributes and records are current (a still camera culls
@@ -867,7 +891,7 @@ export function createMergedCuller(
         dispatchedPyramid.set(pyramid.view, 0);
         dispatchedPyramid.set(pyramid.projection, 16);
       }
-      setHiZValues(cellValues, pyramid, emptyHiZ);
+      setPyramid(pyramid);
       setPlane(cellValues.uPlane0, frustum[0]);
       setPlane(cellValues.uPlane1, frustum[1]);
       setPlane(cellValues.uPlane2, frustum[2]);
@@ -899,7 +923,7 @@ export function createMergedCuller(
       if (!secondPending) return false;
       secondPending = false;
       if (!pyramid || !kernels) return false;
-      setHiZValues(cellValues, pyramid, emptyHiZ);
+      setPyramid(pyramid);
       ValueCell.updateIfChanged(copyValues.uPhase, 1);
       const records = (rasterRegions ? 2 : 1) * Math.max(1, levelCount) * segmentCount;
       const groups = (n: number) => Math.ceil(n / CellCullKernel.workgroupSize[0]);
