@@ -101,3 +101,13 @@ should-fix, 4 nits, 1 nit added by the skeptic; 6 confirmed, 2 plausible, 0 refu
 ## Size
 
 About 35 production lines (base.ts, merged.ts, signatures.ts, the particle target), under the brief's 60.
+
+## Done
+
+- PR https://github.com/corredD/molstar-proto/pull/34 into `me/merge-master` (merged `origin/me/merge-master` in first,
+  f58c2029e; checks green after it). Not merged.
+- The after-bench ran with the 1M floor, before the review raised it to 10M. The decision is the same for every benched
+  model. It was not re-run: the machine crashed and the bench scratch dir (scripts, run files) was lost. The numbers are
+  the ones above.
+- Learned: a bench that waits on a download holds the shared lock up to its 5-minute timeout (synaptic vesicle). Check
+  that an example loads before queueing it.
