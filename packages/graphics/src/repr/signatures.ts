@@ -233,16 +233,17 @@ export function withMergedSignatures(
     const { objects, instances, levels, spheres, graphics } = counts;
     const renderMerged = (props.renderMerged ?? 'auto') as RenderMergedValue;
     if (renderMerged === false) return [...signatures];
-    const resolve = (rasterSpheres: number) =>
+    const resolve = (spheres: number) =>
       canCullOnGpu(graphics) &&
       resolveGpuCulling(
         (props.gpuCulling ?? false) as GpuCullingValue,
         instances,
         objects * Math.max(1, levels),
-        rasterSpheres,
+        spheres,
+        !!graphics?.capabilities.atomicMinMax64,
       );
     const gpu = resolve(0);
-    const gpuSpheres = graphics?.capabilities.atomicMinMax64 ? resolve(spheres ?? 0) : gpu;
+    const gpuSpheres = resolve(spheres ?? 0);
     const merge = gpu || gpuSpheres || (objects >= 2 && resolveRenderMerged(renderMerged, objects));
     if (!merge) return [...signatures];
     // both: the objects' values may not merge (`canMergeRenderObjects`, known once built), leaving them unmerged
