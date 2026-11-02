@@ -567,6 +567,29 @@ describe('the clipping area', () => {
 });
 
 describe('clipping.settings', () => {
+  it("keeps a representation's own variant when its cut moves: an app's choice for it (prism-me's Clip whole)", async () => {
+    const v = await create(cbs());
+    const clipping = v.api.clipping;
+    const { targets } = ok<Cut>(await clipping.add({ shape: 'plane', target: 'polymer' }));
+    const ref = targets[0].ref;
+    expect(clipOf(v, ref).variant).toBe('pixel');
+    // the representation set to cut whole copies by itself, the scene's variant left at pixel
+    const cell = v.plugin.state.data.cells.get(ref)!;
+    const own = RepresentationClip.set(cell.transform.params, { ...clipOf(v, ref), variant: 'instance' });
+    await v.plugin
+      .build()
+      .to(ref)
+      .update(own as never)
+      .commit();
+    expect(clipOf(v, ref).variant).toBe('instance');
+    // a gizmo's release (clipping.update), and a number's
+    ok(await clipping.update({ cut: 1, position: [1, 2, 3] }));
+    expect([...clipOf(v, ref).objects[0].position]).toEqual([1, 2, 3]);
+    expect(clipOf(v, ref).variant).toBe('instance');
+    ok(await clipping.update({ cut: 1, invert: true }));
+    expect(clipOf(v, ref).variant).toBe('instance');
+  });
+
   it('makes every cut representation, and the cuts added later, cut by instance; solid surface is the scene default', async () => {
     const v = await create(cbs(), triangle());
     const clipping = v.api.clipping;
