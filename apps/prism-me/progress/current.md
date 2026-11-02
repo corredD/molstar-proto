@@ -182,9 +182,9 @@ is not built is [../TODO.md](../TODO.md).
   pushed one fix commit per finding: 1e91e2a62 (WebGL1 Gaussian volume), 885192691 (clip spectral norm), 123f2935e
   (raster rows), 5182289b0 (raster releases items), 879496397 (colours/sizes vs LOD order), bf755a4ce (two-phase after a
   jump), bde10162c (pre-integration table), 58de77e82 (changelog); the #1962 line now says it often doesn't apply with
-  default SSAO. Also new: d65fc4bfd, GPU culling on by default from 100,000 spheres where the device has the raster.
-  On the eligibility question he answered "@corredD will look into this": it is ours (ties in with hidden-cost step 2).
-  Not decided: when to merge master (with #2061) into prism-me, and the #28 rebuild that comes with it.
+  default SSAO. Also new: d65fc4bfd, GPU culling on by default from 100,000 spheres where the device has the raster. On
+  the eligibility question he answered "@corredD will look into this": it is ours (ties in with hidden-cost step 2). Not
+  decided: when to merge master (with #2061) into prism-me, and the #28 rebuild that comes with it.
 - **#2061's sphere raster measured** (Ludo's workstation, Quadro RTX 8000, 2026-11-01; the M1 Pro has no
   `atomic-vec2u-min-max`, Apple 9 GPUs only): Alexander's bench, merged GPU-culled particles, zoomed 2.5–3.6× faster
   (PetWorld 9.61 → 2.68 ms at 0.03, MG_1184 6.69 → 2.73), whole view no gain, rotating whole slightly slower. Not used
