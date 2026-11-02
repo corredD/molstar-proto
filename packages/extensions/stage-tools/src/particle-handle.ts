@@ -153,19 +153,27 @@ const AimMs = 250;
 /** The smallest a particle's handle is (Å), what it moves however small */
 const MinHandleSize = 20;
 
-/** The radius of what is drawn on a particle (its decoration's), 0 for none */
-function objectRadius(target: ParticleTarget | undefined): number {
+/** How far what is drawn on a particle (its decoration) reaches from the particle's origin, 0 for none */
+function objectReach(target: ParticleTarget | undefined): number {
   if (!target) return 0;
-  if (target.kind === 'structure') return target.structure.boundary.sphere.radius;
-  if (target.kind === 'volume') return Grid.getBoundingSphere(target.volume.grid).radius;
-  const sphere = (target.shape.geometry as { boundingSphere?: { radius: number } }).boundingSphere;
-  return sphere?.radius ?? 0;
+  // a decoration is placed at the particle by its own coordinates: a cellPACK protein's sit off its origin
+  const reach = (s: { center: Vec3; radius: number } | undefined) => (s ? Vec3.magnitude(s.center) + s.radius : 0);
+  if (target.kind === 'structure') return reach(target.structure.boundary.sphere);
+  if (target.kind === 'volume') return reach(Grid.getBoundingSphere(target.volume.grid));
+  return reach((target.shape.geometry as { boundingSphere?: { center: Vec3; radius: number } }).boundingSphere);
 }
 
-/** The size of a particle's handle: at least as big as what it moves (`particleRadius`, the list's for the particle) */
+/** How far past what it moves a particle's handle reaches */
+const HandleMargin = 1.25;
+
+/**
+ * The size of a particle's handle (how far it reaches from the particle's origin): a quarter past what it moves, the
+ * decoration's far side, else the particle's own sphere (`particleRadius`, the list's for the particle). Not the
+ * particle's radius with a decoration: a cellPACK file's is about the decoration's, which sits off the origin
+ */
 export function handleSize(target: ParticleTarget | undefined, particleRadius: number): number {
-  // past the object drawn on the particle (its radius), else the particle's own
-  return Math.max(objectRadius(target) * 1.6, particleRadius * 3, MinHandleSize);
+  const reach = objectReach(target) || particleRadius;
+  return Math.max(reach * HandleMargin, MinHandleSize);
 }
 
 /** The local handle on a particle while shown: its list, the particle, what it edits */
