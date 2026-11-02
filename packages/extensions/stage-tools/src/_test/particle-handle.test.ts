@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { offsetParticles } from '@molstar/plugin/state/transforms/particles/ops';
-import { offsetMatrix, particleFrame, solveEdit } from '../particle-handle.js';
+import { handleSize, offsetMatrix, particleFrame, solveEdit } from '../particle-handle.js';
 
 // A particle's local handle: the offset that puts the particle's frame where the handle took it, whichever offset it
 // edits, the others of the stack kept around it.
@@ -56,5 +56,16 @@ describe('the particle handle', () => {
     close(all.translation, [0, 2, 1]);
     expect(all.stack.offsets).toHaveLength(1);
     close(particleFrame(offsetParticles(list, all.stack.offsets, all.stack.instances), 1), moved);
+  });
+
+  it("reaches just past what is drawn on the particle, from the particle's origin", () => {
+    // a cellPACK protein: its structure off the particle's origin by 11 Å, 15 Å in radius, the particle's own radius
+    // (the file's) 13 Å: the far side 26 Å out, the handle a quarter past it, not three particle radii (39 Å)
+    const structure = { boundary: { sphere: { center: Vec3.create(11, 0, 0), radius: 15 } } };
+    const target = { kind: 'structure', structure } as unknown as Parameters<typeof handleSize>[0];
+    expect(handleSize(target, 13)).toBeCloseTo(1.25 * 26, 6);
+    // nothing drawn on it: the particle's sphere, a quarter past it; never under 20 Å
+    expect(handleSize(undefined, 40)).toBeCloseTo(50, 6);
+    expect(handleSize(undefined, 2)).toBe(20);
   });
 });
