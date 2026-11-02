@@ -1,0 +1,205 @@
+{
+  "example": "petworld-hiv",
+  "backend": "webgpu",
+  "dpr": 1,
+  "viewport": "896x800",
+  "largest": {
+    "id": 11,
+    "name": "NC",
+    "count": 4600
+  },
+  "rows": [
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 36.9,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 28.9,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 47.2,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 34.9,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 1165,
+        "of": 716800,
+        "max": 1
+      },
+      "skip": {
+        "marked": [],
+        "still": 47.5,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 45.5,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 63.3,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 57.7,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency-dpoit",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 47.9,
+        "calls": {
+          "draws": 2313,
+          "instances": 34
+        },
+        "turning": 38.8,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 73.5,
+        "calls": {
+          "draws": 2313,
+          "instances": 34
+        },
+        "turning": 57.5,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency-dpoit",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 69.6,
+        "calls": {
+          "draws": 2313,
+          "instances": 34
+        },
+        "turning": 68.7,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 108.7,
+        "calls": {
+          "draws": 2313,
+          "instances": 34
+        },
+        "turning": 100,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency-blended",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 34.1,
+        "calls": {
+          "draws": 21,
+          "instances": 21
+        },
+        "turning": 27.3,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 45.8,
+        "calls": {
+          "draws": 21,
+          "instances": 21
+        },
+        "turning": 37.2,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency-blended",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 10339,
+        "of": 716800,
+        "max": 67
+      },
+      "skip": {
+        "marked": [],
+        "still": 43,
+        "calls": {
+          "draws": 21,
+          "instances": 21
+        },
+        "turning": 68.7,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 58.6,
+        "calls": {
+          "draws": 21,
+          "instances": 21
+        },
+        "turning": 87.1,
+        "change": null,
+        "transparency": [0.143]
+      }
+    }
+  ]
+}

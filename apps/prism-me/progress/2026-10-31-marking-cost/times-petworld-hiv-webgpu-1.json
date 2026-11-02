@@ -1,0 +1,1219 @@
+{
+  "example": "petworld-hiv",
+  "backend": "webgpu",
+  "dpr": 1,
+  "viewport": "896x800",
+  "largest": {
+    "id": 11,
+    "name": "NC",
+    "count": 4600
+  },
+  "rows": [
+    {
+      "case": "none",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 33.5,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 23.1,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 33.8,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 23.5,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 33.4,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 23.7,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 33.4,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 23.4,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 33.2,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 23.1,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 33.3,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 23.7,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 27.1,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 18.3,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 27,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 18,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 26.9,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 18.3,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 26.9,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 18.4,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 27.1,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 18.3,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 26.9,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 18.2,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 50.7,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 21.7,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 50.6,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 21.2,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 50.3,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 21.4,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 50.3,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 21.9,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "none",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 50.5,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 21.3,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 50.4,
+        "calls": {
+          "draws": 2310,
+          "instances": 31
+        },
+        "turning": 21.2,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 36.2,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 25.6,
+        "change": {
+          "on": 7.5,
+          "off": 0.8
+        },
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 46.4,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 34.6,
+        "change": {
+          "on": 14.9,
+          "off": 0.9
+        },
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 36.2,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 25.9,
+        "change": {
+          "on": 6,
+          "off": 0.7
+        },
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 45.2,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 34.3,
+        "change": {
+          "on": 14.5,
+          "off": 0.9
+        },
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 36.1,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 26.6,
+        "change": {
+          "on": 6.3,
+          "off": 0.7
+        },
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 44.5,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 34.1,
+        "change": {
+          "on": 15.1,
+          "off": 0.8
+        },
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 28.2,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 20.7,
+        "change": {
+          "on": 10.3,
+          "off": 0.8
+        },
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 38.2,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 26.3,
+        "change": {
+          "on": 40.2,
+          "off": 1
+        },
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 28.5,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 20.9,
+        "change": {
+          "on": 10.2,
+          "off": 0.8
+        },
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 38.1,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 26.4,
+        "change": {
+          "on": 40.1,
+          "off": 0.9
+        },
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 28.5,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 21.2,
+        "change": {
+          "on": 10.5,
+          "off": 0.8
+        },
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 38.1,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 26.3,
+        "change": {
+          "on": 40.2,
+          "off": 1
+        },
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 54.4,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 24.7,
+        "change": {
+          "on": 7.2,
+          "off": 0.7
+        },
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 78.8,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 32.7,
+        "change": {
+          "on": 41.6,
+          "off": 1
+        },
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 53.4,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 24.8,
+        "change": {
+          "on": 7.2,
+          "off": 0.7
+        },
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 78.7,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 32.8,
+        "change": {
+          "on": 41.4,
+          "off": 1.1
+        },
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "hover",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 54.3,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 24.5,
+        "change": {
+          "on": 7.7,
+          "off": 0.8
+        },
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 78.7,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 32.9,
+        "change": {
+          "on": 42.1,
+          "off": 1.1
+        },
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 36.6,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 26.2,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 45.3,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 33.4,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 36.2,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 25.7,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 44.8,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 34.4,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 36.5,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 26.7,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 45.1,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 34.6,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 28.6,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 21.4,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 38.5,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 26.3,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 28.3,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 20.7,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 38.1,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 26.3,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 28.4,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 20.8,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 38.1,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 26.6,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 53.4,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 24.4,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 78.4,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 33.1,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 54,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 24.4,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 78.5,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 32.9,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "select",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [0.0538],
+        "still": 53.6,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 24.8,
+        "change": null,
+        "transparency": [0]
+      },
+      "noskip": {
+        "marked": [0.0538],
+        "still": 78.8,
+        "calls": {
+          "draws": 2316,
+          "instances": 37
+        },
+        "turning": 32.7,
+        "change": null,
+        "transparency": [0]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 0,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 37.3,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 29.2,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 47.5,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 35.8,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 1,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 37.3,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 29,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 47,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 35.5,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 1,
+      "run": 2,
+      "diff": {
+        "pixels": 0,
+        "of": 716800,
+        "max": 0
+      },
+      "skip": {
+        "marked": [],
+        "still": 37.1,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 29.1,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 47.7,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 35.7,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 0,
+      "diff": {
+        "pixels": 787,
+        "of": 716800,
+        "max": 1
+      },
+      "skip": {
+        "marked": [],
+        "still": 47.7,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 45.7,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 63.1,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 58,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 1,
+      "diff": {
+        "pixels": 723,
+        "of": 716800,
+        "max": 1
+      },
+      "skip": {
+        "marked": [],
+        "still": 47.5,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 45.1,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 63.7,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 57.5,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.1,
+      "run": 2,
+      "diff": {
+        "pixels": 903,
+        "of": 716800,
+        "max": 1
+      },
+      "skip": {
+        "marked": [],
+        "still": 47.7,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 45.5,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 63,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 57,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.02,
+      "run": 0,
+      "diff": {
+        "pixels": 30500,
+        "of": 716800,
+        "max": 1
+      },
+      "skip": {
+        "marked": [],
+        "still": 81.4,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 46.2,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 118.2,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 62.4,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.02,
+      "run": 1,
+      "diff": {
+        "pixels": 23009,
+        "of": 716800,
+        "max": 3
+      },
+      "skip": {
+        "marked": [],
+        "still": 81.6,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 45.9,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 116.2,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 61.5,
+        "change": null,
+        "transparency": [0.143]
+      }
+    },
+    {
+      "case": "transparency",
+      "f": 0.02,
+      "run": 2,
+      "diff": {
+        "pixels": 18104,
+        "of": 716800,
+        "max": 1
+      },
+      "skip": {
+        "marked": [],
+        "still": 81.4,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 45.9,
+        "change": null,
+        "transparency": [0.143]
+      },
+      "noskip": {
+        "marked": [],
+        "still": 118.4,
+        "calls": {
+          "draws": 2311,
+          "instances": 32
+        },
+        "turning": 62.4,
+        "change": null,
+        "transparency": [0.143]
+      }
+    }
+  ]
+}
