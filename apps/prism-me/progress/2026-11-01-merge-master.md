@@ -19,7 +19,18 @@
 | 9dda0fc74 | GPU culling's wiggle and tumble allowance (281260de8) on master's kernels                                  |
 | 578160701 | this file, `.v6/changelogs/merge-master.md`                                                                |
 | 21b19c611 | CPU culling's wiggle and tumble allowance on batches and cells (4ac650258's, on master's `cullSegment`)    |
-| (next)    | this file updated; `instance-cull.md`'s changelog and `features.md` trimmed to what still holds            |
+| b20714a90 | this file updated; `instance-cull.md`'s changelog and `features.md` trimmed to what still holds            |
+| 57d232309 | review A2: the CPU allowance computed once per cull from the 8 cells it reads, passed to `cullSegment`     |
+| 36c1ec694 | review A1, N2: a still frame culls again where the allowance changed (animation cells in the cull keys)    |
+| 8430deb97 | review N1: the CPU's clip classes of batches and cells with the allowance, as the GPU kernel               |
+| 992635654 | review B1: `ShapeMultiRepresentation.getSignatures` (vtp, ply, obj prepared by `prepareRepresentation`)    |
+| ac0960a7e | review B4: one `prepareCommitted` for both layers, releasing the prepared objects                          |
+| 36b8ad7b5 | the two new tests formatted (biome)                                                                        |
+| cc494440a | review B2: the frame at rest after a motion clears the Hi-Z levels where no second phase tests its own     |
+| b00e86593 | review B3: the allowance in `merged-render-objects.md`, the ghost exception in `clip-culling.md`           |
+| 7a4ca1a46 | review B5: the clipping table with the layer and clip objects in the shader variants' define axes          |
+| 6d1833f2d | review B5: images left out in the pixel variant only (the instance variant links)                          |
+| (next)    | this file: the review                                                                                      |
 
 ## Per conflicted file
 
@@ -127,8 +138,46 @@ Read against master's; each surviving prism-me hunk is an orthogonal feature (of
 - **Data layer pages**: 17 layers overflow the 32-bit layout (de0a7ed3d).
 - **Renamed varyings** (`vMarker` → `vMarkerClipping.x`, `vClipping` → `vMarkerClipping.y`, `vTransparency`/`vEmissive`
   → `vTransparencyEmissive`, the spheres' `vRadius` → `vSphere.w`): no old name left in GLSL or WGSL; the clip table's
-  flag resolved onto `vMarkerClipping.y`.
+  flag resolved onto `vMarkerClipping.y`. (Review correction: the renames are WGSL's; master's GLSL keeps `vClipping`,
+  which images read unwritten, an open bug of master's below.)
 - **The raster's resolve**: color levels read `out.vModelPosition` after the layers: moved before (82fd88f90).
+
+## Review
+
+The gate on the merge (an Opus reviewer, then a skeptic re-running or re-reading each finding). Fixed: a test failing
+first on the code before (where testable), then the fix, a commit each.
+
+| Finding                                                                                                                                                                                                               | Verdict (skeptic)                                                     | Commit / open                                                                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1 (must-fix): the CPU still-frame cull cache ignores the animation (`getCullCells` without its cells; a merged object keyed on `cullVersion` alone): an amplitude 0 → 5 with the camera still kept the slack-0 lists | confirmed (probe `cache.test.ts`)                                     | 36c1ec694 (`cull-view.test.ts`: a renderable and a merged object cull again, no cache hit, after an amplitude or tumble change)                                                    |
+| A2: the slack recomputed per `cullSegment` per member from 155-key spread values objects                                                                                                                              | confirmed                                                             | 57d232309 (behaviour unchanged: 21b19c611's wiggle test passes, only how the slack is given changed)                                                                               |
+| A3: the GPU culler's per-dispatch member loop (`getAnimationSlack(values, members)`, ~1.9 ms / 20k members)                                                                                                           | confirmed, pre-existing                                               | open: the culler lanes (`merged-culler.ts`, not touched here)                                                                                                                      |
+| A4: `DrawFact.Ghost` collides with `ClipCull`                                                                                                                                                                         | refuted by mutation (`Ghost = 1 << 24` fails two `clip-ghosts` tests) | -                                                                                                                                                                                  |
+| A5: the slack is not scaled by an instance's scale                                                                                                                                                                    | partly confirmed, pre-existing                                        | open                                                                                                                                                                               |
+| A6: no allowance on whole-object tests (`cullObject`, gridless segments)                                                                                                                                              | confirmed, pre-existing                                               | open                                                                                                                                                                               |
+| N1: the CPU classifies the grid's spheres against clip objects without the slack (`getGridClipClasses`), the GPU kernel with it                                                                                       | confirmed by reading                                                  | 8430deb97 (`cull-segment.test.ts`: a plane's cells within the wiggle of it drawn as the reference with the slack)                                                                  |
+| N2: a member's wiggle (`dWiggle`, `uWiggleStrength`) changed without `cullVersion` moving (`sync`)                                                                                                                    | confirmed by reading                                                  | 36c1ec694 (the merged case of the same test, synced through `merged.sync()` alone as `repr/merged.ts` does)                                                                        |
+| B1: `ShapeMultiRepresentation` without `getSignatures`: vtp, ply, obj (wireframe) shapes not prepared                                                                                                                 | confirmed                                                             | 992635654 (`repr/shape/_test/representation.test.ts`)                                                                                                                              |
+| B2: with Hi-Z, no second phase and `motion.lodScale` > 1, the frame at rest tests a pyramid of the coarse moving frames and nothing draws again                                                                       | plausible                                                             | cc494440a (`webgpu-motion-lod.test.ts`, Dawn: `HiZPass.clear` at rest for the CPU test and one-phase GPU culling, not with two phases; a spy on the clear, the image not compared) |
+| B3: the allowance gone from `merged-render-objects.md`; the ghost exception missing from `clip-culling.md`                                                                                                            | confirmed                                                             | b00e86593                                                                                                                                                                          |
+| B4: `commitScene` inlines `prepareCommitted` plus `releasePreparedObjects()`; the on-top branch without the release                                                                                                   | confirmed                                                             | ac0960a7e (no test: a move of one call; the on-top release, while a split commit of the main scene is still pending, is no earlier than master's timer release)                    |
+| B5: the shader variants never compile `dClipTable` with `dClipping` and `dClipObjects` (nor its depth variant, the ghost pass's)                                                                                      | confirmed                                                             | 7a4ca1a46, 6d1833f2d (results under Checks; images in the pixel variant left out, see Open)                                                                                        |
+
+Open (pre-existing, not of this merge's review fixes):
+
+- **A3**: the GPU culler computes `getAnimationSlack(values, members)` per dispatch over every member (about 1.9 ms per
+  frame with 20k members). For the culler lanes (`merged-culler.ts`): compute it per `sync`, or keep the members'
+  largest wiggle strength there.
+- **A5**: the slack is in model units of the instance: an instance scaled up wiggles further than its allowance.
+- **A6**: whole objects (`cullObject`) and gridless segments (`cullSegment`'s `cellSize <= 1` path) are tested without
+  the allowance, the clip class of a whole object too.
+- **Images with a clipping layer and clip objects** (found by B5): `image.vert` writes no `vClipping`, which the
+  fragment stage's `clipTest` reads (the flags undefined); linking that program (pixel variant, with or without the
+  table) crashes the native `gl` (SIGSEGV, reproduced standalone outside vitest). Master's too (`image.vert` has no
+  clipping varying there): a library fix lane from `origin/master` (assign the varying, or no `dClipping` for images).
+  The shader variants leave images in the pixel variant out of the table's combinations until then (6d1833f2d).
+- B2's fix costs the frame at rest its occlusion (CPU test or one-phase GPU culling): it draws unoccluded once, then
+  builds its own levels.
 
 ## Checks
 
@@ -143,5 +192,19 @@ Read against master's; each surviving prism-me hunk is an orthogonal feature (of
   and links on WebGL (native `gl`) and WebGPU (Dawn) with no problem (12 tests); the two coverage tests fail for the
   machine: WebGPU leaves the four sphere-raster kernels uncompiled (the M1 has no `atomic-vec2u-min-max`), WebGL 14
   programs (the same list, and two more, on the merge base fb8772a88 with this `gl`).
+- After the review fixes (57d232309..7a4ca1a46): `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`,
+  `pnpm check:workspace`: pass; `pnpm format:check`: only `progress/current.md` (not this lane's, as before).
+  `vitest run` of `packages/graphics` (141 files, 1680 tests), `packages/plugin` and `packages/extensions/mesoscale`
+  (122 files, 692 tests, Dawn): 0 failed. The whole quick lane (`vitest run`, Dawn): 1333 files passed, 1 failed under
+  the full parallel load (`webgpu-update-hold`: 4 skipped draws for 2, a timing of pipelines compiling in the
+  background), which passes alone three times out of three and in the `packages/plugin` run. Mesoscale `test:scaling`:
+  pass.
+- Shader variants after B5 (6d1833f2d, files one after the other): every source compiles and links on WebGL (native
+  `gl`) and WebGPU (Dawn), 12 tests; define axes 134 signatures on WebGL (121 before), 180 on WebGPU. A hook on the
+  native `gl`'s links showed the table with the layer and clip objects, the depth variant (the ghost pass's) among them,
+  for lines, mesh, points, text and texture-mesh in both clip variants; not shown for direct-volume (its defines did not
+  match the hook's filter); spheres and cylinders are in no WebGL source (the native `gl` draws no impostors, before
+  this lane too). The two coverage tests fail as before, the same lists: WebGL 14 programs, WebGPU the four
+  sphere-raster kernels.
 - **Not verified**: the sphere raster on a device that has it (the M1 has no `atomic-vec2u-min-max`: its headless tests
   skip), the app in a browser, frame times (the instance-cull tables are of #28's code), Firefox.
