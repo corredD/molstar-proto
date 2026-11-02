@@ -80,6 +80,11 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
+- **Volume lighting** (Ludo, 2026-11-02; parked): shadows and light scattering in direct volumes, first by plain
+  formulas, then a tiny network trained on a path tracer (after charlesgrassi.dev's neural volumetric clouds), then
+  volumes shadowing the molecules in illumination. A library lane from master, PRs into prism-me. Plan, steps and gates:
+  [plans/2026-11-02-volume-lighting.md](plans/2026-11-02-volume-lighting.md).
+
 - A sphere a clip plane misses entirely (its center is past the plane by more than its radius): skip it in the color
   pass, and skip one the plane misses in the ghost pass (lane `marking-cost`, not built;
   `progress/2026-10-31-marking-cost.md`). A cone or a scaled sphere is not a safe radius test. It needs a rendered pixel
