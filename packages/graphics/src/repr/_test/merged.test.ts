@@ -81,6 +81,13 @@ describe('merging render objects', () => {
     expect(resolveGpuCulling('auto', AutoGpuCullingThreshold - 1, 1, 0, min * 10)).toBe(false);
   });
 
+  it('keeps symmetric assemblies of a few million spheres on the CPU without the raster', () => {
+    // a 60-mer of 7 chains as spacefill, no levels (7qpd's assembly is 0.69M spheres): 60 instances per draw, culled on
+    // the GPU measured a loss (`merged-render-objects.md`, When on); the gains without the raster were measured from
+    // 13.5M spheres (mesoscale models)
+    expect(resolveGpuCulling('auto', 7 * 60, 7, 0, 3_000_000)).toBe(false);
+  });
+
   it('merges a few instances of many spheres to cull them on the GPU, without the raster', () => {
     const instances = AutoGpuCullingThreshold;
     const entries = [{ visual: 0, renderObject: spheres(instances, Math.ceil(AutoGpuCullingMinSpheres / instances)) }];
