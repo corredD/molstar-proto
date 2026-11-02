@@ -80,23 +80,21 @@ fn occluded(sphere: vec4<f32>) -> bool {
     var x1 = 0;
     var y0 = 0;
     var y1 = 0;
-    // the texels the rectangle covers, at most two per axis: a level up where it straddles three
+    // the texels the rectangle covers (within the view: an edge at 1 is in the last), at most two per axis: a level
+    // up where it straddles three
     loop {
         if (lod >= levels) {
             return false;
         }
         ts = 1 << u32(levels - 1 - lod);
-        x0 = i32(floor(aabb.x * f32(ts)));
+        x0 = min(i32(floor(aabb.x * f32(ts))), ts - 1);
         x1 = min(i32(floor(aabb.z * f32(ts))), ts - 1);
-        y0 = i32(floor(aabb.y * f32(ts)));
+        y0 = min(i32(floor(aabb.y * f32(ts))), ts - 1);
         y1 = min(i32(floor(aabb.w * f32(ts))), ts - 1);
         if (x1 - x0 <= 1 && y1 - y0 <= 1) {
             break;
         }
         lod += 1;
-    }
-    if (x0 < 0 || y0 < 0 || x1 >= ts || y1 >= ts) {
-        return false;
     }
     // the levels from \`minLevel\` side by side: level i of size 2^(levels - 1 - i)
     var offset = 0;
