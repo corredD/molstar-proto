@@ -258,11 +258,12 @@ export function getDefineAxisSource(sources: readonly VariantSource[]): VariantS
     // the clipping table's branch reads the clipping layer with the clip objects (`dClipTable && dClipping`, its
     // flags rows of `tClipTable`): the three on together, which none of the axes alone reaches, in each clip variant;
     // the ghost pass draws the same programs' depth variant
-    // (not images: their vertex stage writes no clipping varying, which the fragment stage reads; linking that program
-    // crashes the native `gl` with clip objects in the pixel variant, an open bug of master's `image.vert`)
+    // (not images in the pixel variant: their vertex stage writes no clipping varying, which the fragment stage reads;
+    // linking that program crashes the native `gl`, an open bug of master's `image.vert`)
     const clipVariant = schema.dClipVariant;
-    if (base.type !== 'image' && schema.dClipTable?.type === 'define' && clipVariant?.type === 'define') {
+    if (schema.dClipTable?.type === 'define' && clipVariant?.type === 'define') {
       for (const variant of clipVariant.options ?? []) {
+        if (base.type === 'image' && variant === 'pixel') continue;
         const defines = {
           ...base.defines,
           dClipTable: true,
