@@ -50,6 +50,13 @@ name no extension (upstreamable later, when Ludo says so).
   whole, then Oklab stored (progress/2026-10-30-dynamic-color.md, After Ludo's test, plan for 2). WebKit (Safari) draws
   only the RNA of CellPack HIV on WebGPU, on `prism-me` too.
 
+### Bugs (Ludo, 2026-11-02; fixed straight on prism-me, no lane)
+
+- **Gizmo on a cellPACK instance**: too big, and the instance moves only on mouse release, not while dragging.
+- **Clip drag drops the granularity**: with clipping switched to protein (whole-part) mode, dragging the clip object
+  switches it back to atom mode at mouse release.
+- **A distance label ignores its parent's eye in the tree**: hiding the parent leaves the label shown and its eye on.
+
 ## Library fixes ready for upstream
 
 Each its own lane from `origin/master` (AGENTS.md, How we work), upstream only when Ludovic says so: he asks the
