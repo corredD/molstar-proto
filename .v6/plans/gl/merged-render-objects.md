@@ -80,6 +80,18 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
   its sphere against the frustum and the object's distance range and picks its levels, as `cullSegment` does per cell;
   finer cells cost threads, not draws. The copy (below) tests each instance of a drawn cell the same way (GPU
   occlusion step 9). Testing each instance on its own, read per vertex, cost more than it saved.
+- **Wiggle and tumble allowance**: the animations move spheres after culling (`animation.wgsl`), so the tests grow each
+  sphere by how far they may (`getAnimationSlack`, `renderable.ts`): √3 times the wiggle's amplitude plus the largest
+  per-group strength of the members that wiggle (`dWiggle`, `uWiggleStrength`), and the tumble's amplitude, each where
+  its speed and frequency are on. On the GPU `sphereLevels` grows the cells' and instances' spheres by it
+  (`uAnimationSlack`, set per dispatch) for the frustum, the distance ranges, the levels, occlusion and the clip classes;
+  on the CPU `cullSegment` grows batches and cells by the slack its caller computes once per cull (a merged object's
+  per member: its material's animation with the member's wiggle), the clip classes too (`getGridClipClasses`, cached
+  per slack). The CPU cull caches follow a change (`getCullCells` lists the animation's cells; a merged object's key
+  its material's, `sync` advancing `cullVersion` where a member's wiggle changed). Why: a wiggling particle at the
+  view's edge, behind an occluder or next to a clip plane was culled while its atoms reached into view. Not covered:
+  the slack is not scaled by an instance's scale, and whole objects (`cullObject`, gridless segments) are tested
+  without it.
 - **Compaction by copy**: a thread per instance of a drawn cell copies its instanced attributes (transform, instance
   id, segment data, about 112 bytes) into compacted buffers, a slot per level in its segment's region (`atomicAdd` on a
   counter per level and segment); the compacted buffers are the render item's instanced vertex buffers. The programs

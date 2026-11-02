@@ -29,6 +29,11 @@ With a clipping layer, flags per group exempt primitives of one instance apart: 
 without a layer or with flags per instance (`uInstanceGranularity`), primitives always (their flag read as the vertex
 stage reads it).
 
+Clip objects with a ghosted one (`Clip.Objects.ghost`, prism-me's ghost pass) cull nothing: the ghost pass draws what
+they cut (inverted, at the ghost alpha), so objects, cells and instances they clip whole are still drawn there
+(`getCullClipObjects` undefined, no `DrawFact.ClipCull`, `getCullClipCount` 0 for the GPU culler); the vertex stage's class of a
+primitive follows the pass (`clipGhostless`: class 2 only where no ghosted object applies). Prism-me, 128bcfff7.
+
 1. **CPU** (done, `@molstar/core` `util/clip.ts`): `Clip.classifySphere(objects, sphere, flag?)` → `SphereClass` none /
    some / all over the objects (one clipping every point decides), `classifySphereObject` per object,
    `getSignedDistance` the shaders' `localSD` on `frame` and `shape`; `canIntersectSphere` on it (some), its callers
