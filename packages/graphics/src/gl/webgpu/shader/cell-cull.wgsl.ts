@@ -10,7 +10,9 @@ import { clip_storage_wgsl } from './chunks/clip.wgsl.js';
 
 /**
  * The occlusion test of a sphere (world space, `occluded`) against a pyramid (`HiZSchema` in `cell-cull.ts`), as
- * `HiZPass.isOccluded` tests on the CPU
+ * `HiZPass.isOccluded` tests on the CPU. A rectangle reaching past the pyramid's view is clamped to it where
+ * `hiZClampable()` (the includer's) says the pyramid is of the view culled for, nothing outside it being in view; else
+ * the sphere is not occluded
  */
 export const hiz_occlusion_wgsl = /* wgsl */ `
 // the occlusion test of \`HiZPass.isOccluded\` against the pyramid of the previous frame (depth reversed: near at 1)
@@ -59,7 +61,14 @@ fn occluded(sphere: vec4<f32>) -> bool {
     if (-z < uParams.uHiZDepthRange.x) {
         return false;
     }
-    let aabb = hiZProjectSphere(vp, r);
+    var aabb = hiZProjectSphere(vp, r);
+    if (any(aabb < vec4<f32>(0.0)) || any(aabb > vec4<f32>(1.0))) {
+        // what is outside the view is not seen: only the texels inside it count, at the pyramid's own view
+        if (!hiZClampable()) {
+            return false;
+        }
+        aabb = clamp(aabb, vec4<f32>(0.0), vec4<f32>(1.0));
+    }
     let w = aabb.z - aabb.x;
     let h = aabb.w - aabb.y;
     let pr = max(w * uParams.uHiZViewport.x, h * uParams.uHiZViewport.y);
@@ -71,23 +80,21 @@ fn occluded(sphere: vec4<f32>) -> bool {
     var x1 = 0;
     var y0 = 0;
     var y1 = 0;
-    // the texels the rectangle covers, at most two per axis: a level up where it straddles three
+    // the texels the rectangle covers (within the view: an edge at 1 is in the last), at most two per axis: a level
+    // up where it straddles three
     loop {
         if (lod >= levels) {
             return false;
         }
         ts = 1 << u32(levels - 1 - lod);
-        x0 = i32(floor(aabb.x * f32(ts)));
-        x1 = i32(floor(aabb.z * f32(ts)));
-        y0 = i32(floor(aabb.y * f32(ts)));
-        y1 = i32(floor(aabb.w * f32(ts)));
+        x0 = min(i32(floor(aabb.x * f32(ts))), ts - 1);
+        x1 = min(i32(floor(aabb.z * f32(ts))), ts - 1);
+        y0 = min(i32(floor(aabb.y * f32(ts))), ts - 1);
+        y1 = min(i32(floor(aabb.w * f32(ts))), ts - 1);
         if (x1 - x0 <= 1 && y1 - y0 <= 1) {
             break;
         }
         lod += 1;
-    }
-    if (x0 < 0 || y0 < 0 || x1 >= ts || y1 >= ts) {
-        return false;
     }
     // the levels from \`minLevel\` side by side: level i of size 2^(levels - 1 - i)
     var offset = 0;
@@ -105,6 +112,11 @@ ${hiz_occlusion_wgsl}
 ${clip_storage_wgsl('segmentData', 'u32(uParams.uClipBase)', 'uParams.uClipObjectCount')}
 fn outside(plane: vec4<f32>, sphere: vec4<f32>) -> bool {
     return dot(plane.xyz, sphere.xyz) + plane.w < -sphere.w;
+}
+
+/** \`occluded\`'s clamp: at the pyramid's own view (the second phase, a still camera) nothing outside it is in view */
+fn hiZClampable() -> bool {
+    return uParams.uHiZClamp != 0;
 }
 
 /**

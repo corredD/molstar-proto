@@ -88,6 +88,10 @@ fn appendChunks(slot: u32, first: u32, count: u32, level: u32, instance: vec4<u3
 export const sphere_raster_cull_wgsl = /* wgsl */ `
 ${sphere_raster_common_wgsl}
 ${hiz_occlusion_wgsl}
+// \`occluded\` here never clamps a rectangle reaching past the pyramid's view (whose view it is goes untested)
+fn hiZClampable() -> bool {
+    return false;
+}
 ${sphere_raster_transform_wgsl}
 ${sphere_raster_append_wgsl}
 ${clip_storage_wgsl('clipObjects', '0u', 'uParams.uClipObjectCount')}

@@ -27,6 +27,11 @@
   on, so a region holds the first's instances then the second's. The args kernel writes the second's records (`second`:
   count, first instance moved by the first's count) and the sum into the main records, for the frame's later passes and
   still frames.
+- **What reaches past the view**: a sphere whose rectangle reaches past the pyramid's view is tested by the texels
+  inside it where the pyramid is of the view culled for (its frustum's planes the culled ones: every second phase, a
+  still camera; `uHiZClamp`), else not occluded (a first phase after a turn: what lay outside that view may show now).
+  Zoomed into a packed scene most of what is hidden reaches past the view: CellPack HIV, Apple M1 without the raster,
+  still at 0.1 and 0.02 of the distance 25.1 / 16.2 to 7.5 / 7.6 ms (prism-me lane `webgpu-zoom-regression`).
 - **Opaque part 2** (`DrawPass.planOpaqueSecond`): pyramid, second phase, then a pass on the same target, loading. Drawn
   directly, no recording: it exists only while moving. No caps in this part: while a second phase is to come the first part draws caps from whole segments, also where a cap cuts all of them (the object's lists hold the first phase's instances only).
 - **Raster** (`SphereRaster.second`): the regions kernel over the second's records appends to the same chunks; words 2 and

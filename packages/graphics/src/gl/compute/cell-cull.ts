@@ -124,6 +124,11 @@ const SphereTestSchema = {
   uAnimationSlack: UniformSpec('f'),
   ...HiZSchema,
   /**
+   * whether the pyramid is of the view culled for (its frustum the same): a sphere's rectangle reaching past that view
+   * is clamped to it, nothing outside it being in view (`hiZClampable`); else such a sphere is not occluded
+   */
+  uHiZClamp: UniformSpec('b'),
+  /**
    * the clip objects of an object without a clipping layer (`getCullClipCount`), in `segmentData` from vec4
    * `uClipBase` (`clip_storage_wgsl`): spheres they clip whole culled (`clipSphereClass`, `clip-culling.md`)
    */

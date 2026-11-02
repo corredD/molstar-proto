@@ -644,9 +644,9 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
       plugin.dispose();
     }
   }, 60_000);
-  // rework: the occlusion test's rectangle clamped to the pyramid's view with the cap test (50cc9ba4e, 39fe62c23,
-  // 0e9761df6): #2061's `occluded` tests nothing that reaches past the view
-  it.skip('occlusion culls what is hidden also where its rectangle reaches past the view, and draws it again once revealed at the same view', async () => {
+  // the rectangle clamped to the pyramid's view where the pyramid is of the view culled for (`uHiZClamp`, on #2061's
+  // `occluded`): zoomed in, most of what is hidden reaches past the view; after a turn not clamped
+  it('occlusion culls what is hidden also where its rectangle reaches past the view, and draws it again once revealed at the same view', async () => {
     const plugin = await createPlugin();
     try {
       const graphics = plugin.canvas3d!.graphics;
