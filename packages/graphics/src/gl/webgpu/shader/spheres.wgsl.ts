@@ -106,7 +106,7 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
         // the mask (not the depth, uMarkingType 1: unmarked spheres occlude there) keeps marked fragments only
         var markerValue = uObject.uMarker;
         #if defined(dNeedsMarker)
-            if (uObject.uMarker == -1.0) { markerValue = floor(out.vMarker * 255.0 + 0.5); }
+            if (uObject.uMarker == -1.0) { markerValue = floor(out.vMarkerClipping.x * 255.0 + 0.5); }
         #endif
         if (uGlobal.uMarkingType != 1 && markerValue == 0.0) {
             out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
@@ -118,7 +118,7 @@ fn vertexMain(in: VertexInput) -> VertexOutput {
         // per fragment (x-ray, alpha thickness, opaque back faces) or per vertex. Clear of the cutoff by a margin: the
         // fragment stage reads the value interpolated
         if (uMaterial.uAlpha == 1.0 && uObject.uAlphaThickness == 0.0) {
-            let skipT = out.vTransparency;
+            let skipT = out.vTransparencyEmissive.x;
             if ((uGlobal.uRenderMask == MaskOpaque && skipT >= 0.09 + 1e-5) || (uGlobal.uRenderMask == MaskTransparent && skipT < 0.09 - 1e-5)) {
                 out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
                 return out;
