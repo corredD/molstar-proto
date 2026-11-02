@@ -340,8 +340,11 @@ function getParticleTargetSignatures(
   const targetProps = createParticleTargetPropsProvider(props);
   const groups = getParticleTargetGroups(particles);
   const uniformSize = ctx.size.types.length === 1 && ctx.size.types[0] === 'uniform';
-  // per geometry type: the signatures, the objects (a target each) and their particles
-  const byType = new Map<string, { signatures: ObjectSignature[]; objects: number; instances: number }>();
+  // per geometry type: the signatures, the objects (a target each), their particles and the spheres of a structure's
+  const byType = new Map<
+    string,
+    { signatures: ObjectSignature[]; objects: number; instances: number; spheres: number }
+  >();
   for (let g = 0; g < groups.targetIds.length; g++) {
     const target = particles.targetMapping.get(groups.targetIds[g]);
     const count = OrderedSet.size(groups.sets[g]);
@@ -366,7 +369,7 @@ function getParticleTargetSignatures(
     const signatures = getGeometrySignatures(utils, tProps, { ...ctx, size }, visualDefines);
     for (const s of signatures) {
       let entry = byType.get(s.type);
-      if (!entry) byType.set(s.type, (entry = { signatures: [], objects: 0, instances: 0 }));
+      if (!entry) byType.set(s.type, (entry = { signatures: [], objects: 0, instances: 0, spheres: 0 }));
       entry.signatures.push(s);
     }
     const type = signatures[0]?.type;
@@ -374,12 +377,15 @@ function getParticleTargetSignatures(
       const entry = byType.get(type)!;
       entry.objects += 1;
       entry.instances += count;
+      if (target.kind === 'structure') entry.spheres += count * target.structure.elementCount;
     }
   }
   const out: ObjectSignature[] = [];
   const levels = props.lodLevels.length;
-  for (const { signatures, objects, instances } of byType.values()) {
-    out.push(...withMergedSignatures(signatures, props, { objects, instances, levels, graphics: ctx.graphics }));
+  for (const { signatures, objects, instances, spheres } of byType.values()) {
+    out.push(
+      ...withMergedSignatures(signatures, props, { objects, instances, levels, spheres, graphics: ctx.graphics }),
+    );
   }
   return uniqueSignatures(out);
 }
