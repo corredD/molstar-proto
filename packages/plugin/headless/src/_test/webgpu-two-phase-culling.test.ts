@@ -9,6 +9,8 @@ import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
+import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
+import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
 import { MeshBuilder } from '@molstar/graphics/geo/geometry/mesh/mesh-builder';
 import { addSphere } from '@molstar/graphics/geo/geometry/mesh/builder/sphere';
@@ -250,6 +252,105 @@ describe.skipIf(!WebGPU.module)('two-phase GPU culling on WebGPU', () => {
         renderer.dispose();
       }
       target.destroy();
+      expect(graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  // a pyramid of the frame's own view (both phases at rest, the second always): what reaches past the view is
+  // tested by the texels inside it (`uHiZClamp`); zoomed in, that is most of what is hidden
+  it('occludes in both phases what reaches past the view, at the pyramid of its own view', async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu: WebGPU.module! },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      const graphics = plugin.canvas3d!.graphics;
+      const scene = Scene.create(graphics);
+      const member = createMember(Vec3.create(0, 0, 0), ColorNames.orange, false);
+      scene.add(createMergedRenderObject([member], { gpuCulling: true }));
+      scene.commit();
+      // close and to the right of the grid's middle: columns reach past the view's left edge
+      const camera = new Camera();
+      Viewport.set(camera.viewport, 0, 0, Size, Size);
+      camera.setState({ ...camera.getFocus(Vec3.create(30, 2, -44), 30), radius: 120, radiusMax: 120 }, 0);
+      camera.update();
+      const frustum = Frustum3D.fromProjectionMatrix(Frustum3D(), camera.projectionView);
+      const { center, radius } = member.values.invariantBoundingSphere.ref.value;
+      const transforms = member.values.aTransform.ref.value;
+      let reaching = 0;
+      for (let i = 0, il = member.values.instanceCount.ref.value; i < il; ++i) {
+        const c = Vec3.transformMat4(Vec3(), center, Mat4.fromArray(Mat4(), transforms, i * 16));
+        const d = frustum.map((p) => Plane3D.distanceToPoint(p, c));
+        // in view, across a side plane, wholly in front of the near plane (else never occluded)
+        if (d.every((x) => x > -radius) && d.slice(0, 4).some((x) => x < radius) && d[5] > radius) reaching += 1;
+      }
+      expect(reaching).toBeGreaterThan(0);
+
+      // every texel at the near plane (reversed depth): all hidden, of this view
+      const levelSize = 64;
+      const width = 2 * levelSize - 1;
+      const texture = graphics.resources.texture('image-float32', 'r', 'float', 'nearest');
+      texture.load({ array: new Float32Array(width * levelSize).fill(1), width, height: levelSize });
+      let version = 0;
+      const hiding = (): OcclusionPyramid => ({
+        texture,
+        levelCount: Math.log2(levelSize) + 1,
+        minLevel: 0,
+        width: levelSize,
+        height: levelSize,
+        view: camera.view,
+        projection: camera.projection,
+        near: camera.near,
+        far: camera.far,
+        version: ++version,
+      });
+      const target = graphics.createRenderTarget(Size, Size, 'depth-stencil');
+      const renderer = Renderer.create(graphics, { sphereRaster: 'off' });
+      renderer.setViewport(0, 0, Size, Size);
+      await graphics.resources.preparePipelines(
+        renderer.collect({ name: 'opaque' }, scene, graphics.describeTarget(target)),
+      );
+      const read = async () => {
+        graphics.flush();
+        return Array.from(await graphics.readRenderTarget(target, 0, 0, Size, Size));
+      };
+      const first = () => {
+        renderer.update(camera, scene, createFrame());
+        renderer.prepareCull(scene, true);
+        graphics.beginRenderPass(target);
+        renderer.clear(true);
+        renderer.renderOpaque(scene, camera);
+      };
+      // without occlusion: the grid in view (the kernels compile in the background)
+      let reference: number[] = [];
+      for (let i = 0; i < 30; ++i) {
+        renderer.setOcclusionPyramid(null);
+        first();
+        reference = await read();
+        await graphics.resources.pending.whenReady();
+        if (i > 5 && new Set(reference).size > 2) break;
+      }
+      expect(new Set(reference).size).toBeGreaterThan(2);
+
+      // the first phase against it: nothing drawn, the instances reaching past the view too
+      renderer.setOcclusionPyramid(hiding);
+      first();
+      expect(renderer.cullSecondPending).toBe(1);
+      const firstPart = await read();
+      expect(new Set(firstPart).size).toBeLessThanOrEqual(2);
+      // the second phase against it: nothing more drawn
+      renderer.prepareCullSecond(scene, hiding());
+      graphics.beginRenderPass(target);
+      renderer.renderOpaqueSecond(scene, camera);
+      expect(await read()).toEqual(firstPart);
+      renderer.dispose();
+      target.destroy();
+      texture.destroy();
       expect(graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       plugin.dispose();
