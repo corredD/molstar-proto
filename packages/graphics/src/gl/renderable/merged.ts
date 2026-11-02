@@ -79,6 +79,8 @@ import {
   type Frame,
   createClipInfoCache,
   type AnimationValues,
+  getAnimationCells,
+  getAnimationSlack,
 } from '../renderable.js';
 
 export type MergeableValues = RenderableValues & BaseValues;
@@ -462,6 +464,9 @@ interface MemberCells {
   readonly transparencyMin: Cell;
   readonly emissiveAverage: Cell;
   readonly wiggleAverage: Cell;
+  /** the member's own wiggle, how far it may move its spheres with the merged object's (`getAnimationSlack`) */
+  readonly dWiggle: Cell;
+  readonly uWiggleStrength: Cell;
   readonly hasReflection: Cell;
   readonly lodLevels: Cell | undefined;
   readonly elements: Cell | undefined;
@@ -493,6 +498,8 @@ function getMemberCells(
     transparencyMin: v.transparencyMin,
     emissiveAverage: v.emissiveAverage,
     wiggleAverage: v.wiggleAverage,
+    dWiggle: v.dWiggle,
+    uWiggleStrength: v.uWiggleStrength,
     hasReflection: v.hasReflection,
     lodLevels: v.lodLevels,
     elements: hasElements ? v.elements : undefined,
@@ -514,6 +521,8 @@ function createMemberVersions(attributeCount: number, textureCount: number) {
     transparencyMin: -1,
     emissiveAverage: -1,
     wiggleAverage: -1,
+    dWiggle: -1,
+    uWiggleStrength: -1,
     hasReflection: -1,
     lodLevels: -1,
     elements: -1,
@@ -956,6 +965,8 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
       mv.transparencyMin = c.transparencyMin.ref.version;
       mv.emissiveAverage = c.emissiveAverage.ref.version;
       mv.wiggleAverage = c.wiggleAverage.ref.version;
+      mv.dWiggle = c.dWiggle.ref.version;
+      mv.uWiggleStrength = c.uWiggleStrength.ref.version;
       mv.hasReflection = c.hasReflection.ref.version;
       mv.lodLevels = c.lodLevels ? c.lodLevels.ref.version : -1;
       for (let a = 0; a < c.attributes.length; ++a) mv.attributes[a] = c.attributes[a].ref.version;
@@ -980,6 +991,7 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
     let aggregatesChanged = false;
     let elementsChanged = false;
     let lodChanged = false;
+    let wiggleChanged = false;
     const attributesChanged = new Set<string>();
 
     for (let i = 0; i < n; ++i) {
@@ -994,6 +1006,8 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
       const transparencyMin = c.transparencyMin.ref.version;
       const emissiveAverage = c.emissiveAverage.ref.version;
       const wiggleAverage = c.wiggleAverage.ref.version;
+      const dWiggle = c.dWiggle.ref.version;
+      const uWiggleStrength = c.uWiggleStrength.ref.version;
       const hasReflection = c.hasReflection.ref.version;
 
       // the shared grid placement depends on transforms and invariant spheres
@@ -1003,6 +1017,8 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
       if (mv.boundingSphere !== bounds || mv.invariantBoundingSphere !== invariantBounds) {
         boundsChanged = true;
       }
+      // how far the animations move its spheres (`cullSegment`'s allowance)
+      if (mv.dWiggle !== dWiggle || mv.uWiggleStrength !== uWiggleStrength) wiggleChanged = true;
       if (mv.markerStatus !== c.markerStatus.ref.version || mv.markerAverage !== markerAverage) {
         markersChanged = true;
       }
@@ -1045,6 +1061,8 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
       mv.transparencyMin = transparencyMin;
       mv.emissiveAverage = emissiveAverage;
       mv.wiggleAverage = wiggleAverage;
+      mv.dWiggle = dWiggle;
+      mv.uWiggleStrength = uWiggleStrength;
       mv.hasReflection = hasReflection;
       mv.lodLevels = lodVersion;
     }
@@ -1091,7 +1109,9 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
     if (boundsChanged) updateBoundingSpheres();
     if (markersChanged) updateMarkerAggregates();
     if (aggregatesChanged) updateAggregates();
-    if (instancesChanged || boundsChanged || lodChanged) ValueCell.update(cullVersion, cullVersion.ref.value + 1);
+    if (instancesChanged || boundsChanged || lodChanged || wiggleChanged) {
+      ValueCell.update(cullVersion, cullVersion.ref.value + 1);
+    }
 
     for (let i = 0; i < n; ++i) memberVersions[i].markerStatus = memberCells[i].markerStatus.ref.version;
     return false;
@@ -1259,20 +1279,24 @@ export function MergedRenderable(
     clipObjects: v.clipObjects,
     dClipVariant: v.dClipVariant,
     invariantBoundingSphere: v.invariantBoundingSphere,
-    // the merged object's animation (its material), the member's per-group wiggle
-    animation: {
-      ...(merged.values as unknown as AnimationValues),
+  }));
+  // how far the animations may move a member's spheres (`getAnimationSlack`): the merged object's animation (its
+  // material), the member's per-group wiggle
+  const animation = getAnimationCells(merged.values as unknown as AnimationValues);
+  const memberWiggle: AnimationValues[][] = members.map((v) => [
+    {
       dWiggle: (v as unknown as AnimationValues).dWiggle,
       uWiggleStrength: (v as unknown as AnimationValues).uWiggleStrength,
     },
-  }));
+  ]);
 
   /**
    * what the last CPU cull read: a still frame keeps its lists (`createCullView`); the members' cells by the version
-   * `sync` advances where they changed, not each (with 100k members, recording them was most of a moving frame)
+   * `sync` advances where they changed, not each (with 100k members, recording them was most of a moving frame); the
+   * merged object's animation (the allowance, `getAnimationSlack`)
    */
   const cullView = createCullView();
-  const cullCells = [merged.cullVersion];
+  const cullCells = [merged.cullVersion, ...Object.values(animation)];
 
   const segment: CullSegment = { first: 0, offset: 0, instanceBase: 0 };
   function setSegment(i: number) {
@@ -1353,6 +1377,7 @@ export function MergedRenderable(
         isOccluded,
         stats,
         true,
+        getAnimationSlack(animation, memberWiggle[i]),
       );
     }
 

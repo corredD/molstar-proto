@@ -478,6 +478,7 @@ export function ShapeMultiRepresentation<D, P extends PD.Params>(
     setState: multi.setState,
     setTheme: multi.setTheme,
     setGraphics: multi.setGraphics,
+    getSignatures: multi.getSignatures,
     destroy: multi.destroy,
   };
 }
