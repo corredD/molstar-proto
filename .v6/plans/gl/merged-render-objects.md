@@ -117,6 +117,19 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
   57.8 ms, zoomed 372, the opaque pass 55.1 and 365 of it (drawing the impostors); less data per instance copied (a
   3x4 transform for the 4x4, a quarter less) would save about 1 ms of 55 (2%) and change `aTransform` in every program
   of both backends: not taken up.
+- **Many spheres** (`resolveGpuCulling`, one rule): from `AutoGpuCullingMinRasterSpheres` (100k) spheres where the
+  device has the sphere raster (master, `sphere-compute-raster.md`), which takes objects culled on the GPU only; and,
+  on any device, the 20k-instance floor waived from `AutoGpuCullingMinSpheres` (1M) spheres with 30 instances per draw:
+  the GPU tests each instance by its own sphere, the CPU only cells, which for few instances of large members draws
+  millions of spheres out of view. Measured without the raster (M1 Pro, Chrome, WebGPU, ms a frame at 1 / 0.1 / 0.02
+  of the camera's distance, CPU / GPU culled, lane `no-raster-auto`): PetWorld HIV (19 objects, 16k instances, 211 a
+  draw, 37.7M spheres) 25.2 / 71.1 / 47.4 against 17.1 / 34.8 / 30.9; T7 phage (23, 5.8k, 63 a draw, 18.5M) 6.3 /
+  42.2 / 31.6 against 6.2 / 36.5 / 26.3; SARS-CoV-2 (8, 696, 22 a draw, 13.5M) 13.8 / 28.5 / 22.9 against 13.5 / 24.8 /
+  19.4, left on the CPU by the 30 per draw; the flagellar motor (17, 258, 0.74M) 7.0 / 8.7 / 5.7 against 6.9 / 8.6 /
+  5.4; CellPack HIV (229k instances) GPU-culled by the instance rule either way. The floor stays above the 60-copy
+  assembly of 7qpd (0.69M spheres as spacefill, culled on the CPU above); a PDB entry's units (one instance an object,
+  3J3Q) never reach 30 per draw. The sphere count: instances times `uVertexCount` of the merged spheres; predicted for
+  precompiling from the structure's elements (`units-representation`) and a structure target's (particle targets).
 - **Not on the CPU**: which instances were drawn (the culled counts of timing stats), and the order of instances within
   a region, which varies between frames: it matters only for equal depths.
 
