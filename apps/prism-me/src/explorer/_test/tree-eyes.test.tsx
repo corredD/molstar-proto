@@ -235,6 +235,25 @@ describe("a parent's eye (Ludo, 2026-10-28)", () => {
     expect(steps()).toBe(before + 3);
   });
 
+  it('a distance under it goes with it, shown again with it (Ludo, 2026-11-02); a label keeps its own', async () => {
+    const v = await viewer(false);
+    const { api, ref, eye, says, item, drawn } = await mounted(v);
+    const r = await v.api.run('stage.distance', { a: `${ref}#0`, b: `${ref}#2` });
+    if (!r.ok) throw new Error(r.message);
+    const distance = () => api.stage!.distancesState().value[0];
+    const d = `d:${distance().ref}`;
+    await until(() => !!item(d));
+    expect(distance().visible).toBe(true);
+    eye(`o:${ref}`)!.click();
+    await until(() => !drawn() && distance().visible === false);
+    await settle();
+    expect(says(d)).toBe('Show');
+    eye(`o:${ref}`)!.click();
+    await until(() => drawn() && distance().visible === true);
+    await settle();
+    expect(says(d)).toBe('Hide');
+  });
+
   it("a category's eye sets each object and all its parts", async () => {
     const v = await viewer();
     const { ref, eye, says, shownIds, drawn } = await mounted(v);
