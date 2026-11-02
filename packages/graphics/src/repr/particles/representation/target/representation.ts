@@ -377,7 +377,8 @@ function getParticleTargetSignatures(
       const entry = byType.get(type)!;
       entry.objects += 1;
       entry.instances += count;
-      if (target.kind === 'structure') entry.spheres += count * target.structure.elementCount;
+      if (choice === 'structure-spheres' && target.kind === 'structure')
+        entry.spheres += count * target.structure.elementCount;
     }
   }
   const out: ObjectSignature[] = [];
