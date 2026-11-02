@@ -529,12 +529,14 @@ function getCullClipShrink(values: CullValues) {
 
 /**
  * The classes (`Clip.SphereClass`) of an instance grid's batches and cells against clip objects: view-independent, so
- * classified once per grid and clip version, not per cull (the CPU culling runs per frame with an occlusion test)
+ * classified once per grid, clip version and animation allowance, not per cull (the CPU culling runs per frame with an
+ * occlusion test); the spheres grown by the allowance (`slack`), as for the other tests and as the GPU kernel
  */
 type GridClipClasses = {
   objects: Clip.Objects;
   version: number;
   shrink: number;
+  slack: number;
   batches: Uint8Array;
   cells: Uint8Array;
 };
@@ -545,20 +547,21 @@ function getGridClipClasses(
   objects: Clip.Objects,
   version: number,
   shrink: number,
+  slack: number,
 ): GridClipClasses {
   let c = gridClipClasses.get(grid);
-  if (c && c.objects === objects && c.version === version && c.shrink === shrink) return c;
+  if (c && c.objects === objects && c.version === version && c.shrink === shrink && c.slack === slack) return c;
   const { batchCount, batchSpheres, cellCount, cellSpheres } = grid;
-  c = { objects, version, shrink, batches: new Uint8Array(batchCount), cells: new Uint8Array(cellCount) };
+  c = { objects, version, shrink, slack, batches: new Uint8Array(batchCount), cells: new Uint8Array(cellCount) };
   const s = clipClassSphere;
   for (let k = 0; k < batchCount; ++k) {
     Sphere3D.fromArray(s, batchSpheres, k * 4);
-    s.radius = Math.max(0, s.radius - shrink);
+    s.radius = Math.max(0, s.radius - shrink) + slack;
     c.batches[k] = Clip.classifySphere(objects, s);
   }
   for (let i = 0; i < cellCount; ++i) {
     Sphere3D.fromArray(s, cellSpheres, i * 4);
-    s.radius = Math.max(0, s.radius - shrink);
+    s.radius = Math.max(0, s.radius - shrink) + slack;
     c.cells[i] = Clip.classifySphere(objects, s);
   }
   gridClipClasses.set(grid, c);
@@ -837,7 +840,7 @@ export function createSegmentedMdbList(): SegmentedMdbList {
     const { cellOffsets, cellSpheres, batchOffsets, batchSpheres, batchCount, batchSize } = grid;
     const checkCellOccludedDistance = 2 * batchSize;
     const clipClasses = clip
-      ? getGridClipClasses(grid, clip, values.clipObjects!.ref.version, getCullClipShrink(values))
+      ? getGridClipClasses(grid, clip, values.clipObjects!.ref.version, getCullClipShrink(values), slack)
       : undefined;
     setCullPlanes(frustum, cameraPlane);
 
