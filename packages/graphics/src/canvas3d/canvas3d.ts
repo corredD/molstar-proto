@@ -1424,6 +1424,9 @@ namespace Canvas3D {
       const motionOn = p.motion.lodScale > 1 || p.motion.pixelScale < 1;
       const moving = motionOn && currentTime - lastCameraChange < p.motion.holdMs;
       const rested = (motionLodScale > 1 || motionPixelScale < 1) && !moving;
+      // the Hi-Z levels are of the moving frames' coarse levels: the frame at rest tests none (the camera is still, no
+      // frame follows to test its own), but where GPU culling's second phase tests the frame's own (`hiZ.twoPhase`)
+      if (rested && !(hiZ.props.gpu && hiZ.props.twoPhase)) hiZ.clear();
       motionLodScale = moving ? p.motion.lodScale : 1;
       renderer.setLodScale(motionLodScale);
       const pixelScale = moving ? p.motion.pixelScale : 1;
