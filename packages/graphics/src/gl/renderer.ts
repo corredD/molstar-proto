@@ -811,15 +811,15 @@ namespace Renderer {
     const globals = ctx.createGlobalBindings(GlobalUniformSchema, Object.entries(globalUniforms), sharedTexturesList);
 
     /**
-     * Whether clip objects remove all of `r` within `sphere` (unscaled): with clip objects and no clipping layer
-     * (`DrawFact.ClipCull`), its bounding sphere clipped whole (`Clip.classifySphere`, `clip-culling.md`)
+     * Whether clip objects remove all of `r` within `sphere` (unscaled): with clip objects, no clipping layer nor ghosted
+     * object (`DrawFact.ClipCull`), its bounding sphere clipped whole (`Clip.classifySphere`, `clip-culling.md`)
      */
     const clipSphere = Sphere3D();
     const isClippedWhole = (r: GraphicsRenderable, sphere: Sphere3D) => {
       const values = r.values as { dClipObjects?: ValueCell<boolean>; dClipping?: ValueCell<boolean> };
       if (!values.dClipObjects?.ref.value || values.dClipping?.ref.value) return false;
       const objects = (r.values as { clipObjects?: ValueCell<Clip.Objects> }).clipObjects?.ref.value;
-      return !!objects && Clip.classifySphere(objects, sphere) === Clip.SphereClass.All;
+      return !!objects && !objects.ghost && Clip.classifySphere(objects, sphere) === Clip.SphereClass.All;
     };
 
     /** also sets `boundingSphere` to the scaled bounding sphere of `r`, and `drawFacts` */

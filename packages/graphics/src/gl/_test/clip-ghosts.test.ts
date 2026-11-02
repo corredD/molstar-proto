@@ -13,7 +13,9 @@ import { Points } from '@molstar/graphics/geo/geometry/points/points';
 import { ColorNames } from '@molstar/core/util/color/names';
 import { createRenderObject } from '../render-object.js';
 import { Scene } from '../scene.js';
-import { checkGhost, checkOpaque, DrawFact, DrawState, getCheckFacts } from '../draw-table.js';
+import { checkGhost, checkOpaque, DrawFact, DrawState, getCheckFacts, getCullFacts } from '../draw-table.js';
+import { getCullClipCount, getCullInstanceClipCount, getInstanceClipCount } from '../clip-storage.js';
+import { getCullClipObjects } from '../renderable.js';
 import { PostprocessingParams, PostprocessingPass } from '../../canvas3d/passes/postprocessing.js';
 import { OutlineParams } from '../../canvas3d/passes/outline.js';
 import { createGl } from './gl.shim.js';
@@ -72,6 +74,24 @@ describe('clip ghosts', () => {
       ValueCell.update(o.values.dGeometryType as ValueCell<string>, type);
       expect(facts(o) & DrawFact.Ghost).toBe(0);
     }
+  });
+
+  // the ghost pass draws what the ghosted objects cut, with the culling of the frame: clip objects with a ghost cull
+  // nothing (`clip-culling.md`), the vertex stage drops what they clip whole per pass (`clipSphereClass`)
+  it('clip objects with a ghosted one cull nothing, on the CPU nor on the GPU', () => {
+    const plain = cutPoints(false).values;
+    const ghosted = cutPoints(false, true).values;
+    expect(getCullFacts(plain) & DrawFact.ClipCull).toBe(DrawFact.ClipCull);
+    expect(getCullFacts(ghosted) & DrawFact.ClipCull).toBe(0);
+    expect(getCullClipObjects(plain)).toBeDefined();
+    expect(getCullClipObjects(ghosted)).toBeUndefined();
+    expect(getCullClipCount(plain)).toBe(1);
+    expect(getCullClipCount(ghosted)).toBe(0);
+    // instance clipping: the culling keeps the instances whose centers a ghosted object cuts (the ghost pass draws
+    // them), the sphere raster (the color pass) clips them as before
+    expect(getCullInstanceClipCount(plain)).toBe(1);
+    expect(getCullInstanceClipCount(ghosted)).toBe(0);
+    expect(getInstanceClipCount(ghosted)).toBe(2);
   });
 
   it('the scene has ghosts while a visible object has a ghosted clip object', () => {

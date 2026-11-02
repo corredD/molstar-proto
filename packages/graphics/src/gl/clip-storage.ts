@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { ValueCell } from '@molstar/core/util/value-cell';
@@ -17,6 +18,16 @@ export interface ClipStorageValues {
   readonly uClipObjectCount: ValueCell<number>;
   readonly uClipObjectFrame: ValueCell<ArrayLike<number>>;
   readonly uClipObjectShape: ValueCell<ArrayLike<number>>;
+  /** the ghosted clip objects, a bit each (`Clip.Objects.ghost`) */
+  readonly uClipObjectGhost?: ValueCell<number>;
+}
+
+/**
+ * Whether a clip object of `values` is ghosted: the ghost pass draws what it cuts with the frame's culling, so the
+ * culling leaves out nothing clip objects cut (`getCullClipCount`, `getCullInstanceClipCount`, `DrawFact.ClipCull`)
+ */
+export function hasClipGhost(values: { readonly uClipObjectGhost?: ValueCell<number> }) {
+  return !!values.uClipObjectGhost?.ref.value;
 }
 
 /** The clip objects of an object, for the kernels (`packStorageClipObjects`), 0 without */
@@ -43,10 +54,15 @@ export function getPixelClipCount(values: ClipStorageValues) {
 
 /**
  * Those culling spheres they clip whole (`clipSphereClass`, `clip-culling.md`), either variant: none with a clipping
- * layer (its flags exempt groups)
+ * layer (its flags exempt groups) or a ghosted object (`hasClipGhost`)
  */
 export function getCullClipCount(values: ClipStorageValues) {
-  return values.dClipping.ref.value ? 0 : getStorageClipCount(values);
+  return values.dClipping.ref.value || hasClipGhost(values) ? 0 : getStorageClipCount(values);
+}
+
+/** Those the culling clips instances' centers by (`getInstanceClipCount`): none with a ghosted one (`hasClipGhost`) */
+export function getCullInstanceClipCount(values: ClipStorageValues) {
+  return hasClipGhost(values) ? 0 : getInstanceClipCount(values);
 }
 
 /** Whether the kernels clip `values` as the programs do: not instance clipping with a clipping layer */

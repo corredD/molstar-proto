@@ -5,7 +5,12 @@
  */
 
 import { Clip } from '@molstar/core/util/clip';
-import { ClipStorageVec4s, getCullClipCount, getInstanceClipCount, packStorageClipObjects } from '../clip-storage.js';
+import {
+  ClipStorageVec4s,
+  getCullClipCount,
+  getCullInstanceClipCount,
+  packStorageClipObjects,
+} from '../clip-storage.js';
 import { ValueCell } from '@molstar/core/util';
 import { isDebugMode } from '@molstar/core/util/debug';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
@@ -494,7 +499,7 @@ export function createMergedCuller(
 
   /**
    * The clip objects cells and instances are culled by where they clip them whole (`getCullClipCount`), instances' centers
-   * clipped too with instance clipping (`getInstanceClipCount`, the vertex stage's), after the segments in
+   * clipped too with instance clipping (`getCullInstanceClipCount`, the vertex stage's), after the segments in
    * `segmentData`; where they changed (or `force`, the buffer written anew) written, true
    */
   const clipVersions = [-1, -1, -1, -1];
@@ -502,7 +507,7 @@ export function createMergedCuller(
     const count = getCullClipCount(values);
     const frame = values.uClipObjectFrame.ref.version;
     const shape = values.uClipObjectShape.ref.version;
-    const instance = getInstanceClipCount(values) > 0 ? 1 : 0;
+    const instance = getCullInstanceClipCount(values) > 0 ? 1 : 0;
     const v = clipVersions;
     if (!force && v[0] === count && v[1] === frame && v[2] === shape && v[3] === instance) return false;
     v[0] = count;

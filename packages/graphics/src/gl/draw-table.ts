@@ -62,8 +62,8 @@ export enum DrawFact {
   /** wiggling (`uWiggleAmplitude` or `wiggleAverage`, with speed and frequency) or tumbling: drawn anew per frame */
   Animated = 1 << 23,
   /**
-   * clip objects (`dClipObjects`) without a clipping layer (`dClipping`, its flags exempt groups): the object culled
-   * where they clip its bounding sphere whole (`Clip.classifySphere`)
+   * clip objects (`dClipObjects`) without a clipping layer (`dClipping`, its flags exempt groups) nor a ghosted object
+   * (`uClipObjectGhost`): the object culled where they clip its bounding sphere whole (`Clip.classifySphere`)
    */
   ClipCull = 1 << 24,
   /** `uClipObjectGhost` (not an image, text or direct volume): a clip object whose cut part is drawn as outlines */
@@ -173,7 +173,10 @@ export function getCullFacts(values: Values): number {
   if (values.instanceGrid.ref.value.cellSize > 0) f |= DrawFact.InstanceGrid;
   if (values.uInstanceCount.ref.value > 1) f |= DrawFact.MultipleInstances;
   if (getValue(values, 'lodLevels')) f |= DrawFact.LodLevels;
-  if (getValue(values, 'dClipObjects') && !getValue(values, 'dClipping')) f |= DrawFact.ClipCull;
+  // (a ghosted clip object: the ghost pass draws what it cuts, with the frame's culling)
+  if (getValue(values, 'dClipObjects') && !getValue(values, 'dClipping') && !getValue(values, 'uClipObjectGhost')) {
+    f |= DrawFact.ClipCull;
+  }
   return f;
 }
 

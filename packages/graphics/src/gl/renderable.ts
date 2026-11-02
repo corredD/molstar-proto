@@ -456,14 +456,15 @@ export type CullValues = {
 };
 
 /**
- * The clip objects `values` cull by: those of an object without a clipping layer (its flags exempt groups), undefined
- * otherwise; a sphere they clip whole (`Clip.classifySphere`) is not drawn, whatever the variant (pixel: every point of
- * it clipped; instance: every center in it)
+ * The clip objects `values` cull by: those of an object without a clipping layer (its flags exempt groups) nor a
+ * ghosted object (the ghost pass draws what they cut, `Clip.Objects.ghost`), undefined otherwise; a sphere they clip
+ * whole (`Clip.classifySphere`) is not drawn, whatever the variant (pixel: every point of it clipped; instance: every
+ * center in it)
  */
 export function getCullClipObjects(values: CullValues): Clip.Objects | undefined {
   if (!values.dClipObjects?.ref.value || values.dClipping?.ref.value) return undefined;
   const objects = values.clipObjects?.ref.value;
-  return objects && objects.count > 0 ? objects : undefined;
+  return objects && objects.count > 0 && !objects.ghost ? objects : undefined;
 }
 
 /**
