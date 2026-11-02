@@ -173,6 +173,11 @@ is not built is [../TODO.md](../TODO.md).
 - **Review posted on upstream #2061** (Ludo, 2026-11-01: "post it"):
   https://github.com/molstar/molstar/pull/2061#pullrequestreview-5730198026 at 7427374b7, 3 must-fix, 3 should-fix
   (inline), nits and the raster numbers with the eligibility question in the body. Waiting on Alexander's answer.
+- **Lane `merge-master`** (Ludo, 2026-11-01: "merge master, smart, no duplication, favor master, rework on top"):
+  `~/prism-me-lanes/merge-master`, branch `me/merge-master`. Phase 1: one merge commit of upstream/master c1b8ecb82
+  (#2060, #2061; 28 conflicted files, all graphics culling/raster), master's design where #2061 supersedes #28, our
+  orthogonal features kept, both sides' tests kept; prism-me tests that fail on master's code become the rework list.
+  Phase 2: one lane per rework item, PRs into `me/merge-master`. Then one PR `me/merge-master` → `prism-me` for Ludo.
 - **Upstream #2061 merged** (Alexander, 2026-11-02 00:37 UTC, merge c1b8ecb82; giagitom approved). Before merging he
   pushed one fix commit per finding: 1e91e2a62 (WebGL1 Gaussian volume), 885192691 (clip spectral norm), 123f2935e
   (raster rows), 5182289b0 (raster releases items), 879496397 (colours/sizes vs LOD order), bf755a4ce (two-phase after a
