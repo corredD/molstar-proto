@@ -116,6 +116,10 @@ lane (1367). PetWorld in F and G with `gpuCulling: true` (E merged it by #28's r
 - WebGL2, CellPack, interleaved 3 × 2: F and G 8.7 / 67.6–67.8 / 35.4 (unchanged). (A non-interleaved matrix showed F
   10–20 % slower on WebGL2 too: machine state, load up to 40 from other work; discarded.)
 
+Images re-verified on HEAD 7380067d8 (the same-view rule with the texel indices; the timings above ran on 9cfe6151e,
+5b685898f changes only an unreachable case): both models at 1, 0.1 and 0.02, still and after 3 turning frames of 2°,
+`motion` off: two phases 0 pixels from no occlusion; one phase 0 pixels from master's one phase (F) in every case.
+
 ## Open
 
 - **Turning frames** stay at F's (CellPack 0.1 / 0.02 20.6 / 12.5 against E's 12.5 / 6.9; PetWorld 25.6 / 19.4 against
