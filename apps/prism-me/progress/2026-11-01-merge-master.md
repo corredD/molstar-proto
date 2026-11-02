@@ -124,6 +124,23 @@ Read against master's; each surviving prism-me hunk is an orthogonal feature (of
    `webgpu-two-phase-culling.test.ts` covers the feature) and "one phase: a canvas draws again ... until occlusion
    tested a pyramid of its view".
 
+## Rework, as it ended (2026-11-02)
+
+Each item measured on the M1 Pro (WebGPU without the raster) before any rebuild; Ludo merged both lane PRs into
+`me/merge-master`.
+1. Auto rule without the raster: rebuilt in master's rule (#34, `me/no-raster-auto`): 10 M spheres meet the 20k
+   instance floor, with 30 instances per draw. PetWorld WebGPU 25.2 / 71.1 / 47.4 → 17.1 / 34.8 / 30.9 ms.
+2. CPU culling by instance (WebGL2): not rebuilt. WebGL2 is faster after the merge than before it (PetWorld
+   33.1 / 83.7 / 73.1 → 28.4 / 73.7 / 49.6). Its tests stay skipped with the numbers.
+3. A coarse level's padding: not needed (#35); left skipped, an upstream question.
+4. Clusters, 5. Morton order: not needed. The zoom cost was master's occlusion test (#35); left skipped.
+6. The rectangle clamp: rebuilt on master's two phases, clamped only where the pyramid is of the view culled (#35,
+   `me/webgpu-zoom-regression`); #28's cap test built and dropped (it lost pixels with one phase). CellPack WebGPU
+   still 4.8 / 25.1 / 16.2 → 4.8 / 7.5 / 7.6 ms; PetWorld (GPU-culled) 17.1 / 34.8 / 31.1 → 17.2 / 12.5 / 19.3.
+   Upstreamable: master's `occluded()` loses about half its occlusion close up (a speed loss, not a wrong image).
+Open: CellPack while turning stays slower than before the merge (20.6 / 12.5 against 12.5 / 6.9 ms at 0.1 / 0.02);
+WebGL images ignore a clipping layer's flags (`image.vert` writes no `vClipping`, master's too).
+
 ## Collision checks
 
 - **The clip frame's first column `w`** (885192691, the spectral norm): the ghost flag is `Clip.Objects.ghost` and
