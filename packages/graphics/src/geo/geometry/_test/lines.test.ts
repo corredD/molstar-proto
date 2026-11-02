@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { Lines } from '../lines/lines.js';
+import { LineStride, Lines } from '../lines/lines.js';
 import { Mesh } from '../mesh/mesh.js';
 import { MeshBuilder } from '../mesh/mesh-builder.js';
 import { ChunkedArray } from '@molstar/core/data/util';
@@ -25,8 +25,7 @@ function meshOf(vertices: number[], groups: number[], triangles: number[]): Mesh
 
 /** The set of `${min}-${max}` vertex-index pairs of the lines, matched by position. */
 function edgeKeys(lines: Lines, vertices: number[]) {
-  const starts = lines.startBuffer.ref.value;
-  const ends = lines.endBuffer.ref.value;
+  const data = lines.lineData.ref.value.array;
   const indexOf = (x: number, y: number, z: number) => {
     for (let i = 0; i < vertices.length; i += 3) {
       if (vertices[i] === x && vertices[i + 1] === y && vertices[i + 2] === z) return i / 3;
@@ -34,11 +33,11 @@ function edgeKeys(lines: Lines, vertices: number[]) {
     return -1;
   };
   const keys: string[] = [];
-  // Each line is expanded into 4 mapped vertices, all sharing the same start/end.
+  // per line `LineStride` floats: start xyz and group, end xyz and the strip flag
   for (let i = 0, il = lines.lineCount; i < il; ++i) {
-    const o = i * 4 * 3;
-    const a = indexOf(starts[o], starts[o + 1], starts[o + 2]);
-    const b = indexOf(ends[o], ends[o + 1], ends[o + 2]);
+    const o = i * LineStride;
+    const a = indexOf(data[o], data[o + 1], data[o + 2]);
+    const b = indexOf(data[o + 4], data[o + 5], data[o + 6]);
     keys.push(`${Math.min(a, b)}-${Math.max(a, b)}`);
   }
   return keys;
@@ -60,9 +59,9 @@ describe('Lines.fromMesh', () => {
 
   it('keeps the mesh group ids so coloring and picking carry over', () => {
     const lines = Lines.fromMesh(meshOf(vertices, groups, triangles));
-    const gb = lines.groupBuffer.ref.value;
+    const data = lines.lineData.ref.value.array;
     const seen = new Set<number>();
-    for (let i = 0, il = lines.lineCount * 4; i < il; ++i) seen.add(gb[i]);
+    for (let i = 0, il = lines.lineCount; i < il; ++i) seen.add(data[i * LineStride + 3]);
     // Each edge takes the group of the endpoint it was added from -- 0, 0, 1 for the first
     // triangle and 1, 3 for the second, so vertex 2's group never appears.
     expect([...seen].sort()).toEqual([0, 1, 3]);

@@ -14,6 +14,8 @@ here.
   place (a scale, a move): the camera's clipping planes and the culling dropped them when zooming in
 - Fix a merged render object kept by a representation update drawn as its members were before the update when the scene
   added it after that update (WebGPU: a particle list decorated, then scaled at once)
+- Marking: fill and dim account for transparent layers (shading, see-through, dim of unmarked transparent objects)
+- Allow negative values for the label text offsets X, Y and Z (domain [-10, 10] instead of [0, 10]) (#1899)
 - Fix `Euler.set` (and `Euler.fromVec3`, which uses it) writing all three angles into the first component
 - [Breaking] Component options keep overrides: `StructureComponentManager.setOptions` changes only the representations
   that had the previous value of a changed option (a representation given its own material, quality, … keeps it);
@@ -259,6 +261,9 @@ here.
   (particle stacks)
 - CCP4/MRC: read MODE 6 (unsigned 16-bit integers; it fell through to the MODE 16 error) and MODE 12 (16-bit floats, as
   written by Warp and AreTomo), and wait for the values to be read before returning the parsed file
+- Geometry export: spheres of a representation with several instances (symmetry copies) export each copy's spheres, not
+  the first copy's followed by invalid ones
+- Strips of lines (streamlines, fibers) get the bounding sphere of their points: it read past their buffers
 
 ## [v5.13.1] - 2026-10-08
 

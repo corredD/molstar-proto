@@ -691,6 +691,7 @@ export class IlluminationPass {
       restart: forceRenderInput,
       samples: 1,
       shading: this.markingShading,
+      transparentDepth: null,
     });
   }
 
@@ -798,6 +799,7 @@ export class IlluminationPass {
       restart: iteration === 0,
       samples,
       shading: this.markingShading,
+      transparentDepth: null,
     });
     if (timing) graphics.timer.groupEnd('IlluminationPass.renderMultiSample');
   }

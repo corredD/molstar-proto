@@ -156,6 +156,8 @@ async function setup(options: Options) {
       await graphics.resources.pending.whenReady();
       image = (await plugin.getImageRaw({ width: Size, height: Size }, postprocessing)).data;
     }
+    // a program that fails to compile leaves the last good one drawn: both images alike, with the skip never run
+    expect(graphics.takeErrors?.() ?? []).toEqual([]);
     return image;
   };
   /** the pixels within 24 of `color` in each channel */

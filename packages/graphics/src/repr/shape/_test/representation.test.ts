@@ -15,6 +15,7 @@ import * as ShapeUtils from '@molstar/graphics/geo/shape/shape';
 import { MarkerAction } from '@molstar/core/util/marker-action';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { ColorNames } from '@molstar/core/util/color/names';
+import { NoSignatureLayers, type SignatureContext } from '../../signatures.js';
 import { ShapeMultiRepresentation, ShapeRepresentation } from '../representation.js';
 
 function triangleMesh(): Mesh {
@@ -115,5 +116,23 @@ describe('ShapeMultiRepresentation', () => {
 
     expect(repr.theme.color.granularity).toBe('groupInstance');
     expect(repr.theme.color.color(ShapeGroup.Location(linesShape, 1, 0), false)).toBe(ColorNames.red);
+  });
+
+  // `prepareRepresentation` (plugin `precompile.ts`) prepares what a representation exposes signatures of, before it
+  // is built: without them a mesh file's wireframe-capable representation (vtp, ply, obj) was not prepared at all
+  it('gives the signatures of the visuals shown, before it is built', () => {
+    const { repr } = makeRepr();
+    const ctx: SignatureContext = {
+      color: { types: ['groupInstance'], palette: false, preferSmoothing: false },
+      size: { types: ['groupInstance'] },
+      layers: NoSignatureLayers,
+    };
+    const types = (visuals: string[]) =>
+      repr
+        .getSignatures?.({ ...PD.getDefaultValues(Params), visuals } as PD.Values<typeof Params>, ctx)
+        .map((s) => s.type);
+    expect(types(['mesh'])).toEqual(['mesh']);
+    expect(types(['mesh', 'wireframe'])).toEqual(['mesh', 'lines']);
+    expect(types(['wireframe'])).toEqual(['lines']);
   });
 });

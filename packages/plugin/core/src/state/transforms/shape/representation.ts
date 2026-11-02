@@ -18,7 +18,11 @@ import { StateTransformer } from '@molstar/core/state';
 import { OrderedSet, SortedArray } from '@molstar/core/data/int';
 import { Transparency } from '@molstar/graphics/theme/transparency';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
-import { getShapeSignatures, registerTransformSignatures } from '@molstar/plugin/state/precompile';
+import {
+  getShapeSignatures,
+  prepareRepresentation,
+  registerTransformSignatures,
+} from '@molstar/plugin/state/precompile';
 
 /** A provider offering a wireframe gets both visuals, switched by the `visuals` param; one that
  * does not keeps the plain single-geometry representation. */
@@ -48,14 +52,17 @@ const ShapeRepresentation3D = PluginStateTransform.BuiltIn({
     return Task.create('Shape Representation', async (ctx) => {
       const props = { ...PD.getDefaultValues(a.data.params), ...params };
       const repr = createShapeRepr(a.data, plugin.canvas3d?.graphics);
+      // compiling what it draws while it builds
+      prepareRepresentation(plugin, repr, props, 'shape-group', a.data.data);
       await repr.createOrUpdate(props, a.data.data).runInContext(ctx);
       applyTransparency(repr, a.data);
       return new SO.Shape.Representation3D({ repr, sourceData: a.data }, { label: a.data.label });
     });
   },
-  update({ a, b, newParams }) {
+  update({ a, b, newParams }, plugin: PluginContext) {
     return Task.create('Shape Representation', async (ctx) => {
       const props = { ...b.data.repr.props, ...newParams };
+      prepareRepresentation(plugin, b.data.repr, props, 'shape-group', a.data.data);
       await b.data.repr.createOrUpdate(props, a.data.data).runInContext(ctx);
       applyTransparency(b.data.repr, a.data);
       b.data.sourceData = a.data;

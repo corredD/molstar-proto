@@ -24,6 +24,7 @@ import { GaussianDensityKernels } from '@molstar/graphics/gl/compute/gaussian-de
 import { getIsosurfaceKernels } from '@molstar/graphics/gl/compute/marching-cubes/compute';
 import { PrefixSumKernels } from '@molstar/graphics/gl/compute/prefix-sum';
 import { MergedCullKernels } from '@molstar/graphics/gl/renderable/merged-culler';
+import { SphereRasterKernels } from '@molstar/graphics/gl/compute/sphere-raster';
 import type { WebGLContext } from '@molstar/graphics/gl/webgl/context';
 import { getGlslProgramNames } from '@molstar/graphics/gl/webgl/programs';
 import { isWebGPUContext, type WebGPUContext } from '@molstar/graphics/gl/webgpu/context';
@@ -70,9 +71,12 @@ async function loadStructure(plugin: PluginContext, read: ReadFile, name: string
  * model; every structure and volume representation type with its defaults (an uncommitted tree: derived from params,
  * nothing built)
  */
+/** The protein of the presets, the parent of the mesoscale spacefills and the real scene */
+const ProteinFile = '1cbs_updated.cif';
+
 export async function getPresetSource(plugin: PluginContext, read: ReadFile): Promise<VariantSource> {
   const structures = [
-    await loadStructure(plugin, read, '1cbs_updated.cif'),
+    await loadStructure(plugin, read, ProteinFile),
     await loadStructure(plugin, read, '1bna_confal_pyramids.cif'),
     await loadStructure(plugin, read, 'ihm-coarse-8zzh.cif'),
   ];
@@ -144,6 +148,9 @@ export async function getMVSSource(plugin: PluginContext, read: ReadFile): Promi
     signatures.push(...derived.list.objects);
     for (const p of derived.props) props.push(...withTransparencyModes(p));
   }
+  // a document playing its snapshots (autoplay) would apply the next one later, replacing the state
+  await plugin.managers.snapshot.stop();
+  plugin.managers.snapshot.clear();
   return { name: 'mvs', list: { objects: unique(signatures) }, props };
 }
 
@@ -208,7 +215,8 @@ export function getMesoscaleSource(plugin: PluginContext, structureRef: string):
  * Each define of each object kind of `sources` varied alone, from the first signature of the kind: booleans flipped,
  * strings through the values the sources reach for the kind (the derivation enumerates every value data decides, e.g.
  * color and layer types; another option is a variant no object of the kind draws, as a direct-volume color type on a
- * mesh), number defines (counts, sizes) as they are; a palette with a color type per group, clip objects with a count
+ * mesh), number defines (counts, sizes) as they are; a palette with a color type per group, clip objects with a count;
+ * the clipping table with the clipping layer and clip objects, in each clip variant
  */
 export function getDefineAxisSource(sources: readonly VariantSource[]): VariantSource {
   const baselines = new Map<string, ObjectSignature>();
@@ -244,6 +252,26 @@ export function getDefineAxisSource(sources: readonly VariantSource[]): VariantS
         if (name === 'dUsePalette' && v === true && defines.dColorType === 'uniform') defines.dColorType = 'texture';
         // clip objects and their count go together (`dClipObjects` is a count above zero)
         if (name === 'dClipObjects') defines.dClipObjectCount = v ? Math.max(1, Number(defines.dClipObjectCount)) : 0;
+        signatures.push({ ...base, defines });
+      }
+    }
+    // the clipping table's branch reads the clipping layer with the clip objects (`dClipTable && dClipping`, its
+    // flags rows of `tClipTable`): the three on together, which none of the axes alone reaches, in each clip variant;
+    // the ghost pass draws the same programs' depth variant
+    // (not images in the pixel variant: their vertex stage writes no clipping varying, which the fragment stage reads;
+    // linking that program crashes the native `gl`, an open bug of master's `image.vert`)
+    const clipVariant = schema.dClipVariant;
+    if (schema.dClipTable?.type === 'define' && clipVariant?.type === 'define') {
+      for (const variant of clipVariant.options ?? []) {
+        if (base.type === 'image' && variant === 'pixel') continue;
+        const defines = {
+          ...base.defines,
+          dClipTable: true,
+          dClipping: true,
+          dClipObjects: true,
+          dClipObjectCount: Math.max(1, Number(base.defines.dClipObjectCount)),
+          dClipVariant: variant,
+        };
         signatures.push({ ...base, defines });
       }
     }
@@ -319,14 +347,15 @@ export const SourceNames = ['presets', 'mvs', 'mesoscale', 'define axes', 'canva
 export type SourceName = (typeof SourceNames)[number];
 
 /**
- * The sources on `plugin`: the presets (built: their structures stay in the state, the real scene of `prepareFrames`),
- * the MolViewSpec documents, the mesoscale scenes, then the axes from them. Needs the MolViewSpec runtime in the
- * plugin, and a 2D canvas for the labels' glyphs
+ * The sources on `plugin`: the presets (built), the mesoscale scenes, the MolViewSpec documents, then the axes from
+ * them; the protein loaded again after the documents (loading one replaces the state), the parent of the real scene
+ * of `prepareFrames`. Needs the MolViewSpec runtime in the plugin, and a 2D canvas for the labels' glyphs
  */
 export async function buildSources(plugin: PluginContext, read: ReadFile): Promise<VariantSource[]> {
   const presets = await getPresetSource(plugin, read);
   const mesoscale = getMesoscaleSource(plugin, getStructureRef(plugin));
   const mvs = await getMVSSource(plugin, read);
+  Structures.set(plugin, (await loadStructure(plugin, read, ProteinFile)).ref);
   const sources: VariantSource[] = [presets, mvs, mesoscale];
   sources.push(getDefineAxisSource(sources), getCanvasAxisSource(sources));
   await plugin.canvas3d!.graphics.resources.pending.whenReady();
@@ -338,6 +367,9 @@ const Structures = new WeakMap<PluginContext, string>();
 const getStructureRef = (plugin: PluginContext) => {
   const ref = Structures.get(plugin);
   if (!ref) throw new Error('no structure: the presets source is built first');
+  // a later source replacing the state (a MolViewSpec document) would leave the real scene without its structure
+  if (!plugin.state.data.cells.get(ref)?.obj)
+    throw new Error('the presets structure is gone: a source replaced the state');
   return ref;
 };
 
@@ -663,6 +695,7 @@ export async function prepareAllKernels(graphics: GraphicsContext) {
     ),
     ...PrefixSumKernels,
     ...MergedCullKernels,
+    ...(graphics.capabilities.atomicMinMax64 ? SphereRasterKernels : []),
   ];
   // those the device can run (the core limits allow fewer storage buffers a stage), as the GPU paths choose
   await compute.prepareKernels(requests.filter((r) => compute.isKernelSupported(r.code, r.schema)));

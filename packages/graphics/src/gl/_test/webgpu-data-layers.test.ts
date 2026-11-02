@@ -2,13 +2,17 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
 import { MeshSchema } from '../renderable/mesh.js';
 import {
+  DataLayerNames,
   DataPageName,
   getDataLayerAccessors,
+  getDataLayerPage,
+  getDataLayerPages,
   getDataLayerSchema,
   getDataOffsetName,
   usesDataLayers,
@@ -23,6 +27,17 @@ describe('data layers', () => {
     expect(schema[DataPageName]).toMatchObject({ type: 'storage-buffer', element: 'u32' });
     // the layers stay in the schema (WebGL, compute and the values' textures)
     expect(schema.tColor).toBe(MeshSchema.tColor);
+  });
+
+  it('lay out the page of every layer, also beyond 16 layers (two bits each)', () => {
+    const layers = DataLayerNames;
+    const pageOf = layers.map((_, i) => (i % 3) + 1);
+    const pages = getDataLayerPages(layers, pageOf);
+    expect(layers.map((l) => getDataLayerPage(pages, l))).toEqual(pageOf);
+    // the last layer alone on a page of its own: the others on the first
+    const last = layers.length - 1;
+    const one = getDataLayerPages([layers[last]], [2]);
+    expect(layers.map((l) => getDataLayerPage(one, l))).toEqual(layers.map((_, i) => (i === last ? 2 : 0)));
   });
 
   it('leave schemas without layers as they are', () => {

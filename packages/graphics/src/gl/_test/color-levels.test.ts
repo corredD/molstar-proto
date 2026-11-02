@@ -17,6 +17,8 @@ import { getGLContext, tryGetGLContext } from './gl.js';
 import { GraphicsShaders, getProgramDefines, preprocessProgram } from './graphics-shaders.js';
 import { createMesh } from './mesh.test.js';
 import { createSpheres } from './spheres.test.js';
+import { isSphereRasterEligible } from '../compute/sphere-raster-pass.js';
+import type { SpheresValues } from '../renderable/spheres.js';
 
 // Colors by size on screen (color-levels.md): with the levels off, the programs hold none of their code (the programs
 // of before, as every object draws them); on, they compile (GLSL on the native backend, WebGL1).
@@ -50,6 +52,36 @@ describe('color levels in the programs', () => {
       expect(preprocessShader(source, new Map([...defines, ['dColorLevels', '']]))).toMatch(/colorLevels\(out\.vColor/);
     });
   }
+
+  // the sphere raster's resolve (`resolveSphere`) reads the theme layers as the vertex stage does: the levels by the
+  // sphere's place, set before them
+  it('spheres: the raster resolve sets the model position before the levels read it (WGSL)', () => {
+    const defines = new Map([
+      ['dRenderVariant_color', ''],
+      ['dColorType_texture', ''],
+      ['dColorLevels', ''],
+      ['dSphereResolve', ''],
+    ]);
+    const code = preprocessShader(spheres_wgsl, defines);
+    const resolve = code.slice(code.indexOf('fn resolveSphere('));
+    const position = resolve.indexOf('out.vModelPosition =');
+    expect(position).toBeGreaterThan(0);
+    expect(position).toBeLessThan(resolve.indexOf('colorLevelSize(out.vModelPosition)'));
+  });
+
+  // the raster clips pixels by the clipping layer's values as flags: a clipping table's rows are not
+  it('spheres: not drawn by the raster with a clipping table, as before with the levels', () => {
+    const values = createSpheres().values as unknown as SpheresValues;
+    expect(isSphereRasterEligible(values)).toBe(true);
+    ValueCell.update(values.dColorType, 'texture');
+    ValueCell.update(values.dColorLevels, true);
+    expect(isSphereRasterEligible(values)).toBe(true);
+    ValueCell.update(values.dClipObjects, true);
+    ValueCell.update(values.dClipping, true);
+    expect(isSphereRasterEligible(values)).toBe(true);
+    ValueCell.update(values.dClipTable, true);
+    expect(isSphereRasterEligible(values)).toBe(false);
+  });
 
   // spheres need frag depth (impostors), meshes do not: each compiled where the backend can
   for (const [name, create, required] of [
