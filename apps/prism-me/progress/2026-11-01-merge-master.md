@@ -17,7 +17,9 @@
 | de0a7ed3d | data layer pages by arithmetic past 16 layers (master's 4 layers + prism-me's 3 wrapped the 32-bit layout) |
 | 82fd88f90 | the sphere raster with color levels (model position before the layers in the resolve), no clipping tables  |
 | 9dda0fc74 | GPU culling's wiggle and tumble allowance (281260de8) on master's kernels                                  |
-| (next)    | this file, `.v6/changelogs/merge-master.md`                                                                |
+| 578160701 | this file, `.v6/changelogs/merge-master.md`                                                                |
+| 21b19c611 | CPU culling's wiggle and tumble allowance on batches and cells (4ac650258's, on master's `cullSegment`)    |
+| (next)    | this file updated; `instance-cull.md`'s changelog and `features.md` trimmed to what still holds            |
 
 ## Per conflicted file
 
@@ -50,6 +52,23 @@
 | Tests: `cull-segment`, `gl/merged`, `repr/merged`, `webgpu-draw-lists`, `webgpu-gpu-culling` | Union of the cases. Rework tests skipped (below); `webgpu-draw-lists` keeps prism-me's and master's test of the quad indices grown while recording (they reproduce it differently)                                                                                                            |
 | `geo/geometry/_test/lines.test.ts` (prism-me's)                                              | Read master's `lineData` (`LineStride`): `startBuffer`/`groupBuffer` are gone ("geometry data per item")                                                                                                                                                                                      |
 
+## Auto-merged files both sides changed
+
+Read against master's; each surviving prism-me hunk is an orthogonal feature (of #28 only `motion` is left):
+
+- Ghosts (#24): `scene.ts` (`hasGhosts`), `outline.ts`, `postprocessing.ts`, `common.glsl.ts`, `common.wgsl.ts`,
+  `output.wgsl.ts`, `assign-material-color.glsl.ts`, `clip.ts` (`Clip.Objects.ghost`), `schema.ts` (`uClipObjectGhost`).
+- Graded cuts (#20): `clipping-data.ts`, `assign-clipping-varying.glsl.ts`, `clip-instance.glsl.ts`, `schema.ts`
+  (`tClipTable`), `visual.ts`, `common-clip.glsl.ts`.
+- Hidden cost (#17): the empty layers of the `*-data.ts` files, `precompile.ts`'s transparent flag, the draw table's
+  checks.
+- Color levels (#27): `spheres.ts`, `mesh.ts`, `texture-mesh.ts`, `renderable/{spheres,mesh,texture-mesh}.ts`,
+  `assign-color-varying.glsl.ts`, `mesh.vert.ts`, `mesh.wgsl.ts`.
+- On-top layer (#10): `illumination.ts`, `image.ts`, `pick.ts`, `helper.ts`.
+- Shape wire visual: `shape.ts`, `provider.ts`, `lines.ts` (`Lines.fromMesh` without duplicate edges).
+- Particle bounds (e91553839): `repr/particles/representation/target/*`.
+- `kernels.ts` and `hi-z.ts`: master's whole (#28's kernels and pyramid versions removed in the merge commit).
+
 ## Removed as duplicates of #2061
 
 - #28's two-phase occlusion (7db9ce2ad, bec016375, 602fe3852, 3b844c507): master's `hiZ.twoPhase`
@@ -72,8 +91,9 @@
    GPUs; measure master's per-instance test first (PetWorld HIV 0.1: 119 → 75 ms with #28's).
 2. **CPU culling by instance, WebGL2** (07dbe3a12, 8c5e17359, 4ac650258; `cull-segment.test.ts`: the `it.skip.each` and
    the wiggle case). Rebuild inside master's `cullSegment` after its clip classes: cut cells' instances by
-   `invariantBoundingSphere` (already in `CullValues`), `growMdbData` in `emit`. Worth it (CellPack 0.1 80 → 60 ms). Its
-   wiggle allowance on cells and batches belongs with it (the GPU's is back, 9dda0fc74).
+   `invariantBoundingSphere` (already in `CullValues`), `growMdbData` in `emit`. Worth it (CellPack 0.1 80 → 60 ms),
+   also for PetWorld on the M1 (item 1). Its wiggle allowance per instance belongs with it (batches and cells have
+   theirs again, 21b19c611; the GPU's, 9dda0fc74).
 3. **A coarse level's padding in the instance test** (fb5b94520; `webgpu-gpu-culling`: "at the levels their distance
    reaches" skipped). Master tests the invariant sphere alone: level 1 drew 11 instances, prism-me 12, the image the
    same here. Rebuild: `segmentData`'s largest radius (y) times the level scale less one in `sphereLevels`' instance
@@ -116,8 +136,9 @@
 - `pnpm lint`, `pnpm format:check`: pass. `pnpm check:workspace`: pass (after `node scripts/workspace/assets.mjs`: the
   worktree had no built CSS, `./*.css has no matching files` before).
 - `vitest run` (quick lane, all packages, WebGPU through Dawn with the native `webgpu` of
-  `~/prism-me-lanes/marking-cost`): after the adaptations 0 failed (before them: 3, the ghosts and data pages, now
-  fixed). `packages/extensions/mesoscale` `test:scaling` (the culler's scaling guard): pass.
+  `~/prism-me-lanes/marking-cost`): on 9dda0fc74 0 failed (on the merge commit 3: the ghosts and the data pages, fixed
+  by 128bcfff7 and de0a7ed3d); again after 21b19c611. `packages/extensions/mesoscale` `test:scaling` (the culler's
+  scaling guard): pass.
 - Shader variants (`SHADER_VARIANTS=1 vitest run tests/src/shader-variants`, master's, beb426b6c): every source compiles
   and links on WebGL (native `gl`) and WebGPU (Dawn) with no problem (12 tests); the two coverage tests fail for the
   machine: WebGPU leaves the four sphere-raster kernels uncompiled (the M1 has no `atomic-vec2u-min-max`), WebGL 14
