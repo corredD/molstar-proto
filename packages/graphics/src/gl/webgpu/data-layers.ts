@@ -62,15 +62,18 @@ export const MaxDataPages = DataPageNames.length;
  */
 export const DataLayerPagesName = 'dDataLayerPages';
 
-/** The page of `layer` in the layout `pages` (`DataLayerPagesName`) */
+/**
+ * The page of `layer` in the layout `pages` (`DataLayerPagesName`): two bits a layer, by arithmetic (more than 16
+ * layers take more than 32 bits, which bit shifts would wrap; exact up to 26)
+ */
 export function getDataLayerPage(pages: number, layer: DataLayer) {
-  return (pages >>> (2 * DataLayerNames.indexOf(layer))) & 3;
+  return Math.floor(pages / 4 ** DataLayerNames.indexOf(layer)) % 4;
 }
 
 /** The layout of `pageOf` (a page per layer of `layers`), see `DataLayerPagesName` */
 export function getDataLayerPages(layers: readonly DataLayer[], pageOf: readonly number[]) {
   let pages = 0;
-  for (let i = 0; i < layers.length; ++i) pages |= pageOf[i] << (2 * DataLayerNames.indexOf(layers[i]));
+  for (let i = 0; i < layers.length; ++i) pages += pageOf[i] * 4 ** DataLayerNames.indexOf(layers[i]);
   return pages;
 }
 
