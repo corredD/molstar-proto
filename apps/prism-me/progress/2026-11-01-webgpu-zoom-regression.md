@@ -26,6 +26,13 @@
 - **Benches** share the M1 with lane `no-raster-auto`: every timing run inside the shared lock
   (`scratchpad/bench.lock`), one case at a time, with the load (`vm.loadavg`) noted.
 
+## Status
+
+PR [corredD/molstar-proto#35](https://github.com/corredD/molstar-proto/pull/35) to `me/merge-master`, not merged.
+Commits: 6f7305d78 (clamp, cap test), 9cfe6151e (same-view rule in its place), 241f9c025 (second phase's test),
+5b685898f (texel indices), docs c146545a9, b6ece3177, 768a6932e, ec012188c, d05544f69; 0a4fe73ed merges
+`origin/me/merge-master` (6d1833f2d).
+
 ## Step 1: measured before code
 
 Bench: the coordinator's `bench.mjs` (copied, with `--props` for `canvas3d.setProps`, `--gpuCulling` set on the
