@@ -14,6 +14,7 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
   AutoGpuCullingMinInstances,
   AutoGpuCullingMinRasterSpheres,
+  AutoGpuCullingMinSpheres,
   AutoGpuCullingThreshold,
   resolveGpuCulling,
 } from '@molstar/graphics/geo/geometry/base';
@@ -25,12 +26,15 @@ import {
   isMergedRenderObject,
   type GraphicsRenderObject,
 } from '@molstar/graphics/gl/render-object';
+import type { GraphicsContext } from '@molstar/graphics/gl/context';
+import type { ObjectSignature } from '@molstar/graphics/gl/precompile';
 import { mergeRenderObjectsByType } from '../merged.js';
+import { withMergedSignatures } from '../signatures.js';
 
-/** A spheres render object of `instances` instances (translated copies of a few spheres) */
-function spheres(instances: number): GraphicsRenderObject {
-  const builder = SpheresBuilder.create(4, 2);
-  for (let i = 0; i < 4; ++i) builder.add(i, 0, 0, i);
+/** A spheres render object of `instances` instances (translated copies of `count` spheres) */
+function spheres(instances: number, count = 4): GraphicsRenderObject {
+  const builder = SpheresBuilder.create(count, 2);
+  for (let i = 0; i < count; ++i) builder.add(i, 0, 0, i);
   const geometry = builder.getSpheres();
   const transforms = new Float32Array(instances * 16);
   for (let i = 0; i < instances; ++i)
@@ -58,17 +62,72 @@ describe('merging render objects', () => {
     expect(resolveGpuCulling('auto', 100, 100, min)).toBe(true);
     expect(resolveGpuCulling('auto', 100, 100, min - 1)).toBe(false);
     expect(resolveGpuCulling(false, 100, 100, min)).toBe(false);
+    // without the raster (no raster spheres) as many spheres are not enough
+    expect(resolveGpuCulling('auto', 100, 100, 0, min)).toBe(false);
   });
 
-  // rework: gpuCulling auto from many vertices on devices without the sphere raster (3636fff0f, dropped for master's
-  // raster rule d65fc4bfd; `AutoGpuCullingMinVertices` was 10 M, the fourth argument was the vertices at full detail)
-  it.skip('culls on the GPU from many vertices drawn at full detail, with enough instances to cull one by one', () => {
-    const vertices = 10_000_000;
-    // few instances of large members (mesoscale: PetWorld's proteins), per instance a test that drops millions of vertices
-    expect(resolveGpuCulling('auto', AutoGpuCullingThreshold, 19 * 4, vertices)).toBe(true);
-    expect(resolveGpuCulling('auto', AutoGpuCullingThreshold, 19 * 4, vertices - 1)).toBe(false);
-    // one large object alone: nothing to cull by instance
-    expect(resolveGpuCulling('auto', AutoGpuCullingThreshold - 1, 4, vertices * 10)).toBe(false);
+  it('culls on the GPU from many spheres without the raster, with many instances per draw', () => {
+    const min = AutoGpuCullingMinSpheres;
+    // few instances of large members (mesoscale: PetWorld's 19 objects at 4 levels), per instance a test that drops
+    // millions of spheres
+    const draws = 19 * 4;
+    const instances = AutoGpuCullingThreshold * draws;
+    expect(instances).toBeLessThan(AutoGpuCullingMinInstances);
+    expect(resolveGpuCulling('auto', instances, draws, 0, min)).toBe(true);
+    expect(resolveGpuCulling('auto', instances, draws, 0, min - 1)).toBe(false);
+    // few instances per draw (a PDB entry's units, one object each): nothing to cull by instance
+    expect(resolveGpuCulling('auto', instances - 1, draws, 0, min * 10)).toBe(false);
+    // one large object alone
+    expect(resolveGpuCulling('auto', AutoGpuCullingThreshold - 1, 1, 0, min * 10)).toBe(false);
+  });
+
+  it('keeps symmetric assemblies of a few million spheres on the CPU without the raster', () => {
+    // a 60-mer of 7 chains as spacefill, no levels (7qpd's assembly is 0.69M spheres): 60 instances per draw, culled on
+    // the GPU measured a loss (`merged-render-objects.md`, When on); the gains without the raster were measured from
+    // 13.5M spheres (mesoscale models)
+    expect(resolveGpuCulling('auto', 7 * 60, 7, 0, 3_000_000)).toBe(false);
+  });
+
+  it('merges a few instances of many spheres to cull them on the GPU, without the raster', () => {
+    const instances = AutoGpuCullingThreshold;
+    const entries = [{ visual: 0, renderObject: spheres(instances, Math.ceil(AutoGpuCullingMinSpheres / instances)) }];
+    // a device without the raster (no `atomicMinMax64`)
+    const graphics = { capabilities: {}, resources: { ownsTexture: () => true } } as unknown as GraphicsContext;
+    const out: GraphicsRenderObject[] = [];
+    mergeRenderObjectsByType(entries, 'auto', new Map(), out, 'auto', true, graphics);
+    expect(isMergedRenderObject(out[0])).toBe(true);
+    expect((out[0].values as { gpuCulling?: { ref: { value: boolean } } }).gpuCulling?.ref.value).toBe(true);
+    // one sphere an instance fewer: below the floor, unmerged
+    const fewer = [
+      { visual: 0, renderObject: spheres(instances, Math.ceil(AutoGpuCullingMinSpheres / instances) - 1) },
+    ];
+    const few: GraphicsRenderObject[] = [];
+    mergeRenderObjectsByType(fewer, 'auto', new Map(), few, 'auto', true, graphics);
+    expect(isMergedRenderObject(few[0])).toBe(false);
+  });
+
+  it('predicts the signatures of spheres culled on the GPU without the raster', () => {
+    const signature = {
+      type: 'spheres',
+      defines: {},
+      linearTextures: [],
+      doubleSided: false,
+      hasReflection: false,
+      opaque: true,
+      transparent: false,
+      emissive: false,
+    } as unknown as ObjectSignature;
+    // culls on the GPU, without the raster (no `atomicMinMax64`)
+    const graphics = {
+      capabilities: { indirectInstanceRanges: true },
+      compute: { isKernelSupported: () => true },
+    } as unknown as GraphicsContext;
+    const counts = { objects: 19, instances: AutoGpuCullingThreshold * 19 * 4, levels: 4, graphics };
+    const gpuCulled = (spheres: number) =>
+      withMergedSignatures([signature], { gpuCulling: 'auto' }, { ...counts, spheres }).find((s) => s.merged)
+        ?.gpuCulled ?? false;
+    expect(gpuCulled(AutoGpuCullingMinSpheres)).toBe(true);
+    expect(gpuCulled(AutoGpuCullingMinSpheres - 1)).toBe(false);
   });
 
   it('merges an object alone to cull it on the GPU, where the device does and it pays', () => {

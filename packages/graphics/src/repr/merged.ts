@@ -125,19 +125,21 @@ export function mergeRenderObjectsByType<V>(
       else byType.set(e.renderObject.type, [e]);
     }
     byType.forEach((group, type) => {
-      // culled on the GPU where many instances per draw (a segment and level): merged for it, also one object alone
+      // culled on the GPU where many instances per draw (a segment and level), and many instances or spheres: merged for
+      // it, also one object alone
       let instances = 0;
       for (const e of group) instances += e.renderObject.values.instanceCount.ref.value;
       const levels = (group[0].renderObject.values as { lodLevels?: { ref: { value: unknown[] } } }).lodLevels;
       const draws = group.length * Math.max(1, levels?.ref.value.length ?? 0);
-      let rasterSpheres = 0;
-      if (type === 'spheres' && graphics?.capabilities.atomicMinMax64) {
+      let spheres = 0;
+      if (type === 'spheres') {
         for (const e of group) {
           const { instanceCount, uVertexCount } = e.renderObject.values as SpheresValues;
-          rasterSpheres += instanceCount.ref.value * uVertexCount.ref.value;
+          spheres += instanceCount.ref.value * uVertexCount.ref.value;
         }
       }
-      const gpu = gpuSupported && resolveGpuCulling(gpuCulling, instances, draws, rasterSpheres);
+      const rasterSpheres = graphics?.capabilities.atomicMinMax64 ? spheres : 0;
+      const gpu = gpuSupported && resolveGpuCulling(gpuCulling, instances, draws, rasterSpheres, spheres);
       const merge = gpu || (group.length >= 2 && resolveRenderMerged(renderMerged, group.length));
       if (!merge) return;
 

@@ -218,7 +218,9 @@ describe('culling a segment', () => {
   });
 
   // rework: CPU culling by instance for objects with levels of detail (07dbe3a12, 8c5e17359; dropped in the merge of
-  // master: `cullSegment` culls by cell, the instances' own spheres and `padding` are not read)
+  // master: `cullSegment` culls by cell, the instances' own spheres and `padding` are not read). Not rebuilt (lane
+  // `no-raster-auto`): WebGL2 was as fast or faster after the merge (M1 Pro, ms at 1 / 0.1 / 0.02: PetWorld HIV 33.1 /
+  // 83.7 / 73.1 before, 28.4 / 73.7 / 49.6 after; CellPack HIV 9.7 / 73.7 / 40.9, 9.1 / 67.1 / 35.3); drop if it stays so
   it.skip.each([
     [
       'partly outside the view',
@@ -274,7 +276,7 @@ describe('culling a segment', () => {
   );
 
   // rework: the wiggle and tumble allowance of CPU culling by instance (4ac650258; cells and batches grow by it, the
-  // test above, not instances: there is no culling by instance)
+  // test above, not instances: there is no culling by instance; not rebuilt, the note above)
   it.skip('with wiggling atoms, draws the instances whose spheres grown by the wiggle reach into view', () => {
     const { frustum, cameraPlane } = view(Vec3.create(300, 95, -100), Vec3.create(95, 95, 95));
     const value = [[0, 1e7, 0, 600, 1]] as unknown as LodLevelsValue;

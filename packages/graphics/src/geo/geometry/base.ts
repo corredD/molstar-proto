@@ -139,18 +139,33 @@ export const AutoGpuCullingMinInstances = 20000;
 export const AutoGpuCullingMinRasterSpheres = 100_000;
 
 /**
+ * Spheres from which `gpuCulling: 'auto'` culls on the GPU without `AutoGpuCullingMinInstances` instances, with
+ * `AutoGpuCullingThreshold` per draw: the GPU tests each instance by its own sphere, the CPU only cells, which for
+ * instances of large members (mesoscale models) draws millions of spheres out of view. Measured without the raster (M1
+ * Pro, WebGPU, ms a frame at the camera's distance 1 / 0.1 / 0.02, CPU / GPU culled): PetWorld HIV (37.7M spheres, 16k
+ * instances, 211 a draw) 25.2 / 71.1 / 47.4 against 17.1 / 34.8 / 30.9, T7 phage (18.5M, 63 a draw) 6.3 / 42.2 / 31.6
+ * against 6.2 / 36.5 / 26.3; gains from 13.5M. Below, symmetric assemblies pass 30 per draw (a 60-mer: 60 instances
+ * an object, no levels) and stay on the CPU by this count alone, where GPU culling was measured a loss on an RTX
+ * (7qpd's 60-copy assembly, 7 objects of 60 instances, 0.69M spheres; `merged-render-objects.md`, GPU culling)
+ */
+export const AutoGpuCullingMinSpheres = 10_000_000;
+
+/**
  * Resolves the `gpuCulling` param value for `instanceCount` instances drawn by `drawCount` segments times levels;
- * `rasterSpheres`: the spheres of those instances the sphere raster could draw, 0 where the device has no raster
+ * `rasterSpheres`: the spheres of those instances the sphere raster could draw, 0 where the device has no raster;
+ * `spheres`: the spheres of those instances, were they spheres, on any device
  */
 export function resolveGpuCulling(
   value: GpuCullingValue,
   instanceCount: number,
   drawCount: number,
   rasterSpheres = 0,
+  spheres = 0,
 ): boolean {
   if (value === 'auto') {
     if (rasterSpheres >= AutoGpuCullingMinRasterSpheres) return true;
-    return instanceCount >= Math.max(AutoGpuCullingMinInstances, AutoGpuCullingThreshold * Math.max(1, drawCount));
+    const perDraw = instanceCount >= AutoGpuCullingThreshold * Math.max(1, drawCount);
+    return perDraw && (instanceCount >= AutoGpuCullingMinInstances || spheres >= AutoGpuCullingMinSpheres);
   }
   return value;
 }
@@ -236,7 +251,7 @@ export namespace BaseGeometry {
     gpuCulling: PD.Select<GpuCullingValue>('auto', GpuCullingOptions, {
       ...CullingLodCategory,
       description:
-        'Cull and choose the level of detail per cell of instances on the GPU where the device supports it (WebGPU with compute and indirect draws by first instance), merging the render objects for it. When set to `auto`, enabled with many instances (`AutoGpuCullingMinInstances`), and many per draw (`AutoGpuCullingThreshold`), or with many spheres where the device has the sphere raster, which takes such objects only (`AutoGpuCullingMinRasterSpheres`).',
+        'Cull and choose the level of detail per cell of instances on the GPU where the device supports it (WebGPU with compute and indirect draws by first instance), merging the render objects for it. When set to `auto`, enabled with many instances (`AutoGpuCullingMinInstances`), and many per draw (`AutoGpuCullingThreshold`), or with many spheres where the device has the sphere raster, which takes such objects only (`AutoGpuCullingMinRasterSpheres`), or with many spheres and many instances per draw without it (`AutoGpuCullingMinSpheres`).',
     }),
     lod: PD.Vec3(Vec3(), undefined, {
       ...CullingLodCategory,
