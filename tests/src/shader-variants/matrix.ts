@@ -215,7 +215,8 @@ export function getMesoscaleSource(plugin: PluginContext, structureRef: string):
  * Each define of each object kind of `sources` varied alone, from the first signature of the kind: booleans flipped,
  * strings through the values the sources reach for the kind (the derivation enumerates every value data decides, e.g.
  * color and layer types; another option is a variant no object of the kind draws, as a direct-volume color type on a
- * mesh), number defines (counts, sizes) as they are; a palette with a color type per group, clip objects with a count
+ * mesh), number defines (counts, sizes) as they are; a palette with a color type per group, clip objects with a count;
+ * the clipping table with the clipping layer and clip objects, in each clip variant
  */
 export function getDefineAxisSource(sources: readonly VariantSource[]): VariantSource {
   const baselines = new Map<string, ObjectSignature>();
@@ -251,6 +252,25 @@ export function getDefineAxisSource(sources: readonly VariantSource[]): VariantS
         if (name === 'dUsePalette' && v === true && defines.dColorType === 'uniform') defines.dColorType = 'texture';
         // clip objects and their count go together (`dClipObjects` is a count above zero)
         if (name === 'dClipObjects') defines.dClipObjectCount = v ? Math.max(1, Number(defines.dClipObjectCount)) : 0;
+        signatures.push({ ...base, defines });
+      }
+    }
+    // the clipping table's branch reads the clipping layer with the clip objects (`dClipTable && dClipping`, its
+    // flags rows of `tClipTable`): the three on together, which none of the axes alone reaches, in each clip variant;
+    // the ghost pass draws the same programs' depth variant
+    // (not images: their vertex stage writes no clipping varying, which the fragment stage reads; linking that program
+    // crashes the native `gl` with clip objects in the pixel variant, an open bug of master's `image.vert`)
+    const clipVariant = schema.dClipVariant;
+    if (base.type !== 'image' && schema.dClipTable?.type === 'define' && clipVariant?.type === 'define') {
+      for (const variant of clipVariant.options ?? []) {
+        const defines = {
+          ...base.defines,
+          dClipTable: true,
+          dClipping: true,
+          dClipObjects: true,
+          dClipObjectCount: Math.max(1, Number(base.defines.dClipObjectCount)),
+          dClipVariant: variant,
+        };
         signatures.push({ ...base, defines });
       }
     }
