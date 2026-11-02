@@ -11,7 +11,8 @@ import { clip_storage_wgsl } from './chunks/clip.wgsl.js';
 /**
  * The occlusion test of a sphere (world space, `occluded`) against a pyramid (`HiZSchema` in `cell-cull.ts`), as
  * `HiZPass.isOccluded` tests on the CPU. A rectangle reaching past the pyramid's view is clamped to it where
- * `hiZClampable(sphere)` (the includer's) says no part beyond is in the view culled for, else not occluded
+ * `hiZClampable()` (the includer's) says the pyramid is of the view culled for, nothing outside it being in view; else
+ * the sphere is not occluded
  */
 export const hiz_occlusion_wgsl = /* wgsl */ `
 // the occlusion test of \`HiZPass.isOccluded\` against the pyramid of the previous frame (depth reversed: near at 1)
@@ -62,9 +63,8 @@ fn occluded(sphere: vec4<f32>) -> bool {
     }
     var aabb = hiZProjectSphere(vp, r);
     if (any(aabb < vec4<f32>(0.0)) || any(aabb > vec4<f32>(1.0))) {
-        // what is outside the view is not seen: only the texels inside it count, where nothing outside the pyramid's
-        // view is in the view culled for
-        if (!hiZClampable(vec4<f32>(sphere.xyz, r))) {
+        // what is outside the view is not seen: only the texels inside it count, at the pyramid's own view
+        if (!hiZClampable()) {
             return false;
         }
         aabb = clamp(aabb, vec4<f32>(0.0), vec4<f32>(1.0));
@@ -116,56 +116,9 @@ fn outside(plane: vec4<f32>, sphere: vec4<f32>) -> bool {
     return dot(plane.xyz, sphere.xyz) + plane.w < -sphere.w;
 }
 
-fn outsideView(sphere: vec4<f32>) -> bool {
-    return outside(uParams.uPlane0, sphere) || outside(uParams.uPlane1, sphere) || outside(uParams.uPlane2, sphere) ||
-        outside(uParams.uPlane3, sphere) || outside(uParams.uPlane4, sphere) || outside(uParams.uPlane5, sphere);
-}
-
-/**
- * The largest signed distance to \`plane\` (inside positive) of the part of \`sphere\` beyond \`beyond\` (its signed
- * distance \`d\` there, |d| < radius): at the sphere's point farthest along the plane's normal where that is beyond,
- * else on the circle where the sphere meets \`beyond\`
- */
-fn capReach(plane: vec4<f32>, beyond: vec4<f32>, sphere: vec4<f32>, d: f32) -> f32 {
-    if (all(plane == beyond)) {
-        // the same plane (the pyramid of this view): nothing beyond it is in view
-        return -1.0;
-    }
-    let top = sphere.xyz + plane.xyz * sphere.w;
-    if (dot(beyond.xyz, top) + beyond.w <= 0.0) {
-        return dot(plane.xyz, sphere.xyz) + plane.w + sphere.w;
-    }
-    let center = sphere.xyz - beyond.xyz * d;
-    let along = plane.xyz - beyond.xyz * dot(plane.xyz, beyond.xyz);
-    return dot(plane.xyz, center) + plane.w + sqrt(max(sphere.w * sphere.w - d * d, 0.0)) * length(along);
-}
-
-/**
- * Whether a part of the sphere beyond the pyramid's frustum plane \`beyond\` may be in the view culled for: the part
- * beyond (a cap) against each of the view's planes; the whole sphere where all of it is beyond
- */
-fn showsBeyond(beyond: vec4<f32>, sphere: vec4<f32>) -> bool {
-    let d = dot(beyond.xyz, sphere.xyz) + beyond.w;
-    if (d >= sphere.w) {
-        return false;
-    }
-    if (d <= -sphere.w) {
-        return !outsideView(sphere);
-    }
-    let eps = 1e-4 * sphere.w;
-    return capReach(uParams.uPlane0, beyond, sphere, d) > eps && capReach(uParams.uPlane1, beyond, sphere, d) > eps &&
-        capReach(uParams.uPlane2, beyond, sphere, d) > eps && capReach(uParams.uPlane3, beyond, sphere, d) > eps &&
-        capReach(uParams.uPlane4, beyond, sphere, d) > eps && capReach(uParams.uPlane5, beyond, sphere, d) > eps;
-}
-
-/**
- * \`occluded\`'s clamp: where no part of the sphere outside the pyramid's view is in the frustum culled for (always at
- * the pyramid's own view: the second phase, a still camera), the texels inside the pyramid's view hold all it shows
- */
-fn hiZClampable(sphere: vec4<f32>) -> bool {
-    return !(showsBeyond(uParams.uHiZPlane0, sphere) || showsBeyond(uParams.uHiZPlane1, sphere) ||
-        showsBeyond(uParams.uHiZPlane2, sphere) || showsBeyond(uParams.uHiZPlane3, sphere) ||
-        showsBeyond(uParams.uHiZPlane4, sphere) || showsBeyond(uParams.uHiZPlane5, sphere));
+/** \`occluded\`'s clamp: at the pyramid's own view (the second phase, a still camera) nothing outside it is in view */
+fn hiZClampable() -> bool {
+    return uParams.uHiZClamp != 0;
 }
 
 /**

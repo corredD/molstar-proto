@@ -292,12 +292,7 @@ export function createMergedCuller(
     uAnimationSlack: ValueCell.create(0),
     uCellCount: ValueCell.create(0),
     ...createHiZValues(createEmptyHiZ(resources)),
-    uHiZPlane0: ValueCell.create(Vec4()),
-    uHiZPlane1: ValueCell.create(Vec4()),
-    uHiZPlane2: ValueCell.create(Vec4()),
-    uHiZPlane3: ValueCell.create(Vec4()),
-    uHiZPlane4: ValueCell.create(Vec4()),
-    uHiZPlane5: ValueCell.create(Vec4()),
+    uHiZClamp: ValueCell.create(false),
     uClipObjectCount: ValueCell.create(0),
     uClipBase: ValueCell.create(0),
     segmentData,
@@ -613,22 +608,32 @@ export function createMergedCuller(
     ValueCell.update(cell, v);
   };
 
-  const hiZPlanes = [
-    cellValues.uHiZPlane0,
-    cellValues.uHiZPlane1,
-    cellValues.uHiZPlane2,
-    cellValues.uHiZPlane3,
-    cellValues.uHiZPlane4,
-    cellValues.uHiZPlane5,
+  const frustumPlanes = [
+    cellValues.uPlane0,
+    cellValues.uPlane1,
+    cellValues.uPlane2,
+    cellValues.uPlane3,
+    cellValues.uPlane4,
+    cellValues.uPlane5,
   ];
   const pyramidFrustum = Frustum3D();
   const pyramidMatrix = Mat4();
-  /** `setHiZValues` and the planes of the pyramid's view, as the renderer's frustum of a camera */
+  /**
+   * `setHiZValues`, and whether the pyramid is of the view culled for (`uHiZClamp`): its frustum's planes those set
+   * last (`uPlane0` to `uPlane5`), as the renderer computes them from a camera
+   */
   function setPyramid(pyramid: OcclusionPyramid | undefined) {
     setHiZValues(cellValues, pyramid, emptyHiZ);
-    if (!pyramid) return;
-    Frustum3D.fromProjectionMatrix(pyramidFrustum, Mat4.mul(pyramidMatrix, pyramid.projection, pyramid.view));
-    for (let i = 0; i < 6; ++i) setPlane(hiZPlanes[i], pyramidFrustum[i as 0]);
+    let same = !!pyramid;
+    if (pyramid) {
+      Frustum3D.fromProjectionMatrix(pyramidFrustum, Mat4.mul(pyramidMatrix, pyramid.projection, pyramid.view));
+      for (let i = 0; i < 6 && same; ++i) {
+        const { normal, constant } = pyramidFrustum[i as 0];
+        const v = frustumPlanes[i].ref.value;
+        same = v[0] === normal[0] && v[1] === normal[1] && v[2] === normal[2] && v[3] === constant;
+      }
+    }
+    ValueCell.updateIfChanged(cellValues.uHiZClamp, same);
   }
 
   /**
@@ -891,13 +896,13 @@ export function createMergedCuller(
         dispatchedPyramid.set(pyramid.view, 0);
         dispatchedPyramid.set(pyramid.projection, 16);
       }
-      setPyramid(pyramid);
       setPlane(cellValues.uPlane0, frustum[0]);
       setPlane(cellValues.uPlane1, frustum[1]);
       setPlane(cellValues.uPlane2, frustum[2]);
       setPlane(cellValues.uPlane3, frustum[3]);
       setPlane(cellValues.uPlane4, frustum[4]);
       setPlane(cellValues.uPlane5, frustum[5]);
+      setPyramid(pyramid);
       setPlane(cellValues.uCameraPlane, cameraPlane);
       ValueCell.update(cellValues.uLevels, Mat4.copy(cellValues.uLevels.ref.value, levelRanges));
       const hasLod = min !== 0 || max !== 0;
