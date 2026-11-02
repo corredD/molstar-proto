@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util';
@@ -29,13 +30,15 @@ import {
 /**
  * Whether the raster can draw the spheres of `values` in the opaque color pass as the impostors draw them: opaque (alpha
  * 1, no transparency layer, not x-ray), clip objects but by instance with a clipping layer (the kernels clip instances,
- * spheres and pixels as the vertex and fragment stages, `isStorageClipSupported`), the exact impostors, no animation,
- * no fade by the object's distance (`fadeLod`'s dither), levels within the kernels'
+ * spheres and pixels as the vertex and fragment stages, `isStorageClipSupported`) or a clipping table, the exact
+ * impostors, no animation, no fade by the object's distance (`fadeLod`'s dither), levels within the kernels'
  */
 export function isSphereRasterEligible(values: SpheresValues) {
   if (values.uAlpha.ref.value !== 1 || values.dTransparency.ref.value) return false;
   if (values.dXrayShaded.ref.value !== 'off' || values.dApproximate.ref.value) return false;
   if (!isStorageClipSupported(values)) return false;
+  // a clipping table's rows (`dClipTable`) are no flags: the kernels clip pixels by the layer's values as flags
+  if (values.dClipObjects.ref.value && values.dClipping.ref.value && values.dClipTable.ref.value) return false;
   if (values.dWiggleAnimation.ref.value || values.dTumbleAnimation.ref.value) return false;
   const lod = values.uLod.ref.value;
   if (values.dLodFade.ref.value && lod[3] === 0 && (lod[0] !== 0 || lod[1] !== 0)) return false;

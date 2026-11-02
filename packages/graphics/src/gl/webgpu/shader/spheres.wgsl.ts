@@ -214,11 +214,12 @@ fn resolveSphere(position: vec4<f32>) -> Resolved {
         in.aSegment = vec4<f32>(0.0, f32(instance.y), f32(instance.z), 0.0);
     #endif
     var out: VertexOutput;
+    // before the theme layers, as the vertex stage (the color levels read it)
+    let position4 = vec4<f32>(positionGroup.xyz, 1.0);
+    out.vModelPosition = (uGlobal.uModel * transform * position4).xyz;
     ${assign_varyings_wgsl}
     ${assign_size_wgsl}
 
-    let position4 = vec4<f32>(positionGroup.xyz, 1.0);
-    out.vModelPosition = (uGlobal.uModel * transform * position4).xyz;
     var radius = size * uGlobal.uModelScale;
     // the chunk's level at its scale, as \`assign_lod_factor\`
     let lod = uObject.uRasterLevels[e.w];
