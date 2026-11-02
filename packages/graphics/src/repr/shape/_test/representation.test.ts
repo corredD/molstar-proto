@@ -128,7 +128,9 @@ describe('ShapeMultiRepresentation', () => {
       layers: NoSignatureLayers,
     };
     const types = (visuals: string[]) =>
-      repr.getSignatures?.({ ...PD.getDefaultValues(Params), visuals } as PD.Values<typeof Params>, ctx).map((s) => s.type);
+      repr
+        .getSignatures?.({ ...PD.getDefaultValues(Params), visuals } as PD.Values<typeof Params>, ctx)
+        .map((s) => s.type);
     expect(types(['mesh'])).toEqual(['mesh']);
     expect(types(['mesh', 'wireframe'])).toEqual(['mesh', 'lines']);
     expect(types(['wireframe'])).toEqual(['lines']);

@@ -397,7 +397,17 @@ describe('culling a segment', () => {
     const cull = (slack: number) => {
       const mdb = createSegmentedMdbList();
       const prepared = mdb.prepare(lodLevels, grid.cellCount, false, LodView());
-      mdb.cullSegment(clipped, ZeroCullSegment, prepared, cameraPlane, frustum, null, createGraphicsStats(), false, slack);
+      mdb.cullSegment(
+        clipped,
+        ZeroCullSegment,
+        prepared,
+        cameraPlane,
+        frustum,
+        null,
+        createGraphicsStats(),
+        false,
+        slack,
+      );
       const out: number[] = [];
       for (let i = 0; i < mdb.list[0].count; ++i) out.push(mdb.list[0].baseInstances[i], mdb.list[0].instanceCounts[i]);
       return out;
