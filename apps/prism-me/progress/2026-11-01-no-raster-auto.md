@@ -48,9 +48,9 @@ culling never lost without the raster. Synaptic vesicle failed to download (drop
 
 ## Decided
 
-- **The rule** (Opus, advisor consulted): master's expression kept, its 20k-instance floor waived from 1M spheres
-  (`AutoGpuCullingMinSpheres`) with `AutoGpuCullingThreshold` (30) per draw still asked; master's raster rule untouched
-  (100k spheres, raster only). One function, one expression:
+- **The rule** (Opus, advisor consulted; floor and arguments changed by the review, below): master's expression kept,
+  its 20k-instance floor waived from 10M spheres (`AutoGpuCullingMinSpheres`, first 1M) with `AutoGpuCullingThreshold`
+  (30) per draw still asked; master's raster rule untouched (100k spheres, raster only). One function, one expression:
   `raster && spheres >= 100k || perDraw && (instances >= 20k || spheres >= 1M)`. Why per draw and not prism-me's 30
   instances in all: a PDB entry's units are one instance an object (3J3Q, 1356 units), where master measured GPU culling
   without the raster a little slower; per draw keeps them on the CPU. Cost: SARS-CoV-2 (22 a draw) stays on the CPU
@@ -79,3 +79,25 @@ culling never lost without the raster. Synaptic vesicle failed to download (drop
 
 (before for T7 and SARS: the forced-off runs, which is what auto did.) PetWorld at 0.1 is still slower than before the
 merge (21.6, coordinator): that is the GPU culler's own zoom cost, lane `webgpu-zoom-regression`.
+
+## Review gate
+
+lane-reviewer (Opus) then lane-skeptic (Opus; the first skeptic run was lost in a crash, re-run): 0 must-fix, 5
+should-fix, 4 nits, 1 nit added by the skeptic; 6 confirmed, 2 plausible, 0 refuted.
+
+| #   | finding                                                                                    | verdict                             | outcome                                                                                        |
+| --- | ------------------------------------------------------------------------------------------ | ----------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 1   | `resolveGpuCulling`'s 4th argument changed meaning: a master call would lose the raster    | plausible                           | fixed: master's signature kept, spheres a 5th argument (aaf540410 test, 618b1708b fix)         |
+| 2   | 1M floor: 60-mer assemblies of 16.7k atoms an AU GPU-culled without the raster, unmeasured | plausible                           | fixed: floor 10M, where the gains were measured (13.5M and up) (61d8c54f5 test, 39103f24a fix) |
+| 3   | docs: 7qpd assembly is 7 objects x 60; assemblies do reach 30 per draw                     | confirmed                           | fixed: comment, spec                                                                           |
+| 4   | particle targets: volume dots and shapes drawn as spheres not counted; changelog overclaim | confirmed (nit)                     | changelog narrowed, spec says what is counted; not counted (late compile only)                 |
+| 5   | progress file not committed                                                                | -                                   | fixed (a75c67c49)                                                                              |
+| 6   | `elementCount` counts ignored hydrogens                                                    | confirmed (nit, master's code)      | left, in the spec                                                                              |
+| 7   | `gpu \|\| gpuSpheres` prepares a merged program of other types                             | confirmed (nit, master's structure) | left                                                                                           |
+| 8   | no below-floor case through `mergeRenderObjectsByType`                                     | confirmed (nit)                     | added                                                                                          |
+| 9   | the former rule counted every geometry type                                                | confirmed (nit)                     | left open in the spec (meshes of mesoscale models not measured)                                |
+| N1  | a structure target drawn as a mesh counted into the mesh entry                             | confirmed (nit)                     | fixed (2ca70f71b): counted only for `structure-spheres`                                        |
+
+## Size
+
+About 35 production lines (base.ts, merged.ts, signatures.ts, the particle target), under the brief's 60.
