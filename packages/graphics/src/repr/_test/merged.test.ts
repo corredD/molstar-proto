@@ -97,6 +97,13 @@ describe('merging render objects', () => {
     mergeRenderObjectsByType(entries, 'auto', new Map(), out, 'auto', true, graphics);
     expect(isMergedRenderObject(out[0])).toBe(true);
     expect((out[0].values as { gpuCulling?: { ref: { value: boolean } } }).gpuCulling?.ref.value).toBe(true);
+    // one sphere an instance fewer: below the floor, unmerged
+    const fewer = [
+      { visual: 0, renderObject: spheres(instances, Math.ceil(AutoGpuCullingMinSpheres / instances) - 1) },
+    ];
+    const few: GraphicsRenderObject[] = [];
+    mergeRenderObjectsByType(fewer, 'auto', new Map(), few, 'auto', true, graphics);
+    expect(isMergedRenderObject(few[0])).toBe(false);
   });
 
   it('predicts the signatures of spheres culled on the GPU without the raster', () => {

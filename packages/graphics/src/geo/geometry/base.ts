@@ -144,10 +144,11 @@ export const AutoGpuCullingMinRasterSpheres = 100_000;
  * instances of large members (mesoscale models) draws millions of spheres out of view. Measured without the raster (M1
  * Pro, WebGPU, ms a frame at the camera's distance 1 / 0.1 / 0.02, CPU / GPU culled): PetWorld HIV (37.7M spheres, 16k
  * instances, 211 a draw) 25.2 / 71.1 / 47.4 against 17.1 / 34.8 / 30.9, T7 phage (18.5M, 63 a draw) 6.3 / 42.2 / 31.6
- * against 6.2 / 36.5 / 26.3, the flagellar motor (0.74M) the same; the 60-copy assembly of 7qpd (0.69M, 1 object) stays
- * on the CPU (`merged-render-objects.md`, GPU culling)
+ * against 6.2 / 36.5 / 26.3; gains from 13.5M. Below, symmetric assemblies pass 30 per draw (a 60-mer: 60 instances
+ * an object, no levels) and stay on the CPU by this count alone, where GPU culling was measured a loss on an RTX
+ * (7qpd's 60-copy assembly, 7 objects of 60 instances, 0.69M spheres; `merged-render-objects.md`, GPU culling)
  */
-export const AutoGpuCullingMinSpheres = 1_000_000;
+export const AutoGpuCullingMinSpheres = 10_000_000;
 
 /**
  * Resolves the `gpuCulling` param value for `instanceCount` instances drawn by `drawCount` segments times levels;
