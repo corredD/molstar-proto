@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { InstanceDataVec4s } from '../../renderable/merged.js';
@@ -110,7 +111,9 @@ fn outside(plane: vec4<f32>, sphere: vec4<f32>) -> bool {
  * The levels (bits) a sphere is drawn at: those whose distance range it overlaps, none outside the frustum or the
  * object's distance range, behind the pyramid, or clipped whole by the clip objects (one level without levels)
  */
-fn sphereLevels(sphere: vec4<f32>) -> u32 {
+fn sphereLevels(s: vec4<f32>) -> u32 {
+    // grown by how far the animations (wiggle, tumble) may move its spheres
+    let sphere = vec4<f32>(s.xyz, s.w + uParams.uAnimationSlack);
     if (outside(uParams.uPlane0, sphere) || outside(uParams.uPlane1, sphere) || outside(uParams.uPlane2, sphere) ||
         outside(uParams.uPlane3, sphere) || outside(uParams.uPlane4, sphere) || outside(uParams.uPlane5, sphere)) {
         return 0u;

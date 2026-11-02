@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Clip } from '@molstar/core/util/clip';
@@ -288,6 +289,7 @@ export function createMergedCuller(
     uLodRange: ValueCell.create(Vec4()),
     uLevels: ValueCell.create(Mat4()),
     uLevelCount: levelCountCell,
+    uAnimationSlack: ValueCell.create(0),
     uCellCount: ValueCell.create(0),
     ...createHiZValues(createEmptyHiZ(resources)),
     uClipObjectCount: ValueCell.create(0),
@@ -631,8 +633,10 @@ export function createMergedCuller(
     return dispatchedHiZ && pyramidRounds >= 2 && isPyramidCamera(pyramid);
   }
   const getPlane = (i: number, cameraPlane: Plane3D, frustum: Frustum3D) => (i < 6 ? frustum[i as 0] : cameraPlane);
+  let dispatchedSlack = NaN;
   function isDispatched(cameraPlane: Plane3D, frustum: Frustum3D, min: number, max: number) {
     if (dispatchedVersion !== dataVersion || dispatched[28] !== min || dispatched[29] !== max) return false;
+    if (dispatchedSlack !== cellValues.uAnimationSlack.ref.value) return false;
     for (let i = 0; i < 16; ++i) if (dispatchedLevels[i] !== levelRanges[i]) return false;
     for (let i = 0; i < 7; ++i) {
       const { normal, constant } = getPlane(i, cameraPlane, frustum);
@@ -655,6 +659,7 @@ export function createMergedCuller(
     }
     dispatched[28] = min;
     dispatched[29] = max;
+    dispatchedSlack = cellValues.uAnimationSlack.ref.value;
     Mat4.copy(dispatchedLevels, levelRanges);
     dispatchedVersion = dataVersion;
   }
@@ -717,6 +722,27 @@ export function createMergedCuller(
    * the level's range, and a level's where all the instances go to the raster (`rasterized` holds at their nearest
    * point, and so further away). False where nothing changed
    */
+  /**
+   * How far the animations may move a sphere (`animation.wgsl`): the wiggle up to its amplitude (and a group's own, at
+   * most its strength) an axis, the tumble's offset up to its amplitude an axis (divided by the sphere's radius, at
+   * least 1); rotations of the tumble pivot on the instance's sphere
+   */
+  function getAnimationSlack() {
+    type AnimationValues = { [k: string]: ValueCell<unknown> | undefined };
+    const v = values as unknown as AnimationValues;
+    const n = (k: string) => (v[k]?.ref.value as number | undefined) ?? 0;
+    let wiggle = 0;
+    if (n('uWiggleSpeed') > 0 && n('uWiggleFrequency') > 0) {
+      let group = 0;
+      for (const m of members as unknown as AnimationValues[]) {
+        if (m.dWiggle?.ref.value) group = Math.max(group, (m.uWiggleStrength?.ref.value as number | undefined) ?? 1);
+      }
+      wiggle = n('uWiggleAmplitude') + group;
+    }
+    const tumble = n('uTumbleSpeed') > 0 && n('uTumbleFrequency') > 0 ? n('uTumbleAmplitude') : 0;
+    return Math.sqrt(3) * (wiggle + tumble);
+  }
+
   function predictRecords(cameraPlane: Plane3D, frustum: Frustum3D, raster: MergedRasterParams | undefined) {
     const levels = Math.max(1, levelCount);
     const size = (rasterRegions ? 2 : 1) * levels * segmentCount;
@@ -725,7 +751,7 @@ export function createMergedCuller(
     const segmentInfo = segmentDataCopy!;
     for (let s = 0; s < segmentCount; ++s) {
       const { center: c, radius } = members[s].boundingSphere.ref.value as Sphere3D;
-      const r = radius * 1.001 + 1e-3;
+      const r = radius * 1.001 + 1e-3 + cellValues.uAnimationSlack.ref.value;
       let inside = true;
       for (let i = 0; i < 6 && inside; ++i) {
         const { normal, constant } = frustum[i as 0];
@@ -829,6 +855,7 @@ export function createMergedCuller(
       secondDispatched = false;
       const [min, max] = values.uLod.ref.value as Vec4;
       setLevelRanges(lod);
+      ValueCell.updateIfChanged(cellValues.uAnimationSlack, getAnimationSlack());
       const rasterChanged =
         copyValues.uRasterRadius.ref.value !== (raster?.radius ?? 0) ||
         copyValues.uRasterScale.ref.value !== (raster?.scale ?? 0) ||

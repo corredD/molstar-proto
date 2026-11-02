@@ -324,8 +324,7 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
     }
   }, 60_000);
 
-  // rework: GPU culling's wiggle and tumble allowance (`uAnimationSlack`, 281260de8), not in #2061's kernels
-  it.skip('keeps the instances whose wiggling spheres may reach into the view', async () => {
+  it('keeps the instances whose wiggling spheres may reach into the view', async () => {
     const plugin = await createPlugin();
     try {
       const graphics = plugin.canvas3d!.graphics;

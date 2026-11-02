@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { KernelCode, StorageBufferSpec } from '../compute.js';
@@ -119,6 +120,8 @@ const SphereTestSchema = {
   uLevels: UniformSpec('m4'),
   /** 0 without levels (all drawn as level 0) */
   uLevelCount: UniformSpec('i'),
+  /** how far the animations may move a sphere (wiggle, tumble, `getAnimationSlack`), added to the tested radii */
+  uAnimationSlack: UniformSpec('f'),
   ...HiZSchema,
   /**
    * the clip objects of an object without a clipping layer (`getCullClipCount`), in `segmentData` from vec4
