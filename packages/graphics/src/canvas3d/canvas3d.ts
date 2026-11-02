@@ -2188,9 +2188,13 @@ namespace Canvas3D {
      */
     let layerMovesOnly = false;
 
-    /** committed objects recorded and made ready (warm-up, frames held for props being prepared) */
+    /**
+     * committed objects recorded and made ready (warm-up, frames held for props being prepared); the prepared objects
+     * of what was committed released
+     */
     function prepareCommitted(renderables: ReadonlyArray<GraphicsRenderable>) {
       precompileRecorder.record(renderables);
+      releasePreparedObjects();
       // frames held for the props (`holdFramesUntilPrepared`) wait for the new scene too: the hold's prepare had the
       // previous one, so the first frame after it would compile (and skip) the draws of what was added meanwhile
       if (propsPreparing > 0) holdFramesUntilPrepared();
@@ -2217,12 +2221,7 @@ namespace Canvas3D {
         return false;
       }
       commitQueueSize.next(0);
-      precompileRecorder.record(scene.renderables);
-      releasePreparedObjects();
-      // frames held for the props (`holdFramesUntilPrepared`) wait for the new scene too: the hold's prepare had the
-      // previous one, so the first frame after it would compile (and skip) the draws of what was added meanwhile
-      if (propsPreparing > 0) holdFramesUntilPrepared();
-      scheduleWarmUp();
+      prepareCommitted(scene.renderables);
       const keepCamera = layerMovesOnly;
       layerMovesOnly = false;
 
