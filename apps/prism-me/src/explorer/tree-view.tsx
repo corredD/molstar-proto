@@ -109,7 +109,7 @@ export interface TreeRowView {
   readonly color?: number;
   /** Its eye: whether shown; absent, no eye */
   readonly visible?: boolean;
-  /** Its eye is its own: a parent's eye leaves it (a label, a distance, a clip under a row) */
+  /** Its eye is its own: a parent's eye leaves it (a label, a clip under a row) */
   readonly own?: boolean;
   readonly hasChildren: boolean;
   /** Its children shown */
@@ -364,7 +364,7 @@ function RowActions<R extends TreeRowView>(p: { row: R; off: ReadonlyState<boole
 
 /**
  * The keys a row's eye sets as shown: its own and those of the rows with an eye shown under it, but those whose eye is
- * their own (a label, a distance, a clip: a parent's eye leaves them)
+ * their own (a label, a clip: a parent's eye leaves them)
  */
 export function keysUnder(rows: readonly TreeRowView[], i: number): string[] {
   const out = [rows[i].key];

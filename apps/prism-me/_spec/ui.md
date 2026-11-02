@@ -71,7 +71,8 @@ there.
   each), in one step; each row keeps its own state after (hide the model, then show one group alone). Showing a part
   draws its object again, its other parts as they are. A parent's eye is open when it and everything under it are shown,
   else closed: never "some shown"; pressed, it sets all of it. A volume's representations are its views, not parts: a
-  tomogram's hidden slices leave its eye open. The labels, distances and clips under a row keep their own eyes (Ludo,
+  tomogram's hidden slices leave its eye open. The distances under a row go with its eye, folded or not (Ludo,
+  2026-11-02: what they measure hidden, so are they); the labels and clips under it keep their own eyes (Ludo,
   2026-10-28; the cascade is the coordinator's default for what "every row" covers).
 - **Dragged** (C4D's eyes, Ludo 2026-10-28): press an eye and drag along the column; every row passed takes the first
   row's new state (with the rows under each), shown at once and set on release in one step; a fast move sets the rows

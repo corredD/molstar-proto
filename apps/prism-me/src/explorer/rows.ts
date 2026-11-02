@@ -156,7 +156,7 @@ export function rowsOf(
       key: `d:${d.ref}`,
       label: `${MeasureNames[d.measure] ?? 'Distance'} ${d.label}`,
       kind: 'distance',
-      own: true,
+      // not its own eye: its parent's sets it (Ludo, 2026-11-02: what it measures hidden, so is it)
       visible: d.visible,
       hasChildren: false,
       node: { ref: d.ref },
@@ -498,7 +498,7 @@ export type EyeRow = Pick<Row, 'kind' | 'node' | 'objects' | 'representation' | 
 /**
  * Eyes set, one step (a click's row, or each row a drag passed; Ludo, 2026-10-28): each row's and every part under it
  * (a parent's: all the way down), the object drawn again when a part of it is shown (hide the model, then show one
- * group alone). The labels, distances and clips under a row keep their own. The parts a drag passed are gathered by
+ * group alone). The labels and clips under a row keep their own; its distances are among `rows` (`withDistancesUnder`). The parts a drag passed are gathered by
  * object: one write each (a model's entities, a list's targets), not one a row; an undrawn list's (no looks) skipped.
  */
 export function setEyes(api: ViewerApi, area: ExplorerApi, rows: readonly EyeRow[], visible: boolean) {
@@ -617,6 +617,35 @@ async function setParts(api: ViewerApi, area: ExplorerApi, kind: string | undefi
     particles: ref,
     layers: targets.map((t) => ({ selector: { targets: [t.id] }, visible })),
   });
+}
+
+/**
+ * The rows whose eyes are set (`rows`) and the distances under each, all of the tree unfolded: a parent's eye sets the
+ * distances under it (Ludo, 2026-11-02), folded or not; labels and clips keep their own
+ */
+export function withDistancesUnder(
+  rows: readonly Row[],
+  objects: readonly SceneObject[],
+  parts: Parts,
+  labels: readonly LabelInfo[] = [],
+  distances: readonly DistanceInfo[] = [],
+): Row[] {
+  if (!distances.length) return [...rows];
+  const all = rowsOf(objects, parts, AllOpen, '', labels, distances);
+  const index = new Map(all.map((r, i) => [r.key, i] as const));
+  const out = [...rows];
+  const keys = new Set(rows.map((r) => r.key));
+  for (const row of rows) {
+    const i = index.get(row.key);
+    if (i === undefined) continue;
+    for (let j = i + 1; j < all.length && all[j].depth > all[i].depth; j++) {
+      if (all[j].kind === 'distance' && !keys.has(all[j].key)) {
+        keys.add(all[j].key);
+        out.push(all[j]);
+      }
+    }
+  }
+  return out;
 }
 
 /** Every row open: all of the tree */

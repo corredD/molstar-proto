@@ -53,6 +53,7 @@ import {
   rowsOf,
   sameRow,
   setEyes,
+  withDistancesUnder,
 } from './rows.js';
 import {
   type At,
@@ -358,7 +359,9 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     }
   });
   const afterPaint = frames(() => runEyes.start(0));
-  const setShown = (set: readonly Row[], visible: boolean) => {
+  const setShown = (picked: readonly Row[], visible: boolean) => {
+    // and the distances under them, folded or not: what they measure hidden, so are they
+    const set = withDistancesUnder(picked, objects.value, parts.value, labels.value, distances.value);
     const keys = eyeKeys(rows.value, set);
     for (const key of keys) shown.set(key, visible);
     eyes.push({ rows: set, keys, visible });

@@ -55,7 +55,6 @@ name no extension (upstreamable later, when Ludo says so).
 - **Gizmo on a cellPACK instance**: too big, and the instance moves only on mouse release, not while dragging.
 - **Clip drag drops the granularity**: with clipping switched to protein (whole-part) mode, dragging the clip object
   switches it back to atom mode at mouse release.
-- **A distance label ignores its parent's eye in the tree**: hiding the parent leaves the label shown and its eye on.
 
 ## Library fixes ready for upstream
 
@@ -186,7 +185,7 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   (`src/explorer/tree-view.tsx`, `tree.module.css`; the coordinator's default for lane `tree-view`).
 - The eyes, left open by lane `tree-eyes` (2026-10-29): a structure's entity and chain have no eye (Prism hides whole
   representations; one per part would be a transparency layer at 1, read back, or a component each: a Prism change); a
-  parent's eye leaves the labels, distances and clips under it with their own eyes (the coordinator's default: Ludo may
-  want them set too).
+  parent's eye leaves the labels and clips under it with their own eyes (the coordinator's default: Ludo may want them
+  set too; the distances follow it since 2026-11-02).
 - Turning a cut of some particles off on one representation and on again (`clipping` on/off per representation) loses
   its particles: it comes back as a cut of the whole representation (lane `looks-owner`'s review; not probed).
