@@ -12,6 +12,7 @@ import { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
+import { getOmeZarrLevel, omeZarrLevelNeeds, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
 import { particleListData } from '../operations.js';
 import {
   CryoetPortalExtension,
@@ -343,6 +344,25 @@ describe('cryoetPortal', () => {
     expect(520 ** 3 * 4).toBeGreaterThan(PortalLargeBytes);
     const asked = await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', level: 0, annotations: 'none' });
     expect(asked).toMatchObject({ ok: false, code: 'confirm', message: 'TS_01 is 562 MB decoded at these levels.' });
+  });
+
+  it("sets the format's guard from the file's own need (its voxels and one decoded chunk), not the index's voxels", async () => {
+    // Ludo, 2026-11-03: a confirmed level 1 of 618 MB was refused, the guard set to its voxels (618 MB) and the format
+    // counting a decoded chunk too (685 MB). The index's level 0 says 562 MB here; the file's is 4³.
+    serve();
+    const v = await viewer();
+    expectOk(
+      await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', level: 0, annotations: 'none', large: true }),
+    );
+    const cells = Array.from(v.plugin.state.data.cells.values());
+    const cell = cells.find((c) => c.transform.transformer === VolumeFromOmeZarr)!;
+    const { maxSizeMB } = cell.transform.params as { maxSizeMB: number };
+    const file = v.plugin.state.data.cells.get(cell.transform.parent)!.obj!.data as Parameters<
+      typeof getOmeZarrLevel
+    >[0];
+    const needs = omeZarrLevelNeeds(getOmeZarrLevel(file, '0'));
+    expect(maxSizeMB * 1e6).toBeGreaterThanOrEqual(needs);
+    expect(maxSizeMB).toBe(Math.max(512, Math.ceil(needs / 1e6)));
   });
 
   it('names what it has when asked for what it has not', async () => {

@@ -114,8 +114,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   cannot choose a spacing or a tomogram (`portal-spacing`, `portal-tomogram`), and a run's first spacing is taken, so
   10453 tomogram_003 shows 4 automated (Octopi) V-ATPase picks, not the 3 manual ground truth at 13.44 Å (prefer ground
   truth, proposed); curated PDBs for common objects (V-ATPase, clathrin), by Delphine; a level read already sent is not
-  cancelled (`cryoet.level`, review X2); `portal.ts` `loadZarr` sets `maxSizeMB` from the voxels without one chunk. An
-  unbounded interval's ends cannot cross (v5's can, reversing a colour scale: Ludo may want that back).
+  cancelled (`cryoet.level`, review X2). An unbounded interval's ends cannot cross (v5's can, reversing a colour scale:
+  Ludo may want that back).
 
 - A sphere a clip plane misses entirely (its center is past the plane by more than its radius): skip it in the color
   pass, and skip one the plane misses in the ghost pass (lane `marking-cost`, not built;

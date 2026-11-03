@@ -13,3 +13,5 @@
   run page and DOIs in its right-click menu.
 - Portal points without a decoration are drawn as spheres of 50 Å, not half the distance between neighbors (about 900 Å
   for a few sparse picks).
+- A portal level over the size guard, once confirmed, is read: the format's limit is the level's need as the format
+  counts it (its voxels and one decoded chunk), not the index's voxels (a 618 MB level was refused at 685 MB).
