@@ -270,7 +270,7 @@ export class CryoetPortalApi extends ApiArea {
           warnings.push(`${e.object} (${e.shape}) ${e.needs}.`);
           continue;
         }
-        const r = await loadEntry(ctx, ds, info.spacing, e, v.level);
+        const r = await loadEntry(ctx, ds, info.spacing, e, v.level, warnings);
         if (!r.ok) return r;
         done.push(`${e.object} (${e.shape})`);
       }
@@ -502,6 +502,7 @@ async function loadEntry(
   s: PortalSpacing,
   e: PortalEntry,
   level: number | undefined,
+  warnings: string[],
 ): Promise<ApiResult> {
   const url = PortalFiles + e.path;
   if (e.format === 'zarr') {
@@ -531,6 +532,11 @@ async function loadEntry(
     if (!decoration?.pdb) continue;
     const d = await ctx.api.run('cryoet.decorate', { particles, with: 'pdb', id: decoration.pdb });
     if (!d.ok) return d;
+    // a structure that could not be fetched leaves the decoration's transform without a target, and says nothing
+    if (!particleListData(ctx, particles)?.targetMapping?.size) {
+      warnings.push(`${decoration.pdb} could not be fetched: the ${e.object} points are not decorated.`);
+      continue;
+    }
     if (decoration.center) {
       const r = await centerOnAverage(ctx, particles, decoration.center);
       if (!r.ok) return r;

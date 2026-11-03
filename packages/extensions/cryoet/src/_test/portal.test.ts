@@ -259,6 +259,15 @@ describe('cryoetPortal', () => {
     expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(1);
   });
 
+  it('says so when the decoration cannot be fetched, the points loaded', async () => {
+    serve([[/1cbs/, () => null]]);
+    const v = await viewer();
+    const r = await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', annotations: '5', as: 'none' });
+    expectOk(r);
+    expect(r.warnings?.join(' ')).toMatch(/1CBS/);
+    expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(1);
+  });
+
   it('leaves nothing when a file fails midway (the tomogram opened before it)', async () => {
     serve([[/r\.ndjson$/, () => null]]);
     const v = await viewer();
