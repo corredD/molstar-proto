@@ -101,6 +101,8 @@ const getTomogram = cached(() =>
     Mat4.fromRotation(Mat4(), Math.PI / 6, Vec3.create(1, 0, 0)),
   ),
 );
+/** the size of the TS_08 tomogram binned twice (464x464x225, cryo-ET portal 10003): a deep box of globules */
+const getDeepTomogram = cached(() => mapVolume('tomogram-464x464x225', Vec3.create(464, 464, 225), 400, 300));
 /** the cube of `getMap` sampled with cells of 1x1x4 */
 const getAnisotropic = cached(() =>
   mapVolume('map-256x256x64', Vec3.create(256, 256, 64), 40, 300, Mat4.fromScaling(Mat4(), Vec3.create(1, 1, 4))),
@@ -191,6 +193,17 @@ export const DirectVolumeCases: BenchmarkCase<RenderInput>[] = [
       `As map-256, lighting ${lighting}, 1920x1080`,
       async () => {
         const v = getMap();
+        return {
+          size: FullHdSize,
+          scene: async (g) => [await volumeRepr(g, DirectVolumeRepresentationProvider, v, { lighting })],
+        };
+      },
+    ),
+    renderCase(
+      `render/direct-volume/tomogram-464x464x225-${lighting}-1080`,
+      `A map-like box of 464x464x225 cells (400 globules), lighting ${lighting}, 1920x1080`,
+      async () => {
+        const v = getDeepTomogram();
         return {
           size: FullHdSize,
           scene: async (g) => [await volumeRepr(g, DirectVolumeRepresentationProvider, v, { lighting })],
