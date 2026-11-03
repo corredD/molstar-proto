@@ -13,8 +13,7 @@ import type { GltfFile } from './schema.js';
 // glTF colours are linear, Mol*'s sRGB (the GLB exporter does the reverse), converted on floats: the packed
 // Color.linearToSRGB truncates the linear value to 8 bits first, which bands the dark tones (linear 0.21586, sRGB 0x80,
 // gives 0x7e), and fromNormalizedRgb truncates (1 gives 0xfe)
-const toSrgb = Color.linearToSRGBNormalized;
-const to8 = (c: number) => Math.round(Math.min(Math.max(toSrgb(c), 0), 1) * 255);
+const to8 = (c: number) => Math.round(Math.min(Math.max(Color.linearToSRGBNormalized(c), 0), 1) * 255);
 
 /**
  * The scene of a glTF as one OBJ-like mesh in world space (gltf.md §3): each mesh node's primitives baked with the
@@ -102,9 +101,10 @@ export function gltfToObj({ meshes, instances }: GltfFile): { obj: ObjFile; mtl:
 
       if (hasColors) {
         for (let i = 0, c = 0, o = v * 3; i < vertexCount; ++i, c += colorSize, o += 3) {
-          vertexColors[o] = toSrgb(colors ? colors[c] * br : br);
-          vertexColors[o + 1] = toSrgb(colors ? colors[c + 1] * bg : bg);
-          vertexColors[o + 2] = toSrgb(colors ? colors[c + 2] * bb : bb);
+          // in 8-bit steps (k / 255 packs back to k exactly), clamped: fromNormalizedRgb neither rounds nor clamps
+          vertexColors[o] = to8(colors ? colors[c] * br : br) / 255;
+          vertexColors[o + 1] = to8(colors ? colors[c + 1] * bg : bg) / 255;
+          vertexColors[o + 2] = to8(colors ? colors[c + 2] * bb : bb) / 255;
         }
       }
 

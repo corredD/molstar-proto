@@ -267,8 +267,29 @@ describe('glTF reader', () => {
     expect(Color.toHexStyle(mtl.get('a 1')!.Kd)).toBe('#ffffff');
     // COLOR_0 per vertex, the base colour for the primitive without
     expect(Array.from(obj.vertexColors.subarray(0, 3), (c) => Math.round(c * 255))).toEqual([128, 128, 128]);
-    expect(toArray(obj.vertexColors.subarray(9, 18))).toEqual([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    // as the OBJ shape reads them (Color.fromNormalizedArray truncates): pure red, green, blue, and white
+    const rendered = (i: number) => Color.toHexStyle(Color.fromNormalizedArray(obj.vertexColors, i * 3));
+    expect([3, 4, 5].map(rendered)).toEqual(['#ff0000', '#00ff00', '#0000ff']);
+    expect(rendered(0)).toBe('#808080');
     expect(obj.positions[27]).toBe(5);
+  });
+
+  it('clamps float vertex colours to [0, 1] before they are packed', async () => {
+    const colors = new Float32Array([1.2, 0, 0, 0, -0.5, 1, 1, 1, 1]);
+    const { bytes, bufferViews } = buffer([triangle, colors]);
+    const json = {
+      asset: { version: '2.0' },
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, COLOR_0: 1 } }] }],
+      accessors: [
+        { bufferView: 0, componentType: CT.FLOAT, count: 3, type: 'VEC3' },
+        { bufferView: 1, componentType: CT.FLOAT, count: 3, type: 'VEC3' },
+      ],
+      bufferViews,
+      buffers: [{ byteLength: bytes.byteLength }],
+    };
+    const { obj } = gltfToObj(await parse(glb(json, bytes)));
+    const rendered = [0, 1, 2].map((i) => Color.toHexStyle(Color.fromNormalizedArray(obj.vertexColors, i * 3)));
+    expect(rendered).toEqual(['#ff0000', '#0000ff', '#ffffff']);
   });
 
   it('reads a .gltf whose buffer is a data URI', async () => {
