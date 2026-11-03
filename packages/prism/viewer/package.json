@@ -109,6 +109,11 @@
       "types": "./lib/sources/watched.d.ts",
       "import": "./lib/sources/watched.js"
     },
+    "./sources/volume-transfer": {
+      "molstar-src": "./src/sources/volume-transfer.ts",
+      "types": "./lib/sources/volume-transfer.d.ts",
+      "import": "./lib/sources/volume-transfer.js"
+    },
     "./sources/canvas-presence": {
       "molstar-src": "./src/sources/canvas-presence.ts",
       "types": "./lib/sources/canvas-presence.d.ts",
@@ -193,6 +198,11 @@
       "molstar-src": "./src/views/structure/scene-row.tsx",
       "types": "./lib/views/structure/scene-row.d.ts",
       "import": "./lib/views/structure/scene-row.js"
+    },
+    "./views/volume/volume-transfer": {
+      "molstar-src": "./src/views/volume/volume-transfer.tsx",
+      "types": "./lib/views/volume/volume-transfer.d.ts",
+      "import": "./lib/views/volume/volume-transfer.js"
     },
     "./_stories/*": null,
     "./_test/*": null
