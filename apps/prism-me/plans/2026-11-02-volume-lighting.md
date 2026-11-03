@@ -105,6 +105,11 @@ the screen-space tracer as a medium (D1 reads transmittance only).
 
 ## Built
 
+- Clip objects (2026-11-03, Ludo: "try it first and see whether it shows or slow down anything"; it showed): the
+  pyramid counts the cells a clip removes as 0 and the level-0 read toward the light is clipped, so the cut face is lit
+  and the part cut away shadows nothing, volumetric and neural, traced molecules included (lane `volume-lighting`
+  9091c7a5e, `volume-neural` 80dad7178; spec `.v6/plans/gl/volume-lighting.md` §A1, §A4).
+
 ## Decided
 
 ## Learned
