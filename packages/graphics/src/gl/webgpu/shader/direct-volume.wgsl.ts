@@ -18,7 +18,7 @@ import { VolumeLightingMaxAlpha } from '../../compute/volume-lighting.js';
  * The descriptors of a sample (\`volume-lighting.md\` §A2) from the extinction pyramid (\`tExtinction\`, levels 1 to 5
  * as its mips), and the volumetric lighting (§A3) from them
  */
-const volume_lighting_wgsl = /* wgsl */ `
+export const volume_lighting_wgsl = /* wgsl */ `
 const VolumeMaxAlpha = ${VolumeLightingMaxAlpha};
 
 struct VolumeDescriptors {

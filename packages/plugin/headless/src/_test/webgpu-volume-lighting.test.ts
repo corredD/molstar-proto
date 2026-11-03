@@ -23,6 +23,7 @@ import { asWebGPUTexture } from '@molstar/graphics/gl/webgpu/texture';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
 import { Ccp4Provider } from '@molstar/plugin/state/formats/volume/ccp4';
+import { volume_lighting_wgsl } from '@molstar/graphics/gl/webgpu/shader/direct-volume.wgsl';
 import { WebGPU } from './webgpu-module.js';
 
 /** A seeded generator (mulberry32), the same grids every run */
@@ -274,6 +275,47 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
     }
   }, 60_000);
 
+  it('reads the descriptors of §A2: a uniform grid its extinction at every level, a half-filled one the ramp', async () => {
+    const plugin = await createPlugin();
+    try {
+      const graphics = plugin.canvas3d!.graphics as WebGPUContext;
+      // opacity 0.2 a cell where the value is 1: the transfer function's bytes, and the shader's alike
+      const transfer = Uint8Array.from({ length: 256 }, (_, i) => (i >= 128 ? 51 : 0));
+      const sigma = -Math.log(1 - 0.2);
+      const N = 64;
+      const dim = Vec3.create(N, N, N);
+      const describe = async (filled: (x: number) => boolean, x: Vec3, light: Vec3) => {
+        const grid = Uint8Array.from({ length: N * N * N }, (_, i) => (filled(i % N) ? 255 : 0));
+        const gridTexture = graphics.resources.texture('volume-uint8', 'r', 'ubyte', 'linear');
+        gridTexture.load({ array: grid, width: N, height: N, depth: N });
+        const pyramid = createExtinctionPyramid(graphics);
+        pyramid.build({ gridTexture, gridDim: dim, transfer, alpha: 1, packedGroup: false });
+        graphics.flush();
+        const out = await runDescriptors(graphics, gridTexture, pyramid.texture, x, light, dim);
+        pyramid.destroy();
+        gridTexture.destroy();
+        return out;
+      };
+      const close = (a: number[], b: number[]) =>
+        a.forEach((v, i) => expect(v, `descriptor ${i}`).toBeCloseTo(b[i], 2));
+
+      // uniform: around and toward the light (within the box) all its extinction; the cosine passed through
+      const uniform = await describe(() => true, Vec3.create(32, 32, 32), Vec3.create(1, 0, 0));
+      close(uniform, [...Array(12).fill(sigma), 0.5]);
+
+      // the half x < 32 filled, from x = 24 toward +x: filled at 1, 2, 4 cells, half at 8 (its boundary at the level of
+      // 8-cell texels), empty at 16 and 32 (the centers of empty texels, and beyond)
+      const half = await describe((x) => x < 32, Vec3.create(24, 32, 32), Vec3.create(1, 0, 0));
+      close(half.slice(6, 12), [sigma, sigma, sigma, sigma / 2, 0, 0]);
+      // at the boundary, the levels 1 to 5 around half filled
+      const boundary = await describe((x) => x < 32, Vec3.create(32, 32, 32), Vec3.create(0, 1, 0));
+      close(boundary.slice(1, 6), Array(5).fill(sigma / 2));
+      expect(graphics.takeErrors()).toEqual([]);
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
   it('volumetric: a dense cube darkens the slab behind it along the light, not the side toward the light', async () => {
     const lit = await renderSlabAndCube(['volumetric', 'local']);
     // light from the right: A (left of the cube) is behind it; from the left, B (right of it). Measured on Dawn (M1):
@@ -462,4 +504,78 @@ async function renderSlabAndCube(lightings: ('local' | 'volumetric')[]) {
   } finally {
     plugin.dispose();
   }
+}
+
+/**
+ * The 13 descriptors of `volumeDescriptors` (the direct volume's chunk, as the ray marcher calls it) at `x` (texel
+ * coordinates) toward `light` (cells), by a compute pipeline of its own: the chunk with stand-ins for what the program
+ * gives it (the grid read, a transfer function of 0.2 above 0.5, alpha 1), the cosine set to 0.5
+ */
+async function runDescriptors(
+  graphics: WebGPUContext,
+  grid: import('@molstar/graphics/gl/texture').Texture,
+  extinction: import('@molstar/graphics/gl/texture').Texture,
+  x: Vec3,
+  light: Vec3,
+  gridDim: Vec3,
+) {
+  const { device } = graphics;
+  const f = (v: Vec3) => `vec3<f32>(${v[0]}, ${v[1]}, ${v[2]})`;
+  const code = /* wgsl */ `
+@group(0) @binding(0) var tGridTex: texture_3d<f32>;
+@group(0) @binding(1) var tExtinction: texture_3d<f32>;
+@group(0) @binding(2) var sLinear: sampler;
+@group(0) @binding(3) var<storage, read_write> out: array<f32>;
+struct Material { uAlpha: f32 };
+const uMaterial = Material(1.0);
+// for \`volumetricLight\`, not called
+struct Global { uLightColor: array<vec3<f32>, 1>, uAmbientColor: vec3<f32> };
+const uGlobal = Global(array<vec3<f32>, 1>(vec3<f32>(1.0)), vec3<f32>(0.0));
+const oLightCount = 1;
+const GridDim = ${f(gridDim)};
+fn textureVal(pos: vec3<f32>) -> vec4<f32> {
+    return vec4<f32>(0.0, 0.0, 0.0, textureSampleLevel(tGridTex, sLinear, pos + vec3<f32>(0.5) / GridDim, 0.0).r);
+}
+fn transferFunction(value: f32) -> f32 {
+    return select(0.0, 0.2, value > 0.5);
+}
+${volume_lighting_wgsl}
+@compute @workgroup_size(1)
+fn main() {
+    let x = ${f(x)};
+    let d = volumeDescriptors(x, cellExtinction(textureVal((x - 0.5) / GridDim).a), ${f(light)}, 0.5, GridDim);
+    let v = array<f32, 13>(d.around0.x, d.around0.y, d.around0.z, d.around1.x, d.around1.y, d.around1.z,
+        d.light0.x, d.light0.y, d.light0.z, d.light1.x, d.light1.y, d.light1.z, d.cosine);
+    for (var i = 0; i < 13; i++) {
+        out[i] = v[i];
+    }
+}`;
+  const pipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: device.createShaderModule({ code }), entryPoint: 'main' },
+  });
+  const buffer = device.createBuffer({ size: 13 * 4, usage: BufferUsage.STORAGE | BufferUsage.COPY_SRC });
+  const read = device.createBuffer({ size: 13 * 4, usage: BufferUsage.MAP_READ | BufferUsage.COPY_DST });
+  const bindGroup = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: asWebGPUTexture(grid).getView()! },
+      { binding: 1, resource: asWebGPUTexture(extinction).getView()! },
+      { binding: 2, resource: device.createSampler({ magFilter: 'linear', minFilter: 'linear' }) },
+      { binding: 3, resource: { buffer } },
+    ],
+  });
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.dispatchWorkgroups(1);
+  pass.end();
+  encoder.copyBufferToBuffer(buffer, 0, read, 0, 13 * 4);
+  device.queue.submit([encoder.finish()]);
+  await read.mapAsync(MapMode.READ);
+  const values = Array.from(new Float32Array(read.getMappedRange().slice(0)));
+  buffer.destroy();
+  read.destroy();
+  return values;
 }
