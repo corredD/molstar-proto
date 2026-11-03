@@ -1115,16 +1115,48 @@ function windowsOf(v: VolumeRef, { mean, sigma }: Grid['stats']): Map<string, [n
   return windows;
 }
 
-/** A transfer function's point (a fraction of [min, max]) at the same value in σ, over another level's statistics */
-export function samePoint(x: number, from: Grid['stats'], to: Grid['stats']) {
-  if (!(from.sigma > 0 && to.sigma > 0 && to.max > to.min)) return x;
-  const z = (from.min + x * (from.max - from.min) - from.mean) / from.sigma;
-  return Math.max(0, Math.min(1, (to.mean + z * to.sigma - to.min) / (to.max - to.min)));
+/**
+ * A transfer function's point or a color stop (a fraction of a domain: by default the map's [min, max]) at the same value
+ * in σ, over another level's statistics (and its domain)
+ */
+export function samePoint(
+  x: number,
+  from: Grid['stats'],
+  to: Grid['stats'],
+  fromDomain: readonly [number, number] = [from.min, from.max],
+  toDomain: readonly [number, number] = [to.min, to.max],
+) {
+  if (!(from.sigma > 0 && to.sigma > 0 && toDomain[1] > toDomain[0])) return x;
+  const z = (fromDomain[0] + x * (fromDomain[1] - fromDomain[0]) - from.mean) / from.sigma;
+  return Math.max(0, Math.min(1, (to.mean + z * to.sigma - toDomain[0]) / (toDomain[1] - toDomain[0])));
+}
+
+/**
+ * A volume-value color theme at the same values in σ over another level's statistics: a custom domain's ends (in data
+ * units; one in σ, `isRelative`, stays), an auto domain's stops (fractions of [min, max], or of ±|max| symmetric)
+ */
+function sameColors(theme: any, from: Grid['stats'], to: Grid['stats']) {
+  if (theme?.name !== 'volume-value' || !(from.sigma > 0 && to.sigma > 0)) return theme;
+  const p = theme.params;
+  if (p?.domain?.name === 'custom') {
+    if (p.isRelative || !Array.isArray(p.domain.params)) return theme;
+    const ends = p.domain.params.map((d: number) => to.mean + ((d - from.mean) / from.sigma) * to.sigma);
+    return { ...theme, params: { ...p, domain: { ...p.domain, params: ends } } };
+  }
+  const auto = (s: Grid['stats']): [number, number] => {
+    if (!p?.domain?.params?.symmetric) return [s.min, s.max];
+    const m = Math.max(Math.abs(s.min), Math.abs(s.max));
+    return [-m, m];
+  };
+  const colors = (p?.colorList?.colors ?? []).map((c: unknown) =>
+    Array.isArray(c) ? [c[0], samePoint(c[1], from, to, auto(from), auto(to))] : c,
+  );
+  return { ...theme, params: { ...p, colorList: { ...p.colorList, colors } } };
 }
 
 /**
  * The volume's look set again in σ over its new level's statistics (binning changes σ, and the range more): the
- * slices' windows, each end at the same σ, the direct volumes' points at the same values in σ (a
+ * slices' windows, each end at the same σ, the direct volumes' points and colors at the same values in σ (a
  * fraction of [min, max] otherwise: the Tomogram preset's dark matter would cover the noise of a finer level)
  */
 async function refit(
@@ -1154,7 +1186,11 @@ async function refit(
         samePoint(x, from, data.grid.stats),
         ...rest,
       ]);
-      next = { ...old, type: { ...old.type, params: { ...old.type.params, controlPoints } } };
+      next = {
+        ...old,
+        type: { ...old.type, params: { ...old.type.params, controlPoints } },
+        ...(old.colorTheme ? { colorTheme: sameColors(old.colorTheme, from, data.grid.stats) } : {}),
+      };
     }
     if (next && JSON.stringify(next) !== JSON.stringify(old)) b.to(ref).update(next);
   }

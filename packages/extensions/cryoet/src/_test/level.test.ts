@@ -78,6 +78,7 @@ const DirectVolumeStandIn = PluginStateTransform.BuiltIn({
   from: SO.Volume.Data,
   to: SO.Volume.Representation3D,
   params: {
+    colorTheme: PD.Value<any>({ name: 'uniform', params: {} }),
     type: PD.Value<{ name: string; params: { controlPoints: number[][] } }>({
       name: 'direct-volume',
       params: { controlPoints: [] },
@@ -301,5 +302,47 @@ describe('cryoet.level', () => {
     expect(read().map((p: number[]) => p[1])).toEqual([0.05, 0]);
     expectOk(await v.api.run('history.undo', {}));
     expect(read()).toEqual(points);
+  });
+
+  it("keeps a direct volume's colors in σ: the stops of an auto domain, the ends of a custom one", async () => {
+    const { v, ref } = await viewer('1');
+    const from = { ...dataOf(v, ref).grid.stats };
+    const theme = (domain: unknown) => ({
+      name: 'volume-value',
+      params: {
+        colorList: {
+          kind: 'interpolate',
+          colors: [
+            [0xffffff, 0.3],
+            [0x000000, 0.7],
+          ],
+        },
+        domain,
+        isRelative: false,
+      },
+    });
+    const type = { name: 'direct-volume', params: { controlPoints: [] } };
+    const custom = [from.mean - from.sigma, from.mean + 2 * from.sigma];
+    const auto = v.plugin
+      .build()
+      .to(ref)
+      .apply(DirectVolumeStandIn, { type, colorTheme: theme({ name: 'auto', params: { symmetric: false } }) });
+    await auto.commit();
+    const fixed = v.plugin
+      .build()
+      .to(ref)
+      .apply(DirectVolumeStandIn, { type, colorTheme: theme({ name: 'custom', params: custom }) });
+    await fixed.commit();
+    const params = (r: string) => (v.plugin.state.data.cells.get(r)!.transform.params as any).colorTheme.params;
+    expectOk(await v.api.cryoet!.level({ volume: ref, level: '0' } as never));
+    const to = dataOf(v, ref).grid.stats;
+    expect(params(auto.ref).colorList.colors.map((c: number[]) => c[1])).toEqual(
+      [0.3, 0.7].map((x) => samePoint(x, from, to)),
+    );
+    const [lo, hi] = params(fixed.ref).domain.params;
+    expect((lo - to.mean) / to.sigma).toBeCloseTo(-1, 6);
+    expect((hi - to.mean) / to.sigma).toBeCloseTo(2, 6);
+    // the custom one's stops are fractions of its domain: kept
+    expect(params(fixed.ref).colorList.colors.map((c: number[]) => c[1])).toEqual([0.3, 0.7]);
   });
 });

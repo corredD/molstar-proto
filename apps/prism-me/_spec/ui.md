@@ -333,11 +333,12 @@ still completes its distance.
   one step (an undo reads the old level again). What the person set stays: the representations and their forms, clips,
   position, visibility (the cells are updated, not made again); each grid slice at its place in Å (its index through the
   levels' scale and translation, in the same write: an index past a coarser grid would fail); the slices' windows and
-  the direct volumes' transfer functions at the same values in σ over the new level's statistics (binning changes σ:
-  TS_08's is 2.5 times larger at 2× than at 4×, so a window or a Tomogram preset kept as a fraction would wash the finer
-  level out); an absolute iso value in data units, a relative one in σ (so it moves in data units). A level over the
-  size guard (the transform's `maxSizeMB`, 512 MB from the portal: its voxels and one decoded chunk) is refused with
-  `confirm` until `large: true`, which raises the guard to it. Read at the release, never while dragged.
+  the direct volumes' transfer functions (points and color stops) at the same values in σ over the new level's
+  statistics (binning changes σ: TS_08's is 2.5 times larger at 2× than at 4×, so a window or a Tomogram preset kept as
+  a fraction would wash the finer level out); an absolute iso value in data units, a relative one in σ (so it moves in
+  data units). A level over the size guard (the transform's `maxSizeMB`, 512 MB from the portal: its voxels and one
+  decoded chunk) is refused with `confirm` until `large: true`, which raises the guard to it. Read at the release, never
+  while dragged.
 - Step 3a (2026-10-18): one right-click menu, on the canvas and on a tree row, at the level of what is picked (the
   selection's granularity: a structure, an entity, a chain; a model, an entity; a list, a target; a volume; a mesh):
   Focus, Hide (where an eye hides it), and for now the stage's cuts (until Add clip, 3b); on a cut's guide, the stage's
