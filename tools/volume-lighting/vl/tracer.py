@@ -186,7 +186,9 @@ def in_scatter(
         idx = idx[hit]
     key = key.reshape(n, n_paths)
     amb = amb.reshape(n, n_paths)
-    se = lambda v: v.std(1) / math.sqrt(n_paths)  # noqa: E731
+    def se(v):
+        return v.std(1) / math.sqrt(n_paths) if n_paths > 1 else torch.zeros(n, device=v.device)
+
     return key.mean(1), amb.mean(1), se(key), se(amb)
 
 
