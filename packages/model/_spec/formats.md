@@ -53,8 +53,9 @@ provider gives a value a reader set.
   are all zero or NaN.
 - OME-Zarr (`ome-zarr.ts`, `volumeFromOmeZarr`): one level of an `OmeZarrFile` (io `reader/zarr`, zarr.md) and its
   voxels, placed as a CCP4 map of the same grid (a P 1 cell of `size · scale` Å, the fractional box from the NGFF
-  translation), so the level and the MRC of the same tomogram overlay (the test compares them). Not periodic. Stats in
-  one pass; a 0/1 integer level (a mask) recommends the iso value 0.5.
+  translation), so the level and the MRC of the same tomogram overlay (the test compares them). Not periodic. Stats over
+  the finite voxels (a NaN fill marks no data), `sigma` the standard deviation as the MRC header's ARMS, so a relative
+  iso value is the MRC's; a 0/1 integer level (a mask) recommends the iso value 0.5.
 - Particles: Artiatomi, Dynamo, RELION STAR, CryoET Data Portal NDJSON, Simularium (a lazy `ParticleTrajectory`), mmCIF
   assemblies (`createParticleListFromMmcifAssembly`).
 

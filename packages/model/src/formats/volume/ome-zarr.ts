@@ -7,13 +7,37 @@
 import { Box3D, SpacegroupCell } from '@molstar/core/math/geometry';
 import { Mat4, Tensor, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Task } from '@molstar/core/task';
-import { arrayStats } from '@molstar/core/util/array';
 import type { ZarrTypedArray } from '@molstar/io/reader/zarr/metadata';
 import type { OmeZarrFile, OmeZarrLevel } from '@molstar/io/reader/zarr/ome-zarr';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import { Volume } from '@molstar/model/model/volume';
 import type { ModelFormat } from '../format.js';
 import { RecommendedIsoValue } from './property.js';
+
+/**
+ * Min, max, mean and standard deviation over the finite values (formats.md §3): a NaN fill value marks voxels with no
+ * data, and `sigma` is the MRC header's ARMS (a deviation from the mean), so a relative iso value is the same as on the
+ * MRC of the same data. Not core's `arrayStats`: its `rms` is around 0 and it counts NaN.
+ */
+function finiteStats(values: ZarrTypedArray) {
+  let min = Infinity,
+    max = -Infinity,
+    sum = 0,
+    sumSq = 0,
+    n = 0;
+  for (let i = 0, il = values.length; i < il; ++i) {
+    const v = values[i];
+    if (!Number.isFinite(v)) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+    sum += v;
+    sumSq += v * v;
+    n++;
+  }
+  if (n === 0) return { min: 0, max: 0, mean: 0, sigma: 0 };
+  const mean = sum / n;
+  return { min, max, mean, sigma: Math.sqrt(Math.max(0, sumSq / n - mean * mean)) };
+}
 
 /**
  * A `Volume` of one OME-Zarr level and its voxels (`readOmeZarrLevel`), placed as a CCP4 map of the same grid: a P 1
@@ -45,7 +69,7 @@ export function volumeFromOmeZarr(
     // voxel 0 at `translation`: the fractional box starts there, and spans the cell
     const origin = Vec3.div(Vec3(), Vec3.ofArray(level.translation), Vec3.ofArray(level.scale));
     const min = Vec3.div(Vec3(), origin, size);
-    const stats = arrayStats(values);
+    const stats = finiteStats(values);
 
     const volume: Volume = {
       label: params?.label,
@@ -57,7 +81,7 @@ export function volumeFromOmeZarr(
           fractionalBox: Box3D.create(min, Vec3.add(Vec3(), min, Vec3.create(1, 1, 1))),
         },
         cells: data,
-        stats: { min: stats.min, max: stats.max, mean: stats.mean, sigma: stats.rms },
+        stats,
         // a tomogram is not a crystal's cell: no wrap-around
         periodicity: 'none',
       },
