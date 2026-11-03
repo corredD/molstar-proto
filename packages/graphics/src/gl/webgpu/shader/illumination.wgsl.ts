@@ -198,6 +198,41 @@ fn trace(rayPos: vec3<f32>, rayDir: vec3<f32>) -> RayHitInfo {
     return hitInfo;
 }
 
+#if defined(dVolumeShadow)
+/** the reads along a ray through the volume, at the centers of equal segments (\`volume-lighting.md\` §D1) */
+const VolumeShadowReads = 8;
+
+/**
+ * the transmittance through a volume (\`tVolumeExtinction\`, its extinction pyramid) from \`p\` toward the unit \`l\`, both
+ * in view space: the segment of the ray in the grid's box read at equal steps, each from the level whose texels are as
+ * long as the step (the mean extinction along it)
+ */
+fn volumeTransmittance(p: vec3<f32>, l: vec3<f32>) -> f32 {
+    let m = uObject.uVolumeViewToCell;
+    let x = (m * vec4<f32>(p, 1.0)).xyz;
+    let d = (m * vec4<f32>(l, 0.0)).xyz;
+    let gridDim = uObject.uVolumeGridDim;
+    let invD = select(vec3<f32>(1e8), vec3<f32>(1.0) / d, abs(d) > vec3<f32>(1e-8));
+    let t0 = (vec3<f32>(0.0) - x) * invD;
+    let t1 = (gridDim - x) * invD;
+    let near = max(max(max(min(t0.x, t1.x), min(t0.y, t1.y)), min(t0.z, t1.z)), 0.0);
+    let far = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z));
+    if (far <= near) {
+        return 1.0;
+    }
+    // the step in cells, the level of texels that long (level 1 is mip 0)
+    let step = (far - near) * length(d) / f32(VolumeShadowReads);
+    let mip = clamp(log2(step) - 1.0, 0.0, f32(textureNumLevels(tVolumeExtinction) - 1));
+    let toUv = vec3<f32>(0.5) / vec3<f32>(textureDimensions(tVolumeExtinction, 0));
+    var sigma = 0.0;
+    for (var i = 0; i < VolumeShadowReads; i++) {
+        let y = x + d * mix(near, far, (f32(i) + 0.5) / f32(VolumeShadowReads));
+        sigma += textureSampleLevel(tVolumeExtinction, sLinearMipmap, y * toUv, mip).r;
+    }
+    return exp(-sigma * step);
+}
+#endif
+
 var<private> viewPos: vec3<f32>;
 /** uv of the fragment (top-left origin) */
 var<private> fragCoords: vec2<f32>;
@@ -223,8 +258,8 @@ fn colorForRay(startRayPos: vec3<f32>, startRayDir: vec3<f32>, rngState: ptr<fun
             hitInfo.color = read_tShaded(fragCoords).rgb;
             hitInfo.emissive = read_tColor(fragCoords).rgb * read_tNormal(fragCoords).a;
 
-            // shadow
-            #if defined(dShadowEnable)
+            // shadow: of the opaque scene by screen space rays, of a volume through its extinction (\`dVolumeShadow\`)
+            #if defined(dShadowEnable) || defined(dVolumeShadow)
                 #if dLightCount != 0
                     // attenuate by the fraction of unoccluded irradiance, weighting each
                     // light by its actual contribution so back-facing lights don't darken
@@ -236,12 +271,20 @@ fn colorForRay(startRayPos: vec3<f32>, startRayDir: vec3<f32>, rngState: ptr<fun
                         let irradiance = ndotl * uObject.uLightColor[i];
                         fullLight += irradiance;
                         if (ndotl > 0.0) {
-                            var missed = false;
-                            var hitPos = viewPos + hitInfo.normal * RayPosNormalNudge;
-                            hitPos += -lightDirection * randomFloat(rngState);
-                            rayMarch(-lightDirection + randomUnitVector(rngState) * uObject.uShadowSoftness, uObject.uShadowThickness, &hitPos, &missed);
+                            #if defined(dShadowEnable)
+                                var missed = false;
+                                var hitPos = viewPos + hitInfo.normal * RayPosNormalNudge;
+                                hitPos += -lightDirection * randomFloat(rngState);
+                                rayMarch(-lightDirection + randomUnitVector(rngState) * uObject.uShadowSoftness, uObject.uShadowThickness, &hitPos, &missed);
+                            #else
+                                let missed = true;
+                            #endif
                             if (missed) {
-                                directLight += irradiance;
+                                #if defined(dVolumeShadow)
+                                    directLight += irradiance * volumeTransmittance(viewPos, -lightDirection);
+                                #else
+                                    directLight += irradiance;
+                                #endif
                             }
                         }
                     }

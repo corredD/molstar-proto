@@ -2,6 +2,7 @@
  * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { hashFnv32a } from '@molstar/core/data/util';
@@ -279,6 +280,19 @@ export namespace DirectVolume {
   export const Params = {
     ...BaseGeometry.Params,
     ignoreLight: PD.Boolean(false, BaseGeometry.ShadingCategory),
+    lighting: PD.Select<'local' | 'volumetric'>(
+      'local',
+      [
+        ['local', 'Local'],
+        ['volumetric', 'Volumetric'],
+      ],
+      {
+        ...BaseGeometry.ShadingCategory,
+        description:
+          'Local: lit by the gradient as a surface. Volumetric: dense regions shadow the key light and occlude the ' +
+          'ambient light, thin ones let it through (WebGPU; local elsewhere).',
+      },
+    ),
     celShaded: PD.Boolean(false, BaseGeometry.ShadingCategory),
     xrayShaded: PD.Select<boolean | 'inverted'>(
       false,
@@ -498,6 +512,7 @@ export namespace DirectVolume {
       dAxisOrder: ValueCell.create(directVolume.axisOrder.ref.value.join('')),
 
       dIgnoreLight: ValueCell.create(props.ignoreLight),
+      dLighting: ValueCell.create(props.lighting),
       dCelShaded: ValueCell.create(props.celShaded),
       dXrayShaded: ValueCell.create(
         props.xrayShaded === 'inverted' ? 'inverted' : props.xrayShaded === true ? 'on' : 'off',
@@ -524,6 +539,7 @@ export namespace DirectVolume {
     // created again for a context with or without 3d textures
     ValueCell.updateIfChanged(values.dGridTexType, values.tGridTex.ref.value.getDepth() > 0 ? '3d' : '2d');
     ValueCell.updateIfChanged(values.dIgnoreLight, props.ignoreLight);
+    ValueCell.updateIfChanged(values.dLighting, props.lighting);
     ValueCell.updateIfChanged(values.dCelShaded, props.celShaded);
     ValueCell.updateIfChanged(
       values.dXrayShaded,

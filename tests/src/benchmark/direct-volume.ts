@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Mat4, Tensor, Vec2, Vec3 } from '@molstar/core/math/linear-algebra';
@@ -13,6 +14,8 @@ import { blobVolume, createVolume, volumeRepr } from '../visual/scenes/volume.js
 import { structureRepr } from '../visual/scenes/structure.js';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { MarkingParams } from '@molstar/graphics/canvas3d/passes/marking';
+import { IlluminationParams } from '@molstar/graphics/canvas3d/passes/illumination';
+import { CartoonRepresentationProvider } from '@molstar/graphics/repr/structure/representation/cartoon';
 import type { BenchmarkCase } from './framework.js';
 import { LargeSize, type RenderInput, renderCase } from './render.js';
 import { exampleStructure } from './structures.js';
@@ -98,10 +101,14 @@ const getTomogram = cached(() =>
     Mat4.fromRotation(Mat4(), Math.PI / 6, Vec3.create(1, 0, 0)),
   ),
 );
+/** the size of the TS_08 tomogram binned twice (464x464x225, cryo-ET portal 10003): a deep box of globules */
+const getDeepTomogram = cached(() => mapVolume('tomogram-464x464x225', Vec3.create(464, 464, 225), 400, 300));
 /** the cube of `getMap` sampled with cells of 1x1x4 */
 const getAnisotropic = cached(() =>
   mapVolume('map-256x256x64', Vec3.create(256, 256, 64), 40, 300, Mat4.fromScaling(Mat4(), Vec3.create(1, 1, 4))),
 );
+
+const FullHdSize = { width: 1920, height: 1080 };
 
 /** a wide, faint transfer function: most cells of the blobs contribute and rays rarely saturate */
 const DenseControlPoints = [Vec2.create(0.05, 0), Vec2.create(0.1, 0.01), Vec2.create(0.99, 0.01)];
@@ -178,6 +185,65 @@ export const DirectVolumeCases: BenchmarkCase<RenderInput>[] = [
     'map-256x256x64-anisotropic',
     'A map-like grid of 256x256x64 cells of 1x1x4 (40 globules), the default ramp',
     getAnisotropic,
+  ),
+  // `lighting` (volume-lighting.md §A4): local and volumetric at 1920x1080, on the map and the tilted slab
+  ...(['local', 'volumetric'] as const).flatMap((lighting) => [
+    renderCase(
+      `render/direct-volume/map-256-${lighting}-1080`,
+      `As map-256, lighting ${lighting}, 1920x1080`,
+      async () => {
+        const v = getMap();
+        return {
+          size: FullHdSize,
+          scene: async (g) => [await volumeRepr(g, DirectVolumeRepresentationProvider, v, { lighting })],
+        };
+      },
+    ),
+    renderCase(
+      `render/direct-volume/tomogram-464x464x225-${lighting}-1080`,
+      `A map-like box of 464x464x225 cells (400 globules), lighting ${lighting}, 1920x1080`,
+      async () => {
+        const v = getDeepTomogram();
+        return {
+          size: FullHdSize,
+          scene: async (g) => [await volumeRepr(g, DirectVolumeRepresentationProvider, v, { lighting })],
+        };
+      },
+    ),
+    renderCase(
+      `render/direct-volume/tomogram-512x512x96-${lighting}-1080`,
+      `As tomogram-512x512x96, lighting ${lighting}, 1920x1080`,
+      async () => {
+        const v = getTomogram();
+        return {
+          size: FullHdSize,
+          scene: async (g) => [await volumeRepr(g, DirectVolumeRepresentationProvider, v, { lighting })],
+        };
+      },
+    ),
+  ]),
+  // the volume shadowing the traced light (volume-lighting.md §D4): 7qpd as cartoon with illumination and the map,
+  // rotating (the first tracing iteration per frame, fixed quality); volumetric reads its pyramid along shadow rays
+  ...(['local', 'volumetric'] as const).map((lighting) =>
+    renderCase(
+      `render/direct-volume/7qpd-illumination-map-256-${lighting}-1080`,
+      `7qpd as cartoon with illumination, rotating, and map-256 lit ${lighting}, 1920x1080`,
+      async () => {
+        const v = getMap();
+        const s = await exampleStructure('7qpd.fw2.cif');
+        return {
+          size: FullHdSize,
+          scene: async (g) => [
+            await structureRepr(g, CartoonRepresentationProvider, s, {}),
+            await volumeRepr(g, DirectVolumeRepresentationProvider, v, { lighting }),
+          ],
+          props: {
+            illumination: { ...PD.getDefaultValues(IlluminationParams), enabled: true, rendersPerFrame: [4, 4] },
+          },
+          rotate: true,
+        };
+      },
+    ),
   ),
   renderCase(
     'render/direct-volume/7qpd-gaussian-volume',

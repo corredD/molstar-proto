@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { clip_functions_wgsl } from './chunks/clip.wgsl.js';
@@ -11,6 +12,87 @@ import { fragment_output_wgsl, marking_output_wgsl, wboit_output_wgsl } from './
 import { packing_wgsl } from './chunks/packing.wgsl.js';
 import { texture_sample_wgsl } from './chunks/quad.wgsl.js';
 import { read_from_texture_wgsl } from './chunks/read-from-texture.wgsl.js';
+import { VolumeLightingMaxAlpha } from '../../compute/volume-lighting.js';
+
+/**
+ * The descriptors of a sample (\`volume-lighting.md\` §A2) from the extinction pyramid (\`tExtinction\`, levels 1 to 5
+ * as its mips), and the volumetric lighting (§A3) from them
+ */
+export const volume_lighting_wgsl = /* wgsl */ `
+const VolumeMaxAlpha = ${VolumeLightingMaxAlpha};
+
+struct VolumeDescriptors {
+    /** levels 0 to 2 and 3 to 5 around the sample */
+    around0: vec3<f32>,
+    around1: vec3<f32>,
+    /** levels 0 to 2 and 3 to 5 toward the light, at 1, 2, 4 and 8, 16, 32 cells */
+    light0: vec3<f32>,
+    light1: vec3<f32>,
+    /** of the view ray's direction and the direction to the light */
+    cosine: f32,
+};
+
+/** the extinction per cell of the transfer function at \`value\` */
+fn cellExtinction(value: f32) -> f32 {
+    return -log(1.0 - min(clamp(transferFunction(value) * uMaterial.uAlpha, 0.0, 1.0), VolumeMaxAlpha));
+}
+
+/** inside the grid's box, \`x\` in its texel coordinates (cell \`j\` spans \`[j, j + 1)\`) */
+fn inGridBox(x: vec3<f32>, gridDim: vec3<f32>) -> bool {
+    return all(x >= vec3<f32>(0.0)) && all(x <= gridDim);
+}
+
+/** level 0, the extinction of the filtered value, at \`x\` */
+fn extinction0(x: vec3<f32>, gridDim: vec3<f32>) -> f32 {
+    return select(0.0, cellExtinction(textureVal((x - 0.5) / gridDim).a), inGridBox(x, gridDim));
+}
+
+/** level \`level\` (1 to 5) at \`x\`, \`uv\` its pyramid coordinates (the padded grid's) */
+fn extinctionLevel(x: vec3<f32>, uv: vec3<f32>, level: f32, gridDim: vec3<f32>) -> f32 {
+    return select(0.0, textureSampleLevel(tExtinction, sLinear, uv, level - 1.0).r, inGridBox(x, gridDim));
+}
+
+/**
+ * at \`x\` (texel coordinates), \`sigma0\` its own extinction, \`light\` the unit direction to the light in cells,
+ * \`cosine\` per ray (a directional light)
+ */
+fn volumeDescriptors(x: vec3<f32>, sigma0: f32, light: vec3<f32>, cosine: f32, gridDim: vec3<f32>) -> VolumeDescriptors {
+    // levels halve the padded grid exactly: one uv for all
+    let toUv = vec3<f32>(0.5) / vec3<f32>(textureDimensions(tExtinction, 0));
+    let uv = x * toUv;
+    let l = light * toUv;
+    var d: VolumeDescriptors;
+    d.around0 = vec3<f32>(sigma0, extinctionLevel(x, uv, 1.0, gridDim), extinctionLevel(x, uv, 2.0, gridDim));
+    d.around1 = vec3<f32>(extinctionLevel(x, uv, 3.0, gridDim), extinctionLevel(x, uv, 4.0, gridDim), extinctionLevel(x, uv, 5.0, gridDim));
+    d.light0 = vec3<f32>(
+        extinction0(x + light, gridDim),
+        extinctionLevel(x + 2.0 * light, uv + 2.0 * l, 1.0, gridDim),
+        extinctionLevel(x + 4.0 * light, uv + 4.0 * l, 2.0, gridDim)
+    );
+    d.light1 = vec3<f32>(
+        extinctionLevel(x + 8.0 * light, uv + 8.0 * l, 3.0, gridDim),
+        extinctionLevel(x + 16.0 * light, uv + 16.0 * l, 4.0, gridDim),
+        extinctionLevel(x + 32.0 * light, uv + 32.0 * l, 5.0, gridDim)
+    );
+    d.cosine = cosine;
+    return d;
+}
+
+/** the cone segments' lengths in cells, ending at the reads of levels 0 to 5 (§A3) */
+const VolumeSegments0 = vec3<f32>(1.0, 1.0, 2.0);
+const VolumeSegments1 = vec3<f32>(4.0, 8.0, 16.0);
+/** the segments' lengths over their radii: the obscurance's 1 / r falloff, every scale alike past the first (§A3) */
+const VolumeObscurance0 = vec3<f32>(1.0, 0.5, 0.5);
+const VolumeObscurance1 = vec3<f32>(0.5, 0.5, 0.5);
+
+/** \`rgb\` lit by the key light through the volume's transmittance and by the ambient light through its obscurance */
+fn volumetricLight(rgb: vec3<f32>, d: VolumeDescriptors) -> vec3<f32> {
+    let transmittance = exp(-(dot(d.light0, VolumeSegments0) + dot(d.light1, VolumeSegments1)));
+    let occlusion = exp(-(dot(d.around0, VolumeObscurance0) + dot(d.around1, VolumeObscurance1)));
+    let key = select(vec3<f32>(0.0), uGlobal.uLightColor[0], oLightCount > 0);
+    return rgb * (key * transmittance + uGlobal.uAmbientColor * occlusion);
+}
+`;
 
 /**
  * Direct volume rendering: the back faces of the grid box, ray marched front to back through the 3d grid texture
@@ -183,6 +265,10 @@ fn transferFunction(value: f32) -> f32 {
     }
 #endif
 
+#if defined(dLighting_volumetric)
+${volume_lighting_wgsl}
+#endif
+
 fn v3m4(p: vec3<f32>, m: mat4x4<f32>) -> vec3<f32> {
     return (m * vec4<f32>(p, 1.0)).xyz;
 }
@@ -296,6 +382,15 @@ fn raymarch(startLoc: vec3<f32>, step: vec3<f32>, fragCoord: vec2<f32>, instance
 
     let transparentBackground = uGlobal.uTransparentBackground != 0u;
     let fog = uGlobal.uFog != 0u;
+
+    #if defined(dLighting_volumetric) && !defined(dIgnoreLight)
+        // the direction to the key light (\`uLightDirection\` is the one it travels, \`applyLight\` takes normals into
+        // the surface) in cells (the inverse of the cells' transform to view space, \`normalMatrix\` its inverse
+        // transpose up to a scale), and its cosine with the ray: per ray for a directional light
+        let lightView = select(vec3<f32>(0.0, 0.0, 1.0), -uGlobal.uLightDirection[0], oLightCount > 0);
+        let lightCell = normalize(lightView * normalMatrix);
+        let lightCosine = dot(normalize(viewStep), lightView);
+    #endif
 
     for (var i = 0; i < uObject.uMaxSteps; i++) {
         if (t > endT) {
@@ -438,6 +533,10 @@ fn raymarch(startLoc: vec3<f32>, step: vec3<f32>, fragCoord: vec2<f32>, instance
         var color = vec4<f32>(material.rgb, 0.0);
         #if !defined(dIgnoreLight)
             if (material.a >= 0.01) {
+            #if defined(dLighting_volumetric)
+                let descriptors = volumeDescriptors(unitPos * gridDim + 0.5, cellExtinction(value), lightCell, lightCosine, gridDim);
+                color = vec4<f32>(volumetricLight(material.rgb, descriptors) * uGlobal.uExposure, material.a);
+            #else
                 // gradient by central differences (the grids store no gradients): one-sided ones light noisy data by the
                 // side it is seen from
                 let gradient = vec3<f32>(
@@ -449,6 +548,7 @@ fn raymarch(startLoc: vec3<f32>, step: vec3<f32>, fragCoord: vec2<f32>, instance
                 let normal = select(vec3<f32>(0.0, 0.0, 1.0), -normalize(normalMatrix * gradient), dot(gradient, gradient) > 1e-12);
                 color = applyLight(material, normal, viewPosition, metalness, roughness, emissive);
                 color = vec4<f32>(color.rgb * uGlobal.uExposure, color.a);
+            #endif
             }
         #endif
 
