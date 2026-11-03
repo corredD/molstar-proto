@@ -1,7 +1,7 @@
 # Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
 #
 # @author Ludovic Autin <autin@scripps.edu>
-"""A2's descriptors per ray-march step: the one function to swap when lane volume-lighting freezes A2."""
+"""The 13 descriptors per ray-march sample, as frozen in volume-lighting.md §A2."""
 
 from __future__ import annotations
 
@@ -41,10 +41,18 @@ def to_torch(levels: list[np.ndarray], device: torch.device) -> list[torch.Tenso
     return [torch.from_numpy(lv.astype(np.float32)).to(device) for lv in levels]
 
 
-def descriptors(levels: list[torch.Tensor], pos: torch.Tensor, view: torch.Tensor, light: torch.Tensor) -> torch.Tensor:
-    """(N, 13): the mean extinction of level i at p (i < 6), of level i at p + l · r_i, and cos(view, light) with `view`
-    the camera ray's direction (away from the camera) and `light` towards the light (1: light behind the point)"""
-    cols = [sample_level(levels[i], pos, i) for i in range(LEVELS)]
-    cols += [sample_level(levels[i], pos + light * RADII[i], i) for i in range(LEVELS)]
+def extinction(med, levels: list[torch.Tensor], pos: torch.Tensor, k: int) -> torch.Tensor:
+    """S_k: k = 0 σ of the trilinear value (`med.sigma`), k ≥ 1 level k (levels[k − 1]) trilinear; 0 outside [0, dim]"""
+    s = med.sigma(pos) if k == 0 else sample_level(levels[k - 1], pos, k)
+    inside = ((pos >= 0) & (pos <= med.size)).all(-1)
+    return torch.where(inside, s, torch.zeros_like(s))
+
+
+def descriptors(med, levels: list[torch.Tensor], pos: torch.Tensor, view: torch.Tensor, light: torch.Tensor):
+    """(N, 13): around[k] = S_k(x), light[k] = S_k(x + l · 2^k), cosine = dot(d, L), `view` d the camera ray's direction
+    (camera to sample) and `light` L towards the light (1: light behind the sample); `med` the medium (grid values and
+    transfer function, `tracer.Medium`), `levels` the pyramid's levels 1..5"""
+    cols = [extinction(med, levels, pos, k) for k in range(LEVELS)]
+    cols += [extinction(med, levels, pos + light * RADII[k], k) for k in range(LEVELS)]
     cols.append((view * light).sum(-1))
     return torch.stack(cols, -1)

@@ -20,7 +20,7 @@ VIEW = torch.tensor([0.0, 0.0, -1.0])
 
 
 def _setup():
-    tf = TransferFunction(np.array([0, 1], np.float32), np.array([0.1, 0.1], np.float32))
+    tf = TransferFunction(np.array([0, 1], np.float32), np.array([0.1, 0.1], np.float32), quantize=False)
     med = Medium(np.full((64, 64, D), 0.5, np.float32), tf, CPU)
     o, _ = camera_rays(med, VIEW, RES)
     # pixels whose rays meet the slab's top face away from its sides

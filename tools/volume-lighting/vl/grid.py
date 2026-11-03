@@ -1,7 +1,8 @@
 # Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
 #
 # @author Ludovic Autin <autin@scripps.edu>
-"""Maps, transfer functions, extinction and the opacity pyramid (plan A1), in Mol*'s x, y, z voxel frame."""
+"""Maps, transfer functions, extinction and the extinction pyramid (volume-lighting.md §A1), in Mol*'s x, y, z cell frame:
+cell j spans [j, j + 1), its value at j + 0.5."""
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ import torch
 
 from .config import ALPHA_MAX, LEVELS
 
-TF_SIZE = 1024
+TF_SIZE = 256
 
 
 def load_map(path: str, max_size: int = 0) -> tuple[np.ndarray, float]:
@@ -33,9 +34,10 @@ def load_map(path: str, max_size: int = 0) -> tuple[np.ndarray, float]:
 
 
 def normalize(data: np.ndarray) -> np.ndarray:
-    """values to the transfer function's domain [0, 1] over the map's min..max, as Mol*'s direct volume"""
+    """values to the transfer function's domain [0, 1] over the map's min..max, as Mol*'s direct volume, on the bytes of
+    its grid texture (`rgba8unorm`)"""
     lo, hi = float(data.min()), float(data.max())
-    return ((data - lo) / max(hi - lo, 1e-12)).astype(np.float32)
+    return (np.round((data - lo) / max(hi - lo, 1e-12) * 255) / 255).astype(np.float32)
 
 
 def sigma_from_alpha(alpha):
@@ -47,16 +49,27 @@ def sigma_from_alpha(alpha):
 
 @dataclass
 class TransferFunction:
-    """piecewise linear opacity over normalized values, tabulated at TF_SIZE entries as σ per voxel"""
+    """piecewise linear opacity over normalized values, as the shader takes it: TF_SIZE entries at texel centers
+    (i + 0.5) / TF_SIZE, bytes (`tTransferTex`) unless `quantize` is off (closed-form tests)"""
 
     xs: np.ndarray
     alphas: np.ndarray
+    quantize: bool = True
 
-    def alpha(self, v: np.ndarray) -> np.ndarray:
-        return np.interp(v, self.xs, self.alphas).astype(np.float32)
+    def table(self) -> np.ndarray:
+        t = np.interp((np.arange(TF_SIZE) + 0.5) / TF_SIZE, self.xs, self.alphas)
+        return (np.round(t * 255) / 255 if self.quantize else t).astype(np.float32)
 
-    def sigma_table(self) -> np.ndarray:
-        return sigma_from_alpha(self.alpha(np.linspace(0.0, 1.0, TF_SIZE))).astype(np.float32)
+
+def tf_alpha(table, v):
+    """the table linearly filtered at v · TF_SIZE − 0.5, clamped to it (the sampler; `vl-extinction`'s `extinction`)"""
+    lib = torch if isinstance(v, torch.Tensor) else np
+    x = lib.clip(v * TF_SIZE - 0.5, 0.0, TF_SIZE - 1.0)
+    i = lib.floor(x)
+    w = x - i
+    i = i.long() if lib is torch else i.astype(np.int64)
+    j = lib.clip(i + 1, 0, TF_SIZE - 1)
+    return table[i] * (1 - w) + table[j] * w
 
 
 def random_tf(rng: np.random.Generator, data: np.ndarray, contour: float | None = None) -> TransferFunction:
@@ -77,19 +90,22 @@ def random_tf(rng: np.random.Generator, data: np.ndarray, contour: float | None 
     return TransferFunction(np.asarray(xs, np.float32), np.asarray(alphas, np.float32))
 
 
-def voxel_sigma(values: np.ndarray, tf: TransferFunction) -> np.ndarray:
-    """per-voxel σ(TF(value)), the pyramid's level 0"""
-    return sigma_from_alpha(tf.alpha(values)).astype(np.float32)
+def cell_sigma(values: np.ndarray, tf: TransferFunction) -> np.ndarray:
+    """σ(TF(value)) per cell (level 0 at the cells' centers)"""
+    return sigma_from_alpha(tf_alpha(tf.table(), values)).astype(np.float32)
+
+
+def _mean8(p: np.ndarray) -> np.ndarray:
+    x, y, z = (n // 2 for n in p.shape)
+    return p.reshape(x, 2, y, 2, z, 2).sum((1, 3, 5), dtype=np.float32) * np.float32(0.125)
 
 
 def pyramid(sigma: np.ndarray, levels: int = LEVELS) -> list[np.ndarray]:
-    """A1 (until frozen): zero-padded to a multiple of 2^(levels - 1), level i the mean of its 8 children computed in f32
-    and stored as f16 (`r16float`)"""
+    """levels 1 .. levels − 1 (§A1): the cells zero-padded to a multiple of 2^(levels − 1), level 1 the f32 mean of each
+    texel's 2³ cells, level k the mean of its 8 children of level k − 1, each stored as f16 (`r16float`)"""
     m = 1 << (levels - 1)
-    pad = [(0, -n % m) for n in sigma.shape]
-    out = [np.pad(sigma, pad).astype(np.float16)]
-    for _ in range(1, levels):
-        p = out[-1].astype(np.float32)
-        x, y, z = (n // 2 for n in p.shape)
-        out.append(p.reshape(x, 2, y, 2, z, 2).mean((1, 3, 5)).astype(np.float16))
+    p = np.pad(sigma.astype(np.float32), [(0, -n % m) for n in sigma.shape])
+    out = [_mean8(p).astype(np.float16)]
+    for _ in range(2, levels):
+        out.append(_mean8(out[-1].astype(np.float32)).astype(np.float16))
     return out

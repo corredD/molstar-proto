@@ -11,9 +11,9 @@ import torch
 
 # Henyey-Greenstein asymmetry: one value for training, the tracer and the shader (the network has no g input)
 G = 0.3
-# the transfer function's per-cell opacity is clamped below 1 so that σ = −ln(1 − α) stays finite and inside f16
-ALPHA_MAX = 0.99
-# pyramid levels (A2's radii voxel · 2^i, i < LEVELS); grids are padded to a multiple of 2^(LEVELS - 1)
+# the transfer function's per-cell opacity is clamped below 1 (volume-lighting.md §A1, `VolumeLightingMaxAlpha`)
+ALPHA_MAX = 0.999
+# descriptor levels k = 0..5 (volume-lighting.md §A2): level 0 on the fly, 1..5 stored (`VolumeLightingLevels`)
 LEVELS = 6
 # brick edge of the tracker's majorant grid, in voxels
 BRICK = 8

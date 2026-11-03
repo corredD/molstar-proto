@@ -15,7 +15,7 @@ import torch.nn.functional as F
 
 from .config import BRICK, G
 from .descriptors import sample_level
-from .grid import TF_SIZE, TransferFunction
+from .grid import TF_SIZE, TransferFunction, sigma_from_alpha, tf_alpha
 
 EPS = 1e-3  # past a brick face, in voxels
 
@@ -62,29 +62,28 @@ def _range_max(table: torch.Tensor, lo: torch.Tensor, hi: torch.Tensor) -> torch
 
 
 class Medium:
-    """normalized values (x, y, z) and a transfer function; σ per voxel at any point, brick majorants"""
+    """normalized values (x, y, z) and a transfer function; σ per cell at any point, brick majorants"""
 
     def __init__(self, values: np.ndarray, tf: TransferFunction, device: torch.device):
         self.device = device
         self.values = torch.from_numpy(np.ascontiguousarray(values, np.float32)).to(device)
-        self.table = torch.from_numpy(tf.sigma_table()).to(device)
+        self.table = torch.from_numpy(tf.table()).to(device)
         self.size = torch.tensor(values.shape, device=device, dtype=torch.float32)
         # a trilinear sample in brick b reads voxels bB - 1 .. (b + 1)B: their value range bounds σ over the brick
         v = self.values[None, None]
         vmax = F.max_pool3d(v, BRICK + 2, BRICK, padding=1, ceil_mode=True)[0, 0]
         vmin = -F.max_pool3d(-v, BRICK + 2, BRICK, padding=1, ceil_mode=True)[0, 0]
         k = TF_SIZE - 1
-        lo = torch.floor(vmin.reshape(-1).clamp(0, 1) * k).long()
-        hi = torch.ceil(vmax.reshape(-1).clamp(0, 1) * k).long()
-        self.majorant = _range_max(self.table, lo, hi).reshape(vmax.shape) * 1.0001
+        lo = torch.floor((vmin.reshape(-1) * TF_SIZE - 0.5).clamp(0, k)).long()
+        hi = torch.ceil((vmax.reshape(-1) * TF_SIZE - 0.5).clamp(0, k)).long()
+        # σ is monotone in α: the largest α the filtered table takes over the range bounds σ
+        self.majorant = sigma_from_alpha(_range_max(self.table, lo, hi)).reshape(vmax.shape) * 1.0001
         self.nb = torch.tensor(self.majorant.shape, device=device)
         self.maj_flat = self.majorant.reshape(-1)
 
     def sigma(self, pos: torch.Tensor) -> torch.Tensor:
-        v = sample_level(self.values, pos, 0).clamp(0, 1) * (TF_SIZE - 1)
-        i0 = v.floor().long().clamp(max=TF_SIZE - 2)
-        w = v - i0
-        return self.table[i0] * (1 - w) + self.table[i0 + 1] * w
+        """σ(TF(trilinear value)), classified after filtering as the ray marcher's samples (§A2's S_0)"""
+        return sigma_from_alpha(tf_alpha(self.table, sample_level(self.values, pos, 0)))
 
     def march(self, pos: torch.Tensor, d: torch.Tensor, gen: torch.Generator, ratio: bool):
         """from `pos` (inside the box) along `d`: delta tracking to the first real collision (`ratio` False: returns

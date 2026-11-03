@@ -20,7 +20,7 @@ D = 16  # slab thickness, voxels
 
 
 def _slab():
-    tf = TransferFunction(np.array([0, 1], np.float32), np.array([0.1, 0.1], np.float32))
+    tf = TransferFunction(np.array([0, 1], np.float32), np.array([0.1, 0.1], np.float32), quantize=False)
     return Medium(np.full((256, 256, D), 0.5, np.float32), tf, CPU)
 
 
@@ -75,7 +75,7 @@ def test_null_collisions_against_a_gradient():
     n, a = 64, 0.2
     x = (np.arange(n, dtype=np.float32) + 0.5) / n
     values = np.broadcast_to(x[:, None, None], (n, n, n)).copy()
-    tf = TransferFunction(np.array([0, 1], np.float32), np.array([0.0, a], np.float32))
+    tf = TransferFunction(np.array([0, 1], np.float32), np.array([0.0, a], np.float32), quantize=False)
     med = Medium(values, tf, CPU)
     assert float(med.majorant[-1].min()) > 3 * float(med.majorant[1].max())
     xs = np.array([10.3, 30.7, 50.1])
