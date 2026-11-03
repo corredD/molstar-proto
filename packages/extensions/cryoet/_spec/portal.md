@@ -37,6 +37,9 @@ registration); the index tool `tools/portal-index/`.
   `cryoet.decorate` (`with: pdb`) and `cryoet.offset`, the slices by `cryoet.slices`, a mask's surface by
   `volume.representation` (isosurface, absolute 0.5), the average by `load.entry` (`emdb`) and `stage.move`.
 - **The pixel size is the index's voxel spacing**, never the zarr's scale: they differ in the third decimal.
+- **Points without a decoration are spheres of 50 Å** (`PortalPointRadius`; Ludo, 2026-11-03): their size theme's
+  `defaultSize`, not the list's radii (a shape decorating them later would scale by those). The theme's own fallback,
+  half the typical distance between neighbors, made 10453's 4 sparse V-ATPase picks spheres about 900 Å across.
 - An entry whose format the viewer has no reader for is listed with `needs` and skipped by a load, with a warning.
 - **Extra views warn, files fail:** a file that cannot be read fails the load (nothing is left); a direct volume the
   viewer cannot make, a decoration whose structure cannot be fetched, the EMDB average: warnings, the rest kept.

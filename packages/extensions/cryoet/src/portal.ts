@@ -488,7 +488,11 @@ async function loadEntry(
     // voxels of the annotation's tomogram: its spacing from the index
     const r = await ctx.api.run('particles.source', { particles, params: { pixelSize: s.spacing } });
     if (!r.ok) return r;
-    if (!decoration?.pdb) continue;
+    if (!decoration?.pdb) {
+      const p = await sizePoints(ctx, particles);
+      if (!p.ok) return p;
+      continue;
+    }
     const d = await ctx.api.run('cryoet.decorate', { particles, with: 'pdb', id: decoration.pdb });
     if (!d.ok) return d;
     // a structure that could not be fetched leaves the decoration's transform without a target, and says nothing
@@ -500,6 +504,30 @@ async function loadEntry(
       const r = await centerOnAverage(ctx, particles, decoration.center);
       if (!r.ok) return r;
     }
+  }
+  return ApiResult.ok('');
+}
+
+/**
+ * The radius (Å) of points the index has no decoration for (Ludo, 2026-11-03): the particle-size theme's own fallback, half
+ * the typical distance between neighbors, is a sphere hundreds of Å across for a few sparse picks (10453's 4 V-ATPases:
+ * about 900 Å)
+ */
+export const PortalPointRadius = 50;
+
+/**
+ * The list's spheres at `PortalPointRadius`: their size theme's, not the list's radii, so a shape that decorates the list
+ * later is not scaled by them (a shape target scales by the particle's radius)
+ */
+async function sizePoints(ctx: ApiContext, particles: string): Promise<ApiResult> {
+  const list = ctx.plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === particles);
+  for (const r of list?.representations ?? []) {
+    if (r.cell.transform.params?.type.name !== 'spacefill') continue;
+    const u = await ctx.api.run('particles.update', {
+      node: `#${r.cell.transform.ref}`,
+      params: { sizeTheme: { name: 'particle-size', params: { scale: 1, defaultSize: PortalPointRadius } } },
+    });
+    if (!u.ok) return u;
   }
   return ApiResult.ok('');
 }

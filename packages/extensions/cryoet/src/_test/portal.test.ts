@@ -178,10 +178,10 @@ function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: 
   if (!r.ok) expect.fail(`${r.code}: ${r.message}${r.hint ? ` (${r.hint})` : ''}`);
 }
 
-async function viewer() {
+async function viewer(from: PortalIndexSource = source) {
   const base = DefaultPrismViewerSpec();
   const v = await createPrismViewerHeadless({
-    spec: { ...base, extensions: [...(base.extensions ?? []), CryoetExtension, CryoetPortalExtension(source)] },
+    spec: { ...base, extensions: [...(base.extensions ?? []), CryoetExtension, CryoetPortalExtension(from)] },
   });
   viewers.push(v);
   return v;
@@ -259,6 +259,20 @@ describe('cryoetPortal', () => {
     expect(r.warnings?.join(' ')).toMatch(/direct volume/i);
     expect(v.plugin.managers.volume.hierarchy.current.volumes.length).toBe(2);
     expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(1);
+  });
+
+  it('draws points without a decoration as spheres of 50 Å, not half the distance between them (Ludo, 2026-11-03)', async () => {
+    serve();
+    const v = await viewer({ ...source, dataset: async () => ({ ...dataset, decorations: undefined }) });
+    expectOk(await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', annotations: '5', as: 'none' }));
+    const [list] = v.plugin.managers.particles.hierarchy.current.lists;
+    const spheres = list.representations.filter((r) => r.cell.transform.params?.type.name === 'spacefill');
+    expect(spheres.length).toBeGreaterThan(0);
+    for (const r of spheres) {
+      expect(r.cell.transform.params?.sizeTheme).toMatchObject({ name: 'particle-size', params: { defaultSize: 50 } });
+    }
+    // the size is the spheres' own: the list has no radii, so a shape decorating it later is not scaled by them
+    expect(particleListData(v, list.cell.transform.ref)?.radii).toBeUndefined();
   });
 
   it('says so when the decoration cannot be fetched, the points loaded', async () => {

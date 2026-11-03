@@ -11,3 +11,5 @@
   at the index's voxel spacing decorated with a PDB, the EMDB average beside, GLB meshes; one history step, a size guard
   above 512 MB. + Open › CryoET Data Portal… (a card), `?portal-dataset=10003&portal-run=TS_08`, and a portal object's
   run page and DOIs in its right-click menu.
+- Portal points without a decoration are drawn as spheres of 50 Å, not half the distance between neighbors (about 900 Å
+  for a few sparse picks).
