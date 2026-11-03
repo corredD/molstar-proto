@@ -47,6 +47,23 @@ describe('the shipped portal index', () => {
     ]);
   });
 
+  it("has each tomogram's method, software, alignment and the portal's default (10518 pt117_ts_001)", () => {
+    const run = read<PortalDataset>('10518').runList.find((r) => r.name === 'pt117_ts_001')!;
+    const byId = new Map(run.spacings.flatMap((s) => s.tomograms.map((t) => [t.id, t] as const)));
+    expect(byId.size).toBe(8);
+    expect(byId.get(64007)).toMatchObject({
+      method: 'WBP',
+      processing: 'filtered',
+      reconstructionSoftware: 'AreTomo3 v2.3.0',
+      processingSoftware: 'AreTomo3 v2.3.0',
+      alignment: 37978,
+      default: true,
+    });
+    expect(byId.get(64010)).toMatchObject({ processing: 'denoised', processingSoftware: 'IsoNet2' });
+    expect(byId.get(64008)?.method).toBe('Fourier_Space');
+    expect(byId.get(64005)).not.toHaveProperty('default');
+  });
+
   it('has a dataset with GLB meshes (10524)', () => {
     const ds = read<PortalDataset>('10524');
     const formats = new Set(ds.runList.flatMap((r) => r.spacings.flatMap((s) => s.annotations.map((a) => a.format))));

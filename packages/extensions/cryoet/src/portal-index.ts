@@ -68,7 +68,18 @@ export interface PortalSpacing {
 export interface PortalTomogram {
   readonly id: number;
   readonly name: string;
+  /** raw, filtered, denoised */
   readonly processing?: string;
+  /** The reconstruction method: WBP, SART, Fourier_Space, … (each of these four, when the portal has it) */
+  readonly method?: string;
+  /** The reconstruction's software and version: 'AreTomo3 v2.3.0' */
+  readonly reconstructionSoftware?: string;
+  /** The processing's software: 'IsoNet2', 'DeepDeWedge' */
+  readonly processingSoftware?: string;
+  /** The tilt series alignment it was reconstructed from (the portal's AL-<id>) */
+  readonly alignment?: number;
+  /** The portal shows it by default; of several flagged in a run, the lowest id (as the portal's run page) */
+  readonly default?: boolean;
   /** x, y, z voxels at the spacing */
   readonly size: readonly [number, number, number];
   /** The OME-Zarr, relative to `PortalFiles` */
