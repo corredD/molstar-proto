@@ -85,6 +85,12 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   volumes shadowing the molecules in illumination. A library lane from master, PRs into prism-me. Plan, steps and gates:
   [plans/2026-11-02-volume-lighting.md](plans/2026-11-02-volume-lighting.md).
 
+- **Direct volume's transfer function on a volume's new data** (review of the Direct volume section, 2026-11-03; left
+  open): the editor (Prism's `createVolumeTransfer`) reads the map's stats and `logMin` once, and prism-me refreshes it
+  only when the representation's params change. A volume's data changed in place (only the assistant can: `state.update`
+  on a `VolumeFromOmeZarr` level) leaves its histogram and axis stale until the row is made again. Prism's own inspector
+  refreshes on the volume's sync, but its stats stay as read too: a fix in Prism first.
+
 - **CryoET Data Portal, later** (built 2026-11-02, lane `cryoet-portal`: index, load, card, URL; plan part E left): ask
   CZI to add molstar.org and the lab site to the GraphQL allow-list (then search the whole portal live); copick picks
   JSON as a particle format; tilt series and alignments. EMD-13412 (and 7PHB fitted in it) is of the other hand than
