@@ -187,6 +187,10 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
       const atom = Vec3.create(24, 32, 35);
       const shade = async () => luminanceAt(plugin, await plugin.getImageRaw({ width: Size, height: Size }), atom);
       const local = await shade();
+      await volume.update('neural');
+      await frames(plugin);
+      // neural builds the same pyramid: the trace reads it alike (§C)
+      const neural = await shade();
       await volume.update('volumetric');
       await frames(plugin);
       const volumetric = await shade();
@@ -214,6 +218,7 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
       expect(Math.abs(local - none)).toBeLessThanOrEqual(2);
       // measured on Dawn (M1): none 247, local 248, volumetric 82
       expect(volumetric / local).toBeLessThan(0.8);
+      expect(neural / local).toBeLessThan(0.8);
       // (0.89: the atoms lit from the other side, unshadowed)
       expect(fromLeft / local).toBeGreaterThan(0.8);
       volume.repr.destroy();
@@ -411,7 +416,7 @@ async function addDirectVolume(plugin: HeadlessPluginContext, ccp4: Uint8Array) 
   });
   return {
     repr,
-    update: async (lighting: 'local' | 'volumetric') => {
+    update: async (lighting: 'local' | 'volumetric' | 'neural') => {
       await repr.createOrUpdate({ controlPoints: ControlPoints, lighting }, volume).run();
       canvas.add(repr);
     },
