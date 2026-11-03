@@ -13,7 +13,7 @@ import { headlessViewer } from '../../_test/harness.js';
 import type { ViewerApi } from '../../api/area.js';
 import type { VolumeLevelUnit } from '../../model/volume-levels.js';
 import { mapFile } from '../../api/_test/volume-fixtures.js';
-import { transferColorAt, transferPeaks } from '../../model/volume-transfer.js';
+import { scaledOpacity, scaledPoints, transferColorAt, transferPeaks } from '../../model/volume-transfer.js';
 import { createVolumeTransfer, themeDomain, type VolumeTransferSource } from '../volume-transfer.js';
 
 // A direct volume's transfer function (model/volume-transfer.ts): the peaks of its curve, the colors painted along the
@@ -35,6 +35,31 @@ describe('the transfer function on its axis', () => {
     expect(peaks).toEqual([
       { from: 0.2, to: 0.3 },
       { from: 0.7, to: 0.7 },
+    ]);
+  });
+
+  it('scales an opacity: zero stays zero, at most 1, scaled down from the axis floor it is zero', () => {
+    expect(scaledOpacity(0, 2, 1e-3)).toBe(0);
+    expect(scaledOpacity(0.05, 2, 1e-3)).toBe(0.1);
+    expect(scaledOpacity(0.7, 2, 1e-3)).toBe(1);
+    expect(scaledOpacity(0.1, 0.5, 1e-3)).toBe(0.05);
+    expect(scaledOpacity(1e-3, 0.5, 1e-3)).toBe(0);
+    // Up from the floor is not zero: only a lower one is.
+    expect(scaledOpacity(1e-3, 2, 1e-3)).toBe(2e-3);
+    expect(
+      scaledPoints(
+        [
+          { x: 0.1, alpha: 0 },
+          { x: 0.2, alpha: 0.3 },
+          { x: 0.3, alpha: 0.6 },
+        ],
+        2,
+        1e-3,
+      ),
+    ).toEqual([
+      { x: 0.1, alpha: 0 },
+      { x: 0.2, alpha: 0.6 },
+      { x: 0.3, alpha: 1 },
     ]);
   });
 

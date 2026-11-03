@@ -33,7 +33,7 @@ export const Isosurface: StoryObj = {
 
 /**
  * The map as a direct volume, its representation picked: the transfer function (the opacity curve over the map's
- * histogram, the colors under it, the color stops).
+ * histogram, the colors under it, the color stops; ×½ and ×2 scale every point's opacity).
  */
 export const DirectVolume: StoryObj = {
   render: () =>
