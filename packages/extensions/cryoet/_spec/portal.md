@@ -93,5 +93,8 @@ registration); the index tool `tools/portal-index/`.
 
 ## 5. The URL (prism-me)
 
-`?portal-dataset=10003&portal-run=TS_08`, then `portal-annotations` and `portal-level`: `cryoetPortal.load` once the
-viewer is up (`apps/prism-me/src/url.ts`).
+`?portal-dataset=10003&portal-run=TS_08`, then `portal-tomogram` (an id: it picks its spacing too), `portal-spacing`
+(Å), `portal-annotations` and `portal-level`: `cryoetPortal.load` once the viewer is up (`apps/prism-me/src/url.ts`). A
+value that is not a number is left out (the load's default).
+`?portal-dataset=10518&portal-run=pt117_ts_001&portal-tomogram=64010`: the IsoNet2-denoised tomogram and the membrane
+mask at 10.403 Å.

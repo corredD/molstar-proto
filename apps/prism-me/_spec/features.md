@@ -70,6 +70,7 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | CryoET Data Portal: a dataset's runs, tomogram levels and annotations from the shipped index (10003, 10453, 10524, 10518) | Done     | `cryoetPortal.datasets`, `cryoetPortal.run`; `portal/*.json` (tools/portal-index) |
 | … a run loaded: tomogram slices and direct volume, masks as surfaces, points at the index's spacing, decorated            | Done     | `cryoetPortal.load`; extensions/cryoet/_spec/portal.md                            |
 | … from + Open (the card) or the URL (`?portal-dataset=10003&portal-run=TS_08`)                                            | Done     | CryoET Data Portal…; `portal-*` URL params                                        |
+| … a run's tomograms in one choice, labelled as the portal's list, the portal's default tomogram first chosen              | Done     | the card's Tomogram; `cryoetPortal.load` `tomogram`; `?portal-tomogram=64010`     |
 | … a portal object's run page and DOIs                                                                                     | Done     | right-click › `<dataset> <run>` on the CryoET Data Portal, doi:…                  |
 | … any dataset live (GraphQL search), copick picks, tilt series                                                            | Deferred | the portal's CORS allow-list; plan part E                                         |
 

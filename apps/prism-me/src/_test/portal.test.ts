@@ -12,7 +12,7 @@ import {
   type PortalDataset,
   PortalFiles,
 } from '@molstar/cryoet-extension/portal-index';
-import { portalLoadOf } from '../url.js';
+import { PortalUrlParameters, portalLoadOf } from '../url.js';
 
 // The CryoET Data Portal's index the explorer ships (`portal/`, tools/portal-index) and the URL that loads from it.
 
@@ -83,6 +83,24 @@ describe('the portal URL', () => {
       run: 'TS_08',
       annotations: '1212,2321',
       level: 1,
+    });
+  });
+
+  it('loads a tomogram by id, of any spacing (its spacing with it), or a spacing', () => {
+    expect(portalLoadOf('?portal-dataset=10518&portal-run=pt117_ts_001&portal-tomogram=64010')).toEqual({
+      dataset: 10518,
+      run: 'pt117_ts_001',
+      annotations: '',
+      tomogram: 64010,
+    });
+    expect(portalLoadOf('?portal-dataset=10453&portal-run=tomogram_003&portal-spacing=13.44')).toMatchObject({
+      spacing: 13.44,
+    });
+    expect(PortalUrlParameters).toEqual(expect.arrayContaining(['portal-tomogram', 'portal-spacing']));
+    expect(portalLoadOf('?portal-dataset=10518&portal-tomogram=x&portal-spacing=fine')).toEqual({
+      dataset: 10518,
+      run: '',
+      annotations: '',
     });
   });
 
