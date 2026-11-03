@@ -60,6 +60,8 @@ def get_json(url, tries=5):
         try:
             with urllib.request.urlopen(url, timeout=60) as r:
                 return json.load(r)
+        except urllib.error.HTTPError:
+            raise  # the host answered: a 404 is not a dropped lookup
         except urllib.error.URLError:
             if i == tries - 1:
                 raise
