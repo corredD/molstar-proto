@@ -4,9 +4,10 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { Structure } from '@molstar/model/model/structure';
-import type { Volume } from '@molstar/model/model/volume';
+import { Grid, type Volume } from '@molstar/model/model/volume';
 import {
   type ApiAreaContext,
   type ApiContext,
@@ -274,9 +275,12 @@ export class CryoetPortalApi extends ApiArea {
       }
       const emdb = new Set(entries.map((e) => ds.decorations?.[e.object]?.emdb).filter((x): x is string => !!x));
       for (const id of emdb) {
-        const r = await ctx.api.run('load.entry', { source: 'emdb', id });
-        if (!r.ok) warnings.push(`${id}: ${r.message}`);
-        else done.push(id);
+        const made = await added(ctx, volumeRefs, () => ctx.api.run('load.entry', { source: 'emdb', id }));
+        if (isFailure(made)) warnings.push(`${id}: ${made.message}`);
+        else {
+          for (const ref of made) await besideTheTomogram(ctx, ref);
+          done.push(id);
+        }
       }
       if (!done.length) {
         return ApiResult.fail('unavailable', `Nothing of ${info.run.name} could be loaded.`, warnings.join(' '));
@@ -527,6 +531,18 @@ async function centerOnAverage(ctx: ApiContext, particles: string, center: reado
   const [x, y, z] = [c[0] - center[0], c[1] - center[1], c[2] - center[2]];
   if (Math.hypot(x, y, z) < 1) return ApiResult.ok('');
   return ctx.api.run('cryoet.offset', { particles, x, y, z });
+}
+
+/**
+ * An average beside the tomogram (its own place is the origin, the tomogram's corner): moved along -x by its width and
+ * a margin, by the stage's move when the viewer has it
+ */
+async function besideTheTomogram(ctx: ApiContext, ref: string) {
+  const data = ctx.plugin.state.data.cells.get(ref)?.obj?.data as Volume | undefined;
+  if (!data || !ctx.api.describe('stage.move')) return;
+  const { radius } = Grid.getBoundingSphere(data.grid);
+  const matrix = Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(-2.5 * radius, 0, 0)));
+  await ctx.api.run('stage.move', { target: ref, matrix });
 }
 
 /** The address of the download a cell's data came from, the first above it */
