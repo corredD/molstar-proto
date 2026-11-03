@@ -302,6 +302,7 @@ class Reader {
     if (mode !== Mode.TRIANGLES) indices = toTriangleList(mode, indices, indices ? indices.length : vertexCount);
     const material = p.material !== undefined ? this.json.materials?.[p.material] : undefined;
     return {
+      index: primitiveIndex,
       vertexCount,
       positions: positions.data,
       normals,

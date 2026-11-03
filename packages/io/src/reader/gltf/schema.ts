@@ -44,6 +44,8 @@ export const GlbChunkType = {
 
 /** One primitive of a glTF mesh, as triangles, in the mesh's own frame */
 export interface GltfPrimitive {
+  /** its index in the glTF mesh's primitives (points and lines are skipped, so not always its index here) */
+  readonly index: number;
   readonly vertexCount: number;
   /** xyz per vertex; a view on the binary buffer when the accessor is tight, aligned float */
   readonly positions: Float32Array;

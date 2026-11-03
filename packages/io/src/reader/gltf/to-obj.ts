@@ -18,7 +18,7 @@ const to8 = (c: number) => Math.round(Math.min(Math.max(toSrgb(c), 0), 1) * 255)
 
 /**
  * The scene of a glTF as one OBJ-like mesh in world space (gltf.md §3): each mesh node's primitives baked with the
- * node's world transform, one face group per primitive of each node, named after the node (or the mesh), with the base
+ * node's world transform, one face group per primitive and node name (the node's, else the mesh's), with the base
  * colours as an MTL (empty when no primitive has a material) and COLOR_0 times the base colour as vertex colours.
  * Normals are kept only when every primitive has them (the OBJ builder computes them otherwise).
  */
@@ -45,6 +45,9 @@ export function gltfToObj({ meshes, instances }: GltfFile): { obj: ObjFile; mtl:
   const faceGroups = new Int32Array(triangleCount);
   const materialNames: string[] = [];
   const mtl = new Map<string, MtlMaterial>();
+  // the group of a (mesh, primitive, label), and the next suffix of a label taken by another (mesh, primitive)
+  const groups = new Map<string, number>();
+  const suffixes = new Map<string, number>();
 
   const normalMatrix = Mat4();
   let v = 0,
@@ -56,15 +59,33 @@ export function gltfToObj({ meshes, instances }: GltfFile): { obj: ObjFile; mtl:
     const flip = Mat4.determinant(transform) < 0;
     if (hasNormals && !identity) Mat4.transpose(normalMatrix, Mat4.invert(normalMatrix, transform));
     for (let pi = 0, pl = primitives.length; pi < pl; ++pi) {
-      const { vertexCount, positions: pos, normals: nor, colors, colorSize, indices, baseColor } = primitives[pi];
-
-      let name = nodeName || meshName || `Mesh ${mesh}`;
-      if (pl > 1) name += ` ${pi}`;
-      for (let k = 2, base = name; mtl.has(name); ++k) name = `${base} (${k})`;
+      const {
+        index,
+        vertexCount,
+        positions: pos,
+        normals: nor,
+        colors,
+        colorSize,
+        indices,
+        baseColor,
+      } = primitives[pi];
       const [br, bg, bb] = baseColor ?? [1, 1, 1];
-      const kd = Color.fromRgb(to8(br), to8(bg), to8(bb));
-      materialNames.push(name);
-      mtl.set(name, { Kd: kd });
+
+      // instances of a mesh under one name share their groups: the group count is the names', not the nodes'
+      let label = nodeName || meshName || `Mesh ${mesh}`;
+      if (pl > 1 || index > 0) label += ` ${index}`;
+      const key = `${mesh}/${index}/${label}`;
+      let group = groups.get(key);
+      if (group === undefined) {
+        let k = suffixes.get(label) ?? 1;
+        let name = label;
+        while (mtl.has(name)) name = `${label} (${++k})`;
+        suffixes.set(label, k);
+        group = materialNames.length;
+        groups.set(key, group);
+        materialNames.push(name);
+        mtl.set(name, { Kd: Color.fromRgb(to8(br), to8(bg), to8(bb)) });
+      }
 
       if (identity) {
         positions.set(pos, v * 3);
@@ -87,7 +108,6 @@ export function gltfToObj({ meshes, instances }: GltfFile): { obj: ObjFile; mtl:
         }
       }
 
-      const group = materialNames.length - 1;
       for (let k = 0, kl = primitives[pi].triangleCount; k < kl; ++k, ++t) {
         const o = k * 3;
         const a = indices ? indices[o] : o;

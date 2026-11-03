@@ -226,25 +226,25 @@ describe('glTF reader', () => {
     expect(Array.from(fan.indices!)).toEqual([1, 2, 0, 2, 3, 0]);
   });
 
-  it('gives one face group per primitive of each node, named and coloured', async () => {
+  it('gives one face group per primitive and node name, named and coloured', async () => {
     const colors = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255]);
     const { bytes, bufferViews } = buffer([triangle, new Uint16Array([0, 1, 2]), colors]);
     const json = {
       asset: { version: '2.0' },
-      scenes: [{ nodes: [0, 1] }],
-      // two nodes share the mesh and its accessors
+      scenes: [{ nodes: [0, 1, 2, 3] }],
+      // three nodes share mesh 0 and its accessors, two by one name; a node of mesh 1 takes the same name
       nodes: [
         { name: 'a', mesh: 0 },
         { name: 'a', mesh: 0, translation: [5, 0, 0] },
+        { name: 'b', mesh: 0 },
+        { name: 'a', mesh: 1 },
       ],
-      meshes: [
-        {
-          primitives: [
-            { attributes: { POSITION: 0 }, indices: 1, material: 0 },
-            { attributes: { POSITION: 0, COLOR_0: 2 }, indices: 1 },
-          ],
-        },
-      ],
+      meshes: [0, 1].map(() => ({
+        primitives: [
+          { attributes: { POSITION: 0 }, indices: 1, material: 0 },
+          { attributes: { POSITION: 0, COLOR_0: 2 }, indices: 1 },
+        ],
+      })),
       materials: [{ pbrMetallicRoughness: { baseColorFactor: [0.21586, 0.21586, 0.21586, 1] } }],
       accessors: [
         { bufferView: 0, componentType: CT.FLOAT, count: 3, type: 'VEC3' },
@@ -258,9 +258,10 @@ describe('glTF reader', () => {
     const [p0, p1] = file.meshes[0].primitives;
     expect(p0.positions).toBe(p1.positions); // decoded once
     const { obj, mtl } = gltfToObj(file);
-    expect(obj.materialNames).toEqual(['a 0', 'a 1', 'a 0 (2)', 'a 1 (2)']);
-    expect(Array.from(obj.faceGroups)).toEqual([0, 1, 2, 3]);
-    expect(Array.from(obj.positionIndices)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    // the groups by name, not by node: as many as the distinct names, however many instances
+    expect(obj.materialNames).toEqual(['a 0', 'a 1', 'b 0', 'b 1', 'a 0 (2)', 'a 1 (2)']);
+    expect(Array.from(obj.faceGroups)).toEqual([0, 1, 0, 1, 2, 3, 4, 5]);
+    expect(Array.from(obj.positionIndices.subarray(0, 12))).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     // linear 0.21586 is sRGB 128 / 255; no material is white
     expect(Color.toHexStyle(mtl.get('a 0')!.Kd)).toBe('#808080');
     expect(Color.toHexStyle(mtl.get('a 1')!.Kd)).toBe('#ffffff');
@@ -280,14 +281,16 @@ describe('glTF reader', () => {
 
   it('skips points and lines with a warning, and refuses a scene without triangles', async () => {
     const { json, bytes } = triangleGltf();
-    json.meshes[0].primitives.push({ attributes: { POSITION: 0 }, mode: 1 } as any);
+    json.meshes[0].primitives.unshift({ attributes: { POSITION: 0 }, mode: 1 } as any);
     const r = await parseGltf(glb(json, bytes)).run();
     expect(r.isError).toBe(false);
     if (!r.isError) {
       expect(r.result.meshes[0].primitives.length).toBe(1);
-      expect(r.warnings).toEqual(['glTF mesh 0 primitive 1: points or lines, skipped']);
+      expect(r.warnings).toEqual(['glTF mesh 0 primitive 0: points or lines, skipped']);
+      // named by its index in the glTF mesh
+      expect(gltfToObj(r.result).obj.materialNames).toEqual(['tri 1']);
     }
-    (json.meshes[0].primitives[0] as any).mode = 0;
+    (json.meshes[0].primitives[1] as any).mode = 0;
     expect(await parseError(glb(json, bytes))).toBe('glTF has no triangles in its scene');
   });
 
