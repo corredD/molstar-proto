@@ -70,14 +70,15 @@ class Medium:
         self.table = torch.from_numpy(tf.table()).to(device)
         self.size = torch.tensor(values.shape, device=device, dtype=torch.float32)
         # a trilinear sample in brick b reads voxels bB - 1 .. (b + 1)B: their value range bounds σ over the brick
-        v = self.values[None, None]
+        v = self.values.cpu()[None, None]  # max_pool3d has no MPS kernel
         vmax = F.max_pool3d(v, BRICK + 2, BRICK, padding=1, ceil_mode=True)[0, 0]
         vmin = -F.max_pool3d(-v, BRICK + 2, BRICK, padding=1, ceil_mode=True)[0, 0]
         k = TF_SIZE - 1
         lo = torch.floor((vmin.reshape(-1) * TF_SIZE - 0.5).clamp(0, k)).long()
         hi = torch.ceil((vmax.reshape(-1) * TF_SIZE - 0.5).clamp(0, k)).long()
         # σ is monotone in α: the largest α the filtered table takes over the range bounds σ
-        self.majorant = sigma_from_alpha(_range_max(self.table, lo, hi)).reshape(vmax.shape) * 1.0001
+        table = self.table.cpu()
+        self.majorant = (sigma_from_alpha(_range_max(table, lo, hi)).reshape(vmax.shape) * 1.0001).to(device)
         self.nb = torch.tensor(self.majorant.shape, device=device)
         self.maj_flat = self.majorant.reshape(-1)
 

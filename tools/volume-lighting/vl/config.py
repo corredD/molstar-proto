@@ -26,6 +26,5 @@ def device() -> torch.device:
         return torch.device(os.environ['VL_DEVICE'])
     if torch.cuda.is_available():
         return torch.device('cuda')
-    if torch.backends.mps.is_available():
-        return torch.device('mps')
+    # not MPS: the wavefront tracer's many small ops each wait on the GPU there, ~450x slower than the CPU (M1 Pro)
     return torch.device('cpu')

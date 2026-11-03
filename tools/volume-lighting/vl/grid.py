@@ -72,21 +72,22 @@ def tf_alpha(table, v):
     return table[i] * (1 - w) + table[j] * w
 
 
-def random_tf(rng: np.random.Generator, data: np.ndarray, contour: float | None = None) -> TransferFunction:
-    """an opacity ramp from about the contour (or a high percentile) up to a plateau, sometimes with a second, fainter
-    peak below it: the transfer functions Mol*'s direct volumes are given; peak per-cell opacity in [0.03, 0.6]"""
-    lo, hi = float(data.min()), float(data.max())
-    c = (contour - lo) / (hi - lo) if contour is not None else float(np.percentile(normalize(data), 99.0))
-    c = float(np.clip(c * rng.uniform(0.6, 1.4), 0.02, 0.9))
+def random_tf(rng: np.random.Generator, values: np.ndarray) -> TransferFunction:
+    """an opacity ramp from a threshold to a plateau, sometimes with a second, fainter peak below it (Mol*'s direct
+    volume transfer functions); the threshold leaves 2-30 % of the cells above it (log-uniform: maps' contours do not
+    survive downsampling, tomograms have none), the peak per-cell opacity log-uniform in [0.03, 0.6]"""
+    frac = float(np.exp(rng.uniform(np.log(0.02), np.log(0.3))))
+    c, top = (float(x) for x in np.quantile(values, [1 - frac, 1 - frac / 20]))
     peak = float(np.exp(rng.uniform(np.log(0.03), np.log(0.6))))
-    ramp = rng.uniform(0.02, 0.25)
-    xs = [0.0, c, min(c + ramp, 0.99), 1.0]
+    hi = min(c + max(rng.uniform(0.2, 1.0) * (top - c), 1 / 255), 0.999)
+    xs = [0.0, c, hi, 1.0]
     alphas = [0.0, 0.0, peak, peak * rng.uniform(0.5, 1.0)]
-    if rng.random() < 0.4 and c > 0.1:
-        w = rng.uniform(0.02, 0.08) * c
-        m = c * rng.uniform(0.4, 0.8)
-        xs[1:1] = [m - w, m, m + w]
-        alphas[1:1] = [0.0, peak * rng.uniform(0.05, 0.3), 0.0]
+    if rng.random() < 0.4:
+        m = float(np.quantile(values, 1 - min(3 * frac, 0.6)))
+        w = max((c - m) * rng.uniform(0.1, 0.4), 1 / 255)
+        if m - w > 0 and m + w < c:
+            xs[1:1] = [m - w, m, m + w]
+            alphas[1:1] = [0.0, peak * rng.uniform(0.05, 0.3), 0.0]
     return TransferFunction(np.asarray(xs, np.float32), np.asarray(alphas, np.float32))
 
 
