@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -52,6 +53,12 @@ import {
   SphereRasterRegionsSchema,
   SphereRasterSchema,
 } from '../compute/sphere-raster.js';
+import {
+  VlDownsampleKernel,
+  VlDownsampleSchema,
+  VlExtinctionKernel,
+  VlExtinctionSchema,
+} from '../compute/volume-lighting.js';
 import { DefineSpec, TextureSpec, UniformSpec } from '../renderable/schema.js';
 import type { DefineValues } from '../shader-code.js';
 import { preprocessShader } from '../shader-preprocessor.js';
@@ -94,6 +101,9 @@ const BuiltInKernels: [KernelCode, KernelSchema, { [k: string]: string | boolean
   [SphereRasterRegionsKernel, SphereRasterRegionsSchema, {}],
   [SphereRasterArgsKernel, SphereRasterArgsSchema, {}],
   [SphereRasterKernel, SphereRasterSchema, {}],
+  [VlExtinctionKernel, VlExtinctionSchema, { dPackedGroup: false }],
+  [VlExtinctionKernel, VlExtinctionSchema, { dPackedGroup: true }],
+  [VlDownsampleKernel, VlDownsampleSchema, {}],
 ];
 
 describe('webgpu compute', () => {

@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { color_accumulate_wgsl, color_normalize_wgsl } from './color-smoothing.wgsl.js';
@@ -22,6 +23,7 @@ import {
   sphere_raster_regions_wgsl,
   sphere_raster_wgsl,
 } from './sphere-raster.wgsl.js';
+import { vl_downsample_wgsl, vl_extinction_wgsl } from './volume-lighting.wgsl.js';
 
 /** WGSL compute kernels by the name of their `KernelCode`, like `programs.ts` for render programs */
 const Kernels = new Map<string, string>([
@@ -45,6 +47,8 @@ const Kernels = new Map<string, string>([
   ['sphere-raster-regions', sphere_raster_regions_wgsl],
   ['sphere-raster-args', sphere_raster_args_wgsl],
   ['sphere-raster', sphere_raster_wgsl],
+  ['vl-extinction', vl_extinction_wgsl],
+  ['vl-downsample', vl_downsample_wgsl],
 ]);
 
 /** Registers the WGSL source of a kernel; the bindings are declared from its schema, see `getWgslKernelDeclarations` */
