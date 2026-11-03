@@ -50,7 +50,8 @@ The 13 descriptors, in this order:
 | 6–11 | `light[k]` | `S_k(x + l * 2^k)`, `k = 0..5`: along `l`, the unit direction to the key light in cell space |
 | 12 | `cosine` | `dot(d, L)`: `d` the view ray's direction (camera to sample), `L` the direction to the key light, both unit vectors in view space (1: light from behind the sample, forward scattering) |
 
-- `l` is `uLightDirection[0]` (view space, toward the light) taken to cell space by the inverse of
+- `l` is `-uLightDirection[0]` (view space; `uLightDirection` is the direction the light travels, as `applyLight`
+  takes normals pointing into the surface) taken to cell space by the inverse of
   `modelView * transform * uTransform` and normalized there: anisotropic cells and any transform are handled, the
   distances are in cells.
 - Units: extinction per cell, no normalization; the network stores its own input mean and scale with its weights (C1).
