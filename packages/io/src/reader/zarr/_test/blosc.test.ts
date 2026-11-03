@@ -98,6 +98,53 @@ describe('bloscDecode', () => {
   });
 });
 
+/** A blosc1 buffer of `blocks` (each one stream: typesize 1), `flags` as given; `nbytes` the decoded size. */
+function bloscOf(flags: number, nbytes: number, blocksize: number, blocks: number[][]) {
+  const starts: number[] = [];
+  const body: number[] = [];
+  let p = 16 + 4 * blocks.length;
+  for (const b of blocks) {
+    starts.push(p);
+    body.push(b.length & 0xff, (b.length >> 8) & 0xff, 0, 0, ...b);
+    p += 4 + b.length;
+  }
+  const i32 = (v: number) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
+  return Uint8Array.from([
+    2,
+    1,
+    flags,
+    1,
+    ...i32(nbytes),
+    ...i32(blocksize),
+    ...i32(p),
+    ...starts.flatMap(i32),
+    ...body,
+  ]);
+}
+
+describe('bloscDecode of hostile buffers', () => {
+  const block0 = Array.from({ length: 16 }, (_, i) => i + 1);
+
+  it('refuses an empty zlib stream for a block (core inflate reads `03 00` as the whole buffer)', async () => {
+    // block 0 stored, block 1 a zlib stream of an empty final block: c-blosc fails it as short
+    const src = bloscOf(0x60, 32, 16, [block0, [0x78, 0x9c, 3, 0, 0, 0, 0, 1]]);
+    await expect(bloscDecode(SyncRuntimeContext, src, new Uint8Array(32))).rejects.toThrow('zlib');
+  });
+
+  it('refuses a zlib stream too short to be one, and one whose Adler-32 is wrong, by a message', async () => {
+    const short = bloscOf(0x60, 16, 16, [[0x78, 0x9c, 1]]);
+    await expect(bloscDecode(SyncRuntimeContext, short, new Uint8Array(16))).rejects.toThrow('zlib: not a zlib stream');
+    const good = read('zlib-shuffle-f4');
+    const bad = good.slice();
+    bad[bad.length - 1] ^= 0xff;
+    await expect(bloscDecode(SyncRuntimeContext, bad, new Uint8Array(32000))).rejects.toThrow('zlib: Adler-32');
+  });
+
+  it('refuses a block size larger than the data before allocating it', () => {
+    expect(() => bloscHeader(bloscOf(0x21, 4, 0x7fffffff, [[1, 2, 3, 4]]))).toThrow('corrupt header');
+  });
+});
+
 describe('lz4DecodeBlock', () => {
   it('repeats an overlapping match (offset < length), short and long', () => {
     for (const len of [7, 300]) {

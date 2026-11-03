@@ -5,6 +5,7 @@
  */
 
 import type { RuntimeContext } from '@molstar/core/task';
+import { adler } from '@molstar/core/util/zip/checksum';
 import { inflate } from '@molstar/core/util/zip/zip';
 import { IsNativeEndianLittle } from '../../common/binary.js';
 import { lz4DecodeBlock } from './lz4.js';
@@ -52,7 +53,10 @@ export function bloscHeader(src: Uint8Array): BloscHeader {
   if (h.version < 1 || h.version > 2) throw new Error(`Blosc: format version ${h.version} is not supported (1 or 2)`);
   if (h.cbytes !== src.length)
     throw new Error(`Blosc: the header says ${h.cbytes} bytes, the buffer has ${src.length}`);
-  if (h.nbytes < 0 || h.typesize < 1 || (h.nbytes > 0 && h.blocksize < 1)) throw new Error('Blosc: corrupt header');
+  // c-blosc never writes a block larger than the data: a larger one would only size an allocation
+  if (h.nbytes < 0 || h.typesize < 1 || (h.nbytes > 0 && (h.blocksize < 1 || h.blocksize > h.nbytes))) {
+    throw new Error('Blosc: corrupt header');
+  }
   return h;
 }
 
@@ -104,11 +108,7 @@ export async function bloscDecode(ctx: RuntimeContext, src: Uint8Array<ArrayBuff
       } else if (codec === Codec.Lz4) {
         if (lz4DecodeBlock(src, sp, end, dst, dp, dp + neblock) !== neblock) throw new Error('Blosc: short LZ4 stream');
       } else {
-        const into = dst.subarray(dp, dp + neblock);
-        const got = await inflate(ctx, src.subarray(sp, end), into);
-        if (got.length !== neblock || got.buffer !== into.buffer || got.byteOffset !== into.byteOffset) {
-          throw new Error('Blosc: short zlib stream');
-        }
+        await zlibDecode(ctx, src.subarray(sp, end), dst.subarray(dp, dp + neblock));
       }
       sp = end;
       dp += neblock;
@@ -116,6 +116,32 @@ export async function bloscDecode(ctx: RuntimeContext, src: Uint8Array<ArrayBuff
     if (tmp) unshuffle(typesize, bsize, tmp, out, outStart);
   }
   return out;
+}
+
+/**
+ * Inflates the zlib (RFC 1950) stream `src` into exactly `into`, as zlib's `uncompress` (what c-blosc calls) would:
+ * the header, the length and the Adler-32 are checked, which core's `inflate` leaves to its caller (zarr.md §3).
+ */
+export async function zlibDecode(ctx: RuntimeContext, src: Uint8Array<ArrayBuffer>, into: Uint8Array<ArrayBuffer>) {
+  const n = src.length;
+  if (n < 6 || (src[0] & 0x0f) !== 8 || ((src[0] << 8) | src[1]) % 31 !== 0) throw new Error('zlib: not a zlib stream');
+  let got: Uint8Array;
+  if (src[2] === 3 && src[3] === 0) {
+    // an empty final block: core's `inflate` returns the whole buffer given for it, whatever it holds
+    got = into.subarray(0, 0);
+  } else {
+    try {
+      got = await inflate(ctx, src, into);
+    } catch (e) {
+      // the platform's decoder fails with an empty message
+      throw new Error(`zlib: corrupt stream${e instanceof Error && e.message ? ` (${e.message})` : ''}`);
+    }
+  }
+  if (got.length !== into.length || got.buffer !== into.buffer || got.byteOffset !== into.byteOffset) {
+    throw new Error(`zlib: decodes to ${got.length} bytes, not ${into.length}`);
+  }
+  const sum = ((src[n - 4] << 24) | (src[n - 3] << 16) | (src[n - 2] << 8) | src[n - 1]) >>> 0;
+  if (adler(into, 0, into.length) >>> 0 !== sum) throw new Error('zlib: Adler-32 mismatch');
 }
 
 /**

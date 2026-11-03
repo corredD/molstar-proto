@@ -41,6 +41,10 @@ transforms the plugin's (`state/formats/volume/ome-zarr.ts`).
   1), `0x2` memcpyed (the bytes follow the header), `0x4` bitshuffle, `0x10` do not split, `>> 5` the codec. A block is
   split in `typesize` streams unless `0x10` is set or it is the last, leftover block; each stream is an int32 size and
   its bytes, stored as they are when the size is the stream's decoded size.
+- **A chunk is untrusted input.** A header whose block is larger than its data is refused (it would only size an
+  allocation). zlib (inside blosc or as the compressor) is checked as zlib's `uncompress` checks it: the 2-byte header,
+  the exact length, the Adler-32, which core's `inflate` leaves to its caller (`zlibDecode`); an empty deflate stream
+  (`03 00`) decodes to nothing, never to the buffer given. A failure names its chunk key and its cause.
 - Codecs inside blosc: LZ4 and LZ4HC (one stream format), zlib. Refused by name: bitshuffle, blosclz, snappy, zstd, and
   blosc format versions other than 1 and 2.
 - Pure TypeScript, no WASM, no dependency: the portal's data is LZ4, and an LZ4 block decoder is about 60 lines.
