@@ -31,6 +31,9 @@ import {
   ParticleRepresentation3DLayers,
 } from '@molstar/plugin/state/transforms/particles/layers';
 import { VolumeRepresentation3D } from '@molstar/plugin/state/transforms/volume/representation';
+import { omeZarrLevelNeeds, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
+import type { OmeZarrFormat } from '@molstar/model/formats/volume/ome-zarr';
+import { gridText, volumeStats, voxelText } from '@molstar/prism-viewer/api/volume';
 import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import { isFailure, labelOf as structureLabel, loadedStructures, pickOne } from '@molstar/prism-viewer/api/scope';
@@ -38,6 +41,7 @@ import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { type ObliquePose, obliquePlane, obliquePoseOfPlane, type SlicePlane } from './oblique.js';
 import { ObliqueHandles } from './oblique-handle.js';
+import { mb } from './portal-run.js';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { ButtonsType } from '@molstar/core/util/input/input-observer';
 import { isEmptyLoci } from '@molstar/model/model/loci';
@@ -110,6 +114,37 @@ export interface SliceInfo {
   readonly radius: number;
 }
 
+/** One level of an OME-Zarr volume (a resolution it can be read at), as the Data section shows it */
+export interface VolumeLevelView {
+  /** Its path in the image ("0": the finest) */
+  readonly path: string;
+  /** Its binning against the finest level: 1, 2, 4… */
+  readonly binning: number;
+  /** Å per voxel (along x) */
+  readonly spacing: number;
+  readonly size: readonly [number, number, number];
+  /** The bytes of its voxels, decoded */
+  readonly bytes: number;
+  /** Over the volume's size guard (its `maxSizeMB`): read only when asked again with `large` */
+  readonly large: boolean;
+  /** "4× · 27.2 Å · 24 MB" */
+  readonly label: string;
+}
+
+/** What a volume's data is (its Data section): its source, grid, voxel and size; an OME-Zarr's levels */
+export interface VolumeDataInfo {
+  /** Its format (OME-ZARR, CCP4…) */
+  readonly source: string;
+  readonly grid: string;
+  readonly voxel: string;
+  /** The bytes of its voxels, decoded */
+  readonly bytes: number;
+  /** Its levels, coarsest to finest; empty: one resolution (an MRC map, a single-level OME-Zarr) */
+  readonly levels: readonly VolumeLevelView[];
+  /** The level read now (its path), when it has levels */
+  readonly level?: string;
+}
+
 /** A segmentation mesh loaded from a file (OBJ, PLY, VTP…), as the Segmentations tab shows it */
 export interface MeshInfo {
   /** The state ref of its representation */
@@ -168,6 +203,19 @@ export class CryoetApi extends ApiArea {
       () => {
         const v = oneVolume({ plugin }, volume || undefined);
         return isFailure(v) ? undefined : sliceOf({ plugin }, v);
+      },
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /** What a volume's data is and its levels (by state ref), following the state tree while watched: a read for views */
+  dataState(volume: string): ReadonlyState<VolumeDataInfo | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => {
+        const v = oneVolume({ plugin }, volume || undefined);
+        return isFailure(v) ? undefined : volumeDataOf(v);
       },
       () => plugin.state.data.events.changed,
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
@@ -777,6 +825,73 @@ export class CryoetApi extends ApiArea {
       );
     },
   });
+
+  readonly level = this.operation({
+    id: 'cryoet.level',
+    title: 'Read a volume at another resolution (an OME-Zarr level)',
+    params: {
+      volume: PD.Text('', { description: 'A volume by label or state ref; empty: the only one loaded' }),
+      level: PD.Text('', { description: 'The level by its path ("0": the finest, 1× binning)' }),
+      large: PD.Boolean(false, { description: "Read a level over the volume's size guard (asked first)" }),
+    },
+    async run({ volume, level, large }, ctx) {
+      const v = oneVolume(ctx, volume || undefined);
+      if (isFailure(v)) return v;
+      const zarr = zarrOf(v);
+      const name = v.cell.obj?.label ?? 'The volume';
+      if (!zarr) return ApiResult.fail('invalid', `${name} has one resolution.`, 'Only an OME-Zarr volume has levels.');
+      const levels = levelViews(zarr);
+      const to = zarr.file.levels.find((l) => l.path === level);
+      if (!to) {
+        return ApiResult.fail(
+          'not-found',
+          `${name} has no level '${level}'.`,
+          `Levels: ${levels.map((l) => `${l.path} (${l.label})`).join(', ')}.`,
+        );
+      }
+      const view = levels.find((l) => l.path === to.path)!;
+      if (to.path === zarr.level.path) return ApiResult.already(`${name} is read at ${view.label}.`);
+      const needs = omeZarrLevelNeeds(to);
+      if (needs > zarr.maxSizeMB * 1e6 && !large) {
+        return ApiResult.fail(
+          'confirm',
+          `${view.binning}× needs ${mb(needs)} decoded, over this volume's ${zarr.maxSizeMB} MB guard.`,
+          'A browser tab holds about 2 GB. Choose a coarser level, or call again with large: true.',
+        );
+      }
+      // the gray windows and the transfer functions as the person set them, in σ: σ changes with the binning
+      const windows = windowsOf(sliceOf(ctx, v));
+      const stats = { ...v.cell.obj!.data.grid.stats };
+      // one write: the level, and each slice's index at its place in Å (an index past the new grid would fail)
+      const b = ctx.plugin.state.data.build();
+      b.to(v.cell).update({
+        ...(v.cell.transform.params as object),
+        level: to.path,
+        maxSizeMB: large ? Math.max(zarr.maxSizeMB, Math.ceil(needs / 1e6)) : zarr.maxSizeMB,
+      });
+      for (const axis of Axes) {
+        const r = sliceRepresentation(v, axis);
+        if (!r) continue;
+        const p = r.cell.transform.params as any;
+        const index = sameIndex(p.type.params.dimension.params, AxisIndex[axis], zarr.level, to);
+        b.to(r.cell).update({
+          ...p,
+          type: { ...p.type, params: { ...p.type.params, dimension: { name: axis, params: index } } },
+        });
+      }
+      const failure = await commitWatched(ctx, v.cell.transform.ref, b);
+      const read = ctx.plugin.state.data.cells.get(v.cell.transform.ref)?.obj?.data as Volume | undefined;
+      if (failure || (read?.sourceData as OmeZarrFormat | undefined)?.data.level.path !== to.path) {
+        return ApiResult.fail(
+          'failed',
+          failure ?? `Could not read ${name} at ${view.label}.`,
+          'It stays at its level.',
+        );
+      }
+      await refit(ctx, v.cell.transform.ref, windows, stats);
+      return ApiResult.ok(`Reading ${name} at ${view.label}.`, { nodes: [v.cell.transform.ref] });
+    },
+  });
 }
 
 const Axes: readonly SliceAxis[] = ['x', 'y', 'z'];
@@ -929,6 +1044,136 @@ function sliceOf(ctx: Pick<ApiContext, 'plugin'>, v: VolumeRef): SliceInfo | und
     };
   });
   return { dimensions: [x, y, z], slices, obliques, radius: Grid.getBoundingSphere(data.grid).radius };
+}
+
+// --- a volume's data and its levels (cryoet.level) -------------------------------------------------------------------
+
+type ZarrLevel = OmeZarrFormat['data']['level'];
+
+/** An OME-Zarr volume's file, its level read now and its size guard; undefined: not an OME-Zarr read by its transform */
+function zarrOf(v: VolumeRef) {
+  const data = v.cell.obj?.data;
+  if (v.cell.transform.transformer !== VolumeFromOmeZarr || data?.sourceData.kind !== 'ome-zarr') return undefined;
+  const { file, level } = (data.sourceData as OmeZarrFormat).data;
+  const { maxSizeMB } = v.cell.transform.params as { maxSizeMB: number };
+  return { file, level, maxSizeMB };
+}
+
+/** An OME-Zarr's levels, coarsest to finest, each its binning against the finest */
+function levelViews(zarr: NonNullable<ReturnType<typeof zarrOf>>): VolumeLevelView[] {
+  const finest = Math.min(...zarr.file.levels.map((l) => l.scale[0]));
+  return [...zarr.file.levels]
+    .sort((a, b) => b.scale[0] - a.scale[0])
+    .map((l) => {
+      const binning = Math.round((l.scale[0] / finest) * 10) / 10;
+      const spacing = l.scale[0];
+      return {
+        path: l.path,
+        binning,
+        spacing,
+        size: l.size,
+        bytes: l.bytes,
+        large: omeZarrLevelNeeds(l) > zarr.maxSizeMB * 1e6,
+        label: `${binning}× · ${+spacing.toFixed(1)} Å · ${mb(l.bytes)}`,
+      };
+    });
+}
+
+function volumeDataOf(v: VolumeRef): VolumeDataInfo | undefined {
+  const data = v.cell.obj?.data;
+  if (!data) return;
+  const stats = volumeStats(data);
+  const zarr = zarrOf(v);
+  const levels = zarr && zarr.file.levels.length > 1 ? levelViews(zarr) : [];
+  return {
+    source: data.sourceData.kind.toUpperCase(),
+    grid: gridText(stats),
+    voxel: voxelText(stats),
+    bytes: (data.grid.cells.data as unknown as ArrayBufferView).byteLength ?? 0,
+    levels,
+    ...(levels.length ? { level: zarr!.level.path } : {}),
+  };
+}
+
+/** A grid slice's index at one level, the index at the same place (Å) at another: voxel i at translation + i·scale */
+function sameIndex(index: number, axis: number, from: ZarrLevel, to: ZarrLevel) {
+  const at = from.translation[axis] + index * from.scale[axis];
+  const i = Math.round((at - to.translation[axis]) / to.scale[axis]);
+  return Math.max(0, Math.min(to.size[axis] - 1, i));
+}
+
+/** The gray windows of a volume's slices and oblique slices set in σ, by their refs */
+function windowsOf(info: SliceInfo | undefined): Map<string, number> {
+  const windows = new Map<string, number>();
+  for (const s of [...(info?.slices ?? []), ...(info?.obliques ?? [])]) {
+    if (s.contrast !== undefined) windows.set(s.ref, s.contrast);
+  }
+  return windows;
+}
+
+/** A transfer function's point (a fraction of [min, max]) at the same value in σ, over another level's statistics */
+export function samePoint(x: number, from: Grid['stats'], to: Grid['stats']) {
+  if (!(from.sigma > 0 && to.sigma > 0 && to.max > to.min)) return x;
+  const z = (from.min + x * (from.max - from.min) - from.mean) / from.sigma;
+  return Math.max(0, Math.min(1, (to.mean + z * to.sigma - to.min) / (to.max - to.min)));
+}
+
+/**
+ * The volume's look set again in σ over its new level's statistics (binning changes σ, and the range more): the
+ * slices' windows at the same σ (`cryoet.slice`'s contrast), the direct volumes' points at the same values in σ (a
+ * fraction of [min, max] otherwise: the Tomogram preset's dark matter would cover the noise of a finer level)
+ */
+async function refit(
+  ctx: Pick<ApiContext, 'plugin'>,
+  volume: string,
+  windows: ReadonlyMap<string, number>,
+  from: Grid['stats'],
+) {
+  const v = oneVolume(ctx, volume);
+  const data = isFailure(v) ? undefined : v.cell.obj?.data;
+  if (isFailure(v) || !data) return;
+  const b = ctx.plugin.state.data.build();
+  for (const r of v.representations) {
+    const ref = r.cell.transform.ref;
+    const old = r.cell.transform.params as any;
+    const k = windows.get(ref);
+    let next: unknown;
+    if (k !== undefined && old?.type?.name === 'slice') {
+      const where =
+        old.type.params.mode === 'plane'
+          ? { plane: old.type.params.plane as SlicePlane }
+          : { axis: old.type.params.dimension.name as SliceAxis, index: old.type.params.dimension.params as number };
+      next = sliceParams(ctx.plugin, data, where, k, old);
+    } else if (old?.type?.name === 'direct-volume' && Array.isArray(old.type.params?.controlPoints)) {
+      const controlPoints = (old.type.params.controlPoints as number[][]).map(([x, ...rest]) => [
+        samePoint(x, from, data.grid.stats),
+        ...rest,
+      ]);
+      next = { ...old, type: { ...old.type, params: { ...old.type.params, controlPoints } } };
+    }
+    if (next && JSON.stringify(next) !== JSON.stringify(old)) b.to(ref).update(next);
+  }
+  await b.commit();
+}
+
+/** A build committed, reverted on an error: the error of the cell `ref` (its transform's message), if it failed */
+async function commitWatched(
+  ctx: Pick<ApiContext, 'plugin'>,
+  ref: string,
+  b: ReturnType<ApiContext['plugin']['build']>,
+) {
+  let failure: string | undefined;
+  const sub = ctx.plugin.state.data.events.cell.stateUpdated.subscribe(({ cell }) => {
+    if (cell.transform.ref === ref && cell.status === 'error' && failure === undefined) {
+      failure = cell.errorText?.replace(/^Error: /, '');
+    }
+  });
+  try {
+    await b.commit({ revertOnError: true });
+  } finally {
+    sub.unsubscribe();
+  }
+  return failure;
 }
 
 // --- the particle lists and their decorations -----------------------------------------------------------------------

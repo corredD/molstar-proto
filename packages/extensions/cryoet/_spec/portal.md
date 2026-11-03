@@ -61,6 +61,8 @@ registration); the index tool `tools/portal-index/`.
   format's limit counts them.
 - **Size guard:** above 512 MB decoded (the tomogram's level plus the zarr annotations at that level), a load fails with
   `confirm` until `large: true`; the card shows the size beside Load and passes `large`.
+- A loaded level is changed in place afterwards (`cryoet.level`, prism-me's Data section: ui.md §4): the same guard, the
+  zarr's own `maxSizeMB`, which a load sets from the level's voxels (at least 512 MB).
 
 ## 4. The card
 
