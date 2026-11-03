@@ -75,10 +75,10 @@ def tf_alpha(table, v):
 def random_tf(rng: np.random.Generator, values: np.ndarray) -> TransferFunction:
     """an opacity ramp from a threshold to a plateau, sometimes with a second, fainter peak below it (Mol*'s direct
     volume transfer functions); the threshold leaves 2-30 % of the cells above it (log-uniform: maps' contours do not
-    survive downsampling, tomograms have none), the peak per-cell opacity log-uniform in [0.03, 0.6]"""
+    survive downsampling, tomograms have none), the peak per-cell opacity log-uniform in [0.03, 0.99]"""
     frac = float(np.exp(rng.uniform(np.log(0.02), np.log(0.3))))
     c, top = (float(x) for x in np.quantile(values, [1 - frac, 1 - frac / 20]))
-    peak = float(np.exp(rng.uniform(np.log(0.03), np.log(0.6))))
+    peak = float(np.exp(rng.uniform(np.log(0.03), np.log(0.99))))
     hi = min(c + max(rng.uniform(0.2, 1.0) * (top - c), 1 / 255), 0.999)
     xs = [0.0, c, hi, 1.0]
     alphas = [0.0, 0.0, peak, peak * rng.uniform(0.5, 1.0)]

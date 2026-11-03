@@ -8,13 +8,13 @@ import { VolumeNeuralWeights } from './_generated/volume-neural-weights.js';
 
 /** The network's weights as `tools/volume-lighting/train.py` writes them (`volume-lighting.md` §C1) */
 export interface VolumeNetworkWeights {
-  readonly layout: {
-    readonly inputs: number;
-    readonly hidden: number;
-    readonly outputs: number;
-    readonly outMax: number;
-  };
-  /** per input: normalized as `(x - mean) * scale` */
+  readonly layout: { readonly inputs: number; readonly hidden: number; readonly outputs: number };
+  /** per input: the training range it is clamped to (a network extrapolates badly beyond it) */
+  readonly lo: readonly number[];
+  readonly hi: readonly number[];
+  /** per output: its largest value (the key's phase peak, the sky's radiance 1) */
+  readonly outMax: readonly number[];
+  /** per input: normalized as `(x - mean) * scale` after the clamp */
   readonly mean: readonly number[];
   readonly scale: readonly number[];
   /** row major, out × in */
@@ -43,9 +43,12 @@ function layer(w: readonly number[], b: readonly number[], x: ArrayLike<number>,
  * the key light's and the ambient light's in-scatter
  */
 export function evaluateVolumeNetwork(input: ArrayLike<number>, w: VolumeNetworkWeights = VolumeNeuralWeights) {
-  const x = Array.from({ length: w.layout.inputs }, (_, i) => (input[i] - w.mean[i]) * w.scale[i]);
+  const x = Array.from(
+    { length: w.layout.inputs },
+    (_, i) => (Math.min(Math.max(input[i], w.lo[i]), w.hi[i]) - w.mean[i]) * w.scale[i],
+  );
   const o = layer(w.w3, w.b3, layer(w.w2, w.b2, layer(w.w1, w.b1, x, true), true), false);
-  return o.map((v) => Math.min(v * v, w.layout.outMax));
+  return o.map((v, i) => Math.min(v * v, w.outMax[i]));
 }
 
 /** a WGSL float literal of `x` (the shortest decimal that rounds back to it) */
@@ -72,15 +75,18 @@ function vec4(a: readonly number[], i0: number, pad: number) {
 }
 
 /**
- * The network in WGSL from `w` (`volume-lighting.md` §C3): constants only, the 14 inputs in 4 vec4s, each layer as
+ * The network in WGSL from `w` (`volume-lighting.md` §C3): constants only, the 14 inputs in 4 vec4s (clamped to the
+ * training range, then normalized), each layer as
  * 4×4 blocks (`mat4x4` and, for the 2 outputs, `mat4x2`); `volumeNetwork` takes the descriptors of
  * `volumeDescriptors` and the albedo
  */
 export function getVolumeNetworkWgsl(w: VolumeNetworkWeights = VolumeNeuralWeights) {
-  const { inputs, hidden, outputs, outMax } = w.layout;
+  const { inputs, hidden, outputs } = w.layout;
   if (inputs !== 14 || hidden !== 16 || outputs !== 2) throw new Error('volume network: unexpected layout');
   const lines: string[] = [];
   for (let i = 0; i < 4; ++i) {
+    lines.push(`const VnLo${i} = ${vec4(w.lo, 4 * i, 0)};`);
+    lines.push(`const VnHi${i} = ${vec4(w.hi, 4 * i, 0)};`);
     lines.push(`const VnMean${i} = ${vec4(w.mean, 4 * i, 0)};`);
     lines.push(`const VnScale${i} = ${vec4(w.scale, 4 * i, 0)};`);
   }
@@ -95,10 +101,12 @@ export function getVolumeNetworkWgsl(w: VolumeNetworkWeights = VolumeNeuralWeigh
     return out;
   };
   const body = [
-    '    let x0 = (vec4<f32>(d.around0, d.around1.x) - VnMean0) * VnScale0;',
-    '    let x1 = (vec4<f32>(d.around1.yz, d.light0.xy) - VnMean1) * VnScale1;',
-    '    let x2 = (vec4<f32>(d.light0.z, d.light1) - VnMean2) * VnScale2;',
-    '    let x3 = (vec4<f32>(d.cosine, albedo, 0.0, 0.0) - VnMean3) * VnScale3;',
+    ...[
+      'vec4<f32>(d.around0, d.around1.x)',
+      'vec4<f32>(d.around1.yz, d.light0.xy)',
+      'vec4<f32>(d.light0.z, d.light1)',
+      'vec4<f32>(d.cosine, albedo, 0.0, 0.0)',
+    ].map((v, i) => `    let x${i} = (clamp(${v}, VnLo${i}, VnHi${i}) - VnMean${i}) * VnScale${i};`),
     ...hiddenLayer(w.w1, w.b1, inputs, 'VnA', 'x'),
     ...hiddenLayer(w.w2, w.b2, hidden, 'VnB', 'vna'),
   ];
@@ -106,7 +114,7 @@ export function getVolumeNetworkWgsl(w: VolumeNetworkWeights = VolumeNeuralWeigh
   body.push(
     `    let o = vec2<f32>(${lit(w.b3[0])}, ${lit(w.b3[1])}) + ${[0, 1, 2, 3].map((k) => `VnC${k} * vnb${k}`).join(' + ')};`,
   );
-  body.push(`    return min(o * o, vec2<f32>(${lit(outMax)}));`);
+  body.push(`    return min(o * o, vec2<f32>(${lit(w.outMax[0])}, ${lit(w.outMax[1])}));`);
   return /* wgsl */ `
 ${lines.join('\n')}
 

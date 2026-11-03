@@ -46,11 +46,11 @@ HEADER = """/**
 """
 
 
-def write_weights(net: Net, path: str, validation: dict):
+def write_weights(net: Net, path: str, validation: dict, xv: torch.Tensor):
+    """the module, its check: 8 validation inputs (the training distribution, not saturated) and PyTorch's outputs"""
     j = net.export()
     gen = torch.Generator().manual_seed(1)
-    x = torch.cat([torch.rand(4, 12, generator=gen) * 2, torch.rand(4, 1, generator=gen) * 2 - 1,
-                   0.3 + 0.65 * torch.rand(4, 1, generator=gen)], 1)
+    x = xv[torch.randperm(len(xv), generator=gen)[:8]]
     with torch.no_grad():
         j['check'] = {'inputs': x.reshape(-1).tolist(), 'outputs': net(x).reshape(-1).tolist()}
     j['validation'] = validation
@@ -94,5 +94,5 @@ if __name__ == '__main__':
         print('validation:')
         res = {'neural': report('neural', net(xv), yv), 'volumetric': report('volumetric', torch.stack(volumetric(xv[:, :13]), 1), yv)}
     if a.out:
-        write_weights(net, a.out, res)
+        write_weights(net, a.out, res, xv)
         print('wrote', a.out)

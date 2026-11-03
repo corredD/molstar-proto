@@ -17,6 +17,15 @@ describe('volume network', () => {
     }
   });
 
+  it('lights a uniform dense block near 0, however dense (no glow past the training range)', () => {
+    // every read σ: deep inside a dense block, where the light and the sky are blocked
+    for (const sigma of [1, 2, 4, 6.9]) {
+      const [key, ambient] = evaluateVolumeNetwork([...Array(12).fill(sigma), 0, 0.8]);
+      expect(key, `key at σ ${sigma}`).toBeLessThan(0.1);
+      expect(ambient, `ambient at σ ${sigma}`).toBeLessThan(0.1);
+    }
+  });
+
   it('writes every weight into the WGSL once, as a literal', () => {
     const wgsl = getVolumeNetworkWgsl();
     const { w1, w2, w3 } = VolumeNeuralWeights;
