@@ -12,6 +12,7 @@
  * Requires compiled library output (`pnpm build:lib`).
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { execFileSync } from 'node:child_process';
@@ -29,8 +30,8 @@ const Allowed = {
   externalThemes: ['external-structure', 'external-volume'],
   /** The open-anything handler is the registered `DefaultDragAndDrop` fallback instead of being hard-coded. */
   dragAndDrop: ['open-files'],
-  /** Formats new in v6: NAMD extended system files (periodic boxes for coordinates). */
-  formats: ['xsc'],
+  /** Formats new in v6: NAMD extended system files (periodic boxes for coordinates), glTF 2.0 meshes as shapes. */
+  formats: ['xsc', 'gltf'],
   /**
    * Parsers take String, Binary and Response Data (`Download` and `ReadFile` give Response Data, `.v6/data-response`):
    * the data actions that list `Response Data` are taken out of the String and Binary Data lists of both dumps.

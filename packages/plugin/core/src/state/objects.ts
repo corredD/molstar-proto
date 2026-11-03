@@ -3,6 +3,7 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { Ccp4File } from '@molstar/io/reader/ccp4/schema';
@@ -18,6 +19,7 @@ import type { Dsn6File } from '@molstar/io/reader/dsn6/schema';
 import type { PlyFile } from '@molstar/io/reader/ply/schema';
 import type { ObjFile } from '@molstar/io/reader/obj/schema';
 import type { VtpFile } from '@molstar/io/reader/vtp/schema';
+import type { GltfFile } from '@molstar/io/reader/gltf/schema';
 import type { PsfFile } from '@molstar/io/reader/psf/parser';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { ParticleTrajectory } from '@molstar/model/model/particles/particle-trajectory';
@@ -220,6 +222,7 @@ export namespace PluginStateObject {
     export class Ply extends Create<PlyFile>({ name: 'PLY File', typeClass: 'Data' }) {}
     export class Obj extends Create<ObjFile>({ name: 'OBJ File', typeClass: 'Data' }) {}
     export class Vtp extends Create<VtpFile>({ name: 'VTP File', typeClass: 'Data' }) {}
+    export class Gltf extends Create<GltfFile>({ name: 'glTF File', typeClass: 'Data' }) {}
     export class Ccp4 extends Create<Ccp4File>({ name: 'CCP4/MRC/MAP File', typeClass: 'Data' }) {}
     export class Dsn6 extends Create<Dsn6File>({ name: 'DSN6/BRIX File', typeClass: 'Data' }) {}
     export class Dx extends Create<DxFile>({ name: 'DX File', typeClass: 'Data' }) {}
