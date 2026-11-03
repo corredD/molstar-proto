@@ -10,7 +10,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { StateSelection } from '@molstar/core/state';
 import { PluginContext } from '@molstar/plugin/context';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
-import { OmeZarr, OmeZarrFromUrl, OpenOmeZarr, VolumeFromOmeZarr } from '../volume/ome-zarr.js';
+import type { OmeZarrFile } from '@molstar/io/reader/zarr/ome-zarr';
+import { getOmeZarrLevel, OmeZarr, OmeZarrFromUrl, OpenOmeZarr, VolumeFromOmeZarr } from '../volume/ome-zarr.js';
 
 /** io's Zarr fixtures (data files, made by make-fixtures.py there). */
 const Fixtures = path.join(import.meta.dirname, '../../../../../../io/src/reader/zarr/_test/fixtures');
@@ -99,6 +100,19 @@ describe('OME-Zarr in the plugin', () => {
     const { space, data } = level0.grid.cells;
     expect(space.get(data, 7, 3, 5)).toBe(537);
     await plugin.dispose();
+  });
+
+  it('takes as coarsest the level of fewest bytes, not the last listed', () => {
+    const file = {
+      levels: [
+        { path: 'a', bytes: 10 },
+        { path: 'b', bytes: 1 },
+        { path: 'c', bytes: 5 },
+      ],
+    } as unknown as OmeZarrFile;
+    expect(getOmeZarrLevel(file, 'coarsest').path).toBe('b');
+    expect(getOmeZarrLevel(file, 'c').path).toBe('c');
+    expect(() => getOmeZarrLevel(file, 'd')).toThrow("no level 'd' (a, b, c)");
   });
 
   it('refuses a level over the size limit before reading any chunk, and leaves no node', async () => {

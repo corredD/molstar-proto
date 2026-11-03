@@ -112,6 +112,59 @@ describe('volumeFromOmeZarr', () => {
     expect(v.grid.stats).toEqual({ min: 1, max: 3, mean: 2, sigma: 1 });
   });
 
+  it('maps the array axes to x, y, z in any order (y, z, x: a 3-cycle)', async () => {
+    const enc = (o: object) => new TextEncoder().encode(JSON.stringify(o));
+    // nx, ny, nz = 4, 2, 3, stored as (y, z, x), one raw chunk; voxel value 100 z + 10 y + x
+    const [nx, ny, nz] = [4, 2, 3];
+    const v = new Float32Array(nx * ny * nz);
+    for (let y = 0; y < ny; y++)
+      for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) v[(y * nz + z) * nx + x] = 100 * z + 10 * y + x;
+    const files = new Map<string, Uint8Array<ArrayBuffer>>([
+      [
+        '.zattrs',
+        enc({
+          multiscales: [
+            {
+              axes: ['y', 'z', 'x'].map((name) => ({ name, type: 'space' })),
+              datasets: [{ path: '0', coordinateTransformations: [{ type: 'scale', scale: [2, 3, 1] }] }],
+            },
+          ],
+        }),
+      ],
+      [
+        '0/.zarray',
+        enc({
+          zarr_format: 2,
+          shape: [ny, nz, nx],
+          chunks: [ny, nz, nx],
+          dtype: '<f4',
+          compressor: null,
+          fill_value: 0,
+          filters: null,
+          order: 'C',
+        }),
+      ],
+      ['0/0.0.0', new Uint8Array(v.buffer)],
+    ]);
+    const file = await openOmeZarr(ZarrStore.fromMap(files), 'yzx').run();
+    if (file.isError) throw new Error(file.message);
+    const level = file.result.levels[0];
+    expect([level.size, level.scale]).toEqual([
+      [4, 2, 3],
+      [1, 2, 3],
+    ]);
+    const values = await readOmeZarrLevel(file.result, level).run();
+    if (values.isError) throw new Error(values.message);
+    const { space, data } = (await volumeFromOmeZarr(file.result, level, values.result).run()).grid.cells;
+    expect(space.dimensions).toEqual([4, 2, 3]);
+    for (const [x, y, z] of [
+      [3, 1, 2],
+      [1, 0, 2],
+      [2, 1, 0],
+    ])
+      expect(space.get(data, x, y, z)).toBe(100 * z + 10 * y + x);
+  });
+
   it('recommends the iso value 0.5 for a 0/1 mask', async () => {
     const mask = await zarrVolume('mask.zarr', 0);
     expect(mask.grid.cells.data).toBeInstanceOf(Int8Array);

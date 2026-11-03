@@ -69,6 +69,16 @@ describe('bloscDecode', () => {
     expect(flags('lz4-tiny-f8') & 0x10).toBe(0x10);
     expect(flags('memcpyed-f4') & 0x2).toBe(0x2);
     expect(flags('zlib-shuffle-f4') >> 5).toBe(3);
+    // lz4-random-u2: one block of 2 streams, at least one stored (its size is the stream's decoded size)
+    const r = read('lz4-random-u2');
+    const rh = bloscHeader(r);
+    const sizes: number[] = [];
+    for (let s = 0, p = r[16] | (r[17] << 8) | (r[18] << 16) | (r[19] << 24); s < 2; s++) {
+      const n = r[p] | (r[p + 1] << 8) | (r[p + 2] << 16) | (r[p + 3] << 24);
+      sizes.push(n);
+      p += 4 + n;
+    }
+    expect(sizes).toContain(rh.nbytes / 2);
     const h = bloscHeader(read('lz4-blocks-f4'));
     expect(h.nbytes % h.blocksize).toBeGreaterThan(0);
     expect(h.nbytes / h.blocksize).toBeGreaterThan(1);
