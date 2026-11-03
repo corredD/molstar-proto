@@ -7,6 +7,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -115,11 +116,12 @@ describe('the params form rows as views of their field', () => {
     expect(hidden()).toEqual([]);
   });
 
-  it('writes a vector, a matrix and an interval from the value, one watch each', () => {
+  it('writes a vector, a matrix and an interval (with bounds and without) from the value, one watch each', () => {
     const forms = {
       v: PD.Vec3([1, 2, 3] as any, {}, { label: 'Vector' }),
       m: PD.Mat4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] as any, { label: 'Matrix' }),
       i: PD.Interval([0.2, 0.6], { min: 0, max: 1, step: 0.1 }, { label: 'Range' }),
+      d: PD.Interval([-1, 1], { step: 0.1 }, { label: 'Domain' }),
     };
     const form = new ParamsFormModel(forms);
     const container = mount(form);
@@ -128,6 +130,9 @@ describe('the params form rows as views of their field', () => {
     expect(vec()).toEqual(['1', '2', '3']);
     expect(container.textContent).toContain('0.2–0.6');
     expect(container.textContent).toContain('Identity');
+    const domain = () =>
+      [...container.querySelectorAll<HTMLInputElement>('input[aria-label^="Domain"]')].map((i) => i.value);
+    expect(domain()).toEqual(['-1.0', '1.0']);
 
     // Three numbers, one render; the matrix's summary follows its value.
     const m = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 0, 0, 1];
@@ -136,8 +141,10 @@ describe('the params form rows as views of their field', () => {
         form.set('v', [4, 5, 6] as any);
         form.set('m', m as any);
         form.set('i', [0.1, 0.9]);
+        form.set('d', [-3, 8]);
       }),
-    ).toBe(3);
+    ).toBe(4);
+    expect(domain()).toEqual(['-3.0', '8.0']);
     expect(vec()).toEqual(['4', '5', '6']);
     expect(container.textContent).toContain('4 × 4 matrix');
     expect(container.textContent).toContain('0.1–0.9');
