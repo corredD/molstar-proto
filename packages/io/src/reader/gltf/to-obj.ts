@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Mat3 } from '@molstar/core/math/linear-algebra/3d/mat3';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { Color } from '@molstar/core/util/color/color';
@@ -49,14 +50,21 @@ export function gltfToObj({ meshes, instances }: GltfFile): { obj: ObjFile; mtl:
   const suffixes = new Map<string, number>();
 
   const normalMatrix = Mat4();
+  const cofactors = Mat3();
   let v = 0,
     t = 0;
   for (const { name: nodeName, mesh, transform } of instances) {
     const { name: meshName, primitives } = meshes[mesh];
     const identity = Mat4.isIdentity(transform);
     // spec §3.7.4: a mirroring transform reverses the winding
-    const flip = Mat4.determinant(transform) < 0;
-    if (hasNormals && !identity) Mat4.transpose(normalMatrix, Mat4.invert(normalMatrix, transform));
+    const det = Mat4.determinant(transform);
+    const flip = det < 0;
+    if (hasNormals && !identity) {
+      // the inverse transpose up to its scale (normalized per normal): the cofactor matrix, signed by the determinant,
+      // which exists for a flattened (singular) node too
+      Mat4.fromMat3(normalMatrix, Mat3.adjointFromMat4(cofactors, transform));
+      if (flip) Mat4.scaleUniformly(normalMatrix, normalMatrix, -1);
+    }
     for (let pi = 0, pl = primitives.length; pi < pl; ++pi) {
       const {
         index,

@@ -10,7 +10,8 @@ import * as path from 'node:path';
 import { Color } from '@molstar/core/util/color/color';
 import { parseGltf } from '../gltf/parser.js';
 import { gltfToObj } from '../gltf/to-obj.js';
-import { GlbChunkType, GlbMagic, GltfComponentType as CT, type GltfFile } from '../gltf/schema.js';
+import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
+import { GlbChunkType, GlbMagic, GltfComponentType as CT, type GltfFile, type GltfPrimitive } from '../gltf/schema.js';
 
 // --- a tiny glTF writer: the JSON and one binary buffer, as GLB or as .gltf with a data URI ---
 
@@ -175,6 +176,37 @@ describe('glTF reader', () => {
     const { obj } = gltfToObj(file);
     expect(obj.normalCount).toBe(3);
     expect(toArray(obj.normals)).toEqual([0, -1, 0, 0, -1, 0, 0, -1, 0]);
+  });
+
+  it('transforms normals by the inverse transpose, also for mirrored and flattened nodes', () => {
+    const s = Math.SQRT1_2;
+    const bake = (normal: number[], ...nodes: Mat4[]) => {
+      const primitive: GltfPrimitive = {
+        index: 0,
+        vertexCount: 3,
+        positions: triangle,
+        normals: new Float32Array([...normal, ...normal, ...normal]),
+        colorSize: 0,
+        triangleCount: 1,
+      };
+      const file: GltfFile = {
+        meshes: [{ primitives: [primitive] }],
+        instances: nodes.map((transform) => ({ mesh: 0, transform })),
+      };
+      const { normals } = gltfToObj(file).obj;
+      return nodes.map((_, i) => toArray(normals.subarray(i * 9, i * 9 + 3)));
+    };
+    const scale = (x: number, y: number, z: number) => Mat4.fromScaling(Mat4(), [x, y, z]);
+    // non-uniform scale: the plain matrix would give (0.894, 0.447, 0)
+    expect(bake([s, s, 0], scale(2, 1, 1))).toEqual([toArray([1 / Math.sqrt(5), 2 / Math.sqrt(5), 0])]);
+    // a mirror keeps the normal's side of the surface
+    expect(bake([s, s, 0], scale(-1, 1, 1))).toEqual([toArray([-s, s, 0])]);
+    // a node flattened to z = 0 (legal, e.g. to hide it), after a rotated one: its own normal, (0, 0, 1)
+    const rotated = Mat4.fromRotation(Mat4(), Math.PI / 2, [1, 0, 0]);
+    expect(bake([0, 0, 1], rotated, scale(1, 1, 0))).toEqual([
+      [0, -1, 0],
+      [0, 0, 1],
+    ]);
   });
 
   it('reads uint8, uint16 and uint32 indices to the same triangles', async () => {
