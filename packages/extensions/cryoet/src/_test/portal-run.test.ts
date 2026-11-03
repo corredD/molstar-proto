@@ -133,6 +133,20 @@ describe('describePortalRun', () => {
     expect(ok(describePortalRun(() => true, unflagged, 'pt117_ts_001')).tomogram?.id).toBe(64011);
   });
 
+  it('takes, with nothing flagged, the first spacing that has a tomogram (the card cannot choose a spacing)', () => {
+    const run = {
+      id: 1,
+      name: 'r',
+      spacings: [
+        { spacing: 5, tomograms: [], annotations: [] },
+        { spacing: 10, tomograms: [tomogram(7, 10, {})], annotations: [] },
+      ],
+    };
+    const info = ok(describePortalRun(() => true, { ...ds, runList: [run] }, 'r'));
+    expect(info.spacing.spacing).toBe(10);
+    expect(info.tomogram?.id).toBe(7);
+  });
+
   it('names the tomograms it has when asked for one it has not, or one of another spacing', () => {
     expect(describeRun(undefined, 99)).toMatchObject({
       ok: false,

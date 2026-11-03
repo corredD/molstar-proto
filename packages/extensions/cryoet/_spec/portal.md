@@ -39,7 +39,7 @@ registration); the index tool `tools/portal-index/`.
   it (its spacing, annotations and levels come with it); `spacing` alone: that spacing's default tomogram, else its
   first; neither: the run's default tomogram, the lowest id flagged `default` (a run may flag one a spacing: 10518
   pt117_ts_001 flags 64007 at 10.403 Å and 64011 at 5.003 Å, and the portal's run page shows 64007, its first by id),
-  else the first spacing's first. Annotations are the chosen spacing's.
+  else the first tomogram of the first spacing that has one. Annotations are the chosen spacing's.
 - **Reuse, no reader of its own:** ndjson and GLB by `load.url` (`PortalReaders`), an OME-Zarr by the format's
   transforms (`OmeZarrFromUrl`, `VolumeFromOmeZarr`: several files, not one URL; not `OpenOmeZarr`, whose default
   isosurface the slices would only hide), the points' pixel size by `particles.source`, the decoration by

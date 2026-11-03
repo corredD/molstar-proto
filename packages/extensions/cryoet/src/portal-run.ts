@@ -101,7 +101,7 @@ export function describePortalRun(
 /**
  * The spacing and tomogram a load takes (_spec/portal.md §2): a tomogram by id, from whichever spacing holds it; a
  * spacing's flagged tomogram (the portal's default), else its first; with neither, the run's default tomogram (the
- * lowest id flagged, as the portal's run page), else its first spacing's first
+ * lowest id flagged, as the portal's run page), else the first tomogram of its first spacing that has one
  */
 function pickTomogram(
   run: PortalRun,
@@ -128,7 +128,9 @@ function pickTomogram(
       ? notFound(`${run.name} has no tomogram ${tomogram} at ${spacings[0].spacing} Å.`, `It has ${ids.join(', ')}.`)
       : notFound(`${run.name} has no tomogram ${tomogram}.`, `It has ${ids.join(', ')}.`);
   }
-  return { s: spacings[0], t: spacings[0].tomograms[0] };
+  // the first spacing with a tomogram: the card chooses a tomogram, not a spacing (§4)
+  const s = spacings.find((x) => x.tomograms.length) ?? spacings[0];
+  return { s, t: s.tomograms[0] };
 }
 
 const words = (s: string) => s.replace(/_/g, ' ');
