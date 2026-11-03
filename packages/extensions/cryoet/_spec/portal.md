@@ -21,7 +21,8 @@ registration); the index tool `tools/portal-index/`.
   reads whole files; the zarr has levels).
 - **Curated, not the portal's:** `decorations` by object name: the PDB that decorates the points, the EMDB average, and
   the average's box center in the structure's frame (§3). The portal links no fitted model.
-- Size: 10003 (65 runs) 116 KB, 10453 (95 runs) 297 KB, 10524 (12 runs) 27 KB; each loaded on first use only.
+- Size: 10003 (65 runs) 116 KB, 10453 (95 runs) 297 KB, 10524 (12 runs) 27 KB, 10518 (49 runs, PP7 virus-like particles;
+  Ludo, 2026-11-03) 213 KB; each loaded on first use only.
 
 ## 2. The operations
 

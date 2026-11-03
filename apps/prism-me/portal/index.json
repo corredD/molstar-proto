@@ -18,6 +18,12 @@
    "title": "Cryo-FIB-milled NIH/3T3 mouse fibroblasts (dataset 4)",
    "organism": "Mus musculus",
    "runs": 12
+  },
+  {
+   "id": 10518,
+   "title": "PP7 virus-like particles in E. coli imaged with the crossed laser phase plate switched off (underfocus phase contrast, 2-3 \u00b5m)",
+   "organism": "Escherichia coli",
+   "runs": 49
   }
  ]
 }

@@ -50,28 +50,28 @@ agent run (one undo step each); the command menu (⌘K) has each.
 
 ## Cryo-ET
 
-| Feature                                                                                                            | Status   | Operation / where                                                                 |
-| ------------------------------------------------------------------------------------------------------------------ | -------- | --------------------------------------------------------------------------------- |
-| Decorate a particle list (every target or some) with an object of the scene: a structure, a mesh, a map            | Done     | `cryoet.decorate` `with: object`; Decorations row; right-click › Decorate with…   |
-| … with a PDB id or URL                                                                                             | Done     | `cryoet.decorate` `with: pdb`                                                     |
-| … with nothing (spheres)                                                                                           | Done     | `cryoet.decorate` `with: none`                                                    |
-| Swap a decoration quickly                                                                                          | Done     | an object of the scene: no parsing; only the changed targets reload               |
-| A target per class (or another attribute: cc, score), each decorated apart                                         | Done     | `cryoet.classes`; Decorations row's Targets                                       |
-| A class (target) shown or hidden by its row's eye, read back from its own layer                                    | Done     | `particles.look`; `cryoet.decorations` `visible` (lane `tree-eyes`)               |
-| The spheres hidden once decorated                                                                                  | Done     | `cryoet.decorate` adds a target representation                                    |
-| Color particles by attribute (cc, class, score)                                                                    | Done     | Prism's particle color themes (`particles.representation`)                        |
-| Tomogram slice along x, y, z, its position, a gray window in σ                                                     | Done     | `cryoet.slice`; Slice row                                                         |
-| Tilt series stepped image by image                                                                                 | Done     | `cryoet.slice` along z                                                            |
-| Oblique slice: a plane through a volume, its handle and numbers in the volume's frame, moved with it               | Done     | `cryoet.oblique`; Oblique slice row                                               |
-| A volume's Data: source, grid, voxel, size; an OME-Zarr read at another level in place, slices and looks kept      | Done     | `cryoet.level`; the properties' Data (ui.md §4)                                   |
-| A volume's Direct volume: Lighting on a line, Prism's transfer function on the histogram, ×½ ×2; Add one           | Done     | `volume.update`, `volume.representation`; the properties (ui.md §4)               |
-| Segmentation meshes: show, hide, surface, wireframe, both, opacity, color                                          | Done     | `cryoet.meshes`, `cryoet.mesh`; Segmentations tab                                 |
-| A class's decoration chosen from a column of the file other than an attribute (a tomogram name)                    | Deferred | string columns are not particle attributes                                        |
-| CryoET Data Portal: a dataset's runs, tomogram levels and annotations from the shipped index (10003, 10453, 10524) | Done     | `cryoetPortal.datasets`, `cryoetPortal.run`; `portal/*.json` (tools/portal-index) |
-| … a run loaded: tomogram slices and direct volume, masks as surfaces, points at the index's spacing, decorated     | Done     | `cryoetPortal.load`; extensions/cryoet/_spec/portal.md                            |
-| … from + Open (the card) or the URL (`?portal-dataset=10003&portal-run=TS_08`)                                     | Done     | CryoET Data Portal…; `portal-*` URL params                                        |
-| … a portal object's run page and DOIs                                                                              | Done     | right-click › `<dataset> <run>` on the CryoET Data Portal, doi:…                  |
-| … any dataset live (GraphQL search), copick picks, tilt series                                                     | Deferred | the portal's CORS allow-list; plan part E                                         |
+| Feature                                                                                                                   | Status   | Operation / where                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------- |
+| Decorate a particle list (every target or some) with an object of the scene: a structure, a mesh, a map                   | Done     | `cryoet.decorate` `with: object`; Decorations row; right-click › Decorate with…   |
+| … with a PDB id or URL                                                                                                    | Done     | `cryoet.decorate` `with: pdb`                                                     |
+| … with nothing (spheres)                                                                                                  | Done     | `cryoet.decorate` `with: none`                                                    |
+| Swap a decoration quickly                                                                                                 | Done     | an object of the scene: no parsing; only the changed targets reload               |
+| A target per class (or another attribute: cc, score), each decorated apart                                                | Done     | `cryoet.classes`; Decorations row's Targets                                       |
+| A class (target) shown or hidden by its row's eye, read back from its own layer                                           | Done     | `particles.look`; `cryoet.decorations` `visible` (lane `tree-eyes`)               |
+| The spheres hidden once decorated                                                                                         | Done     | `cryoet.decorate` adds a target representation                                    |
+| Color particles by attribute (cc, class, score)                                                                           | Done     | Prism's particle color themes (`particles.representation`)                        |
+| Tomogram slice along x, y, z, its position, a gray window in σ                                                            | Done     | `cryoet.slice`; Slice row                                                         |
+| Tilt series stepped image by image                                                                                        | Done     | `cryoet.slice` along z                                                            |
+| Oblique slice: a plane through a volume, its handle and numbers in the volume's frame, moved with it                      | Done     | `cryoet.oblique`; Oblique slice row                                               |
+| A volume's Data: source, grid, voxel, size; an OME-Zarr read at another level in place, slices and looks kept             | Done     | `cryoet.level`; the properties' Data (ui.md §4)                                   |
+| A volume's Direct volume: Lighting on a line, Prism's transfer function on the histogram, ×½ ×2; Add one                  | Done     | `volume.update`, `volume.representation`; the properties (ui.md §4)               |
+| Segmentation meshes: show, hide, surface, wireframe, both, opacity, color                                                 | Done     | `cryoet.meshes`, `cryoet.mesh`; Segmentations tab                                 |
+| A class's decoration chosen from a column of the file other than an attribute (a tomogram name)                           | Deferred | string columns are not particle attributes                                        |
+| CryoET Data Portal: a dataset's runs, tomogram levels and annotations from the shipped index (10003, 10453, 10524, 10518) | Done     | `cryoetPortal.datasets`, `cryoetPortal.run`; `portal/*.json` (tools/portal-index) |
+| … a run loaded: tomogram slices and direct volume, masks as surfaces, points at the index's spacing, decorated            | Done     | `cryoetPortal.load`; extensions/cryoet/_spec/portal.md                            |
+| … from + Open (the card) or the URL (`?portal-dataset=10003&portal-run=TS_08`)                                            | Done     | CryoET Data Portal…; `portal-*` URL params                                        |
+| … a portal object's run page and DOIs                                                                                     | Done     | right-click › `<dataset> <run>` on the CryoET Data Portal, doi:…                  |
+| … any dataset live (GraphQL search), copick picks, tilt series                                                            | Deferred | the portal's CORS allow-list; plan part E                                         |
 
 ## Stage tools (Stories Untold)
 

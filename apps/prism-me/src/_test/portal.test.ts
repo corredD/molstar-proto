@@ -22,7 +22,7 @@ const read = <T>(name: string) =>
 describe('the shipped portal index', () => {
   it('lists each dataset it holds, in the version the viewer reads', () => {
     const catalog = checkPortalIndex(read<PortalCatalog>('index'), 'index.json');
-    expect(catalog.datasets.map((d) => d.id)).toEqual([10003, 10453, 10524]);
+    expect(catalog.datasets.map((d) => d.id)).toEqual([10003, 10453, 10524, 10518]);
     for (const d of catalog.datasets)
       expect(checkPortalIndex(read<PortalDataset>(String(d.id)), `${d.id}`).id).toBe(d.id);
   });
