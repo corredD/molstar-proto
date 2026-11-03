@@ -18,6 +18,7 @@ import {
   PortalLargeBytes,
   type PortalIndexSource,
   type PortalRunInfo,
+  showAverageVolume,
   showTomogramVolume,
   tomogramControlPoints,
 } from '../portal.js';
@@ -310,6 +311,16 @@ describe('cryoetPortal', () => {
     const api = { run: async (_name: string, args: unknown) => (calls.push(args), ApiResult.ok('')) };
     expectOk(await showTomogramVolume({ plugin: v.plugin, api } as never, tomogram.cell.transform.ref));
     expect(calls).toMatchObject([{ type: 'direct-volume', params: { lighting: 'volumetric' } }]);
+  });
+
+  it('shows an average (EMDB) as a direct volume lit volumetric, its isosurface hidden', async () => {
+    const calls: [string, unknown][] = [];
+    const api = { run: async (name: string, args: unknown) => (calls.push([name, args]), ApiResult.ok('')) };
+    expectOk(await showAverageVolume({ api } as never, 'emd'));
+    expect(calls).toMatchObject([
+      ['volume.representation', { volume: 'emd', type: 'direct-volume', params: { lighting: 'volumetric' } }],
+      ['volume.visibility', { volume: 'emd', representation: 'isosurface', visible: false }],
+    ]);
   });
 
   it('asks before a load above the size guard', async () => {
