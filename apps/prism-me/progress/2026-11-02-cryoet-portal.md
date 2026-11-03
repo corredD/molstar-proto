@@ -97,12 +97,19 @@ independent. Expert coding, efficient and optimized. No repetition with existing
   level 1 negated, 160 Å sphere): CC M 0.112 ± 0.028, Mᵀ 0.106 ± 0.031, shuffled 0.106, random 0.108; M with the
   reference mirrored in x **0.183 ± 0.037** (wins at 377/378 over M, 375/378 over Mᵀ mirrored in x, 378/378 over the
   rest); mirrored in y or z: null. So M as given (Mol*'s reader) and **EMD-13412 is of the other hand than the portal's
-  TS_08**: the 7PHB decorations sit in the densities up to a mirror. Left to Ludo (TODO.md).
+  TS_08**. Unmirrored, M (0.112) is at chance (random 0.108): the 7PHB decorations sit at the right places, their
+  orientations no better than random against the density, and no rotation fixes a mirror. Left to Ludo (TODO.md).
+- Rerun with the reference low-passed before resampling (review nit): M mirrored in x 0.186 ± 0.038, M 0.111, Mᵀ 0.107,
+  random 0.110, shuffled 0.106; wins 375–378 of 378 over every other candidate. Same conclusion.
 - 7PHB's box center is 18 Å from EMD-13412's (bbox), 7.4 Å by Mol*'s boundary: the offset is needed.
 - `dataFormats.get` throws for an unknown name; `has` does not.
 - A headless viewer cannot make a direct volume (no graphics): tested by its transfer function instead.
 - `tsc -p apps/prism-me/tsconfig.storybook.json` fails on prism-me itself (viewer `api/area.ts` `measure`,
   `api/styles.ts`): not this lane's files.
+
+- `pnpm check:workspace` fails here only in `registry-compare.mjs`: the OME-Zarr action and two transforms are not in
+  its v6 allow list (the glb-reader lane added `gltf` there; the ome-zarr lane has not yet). Theirs to add; open. It
+  also needs `node scripts/workspace/assets.mjs` first in a fresh worktree (plugin-ui's `./*.css`).
 
 ## Size
 
@@ -112,5 +119,22 @@ operations with their failures, `originOf`, the average's placement and centerin
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+Gate: `lane-reviewer` (0 must-fix, 6 should-fix, 9 nits), then `lane-skeptic` (probes on a copy of the worktree): 4
+should-fix confirmed, S2 split (direct volume confirmed, decoration refuted), S6 down to a nit, one new should-fix (X1).
+Each fix with a test failing first.
+
+| Finding                                                               | Severity          | Verdict                                   | Commit / open                                                                                  |
+| --------------------------------------------------------------------- | ----------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| S1 offset test blind to sign and frame                                | should-fix        | confirmed (sign-flip mutation passed)     | e65703a4c (non-zero center, exact shift)                                                       |
+| S2 a direct volume that cannot be made undoes the load                | should-fix        | confirmed (headless default `as`)         | c0bd28b1c                                                                                      |
+| S2 a decoration fetch failing undoes the load                         | should-fix        | refuted (it passes silently: X1)          | —                                                                                              |
+| S3 the format's isosurface built and hidden                           | should-fix        | confirmed                                 | e65703a4c (the format's transforms, no default visual)                                         |
+| S4 no test of a failure midway, EMDB, GLB                             | should-fix        | confirmed gap; checkpoint covers the zarr | e65703a4c (midway, GLB); EMDB path open (needs the density server stubbed and the stage tools) |
+| S5 the hand understated                                               | should-fix (docs) | confirmed                                 | 581c2463c, a5ca506a2                                                                           |
+| S6 card size at level 0 without a tomogram                            | nit (latent)      | confirmed                                 | c70bd6c02                                                                                      |
+| X1 a decoration that cannot be fetched passes as decorated            | should-fix        | new, confirmed                            | 26d5023c2                                                                                      |
+| N1 catalog rejection cached                                           | nit               | confirmed                                 | c70bd6c02                                                                                      |
+| N2 first catalog answer outside `latest`; sets after await            | nit               | confirmed, harmless                       | open                                                                                           |
+| N3, N4, N5, N6, N8 comments and spec words                            | nit               | confirmed                                 | c70bd6c02, 581c2463c                                                                           |
+| N7 default dataset 10003 in the extension                             | nit               | design                                    | kept (fails cleanly when absent)                                                               |
+| N9 index tool rank/dtype; instance_id absent; rotation_check aliasing | nit               | confirmed / plausible                     | a5ca506a2, a5cc35519                                                                           |
