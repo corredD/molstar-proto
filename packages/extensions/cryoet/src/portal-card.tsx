@@ -108,18 +108,24 @@ function RunForm(props: {
   const load = async () => {
     const v = form.values.value;
     busy.set(true);
-    // the size is in view beside Load: no second question past the guard
-    const r = await ctx.api.run('cryoetPortal.load', {
-      dataset: dataset.id,
-      run: info.run.name,
-      spacing: info.spacing.spacing,
-      ...(info.tomogram ? { tomogram: info.tomogram.id, level: Number(v.level) } : {}),
-      annotations: v.annotations.length ? v.annotations.join(',') : 'none',
-      as: v.as,
-      large: true,
-    });
-    busy.set(false);
-    said.set(r.ok ? [r.did, ...(r.warnings ?? [])].join(' ') : `${r.message}${r.hint ? ` ${r.hint}` : ''}`);
+    try {
+      // the size is in view beside Load: no second question past the guard
+      const r = await ctx.api.run('cryoetPortal.load', {
+        dataset: dataset.id,
+        run: info.run.name,
+        spacing: info.spacing.spacing,
+        ...(info.tomogram ? { tomogram: info.tomogram.id, level: Number(v.level) } : {}),
+        annotations: v.annotations.length ? v.annotations.join(',') : 'none',
+        as: v.as,
+        large: true,
+      });
+      said.set(r.ok ? [r.did, ...(r.warnings ?? [])].join(' ') : `${r.message}${r.hint ? ` ${r.hint}` : ''}`);
+    } catch (e) {
+      // a load that threw (a format's error out of the state's update) says so, and Load comes back
+      said.set((e as Error).message ?? String(e));
+    } finally {
+      busy.set(false);
+    }
   };
   return (
     <div style="display: grid; gap: var(--msp-space-2); min-width: 0">

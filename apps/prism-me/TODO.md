@@ -114,9 +114,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   takes the portal's default tomogram (lane `portal-tomograms`), which for 10453 tomogram_003 is 56411 (IsoNet, 10 Å):
   it shows 4 automated (Octopi) V-ATPase picks, not the 3 manual ground truth at 13.44 Å (Ludo to decide: the
   ground-truth spacing's annotations by default, proposed); curated PDBs for common objects (V-ATPase, clathrin), by
-  Delphine; a level read already sent is not cancelled (`cryoet.level`, review X2); `portal.ts` `loadZarr` sets
-  `maxSizeMB` from the voxels without one chunk. An unbounded interval's ends cannot cross (v5's can, reversing a colour
-  scale: Ludo may want that back).
+  Delphine; a level read already sent is not cancelled (`cryoet.level`, review X2). An unbounded interval's ends cannot
+  cross (v5's can, reversing a colour scale: Ludo may want that back).
 
 - A sphere a clip plane misses entirely (its center is past the plane by more than its radius): skip it in the color
   pass, and skip one the plane misses in the ghost pass (lane `marking-cost`, not built;

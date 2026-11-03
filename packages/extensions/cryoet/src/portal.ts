@@ -19,7 +19,12 @@ import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import { isFailure } from '@molstar/prism-viewer/api/scope';
 import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension } from '@molstar/prism-viewer/spec';
-import { OmeZarrFromUrl, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
+import {
+  getOmeZarrLevel,
+  OmeZarrFromUrl,
+  omeZarrLevelNeeds,
+  VolumeFromOmeZarr,
+} from '@molstar/plugin/state/formats/volume/ome-zarr';
 import { CustomVolumeProperties } from '@molstar/plugin/state/transforms/volume/ops';
 import { particleListData } from './operations.js';
 import {
@@ -380,18 +385,35 @@ async function added(
 /**
  * An OME-Zarr at a level, by the plugin's own transforms (its metadata, the level as a volume), without the format's
  * default visual (an isosurface the slices would only hide): the volumes it made. The size was asked about before
- * (`large`), so the format's limit is the level's.
+ * (`large`), so the format's limit is what the level needs as the format counts it (its voxels and one decoded chunk,
+ * `omeZarrLevelNeeds`), read from the file once opened: the index's bytes are the voxels only, and a limit set to them
+ * refused the level asked for (Ludo, 2026-11-03: 685 MB against 618).
  */
 async function loadZarr(ctx: ApiContext, url: string, level: PortalLevel) {
   const made = await added(ctx, volumeRefs, async () => {
-    const maxSizeMB = Math.max(512, Math.ceil(level.bytes / 1e6));
-    const volume = ctx.plugin
+    const opened = ctx.plugin
       .build()
       .toRoot()
-      .apply(OmeZarrFromUrl, { url }, { state: { isGhost: true } })
-      .apply(VolumeFromOmeZarr, { level: level.path, maxSizeMB, entryId: '' })
-      .apply(CustomVolumeProperties);
-    await volume.commit({ revertOnError: true });
+      .apply(OmeZarrFromUrl, { url }, { state: { isGhost: true } });
+    await opened.commit({ revertOnError: true });
+    const file = ctx.plugin.state.data.cells.get(opened.ref)?.obj?.data as
+      | Parameters<typeof getOmeZarrLevel>[0]
+      | undefined;
+    const needs = file ? omeZarrLevelNeeds(getOmeZarrLevel(file, level.path)) : level.bytes;
+    const maxSizeMB = Math.max(512, Math.ceil(needs / 1e6));
+    try {
+      await ctx.plugin
+        .build()
+        .to(opened.ref)
+        .apply(VolumeFromOmeZarr, { level: level.path, maxSizeMB, entryId: '' })
+        .apply(CustomVolumeProperties)
+        .commit({ revertOnError: true });
+    } finally {
+      // nothing left of a level that could not be read (the file's ghost, its only parent)
+      if (!ctx.plugin.state.data.tree.children.get(opened.ref).size) {
+        await ctx.plugin.build().delete(opened.ref).commit();
+      }
+    }
     return ApiResult.ok('');
   });
   if (!isFailure(made) && !made.length) {
