@@ -187,6 +187,10 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
       const atom = Vec3.create(24, 32, 35);
       const shade = async () => luminanceAt(plugin, await plugin.getImageRaw({ width: Size, height: Size }), atom);
       const local = await shade();
+      await volume.update('neural');
+      await frames(plugin);
+      // neural builds the same pyramid: the trace reads it alike (§C)
+      const neural = await shade();
       await volume.update('volumetric');
       await frames(plugin);
       const volumetric = await shade();
@@ -214,6 +218,7 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
       expect(Math.abs(local - none)).toBeLessThanOrEqual(2);
       // measured on Dawn (M1): none 247, local 248, volumetric 82
       expect(volumetric / local).toBeLessThan(0.8);
+      expect(neural / local).toBeLessThan(0.8);
       // (0.89: the atoms lit from the other side, unshadowed)
       expect(fromLeft / local).toBeGreaterThan(0.8);
       volume.repr.destroy();
@@ -327,6 +332,19 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
     // the gradient shading of the flat slab is the same on both sides of the cube
     for (const { a, b } of lit.local) expect(Math.abs(a / b - 1)).toBeLessThan(0.05);
   }, 60_000);
+
+  it('neural: a dense cube darkens the slab behind it along the light, less than volumetric (§C)', async () => {
+    const lit = await renderSlabAndCube(['volumetric', 'neural']);
+    // the white color is albedo 0.95, and the cube (optical depth ~4 along the light) passes some light on by multiple
+    // scattering, which volumetric does not have: a softer shadow
+    const shadow = (l: { a: number; b: number }[]) => [l[0].a / l[0].b, l[1].b / l[1].a];
+    const neural = shadow(lit.neural);
+    const volumetric = shadow(lit.volumetric);
+    for (let i = 0; i < 2; ++i) {
+      expect(neural[i]).toBeLessThan(0.9);
+      expect(neural[i]).toBeGreaterThan(volumetric[i] + 0.05);
+    }
+  }, 60_000);
 });
 
 /** A CCP4 map of `N`³ cells of 1 Å at the origin, the value of each cell `value(x, y, z)` in [0, 1] */
@@ -398,7 +416,7 @@ async function addDirectVolume(plugin: HeadlessPluginContext, ccp4: Uint8Array) 
   });
   return {
     repr,
-    update: async (lighting: 'local' | 'volumetric') => {
+    update: async (lighting: 'local' | 'volumetric' | 'neural') => {
       await repr.createOrUpdate({ controlPoints: ControlPoints, lighting }, volume).run();
       canvas.add(repr);
     },
@@ -473,7 +491,7 @@ const Atoms = `${[
  * The luminance of the slab at A (20, 32) and B (44, 32), either side of the cube, per `lighting` and for the key light
  * from the front at 45° to the right (+x), then to the left (view space: the camera looks down -z), on black
  */
-async function renderSlabAndCube(lightings: ('local' | 'volumetric')[]) {
+async function renderSlabAndCube(lightings: ('local' | 'volumetric' | 'neural')[]) {
   const plugin = await createPlugin();
   const out: Record<string, { a: number; b: number }[]> = {};
   try {

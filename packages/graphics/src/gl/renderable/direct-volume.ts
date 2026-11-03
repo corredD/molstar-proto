@@ -74,10 +74,11 @@ export const DirectVolumeSchema = {
 
   dIgnoreLight: DefineSpec('boolean'),
   /**
-   * `lighting`: `local`, the gradient as the normal; `volumetric`, the extinction pyramid's transmittance and occlusion
-   * (`volume-lighting.md`, WebGPU with `isVolumeLightingSupported`: the renderable draws `local` elsewhere)
+   * `lighting`: `local`, the gradient as the normal; `volumetric`, the extinction pyramid's transmittance and occlusion;
+   * `neural`, a network's in-scatter from the same descriptors (`volume-lighting.md`, WebGPU with
+   * `isVolumeLightingSupported`: the renderable draws `local` elsewhere)
    */
-  dLighting: DefineSpec('string', ['local', 'volumetric']),
+  dLighting: DefineSpec('string', ['local', 'volumetric', 'neural']),
   dCelShaded: DefineSpec('boolean'),
   dXrayShaded: DefineSpec('string', ['off', 'on', 'inverted']),
 
@@ -90,7 +91,7 @@ export type DirectVolumeValues = Values<DirectVolumeSchema>;
 export const DirectVolumeLightingSchema = {
   tExtinction: TextureSpec('texture', 'r', 'fp16', 'linear', undefined, {
     dimension: '3d',
-    usedIf: ['dLighting_volumetric'],
+    usedIf: ['dLighting_volumetric', 'dLighting_neural'],
   }),
 };
 
@@ -106,11 +107,11 @@ export const DirectVolumeRenderableSchema = {
 
 /**
  * The renderable's `dLighting` (the values' where supported, else `local`) and its extinction pyramid, built where
- * `volumetric` is drawn and rebuilt when its inputs change (`volume-lighting.md` §A1)
+ * `volumetric` or `neural` is drawn and rebuilt when its inputs change (`volume-lighting.md` §A1)
  */
 function createVolumeLighting(ctx: GraphicsContext, values: DirectVolumeValues) {
   const supported = isVolumeLightingSupported(ctx);
-  const dLighting = ValueCell.create(values.dLighting.ref.value === 'volumetric' && supported ? 'volumetric' : 'local');
+  const dLighting = ValueCell.create(getLighting());
   const nullTexture = createNullTexture();
   const tExtinction = ValueCell.create<Texture>(nullTexture);
   let pyramid: ExtinctionPyramid | undefined;
@@ -121,12 +122,14 @@ function createVolumeLighting(ctx: GraphicsContext, values: DirectVolumeValues) 
   let alpha = -1;
   let packedGroup = false;
 
+  function getLighting() {
+    const lighting = values.dLighting.ref.value;
+    return supported && values.dGridTexType.ref.value === '3d' ? lighting : 'local';
+  }
+
   function update() {
-    const lighting =
-      supported && values.dLighting.ref.value === 'volumetric' && values.dGridTexType.ref.value === '3d'
-        ? 'volumetric'
-        : 'local';
-    if (lighting === 'volumetric') {
+    const lighting = getLighting();
+    if (lighting !== 'local') {
       if (!pyramid) {
         pyramid = createExtinctionPyramid(ctx as GraphicsContext & { compute: ComputeContext });
         gridTextureVersion = -1;

@@ -24,7 +24,8 @@
 
 - **`lighting`** (param, `local` default): `volumetric` lights the samples by the transmittance to the key light and an
   ambient obscurance from an extinction pyramid built per transfer function (WebGPU; `local` elsewhere): options 2–4
-  in one, see [volume-lighting.md](volume-lighting.md).
+  in one, see [volume-lighting.md](volume-lighting.md); `neural` (experimental) takes the same descriptors through a
+  small network trained on path-traced maps (§C there).
 
 ## Options
 

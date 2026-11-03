@@ -460,15 +460,16 @@ const tmpOffset = Vec3();
 const volumeModel = Mat4();
 
 /**
- * The first visible volume of `scene` lit `volumetric` (its extinction pyramid built, `tExtinction`): the trace reads
- * its pyramid along the shadow rays (`volume-lighting.md` §D1); its first instance only
+ * The first visible volume of `scene` lit `volumetric` or `neural` (its extinction pyramid built, `tExtinction`): the
+ * trace reads its pyramid along the shadow rays (`volume-lighting.md` §D1); its first instance only
  */
 function findVolumeShadow(scene: Scene) {
   const { renderables } = scene.volumes;
   for (let i = 0, il = renderables.length; i < il; ++i) {
     const r = renderables[i];
     const values = r.values as unknown as Partial<DirectVolumeRenderValues>;
-    if (r.state.visible && values.dLighting?.ref.value === 'volumetric' && values.tExtinction)
+    const lighting = values.dLighting?.ref.value;
+    if (r.state.visible && (lighting === 'volumetric' || lighting === 'neural') && values.tExtinction)
       return values as DirectVolumeRenderValues;
   }
   return undefined;
@@ -533,7 +534,7 @@ export const TraceSchema = {
   uShadowSoftness: UniformSpec('f'),
   uShadowThickness: UniformSpec('f'),
 
-  /** a volume lit `volumetric` shadows the traced light by its extinction pyramid (`volume-lighting.md` §D1) */
+  /** a volume lit `volumetric` or `neural` shadows the traced light by its pyramid (`volume-lighting.md` §D1) */
   dVolumeShadow: DefineSpec('boolean'),
   tVolumeExtinction: TextureSpec('texture', 'r', 'fp16', 'linear', undefined, {
     dimension: '3d',
