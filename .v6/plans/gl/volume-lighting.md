@@ -96,4 +96,21 @@ M1 (Apple M1, Chrome, WebGPU), `node scripts/benchmark.mjs --backends webgpu --f
 
 ## D. Illumination
 
-To be written with D1–D2.
+- **D1, volumes shadow the traced molecules**: the trace (`illumination.wgsl.ts`, `dVolumeShadow`) multiplies each
+  light's irradiance at a primary hit by the transmittance through the first visible volume lit `volumetric`
+  (`findVolumeShadow` in `tracing.ts`, its first instance): the ray toward the light clipped to the grid's box, 8 reads
+  at the centers of equal steps from the pyramid's level whose texels are a step long (`sLinearMipmap`), `exp(-sum
+  sigma * step)`. With `shadowEnable` after the screen-space shadow ray (a ray it blocks stays blocked), without it on
+  its own: illumination's default (shadows off) shows it too. Bounces are not attenuated. A local volume, or none,
+  leaves the trace's program as before (no `dVolumeShadow`). A transfer function change rebuilds the pyramid and, as
+  any scene change, restarts the accumulation.
+- **D2, one light**: the volume's key light and ambient are the renderer's `uLightDirection[0]` and `uAmbientColor`,
+  which the trace reads too (`renderer.light`, `ambientColor * ambientIntensity`): one light by construction. Test:
+  with the light moved to the other side, the atoms are no longer shadowed.
+- Test (Dawn): atoms beside a dense slab (8 cells at 0.3), the light through the slab: 247 without the volume, 248
+  with it `local`, 82 `volumetric`; the light from the other side 0.89 of the unshadowed.
+- **D3** (molecules shadow the volume): not built; measured first on CellPack HIV if wanted.
+- **D4** (M1, Chrome, `render/direct-volume/7qpd-illumination-map-256-*-1080`, rotating, 4 renders per frame): frame
+  7.63 ms local, 7.46 ms volumetric; `trace` pass 0.80 / 0.79 ms: within noise, 8 reads per traced pixel and light
+  where the ray crosses the box. The transmittance is deterministic (no noise added): the iterations to converge are
+  the same.

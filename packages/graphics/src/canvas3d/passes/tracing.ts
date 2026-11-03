@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { PassBuilder } from './pass-builder.js';
@@ -14,7 +15,7 @@ import {
   UniformSpec,
   type Values,
 } from '@molstar/graphics/gl/renderable/schema';
-import type { Texture } from '@molstar/graphics/gl/texture';
+import { createNullTexture, type Texture } from '@molstar/graphics/gl/texture';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import { BlendState, RenderState } from '@molstar/graphics/gl/render-state';
 import { ValueCell } from '@molstar/core/util';
@@ -35,6 +36,7 @@ import type { Framebuffer } from '@molstar/graphics/gl/framebuffer';
 import { now } from '@molstar/core/util/now';
 import { clamp } from '@molstar/core/math/interpolate';
 import type { DrawPass } from './draw.js';
+import type { DirectVolumeRenderableSchema } from '@molstar/graphics/gl/renderable/direct-volume';
 import type { RenderContext } from '../util.js';
 
 export const TracingParams = {
@@ -206,6 +208,34 @@ export class TracingPass {
   }
 
   private clearAdjustedProps = true;
+
+  /**
+   * Binds the volume that shadows the traced light (`findVolumeShadow`) and its view-to-cell transform: whether the
+   * define changed
+   */
+  private updateVolumeShadow(scene: Scene, camera: ICamera) {
+    const { values } = this.traceRenderable;
+    const volume = findVolumeShadow(scene);
+    if (volume) {
+      // as the direct volume's vertex shader: view, the volumes' model (scaled), the instance, the grid's cells
+      Mat4.scaleUniformly(volumeModel, scene.volumes.view, camera.scale);
+      Mat4.mul(cellToView, camera.view, volumeModel);
+      Mat4.mul(cellToView, cellToView, Mat4.fromArray(volumeModel, volume.aTransform.ref.value, 0));
+      Mat4.mul(cellToView, cellToView, volume.uTransform.ref.value);
+      // texel coordinates: the cell centers at + 0.5
+      Mat4.mul(cellToView, cellToView, Mat4.fromTranslation(volumeModel, Vec3.set(tmpOffset, -0.5, -0.5, -0.5)));
+      ValueCell.update(values.uVolumeViewToCell, Mat4.invert(values.uVolumeViewToCell.ref.value, cellToView));
+      if (!Vec3.exactEquals(values.uVolumeGridDim.ref.value, volume.uGridDim.ref.value)) {
+        ValueCell.update(values.uVolumeGridDim, Vec3.copy(values.uVolumeGridDim.ref.value, volume.uGridDim.ref.value));
+      }
+      if (values.tVolumeExtinction.ref.value !== volume.tExtinction.ref.value) {
+        ValueCell.update(values.tVolumeExtinction, volume.tExtinction.ref.value);
+      }
+    }
+    if (values.dVolumeShadow.ref.value === !!volume) return false;
+    ValueCell.update(values.dVolumeShadow, !!volume);
+    return true;
+  }
 
   restart(clearAdjustedProps = false) {
     this.graphics.beginRenderPass(this.accumulateTarget, { label: 'trace clear', clear: { color: [0, 0, 0, 0] } });
@@ -412,6 +442,7 @@ export class TracingPass {
     }
     ValueCell.updateIfChanged(this.traceRenderable.values.uShadowSoftness, props.shadowSoftness);
     ValueCell.updateIfChanged(this.traceRenderable.values.uShadowThickness, props.shadowThickness);
+    if (this.updateVolumeShadow(scene, camera)) needsUpdateTrace = true;
     if (needsUpdateTrace) this.traceRenderable.update();
     if (b.drawing) {
       const weight = 1 / (iteration + 1);
@@ -421,6 +452,27 @@ export class TracingPass {
     if (isTimingMode && b.drawing) this.graphics.timer.groupEnd('TracePass.render');
   }
 }
+
+const cellToView = Mat4();
+const tmpOffset = Vec3();
+const volumeModel = Mat4();
+
+/**
+ * The first visible volume of `scene` lit `volumetric` (its extinction pyramid built, `tExtinction`): the trace reads
+ * its pyramid along the shadow rays (`volume-lighting.md` §D1); its first instance only
+ */
+function findVolumeShadow(scene: Scene) {
+  const { renderables } = scene.volumes;
+  for (let i = 0, il = renderables.length; i < il; ++i) {
+    const r = renderables[i];
+    const values = r.values as unknown as Partial<DirectVolumeRenderValues>;
+    if (r.state.visible && values.dLighting?.ref.value === 'volumetric' && values.tExtinction)
+      return values as DirectVolumeRenderValues;
+  }
+  return undefined;
+}
+
+type DirectVolumeRenderValues = Values<typeof DirectVolumeRenderableSchema>;
 
 /**
  * The color blended with the weight of the frame (the blend constant), the alpha replaced: the shader writes the weight,
@@ -478,6 +530,16 @@ export const TraceSchema = {
   dShadowEnable: DefineSpec('boolean'),
   uShadowSoftness: UniformSpec('f'),
   uShadowThickness: UniformSpec('f'),
+
+  /** a volume lit `volumetric` shadows the traced light by its extinction pyramid (`volume-lighting.md` §D1) */
+  dVolumeShadow: DefineSpec('boolean'),
+  tVolumeExtinction: TextureSpec('texture', 'r', 'fp16', 'linear', undefined, {
+    dimension: '3d',
+    usedIf: ['dVolumeShadow'],
+  }),
+  /** view space to the volume's grid texel coordinates (cell `j` spans `[j, j + 1)`) */
+  uVolumeViewToCell: UniformSpec('m4'),
+  uVolumeGridDim: UniformSpec('v3'),
 };
 export const TraceShaderCode = ShaderCode('trace');
 type TraceRenderable = ComputeRenderable<Values<typeof TraceSchema>>;
@@ -532,6 +594,11 @@ function getTraceRenderable(
     dShadowEnable: ValueCell.create(false),
     uShadowSoftness: ValueCell.create(0.1),
     uShadowThickness: ValueCell.create(0.1),
+
+    dVolumeShadow: ValueCell.create(false),
+    tVolumeExtinction: ValueCell.create(createNullTexture()),
+    uVolumeViewToCell: ValueCell.create(Mat4.identity()),
+    uVolumeGridDim: ValueCell.create(Vec3()),
   };
 
   const schema = { ...TraceSchema };
