@@ -48,7 +48,8 @@ https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html.
   material the MTL is empty and the shape is coloured as an OBJ without one (`custom`: grey for one group, distinct
   colours for several). COLOR_0 (RGB or RGBA, float or normalized) times the base colour is the vertex colour;
   primitives without it take their base colour. glTF colours are linear, Mol*'s sRGB: converted on floats, not through
-  8-bit `Color`s (which band the dark tones).
+  8-bit `Color`s (which band the dark tones), then clamped and rounded to 8-bit steps (`Color.fromNormalizedRgb`, which
+  packs them, neither clamps nor rounds).
 
 ## 4. Units
 
