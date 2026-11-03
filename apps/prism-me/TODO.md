@@ -85,6 +85,11 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   volumes shadowing the molecules in illumination. A library lane from master, PRs into prism-me. Plan, steps and gates:
   [plans/2026-11-02-volume-lighting.md](plans/2026-11-02-volume-lighting.md).
 
+- **CryoET Data Portal, direct** (Ludo, 2026-11-02; parked): browse and load portal data on the static site, without
+  copick: a shipped dataset index, the ndjson particles, then OME-Zarr tomograms and masks and GLB meshes (both library
+  lanes, upstream candidates), then a portal panel. Example set: dataset 10003 TS_08 ribosomes with EMD-13412 and 7PHB.
+  Plan, findings and gates: [plans/2026-11-02-cryoet-portal.md](plans/2026-11-02-cryoet-portal.md).
+
 - A sphere a clip plane misses entirely (its center is past the plane by more than its radius): skip it in the color
   pass, and skip one the plane misses in the ghost pass (lane `marking-cost`, not built;
   `progress/2026-10-31-marking-cost.md`). A cone or a scaled sphere is not a safe radius test. It needs a rendered pixel
