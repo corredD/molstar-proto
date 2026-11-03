@@ -15,8 +15,8 @@ is not built is [../TODO.md](../TODO.md).
   [brief](2026-11-02-cryoet-portal.md)). Library lanes keep their brief in an untracked `LANE.md`, copied here at close.
   Integration branch `me/cryoet-volume` (port 1346) merges them all for Ludo's one test. PRs: #37 `ome-zarr`, #38
   `glb-reader`, #39 `cryoet-portal`, #40 `volume-lighting`, #41 the integration (all four plus the volumetric wiring),
-  2026-11-02; `volume-neural` still running (stacks on #40). Waits on Ludo: his test on 1346, the hand of EMD-13412/7PHB
-  against TS_08 (mirrored), the merges.
+  2026-11-02; #42 `volume-neural` (stacked on #40, merged into #41). Waits on Ludo: his test on 1346, the hand of
+  EMD-13412/7PHB against TS_08 (mirrored), the merges.
 
 - **UI scale** (`me/ui-scale`, `~/prism-me-lanes/ui-scale`, port 1344, [brief](2026-10-30-ui-scale.md)): Ludo,
   2026-10-30, "really important": Settings › Appearance › UI scale, − and +, the UI larger and the 3D untouched; Prism's
