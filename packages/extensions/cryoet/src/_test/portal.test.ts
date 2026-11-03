@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { Structure } from '@molstar/model/model/structure';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -59,7 +60,7 @@ const dataset: PortalDataset = {
   title: 'Test ribosomes',
   runs: 2,
   dois: ['10.1038/test'],
-  decorations: { ribosome: { pdb: '1CBS', center: [0, 0, 0] } },
+  decorations: { ribosome: { pdb: '1CBS', center: [5, -7, 11] } },
   runList: [
     {
       id: 101,
@@ -96,6 +97,7 @@ const dataset: PortalDataset = {
               default: true,
             },
             { id: 8, object: 'lipid', shape: 'Mesh', format: 'tiff', path: '1/TS_01/l.tiff' },
+            { id: 9, object: 'membrane', shape: 'Mesh', format: 'glb', path: '1/TS_01/s.glb' },
           ],
         },
       ],
@@ -144,18 +146,22 @@ const zarrRoutes = (root: string, z: ReturnType<typeof zarr>): [RegExp, () => Bo
   [new RegExp(`${root}/\\d/0/0/0$`), () => z.chunk],
 ];
 
-const routes: [RegExp, () => BodyInit][] = [
+/** A route answering null: a 404 (a test's own, before the shared ones) */
+type Route = [RegExp, () => BodyInit | null];
+
+const routes: Route[] = [
   [/r\.ndjson$/, () => points],
+  [/s\.glb$/, () => readFileSync(new URL('shapes/cryoet-10521-mesh.glb', examples))],
   [/1cbs/, () => readFileSync(new URL('1cbs_full.bcif', examples))],
   ...zarrRoutes('t\\.zarr', zarr('<f4')),
   ...zarrRoutes('m\\.zarr', zarr('|i1')),
 ];
 
-function serve() {
+function serve(own: Route[] = []) {
   const stub = vi.fn(async (input: string | URL | Request) => {
     const url = String(typeof input === 'object' && 'url' in input ? input.url : input);
-    const hit = routes.find(([k]) => k.test(url));
-    return hit ? new Response(hit[1](), { status: 200 }) : new Response('not found', { status: 404 });
+    const body = [...own, ...routes].find(([k]) => k.test(url))?.[1]();
+    return body ? new Response(body, { status: 200 }) : new Response('not found', { status: 404 });
   });
   vi.stubGlobal('fetch', stub);
   return stub;
@@ -185,11 +191,17 @@ describe('cryoetPortal', () => {
     const r = await v.api.run('cryoetPortal.run', { dataset: 1, run: 'TS_01' });
     expectOk(r);
     const info = r.value as PortalRunInfo;
-    expect(info.entries.map((e) => e.key)).toEqual(['5', '6/InstanceSegmentation', '6/SegmentationMask', '8']);
+    expect(info.entries.map((e) => e.key)).toEqual(['5', '6/InstanceSegmentation', '6/SegmentationMask', '8', '9']);
     expect(info.defaults).toEqual(['5', '6/SegmentationMask']);
     // the viewer reads ndjson and OME-Zarr; a format it has no reader for says so
     expect(info.needs).toBeUndefined();
-    expect(info.entries.map((e) => e.needs)).toEqual([undefined, undefined, undefined, expect.stringMatching(/tiff/)]);
+    expect(info.entries.map((e) => e.needs)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      expect.stringMatching(/tiff/),
+      undefined,
+    ]);
     expect(r.did).toContain('2: 130×130×130 at 40 Å, 8.8 MB');
   });
 
@@ -211,6 +223,9 @@ describe('cryoetPortal', () => {
     // the coarsest level, as the index says: '2'
     expect(fetch.mock.calls.map((c) => String(c[0]))).toContain(`${PortalFiles}1/TS_01/t.zarr/2/0/0/0`);
     expect(shown(tomogram)).toEqual(['slice', 'slice', 'slice']);
+    // nothing made to be hidden: no isosurface of the tomogram behind its slices
+    expect(tomogram.representations.length).toBe(3);
+    expect(mask.representations.length).toBe(1);
     expect(shown(mask)).toEqual(['isosurface']);
     const iso = (mask.representations[0].cell.transform.params as any).type.params.isoValue;
     expect(iso).toEqual({ kind: 'absolute', absoluteValue: 0.5 });
@@ -223,10 +238,33 @@ describe('cryoetPortal', () => {
     const d = await v.api.cryoet!.decorations({});
     expectOk(d);
     expect((d.value as { targets: { with?: string }[] }).targets[0].with).toMatch(/1cbs/i);
-    // the structure moved from its own center to the average's (0, 0, 0)
-    const offset = v.api.cryoet!.offsetOf(list.cell.transform.ref, '');
-    expect(offset && Math.hypot(...offset.translation)).toBeGreaterThan(1);
+    // the structure moved from its own center (its boundary's, drawn at the point) to the average's: the shift, in the
+    // particle's frame, is its center less the average's
+    const target = data.targetMapping!.get(0) as { structure: Structure };
+    const c = target.structure.boundary.sphere.center;
+    const offset = v.api.cryoet!.offsetOf(list.cell.transform.ref, '')!;
+    expect(offset.translation[0]).toBeCloseTo(c[0] - 5, 3);
+    expect(offset.translation[1]).toBeCloseTo(c[1] + 7, 3);
+    expect(offset.translation[2]).toBeCloseTo(c[2] - 11, 3);
     expect(await steps()).toBe(before + 1);
+  });
+
+  it('leaves nothing when a file fails midway (the tomogram opened before it)', async () => {
+    serve([[/r\.ndjson$/, () => null]]);
+    const v = await viewer();
+    const r = await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', as: 'slices' });
+    expect(r.ok).toBe(false);
+    expect(v.plugin.managers.volume.hierarchy.current.volumes.length).toBe(0);
+    expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(0);
+  });
+
+  it('loads a GLB mesh annotation as a mesh of the scene', async () => {
+    serve();
+    const v = await viewer();
+    expectOk(await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', annotations: '9', as: 'none' }));
+    const meshes = await v.api.run('cryoet.meshes', {});
+    expectOk(meshes);
+    expect((meshes.value as unknown[]).length).toBe(1);
   });
 
   it("gives a tomogram's direct volume the Tomogram preset: its dense (low) values opaque, its bright ones clear", async () => {
@@ -260,7 +298,7 @@ describe('cryoetPortal', () => {
       code: 'not-found',
       message: "Dataset 1 has no run 'TS_09' (the index holds 1 of 2).",
     });
-    const r = await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', annotations: '9' });
+    const r = await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', annotations: '99' });
     expect(r).toMatchObject({ code: 'not-found' });
   });
 
