@@ -80,6 +80,14 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
+- **Automatic transfer-function preset** (Ludo, 2026-11-03; to decide): "a great preset automatically" for a direct
+  volume, an Auto entry in the transfer editor's Presets. Pointer: Barthel, "Automatic Generation of Volumetric Transfer
+  Functions" (ImageJ Volume Viewer; files.visual-computing.com/research/AutomaticTransferFunctions.pdf), a 4-page note
+  with no algorithm detail; its methods are in Sereda et al., LH histograms (IEEE TVCG 12(2), 2006) and Praßni, Ropinski,
+  Hinrichs, efficient boundary detection (VMV 2009). Candidates: an EMDB map, its recommended contour level, or the
+  threshold that encloses the volume of its mass; a tomogram, a ramp above the noise peak (mean + k·σ); several
+  materials, boundary peaks from an LH histogram on the extinction pyramid's smoothed level.
+
 - **Volume lighting** (Ludo, 2026-11-02; parked): shadows and light scattering in direct volumes, first by plain
   formulas, then a tiny network trained on a path tracer (after charlesgrassi.dev's neural volumetric clouds), then
   volumes shadowing the molecules in illumination. A library lane from master, PRs into prism-me. Plan, steps and gates:
