@@ -314,6 +314,29 @@ describe('glTF reader', () => {
       'glTF mesh 0 primitive 0: index 3 of 3 vertices',
     );
 
+    // one index accessor for two primitives: checked against each one's vertices, whatever their order
+    const quad = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0]);
+    const shared = buffer([quad, triangle, new Uint16Array([0, 1, 3])]);
+    const sharedJson = {
+      asset: { version: '2.0' },
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 }, indices: 2 },
+            { attributes: { POSITION: 1 }, indices: 2 },
+          ],
+        },
+      ],
+      accessors: [
+        { bufferView: 0, componentType: CT.FLOAT, count: 4, type: 'VEC3' },
+        { bufferView: 1, componentType: CT.FLOAT, count: 3, type: 'VEC3' },
+        { bufferView: 2, componentType: CT.UNSIGNED_SHORT, count: 3, type: 'SCALAR' },
+      ],
+      bufferViews: shared.bufferViews,
+      buffers: [{ byteLength: shared.bytes.byteLength }],
+    };
+    expect(await parseError(glb(sharedJson, shared.bytes))).toBe('glTF mesh 0 primitive 1: index 3 of 3 vertices');
+
     const v1 = triangleGltf({ asset: { version: '1.0' } });
     expect(await parseError(glb(v1.json, v1.bytes))).toBe('glTF version 1.0 is not supported (2.x only)');
 

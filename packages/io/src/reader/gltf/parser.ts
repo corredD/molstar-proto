@@ -242,7 +242,7 @@ function toTriangleList(mode: number, indices: ArrayLike<number> | undefined, n:
 
 class Reader {
   private floats = new Map<number, Float32Array>();
-  private indices = new Map<number, Uint8Array | Uint16Array | Uint32Array>();
+  private indices = new Map<number, { data: Uint8Array | Uint16Array | Uint32Array; max: number }>();
   readonly warnings: string[] = [];
 
   constructor(
@@ -260,16 +260,17 @@ class Reader {
     return { data, size: s.size, count: s.count };
   }
 
+  /** Indices, decoded once per accessor with their maximum, which is checked against each primitive using them */
   private triangleIndices(index: number, vertexCount: number, what: string) {
-    let data = this.indices.get(index);
-    if (!data) {
-      data = readIndices(source(this.json, this.buffers, index), index);
-      for (let i = 0, il = data.length; i < il; ++i) {
-        if (data[i] >= vertexCount) throw new Error(`glTF ${what}: index ${data[i]} of ${vertexCount} vertices`);
-      }
-      this.indices.set(index, data);
+    let entry = this.indices.get(index);
+    if (!entry) {
+      const data = readIndices(source(this.json, this.buffers, index), index);
+      let max = -1;
+      for (let i = 0, il = data.length; i < il; ++i) if (data[i] > max) max = data[i];
+      this.indices.set(index, (entry = { data, max }));
     }
-    return data;
+    if (entry.max >= vertexCount) throw new Error(`glTF ${what}: index ${entry.max} of ${vertexCount} vertices`);
+    return entry.data;
   }
 
   primitive(meshIndex: number, primitiveIndex: number): GltfPrimitive | undefined {
