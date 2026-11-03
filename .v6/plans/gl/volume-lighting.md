@@ -148,8 +148,9 @@ M1 (Apple M1, Chrome, WebGPU), `node scripts/benchmark.mjs --backends webgpu --f
   forward phase, no multiple scattering; too bright in front on thin data), `neural`'s 0.82–1.00, 0.68–1.21 and
   0.89–1.05 (the membrane map, its micelle's noise lit, the hardest). Run 1 (the first network, trained on peaks of α ≤
   0.6, its reference box-filtered over the pixel while the march cast the pixel centers) passed on the maps and missed
-  the RMSE margin on the tomogram (1.494 vs 1.643); the harness fix was checked on the training tomogram first. `neural`
-  stays experimental until Ludo signs off.
+  the RMSE margin on the tomogram (1.494 vs 1.643); the harness fix was checked on the training tomogram first. Run 2
+  also draws other transfer functions from seed 9001 (the widened peaks change the draws): it differs from run 1 in the
+  network, the harness and the configurations. `neural` stays experimental until Ludo signs off.
 - **Cost** (C5): M1 (Chrome, WebGPU), `node scripts/benchmark.mjs --backends webgpu --filter
   'render/direct-volume/*-1080' --gpu-timing --runs 5`, 1920x1080, medians of two runs (frame, local / volumetric /
   neural):

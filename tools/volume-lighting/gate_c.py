@@ -27,6 +27,7 @@ SEED = 9001  # no training run draws from it
 ANGLES = [0, 30, 60, 90, 120, 150, 180]
 LIGHT = (0.6, 0.4)  # Mol*'s key light and ambient intensities
 RES, SPP, ALBEDO, STEP = 96, 256, 0.8, 0.5
+MARCH_CUTOFF = 0.05  # the shader stops a ray at accumulated alpha 0.95 (direct-volume.wgsl.ts, `dst.a > 0.95`)
 
 
 def shade_fn(med, levels, light, model):
@@ -68,9 +69,8 @@ def main(weights: str, images: str | None, n_tf: int, spp: int, maps=HELD_OUT, j
                        'noise': float((halves[0] - halves[1]).pow(2).mean().sqrt() / 2 / ref.mean())}
                 imgs = {'reference': ref}
                 for name, model in (('volumetric', 'volumetric'), ('neural', net)):
-                    # the shader stops a ray at accumulated alpha 0.95 (T < 0.05)
                     img = render_march(med, o, d, shade_fn(med, levels, light, model), ALBEDO, STEP, LIGHT,
-                                       cutoff=0.05, unlit_below=0.01)
+                                       cutoff=MARCH_CUTOFF, unlit_below=0.01)
                     imgs[name] = img
                     row[name] = {'ratio': float(img.mean() / ref.mean()),
                                  'rel_rmse': float((img - ref).pow(2).mean().sqrt() / ref.mean())}
