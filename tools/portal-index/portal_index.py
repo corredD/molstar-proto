@@ -17,6 +17,8 @@ import datetime
 import json
 import os
 import sys
+import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -52,9 +54,16 @@ def relative(url):
     return url[len(FILES):]
 
 
-def get_json(url):
-    with urllib.request.urlopen(url, timeout=60) as r:
-        return json.load(r)
+def get_json(url, tries=5):
+    # a burst of reads (16 at a time) sometimes has a name lookup dropped by the resolver: asked again, after a moment
+    for i in range(tries):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r:
+                return json.load(r)
+        except urllib.error.URLError:
+            if i == tries - 1:
+                raise
+            time.sleep(1 + i)
 
 
 def zarr_levels(url):
