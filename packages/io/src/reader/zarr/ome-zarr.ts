@@ -23,8 +23,10 @@ export interface OmeZarrLevel extends NgffLevel {
   readonly array: ZarrArrayMeta;
   /** Voxels along x, y, z. */
   readonly size: readonly [number, number, number];
-  /** Bytes decoded: what reading the level allocates. */
+  /** Bytes of the level's voxels: the array reading it returns. */
   readonly bytes: number;
+  /** Bytes of one decoded chunk: reading also holds one (zarr.md §5). */
+  readonly chunkBytes: number;
 }
 
 /** An OME-Zarr image opened from a store: its metadata only; levels are read on demand (`readOmeZarrLevel`). */
@@ -70,7 +72,8 @@ export function openOmeZarr(store: ZarrStore, name = ''): Task<Result<OmeZarrFil
         }
         const [ax, ay, az] = multiscale.spaceAxes;
         const size = [array.shape[ax], array.shape[ay], array.shape[az]] as const;
-        return { ...l, array, size, bytes: size[0] * size[1] * size[2] * array.dtype.size };
+        const chunkBytes = array.chunks.reduce((a, b) => a * b, 1) * array.dtype.size;
+        return { ...l, array, size, bytes: size[0] * size[1] * size[2] * array.dtype.size, chunkBytes };
       });
       return Result.success({ name, store, multiscale, levels }, [...multiscale.warnings]);
     } catch (e) {

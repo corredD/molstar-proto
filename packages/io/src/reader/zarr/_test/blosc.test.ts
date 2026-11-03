@@ -69,6 +69,16 @@ describe('bloscDecode', () => {
     expect(flags('lz4-tiny-f8') & 0x10).toBe(0x10);
     expect(flags('memcpyed-f4') & 0x2).toBe(0x2);
     expect(flags('zlib-shuffle-f4') >> 5).toBe(3);
+    // lz4-random-u2: one block of 2 streams, at least one stored (its size is the stream's decoded size)
+    const r = read('lz4-random-u2');
+    const rh = bloscHeader(r);
+    const sizes: number[] = [];
+    for (let s = 0, p = r[16] | (r[17] << 8) | (r[18] << 16) | (r[19] << 24); s < 2; s++) {
+      const n = r[p] | (r[p + 1] << 8) | (r[p + 2] << 16) | (r[p + 3] << 24);
+      sizes.push(n);
+      p += 4 + n;
+    }
+    expect(sizes).toContain(rh.nbytes / 2);
     const h = bloscHeader(read('lz4-blocks-f4'));
     expect(h.nbytes % h.blocksize).toBeGreaterThan(0);
     expect(h.nbytes / h.blocksize).toBeGreaterThan(1);
@@ -95,6 +105,53 @@ describe('bloscDecode', () => {
     await expect(bloscDecode(SyncRuntimeContext, src.slice(0, 100), new Uint8Array(32000))).rejects.toThrow(
       'the header says',
     );
+  });
+});
+
+/** A blosc1 buffer of `blocks` (each one stream: typesize 1), `flags` as given; `nbytes` the decoded size. */
+function bloscOf(flags: number, nbytes: number, blocksize: number, blocks: number[][]) {
+  const starts: number[] = [];
+  const body: number[] = [];
+  let p = 16 + 4 * blocks.length;
+  for (const b of blocks) {
+    starts.push(p);
+    body.push(b.length & 0xff, (b.length >> 8) & 0xff, 0, 0, ...b);
+    p += 4 + b.length;
+  }
+  const i32 = (v: number) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
+  return Uint8Array.from([
+    2,
+    1,
+    flags,
+    1,
+    ...i32(nbytes),
+    ...i32(blocksize),
+    ...i32(p),
+    ...starts.flatMap(i32),
+    ...body,
+  ]);
+}
+
+describe('bloscDecode of hostile buffers', () => {
+  const block0 = Array.from({ length: 16 }, (_, i) => i + 1);
+
+  it('refuses an empty zlib stream for a block (core inflate reads `03 00` as the whole buffer)', async () => {
+    // block 0 stored, block 1 a zlib stream of an empty final block: c-blosc fails it as short
+    const src = bloscOf(0x60, 32, 16, [block0, [0x78, 0x9c, 3, 0, 0, 0, 0, 1]]);
+    await expect(bloscDecode(SyncRuntimeContext, src, new Uint8Array(32))).rejects.toThrow('zlib');
+  });
+
+  it('refuses a zlib stream too short to be one, and one whose Adler-32 is wrong, by a message', async () => {
+    const short = bloscOf(0x60, 16, 16, [[0x78, 0x9c, 1]]);
+    await expect(bloscDecode(SyncRuntimeContext, short, new Uint8Array(16))).rejects.toThrow('zlib: not a zlib stream');
+    const good = read('zlib-shuffle-f4');
+    const bad = good.slice();
+    bad[bad.length - 1] ^= 0xff;
+    await expect(bloscDecode(SyncRuntimeContext, bad, new Uint8Array(32000))).rejects.toThrow('zlib: Adler-32');
+  });
+
+  it('refuses a block size larger than the data before allocating it', () => {
+    expect(() => bloscHeader(bloscOf(0x21, 4, 0x7fffffff, [[1, 2, 3, 4]]))).toThrow('corrupt header');
   });
 });
 

@@ -6,6 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { SyncRuntimeContext } from '@molstar/core/task/execution/synchronous';
 import { DownloadStatusError } from '@molstar/core/util/data-source';
@@ -210,6 +211,30 @@ describe('readZarrArray', () => {
         parseZarrArray(zarray({ shape: [3, 4], chunks: [3, 4] })),
       ),
     ).rejects.toThrow('is not a volume');
+  });
+});
+
+describe('readZarrArray of bad chunks', () => {
+  // 1 x 1 x 4, chunks of 2: chunk 0.0.0 a good zlib stream of [7, 9], chunk 0.0.1 as given
+  const read = (second: number[]) => {
+    const files = new Map<string, Uint8Array<ArrayBuffer>>();
+    files.set('a/0.0.0', new Uint8Array(deflateSync(Uint8Array.from([7, 9]))));
+    files.set('a/0.0.1', Uint8Array.from(second));
+    const meta = parseZarrArray(
+      zarray({ shape: [1, 1, 4], chunks: [1, 1, 2], dtype: '|u1', compressor: { id: 'zlib' } }),
+    );
+    return readZarrArray(SyncRuntimeContext, ZarrStore.fromMap(files), 'a', meta);
+  };
+
+  it('refuses an empty zlib chunk instead of keeping the previous chunk in its place', async () => {
+    await expect(read([0x78, 0x9c, 3, 0, 0, 0, 0, 1])).rejects.toThrow('Zarr: chunk a/0.0.1: zlib: decodes to 0 bytes');
+  });
+
+  it('names the chunk and the cause of a corrupt one', async () => {
+    await expect(read([0x78, 0x9c, 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0])).rejects.toThrow(
+      /^Zarr: chunk a\/0\.0\.1: zlib: corrupt stream/,
+    );
+    await expect(read([0x78, 0x9c])).rejects.toThrow('Zarr: chunk a/0.0.1: zlib: not a zlib stream');
   });
 });
 

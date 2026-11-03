@@ -4,10 +4,10 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { RuntimeContext } from '@molstar/core/task';
-import { inflate, ungzip } from '@molstar/core/util/zip/zip';
+import { type RuntimeContext, Task } from '@molstar/core/task';
+import { ungzip } from '@molstar/core/util/zip/zip';
 import { flipByteOrder, IsNativeEndianLittle } from '../../common/binary.js';
-import { bloscDecode } from './blosc.js';
+import { bloscDecode, zlibDecode } from './blosc.js';
 import type { ZarrArrayMeta, ZarrTypedArray } from './metadata.js';
 import type { ZarrStore } from './store.js';
 
@@ -25,10 +25,11 @@ async function decodeChunk(
   let out: Uint8Array<ArrayBuffer>;
   if (c === null) out = bytes;
   else if (c.id === 'blosc') out = await bloscDecode(ctx, bytes, scratch);
-  else if (c.id === 'zlib') out = await inflate(ctx, bytes, scratch);
-  else out = await ungzip(ctx, bytes, scratch);
-  if (out.length !== scratch.length)
-    throw new Error(`Zarr: a chunk decodes to ${out.length} bytes, not ${scratch.length}`);
+  else if (c.id === 'zlib') {
+    await zlibDecode(ctx, bytes, scratch);
+    out = scratch;
+  } else out = await ungzip(ctx, bytes, scratch);
+  if (out.length !== scratch.length) throw new Error(`decodes to ${out.length} bytes, not ${scratch.length}`);
   return out;
 }
 
@@ -107,10 +108,17 @@ export async function readZarrArray(
       const cx = c % nx;
       const cy = Math.floor(c / nx) % ny;
       const cz = Math.floor(c / (nx * ny));
-      const bytes = await store.get(`${prefix}${cz}${separator}${cy}${separator}${cx}`, ctx);
+      const key = `${prefix}${cz}${separator}${cy}${separator}${cx}`;
+      const bytes = await store.get(key, ctx);
       if (bytes) {
         const turn = decoding.then(async () => {
-          if (!failed) copy(await decodeChunk(ctx, meta, bytes, scratch), c);
+          if (failed) return;
+          try {
+            copy(await decodeChunk(ctx, meta, bytes, scratch), c);
+          } catch (e) {
+            if (Task.isAbort(e)) throw e;
+            throw new Error(`Zarr: chunk ${key}: ${e instanceof Error ? e.message : e}`);
+          }
         });
         decoding = turn.catch(() => {});
         await turn;
