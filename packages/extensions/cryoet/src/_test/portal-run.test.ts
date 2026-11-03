@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { PortalDataset, PortalTomogram } from '../portal-index.js';
-import { describePortalRun, type PortalFailure, type PortalRunInfo } from '../portal-run.js';
+import { describePortalRun, type PortalFailure, type PortalRunInfo, portalTomogramOptions } from '../portal-run.js';
 
 // A run's tomograms across its spacings (_spec/portal.md §2, §4): 10518 pt117_ts_001 as the portal has it (Ludo,
 // 2026-11-03), two tomograms flagged as the portal's default (64011 at 5.003 Å, 64007 at 10.403 Å): the portal's run
@@ -141,5 +141,28 @@ describe('describePortalRun', () => {
       ok: false,
       message: 'pt117_ts_001 has no tomogram 64011 at 10.403 Å.',
     });
+  });
+});
+
+describe('portalTomogramOptions', () => {
+  it("lists every tomogram of the run, by id, labelled as the portal's list: method, processing, spacing, size, software", () => {
+    const options = portalTomogramOptions(ds.runList[0]);
+    expect(options.map(([id]) => id)).toEqual(['64004', '64005', '64006', '64007', '64008', '64010', '64011']);
+    const label = new Map(options);
+    expect(label.get('64007')).toBe('64007 · WBP Filtered · 10.403 Å · 886×630×246 · AreTomo3 v2.3.0');
+    expect(label.get('64010')).toBe('64010 · WBP Denoised · 10.403 Å · 886×630×246 · AreTomo3 v2.3.0, IsoNet2');
+    expect(label.get('64008')).toBe('64008 · Fourier Space Filtered · 10.403 Å · 886×630×246 · Warp 2.0.0');
+    expect(label.get('64011')).toBe('64011 · WBP Filtered · 5.003 Å · 1842×1310×512 · AreTomo3 v2.3.1');
+    // 64004 and 64006 differ only by their software's version (and alignment): the labels tell them apart
+    expect(new Set(label.values()).size).toBe(options.length);
+  });
+
+  it('says what it has of a tomogram the index knows less of', () => {
+    const run = {
+      id: 1,
+      name: 'r',
+      spacings: [{ spacing: 13.44, tomograms: [tomogram(22064, 13.44, {})], annotations: [] }],
+    };
+    expect(portalTomogramOptions(run)).toEqual([['22064', '22064 · 13.44 Å · 886×630×246']]);
   });
 });

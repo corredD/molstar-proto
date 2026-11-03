@@ -131,6 +131,26 @@ function pickTomogram(
   return { s: spacings[0], t: spacings[0].tomograms[0] };
 }
 
+const words = (s: string) => s.replace(/_/g, ' ');
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * A tomogram as the portal's own list labels it, compact: '64007 · WBP Filtered · 10.403 Å · 886×630×246 · AreTomo3
+ * v2.3.0' (the processing's software after the reconstruction's when it differs: '…, IsoNet2')
+ */
+export function portalTomogramLabel(t: PortalTomogram, spacing: number) {
+  const kind = [t.method && words(t.method), t.processing && capital(t.processing)].filter((x) => x).join(' ');
+  const software = [...new Set([t.reconstructionSoftware, t.processingSoftware].filter((x) => x))].join(', ');
+  return [String(t.id), kind, `${spacing} Å`, t.size.join('×'), software].filter((x) => x).join(' · ');
+}
+
+/** Every tomogram of a run, across its spacings, by id: the card's choice of tomogram ([id, label]) */
+export function portalTomogramOptions(run: PortalRun): [string, string][] {
+  const all = run.spacings.flatMap((s) => s.tomograms.map((t) => ({ t, spacing: s.spacing })));
+  all.sort((a, b) => a.t.id - b.t.id);
+  return all.map(({ t, spacing }) => [String(t.id), portalTomogramLabel(t, spacing)]);
+}
+
 function runNames(ds: PortalDataset) {
   const names = ds.runList.map((r) => r.name);
   return names.length > 8 ? `${names.slice(0, 8).join(', ')}, …` : names.join(', ');

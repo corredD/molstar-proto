@@ -13,7 +13,7 @@ import { story } from '@molstar/prism-ui/testing/index';
 import type { Meta, StoryObj } from '@storybook/web-components-vite';
 
 // The CryoET Data Portal's card (+ Open › CryoET Data Portal…; extensions/cryoet/_spec/portal.md §4) over the index the
-// explorer ships (10003, 10453, 10524), no viewer: Load answers after a moment with what it would load.
+// explorer ships (10003, 10453, 10524, 10518), no viewer: Load answers after a moment with what it would load.
 
 const meta: Meta = { title: 'Explorer/CryoET Data Portal' };
 export default meta;
@@ -29,7 +29,7 @@ function area(reads: (format: string) => boolean, first?: number): PortalPanelAr
       return first ? { ...c, datasets: [...c.datasets].sort((a, b) => +(b.id === first) - +(a.id === first)) } : c;
     },
     dataset: (id) => file<PortalDataset>(String(id)),
-    describe: (ds, run, spacing) => describePortalRun(reads, ds, run, spacing),
+    describe: (ds, run, spacing, tomogram) => describePortalRun(reads, ds, run, spacing, tomogram),
   };
 }
 
@@ -51,11 +51,17 @@ const Card = (props: { reads: (format: string) => boolean; first?: number }) => 
   </div>
 );
 
-/** Every format read: dataset, run, level with its size, the annotations (the portal's defaults checked), Load */
+/** Every format read: dataset, run, tomogram, level with its size, the annotations (the portal's defaults checked), Load */
 export const Card10003: StoryObj = { name: 'Card', render: () => story(() => <Card reads={() => true} />) };
 
 /** A viewer without a GLB reader, on 10524: its meshes say they need one (the Annotations list), the rest loads */
 export const WithoutAReader: StoryObj = {
   name: 'Card, a format not read',
   render: () => story(() => <Card reads={(f) => f !== 'glb'} first={10524} />),
+};
+
+/** 10518 pt117_ts_001: its 8 tomograms over two spacings in one Tomogram choice, the portal's default (64007) chosen */
+export const SeveralTomograms: StoryObj = {
+  name: 'Card, a run of several tomograms',
+  render: () => story(() => <Card reads={() => true} first={10518} />),
 };

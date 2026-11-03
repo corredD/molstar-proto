@@ -80,10 +80,16 @@ registration); the index tool `tools/portal-index/`.
 ## 4. The card
 
 - The explorer's **+ Open** › CryoET Data Portal… opens the overlay card `cryoet-portal.overlay.portal`: a `ParamsForm`
-  made from the index (dataset, run, spacing when more than one, level with its size, tomogram view, annotations with
-  the portal's defaults checked), made again when dataset, run or spacing changes; the total size beside Load; the
-  result under it.
-- Story: prism-me › Explorer › CryoET Data Portal.
+  made from the index (dataset, run, tomogram, level with its size, Show as (the tomogram's view: slices and a direct
+  volume, slices, none), annotations with the portal's defaults checked), made again when dataset, run or tomogram
+  changes; the total size beside Load; the result under it.
+- **One Tomogram choice for the run** (Ludo, 2026-11-03: a run has several, as the portal's "Select tomogram"): every
+  tomogram of the run across its spacings, by id, labelled as the portal's list, compact (`portalTomogramLabel`):
+  `64010 · WBP Denoised · 10.403 Å · 886×630×246 · AreTomo3 v2.3.0, IsoNet2` (the processing's software after the
+  reconstruction's when it differs; the version tells 64004 from 64006). Picking one sets its spacing, so there is no
+  spacing field, and that spacing's annotations and levels. Its default is §2's. A spacing without a tomogram cannot be
+  chosen here (none in the shipped index; the API's `spacing` can).
+- Story: prism-me › Explorer › CryoET Data Portal (Card, a run of several tomograms: 10518 pt117_ts_001).
 
 ## 5. The URL (prism-me)
 
