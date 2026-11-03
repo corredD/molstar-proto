@@ -1,7 +1,8 @@
 /**
- * Copyright (c) 2018-2025 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { NumberArray } from '../type-helpers.js';
@@ -197,15 +198,16 @@ export namespace Color {
     );
   }
 
-  function _linearToSRGB(c: number): number {
+  /** One linear channel in [0, 1] to sRGB, unquantized (a glTF colour, read: `linearToSRGB` takes it in 8 bits) */
+  export function linearToSRGBNormalized(c: number): number {
     return c < 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 0.41666) - 0.055;
   }
 
   export function linearToSRGB(c: Color): Color {
     return fromNormalizedRgb(
-      _linearToSRGB(((c >> 16) & 255) / 255),
-      _linearToSRGB(((c >> 8) & 255) / 255),
-      _linearToSRGB((c & 255) / 255),
+      linearToSRGBNormalized(((c >> 16) & 255) / 255),
+      linearToSRGBNormalized(((c >> 8) & 255) / 255),
+      linearToSRGBNormalized((c & 255) / 255),
     );
   }
 }

@@ -10,10 +10,10 @@ import { Color } from '@molstar/core/util/color/color';
 import type { MtlFile, MtlMaterial, ObjFile } from '../obj/schema.js';
 import type { GltfFile } from './schema.js';
 
-// glTF colours are linear, Mol*'s sRGB (the GLB exporter does the reverse). Color.linearToSRGB's formula, on floats:
-// the packed one truncates the linear value to 8 bits first, which bands the dark tones (linear 0.21586, sRGB 0x80,
+// glTF colours are linear, Mol*'s sRGB (the GLB exporter does the reverse), converted on floats: the packed
+// Color.linearToSRGB truncates the linear value to 8 bits first, which bands the dark tones (linear 0.21586, sRGB 0x80,
 // gives 0x7e), and fromNormalizedRgb truncates (1 gives 0xfe)
-const toSrgb = (c: number) => (c < 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 0.41666) - 0.055);
+const toSrgb = Color.linearToSRGBNormalized;
 const to8 = (c: number) => Math.round(Math.min(Math.max(toSrgb(c), 0), 1) * 255);
 
 /**
