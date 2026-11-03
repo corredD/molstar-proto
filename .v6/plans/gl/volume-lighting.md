@@ -3,7 +3,7 @@
 ## Status
 
 - **Current**: A1–A2 frozen (this section and "Descriptors"); A3, A4, D1–D2 in lane `volume-lighting`; B and C
-  (reference tracer, network) in lane `volume-neural`, built on the descriptors below.
+  (reference tracer, network) in lane `volume-neural`, built on the descriptors below (§B, §C).
 - Follows [direct-volume-quality.md](direct-volume-quality.md): its options 2 (occlusion volume) and 3–4 (shadows)
   are replaced by one extinction pyramid, built once per transfer function, read per sample by cone marching. The
   lights stay camera relative: only the pyramid is precomputed, the light-side reads are per frame.
@@ -93,6 +93,47 @@ M1 (Apple M1, Chrome, WebGPU), `node scripts/benchmark.mjs --backends webgpu --f
 - Gate A (+50 % a frame) passed: +1 % and +8 %. The 12 reads replace the gradient's 6 and only lit samples read them.
 - The pyramid (5 dispatches, at a transfer function change, Dawn on the M1, after the first build's compile): 256³
   1.1–1.5 ms (4.8 MB), 464x464x225 1.5–2 ms (17 MB), 512³ 3–5 ms (38 MB).
+
+## B. Reference and training data (`tools/volume-lighting/`, Python, not shipped)
+
+- **Tracer** (`vl/tracer.py`): delta tracking through `S_0`'s field (σ of the filtered value, 0 outside the box),
+  majorants per 8³ brick (the largest α the table takes over the brick's value range), ratio tracking for next-event
+  transmittance, Henyey-Greenstein `g = 0.3` (one value: the network has no g input), a directional key light
+  (irradiance 1) and a uniform sky (radiance 1), all orders, Russian roulette after 4 bounces. Targets per sample:
+  `S_key`, `S_amb`, the in-scatter toward the camera without the sample's own albedo (the shader multiplies by the
+  color); the key's phase normalized to 1 over the sphere (isotropic single scattering is the transmittance, as §A3).
+  On the CPU: on MPS each of the wavefront's small ops waits on the GPU.
+- **Checks** (`pytest`): a slab's single scattering (key, ambient `(E2(σz) + E2(σ(D − z))) / 2`, and the image seen
+  from above) within 1 %; loose majorants on a gradient (closed-form optical depth); Mitsuba 3's `volpath` on a
+  heterogeneous grid with multiple scattering (conda env `volume-lighting`): mean ratio 0.997, 4×4 blocks within 0.5 %
+  (median).
+- **Descriptors** (`vl/descriptors.py`): §A2 in f32 weights; the shader reads levels 1–5 and the value with hardware
+  filtering (sub-texel weights of 8 bits at least) and stores f16 levels it rounds itself, so the two agree within a
+  bound, not bit for bit: `webgpu-volume-neural.test.ts` checks 24 samples of a grid against the Python's
+  (`fixtures.py`), each within 3 · 2⁻⁸ of its 8 texels' range plus an f16 ulp per level.
+- **Data** (`make_data.py`): 8 EMDB maps (ribosomes 80S and 70S, two capsids or shells, a helical filament, a
+  microtubule, a membrane protein in its micelle, the 26S proteasome) and 2 subvolumes of CryoET portal 10003 TS_08
+  (inverted), block-mean downsampled to at most 144 cells; per map 20 configurations (a transfer function whose
+  threshold leaves 2–30 % of the cells above it, peak α per cell 0.03–0.99; a light; albedo 0.3–0.95), 2000 points at
+  the first collision of camera rays (where they meet density), 1024 paths each. Held out (`vl/data.py`, fixed
+  before any data): apoferritin EMD-11638, TRPV1 EMD-5778, tomogram subvolume `b`; validation: every 10th
+  configuration of the training maps. Data in `~/molstar-prism-me/.me-data/volume-lighting/`, never committed.
+
+## C. `lighting: 'neural'`
+
+- **Network** (C1, `vl/net.py`): the 13 descriptors and the albedo, clamped to the training range (a network
+  extrapolates badly: unclamped, dense regions glowed at the output clamp) and normalized by a stored mean and scale,
+  14 → 16 → 16 → 2, squared ReLU, the outputs squared and clamped per channel (key 3: the phase's peak 2.65 and a
+  little multiple scattering; ambient 1, the sky's radiance): `S_key`, `S_amb`, in place of §A3's transmittance and
+  occlusion (`volumeLight`). In the shader the albedo is the color's luminance clamped to the training range.
+- **Training** (C2, `train.py`): Adam, one-cycle, relative L2 with the denominator `(stopgrad(pred) + y) / 2 + 0.01`
+  (the targets' noise does not bias it). The weights go to `volume-neural-weights.ts` next to the shader (a JSON
+  literal: the package compiles without JSON modules), with check inputs and PyTorch's outputs for them.
+- **WGSL** (C3, `volume-neural.wgsl.ts`): generated from the weights, constants only (no binding, no upload): the
+  inputs in 4 vec4s, the layers as `mat4x4` blocks (`mat4x2` for the outputs); f32. Tests: the TypeScript network
+  gives PyTorch's outputs; the WGSL one the TypeScript one on 1,000 random inputs within 1e-4 (Dawn).
+- **Gate C** (C4, `gate_c.py`): pending (run 2, after the review).
+- **Cost** (C5): pending.
 
 ## D. Illumination
 
