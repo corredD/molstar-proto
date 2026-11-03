@@ -8,6 +8,7 @@
 
 import { EmptyLoci } from '@molstar/model/model/loci';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
+import { PortalCard } from '@molstar/cryoet-extension/portal';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
@@ -632,6 +633,9 @@ function openItems(ctx: ViewerUIContext): ContextMenuItem[] {
     { id: 'files', label: 'Files…', run: () => pickFiles(false) },
     { id: 'entry', label: 'PDB / PDB-IHM / EMDB id…', run: () => void ctx.managers.commands.open('load.entry') },
     { id: 'examples', label: 'Examples…', run: () => void ctx.managers.commands.open('mesoscale.example') },
+    ...(ctx.api.cryoetPortal
+      ? [{ id: 'portal', label: 'CryoET Data Portal…', run: () => void ctx.api.view.open({ card: PortalCard }) }]
+      : []),
     { id: 'session', label: 'Session…', run: () => pickFiles(true) },
   ];
 }

@@ -12,7 +12,7 @@ import { createPrismViewer } from '@molstar/prism-viewer/page';
 import { modesFromUrl, unknownUrlParameters } from '@molstar/prism-viewer-app/url';
 import { SceneTab } from './explorer/ui.js';
 import { createMesoscaleExplorerSpec } from './spec.js';
-import { MesoscaleUrlParameters, toLoaderSearch } from './url.js';
+import { MesoscaleUrlParameters, PortalUrlParameters, portalLoadOf, toLoaderSearch } from './url.js';
 
 // The Mesoscale Explorer on Prism (_spec/README.md): the page, the spec and the viewer, exposed on `window.molstar`.
 // The URL's loads run once the viewer is created, as the loaders feature's operations.
@@ -30,7 +30,11 @@ async function main() {
   // spec's `ui.layout.start` cannot name it
   void viewer.api.view.open({ tab: SceneTab });
 
-  const unknown = unknownUrlParameters(location.search, [...LoadUrlParameters, ...MesoscaleUrlParameters]);
+  const unknown = unknownUrlParameters(location.search, [
+    ...LoadUrlParameters,
+    ...MesoscaleUrlParameters,
+    ...PortalUrlParameters,
+  ]);
   if (unknown.length) console.info(`Ignored URL parameters (not known to the explorer): ${unknown.join(', ')}`);
   const params = parseSearch(search);
   if (LoadUrlParameters.some((p) => params.has(p)) && viewer.api.describe('load.entry')) {
@@ -42,6 +46,14 @@ async function main() {
   if (example) viewer.api.run('mesoscale.example', { id: example }).catch((e: unknown) => console.error(e));
   const graphics = own.get('graphics-mode');
   if (graphics) viewer.api.run('mesoscale.graphics', { mode: graphics }).catch((e: unknown) => console.error(e));
+  // The CryoET Data Portal's: `?portal-dataset=10003&portal-run=TS_08`
+  const portal = portalLoadOf(location.search);
+  if (portal) {
+    viewer.api
+      .run('cryoetPortal.load', portal)
+      .then((r) => (r.ok ? r.warnings?.forEach((w) => console.warn(w)) : console.error(r.message)))
+      .catch((e: unknown) => console.error(e));
+  }
 }
 
 main().catch((e) => {
