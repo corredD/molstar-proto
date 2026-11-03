@@ -62,6 +62,19 @@ describe('CryoET Data Portal ndjson particles', () => {
     expect(list.attributes?.get('instance_id')?.column.value(0)).toBe(9);
   });
 
+  it('reads an instancePoint without an instance_id as having none', () => {
+    const data = {
+      records: [
+        { type: 'instancePoint', location: { x: 1, y: 2, z: 3 }, instance_id: 4 },
+        { type: 'instancePoint', location: { x: 4, y: 5, z: 6 } },
+      ],
+    } as unknown as CryoEtDataPortalNdjsonFile;
+    const list = createParticleListFromCryoEtDataPortalNdjson(data, { pixelSize: 1 });
+    const instance = list.attributes!.get('instance_id')!;
+    expect(instance.column.valueKind(1)).not.toBe(0);
+    expect(list.getParticleLabel(1)).toBe('Particle 2 · instancePoint');
+  });
+
   it('has no instance attribute without instancePoint records', () => {
     const data: CryoEtDataPortalNdjsonFile = { records: [{ type: 'point', location: { x: 0, y: 0, z: 0 } }] };
     expect(createParticleListFromCryoEtDataPortalNdjson(data, { pixelSize: 1 }).attributes).toBeUndefined();

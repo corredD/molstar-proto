@@ -116,7 +116,8 @@ export function createParticleListFromCryoEtDataPortalNdjson(
     }
 
     if (instances) {
-      const id = record.type === 'instancePoint' ? record.instance_id : -1;
+      // -1 for another type, or an id that is not a non-negative integer (absent)
+      const id = record.type === 'instancePoint' && Number.isInteger(record.instance_id) ? record.instance_id : -1;
       instances[count] = id;
       if (id >= 0) {
         if (id < instanceMin) instanceMin = id;
@@ -146,7 +147,9 @@ export function createParticleListFromCryoEtDataPortalNdjson(
     getParticleLabel: (index: number) => {
       const i = keys[index];
       const record = data.records[i];
-      if (record.type === 'instancePoint') return `Particle ${i + 1} · ${record.type} · instance ${record.instance_id}`;
+      if (record.type === 'instancePoint' && Number.isInteger(record.instance_id)) {
+        return `Particle ${i + 1} · ${record.type} · instance ${record.instance_id}`;
+      }
       return record.type ? `Particle ${i + 1} · ${record.type}` : `Particle ${i + 1}`;
     },
     sourceData: CryoEtDataPortalNdjsonFormat.create(data),
