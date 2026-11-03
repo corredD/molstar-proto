@@ -22,7 +22,7 @@ import {
   Slider,
   TextInput,
 } from '@molstar/prism-ui';
-import { restartable } from '@molstar/prism-ui/dom/scoped';
+import { latest, restartable } from '@molstar/prism-ui/dom/scoped';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
@@ -339,7 +339,9 @@ type LevelStatus =
 /**
  * What a volume's data is: its source, grid, voxel and size; an OME-Zarr of several levels, the level it is read at, a
  * slider coarsest to finest read at the release (`cryoet.level`, one step: never while dragged, a finer level is a long
- * read). A level over the volume's size guard asks first (Load / Cancel); a failure says why, on the level read.
+ * read). A level over the volume's size guard asks first (Read it / Cancel); a failure says why, on the level read.
+ * Only the last release's answer is shown (`latest`): a read released over another in flight is still sent (the
+ * operations run in turn), and the earlier answer lands on nothing.
  */
 export function VolumeData(props: { area: CryoetApi; volume: string }) {
   const { area, volume } = props;
@@ -352,17 +354,21 @@ export function VolumeData(props: { area: CryoetApi; volume: string }) {
   const status = observableState<LevelStatus | undefined>(undefined);
   const value = derive([read, asked.asReadonly], (r, a) => a ?? r);
   const label = derive([levels, value, over.asReadonly], (ls, v, o) => ls[o ?? v]?.label ?? '');
+  const readLevel = latest((_signal, level: string, large: boolean) => area.level({ volume, level, large } as never));
   const load = async (index: number, large = false) => {
     over.set(undefined);
     const l = levels.value[index];
-    if (!l || l.path === info.value?.level) {
+    // the level read now, unless a read is in flight: then the volume may end at that one
+    if (!l || (l.path === info.value?.level && status.value?.kind !== 'busy')) {
+      readLevel.abort();
       asked.set(undefined);
       status.set(undefined);
       return;
     }
     asked.set(index);
     status.set({ kind: 'busy', text: `Reading ${l.label}…` });
-    const r = await area.level({ volume, level: l.path, large } as never);
+    const r = await readLevel(l.path, large);
+    if (!r) return;
     if (!r.ok && r.code === 'confirm') {
       status.set({ kind: 'confirm', text: `${r.message} Read it?`, index });
       return;
@@ -371,6 +377,7 @@ export function VolumeData(props: { area: CryoetApi; volume: string }) {
     status.set(r.ok ? undefined : { kind: 'failed', text: r.message });
   };
   const cancel = () => {
+    readLevel.abort();
     asked.set(undefined);
     status.set(undefined);
   };

@@ -41,7 +41,10 @@ const TS08: VolumeDataInfo = {
   level: '2',
 };
 
-function mounted(info: VolumeDataInfo, result: (values: { level: string; large?: boolean }) => ApiResult) {
+function mounted(
+  info: VolumeDataInfo,
+  result: (values: { level: string; large?: boolean }) => ApiResult | Promise<ApiResult>,
+) {
   const data = observableState<VolumeDataInfo | undefined>(info);
   const area = {
     dataState: () => data.asReadonly,
@@ -114,5 +117,37 @@ describe("a volume's Data section", () => {
     await tick();
     expect(host.querySelector('[role=status]')?.textContent).toContain('Download failed');
     expect(range()!.value).toBe('0');
+  });
+
+  it('follows the last release while an earlier read is in flight: its busy line, its slider, its read sent', async () => {
+    const pending: ((r: ApiResult) => void)[] = [];
+    const { host, area, release, range } = mounted(TS08, () => new Promise((done) => pending.push(done)));
+    const busy = () => host.querySelector('[role=status]')?.textContent ?? '';
+    // 2×, then back to 4× while 2× reads: 4× is asked for too (it is read after 2×), the slider on it
+    release(1);
+    release(0);
+    expect(area.level).toHaveBeenLastCalledWith({ volume: 'v', level: '2', large: false });
+    await tick();
+    expect(range()!.value).toBe('0');
+    expect(busy()).toContain('4×');
+    // 2× answers first: what the 4× read shows stays
+    pending[0](ApiResult.ok(''));
+    await tick();
+    expect(range()!.value).toBe('0');
+    expect(busy()).toContain('Reading 4×');
+    pending[1](ApiResult.ok(''));
+    await tick();
+    expect(busy()).toBe('');
+  });
+
+  it('a failure of an earlier read does not replace the busy line of the latest', async () => {
+    const pending: ((r: ApiResult) => void)[] = [];
+    const { host, release, range } = mounted(TS08, () => new Promise((done) => pending.push(done)));
+    release(1);
+    release(2);
+    pending[0](ApiResult.fail('failed', 'Download failed'));
+    await tick();
+    expect(host.querySelector('[role=status]')?.textContent).not.toContain('Download failed');
+    expect(range()!.value).toBe('2');
   });
 });
