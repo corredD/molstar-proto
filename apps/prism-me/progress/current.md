@@ -6,17 +6,13 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-- **CryoET portal + volume lighting** (Ludo, 2026-11-02: "do now the parked plan with many lanes... volume on top of
-  cryoET so I will be able to test both at the same time"; plans `plans/2026-11-02-cryoet-portal.md`,
-  `plans/2026-11-02-volume-lighting.md`). Lanes, started 2026-11-02, in `~/prism-me-lanes/<slug>`: `ome-zarr` (library,
-  from c1b8ecb82: OME-Zarr reader, pure-TS blosc-lz4), `glb-reader` (library: GLB shapes), `volume-lighting` (library:
-  parts A and D1-D2), `volume-neural` (library + tools: parts B and C, stacked on `volume-lighting`), `cryoet-portal`
-  (prism-me, port 1345: index, instancePoint, rotation check, portal source, URL params, panel;
-  [brief](2026-11-02-cryoet-portal.md)). Library lanes keep their brief in an untracked `LANE.md`, copied here at close.
-  Integration branch `me/cryoet-volume` (port 1346) merges them all for Ludo's one test. PRs: #37 `ome-zarr`, #38
-  `glb-reader`, #39 `cryoet-portal`, #40 `volume-lighting`, #41 the integration (all four plus the volumetric wiring),
-  2026-11-02; #42 `volume-neural` (stacked on #40, merged into #41). Waits on Ludo: his test on 1346, the hand of
-  EMD-13412/7PHB against TS_08 (mirrored), the merges.
+- **CryoET portal + volume lighting**: **PR #41 merged** by Ludo (2026-11-03, 416c00f0a), with #37-#40 (merged through
+  it) and #42 (closed, in #41). Built: OME-Zarr and GLB readers, the portal index and loader (10003, 10453, 10524,
+  10518), lighting `local | volumetric | neural` with clips honored, a volume's Data (Level slider) and Direct volume
+  (Lighting, Prism's histogram editor, ×½ / ×2) sections, unbounded intervals as number fields, portal points without a
+  decoration at 50 Å. Lanes closed, worktrees removed; library branches `me/ome-zarr`, `me/glb-reader`,
+  `me/volume-lighting`, `me/volume-neural` kept on the fork for upstream (Ludo); their briefs in `2026-11-02-<slug>.md`.
+  What is left: [../TODO.md](../TODO.md) (Volume lighting, later; CryoET Data Portal, later).
 
 - **UI scale** (`me/ui-scale`, `~/prism-me-lanes/ui-scale`, port 1344, [brief](2026-10-30-ui-scale.md)): Ludo,
   2026-10-30, "really important": Settings › Appearance › UI scale, − and +, the UI larger and the 3D untouched; Prism's

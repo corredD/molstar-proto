@@ -83,15 +83,20 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - **Automatic transfer-function preset** (Ludo, 2026-11-03; to decide): "a great preset automatically" for a direct
   volume, an Auto entry in the transfer editor's Presets. Pointer: Barthel, "Automatic Generation of Volumetric Transfer
   Functions" (ImageJ Volume Viewer; files.visual-computing.com/research/AutomaticTransferFunctions.pdf), a 4-page note
-  with no algorithm detail; its methods are in Sereda et al., LH histograms (IEEE TVCG 12(2), 2006) and Praßni, Ropinski,
-  Hinrichs, efficient boundary detection (VMV 2009). Candidates: an EMDB map, its recommended contour level, or the
-  threshold that encloses the volume of its mass; a tomogram, a ramp above the noise peak (mean + k·σ); several
+  with no algorithm detail; its methods are in Sereda et al., LH histograms (IEEE TVCG 12(2), 2006) and Praßni,
+  Ropinski, Hinrichs, efficient boundary detection (VMV 2009). Candidates: an EMDB map, its recommended contour level,
+  or the threshold that encloses the volume of its mass; a tomogram, a ramp above the noise peak (mean + k·σ); several
   materials, boundary peaks from an LH histogram on the extinction pyramid's smoothed level.
 
-- **Volume lighting** (Ludo, 2026-11-02; parked): shadows and light scattering in direct volumes, first by plain
-  formulas, then a tiny network trained on a path tracer (after charlesgrassi.dev's neural volumetric clouds), then
-  volumes shadowing the molecules in illumination. A library lane from master, PRs into prism-me. Plan, steps and gates:
-  [plans/2026-11-02-volume-lighting.md](plans/2026-11-02-volume-lighting.md).
+- **Volume lighting, later** (built 2026-11-02/03, lanes `volume-lighting`, `volume-neural`, merged through #41;
+  `progress/2026-11-02-volume-lighting.md`, `progress/2026-11-02-volume-neural.md`; plan
+  [plans/2026-11-02-volume-lighting.md](plans/2026-11-02-volume-lighting.md)): `volumetric` on WebGL (falls back to
+  `local`); the Quadro measurements; part D3; the network in f16 (neural is +60-70 % a frame over volumetric, past the
+  +50 % bar); `neural` still labelled experimental (Ludo to decide); `emd_1181` volumetric loses some gradient detail.
+  Clips (2026-11-03): the pyramid takes the first instance's clip, `uModel` (camera scale, XR) as the identity; with
+  `ignoreLight` a clip change still rebuilds; the level-0 clip read costs 3-7 % a frame with a clip (Ludo may trade it).
+  Library branches kept on the fork for upstream: `me/ome-zarr`, `me/glb-reader`, `me/volume-lighting`,
+  `me/volume-neural`; `omeZarrLevelNeeds` and prism-viewer's `api/volume` export were added on the integration only.
 
 - **Direct volume's transfer function on a volume's new data** (review of the Direct volume section, 2026-11-03):
   Prism's `createVolumeTransfer` reads the map's stats and `logMin` once. prism-me makes its editor again on the
@@ -104,7 +109,13 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   10003's tomograms (extensions/cryoet/_spec/portal.md §3): the decorations' positions are right, their orientations at
   chance against the density, and no rotation fixes a mirror. Ludo to decide: mirror the tomogram and its points in
   world x, or a mirrored structure as the target, or leave it said. Plan:
-  [plans/2026-11-02-cryoet-portal.md](plans/2026-11-02-cryoet-portal.md).
+  [plans/2026-11-02-cryoet-portal.md](plans/2026-11-02-cryoet-portal.md). Open from Ludo's test (2026-11-03): the index
+  holds 10003, 10453, 10524, 10518 of the portal's 392 datasets (all of them, rebuilt on a schedule, proposed); the URL
+  cannot choose a spacing or a tomogram (`portal-spacing`, `portal-tomogram`), and a run's first spacing is taken, so
+  10453 tomogram_003 shows 4 automated (Octopi) V-ATPase picks, not the 3 manual ground truth at 13.44 Å (prefer ground
+  truth, proposed); curated PDBs for common objects (V-ATPase, clathrin), by Delphine; a level read already sent is not
+  cancelled (`cryoet.level`, review X2); `portal.ts` `loadZarr` sets `maxSizeMB` from the voxels without one chunk. An
+  unbounded interval's ends cannot cross (v5's can, reversing a colour scale: Ludo may want that back).
 
 - A sphere a clip plane misses entirely (its center is past the plane by more than its radius): skip it in the color
   pass, and skip one the plane misses in the ghost pass (lane `marking-cost`, not built;
