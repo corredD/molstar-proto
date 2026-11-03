@@ -16,6 +16,7 @@ import { asWebGPUTexture } from '@molstar/graphics/gl/webgpu/texture';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
 import { WebGPU } from './webgpu-module.js';
+import { renderSlabAndCube } from './webgpu-volume-scene.js';
 
 /** written by tools/volume-lighting/fixtures.py: what the Python tools compute, and the filters' precision bound */
 const Fixture = JSON.parse(readFileSync(new URL('./_generated/volume-descriptors.json', import.meta.url), 'utf8')) as {
@@ -271,5 +272,17 @@ describe.skipIf(!WebGPU.module)('neural volume lighting on WebGPU', () => {
       expect(worst).toBeLessThanOrEqual(1e-4);
       expect(graphics.takeErrors()).toEqual([]);
     });
+  }, 60_000);
+});
+
+describe.skipIf(!WebGPU.module)('neural volume lighting, drawn', () => {
+  it('neural: a dense cube darkens the slab behind it along the light', async () => {
+    const lit = await renderSlabAndCube(['neural']);
+    // light from the right: A (left of the cube) is behind it; from the left, B. Softer than volumetric's 0.49 / 0.57:
+    // the white color is albedo 0.95, and the cube (optical depth ~4 along the light) passes much of the light on by
+    // multiple scattering, which volumetric does not have. Measured on Dawn (M1): 0.78 with the light from the right
+    const [fromRight, fromLeft] = lit.neural;
+    expect(fromRight.a / fromRight.b).toBeLessThan(0.9);
+    expect(fromLeft.b / fromLeft.a).toBeLessThan(0.9);
   }, 60_000);
 });
