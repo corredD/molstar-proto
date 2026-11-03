@@ -6,8 +6,9 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  */
 
+import { Column } from '@molstar/core/data/db';
 import { Mat4, Quat } from '@molstar/core/math/linear-algebra';
-import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { ParticleAttribute, ParticleList } from '@molstar/model/model/particles/particle-list';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import type { CryoEtDataPortalNdjsonFile } from '@molstar/io/reader/cryoet/ndjson';
 import type { ModelFormat } from '../format.js';
@@ -42,6 +43,15 @@ function buildCryoEtLabel(type?: string) {
   return 'CryoET Data Portal particles';
 }
 
+function instanceAttributes(instances: Int32Array, min: number, max: number): ReadonlyMap<string, ParticleAttribute> {
+  const column = Column.ofArray({
+    array: instances,
+    schema: Column.Schema.int,
+    valueKind: (row) => (instances[row] < 0 ? Column.ValueKinds.NotPresent : Column.ValueKinds.Present),
+  });
+  return new Map([['instance_id', { column, label: 'Instance', min, max }]]);
+}
+
 export function createParticleListFromCryoEtDataPortalNdjson(
   data: CryoEtDataPortalNdjsonFile,
   options: CryoEtDataPortalParticleListOptions,
@@ -53,11 +63,13 @@ export function createParticleListFromCryoEtDataPortalNdjson(
 
   let acceptedCount = 0;
   let hasAnyRotation = false;
+  let hasAnyInstance = false;
   for (let i = 0; i < recordCount; ++i) {
     const record = data.records[i];
     if (typeFilter && record.type !== typeFilter) continue;
     ++acceptedCount;
     if (record.type === 'orientedPoint') hasAnyRotation = true;
+    else if (record.type === 'instancePoint') hasAnyInstance = true;
   }
 
   if (acceptedCount === 0) {
@@ -71,6 +83,10 @@ export function createParticleListFromCryoEtDataPortalNdjson(
   const keys = new Int32Array(acceptedCount);
   const coordinates = new Float32Array(acceptedCount * 3);
   const rotations = hasAnyRotation ? new Float32Array(acceptedCount * 4) : undefined;
+  // -1: a record of another type, no instance (the column reads it as not present)
+  const instances = hasAnyInstance ? new Int32Array(acceptedCount) : undefined;
+  let instanceMin = Infinity,
+    instanceMax = -Infinity;
 
   const rotation = Mat4();
   const quaternion = Quat();
@@ -99,6 +115,15 @@ export function createParticleListFromCryoEtDataPortalNdjson(
       rotations[qOffset + 3] = quaternion[3];
     }
 
+    if (instances) {
+      const id = record.type === 'instancePoint' ? record.instance_id : -1;
+      instances[count] = id;
+      if (id >= 0) {
+        if (id < instanceMin) instanceMin = id;
+        if (id > instanceMax) instanceMax = id;
+      }
+    }
+
     keys[count] = i;
     ++count;
   }
@@ -117,9 +142,11 @@ export function createParticleListFromCryoEtDataPortalNdjson(
     coordinates,
     rotations,
     radii,
+    attributes: instances ? instanceAttributes(instances, instanceMin, instanceMax) : undefined,
     getParticleLabel: (index: number) => {
       const i = keys[index];
       const record = data.records[i];
+      if (record.type === 'instancePoint') return `Particle ${i + 1} · ${record.type} · instance ${record.instance_id}`;
       return record.type ? `Particle ${i + 1} · ${record.type}` : `Particle ${i + 1}`;
     },
     sourceData: CryoEtDataPortalNdjsonFormat.create(data),
