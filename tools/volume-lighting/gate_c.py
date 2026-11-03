@@ -42,12 +42,12 @@ def shade_fn(med, levels, light, model):
     return shade
 
 
-def main(weights: str, images: str | None, n_tf: int, spp: int):
-    net = Net.load(weights) if weights.endswith('.json') else load_ts_weights(weights)
+def main(weights: str, images: str | None, n_tf: int, spp: int, maps=HELD_OUT, jitter: bool = False):
+    net = Net.load(weights)
     cpu = torch.device('cpu')
     rng = np.random.default_rng(SEED)
     results = {}
-    for e in (m for m in manifest() if m.file in HELD_OUT):
+    for e in (m for m in manifest() if m.file in maps):
         values = load_values(e, 144)
         rows = []
         for t in range(n_tf):
@@ -61,14 +61,16 @@ def main(weights: str, images: str | None, n_tf: int, spp: int):
                 a = math.radians(ang)
                 light = (-view * math.cos(a) + up * math.sin(a)).float()
                 gen = torch.Generator().manual_seed(SEED + ang)
-                halves = [render_reference(med, view, light, ALBEDO, RES, spp // 2, gen, light=LIGHT) for _ in range(2)]
+                halves = [render_reference(med, view, light, ALBEDO, RES, spp // 2, gen, light=LIGHT, jitter=jitter)
+                          for _ in range(2)]
                 ref = (halves[0] + halves[1]) / 2
                 row = {'tf': t, 'angle': ang, 'ref_mean': float(ref.mean()),
                        'noise': float((halves[0] - halves[1]).pow(2).mean().sqrt() / 2 / ref.mean())}
                 imgs = {'reference': ref}
                 for name, model in (('volumetric', 'volumetric'), ('neural', net)):
+                    # the shader stops a ray at accumulated alpha 0.95 (T < 0.05)
                     img = render_march(med, o, d, shade_fn(med, levels, light, model), ALBEDO, STEP, LIGHT,
-                                       unlit_below=0.01)
+                                       cutoff=0.05, unlit_below=0.01)
                     imgs[name] = img
                     row[name] = {'ratio': float(img.mean() / ref.mean()),
                                  'rel_rmse': float((img - ref).pow(2).mean().sqrt() / ref.mean())}
@@ -83,23 +85,10 @@ def main(weights: str, images: str | None, n_tf: int, spp: int):
         summ['neural_passes'] = (summ['neural']['rel_rmse'] <= 0.8 * summ['volumetric']['rel_rmse']
                                  and summ['neural']['mean_abs_ratio_err'] < summ['volumetric']['mean_abs_ratio_err'])
         results[e.file] = {'summary': summ, 'rows': rows}
-    results['gate_c'] = all(v['summary']['neural_passes'] for k, v in results.items() if k != 'gate_c')
+    results['gate_c'] = all(v['summary']['neural_passes'] for v in results.values())
     results['g'] = G
     print(json.dumps({k: (v['summary'] if isinstance(v, dict) else v) for k, v in results.items()}, indent=1))
     return results
-
-
-def load_ts_weights(path: str) -> Net:
-    """the weights module train.py writes (a JSON literal after `= `)"""
-    src = open(path).read()
-    j = src[src.index('= ', src.index('VolumeNeuralWeights')) + 2 : src.rindex(';')]
-    tmp = path + '.json.tmp'
-    with open(tmp, 'w') as f:
-        f.write(j)
-    try:
-        return Net.load(tmp)
-    finally:
-        os.remove(tmp)
 
 
 def save(folder: str, name: str, imgs: dict):
@@ -121,8 +110,10 @@ if __name__ == '__main__':
     ap.add_argument('--tfs', type=int, default=2)
     ap.add_argument('--spp', type=int, default=SPP)
     ap.add_argument('--out')
+    ap.add_argument('--maps', nargs='*', default=list(HELD_OUT), help='default: the held-out maps')
+    ap.add_argument('--jitter', action='store_true', help='the reference box-filtered over the pixel (run 1, a bug)')
     a = ap.parse_args()
-    r = main(a.weights, a.images, a.tfs, a.spp)
+    r = main(a.weights, a.images, a.tfs, a.spp, a.maps, a.jitter)
     if a.out:
         with open(a.out, 'w') as f:
             json.dump(r, f, indent=1)

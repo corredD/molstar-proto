@@ -46,7 +46,8 @@ def ours(out: str):
     pts = torch.stack(torch.meshgrid(j, j, j, indexing='ij'), -1).reshape(-1, 3)
     fine = med.sigma(pts).reshape(n, n, n).numpy()
     gen = torch.Generator().manual_seed(3)
-    img = render_reference(med, torch.tensor(VIEW), torch.tensor(LIGHT), ALBEDO, RES, SPP, gen).reshape(RES, RES)
+    img = render_reference(med, torch.tensor(VIEW), torch.tensor(LIGHT), ALBEDO, RES, SPP, gen, jitter=True)
+    img = img.reshape(RES, RES)
     np.savez(out, sigma=fine, ours=img.numpy(), g=G)
 
 

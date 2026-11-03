@@ -72,14 +72,15 @@ def render_march(med: Medium, origin, d, shade: Shade, albedo: float, step: floa
 
 
 def render_reference(med: Medium, view, light_dir, albedo: float, res: int, spp: int, gen: torch.Generator,
-                     light=(1.0, 1.0), max_bounces: int = 256, batch: int = 1 << 20):
-    """path traced: per sample a jittered camera ray, its first collision, one path of `in_scatter` from there"""
+                     light=(1.0, 1.0), max_bounces: int = 256, batch: int = 1 << 20, jitter: bool = False):
+    """path traced: per sample a camera ray (the pixel's center, the shader's ray, or jittered over the pixel: a box
+    filter, as Mitsuba's), its first collision, one path of `in_scatter` from there"""
     acc = torch.zeros(res * res, device=med.device)
     lt = light_dir.to(med.device).float()
     per = max(1, batch // (res * res))
     for s in range(0, spp, per):
         k = min(per, spp - s)
-        o, d = zip(*(camera_rays(med, view, res, gen) for _ in range(k)))
+        o, d = zip(*(camera_rays(med, view, res, gen if jitter else None) for _ in range(k)))
         o, d = torch.cat(o), torch.cat(d)
         p, hit = first_collisions(med, o, d, gen)
         hi = hit.nonzero().squeeze(-1)
