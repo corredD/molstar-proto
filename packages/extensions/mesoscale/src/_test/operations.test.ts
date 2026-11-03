@@ -13,7 +13,7 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { type MesoscaleInfo, MesoscaleExampleIds } from '../operations.js';
+import { ExamplesBase, exampleAddress, type MesoscaleInfo, MesoscaleExampleIds } from '../operations.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { TestParticleList } from './fixtures.js';
 
@@ -216,6 +216,25 @@ describe('mesoscale', () => {
     }
     expect(asked).toContain('https://molstar.org/me/examples/list.json');
     expect(asked).toContain('https://molstar.org/me/examples/tiny.bcif');
+  });
+
+  it('reads an example on CloudFront from mesoscope.scripps.edu: CloudFront allows molstar.org only (Ludo, 2026-11-03)', () => {
+    expect(
+      exampleAddress(
+        'https://d39ulgwcl2k1f0.cloudfront.net/me/cellpack/MG_1184_cellpack_atom_instances.bcif',
+        ExamplesBase,
+      ),
+    ).toBe('https://mesoscope.scripps.edu/explorer/examples/MG_1184_cellpack_atom_instances.bcif');
+    expect(
+      exampleAddress('https://d39ulgwcl2k1f0.cloudfront.net/me/petworld/syngap_2-no_bonds.bcif', ExamplesBase),
+    ).toBe('https://mesoscope.scripps.edu/explorer/examples/syngap_2-no_bonds.bcif');
+    // the others as listed, made absolute
+    expect(exampleAddress('../examples/hiv_2-no_bonds.bcif', ExamplesBase)).toBe(
+      'https://molstar.org/me/examples/hiv_2-no_bonds.bcif',
+    );
+    expect(exampleAddress('https://mesoscope.scripps.edu/explorer/examples/machineryoflife.bcif', ExamplesBase)).toBe(
+      'https://mesoscope.scripps.edu/explorer/examples/machineryoflife.bcif',
+    );
   });
 
   it('styles the targets of a list without entities (a RELION list by class)', async () => {

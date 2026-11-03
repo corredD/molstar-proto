@@ -7,20 +7,20 @@ agent run (one undo step each); the command menu (⌘K) has each.
 
 ## Opening files (drag and drop, Open, URL)
 
-| Feature                                                                                                      | Status   | How                                                                                 |
-| ------------------------------------------------------------------------------------------------------------ | -------- | ----------------------------------------------------------------------------------- |
-| mmCIF, BinaryCIF, PDB… structures                                                                            | Done     | Prism's `load.files`                                                                |
-| cellPACK and PetWorld models (mmCIF, BinaryCIF) as particles                                                 | Done     | `mmcif_particles` (content-sniffed on drop)                                         |
-| Particle lists: RELION `.star`, Dynamo `.tbl`, Artiatomi `.em`, CryoET Data Portal `.ndjson`                 | Done     | the plugin's particle formats                                                       |
-| Tomograms and tilt series: `.mrc`, `.map`, `.ccp4`, `.rec`, `.st`, `.ali`, `.mrcs`; MRC modes 0, 1, 2, 6, 12 | Done     | CCP4/MRC reader (modes 6 and 12 added)                                              |
-| Segmentation meshes: OBJ (+MTL), PLY, VTP                                                                    | Done     | the plugin's shape formats; wireframe visual                                        |
-| Sessions `.molx`, `.molj`                                                                                    | Done     | Prism's `session.open`                                                              |
-| Mesoscale Explorer examples (its list at molstar.org/me/examples)                                            | Done     | `mesoscale.example`; Home › Mesoscale examples; `?example=`                         |
-| PDB and PDB-IHM entries                                                                                      | Done     | Prism's `load.entry`; `?pdb=`, `?pdbihm=`                                           |
-| The explorer's URL (`url` + `type`, `pdbihm`/`pdbdev`, `graphics-mode`, `example`)                           | Done     | `apps/prism-me/src/url.ts`                                                          |
-| The explorer's generic zip (`manifest.json`) and Martini `instanced_structure.json`                          | Deferred | needs a reader to a `ParticleList`; the classic explorer's loader builds structures |
-| Tilt angles (`.tlt`, `.rawtlt`) shown with the images                                                        | Deferred | no reader; the images step along z                                                  |
-| Binning of large tomograms                                                                                   | Deferred | decision of 2026-10-18                                                              |
+| Feature                                                                                                               | Status   | How                                                                                 |
+| --------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------- |
+| mmCIF, BinaryCIF, PDB… structures                                                                                     | Done     | Prism's `load.files`                                                                |
+| cellPACK and PetWorld models (mmCIF, BinaryCIF) as particles                                                          | Done     | `mmcif_particles` (content-sniffed on drop)                                         |
+| Particle lists: RELION `.star`, Dynamo `.tbl`, Artiatomi `.em`, CryoET Data Portal `.ndjson`                          | Done     | the plugin's particle formats                                                       |
+| Tomograms and tilt series: `.mrc`, `.map`, `.ccp4`, `.rec`, `.st`, `.ali`, `.mrcs`; MRC modes 0, 1, 2, 6, 12          | Done     | CCP4/MRC reader (modes 6 and 12 added)                                              |
+| Segmentation meshes: OBJ (+MTL), PLY, VTP                                                                             | Done     | the plugin's shape formats; wireframe visual                                        |
+| Sessions `.molx`, `.molj`                                                                                             | Done     | Prism's `session.open`                                                              |
+| Mesoscale Explorer examples (its list at molstar.org/me/examples; CloudFront's files read from mesoscope.scripps.edu) | Done     | `mesoscale.example`; Home › Mesoscale examples; `?example=`                         |
+| PDB and PDB-IHM entries                                                                                               | Done     | Prism's `load.entry`; `?pdb=`, `?pdbihm=`                                           |
+| The explorer's URL (`url` + `type`, `pdbihm`/`pdbdev`, `graphics-mode`, `example`)                                    | Done     | `apps/prism-me/src/url.ts`                                                          |
+| The explorer's generic zip (`manifest.json`) and Martini `instanced_structure.json`                                   | Deferred | needs a reader to a `ParticleList`; the classic explorer's loader builds structures |
+| Tilt angles (`.tlt`, `.rawtlt`) shown with the images                                                                 | Deferred | no reader; the images step along z                                                  |
+| Binning of large tomograms                                                                                            | Deferred | decision of 2026-10-18                                                              |
 
 ## Mesoscale (the Mesoscale Explorer's features)
 
