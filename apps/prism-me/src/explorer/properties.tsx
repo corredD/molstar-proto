@@ -862,18 +862,26 @@ function Representations(props: {
             const direct = props.operation === 'volume.update' && r.type === 'direct-volume';
             // a list's color theme changed: the colors set in Look (painted over it) cleared, so it shows
             let theme = JSON.stringify((form.values as { colorTheme?: unknown }).colorTheme);
+            // a direct volume's fields changed since the last update: those alone are sent (the transfer function
+            // above sets its type's points and its color theme too, after the form was made)
+            const changed = new Set<string>();
             const update = lastWrite(async () => {
-              // what the form leaves out as it is now (set above it since the form was made), not as it was then
               const values = direct
-                ? withTypeParamsOf(model.values.value, area.representationForm(r.ref)?.values, DirectVolumeOwn)
+                ? changedValues(model.values.value, changed, area.representationForm(r.ref)?.values)
                 : model.values.value;
+              changed.clear();
               await api.run(props.operation, { node: r.ref, params: values });
               const next = JSON.stringify((values as { colorTheme?: unknown }).colorTheme);
               if (props.operation === 'particles.update' && next !== theme) await showTheme(api, props.owner);
               theme = next;
             });
             const params = direct ? withoutTypeParams(form.params, DirectVolumeOwn) : form.params;
-            const model = new ParamsFormModel(params, form.values, { onChange: () => update.start(150) });
+            const model = new ParamsFormModel(params, form.values, {
+              onChange: (_, name) => {
+                changed.add(name);
+                update.start(150);
+              },
+            });
             // the type's own params open (the iso level, the spheres' size): what is changed most
             model.fold('/type#params', true);
             return (
@@ -961,6 +969,20 @@ export function withTypeParamsOf(
   const params = { ...type.params };
   for (const k of names) if (k in current.params) params[k] = current.params[k];
   return { ...values, type: { ...type, params } };
+}
+
+/**
+ * A direct volume form's update: the fields changed (`volume.update` merges them one level deep), its type with the
+ * params it leaves out as they are now (`withTypeParamsOf`)
+ */
+export function changedValues(
+  values: PD.Values<PD.Params>,
+  changed: ReadonlySet<string>,
+  now: PD.Values<PD.Params> | undefined,
+): PD.Values<PD.Params> {
+  const out: PD.Values<PD.Params> = {};
+  for (const k of changed) if (k in values) out[k] = values[k];
+  return 'type' in out ? withTypeParamsOf(out, now, DirectVolumeOwn) : out;
 }
 
 /**

@@ -54,6 +54,14 @@ const Params: PD.Params = {
           : { isoValue: PD.Numeric(1) },
       ),
   ),
+  colorTheme: PD.Mapped<any>(
+    'uniform',
+    [
+      ['uniform', 'Uniform'],
+      ['volume-value', 'Volume Value'],
+    ],
+    (name) => PD.Group<any>(name === 'uniform' ? { value: PD.Color(0xcccccc as never) } : { stops: PD.Value([]) }),
+  ),
 };
 
 const DirectValues = {
@@ -68,6 +76,7 @@ const DirectValues = {
       ],
     },
   },
+  colorTheme: { name: 'uniform', params: { value: 0xcccccc } },
 };
 
 /** The explorer's API as the section reads it, and the runs it is asked for */
@@ -135,8 +144,8 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe("a volume's Direct volume section", () => {
   it("splits a volume's representations: isosurfaces in Isosurface, direct volumes in Direct volume", () => {
-    const all = [info('s', 'slice'), info('i', 'isosurface'), info('d', 'direct-volume'), info('o', 'oblique slice')];
-    expect(all.filter(isIsosurface).map((r) => r.ref)).toEqual(['i', 'o']);
+    const all = [info('s', 'slice'), info('i', 'isosurface'), info('d', 'direct-volume'), info('j', 'isosurface')];
+    expect(all.filter(isIsosurface).map((r) => r.ref)).toEqual(['i', 'j']);
     expect(all.filter(isDirectVolume).map((r) => r.ref)).toEqual(['d']);
   });
 
@@ -230,6 +239,33 @@ describe("a volume's Direct volume section", () => {
     f.params.get('d')!.set({ type: { ...DirectValues.type, params: { ...DirectValues.type.params, alpha: 0.2 } } });
     await tick();
     expect(f.refreshed.length).toBe(before + 1);
+  });
+
+  it("a change of its form sends that field alone: the transfer function's colors (its color theme) are not set back", async () => {
+    const f = fakes([info('d', 'direct-volume')]);
+    const body = mount(f, 'direct-volume');
+    // Colors at peaks, after the form was made: the volume-value theme
+    const colorTheme = { name: 'volume-value', params: { stops: [1, 2] } };
+    f.params.get('d')!.set({ ...DirectValues, colorTheme });
+    const range = body.querySelector<HTMLInputElement>('input[type=range]')!;
+    range.value = '0.4';
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 250));
+    const [, args] = f.calls[0] as [string, { params: Record<string, unknown> }];
+    expect(Object.keys(args.params)).toEqual(['type']);
+  });
+
+  it("a direct volume's own row: the same Lighting and transfer function in Representation", () => {
+    const f = fakes([info('i', 'isosurface'), info('d', 'direct-volume')]);
+    const subject = subjectOf(f);
+    const picked = { ...subject.picked, kind: 'volume representation', representation: 'd' };
+    const host = document.createElement('div');
+    document.body.append(host);
+    render(() => sectionOf('representation').render({ ...subject, picked }), host);
+    expect(host.querySelectorAll('[aria-label="Lighting"]')).toHaveLength(1);
+    expect(host.querySelectorAll('section[aria-label="Transfer function"]')).toHaveLength(1);
+    expect(f.transfers).toEqual([['v', 'd']]);
   });
 
   it('none: Add a direct volume, one volume.representation of the volume', async () => {
