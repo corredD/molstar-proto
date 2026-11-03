@@ -221,6 +221,59 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
     }
   }, 60_000);
 
+  it('illumination: a volume recreated keeps shadowing (the trace binds the new pyramid)', async () => {
+    const plugin = await createPlugin();
+    try {
+      const canvas = plugin.canvas3d!;
+      const data = await plugin.builders.data.rawData({ data: Atoms, label: 'atoms' });
+      const trajectory = await plugin.builders.structure.parseTrajectory(data, 'pdb');
+      const model = await plugin.builders.structure.createModel(trajectory);
+      const structure = await plugin.builders.structure.createStructure(model);
+      await plugin.builders.structure.representation.addRepresentation(structure, {
+        type: 'spacefill',
+        color: 'uniform',
+        colorParams: { value: Color(0xffffff) },
+      });
+      // the trace's quality at its minimum: no change of its adapted props calls its \`update\` (which would take a new
+      // pyramid with it, hiding a missed one)
+      const pinned = {
+        ...canvas.props.illumination,
+        enabled: true,
+        steps: 1,
+        refineSteps: 1,
+        rendersPerFrame: [1, 1] as [number, number],
+      };
+      const slab = () => createCcp4(64, (x) => (x >= 40 && x < 48 ? 0.8 : 0));
+      const first = await addDirectVolume(plugin, slab());
+      await first.update('volumetric');
+      canvas.setProps({
+        illumination: pinned,
+        renderer: {
+          ...canvas.props.renderer,
+          light: [{ inclination: 135, azimuth: 180, color: Color(0xffffff), intensity: 1 }],
+        },
+      });
+      plugin.renderer.imagePass.setProps({ illumination: pinned });
+      canvas.requestCameraReset({ durationMs: 0 });
+      await frames(plugin);
+      const atom = Vec3.create(24, 32, 35);
+      const shade = async () => luminanceAt(plugin, await plugin.getImageRaw({ width: Size, height: Size }), atom);
+      const before = await shade();
+      canvas.remove(first.repr);
+      first.repr.destroy();
+      const second = await addDirectVolume(plugin, slab());
+      await second.update('volumetric');
+      await frames(plugin);
+      const after = await shade();
+      expect(canvas.graphics.takeErrors()).toEqual([]);
+      expect(before).toBeLessThan(150);
+      expect(Math.abs(after - before)).toBeLessThanOrEqual(2);
+      second.repr.destroy();
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
   it('volumetric: a dense cube darkens the slab behind it along the light, not the side toward the light', async () => {
     const lit = await renderSlabAndCube(['volumetric', 'local']);
     // light from the right: A (left of the cube) is behind it; from the left, B (right of it). Measured on Dawn (M1):

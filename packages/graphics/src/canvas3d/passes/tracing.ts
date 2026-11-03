@@ -211,11 +211,12 @@ export class TracingPass {
 
   /**
    * Binds the volume that shadows the traced light (`findVolumeShadow`) and its view-to-cell transform: whether the
-   * define changed
+   * trace needs its `update` (the define changed, or another pyramid: textures are taken up by `update` only)
    */
   private updateVolumeShadow(scene: Scene, camera: ICamera) {
     const { values } = this.traceRenderable;
     const volume = findVolumeShadow(scene);
+    let replaced = false;
     if (volume) {
       // as the direct volume's vertex shader: view, the volumes' model (scaled), the instance, the grid's cells
       Mat4.scaleUniformly(volumeModel, scene.volumes.view, camera.scale);
@@ -230,9 +231,10 @@ export class TracingPass {
       }
       if (values.tVolumeExtinction.ref.value !== volume.tExtinction.ref.value) {
         ValueCell.update(values.tVolumeExtinction, volume.tExtinction.ref.value);
+        replaced = true;
       }
     }
-    if (values.dVolumeShadow.ref.value === !!volume) return false;
+    if (values.dVolumeShadow.ref.value === !!volume) return replaced;
     ValueCell.update(values.dVolumeShadow, !!volume);
     return true;
   }
