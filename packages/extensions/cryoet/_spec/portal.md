@@ -46,11 +46,11 @@ server of ours and no copick (`apps/prism-me/plans/2026-11-02-cryoet-portal.md`,
 - ndjson locations are voxels of the annotation's tomogram; `xyz_rotation_matrix` M turns the reference into the
   particle: a target x is drawn at p + M (x − c), M as given (rows as rows), not Mᵀ. Measured on 10003 TS_08
   (`tools/portal-index/rotation_check.py`, 378 ribosomes against EMD-13412, tomogram level 1): M wins at 375–378 of 378
-  points (CC 0.183 vs 0.106–0.122 for Mᵀ, the mirrored references and the random and shuffled controls), with the
+  points (CC 0.186 vs 0.106–0.124 for Mᵀ, the mirrored references and the random and shuffled controls), with the
   reference **mirrored in x**: EMD-13412 is of the other hand than the portal's TS_08 (a data fact, not the reader's).
   Pinned by `model/formats/particles/_test/ndjson.test.ts`.
-- **So the decorations' orientations are at chance against this tomogram:** unmirrored, M scores 0.112 against random
-  rotations' 0.108. The points' positions are right; a rigid structure (7PHB, fitted into EMD-13412) cannot be turned
+- **So the decorations' orientations are at chance against this tomogram:** unmirrored, M scores 0.111 against random
+  rotations' 0.110. The points' positions are right; a rigid structure (7PHB, fitted into EMD-13412) cannot be turned
   into its mirror image, so no rotation or `cryoet.offset` fixes it. What would: the tomogram and its points mirrored in
   world x (points F p, matrices F M F), or a mirrored copy of the structure as the target. Neither is built: Ludo's call
   (TODO.md).

@@ -20,6 +20,8 @@ import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
+import numpy as np
+
 from cryoet_data_portal import (
     Annotation,
     AnnotationFile,
@@ -42,7 +44,6 @@ DECORATIONS = {
     },
 }
 
-DTYPE_BYTES = {'f4': 4, 'i1': 1, 'u1': 1, 'u2': 2, 'i2': 2, 'f8': 8, 'i4': 4, 'u4': 4}
 
 
 def relative(url):
@@ -64,12 +65,13 @@ def zarr_levels(url):
     for d in ms['datasets']:
         a = get_json(f"{url}/{d['path']}/.zarray")
         scale = next(t['scale'] for t in d['coordinateTransformations'] if t['type'] == 'scale')
-        z, y, x = a['shape']
+        # the last three axes are z, y, x (a 4D or 5D image: its channels and times before them)
+        z, y, x = a['shape'][-3:]
         levels.append({
             'path': d['path'],
             'size': [x, y, z],
             'spacing': round(scale[-1], 4),
-            'bytes': x * y * z * DTYPE_BYTES[a['dtype'][1:]],
+            'bytes': x * y * z * np.dtype(a['dtype']).itemsize,
         })
     return levels
 

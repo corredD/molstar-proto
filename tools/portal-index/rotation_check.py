@@ -60,9 +60,9 @@ def load_reference(path, spacing, lowpass):
     with mrcfile.open(path, permissive=True) as m:
         data = np.asarray(m.data, dtype=np.float32)
         apix = float(m.voxel_size.x)
-    zoom = apix / spacing
-    data = ndimage.zoom(data, zoom, order=1)
-    data = ndimage.gaussian_filter(data, lowpass / spacing / 2.355)
+    # low-passed at its own sampling first, so the resampling does not alias
+    data = ndimage.gaussian_filter(data, lowpass / apix / 2.355)
+    data = ndimage.zoom(data, apix / spacing, order=1)
     data = (data - data.mean()) / data.std()
     center = (np.array(data.shape[::-1]) - 1) / 2  # x, y, z voxels
     return data, center
