@@ -78,6 +78,11 @@ export const CryoetExtension: ViewerExtension = {
         icon: 'scan',
         alias: ['tomogram', 'tilt series', 'slice', 'section', 'mrc slice'],
       }),
+      operationCommand(api, c.level, {
+        category,
+        icon: 'zoom-in',
+        alias: ['resolution', 'level', 'binning', 'ome-zarr level', 'finer', 'coarser'],
+      }),
       operationCommand(api, c.mesh, {
         category,
         icon: 'box',

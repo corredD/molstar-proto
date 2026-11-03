@@ -6,9 +6,11 @@ record of tables and columns), never a model. Building models, volumes and shape
 things are, the contracts a reader keeps, and the decisions (the rule, then why). Code comments cite sections
 (`cif.md §3`). The code is the truth for how.
 
-| File             | What it covers                                                                             |
-| ---------------- | ------------------------------------------------------------------------------------------ |
-| [cif.md](cif.md) | CIF: the data model, `CIF.parse`, the text tokenizer, BinaryCIF decoding, schemas, writing |
+| File                                        | What it covers                                                                                |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| [cif.md](cif.md)                            | CIF: the data model, `CIF.parse`, the text tokenizer, BinaryCIF decoding, schemas, writing    |
+| [gltf.md](gltf.md)                          | glTF 2.0 (GLB): the container, accessor views, the scene baked into one mesh, what is refused |
+| [zarr.md](../src/reader/zarr/_spec/zarr.md) | Zarr v2 and OME-Zarr: the store, blosc and LZ4, NGFF axes and units, what is refused          |
 
 ## Map
 
@@ -37,9 +39,11 @@ things are, the contracts a reader keeps, and the decisions (the rule, then why)
    - text formats: `StringLike | ReadonlyUint8Array` (CIF, CSV, cube, DX, Dynamo, GRO, LAMMPS, MOL, MOL2, OBJ, PLY,
      PRMTOP, PSF, SDF, TOP, XYZ), tokenized as bytes (§Decisions);
    - text formats that take a `StringLike` only: PDB, XSC, the CryoET Data Portal NDJSON;
-   - binary formats: `Uint8Array` (BinaryCIF, DCD, MTZ, NCTRAJ, Simularium, TRR, VTP, XTC, Artiatomi), CCP4 and DSN6
-     also a `FileHandle`;
+   - binary formats: `Uint8Array` (BinaryCIF, DCD, glTF (GLB, or .gltf with data URIs), MTZ, NCTRAJ, Simularium, TRR,
+     VTP, XTC, Artiatomi), CCP4 and DSN6 also a `FileHandle`;
    - RELION STAR: a parsed `CifFile` (STAR is CIF syntax).
+   - Zarr: a `ZarrStore` (keys read on demand, zarr.md §1): `openOmeZarr` reads the metadata, `readOmeZarrLevel` a
+     level.
 3. **A reader only reads its bytes** (`ReadonlyUint8Array`, core `type-helpers`). A parsed file may keep them and read
    values from them on access: a caller that changes the buffer changes the values. The plugin hands readers a
    response's shared bytes without a copy for this reason.

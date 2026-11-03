@@ -12,7 +12,7 @@ import type { VolumeLevelHistogram, VolumeLevelStats, VolumeLevelUnit } from './
 // A direct volume's transfer function (parity.md §2, v5's control points editor, improved): opacity and color over the
 // map's values on one axis. The opacity is the representation's control points; the color is its theme's: the
 // volume-value theme's stops (their offsets are along the theme's domain, placed on this axis as the renderer does), or
-// one color. Both edit in place, a drag one undo step.
+// one color. Both edit in place, a drag one undo step; ×½ and ×2 scale every point's opacity (`scaledPoints`), one step.
 
 /** A control point: `x` from 0 to 1 over the map's [min, max], `alpha` the opacity per step (small: 0.05 is a lot). */
 export interface TransferPoint {
@@ -118,6 +118,20 @@ export function transferPeaks(points: readonly TransferPoint[]): TransferPeak[] 
   }
   flush();
   return peaks;
+}
+
+/**
+ * An opacity times `factor`, at most 1 (the editor's ×½ and ×2, a point's arrow keys): zero stays zero; scaled down
+ * from the log axis's floor (`logMin`, drawn at zero already), it is zero.
+ */
+export function scaledOpacity(alpha: number, factor: number, logMin: number): number {
+  if (alpha <= 0 || (factor < 1 && alpha <= logMin * 1.01)) return 0;
+  return Math.min(1, alpha * factor);
+}
+
+/** Every point's opacity times `factor` (`scaledOpacity`): its shape kept until a point reaches 1, its height changed. */
+export function scaledPoints(points: readonly TransferPoint[], factor: number, logMin: number): TransferPoint[] {
+  return points.map((p) => ({ x: p.x, alpha: scaledOpacity(p.alpha, factor, logMin) }));
 }
 
 /** The color painted at `x` (as the renderer does: the theme's domain on the axis, clamped at its ends). */

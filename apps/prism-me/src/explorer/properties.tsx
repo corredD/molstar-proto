@@ -11,7 +11,7 @@ import { Color } from '@molstar/core/util/color';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { type ObjectPose, placementWith, poseOf } from '@molstar/stage-tools-extension/move';
 import type { LabelInfo, StageApi } from '@molstar/stage-tools-extension/operations';
-import { Decorations, MeshControls, ObliqueSlice, Slice } from '@molstar/cryoet-extension/controls';
+import { Decorations, MeshControls, ObliqueSlice, Slice, VolumeData } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
 import { ImportColors, ObjectGraphics, ZoomColors } from '@molstar/mesoscale-extension/controls';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
@@ -38,6 +38,7 @@ import {
   type SliderProps,
   TextInput,
 } from '@molstar/prism-ui';
+import { effect } from '@molstar/prism-ui/dom/scope';
 import { restartable } from '@molstar/prism-ui/dom/scoped';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import type { KeyedState } from '@molstar/prism-ui/reactive/keyed-state';
@@ -46,6 +47,7 @@ import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import { VolumeTransfer } from '@molstar/prism-viewer/views/volume/volume-transfer';
 import { PlainCut, type Way, wayOf } from './clips.js';
 import { DistanceProps } from './distance-properties.js';
 import { addClip, clippable, hideHandles, movable, showClipHandles, showHandles, showTheme } from './menu.js';
@@ -68,9 +70,9 @@ import { CategoryThemes } from './tree-view.js';
 
 // The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name and kind, a model's Group by
 // above the sections (the tree's grouping of its rows: view state), then the sections that apply on Prism's
-// `SectionList` (properties-view.tsx), in ui.md §4's order: Look, Representation, Decoration, Slice, Position, Clips,
-// Labels, Graphics & Motion; a clip's, a label's and a distance's own section. They act through the API as the person;
-// a slider once released (one step).
+// `SectionList` (properties-view.tsx), in ui.md §4's order: Data, Look, Representation, Isosurface, Direct volume,
+// Decoration, Slice, Position, Clips, Labels, Graphics & Motion; a clip's, a label's and a distance's own section. They
+// act through the API as the person; a slider once released (one step).
 
 /** The row picked: its key in the tree, what it is, what it stands for */
 export interface Picked {
@@ -85,7 +87,7 @@ export interface Picked {
 }
 
 /** What a section is given: the pick and what acts on it (the section list's subject, one per pick) */
-interface Subject {
+export interface Subject {
   readonly api: ViewerApi;
   readonly area: ExplorerApi;
   readonly picked: Picked;
@@ -173,6 +175,11 @@ const kinds =
   ({ picked }: Subject) =>
     !!picked.node && ks.includes(picked.kind);
 
+/** A volume's isosurfaces, in its Isosurface section (its slices are Slice's, its direct volumes Direct volume's) */
+export const isIsosurface = (r: RepresentationInfo) => r.type !== 'slice' && r.type !== 'direct-volume';
+/** A volume's direct volumes, in its Direct volume section */
+export const isDirectVolume = (r: RepresentationInfo) => r.type === 'direct-volume';
+
 /** What was made at a node: a section of its own, not a node's */
 const Made: ReadonlySet<string> = new Set(['clip', 'label', 'distance']);
 
@@ -184,14 +191,22 @@ const GraphicsKinds: ReadonlyMap<string, boolean> = new Map([
   ['volume', false],
 ]);
 
-interface Section {
+export interface Section {
   readonly id: string;
   readonly title: string;
   when(s: Subject): boolean;
   render(s: Subject): Child;
 }
 
-const Sections: readonly Section[] = [
+/** The sections, in ui.md §4's order (exported for tests) */
+export const Sections: readonly Section[] = [
+  {
+    // what a volume's data is, and the level an OME-Zarr is read at (Ludo, 2026-11-03)
+    id: 'data',
+    title: 'Data',
+    when: (s) => s.picked.kind === 'volume' && !!s.picked.node && !!s.api.cryoet,
+    render: ({ api, picked }) => <VolumeData area={api.cryoet!} volume={picked.node!.ref} />,
+  },
   {
     id: 'look',
     title: 'Look',
@@ -261,13 +276,36 @@ const Sections: readonly Section[] = [
           area={area}
           owner={node.ref}
           operation="volume.update"
-          only={(r) => r.type !== 'slice'}
+          only={isIsosurface}
           none={() => (
             <Button
               size="sm"
               onClick={() => void api.run('volume.representation', { type: 'isosurface', volume: node.ref })}
             >
               Add an isosurface
+            </Button>
+          )}
+        />
+      );
+    },
+  },
+  {
+    // a volume's direct volumes: each its Lighting, Prism's transfer function, then the rest of its form
+    id: 'direct-volume',
+    title: 'Direct volume',
+    when: kinds('volume'),
+    render: ({ api, area, picked }) => {
+      const volume = picked.node!.ref;
+      return (
+        <Representations
+          api={api}
+          area={area}
+          owner={volume}
+          operation="volume.update"
+          only={isDirectVolume}
+          none={() => (
+            <Button size="sm" onClick={() => void api.run('volume.representation', { type: 'direct-volume', volume })}>
+              Add a direct volume
             </Button>
           )}
         />
@@ -478,6 +516,10 @@ function lastWrite(write: () => unknown) {
     void write();
   });
   return {
+    /** A change waits to be written */
+    get pending() {
+      return pending;
+    },
     start(ms: number) {
       pending = true;
       timer.start(ms);
@@ -827,18 +869,39 @@ function Representations(props: {
           {(r) => {
             const form = area.representationForm(r.ref);
             if (!form) return <Hint>{r.label}</Hint>;
+            // a direct volume: its Lighting and transfer function above its form, which leaves them out
+            const direct = props.operation === 'volume.update' && r.type === 'direct-volume';
             // a list's color theme changed: the colors set in Look (painted over it) cleared, so it shows
             let theme = JSON.stringify((form.values as { colorTheme?: unknown }).colorTheme);
+            // a direct volume's fields changed since the last update: those alone are sent (the transfer function
+            // above sets its type's points and its color theme too, after the form was made)
+            const changed = new Set<string>();
             const update = lastWrite(async () => {
-              const values = model.values.value;
+              const values = direct
+                ? changedValues(model.values.value, changed, area.representationForm(r.ref)?.values)
+                : model.values.value;
+              changed.clear();
               await api.run(props.operation, { node: r.ref, params: values });
               const next = JSON.stringify((values as { colorTheme?: unknown }).colorTheme);
               if (props.operation === 'particles.update' && next !== theme) await showTheme(api, props.owner);
               theme = next;
             });
-            const model = new ParamsFormModel(form.params, form.values, { onChange: () => update.start(150) });
+            const params = direct ? withoutTypeParams(form.params, DirectVolumeOwn) : form.params;
+            const model = new ParamsFormModel(params, form.values, {
+              onChange: (_, name) => {
+                changed.add(name);
+                update.start(150);
+              },
+            });
             // the type's own params open (the iso level, the spheres' size): what is changed most
             model.fold('/type#params', true);
+            // a direct volume's form follows it (the transfer function above sets its color theme; an undo), as Prism's
+            // inspector's does, but not over a change not written yet
+            if (direct) {
+              effect(area.representationParams(r.ref), (now) => {
+                if (now && !update.pending) model.load(now as PD.Values<PD.Params>);
+              });
+            }
             return (
               <div class={classes.tight}>
                 <div class={classes.tools}>
@@ -862,6 +925,9 @@ function Representations(props: {
                     />
                   ) : null}
                 </div>
+                {direct ? (
+                  <DirectVolumeHead api={api} area={area} volume={props.owner} rep={r.ref} params={form.params} />
+                ) : null}
                 <ParamsForm form={model} />
               </div>
             );
@@ -877,6 +943,119 @@ function Representations(props: {
       <AddParticleRepresentation api={api} area={area} list={props.owner} present={all} />
     </div>
   );
+}
+
+/** A direct volume's params set above its form (its Lighting line, Prism's transfer function), not in it */
+const DirectVolumeOwn = ['lighting', 'controlPoints'] as const;
+
+type TypeValue = { readonly name: string; readonly params: Readonly<Record<string, unknown>> };
+
+/** The params of a representation's type (`type`'s chosen case), as its form defines them */
+function typeParamsOf(params: PD.Params, name: string): PD.Params | undefined {
+  const type = params.type;
+  if (type?.type !== 'mapped') return undefined;
+  const group = type.map(name);
+  return group.type === 'group' ? group.params : undefined;
+}
+
+/** A representation's params with `names` of its type's own hidden: no row in the form (they are set above it) */
+export function withoutTypeParams(params: PD.Params, names: readonly string[]): PD.Params {
+  const type = params.type;
+  if (type?.type !== 'mapped') return params;
+  const map = (name: string) => {
+    const group = type.map(name);
+    if (group.type !== 'group') return group;
+    const inner = { ...group.params };
+    for (const k of names) if (inner[k]) inner[k] = { ...inner[k], isHidden: true };
+    return { ...group, params: inner };
+  };
+  return { ...params, type: { ...type, map } };
+}
+
+/**
+ * The form's values with `names` of its type's params as they are now (`now`, the representation's): the form left
+ * them out and holds them as they were when it was made, so its update must not set them back
+ */
+export function withTypeParamsOf(
+  values: PD.Values<PD.Params>,
+  now: PD.Values<PD.Params> | undefined,
+  names: readonly string[],
+): PD.Values<PD.Params> {
+  const type = values.type as TypeValue | undefined;
+  const current = now?.type as TypeValue | undefined;
+  if (!type || current?.name !== type.name) return values;
+  const params = { ...type.params };
+  for (const k of names) if (k in current.params) params[k] = current.params[k];
+  return { ...values, type: { ...type, params } };
+}
+
+/**
+ * A direct volume form's update: the fields changed (`volume.update` merges them one level deep), its type with the
+ * params it leaves out as they are now (`withTypeParamsOf`)
+ */
+export function changedValues(
+  values: PD.Values<PD.Params>,
+  changed: ReadonlySet<string>,
+  now: PD.Values<PD.Params> | undefined,
+): PD.Values<PD.Params> {
+  const out: PD.Values<PD.Params> = {};
+  for (const k of changed) if (k in values) out[k] = values[k];
+  return 'type' in out ? withTypeParamsOf(out, now, DirectVolumeOwn) : out;
+}
+
+/**
+ * A direct volume's Lighting (its own line: local, volumetric, neural; one `volume.update`) and Prism's transfer
+ * function (the map's histogram under the opacity curve, the colors, the presets, ×½ and ×2), both following the
+ * representation (an undo, another change); the transfer function made again on the volume's new data
+ */
+function DirectVolumeHead(props: {
+  api: ViewerApi;
+  area: ExplorerApi;
+  volume: string;
+  rep: string;
+  params: PD.Params;
+}) {
+  const { api, area, rep } = props;
+  const now = area.representationParams(rep);
+  const lighting = typeParamsOf(props.params, 'direct-volume')?.lighting;
+  // made again on the volume's new data (another level): the editor reads the map's stats once
+  const data = mapState(area.volumeData(props.volume), (d) => (d ? [d] : []));
+  return (
+    <div class={classes.stack}>
+      {lighting?.type === 'select' ? (
+        <Line label="Lighting">
+          <Select
+            size="sm"
+            aria-label="Lighting"
+            title={lighting.description}
+            options={lighting.options as [string, string][]}
+            value={mapState(now, (p) => String((p?.type as TypeValue | undefined)?.params.lighting ?? ''))}
+            onChange={(value) => void setLighting(api, area, rep, value)}
+          />
+        </Line>
+      ) : null}
+      <For each={data} by={(d) => d}>
+        {() => {
+          const transfer = area.volumeTransfer(api, props.volume, rep);
+          if (!transfer) return null;
+          effect(now, () => transfer.refresh());
+          return <VolumeTransfer model={transfer} />;
+        }}
+      </For>
+    </div>
+  );
+}
+
+/** A direct volume's lighting, one step: its type's params as they are now, with it */
+export function setLighting(
+  api: Pick<ViewerApi, 'run'>,
+  area: Pick<ExplorerApi, 'representationForm'>,
+  rep: string,
+  lighting: string,
+) {
+  const type = area.representationForm(rep)?.values.type as TypeValue | undefined;
+  if (!type) return;
+  return api.run('volume.update', { node: rep, params: { type: { ...type, params: { ...type.params, lighting } } } });
 }
 
 /**

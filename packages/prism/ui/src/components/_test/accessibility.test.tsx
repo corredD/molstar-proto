@@ -7,6 +7,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -66,6 +67,8 @@ describe('components have no accessibility violations (axe)', () => {
       color: PD.Color(0x3362b2 as any),
       file: PD.File({ accept: '.cif,.pdb' }),
       files: PD.FileList({ multiple: true }),
+      range: PD.Interval([2, 7.5], { min: 0, max: 10, step: 0.5 }, { label: 'Range' }),
+      domain: PD.Interval([-1, 1], { step: 0.001 }, { label: 'Domain' }),
       outline: onOff(true, { scale: PD.Numeric(1, { min: 1, max: 5, step: 1 }) }, { label: 'Outline' }),
       mode: PD.MappedStatic(
         'auto',

@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { ValueCell } from '@molstar/core/util';
@@ -89,7 +90,32 @@ export type KernelSchema = {
     | StorageTextureSpec;
 };
 
-export type KernelKindValue = KindValue & { 'storage-buffer': StorageBuffer; 'storage-texture': Texture };
+/**
+ * One mip level of a texture (of `Texture.define`'s levels) as a kernel's texture or storage texture: a kernel reads a
+ * level and writes the next, which the whole texture bound twice would not allow
+ */
+export interface TextureLevel {
+  readonly texture: Texture;
+  readonly level: number;
+}
+
+const TextureLevels = new WeakSet<TextureLevel>();
+
+export function TextureLevel(texture: Texture, level: number): TextureLevel {
+  const l = { texture, level };
+  TextureLevels.add(l);
+  return l;
+}
+
+export function isTextureLevel(x: Texture | TextureLevel): x is TextureLevel {
+  return TextureLevels.has(x as TextureLevel);
+}
+
+export type KernelKindValue = Omit<KindValue, 'texture'> & {
+  texture: Texture | TextureLevel;
+  'storage-buffer': StorageBuffer;
+  'storage-texture': Texture | TextureLevel;
+};
 export type KernelValues<S extends KernelSchema> = {
   readonly [k in keyof S]: ValueCell<KernelKindValue[S[k]['kind']]>;
 };
@@ -154,7 +180,8 @@ export interface ComputeContext {
   getStorageBufferByteCount: () => number;
   /**
    * Whether the backend has the kernel; with `schema`, also whether its storage buffers fit in a stage (WebGPU's
-   * `maxStorageBuffersPerShaderStage`: 8 under the core limits)
+   * `maxStorageBuffersPerShaderStage`: 8 under the core limits) and the device writes its storage textures' formats
+   * (`r16float` needs `texture-formats-tier1`)
    */
   isKernelSupported: (code: KernelCode, schema?: KernelSchema) => boolean;
   createKernel: <S extends KernelSchema>(code: KernelCode, schema: S, values: KernelValues<S>) => ComputeKernel;

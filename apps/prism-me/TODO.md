@@ -85,10 +85,18 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   volumes shadowing the molecules in illumination. A library lane from master, PRs into prism-me. Plan, steps and gates:
   [plans/2026-11-02-volume-lighting.md](plans/2026-11-02-volume-lighting.md).
 
-- **CryoET Data Portal, direct** (Ludo, 2026-11-02; parked): browse and load portal data on the static site, without
-  copick: a shipped dataset index, the ndjson particles, then OME-Zarr tomograms and masks and GLB meshes (both library
-  lanes, upstream candidates), then a portal panel. Example set: dataset 10003 TS_08 ribosomes with EMD-13412 and 7PHB.
-  Plan, findings and gates: [plans/2026-11-02-cryoet-portal.md](plans/2026-11-02-cryoet-portal.md).
+- **Direct volume's transfer function on a volume's new data** (review of the Direct volume section, 2026-11-03):
+  Prism's `createVolumeTransfer` reads the map's stats and `logMin` once. prism-me makes its editor again on the
+  volume's new data (Data's Level, `cryoet.level`; `ExplorerApi.volumeData`). Prism's own inspector refreshes on the
+  volume's sync, but its stats stay as read: a fix in Prism is still open.
+
+- **CryoET Data Portal, later** (built 2026-11-02, lane `cryoet-portal`: index, load, card, URL; plan part E left): ask
+  CZI to add molstar.org and the lab site to the GraphQL allow-list (then search the whole portal live); copick picks
+  JSON as a particle format; tilt series and alignments. EMD-13412 (and 7PHB fitted in it) is of the other hand than
+  10003's tomograms (extensions/cryoet/_spec/portal.md §3): the decorations' positions are right, their orientations at
+  chance against the density, and no rotation fixes a mirror. Ludo to decide: mirror the tomogram and its points in
+  world x, or a mirrored structure as the target, or leave it said. Plan:
+  [plans/2026-11-02-cryoet-portal.md](plans/2026-11-02-cryoet-portal.md).
 
 - A sphere a clip plane misses entirely (its center is past the plane by more than its radius): skip it in the color
   pass, and skip one the plane misses in the ghost pass (lane `marking-cost`, not built;

@@ -350,7 +350,7 @@ describe('clips as rows (ui.md §3)', () => {
 });
 
 describe('+ Open and the empty tree (ui.md §2)', () => {
-  it('says what to drop or open, and + Open lists its four, worded as ui.md, no icons', async () => {
+  it('says what to drop or open, and + Open lists its five, worded as ui.md, no icons', async () => {
     const v = await viewer([]);
     const { host } = mount(v);
     await settle();
@@ -366,6 +366,7 @@ describe('+ Open and the empty tree (ui.md §2)', () => {
       'Files…',
       'PDB / PDB-IHM / EMDB id…',
       'Examples…',
+      'CryoET Data Portal…',
       'Session…',
     ]);
     expect(items.some((m) => m.querySelector('svg'))).toBe(false);

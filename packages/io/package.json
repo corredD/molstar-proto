@@ -19,6 +19,7 @@
     "./reader/_test/*": null,
     "./reader/cif/binary/_test/*": null,
     "./reader/cif/text/_test/*": null,
+    "./reader/zarr/_test/*": null,
     "./writer/_test/*": null
   },
   "files": [
@@ -29,7 +30,8 @@
   ],
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test:scaling": "vitest run --config vitest.scaling.config.ts"
   },
   "dependencies": {
     "@types/node": "catalog:",

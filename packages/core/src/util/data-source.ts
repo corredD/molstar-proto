@@ -4,6 +4,7 @@
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Adam Midlik <midlik@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  *
  * Adapted from LiteMol
  */
@@ -76,6 +77,14 @@ export function fetchData<T extends DataType>(params: FetchDataParams<T> | strin
     params.headers,
     params.signal,
   );
+}
+
+/** A download answered with an HTTP error status (not 2xx or 3xx), e.g. 404 for a key a store does not hold. */
+export class DownloadStatusError extends Error {
+  constructor(readonly status: number) {
+    super(`Download failed with status code ${status}`);
+    this.name = 'DownloadStatusError';
+  }
 }
 
 export type FetchDataTask = typeof fetchData;
@@ -277,7 +286,7 @@ function fetchDataInternal<T extends DataType>(
       }
       if (signal?.aborted) throw signalAborted(signal);
       if (!(response.status >= 200 && response.status < 400)) {
-        throw new Error(`Download failed with status code ${response.status}`);
+        throw new DownloadStatusError(response.status);
       }
       const data = await readResponseBody(ctx, 'Downloading...', response, signal);
 

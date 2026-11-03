@@ -22,6 +22,11 @@
     shadows read the opaque depth only, so volumes neither cast nor receive them;
   - illumination (tracing) draws volumes as rasterized, outside the traced light.
 
+- **`lighting`** (param, `local` default): `volumetric` lights the samples by the transmittance to the key light and an
+  ambient obscurance from an extinction pyramid built per transfer function (WebGPU; `local` elsewhere): options 2–4
+  in one, see [volume-lighting.md](volume-lighting.md); `neural` (experimental) takes the same descriptors through a
+  small network trained on path-traced maps (§C there).
+
 ## Options
 
 Ordered by quality gained against cost and work; costs are estimates, to be measured.

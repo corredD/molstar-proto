@@ -2,6 +2,7 @@
  * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { ValueCell } from '@molstar/core/util';
@@ -63,7 +64,11 @@ export interface Texture {
 
   getByteCount: () => number;
 
-  define: (width: number, height: number, depth?: number) => void;
+  /**
+   * Records the size; `levels` mip levels (default 1) of undefined contents, written one level at a time by kernels
+   * (`TextureLevel`, WebGPU; WebGL allocates level 0 only)
+   */
+  define: (width: number, height: number, depth?: number, levels?: number) => void;
   /**
    * The `sub` option requires an existing allocation on the GPU, that is, either
    * `define` or `load` without `sub` must have been called before.

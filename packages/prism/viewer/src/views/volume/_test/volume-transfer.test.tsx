@@ -112,6 +112,36 @@ describe('the transfer function view', () => {
     expect(t.points.value).toHaveLength(2);
   });
 
+  it('scales every point at once (×2, ×½): one change, one step, zeros kept, clamped to 1; the keys too', () => {
+    const t = mount();
+    const button = (name: string) => t.container.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!;
+    button("Denser: double every point's opacity").click();
+    expect(t.changes).toHaveLength(1);
+    expect(t.settled).toHaveLength(1);
+    expect(t.points.value.map((p) => p.alpha)).toEqual([0, 0.1, 0.1, 0]);
+    expect(t.points.value.map((p) => p.x)).toEqual([0.2, 0.3, 0.4, 0.5]);
+    for (let i = 0; i < 4; i++) button("Denser: double every point's opacity").click();
+    expect(t.points.value.map((p) => p.alpha)).toEqual([0, 1, 1, 0]);
+    button("Thinner: halve every point's opacity").click();
+    expect(t.points.value.map((p) => p.alpha)).toEqual([0, 0.5, 0.5, 0]);
+    expect(t.settled).toHaveLength(6);
+    // A point's Shift+arrow scales it as the toolbar does (the same rule: scaledOpacity).
+    t.sliders()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true }));
+    expect(t.points.value[1].alpha).toBe(0.25);
+  });
+
+  it('has nothing to scale on a flat curve: ×½ and ×2 are off', () => {
+    const t = mount();
+    t.points.set([
+      { x: 0, alpha: 0 },
+      { x: 1, alpha: 0 },
+    ]);
+    const off = [
+      ...t.container.querySelectorAll<HTMLButtonElement>('button[aria-label^="Denser"], button[aria-label^="Thinner"]'),
+    ].map((b) => b.disabled);
+    expect(off).toEqual([true, true]);
+  });
+
   it('reads the colors once for all its bindings (the gradient has dozens of stops)', () => {
     const t = mount();
     expect(t.container.querySelectorAll('stop').length).toBeGreaterThan(60);

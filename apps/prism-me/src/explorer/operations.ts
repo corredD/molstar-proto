@@ -32,6 +32,8 @@ import { labelOf, loadedStructures } from '@molstar/prism-viewer/api/scope';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type {} from '@molstar/prism-viewer/features/clipping';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
+import { createVolumeTransfer, type VolumeTransferSource } from '@molstar/prism-viewer/sources/volume-transfer';
+import type { VolumeRef } from '@molstar/plugin/state/manager/volume/hierarchy-state';
 import { clippableUnder, type CutOfObject, cutOfObject, idSet, kindOf, setWay, useClip } from './clips.js';
 import { GizmoAppearance, type GizmoLook } from '@molstar/graphics/util/gizmo/controller';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
@@ -280,10 +282,7 @@ export class ExplorerApi extends ApiArea {
     return watchedState(
       () => {
         const list = plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
-        const reprs =
-          list?.representations ??
-          plugin.managers.volume.hierarchy.current.volumes.find((v) => v.cell.transform.ref === ref)?.representations ??
-          [];
+        const reprs = list?.representations ?? this.volumeRef(ref)?.representations ?? [];
         return reprs.map((r) => ({
           ref: r.cell.transform.ref,
           // a list's as the explorer names them (Spheres, Axes, Objects)
@@ -309,6 +308,42 @@ export class ExplorerApi extends ApiArea {
     return plugin.representation.particles.registry
       .getApplicableTypes(data)
       .map(([type, label]) => ({ type, label: ParticleTypeLabels[type] ?? label }));
+  }
+
+  /** A volume of the hierarchy, by its ref */
+  private volumeRef(ref: string): VolumeRef | undefined {
+    return this.ctx.plugin.managers.volume.hierarchy.current.volumes.find((v) => v.cell.transform.ref === ref);
+  }
+
+  /** A representation's params as they are now, following the state tree while watched (an update, an undo) */
+  representationParams(ref: string): ReadonlyState<Readonly<Record<string, unknown>> | undefined> {
+    const { data } = this.ctx.plugin.state;
+    return watchedState(
+      () => data.cells.get(ref)?.transform.params as Readonly<Record<string, unknown>> | undefined,
+      () => data.events.changed,
+      { compare: Object.is },
+    );
+  }
+
+  /** A volume's data object, following the state tree: a new one when it is read again (another OME-Zarr level) */
+  volumeData(ref: string): ReadonlyState<unknown> {
+    const { data } = this.ctx.plugin.state;
+    return watchedState(
+      () => data.cells.get(ref)?.obj?.data,
+      () => data.events.changed,
+      { compare: Object.is },
+    );
+  }
+
+  /** The unit the transfer functions' axes read in (σ or the map's), for the session: one for all of them */
+  private readonly transferUnit: Parameters<typeof createVolumeTransfer>[4] = observableState('sigma');
+
+  /**
+   * A direct volume's transfer function (`rep` of `volume`): Prism's editor's model, its changes through `api` (one
+   * step a gesture). Its owner calls `refresh` when the representation's params change (`representationParams`).
+   */
+  volumeTransfer(api: ViewerApi, volume: string, rep: string): VolumeTransferSource | undefined {
+    return createVolumeTransfer(this.ctx.plugin, api, () => this.volumeRef(volume), rep, this.transferUnit);
   }
 
   /** A representation's params as its transform defines them, and their values: for a form */

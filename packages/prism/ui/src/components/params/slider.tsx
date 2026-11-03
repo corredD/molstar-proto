@@ -154,3 +154,31 @@ export function parseNumber(text: string): number {
   const t = text.trim().replace(',', '.');
   return t === '' ? Number.NaN : Number(t);
 }
+
+/**
+ * A number typed as text, not a native number field: that one shows decimals in the browser's locale ("0,5") while every
+ * other number reads "0.5"; a comma typed is read as the decimal point. A typed number goes to `commit`, which returns
+ * the value that holds; the field then shows it (text that is no number: the `current` value). The caller writes the
+ * field from its value (`formatNumber` at the same step).
+ */
+export function NumberField(props: {
+  step?: number;
+  current(): number;
+  commit(v: number): number;
+  labelId?: string;
+  'aria-label'?: string;
+}) {
+  return (
+    <input
+      class={classes.input}
+      type="text"
+      inputMode="decimal"
+      aria-labelledby={props.labelId}
+      aria-label={props['aria-label']}
+      onChange={(e) => {
+        const v = parseNumber(e.currentTarget.value);
+        e.currentTarget.value = formatNumber(Number.isFinite(v) ? props.commit(v) : props.current(), props.step);
+      }}
+    />
+  ) as HTMLInputElement;
+}
