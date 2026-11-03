@@ -12,13 +12,14 @@ import { fragment_output_wgsl, marking_output_wgsl, wboit_output_wgsl } from './
 import { packing_wgsl } from './chunks/packing.wgsl.js';
 import { texture_sample_wgsl } from './chunks/quad.wgsl.js';
 import { read_from_texture_wgsl } from './chunks/read-from-texture.wgsl.js';
+import { getVolumeNetworkWgsl } from './volume-neural.wgsl.js';
 import { VolumeLightingMaxAlpha } from '../../compute/volume-lighting.js';
 
 /**
  * The descriptors of a sample (\`volume-lighting.md\` §A2) from the extinction pyramid (\`tExtinction\`, levels 1 to 5
  * as its mips), and the volumetric lighting (§A3) from them
  */
-const volume_lighting_wgsl = /* wgsl */ `
+export const volume_lighting_wgsl = /* wgsl */ `
 const VolumeMaxAlpha = ${VolumeLightingMaxAlpha};
 
 struct VolumeDescriptors {
@@ -85,12 +86,31 @@ const VolumeSegments1 = vec3<f32>(4.0, 8.0, 16.0);
 const VolumeObscurance0 = vec3<f32>(1.0, 0.5, 0.5);
 const VolumeObscurance1 = vec3<f32>(0.5, 0.5, 0.5);
 
+/** \`rgb\` lit by the key light times \`keyScale\` and by the ambient light times \`ambientScale\` */
+fn volumeLight(rgb: vec3<f32>, keyScale: f32, ambientScale: f32) -> vec3<f32> {
+    let key = select(vec3<f32>(0.0), uGlobal.uLightColor[0], oLightCount > 0);
+    return rgb * (key * keyScale + uGlobal.uAmbientColor * ambientScale);
+}
+
 /** \`rgb\` lit by the key light through the volume's transmittance and by the ambient light through its obscurance */
 fn volumetricLight(rgb: vec3<f32>, d: VolumeDescriptors) -> vec3<f32> {
     let transmittance = exp(-(dot(d.light0, VolumeSegments0) + dot(d.light1, VolumeSegments1)));
     let occlusion = exp(-(dot(d.around0, VolumeObscurance0) + dot(d.around1, VolumeObscurance1)));
-    let key = select(vec3<f32>(0.0), uGlobal.uLightColor[0], oLightCount > 0);
-    return rgb * (key * transmittance + uGlobal.uAmbientColor * occlusion);
+    return volumeLight(rgb, transmittance, occlusion);
+}
+`;
+
+/** The neural lighting (§C3): the network's in-scatter in place of the volumetric terms, after \`volume_lighting_wgsl\` */
+export const volume_neural_light_wgsl = /* wgsl */ `${getVolumeNetworkWgsl()}
+
+/**
+ * \`rgb\` lit by the network's in-scatter of the key and the ambient light (§C3), the albedo it was trained with the
+ * luminance of \`rgb\` in its range [0.3, 0.95]
+ */
+fn neuralLight(rgb: vec3<f32>, d: VolumeDescriptors) -> vec3<f32> {
+    let albedo = clamp(dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722)), 0.3, 0.95);
+    let s = volumeNetwork(d, albedo);
+    return volumeLight(rgb, s.x, s.y);
 }
 `;
 
@@ -265,8 +285,11 @@ fn transferFunction(value: f32) -> f32 {
     }
 #endif
 
-#if defined(dLighting_volumetric)
+#if defined(dLighting_volumetric) || defined(dLighting_neural)
 ${volume_lighting_wgsl}
+#endif
+#if defined(dLighting_neural)
+${volume_neural_light_wgsl}
 #endif
 
 fn v3m4(p: vec3<f32>, m: mat4x4<f32>) -> vec3<f32> {
@@ -383,7 +406,7 @@ fn raymarch(startLoc: vec3<f32>, step: vec3<f32>, fragCoord: vec2<f32>, instance
     let transparentBackground = uGlobal.uTransparentBackground != 0u;
     let fog = uGlobal.uFog != 0u;
 
-    #if defined(dLighting_volumetric) && !defined(dIgnoreLight)
+    #if (defined(dLighting_volumetric) || defined(dLighting_neural)) && !defined(dIgnoreLight)
         // the direction to the key light (\`uLightDirection\` is the one it travels, \`applyLight\` takes normals into
         // the surface) in cells (the inverse of the cells' transform to view space, \`normalMatrix\` its inverse
         // transpose up to a scale), and its cosine with the ray: per ray for a directional light
@@ -536,6 +559,9 @@ fn raymarch(startLoc: vec3<f32>, step: vec3<f32>, fragCoord: vec2<f32>, instance
             #if defined(dLighting_volumetric)
                 let descriptors = volumeDescriptors(unitPos * gridDim + 0.5, cellExtinction(value), lightCell, lightCosine, gridDim);
                 color = vec4<f32>(volumetricLight(material.rgb, descriptors) * uGlobal.uExposure, material.a);
+            #elif defined(dLighting_neural)
+                let descriptors = volumeDescriptors(unitPos * gridDim + 0.5, cellExtinction(value), lightCell, lightCosine, gridDim);
+                color = vec4<f32>(neuralLight(material.rgb, descriptors) * uGlobal.uExposure, material.a);
             #else
                 // gradient by central differences (the grids store no gradients): one-sided ones light noisy data by the
                 // side it is seen from

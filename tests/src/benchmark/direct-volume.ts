@@ -182,8 +182,8 @@ export const DirectVolumeCases: BenchmarkCase<RenderInput>[] = [
     'A map-like grid of 256x256x64 cells of 1x1x4 (40 globules), the default ramp',
     getAnisotropic,
   ),
-  // `lighting` (volume-lighting.md §A4): local and volumetric at 1920x1080, on the map and the tilted slab
-  ...(['local', 'volumetric'] as const).flatMap((lighting) => [
+  // `lighting` (volume-lighting.md §A4, §C5): local, volumetric and neural at 1920x1080, on the map and the tilted slab
+  ...(['local', 'volumetric', 'neural'] as const).flatMap((lighting) => [
     renderCase(
       `render/direct-volume/map-256-${lighting}-1080`,
       `As map-256, lighting ${lighting}, 1920x1080`,

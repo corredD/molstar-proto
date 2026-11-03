@@ -1,7 +1,7 @@
 # Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
 #
 # @author Ludovic Autin <autin@scripps.edu>
-"""Writes the descriptor fixture of the shader's Dawn test (`webgpu-volume-neural.test.ts`): a grid and a transfer
+"""Writes the descriptor fixture of the shader's Dawn test (`webgpu-volume-neural.test.ts`, `_test/_generated/volume-descriptors.json`): a grid and a transfer
 function from integer formulas the test repeats, sample points and lights, the descriptors this package computes, and
 per descriptor a bound from the GPU filters' precision (volume-lighting.md §A2 reads with hardware filtering: its
 sub-texel weights have FILTER_BITS bits, so the shader's values cannot be the Python's bit for bit)."""

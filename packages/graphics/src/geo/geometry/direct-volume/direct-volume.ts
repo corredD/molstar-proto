@@ -280,17 +280,19 @@ export namespace DirectVolume {
   export const Params = {
     ...BaseGeometry.Params,
     ignoreLight: PD.Boolean(false, BaseGeometry.ShadingCategory),
-    lighting: PD.Select<'local' | 'volumetric'>(
+    lighting: PD.Select<'local' | 'volumetric' | 'neural'>(
       'local',
       [
         ['local', 'Local'],
         ['volumetric', 'Volumetric'],
+        ['neural', 'Neural (experimental)'],
       ],
       {
         ...BaseGeometry.ShadingCategory,
         description:
           'Local: lit by the gradient as a surface. Volumetric: dense regions shadow the key light and occlude the ' +
-          'ambient light, thin ones let it through (WebGPU; local elsewhere).',
+          'ambient light, thin ones let it through (WebGPU; local elsewhere). Neural (experimental): the same, the ' +
+          'light computed by a small network trained on path-traced maps.',
       },
     ),
     celShaded: PD.Boolean(false, BaseGeometry.ShadingCategory),
