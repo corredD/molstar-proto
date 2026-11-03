@@ -163,6 +163,16 @@ describe("a volume's Direct volume section", () => {
     expect(mount(f, 'direct-volume').querySelectorAll('[aria-label="Lighting"]')).toHaveLength(1);
   });
 
+  it('has the Data section first, for a volume only (its description and levels, before its representations)', () => {
+    const f = fakes([]);
+    const subject = subjectOf(f);
+    expect(Sections[0].id).toBe('data');
+    const cryoet = { ...subject, api: { ...(f.api as object), cryoet: {} } as never };
+    expect(sectionOf('data').when(cryoet)).toBe(true);
+    expect(sectionOf('data').when({ ...cryoet, picked: { ...cryoet.picked, kind: 'slice' } })).toBe(false);
+    expect(sectionOf('data').when(subject)).toBe(false);
+  });
+
   it('switches Lighting in one volume.update: the type and its params as they are now, with it', async () => {
     const f = fakes([info('d', 'direct-volume')]);
     // changed since the form was made (a drag of the transfer function): kept

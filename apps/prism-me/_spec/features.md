@@ -63,6 +63,7 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | Tomogram slice along x, y, z, its position, a gray window in σ                                                     | Done     | `cryoet.slice`; Slice row                                                         |
 | Tilt series stepped image by image                                                                                 | Done     | `cryoet.slice` along z                                                            |
 | Oblique slice: a plane through a volume, its handle and numbers in the volume's frame, moved with it               | Done     | `cryoet.oblique`; Oblique slice row                                               |
+| A volume's Data: source, grid, voxel, size; an OME-Zarr read at another level in place, slices and looks kept      | Done     | `cryoet.level`; the properties' Data (ui.md §4)                                   |
 | A volume's Direct volume: Lighting on a line, Prism's transfer function on the histogram, ×½ ×2; Add one           | Done     | `volume.update`, `volume.representation`; the properties (ui.md §4)               |
 | Segmentation meshes: show, hide, surface, wireframe, both, opacity, color                                          | Done     | `cryoet.meshes`, `cryoet.mesh`; Segmentations tab                                 |
 | A class's decoration chosen from a column of the file other than an attribute (a tomogram name)                    | Deferred | string columns are not particle attributes                                        |

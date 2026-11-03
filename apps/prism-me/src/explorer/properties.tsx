@@ -11,7 +11,7 @@ import { Color } from '@molstar/core/util/color';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { type ObjectPose, placementWith, poseOf } from '@molstar/stage-tools-extension/move';
 import type { LabelInfo, StageApi } from '@molstar/stage-tools-extension/operations';
-import { Decorations, MeshControls, ObliqueSlice, Slice } from '@molstar/cryoet-extension/controls';
+import { Decorations, MeshControls, ObliqueSlice, Slice, VolumeData } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
 import { ImportColors, ObjectGraphics, ZoomColors } from '@molstar/mesoscale-extension/controls';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
@@ -70,7 +70,7 @@ import { CategoryThemes } from './tree-view.js';
 
 // The properties of the row picked in the explorer's tree (_spec/ui.md §4): its name and kind, a model's Group by
 // above the sections (the tree's grouping of its rows: view state), then the sections that apply on Prism's
-// `SectionList` (properties-view.tsx), in ui.md §4's order: Look, Representation, Isosurface, Direct volume,
+// `SectionList` (properties-view.tsx), in ui.md §4's order: Data, Look, Representation, Isosurface, Direct volume,
 // Decoration, Slice, Position, Clips, Labels, Graphics & Motion; a clip's, a label's and a distance's own section. They
 // act through the API as the person; a slider once released (one step).
 
@@ -200,6 +200,13 @@ export interface Section {
 
 /** The sections, in ui.md §4's order (exported for tests) */
 export const Sections: readonly Section[] = [
+  {
+    // what a volume's data is, and the level an OME-Zarr is read at (Ludo, 2026-11-03)
+    id: 'data',
+    title: 'Data',
+    when: (s) => s.picked.kind === 'volume' && !!s.picked.node && !!s.api.cryoet,
+    render: ({ api, picked }) => <VolumeData area={api.cryoet!} volume={picked.node!.ref} />,
+  },
   {
     id: 'look',
     title: 'Look',
