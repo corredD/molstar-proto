@@ -63,12 +63,24 @@ Raw, 64010 WBP Denoised, 64008 Fourier Space Filtered), `TM-<id> · <spacing>Å 
 
 `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `pnpm check:workspace` (after
 `node scripts/workspace/assets.mjs` in the fresh worktree), the unit tests of `packages/extensions/cryoet` and
-`apps/prism-me` (227), `typecheck:storybook` of prism-me. In the browser (headed Chromium, port 1349): the card on 10518
-pt117_ts_001 lists the 8 tomograms with their labels, 64007 chosen; 64010 offers the membrane mask at 10.403 Å and loads
-it; `?portal-dataset=10518&portal-run=pt117_ts_001&portal-tomogram=64010` loads 64010's zarr (`Tomograms/107`) and the
-membrane mask.
+`apps/prism-me` (228 after the gate), `typecheck:storybook` of prism-me. In the browser (headed Chromium, port 1349):
+the card on 10518 pt117_ts_001 lists the 8 tomograms with their labels, 64007 chosen; 64010 offers the membrane mask at
+10.403 Å and loads it; `?portal-dataset=10518&portal-run=pt117_ts_001&portal-tomogram=64010` loads 64010's zarr
+(`Tomograms/107`) and the membrane mask.
 
 ## Left
 
 - 10453's ground-truth default (above).
 - PR #44 (`me/portal-guard`) also changes `portal-card.tsx` and `portal.ts`: expect a conflict in `RunForm`'s load.
+
+## Review gate
+
+| #   | Finding                                                                                           | Skeptic                 | Outcome                                                     |
+| --- | ------------------------------------------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------- |
+| S1  | should-fix: nothing flagged and a first spacing without a tomogram: the card hides every tomogram | confirmed               | fixed, 2e05ee86d (test first)                               |
+| S2  | should-fix: the "spacing's flagged tomogram" test passed a pick that ignores the flag             | confirmed (a mutant)    | fixed, c6aee4d4b (asserts 10.403 Å → 64007, not 64004)      |
+| S3  | should-fix: `cryoetPortal.run` named only the chosen tomogram, not the ids `load` takes           | plausible               | fixed, ec43b5cf4 (a `Tomograms:` line; test first)          |
+| N1  | nit: the tool retried a 404 five times                                                            | confirmed               | fixed, 366b12e1d (checked: a 404 raises in 0.4 s)           |
+| N2  | nit: features.md and the changelog in the URL commit, not the card's                              | confirmed               | left: the row reads Done only once card and URL both are in |
+| N3  | nit: options by id, the default chosen, not listed first                                          | Ludo's call             | left, in the PR body                                        |
+| N4  | nit, pre-existing: a run with no spacings says "no voxel spacing undefined Å"                     | confirmed, pre-existing | left                                                        |
