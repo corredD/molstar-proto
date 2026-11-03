@@ -144,8 +144,8 @@ export class CryoetPortalApi extends ApiArea {
   }
 
   /** A run's spacing, tomogram and annotations as a load sees them: a read for views */
-  describe(ds: PortalDataset, run: string, spacing?: number): PortalRunInfo | PortalFailure {
-    return describePortalRun((f) => readable(this.ctx, f), ds, run, spacing);
+  describe(ds: PortalDataset, run: string, spacing?: number, tomogram?: number): PortalRunInfo | PortalFailure {
+    return describePortalRun((f) => readable(this.ctx, f), ds, run, spacing, tomogram);
   }
 
   /** The portal dataset and run a scene object's file came from, when its index is read (synchronous: menus) */
@@ -213,10 +213,14 @@ export class CryoetPortalApi extends ApiArea {
       dataset: DatasetParam(),
       run: RunParam(),
       spacing: OptionalParam(
-        PD.Numeric(0, { min: 0 }, { description: "A voxel spacing (Å); absent: the run's first" }),
+        PD.Numeric(0, { min: 0 }, { description: "A voxel spacing (Å); absent: the tomogram's, else the default's" }),
       ),
       tomogram: OptionalParam(
-        PD.Numeric(0, { min: 0, step: 1 }, { description: "A tomogram by id; absent: the spacing's first" }),
+        PD.Numeric(
+          0,
+          { min: 0, step: 1 },
+          { description: "A tomogram by id, of any spacing of the run; absent: the portal's default, else the first" },
+        ),
       ),
       level: OptionalParam(
         PD.Numeric(2, { min: 0, step: 1 }, { description: 'The OME-Zarr level (0: full size); absent: the coarsest' }),

@@ -16,13 +16,13 @@ registration); the index tool `tools/portal-index/`.
   breaks the tool, not the app.
 - **What it holds:** a dataset's title, organism, DOIs, run count, its runs (all, or the first n: `runs` says how many
   in all); per voxel spacing its tomograms (size, each OME-Zarr level's path, size, spacing, decoded bytes, read from
-  the level's `.zarray`; and what the portal's own tomogram list shows: `processing` (raw, filtered, denoised),
-  `method` (the reconstruction method: WBP, SART, Fourier_Space), `reconstructionSoftware` and `processingSoftware`
-  (with versions: AreTomo3 v2.3.0, IsoNet2), `alignment` (the portal's AL-id) and `default`, the portal's visualization
-  default; each written only when the portal has it, so optional, and version 1 still: an older reader ignores them)
-  and annotations (id, object, shape, format, path, size, count, ground truth, the portal's
-  visualization default). Paths are relative to the file host. A shape's MRC is left out when it has a zarr (a browser
-  reads whole files; the zarr has levels).
+  the level's `.zarray`; and what the portal's own tomogram list shows: `processing` (raw, filtered, denoised), `method`
+  (the reconstruction method: WBP, SART, Fourier_Space), `reconstructionSoftware` and `processingSoftware` (with
+  versions: AreTomo3 v2.3.0, IsoNet2), `alignment` (the portal's AL-id) and `default`, the portal's visualization
+  default; each written only when the portal has it, so optional, and version 1 still: an older reader ignores them) and
+  annotations (id, object, shape, format, path, size, count, ground truth, the portal's visualization default). Paths
+  are relative to the file host. A shape's MRC is left out when it has a zarr (a browser reads whole files; the zarr has
+  levels).
 - **Curated, not the portal's:** `decorations` by object name: the PDB that decorates the points, the EMDB average, and
   the average's box center in the structure's frame (§3). The portal links no fitted model.
 - Size: 10003 (65 runs) 121 KB, 10453 (95 runs) 325 KB, 10524 (12 runs) 32 KB, 10518 (49 runs, PP7 virus-like particles;
@@ -35,6 +35,11 @@ registration); the index tool `tools/portal-index/`.
   `dataset`, `run` (name or id), `spacing`, `tomogram`, `level` (absent: the coarsest), `annotations` (`1212`,
   `2321/SegmentationMask`, `none`; empty: the portal's defaults), `as` (`both`: slices and a direct volume, `slices`,
   `none`), `large`.
+- **Which tomogram** (`describePortalRun`; Ludo, 2026-11-03): `tomogram` by id, from whichever spacing of the run holds
+  it (its spacing, annotations and levels come with it); `spacing` alone: that spacing's default tomogram, else its
+  first; neither: the run's default tomogram, the lowest id flagged `default` (a run may flag one a spacing: 10518
+  pt117_ts_001 flags 64007 at 10.403 Å and 64011 at 5.003 Å, and the portal's run page shows 64007, its first by id),
+  else the first spacing's first. Annotations are the chosen spacing's.
 - **Reuse, no reader of its own:** ndjson and GLB by `load.url` (`PortalReaders`), an OME-Zarr by the format's
   transforms (`OmeZarrFromUrl`, `VolumeFromOmeZarr`: several files, not one URL; not `OpenOmeZarr`, whose default
   isosurface the slices would only hide), the points' pixel size by `particles.source`, the decoration by

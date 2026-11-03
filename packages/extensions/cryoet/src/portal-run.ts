@@ -57,7 +57,7 @@ export interface PortalRunInfo {
 export interface PortalPanelArea {
   catalog(): Promise<PortalCatalog>;
   dataset(id: number): Promise<PortalDataset>;
-  describe(ds: PortalDataset, run: string, spacing?: number): PortalRunInfo | PortalFailure;
+  describe(ds: PortalDataset, run: string, spacing?: number, tomogram?: number): PortalRunInfo | PortalFailure;
 }
 
 const needsReader = (reads: (format: string) => boolean, format: string) =>
@@ -77,17 +77,9 @@ export function describePortalRun(
     const more = ds.runList.length < ds.runs ? ` (the index holds ${ds.runList.length} of ${ds.runs})` : '';
     return notFound(`Dataset ${ds.id} has no run '${key}'${more}.`, `Runs: ${runNames(ds)}.`);
   }
-  const s = spacing ? run.spacings.find((x) => Math.abs(x.spacing - spacing) < 1e-3) : run.spacings[0];
-  if (!s) {
-    return notFound(
-      `${run.name} has no voxel spacing ${spacing} Å.`,
-      `It has ${run.spacings.map((x) => x.spacing).join(', ')} Å.`,
-    );
-  }
-  const t = tomogram ? s.tomograms.find((x) => x.id === tomogram) : s.tomograms[0];
-  if (tomogram && !t) {
-    return notFound(`${run.name} has no tomogram ${tomogram} at ${s.spacing} Å.`);
-  }
+  const picked = pickTomogram(run, spacing, tomogram);
+  if ('ok' in picked) return picked;
+  const { s, t } = picked;
   const shapes = new Map<number, number>();
   for (const a of s.annotations) shapes.set(a.id, (shapes.get(a.id) ?? 0) + 1);
   const entries = s.annotations.map((a) => ({
@@ -104,6 +96,39 @@ export function describePortalRun(
     defaults: entries.filter((e) => e.default).map((e) => e.key),
     needs: t ? needsReader(reads, 'zarr') : undefined,
   };
+}
+
+/**
+ * The spacing and tomogram a load takes (_spec/portal.md §2): a tomogram by id, from whichever spacing holds it; a
+ * spacing's flagged tomogram (the portal's default), else its first; with neither, the run's default tomogram (the
+ * lowest id flagged, as the portal's run page), else its first spacing's first
+ */
+function pickTomogram(
+  run: PortalRun,
+  spacing: number | undefined,
+  tomogram: number | undefined,
+): { s: PortalSpacing; t?: PortalTomogram } | PortalFailure {
+  const spacings = spacing ? run.spacings.filter((x) => Math.abs(x.spacing - spacing) < 1e-3) : run.spacings;
+  if (!spacings.length) {
+    return notFound(
+      `${run.name} has no voxel spacing ${spacing} Å.`,
+      `It has ${run.spacings.map((x) => x.spacing).join(', ')} Å.`,
+    );
+  }
+  let found: { s: PortalSpacing; t?: PortalTomogram } | undefined;
+  for (const s of spacings) {
+    for (const t of s.tomograms) {
+      if (tomogram ? t.id === tomogram : t.default && (!found?.t || t.id < found.t.id)) found = { s, t };
+    }
+  }
+  if (found) return found;
+  if (tomogram) {
+    const ids = run.spacings.flatMap((x) => x.tomograms.map((t) => t.id)).sort((a, b) => a - b);
+    return spacing
+      ? notFound(`${run.name} has no tomogram ${tomogram} at ${spacings[0].spacing} Å.`, `It has ${ids.join(', ')}.`)
+      : notFound(`${run.name} has no tomogram ${tomogram}.`, `It has ${ids.join(', ')}.`);
+  }
+  return { s: spacings[0], t: spacings[0].tomograms[0] };
 }
 
 function runNames(ds: PortalDataset) {
