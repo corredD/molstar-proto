@@ -3,10 +3,18 @@
  *
  * @author Sukolsak Sakshuwong <sukolsak@stanford.edu>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { asciiWrite } from '@molstar/io/common/ascii';
 import { IsNativeEndianLittle, flipByteOrder } from '@molstar/io/common/binary';
+import {
+  GlbChunkType,
+  GlbMagic,
+  GltfBufferTarget,
+  GltfComponentType,
+  GltfPrimitiveMode,
+} from '@molstar/io/reader/gltf/schema';
 import { Box3D } from '@molstar/core/math/geometry';
 import { Vec3, Mat4 } from '@molstar/core/math/linear-algebra';
 import { PLUGIN_VERSION } from '@molstar/plugin/version';
@@ -23,26 +31,19 @@ const v3toArray = Vec3.toArray;
 
 // https://github.com/KhronosGroup/glTF/tree/master/specification/2.0
 
-const UNSIGNED_BYTE = 5121;
-const UNSIGNED_INT = 5125;
-const FLOAT = 5126;
-const ARRAY_BUFFER = 34962;
-const ELEMENT_ARRAY_BUFFER = 34963;
-
-const GLTF_MAGIC_BYTE = 0x46546c67;
-const JSON_CHUNK_TYPE = 0x4e4f534a;
-const BIN_CHUNK_TYPE = 0x004e4942;
+const { UNSIGNED_BYTE, UNSIGNED_INT, FLOAT } = GltfComponentType;
+const { ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER } = GltfBufferTarget;
 const JSON_PAD_CHAR = 0x20;
 const BIN_PAD_CHAR = 0x00;
 
 function getPrimitiveMode(mode: 'points' | 'lines' | 'triangles'): number {
   switch (mode) {
     case 'points':
-      return 0;
+      return GltfPrimitiveMode.POINTS;
     case 'lines':
-      return 1;
+      return GltfPrimitiveMode.LINES;
     case 'triangles':
-      return 4;
+      return GltfPrimitiveMode.TRIANGLES;
     default:
       assertUnreachable(mode);
   }
@@ -402,13 +403,13 @@ export class GlbExporter extends MeshExporter<GlbData> {
     asciiWrite(jsonBuffer, jsonString);
 
     const [jsonChunk, jsonChunkLength] = createChunk(
-      JSON_CHUNK_TYPE,
+      GlbChunkType.JSON,
       [jsonBuffer.buffer],
       jsonBuffer.length,
       JSON_PAD_CHAR,
     );
     const [binaryChunk, binaryChunkLength] = createChunk(
-      BIN_CHUNK_TYPE,
+      GlbChunkType.BIN,
       this.binaryBuffer,
       binaryBufferLength,
       BIN_PAD_CHAR,
@@ -417,7 +418,7 @@ export class GlbExporter extends MeshExporter<GlbData> {
     const glbBufferLength = 12 + jsonChunkLength + binaryChunkLength;
     const header = new ArrayBuffer(12);
     const headerDataView = new DataView(header);
-    headerDataView.setUint32(0, GLTF_MAGIC_BYTE, true); // magic number "glTF"
+    headerDataView.setUint32(0, GlbMagic, true); // magic number "glTF"
     headerDataView.setUint32(4, 2, true); // version
     headerDataView.setUint32(8, glbBufferLength, true); // length
     const glbBuffer = [header, ...jsonChunk, ...binaryChunk];
