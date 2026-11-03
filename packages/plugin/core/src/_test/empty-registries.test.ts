@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -214,7 +215,8 @@ describe('the default spec', () => {
       'built-in.animate-state-interpolation',
       'built-in.animate-time',
     ]);
-    expect(c.dataActions).toBe(48);
+    // 5.x's 48, and OME-Zarr's action and two transforms (OpenOmeZarr, OmeZarrFromUrl, VolumeFromOmeZarr)
+    expect(c.dataActions).toBe(51);
     expect(c.lociLabelProviders).toBe(5);
     plugin.dispose();
   });
