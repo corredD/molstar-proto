@@ -38,9 +38,11 @@ def camera_rays(med: Medium, view: torch.Tensor, res: int, gen: torch.Generator 
     return o, d.expand_as(o).contiguous()
 
 
-def render_march(med: Medium, origin, d, shade: Shade, albedo: float, step: float = 0.5, light=(1.0, 1.0), cutoff=1e-3):
-    """Σ T · α · albedo · (L_key · S_key + L_amb · S_amb) at steps of `step` voxels from the box's entry (α = 1 − e^{−σ
-    step}, the shader's per-cell opacity over a step); rays stop below `cutoff` transmittance"""
+def render_march(med: Medium, origin, d, shade: Shade, albedo: float, step: float = 0.5, light=(1.0, 1.0), cutoff=1e-3,
+                 unlit_below: float = 0.0):
+    """Σ T · α · albedo · (L_key · S_key + L_amb · S_amb) at steps of `step` cells from the box's entry (α = 1 − e^{−σ
+    step}, the shader's per-cell opacity over a step); rays stop below `cutoff` transmittance; samples whose per-cell
+    opacity is under `unlit_below` emit the color unlit, as the shader's (`material.a >= 0.01`)"""
     p, inside = med.entry(origin, d)
     n = p.shape[0]
     color = torch.zeros(n, device=med.device)
@@ -53,8 +55,12 @@ def render_march(med: Medium, origin, d, shade: Shade, albedo: float, step: floa
         idx, pi = idx[~out], pi[~out]
         if not idx.numel():
             break
-        a = 1 - torch.exp(-med.sigma(pi) * step)
-        lit = a > 0
+        sigma = med.sigma(pi)
+        a = 1 - torch.exp(-sigma * step)
+        lit = (a > 0) & (1 - torch.exp(-sigma) >= unlit_below)
+        dim = (a > 0) & ~lit
+        if dim.any():
+            color[idx[dim]] += T[idx[dim]] * a[dim] * albedo
         if lit.any():
             sk, sa = shade(pi[lit], d[idx[lit]])
             il = idx[lit]
