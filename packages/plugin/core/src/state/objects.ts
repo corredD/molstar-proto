@@ -21,6 +21,7 @@ import type { ObjFile } from '@molstar/io/reader/obj/schema';
 import type { VtpFile } from '@molstar/io/reader/vtp/schema';
 import type { GltfFile } from '@molstar/io/reader/gltf/schema';
 import type { PsfFile } from '@molstar/io/reader/psf/parser';
+import type { OmeZarrFile } from '@molstar/io/reader/zarr/ome-zarr';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { ParticleTrajectory } from '@molstar/model/model/particles/particle-trajectory';
 import type { ShapeProvider } from '@molstar/graphics/geo/shape/provider';
@@ -227,6 +228,8 @@ export namespace PluginStateObject {
     export class Dsn6 extends Create<Dsn6File>({ name: 'DSN6/BRIX File', typeClass: 'Data' }) {}
     export class Dx extends Create<DxFile>({ name: 'DX File', typeClass: 'Data' }) {}
     export class Mtz extends Create<MtzFile>({ name: 'MTZ File', typeClass: 'Data' }) {}
+    /** An OME-Zarr image's metadata and store; its levels are read by `VolumeFromOmeZarr` (zarr.md) */
+    export class OmeZarr extends Create<OmeZarrFile>({ name: 'OME-Zarr', typeClass: 'Data' }) {}
     /** A NAMD extended system file: the periodic boxes of a DCD's frames (`CoordinatesWithBoxes`) */
     export class Xsc extends Create<XscFile>({ name: 'NAMD XSC File', typeClass: 'Data' }) {}
 
