@@ -107,7 +107,7 @@ export const DirectVolumeRenderableSchema = {
 
 /**
  * The renderable's `dLighting` (the values' where supported, else `local`) and its extinction pyramid, built where
- * `volumetric` is drawn and rebuilt when its inputs change (`volume-lighting.md` §A1)
+ * `volumetric` or `neural` is drawn and rebuilt when its inputs change (`volume-lighting.md` §A1)
  */
 function createVolumeLighting(ctx: GraphicsContext, values: DirectVolumeValues) {
   const supported = isVolumeLightingSupported(ctx);

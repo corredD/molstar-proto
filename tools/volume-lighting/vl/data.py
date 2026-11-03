@@ -67,7 +67,7 @@ def view_rays(med: Medium, rng: np.random.Generator, n: int, n_views: int):
     return t(o), t(dirs)
 
 
-def generate(entry: MapEntry, device, n_configs=20, points=1500, n_paths=256, max_size=144, seed=0, batch=1 << 21):
+def generate(entry: MapEntry, device, n_configs=20, points=2000, n_paths=1024, max_size=144, seed=0, batch=1 << 21):
     """one map's pairs: a dict of arrays (desc (N, 13), albedo, key, amb, se_key, se_amb, config)"""
     rng = np.random.default_rng([seed, zlib.crc32(entry.file.encode())])
     gen = torch.Generator(device=device).manual_seed(seed)
