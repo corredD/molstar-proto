@@ -74,5 +74,7 @@ transforms the plugin's (`state/formats/volume/ome-zarr.ts`).
   plane at a time when a chunk's rows span the array) into the output. Memory: the output, one decoded chunk, up to 4
   compressed chunks.
 - A nonzero fill value fills the output first; missing chunks then need nothing.
-- `OmeZarrLevel.bytes` is the decoded size, known before any chunk: the caller's size guard (the plugin's, 512 MB by
-  default) refuses before reading.
+- `OmeZarrLevel.bytes` (the voxels) and `chunkBytes` (one decoded chunk) are known before any chunk: the caller's size
+  guard (the plugin's, 512 MB by default) counts both and refuses before reading. A coarse level often keeps the fine
+  levels' chunk shape: TS_08 level 2 is 24 MB of voxels and a 67 MB chunk. The compressed chunks in flight (up to 4) are
+  not counted.

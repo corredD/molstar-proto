@@ -2,7 +2,7 @@
 
 - OME-Zarr (Zarr v2, NGFF 0.4 `multiscales`) volumes from a URL: `Open OME-Zarr` (a root action: URL, level, max
   size), or the transforms `OmeZarrFromUrl` (the metadata) and `VolumeFromOmeZarr` (one level, the coarsest by
-  default; a level over `maxSizeMB`, 512 by default, is refused before any chunk is read). Placed in Å from the NGFF
+  default; a level that needs more than `maxSizeMB` (512 by default; its voxels and one decoded chunk) is refused before any chunk is read). Placed in Å from the NGFF
   scale and translation as CCP4 places the same grid, so a level overlays the MRC of the same tomogram; a 0/1 mask
   shows as an isosurface at 0.5. Read by plain GETs (no `Range`), so the CryoET Data Portal's files load in a browser
 - `@molstar/io/reader/zarr`: a Zarr v2 reader (`ZarrStore` over HTTP or a file map, `openOmeZarr`,

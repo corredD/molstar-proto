@@ -108,10 +108,24 @@ describe('OME-Zarr in the plugin', () => {
     const plugin = await createPlugin();
     const errors = errorsOf(plugin);
     await open(plugin, `${Host}multiscale.zarr`, '2');
-    expect(errors.join('\n')).toContain('level 2 decodes to 4000 MB, over the 512 MB limit');
+    expect(errors.join('\n')).toContain(
+      'level 2 needs 4000 MB (4000 MB of voxels, 0 MB for one decoded chunk), over the 512 MB limit',
+    );
     expect(requests.some((r) => /\/\d+\/\d+\/\d+$/.test(r.url))).toBe(false);
     expect(volumes(plugin)).toEqual([]);
     expect(plugin.state.data.tree.children.get(plugin.state.data.tree.root.ref).size).toBe(0);
+    await plugin.dispose();
+  });
+
+  it('counts the decoded chunk in the size limit: a small level of huge chunks is refused', async () => {
+    const meta = JSON.parse(fs.readFileSync(path.join(Fixtures, 'multiscale.zarr', '2', '.zarray'), 'utf8'));
+    meta.chunks = [1024, 1024, 1024];
+    const requests = serve({ 'multiscale.zarr/2/.zarray': JSON.stringify(meta) });
+    const plugin = await createPlugin();
+    const errors = errorsOf(plugin);
+    await open(plugin, `${Host}multiscale.zarr`, '2');
+    expect(errors.join('\n')).toContain('level 2 needs 4295 MB (0 MB of voxels, 4295 MB for one decoded chunk)');
+    expect(requests.some((r) => /\/\d+\/\d+\/\d+$/.test(r.url))).toBe(false);
     await plugin.dispose();
   });
 
