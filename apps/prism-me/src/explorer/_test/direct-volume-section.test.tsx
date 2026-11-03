@@ -105,6 +105,8 @@ function fakes(reprs: RepresentationInfo[]) {
     refresh: () => void refreshed.push(1),
   };
   const params = new Map(reprs.map((r) => [r.ref, observableState<Record<string, unknown>>(DirectValues)]));
+  // the volume's data object (a new one when it is read again: another OME-Zarr level)
+  const data = observableState<object | undefined>({});
   const api = {
     run: async (name: string, args: unknown) => (calls.push([name, args]), ApiResult.ok('')),
   };
@@ -116,8 +118,9 @@ function fakes(reprs: RepresentationInfo[]) {
     },
     representationParams: (ref: string) => params.get(ref)!.asReadonly,
     volumeTransfer: (_api: unknown, volume: string, rep: string) => (transfers.push([volume, rep]), transfer),
+    volumeData: () => data.asReadonly,
   };
-  return { calls, params, api, area, transfers, refreshed };
+  return { calls, params, api, area, transfers, refreshed, data };
 }
 
 /** A volume picked: its subject, as the section list gives it */
@@ -171,6 +174,20 @@ describe("a volume's Direct volume section", () => {
     expect(sectionOf('data').when(cryoet)).toBe(true);
     expect(sectionOf('data').when({ ...cryoet, picked: { ...cryoet.picked, kind: 'slice' } })).toBe(false);
     expect(sectionOf('data').when(subject)).toBe(false);
+  });
+
+  it("makes its transfer function's editor again on the volume's new data (another level: its stats, its histogram)", async () => {
+    const f = fakes([info('d', 'direct-volume')]);
+    const host = mount(f, 'direct-volume');
+    await tick();
+    expect(f.transfers).toEqual([['v', 'd']]);
+    f.data.set({ level: 1 });
+    await tick();
+    expect(f.transfers).toEqual([
+      ['v', 'd'],
+      ['v', 'd'],
+    ]);
+    expect(host.querySelectorAll('[aria-label="Lighting"]')).toHaveLength(1);
   });
 
   it('switches Lighting in one volume.update: the type and its params as they are now, with it', async () => {

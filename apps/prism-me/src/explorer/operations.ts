@@ -325,6 +325,16 @@ export class ExplorerApi extends ApiArea {
     );
   }
 
+  /** A volume's data object, following the state tree: a new one when it is read again (another OME-Zarr level) */
+  volumeData(ref: string): ReadonlyState<unknown> {
+    const { data } = this.ctx.plugin.state;
+    return watchedState(
+      () => data.cells.get(ref)?.obj?.data,
+      () => data.events.changed,
+      { compare: Object.is },
+    );
+  }
+
   /** The unit the transfer functions' axes read in (σ or the map's), for the session: one for all of them */
   private readonly transferUnit: Parameters<typeof createVolumeTransfer>[4] = observableState('sigma');
 

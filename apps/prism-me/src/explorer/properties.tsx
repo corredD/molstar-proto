@@ -1006,7 +1006,7 @@ export function changedValues(
 /**
  * A direct volume's Lighting (its own line: local, volumetric, neural; one `volume.update`) and Prism's transfer
  * function (the map's histogram under the opacity curve, the colors, the presets, ×½ and ×2), both following the
- * representation (an undo, another change)
+ * representation (an undo, another change); the transfer function made again on the volume's new data
  */
 function DirectVolumeHead(props: {
   api: ViewerApi;
@@ -1018,8 +1018,8 @@ function DirectVolumeHead(props: {
   const { api, area, rep } = props;
   const now = area.representationParams(rep);
   const lighting = typeParamsOf(props.params, 'direct-volume')?.lighting;
-  const transfer = area.volumeTransfer(api, props.volume, rep);
-  if (transfer) effect(now, () => transfer.refresh());
+  // made again on the volume's new data (another level): the editor reads the map's stats once
+  const data = mapState(area.volumeData(props.volume), (d) => (d ? [d] : []));
   return (
     <div class={classes.stack}>
       {lighting?.type === 'select' ? (
@@ -1034,7 +1034,14 @@ function DirectVolumeHead(props: {
           />
         </Line>
       ) : null}
-      {transfer ? <VolumeTransfer model={transfer} /> : null}
+      <For each={data} by={(d) => d}>
+        {() => {
+          const transfer = area.volumeTransfer(api, props.volume, rep);
+          if (!transfer) return null;
+          effect(now, () => transfer.refresh());
+          return <VolumeTransfer model={transfer} />;
+        }}
+      </For>
     </div>
   );
 }
