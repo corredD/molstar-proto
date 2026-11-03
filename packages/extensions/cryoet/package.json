@@ -14,6 +14,11 @@
       "types": "./lib/controls.d.ts",
       "import": "./lib/controls.js"
     },
+    "./portal-ui": {
+      "molstar-src": "./src/portal-ui.tsx",
+      "types": "./lib/portal-ui.d.ts",
+      "import": "./lib/portal-ui.js"
+    },
     "./*": {
       "molstar-src": "./src/*.ts",
       "types": "./lib/*.d.ts",

@@ -7,6 +7,7 @@
 import { groupEntities, type MesoGroup, type MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { ContextMenuItem } from '@molstar/prism-ui';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import type {} from '@molstar/cryoet-extension/portal';
 import type {} from '@molstar/prism-viewer/features/clipping';
 import type {} from '@molstar/prism-viewer/features/structure-move';
 import { startMoveDrag } from '@molstar/stage-tools-extension/drag';
@@ -460,6 +461,7 @@ export function nodeMenuItems(
     items.push({ id: 'clip', label: 'Add clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
   }
   items.push(...showOnlyItems(api, picked, actions.groupBy));
+  items.push(...portalItems(api, node.ref));
   if (removable(kind, node)) {
     items.push({
       id: 'remove',
@@ -477,6 +479,27 @@ export function nodeMenuItems(
     });
   }
   return items;
+}
+
+/** An object loaded from the CryoET Data Portal: its run's page (or its dataset's) and its publications */
+function portalItems(api: ViewerApi, ref: string): ContextMenuItem[] {
+  const o = api.cryoetPortal?.originOf(ref);
+  if (!o) return [];
+  const open = (url: string) => () => void window.open(url, '_blank', 'noopener');
+  return [
+    {
+      id: 'portal-page',
+      label: `${o.dataset} ${o.run} on the CryoET Data Portal`,
+      icon: 'link',
+      run: open(o.runPage ?? o.page),
+    },
+    ...o.dois.map((doi) => ({
+      id: `doi-${doi}`,
+      label: `doi:${doi}`,
+      icon: 'link' as const,
+      run: open(`https://doi.org/${doi}`),
+    })),
+  ];
 }
 
 // --- Show only (cellVIEW's, _spec/cellview.md §2; Ludo, 2026-10-28) -------------------------------------------------

@@ -13,6 +13,28 @@ import { parseSearch } from '@molstar/prism-viewer/features/loaders';
 /** The Mesoscale Explorer's own parameters, besides the viewer's and the loaders'. */
 export const MesoscaleUrlParameters: readonly string[] = ['example', 'graphics-mode', 'type', 'pdbihm', 'pdbdev'];
 
+/** The CryoET Data Portal's (_spec/portal.md §5): `?portal-dataset=10003&portal-run=TS_08`, then the others optional */
+export const PortalUrlParameters: readonly string[] = [
+  'portal-dataset',
+  'portal-run',
+  'portal-annotations',
+  'portal-level',
+];
+
+/** The `cryoetPortal.load` values the URL asks for, if it names a dataset */
+export function portalLoadOf(search: string): Record<string, unknown> | undefined {
+  const q = parseSearch(search);
+  const dataset = Number(q.get('portal-dataset'));
+  if (!Number.isInteger(dataset) || dataset <= 0) return;
+  const level = q.get('portal-level');
+  return {
+    dataset,
+    run: q.get('portal-run') ?? '',
+    annotations: q.get('portal-annotations') ?? '',
+    ...(level !== undefined && /^\d+$/.test(level) ? { level: Number(level) } : {}),
+  };
+}
+
 /** The query string with the Mesoscale Explorer's load parameters renamed to the loaders' (unknown ones are kept). */
 export function toLoaderSearch(search: string): string {
   const q = parseSearch(search);

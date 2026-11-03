@@ -1,0 +1,162 @@
+[
+  {
+    "name": "lz4-shuffle-f4",
+    "kind": "smooth",
+    "dtype": "<f4",
+    "n": 8000,
+    "flags": 33,
+    "typesize": 4,
+    "blocksize": 32000,
+    "cbytes": 3932
+  },
+  {
+    "name": "lz4-noshuffle-f4",
+    "kind": "smooth",
+    "dtype": "<f4",
+    "n": 8000,
+    "flags": 32,
+    "typesize": 4,
+    "blocksize": 32000,
+    "cbytes": 5128
+  },
+  {
+    "name": "lz4-shuffle-u1",
+    "kind": "smooth",
+    "dtype": "|u1",
+    "n": 5001,
+    "flags": 33,
+    "typesize": 1,
+    "blocksize": 5001,
+    "cbytes": 2598
+  },
+  {
+    "name": "lz4hc-shuffle-f4",
+    "kind": "smooth",
+    "dtype": "<f4",
+    "n": 5000,
+    "flags": 33,
+    "typesize": 4,
+    "blocksize": 20000,
+    "cbytes": 1944
+  },
+  {
+    "name": "lz4-blocks-f4",
+    "kind": "smooth",
+    "dtype": "<f4",
+    "n": 20000,
+    "flags": 33,
+    "typesize": 4,
+    "blocksize": 65536,
+    "cbytes": 9409
+  },
+  {
+    "name": "lz4-blocks-i2",
+    "kind": "smooth",
+    "dtype": "<i2",
+    "n": 40001,
+    "flags": 33,
+    "typesize": 2,
+    "blocksize": 65536,
+    "cbytes": 18230
+  },
+  {
+    "name": "lz4-blocks-f8",
+    "kind": "smooth",
+    "dtype": "<f8",
+    "n": 20000,
+    "flags": 33,
+    "typesize": 8,
+    "blocksize": 131072,
+    "cbytes": 6365
+  },
+  {
+    "name": "lz4-random-u2",
+    "kind": "random",
+    "dtype": "<u2",
+    "n": 1500,
+    "flags": 33,
+    "typesize": 2,
+    "blocksize": 3000,
+    "cbytes": 1544
+  },
+  {
+    "name": "lz4-tiny-f8",
+    "kind": "smooth",
+    "dtype": "<f8",
+    "n": 100,
+    "flags": 49,
+    "typesize": 8,
+    "blocksize": 800,
+    "cbytes": 131
+  },
+  {
+    "name": "lz4-shuffle-v32",
+    "kind": "smooth",
+    "dtype": "V32",
+    "n": 400,
+    "flags": 49,
+    "typesize": 32,
+    "blocksize": 12800,
+    "cbytes": 1112
+  },
+  {
+    "name": "memcpyed-f4",
+    "kind": "smooth",
+    "dtype": "<f4",
+    "n": 1000,
+    "flags": 35,
+    "typesize": 4,
+    "blocksize": 4000,
+    "cbytes": 4016
+  },
+  {
+    "name": "zlib-shuffle-f4",
+    "kind": "smooth",
+    "dtype": "<f4",
+    "n": 8000,
+    "flags": 97,
+    "typesize": 4,
+    "blocksize": 32000,
+    "cbytes": 1918
+  },
+  {
+    "name": "zlib-blocks-i2",
+    "kind": "smooth",
+    "dtype": "<i2",
+    "n": 40001,
+    "flags": 96,
+    "typesize": 2,
+    "blocksize": 65536,
+    "cbytes": 9346
+  },
+  {
+    "name": "bitshuffle-f4",
+    "kind": "smooth",
+    "dtype": "<f4",
+    "n": 1000,
+    "flags": 36,
+    "typesize": 4,
+    "blocksize": 4000,
+    "cbytes": 437
+  },
+  {
+    "name": "zstd-f4",
+    "kind": "smooth",
+    "dtype": "<f4",
+    "n": 1000,
+    "flags": 145,
+    "typesize": 4,
+    "blocksize": 4000,
+    "cbytes": 260
+  },
+  {
+    "name": "blosclz-f4",
+    "kind": "smooth",
+    "dtype": "<f4",
+    "n": 1000,
+    "flags": 1,
+    "typesize": 4,
+    "blocksize": 4000,
+    "cbytes": 577
+  }
+]

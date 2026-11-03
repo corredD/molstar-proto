@@ -1,0 +1,23 @@
+{
+ "version": 1,
+ "datasets": [
+  {
+   "id": 10003,
+   "title": "70S ribosome with chloramphenicol",
+   "organism": "Mycoplasmoides pneumoniae M129",
+   "runs": 65
+  },
+  {
+   "id": 10453,
+   "title": "CryoET of isolated synaptic vesicles from mouse brain",
+   "organism": "Mus musculus",
+   "runs": 95
+  },
+  {
+   "id": 10524,
+   "title": "Cryo-FIB-milled NIH/3T3 mouse fibroblasts (dataset 4)",
+   "organism": "Mus musculus",
+   "runs": 12
+  }
+ ]
+}

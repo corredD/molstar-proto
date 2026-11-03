@@ -29,3 +29,16 @@ test('parses CryoET Data Portal ndjson records', async () => {
   expect(parsed.result.records[1].type).toBe('orientedPoint');
   expect(parsed.result.records[1].location).toEqual({ x: 4, y: 5, z: 6 });
 });
+
+test('parses instancePoint records, keeping their instance_id', async () => {
+  const data = [
+    JSON.stringify({ type: 'instancePoint', location: { x: 1, y: 2, z: 3 }, instance_id: 7 }),
+    JSON.stringify({ type: 'instancePoint', location: { x: 4, y: 5, z: 6 }, instance_id: 9 }),
+  ].join('\n');
+
+  const parsed = await parseCryoEtDataPortalNdjson(data).run();
+  if (parsed.isError) throw new Error(parsed.message);
+
+  expect(parsed.result.records).toHaveLength(2);
+  expect(parsed.result.records[1]).toEqual({ type: 'instancePoint', location: { x: 4, y: 5, z: 6 }, instance_id: 9 });
+});

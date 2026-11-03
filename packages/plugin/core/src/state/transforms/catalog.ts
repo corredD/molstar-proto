@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 // Registers every built-in transformer id (for snapshot restore and tools such as state-docs), except the particle
@@ -30,6 +31,7 @@ import '@molstar/plugin/state/formats/trajectory/pdb';
 import '@molstar/plugin/state/formats/trajectory/sdf';
 import '@molstar/plugin/state/formats/trajectory/xyz';
 import '@molstar/plugin/state/formats/volume/ccp4';
+import '@molstar/plugin/state/formats/volume/ome-zarr';
 import '@molstar/plugin/state/formats/volume/cube';
 import '@molstar/plugin/state/formats/volume/density-server';
 import '@molstar/plugin/state/formats/volume/dsn6';
