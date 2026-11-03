@@ -12,6 +12,9 @@ import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import { Grid, type Volume } from '@molstar/model/model/volume';
 import { OmeZarrFromUrl, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
 import { CustomVolumeProperties } from '@molstar/plugin/state/transforms/volume/ops';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { Representation } from '@molstar/graphics/repr/representation';
+import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -64,6 +67,31 @@ async function viewer(level = '1', maxSizeMB = 512) {
   expectOk(await v.api.cryoet!.slices({ volume: ref } as never));
   return { v, ref };
 }
+
+/**
+ * A direct volume's stand-in: its params as the representation's (the type and its control points) on a representation
+ * object with the empty representation (the headless viewer cannot build a direct volume)
+ */
+const DirectVolumeStandIn = PluginStateTransform.BuiltIn({
+  name: 'cryoet-test-direct-volume',
+  display: { name: 'Direct volume (test)' },
+  from: SO.Volume.Data,
+  to: SO.Volume.Representation3D,
+  params: {
+    type: PD.Value<{ name: string; params: { controlPoints: number[][] } }>({
+      name: 'direct-volume',
+      params: { controlPoints: [] },
+    }),
+  },
+})({
+  apply({ a }) {
+    return new SO.Volume.Representation3D(
+      { repr: Representation.Empty as never, sourceData: a.data },
+      { label: 'Direct volume' },
+    );
+  },
+  update: () => 1 as never,
+});
 
 const dataOf = (v: PrismViewer, ref: string) => v.plugin.state.data.cells.get(ref)!.obj!.data as Volume;
 const slices = (v: PrismViewer, ref: string) => (v.api.cryoet!.sliceState(ref).value as SliceInfo).slices;
@@ -159,6 +187,11 @@ describe('cryoet.level', () => {
     expect(
       (v.plugin.state.data.cells.get(slices(v, ref)[2].ref)!.transform.params as any).colorTheme.params.domain.params,
     ).toEqual(window);
+    // and the redo reads the new level again, in one step too
+    expectOk(await v.api.run('history.redo', {}));
+    expect(dataOf(v, ref).grid.cells.space.dimensions).toEqual([4, 3, 3]);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(dataOf(v, ref).grid.cells.space.dimensions).toEqual([7, 6, 5]);
   });
 
   it("asks before a level over the volume's size guard, and reads it when asked again with large", async () => {
@@ -246,5 +279,27 @@ describe('cryoet.level', () => {
     expect(samePoint(0.62719, x4, x2)).toBeCloseTo(0.4142, 2);
     expect(samePoint(0.4142, x2, x4)).toBeCloseTo(0.62719, 2);
     expect(samePoint(0.3, x4, { ...x4, sigma: 0 })).toBe(0.3);
+  });
+
+  it("refits a direct volume's control points in σ over the new level, back on undo", async () => {
+    const { v, ref } = await viewer('1');
+    const from = { ...dataOf(v, ref).grid.stats };
+    const points = [
+      [0.2, 0.05],
+      [0.6, 0],
+    ];
+    const dv = v.plugin
+      .build()
+      .to(ref)
+      .apply(DirectVolumeStandIn, { type: { name: 'direct-volume', params: { controlPoints: points } } });
+    await dv.commit();
+    const read = () => (v.plugin.state.data.cells.get(dv.ref)!.transform.params as any).type.params.controlPoints;
+    expectOk(await v.api.cryoet!.level({ volume: ref, level: '0' } as never));
+    const to = dataOf(v, ref).grid.stats;
+    expect(read().map((p: number[]) => p[0])).toEqual(points.map((p) => samePoint(p[0], from, to)));
+    expect(read()[0][0]).not.toBeCloseTo(0.2, 3);
+    expect(read().map((p: number[]) => p[1])).toEqual([0.05, 0]);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(read()).toEqual(points);
   });
 });
