@@ -499,7 +499,8 @@ export async function showTomogramVolume(ctx: ApiContext, volume: string): Promi
   return ctx.api.run('volume.representation', {
     volume,
     type: 'direct-volume',
-    params: controlPoints ? { controlPoints } : {},
+    // volumetric: the tomogram shadows itself (the graphics fall back to local where the device cannot)
+    params: controlPoints ? { controlPoints, lighting: 'volumetric' } : { lighting: 'volumetric' },
   });
 }
 
