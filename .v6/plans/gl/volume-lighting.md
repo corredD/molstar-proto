@@ -61,13 +61,38 @@ The 13 descriptors, in this order:
 
 ## A3. `lighting: 'volumetric'`
 
+- The param `lighting` of direct volumes (`local` default, `volumetric`; `neural` to come, lane `volume-neural`), the
+  define `dLighting`. The renderable draws `local` where it can't build the pyramid (WebGL, no
+  `texture-formats-tier1`, 2d grids) and builds it where `volumetric` is drawn, rebuilt when the grid, the transfer
+  function's bytes or `uAlpha` change (`createVolumeLighting` in `gl/renderable/direct-volume.ts`).
 - Transmittance to the key light by cone marching along `light`: segments `[0, 1], [1, 2], [2, 4], ..., [16, 32]`
   cells, of lengths `D = (1, 1, 2, 4, 8, 16)`, the read of level `k` at the far end of segment `k`:
   `T = exp(-sum_k D_k * light[k])`.
-- Ambient occlusion alike from the reads around: `A = exp(-sum_k D_k * around[k])`.
+- Ambient obscurance from the reads around, with a `1 / r` falloff: `A = exp(-sum_k (D_k / r_k) * around[k])`, weights
+  `(1, 0.5, 0.5, 0.5, 0.5, 0.5)`, every scale alike. Not the same cone sum as `T`: with `D_k` the means of a half-filled
+  ball (a surface) count 16 cells of extinction, black at the opacities of maps (0.3 a cell), where half the directions
+  are open; with `D_k / r_k` such a surface is about 0.5.
 - Color: `rgb * (uLightColor[0] * T + uAmbientColor * A) * uExposure`, isotropic (no phase); the other lights are not
-  used. The gradient and `applyLight` stay for `local` only.
-- WebGL: `local` (no compute); the shader's `local` variant is the same source as before the param (a test).
+  used, nor the material's metalness and roughness. The gradient and `applyLight` stay for `local` only, and pick,
+  marking and depth variants ignore `dLighting` (`shader-code.ts`).
+- `local` preprocesses to the source of before the param (`wgsl-declarations.test.ts`): its image is today's.
+- Tests: the pyramid against an f64 reference on Dawn; a dense cube beside a thin slab, the key light from the front
+  at 45° to one side then the other: the slab behind the cube at 0.49 and 0.57 of the other side, 0.97 with `local`
+  (`webgpu-volume-lighting.test.ts`); WebGL draws `local` (`direct-volume.test.ts`).
+
+## A4. Cost
+
+M1 (Apple M1, Chrome, WebGPU), `node scripts/benchmark.mjs --backends webgpu --filter 'render/direct-volume/*-1080'
+--gpu-timing --runs 5`, 1920x1080, medians:
+
+| Case | Frame, local / volumetric | `volume` pass, local / volumetric |
+| ---- | ------------------------- | --------------------------------- |
+| `map-256` (256³, 40 globules) | 3.74 / 3.76 ms | 2.15 / 2.27 ms |
+| `tomogram-512x512x96` (tilted slab) | 3.76 / 4.07 ms | 2.32 / 2.48 ms |
+
+- Gate A (+50 % a frame) passed: +1 % and +8 %. The 12 reads replace the gradient's 6 and only lit samples read them.
+- The pyramid (5 dispatches, at a transfer function change, Dawn on the M1, after the first build's compile): 256³
+  1.1–1.5 ms (4.8 MB), 464x464x225 1.5–2 ms (17 MB), 512³ 3–5 ms (38 MB).
 
 ## D. Illumination
 

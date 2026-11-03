@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -443,6 +444,30 @@ describe('quad wgsl', () => {
         dRenderVariant: 'colorDpoit',
       },
     ],
+    [
+      'direct-volume',
+      direct_volume_wgsl,
+      {
+        ...base,
+        dGeometryType: 'directVolume',
+        dGridTexType: '3d',
+        dLighting: 'volumetric',
+        dRenderVariant: 'colorWboit',
+        dPreIntegration: true,
+      },
+    ],
+    [
+      'direct-volume',
+      direct_volume_wgsl,
+      {
+        ...base,
+        dGeometryType: 'directVolume',
+        dGridTexType: '3d',
+        dLighting: 'volumetric',
+        dPackedGroup: true,
+        dColorType: 'texture',
+      },
+    ],
   ];
 
   for (const [name, source, values] of cases) {
@@ -455,6 +480,37 @@ describe('quad wgsl', () => {
       expect(code).not.toMatch(/^\s*#/m);
     });
   }
+});
+
+describe('direct volume lighting', () => {
+  const base = { dColorType: 'texture', dSizeType: 'uniform', dLightCount: 1, dClipObjectCount: 0, dColorMarker: true };
+  // `local` is the program of before the param (volume-lighting.md §A3): what it draws is unchanged
+  for (const variant of ['colorWboit', 'colorBlended', 'pick', 'marking']) {
+    it(`local is the source without the lighting define (${variant})`, () => {
+      const values = { ...base, dGeometryType: 'directVolume', dGridTexType: '3d', dRenderVariant: variant };
+      const before = defineValues(values);
+      const local = defineValues({ ...values, dLighting: 'local' });
+      const code = (dv: ReturnType<typeof defineValues>) =>
+        preprocessShader(resolveWgslSource(direct_volume_wgsl, dv), getWgslDefines(dv), { expandMacros: true });
+      expect(code(local)).toBe(code(before));
+      expect(code(local)).not.toContain('tExtinction');
+    });
+  }
+
+  it('volumetric reads the pyramid, its gradient left out', () => {
+    const dv = defineValues({
+      ...base,
+      dGeometryType: 'directVolume',
+      dGridTexType: '3d',
+      dRenderVariant: 'colorWboit',
+      dLighting: 'volumetric',
+    });
+    const code = preprocessShader(resolveWgslSource(direct_volume_wgsl, dv), getWgslDefines(dv), {
+      expandMacros: true,
+    });
+    expect(code).toContain('textureSampleLevel(tExtinction');
+    expect(code).not.toContain('applyLight(material, normal');
+  });
 });
 
 describe('compute wgsl', () => {
