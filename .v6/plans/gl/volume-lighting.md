@@ -50,7 +50,8 @@ the ray marcher's `unitPos * gridDim + 0.5`):
   marcher's samples);
 - `S_k(y)`, `k = 1..5`: level `k` trilinearly filtered at `y / 2^k` level texels (uv `y / (32 * ceil(dim / 32))`),
   clamp to edge;
-- every `S_k(y)` is 0 where `y` is outside the grid's box `[0, dim]` on any axis.
+- every `S_k(y)` is 0 where `y` is outside the grid's box `[0, dim]` on any axis; and where the clip objects remove it (2026-11-03,
+  §A1: `S_0` by the march's `clipTest`, `S_1..5` from the clipped cells).
 
 The 13 descriptors, in this order:
 
@@ -68,6 +69,10 @@ The 13 descriptors, in this order:
   `cosine` in [-1, 1].
 - WGSL: `volumeDescriptors(...)` in `direct-volume.wgsl.ts` returns them as `around0` (levels 0–2), `around1` (3–5),
   `light0`, `light1`, `cosine`.
+- The chunk (`volume_lighting_wgsl`) takes from its includer `textureVal`, `transferFunction` and (2026-11-03)
+  `fn volumeClipped(x: vec3<f32>) -> bool`, whether the clip objects remove texel coordinates `x`: the ray marcher
+  defines it by its `clipTest` (`volumeCellToModel`, set per ray, under every lighting that includes the chunk);
+  harnesses that include the chunk alone define it (`return false`, or a test's plane).
 
 ## A3. `lighting: 'volumetric'`
 
@@ -107,7 +112,10 @@ M1 (Apple M1, Chrome, WebGPU), `node scripts/benchmark.mjs --backends webgpu --f
 - **Clip** (2026-11-03, same runs, `*-clip-1080`: a plane through the middle, x > center removed): frame before / after
   the clip reached the pyramid, `map-256` volumetric 3.87 / 3.97–4.00 ms, `tomogram-464x464x225` volumetric 8.51 /
   8.95–9.05 ms; without a clip unchanged (3.76 / 3.69–3.82, 8.63 / 8.55–8.79). The cost is the level-0 read's clip test
-  per lit sample (with it returning false: 3.82 and 8.47 ms); the pyramid's clip costs nothing per frame. A rebuild
+  per lit sample (with it returning false: 3.82 and 8.47 ms); the pyramid's clip costs nothing per frame. Kept: a cut
+  face toward the camera and the light (as a plane clip faces them) reads level 0 one cell into the part removed;
+  without it the face of a dense block is 124 for 145 (Dawn, `webgpu-volume-lighting.test.ts`), darker with denser
+  transfer functions. A rebuild
   (Dawn on the M1, median of 22 after 3, the plane moved each time) without / with a clip: 128³ 0.85 / 1.04 ms,
   232x232x113 1.09 / 2.02 ms, 464x464x225 2.91 / 4.12 ms. A drag rebuilds once per representation update.
 
