@@ -348,7 +348,7 @@ fn raymarch(startLoc: vec3<f32>, step: vec3<f32>, fragCoord: vec2<f32>, instance
     let cartnToUnit = uObject.uCartnToUnit * inverse4(transform);
     #if defined(dClipVariant_pixel) && defined(dClipObjects)
         let modelTransform = uGlobal.uModel * transform * uObject.uTransform;
-        #if defined(dLighting_volumetric)
+        #if defined(dLighting_volumetric) || defined(dLighting_neural)
             volumeCellToModel = modelTransform;
         #endif
     #endif

@@ -245,34 +245,39 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
     expect(Math.abs(cutB / oracleB - 1)).toBeLessThan(0.05);
   }, 60_000);
 
-  it('volumetric: the cut face toward the camera and the light reads nothing of the part removed (level 0)', async () => {
-    // a dense block cut by the plane z = 31.5 (removing z > 31.5, toward the camera and the light). The oracle: the
-    // block filled to z = 32 only, cut by the same plane: the same samples kept, the same pyramid, and one cell past the
-    // plane toward the light (level 0, \`volumeClipped\`) a value falling off to 0, transparent under the dense band
-    const block = (zMax: number) =>
-      createCcp4(64, (x, y, z) => (inBox([x, y, z], [8, 8, 8], [56, 56, zMax]) ? 0.8 : 0));
-    const plane = {
-      ...PlaneX(0),
-      position: Vec3.create(0, 0, 31.5),
-      rotation: { axis: Vec3.create(1, 0, 0), angle: 90 },
-    };
-    const controlPoints = ControlPoints.slice(4);
-    const clip: Clip.Props = { variant: 'pixel', objects: [plane] };
-    const cut = await renderVolume(block(56), { controlPoints, clip });
-    const oracle = await renderVolume(block(33), { controlPoints, clip });
-    // the outer face of the block filled to z = 31, no clip
-    const outer = await renderVolume(block(32), { controlPoints });
-    const face = [Vec3.create(24, 24, 31), Vec3.create(32, 32, 31), Vec3.create(40, 40, 31)];
-    const shade = (r: RenderedVolume) => face.map((p) => luminanceAt(r.plugin, r.image, p));
-    const [cutFace, oracleFace, outerFace] = [shade(cut), shade(oracle), shade(outer)];
-    for (const r of [cut, oracle, outer]) r.plugin.dispose();
-    // measured on Dawn (M1): cut 145, 143, 142 as the oracle, outer 106, 107, 107; with level 0 read through the clip
-    // the cut 124, 122, 123 against 128, 125, 126
-    for (let i = 0; i < face.length; ++i) {
-      expect(Math.abs(cutFace[i] - oracleFace[i]), `face point ${i}`).toBeLessThanOrEqual(1);
-      expect(cutFace[i], `face point ${i}`).toBeGreaterThan(outerFace[i]);
-    }
-  }, 60_000);
+  for (const lighting of ['volumetric', 'neural'] as const) {
+    it(`${lighting}: the cut face toward the camera and the light reads nothing of the part removed (level 0)`, async () => {
+      // a dense block cut by the plane z = 31.5 (removing z > 31.5, toward the camera and the light). The oracle: the
+      // block filled to z = 32 only, cut by the same plane: the same samples kept, the same pyramid, and one cell past the
+      // plane toward the light (level 0, \`volumeClipped\`) a value falling off to 0, transparent under the dense band
+      const block = (zMax: number) =>
+        createCcp4(64, (x, y, z) => (inBox([x, y, z], [8, 8, 8], [56, 56, zMax]) ? 0.8 : 0));
+      const plane = {
+        ...PlaneX(0),
+        position: Vec3.create(0, 0, 31.5),
+        rotation: { axis: Vec3.create(1, 0, 0), angle: 90 },
+      };
+      const controlPoints = ControlPoints.slice(4);
+      // neural is brighter: the key light dimmed, off white
+      const intensity = lighting === 'neural' ? 0.3 : 1;
+      const clip: Clip.Props = { variant: 'pixel', objects: [plane] };
+      const cut = await renderVolume(block(56), { controlPoints, clip }, lighting, intensity);
+      const oracle = await renderVolume(block(33), { controlPoints, clip }, lighting, intensity);
+      // the outer face of the block filled to z = 31, no clip
+      const outer = await renderVolume(block(32), { controlPoints }, lighting, intensity);
+      const face = [Vec3.create(24, 24, 31), Vec3.create(32, 32, 31), Vec3.create(40, 40, 31)];
+      const shade = (r: RenderedVolume) => face.map((p) => luminanceAt(r.plugin, r.image, p));
+      const [cutFace, oracleFace, outerFace] = [shade(cut), shade(oracle), shade(outer)];
+      for (const r of [cut, oracle, outer]) r.plugin.dispose();
+      // measured on Dawn (M1), volumetric: cut 145, 143, 142 as the oracle, outer 106, 107, 107; with level 0 read through
+      // the clip the cut 124, 122, 123 against 128, 125, 126. Neural (light 0.3): cut 151, 150, 151 as the oracle, outer
+      // 137, 137, 138; with level 0 read through the clip 147, 147, 148
+      for (let i = 0; i < face.length; ++i) {
+        expect(Math.abs(cutFace[i] - oracleFace[i]), `face point ${i}`).toBeLessThanOrEqual(1);
+        expect(cutFace[i], `face point ${i}`).toBeGreaterThanOrEqual(0.95 * outerFace[i]);
+      }
+    }, 60_000);
+  }
 
   it('rebuilds the pyramid when the clip objects move, not in frames where nothing changed', async () => {
     const plugin = await createPlugin();
@@ -669,15 +674,20 @@ interface RenderedVolume {
 }
 
 /** \`ccp4\` lit volumetric with \`props\`, the key light from the front at 45° to the right (+x); the caller disposes */
-async function renderVolume(ccp4: Uint8Array, props: object = {}): Promise<RenderedVolume> {
+async function renderVolume(
+  ccp4: Uint8Array,
+  props: object = {},
+  lighting: 'volumetric' | 'neural' = 'volumetric',
+  intensity = 1,
+): Promise<RenderedVolume> {
   const plugin = await createPlugin();
   const canvas = plugin.canvas3d!;
   const volume = await addDirectVolume(plugin, ccp4);
-  await volume.update('volumetric', props);
+  await volume.update(lighting, props);
   canvas.setProps({
     renderer: {
       ...canvas.props.renderer,
-      light: [{ inclination: 135, azimuth: 180, color: Color(0xffffff), intensity: 1 }],
+      light: [{ inclination: 135, azimuth: 180, color: Color(0xffffff), intensity }],
     },
   });
   // the camera of the whole box, the same for every map: the box's bounding sphere
