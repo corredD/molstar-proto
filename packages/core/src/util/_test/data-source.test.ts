@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import fs from 'node:fs';
@@ -9,7 +10,15 @@ import { gzipSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 import { Task } from '@molstar/core/task';
 import { SyncRuntimeContext } from '@molstar/core/task/execution/synchronous';
-import { ajaxGet, ajaxGetMany, fetchData, fetchDataMany, readFromFile, setFSModule } from '../data-source.js';
+import {
+  ajaxGet,
+  ajaxGetMany,
+  DownloadStatusError,
+  fetchData,
+  fetchDataMany,
+  readFromFile,
+  setFSModule,
+} from '../data-source.js';
 import { zip } from '../zip/zip.js';
 
 const encode = (s: string) => new TextEncoder().encode(s);
@@ -147,6 +156,15 @@ describe('fetchData', () => {
     );
     // the unread body is cancelled
     expect(fetch.mock.calls[0][1].signal!.aborted).toBe(true);
+  });
+
+  it('tells the status of an HTTP error by its type, so a caller can take a 404 as a missing key', async () => {
+    stubFetch(() => streamed([encode('Not Found')], {}, 404));
+    const e = await fetchData('https://example.org/missing')
+      .run()
+      .catch((e) => e);
+    expect(e).toBeInstanceOf(DownloadStatusError);
+    expect(e.status).toBe(404);
   });
 
   it('fails on a network error with the error Node.js gives', async () => {
