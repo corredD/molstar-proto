@@ -12,6 +12,7 @@ import { IsosurfaceRepresentationProvider } from '@molstar/graphics/repr/volume/
 import { GaussianVolumeRepresentationProvider } from '@molstar/graphics/repr/structure/representation/gaussian-volume';
 import { blobVolume, createVolume, volumeRepr } from '../visual/scenes/volume.js';
 import { structureRepr } from '../visual/scenes/structure.js';
+import type { Clip } from '@molstar/core/util/clip';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { MarkingParams } from '@molstar/graphics/canvas3d/passes/marking';
 import { IlluminationParams } from '@molstar/graphics/canvas3d/passes/illumination';
@@ -110,6 +111,21 @@ const getAnisotropic = cached(() =>
 
 const FullHdSize = { width: 1920, height: 1080 };
 
+/** a pixel clip by the plane x = \`x\` (model space), removing x > \`x\`: the plane's normal (its frame's y) turned to +x */
+const planeClipX = (x: number): Clip.Props => ({
+  variant: 'pixel',
+  objects: [
+    {
+      type: 'plane',
+      invert: false,
+      position: Vec3.create(x, 0, 0),
+      rotation: { axis: Vec3.create(0, 0, 1), angle: -90 },
+      scale: Vec3.create(1, 1, 1),
+      transform: Mat4.identity(),
+    },
+  ],
+});
+
 /** a wide, faint transfer function: most cells of the blobs contribute and rays rarely saturate */
 const DenseControlPoints = [Vec2.create(0.05, 0), Vec2.create(0.1, 0.01), Vec2.create(0.99, 0.01)];
 
@@ -207,6 +223,33 @@ export const DirectVolumeCases: BenchmarkCase<RenderInput>[] = [
         return {
           size: FullHdSize,
           scene: async (g) => [await volumeRepr(g, DirectVolumeRepresentationProvider, v, { lighting })],
+        };
+      },
+    ),
+    // a plane clip through the middle (§A1: the pyramid without the cells it removes), the half x > the center gone
+    renderCase(
+      `render/direct-volume/map-256-${lighting}-clip-1080`,
+      `As map-256, lighting ${lighting}, a plane clip at x = 128, 1920x1080`,
+      async () => {
+        const v = getMap();
+        return {
+          size: FullHdSize,
+          scene: async (g) => [
+            await volumeRepr(g, DirectVolumeRepresentationProvider, v, { lighting, clip: planeClipX(128) }),
+          ],
+        };
+      },
+    ),
+    renderCase(
+      `render/direct-volume/tomogram-464x464x225-${lighting}-clip-1080`,
+      `As tomogram-464x464x225, lighting ${lighting}, a plane clip at x = 232, 1920x1080`,
+      async () => {
+        const v = getDeepTomogram();
+        return {
+          size: FullHdSize,
+          scene: async (g) => [
+            await volumeRepr(g, DirectVolumeRepresentationProvider, v, { lighting, clip: planeClipX(232) }),
+          ],
         };
       },
     ),
