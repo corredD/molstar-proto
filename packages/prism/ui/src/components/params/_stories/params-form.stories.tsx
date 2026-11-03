@@ -438,6 +438,7 @@ export const MoreTypes = render({
   axis: PD.Vec3(Vec3.create(0, 0, 1), undefined, { label: 'Axis (vec3)' }),
   transform: PD.Mat4(Mat4.identity(), { label: 'Transform (mat4)' }),
   range: PD.Interval([2, 7.5], { min: 0, max: 10, step: 0.5 }, { label: 'Range (interval)' }),
+  domain: PD.Interval([-1, 1], { step: 0.001 }, { label: 'Domain (interval, no bounds)' }),
   transfer: PD.LineGraph(
     [
       [0, 0],

@@ -26,6 +26,7 @@ import { classes } from './_generated/extra-controls.module.css.js';
 import { classes as form } from './_generated/params-form.module.css.js';
 import type { FieldBinding } from './field-binding.js';
 import { PresetsButton, PresetsList, presetIndex } from './presets.js';
+import { formatNumber, NumberField } from './slider.js';
 
 /** A row with a field that opens something under it (a list, a grid, an editor), like a dropdown. */
 function ExpandingRow(props: {
@@ -229,11 +230,14 @@ export function Mat4Row(props: { head: Child; label: string; param: PD.Mat4; bin
   );
 }
 
-/** An interval: one track, two knobs (the low and the high end), the range on the right. */
+/**
+ * An interval, as v5's: with both bounds, one track, two knobs (the low and the high end), the range on the right;
+ * without (a color theme's custom domain, any number), two number fields, from and to. Either way the ends cannot cross.
+ */
 export function IntervalControl(props: { param: PD.Interval; binding: FieldBinding; label?: string }) {
   const { param, binding } = props;
-  const min = param.min ?? 0;
-  const max = param.max ?? 1;
+  if (param.min === undefined || param.max === undefined) return <IntervalFields {...props} />;
+  const { min, max } = param;
   const step = param.step ?? (max - min) / 100;
   const pct = (v: number) => `${(100 * (v - min)) / (max - min || 1)}%`;
   const digits = step < 1 ? Math.min(4, Math.ceil(-Math.log10(step))) : 0;
@@ -279,6 +283,33 @@ export function IntervalControl(props: { param: PD.Interval; binding: FieldBindi
     setText(range, `${from.toFixed(digits)}–${to.toFixed(digits)}`);
   });
   return content;
+}
+
+/** An interval without bounds: two number fields (from, to); a typed end past the other stops at it. */
+function IntervalFields(props: { param: PD.Interval; binding: FieldBinding; label?: string }) {
+  const { param, binding } = props;
+  const value = () => (binding.get() ?? param.defaultValue) as [number, number];
+  const end = (i: 0 | 1) =>
+    (
+      <NumberField
+        step={param.step}
+        aria-label={`${props.label ? `${props.label} ` : ''}${i === 0 ? 'from' : 'to'}`}
+        current={() => value()[i]}
+        commit={(n) => {
+          const v: [number, number] = [...value()];
+          v[i] = i === 0 ? Math.min(n, v[1]) : Math.max(n, v[0]);
+          binding.set(v);
+          return v[i];
+        }}
+      />
+    ) as HTMLInputElement;
+  const ends = [end(0), end(1)];
+  watch([binding.value], () => {
+    const v = value();
+    setValue(ends[0], formatNumber(v[0], param.step));
+    setValue(ends[1], formatNumber(v[1], param.step));
+  });
+  return <div class={classes.intervalFields}>{ends}</div>;
 }
 
 /** A color list as a CSS gradient: interpolated, or a set of hard bands. */

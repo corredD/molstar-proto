@@ -80,3 +80,59 @@ describe('typed numbers are rewritten to the value that holds', () => {
     expect((form.values.value as any).offset[0]).toBe(2);
   });
 });
+
+describe('an interval', () => {
+  it('with no bounds: two fields, any number (below 0, above 1), the ends never cross', async () => {
+    const form = new ParamsFormModel({ domain: PD.Interval([-1, 1], { step: 0.001 }, { label: 'Domain' }) });
+    const container = mount(form);
+    await flush();
+    expect(container.querySelector('input[type=range]')).toBeNull();
+    const from = container.querySelector<HTMLInputElement>('input[aria-label="Domain from"]')!;
+    const to = container.querySelector<HTMLInputElement>('input[aria-label="Domain to"]')!;
+    // The default, below 0, is shown as it is.
+    expect([from.value, to.value]).toEqual(['-1.000', '1.000']);
+    type(from, '-2.5');
+    type(to, '4');
+    await flush();
+    expect((form.values.value as any).domain).toEqual([-2.5, 4]);
+    expect([from.value, to.value]).toEqual(['-2.500', '4.000']);
+    // A from past the to stops at it; a to below the from too.
+    type(from, '9');
+    await flush();
+    expect((form.values.value as any).domain).toEqual([4, 4]);
+    expect(from.value).toBe('4.000');
+    type(to, '-7');
+    await flush();
+    expect((form.values.value as any).domain).toEqual([4, 4]);
+    expect(to.value).toBe('4.000');
+    // A comma is the decimal point; text that is no number goes back to the value.
+    type(from, '-0,5');
+    type(to, 'zzz');
+    await flush();
+    expect((form.values.value as any).domain).toEqual([-0.5, 4]);
+    expect([from.value, to.value]).toEqual(['-0.500', '4.000']);
+  });
+
+  it('with one bound only: two fields still', async () => {
+    const form = new ParamsFormModel({ r: PD.Interval([2, 3], { min: 0 }, { label: 'R' }) });
+    const container = mount(form);
+    await flush();
+    expect(container.querySelector('input[type=range]')).toBeNull();
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="R from"]')!.value).toBe('2');
+  });
+
+  it('with both bounds: the two-knob track, at its bounds, as it was', async () => {
+    const form = new ParamsFormModel({
+      range: PD.Interval([2, 7.5], { min: 0, max: 10, step: 0.5 }, { label: 'Range' }),
+    });
+    const container = mount(form);
+    await flush();
+    const ends = [...container.querySelectorAll<HTMLInputElement>('input[type=range]')];
+    expect(ends.map((e) => [e.getAttribute('aria-label'), e.min, e.max, e.step, e.value])).toEqual([
+      ['Range from', '0', '10', '0.5', '2'],
+      ['Range to', '0', '10', '0.5', '7.5'],
+    ]);
+    expect(container.querySelectorAll('input[type=text]').length).toBe(0);
+    expect(container.textContent).toContain('2.0–7.5');
+  });
+});
