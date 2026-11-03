@@ -22,9 +22,13 @@ export default meta;
 const file = async <T,>(name: string): Promise<T> =>
   (await import(`../../portal/${name}.json`, { with: { type: 'json' } })).default as T;
 
-function area(reads: (format: string) => boolean): PortalPanelArea {
+/** The shipped index, `first` the dataset the card opens on */
+function area(reads: (format: string) => boolean, first?: number): PortalPanelArea {
   return {
-    catalog: () => file<PortalCatalog>('index'),
+    catalog: async () => {
+      const c = await file<PortalCatalog>('index');
+      return first ? { ...c, datasets: [...c.datasets].sort((a, b) => +(b.id === first) - +(a.id === first)) } : c;
+    },
     dataset: (id) => file<PortalDataset>(String(id)),
     describe: (ds, run, spacing) => describePortalRun(reads, ds, run, spacing),
   };
@@ -39,17 +43,17 @@ const ctx: PortalPanelContext = {
   },
 };
 
-const Card = (props: { reads: (format: string) => boolean }) => (
+const Card = (props: { reads: (format: string) => boolean; first?: number }) => (
   <div style="width: 340px; padding-top: var(--msp-space-3); background: var(--msp-color-surface)">
-    <PortalPanel ctx={ctx} area={area(props.reads)} />
+    <PortalPanel ctx={ctx} area={area(props.reads, props.first)} />
   </div>
 );
 
 /** Every format read: dataset, run, level with its size, the annotations (the portal's defaults checked), Load */
 export const Card10003: StoryObj = { name: 'Card', render: () => story(() => <Card reads={() => true} />) };
 
-/** A viewer without a GLB reader: 10524's meshes say they need one, the rest loads */
+/** A viewer without a GLB reader, on 10524: its meshes say they need one (the Annotations list), the rest loads */
 export const WithoutAReader: StoryObj = {
   name: 'Card, a format not read',
-  render: () => story(() => <Card reads={(f) => f !== 'glb'} />),
+  render: () => story(() => <Card reads={(f) => f !== 'glb'} first={10524} />),
 };
