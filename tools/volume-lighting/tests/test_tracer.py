@@ -105,3 +105,12 @@ def test_multiple_scattering_adds_light(albedo):
     k0, a0, _, _ = in_scatter(med, pts, view, light, torch.zeros(1), 1 << 15, gen)
     k1, a1, _, _ = in_scatter(med, pts, view, light, torch.full((1,), albedo), 1 << 15, gen)
     assert (k1 > k0 * 1.05).all() and (a1 > a0 * 1.05).all()
+
+
+def test_no_collision_in_an_empty_brick_when_u_is_0(monkeypatch):
+    # u = 0 makes the free flight 0: a "collision" in an empty brick, σ / μ = 0 / 0 (NaN) without the majorant test
+    tf = TransferFunction(np.array([0, 1], np.float32), np.array([0.0, 0.0], np.float32), quantize=False)
+    med = Medium(np.full((16, 16, 16), 0.5, np.float32), tf, CPU)
+    monkeypatch.setattr(torch, 'rand', lambda n, **k: torch.zeros(n))
+    T = med.march(torch.tensor([[8.0, 8.0, 8.0]]), torch.tensor([[1.0, 0.0, 0.0]]), torch.Generator(), ratio=True)
+    assert torch.equal(T, torch.ones(1))

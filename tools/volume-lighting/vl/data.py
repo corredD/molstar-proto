@@ -8,6 +8,7 @@ data: HELD_OUT is never trained on nor tuned on; validation is carved from the t
 from __future__ import annotations
 
 import json
+import zlib
 import math
 import os
 from dataclasses import dataclass
@@ -68,7 +69,7 @@ def view_rays(med: Medium, rng: np.random.Generator, n: int, n_views: int):
 
 def generate(entry: MapEntry, device, n_configs=20, points=1500, n_paths=256, max_size=144, seed=0, batch=1 << 21):
     """one map's pairs: a dict of arrays (desc (N, 13), albedo, key, amb, se_key, se_amb, config)"""
-    rng = np.random.default_rng([seed, abs(hash(entry.file)) % (1 << 31)])
+    rng = np.random.default_rng([seed, zlib.crc32(entry.file.encode())])
     gen = torch.Generator(device=device).manual_seed(seed)
     values = load_values(entry, max_size)
     out: dict[str, list] = {k: [] for k in ('desc', 'albedo', 'key', 'amb', 'se_key', 'se_amb', 'config')}

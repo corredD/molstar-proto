@@ -109,7 +109,8 @@ class Medium:
             mu = self.maj_flat[b[:, 0] * sy + b[:, 1] * sz + b[:, 2]]
             u = torch.rand(idx.shape[0], device=self.device, generator=gen)
             t = -torch.log1p(-u) / mu.clamp(min=1e-12)
-            coll = (t < texit) & ~out
+            # u = 0 gives t = 0, a collision in an empty brick (0 / 0) without the majorant test
+            coll = (t < texit) & ~out & (mu > 0)
             pi = pi + di * torch.where(coll, t, texit)[:, None]
             # a crossing snaps the exit axis past its face by EPS in position: `d · EPS` vanishes at grazing angles
             cross = (~coll).nonzero().squeeze(-1)
