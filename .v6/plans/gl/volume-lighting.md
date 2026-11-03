@@ -133,8 +133,36 @@ M1 (Apple M1, Chrome, WebGPU), `node scripts/benchmark.mjs --backends webgpu --f
 - **WGSL** (C3, `volume-neural.wgsl.ts`): generated from the weights, constants only (no binding, no upload): the
   inputs in 4 vec4s, the layers as `mat4x4` blocks (`mat4x2` for the outputs); f32. Tests: the TypeScript network
   gives PyTorch's outputs; the WGSL one the TypeScript one on 1,000 random inputs within 1e-4 (Dawn).
-- **Gate C** (C4, `gate_c.py`): pending (run 2, after the review).
-- **Cost** (C5): pending.
+- **Gate C** (C4, `gate_c.py`, criterion in lane volume-neural's progress file, fixed before any result): the held-out
+  maps, 2 transfer functions each (seed 9001), the light swept 0–180° from the camera's side to behind (7 angles), 96²
+  at Mol*'s light defaults (key 0.6, ambient 0.4), 2 steps per cell, `preIntegration: false`'s classification, against
+  path-traced references (512 samples a pixel). Mean brightness ratio (1 = exact) and relative RMSE, run 2:
+
+  | Held-out map | `volumetric` ratio / RMSE | `neural` ratio / RMSE | reference noise |
+  | ------------ | ------------------------- | --------------------- | --------------- |
+  | apoferritin EMD-11638 | 0.735 / 0.675 | 0.940 / 0.311 | 0.074 |
+  | TRPV1 EMD-5778 | 0.779 / 1.439 | 0.964 / 0.659 | 0.143 |
+  | tomogram TS_08 `b` | 0.957 / 1.053 | 0.995 / 0.692 | 0.320 |
+
+  Over the sweep the ratio of `volumetric` spans 0.40–0.99, 0.52–1.19 and 0.45–1.40 (too dark lit from behind: no
+  forward phase, no multiple scattering; too bright in front on thin data), `neural`'s 0.82–1.00, 0.68–1.21 and
+  0.89–1.05 (the membrane map, its micelle's noise lit, the hardest). Run 1 (the first network, trained on peaks of α ≤
+  0.6, its reference box-filtered over the pixel while the march cast the pixel centers) passed on the maps and missed
+  the RMSE margin on the tomogram (1.494 vs 1.643); the harness fix was checked on the training tomogram first. `neural`
+  stays experimental until Ludo signs off.
+- **Cost** (C5): M1 (Chrome, WebGPU), `node scripts/benchmark.mjs --backends webgpu --filter
+  'render/direct-volume/*-1080' --gpu-timing --runs 5`, 1920x1080, medians of two runs (frame, local / volumetric /
+  neural):
+
+  | Case | Frame | `volume` pass |
+  | ---- | ----- | ------------- |
+  | `map-256` | 3.61 / 3.56 / 5.74 ms | 2.2 / 2.1 / 4.3 ms |
+  | `tomogram-512x512x96` | 3.72 / 3.79 / 5.99 ms | 2.3 / 2.4 / 4.6 ms |
+  | `tomogram-464x464x225` (deep) | 7.88 / 8.40 / 14.2 ms | 6.5 / 7.0 / 13.0 ms |
+
+  `neural` is +60–70 % a frame over `volumetric` (about 2x its volume pass): 560 multiply-adds per lit sample against
+  §A3's two exponentials. Not built: the f16 network (`shader-f16`), the next lever (the render programs take no
+  `enable` directive yet: a source variant per device feature and its cache key, shared WebGPU work).
 
 ## D. Illumination
 
