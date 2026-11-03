@@ -6,10 +6,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { describePortalRun } from '@molstar/cryoet-extension/portal';
 import type { PortalCatalog, PortalDataset } from '@molstar/cryoet-extension/portal-index';
-import { PortalPanel, type PortalPanelArea, type PortalPanelContext } from '@molstar/cryoet-extension/portal-ui';
-import { ApiResult } from '@molstar/prism-viewer/api/area';
+import { PortalPanel, type PortalPanelContext } from '@molstar/cryoet-extension/portal-card';
+import { describePortalRun, type PortalPanelArea } from '@molstar/cryoet-extension/portal-run';
 import { story } from '@molstar/prism-ui/testing/index';
 import type { Meta, StoryObj } from '@storybook/web-components-vite';
 
@@ -38,7 +37,10 @@ const ctx: PortalPanelContext = {
   api: {
     run: (_, values) =>
       new Promise((done) =>
-        setTimeout(() => done(ApiResult.ok(`Would load ${values.dataset} ${values.run}: ${values.annotations}.`)), 600),
+        setTimeout(
+          () => done({ ok: true, did: `Would load ${values.dataset} ${values.run}: ${values.annotations}.` }),
+          600,
+        ),
       ),
   },
 };
