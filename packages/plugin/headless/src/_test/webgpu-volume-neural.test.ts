@@ -11,6 +11,7 @@ import { createExtinctionPyramid, isVolumeLightingSupported } from '@molstar/gra
 import { BufferUsage, MapMode, TextureUsage } from '@molstar/graphics/gl/webgpu/constants';
 import type { WebGPUContext } from '@molstar/graphics/gl/webgpu/context';
 import { volume_lighting_wgsl } from '@molstar/graphics/gl/webgpu/shader/direct-volume.wgsl';
+import { VolumeNeuralWeights } from '@molstar/graphics/gl/webgpu/shader/_generated/volume-neural-weights';
 import { evaluateVolumeNetwork, getVolumeNetworkWgsl } from '@molstar/graphics/gl/webgpu/shader/volume-neural.wgsl';
 import { asWebGPUTexture } from '@molstar/graphics/gl/webgpu/texture';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
@@ -253,36 +254,52 @@ describe.skipIf(!WebGPU.module)('neural volume lighting on WebGPU', () => {
     });
   }, 60_000);
 
-  it('the WGSL network is the TypeScript one on 1,000 random inputs, within 1e-4', async () => {
+  it('the WGSL network is the TypeScript one on 1,000 random inputs of the training range, within 1e-4', async () => {
     await withGraphics(async (graphics) => {
       const rand = random(3);
       const n = 1000;
+      const { lo, hi } = VolumeNeuralWeights;
       const inputs = new Float32Array(16 * n);
       for (let i = 0; i < n; ++i) {
-        for (let k = 0; k < 12; ++k) inputs[16 * i + k] = rand() * rand() * 4;
-        inputs[16 * i + 12] = rand() * 2 - 1;
-        inputs[16 * i + 13] = 0.3 + 0.65 * rand();
+        // the 12 extinctions correlated, as a sample's are (one density around it, each read a part of it), thin ones
+        // more often, within the training range; the cosine and the albedo uniform in it
+        const base = rand() ** 2;
+        for (let k = 0; k < 14; ++k) {
+          const t = k < 12 ? Math.min(1, base * (0.3 + rand())) : rand();
+          inputs[16 * i + k] = lo[k] + (hi[k] - lo[k]) * t;
+        }
       }
       const gpu = await run(graphics, NetworkWgsl, inputs, n, 2, [1, 1, 1]);
       let worst = 0;
+      const clamped = [0, 0];
       for (let i = 0; i < n; ++i) {
         const ts = evaluateVolumeNetwork(inputs.subarray(16 * i, 16 * i + 14));
-        for (let k = 0; k < 2; ++k) worst = Math.max(worst, Math.abs(gpu[2 * i + k] - ts[k]) / Math.max(1, ts[k]));
+        for (let k = 0; k < 2; ++k) {
+          worst = Math.max(worst, Math.abs(gpu[2 * i + k] - ts[k]) / Math.max(1, ts[k]));
+          if (ts[k] >= VolumeNeuralWeights.outMax[k]) clamped[k]++;
+        }
       }
       expect(worst).toBeLessThanOrEqual(1e-4);
+      // the outputs are mostly the network's, not its clamps (an ambient of 1, the sky unblocked, is often right)
+      expect(clamped[0]).toBeLessThan(n / 10);
+      expect(clamped[1]).toBeLessThan(n / 2);
       expect(graphics.takeErrors()).toEqual([]);
     });
   }, 60_000);
 });
 
 describe.skipIf(!WebGPU.module)('neural volume lighting, drawn', () => {
-  it('neural: a dense cube darkens the slab behind it along the light', async () => {
-    const lit = await renderSlabAndCube(['neural']);
-    // light from the right: A (left of the cube) is behind it; from the left, B. Softer than volumetric's 0.49 / 0.57:
-    // the white color is albedo 0.95, and the cube (optical depth ~4 along the light) passes much of the light on by
-    // multiple scattering, which volumetric does not have. Measured on Dawn (M1): 0.78 with the light from the right
-    const [fromRight, fromLeft] = lit.neural;
-    expect(fromRight.a / fromRight.b).toBeLessThan(0.9);
-    expect(fromLeft.b / fromLeft.a).toBeLessThan(0.9);
+  it('neural: a dense cube darkens the slab behind it along the light, less than volumetric', async () => {
+    const lit = await renderSlabAndCube(['volumetric', 'neural']);
+    // light from the right: A (left of the cube) is behind it; from the left, B. The white color is albedo 0.95, and
+    // the cube (optical depth ~4 along the light) passes some light on by multiple scattering, which volumetric does
+    // not have: a softer shadow
+    const shadow = (l: { a: number; b: number }[]) => [l[0].a / l[0].b, l[1].b / l[1].a];
+    const neural = shadow(lit.neural);
+    const volumetric = shadow(lit.volumetric);
+    for (let i = 0; i < 2; ++i) {
+      expect(neural[i]).toBeLessThan(0.9);
+      expect(neural[i]).toBeGreaterThan(volumetric[i] + 0.05);
+    }
   }, 60_000);
 });

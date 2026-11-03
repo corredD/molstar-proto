@@ -26,10 +26,10 @@ describe('volume network', () => {
     }
   });
 
-  it('writes every weight into the WGSL once, as a literal', () => {
+  it('writes every weight into the WGSL as a literal', () => {
     const wgsl = getVolumeNetworkWgsl();
     const { w1, w2, w3 } = VolumeNeuralWeights;
-    for (const w of [w1, w2, w3]) for (const v of w.slice(0, 20)) expect(wgsl).toContain(String(v));
+    for (const w of [w1, w2, w3]) for (const v of w) expect(wgsl).toContain(String(v));
     expect(wgsl).not.toMatch(/NaN|Infinity/);
     // 16 + 16 blocks of 4×4 and 4 of 4×2
     expect(wgsl.match(/mat4x4<f32>\(/g)?.length).toBe(32);

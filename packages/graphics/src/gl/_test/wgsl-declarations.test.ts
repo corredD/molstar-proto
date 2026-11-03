@@ -511,6 +511,26 @@ describe('direct volume lighting', () => {
     expect(code).toContain('textureSampleLevel(tExtinction');
     expect(code).not.toContain('applyLight(material, normal');
   });
+
+  it('neural reads the pyramid through the network, not the volumetric terms', () => {
+    const dv = defineValues({
+      ...base,
+      dGeometryType: 'directVolume',
+      dGridTexType: '3d',
+      dRenderVariant: 'colorWboit',
+      dLighting: 'neural',
+    });
+    expect(getWgslProgram('direct-volume')!.getUnsupported!(dv)).toBeUndefined();
+    const code = preprocessShader(resolveWgslSource(direct_volume_wgsl, dv), getWgslDefines(dv), {
+      expandMacros: true,
+    });
+    expect(code).toContain('textureSampleLevel(tExtinction');
+    expect(code).toContain('neuralLight(material.rgb, descriptors)');
+    expect(code).toContain('fn volumeNetwork(');
+    expect(code).not.toContain('volumetricLight(material.rgb');
+    expect(code).not.toContain('applyLight(material, normal');
+    expect(code).not.toMatch(/^\s*#/m);
+  });
 });
 
 describe('compute wgsl', () => {
