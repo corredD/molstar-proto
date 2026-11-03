@@ -281,7 +281,11 @@ export class CryoetPortalApi extends ApiArea {
         const made = await added(ctx, volumeRefs, () => ctx.api.run('load.entry', { source: 'emdb', id }));
         if (isFailure(made)) warnings.push(`${id}: ${made.message}`);
         else {
-          for (const ref of made) await besideTheTomogram(ctx, ref);
+          for (const ref of made) {
+            await besideTheTomogram(ctx, ref);
+            const d = await showAverageVolume(ctx, ref);
+            if (!d.ok) warnings.push(`${id}: no direct volume: ${d.message}`);
+          }
           done.push(id);
         }
       }
@@ -422,6 +426,20 @@ export function tomogramControlPoints(plugin: ApiContext['plugin'], data: Volume
     | { controlPoints?: { getPresets?: () => [unknown, string][] } }
     | undefined;
   return params?.controlPoints?.getPresets?.().find(([, label]) => /^Tomogram/.test(label))?.[0];
+}
+
+/**
+ * An average's (EMDB map's) direct volume lit volumetric, its isosurface hidden: a dense map, where the volume's own
+ * shadows show (a tomogram's are faint in its noise)
+ */
+export async function showAverageVolume(ctx: Pick<ApiContext, 'api'>, volume: string): Promise<ApiResult> {
+  const r = await ctx.api.run('volume.representation', {
+    volume,
+    type: 'direct-volume',
+    params: { lighting: 'volumetric' },
+  });
+  if (!r.ok) return r;
+  return ctx.api.run('volume.visibility', { volume, representation: 'isosurface', visible: false });
 }
 
 /** A tomogram's direct volume (one function, so its other params, its lighting, are given in one place) */
