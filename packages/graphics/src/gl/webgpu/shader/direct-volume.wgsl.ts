@@ -16,7 +16,8 @@ import { VolumeLightingMaxAlpha } from '../../compute/volume-lighting.js';
 
 /**
  * The descriptors of a sample (\`volume-lighting.md\` §A2) from the extinction pyramid (\`tExtinction\`, levels 1 to 5
- * as its mips), and the volumetric lighting (§A3) from them
+ * as its mips), and the volumetric lighting (§A3) from them; the caller defines \`textureVal\`, \`transferFunction\` and
+ * \`volumeClipped(x)\` (whether the clip objects remove the point at texel coordinates \`x\`)
  */
 export const volume_lighting_wgsl = /* wgsl */ `
 const VolumeMaxAlpha = ${VolumeLightingMaxAlpha};
@@ -42,9 +43,9 @@ fn inGridBox(x: vec3<f32>, gridDim: vec3<f32>) -> bool {
     return all(x >= vec3<f32>(0.0)) && all(x <= gridDim);
 }
 
-/** level 0, the extinction of the filtered value, at \`x\` */
+/** level 0, the extinction of the filtered value, at \`x\`: 0 where the clip objects remove it (\`volumeClipped\`) */
 fn extinction0(x: vec3<f32>, gridDim: vec3<f32>) -> f32 {
-    return select(0.0, cellExtinction(textureVal((x - 0.5) / gridDim).a), inGridBox(x, gridDim));
+    return select(0.0, cellExtinction(textureVal((x - 0.5) / gridDim).a), inGridBox(x, gridDim) && !volumeClipped(x));
 }
 
 /** level \`level\` (1 to 5) at \`x\`, \`uv\` its pyramid coordinates (the padded grid's) */
@@ -267,6 +268,20 @@ fn transferFunction(value: f32) -> f32 {
 
 #if defined(dLighting_volumetric)
 ${volume_lighting_wgsl}
+
+#if defined(dClipVariant_pixel) && defined(dClipObjects)
+    /** the cells' transform to model space of the instance ray marched (\`raymarch\` sets it) */
+    var<private> volumeCellToModel: mat4x4<f32>;
+#endif
+
+/** whether the clip objects remove texel coordinates \`x\`: the march's \`clipTest\` of its samples */
+fn volumeClipped(x: vec3<f32>) -> bool {
+    #if defined(dClipVariant_pixel) && defined(dClipObjects)
+        return clipTest(v3m4(x - 0.5, volumeCellToModel), 0);
+    #else
+        return false;
+    #endif
+}
 #endif
 
 fn v3m4(p: vec3<f32>, m: mat4x4<f32>) -> vec3<f32> {
@@ -310,6 +325,9 @@ fn raymarch(startLoc: vec3<f32>, step: vec3<f32>, fragCoord: vec2<f32>, instance
     let cartnToUnit = uObject.uCartnToUnit * inverse4(transform);
     #if defined(dClipVariant_pixel) && defined(dClipObjects)
         let modelTransform = uGlobal.uModel * transform * uObject.uTransform;
+        #if defined(dLighting_volumetric)
+            volumeCellToModel = modelTransform;
+        #endif
     #endif
     let modelViewTransform = uGlobal.uModelView * transform * uObject.uTransform;
 

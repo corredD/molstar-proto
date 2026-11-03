@@ -5,16 +5,23 @@
  */
 
 import { VolumeLightingMaxAlpha } from '../../compute/volume-lighting.js';
+import { clip_storage_wgsl } from './chunks/clip.wgsl.js';
 
 /**
  * Level 1 of the extinction pyramid (`volume-lighting.md` §A1): per texel the mean extinction of its 2³ cells of the
  * grid, `-ln(1 - alpha)` of the transfer function's opacity per cell (`transfer`, its 256 entries filtered as the
- * sampler does), cells beyond the grid counted as 0
+ * sampler does), cells beyond the grid and cells the clip objects remove counted as 0: the march's \`clipTest\` of the
+ * cell's center in model space (\`uCellToModel\`), the clip objects in \`clipObjects\` (\`clip_storage_wgsl\`)
  */
 export const vl_extinction_wgsl = /* wgsl */ `
 const MaxAlpha = ${VolumeLightingMaxAlpha};
 
+${clip_storage_wgsl('clipObjects', '0u', 'uParams.uClipObjectCount')}
+
 fn extinction(cell: vec3<i32>) -> f32 {
+    if (uParams.uClipObjectCount > 0 && clipTest((uParams.uCellToModel * vec4<f32>(vec3<f32>(cell), 1.0)).xyz, 0)) {
+        return 0.0;
+    }
     let s = textureLoad(tGridTex, cell, 0);
     #if defined(dPackedGroup)
         let v = s.a;
