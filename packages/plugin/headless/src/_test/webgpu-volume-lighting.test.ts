@@ -4,8 +4,11 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { describe, expect, it } from 'vitest';
-import { Vec2, Vec3 } from '@molstar/core/math/linear-algebra';
+import { describe, expect, it, vi } from 'vitest';
+import { Mat4, Vec2, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Clip } from '@molstar/core/util/clip';
+import { ValueCell } from '@molstar/core/util/value-cell';
+import { packStorageClipObjects } from '@molstar/graphics/gl/clip-storage';
 import { now } from '@molstar/core/util/now';
 import { Color } from '@molstar/core/util/color';
 import { DirectVolumeRepresentationProvider } from '@molstar/graphics/repr/volume/direct-volume';
@@ -42,7 +45,13 @@ const f16 = (x: number) => fromHalfFloat(toHalfFloat(x));
  * The pyramid's levels as `volume-lighting.md` §A1 defines them, in f64 from level 1's cells, each level from the f16
  * values of the level below (what the GPU stores and reads)
  */
-function referenceLevels(grid: Uint8Array, dim: Vec3, transfer: Uint8Array, alpha: number) {
+function referenceLevels(
+  grid: Uint8Array,
+  dim: Vec3,
+  transfer: Uint8Array,
+  alpha: number,
+  clipped: (x: number, y: number, z: number) => boolean = () => false,
+) {
   const sigma = (v: number) => {
     const x = Math.min(Math.max(v * 256 - 0.5, 0), 255);
     const i = Math.floor(x);
@@ -54,7 +63,7 @@ function referenceLevels(grid: Uint8Array, dim: Vec3, transfer: Uint8Array, alph
   const levels: Float64Array[] = [];
   let [w, h, d] = size;
   let below = (x: number, y: number, z: number) =>
-    x < gx && y < gy && z < gz ? sigma(grid[x + gx * (y + gy * z)] / 255) : 0;
+    x < gx && y < gy && z < gz && !clipped(x, y, z) ? sigma(grid[x + gx * (y + gy * z)] / 255) : 0;
   for (let level = 0; level < VolumeLightingLevels; ++level) {
     const out = new Float64Array(w * h * d);
     for (let z = 0; z < d; ++z) {
@@ -148,6 +157,162 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
         pyramid.destroy();
         gridTexture.destroy();
       }
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
+  it('counts the cells the clip objects remove as 0 in the pyramid (§A1), the others as before', async () => {
+    const plugin = await createPlugin();
+    try {
+      const graphics = plugin.canvas3d!.graphics as WebGPUContext;
+      if (!isVolumeLightingSupported(graphics)) throw new Error('volume lighting not supported');
+      const rand = random(11);
+      const transfer = Uint8Array.from({ length: 256 }, (_, i) => (i < 40 ? 0 : Math.floor(rand() * 256)));
+      const dim = Vec3.create(64, 64, 64);
+      const grid = Uint8Array.from({ length: 64 ** 3 }, () => Math.floor(rand() * 256));
+      const gridTexture = graphics.resources.texture('volume-uint8', 'r', 'ubyte', 'linear');
+      gridTexture.load({ array: grid, width: 64, height: 64, depth: 64 });
+      // the plane x = 31.5 of model space removing x > 31.5 (between cell centers), the cells shifted by 10 in x
+      // (model x = cell x + 10): the cells from 22 on clipped
+      const objects = clipObjects([PlaneX(31.5)]);
+      const cellToModel = Mat4.fromTranslation(Mat4(), Vec3.create(10, 0, 0));
+      const pyramid = createExtinctionPyramid(graphics);
+      pyramid.build({
+        gridTexture,
+        gridDim: dim,
+        transfer,
+        alpha: 0.8,
+        packedGroup: false,
+        clip: { count: 1, objects, cellToModel },
+      });
+      graphics.flush();
+      const clipped = referenceLevels(grid, dim, transfer, 0.8, (x) => x + 10 > 31.5).levels;
+      const whole = referenceLevels(grid, dim, transfer, 0.8).levels;
+      const texture = asWebGPUTexture(pyramid.texture).getGPUTexture()!;
+      for (let level = 0; level < VolumeLightingLevels; ++level) {
+        const gpu = await readLevel(graphics, texture, level);
+        const ref = clipped[level];
+        let worst = 0;
+        for (let i = 0; i < ref.length; ++i) {
+          const tolerance = Math.max(2 ** -24, Math.abs(ref[i]) * 2 ** -10);
+          worst = Math.max(worst, Math.abs(gpu[i] - ref[i]) / tolerance);
+        }
+        expect(worst, `level ${level + 1}`).toBeLessThanOrEqual(1);
+      }
+      // level 1: texels of x < 11 (cells < 22) as without the clip, those of x >= 11 0
+      const level1 = await readLevel(graphics, texture, 0);
+      const w = texture.width;
+      for (const [x, expected] of [
+        [5, whole[0][5 + w * (16 + w * 16)]],
+        [10, whole[0][10 + w * (16 + w * 16)]],
+        [11, 0],
+        [20, 0],
+      ] as const) {
+        expect(level1[x + w * (16 + w * 16)], `level 1 at x ${x}`).toBeCloseTo(expected, 2);
+      }
+      expect(whole[0][10 + w * (16 + w * 16)]).toBeGreaterThan(0.1);
+      expect(graphics.takeErrors()).toEqual([]);
+      pyramid.destroy();
+      gridTexture.destroy();
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
+  it('volumetric: a clipped part shadows nothing, the volume lit as one without that part (§A1)', async () => {
+    // the cube of the slab and cube clipped away (a cube clip object about it) against the same map without the cube
+    // and the slab's cells in it, no clip: the same pyramid, the same level-0 reads toward the light
+    const cut = await renderVolume(createSlabAndCube(), { clip: CubeClip });
+    const oracle = await renderVolume(
+      createCcp4(64, (x, y, z) =>
+        inBox([x, y, z], [28, 24, 16], [36, 40, 48]) ? 0 : inBox([x, y, z], [4, 8, 30], [60, 56, 34]) ? 0.4 : 0,
+      ),
+    );
+    const whole = await renderVolume(createSlabAndCube());
+    // the slab behind the cube along the light (light from the right): A, and A next to the cube, B the other side
+    const points = [Vec3.create(20, 32, 32), Vec3.create(26, 32, 32), Vec3.create(44, 32, 32)];
+    const shade = (r: RenderedVolume) => points.map((p) => luminanceAt(r.plugin, r.image, p));
+    const [cutA, cutA1, cutB] = shade(cut);
+    const [oracleA, oracleA1, oracleB] = shade(oracle);
+    const [wholeA] = shade(whole);
+    for (const r of [cut, oracle, whole]) r.plugin.dispose();
+    // measured on Dawn (M1): cut 69, 60, 72; the oracle 69, 58, 72; the whole map 35 at A (the cube's shadow), as was
+    // the cut one before the clip reached the pyramid
+    expect(wholeA / oracleA).toBeLessThan(0.7);
+    expect(Math.abs(cutA / oracleA - 1)).toBeLessThan(0.05);
+    expect(Math.abs(cutA1 / oracleA1 - 1)).toBeLessThan(0.05);
+    expect(Math.abs(cutB / oracleB - 1)).toBeLessThan(0.05);
+  }, 60_000);
+
+  it('volumetric: the cut face toward the camera and the light reads nothing of the part removed (level 0)', async () => {
+    // a dense block cut by the plane z = 31.5 (removing z > 31.5, toward the camera and the light). The oracle: the
+    // block filled to z = 32 only, cut by the same plane: the same samples kept, the same pyramid, and one cell past the
+    // plane toward the light (level 0, \`volumeClipped\`) a value falling off to 0, transparent under the dense band
+    const block = (zMax: number) =>
+      createCcp4(64, (x, y, z) => (inBox([x, y, z], [8, 8, 8], [56, 56, zMax]) ? 0.8 : 0));
+    const plane = {
+      ...PlaneX(0),
+      position: Vec3.create(0, 0, 31.5),
+      rotation: { axis: Vec3.create(1, 0, 0), angle: 90 },
+    };
+    const controlPoints = ControlPoints.slice(4);
+    const clip: Clip.Props = { variant: 'pixel', objects: [plane] };
+    const cut = await renderVolume(block(56), { controlPoints, clip });
+    const oracle = await renderVolume(block(33), { controlPoints, clip });
+    // the outer face of the block filled to z = 31, no clip
+    const outer = await renderVolume(block(32), { controlPoints });
+    const face = [Vec3.create(24, 24, 31), Vec3.create(32, 32, 31), Vec3.create(40, 40, 31)];
+    const shade = (r: RenderedVolume) => face.map((p) => luminanceAt(r.plugin, r.image, p));
+    const [cutFace, oracleFace, outerFace] = [shade(cut), shade(oracle), shade(outer)];
+    for (const r of [cut, oracle, outer]) r.plugin.dispose();
+    // measured on Dawn (M1): cut 145, 143, 142 as the oracle, outer 106, 107, 107; with level 0 read through the clip
+    // the cut 124, 122, 123 against 128, 125, 126
+    for (let i = 0; i < face.length; ++i) {
+      expect(Math.abs(cutFace[i] - oracleFace[i]), `face point ${i}`).toBeLessThanOrEqual(1);
+      expect(cutFace[i], `face point ${i}`).toBeGreaterThan(outerFace[i]);
+    }
+  }, 60_000);
+
+  it('rebuilds the pyramid when the clip objects move, not in frames where nothing changed', async () => {
+    const plugin = await createPlugin();
+    try {
+      const canvas = plugin.canvas3d!;
+      const builds = vi.spyOn(canvas.graphics.compute!, 'beginComputePass');
+      const count = () => builds.mock.calls.filter(([o]) => o?.label === 'extinction pyramid').length;
+      const volume = await addDirectVolume(plugin, createSlabAndCube());
+      await volume.update('volumetric', { clip: { variant: 'pixel', objects: [PlaneX(40.5)] } });
+      canvas.requestCameraReset({ durationMs: 0 });
+      await frames(plugin);
+      const first = count();
+      expect(first).toBeGreaterThan(0);
+      // frames, the camera turned, the same props again: no build
+      await frames(plugin);
+      const position = Vec3.clone(canvas.camera.state.position);
+      canvas.camera.setState({ position: Vec3.add(position, position, Vec3.create(1, 0, 0)) }, 0);
+      await frames(plugin);
+      await volume.update('volumetric', { clip: { variant: 'pixel', objects: [PlaneX(40.5)] } });
+      await frames(plugin);
+      expect(count()).toBe(first);
+      // the plane moved: one build
+      await volume.update('volumetric', { clip: { variant: 'pixel', objects: [PlaneX(30.5)] } });
+      await frames(plugin);
+      expect(count()).toBe(first + 1);
+      // the volume moved under the clip: one build, the same transform again none
+      volume.repr.setState({ transform: Mat4.fromTranslation(Mat4(), Vec3.create(4, 0, 0)) });
+      canvas.add(volume.repr);
+      await frames(plugin);
+      expect(count()).toBe(first + 2);
+      volume.repr.setState({ transform: Mat4.fromTranslation(Mat4(), Vec3.create(4, 0, 0)) });
+      canvas.add(volume.repr);
+      await frames(plugin);
+      expect(count()).toBe(first + 2);
+      // the clip removed: one build
+      await volume.update('volumetric', { clip: { variant: 'pixel', objects: [] } });
+      await frames(plugin);
+      expect(count()).toBe(first + 3);
+      expect(canvas.graphics.takeErrors()).toEqual([]);
+      volume.repr.destroy();
     } finally {
       plugin.dispose();
     }
@@ -280,6 +445,55 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
     }
   }, 60_000);
 
+  it('illumination: a clipped volume casts no shadow on the traced molecules from its clipped part', async () => {
+    const plugin = await createPlugin();
+    try {
+      const canvas = plugin.canvas3d!;
+      const data = await plugin.builders.data.rawData({ data: Atoms, label: 'atoms' });
+      const trajectory = await plugin.builders.structure.parseTrajectory(data, 'pdb');
+      const model = await plugin.builders.structure.createModel(trajectory);
+      const structure = await plugin.builders.structure.createStructure(model);
+      await plugin.builders.structure.representation.addRepresentation(structure, {
+        type: 'spacefill',
+        color: 'uniform',
+        colorParams: { value: Color(0xffffff) },
+      });
+      // the slab of the shadow test (x 40 to 48) between the atoms and the light
+      const volume = await addDirectVolume(
+        plugin,
+        createCcp4(64, (x) => (x >= 40 && x < 48 ? 0.8 : 0)),
+      );
+      await volume.update('volumetric');
+      canvas.setProps({
+        illumination: { ...canvas.props.illumination, enabled: true },
+        renderer: {
+          ...canvas.props.renderer,
+          light: [{ inclination: 135, azimuth: 180, color: Color(0xffffff), intensity: 1 }],
+        },
+      });
+      plugin.renderer.imagePass.setProps({ illumination: { ...canvas.props.illumination, enabled: true } });
+      canvas.requestCameraReset({ durationMs: 0 });
+      await frames(plugin);
+      const atom = Vec3.create(24, 32, 35);
+      const shade = async () => luminanceAt(plugin, await plugin.getImageRaw({ width: Size, height: Size }), atom);
+      const shadowed = await shade();
+      // the slab clipped away (the plane x = 36.5 removing x > 36.5): no shadow
+      await volume.update('volumetric', { clip: { variant: 'pixel', objects: [PlaneX(36.5)] } });
+      await frames(plugin);
+      const clipped = await shade();
+      canvas.remove(volume.repr);
+      await frames(plugin);
+      const none = await shade();
+      expect(canvas.graphics.takeErrors()).toEqual([]);
+      // measured on Dawn (M1): shadowed 82, clipped 248 (82 before the clip reached the pyramid), none 247
+      expect(shadowed / none).toBeLessThan(0.8);
+      expect(Math.abs(clipped - none)).toBeLessThanOrEqual(3);
+      volume.repr.destroy();
+    } finally {
+      plugin.dispose();
+    }
+  }, 60_000);
+
   it('reads the descriptors of §A2: a uniform grid its extinction at every level, a half-filled one the ramp', async () => {
     const plugin = await createPlugin();
     try {
@@ -289,14 +503,14 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
       const sigma = -Math.log(1 - 0.2);
       const N = 64;
       const dim = Vec3.create(N, N, N);
-      const describe = async (filled: (x: number) => boolean, x: Vec3, light: Vec3) => {
+      const describe = async (filled: (x: number) => boolean, x: Vec3, light: Vec3, clipX?: number) => {
         const grid = Uint8Array.from({ length: N * N * N }, (_, i) => (filled(i % N) ? 255 : 0));
         const gridTexture = graphics.resources.texture('volume-uint8', 'r', 'ubyte', 'linear');
         gridTexture.load({ array: grid, width: N, height: N, depth: N });
         const pyramid = createExtinctionPyramid(graphics);
         pyramid.build({ gridTexture, gridDim: dim, transfer, alpha: 1, packedGroup: false });
         graphics.flush();
-        const out = await runDescriptors(graphics, gridTexture, pyramid.texture, x, light, dim);
+        const out = await runDescriptors(graphics, gridTexture, pyramid.texture, x, light, dim, clipX);
         pyramid.destroy();
         gridTexture.destroy();
         return out;
@@ -315,6 +529,10 @@ describe.skipIf(!WebGPU.module)('volume lighting on WebGPU', () => {
       // at the boundary, the levels 1 to 5 around half filled
       const boundary = await describe((x) => x < 32, Vec3.create(32, 32, 32), Vec3.create(0, 1, 0));
       close(boundary.slice(1, 6), Array(5).fill(sigma / 2));
+      // the level-0 read toward the light in the part \`volumeClipped\` removes (x > 32.5): 0, the sample's own kept
+      const clipped = await describe(() => true, Vec3.create(32, 32, 32), Vec3.create(1, 0, 0), 32.5);
+      close(clipped.slice(0, 1), [sigma]);
+      close(clipped.slice(6, 7), [0]);
       expect(graphics.takeErrors()).toEqual([]);
     } finally {
       plugin.dispose();
@@ -400,6 +618,76 @@ const ControlPoints = [
   Vec2.create(0.9, 0),
 ];
 
+/** A clip object plane at x = \`x\` (model space) removing x > \`x\`: its normal, \`y\` of its frame, turned to +x */
+function PlaneX(x: number) {
+  return {
+    type: 'plane' as const,
+    invert: false,
+    position: Vec3.create(x, 0, 0),
+    rotation: { axis: Vec3.create(0, 0, 1), angle: -90 },
+    scale: Vec3.create(1, 1, 1),
+    transform: Mat4.identity(),
+  };
+}
+
+/** The cube of \`createSlabAndCube\` (cells 28 to 35, 24 to 39, 16 to 47) as a cube clip object, its faces between cells */
+const CubeClip: Clip.Props = {
+  variant: 'pixel',
+  objects: [
+    {
+      type: 'cube',
+      invert: false,
+      position: Vec3.create(31.5, 31.5, 31.5),
+      rotation: { axis: Vec3.create(1, 0, 0), angle: 0 },
+      scale: Vec3.create(8.4, 16.4, 32.4),
+      transform: Mat4.identity(),
+    },
+  ],
+};
+
+/** \`objects\` packed for the kernels (\`packStorageClipObjects\`) */
+function clipObjects(objects: Clip.Props['objects']) {
+  const clip = Clip.getClip({ variant: 'pixel', objects });
+  const out = new Float32Array(Clip.MaxObjectCount * 20);
+  packStorageClipObjects(
+    {
+      dClipObjects: ValueCell.create(true),
+      dClipVariant: ValueCell.create('pixel'),
+      dClipping: ValueCell.create(false),
+      uClipObjectCount: ValueCell.create(clip.objects.count),
+      uClipObjectFrame: ValueCell.create(clip.objects.frame),
+      uClipObjectShape: ValueCell.create(clip.objects.shape),
+    },
+    out,
+  );
+  return out;
+}
+
+interface RenderedVolume {
+  plugin: HeadlessPluginContext;
+  image: { data: ArrayLike<number>; width: number; height: number };
+}
+
+/** \`ccp4\` lit volumetric with \`props\`, the key light from the front at 45° to the right (+x); the caller disposes */
+async function renderVolume(ccp4: Uint8Array, props: object = {}): Promise<RenderedVolume> {
+  const plugin = await createPlugin();
+  const canvas = plugin.canvas3d!;
+  const volume = await addDirectVolume(plugin, ccp4);
+  await volume.update('volumetric', props);
+  canvas.setProps({
+    renderer: {
+      ...canvas.props.renderer,
+      light: [{ inclination: 135, azimuth: 180, color: Color(0xffffff), intensity: 1 }],
+    },
+  });
+  // the camera of the whole box, the same for every map: the box's bounding sphere
+  canvas.requestCameraReset({ durationMs: 0 });
+  await frames(plugin);
+  const image = await plugin.getImageRaw({ width: Size, height: Size });
+  expect(canvas.graphics.takeErrors()).toEqual([]);
+  return { plugin, image };
+}
+
 async function addDirectVolume(plugin: HeadlessPluginContext, ccp4: Uint8Array) {
   const canvas = plugin.canvas3d!;
   const data = await plugin.builders.data.rawData({ data: ccp4, label: 'test.ccp4' });
@@ -416,8 +704,8 @@ async function addDirectVolume(plugin: HeadlessPluginContext, ccp4: Uint8Array) 
   });
   return {
     repr,
-    update: async (lighting: 'local' | 'volumetric' | 'neural') => {
-      await repr.createOrUpdate({ controlPoints: ControlPoints, lighting }, volume).run();
+    update: async (lighting: 'local' | 'volumetric' | 'neural', props: object = {}) => {
+      await repr.createOrUpdate({ controlPoints: ControlPoints, lighting, ...props }, volume).run();
       canvas.add(repr);
     },
   };
@@ -536,6 +824,8 @@ async function runDescriptors(
   x: Vec3,
   light: Vec3,
   gridDim: Vec3,
+  /** \`volumeClipped\` of the stand-ins: the texel coordinates beyond it in x clipped */
+  clipX = 1e6,
 ) {
   const { device } = graphics;
   const f = (v: Vec3) => `vec3<f32>(${v[0]}, ${v[1]}, ${v[2]})`;
@@ -556,6 +846,9 @@ fn textureVal(pos: vec3<f32>) -> vec4<f32> {
 }
 fn transferFunction(value: f32) -> f32 {
     return select(0.0, 0.2, value > 0.5);
+}
+fn volumeClipped(x: vec3<f32>) -> bool {
+    return x.x > ${clipX.toFixed(2)};
 }
 ${volume_lighting_wgsl}
 @compute @workgroup_size(1)
