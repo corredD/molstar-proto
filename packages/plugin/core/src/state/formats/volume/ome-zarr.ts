@@ -40,6 +40,11 @@ export function getOmeZarrLevel(file: OmeZarrFile, level: string): OmeZarrLevel 
   return l;
 }
 
+/** The bytes reading a level holds: its voxels and the one decoded chunk reading holds (zarr.md §5); `maxSizeMB` bounds it */
+export function omeZarrLevelNeeds(level: OmeZarrLevel): number {
+  return level.bytes + level.chunkBytes;
+}
+
 const MaxSizeParam = PD.Numeric(
   512,
   { min: 1, max: 16384, step: 1 },
@@ -106,8 +111,7 @@ const VolumeFromOmeZarr = PluginStateTransform.BuiltIn({
     return Task.create('Create volume from OME-Zarr', async (ctx) => {
       const file = a.data;
       const level = getOmeZarrLevel(file, params.level);
-      // the voxels and the one decoded chunk reading holds (zarr.md §5)
-      const needs = level.bytes + level.chunkBytes;
+      const needs = omeZarrLevelNeeds(level);
       if (needs > params.maxSizeMB * MB) {
         const mb = (b: number) => `${Math.round(b / MB)} MB`;
         throw new Error(
