@@ -217,7 +217,8 @@ describe('the default spec', () => {
       'built-in.animate-state-interpolation',
       'built-in.animate-time',
     ]);
-    expect(c.dataActions).toBe(48);
+    // 5.x's 48, and OME-Zarr's action and two transforms (OpenOmeZarr, OmeZarrFromUrl, VolumeFromOmeZarr)
+    expect(c.dataActions).toBe(51);
     expect(c.lociLabelProviders).toBe(5);
     plugin.dispose();
   });
