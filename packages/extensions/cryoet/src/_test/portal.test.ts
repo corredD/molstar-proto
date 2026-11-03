@@ -249,6 +249,16 @@ describe('cryoetPortal', () => {
     expect(await steps()).toBe(before + 1);
   });
 
+  it('keeps what it loaded when the direct volume cannot be made (no graphics here): a warning', async () => {
+    serve();
+    const v = await viewer();
+    const r = await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01' });
+    expectOk(r);
+    expect(r.warnings?.join(' ')).toMatch(/direct volume/i);
+    expect(v.plugin.managers.volume.hierarchy.current.volumes.length).toBe(2);
+    expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(1);
+  });
+
   it('leaves nothing when a file fails midway (the tomogram opened before it)', async () => {
     serve([[/r\.ndjson$/, () => null]]);
     const v = await viewer();

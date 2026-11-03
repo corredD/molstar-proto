@@ -260,7 +260,7 @@ export class CryoetPortalApi extends ApiArea {
       if (t && level) {
         if (info.needs) warnings.push(`The tomogram ${info.needs}.`);
         else {
-          const r = await loadTomogram(ctx, PortalFiles + t.zarr, level, v.as);
+          const r = await loadTomogram(ctx, PortalFiles + t.zarr, level, v.as, warnings);
           if (!r.ok) return r;
           done.push(`tomogram ${t.id} (level ${level.path}, ${level.spacing} Å)`);
         }
@@ -447,8 +447,17 @@ async function loadZarr(ctx: ApiContext, url: string, level: PortalLevel) {
   return made;
 }
 
-/** The tomogram at a level: its three slices and, asked for, its direct volume */
-async function loadTomogram(ctx: ApiContext, url: string, level: PortalLevel, as: PortalTomogramView) {
+/**
+ * The tomogram at a level: its three slices and, asked for, its direct volume; a direct volume the viewer cannot make
+ * (no graphics, a context without it) is a warning, not a load undone
+ */
+async function loadTomogram(
+  ctx: ApiContext,
+  url: string,
+  level: PortalLevel,
+  as: PortalTomogramView,
+  warnings: string[],
+) {
   const made = await loadZarr(ctx, url, level);
   if (isFailure(made)) return made;
   for (const volume of made) {
@@ -457,7 +466,7 @@ async function loadTomogram(ctx: ApiContext, url: string, level: PortalLevel, as
     if (!r.ok) return r;
     if (as === 'both') {
       const d = await showTomogramVolume(ctx, volume);
-      if (!d.ok) return d;
+      if (!d.ok) warnings.push(`No direct volume: ${d.message}`);
     }
   }
   return ApiResult.ok('');
