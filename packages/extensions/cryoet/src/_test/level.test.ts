@@ -115,6 +115,35 @@ describe('cryoet.level', () => {
     expect(await c.level({ volume: ref, level: '0' } as never)).toMatchObject({ unchanged: true });
   });
 
+  it('keeps a window set apart from the contrast (its two ends) at the same σ, unrounded', async () => {
+    const { v, ref } = await viewer('1');
+    const x = slices(v, ref).find((s) => s.axis === 'x')!.ref;
+    const inSigma = () => {
+      const { mean, sigma } = dataOf(v, ref).grid.stats;
+      const [lo, hi] = (v.plugin.state.data.cells.get(x)!.transform.params as any).colorTheme.params.domain.params;
+      return [(lo - mean) / sigma, (hi - mean) / sigma];
+    };
+    const { mean, sigma } = dataOf(v, ref).grid.stats;
+    await v.plugin
+      .build()
+      .to(x)
+      .update((p: any) => ({
+        ...p,
+        colorTheme: {
+          ...p.colorTheme,
+          params: {
+            ...p.colorTheme.params,
+            domain: { name: 'custom', params: [mean - 1.04 * sigma, mean + 3.13 * sigma] },
+          },
+        },
+      }))
+      .commit();
+    expectOk(await v.api.cryoet!.level({ volume: ref, level: '0' } as never));
+    const [lo, hi] = inSigma();
+    expect(lo).toBeCloseTo(-1.04, 6);
+    expect(hi).toBeCloseTo(3.13, 6);
+  });
+
   it('is one history step: an undo reads the old level again, its slices where they were', async () => {
     const { v, ref } = await viewer('1');
     const c = v.api.cryoet!;

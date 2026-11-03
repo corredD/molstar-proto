@@ -860,8 +860,8 @@ export class CryoetApi extends ApiArea {
         );
       }
       // the gray windows and the transfer functions as the person set them, in σ: σ changes with the binning
-      const windows = windowsOf(sliceOf(ctx, v));
       const stats = { ...v.cell.obj!.data.grid.stats };
+      const windows = windowsOf(v, stats);
       // one write: the level, and each slice's index at its place in Å (an index past the new grid would fail)
       const b = ctx.plugin.state.data.build();
       b.to(v.cell).update({
@@ -1102,11 +1102,15 @@ function sameIndex(index: number, axis: number, from: ZarrLevel, to: ZarrLevel) 
   return Math.max(0, Math.min(to.size[axis] - 1, i));
 }
 
-/** The gray windows of a volume's slices and oblique slices set in σ, by their refs */
-function windowsOf(info: SliceInfo | undefined): Map<string, number> {
-  const windows = new Map<string, number>();
-  for (const s of [...(info?.slices ?? []), ...(info?.obliques ?? [])]) {
-    if (s.contrast !== undefined) windows.set(s.ref, s.contrast);
+/** The gray windows of a volume's slices and oblique slices (a custom domain), each end in σ, by their refs */
+function windowsOf(v: VolumeRef, { mean, sigma }: Grid['stats']): Map<string, [number, number]> {
+  const windows = new Map<string, [number, number]>();
+  if (!(sigma > 0)) return windows;
+  for (const r of v.representations) {
+    const p = r.cell.transform.params as any;
+    const domain = p?.colorTheme?.params?.domain;
+    if (p?.type?.name !== 'slice' || domain?.name !== 'custom' || !Array.isArray(domain.params)) continue;
+    windows.set(r.cell.transform.ref, [(domain.params[0] - mean) / sigma, (domain.params[1] - mean) / sigma]);
   }
   return windows;
 }
@@ -1120,13 +1124,13 @@ export function samePoint(x: number, from: Grid['stats'], to: Grid['stats']) {
 
 /**
  * The volume's look set again in σ over its new level's statistics (binning changes σ, and the range more): the
- * slices' windows at the same σ (`cryoet.slice`'s contrast), the direct volumes' points at the same values in σ (a
+ * slices' windows, each end at the same σ, the direct volumes' points at the same values in σ (a
  * fraction of [min, max] otherwise: the Tomogram preset's dark matter would cover the noise of a finer level)
  */
 async function refit(
   ctx: Pick<ApiContext, 'plugin'>,
   volume: string,
-  windows: ReadonlyMap<string, number>,
+  windows: ReadonlyMap<string, readonly [number, number]>,
   from: Grid['stats'],
 ) {
   const v = oneVolume(ctx, volume);
@@ -1136,14 +1140,15 @@ async function refit(
   for (const r of v.representations) {
     const ref = r.cell.transform.ref;
     const old = r.cell.transform.params as any;
-    const k = windows.get(ref);
+    const z = windows.get(ref);
     let next: unknown;
-    if (k !== undefined && old?.type?.name === 'slice') {
+    if (z && old?.type?.name === 'slice') {
+      const { mean, sigma } = data.grid.stats;
       const where =
         old.type.params.mode === 'plane'
           ? { plane: old.type.params.plane as SlicePlane }
           : { axis: old.type.params.dimension.name as SliceAxis, index: old.type.params.dimension.params as number };
-      next = sliceParams(ctx.plugin, data, where, k, old);
+      next = sliceParams(ctx.plugin, data, where, [mean + z[0] * sigma, mean + z[1] * sigma], old);
     } else if (old?.type?.name === 'direct-volume' && Array.isArray(old.type.params?.controlPoints)) {
       const controlPoints = (old.type.params.controlPoints as number[][]).map(([x, ...rest]) => [
         samePoint(x, from, data.grid.stats),
