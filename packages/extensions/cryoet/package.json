@@ -20,7 +20,8 @@
       "import": "./lib/*.js"
     },
     "./_test/*": null,
-    "./prism-viewer-ui": null
+    "./prism-viewer-ui": null,
+    "./portal-ui": null
   },
   "files": [
     "lib",
