@@ -4,21 +4,21 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Mat3 } from '@molstar/core/math/linear-algebra/3d/mat3';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { Color } from '@molstar/core/util/color/color';
 import type { MtlFile, MtlMaterial, ObjFile } from '../obj/schema.js';
 import type { GltfFile } from './schema.js';
 
-// glTF colours are linear, Mol*'s sRGB (the GLB exporter does the reverse). Color.linearToSRGB's formula, on floats:
-// the packed one truncates the linear value to 8 bits first, which bands the dark tones (linear 0.21586, sRGB 0x80,
+// glTF colours are linear, Mol*'s sRGB (the GLB exporter does the reverse), converted on floats: the packed
+// Color.linearToSRGB truncates the linear value to 8 bits first, which bands the dark tones (linear 0.21586, sRGB 0x80,
 // gives 0x7e), and fromNormalizedRgb truncates (1 gives 0xfe)
-const toSrgb = (c: number) => (c < 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 0.41666) - 0.055);
-const to8 = (c: number) => Math.round(Math.min(Math.max(toSrgb(c), 0), 1) * 255);
+const to8 = (c: number) => Math.round(Math.min(Math.max(Color.linearToSRGBNormalized(c), 0), 1) * 255);
 
 /**
  * The scene of a glTF as one OBJ-like mesh in world space (gltf.md §3): each mesh node's primitives baked with the
- * node's world transform, one face group per primitive of each node, named after the node (or the mesh), with the base
+ * node's world transform, one face group per primitive and node name (the node's, else the mesh's), with the base
  * colours as an MTL (empty when no primitive has a material) and COLOR_0 times the base colour as vertex colours.
  * Normals are kept only when every primitive has them (the OBJ builder computes them otherwise).
  */
@@ -45,26 +45,54 @@ export function gltfToObj({ meshes, instances }: GltfFile): { obj: ObjFile; mtl:
   const faceGroups = new Int32Array(triangleCount);
   const materialNames: string[] = [];
   const mtl = new Map<string, MtlMaterial>();
+  // the group of a (mesh, primitive, label), and the next suffix of a label taken by another (mesh, primitive)
+  const groups = new Map<string, number>();
+  const suffixes = new Map<string, number>();
 
   const normalMatrix = Mat4();
+  const cofactors = Mat3();
   let v = 0,
     t = 0;
   for (const { name: nodeName, mesh, transform } of instances) {
     const { name: meshName, primitives } = meshes[mesh];
     const identity = Mat4.isIdentity(transform);
     // spec §3.7.4: a mirroring transform reverses the winding
-    const flip = Mat4.determinant(transform) < 0;
-    if (hasNormals && !identity) Mat4.transpose(normalMatrix, Mat4.invert(normalMatrix, transform));
+    const det = Mat4.determinant(transform);
+    const flip = det < 0;
+    if (hasNormals && !identity) {
+      // the inverse transpose up to its scale (normalized per normal): the cofactor matrix, signed by the determinant,
+      // which exists for a flattened (singular) node too
+      Mat4.fromMat3(normalMatrix, Mat3.adjointFromMat4(cofactors, transform));
+      if (flip) Mat4.scaleUniformly(normalMatrix, normalMatrix, -1);
+    }
     for (let pi = 0, pl = primitives.length; pi < pl; ++pi) {
-      const { vertexCount, positions: pos, normals: nor, colors, colorSize, indices, baseColor } = primitives[pi];
-
-      let name = nodeName || meshName || `Mesh ${mesh}`;
-      if (pl > 1) name += ` ${pi}`;
-      for (let k = 2, base = name; mtl.has(name); ++k) name = `${base} (${k})`;
+      const {
+        index,
+        vertexCount,
+        positions: pos,
+        normals: nor,
+        colors,
+        colorSize,
+        indices,
+        baseColor,
+      } = primitives[pi];
       const [br, bg, bb] = baseColor ?? [1, 1, 1];
-      const kd = Color.fromRgb(to8(br), to8(bg), to8(bb));
-      materialNames.push(name);
-      mtl.set(name, { Kd: kd });
+
+      // instances of a mesh under one name share their groups: the group count is the names', not the nodes'
+      let label = nodeName || meshName || `Mesh ${mesh}`;
+      if (pl > 1 || index > 0) label += ` ${index}`;
+      const key = `${mesh}/${index}/${label}`;
+      let group = groups.get(key);
+      if (group === undefined) {
+        let k = suffixes.get(label) ?? 1;
+        let name = label;
+        while (mtl.has(name)) name = `${label} (${++k})`;
+        suffixes.set(label, k);
+        group = materialNames.length;
+        groups.set(key, group);
+        materialNames.push(name);
+        mtl.set(name, { Kd: Color.fromRgb(to8(br), to8(bg), to8(bb)) });
+      }
 
       if (identity) {
         positions.set(pos, v * 3);
@@ -81,13 +109,13 @@ export function gltfToObj({ meshes, instances }: GltfFile): { obj: ObjFile; mtl:
 
       if (hasColors) {
         for (let i = 0, c = 0, o = v * 3; i < vertexCount; ++i, c += colorSize, o += 3) {
-          vertexColors[o] = toSrgb(colors ? colors[c] * br : br);
-          vertexColors[o + 1] = toSrgb(colors ? colors[c + 1] * bg : bg);
-          vertexColors[o + 2] = toSrgb(colors ? colors[c + 2] * bb : bb);
+          // in 8-bit steps (k / 255 packs back to k exactly), clamped: fromNormalizedRgb neither rounds nor clamps
+          vertexColors[o] = to8(colors ? colors[c] * br : br) / 255;
+          vertexColors[o + 1] = to8(colors ? colors[c + 1] * bg : bg) / 255;
+          vertexColors[o + 2] = to8(colors ? colors[c + 2] * bb : bb) / 255;
         }
       }
 
-      const group = materialNames.length - 1;
       for (let k = 0, kl = primitives[pi].triangleCount; k < kl; ++k, ++t) {
         const o = k * 3;
         const a = indices ? indices[o] : o;

@@ -10,7 +10,8 @@ import * as path from 'node:path';
 import { Color } from '@molstar/core/util/color/color';
 import { parseGltf } from '../gltf/parser.js';
 import { gltfToObj } from '../gltf/to-obj.js';
-import { GlbChunkType, GlbMagic, GltfComponentType as CT, type GltfFile } from '../gltf/schema.js';
+import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
+import { GlbChunkType, GlbMagic, GltfComponentType as CT, type GltfFile, type GltfPrimitive } from '../gltf/schema.js';
 
 // --- a tiny glTF writer: the JSON and one binary buffer, as GLB or as .gltf with a data URI ---
 
@@ -177,6 +178,37 @@ describe('glTF reader', () => {
     expect(toArray(obj.normals)).toEqual([0, -1, 0, 0, -1, 0, 0, -1, 0]);
   });
 
+  it('transforms normals by the inverse transpose, also for mirrored and flattened nodes', () => {
+    const s = Math.SQRT1_2;
+    const bake = (normal: number[], ...nodes: Mat4[]) => {
+      const primitive: GltfPrimitive = {
+        index: 0,
+        vertexCount: 3,
+        positions: triangle,
+        normals: new Float32Array([...normal, ...normal, ...normal]),
+        colorSize: 0,
+        triangleCount: 1,
+      };
+      const file: GltfFile = {
+        meshes: [{ primitives: [primitive] }],
+        instances: nodes.map((transform) => ({ mesh: 0, transform })),
+      };
+      const { normals } = gltfToObj(file).obj;
+      return nodes.map((_, i) => toArray(normals.subarray(i * 9, i * 9 + 3)));
+    };
+    const scale = (x: number, y: number, z: number) => Mat4.fromScaling(Mat4(), [x, y, z]);
+    // non-uniform scale: the plain matrix would give (0.894, 0.447, 0)
+    expect(bake([s, s, 0], scale(2, 1, 1))).toEqual([toArray([1 / Math.sqrt(5), 2 / Math.sqrt(5), 0])]);
+    // a mirror keeps the normal's side of the surface
+    expect(bake([s, s, 0], scale(-1, 1, 1))).toEqual([toArray([-s, s, 0])]);
+    // a node flattened to z = 0 (legal, e.g. to hide it), after a rotated one: its own normal, (0, 0, 1)
+    const rotated = Mat4.fromRotation(Mat4(), Math.PI / 2, [1, 0, 0]);
+    expect(bake([0, 0, 1], rotated, scale(1, 1, 0))).toEqual([
+      [0, -1, 0],
+      [0, 0, 1],
+    ]);
+  });
+
   it('reads uint8, uint16 and uint32 indices to the same triangles', async () => {
     for (const indices of [new Uint8Array([2, 1, 0]), new Uint16Array([2, 1, 0]), new Uint32Array([2, 1, 0])]) {
       const { json, bytes } = triangleGltf({}, indices);
@@ -226,25 +258,25 @@ describe('glTF reader', () => {
     expect(Array.from(fan.indices!)).toEqual([1, 2, 0, 2, 3, 0]);
   });
 
-  it('gives one face group per primitive of each node, named and coloured', async () => {
+  it('gives one face group per primitive and node name, named and coloured', async () => {
     const colors = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255]);
     const { bytes, bufferViews } = buffer([triangle, new Uint16Array([0, 1, 2]), colors]);
     const json = {
       asset: { version: '2.0' },
-      scenes: [{ nodes: [0, 1] }],
-      // two nodes share the mesh and its accessors
+      scenes: [{ nodes: [0, 1, 2, 3] }],
+      // three nodes share mesh 0 and its accessors, two by one name; a node of mesh 1 takes the same name
       nodes: [
         { name: 'a', mesh: 0 },
         { name: 'a', mesh: 0, translation: [5, 0, 0] },
+        { name: 'b', mesh: 0 },
+        { name: 'a', mesh: 1 },
       ],
-      meshes: [
-        {
-          primitives: [
-            { attributes: { POSITION: 0 }, indices: 1, material: 0 },
-            { attributes: { POSITION: 0, COLOR_0: 2 }, indices: 1 },
-          ],
-        },
-      ],
+      meshes: [0, 1].map(() => ({
+        primitives: [
+          { attributes: { POSITION: 0 }, indices: 1, material: 0 },
+          { attributes: { POSITION: 0, COLOR_0: 2 }, indices: 1 },
+        ],
+      })),
       materials: [{ pbrMetallicRoughness: { baseColorFactor: [0.21586, 0.21586, 0.21586, 1] } }],
       accessors: [
         { bufferView: 0, componentType: CT.FLOAT, count: 3, type: 'VEC3' },
@@ -258,16 +290,38 @@ describe('glTF reader', () => {
     const [p0, p1] = file.meshes[0].primitives;
     expect(p0.positions).toBe(p1.positions); // decoded once
     const { obj, mtl } = gltfToObj(file);
-    expect(obj.materialNames).toEqual(['a 0', 'a 1', 'a 0 (2)', 'a 1 (2)']);
-    expect(Array.from(obj.faceGroups)).toEqual([0, 1, 2, 3]);
-    expect(Array.from(obj.positionIndices)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    // the groups by name, not by node: as many as the distinct names, however many instances
+    expect(obj.materialNames).toEqual(['a 0', 'a 1', 'b 0', 'b 1', 'a 0 (2)', 'a 1 (2)']);
+    expect(Array.from(obj.faceGroups)).toEqual([0, 1, 0, 1, 2, 3, 4, 5]);
+    expect(Array.from(obj.positionIndices.subarray(0, 12))).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     // linear 0.21586 is sRGB 128 / 255; no material is white
     expect(Color.toHexStyle(mtl.get('a 0')!.Kd)).toBe('#808080');
     expect(Color.toHexStyle(mtl.get('a 1')!.Kd)).toBe('#ffffff');
     // COLOR_0 per vertex, the base colour for the primitive without
     expect(Array.from(obj.vertexColors.subarray(0, 3), (c) => Math.round(c * 255))).toEqual([128, 128, 128]);
-    expect(toArray(obj.vertexColors.subarray(9, 18))).toEqual([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    // as the OBJ shape reads them (Color.fromNormalizedArray truncates): pure red, green, blue, and white
+    const rendered = (i: number) => Color.toHexStyle(Color.fromNormalizedArray(obj.vertexColors, i * 3));
+    expect([3, 4, 5].map(rendered)).toEqual(['#ff0000', '#00ff00', '#0000ff']);
+    expect(rendered(0)).toBe('#808080');
     expect(obj.positions[27]).toBe(5);
+  });
+
+  it('clamps float vertex colours to [0, 1] before they are packed', async () => {
+    const colors = new Float32Array([1.2, 0, 0, 0, -0.5, 1, 1, 1, 1]);
+    const { bytes, bufferViews } = buffer([triangle, colors]);
+    const json = {
+      asset: { version: '2.0' },
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, COLOR_0: 1 } }] }],
+      accessors: [
+        { bufferView: 0, componentType: CT.FLOAT, count: 3, type: 'VEC3' },
+        { bufferView: 1, componentType: CT.FLOAT, count: 3, type: 'VEC3' },
+      ],
+      bufferViews,
+      buffers: [{ byteLength: bytes.byteLength }],
+    };
+    const { obj } = gltfToObj(await parse(glb(json, bytes)));
+    const rendered = [0, 1, 2].map((i) => Color.toHexStyle(Color.fromNormalizedArray(obj.vertexColors, i * 3)));
+    expect(rendered).toEqual(['#ff0000', '#0000ff', '#ffffff']);
   });
 
   it('reads a .gltf whose buffer is a data URI', async () => {
@@ -280,14 +334,16 @@ describe('glTF reader', () => {
 
   it('skips points and lines with a warning, and refuses a scene without triangles', async () => {
     const { json, bytes } = triangleGltf();
-    json.meshes[0].primitives.push({ attributes: { POSITION: 0 }, mode: 1 } as any);
+    json.meshes[0].primitives.unshift({ attributes: { POSITION: 0 }, mode: 1 } as any);
     const r = await parseGltf(glb(json, bytes)).run();
     expect(r.isError).toBe(false);
     if (!r.isError) {
       expect(r.result.meshes[0].primitives.length).toBe(1);
-      expect(r.warnings).toEqual(['glTF mesh 0 primitive 1: points or lines, skipped']);
+      expect(r.warnings).toEqual(['glTF mesh 0 primitive 0: points or lines, skipped']);
+      // named by its index in the glTF mesh
+      expect(gltfToObj(r.result).obj.materialNames).toEqual(['tri 1']);
     }
-    (json.meshes[0].primitives[0] as any).mode = 0;
+    (json.meshes[0].primitives[1] as any).mode = 0;
     expect(await parseError(glb(json, bytes))).toBe('glTF has no triangles in its scene');
   });
 
@@ -309,10 +365,42 @@ describe('glTF reader', () => {
       'glTF buffer 0 is an external file (mesh.bin): only GLB or .gltf with data URIs is read',
     );
 
+    // a data URI shorter than its buffer, or not base64
+    for (const payload of ['AAAAAAAA', '!!!!']) {
+      const short = triangleGltf();
+      (short.json.buffers[0] as any).uri = `data:application/octet-stream;base64,${payload}`;
+      expect(await parseError(new TextEncoder().encode(JSON.stringify(short.json)))).toBe(
+        'glTF buffer 0 is shorter than its byteLength',
+      );
+    }
+
     const outOfRange = triangleGltf({}, new Uint16Array([0, 1, 3]));
     expect(await parseError(glb(outOfRange.json, outOfRange.bytes))).toBe(
       'glTF mesh 0 primitive 0: index 3 of 3 vertices',
     );
+
+    // one index accessor for two primitives: checked against each one's vertices, whatever their order
+    const quad = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0]);
+    const shared = buffer([quad, triangle, new Uint16Array([0, 1, 3])]);
+    const sharedJson = {
+      asset: { version: '2.0' },
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 }, indices: 2 },
+            { attributes: { POSITION: 1 }, indices: 2 },
+          ],
+        },
+      ],
+      accessors: [
+        { bufferView: 0, componentType: CT.FLOAT, count: 4, type: 'VEC3' },
+        { bufferView: 1, componentType: CT.FLOAT, count: 3, type: 'VEC3' },
+        { bufferView: 2, componentType: CT.UNSIGNED_SHORT, count: 3, type: 'SCALAR' },
+      ],
+      bufferViews: shared.bufferViews,
+      buffers: [{ byteLength: shared.bytes.byteLength }],
+    };
+    expect(await parseError(glb(sharedJson, shared.bytes))).toBe('glTF mesh 0 primitive 1: index 3 of 3 vertices');
 
     const v1 = triangleGltf({ asset: { version: '1.0' } });
     expect(await parseError(glb(v1.json, v1.bytes))).toBe('glTF version 1.0 is not supported (2.x only)');
