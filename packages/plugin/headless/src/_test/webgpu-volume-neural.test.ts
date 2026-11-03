@@ -64,6 +64,9 @@ struct Object { uGridDim: vec3<f32>, count: u32 };
 fn transferFunction(value: f32) -> f32 {
     return textureSampleLevel(tTransferTex, sLinear, vec2<f32>(value, 0.0), 0.0).r;
 }
+fn volumeClipped(x: vec3<f32>) -> bool {
+    return false;
+}
 
 fn textureVal(pos: vec3<f32>) -> vec4<f32> {
     return vec4<f32>(0.0, 0.0, 0.0, textureSampleLevel(tGridTex, sLinear, pos + vec3<f32>(0.5) / uObject.uGridDim, 0.0).r);

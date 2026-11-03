@@ -27,6 +27,9 @@ import {
 } from './schema.js';
 import { DirectVolumeShaderCode } from '../shader-code.js';
 import { ValueCell } from '@molstar/core/util';
+import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
+import { Clip } from '@molstar/core/util/clip';
+import { ClipStorageVec4s, getPixelClipCount, packStorageClipObjects } from '../clip-storage.js';
 import type { ComputeContext } from '../compute.js';
 import {
   createExtinctionPyramid,
@@ -121,6 +124,27 @@ function createVolumeLighting(ctx: GraphicsContext, values: DirectVolumeValues) 
   let gridDimVersion = -1;
   let alpha = -1;
   let packedGroup = false;
+  /** the clip of the last build (`ExtinctionInput.clip`) and the clip of the values, read by `readClip` */
+  const clip = { count: 0, objects: new Float32Array(Clip.MaxObjectCount * ClipStorageVec4s * 4), cellToModel: Mat4() };
+  const next = { count: 0, objects: new Float32Array(clip.objects.length), cellToModel: Mat4() };
+
+  /**
+   * Reads the clip of the values into `next`, whether it differs from the last build's: the march clips its samples
+   * only per pixel (`dClipVariant_pixel`), the pyramid the cells of the first instance (as the trace reads it), in
+   * model space without the scene's view and scale (`uModel` taken as the identity)
+   */
+  function readClip() {
+    next.count = getPixelClipCount(values);
+    if (next.count === 0) return clip.count !== 0;
+    packStorageClipObjects(values, next.objects);
+    const instance = Mat4.fromArray(next.cellToModel, values.aTransform.ref.value, 0);
+    Mat4.mul(next.cellToModel, instance, values.uTransform.ref.value);
+    if (next.count !== clip.count || !Mat4.areEqual(next.cellToModel, clip.cellToModel, 0)) return true;
+    for (let i = 0, il = next.count * ClipStorageVec4s * 4; i < il; ++i) {
+      if (next.objects[i] !== clip.objects[i]) return true;
+    }
+    return false;
+  }
 
   function getLighting() {
     const lighting = values.dLighting.ref.value;
@@ -135,24 +159,30 @@ function createVolumeLighting(ctx: GraphicsContext, values: DirectVolumeValues) 
         gridTextureVersion = -1;
       }
       const tf = values.tTransferTex.ref.value.array;
+      const clipChanged = readClip();
       const changed =
         gridTextureVersion !== values.tGridTex.ref.version ||
         gridDimVersion !== values.uGridDim.ref.version ||
         alpha !== values.uAlpha.ref.value ||
         packedGroup !== values.dPackedGroup.ref.value ||
-        tf.some((v, i) => v !== transfer[i]);
+        tf.some((v, i) => v !== transfer[i]) ||
+        clipChanged;
       if (changed) {
         transfer.set(tf);
         gridTextureVersion = values.tGridTex.ref.version;
         gridDimVersion = values.uGridDim.ref.version;
         alpha = values.uAlpha.ref.value;
         packedGroup = values.dPackedGroup.ref.value;
+        clip.count = next.count;
+        clip.objects.set(next.objects);
+        Mat4.copy(clip.cellToModel, next.cellToModel);
         pyramid.build({
           gridTexture: values.tGridTex.ref.value,
           gridDim: values.uGridDim.ref.value,
           transfer,
           alpha,
           packedGroup,
+          clip,
         });
       }
       if (tExtinction.ref.value !== pyramid.texture) ValueCell.update(tExtinction, pyramid.texture);

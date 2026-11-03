@@ -481,6 +481,23 @@ describe('quad wgsl', () => {
         dColorType: 'texture',
       },
     ],
+    // with clip objects: the pyramid's level-0 read clipped as the march's samples (`volumeClipped`)
+    ...[{ dClipVariant: 'pixel' }, { dClipVariant: 'pixel', dIgnoreLight: true }, { dClipVariant: 'instance' }].map(
+      (clip) =>
+        [
+          'direct-volume',
+          direct_volume_wgsl,
+          {
+            ...base,
+            dGeometryType: 'directVolume',
+            dGridTexType: '3d',
+            dLighting: 'volumetric',
+            dClipObjects: true,
+            dClipObjectCount: 2,
+            ...clip,
+          },
+        ] as (typeof cases)[number],
+    ),
   ];
 
   for (const [name, source, values] of cases) {
@@ -507,6 +524,27 @@ describe('direct volume lighting', () => {
         preprocessShader(resolveWgslSource(direct_volume_wgsl, dv), getWgslDefines(dv), { expandMacros: true });
       expect(code(local)).toBe(code(before));
       expect(code(local)).not.toContain('tExtinction');
+    });
+  }
+
+  for (const lighting of ['volumetric', 'neural']) {
+    it(`${lighting} clips its level-0 read by the clip objects where the march clips its samples (pixel)`, () => {
+      const code = (clipVariant: string) => {
+        const dv = defineValues({
+          ...base,
+          dGeometryType: 'directVolume',
+          dGridTexType: '3d',
+          dRenderVariant: 'colorWboit',
+          dLighting: lighting,
+          dClipObjects: true,
+          dClipObjectCount: 1,
+          dClipVariant: clipVariant,
+        });
+        return preprocessShader(resolveWgslSource(direct_volume_wgsl, dv), getWgslDefines(dv), { expandMacros: true });
+      };
+      expect(code('pixel')).toContain('volumeCellToModel = modelTransform;');
+      expect(code('pixel')).toContain('return clipTest(v3m4(x - 0.5, volumeCellToModel), 0);');
+      expect(code('instance')).not.toContain('volumeCellToModel');
     });
   }
 

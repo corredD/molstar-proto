@@ -4,8 +4,11 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
+import { Clip } from '@molstar/core/util/clip';
 import { ValueCell } from '@molstar/core/util/value-cell';
+import { ClipStorageVec4s } from '../clip-storage.js';
 import {
   type ComputeContext,
   type ComputeKernel,
@@ -50,6 +53,11 @@ export const VlExtinctionSchema = {
   tGridTex: TextureSpec('texture', 'rgba', 'ubyte', 'nearest', undefined, { dimension: '3d' }),
   /** the transfer function's opacity per cell, its 256 entries in [0, 1] */
   transfer: StorageBufferSpec('f32', 'read'),
+  /** the clip objects removing cells (`ExtinctionInput.clip`), in `clipObjects` (`ClipStorageVec4s` each) */
+  uClipObjectCount: UniformSpec('i'),
+  /** a cell's index to the clip objects' space (model space) */
+  uCellToModel: UniformSpec('m4'),
+  clipObjects: StorageBufferSpec('vec4<f32>', 'read'),
 };
 
 export const VlDownsampleSchema = {
@@ -84,6 +92,11 @@ export interface ExtinctionInput {
   /** the material's alpha (`uAlpha`) */
   readonly alpha: number;
   readonly packedGroup: boolean;
+  /**
+   * The clip objects whose removed cells count as 0 (`volume-lighting.md` §A1): `count` of them packed in `objects`
+   * (`packStorageClipObjects`), tested at the cells' centers taken to model space by `cellToModel`; none without
+   */
+  readonly clip?: { readonly count: number; readonly objects: Float32Array; readonly cellToModel: Mat4 };
 }
 
 export interface ExtinctionPyramid {
@@ -100,6 +113,10 @@ export function createExtinctionPyramid(graphics: GraphicsContext & { compute: C
   const texture = resources.texture('volume-float16', 'r', 'fp16', 'linear');
   const transferArray = new Float32Array(256);
   const transfer: StorageBuffer = compute.createBuffer(transferArray.byteLength, 'extinction transfer');
+  const clipObjects: StorageBuffer = compute.createBuffer(
+    Clip.MaxObjectCount * ClipStorageVec4s * 16,
+    'extinction clip objects',
+  );
 
   const size = Vec3();
   const levelDims = Array.from({ length: VolumeLightingLevels }, () => ValueCell.create(Vec3()));
@@ -107,6 +124,8 @@ export function createExtinctionPyramid(graphics: GraphicsContext & { compute: C
   const alpha = ValueCell.create(1);
   const packedGroup = ValueCell.create(false);
   const gridTexture = ValueCell.create<Texture>(texture);
+  const clipObjectCount = ValueCell.create(0);
+  const cellToModel = ValueCell.create(Mat4.identity());
 
   let kernels: ComputeKernel[] | undefined;
   function getKernels() {
@@ -120,6 +139,9 @@ export function createExtinctionPyramid(graphics: GraphicsContext & { compute: C
         dPackedGroup: packedGroup,
         tGridTex: gridTexture,
         transfer: ValueCell.create(transfer),
+        uClipObjectCount: clipObjectCount,
+        uCellToModel: cellToModel,
+        clipObjects: ValueCell.create(clipObjects),
       }),
     ];
     for (let level = 1; level < VolumeLightingLevels; ++level) {
@@ -149,6 +171,12 @@ export function createExtinctionPyramid(graphics: GraphicsContext & { compute: C
       ValueCell.update(gridTexture, input.gridTexture);
       for (let i = 0; i < 256; ++i) transferArray[i] = input.transfer[i] / 255;
       transfer.write(transferArray);
+      const { clip } = input;
+      ValueCell.updateIfChanged(clipObjectCount, clip?.count ?? 0);
+      if (clip && clip.count > 0) {
+        clipObjects.write(clip.objects);
+        ValueCell.update(cellToModel, Mat4.copy(cellToModel.ref.value, clip.cellToModel));
+      }
 
       const wasPacked = packedGroup.ref.value;
       ValueCell.updateIfChanged(packedGroup, input.packedGroup);
@@ -162,11 +190,12 @@ export function createExtinctionPyramid(graphics: GraphicsContext & { compute: C
       }
       compute.endComputePass();
     },
-    getByteCount: () => texture.getByteCount() + transfer.byteLength,
+    getByteCount: () => texture.getByteCount() + transfer.byteLength + clipObjects.byteLength,
     destroy: () => {
       if (kernels) for (const k of kernels) k.destroy();
       kernels = undefined;
       transfer.destroy();
+      clipObjects.destroy();
       texture.destroy();
     },
   };
