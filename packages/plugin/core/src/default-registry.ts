@@ -3,6 +3,7 @@
  *
  * @author David Sehnal <david.sehnal@gmail.com>
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import '@molstar/query-language/transpilers/all';
@@ -75,6 +76,7 @@ import { AssignColorVolume } from '@molstar/plugin/state/actions/volume';
 import { Download } from '@molstar/plugin/state/transforms/data/fetch';
 import { ParseCif } from '@molstar/plugin/state/formats/cif';
 import { ParseCcp4, VolumeFromCcp4 } from '@molstar/plugin/state/formats/volume/ccp4';
+import { OmeZarrFromUrl, OpenOmeZarr, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
 import { ParseDsn6, VolumeFromDsn6 } from '@molstar/plugin/state/formats/volume/dsn6';
 import { TrajectoryFromMmCif } from '@molstar/plugin/state/formats/trajectory/mmcif';
 import { TrajectoryFromCifCore } from '@molstar/plugin/state/formats/trajectory/cif-core';
@@ -190,6 +192,7 @@ export const DefaultActions: PluginRegistryEntry = {
   actions: [
     StateActions.Structure.DownloadStructure,
     StateActions.Volume.DownloadDensity,
+    OpenOmeZarr,
     StateActions.DataFormat.DownloadFile,
     StateActions.DataFormat.OpenFiles,
     StateActions.Structure.LoadTrajectory,
@@ -238,6 +241,8 @@ export const DefaultActions: PluginRegistryEntry = {
     VolumeFromDsn6,
     VolumeFromCube,
     VolumeFromDx,
+    OmeZarrFromUrl,
+    VolumeFromOmeZarr,
     VolumeRepresentation3D,
     VolumeTransform,
     VolumeInstances,

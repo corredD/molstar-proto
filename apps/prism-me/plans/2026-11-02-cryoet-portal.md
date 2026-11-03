@@ -9,8 +9,8 @@ from there.
 - **Asked** (Ludo, 2026-11-02): "find an example with 1 tomogram, 1 segmentation mesh, one particle list (.star), one
   STA map and PDB", "review how we could connect to cryoET data portal directly", "doesn't biohub and cryoETdata have a
   library, copick? could we use that?". **Check:** on the published static site (no server of ours), open
-  `?portal-dataset=10003&portal-run=TS_08`. The ribosome set loads: the binned tomogram as slices, the membrane mask as a
-  surface, the 378 ribosomes decorated with 7PHB, and the EMD-13412 average beside them. The ribosomes sit in the
+  `?portal-dataset=10003&portal-run=TS_08`. The ribosome set loads: the binned tomogram as slices, the membrane mask as
+  a surface, the 378 ribosomes decorated with 7PHB, and the EMD-13412 average beside them. The ribosomes sit in the
   densities of the tomogram.
 - **Decision** (2026-11-02): no copick dependency. copick reaches a browser only through a Python server (copick-web),
   and prism-me ships as a static site. The work that makes portal data load (the OME-Zarr and GLB readers) is the same
@@ -20,33 +20,33 @@ from there.
 - **Touches:** `packages/io` (a new `reader/zarr/`, a new `reader/gltf/`, `reader/cryoet/ndjson.ts`), `packages/model`
   (`formats/particles/ndjson.ts`), `plugin/core` (volume and shape formats), `packages/extensions/cryoet` (the portal
   source, the panel), `apps/prism-me/src/url.ts`. A new `tools/portal-index/` (Python, not shipped).
-- **Base and delivery:** the readers (B, C) are library lanes from `git merge-base origin/prism-me upstream/master`, with
-  PRs into the fork's `prism-me`, and later upstream on Ludo's word. The portal source and the panel (A, D) are
+- **Base and delivery:** the readers (B, C) are library lanes from `git merge-base origin/prism-me upstream/master`,
+  with PRs into the fork's `prism-me`, and later upstream on Ludo's word. The portal source and the panel (A, D) are
   prism-me only.
 
 ## What was found (2026-11-02, by curl; the dataset and API reports of that day)
 
-**The example set: portal dataset 10003, *M. pneumoniae* 70S ribosomes, chloramphenicol** (Xue, Cramer, Mahamid;
-EMPIAR-10499; doi:10.1038/s41586-022-05255-2). Our fixture `.me-data/fixtures/cryoet-ribosomes.ndjson` comes from
-this dataset (run TS_01).
+**The example set: portal dataset 10003, _M. pneumoniae_ 70S ribosomes, chloramphenicol** (Xue, Cramer, Mahamid;
+EMPIAR-10499; doi:10.1038/s41586-022-05255-2). Our fixture `.me-data/fixtures/cryoet-ribosomes.ndjson` comes from this
+dataset (run TS_01).
 
-| Piece | ID | Size | Note |
-|---|---|---|---|
-| Tomogram | run TS_08 (run 368, tomogram 638), 6.802 Å, 928×928×450 | 1.55 GB MRC; Zarr level 1 (13.604 Å) about 194 MB | TS_01 = tomogram 631, run 361 |
-| Segmentation | membrane, annotation 2321, SegmentationMask | 388 MB MRC, 3.3 MB Zarr | no mesh: make one from the mask |
-| Particles | ribosomes, annotation 1212, OrientedPoint ndjson, 378 points | 119 KB | voxels of the 6.802 Å tomogram; no .star |
-| STA map | EMD-13412, 70S with A and P tRNAs, 4.9 Å | 7.8 MB | `files.wwpdb.org/pub/emdb/structures/EMD-13412/map/` |
-| Model | PDB 7PHB, fitted into EMD-13412 | 3.3 MB | |
+| Piece        | ID                                                           | Size                                              | Note                                                 |
+| ------------ | ------------------------------------------------------------ | ------------------------------------------------- | ---------------------------------------------------- |
+| Tomogram     | run TS_08 (run 368, tomogram 638), 6.802 Å, 928×928×450      | 1.55 GB MRC; Zarr level 1 (13.604 Å) about 194 MB | TS_01 = tomogram 631, run 361                        |
+| Segmentation | membrane, annotation 2321, SegmentationMask                  | 388 MB MRC, 3.3 MB Zarr                           | no mesh: make one from the mask                      |
+| Particles    | ribosomes, annotation 1212, OrientedPoint ndjson, 378 points | 119 KB                                            | voxels of the 6.802 Å tomogram; no .star             |
+| STA map      | EMD-13412, 70S with A and P tRNAs, 4.9 Å                     | 7.8 MB                                            | `files.wwpdb.org/pub/emdb/structures/EMD-13412/map/` |
+| Model        | PDB 7PHB, fitted into EMD-13412                              | 3.3 MB                                            |                                                      |
 
 File base: `https://files.cryoetdataportal.cziscience.com/10003/TS_08/Reconstructions/VoxelSpacing6.802/`. Runner-up:
 dataset 10453, synaptic vesicles (no fitted PDB).
 
 **The portal:**
 
-- **GraphQL** `https://graphql.cryoetdataportal.czscience.com/graphql`. Schema: datasets → runs →
-  tomogramVoxelSpacings → tomograms; annotations → annotationShapes → annotationFiles. Shapes: SegmentationMask,
-  OrientedPoint, Point, InstanceSegmentation, InstanceSegmentationMask, Mesh. **Browsers can't use it:** every CORS
-  preflight returns 400 `Disallowed CORS origin` (it has an allow-list), and a GET has no `Access-Control-Allow-Origin`.
+- **GraphQL** `https://graphql.cryoetdataportal.czscience.com/graphql`. Schema: datasets → runs → tomogramVoxelSpacings
+  → tomograms; annotations → annotationShapes → annotationFiles. Shapes: SegmentationMask, OrientedPoint, Point,
+  InstanceSegmentation, InstanceSegmentationMask, Mesh. **Browsers can't use it:** every CORS preflight returns 400
+  `Disallowed CORS origin` (it has an allow-list), and a GET has no `Access-Control-Allow-Origin`.
 - **Files** `https://files.cryoetdataportal.cziscience.com/` (note: cziscience, not czscience). GET returns
   `Access-Control-Allow-Origin: *`. A `Range` request needs a preflight, and the preflight gets 403: **from a browser,
   whole files only.** The host can't list files: the metadata must come from somewhere else.
@@ -66,8 +66,8 @@ dataset 10453, synaptic vesicles (no fitted PDB).
    one JSON: runs → voxel spacings → tomograms (sizes, levels, file URLs) → annotations (shape, format, URL, size,
    object name, spacing). It is built once and shipped with the app under `apps/prism-me/portal/`. The format is
    versioned. Test: the index of 10003 has TS_08 with annotation 1212 and its URL.
-2. The `instancePoint` records in `reader/cryoet/ndjson.ts` (`instance_id` kept as a per-particle attribute). Test first:
-   a small instance ndjson fixture fails today with "No readable records".
+2. The `instancePoint` records in `reader/cryoet/ndjson.ts` (`instance_id` kept as a per-particle attribute). Test
+   first: a small instance ndjson fixture fails today with "No readable records".
 3. The rotation check: load the 10003 ribosomes decorated with 7PHB over the TS_08 tomogram. The 70S densities in the
    tomogram give the truth. A test fixes the convention: a known point and matrix give a known orientation.
 4. The portal source in the cryoet extension (`ExtensionApis`, `cryoetPortal`): `portal.datasets()`, `portal.run(id)`,
@@ -95,9 +95,9 @@ small Zarr fixtures made by `zarr-python` (each dtype, each codec).
 
 **C. GLB meshes (library lane, upstream candidate).**
 
-`packages/io/src/reader/gltf/`: GLB, POSITION, NORMAL if present, indices, the node transforms; no Draco, no
-materials beyond a base colour. A shape format next to OBJ, PLY and VTP. Test: the sample GLB from dataset 10524 (about
-180 KB) gives its triangle count and its bounds in Å.
+`packages/io/src/reader/gltf/`: GLB, POSITION, NORMAL if present, indices, the node transforms; no Draco, no materials
+beyond a base colour. A shape format next to OBJ, PLY and VTP. Test: the sample GLB from dataset 10524 (about 180 KB)
+gives its triangle count and its bounds in Å.
 
 **D. The portal panel.**
 

@@ -22,7 +22,7 @@ import {
   Slider,
   TextInput,
 } from '@molstar/prism-ui';
-import { restartable } from '@molstar/prism-ui/dom/scoped';
+import { latest, restartable } from '@molstar/prism-ui/dom/scoped';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
@@ -32,6 +32,7 @@ import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { classes } from './_generated/controls.module.css.js';
 import type { CryoetApi, DecorationsInfo, MeshInfo, ObliqueView, SliceAxis, TargetDecoration } from './operations.js';
+import { mb } from './portal-run.js';
 
 // The cryo-ET controls, shown by the extension's own rows and tab and by a host's panels (prism-me's properties):
 // what decorates a list's targets, a volume's slice, a segmentation mesh's look. They read the `cryoet` area and act
@@ -326,6 +327,135 @@ export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: s
           onCommit={(c) => run({ contrast: c })}
         />
       </Line>
+    </div>
+  );
+}
+
+/** What the Data section says while a level is read, asked about or failed to read */
+type LevelStatus =
+  | { readonly kind: 'busy' | 'failed'; readonly text: string }
+  | { readonly kind: 'confirm'; readonly text: string; readonly index: number };
+
+/**
+ * What a volume's data is: its source, grid, voxel and size; an OME-Zarr of several levels, the level it is read at, a
+ * slider coarsest to finest read at the release (`cryoet.level`, one step: never while dragged, a finer level is a long
+ * read). A level over the volume's size guard asks first (Read it / Cancel); a failure says why, on the level read.
+ * Only the last release's answer is shown (`latest`): a read released over another in flight is still sent (the
+ * operations run in turn), and the earlier answer lands on nothing.
+ */
+export function VolumeData(props: { area: CryoetApi; volume: string }) {
+  const { area, volume } = props;
+  const info = area.dataState(volume);
+  const levels = mapState(info, (i) => i?.levels ?? []);
+  const read = mapState(info, (i) => Math.max(0, i?.levels.findIndex((l) => l.path === i.level) ?? 0));
+  // the level asked for (the slider stays on it while it is read or asked about), the one dragged over (its label)
+  const asked = observableState<number | undefined>(undefined);
+  const over = observableState<number | undefined>(undefined);
+  const status = observableState<LevelStatus | undefined>(undefined);
+  const value = derive([read, asked.asReadonly], (r, a) => a ?? r);
+  const label = derive([levels, value, over.asReadonly], (ls, v, o) => ls[o ?? v]?.label ?? '');
+  const readLevel = latest((_signal, level: string, large: boolean) => area.level({ volume, level, large } as never));
+  const load = async (index: number, large = false) => {
+    over.set(undefined);
+    const l = levels.value[index];
+    // the level read now, unless a read is in flight: then the volume may end at that one
+    if (!l || (l.path === info.value?.level && status.value?.kind !== 'busy')) {
+      readLevel.abort();
+      asked.set(undefined);
+      status.set(undefined);
+      return;
+    }
+    asked.set(index);
+    status.set({ kind: 'busy', text: `Reading ${l.label}…` });
+    const r = await readLevel(l.path, large);
+    if (!r) return;
+    if (!r.ok && r.code === 'confirm') {
+      status.set({ kind: 'confirm', text: `${r.message} Read it?`, index });
+      return;
+    }
+    asked.set(undefined);
+    status.set(r.ok ? undefined : { kind: 'failed', text: r.message });
+  };
+  const cancel = () => {
+    readLevel.abort();
+    asked.set(undefined);
+    status.set(undefined);
+  };
+  const fact = (name: string, text: ReadonlyState<string>) => (
+    <Line label={name}>
+      <span>{text}</span>
+    </Line>
+  );
+  return (
+    <div class={classes.tight}>
+      {fact(
+        'Source',
+        mapState(info, (i) => i?.source ?? ''),
+      )}
+      {fact(
+        'Grid',
+        mapState(info, (i) => i?.grid ?? ''),
+      )}
+      {fact(
+        'Voxel',
+        mapState(info, (i) => i?.voxel ?? ''),
+      )}
+      {fact(
+        'Size',
+        mapState(info, (i) => (i ? mb(i.bytes) : '')),
+      )}
+      <Show when={mapState(levels, (ls) => ls.length > 1)}>
+        {() => (
+          <>
+            <Line label="Level">
+              <Slider
+                aria-label="Level"
+                value={value}
+                min={0}
+                max={mapState(levels, (ls) => ls.length - 1)}
+                step={1}
+                format={(i) => `${levels.value[i]?.binning ?? ''}×`}
+                parse={(text) => {
+                  // a binning typed ("2", "2×"); another text: where it is
+                  const i = levels.value.findIndex((l) => l.binning === Number.parseFloat(text));
+                  return i < 0 ? value.value : i;
+                }}
+                onPreview={(i) => over.set(i)}
+                onCommit={(i) => void load(i)}
+              />
+            </Line>
+            <p class={classes.hint}>{label}</p>
+          </>
+        )}
+      </Show>
+      <Show when={mapState(status.asReadonly, (s) => s?.kind === 'confirm')}>
+        {() => (
+          <div class={classes.inline} role="group" aria-label="Read a large level?">
+            <p class={classes.hint}>{mapState(status.asReadonly, (s) => s?.text ?? '')}</p>
+            <div class={classes.tools}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  const s = status.value;
+                  if (s?.kind === 'confirm') void load(s.index, true);
+                }}
+              >
+                Read it
+              </Button>
+              <Button size="sm" variant="ghost" onClick={cancel}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </Show>
+      <Show when={mapState(status.asReadonly, (s) => s?.kind === 'busy' || s?.kind === 'failed')}>
+        {() => (
+          <p class={classes.hint} role="status">
+            {mapState(status.asReadonly, (s) => s?.text ?? '')}
+          </p>
+        )}
+      </Show>
     </div>
   );
 }

@@ -24,6 +24,7 @@ export const classes = {
   'graphHint': 'msp-params-extra-controls-graphHint',
   'grid': 'msp-params-extra-controls-grid',
   'interval': 'msp-params-extra-controls-interval',
+  'intervalFields': 'msp-params-extra-controls-intervalFields',
   'intervalRange': 'msp-params-extra-controls-intervalRange',
   'intervalTrack': 'msp-params-extra-controls-intervalTrack',
   'intervalValue': 'msp-params-extra-controls-intervalValue',
@@ -160,6 +161,13 @@ defineStyles('components/params/extra-controls.module.css', `@layer msp.componen
   grid-template-columns: minmax(0, 1fr) calc(72px * var(--msp-ui-scale, 1));
   align-items: center;
   gap: var(--msp-space-2);
+  width: 100%;
+  display: grid;
+}
+
+.msp-params-extra-controls-intervalFields {
+  gap: var(--msp-space-1);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 100%;
   display: grid;
 }

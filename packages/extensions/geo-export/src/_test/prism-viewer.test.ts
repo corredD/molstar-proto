@@ -4,10 +4,13 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { readFileSync } from 'node:fs';
 import { Sphere3D } from '@molstar/core/math/geometry';
+import { parseGltf } from '@molstar/io/reader/gltf/parser';
+import { gltfToObj } from '@molstar/io/reader/gltf/to-obj';
 import type { GraphicsRenderObject } from '@molstar/graphics/gl/render-object';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -87,8 +90,26 @@ describe('the geo-export extension in the Prism viewer', () => {
     if (!glb.ok) return;
     expect(glb.value!.filename).toBe('1CBS.glb');
     expect(glb.did).toMatch(/^Exported the geometry as 1CBS\.glb \(/);
-    const head = new Uint8Array(await glb.value!.blob.arrayBuffer()).slice(0, 4);
-    expect(new TextDecoder().decode(head)).toBe('glTF');
+    const bytes = new Uint8Array(await glb.value!.blob.arrayBuffer());
+    expect(new TextDecoder().decode(bytes.slice(0, 4))).toBe('glTF');
+    // Read back by io's glTF reader: every node's mesh, with the exporter's normals and RGBA COLOR_0 (normalized uint8)
+    const read = await parseGltf(bytes).run();
+    expect(read.isError, read.isError ? read.message : '').toBe(false);
+    if (read.isError) return;
+    const primitives = read.result.meshes.flatMap((m) => m.primitives);
+    expect(primitives.length).toBeGreaterThan(0);
+    for (const p of primitives) {
+      expect(p.normals?.length).toBe(p.vertexCount * 3);
+      expect(p.colorSize).toBe(4);
+      expect(p.colors!.every((c) => c >= 0 && c <= 1)).toBe(true);
+    }
+    const baked = gltfToObj(read.result).obj;
+    const triangles = read.result.instances.reduce(
+      (n, i) => n + read.result.meshes[i.mesh].primitives.reduce((m, p) => m + p.triangleCount, 0),
+      0,
+    );
+    expect(baked.triangleCount).toBe(triangles);
+    expect(baked.vertexColors.length).toBe(baked.positionCount * 3);
     expect(v.managers.history.steps.value.length).toBe(steps);
 
     const stl = await v.api['geo-export']!.export({ format: 'stl', name: 'print me' });

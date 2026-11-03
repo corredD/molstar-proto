@@ -22,6 +22,8 @@ import {
   type TransferColors,
   type TransferPoint,
   type TransferStop,
+  scaledOpacity,
+  scaledPoints,
   transferColorAt,
   transferPeaks,
   type VolumeTransferModel,
@@ -35,6 +37,8 @@ import { formatIn, histogramPath } from './volume-levels.js';
 // double-click to remove, arrow keys and Delete when focused. Stops: the same on the strip; a picked stop opens its
 // color; dragged near a point, a stop snaps to it, and a stop on a point moves with it. Colors at peaks (a popover of
 // palettes, or the theme's own colors) puts stops at the ends of each of the curve's peaks; a preset moves them with it.
+// ×½ and ×2 scale every point's opacity (one step), the volume thinner or denser: the curve keeps its shape until a
+// point reaches 1 (at most), and ×½ takes a point at the axis's floor to zero.
 
 /** Samples of the colors for the strip and the area's gradient. */
 const Samples = 64;
@@ -251,8 +255,10 @@ export function VolumeTransfer(props: { model: VolumeTransferModel }) {
     const p = points.value[i];
     if (!p) return;
     const dx = e.shiftKey ? 0.02 : 0.005;
-    const up = (a: number) => (a <= 0 ? model.logMin : Math.min(1, a * (e.shiftKey ? 2 : 1.25)));
-    const down = (a: number) => (a <= model.logMin * 1.01 ? 0 : a / (e.shiftKey ? 2 : 1.25));
+    const factor = e.shiftKey ? 2 : 1.25;
+    // From zero, up to the axis's floor; else scaled as the toolbar's ×½ and ×2 scale every point.
+    const up = (a: number) => (a <= 0 ? model.logMin : scaledOpacity(a, factor, model.logMin));
+    const down = (a: number) => scaledOpacity(a, 1 / factor, model.logMin);
     const next =
       e.key === 'ArrowLeft'
         ? { x: p.x - dx, alpha: p.alpha }
@@ -338,7 +344,12 @@ export function VolumeTransfer(props: { model: VolumeTransferModel }) {
     p?.kind === 'point' ? list[p.index] : undefined,
   );
   const pickedStop = derive([picked.asReadonly, stops], (p, list) => (p?.kind === 'stop' ? list[p.index] : undefined));
-  const hasPeaks = derive(points, (p) => transferPeaks(p).length > 0);
+  const noPeaks = derive(points, (p) => transferPeaks(p).length === 0);
+  /** Every point's opacity times `factor` (at most 1; zero at the axis's floor): denser or thinner; one step. */
+  const scaleAll = (factor: number) => {
+    model.change({ points: scaledPoints(points.value, factor, model.logMin) });
+    model.settle();
+  };
   /** A picked stop's (or the one) color; its picker opens from the chevron. */
   const colorOpen = observableState(false);
   const pickedColor = derive(
@@ -355,10 +366,28 @@ export function VolumeTransfer(props: { model: VolumeTransferModel }) {
         <span class={classes.title}>{model.title ?? 'Transfer function'}</span>
         <span class={classes.tools}>
           <PresetsButton open={presetsOpen} label="Curve" />
+          {/* Denser or thinner as a whole (opacity alone stops at 1): every point's opacity halved or doubled. */}
+          {(
+            [
+              [0.5, '×½', "Thinner: halve every point's opacity"],
+              [2, '×2', "Denser: double every point's opacity"],
+            ] as const
+          ).map(([factor, text, title]) => (
+            <button
+              type="button"
+              class={classes.tool}
+              disabled={noPeaks}
+              title={title}
+              aria-label={title}
+              onClick={() => scaleAll(factor)}
+            >
+              {text}
+            </button>
+          ))}
           <button
             type="button"
             class={classes.iconTool}
-            disabled={derive(hasPeaks, (h) => !h)}
+            disabled={noPeaks}
             aria-label="Colors at peaks"
             aria-haspopup="listbox"
             aria-expanded={palettesOpen}

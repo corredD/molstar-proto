@@ -12,6 +12,7 @@
  * Requires compiled library output (`pnpm build:lib`).
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { execFileSync } from 'node:child_process';
@@ -29,8 +30,10 @@ const Allowed = {
   externalThemes: ['external-structure', 'external-volume'],
   /** The open-anything handler is the registered `DefaultDragAndDrop` fallback instead of being hard-coded. */
   dragAndDrop: ['open-files'],
-  /** Formats new in v6: NAMD extended system files (periodic boxes for coordinates). */
-  formats: ['xsc'],
+  /** Formats new in v6: NAMD extended system files (periodic boxes for coordinates), glTF 2.0 meshes as shapes. */
+  formats: ['xsc', 'gltf'],
+  /** Data actions new in v6: OME-Zarr volumes from a URL (a root action and its two transforms). */
+  dataActions: ['action:Open OME-Zarr', 'ms-plugin.ome-zarr-from-url', 'ms-plugin.volume-from-ome-zarr'],
   /**
    * Parsers take String, Binary and Response Data (`Download` and `ReadFile` give Response Data, `.v6/data-response`):
    * the data actions that list `Response Data` are taken out of the String and Binary Data lists of both dumps.
@@ -121,6 +124,13 @@ function withoutAllowed(target) {
   }
   copy.dragAndDrop = copy.dragAndDrop.filter((n) => !Allowed.dragAndDrop.includes(n));
   copy.formats = copy.formats.filter((n) => !Allowed.formats.includes(n));
+  const data = copy.actions.data;
+  data.all = data.all.filter((id) => !Allowed.dataActions.includes(id));
+  for (const [from, ids] of Object.entries(data.byFromType)) {
+    const kept = ids.filter((id) => !Allowed.dataActions.includes(id));
+    if (kept.length) data.byFromType[from] = kept;
+    else delete data.byFromType[from];
+  }
   return copy;
 }
 
@@ -178,6 +188,9 @@ try {
     }
     for (const name of Allowed.formats) {
       if (!c.formats.includes(name)) problems.push(`${target}.formats: expected '${name}'`);
+    }
+    for (const id of Allowed.dataActions) {
+      if (!c.actions.data.all.includes(id)) problems.push(`${target}.actions.data.all: expected '${id}'`);
     }
     if (!c.actions.data.byFromType[Allowed.responseData]?.includes('ms-plugin.parse-cif')) {
       problems.push(`${target}.actions.data.byFromType: expected '${Allowed.responseData}' with 'ms-plugin.parse-cif'`);

@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author Gianluca Tomasello <giagitom@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { ValueCell } from '@molstar/core/util';
@@ -66,6 +67,8 @@ export function ShaderCode(
 function ignoreDefine(name: string, variant: string, defines: ShaderDefines): boolean {
   // WebGL bounds the clip loops by the uniform `uClipObjectCount` (a define on WebGL1): one program for all counts
   if (name === 'dClipObjectCount') return true;
+  // direct volumes' lighting (`volume-lighting.md`): only lit color variants read it
+  if (name === 'dLighting') return !variant.startsWith('color') || !!defines.dIgnoreLight?.ref.value;
   if (variant.startsWith('color') || variant === 'tracing') {
     if (name === 'dLightCount') {
       return !!defines.dIgnoreLight?.ref.value;

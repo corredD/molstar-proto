@@ -31,10 +31,21 @@ interface Point {
   };
 }
 
-export type CryoEtDataPortalNdjsonRecord = OrientedPoint | Point;
+/** A point of an instance segmentation: `instance_id` names the instance it belongs to */
+interface InstancePoint {
+  readonly type: 'instancePoint';
+  readonly location: {
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+  };
+  readonly instance_id: number;
+}
+
+export type CryoEtDataPortalNdjsonRecord = OrientedPoint | Point | InstancePoint;
 
 function isSupportedRecord(record: any): record is CryoEtDataPortalNdjsonRecord {
-  return record?.type === 'orientedPoint' || record?.type === 'point';
+  return record?.type === 'orientedPoint' || record?.type === 'point' || record?.type === 'instancePoint';
 }
 
 export interface CryoEtDataPortalNdjsonFile {

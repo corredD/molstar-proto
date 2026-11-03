@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { isTimingMode } from '@molstar/core/util/debug';
@@ -16,7 +17,9 @@ import type {
   StorageBuffer,
   StorageTextureAccess,
   KernelRequest,
+  TextureLevel,
 } from '../compute.js';
+import { isTextureLevel } from '../compute.js';
 import { ValueCell } from '@molstar/core/util';
 import type { PendingWork } from '../pending-work.js';
 import {
@@ -28,13 +31,19 @@ import {
 import type { DefineType, DefineValues } from '../shader-code.js';
 import { preprocessShader } from '../shader-preprocessor.js';
 import type { GraphicsStats } from '../stats.js';
-import type { TextureKind } from '../texture.js';
+import type { Texture, TextureKind } from '../texture.js';
 import type { UniformsList } from '../uniform.js';
 import { createUniformBlockData, createUniformBlockWriter, getUniformBlockLayout } from '../uniform-layout.js';
 import { BufferUsage, MapMode, ShaderStage } from './constants.js';
 import { getOverrideConstants, getWgslDefineLookup, getWgslDefines } from './program.js';
 import { getWgslKernel } from './shader/kernels.js';
-import { asWebGPUTexture, getGPUTextureFormat, type Release, type WebGPUByteCounts } from './texture.js';
+import {
+  asWebGPUTexture,
+  getGPUTextureFormat,
+  isStorageFormat,
+  type Release,
+  type WebGPUByteCounts,
+} from './texture.js';
 import { getWgslType } from './uniform-declarations.js';
 import { createUniformSnapshot, type UniformRing } from './uniform-ring.js';
 import { getWgslTextureType } from './wgsl-declarations.js';
@@ -484,13 +493,20 @@ function createKernel<S extends KernelSchema>(
         entries.push({ binding: b.binding, resource: { buffer: buffer.getGPUBuffer() } });
         keys.push(buffer.id, buffer.version);
       } else {
-        const texture = asWebGPUTexture(values[b.name].ref.value as never);
+        const value = values[b.name].ref.value as Texture | TextureLevel;
+        const level = isTextureLevel(value) ? value.level : -1;
+        const texture = asWebGPUTexture(isTextureLevel(value) ? value.texture : value);
         // read before written: allocated (zeros), as a kernel input of undefined contents
         if (b.kind === 'texture') texture.getGPUTexture();
-        const view = b.kind === 'texture' ? texture.getView() : texture.getAttachmentView();
+        const view =
+          level >= 0
+            ? texture.getLevelView(level)
+            : b.kind === 'texture'
+              ? texture.getView()
+              : texture.getAttachmentView();
         if (!view) throw new Error(`texture '${b.name}' of kernel '${code.name}' has no storage`);
         entries.push({ binding: b.binding, resource: view });
-        keys.push(texture.id, texture.version);
+        keys.push(texture.id, texture.version, level);
       }
     }
     const key = keys.join('|');
@@ -550,6 +566,17 @@ function getStorageBufferCount(schema: KernelSchema) {
   return count;
 }
 
+/** Whether `device` can write the storage textures of `schema` (formats beyond the core ones need features) */
+function hasStorageFormats(device: GPUDevice, schema: KernelSchema) {
+  for (const k in schema) {
+    const spec = schema[k];
+    if (spec.type === 'storage-texture' && !isStorageFormat(device, getGPUTextureFormat(spec.format, spec.dataType))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function createWebGPUComputeContext(env: WebGPUComputeEnv): ComputeContext {
   /** pipelines per kernel name, defines and schema */
   const pipelines = new Map<string, KernelPipeline>();
@@ -562,7 +589,9 @@ export function createWebGPUComputeContext(env: WebGPUComputeEnv): ComputeContex
     getStorageBufferByteCount: () => env.storageBufferBytes,
     isKernelSupported: (code, schema) =>
       getKernelSource(code) !== undefined &&
-      (!schema || getStorageBufferCount(schema) <= env.device.limits.maxStorageBuffersPerShaderStage),
+      (!schema ||
+        (getStorageBufferCount(schema) <= env.device.limits.maxStorageBuffersPerShaderStage &&
+          hasStorageFormats(env.device, schema))),
     createKernel: (code, schema, values) => createKernel(env, pipelines, code, schema, values),
     prepareKernels: (requests) => prepareKernelPipelines(env, pipelines, compiling, requests),
     hasKernels: (requests) => {
