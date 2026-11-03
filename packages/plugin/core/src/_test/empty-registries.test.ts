@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
@@ -151,6 +152,8 @@ describe('the default spec', () => {
       'ply',
       'obj',
       'vtp',
+      // new in v6: glTF 2.0 meshes (GLB, .gltf with data URIs)
+      'gltf',
       'mmcif',
       'cifCore',
       'pdb',
