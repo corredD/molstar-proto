@@ -84,6 +84,11 @@
       "types": "./lib/api/annotations.d.ts",
       "import": "./lib/api/annotations.js"
     },
+    "./api/volume": {
+      "molstar-src": "./src/api/volume.ts",
+      "types": "./lib/api/volume.d.ts",
+      "import": "./lib/api/volume.js"
+    },
     "./commands/operations": {
       "molstar-src": "./src/commands/operations.ts",
       "types": "./lib/commands/operations.d.ts",
