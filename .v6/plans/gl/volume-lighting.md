@@ -22,8 +22,18 @@
   all of them; the cells beyond the grid count as 0 (empty).
 - **Means**: a level-1 texel `j` is the sum of `sigma` over its 8 cells `2j + {0,1}³` divided by 8 (cells outside the
   grid add 0); a level-`k` texel the mean of its 8 children of level `k - 1`. A kernel per level
-  (`vl-extinction` from the grid, `vl-downsample` per level after), rebuilt when the grid, the transfer function or
-  `uAlpha` change, never per frame.
+  (`vl-extinction` from the grid, `vl-downsample` per level after), rebuilt when the grid, the transfer function,
+  `uAlpha` or the clip objects change, never per frame.
+- **Clip objects** (2026-11-03): a cell a clip object removes counts as 0, so a clipped part neither shadows nor
+  occludes what remains (before, the cut face of a half clipped away was lit as if inside the whole map: black under
+  `volumetric`). The march clips per pixel only (`dClipVariant_pixel`), so the pyramid does: `getPixelClipCount`
+  objects, packed for the kernels (`packStorageClipObjects`, `clip_storage_wgsl`'s `clipTest`, flag 0 as the march),
+  each cell's center taken to model space by the first instance's `aTransform * uTransform` (as the trace reads the
+  pyramid; `uModel`, the scene's view and the camera scale, taken as the identity, as the GPU culling does). The
+  descriptors' level-0 read toward the light (`light[0]`) is clipped by the march's own `clipTest`
+  (`volumeClipped`, which the chunk's caller defines). A change of the clip objects or of the first instance's
+  transform under a clip rebuilds the pyramid (compared by value in `createVolumeLighting`, not per frame).
+  Limits: other instances take the first's clip; instance clipping (`dClipVariant_instance`) leaves the pyramid whole.
 - **Format**: written by compute as `r16float` storage, which needs `texture-formats-tier1` (Dawn, Chrome 139+ on
   Metal, D3D12 and Vulkan). Without it `volumetric` falls back to `local`: `rgba16float` would take 4x the memory and
   `r32float` filtering needs `float32-filterable` as well.
@@ -64,7 +74,7 @@ The 13 descriptors, in this order:
 - The param `lighting` of direct volumes (`local` default, `volumetric`; `neural` to come, lane `volume-neural`), the
   define `dLighting`. The renderable draws `local` where it can't build the pyramid (WebGL, no
   `texture-formats-tier1`, 2d grids) and builds it where `volumetric` is drawn, rebuilt when the grid, the transfer
-  function's bytes or `uAlpha` change (`createVolumeLighting` in `gl/renderable/direct-volume.ts`).
+  function's bytes, `uAlpha` or the clip change (`createVolumeLighting` in `gl/renderable/direct-volume.ts`).
 - Transmittance to the key light by cone marching along `light`: segments `[0, 1], [1, 2], [2, 4], ..., [16, 32]`
   cells, of lengths `D = (1, 1, 2, 4, 8, 16)`, the read of level `k` at the far end of segment `k`:
   `T = exp(-sum_k D_k * light[k])`.
@@ -94,6 +104,12 @@ M1 (Apple M1, Chrome, WebGPU), `node scripts/benchmark.mjs --backends webgpu --f
 - Gate A (+50 % a frame) passed: +1 %, +8 % and +6 %. The 12 reads replace the gradient's 6 and only lit samples read them.
 - The pyramid (5 dispatches, at a transfer function change, Dawn on the M1, after the first build's compile): 256³
   1.1–1.5 ms (4.8 MB), 464x464x225 1.5–2 ms (17 MB), 512³ 3–5 ms (38 MB).
+- **Clip** (2026-11-03, same runs, `*-clip-1080`: a plane through the middle, x > center removed): frame before / after
+  the clip reached the pyramid, `map-256` volumetric 3.87 / 3.97–4.00 ms, `tomogram-464x464x225` volumetric 8.51 /
+  8.95–9.05 ms; without a clip unchanged (3.76 / 3.69–3.82, 8.63 / 8.55–8.79). The cost is the level-0 read's clip test
+  per lit sample (with it returning false: 3.82 and 8.47 ms); the pyramid's clip costs nothing per frame. A rebuild
+  (Dawn on the M1, median of 22 after 3, the plane moved each time) without / with a clip: 128³ 0.85 / 1.04 ms,
+  232x232x113 1.09 / 2.02 ms, 464x464x225 2.91 / 4.12 ms. A drag rebuilds once per representation update.
 
 ## D. Illumination
 
