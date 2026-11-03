@@ -2,8 +2,9 @@
 
 Portal data (datasets → runs → voxel spacings → tomograms and annotations) loaded in the browser on a static site, no
 server of ours and no copick (`apps/prism-me/plans/2026-11-02-cryoet-portal.md`, Decision). Code: `src/portal-index.ts`
-(the format), `src/portal.ts` (the `cryoetPortal` area), `src/portal-ui.tsx` (the card); the index tool
-`tools/portal-index/`.
+(the format), `src/portal.ts` (the `cryoetPortal` area), `src/portal-run.ts` (a run and its sizes, plain functions),
+`src/portal-card.tsx` (the card, no viewer import: its story runs it over a fake), `src/portal-ui.tsx` (the card's
+registration); the index tool `tools/portal-index/`.
 
 ## 1. The index
 

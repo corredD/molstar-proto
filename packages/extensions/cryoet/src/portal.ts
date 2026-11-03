@@ -23,17 +23,37 @@ import { OmeZarrFromUrl, VolumeFromOmeZarr } from '@molstar/plugin/state/formats
 import { CustomVolumeProperties } from '@molstar/plugin/state/transforms/volume/ops';
 import { particleListData } from './operations.js';
 import {
+  describePortalRun,
+  entryBytes,
+  levelLine,
+  mb,
+  type PortalEntry,
+  type PortalFailure,
+  type PortalRunInfo,
+  type PortalTomogramView,
+} from './portal-run.js';
+import {
   checkPortalIndex,
-  type PortalAnnotation,
   type PortalCatalog,
   type PortalDataset,
   PortalFiles,
   type PortalLevel,
   PortalPages,
-  type PortalRun,
   type PortalSpacing,
-  type PortalTomogram,
 } from './portal-index.js';
+
+export {
+  describePortalRun,
+  entryBytes,
+  levelLine,
+  mb,
+  PortalCard,
+  type PortalEntry,
+  type PortalFailure,
+  type PortalPanelArea,
+  type PortalRunInfo,
+  type PortalTomogramView,
+} from './portal-run.js';
 
 declare module '@molstar/prism-viewer/api' {
   // The `cryoetPortal` area: the CryoET Data Portal's datasets, from an index the app ships, loaded by their files.
@@ -54,12 +74,6 @@ export interface PortalIndexSource {
   readonly dataset: (id: number) => Promise<PortalDataset>;
 }
 
-/** The portal's card (portal-ui.tsx), opened by `view.open({ card })` */
-export const PortalCard = 'cryoet-portal.overlay.portal';
-
-/** What a load does with a tomogram: its slices and its direct volume, its slices, or nothing */
-export type PortalTomogramView = 'both' | 'slices' | 'none';
-
 /**
  * The data formats `load.url` reads the portal's files with, by the file's format; a zarr opens by the plugin's
  * `OpenOmeZarr` (several files, not one); another format, or one the viewer lacks: "needs a reader"
@@ -75,25 +89,6 @@ export const PortalReaders: Readonly<Record<string, string>> = {
  * level of a tomogram 8 times smaller is one step coarser (_spec/portal.md §3)
  */
 export const PortalLargeBytes = 512e6;
-
-/** An annotation of a run, as `run` lists it and `load` takes it: `<id>` or `<id>/<shape>` */
-export interface PortalEntry extends PortalAnnotation {
-  readonly key: string;
-  /** The format the viewer lacks to read it, if it does */
-  readonly needs?: string;
-}
-
-/** A run as `run` describes it */
-export interface PortalRunInfo {
-  readonly dataset: number;
-  readonly run: PortalRun;
-  readonly spacing: PortalSpacing;
-  readonly tomogram?: PortalTomogram;
-  readonly entries: readonly PortalEntry[];
-  /** The annotations a load takes when none are named: the portal's defaults */
-  readonly defaults: readonly string[];
-  readonly needs?: string;
-}
 
 /** Where a scene object came from on the portal (the right-click menu's links) */
 export interface PortalOrigin {
@@ -149,7 +144,7 @@ export class CryoetPortalApi extends ApiArea {
   }
 
   /** A run's spacing, tomogram and annotations as a load sees them: a read for views */
-  describe(ds: PortalDataset, run: string, spacing?: number): PortalRunInfo | ApiFailure {
+  describe(ds: PortalDataset, run: string, spacing?: number): PortalRunInfo | PortalFailure {
     return describePortalRun((f) => readable(this.ctx, f), ds, run, spacing);
   }
 
@@ -321,58 +316,6 @@ const readable = (ctx: Pick<ApiContext, 'plugin'>, format: string) =>
   format === 'zarr' ||
   !!(PortalReaders[format] && ctx.plugin.dataFormats.has(PortalReaders[format]));
 
-const needsReader = (reads: (format: string) => boolean, format: string) =>
-  reads(format) ? undefined : `needs a reader for ${format}`;
-
-/** A run of the index as a load takes it, given which formats the viewer reads (a view's story gives its own) */
-export function describePortalRun(
-  reads: (format: string) => boolean,
-  ds: PortalDataset,
-  name: string,
-  spacing?: number,
-  tomogram?: number,
-): PortalRunInfo | ApiFailure {
-  const key = name.trim();
-  const run = key ? ds.runList.find((r) => r.name === key || String(r.id) === key) : ds.runList[0];
-  if (!run) {
-    const more = ds.runList.length < ds.runs ? ` (the index holds ${ds.runList.length} of ${ds.runs})` : '';
-    return ApiResult.fail('not-found', `Dataset ${ds.id} has no run '${key}'${more}.`, `Runs: ${runNames(ds)}.`);
-  }
-  const s = spacing ? run.spacings.find((x) => Math.abs(x.spacing - spacing) < 1e-3) : run.spacings[0];
-  if (!s) {
-    return ApiResult.fail(
-      'not-found',
-      `${run.name} has no voxel spacing ${spacing} Å.`,
-      `It has ${run.spacings.map((x) => x.spacing).join(', ')} Å.`,
-    );
-  }
-  const t = tomogram ? s.tomograms.find((x) => x.id === tomogram) : s.tomograms[0];
-  if (tomogram && !t) {
-    return ApiResult.fail('not-found', `${run.name} has no tomogram ${tomogram} at ${s.spacing} Å.`);
-  }
-  const shapes = new Map<number, number>();
-  for (const a of s.annotations) shapes.set(a.id, (shapes.get(a.id) ?? 0) + 1);
-  const entries = s.annotations.map((a) => ({
-    ...a,
-    key: shapes.get(a.id)! > 1 ? `${a.id}/${a.shape}` : String(a.id),
-    needs: needsReader(reads, a.format),
-  }));
-  return {
-    dataset: ds.id,
-    run,
-    spacing: s,
-    tomogram: t,
-    entries,
-    defaults: entries.filter((e) => e.default).map((e) => e.key),
-    needs: t ? needsReader(reads, 'zarr') : undefined,
-  };
-}
-
-function runNames(ds: PortalDataset) {
-  const names = ds.runList.map((r) => r.name);
-  return names.length > 8 ? `${names.slice(0, 8).join(', ')}, …` : names.join(', ');
-}
-
 /** The entries named ('1212', '2321/SegmentationMask'; an id alone: each of its shapes), 'none', or the defaults */
 function pickEntries(info: PortalRunInfo, names: string): readonly PortalEntry[] | ApiFailure {
   const text = names.trim();
@@ -401,16 +344,6 @@ function pickLevel(levels: readonly PortalLevel[], level: number | undefined): P
   const l = levels.find((x) => x.path === String(level));
   return l ?? ApiResult.fail('not-found', `No level ${level}.`, `Levels: ${levels.map(levelLine).join('; ')}.`);
 }
-
-/** A zarr annotation at the level asked (its coarsest when absent or missing), a file its size */
-export function entryBytes(e: PortalEntry, level: number | undefined) {
-  if (!e.levels?.length) return e.bytes ?? 0;
-  return (e.levels.find((l) => l.path === String(level)) ?? e.levels[e.levels.length - 1]).bytes;
-}
-
-/** MB as the OME-Zarr format counts them (1e6 bytes) */
-export const mb = (bytes: number) => `${(bytes / 1e6).toFixed(bytes < 10e6 ? 1 : 0)} MB`;
-export const levelLine = (l: PortalLevel) => `${l.path}: ${l.size.join('×')} at ${l.spacing} Å, ${mb(l.bytes)}`;
 
 // --- the loads, by the viewer's operations ------------------------------------------------------------------------
 

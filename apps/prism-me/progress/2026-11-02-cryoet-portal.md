@@ -67,9 +67,9 @@ independent. Expert coding, efficient and optimized. No repetition with existing
   in one function (`showTomogramVolume`, `tomogramControlPoints`: the Tomogram preset) for lane `cryoet-volume`'s
   lighting param.
 - **A5** `portal-dataset`, `portal-run`, `portal-annotations`, `portal-level` (`apps/prism-me/src/url.ts`, index.ts).
-- **D** the card (`src/portal-ui.tsx`, overlay `cryoet-portal.overlay.portal`, lazy chunk): ParamsForm from the index,
-  sizes, Load, result; + Open › CryoET Data Portal…; right-click › run page, DOIs; story prism-me › Explorer › CryoET
-  Data Portal (two).
+- **D** the card (`src/portal-card.tsx`, registered by `src/portal-ui.tsx`, overlay `cryoet-portal.overlay.portal`, lazy
+  chunk): ParamsForm from the index, sizes, Load, result; + Open › CryoET Data Portal…; right-click › run page, DOIs;
+  story prism-me › Explorer › CryoET Data Portal (two).
 - Merged `origin/me/glb-reader` (cccfcc8fd) and `origin/me/ome-zarr` (8d62596bf); one conflict, io `_spec/README.md`.
 - Data: `~/molstar-prism-me/.me-data/cryoet-10003/` (README.txt): TS_08 zarr levels 1–2, membrane zarr, ndjson,
   EMD-13412, 7PHB, `TS_08_bin2.mrc` (464×464×225 at 13.604 Å, 194 MB, origin 0) for lane `volume-lighting`. Conda env
@@ -104,8 +104,10 @@ independent. Expert coding, efficient and optimized. No repetition with existing
 - 7PHB's box center is 18 Å from EMD-13412's (bbox), 7.4 Å by Mol*'s boundary: the offset is needed.
 - `dataFormats.get` throws for an unknown name; `has` does not.
 - A headless viewer cannot make a direct volume (no graphics): tested by its transfer function instead.
-- `tsc -p apps/prism-me/tsconfig.storybook.json` fails on prism-me itself (viewer `api/area.ts` `measure`,
-  `api/styles.ts`): not this lane's files.
+- `tsc -p apps/prism-me/tsconfig.storybook.json` failed on this branch, and I first took it for prism-me's (wrong; the
+  coordinator found it): the story reached `portal.ts`, so the viewer's `api/area.ts` source entered the story program
+  without the feature modules that augment `BuiltInApis` (`measure`). Fixed by `portal-run.ts` and `portal-card.tsx` (no
+  viewer import), story on them. A view's story imports nothing of the viewer's API source.
 
 - `pnpm check:workspace` fails here only in `registry-compare.mjs`: the OME-Zarr action and two transforms are not in
   its v6 allow list (the glb-reader lane added `gltf` there; the ome-zarr lane has not yet). Theirs to add; open. It

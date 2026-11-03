@@ -8,12 +8,12 @@ is not built is [../TODO.md](../TODO.md).
 
 - **CryoET portal + volume lighting** (Ludo, 2026-11-02: "do now the parked plan with many lanes... volume on top of
   cryoET so I will be able to test both at the same time"; plans `plans/2026-11-02-cryoet-portal.md`,
-  `plans/2026-11-02-volume-lighting.md`). Lanes, started 2026-11-02, in `~/prism-me-lanes/<slug>`:
-  `ome-zarr` (library, from c1b8ecb82: OME-Zarr reader, pure-TS blosc-lz4), `glb-reader` (library: GLB shapes),
-  `volume-lighting` (library: parts A and D1-D2), `volume-neural` (library + tools: parts B and C, stacked on
-  `volume-lighting`), `cryoet-portal` (prism-me, port 1345: index, instancePoint, rotation check, portal source, URL
-  params, panel; [brief](2026-11-02-cryoet-portal.md)). Library lanes keep their brief in an untracked `LANE.md`,
-  copied here at close. Integration branch `me/cryoet-volume` (port 1346) merges them all for Ludo's one test.
+  `plans/2026-11-02-volume-lighting.md`). Lanes, started 2026-11-02, in `~/prism-me-lanes/<slug>`: `ome-zarr` (library,
+  from c1b8ecb82: OME-Zarr reader, pure-TS blosc-lz4), `glb-reader` (library: GLB shapes), `volume-lighting` (library:
+  parts A and D1-D2), `volume-neural` (library + tools: parts B and C, stacked on `volume-lighting`), `cryoet-portal`
+  (prism-me, port 1345: index, instancePoint, rotation check, portal source, URL params, panel;
+  [brief](2026-11-02-cryoet-portal.md)). Library lanes keep their brief in an untracked `LANE.md`, copied here at close.
+  Integration branch `me/cryoet-volume` (port 1346) merges them all for Ludo's one test.
 
 - **UI scale** (`me/ui-scale`, `~/prism-me-lanes/ui-scale`, port 1344, [brief](2026-10-30-ui-scale.md)): Ludo,
   2026-10-30, "really important": Settings › Appearance › UI scale, − and +, the UI larger and the 3D untouched; Prism's

@@ -14,10 +14,10 @@
       "types": "./lib/controls.d.ts",
       "import": "./lib/controls.js"
     },
-    "./portal-ui": {
-      "molstar-src": "./src/portal-ui.tsx",
-      "types": "./lib/portal-ui.d.ts",
-      "import": "./lib/portal-ui.js"
+    "./portal-card": {
+      "molstar-src": "./src/portal-card.tsx",
+      "types": "./lib/portal-card.d.ts",
+      "import": "./lib/portal-card.js"
     },
     "./*": {
       "molstar-src": "./src/*.ts",
@@ -25,7 +25,8 @@
       "import": "./lib/*.js"
     },
     "./_test/*": null,
-    "./prism-viewer-ui": null
+    "./prism-viewer-ui": null,
+    "./portal-ui": null
   },
   "files": [
     "lib",
