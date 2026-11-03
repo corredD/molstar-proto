@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { toHalfFloat } from '@molstar/core/util/number-conversion';
@@ -93,6 +94,11 @@ export interface WebGPUTexture extends Texture {
   getAttachmentView: () => GPUTextureView | undefined;
   /** the GPU texture, for copies and reads: allocates the storage of a defined texture */
   getGPUTexture: () => GPUTexture | undefined;
+  /**
+   * view of mip `level` alone (of the levels of `define`), for kernels reading one level and writing the next
+   * (`TextureLevel`): allocates the storage of a defined texture
+   */
+  getLevelView: (level: number) => GPUTextureView | undefined;
   /** whether the texture has GPU storage (written, or read or copied since `define`) */
   readonly hasStorage: boolean;
   readonly hasStencil: boolean;
@@ -181,6 +187,17 @@ const StorageFormats = new Set<GPUTextureFormat>([
   'rg32float',
 ]);
 
+/** Formats with storage support under `texture-formats-tier1` that are used (the extinction pyramid's `r16float`) */
+const TierOneStorageFormats = new Set<GPUTextureFormat>(['r16float']);
+
+/** Whether kernels can write `format` on `device` */
+export function isStorageFormat(device: GPUDevice, format: GPUTextureFormat) {
+  return (
+    StorageFormats.has(format) ||
+    (TierOneStorageFormats.has(format) && device.features.has('texture-formats-tier1' as GPUFeatureName))
+  );
+}
+
 export function createWebGPUTexture(
   env: WebGPUResourceEnv,
   kind: TextureKind,
@@ -202,7 +219,7 @@ export function createWebGPUTexture(
     TextureUsage.COPY_DST |
     TextureUsage.COPY_SRC |
     TextureUsage.RENDER_ATTACHMENT |
-    (StorageFormats.has(gpuFormat) ? TextureUsage.STORAGE_BINDING : 0);
+    (isStorageFormat(env.device, gpuFormat) ? TextureUsage.STORAGE_BINDING : 0);
   const bytesPerChannel = type === 'ubyte' ? 1 : type === 'fp16' ? 2 : 4;
   const account = createByteAccount(env.byteCounts, 'texture');
   const uncount = countResource(env.stats, 'texture');
@@ -210,9 +227,13 @@ export function createWebGPUTexture(
   let texture: GPUTexture | undefined;
   let view: GPUTextureView | undefined;
   let attachmentView: GPUTextureView | undefined;
+  /** views of single mip levels, `getLevelView` */
+  let levelViews: (GPUTextureView | undefined)[] = [];
   let width = 0;
   let height = 0;
   let depth = 0;
+  /** mip levels of `define`, written per level (`getLevelView`); 1 for loaded textures (`mipmap` makes its own) */
+  let levelCount = 1;
   let version = 0;
   /** the data of the last `load` and whether it was mipmapped, uploaded again by `reset` */
   let loaded: Parameters<WebGPUTexture['load']>[0] | undefined;
@@ -222,20 +243,34 @@ export function createWebGPUTexture(
   /** defined (`define`) without storage yet: allocated by the first write, copy or read (`ensureStorage`) */
   let defined = false;
 
+  /** texels of mip `level` (3d textures halve their depth too) */
+  function getLevelTexels(level: number) {
+    const s = (n: number) => Math.max(1, Math.max(1, n) >> level);
+    return s(width) * s(height) * (dimension === '3d' ? s(depth) : Math.max(1, depth));
+  }
+
+  function getAllocatedBytes() {
+    let texels = 0;
+    for (let level = 0; level < levelCount; ++level) texels += getLevelTexels(level);
+    return texels * channelsOf(format) * bytesPerChannel;
+  }
+
   function allocate(w: number, h: number, d = 1) {
-    if (texture && w === width && h === height && d === depth) return;
+    if (texture && w === width && h === height && d === depth && texture.mipLevelCount === levelCount) return;
     if (texture) release(texture);
     width = w;
     height = h;
     depth = d;
     defined = false;
-    account(Math.max(1, w) * Math.max(1, h) * Math.max(1, d) * channelsOf(format) * bytesPerChannel);
+    account(getAllocatedBytes());
     texture = env.device.createTexture({
       size: { width: Math.max(1, w), height: Math.max(1, h), depthOrArrayLayers: Math.max(1, d) },
       format: gpuFormat,
       dimension,
       usage,
+      mipLevelCount: levelCount,
     });
+    levelViews = [];
     attachmentView = texture.createView();
     view = hasStencil ? texture.createView({ aspect: 'depth-only' }) : attachmentView;
     version += 1;
@@ -243,6 +278,7 @@ export function createWebGPUTexture(
 
   /** `allocate` for a queue write */
   function allocateForWrite(w: number, h: number, d = 1) {
+    levelCount = 1;
     // queue writes run before the commands recorded so far, which may still read the current contents (uploads are
     // ordered on WebGL): submit them first
     if (texture && w === width && h === height && d === depth) env.flush();
@@ -253,17 +289,19 @@ export function createWebGPUTexture(
    * Records the size; the storage is allocated when the texture is first written, copied or read (lazy: targets of
    * passes that never draw take no memory). Without data, the contents are undefined until rendered into.
    */
-  function define(w: number, h: number, d = 1) {
+  function define(w: number, h: number, d = 1, levels = 1) {
     if (destroyed) return;
     loaded = undefined;
     mipmapped = false;
     // storage of this size is kept (its contents are undefined either way)
-    if (texture && w === width && h === height && d === depth) return;
+    if (texture && w === width && h === height && d === depth && texture.mipLevelCount === levels) return;
+    levelCount = levels;
     if (texture) {
       release(texture);
       texture = undefined;
       view = undefined;
       attachmentView = undefined;
+      levelViews = [];
       account(0);
       version += 1;
     }
@@ -360,6 +398,14 @@ export function createWebGPUTexture(
       ensureStorage();
       return texture;
     },
+    getLevelView: (level) => {
+      ensureStorage();
+      if (!texture) return undefined;
+      if (level < 0 || level >= texture.mipLevelCount) {
+        throw new Error(`mip level ${level} of a texture with ${texture.mipLevelCount}`);
+      }
+      return (levelViews[level] ??= texture.createView({ baseMipLevel: level, mipLevelCount: 1 }));
+    },
     get hasStorage() {
       return texture !== undefined;
     },
@@ -373,7 +419,7 @@ export function createWebGPUTexture(
     getWidth: () => width,
     getHeight: () => height,
     getDepth: () => depth,
-    getByteCount: () => (texture ? width * height * depth * (channelsOf(format) * bytesPerChannel) : 0),
+    getByteCount: () => (texture ? getAllocatedBytes() : 0),
 
     define,
     load,
@@ -404,6 +450,7 @@ export function createWebGPUTexture(
       release(source);
       view = texture.createView();
       attachmentView = texture.createView({ baseMipLevel: 0, mipLevelCount: 1 });
+      levelViews = [];
       version += 1;
     },
     attachFramebuffer: (framebuffer, attachment, layer) => {
@@ -453,6 +500,7 @@ export function createWebGPUTexture(
       texture = undefined;
       view = undefined;
       attachmentView = undefined;
+      levelViews = [];
       loaded = undefined;
       mipmapped = false;
       account(0);
@@ -560,6 +608,7 @@ export function createWebGPUCubeTexture(env: WebGPUResourceEnv, mipmaps: boolean
     getView: () => view,
     getAttachmentView: () => undefined,
     getGPUTexture: () => texture,
+    getLevelView: () => undefined,
     get hasStorage() {
       return texture !== undefined;
     },

@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { createWebGPUComputeContext } from './compute.js';
@@ -237,6 +238,8 @@ const OptionalFeatures: GPUFeatureName[] = [
   'float32-blendable',
   'depth-clip-control',
   'depth32float-stencil8',
+  // storage writes of more formats (the direct volumes' extinction pyramid in `r16float`), not in the WebGPU types yet
+  'texture-formats-tier1' as GPUFeatureName,
   // GPU timer
   'timestamp-query',
   // indirect draws of instance ranges (GPU culling of merged render objects)
