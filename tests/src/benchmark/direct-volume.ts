@@ -14,6 +14,8 @@ import { blobVolume, createVolume, volumeRepr } from '../visual/scenes/volume.js
 import { structureRepr } from '../visual/scenes/structure.js';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { MarkingParams } from '@molstar/graphics/canvas3d/passes/marking';
+import { IlluminationParams } from '@molstar/graphics/canvas3d/passes/illumination';
+import { CartoonRepresentationProvider } from '@molstar/graphics/repr/structure/representation/cartoon';
 import type { BenchmarkCase } from './framework.js';
 import { LargeSize, type RenderInput, renderCase } from './render.js';
 import { exampleStructure } from './structures.js';
@@ -207,6 +209,29 @@ export const DirectVolumeCases: BenchmarkCase<RenderInput>[] = [
       },
     ),
   ]),
+  // the volume shadowing the traced light (volume-lighting.md §D4): 7qpd as cartoon with illumination and the map,
+  // rotating (the first tracing iteration per frame, fixed quality); volumetric reads its pyramid along shadow rays
+  ...(['local', 'volumetric'] as const).map((lighting) =>
+    renderCase(
+      `render/direct-volume/7qpd-illumination-map-256-${lighting}-1080`,
+      `7qpd as cartoon with illumination, rotating, and map-256 lit ${lighting}, 1920x1080`,
+      async () => {
+        const v = getMap();
+        const s = await exampleStructure('7qpd.fw2.cif');
+        return {
+          size: FullHdSize,
+          scene: async (g) => [
+            await structureRepr(g, CartoonRepresentationProvider, s, {}),
+            await volumeRepr(g, DirectVolumeRepresentationProvider, v, { lighting }),
+          ],
+          props: {
+            illumination: { ...PD.getDefaultValues(IlluminationParams), enabled: true, rendersPerFrame: [4, 4] },
+          },
+          rotate: true,
+        };
+      },
+    ),
+  ),
   renderCase(
     'render/direct-volume/7qpd-gaussian-volume',
     'PDB entry 7qpd as Gaussian volume (GPU density, packed groups, gradients per sample), 2560x1440',
