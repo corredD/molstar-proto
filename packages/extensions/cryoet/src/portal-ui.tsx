@@ -13,6 +13,7 @@ import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
+import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import {
   type CryoetPortalApi,
@@ -53,7 +54,13 @@ interface RunPick {
   readonly spacing?: number;
 }
 
-export function PortalPanel(props: { ctx: Pick<ViewerUIContext, 'api'>; area: CryoetPortalApi }) {
+/** What the card reads of the area (a story gives a fake) and how it loads */
+export type PortalPanelArea = Pick<CryoetPortalApi, 'catalog' | 'dataset' | 'describe'>;
+export interface PortalPanelContext {
+  readonly api: { run(id: string, values: Record<string, unknown>): Promise<ApiResult> };
+}
+
+export function PortalPanel(props: { ctx: PortalPanelContext; area: PortalPanelArea }) {
   const { ctx, area } = props;
   const pick = observableState<RunPick | undefined>(undefined);
   const problem = observableState('');
@@ -84,8 +91,8 @@ export function PortalPanel(props: { ctx: Pick<ViewerUIContext, 'api'>; area: Cr
 }
 
 function RunForm(props: {
-  ctx: Pick<ViewerUIContext, 'api'>;
-  area: CryoetPortalApi;
+  ctx: PortalPanelContext;
+  area: PortalPanelArea;
   pick: RunPick;
   choose: (catalog: PortalCatalog, id: number, run?: string, spacing?: number) => void;
 }) {

@@ -142,7 +142,7 @@ export class CryoetPortalApi extends ApiArea {
 
   /** A run's spacing, tomogram and annotations as a load sees them: a read for views */
   describe(ds: PortalDataset, run: string, spacing?: number): PortalRunInfo | ApiFailure {
-    return describeRun(this.ctx, ds, run, spacing);
+    return describePortalRun((f) => readable(this.ctx, f), ds, run, spacing);
   }
 
   /** The portal dataset and run a scene object's file came from, when its index is read (synchronous: menus) */
@@ -186,7 +186,7 @@ export class CryoetPortalApi extends ApiArea {
     async run({ dataset, run }, ctx) {
       const ds = await readDataset(ctx, dataset);
       if (isFailure(ds)) return ds;
-      const info = describeRun(ctx, ds, run);
+      const info = describePortalRun((f) => readable(ctx, f), ds, run);
       if (isFailure(info)) return info;
       const t = info.tomogram;
       const lines = [
@@ -237,7 +237,7 @@ export class CryoetPortalApi extends ApiArea {
       const v = values as typeof values & { spacing?: number; tomogram?: number; level?: number };
       const ds = await readDataset(ctx, v.dataset);
       if (isFailure(ds)) return ds;
-      const info = describeRun(ctx, ds, v.run, v.spacing, v.tomogram);
+      const info = describePortalRun((f) => readable(ctx, f), ds, v.run, v.spacing, v.tomogram);
       if (isFailure(info)) return info;
       const entries = pickEntries(info, v.annotations);
       if (isFailure(entries)) return entries;
@@ -306,17 +306,19 @@ async function readDataset(ctx: ApiContext, id: number): Promise<PortalDataset |
   return area.dataset(id).catch((e: unknown) => ApiResult.fail('unavailable', (e as Error).message));
 }
 
-const has = (ctx: Pick<ApiContext, 'plugin'>, format: string) =>
+/** Whether the viewer reads a portal file format */
+const readable = (ctx: Pick<ApiContext, 'plugin'>, format: string) =>
   // the particle formats are a lazy feature of the viewer: always there to `load.url`
   format === 'ndjson' ||
   format === 'zarr' ||
   !!(PortalReaders[format] && ctx.plugin.dataFormats.has(PortalReaders[format]));
 
-const needsReader = (ctx: Pick<ApiContext, 'plugin'>, format: string) =>
-  has(ctx, format) ? undefined : `needs a reader for ${format}`;
+const needsReader = (reads: (format: string) => boolean, format: string) =>
+  reads(format) ? undefined : `needs a reader for ${format}`;
 
-function describeRun(
-  ctx: Pick<ApiContext, 'plugin'>,
+/** A run of the index as a load takes it, given which formats the viewer reads (a view's story gives its own) */
+export function describePortalRun(
+  reads: (format: string) => boolean,
   ds: PortalDataset,
   name: string,
   spacing?: number,
@@ -345,7 +347,7 @@ function describeRun(
   const entries = s.annotations.map((a) => ({
     ...a,
     key: shapes.get(a.id)! > 1 ? `${a.id}/${a.shape}` : String(a.id),
-    needs: needsReader(ctx, a.format),
+    needs: needsReader(reads, a.format),
   }));
   return {
     dataset: ds.id,
@@ -354,7 +356,7 @@ function describeRun(
     tomogram: t,
     entries,
     defaults: entries.filter((e) => e.default).map((e) => e.key),
-    needs: t ? needsReader(ctx, 'zarr') : undefined,
+    needs: t ? needsReader(reads, 'zarr') : undefined,
   };
 }
 
