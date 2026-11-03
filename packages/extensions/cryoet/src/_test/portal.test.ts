@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { Structure } from '@molstar/model/model/structure';
-import type { ApiResult } from '@molstar/prism-viewer/api/area';
+import { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
@@ -18,6 +18,7 @@ import {
   PortalLargeBytes,
   type PortalIndexSource,
   type PortalRunInfo,
+  showTomogramVolume,
   tomogramControlPoints,
 } from '../portal.js';
 import { checkPortalIndex, type PortalCatalog, type PortalDataset, PortalFiles } from '../portal-index.js';
@@ -297,6 +298,18 @@ describe('cryoetPortal', () => {
       points.reduce((best, p) => (Math.abs(p[0] - x) < Math.abs(best[0] - x) ? p : best))[1];
     // x: the value from the volume's min (0) to its max (1)
     expect(alphaAt(0)).toBeGreaterThan(alphaAt(1));
+  });
+
+  it("lights a tomogram's direct volume volumetric (its own shadows; local where the device cannot)", async () => {
+    serve();
+    const v = await viewer();
+    expectOk(await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', annotations: 'none', as: 'slices' }));
+    const [tomogram] = v.plugin.managers.volume.hierarchy.current.volumes;
+    // the headless viewer draws no direct volume: what the load asks for is the check
+    const calls: unknown[] = [];
+    const api = { run: async (_name: string, args: unknown) => (calls.push(args), ApiResult.ok('')) };
+    expectOk(await showTomogramVolume({ plugin: v.plugin, api } as never, tomogram.cell.transform.ref));
+    expect(calls).toMatchObject([{ type: 'direct-volume', params: { lighting: 'volumetric' } }]);
   });
 
   it('asks before a load above the size guard', async () => {
