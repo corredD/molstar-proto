@@ -103,7 +103,7 @@ describe('glTF reader', () => {
   it('reads the CryoET Data Portal mesh: counts and bounds as its accessors give them', async () => {
     // https://files.cryoetdataportal.cziscience.com/10521/L2_P2_ts_002/Reconstructions/VoxelSpacing10.005/Annotations/101/sample-1.0_mesh.glb
     const data = new Uint8Array(
-      fs.readFileSync(path.join(import.meta.dirname, 'fixtures/cryoet-10521-L2_P2_ts_002-mesh.glb')),
+      fs.readFileSync(path.resolve(import.meta.dirname, '../../../../../data/examples/shapes/cryoet-10521-mesh.glb')),
     );
     const file = await parse(data);
     expect(file.generator).toBe('https://github.com/mikedh/trimesh');
