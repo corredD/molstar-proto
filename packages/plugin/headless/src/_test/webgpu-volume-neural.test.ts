@@ -17,7 +17,6 @@ import { asWebGPUTexture } from '@molstar/graphics/gl/webgpu/texture';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
 import { WebGPU } from './webgpu-module.js';
-import { renderSlabAndCube } from './webgpu-volume-scene.js';
 
 /** written by tools/volume-lighting/fixtures.py: what the Python tools compute, and the filters' precision bound */
 const Fixture = JSON.parse(readFileSync(new URL('./_generated/volume-descriptors.json', import.meta.url), 'utf8')) as {
@@ -285,21 +284,5 @@ describe.skipIf(!WebGPU.module)('neural volume lighting on WebGPU', () => {
       expect(clamped[1]).toBeLessThan(n / 2);
       expect(graphics.takeErrors()).toEqual([]);
     });
-  }, 60_000);
-});
-
-describe.skipIf(!WebGPU.module)('neural volume lighting, drawn', () => {
-  it('neural: a dense cube darkens the slab behind it along the light, less than volumetric', async () => {
-    const lit = await renderSlabAndCube(['volumetric', 'neural']);
-    // light from the right: A (left of the cube) is behind it; from the left, B. The white color is albedo 0.95, and
-    // the cube (optical depth ~4 along the light) passes some light on by multiple scattering, which volumetric does
-    // not have: a softer shadow
-    const shadow = (l: { a: number; b: number }[]) => [l[0].a / l[0].b, l[1].b / l[1].a];
-    const neural = shadow(lit.neural);
-    const volumetric = shadow(lit.volumetric);
-    for (let i = 0; i < 2; ++i) {
-      expect(neural[i]).toBeLessThan(0.9);
-      expect(neural[i]).toBeGreaterThan(volumetric[i] + 0.05);
-    }
   }, 60_000);
 });

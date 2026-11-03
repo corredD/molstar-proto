@@ -89,8 +89,9 @@ M1 (Apple M1, Chrome, WebGPU), `node scripts/benchmark.mjs --backends webgpu --f
 | ---- | ------------------------- | --------------------------------- |
 | `map-256` (256³, 40 globules) | 3.74 / 3.76 ms | 2.15 / 2.27 ms |
 | `tomogram-512x512x96` (tilted slab) | 3.76 / 4.07 ms | 2.32 / 2.48 ms |
+| `tomogram-464x464x225` (400 globules, TS_08 bin2's size) | 8.28 / 8.76 ms | 6.65 / 6.91 ms |
 
-- Gate A (+50 % a frame) passed: +1 % and +8 %. The 12 reads replace the gradient's 6 and only lit samples read them.
+- Gate A (+50 % a frame) passed: +1 %, +8 % and +6 %. The 12 reads replace the gradient's 6 and only lit samples read them.
 - The pyramid (5 dispatches, at a transfer function change, Dawn on the M1, after the first build's compile): 256³
   1.1–1.5 ms (4.8 MB), 464x464x225 1.5–2 ms (17 MB), 512³ 3–5 ms (38 MB).
 
@@ -137,4 +138,21 @@ M1 (Apple M1, Chrome, WebGPU), `node scripts/benchmark.mjs --backends webgpu --f
 
 ## D. Illumination
 
-To be written with D1–D2.
+- **D1, volumes shadow the traced molecules**: the trace (`illumination.wgsl.ts`, `dVolumeShadow`) multiplies each
+  light's irradiance at a primary hit by the transmittance through the first visible volume lit `volumetric`
+  (`findVolumeShadow` in `tracing.ts`, its first instance): the ray toward the light clipped to the grid's box, 8 reads
+  at the centers of equal steps from the pyramid's level whose texels are a step long (`sLinearMipmap`), `exp(-sum
+  sigma * step)`. With `shadowEnable` after the screen-space shadow ray (a ray it blocks stays blocked), without it on
+  its own: illumination's default (shadows off) shows it too. Bounces are not attenuated. A local volume, or none,
+  leaves the trace's program as before (no `dVolumeShadow`). A transfer function change rebuilds the pyramid and, as
+  any scene change, restarts the accumulation.
+- **D2, one light**: the volume's key light and ambient are the renderer's `uLightDirection[0]` and `uAmbientColor`,
+  which the trace reads too (`renderer.light`, `ambientColor * ambientIntensity`): one light by construction. Test:
+  with the light moved to the other side, the atoms are no longer shadowed.
+- Test (Dawn): atoms beside a dense slab (8 cells at 0.3), the light through the slab: 247 without the volume, 248
+  with it `local`, 82 `volumetric`; the light from the other side 0.89 of the unshadowed.
+- **D3** (molecules shadow the volume): not built; measured first on CellPack HIV if wanted.
+- **D4** (M1, Chrome, `render/direct-volume/7qpd-illumination-map-256-*-1080`, rotating, 4 renders per frame): frame
+  7.63 ms local, 7.46 ms volumetric; `trace` pass 0.80 / 0.79 ms: within noise, 8 reads per traced pixel and light
+  where the ray crosses the box. The transmittance is deterministic (no noise added): the iterations to converge are
+  the same (an argument: not counted; the Quadro numbers are open).
