@@ -233,7 +233,8 @@ export function Mat4Row(props: { head: Child; label: string; param: PD.Mat4; bin
 
 /**
  * An interval, as v5's: with both bounds, one track, two knobs (the low and the high end), the range on the right;
- * without (a color theme's custom domain, any number), two number fields, from and to. Either way the ends cannot cross.
+ * without (a color theme's custom domain, any number), two number fields, from and to. Either way the ends cannot cross
+ * (v5's fields can: a crossed domain reverses a color scale; Ludo's brief, 2026-11-03, asks that they not).
  */
 export function IntervalControl(props: { param: PD.Interval; binding: FieldBinding; label?: string }) {
   const { param, binding } = props;
