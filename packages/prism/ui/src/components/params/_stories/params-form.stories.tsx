@@ -6,6 +6,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
