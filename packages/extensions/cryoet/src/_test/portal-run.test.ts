@@ -113,6 +113,8 @@ describe('describePortalRun', () => {
 
   it("takes a spacing's flagged tomogram when only the spacing is named, its first without one", () => {
     expect(ok(describeRun(5.003)).tomogram?.id).toBe(64011);
+    // the flag, not the spacing's first (64004)
+    expect(ok(describeRun(10.403)).tomogram?.id).toBe(64007);
     const unflagged: PortalDataset = {
       ...ds,
       runList: [
