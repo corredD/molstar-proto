@@ -509,6 +509,10 @@ function lastWrite(write: () => unknown) {
     void write();
   });
   return {
+    /** A change waits to be written */
+    get pending() {
+      return pending;
+    },
     start(ms: number) {
       pending = true;
       timer.start(ms);
@@ -884,6 +888,13 @@ function Representations(props: {
             });
             // the type's own params open (the iso level, the spheres' size): what is changed most
             model.fold('/type#params', true);
+            // a direct volume's form follows it (the transfer function above sets its color theme; an undo), as Prism's
+            // inspector's does, but not over a change not written yet
+            if (direct) {
+              effect(area.representationParams(r.ref), (now) => {
+                if (now && !update.pending) model.load(now as PD.Values<PD.Params>);
+              });
+            }
             return (
               <div class={classes.tight}>
                 <div class={classes.tools}>

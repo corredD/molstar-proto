@@ -256,6 +256,27 @@ describe("a volume's Direct volume section", () => {
     expect(Object.keys(args.params)).toEqual(['type']);
   });
 
+  it('its form follows the representation (an undo, the transfer function), but not over an edit not sent yet', async () => {
+    const f = fakes([info('d', 'direct-volume')]);
+    const body = mount(f, 'direct-volume');
+    const range = body.querySelector<HTMLInputElement>('input[type=range]')!;
+    const withAlpha = (alpha: number) => ({
+      ...DirectValues,
+      type: { ...DirectValues.type, params: { ...DirectValues.type.params, alpha } },
+    });
+    f.params.get('d')!.set(withAlpha(0.2));
+    await tick();
+    expect(range.value).toBe('0.2');
+    // typed, then the tree changes before the write: the edit is sent
+    range.value = '0.6';
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+    f.params.get('d')!.set(withAlpha(0.3));
+    await new Promise((r) => setTimeout(r, 250));
+    const [, args] = f.calls[0] as [string, { params: typeof DirectValues }];
+    expect(args.params.type.params.alpha).toBe(0.6);
+  });
+
   it("a direct volume's own row: the same Lighting and transfer function in Representation", () => {
     const f = fakes([info('i', 'isosurface'), info('d', 'direct-volume')]);
     const subject = subjectOf(f);
