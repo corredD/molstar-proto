@@ -138,3 +138,10 @@ Each fix with a test failing first.
 | N3, N4, N5, N6, N8 comments and spec words                            | nit               | confirmed                                 | c70bd6c02, 581c2463c                                                                           |
 | N7 default dataset 10003 in the extension                             | nit               | design                                    | kept (fails cleanly when absent)                                                               |
 | N9 index tool rank/dtype; instance_id absent; rotation_check aliasing | nit               | confirmed / plausible                     | a5ca506a2, a5cc35519                                                                           |
+
+## End
+
+PR https://github.com/corredD/molstar-proto/pull/39 (base prism-me). After the PR, the library lanes' review fixes
+merged again (ome-zarr 8eb47f836, glb-reader 1d80e9a06; biome.json conflict resolved, both lines kept); quick lanes and
+the demo rechecked. Dev server left on 1345. Open: registry-compare (ome-zarr's allow list), the EMDB path's test, the
+hand decision (TODO.md), N2.
