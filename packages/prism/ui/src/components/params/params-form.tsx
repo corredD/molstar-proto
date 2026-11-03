@@ -35,7 +35,7 @@ import {
 import type { FieldBinding } from './field-binding.js';
 import { helpOf, withHelp } from './help.js';
 import { PresetsButton, PresetsList, presetIndex } from './presets.js';
-import { formatNumber, parseNumber, Slider } from './slider.js';
+import { formatNumber, NumberField, parseNumber, Slider } from './slider.js';
 
 export { parseNumber };
 
@@ -540,18 +540,14 @@ function Toggle(props: { binding: FieldBinding; labelId?: string }) {
 function NumberControl(props: { param: PD.Numeric; binding: FieldBinding; labelId?: string }) {
   const { param, binding, labelId } = props;
   if (param.min === undefined || param.max === undefined) {
-    // Text, not a native number field: that one shows decimals in the browser's locale ("0,5") while every other
-    // number reads "0.5"; a comma typed is read as the decimal point.
     const input = (
-      <input
-        class={classes.input}
-        type="text"
-        inputMode="decimal"
-        aria-labelledby={labelId}
-        onChange={(e) => {
-          const v = parseNumber(e.currentTarget.value);
-          if (Number.isFinite(v)) binding.set(v);
-          e.currentTarget.value = formatNumber(Number.isFinite(v) ? v : (binding.get() as number), param.step);
+      <NumberField
+        step={param.step}
+        labelId={labelId}
+        current={() => binding.get() as number}
+        commit={(v) => {
+          binding.set(v);
+          return v;
         }}
       />
     ) as HTMLInputElement;
