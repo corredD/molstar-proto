@@ -66,8 +66,8 @@ reads `Data.String` or `Data.Binary` today changes.
   `ParseJson` decodes and parses them; `ParsePly` reads the bytes (ASCII or binary by the header); `ParseDx` reads a
   response named `.dxbin` as binary, any other as text (both start with the same text header).
 - Binary readers that write into their input or keep views of it read a copy (`readBytes(a, { copy: true })`): DSN6
-  flips the byte order of its whole `source.buffer`, TRR swaps it, DCD's frames and VTP's arrays are views of the
-  input. CCP4 (through a `FileHandle`), MTZ, XTC, NetCDF, Simularium, Artiatomi EM, G3D, PLY and DX read only.
+  flips the byte order of its whole `source.buffer`, TRR swaps it, DCD's frames and VTP's and glTF's arrays are views
+  of the input. CCP4 (through a `FileHandle`), MTZ, XTC, NetCDF, Simularium, Artiatomi EM, G3D, PLY and DX read only.
 - `ReadResponse { isBinary }` turns a response into String or Binary Data, for a custom transform that does not read
   one; `DeflateData` takes responses (and copies bytes it passes through).
 - One form at a time: `ResponseBody` holds its bytes (shared with the asset manager), or its text once a reader asks

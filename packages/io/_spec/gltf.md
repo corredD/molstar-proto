@@ -18,7 +18,8 @@ https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html.
 - **A view, not a copy**, on the input bytes when the accessor is tight (`byteStride` absent or the element size),
   aligned (the absolute byte offset, including the input's own `byteOffset`, a multiple of the component size) and the
   host little-endian: the float attributes and the indices of a well-formed GLB (trimesh, Blender, Mol*'s exporter).
-  Why: a portal mesh is read without touching its arrays; the bake (§3) is the one copy.
+  Why: a portal mesh is read without touching its arrays; the bake (§3) is the one copy. The result keeps the input
+  alive and reads it: `ParseGltf` hands the reader a copy of shared response bytes (`.v6/data-response`).
 - **Decoded otherwise** (interleaved, unaligned, integer or normalized attributes): `DataView` reads, little-endian,
   normalized integers scaled as spec §3.11 (signed clamped at -1). So `KHR_mesh_quantization` needs no code of its own.
 - An accessor shared by several primitives is read once (a map by accessor index).
