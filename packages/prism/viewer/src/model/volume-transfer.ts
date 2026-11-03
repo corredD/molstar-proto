@@ -129,7 +129,7 @@ export function scaledOpacity(alpha: number, factor: number, logMin: number): nu
   return Math.min(1, alpha * factor);
 }
 
-/** Every point's opacity times `factor` (`scaledOpacity`): the curve keeps its shape, only its height changes. */
+/** Every point's opacity times `factor` (`scaledOpacity`): its shape kept until a point reaches 1, its height changed. */
 export function scaledPoints(points: readonly TransferPoint[], factor: number, logMin: number): TransferPoint[] {
   return points.map((p) => ({ x: p.x, alpha: scaledOpacity(p.alpha, factor, logMin) }));
 }

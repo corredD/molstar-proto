@@ -231,7 +231,7 @@ describe("a volume's Direct volume section", () => {
     expect(f.transfers).toEqual([['v', 'd']]);
     const editor = body.querySelector<HTMLElement>('section[aria-label="Transfer function"]')!;
     expect(editor).not.toBeNull();
-    expect(editor.querySelector('button[aria-label="Opacity ×2"]')).not.toBeNull();
+    expect(editor.querySelector("button[aria-label^='Denser']")).not.toBeNull();
     // after the Lighting line, before the form
     const lighting = body.querySelector('[aria-label="Lighting"]')!;
     expect(lighting.compareDocumentPosition(editor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
