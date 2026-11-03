@@ -137,3 +137,37 @@ describe('an interval', () => {
     expect(container.textContent).toContain('2.0–7.5');
   });
 });
+
+describe('an interval set to the value it has is no change', () => {
+  it('a field: an end retyped, or past the other end that already stops it, changes nothing', async () => {
+    const changes: unknown[] = [];
+    const params = { domain: PD.Interval([-1, 1], {}, { label: 'Domain' }) };
+    const form = new ParamsFormModel(params, { domain: [4, 4] }, { onChange: (v) => changes.push(v.domain) });
+    const container = mount(form);
+    await flush();
+    const to = container.querySelector<HTMLInputElement>('input[aria-label="Domain to"]')!;
+    type(to, '-7');
+    type(to, '4');
+    await flush();
+    expect(changes).toEqual([]);
+    expect(to.value).toBe('4');
+    type(to, '5');
+    expect(changes).toEqual([[4, 5]]);
+  });
+
+  it('a knob: dragged against the other, no change at each step', async () => {
+    const changes: unknown[] = [];
+    const params = { range: PD.Interval([0, 1], { min: 0, max: 10, step: 1 }, { label: 'Range' }) };
+    const form = new ParamsFormModel(params, { range: [4, 4] }, { onChange: (v) => changes.push(v.range) });
+    const container = mount(form);
+    await flush();
+    const to = container.querySelector<HTMLInputElement>('input[aria-label="Range to"]')!;
+    for (const v of ['3', '2', '1']) {
+      to.value = v;
+      to.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    await flush();
+    expect(changes).toEqual([]);
+    expect(to.value).toBe('4');
+  });
+});

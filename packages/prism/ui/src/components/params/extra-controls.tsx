@@ -252,14 +252,10 @@ export function IntervalControl(props: { param: PD.Interval; binding: FieldBindi
       min={String(min)}
       max={String(max)}
       step={String(step)}
-      aria-label={`${props.label ? `${props.label} ` : ''}${i === 0 ? 'from' : 'to'}`}
+      aria-label={endLabel(props.label, i)}
       ref={(el: HTMLInputElement) => (ends[i] = el)}
       onInput={(e) => {
-        const n = Number(e.currentTarget.value);
-        const v: [number, number] = [...(binding.get() ?? [min, max])] as [number, number];
-        // The ends cannot cross.
-        v[i] = i === 0 ? Math.min(n, v[1]) : Math.max(n, v[0]);
-        binding.set(v);
+        const v = setEnd(binding, binding.get() ?? [min, max], i, Number(e.currentTarget.value));
         e.currentTarget.value = String(v[i]);
       }}
     />
@@ -294,14 +290,9 @@ function IntervalFields(props: { param: PD.Interval; binding: FieldBinding; labe
     (
       <NumberField
         step={param.step}
-        aria-label={`${props.label ? `${props.label} ` : ''}${i === 0 ? 'from' : 'to'}`}
+        aria-label={endLabel(props.label, i)}
         current={() => value()[i]}
-        commit={(n) => {
-          const v: [number, number] = [...value()];
-          v[i] = i === 0 ? Math.min(n, v[1]) : Math.max(n, v[0]);
-          binding.set(v);
-          return v[i];
-        }}
+        commit={(n) => setEnd(binding, value(), i, n)[i]}
       />
     ) as HTMLInputElement;
   const ends = [end(0), end(1)];
@@ -311,6 +302,24 @@ function IntervalFields(props: { param: PD.Interval; binding: FieldBinding; labe
     setValue(ends[1], formatNumber(v[1], param.step));
   });
   return <div class={classes.intervalFields}>{ends}</div>;
+}
+
+/** An interval's end's name: "Domain from", "Domain to". */
+function endLabel(label: string | undefined, i: 0 | 1) {
+  return `${label ? `${label} ` : ''}${i === 0 ? 'from' : 'to'}`;
+}
+
+/**
+ * An interval with its end `i` at `n`, stopped at the other end (the ends cannot cross); set only when it differs (a set
+ * of the same numbers would still be a new array, a change: a theme updated for nothing). Returns the value that holds.
+ */
+function setEnd(binding: FieldBinding, current: readonly number[], i: 0 | 1, n: number): readonly number[] {
+  const end = i === 0 ? Math.min(n, current[1]) : Math.max(n, current[0]);
+  if (end === current[i]) return current;
+  const v = [current[0], current[1]];
+  v[i] = end;
+  binding.set(v);
+  return v;
 }
 
 /** A color list as a CSS gradient: interpolated, or a set of hard bands. */
