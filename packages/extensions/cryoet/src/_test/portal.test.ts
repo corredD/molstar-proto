@@ -205,6 +205,8 @@ describe('cryoetPortal', () => {
       undefined,
     ]);
     expect(r.did).toContain('2: 130×130×130 at 40 Å, 8.8 MB');
+    // every tomogram of the run, as the card lists them: the ids `load`'s `tomogram` takes (review S3)
+    expect(r.did).toContain('Tomograms: 7 · 10 Å · 400×400×400');
   });
 
   // a direct volume needs graphics, which a headless viewer has not: its transfer function is tested below

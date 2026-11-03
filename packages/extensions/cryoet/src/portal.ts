@@ -31,6 +31,7 @@ import {
   type PortalFailure,
   type PortalRunInfo,
   type PortalTomogramView,
+  portalTomogramOptions,
 } from './portal-run.js';
 import {
   checkPortalIndex,
@@ -197,6 +198,10 @@ export class CryoetPortalApi extends ApiArea {
         ...(t
           ? [`tomogram ${t.id}: ${t.levels.map(levelLine).join('; ')}${info.needs ? ` (${info.needs})` : ''}`]
           : []),
+        // every tomogram of the run, any spacing: the ids `load`'s `tomogram` takes
+        `Tomograms: ${portalTomogramOptions(info.run)
+          .map(([, label]) => label)
+          .join('; ')}`,
         ...info.entries.map(
           (e) =>
             `${e.key}: ${e.object}, ${e.shape} (${e.format}${e.count ? `, ${e.count}` : ''})${e.default ? ', default' : ''}${e.needs ? ` (${e.needs})` : ''}`,
