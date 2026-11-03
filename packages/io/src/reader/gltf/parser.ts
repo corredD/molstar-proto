@@ -10,7 +10,7 @@ import type { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import type { Quat } from '@molstar/core/math/linear-algebra/3d/quat';
 import { utf8Read } from '@molstar/core/util/utf8';
 import { IsNativeEndianLittle } from '../../common/binary.js';
-import { decodeB64Str } from '../common/decode.js';
+import { B64_DECODE, decodeB64Str } from '../common/decode.js';
 import { ReaderResult as Result } from '../result.js';
 import {
   GlbChunkType,
@@ -122,6 +122,12 @@ function readBuffers(json: Json, bin: Uint8Array | undefined): Uint8Array[] {
     } else if (uri.startsWith('data:')) {
       const comma = uri.indexOf(',');
       if (!uri.slice(0, comma).endsWith(';base64')) throw new Error(`glTF buffer ${i}: data URI not in base64`);
+      // decodeB64Str fills what the payload lacks with zeros: its base64 characters must hold byteLength bytes
+      let end = comma + 1;
+      while (end < uri.length && B64_DECODE[uri.charCodeAt(end)] >= 0) ++end;
+      if (Math.floor(((end - comma - 1) * 3) / 4) < byteLength) {
+        throw new Error(`glTF buffer ${i} is shorter than its byteLength`);
+      }
       bytes = decodeB64Str(uri, comma + 1, byteLength);
     } else {
       throw new Error(`glTF buffer ${i} is an external file (${uri}): only GLB or .gltf with data URIs is read`);

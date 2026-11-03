@@ -309,6 +309,15 @@ describe('glTF reader', () => {
       'glTF buffer 0 is an external file (mesh.bin): only GLB or .gltf with data URIs is read',
     );
 
+    // a data URI shorter than its buffer, or not base64
+    for (const payload of ['AAAAAAAA', '!!!!']) {
+      const short = triangleGltf();
+      (short.json.buffers[0] as any).uri = `data:application/octet-stream;base64,${payload}`;
+      expect(await parseError(new TextEncoder().encode(JSON.stringify(short.json)))).toBe(
+        'glTF buffer 0 is shorter than its byteLength',
+      );
+    }
+
     const outOfRange = triangleGltf({}, new Uint16Array([0, 1, 3]));
     expect(await parseError(glb(outOfRange.json, outOfRange.bytes))).toBe(
       'glTF mesh 0 primitive 0: index 3 of 3 vertices',
