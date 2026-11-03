@@ -1001,12 +1001,13 @@ function decoratorCell(
   }
 }
 
-/** The list as the representations get it: with its decorations */
 /** The particles a list draws (its decorations' targets with them), by its state ref */
 export function particleListData(ctx: Pick<ApiContext, 'plugin'>, ref: string): ParticleList | undefined {
   const l = lists(ctx).find((x) => x.cell.transform.ref === ref);
   return l && dataOf(ctx, l);
 }
+
+/** The list as the representations get it: with its decorations */
 
 function dataOf(ctx: Pick<ApiContext, 'plugin'>, l: ParticleListRef): ParticleList | undefined {
   const deepest =

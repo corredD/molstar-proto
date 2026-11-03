@@ -43,10 +43,10 @@ declare module '@molstar/prism-viewer/api' {
 }
 
 // The CryoET Data Portal, direct (_spec/portal.md): an index made offline (portal-index.ts) says what a dataset holds;
-// a load is the viewer's own operations on the portal's file addresses (§2): `load.url` for every file, the points'
-// pixel size by `particles.source` from the index (never the zarr's scale: they differ in the third decimal), their
-// decoration by `cryoet.decorate`, the tomogram's slices by its format and its direct volume by
-// `volume.representation`. One operation, one history step.
+// a load is the viewer's own operations on the portal's file addresses (§2): `load.url` for a single file (ndjson,
+// GLB, MRC), the format's transforms for an OME-Zarr, the points' pixel size by `particles.source` from the index (never
+// the zarr's scale: they differ in the third decimal), their decoration by `cryoet.decorate`, the tomogram's slices by
+// `cryoet.slices` and its direct volume by `volume.representation`. One operation, one history step.
 
 /** Where the index comes from: the app's files (a catalog, a dataset by id) */
 export interface PortalIndexSource {
@@ -122,7 +122,14 @@ export class CryoetPortalApi extends ApiArea {
 
   /** The catalog, read once */
   catalog(): Promise<PortalCatalog> {
-    this.catalogRead ??= this.source.catalog().then((c) => checkPortalIndex(c, 'The portal catalog'));
+    // a failed read is asked again next time (a chunk that did not load)
+    this.catalogRead ??= this.source.catalog().then(
+      (c) => checkPortalIndex(c, 'The portal catalog'),
+      (e: unknown) => {
+        this.catalogRead = undefined;
+        throw e;
+      },
+    );
     return this.catalogRead;
   }
 

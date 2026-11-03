@@ -182,6 +182,6 @@ function runParams(catalog: PortalCatalog, ds: PortalDataset, info: PortalRunInf
 function bytesOf(info: PortalRunInfo, level: string, as: PortalTomogramView, keys: readonly string[]) {
   const picked = new Set(keys);
   let n = as === 'none' ? 0 : (info.tomogram?.levels.find((l) => l.path === level)?.bytes ?? 0);
-  for (const e of info.entries) if (picked.has(e.key)) n += entryBytes(e, Number(level));
+  for (const e of info.entries) if (picked.has(e.key)) n += entryBytes(e, level ? Number(level) : undefined);
   return n;
 }

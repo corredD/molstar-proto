@@ -110,7 +110,7 @@ export interface PortalAnnotation {
   readonly levels?: readonly PortalLevel[];
 }
 
-/** An index's file read and checked: its version and the parts a load needs */
+/** An index's file read and checked: an object of the version this viewer reads (its fields are trusted) */
 export function checkPortalIndex<T extends { version?: unknown }>(json: T, what: string): T {
   if (!json || typeof json !== 'object') throw new Error(`${what} is not a portal index.`);
   if (json.version !== PortalIndexVersion) {
