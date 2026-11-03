@@ -12,7 +12,13 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { particleListData } from '../operations.js';
-import { CryoetPortalExtension, PortalLargeBytes, type PortalIndexSource, type PortalRunInfo } from '../portal.js';
+import {
+  CryoetPortalExtension,
+  PortalLargeBytes,
+  type PortalIndexSource,
+  type PortalRunInfo,
+  tomogramControlPoints,
+} from '../portal.js';
 import { checkPortalIndex, type PortalCatalog, type PortalDataset, PortalFiles } from '../portal-index.js';
 import { CryoetExtension } from '../prism-viewer.js';
 
@@ -89,6 +95,7 @@ const dataset: PortalDataset = {
               levels: [level('0', 400, 10), level('2', 100, 40)],
               default: true,
             },
+            { id: 8, object: 'lipid', shape: 'Mesh', format: 'tiff', path: '1/TS_01/l.tiff' },
           ],
         },
       ],
@@ -99,16 +106,56 @@ const dataset: PortalDataset = {
 const catalog: PortalCatalog = { version: 1, datasets: [{ id: 1, title: dataset.title, runs: 2 }] };
 const source: PortalIndexSource = { catalog: async () => catalog, dataset: async () => dataset };
 
-const routes: Record<string, () => BodyInit> = {
-  'r.ndjson': () => points,
-  '1cbs': () => readFileSync(new URL('1cbs_full.bcif', examples)),
-};
+/** An OME-Zarr of three levels, 4³ each, uncompressed: a blob in the middle (a tomogram's dense matter is dark) */
+function zarr(dtype: '<f4' | '|i1') {
+  const n = 4;
+  const values = dtype === '<f4' ? new Float32Array(n ** 3).fill(1) : new Int8Array(n ** 3);
+  for (const i of [21, 22, 25, 26, 37, 38, 41, 42]) values[i] = dtype === '<f4' ? -1 : 1;
+  const zattrs = {
+    multiscales: [
+      {
+        version: '0.4',
+        axes: ['z', 'y', 'x'].map((name) => ({ name, type: 'space', unit: 'angstrom' })),
+        datasets: ['0', '1', '2'].map((path, i) => ({
+          path,
+          coordinateTransformations: [{ type: 'scale', scale: [10 * 2 ** i, 10 * 2 ** i, 10 * 2 ** i] }],
+        })),
+      },
+    ],
+  };
+  const zarray = {
+    zarr_format: 2,
+    shape: [n, n, n],
+    chunks: [n, n, n],
+    dtype,
+    compressor: null,
+    fill_value: 0,
+    order: 'C',
+    filters: null,
+    dimension_separator: '/',
+  };
+  return { zattrs: JSON.stringify(zattrs), zarray: JSON.stringify(zarray), chunk: new Uint8Array(values.buffer) };
+}
+
+/** The files of a zarr at `root`, by key */
+const zarrRoutes = (root: string, z: ReturnType<typeof zarr>): [RegExp, () => BodyInit][] => [
+  [new RegExp(`${root}/\\.zattrs$`), () => z.zattrs],
+  [new RegExp(`${root}/\\d/\\.zarray$`), () => z.zarray],
+  [new RegExp(`${root}/\\d/0/0/0$`), () => z.chunk],
+];
+
+const routes: [RegExp, () => BodyInit][] = [
+  [/r\.ndjson$/, () => points],
+  [/1cbs/, () => readFileSync(new URL('1cbs_full.bcif', examples))],
+  ...zarrRoutes('t\\.zarr', zarr('<f4')),
+  ...zarrRoutes('m\\.zarr', zarr('|i1')),
+];
 
 function serve() {
   const stub = vi.fn(async (input: string | URL | Request) => {
     const url = String(typeof input === 'object' && 'url' in input ? input.url : input);
-    const hit = Object.keys(routes).find((k) => url.includes(k));
-    return hit ? new Response(routes[hit](), { status: 200 }) : new Response('not found', { status: 404 });
+    const hit = routes.find(([k]) => k.test(url));
+    return hit ? new Response(hit[1](), { status: 200 }) : new Response('not found', { status: 404 });
   });
   vi.stubGlobal('fetch', stub);
   return stub;
@@ -138,22 +185,35 @@ describe('cryoetPortal', () => {
     const r = await v.api.run('cryoetPortal.run', { dataset: 1, run: 'TS_01' });
     expectOk(r);
     const info = r.value as PortalRunInfo;
-    expect(info.entries.map((e) => e.key)).toEqual(['5', '6/InstanceSegmentation', '6/SegmentationMask']);
+    expect(info.entries.map((e) => e.key)).toEqual(['5', '6/InstanceSegmentation', '6/SegmentationMask', '8']);
     expect(info.defaults).toEqual(['5', '6/SegmentationMask']);
-    // no OME-Zarr reader in this viewer: the tomogram and the mask say so, the points do not
-    expect(info.needs).toMatch(/needs a reader for zarr/);
-    expect(info.entries.map((e) => !!e.needs)).toEqual([false, false, true]);
-    expect(r.did).toContain('2: 130×130×130 at 40 Å, 8.4 MB');
+    // the viewer reads ndjson and OME-Zarr; a format it has no reader for says so
+    expect(info.needs).toBeUndefined();
+    expect(info.entries.map((e) => e.needs)).toEqual([undefined, undefined, undefined, expect.stringMatching(/tiff/)]);
+    expect(r.did).toContain('2: 130×130×130 at 40 Å, 8.8 MB');
   });
 
-  it('loads the points at the index spacing, decorated, in one history step; what it cannot read, it says', async () => {
+  // a direct volume needs graphics, which a headless viewer has not: its transfer function is tested below
+  it('loads the tomogram (its slices), the mask (a surface at 0.5), the points at the index spacing, decorated: one history step', async () => {
     const fetch = serve();
     const v = await viewer();
     const steps = async () => ((await v.api.run('history.list', {})) as { value: unknown[] }).value.length;
     const before = await steps();
-    const r = await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01' });
+    const r = await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', as: 'slices' });
     expectOk(r);
-    expect(r.warnings?.join(' ')).toMatch(/tomogram needs a reader.*membrane \(SegmentationMask\) needs a reader/);
+    expect(r.warnings ?? []).toEqual([]);
+    const [tomogram, mask] = v.plugin.managers.volume.hierarchy.current.volumes;
+    const shown = (vol: typeof tomogram) =>
+      vol.representations
+        .filter((x) => !x.cell.state.isHidden)
+        .map((x) => (x.cell.transform.params as { type: { name: string } }).type.name)
+        .sort();
+    // the coarsest level, as the index says: '2'
+    expect(fetch.mock.calls.map((c) => String(c[0]))).toContain(`${PortalFiles}1/TS_01/t.zarr/2/0/0/0`);
+    expect(shown(tomogram)).toEqual(['slice', 'slice', 'slice']);
+    expect(shown(mask)).toEqual(['isosurface']);
+    const iso = (mask.representations[0].cell.transform.params as any).type.params.isoValue;
+    expect(iso).toEqual({ kind: 'absolute', absoluteValue: 0.5 });
     expect(fetch.mock.calls.map((c) => String(c[0]))).toContain(`${PortalFiles}1/TS_01/r.ndjson`);
     const [list] = v.plugin.managers.particles.hierarchy.current.lists;
     const data = particleListData({ plugin: v.plugin }, list.cell.transform.ref) as ParticleList;
@@ -169,12 +229,25 @@ describe('cryoetPortal', () => {
     expect(await steps()).toBe(before + 1);
   });
 
+  it("gives a tomogram's direct volume the Tomogram preset: its dense (low) values opaque, its bright ones clear", async () => {
+    serve();
+    const v = await viewer();
+    expectOk(await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', annotations: 'none', as: 'slices' }));
+    const [tomogram] = v.plugin.managers.volume.hierarchy.current.volumes;
+    const points = tomogramControlPoints(v.plugin, tomogram.cell.obj!.data) as { 0: number; 1: number }[];
+    expect(points.length).toBeGreaterThan(1);
+    const alphaAt = (x: number) =>
+      points.reduce((best, p) => (Math.abs(p[0] - x) < Math.abs(best[0] - x) ? p : best))[1];
+    // x: the value from the volume's min (0) to its max (1)
+    expect(alphaAt(0)).toBeGreaterThan(alphaAt(1));
+  });
+
   it('asks before a load above the size guard', async () => {
     serve();
     const v = await viewer();
     expect(520 ** 3 * 4).toBeGreaterThan(PortalLargeBytes);
     const asked = await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', level: 0, annotations: 'none' });
-    expect(asked).toMatchObject({ ok: false, code: 'confirm', message: 'TS_01 is 536 MB decoded at these levels.' });
+    expect(asked).toMatchObject({ ok: false, code: 'confirm', message: 'TS_01 is 562 MB decoded at these levels.' });
   });
 
   it('names what it has when asked for what it has not', async () => {

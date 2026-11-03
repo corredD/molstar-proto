@@ -6,6 +6,7 @@
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { Structure } from '@molstar/model/model/structure';
+import type { Volume } from '@molstar/model/model/volume';
 import {
   type ApiAreaContext,
   type ApiContext,
@@ -17,6 +18,7 @@ import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import { isFailure } from '@molstar/prism-viewer/api/scope';
 import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension } from '@molstar/prism-viewer/spec';
+import { OpenOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
 import { particleListData } from './operations.js';
 import {
   checkPortalIndex,
@@ -56,18 +58,21 @@ export const PortalCard = 'cryoet-portal.overlay.portal';
 /** What a load does with a tomogram: its slices and its direct volume, its slices, or nothing */
 export type PortalTomogramView = 'both' | 'slices' | 'none';
 
-/** The data formats that read the portal's files, by the file's format; a format the viewer lacks: "needs reader" */
+/**
+ * The data formats `load.url` reads the portal's files with, by the file's format; a zarr opens by the plugin's
+ * `OpenOmeZarr` (several files, not one); another format, or one the viewer lacks: "needs a reader"
+ */
 export const PortalReaders: Readonly<Record<string, string>> = {
   ndjson: 'cryoet_ndjson_particles',
-  zarr: 'ome-zarr',
   glb: 'gltf',
+  mrc: 'ccp4',
 };
 
 /**
  * Above this many bytes decoded, a load asks first (`large: true` goes on): a browser tab holds about 2 GB, and a
  * level of a tomogram 8 times smaller is one step coarser (_spec/portal.md §3)
  */
-export const PortalLargeBytes = 512 * 1024 * 1024;
+export const PortalLargeBytes = 512e6;
 
 /** An annotation of a run, as `run` lists it and `load` takes it: `<id>` or `<id>/<shape>` */
 export interface PortalEntry extends PortalAnnotation {
@@ -221,7 +226,7 @@ export class CryoetPortalApi extends ApiArea {
         ['slices', 'Slices'],
         ['none', 'No tomogram'],
       ]),
-      large: PD.Boolean(false, { description: `Load above ${PortalLargeBytes / 2 ** 20} MB decoded (asked first)` }),
+      large: PD.Boolean(false, { description: `Load above ${PortalLargeBytes / 1e6} MB decoded (asked first)` }),
     },
     modules: ['network'],
     approval: 'network',
@@ -299,10 +304,12 @@ async function readDataset(ctx: ApiContext, id: number): Promise<PortalDataset |
 
 const has = (ctx: Pick<ApiContext, 'plugin'>, format: string) =>
   // the particle formats are a lazy feature of the viewer: always there to `load.url`
-  format === 'ndjson' || !!(PortalReaders[format] && ctx.plugin.dataFormats.has(PortalReaders[format]));
+  format === 'ndjson' ||
+  format === 'zarr' ||
+  !!(PortalReaders[format] && ctx.plugin.dataFormats.has(PortalReaders[format]));
 
 const needsReader = (ctx: Pick<ApiContext, 'plugin'>, format: string) =>
-  has(ctx, format) ? undefined : `needs a reader for ${format} (not in this viewer yet)`;
+  has(ctx, format) ? undefined : `needs a reader for ${format}`;
 
 function describeRun(
   ctx: Pick<ApiContext, 'plugin'>,
@@ -387,7 +394,8 @@ export function entryBytes(e: PortalEntry, level: number | undefined) {
   return (e.levels.find((l) => l.path === String(level)) ?? e.levels[e.levels.length - 1]).bytes;
 }
 
-export const mb = (bytes: number) => `${(bytes / 2 ** 20).toFixed(bytes < 10 * 2 ** 20 ? 1 : 0)} MB`;
+/** MB as the OME-Zarr format counts them (1e6 bytes) */
+export const mb = (bytes: number) => `${(bytes / 1e6).toFixed(bytes < 10e6 ? 1 : 0)} MB`;
 export const levelLine = (l: PortalLevel) => `${l.path}: ${l.size.join('×')} at ${l.spacing} Å, ${mb(l.bytes)}`;
 
 // --- the loads, by the viewer's operations ------------------------------------------------------------------------
@@ -409,11 +417,20 @@ async function added(
   return [...refs(ctx)].filter((x) => !before.has(x));
 }
 
-/** A zarr by `load.url` at a level: the volumes it made */
-function loadZarr(ctx: ApiContext, url: string, level: PortalLevel) {
-  return added(ctx, volumeRefs, () =>
-    ctx.api.run('load.url', { url: `${url}/${level.path}`, format: PortalReaders.zarr, binary: true }),
-  );
+/**
+ * An OME-Zarr at a level, by the plugin's own action (its metadata, the level as a volume, its default visual): the
+ * volumes it made. The size was asked about before (`large`), so the action's limit is the level's.
+ */
+async function loadZarr(ctx: ApiContext, url: string, level: PortalLevel) {
+  const made = await added(ctx, volumeRefs, async () => {
+    const maxSizeMB = Math.max(512, Math.ceil(level.bytes / 1e6));
+    await ctx.plugin.runTask(ctx.plugin.state.data.applyAction(OpenOmeZarr, { url, level: level.path, maxSizeMB }));
+    return ApiResult.ok('');
+  });
+  if (!isFailure(made) && !made.length) {
+    return ApiResult.fail('failed', `Could not open ${url} at level ${level.path}.`, 'The log says why.');
+  }
+  return made;
 }
 
 /** The tomogram at a level: its three slices and, asked for, its direct volume */
@@ -433,22 +450,26 @@ async function loadTomogram(ctx: ApiContext, url: string, level: PortalLevel, as
 }
 
 /**
- * A tomogram's direct volume, its transfer function the direct volume's own Tomogram preset: dense matter is dark in
- * a tomogram, so the low values are opaque. One function, so its other params (lighting) are given in one place.
+ * The transfer function of a tomogram's direct volume: the direct volume's own Tomogram preset (dense matter is dark
+ * in a tomogram, so the low values are opaque), if the volume has one (a signed or left-skewed map)
  */
+export function tomogramControlPoints(plugin: ApiContext['plugin'], data: Volume): unknown | undefined {
+  const provider = plugin.representation.volume.registry.get('direct-volume');
+  const params = provider?.getParams(plugin.representation.volume.themes, data) as
+    | { controlPoints?: { getPresets?: () => [unknown, string][] } }
+    | undefined;
+  return params?.controlPoints?.getPresets?.().find(([, label]) => /^Tomogram/.test(label))?.[0];
+}
+
+/** A tomogram's direct volume (one function, so its other params, its lighting, are given in one place) */
 export async function showTomogramVolume(ctx: ApiContext, volume: string): Promise<ApiResult> {
-  const cell = ctx.plugin.state.data.cells.get(volume);
-  const data = cell?.obj?.data;
-  const provider = ctx.plugin.representation.volume.registry.get('direct-volume');
-  if (!data || !provider) return ApiResult.fail('unavailable', 'This viewer has no direct volume.');
-  const params = provider.getParams(ctx.plugin.representation.volume.themes, data) as {
-    controlPoints?: PD.Any & { getPresets?: () => [unknown, string][] };
-  };
-  const preset = params.controlPoints?.getPresets?.().find(([, label]) => /^Tomogram/.test(label));
+  const data = ctx.plugin.state.data.cells.get(volume)?.obj?.data as Volume | undefined;
+  if (!data) return ApiResult.fail('not-found', 'The tomogram is not loaded.');
+  const controlPoints = tomogramControlPoints(ctx.plugin, data);
   return ctx.api.run('volume.representation', {
     volume,
     type: 'direct-volume',
-    params: preset ? { controlPoints: preset[0] } : {},
+    params: controlPoints ? { controlPoints } : {},
   });
 }
 
