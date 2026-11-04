@@ -198,18 +198,11 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   particle's preview copies every coordinate of its list (`offsetParticles`, architecture §5); a structure's preview
   allocates about 200 KB a pointer event (its representations' `setState` and update); the hosts' tests cover one step
   and an undo during a drag, not a refused commit's restore per host (only `GizmoHandles`' own test does).
-- Live sliders, left open by `live-slice` (2026-11-03): the other Representation forms (isosurface, direct volume, a
-  particle list's) still write 150 ms after the last change (`properties.tsx` `Representations`): they do not follow a
-  drag; the same `gestureSteps` path as a slice's would, at Prism's 250 ms pacing for heavy updates (Ludo's call). A
-  slice's Representation form is made once and does not follow the state: after a Slice drag it holds the old index, and
-  its next change writes it back. A grid slice step costs about 9 ms on TS_08 at level 2, 35 ms at level 1 and 150–230
-  ms at level 0: at level 0 a drag shows 2–3 slices a second. From the review: `gestureSteps` runs its group with
-  `onFailure: 'continue'`, so each applied change takes a full checkpoint (`history.ts` `#nested`); at the live sliders'
-  pace that is one a step (Prism's own sliders: at most 4 a second), and on a scene whose snapshot takes over 50 ms one
-  drag turns per-step checkpoints off. Fix in Prism (an option for no per-run checkpoint), not in the lane. A key press
-  or a typed value on a live slider holds the history for the 600 ms quiet (keys in a row are one step; other runs
-  wait), as Prism's own sliders; the slice's form does the same after each change. The jsdom fakes of `api.group` do not
-  model the history's lock (the headless tests do).
+- Live sliders, left open by `live-slice` (2026-11-03) and `live-forms` (2026-11-04): a slice's Representation form is
+  made once and does not follow the state: after a Slice drag it holds the old index, and its next change writes it
+  back. A key press or a typed value on a live slider holds the history for the 600 ms quiet (keys in a row are one
+  step; other runs wait), as Prism's own sliders; the forms do the same after each change. The jsdom fakes of
+  `api.group` do not model the history's lock (the headless tests do).
 - The explorer mocks' checks in CI: `pnpm -C apps/prism-me styles:check` and `typecheck:storybook` run nowhere
   (`.github/workflows/node.yml` runs them for `packages/prism/*` only), so a stale `_generated` module or a story's type
   error stays green.

@@ -309,15 +309,17 @@ still completes its distance.
   - a particle list or a target: Decoration (the cryo-ET Decorations control). A volume: Slice. A mesh: its look.
   - Shared controls moved to exported modules: `@molstar/cryoet-extension/controls` (Decorations, Slice, MeshControls),
     `@molstar/mesoscale-extension/controls` (GraphicsMode, Motion; the motion read from the representations, new
-    `mesoscale.graphicsState`). A slider acts once released (one step), but the slices' (Slice, Oblique slice, their
-    Representation form) and a mesh's Opacity: they act as they go, a step as soon as the last landed (the newest value
-    winning), one undo step a drag (Prism's `gestureSteps`; Ludo, 2026-11-03: "as I move the slider, the slice move").
+    `mesoscale.graphicsState`). A slider acts once released (one step), but the slices' (Slice, Oblique slice), a mesh's
+    Opacity and the Representation forms (a slice's, an isosurface's, a direct volume's, a particle list's): they act as
+    they go, a step as soon as the last landed (the newest value winning), one undo step a drag (Prism's `gestureSteps`,
+    one checkpoint a drag; Ludo, 2026-11-03: "as I move the slider, the slice move"; 2026-11-04, the forms: "All of
+    them").
 - Step 2 additions (2026-10-18, Ludovic's test):
   - A particle list (and a model, a target): Representation, each of its representations with an eye
     (`explorer.representationVisibility`) and its whole form, as Prism's inspector has it (`ParamsFormModel` on the
     transform's params): the type (spheres, orientation, the targets…) and its params, the color and size themes; a
-    change acts a moment after the last (`particles.update`). A type change rebuilds a large list's glyphs (a few
-    seconds).
+    change acts as it goes, one undo step a drag (`particles.update`). A type change rebuilds a large list's glyphs (a
+    few seconds).
   - Decoration with an entity of a model: the decoration selects list, under each cellPACK or PetWorld model, its
     entities; `cryoet.decorate` `with: entity` (`entity: "motor.bcif › 8WIW"` or the name alone). Library:
     `ParticleListWithTargets` takes a `target` source (a particle list and its target id: that list's own reference
