@@ -19,8 +19,8 @@ import { FullPrismViewerSpec } from '@molstar/prism-viewer-app/full-spec';
 import { optionsFromUrl } from '@molstar/prism-viewer-app/url';
 import { StageSkill } from '@molstar/stage-tools-extension/prism-viewer';
 import { MesoscaleExplorerExtensions } from './extensions.js';
-import { withMesoscaleLook } from './look.js';
 import { withZoomColorsAtLoad } from './formats.js';
+import { withMesoscaleLook } from './look.js';
 import { withTomogramSlices } from './tomograms.js';
 
 /**
