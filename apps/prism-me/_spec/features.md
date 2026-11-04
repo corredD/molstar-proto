@@ -97,7 +97,7 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | Measure a distance between atoms, residues, chains, instances, particles, volume voxels: in selection mode, ⌘/Ctrl+click two points                                                | Done     | `stage.distance`, `stage.editDistance`; a row under the first point; outside selection mode a hint says to turn it on                  |
 | Measure from a mesh's triangle (OBJ, PLY, VTP: the point picked on it, following the mesh's moves and scales); meshes hovered and selected by triangle                             | Done     | `stage.distance` with a triangle pick; Mol*'s `ShapeGroup.Loci` `triangles` (.v6/plans/gl/triangle-picking.md)                         |
 | An angle and a dihedral between any points (atoms, particles, voxels, triangles): the latest 3 or 4 ⌘/Ctrl+clicked points, by the right-click                                      | Done     | `stage.angle`, `stage.dihedral`; rows, properties and right-click as a distance's                                                      |
-| Commands for the agent and ⌘K                                                                                                                                                      | Done     | the three areas' commands and skills                                                                                                   |
+| Commands for the agent and ⌘K: the assistant starts with one name per tool (the stage tools' labels and measurements replace Prism's Measurements skill, `measure`)                | Done     | the three areas' commands and skills; `spec.ts` `agent.skills.remove`; `_test/assistant-tools.test.ts`                                 |
 
 ## Interface (Prism)
 

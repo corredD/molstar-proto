@@ -28,6 +28,7 @@ import { withTomogramSlices } from './tomograms.js';
 export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
   const base = FullPrismViewerSpec();
   const options = optionsFromUrl(search);
+  const baseAgent = base.agent || {};
   return {
     ...base,
     // A particle list with orientations opens as its spheres and its axes (Ludovic, 2026-10-22)
@@ -57,7 +58,13 @@ export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
       key: 'prism-me',
       preferences: webStore('local', { prefix: 'prism-me', version: PLUGIN_VERSION, budget: 64 * 1024 }),
     },
-    agent: { ...(base.agent || {}), assistant: assistant() },
+    agent: {
+      ...baseAgent,
+      // The stage tools' labels and measurements (atoms, particles, a mesh's triangle) replace Prism's Measurements
+      // skill: both name add_label and measure_distance, and a toolkit refuses a name given twice
+      skills: { ...baseAgent.skills, remove: [...(baseAgent.skills?.remove ?? []), 'measure'] },
+      assistant: assistant(),
+    },
     finalize: (spec) =>
       withTomogramSlices(
         withMesoscaleLook(withModifierSelect(withoutRightClickFocus(base.finalize ? base.finalize(spec) : spec))),
