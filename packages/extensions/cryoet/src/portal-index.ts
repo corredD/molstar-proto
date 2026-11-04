@@ -135,6 +135,12 @@ export interface PortalAnnotation {
   readonly bytes?: number;
   readonly count?: number;
   readonly groundTruth?: boolean;
+  /** What it is, the portal's words ('chloramphenicol bound 70S ribosome'); each of these three when the portal has it */
+  readonly description?: string;
+  /** How it was made ('Template matching + manual filtering + 3D classification filtering') */
+  readonly method?: string;
+  /** Its object's Gene Ontology term ('GO:0022626'); another kind of id (UniProtKB:…) is not kept */
+  readonly goId?: string;
   /** The portal shows it by default: a load takes it when no annotation is named */
   readonly default?: boolean;
   /** Its levels, a zarr's */

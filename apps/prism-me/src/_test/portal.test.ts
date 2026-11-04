@@ -40,6 +40,12 @@ describe('the shipped portal index', () => {
     );
     expect(ribosomes).toMatchObject({ shape: 'OrientedPoint', count: 378, default: true });
     expect(ds.decorations?.[ribosomes.object]).toMatchObject({ pdb: '7PHB', emdb: 'EMD-13412' });
+    // the portal's own words for it: its description, its method and its GO term (Ludo, 2026-11-04)
+    expect(ribosomes).toMatchObject({
+      description: 'chloramphenicol bound 70S ribosome',
+      method: expect.stringMatching(/^Template matching/),
+      goId: 'GO:0022626',
+    });
     expect(s.tomograms[0].levels.map((l) => l.size)).toEqual([
       [928, 928, 450],
       [464, 464, 225],
