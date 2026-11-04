@@ -525,8 +525,9 @@ export class MesoscaleApi extends ApiArea {
     id: 'mesoscale.example',
     title: 'Open a mesoscale example',
     params: {
+      // CellPack Exosome first in the form (Ludo, 2026-11-04)
       id: PD.Select<MesoscaleExampleId>(
-        'petworld-hiv',
+        'cellpack-exosome',
         MesoscaleExampleChoices as unknown as [MesoscaleExampleId, string][],
         {
           description: 'An example of the Mesoscale Explorer',

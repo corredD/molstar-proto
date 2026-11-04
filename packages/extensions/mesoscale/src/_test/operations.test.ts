@@ -195,8 +195,13 @@ describe('mesoscale', () => {
   it('offers the examples it can open by name, and opens one of the list, from its absolute address', async () => {
     const v = await viewer();
     // the form's choices: the explorer's examples (its sessions, molx, are not opened)
-    const id = v.api.describe('mesoscale.example')!.params.id as { options?: readonly [string, string][] };
+    const id = v.api.describe('mesoscale.example')!.params.id as {
+      options?: readonly [string, string][];
+      defaultValue?: string;
+    };
     expect(id.options?.map(([k]) => k)).toEqual([...MesoscaleExampleIds]);
+    // the form opens on CellPack Exosome (Ludo, 2026-11-04)
+    expect(id.defaultValue).toBe('cellpack-exosome');
     expect(id.options?.find(([k]) => k === 'cellpack-mg')?.[1]).toBe('CellPack MG');
     const list = [{ id: 'cellpack-mg', label: 'CellPack MG', url: '../examples/tiny.bcif', type: 'bcif' }];
     const asked: string[] = [];
