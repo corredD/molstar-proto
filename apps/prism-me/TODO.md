@@ -80,7 +80,7 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 - cellPACK entity descriptions (`_entity.pdbx_parent_entity_id`, not a compartment path or the name:
   `ParticleEntityInfo.description`) and a particle's loci label showing its entity's (lane `descriptions`, built on
-  prism-me in commits that name no extension: `dac4930de`, `78c0b8514`).
+  prism-me in commits that name no extension: `dac4930de`, `78c0b8514`, `43de664ef`).
 
 ## Backlog
 
