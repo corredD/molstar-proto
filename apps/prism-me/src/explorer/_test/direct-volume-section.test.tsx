@@ -418,3 +418,40 @@ describe("a volume's or a particle list's Representation form", () => {
     });
   }
 });
+
+describe("an isosurface's or a particle list's form after an Undo", () => {
+  for (const form of Forms.filter((f) => f.type === 'isosurface' || f.type === 'spheres')) {
+    it(`shows the state again, so its next change does not write the dragged value back: ${form.type}`, async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+      try {
+        const f = fakes([info('r', form.type)]);
+        const at = (v: number) => ({
+          type: { name: form.type, params: { [form.field]: v } },
+          colorTheme: DirectValues.colorTheme,
+        });
+        f.params.get('r')!.set(at(10));
+        const picked =
+          form.kind === 'volume'
+            ? subjectOf(f).picked
+            : { key: 'r', label: form.type, kind: form.kind, node: { ref: 'v' }, representation: 'r' };
+        const host = document.createElement('div');
+        document.body.append(host);
+        render(() => sectionOf(form.section).render({ ...subjectOf(f), picked }), host);
+        const range = host.querySelector<HTMLInputElement>('input[type=range]')!;
+        range.value = '40';
+        range.dispatchEvent(new Event('input', { bubbles: true }));
+        range.dispatchEvent(new Event('change', { bubbles: true }));
+        flushFrame();
+        await vi.advanceTimersByTimeAsync(1000);
+        f.params.get('r')!.set(at(40));
+        await vi.advanceTimersByTimeAsync(50);
+        // Undo: the state back at 10
+        f.params.get('r')!.set(at(10));
+        await vi.advanceTimersByTimeAsync(50);
+        expect(range.value).toBe('10');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  }
+});

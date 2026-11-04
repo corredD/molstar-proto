@@ -900,7 +900,7 @@ function Representations(props: {
               theme = next;
             };
             // the form follows its sliders: the form's model is the value shown (loaded again from the state only when
-            // no step is in progress), so no overlay is needed
+            // no step is in progress, below), so no overlay is needed
             const live = gestureSteps(api, {
               label: r.label,
               apply: (g) => write(g),
@@ -917,13 +917,11 @@ function Representations(props: {
             });
             // the type's own params open (the iso level, the spheres' size): what is changed most
             model.fold('/type#params', true);
-            // a direct volume's form follows it (the transfer function above sets its color theme; an undo), as Prism's
-            // inspector's does, but not over a change not written yet
-            if (direct) {
-              effect(area.representationParams(r.ref), (now) => {
-                if (now && !live.overlay('')) model.load(now as PD.Values<PD.Params>);
-              });
-            }
+            // the form follows the state (an undo; a direct volume's transfer function above sets its color theme), as
+            // Prism's inspector's does, but not over a drag in progress: else its next change wrote an undone value back
+            effect(area.representationParams(r.ref), (now) => {
+              if (now && !live.overlay('')) model.load(now as PD.Values<PD.Params>);
+            });
             return (
               <div class={classes.tight}>
                 <div class={classes.tools}>

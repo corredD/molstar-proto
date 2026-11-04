@@ -198,14 +198,12 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   particle's preview copies every coordinate of its list (`offsetParticles`, architecture §5); a structure's preview
   allocates about 200 KB a pointer event (its representations' `setState` and update); the hosts' tests cover one step
   and an undo during a drag, not a refused commit's restore per host (only `GizmoHandles`' own test does).
-- Live sliders, left open by `live-slice` (2026-11-03) and `live-forms` (2026-11-04): a slice's Representation form is
-  made once and does not follow the state: after a Slice drag it holds the old index, and its next change writes it
-  back. A key press or a typed value on a live slider holds the history for the 600 ms quiet (keys in a row are one
-  step; other runs wait), as Prism's own sliders; the forms do the same after each change. The jsdom fakes of
-  `api.group` do not model the history's lock (the headless tests do). The isosurface's and a particle list's forms do
-  not follow the state either (only a direct volume's does): after an Undo they show the dragged value until the row is
-  picked again (seen in Chromium by `live-forms`; it was so with the 150 ms write too). A drag held still over 600 ms
-  (or a 1 s main-thread stall) is two undo steps (`gestureSteps`' quiet; the form has no release).
+- Live sliders, left open by `live-slice` (2026-11-03) and `live-forms` (2026-11-04): a key press or a typed value on a
+  live slider holds the history for the 600 ms quiet (keys in a row are one step; other runs wait), as Prism's own
+  sliders; the forms do the same after each change. A drag held still over 600 ms (or a 1 s main-thread stall) is two
+  undo steps (`gestureSteps`' quiet; the form has no release). A form's history label is the representation's when the
+  form was made (a slice's axis changed in its form: still "Slice X"). The jsdom fakes of `api.group` do not model the
+  history's lock (the headless tests do).
 - A slice step at level 0 (lane `live-forms`, item 7, measured 2026-11-04; Ludo: "Measure first"): on TS_08 level 0
   (928×928×450, WebGPU) one Z step takes about 435 ms (366–526), 89 % of it the image build on the main thread
   (`createGridImage`, `packages/graphics/src/repr/volume/slice.ts`, 387 ms a step), the texture upload about 12 ms, the
