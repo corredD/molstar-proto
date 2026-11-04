@@ -33,6 +33,7 @@ import {
 import { OrderedSet } from '@molstar/core/data/int';
 import { Particle } from '@molstar/model/model/particles/particle-list';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
+import { StructureElement, StructureProperties } from '@molstar/model/model/structure';
 
 // The `explorer` area on a headless viewer: 1CRN (crambin, with its unit cell), a RELION list and an OBJ mesh.
 
@@ -490,6 +491,34 @@ describe('explorer', () => {
       'remove-label',
     ]);
     expect(nodeMenuItems(v.api, area, entity).map((x) => x.id)).toContain('label');
+  });
+
+  it("labels an atom or residue picked on the canvas (the pick, at its centre), a chain's pick its row", async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const [crn] = area.objectsState().value;
+    const entity = area.loci({ ref: crn.ref, entity: '1' });
+    if (!StructureElement.Loci.is(entity)) expect.fail('no atoms');
+    // its 21st atom, as Mol* picks it (one atom), and where it is
+    const { unit, indices } = entity.elements[0];
+    const one = StructureElement.Loci(entity.structure, [
+      { unit, indices: OrderedSet.ofSingleton(OrderedSet.getAt(indices, 20)) },
+    ]);
+    const l = StructureElement.Location.create(entity.structure, unit, unit.elements[OrderedSet.getAt(indices, 20)]);
+    const P = StructureProperties;
+    const where = [P.atom.x(l), P.atom.y(l), P.atom.z(l)];
+    const name = `${P.atom.label_comp_id(l)} ${P.residue.auth_seq_id(l)} ${P.atom.label_atom_id(l)} (A)`;
+    const labels = () => v.api.stage!.labelsState().value;
+    const granularity = (g: string) => v.plugin.managers.interactivity.setProps({ granularity: g as never });
+    granularity('element');
+    const picked = area.pickedOf(one)!;
+    await addLabel(v.api, area, picked, undefined, [1, 2, 3], one);
+    expect(labels()[0]).toMatchObject({ text: name, node: picked.key, target: crn.ref });
+    labels()[0].position.forEach((x, i) => expect(x).toBeCloseTo(where[i], 3));
+    // a chain's pick: its row's label, where it was clicked (as before)
+    granularity('chain');
+    await addLabel(v.api, area, area.pickedOf(one)!, undefined, [1, 2, 3], one);
+    expect(labels()[1]).toMatchObject({ text: 'CRAMBIN', position: [1, 2, 3] });
   });
 
   it("puts a part's label on one of its particles, not their center (an entity's copies around a model)", async () => {

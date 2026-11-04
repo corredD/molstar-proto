@@ -4,3 +4,5 @@
   an atom, a residue or a chain of a structure (`A:10@CA`, `A:10`, `chain A`, `ligand`), a particle
   (`<list ref>#<index>`) or a pick (`{ loci }`). Its label sits at the selection's centre, in front of it, named after
   it ("ARG 10 CA (A)") when no text is given; a selection that matches nothing fails with a clear message.
+- The right-click's Add a label on an atom or residue (at the selection's granularity) labels that pick, not its
+  chain's row.

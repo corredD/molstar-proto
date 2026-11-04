@@ -12,6 +12,8 @@ import type {} from '@molstar/prism-viewer/features/clipping';
 import type {} from '@molstar/prism-viewer/features/structure-move';
 import { startMoveDrag } from '@molstar/stage-tools-extension/drag';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import type { Loci } from '@molstar/model/model/loci';
+import { StructureElement } from '@molstar/model/model/structure';
 import type { ExplorerApi, NodeRef, PickedNode } from './operations.js';
 import { clipName } from './rows.js';
 
@@ -338,13 +340,17 @@ export interface MenuActions {
   editText?(text: string, keep: (text: string) => void): void;
   /** The point clicked on what was picked (Å) */
   at?: readonly [number, number, number];
+  /** What was picked there (Mol*'s loci): an atom or a residue is labelled itself */
+  loci?: Loci;
   /** A model's grouping in the tree (the explorer's), for its generated colors */
   groupBy?(model: string): MesoGroupBy | undefined;
 }
 
 /**
  * Adds a label of a node, named after it, and picks its row (its text is edited in the properties): where it was
- * clicked, else on the node (a part of many particles: its particle nearest the camera), in front of it
+ * clicked, else on the node (a part of many particles: its particle nearest the camera), in front of it. A pick
+ * smaller than its row (an atom, a residue, at the selection's granularity): that pick, named after it, at its centre
+ * (the stage's selection)
  */
 export async function addLabel(
   api: ViewerApi,
@@ -352,28 +358,46 @@ export async function addLabel(
   picked: PickedNode,
   reveal?: (p: PickedNode) => void,
   at?: readonly [number, number, number],
+  loci?: Loci,
 ) {
-  const anchor = area.anchorOf(picked.node);
+  const pick = loci && finerThanRow(area, picked, loci);
+  const anchor = pick ? undefined : area.anchorOf(picked.node);
   const position = at ?? anchor?.position;
   // sized by the stage to the node's own radius (its part's) and to its object's
   const own = anchor?.radius ?? area.boundsOf({ ref: picked.node.ref })?.radius ?? 10;
-  const r = await api.run('stage.label', {
-    text: picked.label,
-    target: picked.node.ref,
-    node: picked.key,
-    ...(position
-      ? {
-          x: position[0],
-          y: position[1],
-          z: position[2],
-          radius: own,
-          // in front of the node's middle by its radius; a point clicked on it: by the label's height (the stage's)
-          ...(at ? {} : { depth: own }),
-        }
-      : {}),
-  });
+  const r = await api.run(
+    'stage.label',
+    pick
+      ? { selection: { loci: pick }, node: picked.key }
+      : {
+          text: picked.label,
+          target: picked.node.ref,
+          node: picked.key,
+          ...(position
+            ? {
+                x: position[0],
+                y: position[1],
+                z: position[2],
+                radius: own,
+                // in front of the node's middle by its radius; a point clicked on it: by the label's height (the stage's)
+                ...(at ? {} : { depth: own }),
+              }
+            : {}),
+        },
+  );
   const ref = r.ok ? r.changed.nodes?.[0] : undefined;
-  if (ref && reveal) reveal({ key: `l:${ref}`, label: picked.label, kind: 'label', node: { ref } });
+  const text = ref ? api.stage?.labelsState().value.find((l) => l.ref === ref)?.text : undefined;
+  if (ref && reveal) reveal({ key: `l:${ref}`, label: text ?? picked.label, kind: 'label', node: { ref } });
+}
+
+/** A structure's pick at the selection's granularity, when it is less than its row (an atom, a residue of a chain) */
+function finerThanRow(area: ExplorerApi, picked: PickedNode, loci: Loci): StructureElement.Loci | undefined {
+  const pick = area.measurePoint(loci);
+  if (!StructureElement.Loci.is(pick) || StructureElement.Loci.isEmpty(pick)) return undefined;
+  const row = area.loci(picked.node);
+  return StructureElement.Loci.is(row) && StructureElement.Loci.size(pick) < StructureElement.Loci.size(row)
+    ? pick
+    : undefined;
 }
 
 /** A measurement's right-click (a distance's, an angle's, a dihedral's): the camera on its points, remove */
@@ -455,7 +479,7 @@ export function nodeMenuItems(
     id: 'label',
     label: 'Add a label',
     icon: 'type',
-    run: () => void addLabel(api, area, picked, actions.reveal, actions.at),
+    run: () => void addLabel(api, area, picked, actions.reveal, actions.at, actions.loci),
   });
   if (open && clippable(kind, node)) {
     items.push({ id: 'clip', label: 'Add clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
