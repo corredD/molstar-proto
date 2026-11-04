@@ -73,7 +73,7 @@ describe("a tilt series' angle", () => {
 });
 
 describe("a tilt series' Placement (Ludo, 2026-11-04: a switch to compare, beside by default)", () => {
-  function placed(angleList: readonly number[] | undefined = angles) {
+  function placed(angleList: readonly number[] | undefined = angles, axis: 'x' | 'z' = 'z') {
     const info = observableState<SliceInfo | undefined>({
       dimensions: [960, 928, 41],
       slices: [{ axis: 'z', index: 20, ref: 's', visible: true }],
@@ -95,7 +95,7 @@ describe("a tilt series' Placement (Ludo, 2026-11-04: a switch to compare, besid
     const area = { sliceState: () => info.asReadonly } as unknown as CryoetApi;
     const host = document.createElement('div');
     document.body.append(host);
-    render(() => <Slice api={api} area={area} volume="v" axis="z" angles={angleList} />, host);
+    render(() => <Slice api={api} area={area} volume="v" axis={axis} angles={angleList} />, host);
     const group = () => host.querySelector('[role="group"][aria-label="Placement"]');
     const pressed = () =>
       Array.from(group()?.querySelectorAll('button') ?? [])
@@ -123,5 +123,8 @@ describe("a tilt series' Placement (Ludo, 2026-11-04: a switch to compare, besid
     expect(pressed()).toEqual([]);
     document.body.innerHTML = '';
     expect(placed([]).group()).toBeNull();
+    // once, on the Z slice's row: the three slices' rows get the same angles (review S1)
+    document.body.innerHTML = '';
+    expect(placed(angles, 'x').group()).toBeNull();
   });
 });

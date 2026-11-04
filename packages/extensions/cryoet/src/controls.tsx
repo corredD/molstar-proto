@@ -594,7 +594,12 @@ export function Slice(props: {
           </>
         )}
       </Show>
-      {!!props.angles?.length && api?.cryoetPortal ? <Placement api={api} volume={volume} /> : null}
+      {/* once, on the Z slice's row (the images' axis): the three slices' rows get the same angles (review S1) */}
+      {!!props.angles?.length && api?.cryoetPortal ? (
+        <Show when={mapState(picked.asReadonly, (a) => (props.axis ?? a) === 'z')}>
+          {() => <Placement api={api} volume={volume} />}
+        </Show>
+      ) : null}
       {axis ? (
         <Show when={mapState(info, (s) => (s?.slices.length ?? 0) < 3)}>
           {() => (
