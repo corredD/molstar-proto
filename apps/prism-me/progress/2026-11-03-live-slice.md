@@ -54,3 +54,57 @@ drag the Slice slider without releasing: the slice moves under the pointer. Same
 sliders and a mesh's Opacity. Undo after a drag goes back to where the drag started.
 
 Size: about 60 production lines (helper 30, call sites 20, history 10), plus tests.
+
+## Built
+
+- `532e2d5a6` prism-viewer exports `gestureSteps` (`./sources/gesture-steps`): the existing latest-wins runner of
+  Prism's own sliders (one apply in flight, the newest change per key merged, `settle` applies the last at once, a
+  gesture one `api.group`). Nothing new was written for the rule: `latest` (prism-ui) aborts and runs concurrently,
+  `restartable` is the debounce being removed.
+- `b5d3efc65` cryoet controls: `live(api, label, apply)` (20 lines over `gestureSteps`, `throttleMs: 0`) used by `Slice`
+  (index, contrast), `ObliqueSlice` (x, y, z, ex, ey, contrast) and the mesh Opacity; the timers are gone. `apply` runs
+  through the group's API (`g.cryoet!.slice`): a call through the root area inside the group waits behind the group (a
+  deadlock; the history test fails that way). The sliders show the values not landed yet over the state (`shown`):
+  without it an earlier step landing set the knob back (8 times in a 60-move drag at level 1) and the release applied
+  the stale value. `Slice` and `MeshControls` take `api`.
+- `522a66fc3` the explorer's Representation form of a slice (grid or oblique) through `gestureSteps` too (it wrote 150
+  ms after the last change); the other forms keep it (TODO.md). Specs: features.md, ui.md, TODO.md, changelog.
+- `8276c19ed` `MeshControls` by the mesh's ref: the mesh lists rendered it by `MeshInfo`, and Prism's `For` renders an
+  item again when its value changes under the same key, so the first live opacity step remade the controls and the drag
+  was lost (seen in Chromium only).
+
+## Decided (Opus, this lane)
+
+- Undo: a drag is one step (one group). Each `cryoet.slice` call was a step of its own (20 calls: 20 steps).
+- The controls gone mid-drag apply what they showed (`settle` on cleanup), as the mesh color and `lastWrite` do; the
+  brief said "nothing after unmount": nothing new is accepted, the shown value lands once.
+- Pacing is `gestureSteps`': with `throttleMs: 0` a step waits as long as the last took after it, so the page keeps
+  frames for the pointer (about half the time busy at most).
+- A drag paused over 600 ms (gestureSteps' quiet) is two steps; the form has no release, so its gesture ends that way.
+- Step 4: the oblique handle drag already followed the pointer (GizmoHandles previews outside the state; checked in
+  Chromium, one step at the release). The slice Representation form did not: fixed. Other forms: left, TODO.md.
+
+## Measured (TS_08, 10003, headed Chromium, WebGPU, M-series Mac)
+
+One `cryoet.slice` step (call to settled): level 2 (232×232×113, the default) 8–13 ms; level 1 35–50 ms (x: 31–33);
+level 0 150–240 ms (one 630 ms outlier). Level 2 is under a frame, level 1 two to three; level 0 is 2–3 slices a second
+during a drag, bounded by the runner (the values between dropped). No dropped large MRC was measured: level 0 of TS_08
+(behind the size guard) stands for it. Not optimised (the brief: report first).
+
+## Checked in the app (port 1349)
+
+Z slice index, Z Contrast, an oblique slice's X and Tilt X, a dropped cube.obj's Opacity: the state follows during the
+drag, history +0 during it and +1 after the release; undo goes back to where the drag started (Z slice). The oblique
+handle dragged along its normal: the plane moves, the state untouched until the release. Screenshots: `drag-mid-20.png`,
+`drag-mid-45.png`, `check-*-mid.png`, `handle-mid-drag.png` in the session's scratchpad.
+
+## Learned
+
+- Prism's `For` re-renders an item whose value changes under the same key: a control that edits its item must be keyed
+  by an id that stays (or the drag in it is lost as soon as the edit lands).
+- A Slider fed by state that changes during its own drag needs the pending value over the state.
+
+## Size
+
+Brief: about 60 production lines. Production diff: about 110 lines (helper 25, call sites 35, the knob overlay 15, the
+slice form 20, the mesh ref 15). Over by the overlay, the form (step 4) and the mesh remount, none foreseen.
