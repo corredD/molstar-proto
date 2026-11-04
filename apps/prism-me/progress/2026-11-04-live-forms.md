@@ -168,3 +168,7 @@ path.
 `particles-mid-1.jpg`, `particles-mid-2.jpg`, `particles-released.png`, `iso-after-undo.png`,
 `particles-after-undo.png`; the profiles `slice-level0.cpuprofile`, `slice-level1.cpuprofile`,
 `slice-level2.cpuprofile`.
+
+## PR
+
+https://github.com/corredD/molstar-proto/pull/53 (to `prism-me`; Ludo merges).
