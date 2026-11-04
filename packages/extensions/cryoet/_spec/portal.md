@@ -91,14 +91,19 @@ registration); the index tool `tools/portal-index/`.
 
 - The explorer's **+ Open** › CryoET Data Portal… opens the overlay card `cryoet-portal.overlay.portal`: a `ParamsForm`
   made from the index (dataset, run, tomogram, level with its size, Show as (the tomogram's view: slices and a direct
-  volume, slices, none), annotations with the portal's defaults checked), made again when dataset, run or tomogram
-  changes; the total size beside Load; the result under it.
+  volume, slices, none), Tilt series, annotations with the portal's defaults checked), made again when dataset, run or
+  tomogram changes; the total size beside Load; the result under it.
 - **One Tomogram choice for the run** (Ludo, 2026-11-03: a run has several, as the portal's "Select tomogram"): every
   tomogram of the run across its spacings, by id, labelled as the portal's list, compact (`portalTomogramLabel`):
   `64010 · WBP Denoised · 10.403 Å · 886×630×246 · AreTomo3 v2.3.0, IsoNet2` (the processing's software after the
   reconstruction's when it differs; the version tells 64004 from 64006). Picking one sets its spacing, so there is no
   spacing field, and that spacing's annotations and levels. Its default is §2's. A spacing without a tomogram cannot be
   chosen here (none in the shipped index; the API's `spacing` can).
+- **A Tilt series choice** (Ludo, 2026-11-03): None (the default: a load as before), or each tilt series of the run,
+  labelled as the portal's (`portalTiltSeriesLabel`): `TS-17086 · 1.7005 Å · 3838×3710×41 · −60°…+60° step 3°` (the full
+  size, the range of its angles whatever their order). One picked: its Series level row under it (a `MappedStatic` of
+  flat groups, so the form is not made again and the annotations picked stay), the coarsest first; its bytes in the size
+  beside Load.
 - **The tilt angle on the Slice row** (Ludo, 2026-11-03): a portal tilt series' Z slice shows its image's angle after
   the count (`/ 41 · −60.005°`, the slider's unit: no new control), by the image's index from 0 (the box counts from 1);
   prism-me's properties pass `tiltAnglesOf(volume)` to the cryoet `Slice`.

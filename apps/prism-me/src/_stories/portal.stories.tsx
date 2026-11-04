@@ -51,7 +51,10 @@ const Card = (props: { reads: (format: string) => boolean; first?: number }) => 
   </div>
 );
 
-/** Every format read: dataset, run, tomogram, level with its size, the annotations (the portal's defaults checked), Load */
+/**
+ * Every format read: dataset, run, tomogram, level with its size, the tilt series (none chosen; one picked, its level),
+ * the annotations (the portal's defaults checked), Load
+ */
 export const Card10003: StoryObj = { name: 'Card', render: () => story(() => <Card reads={() => true} />) };
 
 /** A viewer without a GLB reader, on 10524: its meshes say they need one (the Annotations list), the rest loads */
