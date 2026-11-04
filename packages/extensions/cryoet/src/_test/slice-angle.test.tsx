@@ -71,3 +71,57 @@ describe("a tilt series' angle", () => {
     expect(mounted('z', angles.slice(1)).host.textContent).not.toContain('°');
   });
 });
+
+describe("a tilt series' Placement (Ludo, 2026-11-04: a switch to compare, beside by default)", () => {
+  function placed(angleList: readonly number[] | undefined = angles) {
+    const info = observableState<SliceInfo | undefined>({
+      dimensions: [960, 928, 41],
+      slices: [{ axis: 'z', index: 20, ref: 's', visible: true }],
+      obliques: [],
+      radius: 1,
+    });
+    const place = observableState<string | undefined>('beside');
+    const asked: unknown[] = [];
+    const api = {
+      cryoetPortal: {
+        placeState: () => place.asReadonly,
+        place: async (v: { volume: string; place: string }) => {
+          asked.push(v);
+          place.set(v.place);
+          return { ok: true };
+        },
+      },
+    } as never;
+    const area = { sliceState: () => info.asReadonly } as unknown as CryoetApi;
+    const host = document.createElement('div');
+    document.body.append(host);
+    render(() => <Slice api={api} area={area} volume="v" axis="z" angles={angleList} />, host);
+    const group = () => host.querySelector('[role="group"][aria-label="Placement"]');
+    const pressed = () =>
+      Array.from(group()?.querySelectorAll('button') ?? [])
+        .filter((b) => b.getAttribute('aria-pressed') === 'true')
+        .map((b) => b.textContent);
+    return { host, group, pressed, asked, place };
+  }
+
+  it('offers the three places, the one it is in pressed; a click places it, at once', () => {
+    const { group, pressed, asked } = placed();
+    expect(Array.from(group()!.querySelectorAll('button'), (b) => b.textContent)).toEqual([
+      'Beside, raw',
+      'Beside, turned',
+      'Overlay, turned',
+    ]);
+    expect(pressed()).toEqual(['Beside, raw']);
+    (Array.from(group()!.querySelectorAll('button'))[2] as HTMLButtonElement).click();
+    expect(asked).toEqual([{ volume: 'v', place: 'overlay' }]);
+    expect(pressed()).toEqual(['Overlay, turned']);
+  });
+
+  it('presses none once moved elsewhere; is not on a volume without angles', () => {
+    const { pressed, place } = placed();
+    place.set(undefined);
+    expect(pressed()).toEqual([]);
+    document.body.innerHTML = '';
+    expect(placed([]).group()).toBeNull();
+  });
+});
