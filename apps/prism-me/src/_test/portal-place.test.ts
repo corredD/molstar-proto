@@ -85,8 +85,10 @@ describe("a portal tilt series' Placement, by the explorer's stage", () => {
   it('switches beside, overlay, turned and back, each at its own matrix (the stage composes the moves)', async () => {
     const { v, tomogram, ts, grid, at } = await loaded();
     const portal = v.api.cryoetPortal!;
-    expect(portal.placeOf(ts)).toBe('beside');
-    for (const place of ['overlay', 'turned', 'beside', 'overlay', 'beside'] as const) {
+    // loaded under the tomogram: overlay is the default (Ludo, 2026-11-04)
+    expect(portal.placeOf(ts)).toBe('overlay');
+    expect(Mat4.areEqual(at(ts), tiltSeriesMatrix('overlay', grid(ts), -5, grid(tomogram)), 1e-6)).toBe(true);
+    for (const place of ['beside', 'turned', 'overlay', 'beside', 'overlay'] as const) {
       const r = await v.api.run('cryoetPortal.place', { volume: ts, place });
       expect(r.ok).toBe(true);
       expect(Mat4.areEqual(at(ts), tiltSeriesMatrix(place, grid(ts), -5, grid(tomogram)), 1e-6)).toBe(true);

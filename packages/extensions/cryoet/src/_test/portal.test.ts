@@ -347,7 +347,7 @@ describe('cryoetPortal', () => {
     expect(v.api.cryoetPortal!.tiltAnglesOf(volumes[2].cell.transform.ref)).toEqual([-60, -20, 20, 60]);
   });
 
-  it('places a tilt series by the tomogram: beside as read (as before), beside turned, or turned under it', async () => {
+  it('places a tilt series by the tomogram: turned under it (the default), beside as read, or beside turned', async () => {
     serve();
     const v = await viewer(source, [Composing]);
     const r = await v.api.run('cryoetPortal.load', {
@@ -362,10 +362,13 @@ describe('cryoetPortal', () => {
     const grid = (x: typeof ts) => (x.cell.obj!.data as Volume).grid;
     const ref = ts.cell.transform.ref;
     const at = () => matrixOf(v, ref)!;
-    // beside, the default: today's move, along -x by 2.5 times its radius, nothing turned
+    // overlay, the default (Ludo, 2026-11-04: "Overlay is best"): under the tomogram, turned
+    expect(Mat4.areEqual(at(), tiltSeriesMatrix('overlay', grid(ts), -5, grid(tomogram)), 1e-6)).toBe(true);
+    expect(v.api.cryoetPortal!.placeOf(ref)).toBe('overlay');
+    // beside, as before: along -x by 2.5 times its radius, nothing turned
     const { radius } = Grid.getBoundingSphere(grid(ts));
-    expect(Array.from(at())).toEqual(Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(-2.5 * radius, 0, 0))));
-    expect(v.api.cryoetPortal!.placeOf(ref)).toBe('beside');
+    expectOk(await v.api.run('cryoetPortal.place', { volume: ref, place: 'beside' }));
+    expect(Mat4.areEqual(at(), Mat4.fromTranslation(Mat4(), Vec3.create(-2.5 * radius, 0, 0)), 1e-6)).toBe(true);
     // turned and back, each the place's own matrix, not one move on top of the other
     for (const place of ['overlay', 'turned', 'beside', 'overlay'] as const) {
       expectOk(await v.api.run('cryoetPortal.place', { volume: ref, place }));
