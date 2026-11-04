@@ -307,7 +307,9 @@ still completes its distance.
   - a particle list or a target: Decoration (the cryo-ET Decorations control). A volume: Slice. A mesh: its look.
   - Shared controls moved to exported modules: `@molstar/cryoet-extension/controls` (Decorations, Slice, MeshControls),
     `@molstar/mesoscale-extension/controls` (GraphicsMode, Motion; the motion read from the representations, new
-    `mesoscale.graphicsState`). A slider acts once released (one step).
+    `mesoscale.graphicsState`). A slider acts once released (one step), but the slices' (Slice, Oblique slice, their
+    Representation form) and a mesh's Opacity: they act as they go, a step as soon as the last landed (the newest value
+    winning), one undo step a drag (Prism's `gestureSteps`; Ludo, 2026-11-03: "as I move the slider, the slice move").
 - Step 2 additions (2026-10-18, Ludovic's test):
   - A particle list (and a model, a target): Representation, each of its representations with an eye
     (`explorer.representationVisibility`) and its whole form, as Prism's inspector has it (`ParamsFormModel` on the

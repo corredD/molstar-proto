@@ -30,6 +30,7 @@ import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { classes } from './_generated/controls.module.css.js';
 import type { CryoetApi, DecorationsInfo, MeshInfo, ObliqueView, SliceAxis, TargetDecoration } from './operations.js';
 import { mb } from './portal-run.js';
@@ -46,6 +47,39 @@ function Line(props: { label: string; children: JSX.Element }) {
       {props.children}
     </div>
   );
+}
+
+/**
+ * A slider's changes at pointer rate, live: each preview applied as soon as the one before settles (the newest winning
+ * per key, the ones between dropped), the release applying the last, a drag one undo step; keys pressed in a row are
+ * one step too (no preview before their commits: the quiet ends it, as Prism's own sliders); the controls gone, what
+ * they showed is applied. Prism's `gestureSteps`; no throttle but its own: a step waits as long as the last took, so the
+ * page keeps up with the pointer. `overlay(key)`, read again on `changes`: what has not landed yet, for the sliders to
+ * show over the state (an earlier step landing does not pull the knob back from the pointer).
+ */
+function live<C extends object>(
+  api: ViewerApi,
+  label: string,
+  apply: (g: ViewerApi, key: string, change: C) => Promise<unknown>,
+) {
+  const changes = observableState(0);
+  const steps = gestureSteps<C>(api, { label, apply, changed: () => changes.set(changes.value + 1), throttleMs: 0 });
+  onCleanup(() => steps.settle());
+  let dragged = false;
+  return {
+    changes: changes.asReadonly,
+    overlay: (key = '') => steps.overlay(key),
+    preview(c: C, key = '') {
+      dragged = true;
+      steps.change(key, c);
+    },
+    commit(c: C, key = '') {
+      steps.change(key, c);
+      if (!dragged) return;
+      dragged = false;
+      steps.settle();
+    },
+  };
 }
 
 /** Spheres: no decoration (the select's value) */
@@ -273,13 +307,11 @@ export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: s
   const radius = mapState(info, (s) => Math.ceil(s?.radius ?? 100));
   const handles = area.useObliqueHandles(api);
   const on = mapState(handles.target, (t) => t?.slice === slice);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => clearTimeout(timer));
-  // The sliders change at pointer rate: one call a moment after the last.
-  const run = (values: Partial<Record<'x' | 'y' | 'z' | 'ex' | 'ey' | 'contrast', number>>, delay = 60) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => void area.oblique({ volume, slice, ...values } as never), delay);
-  };
+  const place = live<Partial<Record<'x' | 'y' | 'z' | 'ex' | 'ey' | 'contrast', number>>>(
+    api,
+    'Oblique slice',
+    (g, _key, v) => g.cryoet!.oblique({ volume, slice, ...v } as never),
+  );
   const number = (
     label: string,
     read: (o: ObliqueView) => number,
@@ -289,13 +321,13 @@ export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: s
     <Line label={label}>
       <Slider
         aria-label={label}
-        value={mapState(view, (o) => (o ? Math.round(read(o) * 10) / 10 : 0))}
+        value={derive([view, place.changes], (o) => place.overlay()?.[key] ?? (o ? Math.round(read(o) * 10) / 10 : 0))}
         min={range.min}
         max={range.max}
         step={0.1}
         unit={range.unit}
-        onPreview={(v) => run({ [key]: v })}
-        onCommit={(v) => run({ [key]: v })}
+        onPreview={(v) => place.preview({ [key]: v })}
+        onCommit={(v) => place.commit({ [key]: v })}
       />
     </Line>
   );
@@ -318,13 +350,13 @@ export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: s
       <Line label="Contrast">
         <Slider
           aria-label="Contrast"
-          value={mapState(view, (o) => o?.contrast ?? 3)}
+          value={derive([view, place.changes], (o) => place.overlay()?.contrast ?? o?.contrast ?? 3)}
           min={0.5}
           max={10}
           step={0.1}
           unit="±σ"
-          onPreview={(c) => run({ contrast: c })}
-          onCommit={(c) => run({ contrast: c })}
+          onPreview={(c) => place.preview({ contrast: c })}
+          onCommit={(c) => place.commit({ contrast: c })}
         />
       </Line>
     </div>
@@ -471,8 +503,14 @@ export function tiltAngleText(angles: readonly number[] | undefined, index: numb
  * first (the slice it shows is edited), and the three slices at a click. A tilt series' `angles` (one an image): the Z
  * slice's image's on a Tilt line under it (_spec/portal.md §4)
  */
-export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis; angles?: readonly number[] }) {
-  const { area, volume } = props;
+export function Slice(props: {
+  api: ViewerApi;
+  area: CryoetApi;
+  volume: string;
+  axis?: SliceAxis;
+  angles?: readonly number[];
+}) {
+  const { api, area, volume } = props;
   const info = area.sliceState(volume);
   const picked = observableState<SliceAxis>(props.axis ?? 'z');
   const axis = props.axis ? undefined : picked;
@@ -482,18 +520,19 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
   const count = derive([info, picked.asReadonly], (s, a) =>
     s ? s.dimensions[{ x: 0, y: 1, z: 2 }[props.axis ?? a]] : 1,
   );
-  const contrast = mapState(slice, (s) => s?.contrast ?? 3);
-  // on a line of its own, not the slider's unit: a unit of changing width would resize the track mid-drag (review S1)
-  const angle = derive([count, index, picked.asReadonly], (n, i, a) =>
-    (props.axis ?? a) === 'z' && props.angles?.length === n ? tiltAngleText(props.angles, i ?? 0) : '',
+  const contrast = mapState(slice, (s) => s?.contrast);
+  // a gesture's steps by axis (the picker may change it while one still lands)
+  const move = live<{ index?: number; contrast?: number }>(api, 'Slice', (g, axis, v) =>
+    g.cryoet!.slice({ volume, axis, ...v } as never),
   );
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => clearTimeout(timer));
-  // The sliders change at pointer rate: one call a moment after the last.
-  const run = (values: { index?: number; contrast?: number }, delay = 60) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => void area.slice({ volume, axis: current(), ...values } as never), delay);
-  };
+  // a value of the slice shown: what has not landed yet for its axis over the state's
+  const shown = (key: 'index' | 'contrast', now: ReadonlyState<number | undefined>, none: number) =>
+    derive([now, move.changes, picked.asReadonly], (v) => move.overlay(current())?.[key] ?? v ?? none);
+  // on a line of its own, not the slider's unit: a unit of changing width would resize the track mid-drag; it follows
+  // the slice shown (a drag's value before it lands)
+  const angle = derive([count, shown('index', index, 0), picked.asReadonly], (n, i, a) =>
+    (props.axis ?? a) === 'z' && props.angles?.length === n ? tiltAngleText(props.angles, i) : '',
+  );
   return (
     <div class={classes.tight}>
       {axis ? (
@@ -511,7 +550,7 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
       <Show
         when={mapState(slice, (s) => !!s)}
         fallback={() => (
-          <Button size="sm" onClick={() => run({}, 0)}>
+          <Button size="sm" onClick={() => void area.slice({ volume, axis: current() } as never)}>
             {mapState(picked.asReadonly, (a) => `Show slice ${(props.axis ?? a).toUpperCase()}`)}
           </Button>
         )}
@@ -522,15 +561,15 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
             <Line label="Slice">
               <Slider
                 aria-label="Slice"
-                value={mapState(index, (i) => i ?? 0)}
+                value={shown('index', index, 0)}
                 min={0}
                 max={mapState(count, (n) => Math.max(0, n - 1))}
                 step={1}
                 format={(i) => String(i + 1)}
                 parse={(text) => Math.round(Number.parseFloat(text)) - 1}
                 unit={mapState(count, (n) => `/ ${n}`)}
-                onPreview={(i) => run({ index: i })}
-                onCommit={(i) => run({ index: i })}
+                onPreview={(i) => move.preview({ index: i }, current())}
+                onCommit={(i) => move.commit({ index: i }, current())}
               />
             </Line>
             <Show when={mapState(angle, (t) => !!t)}>
@@ -543,13 +582,13 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
             <Line label="Contrast">
               <Slider
                 aria-label="Contrast"
-                value={contrast}
+                value={shown('contrast', contrast, 3)}
                 min={0.5}
                 max={10}
                 step={0.1}
                 unit="±σ"
-                onPreview={(c) => run({ contrast: c })}
-                onCommit={(c) => run({ contrast: c })}
+                onPreview={(c) => move.preview({ contrast: c }, current())}
+                onCommit={(c) => move.commit({ contrast: c }, current())}
               />
             </Line>
           </>
@@ -572,11 +611,17 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
  * A segmentation mesh's look: shown or hidden, its color (Prism's color row: its `ColorPicker`, one change a moment after
  * the last move), surface, wireframe or both, opacity, scale
  */
-export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: ReadonlyState<readonly MeshInfo[]> }) {
-  const { area } = props;
-  const ref = props.mesh.ref;
+export function MeshControls(props: {
+  api: ViewerApi;
+  area: CryoetApi;
+  /** The mesh by state ref (not its info: the controls stay as it changes, a drag goes on) */
+  mesh: string;
+  list: ReadonlyState<readonly MeshInfo[]>;
+}) {
+  const { api, area } = props;
+  const ref = props.mesh;
   const mesh = mapState(props.list, (l) => l.find((m) => m.ref === ref));
-  // one change a moment after the last (a slider, the picker dragged), made at once if the controls go first
+  // one change a moment after the last (the picker dragged), made at once if the controls go first
   let pending: Record<string, unknown> | undefined;
   const write = () => {
     const values = pending;
@@ -589,6 +634,9 @@ export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: Rea
     pending = { ...pending, ...values };
     timer.start(delay);
   };
+  const opacity = live<{ opacity: number }>(api, 'Mesh opacity', (g, _key, v) =>
+    g.cryoet!.mesh({ mesh: ref, ...v } as never),
+  );
   const color = new ParamsFormModel({ color: PD.Color(Color(0xcccccc)) }, undefined, {
     onChange: ({ color }) => set({ color: Color.toHexStyle(color) }, 120),
   });
@@ -607,7 +655,7 @@ export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: Rea
           }
           onClick={() => set({ visible: !(mesh.value?.visible ?? true) })}
         />
-        <strong class={classes.name}>{props.mesh.label}</strong>
+        <strong class={classes.name}>{mapState(mesh, (m) => m?.label ?? '')}</strong>
       </div>
       <ParamsForm form={color} />
       <Choices
@@ -622,12 +670,12 @@ export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: Rea
       <Line label="Opacity">
         <Slider
           aria-label="Opacity"
-          value={mapState(mesh, (m) => m?.opacity ?? 1)}
+          value={derive([mesh, opacity.changes], (m) => opacity.overlay()?.opacity ?? m?.opacity ?? 1)}
           min={0.05}
           max={1}
           step={0.01}
-          onPreview={(opacity) => set({ opacity }, 80)}
-          onCommit={(opacity) => set({ opacity })}
+          onPreview={(o) => opacity.preview({ opacity: o })}
+          onCommit={(o) => opacity.commit({ opacity: o })}
         />
       </Line>
       {/* a mesh in pixels (a segmentation of a tomogram): its scale is the pixel size; the slider goes by powers */}
