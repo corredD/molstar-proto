@@ -13,8 +13,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { Slice, tiltAngleText } from '../controls.js';
 import type { CryoetApi, SliceAxis, SliceInfo } from '../operations.js';
 
-// A tilt series' Slice row (prism-me's properties, _spec/portal.md §4): the Z slice's image and its tilt angle, the
-// image counted from 1 in the box, its angle by its index from 0 (10003 TS_08: 41 images, −60.005° first).
+// A tilt series' Slice row (prism-me's properties, _spec/portal.md §4): the Z slice's image and, on a line under it, its
+// tilt angle, the image counted from 1 in the box, its angle by its index from 0 (10003 TS_08: 41 images, −60.005° first).
 
 afterEach(() => {
   document.body.innerHTML = '';
@@ -50,14 +50,19 @@ describe("a tilt series' angle", () => {
     expect(tiltAngleText(undefined, 0)).toBe('');
   });
 
-  it("follows the Z slice on its row: image 1 of 41 is the first angle's", () => {
+  it("follows the Z slice on a Tilt line of its own: image 1 of 41 is the first angle's", () => {
     const { host, at } = mounted('z');
-    const unit = () => host.textContent ?? '';
-    expect(unit()).toContain('/ 41 · −60.005°');
+    const spans = () => Array.from(host.querySelectorAll('span'), (x) => x.textContent ?? '');
+    // the slider's unit stays the count: its track's width never depends on the angle (review S1)
+    const unit = () => spans().filter((t) => t.startsWith('/ '));
+    const tilt = () => spans()[spans().indexOf('Tilt') + 1];
+    expect(unit()).toEqual(['/ 41']);
+    expect(tilt()).toBe('−60.005°');
     at(20);
-    expect(unit()).toContain('/ 41 · −0.007°');
+    expect(tilt()).toBe('−0.007°');
     at(40);
-    expect(unit()).toContain('/ 41 · 59.99°');
+    expect(tilt()).toBe('59.99°');
+    expect(unit()).toEqual(['/ 41']);
   });
 
   it('is not on another axis, nor without angles for each image', () => {

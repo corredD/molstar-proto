@@ -469,7 +469,7 @@ export function tiltAngleText(angles: readonly number[] | undefined, index: numb
 /**
  * A volume's slice along `axis` (one per axis): its position and its gray window; without `axis`, a choice of the axis
  * first (the slice it shows is edited), and the three slices at a click. A tilt series' `angles` (one an image): the Z
- * slice's after its count (_spec/portal.md §4)
+ * slice's image's on a Tilt line under it (_spec/portal.md §4)
  */
 export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis; angles?: readonly number[] }) {
   const { area, volume } = props;
@@ -483,10 +483,10 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
     s ? s.dimensions[{ x: 0, y: 1, z: 2 }[props.axis ?? a]] : 1,
   );
   const contrast = mapState(slice, (s) => s?.contrast ?? 3);
-  const unit = derive([count, index, picked.asReadonly], (n, i, a) => {
-    const angle = (props.axis ?? a) === 'z' && props.angles?.length === n ? tiltAngleText(props.angles, i ?? 0) : '';
-    return angle ? `/ ${n} · ${angle}` : `/ ${n}`;
-  });
+  // on a line of its own, not the slider's unit: a unit of changing width would resize the track mid-drag (review S1)
+  const angle = derive([count, index, picked.asReadonly], (n, i, a) =>
+    (props.axis ?? a) === 'z' && props.angles?.length === n ? tiltAngleText(props.angles, i ?? 0) : '',
+  );
   let timer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => clearTimeout(timer));
   // The sliders change at pointer rate: one call a moment after the last.
@@ -528,11 +528,18 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
                 step={1}
                 format={(i) => String(i + 1)}
                 parse={(text) => Math.round(Number.parseFloat(text)) - 1}
-                unit={unit}
+                unit={mapState(count, (n) => `/ ${n}`)}
                 onPreview={(i) => run({ index: i })}
                 onCommit={(i) => run({ index: i })}
               />
             </Line>
+            <Show when={mapState(angle, (t) => !!t)}>
+              {() => (
+                <Line label="Tilt">
+                  <span>{angle}</span>
+                </Line>
+              )}
+            </Show>
             <Line label="Contrast">
               <Slider
                 aria-label="Contrast"

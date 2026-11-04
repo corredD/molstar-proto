@@ -104,9 +104,10 @@ registration); the index tool `tools/portal-index/`.
   size, the range of its angles whatever their order). One picked: its Series level row under it (a `MappedStatic` of
   flat groups, so the form is not made again and the annotations picked stay), the coarsest first; its bytes in the size
   beside Load.
-- **The tilt angle on the Slice row** (Ludo, 2026-11-03): a portal tilt series' Z slice shows its image's angle after
-  the count (`/ 41 · −60.005°`, the slider's unit: no new control), by the image's index from 0 (the box counts from 1);
-  prism-me's properties pass `tiltAnglesOf(volume)` to the cryoet `Slice`.
+- **The tilt angle on the Slice row** (Ludo, 2026-11-03): a portal tilt series' Z slice shows its image's angle on a
+  Tilt line under the Slice slider (`−60.005°`), by the image's index from 0 (the box counts from 1). Not in the
+  slider's unit: a unit of changing width resizes the track, and a drag went backwards (review S1); prism-me's
+  properties pass `tiltAnglesOf(volume)` to the cryoet `Slice`.
 - Story: prism-me › Explorer › CryoET Data Portal (Card, a run of several tomograms: 10518 pt117_ts_001).
 
 ## 5. The URL (prism-me)
