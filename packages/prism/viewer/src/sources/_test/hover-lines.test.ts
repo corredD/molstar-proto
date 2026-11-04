@@ -4,9 +4,14 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { describe, expect, it } from 'vitest';
+import { OrderedSet } from '@molstar/core/data/int';
+import { CustomProperties } from '@molstar/model/model/custom-property';
+import { lociLabel } from '@molstar/model/model/label';
+import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import { hoverLines, hoverRich, pickHoverLabel } from '../hover-lines.js';
 
 it('Mol* loci labels become plain lines', () => {
@@ -16,6 +21,28 @@ it('Mol* loci labels become plain lines', () => {
     'A | ALA 12 & more',
   ]);
   expect(hoverLines(['Sulfate ion <small>|| × 2</small>', { react: true }, ''])).toEqual(['Sulfate ion × 2']);
+});
+
+it("a particle's label: the particle, its entity's description under it (a link's text), its list small", () => {
+  const list: ParticleList = {
+    label: 'Exosome',
+    count: 1,
+    keys: new Int32Array(1),
+    targets: new Int32Array(1),
+    targetInfo: new Map([[0, { entity: 0 }]]),
+    entities: new Int32Array(1),
+    entityInfo: new Map([[0, { name: 'CD81', description: 'CD81 antigen PDB entry [5TCX](http://www.rcsb.org/)' }]]),
+    coordinates: new Float32Array(3),
+    getParticleLabel: () => 'Particle 1 · CD81',
+    sourceData: { kind: 'test', name: 'test', data: {} },
+    customProperties: new CustomProperties(),
+    _propertyData: Object.create(null),
+  };
+  expect(hoverRich([lociLabel(Particle.Loci(list, OrderedSet.ofSingleton(0)))])).toEqual([
+    { role: 'title', runs: [{ text: 'Particle 1 · CD81', bold: true }] },
+    'CD81 antigen PDB entry 5TCX',
+    { role: 'text', runs: [{ text: 'Exosome', small: true }] },
+  ]);
 });
 
 it('decodes only the known entities, never what an object inherits', () => {
