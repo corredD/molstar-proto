@@ -182,6 +182,9 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   with the maintainer (2026-10-25): it needs a Mol\* core change, a dependency on an object being one on the object as
   decorated (`packages/core/src/state/state.ts`, `initCells` and the delete loop; review K1: the move is a decorator
   under the object, which the distance's dependency does not see).
+- A label by selection (lane `label-selection`, 2026-11-04) keeps its place, not its selection: `stage.move` moves it
+  with its structure as any label, but a change outside the stage (a model's frame, a structure rebuilt) leaves it where
+  it was; following its atoms is the distances' core issue above.
 - Distances, left open by the review: a test for the explorer's click routing on a label (`ui.tsx`: a Ctrl+click on a
   label is refused), which needs canvas clicks with a position and `labelAt`; a volume point keeps one instance (a
   volume of several, from MVS, would be measured from its first).
