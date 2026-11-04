@@ -1041,7 +1041,7 @@ type ParticleType = { params: { structure: { colorLevels?: { name: string; param
  * A particle representation's `type` with its structure targets' color levels on (`edges` over its own, else the
  * defaults) or off; as given without a structure group (a spacefill)
  */
-function withColorLevels<T>(type: T, on: boolean, edges: Partial<ColorLevels.Props> = {}): T {
+export function withColorLevels<T>(type: T, on: boolean, edges: Partial<ColorLevels.Props> = {}): T {
   const structure = (type as Partial<ParticleType> | undefined)?.params?.structure;
   if (!structure) return type;
   const old = structure.colorLevels;
