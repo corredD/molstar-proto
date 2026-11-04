@@ -10,7 +10,7 @@ import { StateSelection } from '@molstar/core/state';
 import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
 import type { Grid } from '@molstar/model/model/volume';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
@@ -515,10 +515,15 @@ describe('explorer', () => {
     await addLabel(v.api, area, picked, undefined, [1, 2, 3], one);
     expect(labels()[0]).toMatchObject({ text: name, node: picked.key, target: crn.ref });
     labels()[0].position.forEach((x, i) => expect(x).toBeCloseTo(where[i], 3));
+    // the right-click's item gives the menu's pick to it
+    const item = nodeMenuItems(v.api, area, picked, { at: [1, 2, 3], loci: one }).find((i) => i.id === 'label')!;
+    item.run!();
+    await vi.waitFor(() => expect(labels()).toHaveLength(2));
+    expect(labels()[1]).toMatchObject({ text: name, position: labels()[0].position });
     // a chain's pick: its row's label, where it was clicked (as before)
     granularity('chain');
     await addLabel(v.api, area, area.pickedOf(one)!, undefined, [1, 2, 3], one);
-    expect(labels()[1]).toMatchObject({ text: 'CRAMBIN', position: [1, 2, 3] });
+    expect(labels()[2]).toMatchObject({ text: 'CRAMBIN', position: [1, 2, 3] });
   });
 
   it("puts a part's label on one of its particles, not their center (an entity's copies around a model)", async () => {
