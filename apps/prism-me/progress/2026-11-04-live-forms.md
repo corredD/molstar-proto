@@ -73,6 +73,14 @@ Size: about 60 production lines (history 25, forms 35), plus tests.
   calls the update during it, applies the release's value, one group, for a slice, an isosurface, a direct volume and a
   particle list's form. The cryoet `live` helper was not needed (not touched).
 
+- `8c2fc7fea` prism-viewer (upstream candidate): once a step is refused, a gesture applies nothing more (it would be
+  thrown away at its end). `6a15e0d88` prism-viewer (upstream candidate): after a step threw, the next change starts
+  another gesture (it went into a step nothing ran, and the release's value was lost; pre-existing). `73c7fdd0f` their
+  changelog in its own entry (`.v6/changelogs/gesture-one-checkpoint.md`), so an upstream pick takes it.
+- `811bffbbd` prism-me: every Representation form loads the state again when no step is in progress (only a direct
+  volume's did): after an Undo an isosurface's, a particle list's or a slice's form showed the dragged value and its
+  next change wrote it back (pre-existing).
+
 ## Measured (headed Chromium, WebGPU, M-series Mac, port 1350; a Sonnet helper, scripts in the session's scratchpad)
 
 One update of each form, during a real 40-move mouse drag (the operation call, from `api.events`):
@@ -85,8 +93,9 @@ One update of each form, during a real 40-move mouse drag (the operation call, f
 - CellPack MG, the model's Representation (Objects, the decoration), its Opacity: `particles.update` 28 calls for 40
   moves (the moves landing during a call merged), median 69 ms (63–84). History +0 mid, +1 after; Undo back to 1.
 - Seen: a drag held over 600 ms (a 1 s screenshot, a 1.2 s stall) is two steps (gestureSteps' quiet, the form has no
-  release); after an Undo the isosurface's and the particle form show the dragged value until the row is picked again
-  (they never followed the state; only a direct volume's does). Both pre-existing, in TODO.md.
+  release; pre-existing, TODO.md). After an Undo the isosurface's and the particle form showed the dragged value: fixed
+  (`811bffbbd`); checked again in Chromium: after the Undo the form shows the state (2σ; alpha 1), and the next drag
+  starts from it.
 
 Checkpoints: before 6 for a 5-step drag (N+1), after 1 (the headless test's count of `getSnapshot`).
 
@@ -117,15 +126,45 @@ while dragging, the full one at the release (level 1 is about 50 ms, but needs t
 slice (the 3D texture sampled in a shader): a few ms a step, but a new representation; not before (1) is measured. In
 TODO.md.
 
+## Review gate
+
+Reviewer (Opus): 0 must-fix, 4 should-fix, 4 nits. Skeptic (Opus): 4 confirmed (1 lowered to a nit), 4 refuted, 2 new (a
+should-fix confirmed, a nit plausible).
+
+- 1 should-fix, steps applied after a refused one, then thrown away: fixed `8c2fc7fea` (failing test first).
+- 2 should-fix, the direct volume's form keeps the dragged values after a rollback: refuted (the state's re-read is
+  frame-coalesced and lands after the step's end; skeptic's probe).
+- 3 should-fix, the isosurface and particle forms never follow the state (an Undo, then a change writes the dragged
+  value back; pre-existing): fixed `811bffbbd` (failing test first).
+- 4 should-fix (skeptic: nit), the prism-viewer changelog in the app's commit: fixed forward `73c7fdd0f`, its own entry.
+- 5 nit, the slow-snapshot test's busy-wait, no control in the file: mostly refuted (it fails on the old code; a busy
+  wait only makes the snapshot slower). Left.
+- 6 nit, the header's list of users: fixed in `8c2fc7fea`.
+- 7 nit, `throttleMs: 0` against the older "250 ms" TODO line: refuted (Ludo's 2026-11-04 answer, "same rule as the
+  slices"; a step still waits as long as the last took).
+- 8 nit, a slice form's history label is the representation's ("Slice X"): refuted as a defect (intended).
+- N1 should-fix (skeptic, pre-existing), a step that throws leaves `open` on a dead step, the release's value lost:
+  fixed `6a15e0d88` (failing test first).
+- N2 nit (skeptic), the label is taken when the form is made: left, TODO.md.
+
 ## Checks
 
-The full prism-viewer suite (quick 213 files, 1408 passed; medium 3 files, 28 passed); prism-me (28 files, 172 passed);
-cryoet, mesoscale and stage-tools (passed); `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`,
+After the review fixes: the full prism-viewer suite (quick 213 files, 1409 passed and the waste audit, which failed once
+in the parallel run, passed alone, as Prism's AGENTS.md says; medium 3 files, 28 passed); prism-me (28 files, 174
+passed); cryoet, mesoscale and stage-tools (passed); `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`,
 `pnpm format:check`, `pnpm check:workspace` (after `node scripts/workspace/assets.mjs`: a missing CSS export) and
 prism-viewer `styles:check` pass. prism-viewer `typecheck:storybook` fails on `src/api/styles.ts:114` (a file this lane
 does not touch: not ours).
 
 ## Size
 
-Brief: about 60 production lines. Production diff: 3 lines in gestureSteps (and its comment), about 15 in
-properties.tsx. Under: the history fix is one option, and the forms reused the slice's path.
+Brief: about 60 production lines. Production diff: about 10 lines in gestureSteps (the option, the stop after a refusal,
+the dead step) and about 15 in properties.tsx. Under: the history fix is one option, and the forms reused the slice's
+path.
+
+## Screenshots (the session's scratchpad, `forms/`)
+
+`iso-mid-1.jpg`, `iso-mid-2.jpg`, `iso-released.png`, `dv-mid-1.jpg`, `dv-mid-2.jpg`, `dv-released.png`,
+`particles-mid-1.jpg`, `particles-mid-2.jpg`, `particles-released.png`, `iso-after-undo.png`,
+`particles-after-undo.png`; the profiles `slice-level0.cpuprofile`, `slice-level1.cpuprofile`,
+`slice-level2.cpuprofile`.
