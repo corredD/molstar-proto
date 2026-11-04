@@ -18,6 +18,8 @@ export interface MesoEntity {
   readonly name: string;
   /** Its function (`entityInfo.function`: "membrane", "Lipid"), if given */
   readonly function?: string;
+  /** Its description (`entityInfo.description`, Markdown: "Integrin alpha-5, …"), if given */
+  readonly description?: string;
   /** Its particles */
   readonly count: number;
   /** The compartment most of its particles are in (`compartmentInfo`), -1: none */
@@ -77,6 +79,7 @@ function computeEntities(particles: ParticleList): MesoEntity[] {
         id,
         name,
         ...(info?.function ? { function: info.function } : {}),
+        ...(info?.description ? { description: info.description } : {}),
         count: counts.get(id) ?? 0,
         compartment,
       };

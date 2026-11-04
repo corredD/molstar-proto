@@ -18,6 +18,19 @@ describe('mesoscale model', () => {
     ]);
   });
 
+  it("keeps an entity's description (Markdown, as the file has it)", () => {
+    const list = cellpackLike();
+    const entityInfo = new Map(list.entityInfo);
+    entityInfo.set(1, { name: 'CA', description: 'Capsid protein, PDB entry [3H47](http://www.rcsb.org/)' });
+    expect(mesoEntities({ ...list, entityInfo })[1]).toEqual({
+      id: 1,
+      name: 'CA',
+      description: 'Capsid protein, PDB entry [3H47](http://www.rcsb.org/)',
+      count: 1,
+      compartment: 1,
+    });
+  });
+
   it('groups the entities in the compartment tree', () => {
     const list = cellpackLike();
     const root = mesoGroups(list, mesoEntities(list), 'compartment');
