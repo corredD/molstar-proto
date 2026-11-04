@@ -121,7 +121,8 @@ export interface PortalOrigin {
 const DatasetParam = () => PD.Numeric(10003, { min: 0, step: 1 }, { description: 'A dataset of the index, by id' });
 const RunParam = () => PD.Text('', { description: 'A run by name (TS_08) or id; empty: the first' });
 const PlaceParam = () =>
-  PD.Select<TiltSeriesPlace>('beside', TiltSeriesPlaces as [TiltSeriesPlace, string][], {
+  // overlay the default (Ludo, 2026-11-04, after comparing the three: _spec/portal.md §2)
+  PD.Select<TiltSeriesPlace>('overlay', TiltSeriesPlaces as [TiltSeriesPlace, string][], {
     description:
       'Where a tilt series goes by its tomogram: beside it as read, beside it turned by its tilt axis, under it turned',
   });

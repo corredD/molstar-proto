@@ -59,18 +59,19 @@ registration); the index tool `tools/portal-index/`.
   alone, where it lands. `tiltAnglesOf(ref)`: its angles, found from the volume's download (as `originOf`), for the
   Slice row's readout (§4).
 - **A tilt series' place, a switch to compare** (Ludo, 2026-11-04: "make it optional so we can compare"; the default is
-  undecided, so it stays `beside`): `cryoetPortal.place` (`volume`, `place`), `load`'s `tiltSeriesPlace`, each an
-  absolute matrix on top of where it was read (`tiltSeriesMatrix`), sent to `stage.move` as the move from where it is
-  (its volume's transform decorator), so a switch back and forth ends where the place says. `beside`: along −x by 2.5
-  times its radius, as the average (`besideMatrix`), the images as read; `turned`: so, turned about z through its center
-  by **−(tilt axis + 180°)**; `overlay`: turned, its center on the tomogram's in x, y, its top at the tomogram's bottom,
-  where the tomogram is now (its transform), not where it was read (its run's tomogram found in the scene by its
-  download; none: refused). The sign was measured, not assumed: on 10003 TS_08 (tilt axis −5°, tomogram 638, Warp), the
-  0° image (index 20) band-passed and turned over the full circle, with and without a mirror, against the tomogram's top
-  view (level 1 summed over z): one peak at −175.5° (CC 0.66; every other angle under 0.08, the median 0.04; mirrored,
-  at most 0.06), centre to centre within 14 Å, so the tomogram is the image turned, not mirrored, and −(tilt axis +
-  180°) is 0.5° off the peak (about 28 Å at the field's edge). In the app, overlay's turned image and the tomogram's Z
-  slice show the cell's outline alike. One run measured: another reconstruction's convention may differ (TODO).
+  `overlay`, his pick after comparing the three on 10003 TS_08: "Overlay is best"): `cryoetPortal.place` (`volume`,
+  `place`), `load`'s `tiltSeriesPlace`, each an absolute matrix on top of where it was read (`tiltSeriesMatrix`), sent
+  to `stage.move` as the move from where it is (its volume's transform decorator), so a switch back and forth ends where
+  the place says. `beside`: along −x by 2.5 times its radius, as the average (`besideMatrix`), the images as read;
+  `turned`: so, turned about z through its center by **−(tilt axis + 180°)**; `overlay`: turned, its center on the
+  tomogram's in x, y, its top at the tomogram's bottom, where the tomogram is now (its transform), not where it was read
+  (its run's tomogram found in the scene by its download; none: refused). The sign was measured, not assumed: on 10003
+  TS_08 (tilt axis −5°, tomogram 638, Warp), the 0° image (index 20) band-passed and turned over the full circle, with
+  and without a mirror, against the tomogram's top view (level 1 summed over z): one peak at −175.5° (CC 0.66; every
+  other angle under 0.08, the median 0.04; mirrored, at most 0.06), centre to centre within 14 Å, so the tomogram is the
+  image turned, not mirrored, and −(tilt axis + 180°) is 0.5° off the peak (about 28 Å at the field's edge). In the app,
+  overlay's turned image and the tomogram's Z slice show the cell's outline alike. One run measured: another
+  reconstruction's convention may differ (TODO).
 - **Names: run, kind, id** (Ludo, 2026-11-04): a volume is named `<run> tomogram <id>`, `<run> tilt series <id>`, a mask
   `<run> <object> <annotation id>` (`TS_08 tomogram 638`, `TS_08 tilt series 17086`, `TS_08 membrane 15656`), the label
   of `OmeZarrFromUrl`, its volume's with it; every zarr of a run is `<run>.zarr`, so the tomogram and its tilt series

@@ -296,7 +296,7 @@ describe('cryoetPortal', () => {
     expect(r.did).toContain('Tilt series: TS-17 · 10.01 Å · 520×520×4 · −60°…+60° step 40°');
   });
 
-  it('loads a tilt series as its Z slice only, from the middle image, beside the tomogram loaded with it', async () => {
+  it('loads a tilt series as its Z slice only, from the middle image, beside the tomogram loaded with it (asked)', async () => {
     const fetch = serve();
     StageMoves.calls.length = 0;
     const v = await viewer(source, [Stage]);
@@ -306,6 +306,8 @@ describe('cryoetPortal', () => {
       annotations: 'none',
       as: 'slices',
       tiltSeries: 17,
+      // beside, not the default overlay: its move along -x is what is checked below
+      tiltSeriesPlace: 'beside',
     });
     expectOk(r);
     expect(r.did).toContain('tilt series 17 (level 2, 4 images)');
