@@ -202,7 +202,21 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   made once and does not follow the state: after a Slice drag it holds the old index, and its next change writes it
   back. A key press or a typed value on a live slider holds the history for the 600 ms quiet (keys in a row are one
   step; other runs wait), as Prism's own sliders; the forms do the same after each change. The jsdom fakes of
-  `api.group` do not model the history's lock (the headless tests do).
+  `api.group` do not model the history's lock (the headless tests do). The isosurface's and a particle list's forms do
+  not follow the state either (only a direct volume's does): after an Undo they show the dragged value until the row is
+  picked again (seen in Chromium by `live-forms`; it was so with the 150 ms write too). A drag held still over 600 ms
+  (or a 1 s main-thread stall) is two undo steps (`gestureSteps`' quiet; the form has no release).
+- A slice step at level 0 (lane `live-forms`, item 7, measured 2026-11-04; Ludo: "Measure first"): on TS_08 level 0
+  (928×928×450, WebGPU) one Z step takes about 435 ms (366–526), 89 % of it the image build on the main thread
+  (`createGridImage`, `packages/graphics/src/repr/volume/slice.ts`, 387 ms a step), the texture upload about 12 ms, the
+  render about 3 ms, the GC 23 ms. The build's loop does, for each of the 861k pixels, a theme `color()` call and a
+  `Vec3.transformMat4` (even for a uniform theme), and a `mapping.index.set(o, [i])` (a Map of 861k entries, an array
+  each). Proposal, in this order: (1) a library lane from `origin/master` (upstream candidate): the pixel→cell index
+  made lazily or as a typed array (it is for picking), the color computed once for a uniform theme and the position
+  stepped instead of transformed; expected 3–5× (about 80–130 ms at level 0, a few slices more a second), the same for
+  every Mol* slice. (2) If still over a few frames: a coarser level while dragging (level 1, about 50 ms a step, only if
+  loaded already), the full level at the release. (3) A GPU-side slice (a 3D texture sampled in the shader) would make a
+  step a few ms but is a new representation: not before (1) is measured.
 - The explorer mocks' checks in CI: `pnpm -C apps/prism-me styles:check` and `typecheck:storybook` run nowhere
   (`.github/workflows/node.yml` runs them for `packages/prism/*` only), so a stale `_generated` module or a story's type
   error stays green.
