@@ -205,7 +205,6 @@ export const assign_varyings_wgsl = /* wgsl */ `
             let colorGridPosition = select(${GridPosition}, ${GridModelPosition}, uObject.uColorIndexType == 1);
             out.vColor = vec4<f32>(${grid_value_wgsl('tColorGrid', 'colorGridPosition')}.rgb, 1.0);
         #endif
-        ${assign_color_levels_wgsl}
 
         #if defined(dUsePalette)
             // the color data hold palette indices, see \`ColorTheme.Palette\`
@@ -219,14 +218,20 @@ export const assign_varyings_wgsl = /* wgsl */ `
                 ${assign_data_index_wgsl('dOverpaintType', 'overpaintIndex')}
                 let overpaint = read_tOverpaint(overpaintIndex);
             #endif
-            // pre-mix to avoid darkening due to empty overpaint
-            #if defined(dColorType_uniform)
-                let baseColor = uMaterial.uColor;
+            #if defined(dColorLevels) && defined(dColorType_texture)
+                // the alpha after strength; the color stays raw so the levels can mix it (color-levels.md)
+                out.vOverpaint = vec4<f32>(overpaint.rgb, overpaint.a * uMaterial.uOverpaintStrength);
             #else
-                let baseColor = out.vColor.rgb;
+                // pre-mix to avoid darkening due to empty overpaint
+                #if defined(dColorType_uniform)
+                    let baseColor = uMaterial.uColor;
+                #else
+                    let baseColor = out.vColor.rgb;
+                #endif
+                out.vOverpaint = vec4<f32>(mix(baseColor, overpaint.rgb, overpaint.a), overpaint.a) * uMaterial.uOverpaintStrength;
             #endif
-            out.vOverpaint = vec4<f32>(mix(baseColor, overpaint.rgb, overpaint.a), overpaint.a) * uMaterial.uOverpaintStrength;
         #endif
+        ${assign_color_levels_wgsl}
 
         #if defined(dEmissive)
             #if defined(dEmissiveType_volumeInstance)

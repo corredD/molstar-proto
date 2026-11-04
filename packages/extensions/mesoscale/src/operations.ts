@@ -514,9 +514,9 @@ export class MesoscaleApi extends ApiArea {
       if (!nodes.length) return ApiResult.already('The colors already follow the zoom so.');
       await b.commit();
       if (on === false) return ApiResult.ok('Colors no longer follow the zoom.', { nodes });
-      // the colors set in Look are an overpaint: they paint over the levels where they are
+      // a Look color is an overpaint: while By zoom is on it holds until the atoms (color-levels.md)
       const painted = (one ? [one] : lists(ctx)).some((l) => !!clearedColors(ctx, l));
-      const note = painted ? ' The colors set in Look paint over them: Look › Reset shows them.' : '';
+      const note = painted ? ' A color set in Look is that color until the atoms, and By zoom stays on.' : '';
       return ApiResult.ok(`Colors follow the zoom.${note}`, { nodes });
     },
   });
@@ -616,10 +616,12 @@ export class MesoscaleApi extends ApiArea {
    * A color theme for several objects at once, each kind by the theme it takes (a category's brush in prism-me, ui.md
    * §3): structures by object, entity, chain or one color; particle models and lists by object, entity (a list with no
    * entities: by object), generated colors or one color; volumes (their isosurfaces: slices show the data) and meshes
-   * by object or one color. Everything is planned before a change, so a theme an object does not take changes nothing;
-   * then one change: the representations' themes in one commit, the structures' own colors (their overpaint) cleared in
-   * one `representation.reset` (when every structure is given), every list's look colors (they paint over a theme)
-   * cleared or generated in one `particles.look`, every mesh in one `cryoet.mesh`, in one data transaction.
+   * by object or one color. By zoom, once on, stays on for every later theme. A uniform color while it is on (or By
+   * object) is written as Look colors on the texture theme, so that color holds until the atoms. Everything is planned
+   * before a change, so a theme an object does not take changes nothing; then one change: the representations' themes
+   * in one commit, the structures' own colors (their overpaint) cleared in one `representation.reset` (when every
+   * structure is given), every list's look colors cleared, generated or painted in one `particles.look`, every mesh in
+   * one `cryoet.mesh`, in one data transaction.
    */
   readonly theme = this.operation({
     id: 'mesoscale.theme',
@@ -706,6 +708,19 @@ export class MesoscaleApi extends ApiArea {
           }
           const byEntity = theme === 'entity' && entities;
           if ((theme === 'entity' || theme === 'generate') && !entities) fallbacks.push(o.name);
+          // By zoom stays on. A single color would be a uniform theme, which has no texture for the ladder, so it is
+          // a Look color on the texture theme already in use (color-levels.md): that color until the atoms.
+          if (!byEntity && data && particleLevelsOn(o)) {
+            const hierarchy = !!data.entities && !!data.compartments;
+            plans.push({
+              kind: 'reps',
+              o,
+              theme: named(hierarchy ? 'particle-hierarchy' : 'particle-entity'),
+              keepTheme: true,
+              look: oneColor(data, mine),
+            });
+            continue;
+          }
           plans.push({
             kind: 'reps',
             o,
@@ -728,12 +743,20 @@ export class MesoscaleApi extends ApiArea {
         for (const r of p.o.representations) {
           const params = r.transform.params as { type?: { name?: string }; colorTheme?: { name: string } };
           if (p.only && params.type?.name !== p.only) continue;
-          const colorTheme = themeFor(ctx, p.o, r, p.theme);
+          const currentTheme = params.colorTheme as { name: string; params: Record<string, unknown> } | undefined;
+          const colorTheme =
+            p.keepTheme && currentTheme && currentTheme.name !== 'uniform'
+              ? currentTheme
+              : themeFor(ctx, p.o, r, p.theme);
           if (!colorTheme) continue;
           any = true;
-          // the levels go with By zoom: on with it, off with any other theme of a model's
-          const levels = p.levels || p.o.kind === 'particles';
-          const next = { ...params, colorTheme, ...(levels ? { type: withColorLevels(params.type, !!p.levels) } : {}) };
+          // By zoom turns the levels on. Already on, they stay on (Ludo, 2026-11-04). Off is left off.
+          const turnOn = !!p.levels || levelsAreOn(params.type);
+          const next = {
+            ...params,
+            colorTheme,
+            ...(p.o.kind === 'particles' && turnOn ? { type: withColorLevels(params.type, true) } : {}),
+          };
           writes.push({ o: p.o, r, next, same: JSON.stringify(params) === JSON.stringify(next) });
         }
         if (!any) nothing.push(p.o.name);
@@ -843,10 +866,12 @@ type ThemePlan =
       readonly theme: { readonly name: string; readonly params: Record<string, unknown> };
       /** Only representations of this type (a volume's isosurfaces) */
       readonly only?: string;
-      /** Its look colors cleared (they paint over the theme) */
+      /** Its look colors cleared (they paint over the theme), or one color while By zoom is on */
       readonly look?: readonly LookLayer[];
       /** Its colors following the zoom (`mesoscale.colorLevels`), with the theme */
       readonly levels?: boolean;
+      /** Keep a texture theme already set; a uniform one takes `theme` (a uniform color while By zoom is on) */
+      readonly keepTheme?: boolean;
     }
   /** A model's generated colors, its look (no theme of its own) */
   | { readonly kind: 'look'; readonly o: GraphicsObject; readonly look: readonly LookLayer[] }
@@ -873,6 +898,25 @@ class Rollback extends Error {
   constructor(readonly failure: ApiFailure) {
     super(failure.message);
   }
+}
+
+/** One Look color for every entity, or every target when the list has no entities (a uniform color while By zoom is on) */
+function oneColor(data: ParticleList, color: Color): LookLayer[] {
+  const byTarget = !data.entityInfo;
+  return mesoEntities(data).map((e) => ({
+    selector: byTarget ? { targets: [e.id] } : { entities: [e.id] },
+    color,
+  }));
+}
+
+/** Whether a particle representation's color levels are on */
+function levelsAreOn(type: unknown): boolean {
+  return (type as Partial<ParticleType> | undefined)?.params?.structure?.colorLevels?.name === 'on';
+}
+
+/** Whether any of a particle object's structure representations has the color levels on */
+function particleLevelsOn(o: GraphicsObject): boolean {
+  return o.representations.some((r) => levelsAreOn((r.transform.params as { type?: unknown }).type));
 }
 
 /** A list's look colors cleared (by entity, or by target on a list with no entities); none to clear: undefined */

@@ -2,6 +2,7 @@
  * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { texture_sample_wgsl } from './quad.wgsl.js';
@@ -75,7 +76,8 @@ export const assign_material_wgsl = /* wgsl */ `
         var material = vec4<f32>(in.vColor.rgb, uMaterial.uAlpha);
     #endif
 
-    #if defined(dOverpaint)
+    // the levels already folded a Look color into vColor (color-levels.md)
+    #if defined(dOverpaint) && !(defined(dColorLevels) && defined(dColorType_texture))
         material = vec4<f32>(mix(material.rgb, in.vOverpaint.rgb, in.vOverpaint.a), material.a);
     #endif
 

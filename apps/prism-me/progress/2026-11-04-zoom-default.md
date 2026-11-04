@@ -116,3 +116,33 @@ none refuted; 3 nits of its own. Fixed: N3 the control on prism-me's spec withou
 changelog section (`0d3de5cbc`), the import order (`0514939b5`). Left: N2 the swap is silent if the particles feature
 becomes eager or renamed (test 1 fails then), N5 the `replaceFormat` move rides in the feature commit, no PetWorld
 fixture (checked in the browser), later-added targets come up off (outside the brief).
+
+## Follow-up (Ludo, 2026-11-04, after the PR)
+
+"use theses value for the by zoom '0.27px, 2.2px, 28.8px' for entity, chain, atoms. Also applying a uniform color on a
+protein, or clicking the Generate Colors Button, break the 'by Zoom'. by zoom if on should be applyed on any theme. So
+if we apply a color on an object, we only od the transition to atoms."
+
+### Built
+
+- The edges are 0.27, 2.2 and 28.8 px (`ColorLevels.Params`). `blendPainted` is the rule for a Look color: that color
+  until the atoms, then the element (chain offset 0).
+- The vertex shader reads the overpaint, then the levels (`color-levels.md`). An overpaint whose alpha after strength is
+  above 0 is the far color and the entity color; the atom edge stays; the fragment does not mix it back over the color.
+  No new varying. Emissive may still read the overpaint varying.
+- `mesoscale.theme`: a later theme leaves the levels on (review S6 reversed, Ludo). A uniform color, or By object, while
+  they are on keeps the texture theme and writes that one color as Look layers. Generate colors still writes Look layers
+  and does not turn the levels off. Off stays off until By zoom. `mesoscale.colorLevels` says a Look color holds until
+  the atoms.
+
+### Checked
+
+- `pnpm test:unit` on the geometry rule (11), the shader strings (12 ran, 4 native-GL skipped), mesoscale color-levels
+  (10) and theme (13), the particle visual (4), prism-me's load test (3). `tsc -b` of `packages/graphics` and
+  `packages/extensions/mesoscale` passed.
+- The native GL compile did not run: this machine's test context has no GL, so those two tests skip.
+
+### Not checked headed
+
+A protein with By zoom on, then one color and Generate colors, from far to the atoms. The shader string tests lock the
+call; they do not draw it.

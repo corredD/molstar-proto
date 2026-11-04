@@ -43,7 +43,6 @@ export const assign_color_varying = `
         vec3 cgridPos = (uColorGridTransform.w * (cgridSource - uColorGridTransform.xyz)) / uColorGridDim;
         vColor.rgb = texture3dFrom2dLinear(tColorGrid, cgridPos, uColorGridDim, uColorGridTexDim).rgb;
     #endif
-    ${assign_color_levels}
 
     #ifdef dUsePalette
         vPaletteV = ((vColor.r * 256.0 * 256.0 * 255.0 + vColor.g * 256.0 * 255.0 + vColor.b * 255.0) - 1.0) / PALETTE_SCALE;
@@ -59,14 +58,20 @@ export const assign_color_varying = `
             vOverpaint = texture3dFrom2dLinear(tOverpaintGrid, ogridPos, uOverpaintGridDim, uOverpaintGridTexDim);
         #endif
 
-        // pre-mix to avoid darkening due to empty overpaint
-        #ifdef dColorType_uniform
-            vOverpaint.rgb = mix(uColor.rgb, vOverpaint.rgb, vOverpaint.a);
+        #if defined(dColorLevels) && defined(dColorType_texture)
+            // the alpha after strength; the color stays raw so the levels can mix it (color-levels.md)
+            vOverpaint.a *= uOverpaintStrength;
         #else
-            vOverpaint.rgb = mix(vColor.rgb, vOverpaint.rgb, vOverpaint.a);
+            // pre-mix to avoid darkening due to empty overpaint
+            #ifdef dColorType_uniform
+                vOverpaint.rgb = mix(uColor.rgb, vOverpaint.rgb, vOverpaint.a);
+            #else
+                vOverpaint.rgb = mix(vColor.rgb, vOverpaint.rgb, vOverpaint.a);
+            #endif
+            vOverpaint *= uOverpaintStrength;
         #endif
-        vOverpaint *= uOverpaintStrength;
     #endif
+    ${assign_color_levels}
 
     #ifdef dEmissive
         #if defined(dEmissiveType_texture)

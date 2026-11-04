@@ -61,9 +61,24 @@ export const color_levels_wgsl = /* wgsl */ `
 #endif
 `;
 
-/** The color of the vertex by its size on screen, after `vColor` is read (overpaint mixes over it) */
+/**
+ * The color of the vertex by its size on screen, after overpaint is read (`color-levels.md`). A Look color (overpaint
+ * alpha after strength) is the coarse color and the atom edge stays; the fragment does not cover it. No overpaint:
+ * the full ladder.
+ */
 export const assign_color_levels_wgsl = /* wgsl */ `
 #if defined(dColorLevels) && defined(dColorType_texture)
-    out.vColor = vec4<f32>(colorLevels(out.vColor.rgb, read_tColorFar(instanceIndex).rgb, read_tColorNear(groupIndex), colorLevelSize(out.vModelPosition)), 1.0);
+    #if defined(dOverpaint)
+        if (out.vOverpaint.a > 0.0) {
+            let painted = mix(out.vColor.rgb, out.vOverpaint.rgb, out.vOverpaint.a);
+            let element = read_tColorNear(groupIndex);
+            out.vColor = vec4<f32>(colorLevels(painted, painted, vec4<f32>(element.rgb, 128.0 / 255.0), colorLevelSize(out.vModelPosition)), 1.0);
+            out.vOverpaint.a = 0.0;
+        } else {
+            out.vColor = vec4<f32>(colorLevels(out.vColor.rgb, read_tColorFar(instanceIndex).rgb, read_tColorNear(groupIndex), colorLevelSize(out.vModelPosition)), 1.0);
+        }
+    #else
+        out.vColor = vec4<f32>(colorLevels(out.vColor.rgb, read_tColorFar(instanceIndex).rgb, read_tColorNear(groupIndex), colorLevelSize(out.vModelPosition)), 1.0);
+    #endif
 #endif
 `;

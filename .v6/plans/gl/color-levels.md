@@ -39,9 +39,12 @@
   - `tColorNear` (`rgba8`, per group): the atom's element color in `rgb`, the chain offset in `a` (`128 + 127 o`, so that one chain is exactly 0).
   - `uColorLevelEdges` (`log2` of the edges), `uColorLevelBand`, `uColorLevelChainHue` (material uniforms).
   - The entity color is the theme's own (`tColor`, `vColor`).
-- **Applied in the vertex stage**, on `vColor`, before overpaint (a Look color painted over a part still wins): at the
-  sphere's center or the mesh vertex. Why not per pixel: no new varying (WebGL2's 15 and WebGPU's 16 are near full),
-  and an atom is a few pixels at the near levels; a protein still spans levels, atom by atom.
+- **Applied in the vertex stage**, on `vColor`, after overpaint is read, at the sphere's center or the mesh vertex.
+  Why not per pixel: no new varying (WebGL2's 15 and WebGPU's 16 are near full), and an atom is a few pixels at the
+  near levels; a protein still spans levels, atom by atom. With no overpaint the ladder is far, entity, chain, element.
+  An overpaint whose alpha after strength is above 0 is the coarse color: far and entity are that color, the chain
+  offset is 0, and the atom edge remains; the overpaint alpha is then 0, so the fragment does not cover the ladder.
+  Emissive may still read the overpaint varying.
 - **A blob surface** (a mesh target) takes a vertex's group, one representative atom: its atom level is that atom's
   element. Chains are a target's `label_asym_id`s, its ligands and waters included.
 - **Who fills it**: the particle target visual for structure targets (`colorLevels` in its structure params), the near
