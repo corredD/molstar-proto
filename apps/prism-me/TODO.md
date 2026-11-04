@@ -110,12 +110,12 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   chance against the density, and no rotation fixes a mirror. Ludo to decide: mirror the tomogram and its points in
   world x, or a mirrored structure as the target, or leave it said. Plan:
   [plans/2026-11-02-cryoet-portal.md](plans/2026-11-02-cryoet-portal.md). Open from Ludo's test (2026-11-03): the index
-  holds 10003, 10453, 10524, 10518 of the portal's 392 datasets (all of them, rebuilt on a schedule, proposed); the URL
-  cannot choose a spacing or a tomogram (`portal-spacing`, `portal-tomogram`), and a run's first spacing is taken, so
-  10453 tomogram_003 shows 4 automated (Octopi) V-ATPase picks, not the 3 manual ground truth at 13.44 Å (prefer ground
-  truth, proposed); curated PDBs for common objects (V-ATPase, clathrin), by Delphine; a level read already sent is not
-  cancelled (`cryoet.level`, review X2); `portal.ts` `loadZarr` sets `maxSizeMB` from the voxels without one chunk. An
-  unbounded interval's ends cannot cross (v5's can, reversing a colour scale: Ludo may want that back).
+  holds 10003, 10453, 10524, 10518 of the portal's 392 datasets (all of them, rebuilt on a schedule, proposed); a load
+  takes the portal's default tomogram (lane `portal-tomograms`), which for 10453 tomogram_003 is 56411 (IsoNet, 10 Å):
+  it shows 4 automated (Octopi) V-ATPase picks, not the 3 manual ground truth at 13.44 Å (Ludo to decide: the
+  ground-truth spacing's annotations by default, proposed); curated PDBs for common objects (V-ATPase, clathrin), by
+  Delphine; a level read already sent is not cancelled (`cryoet.level`, review X2). An unbounded interval's ends cannot
+  cross (v5's can, reversing a colour scale: Ludo may want that back).
 
 - A sphere a clip plane misses entirely (its center is past the plane by more than its radius): skip it in the color
   pass, and skip one the plane misses in the ghost pass (lane `marking-cost`, not built;

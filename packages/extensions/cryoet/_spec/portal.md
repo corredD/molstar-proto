@@ -16,13 +16,17 @@ registration); the index tool `tools/portal-index/`.
   breaks the tool, not the app.
 - **What it holds:** a dataset's title, organism, DOIs, run count, its runs (all, or the first n: `runs` says how many
   in all); per voxel spacing its tomograms (size, each OME-Zarr level's path, size, spacing, decoded bytes, read from
-  the level's `.zarray`) and annotations (id, object, shape, format, path, size, count, ground truth, the portal's
-  visualization default). Paths are relative to the file host. A shape's MRC is left out when it has a zarr (a browser
-  reads whole files; the zarr has levels).
+  the level's `.zarray`; and what the portal's own tomogram list shows: `processing` (raw, filtered, denoised), `method`
+  (the reconstruction method: WBP, SART, Fourier_Space), `reconstructionSoftware` and `processingSoftware` (with
+  versions: AreTomo3 v2.3.0, IsoNet2), `alignment` (the portal's AL-id) and `default`, the portal's visualization
+  default; each written only when the portal has it, so optional, and version 1 still: an older reader ignores them) and
+  annotations (id, object, shape, format, path, size, count, ground truth, the portal's visualization default). Paths
+  are relative to the file host. A shape's MRC is left out when it has a zarr (a browser reads whole files; the zarr has
+  levels).
 - **Curated, not the portal's:** `decorations` by object name: the PDB that decorates the points, the EMDB average, and
   the average's box center in the structure's frame (§3). The portal links no fitted model.
-- Size: 10003 (65 runs) 116 KB, 10453 (95 runs) 297 KB, 10524 (12 runs) 27 KB, 10518 (49 runs, PP7 virus-like particles;
-  Ludo, 2026-11-03) 213 KB; each loaded on first use only.
+- Size: 10003 (65 runs) 121 KB, 10453 (95 runs) 325 KB, 10524 (12 runs) 32 KB, 10518 (49 runs, PP7 virus-like particles;
+  Ludo, 2026-11-03) 259 KB; each loaded on first use only.
 
 ## 2. The operations
 
@@ -31,6 +35,11 @@ registration); the index tool `tools/portal-index/`.
   `dataset`, `run` (name or id), `spacing`, `tomogram`, `level` (absent: the coarsest), `annotations` (`1212`,
   `2321/SegmentationMask`, `none`; empty: the portal's defaults), `as` (`both`: slices and a direct volume, `slices`,
   `none`), `large`.
+- **Which tomogram** (`describePortalRun`; Ludo, 2026-11-03): `tomogram` by id, from whichever spacing of the run holds
+  it (its spacing, annotations and levels come with it); `spacing` alone: that spacing's default tomogram, else its
+  first; neither: the run's default tomogram, the lowest id flagged `default` (a run may flag one a spacing: 10518
+  pt117_ts_001 flags 64007 at 10.403 Å and 64011 at 5.003 Å, and the portal's run page shows 64007, its first by id),
+  else the first tomogram of the first spacing that has one. Annotations are the chosen spacing's.
 - **Reuse, no reader of its own:** ndjson and GLB by `load.url` (`PortalReaders`), an OME-Zarr by the format's
   transforms (`OmeZarrFromUrl`, `VolumeFromOmeZarr`: several files, not one URL; not `OpenOmeZarr`, whose default
   isosurface the slices would only hide), the points' pixel size by `particles.source`, the decoration by
@@ -71,12 +80,21 @@ registration); the index tool `tools/portal-index/`.
 ## 4. The card
 
 - The explorer's **+ Open** › CryoET Data Portal… opens the overlay card `cryoet-portal.overlay.portal`: a `ParamsForm`
-  made from the index (dataset, run, spacing when more than one, level with its size, tomogram view, annotations with
-  the portal's defaults checked), made again when dataset, run or spacing changes; the total size beside Load; the
-  result under it.
-- Story: prism-me › Explorer › CryoET Data Portal.
+  made from the index (dataset, run, tomogram, level with its size, Show as (the tomogram's view: slices and a direct
+  volume, slices, none), annotations with the portal's defaults checked), made again when dataset, run or tomogram
+  changes; the total size beside Load; the result under it.
+- **One Tomogram choice for the run** (Ludo, 2026-11-03: a run has several, as the portal's "Select tomogram"): every
+  tomogram of the run across its spacings, by id, labelled as the portal's list, compact (`portalTomogramLabel`):
+  `64010 · WBP Denoised · 10.403 Å · 886×630×246 · AreTomo3 v2.3.0, IsoNet2` (the processing's software after the
+  reconstruction's when it differs; the version tells 64004 from 64006). Picking one sets its spacing, so there is no
+  spacing field, and that spacing's annotations and levels. Its default is §2's. A spacing without a tomogram cannot be
+  chosen here (none in the shipped index; the API's `spacing` can).
+- Story: prism-me › Explorer › CryoET Data Portal (Card, a run of several tomograms: 10518 pt117_ts_001).
 
 ## 5. The URL (prism-me)
 
-`?portal-dataset=10003&portal-run=TS_08`, then `portal-annotations` and `portal-level`: `cryoetPortal.load` once the
-viewer is up (`apps/prism-me/src/url.ts`).
+`?portal-dataset=10003&portal-run=TS_08`, then `portal-tomogram` (an id: it picks its spacing too), `portal-spacing`
+(Å), `portal-annotations` and `portal-level`: `cryoetPortal.load` once the viewer is up (`apps/prism-me/src/url.ts`). A
+value that is not a number is left out (the load's default).
+`?portal-dataset=10518&portal-run=pt117_ts_001&portal-tomogram=64010`: the IsoNet2-denoised tomogram and the membrane
+mask at 10.403 Å.

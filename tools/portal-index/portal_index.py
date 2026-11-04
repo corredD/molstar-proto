@@ -17,6 +17,8 @@ import datetime
 import json
 import os
 import sys
+import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -52,9 +54,18 @@ def relative(url):
     return url[len(FILES):]
 
 
-def get_json(url):
-    with urllib.request.urlopen(url, timeout=60) as r:
-        return json.load(r)
+def get_json(url, tries=5):
+    # a burst of reads (16 at a time) sometimes has a name lookup dropped by the resolver: asked again, after a moment
+    for i in range(tries):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r:
+                return json.load(r)
+        except urllib.error.HTTPError:
+            raise  # the host answered: a 404 is not a dropped lookup
+        except urllib.error.URLError:
+            if i == tries - 1:
+                raise
+            time.sleep(1 + i)
 
 
 def zarr_levels(url):
@@ -104,14 +115,27 @@ def index_dataset(client, dataset_id, max_runs):
 
     by_spacing = {s.id: {'spacing': s.voxel_spacing, 'tomograms': [], 'annotations': []} for s in spacings}
     for t in sorted(tomograms, key=lambda t: t.id):
-        by_spacing[t.tomogram_voxel_spacing_id]['tomograms'].append({
+        entry = {
             'id': t.id,
             'name': t.name,
             'processing': t.processing,
             'size': [t.size_x, t.size_y, t.size_z],
             'zarr': relative(t.https_omezarr_dir),
             'levels': levels[t.https_omezarr_dir],
-        })
+        }
+        # what the portal's own tomogram list shows (each when the portal has it): WBP, SART, Fourier_Space, …
+        if t.reconstruction_method:
+            entry['method'] = t.reconstruction_method
+        if t.reconstruction_software:
+            entry['reconstructionSoftware'] = t.reconstruction_software
+        if t.processing_software:
+            entry['processingSoftware'] = t.processing_software
+        if t.alignment_id:
+            entry['alignment'] = t.alignment_id
+        # the portal shows the lowest id flagged (a run may flag one a spacing): the reader picks it
+        if t.is_visualization_default:
+            entry['default'] = True
+        by_spacing[t.tomogram_voxel_spacing_id]['tomograms'].append(entry)
     for f in sorted(files, key=lambda f: (f.annotation_shape_id, f.format)):
         shape = shapes[f.annotation_shape_id]
         a = annotations[shape.annotation_id]

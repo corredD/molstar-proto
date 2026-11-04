@@ -19,22 +19,23 @@ import {
   levelLine,
   mb,
   type PortalPanelArea,
+  portalTomogramOptions,
   type PortalRunInfo,
   type PortalTomogramView,
 } from './portal-run.js';
 
-// The CryoET Data Portal's card (_spec/portal.md §4): dataset, run, voxel spacing and level (with their sizes), the
-// annotations to load, then Load (`cryoetPortal.load`). The fields are a `ParamsForm` made from the index; a pick of
-// dataset, run or spacing makes the form again for what it holds. No viewer import: a story runs it over a fake.
+// The CryoET Data Portal's card (_spec/portal.md §4): dataset, run, tomogram (every one of the run, across its
+// spacings) and level (with their sizes), the annotations to load, then Load (`cryoetPortal.load`). The fields are a
+// `ParamsForm` made from the index; a pick of dataset, run or tomogram makes the form again for what it holds. No viewer import: a story runs it over a fake.
 
 const Muted = 'margin: 0; color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
 
-/** What the form is made for: a dataset (read), a run and a spacing of it */
+/** What the form is made for: a dataset (read), a run and a tomogram of it (its spacing with it) */
 interface RunPick {
   readonly catalog: PortalCatalog;
   readonly dataset: PortalDataset;
   readonly run: string;
-  readonly spacing?: number;
+  readonly tomogram?: number;
 }
 
 /** What a run of an operation answers, as the card reads it (the viewer's `ApiResult`, without depending on it) */
@@ -52,13 +53,19 @@ export function PortalPanel(props: { ctx: PortalPanelContext; area: PortalPanelA
   const pick = observableState<RunPick | undefined>(undefined);
   const problem = observableState('');
   const read = latest(
-    async (_signal, catalog: PortalCatalog, id: number, run: string, spacing: number | undefined): Promise<RunPick> => {
+    async (
+      _signal,
+      catalog: PortalCatalog,
+      id: number,
+      run: string,
+      tomogram: number | undefined,
+    ): Promise<RunPick> => {
       const dataset = await area.dataset(id);
-      return { catalog, dataset, run, spacing };
+      return { catalog, dataset, run, tomogram };
     },
   );
-  const choose = (catalog: PortalCatalog, id: number, run?: string, spacing?: number) =>
-    read(catalog, id, run ?? '', spacing).then(
+  const choose = (catalog: PortalCatalog, id: number, run?: string, tomogram?: number) =>
+    read(catalog, id, run ?? '', tomogram).then(
       (p) => p && pick.set(p),
       (e: unknown) => problem.set((e as Error).message),
     );
@@ -70,7 +77,7 @@ export function PortalPanel(props: { ctx: PortalPanelContext; area: PortalPanelA
   return (
     <div style="display: grid; gap: var(--msp-space-3); min-width: 0; padding: 0 var(--msp-space-3) var(--msp-space-3)">
       <Show when={mapState(problem.asReadonly, (m) => !!m)}>{() => <p style={Muted}>{problem.asReadonly}</p>}</Show>
-      <For each={forms} by={(p) => `${p.dataset.id}/${p.run}/${p.spacing ?? ''}`}>
+      <For each={forms} by={(p) => `${p.dataset.id}/${p.run}/${p.tomogram ?? ''}`}>
         {(p) => <RunForm ctx={ctx} area={area} pick={p} choose={choose} />}
       </For>
     </div>
@@ -81,18 +88,18 @@ function RunForm(props: {
   ctx: PortalPanelContext;
   area: PortalPanelArea;
   pick: RunPick;
-  choose: (catalog: PortalCatalog, id: number, run?: string, spacing?: number) => void;
+  choose: (catalog: PortalCatalog, id: number, run?: string, tomogram?: number) => void;
 }) {
   const { ctx, area, pick, choose } = props;
   const { catalog, dataset } = pick;
-  const info = area.describe(dataset, pick.run, pick.spacing);
+  const info = area.describe(dataset, pick.run, undefined, pick.tomogram);
   if ('ok' in info) return <p style={Muted}>{info.message}</p>;
   const params = runParams(catalog, dataset, info);
   const form = new ParamsFormModel(params, undefined, {
     onChange: (v, changed) => {
       if (changed === 'dataset') choose(catalog, Number(v.dataset));
       else if (changed === 'run') choose(catalog, dataset.id, v.run);
-      else if (changed === 'spacing') choose(catalog, dataset.id, info.run.name, Number(v.spacing));
+      else if (changed === 'tomogram') choose(catalog, dataset.id, info.run.name, Number(v.tomogram));
     },
   });
   const busy = observableState(false);
@@ -101,18 +108,24 @@ function RunForm(props: {
   const load = async () => {
     const v = form.values.value;
     busy.set(true);
-    // the size is in view beside Load: no second question past the guard
-    const r = await ctx.api.run('cryoetPortal.load', {
-      dataset: dataset.id,
-      run: info.run.name,
-      spacing: info.spacing.spacing,
-      ...(info.tomogram ? { tomogram: info.tomogram.id, level: Number(v.level) } : {}),
-      annotations: v.annotations.length ? v.annotations.join(',') : 'none',
-      as: v.as,
-      large: true,
-    });
-    busy.set(false);
-    said.set(r.ok ? [r.did, ...(r.warnings ?? [])].join(' ') : `${r.message}${r.hint ? ` ${r.hint}` : ''}`);
+    try {
+      // the size is in view beside Load: no second question past the guard
+      const r = await ctx.api.run('cryoetPortal.load', {
+        dataset: dataset.id,
+        run: info.run.name,
+        spacing: info.spacing.spacing,
+        ...(info.tomogram ? { tomogram: info.tomogram.id, level: Number(v.level) } : {}),
+        annotations: v.annotations.length ? v.annotations.join(',') : 'none',
+        as: v.as,
+        large: true,
+      });
+      said.set(r.ok ? [r.did, ...(r.warnings ?? [])].join(' ') : `${r.message}${r.hint ? ` ${r.hint}` : ''}`);
+    } catch (e) {
+      // a load that threw (a format's error out of the state's update) says so, and Load comes back
+      said.set((e as Error).message ?? String(e));
+    } finally {
+      busy.set(false);
+    }
   };
   return (
     <div style="display: grid; gap: var(--msp-space-2); min-width: 0">
@@ -137,11 +150,8 @@ function runParams(catalog: PortalCatalog, ds: PortalDataset, info: PortalRunInf
       info.run.name,
       ds.runList.map((r) => [r.name, r.name] as [string, string]),
     ),
-    spacing: PD.Select(
-      String(info.spacing.spacing),
-      info.run.spacings.map((s) => [String(s.spacing), `${s.spacing} Å`] as [string, string]),
-      { isHidden: info.run.spacings.length < 2 },
-    ),
+    // every tomogram of the run, across its spacings: one picked sets the spacing, its annotations and levels
+    tomogram: PD.Select(t ? String(t.id) : '', portalTomogramOptions(info.run), { isHidden: !t }),
     level: PD.Select(
       levels.length ? levels[levels.length - 1].path : '',
       levels.map((l) => [l.path, levelLine(l)] as [string, string]),
@@ -154,7 +164,7 @@ function runParams(catalog: PortalCatalog, ds: PortalDataset, info: PortalRunInf
         ['slices', 'Slices'],
         ['none', 'No tomogram'],
       ],
-      { label: 'Tomogram', isHidden: !t },
+      { label: 'Show as', isHidden: !t },
     ),
     annotations: PD.MultiSelect(
       info.defaults as string[],

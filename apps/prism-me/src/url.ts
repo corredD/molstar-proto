@@ -17,6 +17,8 @@ export const MesoscaleUrlParameters: readonly string[] = ['example', 'graphics-m
 export const PortalUrlParameters: readonly string[] = [
   'portal-dataset',
   'portal-run',
+  'portal-tomogram',
+  'portal-spacing',
   'portal-annotations',
   'portal-level',
 ];
@@ -27,10 +29,15 @@ export function portalLoadOf(search: string): Record<string, unknown> | undefine
   const dataset = Number(q.get('portal-dataset'));
   if (!Number.isInteger(dataset) || dataset <= 0) return;
   const level = q.get('portal-level');
+  // a tomogram by id picks its spacing too (§5)
+  const tomogram = q.get('portal-tomogram');
+  const spacing = q.get('portal-spacing');
   return {
     dataset,
     run: q.get('portal-run') ?? '',
     annotations: q.get('portal-annotations') ?? '',
+    ...(tomogram !== undefined && /^\d+$/.test(tomogram) ? { tomogram: Number(tomogram) } : {}),
+    ...(spacing !== undefined && /^\d+(\.\d+)?$/.test(spacing) ? { spacing: Number(spacing) } : {}),
     ...(level !== undefined && /^\d+$/.test(level) ? { level: Number(level) } : {}),
   };
 }
