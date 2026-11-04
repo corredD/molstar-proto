@@ -55,9 +55,22 @@ registration); the index tool `tools/portal-index/`.
 - **A tilt series is its Z slice only** (Ludo, 2026-11-03): its zarr's z is the image index, not a distance (only x, y
   are binned; 10003 TS_08 is 41 images at z 1.7 Å, a stack 70 Å thick and 6500 Å wide), so no direct volume and no
   isosurface: `loadZarr`, then `cryoet.slice` along z from the middle image (the least tilted). The z scale stays the
-  format's (`VolumeFromOmeZarr`, library code). Loaded with the tomogram, it goes beside it (`besideTheTomogram`, as the
-  average); alone, where it lands. `tiltAnglesOf(ref)`: its angles, found from the volume's download (as `originOf`),
-  for the Slice row's readout (§4).
+  format's (`VolumeFromOmeZarr`, library code). Loaded with the tomogram, it is placed by it (`tiltSeriesPlace`, below);
+  alone, where it lands. `tiltAnglesOf(ref)`: its angles, found from the volume's download (as `originOf`), for the
+  Slice row's readout (§4).
+- **A tilt series' place, a switch to compare** (Ludo, 2026-11-04: "make it optional so we can compare"; the default is
+  undecided, so it stays `beside`): `cryoetPortal.place` (`volume`, `place`), `load`'s `tiltSeriesPlace`, each an
+  absolute matrix on top of where it was read (`tiltSeriesMatrix`), sent to `stage.move` as the move from where it is
+  (its volume's transform decorator), so a switch back and forth ends where the place says. `beside`: along −x by 2.5
+  times its radius, as the average (`besideMatrix`), the images as read; `turned`: so, turned about z through its center
+  by **−(tilt axis + 180°)**; `overlay`: turned, its center on the tomogram's in x, y, its top at the tomogram's bottom
+  (its run's tomogram found in the scene by its download; none: refused). The sign was measured, not assumed: on 10003
+  TS_08 (tilt axis −5°, tomogram 638, Warp), the 0° image (index 20) band-passed and turned over the full circle, with
+  and without a mirror, against the tomogram's top view (level 1 summed over z): one peak at −175.5° (CC 0.66; every
+  other angle under 0.08, the median 0.04; mirrored, at most 0.06), centre to centre within 14 Å, so the tomogram is the
+  image turned, not mirrored, and −(tilt axis + 180°) is 0.5° off the peak (about 28 Å at the field's edge). In the app,
+  overlay's turned image and the tomogram's Z slice show the cell's outline alike. One run measured: another
+  reconstruction's convention may differ (TODO).
 - **Names: run, kind, id** (Ludo, 2026-11-04): a volume is named `<run> tomogram <id>`, `<run> tilt series <id>`, a mask
   `<run> <object> <annotation id>` (`TS_08 tomogram 638`, `TS_08 tilt series 17086`, `TS_08 membrane 15656`), the label
   of `OmeZarrFromUrl`, its volume's with it; every zarr of a run is `<run>.zarr`, so the tomogram and its tilt series
@@ -116,15 +129,17 @@ registration); the index tool `tools/portal-index/`.
 - **The tilt angle on the Slice row** (Ludo, 2026-11-03): a portal tilt series' Z slice shows its image's angle on a
   Tilt line under the Slice slider (`−60.005°`), by the image's index from 0 (the box counts from 1). Not in the
   slider's unit: a unit of changing width resizes the track, and a drag went backwards (review S1); prism-me's
-  properties pass `tiltAnglesOf(volume)` to the cryoet `Slice`.
+  properties pass `tiltAnglesOf(volume)` to the cryoet `Slice`. Under it, its **Placement**: Beside, raw / Beside,
+  turned / Overlay, turned (Prism's `Choices`, a click each, no reload; the one it is in pressed, none once moved by
+  hand: `placeState`), §2.
 - Story: prism-me › Explorer › CryoET Data Portal (Card, a run of several tomograms: 10518 pt117_ts_001).
 
 ## 5. The URL (prism-me)
 
 `?portal-dataset=10003&portal-run=TS_08`, then `portal-tomogram` (an id: it picks its spacing too), `portal-spacing`
-(Å), `portal-annotations`, `portal-level`, `portal-tiltseries` (an id) and `portal-tiltseries-level` (its own: the
-tomogram's level is not the tilt series'): `cryoetPortal.load` once the viewer is up (`apps/prism-me/src/url.ts`). A
-value that is not a number is left out (the load's default).
-`?portal-dataset=10518&portal-run=pt117_ts_001&portal-tomogram=64010`: the IsoNet2-denoised tomogram and the membrane
-mask at 10.403 Å. `?portal-dataset=10003&portal-run=TS_08&portal-tiltseries=17086`: TS_08's tomogram and ribosomes, its
-tilt series beside them.
+(Å), `portal-annotations`, `portal-level`, `portal-tiltseries` (an id), `portal-tiltseries-level` (its own: the
+tomogram's level is not the tilt series') and `portal-tiltseries-place` (`beside`, `turned`, `overlay`; another word:
+beside): `cryoetPortal.load` once the viewer is up (`apps/prism-me/src/url.ts`). A value that is not a number is left
+out (the load's default). `?portal-dataset=10518&portal-run=pt117_ts_001&portal-tomogram=64010`: the IsoNet2-denoised
+tomogram and the membrane mask at 10.403 Å. `?portal-dataset=10003&portal-run=TS_08&portal-tiltseries=17086`: TS_08's
+tomogram and ribosomes, its tilt series beside them.

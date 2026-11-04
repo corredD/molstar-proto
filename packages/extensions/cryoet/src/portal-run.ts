@@ -35,6 +35,17 @@ export const PortalCard = 'cryoet-portal.overlay.portal';
 /** What a load does with a tomogram: its slices and its direct volume, its slices, or nothing */
 export type PortalTomogramView = 'both' | 'slices' | 'none';
 
+/**
+ * Where a tilt series goes by its run's tomogram (_spec/portal.md §2): beside it as read (the default), beside it turned
+ * by its tilt axis, or turned and under it; a switch to compare (Ludo, 2026-11-04: the decision is his)
+ */
+export type TiltSeriesPlace = 'beside' | 'turned' | 'overlay';
+export const TiltSeriesPlaces: readonly (readonly [TiltSeriesPlace, string])[] = [
+  ['beside', 'Beside, raw'],
+  ['turned', 'Beside, turned'],
+  ['overlay', 'Overlay, turned'],
+];
+
 /** An annotation of a run, as `run` lists it and `load` takes it: `<id>` or `<id>/<shape>` */
 export interface PortalEntry extends PortalAnnotation {
   readonly key: string;

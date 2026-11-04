@@ -8,13 +8,16 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { Structure } from '@molstar/model/model/structure';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { Grid, type Volume } from '@molstar/model/model/volume';
 import { ApiArea, type ApiAreaContext, ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { ViewerExtension } from '@molstar/prism-viewer/spec';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { getOmeZarrLevel, omeZarrLevelNeeds, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
+import { VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
 import { particleListData } from '../operations.js';
 import {
   CryoetPortalExtension,
@@ -23,6 +26,7 @@ import {
   type PortalRunInfo,
   showAverageVolume,
   showTomogramVolume,
+  tiltSeriesMatrix,
   tomogramControlPoints,
 } from '../portal.js';
 import { checkPortalIndex, type PortalCatalog, type PortalDataset, PortalFiles } from '../portal-index.js';
@@ -212,6 +216,47 @@ const Stage: ViewerExtension = {
   api: { stage: (ctx: ApiAreaContext) => new StageMoves(ctx) } as never,
 };
 
+/** A stage whose moves compose as stage-tools' `stage.move` does for a volume: its transform decorator, after where it is */
+class ComposingStage extends ApiArea {
+  readonly id = 'stage';
+  readonly move = this.operation({
+    id: 'stage.move',
+    title: 'Move',
+    params: { target: PD.Text(''), matrix: PD.Value<number[]>([]) },
+    async run(v, ctx) {
+      const { cells, tree } = ctx.plugin.state.data;
+      const old = tree.children
+        .get(v.target)
+        .toArray()
+        .map((c) => cells.get(c)!)
+        .find((c) => c.transform.transformer === VolumeTransform);
+      const prev = old ? (old.transform.params as any).transform.params.data : Mat4.identity();
+      const data = Mat4.mul(Mat4(), Mat4.fromArray(Mat4(), v.matrix, 0), prev);
+      const transform = { name: 'matrix' as const, params: { data, transpose: false } };
+      const b = ctx.plugin.state.data.build();
+      if (old) b.to(old).update({ transform });
+      else b.to(v.target).insert(VolumeTransform, { transform });
+      await b.commit();
+      return ApiResult.ok('');
+    },
+  });
+}
+const Composing: ViewerExtension = {
+  id: 'stage-composing',
+  api: { stage: (ctx: ApiAreaContext) => new ComposingStage(ctx) } as never,
+};
+
+/** Where a volume is now, on top of where it was read */
+const matrixOf = (v: PrismViewer, ref: string) => {
+  const { cells, tree } = v.plugin.state.data;
+  const t = tree.children
+    .get(ref)
+    .toArray()
+    .map((c) => cells.get(c)!)
+    .find((c) => c.transform.transformer === VolumeTransform);
+  return t ? ((t.transform.params as any).transform.params.data as Mat4) : undefined;
+};
+
 async function viewer(from: PortalIndexSource = source, extra: ViewerExtension[] = []) {
   const base = DefaultPrismViewerSpec();
   const v = await createPrismViewerHeadless({
@@ -297,6 +342,71 @@ describe('cryoetPortal', () => {
     // only the name: the files read are the zarrs', and the angles are still found from the tilt series' address
     expect(fetch.mock.calls.map((c) => String(c[0]))).toContain(`${PortalFiles}1/TS_01/ts.zarr/2/0/0/0`);
     expect(v.api.cryoetPortal!.tiltAnglesOf(volumes[2].cell.transform.ref)).toEqual([-60, -20, 20, 60]);
+  });
+
+  it('places a tilt series by the tomogram: beside as read (as before), beside turned, or turned under it', async () => {
+    serve();
+    const v = await viewer(source, [Composing]);
+    const r = await v.api.run('cryoetPortal.load', {
+      dataset: 1,
+      run: 'TS_01',
+      annotations: 'none',
+      as: 'slices',
+      tiltSeries: 17,
+    });
+    expectOk(r);
+    const [tomogram, ts] = v.plugin.managers.volume.hierarchy.current.volumes;
+    const grid = (x: typeof ts) => (x.cell.obj!.data as Volume).grid;
+    const ref = ts.cell.transform.ref;
+    const at = () => matrixOf(v, ref)!;
+    // beside, the default: today's move, along -x by 2.5 times its radius, nothing turned
+    const { radius } = Grid.getBoundingSphere(grid(ts));
+    expect(Array.from(at())).toEqual(Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(-2.5 * radius, 0, 0))));
+    expect(v.api.cryoetPortal!.placeOf(ref)).toBe('beside');
+    // turned and back, each the place's own matrix, not one move on top of the other
+    for (const place of ['overlay', 'turned', 'beside', 'overlay'] as const) {
+      expectOk(await v.api.run('cryoetPortal.place', { volume: ref, place }));
+      expect(Mat4.areEqual(at(), tiltSeriesMatrix(place, grid(ts), -5, grid(tomogram)), 1e-6)).toBe(true);
+      expect(v.api.cryoetPortal!.placeOf(ref)).toBe(place);
+    }
+    // overlay: turned about z by -(tilt axis + 180°) = -175° (measured on 10003 TS_08: _spec/portal.md §2), its center
+    // on the tomogram's in x, y, its top at the tomogram's bottom
+    const m = at();
+    expect(Math.atan2(m[1], m[0]) * (180 / Math.PI)).toBeCloseTo(-175, 6);
+    const c = Grid.getBoundingSphere(grid(ts)).center;
+    const moved = Vec3.transformMat4(Vec3(), c, m);
+    const t = Grid.getBoundingSphere(grid(tomogram)).center;
+    expect(moved[0]).toBeCloseTo(t[0], 3);
+    expect(moved[1]).toBeCloseTo(t[1], 3);
+    const zOf = (g: Grid, k: number) =>
+      Vec3.transformMat4(Vec3(), Vec3.create(0, 0, k), Grid.getGridToCartesianTransform(g))[2];
+    const half = (zOf(grid(ts), grid(ts).cells.space.dimensions[2]) - zOf(grid(ts), 0)) / 2;
+    expect(moved[2] + half).toBeCloseTo(zOf(grid(tomogram), 0), 3);
+    // the tomogram stays
+    expect(matrixOf(v, tomogram.cell.transform.ref)).toBeUndefined();
+  });
+
+  it('loads a tilt series at the place asked; overlay needs its tomogram in the scene', async () => {
+    serve();
+    const v = await viewer(source, [Composing]);
+    const r = await v.api.run('cryoetPortal.load', {
+      dataset: 1,
+      run: 'TS_01',
+      annotations: 'none',
+      as: 'slices',
+      tiltSeries: 17,
+      tiltSeriesPlace: 'turned',
+    });
+    expectOk(r);
+    const [tomogram, ts] = v.plugin.managers.volume.hierarchy.current.volumes;
+    expect(v.api.cryoetPortal!.placeOf(ts.cell.transform.ref)).toBe('turned');
+    await v.plugin.build().delete(tomogram.cell.transform.ref).commit();
+    const o = await v.api.run('cryoetPortal.place', { volume: ts.cell.transform.ref, place: 'overlay' });
+    expect(o.ok).toBe(false);
+    expect(v.api.cryoetPortal!.placeOf(ts.cell.transform.ref)).toBe('turned');
+    // not a tilt series
+    const n = await v.api.run('cryoetPortal.place', { volume: 'nothing', place: 'beside' });
+    expect(n.ok).toBe(false);
   });
 
   it('loads a tilt series alone where it lands, at the level asked', async () => {
