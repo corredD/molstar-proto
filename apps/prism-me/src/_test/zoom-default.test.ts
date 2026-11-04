@@ -5,11 +5,12 @@
  */
 
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
-import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewerSpec } from '@molstar/prism-viewer/spec';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
+import { FullPrismViewerSpec } from '@molstar/prism-viewer-app/full-spec';
 import { afterEach, describe, expect, it } from 'vitest';
+import { MesoscaleExplorerExtensions } from '../extensions.js';
 import { createMesoscaleExplorerSpec } from '../spec.js';
 import { CellpackCif } from './fixtures.js';
 
@@ -68,8 +69,10 @@ describe('colors that follow the zoom, on at load (prism-me)', () => {
     expect(levels()).toEqual([{ name: 'off', params: {} }]);
   });
 
-  it("Prism's own spec keeps them off", async () => {
-    const { targets } = await load(DefaultPrismViewerSpec());
+  it("without withZoomColorsAtLoad (Prism's own particles feature) they stay off", async () => {
+    const spec = createMesoscaleExplorerSpec('');
+    const extensions = [...(FullPrismViewerSpec().extensions ?? []), ...MesoscaleExplorerExtensions];
+    const { targets } = await load({ ...spec, extensions });
     expect(targets.length).toBe(1);
     expect(targets[0].type.params.structure.colorLevels).toEqual({ name: 'off', params: {} });
   });
