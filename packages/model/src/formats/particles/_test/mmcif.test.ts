@@ -279,3 +279,86 @@ describe('CellPack mmCIF fibers', () => {
     expect(updates).toContain('Building particles');
   });
 });
+
+// cellPACK's entity text (2026-11, the deployed examples): the Exosome's `_entity.pdbx_parent_entity_id` holds a
+// sentence (its `details` empty); MG's and HIV's hold the entity's compartment, MG's `details` a short function
+const cellpackDescriptionCif = `data_cellpack_descriptions
+loop_
+_entity.id
+_entity.pdbx_description
+_entity.details
+_entity.pdbx_parent_entity_id
+1 root.exosome.surface.proteins.ITG ? 'Integrin alpha-5, important for cell adhesion and signaling.'
+2 root.mge.interior.proteins.RNA_POLYMERASE transcription root.mge.interior.proteins
+3 root.exosome.surface.proteins.CD81 ? 'CD81 antigen PDB entry [5TCX](http://www.rcsb.org/pdb/explore.do?structureId=5TCX)'
+4 root.exosome.interior.proteins.ARNm ? ARNm
+5 Plain ? 'A sentence.'
+
+loop_
+_atom_site.label_asym_id
+_atom_site.label_entity_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+A 1 0 0 0
+B 2 0 0 0
+C 3 0 0 0
+D 4 0 0 0
+E 5 0 0 0
+
+loop_
+_pdbx_struct_assembly_gen.assembly_id
+_pdbx_struct_assembly_gen.oper_expression
+_pdbx_struct_assembly_gen.asym_id_list
+1 '(1)' A,B,C,D,E
+
+loop_
+_pdbx_struct_oper_list.id
+_pdbx_struct_oper_list.matrix[1][1]
+_pdbx_struct_oper_list.matrix[1][2]
+_pdbx_struct_oper_list.matrix[1][3]
+_pdbx_struct_oper_list.matrix[2][1]
+_pdbx_struct_oper_list.matrix[2][2]
+_pdbx_struct_oper_list.matrix[2][3]
+_pdbx_struct_oper_list.matrix[3][1]
+_pdbx_struct_oper_list.matrix[3][2]
+_pdbx_struct_oper_list.matrix[3][3]
+_pdbx_struct_oper_list.vector[1]
+_pdbx_struct_oper_list.vector[2]
+_pdbx_struct_oper_list.vector[3]
+1 1 0 0 0 1 0 0 0 1 0 0 0
+`;
+
+describe('CellPack mmCIF entity descriptions', () => {
+  async function entities(variant: 'cellpack' | 'standard') {
+    const parsed = await CIF.parseText(cellpackDescriptionCif).run();
+    if (parsed.isError) throw new Error(parsed.message);
+    const list = await createParticleListFromMmcifAssembly(RuntimeContext.Synchronous, parsed.result, {
+      assemblyId: '1',
+      variant,
+    });
+    return new Map(Array.from(list.entityInfo!.values(), (e) => [e.name, e]));
+  }
+
+  it('reads the description from pdbx_parent_entity_id, raw (Markdown kept)', async () => {
+    const byName = await entities('cellpack');
+    expect(byName.get('ITG')).toEqual({
+      name: 'ITG',
+      description: 'Integrin alpha-5, important for cell adhesion and signaling.',
+    });
+    expect(byName.get('CD81')?.description).toBe(
+      'CD81 antigen PDB entry [5TCX](http://www.rcsb.org/pdb/explore.do?structureId=5TCX)',
+    );
+  });
+
+  it('keeps details as the function, and a compartment path or the name itself is no description', async () => {
+    const byName = await entities('cellpack');
+    expect(byName.get('RNA_POLYMERASE')).toEqual({ name: 'RNA_POLYMERASE', function: 'transcription' });
+    expect(byName.get('ARNm')).toEqual({ name: 'ARNm' });
+  });
+
+  it('reads none in the standard variant (there the column is a parent entity id)', async () => {
+    const byName = await entities('standard');
+    expect(byName.get('Plain')).toEqual({ name: 'Plain' });
+  });
+});
