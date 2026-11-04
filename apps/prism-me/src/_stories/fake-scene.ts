@@ -43,6 +43,8 @@ export interface MockNode {
   readonly count?: string;
   /** Its one color (a dot), where it has one */
   readonly color?: number;
+  /** What it is (a model entity's file text, Markdown), under its name in the properties */
+  readonly description?: string;
   /** Its eye: whether shown at first; absent, no eye (a category) */
   readonly visible?: boolean;
   /** Top-level rows only (styling.md §4: icons on top-level tree rows, not child rows) */
@@ -95,6 +97,9 @@ export function cellPackModel(n: number, proposed = false): MockNode {
     label: e.name,
     count: e.count.toLocaleString('en'),
     color: hue(e.id),
+    ...(e.id % 7 === 0
+      ? { description: "Gag polyprotein, the virion's structural core. PDB entry [5L93](http://www.rcsb.org/)" }
+      : {}),
     visible: e.id % 11 !== 3,
   });
   // the groups of one grouping, made from its dotted names (compartments) or flat (functions); indexed once

@@ -6,11 +6,12 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { type Child, SectionList, type ShellModel } from '@molstar/prism-ui';
+import { type Child, Markdown, SectionList, type ShellModel } from '@molstar/prism-ui';
 import { classes } from './_generated/properties.module.css.js';
 
 // The picked row's properties as ui.md §4 draws them, shared by the app (properties.tsx) and its mock
-// (_stories/properties.tsx): Prism UI only, no viewer, so the story stays pure. Its name and kind, what goes above the
+// (_stories/properties.tsx): Prism UI only, no viewer, so the story stays pure. Its name and kind, its description (an
+// entity's, as the Mesoscale Explorer's Focus Info: Markdown, links followed in a new tab), what goes above the
 // sections (a model's Group by), then the sections that apply on Prism's `SectionList` (open as the person left each,
 // from pick to pick: one slot, its open state in the shell model the owner keeps; a folded section paused). Lines are a
 // label in the label column (`--msp-label-width`) and a control.
@@ -60,6 +61,8 @@ export function PropertiesFrame(props: {
   /** Its name (the label's text, the clip's shape: as it changes) */
   name: Child;
   kind: string;
+  /** Under the name: what it is (Markdown), if known */
+  description?: string;
   subject: unknown;
   /** Above the sections, not folded (a model's Group by) */
   above?: Child;
@@ -76,6 +79,11 @@ export function PropertiesFrame(props: {
           {kindName(props.kind)}
         </span>
       </div>
+      {props.description ? (
+        <div class={classes.description} data-properties-description="">
+          <Markdown source={props.description} />
+        </div>
+      ) : null}
       {props.above ?? null}
       <SectionList shell={props.shell} slot={PropertiesSlot} subject={props.subject} flat collapsed={props.collapsed} />
     </div>

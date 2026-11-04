@@ -100,10 +100,12 @@ the way to it).
 ## 4. Properties
 
 The properties of the picked row, in sections that fold. Only what applies to it. Its header: the row's name and its
-kind in words (Structure, Mesoscale model, Particle list, Clip…). The sections are Prism's `SectionList`, the app's and
-its mock's (`explorer/properties-view.tsx`), in the table's order: all start folded, and one opened (or folded) stays so
-from row to row this session, whatever the row's kind (one slot; a folded section is paused). A line is a label in the
-label column (`--msp-label-width`) and its control, Prism's (styling.md §4).
+kind in words (Structure, Mesoscale model, Particle list, Clip…); under it, a model entity's description, its file's
+text as Markdown (cellPACK's `_entity.pdbx_parent_entity_id`; links open in a new tab), as the Mesoscale Explorer's
+Focus Info (Ludo, 2026-11-04). The sections are Prism's `SectionList`, the app's and its mock's
+(`explorer/properties-view.tsx`), in the table's order: all start folded, and one opened (or folded) stays so from row
+to row this session, whatever the row's kind (one slot; a folded section is paused). A line is a label in the label
+column (`--msp-label-width`) and its control, Prism's (styling.md §4).
 
 | Section           | For                                                                                                                                                      | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

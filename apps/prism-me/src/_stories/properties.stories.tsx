@@ -30,6 +30,8 @@ export const Structure = at('o:1crn');
 export const Entity = at('e:1crn:1');
 /** A cellPACK model: Group by above the sections; Look with Generate colors, Decoration, Representation, … */
 export const Model = at('o:hiv');
+/** A model's entity: its description under its name (the file's text, a link followed in a new tab), then its sections. */
+export const ModelEntity = at('me:hiv:0');
 /** A model's group: Look with Generate colors, Decoration, Clips, Labels. */
 export const Group = at('g:hiv:capsid');
 /** A particle list: Representation (spheres or the decorating objects), Decoration (targets by class), … */

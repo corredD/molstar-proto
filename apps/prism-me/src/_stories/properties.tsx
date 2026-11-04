@@ -533,6 +533,7 @@ export function Properties(props: {
           shell={shell}
           name={n.label}
           kind={n.kind}
+          description={n.description}
           subject={n}
           collapsed={props.folded}
           above={
