@@ -21,9 +21,9 @@ export namespace ColorLevels {
   const edge = (value: number, label: string) =>
     PD.Numeric(value, { min: 0.1, max: 200, step: 0.1 }, { description: `Pixels an atom covers where ${label} start` });
   export const Params = {
-    entity: edge(3, 'the entity colors'),
-    chain: edge(10, 'the chain colors'),
-    atom: edge(30, 'the atom colors (by element)'),
+    entity: edge(0.27, 'the entity colors'),
+    chain: edge(2.2, 'the chain colors'),
+    atom: edge(28.8, 'the atom colors (by element)'),
     band: PD.Numeric(1, { min: 0.1, max: 4, step: 0.1 }, { description: 'Octaves of size on screen a blend spans' }),
     chainHue: PD.Numeric(90, { min: 0, max: 360, step: 1 }, { description: 'Hue range of the chains, in degrees' }),
   };
@@ -108,6 +108,14 @@ export namespace ColorLevels {
     Vec3.lerp(c, c, x, t[1]);
     Vec3.lerp(c, c, toOklab(x, element), t[2]);
     return fromOklab(c);
+  }
+
+  /**
+   * A Look color until the atoms (`color-levels.md`): `color` is the far color and the entity color, the chain offset
+   * is 0, then `element`
+   */
+  export function blendPainted(color: Color, element: Color, size: number, props: Props) {
+    return blend(color, color, element, 0, size, props);
   }
 
   export type Data = {

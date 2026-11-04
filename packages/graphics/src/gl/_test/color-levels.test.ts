@@ -53,6 +53,48 @@ describe('color levels in the programs', () => {
     });
   }
 
+  it('a Look color is the coarse color and does not cover the atoms (GLSL)', () => {
+    const shaderCode = GraphicsShaders.find(([n]) => n === 'spheres')![1];
+    const values = {
+      dRenderVariant: 'colorBlended',
+      dColorType: 'texture',
+      dLightCount: 1,
+      dClipObjectCount: 0,
+      dColorLevels: true,
+      dOverpaint: true,
+      dOverpaintType: 'texture',
+    };
+    const program = getGlslProgram(shaderCode.name);
+    const defines = getProgramDefines(shaderCode, values, []).set('__VERSION__', '300');
+    const vert = preprocessProgram(program.vert, defines, values);
+    const strength = vert.indexOf('vOverpaint.a *= uOverpaintStrength');
+    const painted = vert.indexOf('colorLevels(painted, painted, vec4(element.rgb, 128.0 / 255.0)');
+    expect(strength).toBeGreaterThan(0);
+    expect(painted).toBeGreaterThan(strength);
+    expect(vert.indexOf('vOverpaint.a = 0.0')).toBeGreaterThan(painted);
+    const frag = preprocessProgram(program.frag, defines, values);
+    expect(frag).not.toMatch(/material\.rgb = mix\(material\.rgb, vOverpaint\.rgb, vOverpaint\.a\)/);
+  });
+
+  it('a Look color is the coarse color and does not cover the atoms (WGSL)', () => {
+    const defines = new Map([
+      ['dRenderVariant_colorBlended', ''],
+      ['dColorType_texture', ''],
+      ['dColorType_varying', ''],
+      ['dColorLevels', ''],
+      ['dOverpaint', ''],
+      ['dOverpaintType_texture', ''],
+    ]);
+    const code = preprocessShader(spheres_wgsl, defines);
+    const strength = code.indexOf('overpaint.a * uMaterial.uOverpaintStrength');
+    const painted = code.indexOf('colorLevels(painted, painted, vec4<f32>(element.rgb, 128.0 / 255.0)');
+    expect(strength).toBeGreaterThan(0);
+    expect(painted).toBeGreaterThan(strength);
+    expect(code).not.toMatch(
+      /material = vec4<f32>\(mix\(material\.rgb, in\.vOverpaint\.rgb, in\.vOverpaint\.a\), material\.a\)/,
+    );
+  });
+
   // the sphere raster's resolve (`resolveSphere`) reads the theme layers as the vertex stage does: the levels by the
   // sphere's place, set before them
   it('spheres: the raster resolve sets the model position before the levels read it (WGSL)', () => {

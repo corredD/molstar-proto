@@ -27,6 +27,12 @@ const channels = (c: Color) => Color.toRgb(c);
 const distance = (a: Color, b: Color) => Math.max(...channels(a).map((x, i) => Math.abs(x - channels(b)[i])));
 
 describe('ColorLevels', () => {
+  it('starts at 0.27, 2.2 and 28.8 px (entity, chain, atom)', () => {
+    expect(props.entity).toBe(0.27);
+    expect(props.chain).toBe(2.2);
+    expect(props.atom).toBe(28.8);
+  });
+
   it('is the far color far away and the element color close', () => {
     expect(distance(ColorLevels.blend(far, entity, element, 0, 0.01, props), far)).toBeLessThanOrEqual(1);
     expect(distance(ColorLevels.blend(far, entity, element, 0, 1e4, props), element)).toBeLessThanOrEqual(1);
@@ -87,6 +93,14 @@ describe('ColorLevels', () => {
       expect(Number.isFinite(size)).toBe(true);
       expect(Number.isNaN(ColorLevels.blend(far, entity, element, 0, size, props))).toBe(false);
     }
+  });
+
+  it('a painted color is that color until the atoms, then the element', () => {
+    const painted = Color(0xff8000);
+    expect(distance(ColorLevels.blendPainted(painted, element, 0.01, props), painted)).toBeLessThanOrEqual(1);
+    const chain = Math.sqrt(props.chain * props.atom);
+    expect(distance(ColorLevels.blendPainted(painted, element, chain, props), painted)).toBeLessThanOrEqual(1);
+    expect(distance(ColorLevels.blendPainted(painted, element, 1e4, props), element)).toBeLessThanOrEqual(1);
   });
 
   it("encodes a chain's offset among a target's chains from -1 to 1, 0 for one chain", () => {

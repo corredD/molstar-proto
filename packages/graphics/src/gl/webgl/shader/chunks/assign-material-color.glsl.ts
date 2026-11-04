@@ -1,3 +1,10 @@
+/**
+ * Copyright (c) 2018-2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
 export const assign_material_color = `
 #if defined(dNeedsMarker)
     float marker = uMarker;
@@ -20,8 +27,8 @@ export const assign_material_color = `
         vec4 material = vec4(vColor.rgb, uAlpha);
     #endif
 
-    // mix material with overpaint
-    #if defined(dOverpaint)
+    // mix material with overpaint; the levels already folded a Look color into vColor (color-levels.md)
+    #if defined(dOverpaint) && !(defined(dColorLevels) && defined(dColorType_texture))
         material.rgb = mix(material.rgb, vOverpaint.rgb, vOverpaint.a);
     #endif
 

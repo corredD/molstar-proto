@@ -5,7 +5,9 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { Color } from '@molstar/core/util/color';
 import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
+import { ParticleRepresentation3DLayers } from '@molstar/plugin/state/transforms/particles/layers';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -92,18 +94,49 @@ describe('colors that follow the zoom (mesoscale.colorLevels)', () => {
     expect(steps(v)).toBe(before + 1);
   });
 
-  it('another theme after By zoom turns the levels off, in the same step (review S6)', async () => {
+  it('another theme after By zoom keeps the levels on, in the same step (Ludo, 2026-11-04)', async () => {
     const v = await viewer();
     const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
     expectOk(await v.api.run('mesoscale.theme', { objects: [list], theme: 'zoom' }));
     const before = steps(v);
     expectOk(await v.api.run('mesoscale.theme', { objects: [list], theme: 'entity' }));
     expect(reps(v).map((p) => p.colorTheme.name)).toEqual(['particle-entity']);
-    expect(levels(v)).toEqual([off]);
+    expect(levels(v)).toEqual([{ name: 'on', params: ColorLevels.defaults }]);
     expect(steps(v)).toBe(before + 1);
   });
 
-  it('says that the colors set in Look paint over the levels (review S7)', async () => {
+  it('a uniform color while By zoom is on keeps the texture theme and paints that color (Ludo, 2026-11-04)', async () => {
+    const v = await viewer();
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.theme', { objects: [list], theme: 'zoom' }));
+    const before = steps(v);
+    expectOk(await v.api.run('mesoscale.theme', { objects: [list], theme: 'uniform', color: 'tomato' }));
+    expect(reps(v).map((p) => p.colorTheme.name)).toEqual(['particle-hierarchy']);
+    expect(levels(v)).toEqual([{ name: 'on', params: ColorLevels.defaults }]);
+    expect(steps(v)).toBe(before + 1);
+    const tomato = Color(0xff6347);
+    const painted = Array.from(v.plugin.state.data.cells.values())
+      .filter((c) => c.transform.transformer === ParticleRepresentation3DLayers)
+      .flatMap((c) => (c.transform.params as { layers?: { entities?: number[]; color: Color | null }[] }).layers ?? [])
+      .filter((l) => l.color !== null)
+      .map((l) => [l.entities, l.color]);
+    expect(painted).toEqual([
+      [[0], tomato],
+      [[1], tomato],
+      [[2], tomato],
+      [[3], tomato],
+    ]);
+  });
+
+  it('a uniform Look color leaves By zoom on (Ludo, 2026-11-04)', async () => {
+    const v = await viewer();
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.colorLevels', { on: true }));
+    expectOk(await v.api.mesoscale!.colors({ scheme: 'uniform', color: 'tomato', particles: list } as never));
+    expect(levels(v)).toEqual([{ name: 'on', params: ColorLevels.defaults }]);
+  });
+
+  it('a color set in Look holds until the atoms, and By zoom stays on', async () => {
     const v = await viewer();
     const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
     expectOk(await v.api.mesoscale!.colors({ scheme: 'generate', particles: list } as never));

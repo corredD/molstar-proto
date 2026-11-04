@@ -19,6 +19,7 @@ import { FullPrismViewerSpec } from '@molstar/prism-viewer-app/full-spec';
 import { optionsFromUrl } from '@molstar/prism-viewer-app/url';
 import { StageSkill } from '@molstar/stage-tools-extension/prism-viewer';
 import { MesoscaleExplorerExtensions } from './extensions.js';
+import { withZoomColorsAtLoad } from './formats.js';
 import { withMesoscaleLook } from './look.js';
 import { withTomogramSlices } from './tomograms.js';
 
@@ -38,7 +39,8 @@ export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
       ...base.plugin,
       config: [...(base.plugin.config ?? []), [PluginConfig.Particles.ShowOrientations, true]],
     },
-    extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions],
+    // cellPACK and PetWorld open with colors that follow the zoom (_spec/ui.md §4 Look; Ludo, 2026-11-04)
+    extensions: [...withZoomColorsAtLoad(base.extensions ?? []), ...MesoscaleExplorerExtensions],
     // One panel (_spec/ui.md §1): the explorer's tree and properties; the others stay reachable from ⌘K
     overrides: { ...base.overrides, ...Object.fromEntries(HiddenParts.map((id) => [id, null])) },
     options: {
