@@ -82,7 +82,14 @@ export const StageToolsExtension: ViewerExtension = {
     const s = api.stage;
     if (!s) return [];
     return [
-      operationCommand(api, s.label, { category: 'Labels', icon: 'type', alias: ['label', 'add label', 'annotate'] }),
+      operationCommand(api, s.label, {
+        category: 'Labels',
+        icon: 'type',
+        alias: ['label', 'add label', 'annotate'],
+        // "label A:10": the selection first, the sentence's subject; optional, so an object's or a point's label runs
+        order: ['selection'],
+        form: (p) => ({ ...p, selection: { ...p.selection, isOptional: true } }),
+      }),
       operationCommand(api, s.editLabel, { category: 'Labels', icon: 'type', alias: ['edit label', 'remove label'] }),
       operationCommand(api, s.distance, {
         category: 'Measure',

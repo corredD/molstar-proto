@@ -243,6 +243,26 @@ describe('stage', () => {
     expect(m[12]).toBeCloseTo(5);
   });
 
+  it("runs from ⌘K: 'label A:10' labels the residue; an object's label needs no selection", async () => {
+    const v = await viewer();
+    const ref = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    const open = (tail?: string) => {
+      const opened = v.managers.commands.open('stage.label', tail);
+      if (opened.kind !== 'form') throw new Error(opened.kind);
+      return opened.invocation;
+    };
+    const residue = open('A:10');
+    expect(residue.state.value.missing).toEqual([]);
+    await residue.confirm();
+    expect(v.api.stage!.labelsState().value.map((l) => l.text)).toEqual(['ARG 10 (A)']);
+    const object = open();
+    object.set('target', ref);
+    object.set('text', 'crambin');
+    expect(object.state.value.missing).toEqual([]);
+    await object.confirm();
+    expect(v.api.stage!.labelsState().value.map((l) => l.text)).toEqual(['ARG 10 (A)', 'crambin']);
+  });
+
   it('sizes a label to the part it names (its radius) and to its object, in half-Å steps', async () => {
     const v = await viewer();
     const s = v.api.stage!;
