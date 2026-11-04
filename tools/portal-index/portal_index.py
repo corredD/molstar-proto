@@ -9,7 +9,7 @@ The format is `PortalDataset` in packages/extensions/cryoet/src/portal-index.ts,
 
   python -I portal_index.py <out dir> <dataset id>[:<max runs>] ...
 
-Needs the conda env `cryoet-portal` (cryoet_data_portal). Six bulk queries a dataset, plus each zarr's metadata
+Needs the conda env `cryoet-portal` (cryoet_data_portal). Eight bulk queries a dataset, plus each zarr's metadata
 (`.zattrs`, each level's `.zarray`) from the file host.
 """
 
@@ -30,7 +30,9 @@ from cryoet_data_portal import (
     AnnotationShape,
     Client,
     Dataset,
+    PerSectionParameters,
     Run,
+    TiltSeries,
     Tomogram,
     TomogramVoxelSpacing,
 )
@@ -87,6 +89,26 @@ def zarr_levels(url):
     return levels
 
 
+def tilt_angles(client, dataset_id, tilt_series):
+    """Each tilt series' angles, one per image by `z_index` (angles[i] is image i, whatever the rows' order): the client's
+    per-section parameters; the file host's `tiltseries_metadata.json` for a series whose rows are not one per image"""
+    rows = {}
+    for p in PerSectionParameters.find(client, [PerSectionParameters.tiltseries.run.dataset_id == dataset_id]):
+        rows.setdefault(p.tiltseries_id, []).append((p.z_index, p.raw_angle))
+    out = {}
+    for t in tilt_series:
+        by_z = dict(rows.get(t.id, []))
+        # one row an image: z 0..n-1, none twice
+        if len(rows.get(t.id, [])) != t.size_z or sorted(by_z) != list(range(t.size_z)):
+            meta = get_json(t.https_omezarr_dir.rsplit('/', 1)[0] + '/tiltseries_metadata.json')
+            by_z = {p['z_index']: p['raw_angle'] for p in meta['per_section_parameter']}
+            print(f'tilt series {t.id}: angles from tiltseries_metadata.json', file=sys.stderr)
+        if sorted(by_z) != list(range(t.size_z)):
+            raise ValueError(f'tilt series {t.id}: {len(by_z)} angles for {t.size_z} images')
+        out[t.id] = [round(by_z[z], 4) for z in range(t.size_z)]
+    return out
+
+
 def index_dataset(client, dataset_id, max_runs):
     ds = Dataset.get_by_id(client, dataset_id)
     runs = sorted(Run.find(client, [Run.dataset_id == dataset_id]), key=lambda r: r.name)
@@ -109,7 +131,11 @@ def index_dataset(client, dataset_id, max_runs):
     with_zarr = {f.annotation_shape_id for f in files if f.format == 'zarr'}
     files = [f for f in files if not (f.format == 'mrc' and f.annotation_shape_id in with_zarr)]
 
-    zarrs = [t.https_omezarr_dir for t in tomograms] + [f.https_path for f in files if f.format == 'zarr']
+    tilt_series = [t for t in TiltSeries.find(client, [TiltSeries.run.dataset_id == dataset_id]) if t.run_id in run_ids]
+    angles = tilt_angles(client, dataset_id, tilt_series)
+
+    zarrs = ([t.https_omezarr_dir for t in tomograms] + [f.https_path for f in files if f.format == 'zarr']
+             + [t.https_omezarr_dir for t in tilt_series])
     with ThreadPoolExecutor(16) as pool:
         levels = dict(zip(zarrs, pool.map(zarr_levels, zarrs)))
 
@@ -158,10 +184,26 @@ def index_dataset(client, dataset_id, max_runs):
             entry['default'] = True
         by_spacing[a.tomogram_voxel_spacing_id]['annotations'].append(entry)
 
+    by_run = {}
+    for t in sorted(tilt_series, key=lambda t: t.id):
+        # the client has no visualization default for a tilt series (4.9.0): none is written
+        by_run.setdefault(t.run_id, []).append({
+            'id': t.id,
+            'zarr': relative(t.https_omezarr_dir),
+            'levels': levels[t.https_omezarr_dir],
+            # the portal's pixel size, not the zarr's scale (1.7005 against 1.7)
+            'pixelSpacing': t.pixel_spacing,
+            'tiltAxis': t.tilt_axis,
+            'angles': angles[t.id],
+        })
+
     run_list = []
     for r in runs:
         ss = sorted((by_spacing[s.id] for s in spacings if s.run_id == r.id), key=lambda s: s['spacing'])
-        run_list.append({'id': r.id, 'name': r.name, 'spacings': ss})
+        run = {'id': r.id, 'name': r.name, 'spacings': ss}
+        if r.id in by_run:
+            run['tiltSeries'] = by_run[r.id]
+        run_list.append(run)
 
     # 'doi:10.1038/…, 10.1101/…': the DOIs alone (other references, EMPIAR ids, are left out)
     refs = (d.strip() for d in (ds.dataset_publications or '').replace(';', ',').split(','))

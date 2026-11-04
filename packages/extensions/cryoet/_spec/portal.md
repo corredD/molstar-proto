@@ -20,13 +20,16 @@ registration); the index tool `tools/portal-index/`.
   (the reconstruction method: WBP, SART, Fourier_Space), `reconstructionSoftware` and `processingSoftware` (with
   versions: AreTomo3 v2.3.0, IsoNet2), `alignment` (the portal's AL-id) and `default`, the portal's visualization
   default; each written only when the portal has it, so optional, and version 1 still: an older reader ignores them) and
-  annotations (id, object, shape, format, path, size, count, ground truth, the portal's visualization default). Paths
-  are relative to the file host. A shape's MRC is left out when it has a zarr (a browser reads whole files; the zarr has
-  levels).
+  annotations (id, object, shape, format, path, size, count, ground truth, the portal's visualization default); per run
+  its tilt series (`tiltSeries`, optional, version 1 still: an OME-Zarr's levels, the portal's pixel size, the tilt
+  axis, and `angles`, one an image by the portal's `z_index`, so `angles[i]` is image i whatever the rows' order; from
+  the client's per-section parameters, `tiltseries_metadata.json` for a series whose rows are not one an image; the
+  client has no default flag for a tilt series, so none). Paths are relative to the file host. A shape's MRC is left
+  out when it has a zarr (a browser reads whole files; the zarr has levels).
 - **Curated, not the portal's:** `decorations` by object name: the PDB that decorates the points, the EMDB average, and
   the average's box center in the structure's frame (§3). The portal links no fitted model.
-- Size: 10003 (65 runs) 121 KB, 10453 (95 runs) 325 KB, 10524 (12 runs) 32 KB, 10518 (49 runs, PP7 virus-like particles;
-  Ludo, 2026-11-03) 259 KB; each loaded on first use only.
+- Size: 10003 (65 runs) 165 KB, 10453 (95 runs) 383 KB, 10524 (12 runs) 40 KB, 10518 (49 runs, PP7 virus-like particles;
+  Ludo, 2026-11-03) 289 KB (the tilt series: +36 %, +18 %, +24 %, +11 %); each loaded on first use only.
 
 ## 2. The operations
 
