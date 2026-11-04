@@ -6,6 +6,9 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **Descriptions** (`me/descriptions`, `~/prism-me-lanes/descriptions`, port 1347, [brief](2026-11-04-descriptions.md)):
+  Ludo, 2026-11-04: an entity's short description on hover and in the properties, as the classic explorer. Started
+  2026-11-04.
 - **Merged 2026-11-03:** #48 (live slice sliders: the slice, oblique, contrast and mesh opacity follow a drag, one undo
   step; `2026-11-03-live-slice.md`; open: a full checkpoint per step, the other forms' 150 ms wait), #46 (the Assistant
   starts: one name per tool) and #47 (portal tilt series: index, card, Z slice with each image's tilt angle). Their
