@@ -265,6 +265,11 @@ async function getModelTargets(ctx: RuntimeContext, trajectory: Trajectory): Pro
   return targets;
 }
 
+/** A dotted name with no space (`root.HIV_capsid.membrane`): cellPACK's compartment paths, never a sentence */
+function isCellpackPath(text: string): boolean {
+  return !/\s/.test(text) && /[^.]\.[^.]/.test(text);
+}
+
 function detectMmcifVariant(block: CifBlock): 'cellpack' | 'petworld' | 'standard' {
   if (block.header.toLowerCase().includes('cellpack')) return 'cellpack';
   if (block.categories['pdbx_struct_assembly_gen']?.getField('PDB_model_num')?.isDefined) return 'petworld';
@@ -337,8 +342,9 @@ async function buildCellpackStandardParticleList(
   // a separate ordered fiber. In the 'standard' variant, the full description is used as
   // the entity name with no compartment.
   // cellPACK writes an entity's description in _entity.pdbx_parent_entity_id (the Exosome:
-  // "Integrin alpha-5, …", Markdown links kept); others hold the entity's compartment there
-  // (MG, HIV: "root.mge.interior.proteins") or its name, which are no description.
+  // "Integrin alpha-5, …", Markdown links kept); others hold a compartment path there, the entity's own
+  // or another (MG, HIV: "root.mge.interior.proteins", HIV's membranes "root.HIV_capsid.membrane") or its name, which
+  // are no description.
   const entityToCompartment = new Map<string, string>();
   const entityToName = new Map<string, string>();
   const fiberEntityIds = new Set<string>();
@@ -363,7 +369,7 @@ async function buildCellpackStandardParticleList(
     if (details) entityToFunction.set(entityId, details);
     if (variant === 'cellpack') {
       const text = db.entity.pdbx_parent_entity_id.value(i);
-      if (text && text !== entityToCompartment.get(entityId) && text !== entityToName.get(entityId)) {
+      if (text && !isCellpackPath(text) && text !== entityToName.get(entityId)) {
         entityToDescription.set(entityId, text);
       }
     }

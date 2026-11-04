@@ -281,7 +281,8 @@ describe('CellPack mmCIF fibers', () => {
 });
 
 // cellPACK's entity text (2026-11, the deployed examples): the Exosome's `_entity.pdbx_parent_entity_id` holds a
-// sentence (its `details` empty); MG's and HIV's hold the entity's compartment, MG's `details` a short function
+// sentence (its `details` empty); MG's and HIV's hold a compartment path (the entity's own, or another: HIV's
+// membranes), MG's `details` a short function
 const cellpackDescriptionCif = `data_cellpack_descriptions
 loop_
 _entity.id
@@ -293,6 +294,7 @@ _entity.pdbx_parent_entity_id
 3 root.exosome.surface.proteins.CD81 ? 'CD81 antigen PDB entry [5TCX](http://www.rcsb.org/pdb/explore.do?structureId=5TCX)'
 4 root.exosome.interior.proteins.ARNm ? ARNm
 5 Plain ? 'A sentence.'
+6 root.HIVenvelop_mature.membrane.inner_membrane membrane root.HIV_capsid.membrane
 
 loop_
 _atom_site.label_asym_id
@@ -305,12 +307,13 @@ B 2 0 0 0
 C 3 0 0 0
 D 4 0 0 0
 E 5 0 0 0
+F 6 0 0 0
 
 loop_
 _pdbx_struct_assembly_gen.assembly_id
 _pdbx_struct_assembly_gen.oper_expression
 _pdbx_struct_assembly_gen.asym_id_list
-1 '(1)' A,B,C,D,E
+1 '(1)' A,B,C,D,E,F
 
 loop_
 _pdbx_struct_oper_list.id
@@ -354,6 +357,7 @@ describe('CellPack mmCIF entity descriptions', () => {
   it('keeps details as the function, and a compartment path or the name itself is no description', async () => {
     const byName = await entities('cellpack');
     expect(byName.get('RNA_POLYMERASE')).toEqual({ name: 'RNA_POLYMERASE', function: 'transcription' });
+    expect(byName.get('inner_membrane')?.description).toBeUndefined();
     expect(byName.get('ARNm')).toEqual({ name: 'ARNm' });
   });
 
