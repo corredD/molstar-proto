@@ -13,6 +13,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
+import { descriptionText } from '../rows.js';
 import { explorerUI } from '../ui.js';
 
 // An entity's description under its name in the properties (_spec/ui.md §4; the Mesoscale Explorer's Focus Info), over
@@ -152,6 +153,21 @@ describe("an entity's description in the tree", () => {
     expect(parts('ITG')).toEqual(['ITG', 'Integrin alpha-5, important for cell adhesion and signaling.']);
     expect(parts('CD81')).toEqual(['CD81', 'CD81 antigen PDB entry 5TCX']);
     expect(parts('RNA_POLYMERASE')).toBeUndefined();
+    // its accessible description (a screen reader's), the card being a pointer's only
+    const item = rowOf(host, 'ITG')!.closest<HTMLElement>('[role=treeitem]')!;
+    expect(document.getElementById(item.getAttribute('aria-describedby')!)?.textContent).toBe(
+      'Integrin alpha-5, important for cell adhesion and signaling.',
+    );
     expect(rowOf(host, 'RNA_POLYMERASE')!.querySelector('[data-tip-overflow]')?.textContent).toBe('RNA_POLYMERASE');
+  });
+});
+
+describe('descriptionText', () => {
+  it('cuts a long description at a word past 200 characters', () => {
+    const long = `${'word '.repeat(100)}end`;
+    const text = descriptionText(long);
+    expect(text.endsWith('…')).toBe(true);
+    expect(text.length).toBeLessThanOrEqual(201);
+    expect(descriptionText('Short [link](http://x)')).toBe('Short link');
   });
 });

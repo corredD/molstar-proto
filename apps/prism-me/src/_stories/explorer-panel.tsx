@@ -6,6 +6,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { descriptionText } from '../explorer/rows.js';
 import {
   Button,
   type ContextMenuItem,
@@ -106,6 +107,7 @@ export function ExplorerPanel(props: ExplorerPanelProps) {
         ...(node.visible !== undefined ? { visible: node.visible } : {}),
         ...(OwnEyes.has(node.kind) ? { own: true } : {}),
         ...(node.icon ? { icon: node.icon } : {}),
+        ...(node.description ? { tip: descriptionText(node.description) } : {}),
         category: node.kind === 'category',
         hasChildren: !!node.children,
         expanded: !!text || o.has(node.key),
