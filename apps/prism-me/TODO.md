@@ -78,6 +78,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   `270ccd791` (the changelog `.v6/changelogs/marking-cost.md`, first added in `459d33398` with app files, and the plan).
   The GLSL half applies to 5.x: a lane from master also needs a root `CHANGELOG.md` line. Upstream when Ludo says so.
 
+- cellPACK entity descriptions (`_entity.pdbx_parent_entity_id`, not a compartment path or the name:
+  `ParticleEntityInfo.description`) and a particle's loci label showing its entity's (lane `descriptions`, built on
+  prism-me in commits that name no extension: `dac4930de`, `78c0b8514`).
+
 ## Backlog
 
 - **Automatic transfer-function preset** (Ludo, 2026-11-03; to decide): "a great preset automatically" for a direct
@@ -226,3 +230,9 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   set too; the distances follow it since 2026-11-02).
 - Turning a cut of some particles off on one representation and on again (`clipping` on/off per representation) loses
   its particles: it comes back as a cut of the whole representation (lane `looks-owner`'s review; not probed).
+
+- **Descriptions, left** (lane `descriptions`, 2026-11-04): a tree row's tooltip with the description (rows have only
+  the overflow tip of a cut-off name today); PetWorld's entities have no description in their files (only
+  `pdbx_description`, the name); a portal annotation has its object name only (the index has no description: adding one
+  means rebuilding it); the classic Mesoscale Explorer shows MG's and HIV's compartment path as the description (its
+  `model.ts`), not fixed there.
