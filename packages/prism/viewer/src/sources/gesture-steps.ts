@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { ViewerApi } from '../api/area.js';
@@ -12,6 +13,9 @@ import type { ViewerApi } from '../api/area.js';
 // succession are one `api.group`, the latest winning per key; what is not applied yet is shown already (`overlay`).
 // While the gesture is held the viewer gets previews spaced out (`throttleMs`, at least as long as the last took: an
 // isosurface or a direct volume is heavy, and the pointer must stay smooth); let go, the latest applies at once. A gesture ends on `settle` (the pointer let go) or after a moment's quiet.
+// A gesture's history is one checkpoint, taken at its start; its steps take none (a snapshot a step, on a scene whose
+// snapshot is over the budget, turned undo off in one drag: sequence.md §7.4). So it is all or nothing: a step refused
+// or failed undoes the whole gesture when it ends (api.md §5).
 // The map levels and the transfer function use it (sources/volume-levels.ts, sources/volume-transfer.ts).
 
 export interface GestureSteps<C extends object> {
@@ -71,37 +75,33 @@ export function gestureSteps<C extends object>(
 
   const run = (step: Step<C>) =>
     api
-      .group(
-        options.label,
-        async (g) => {
-          // When the last preview landed and how long it took: the next waits at least as long (and `throttleMs`), so
-          // a heavy update leaves the page time to follow the pointer.
-          let last = Number.NEGATIVE_INFINITY;
-          let took = 0;
-          for (;;) {
-            const next = step.pending.entries().next();
-            if (!next.done) {
-              // While the gesture is held, previews are spaced out; let go, the latest goes at once (what waited for
-              // its turn is replaced by it, merged per key).
-              const wait = step.closed ? 0 : Math.max(throttleMs, took) - (performance.now() - last);
-              if (wait > 0) {
-                await sleep(step, wait);
-                continue;
-              }
-              const [key, change] = next.value;
-              step.pending.delete(key);
-              const t0 = performance.now();
-              await options.apply(g, key, change);
-              last = performance.now();
-              took = last - t0;
+      .group(options.label, async (g) => {
+        // When the last preview landed and how long it took: the next waits at least as long (and `throttleMs`), so
+        // a heavy update leaves the page time to follow the pointer.
+        let last = Number.NEGATIVE_INFINITY;
+        let took = 0;
+        for (;;) {
+          const next = step.pending.entries().next();
+          if (!next.done) {
+            // While the gesture is held, previews are spaced out; let go, the latest goes at once (what waited for
+            // its turn is replaced by it, merged per key).
+            const wait = step.closed ? 0 : Math.max(throttleMs, took) - (performance.now() - last);
+            if (wait > 0) {
+              await sleep(step, wait);
               continue;
             }
-            if (step.closed) return;
-            await sleep(step);
+            const [key, change] = next.value;
+            step.pending.delete(key);
+            const t0 = performance.now();
+            await options.apply(g, key, change);
+            last = performance.now();
+            took = last - t0;
+            continue;
           }
-        },
-        { onFailure: 'continue' },
-      )
+          if (step.closed) return;
+          await sleep(step);
+        }
+      })
       .catch(() => undefined)
       .finally(() => {
         steps.splice(steps.indexOf(step), 1);
