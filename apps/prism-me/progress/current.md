@@ -6,16 +6,22 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-- **The small items left by #46-#49** (Ludo, 2026-11-04, interviewed one by one; started 2026-11-04):
-  - `label-selection` (port 1348, [brief](2026-11-04-label-selection.md)): item 1, a label on a selection.
-  - `portal-polish` (port 1349, [brief](2026-11-04-portal-polish.md)): items 2, 5, 8: names, the tilt series' placement
-    switch (decision pending Ludo's comparison), portal descriptions.
-  - `live-forms` (port 1350, [brief](2026-11-04-live-forms.md)): items 6, 3, 7: one checkpoint per drag, the forms live,
-    level 0 measured.
-  - Item 4 (tree tooltips): inline, branch `me/tree-tooltips`.
+- **The small items left by #46-#49** (Ludo, 2026-11-04, interviewed one by one; started 2026-11-04). Claude hit the
+  5-hour limit at 09:29 (resets 12:20). Grok took the two that were still open:
+  - `label-selection` (port 1348, [brief](2026-11-04-label-selection.md)): **PR #52**, ready. A label on a selection.
+    Ludo's answers recorded: follow the pick's granularity; keep both label commands in ⌘K.
+  - `tree-tooltips` (port not separate; branch `me/tree-tooltips`): **PR #50**, an entity's description as its tree
+    row's tooltip. No progress file of its own (the PR is the record).
+  - `live-forms` (port 1350, [brief](2026-11-04-live-forms.md)): **PR #53**, ready. One checkpoint per drag, the forms
+    follow it, level 0 measured (a library lane proposed, not started).
+  - `portal-polish` (port 1349, [brief](2026-11-04-portal-polish.md)): **PR #54**. Names, the placement switch (default
+    beside raw, pending Ludo's comparison), descriptions in the properties. Hover of a ribosome is not the description
+    (said, not built). Grok's commits: `1cc10f5da` (overlay follows a moved tomogram; real-stage test), `fa8696ac9`
+    (progress). Claude's before that.
 - **Colors by zoom by default** (`me/zoom-default`, `~/prism-me-lanes/zoom-default`, port 1347,
-  [brief](2026-11-04-zoom-default.md)): Ludo, 2026-11-04: on at load for cellPACK and PetWorld models. Started
-  2026-11-04.
+  [brief](2026-11-04-zoom-default.md)): **PR #51**. On at load for cellPACK and PetWorld, then Ludo's follow-up (Grok,
+  `1de3bc302`, `5b67c9e70`): edges 0.27, 2.2 and 28.8 px; By zoom stays on for a later theme; a Look color, a uniform
+  color or Generate colors holds until the atoms. Not checked headed.
 - **Merged 2026-11-04:** #49 (an entity's description on hover and in the properties, from cellPACK's
   `_entity.pdbx_parent_entity_id`; `2026-11-04-descriptions.md`; open: PetWorld and portal descriptions, tree row
   tooltips).
