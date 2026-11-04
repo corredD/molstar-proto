@@ -146,6 +146,16 @@ describe('the portal URL', () => {
     });
   });
 
+  it("places the tilt series as asked, one of the switch's three (Ludo, 2026-11-04: to compare)", () => {
+    const q = '?portal-dataset=10003&portal-run=TS_08&portal-tiltseries=17086&portal-tiltseries-place=';
+    expect(portalLoadOf(`${q}overlay`)).toMatchObject({ tiltSeries: 17086, tiltSeriesPlace: 'overlay' });
+    expect(portalLoadOf(`${q}turned`)).toMatchObject({ tiltSeriesPlace: 'turned' });
+    expect(portalLoadOf(`${q}beside`)).toMatchObject({ tiltSeriesPlace: 'beside' });
+    // another word: the load's default (beside)
+    expect(portalLoadOf(`${q}under`)).not.toHaveProperty('tiltSeriesPlace');
+    expect(PortalUrlParameters).toContain('portal-tiltseries-place');
+  });
+
   it('asks nothing without a dataset, or with a level that is not a number', () => {
     expect(portalLoadOf('?portal-run=TS_08')).toBeUndefined();
     expect(portalLoadOf('?portal-dataset=x')).toBeUndefined();
