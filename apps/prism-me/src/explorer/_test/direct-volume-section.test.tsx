@@ -13,7 +13,8 @@ import { render } from '@molstar/prism-ui/dom/render';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { paramSections } from '@molstar/prism-ui/forms/params-form';
 import { ApiResult } from '@molstar/prism-viewer/api/area';
-import { afterEach, describe, expect, it } from 'vitest';
+import { flushFrame } from '@molstar/prism-ui/reactive/frame-state';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExplorerApi, RepresentationInfo } from '../operations.js';
 import {
   isDirectVolume,
@@ -42,6 +43,7 @@ const Params: PD.Params = {
     [
       ['direct-volume', 'Direct Volume'],
       ['isosurface', 'Isosurface'],
+      ['slice', 'Slice'],
     ],
     (name) =>
       PD.Group<any>(
@@ -51,7 +53,9 @@ const Params: PD.Params = {
               lighting: DirectVolume.Params.lighting,
               controlPoints: PD.LineGraph([]),
             }
-          : { isoValue: PD.Numeric(1) },
+          : name === 'slice'
+            ? { index: PD.Numeric(0, { min: 0, max: 100, step: 1 }) }
+            : { isoValue: PD.Numeric(1) },
       ),
   ),
   colorTheme: PD.Mapped<any>(
@@ -107,8 +111,14 @@ function fakes(reprs: RepresentationInfo[]) {
   const params = new Map(reprs.map((r) => [r.ref, observableState<Record<string, unknown>>(DirectValues)]));
   // the volume's data object (a new one when it is read again: another OME-Zarr level)
   const data = observableState<object | undefined>({});
-  const api = {
+  const groups: string[] = [];
+  // a group's API is the same
+  const api: Record<string, unknown> = {
     run: async (name: string, args: unknown) => (calls.push([name, args]), ApiResult.ok('')),
+    group: async (label: string, work: (g: unknown) => Promise<unknown>) => {
+      groups.push(label);
+      return { ok: true, did: label, value: await work(api) };
+    },
   };
   const area = {
     representationsState: () => observableState<readonly RepresentationInfo[]>(reprs).asReadonly,
@@ -120,7 +130,7 @@ function fakes(reprs: RepresentationInfo[]) {
     volumeTransfer: (_api: unknown, volume: string, rep: string) => (transfers.push([volume, rep]), transfer),
     volumeData: () => data.asReadonly,
   };
-  return { calls, params, api, area, transfers, refreshed, data };
+  return { calls, groups, params, api, area, transfers, refreshed, data };
 }
 
 /** A volume picked: its subject, as the section list gives it */
@@ -355,5 +365,39 @@ describe("a direct volume's form", () => {
     });
     // another type now (the form is made again): as the form has them
     expect(withTypeParamsOf(stale, { type: { name: 'isosurface', params: {} } }, ['lighting'])).toBe(stale);
+  });
+});
+
+describe("a slice's Representation form", () => {
+  it('follows its sliders during a drag, one group', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    try {
+      const f = fakes([info('s', 'slice')]);
+      f.params.get('s')!.set({ type: { name: 'slice', params: { index: 0 } }, colorTheme: DirectValues.colorTheme });
+      const subject: Subject = {
+        ...subjectOf(f),
+        picked: { key: 's', label: 'Slice', kind: 'slice', node: { ref: 'v' }, representation: 's' },
+      };
+      const host = document.createElement('div');
+      document.body.append(host);
+      render(() => sectionOf('representation').render(subject), host);
+      const range = host.querySelector<HTMLInputElement>('input[type=range]')!;
+      // a drag of 160 ms, a preview a frame
+      for (let i = 1; i <= 10; i++) {
+        range.value = String(i * 5);
+        range.dispatchEvent(new Event('input', { bubbles: true }));
+        flushFrame();
+        await vi.advanceTimersByTimeAsync(16);
+      }
+      const during = f.calls.filter(([name]) => name === 'volume.update');
+      expect(during.length).toBeGreaterThan(3);
+      range.dispatchEvent(new Event('change', { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(1000);
+      const [, last] = f.calls.at(-1) as [string, { params: { type: { params: { index: number } } } }];
+      expect(last.params.type.params.index).toBe(50);
+      expect(f.groups).toEqual(['Slice']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

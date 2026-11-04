@@ -47,6 +47,7 @@ import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { VolumeTransfer } from '@molstar/prism-viewer/views/volume/volume-transfer';
 import { PlainCut, type Way, wayOf } from './clips.js';
 import { DistanceProps } from './distance-properties.js';
@@ -845,7 +846,8 @@ function ListDecoration(props: { api: ViewerApi; node: NodeRef }) {
 /**
  * The representations of a particle list or a volume (`owner`; those `only` keeps), each with its eye and whole form
  * (the type: spheres, orientation, the targets; isosurface…, then its params), as Prism's inspector shows one; a change
- * runs `operation` a moment after the last (sliders change at pointer rate)
+ * runs `operation` a moment after the last (sliders change at pointer rate), a slice's as it goes (one undo step a
+ * gesture, Prism's `gestureSteps`; TODO.md: the others too)
  */
 function Representations(props: {
   api: ViewerApi;
@@ -876,21 +878,29 @@ function Representations(props: {
             // a direct volume's fields changed since the last update: those alone are sent (the transfer function
             // above sets its type's points and its color theme too, after the form was made)
             const changed = new Set<string>();
-            const update = lastWrite(async () => {
+            const write = async (g: ViewerApi) => {
               const values = direct
                 ? changedValues(model.values.value, changed, area.representationForm(r.ref)?.values)
                 : model.values.value;
               changed.clear();
-              await api.run(props.operation, { node: r.ref, params: values });
+              await g.run(props.operation, { node: r.ref, params: values });
               const next = JSON.stringify((values as { colorTheme?: unknown }).colorTheme);
-              if (props.operation === 'particles.update' && next !== theme) await showTheme(api, props.owner);
+              if (props.operation === 'particles.update' && next !== theme) await showTheme(g, props.owner);
               theme = next;
-            });
+            };
+            // a slice follows its sliders (the form's model is not loaded again from the state: no overlay needed)
+            const live =
+              r.type === 'slice'
+                ? gestureSteps(api, { label: 'Slice', apply: (g) => write(g), changed: () => {}, throttleMs: 0 })
+                : undefined;
+            if (live) onCleanup(() => live.settle());
+            const update = live ? undefined : lastWrite(() => write(api));
             const params = direct ? withoutTypeParams(form.params, DirectVolumeOwn) : form.params;
             const model = new ParamsFormModel(params, form.values, {
               onChange: (_, name) => {
                 changed.add(name);
-                update.start(150);
+                if (live) live.change('', {});
+                else update?.start(150);
               },
             });
             // the type's own params open (the iso level, the spheres' size): what is changed most
@@ -899,7 +909,7 @@ function Representations(props: {
             // inspector's does, but not over a change not written yet
             if (direct) {
               effect(area.representationParams(r.ref), (now) => {
-                if (now && !update.pending) model.load(now as PD.Values<PD.Params>);
+                if (now && !update?.pending) model.load(now as PD.Values<PD.Params>);
               });
             }
             return (

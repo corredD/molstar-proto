@@ -190,11 +190,16 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Before upstream PRs: squash `Particles: targets that reference objects in the state` with its fix
   (`a target ref is any cell`), and check each library commit builds and passes its tests on its own (`git rebase -x`).
 - Handles, left open by `gizmo-handles` (2026-10-26): the label Move's own drag (`stage-tools/src/drag.ts`, raw DOM
-  listeners, no `pointercancel` or lost capture: a lost release leaves its layer up; Prism's `drag()` would end it); the
-  oblique slice's sliders leave several undo steps (`cryoet/src/controls.tsx`, a run 60 ms after each pause); a
+  listeners, no `pointercancel` or lost capture: a lost release leaves its layer up; Prism's `drag()` would end it); a
   particle's preview copies every coordinate of its list (`offsetParticles`, architecture §5); a structure's preview
   allocates about 200 KB a pointer event (its representations' `setState` and update); the hosts' tests cover one step
   and an undo during a drag, not a refused commit's restore per host (only `GizmoHandles`' own test does).
+- Live sliders, left open by `live-slice` (2026-11-03): the other Representation forms (isosurface, direct volume, a
+  particle list's) still write 150 ms after the last change (`properties.tsx` `Representations`): they do not follow a
+  drag; the same `gestureSteps` path as a slice's would, at Prism's 250 ms pacing for heavy updates (Ludo's call). A
+  slice's Representation form is made once and does not follow the state: after a Slice drag it holds the old index, and
+  its next change writes it back. A grid slice step costs about 9 ms on TS_08 at level 2, 35 ms at level 1 and 150–230
+  ms at level 0: at level 0 a drag shows 2–3 slices a second.
 - The explorer mocks' checks in CI: `pnpm -C apps/prism-me styles:check` and `typecheck:storybook` run nowhere
   (`.github/workflows/node.yml` runs them for `packages/prism/*` only), so a stale `_generated` module or a story's type
   error stays green.
