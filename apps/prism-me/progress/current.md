@@ -6,6 +6,9 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **Merged 2026-11-04:** #49 (an entity's description on hover and in the properties, from cellPACK's
+  `_entity.pdbx_parent_entity_id`; `2026-11-04-descriptions.md`; open: PetWorld and portal descriptions, tree row
+  tooltips).
 - **Descriptions** (`me/descriptions`, `~/prism-me-lanes/descriptions`, port 1347, [brief](2026-11-04-descriptions.md)):
   Ludo, 2026-11-04: an entity's short description on hover and in the properties, as the classic explorer. Started
   2026-11-04.
