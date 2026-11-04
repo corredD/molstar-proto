@@ -119,6 +119,11 @@
       "types": "./lib/sources/volume-transfer.d.ts",
       "import": "./lib/sources/volume-transfer.js"
     },
+    "./sources/gesture-steps": {
+      "molstar-src": "./src/sources/gesture-steps.ts",
+      "types": "./lib/sources/gesture-steps.d.ts",
+      "import": "./lib/sources/gesture-steps.js"
+    },
     "./sources/canvas-presence": {
       "molstar-src": "./src/sources/canvas-presence.ts",
       "types": "./lib/sources/canvas-presence.d.ts",
