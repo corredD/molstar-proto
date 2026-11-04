@@ -16,7 +16,7 @@ import { ApiResult, type ViewerApi } from '../api/area.js';
 // A gesture's history is one checkpoint, taken at its start; its steps take none (a snapshot a step, on a scene whose
 // snapshot is over the budget, turned undo off in one drag: sequence.md §7.4). So it is all or nothing: a step refused
 // or failed undoes the whole gesture when it ends (api.md §5), and once one is, the gesture applies nothing more (it
-// would be thrown away).
+// would be thrown away). A step that throws ends the gesture's group; the next change starts another.
 // Prism's sliders use it (sources/volume-levels.ts, volume-transfer.ts, representation-quick.ts), and apps' and
 // extensions' live sliders.
 
@@ -110,6 +110,8 @@ export function gestureSteps<C extends object>(
       })
       .catch(() => undefined)
       .finally(() => {
+        // Ended before its release (a step threw): the next change starts another.
+        if (open === step) open = undefined;
         steps.splice(steps.indexOf(step), 1);
         options.changed();
       });

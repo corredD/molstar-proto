@@ -112,4 +112,27 @@ describe('a gesture', () => {
     await until(() => v.api.running.value.length === 0);
     await until(() => Math.abs(isoOf(v) - before) < 1e-6);
   });
+
+  it('starts another step after a step threw: the release applies the latest', async () => {
+    const v = await loaded();
+    let thrown = false;
+    const g = gestureSteps<{ value: number }>(v.api, {
+      label: 'Iso value',
+      apply: async (api, _key, { value }) => {
+        if (value === 9 && !thrown) {
+          thrown = true;
+          throw new Error('a build failed');
+        }
+        return api.volume.isovalue({ value, kind: 'relative' });
+      },
+      changed: () => {},
+      quietMs: 10_000,
+      throttleMs: 0,
+    });
+    g.change('iso', { value: 9 });
+    await until(() => thrown && v.managers.history.running.value === 0);
+    g.change('iso', { value: 1.3 });
+    g.settle();
+    await until(() => Math.abs(isoOf(v) - 1.3) < 1e-6);
+  });
 });
