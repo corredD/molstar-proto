@@ -8,9 +8,11 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { Structure } from '@molstar/model/model/structure';
-import { ApiResult } from '@molstar/prism-viewer/api/area';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { ApiArea, type ApiAreaContext, ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
+import type { ViewerExtension } from '@molstar/prism-viewer/spec';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { getOmeZarrLevel, omeZarrLevelNeeds, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
 import { particleListData } from '../operations.js';
@@ -104,6 +106,17 @@ const dataset: PortalDataset = {
           ],
         },
       ],
+      // four images (the zarr's z), their angles by z index
+      tiltSeries: [
+        {
+          id: 17,
+          zarr: '1/TS_01/ts.zarr',
+          levels: [level('0', 520, 10), level('1', 260, 20), level('2', 130, 40)],
+          pixelSpacing: 10.01,
+          tiltAxis: -5,
+          angles: [-60, -20, 20, 60],
+        },
+      ],
     },
   ],
 };
@@ -158,6 +171,7 @@ const routes: Route[] = [
   [/1cbs/, () => readFileSync(new URL('1cbs_full.bcif', examples))],
   ...zarrRoutes('t\\.zarr', zarr('<f4')),
   ...zarrRoutes('m\\.zarr', zarr('|i1')),
+  ...zarrRoutes('ts\\.zarr', zarr('<f4')),
 ];
 
 function serve(own: Route[] = []) {
@@ -179,10 +193,32 @@ function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: 
   if (!r.ok) expect.fail(`${r.code}: ${r.message}${r.hint ? ` (${r.hint})` : ''}`);
 }
 
-async function viewer(from: PortalIndexSource = source) {
+/** The stage's move, recorded: a load places an object beside the tomogram by it */
+class StageMoves extends ApiArea {
+  readonly id = 'stage';
+  static readonly calls: { target: string; matrix: number[] }[] = [];
+  readonly move = this.operation({
+    id: 'stage.move',
+    title: 'Move',
+    params: { target: PD.Text(''), matrix: PD.Value<number[]>([]) },
+    async run(v) {
+      StageMoves.calls.push(v);
+      return ApiResult.ok('');
+    },
+  });
+}
+const Stage: ViewerExtension = {
+  id: 'stage-moves',
+  api: { stage: (ctx: ApiAreaContext) => new StageMoves(ctx) } as never,
+};
+
+async function viewer(from: PortalIndexSource = source, extra: ViewerExtension[] = []) {
   const base = DefaultPrismViewerSpec();
   const v = await createPrismViewerHeadless({
-    spec: { ...base, extensions: [...(base.extensions ?? []), CryoetExtension, CryoetPortalExtension(from)] },
+    spec: {
+      ...base,
+      extensions: [...(base.extensions ?? []), CryoetExtension, CryoetPortalExtension(from), ...extra],
+    },
   });
   viewers.push(v);
   return v;
@@ -208,6 +244,75 @@ describe('cryoetPortal', () => {
     expect(r.did).toContain('2: 130×130×130 at 40 Å, 8.8 MB');
     // every tomogram of the run, as the card lists them: the ids `load`'s `tomogram` takes (review S3)
     expect(r.did).toContain('Tomograms: 7 · 10 Å · 400×400×400');
+    // and its tilt series: the ids `load`'s `tiltSeries` takes
+    expect(r.did).toContain('Tilt series: TS-17 · 10.01 Å · 520×520×4 · −60°…+60° step 40°');
+  });
+
+  it('loads a tilt series as its Z slice only, from the middle image, beside the tomogram loaded with it', async () => {
+    const fetch = serve();
+    StageMoves.calls.length = 0;
+    const v = await viewer(source, [Stage]);
+    const r = await v.api.run('cryoetPortal.load', {
+      dataset: 1,
+      run: 'TS_01',
+      annotations: 'none',
+      as: 'slices',
+      tiltSeries: 17,
+    });
+    expectOk(r);
+    expect(r.did).toContain('tilt series 17 (level 2, 4 images)');
+    // the coarsest level when none is asked
+    expect(fetch.mock.calls.map((c) => String(c[0]))).toContain(`${PortalFiles}1/TS_01/ts.zarr/2/0/0/0`);
+    const [tomogram, ts] = v.plugin.managers.volume.hierarchy.current.volumes;
+    expect(tomogram.representations.length).toBe(3);
+    const params = ts.representations.map((x) => x.cell.transform.params as any);
+    expect(params.map((p) => p.type.name)).toEqual(['slice']);
+    expect(params[0].type.params.dimension).toEqual({ name: 'z', params: 2 });
+    // moved beside the tomogram (only the tilt series: the tomogram stays where it is)
+    expect(StageMoves.calls.map((c) => c.target)).toEqual([ts.cell.transform.ref]);
+    expect(StageMoves.calls[0].matrix[12]).toBeLessThan(0);
+    // its angles, found from the volume: the Slice row's readout
+    expect(v.api.cryoetPortal!.tiltAnglesOf(ts.cell.transform.ref)).toEqual([-60, -20, 20, 60]);
+    expect(v.api.cryoetPortal!.tiltAnglesOf(tomogram.cell.transform.ref)).toBeUndefined();
+  });
+
+  it('loads a tilt series alone where it lands, at the level asked', async () => {
+    const fetch = serve();
+    StageMoves.calls.length = 0;
+    const v = await viewer(source, [Stage]);
+    const r = await v.api.run('cryoetPortal.load', {
+      dataset: 1,
+      run: 'TS_01',
+      annotations: 'none',
+      as: 'none',
+      tiltSeries: 17,
+      tiltSeriesLevel: 1,
+    });
+    expectOk(r);
+    expect(r.did).toBe('Loaded 1 TS_01: tilt series 17 (level 1, 4 images).');
+    expect(fetch.mock.calls.map((c) => String(c[0]))).toContain(`${PortalFiles}1/TS_01/ts.zarr/1/0/0/0`);
+    expect(v.plugin.managers.volume.hierarchy.current.volumes.length).toBe(1);
+    expect(StageMoves.calls).toEqual([]);
+  });
+
+  it("counts the tilt series' level in the size guard, and names the tilt series it has", async () => {
+    serve();
+    const v = await viewer();
+    // no tomogram, no annotation: the tilt series' level 0 alone is over
+    const asked = await v.api.run('cryoetPortal.load', {
+      dataset: 1,
+      run: 'TS_01',
+      annotations: 'none',
+      as: 'none',
+      tiltSeries: 17,
+      tiltSeriesLevel: 0,
+    });
+    expect(asked).toMatchObject({ ok: false, code: 'confirm', message: 'TS_01 is 562 MB decoded at these levels.' });
+    expect(await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', tiltSeries: 99 })).toMatchObject({
+      code: 'not-found',
+      message: 'TS_01 has no tilt series 99.',
+      hint: 'It has 17.',
+    });
   });
 
   // a direct volume needs graphics, which a headless viewer has not: its transfer function is tested below

@@ -36,6 +36,7 @@ import {
   type PortalFailure,
   type PortalRunInfo,
   type PortalTomogramView,
+  portalTiltSeriesOptions,
   portalTomogramOptions,
 } from './portal-run.js';
 import {
@@ -45,7 +46,9 @@ import {
   PortalFiles,
   type PortalLevel,
   PortalPages,
+  type PortalRun,
   type PortalSpacing,
+  type PortalTiltSeries,
 } from './portal-index.js';
 
 export {
@@ -72,7 +75,8 @@ declare module '@molstar/prism-viewer/api' {
 // a load is the viewer's own operations on the portal's file addresses (§2): `load.url` for a single file (ndjson,
 // GLB, MRC), the format's transforms for an OME-Zarr, the points' pixel size by `particles.source` from the index (never
 // the zarr's scale: they differ in the third decimal), their decoration by `cryoet.decorate`, the tomogram's slices by
-// `cryoet.slices` and its direct volume by `volume.representation`. One operation, one history step.
+// `cryoet.slices` and its direct volume by `volume.representation`, a tilt series' images by `cryoet.slice` along z. One
+// operation, one history step.
 
 /** Where the index comes from: the app's files (a catalog, a dataset by id) */
 export interface PortalIndexSource {
@@ -112,6 +116,8 @@ export class CryoetPortalApi extends ApiArea {
   readonly id = 'cryoetPortal';
   private readonly loaded = new Map<number, Promise<PortalDataset>>();
   private readonly known = new Map<number, PortalDataset>();
+  /** The tilt series of the datasets read, by their zarr's address: a slice's angles found from its volume's download */
+  private readonly tiltSeriesAt = new Map<string, PortalTiltSeries>();
   private catalogRead: Promise<PortalCatalog> | undefined;
 
   constructor(
@@ -141,6 +147,8 @@ export class CryoetPortalApi extends ApiArea {
       p = this.source.dataset(id).then((d) => {
         const checked = checkPortalIndex(d, `The portal index of dataset ${id}`);
         this.known.set(id, checked);
+        for (const r of checked.runList)
+          for (const t of r.tiltSeries ?? []) this.tiltSeriesAt.set(PortalFiles + t.zarr, t);
         return checked;
       });
       p.catch(() => this.loaded.delete(id));
@@ -169,6 +177,15 @@ export class CryoetPortalApi extends ApiArea {
       runPage: run ? `${PortalPages}runs/${run.id}` : undefined,
       dois: ds?.dois ?? [],
     };
+  }
+
+  /**
+   * The tilt angle (°) of each image of a portal tilt series, the volume of a scene object, when its index is read
+   * (synchronous: the Slice row's readout); undefined for anything else
+   */
+  tiltAnglesOf(ref: string): readonly number[] | undefined {
+    const url = downloadUrlAbove(this.ctx, ref);
+    return url ? this.tiltSeriesAt.get(url.replace(/\/$/, ''))?.angles : undefined;
   }
 
   readonly datasets = this.operation({
@@ -207,6 +224,14 @@ export class CryoetPortalApi extends ApiArea {
         `Tomograms: ${portalTomogramOptions(info.run)
           .map(([, label]) => label)
           .join('; ')}`,
+        // the ids `load`'s `tiltSeries` takes
+        ...(info.run.tiltSeries?.length
+          ? [
+              `Tilt series: ${portalTiltSeriesOptions(info.run)
+                .map(([, label]) => label)
+                .join('; ')}`,
+            ]
+          : []),
         ...info.entries.map(
           (e) =>
             `${e.key}: ${e.object}, ${e.shape} (${e.format}${e.count ? `, ${e.count}` : ''})${e.default ? ', default' : ''}${e.needs ? ` (${e.needs})` : ''}`,
@@ -244,6 +269,16 @@ export class CryoetPortalApi extends ApiArea {
         ['slices', 'Slices'],
         ['none', 'No tomogram'],
       ]),
+      tiltSeries: OptionalParam(
+        PD.Numeric(
+          0,
+          { min: 0, step: 1 },
+          { description: 'A tilt series of the run by id (its images, stepped along z); absent: none' },
+        ),
+      ),
+      tiltSeriesLevel: OptionalParam(
+        PD.Numeric(2, { min: 0, step: 1 }, { description: "The tilt series' OME-Zarr level; absent: the coarsest" }),
+      ),
       large: PD.Boolean(false, { description: `Load above ${PortalLargeBytes / 1e6} MB decoded (asked first)` }),
     },
     modules: ['network'],
@@ -251,7 +286,13 @@ export class CryoetPortalApi extends ApiArea {
     // the portal's files; the decorations' structures and maps from the known data services
     addresses: () => [PortalFiles],
     async run(values, ctx) {
-      const v = values as typeof values & { spacing?: number; tomogram?: number; level?: number };
+      const v = values as typeof values & {
+        spacing?: number;
+        tomogram?: number;
+        level?: number;
+        tiltSeries?: number;
+        tiltSeriesLevel?: number;
+      };
       const ds = await readDataset(ctx, v.dataset);
       if (isFailure(ds)) return ds;
       const info = describePortalRun((f) => readable(ctx, f), ds, v.run, v.spacing, v.tomogram);
@@ -261,8 +302,13 @@ export class CryoetPortalApi extends ApiArea {
       const t = v.as === 'none' ? undefined : info.tomogram;
       const level = t ? pickLevel(t.levels, v.level) : undefined;
       if (isFailure(level)) return level;
+      const ts = v.tiltSeries === undefined ? undefined : pickTiltSeries(info.run, v.tiltSeries);
+      if (isFailure(ts)) return ts;
+      const tsLevel = ts ? pickLevel(ts.levels, v.tiltSeriesLevel) : undefined;
+      if (isFailure(tsLevel)) return tsLevel;
 
-      const bytes = (level?.bytes ?? 0) + entries.reduce((n, e) => n + entryBytes(e, v.level), 0);
+      const bytes =
+        (level?.bytes ?? 0) + (tsLevel?.bytes ?? 0) + entries.reduce((n, e) => n + entryBytes(e, v.level), 0);
       if (bytes > PortalLargeBytes && !v.large) {
         return ApiResult.fail(
           'confirm',
@@ -273,11 +319,13 @@ export class CryoetPortalApi extends ApiArea {
 
       const warnings: string[] = [];
       const done: string[] = [];
+      let tomogram = false;
       if (t && level) {
         if (info.needs) warnings.push(`The tomogram ${info.needs}.`);
         else {
           const r = await loadTomogram(ctx, PortalFiles + t.zarr, level, v.as, warnings);
           if (!r.ok) return r;
+          tomogram = true;
           done.push(`tomogram ${t.id} (level ${level.path}, ${level.spacing} Å)`);
         }
       }
@@ -289,6 +337,12 @@ export class CryoetPortalApi extends ApiArea {
         const r = await loadEntry(ctx, ds, info.spacing, e, v.level, warnings);
         if (!r.ok) return r;
         done.push(`${e.object} (${e.shape})`);
+      }
+      if (ts && tsLevel) {
+        // beside the tomogram loaded with it; alone, where it lands
+        const r = await loadTiltSeries(ctx, PortalFiles + ts.zarr, tsLevel, tomogram);
+        if (!r.ok) return r;
+        done.push(`tilt series ${ts.id} (level ${tsLevel.path}, ${ts.angles.length} images)`);
       }
       const emdb = new Set(entries.map((e) => ds.decorations?.[e.object]?.emdb).filter((x): x is string => !!x));
       for (const id of emdb) {
@@ -355,6 +409,17 @@ function pickEntries(info: PortalRunInfo, names: string): readonly PortalEntry[]
     for (const h of hits) picked.add(h);
   }
   return [...picked];
+}
+
+function pickTiltSeries(run: PortalRun, id: number): PortalTiltSeries | ApiFailure {
+  const all = run.tiltSeries ?? [];
+  const ts = all.find((x) => x.id === id);
+  if (ts) return ts;
+  return ApiResult.fail(
+    'not-found',
+    `${run.name} has no tilt series ${id}.`,
+    all.length ? `It has ${all.map((x) => x.id).join(', ')}.` : 'It has none in the index.',
+  );
 }
 
 function pickLevel(levels: readonly PortalLevel[], level: number | undefined): PortalLevel | ApiFailure {
@@ -443,6 +508,21 @@ async function loadTomogram(
       const d = await showTomogramVolume(ctx, volume);
       if (!d.ok) warnings.push(`No direct volume: ${d.message}`);
     }
+  }
+  return ApiResult.ok('');
+}
+
+/**
+ * A tilt series at a level: its images, one at a time, as the Z slice (from the middle image, the least tilted): z is the
+ * image index, not a distance (the stack is a few pixels thick), so no direct volume and no isosurface (_spec/portal.md §2)
+ */
+async function loadTiltSeries(ctx: ApiContext, url: string, level: PortalLevel, beside: boolean) {
+  const made = await loadZarr(ctx, url, level);
+  if (isFailure(made)) return made;
+  for (const volume of made) {
+    const r = await ctx.api.run('cryoet.slice', { volume, axis: 'z' });
+    if (!r.ok) return r;
+    if (beside) await besideTheTomogram(ctx, volume);
   }
   return ApiResult.ok('');
 }
@@ -577,8 +657,8 @@ async function centerOnAverage(ctx: ApiContext, particles: string, center: reado
 }
 
 /**
- * An average beside the tomogram (its own place is the origin, the tomogram's corner): moved along -x by its width and
- * a margin, by the stage's move when the viewer has it
+ * An average or a tilt series beside the tomogram (its own place is the origin, the tomogram's corner): moved along -x
+ * by its width and a margin, by the stage's move when the viewer has it
  */
 async function besideTheTomogram(ctx: ApiContext, ref: string) {
   const data = ctx.plugin.state.data.cells.get(ref)?.obj?.data as Volume | undefined;
