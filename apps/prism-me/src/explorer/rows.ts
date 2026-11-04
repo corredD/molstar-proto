@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { descriptionText } from './description-text.js';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import { Color } from '@molstar/core/util/color';
 import { groupEntities, type MesoGroup, type MesoGroupBy } from '@molstar/mesoscale-extension/model';
@@ -345,6 +346,7 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
               key: `me:${o.ref}:${id}`,
               depth,
               label: e.name,
+              ...(e.description ? { tip: descriptionText(e.description) } : {}),
               kind: 'entity',
               count: e.count.toLocaleString('en'),
               visible: e.visible,
