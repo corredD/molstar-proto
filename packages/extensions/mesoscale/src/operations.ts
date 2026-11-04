@@ -1112,6 +1112,22 @@ export interface MesoscaleExample {
   readonly description?: string;
 }
 
+/**
+ * Hosts the deployed list points some examples to, and the copy the explorer reads instead: Mol*'s CloudFront allows
+ * https://molstar.org only (CORS), so a page anywhere else (localhost, the lab site) cannot read it; mesoscope.scripps.edu
+ * holds the same files by name and allows any site (Ludo, 2026-11-03)
+ */
+const ExampleMirrors: readonly (readonly [RegExp, string])[] = [
+  [/^https:\/\/d39ulgwcl2k1f0\.cloudfront\.net\/me\/[^/]+\//, 'https://mesoscope.scripps.edu/explorer/examples/'],
+];
+
+/** An example's address as the explorer reads it: absolute (the list's are relative to it), a mirror's where it has one */
+export function exampleAddress(url: string, base: string): string {
+  const href = new URL(url, base).href;
+  const mirror = ExampleMirrors.find(([from]) => from.test(href));
+  return mirror ? href.replace(mirror[0], mirror[1]) : href;
+}
+
 let examples: Promise<MesoscaleExample[]> | undefined;
 
 /** The examples, fetched once from the explorer's list; their addresses made absolute */
@@ -1120,7 +1136,9 @@ export function mesoscaleExamples(base = ExamplesBase): Promise<MesoscaleExample
     .then((r) => (r.ok ? r.json() : []))
     // the classic explorer's sessions (molx, molj) need its own transforms (its groups, its cellPACK assembly)
     .then((list: MesoscaleExample[]) =>
-      list.filter((e) => e.type !== 'molx' && e.type !== 'molj').map((e) => ({ ...e, url: new URL(e.url, base).href })),
+      list
+        .filter((e) => e.type !== 'molx' && e.type !== 'molj')
+        .map((e) => ({ ...e, url: exampleAddress(e.url, base) })),
     )
     .catch(() => {
       examples = undefined;
