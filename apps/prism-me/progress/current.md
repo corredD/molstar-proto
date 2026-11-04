@@ -6,6 +6,9 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **Live slice sliders** (`me/live-slice`, `~/prism-me-lanes/live-slice`, port 1349, [brief](2026-11-03-live-slice.md)):
+  Ludo, 2026-11-03: the slice follows the slider during a drag (the controls debounced it). Started 2026-11-03.
+- **Assistant tools** (`me/assistant-tools`, port 1348, [progress](2026-11-03-assistant-tools.md)): PR #46, for Ludo.
 - **Portal tilt series** (`me/portal-tiltseries`, `~/prism-me-lanes/portal-tiltseries`, port 1347,
   [brief](2026-11-03-portal-tiltseries.md)): Ludo, 2026-11-03, "yes": the runs' tilt series in the index, a Tilt series
   choice on the card (level 2), images stepped along Z with their angle. Started 2026-11-03.
