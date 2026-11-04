@@ -99,6 +99,9 @@ registration); the index tool `tools/portal-index/`.
   reconstruction's when it differs; the version tells 64004 from 64006). Picking one sets its spacing, so there is no
   spacing field, and that spacing's annotations and levels. Its default is §2's. A spacing without a tomogram cannot be
   chosen here (none in the shipped index; the API's `spacing` can).
+- **The tilt angle on the Slice row** (Ludo, 2026-11-03): a portal tilt series' Z slice shows its image's angle after
+  the count (`/ 41 · −60.005°`, the slider's unit: no new control), by the image's index from 0 (the box counts from 1);
+  prism-me's properties pass `tiltAnglesOf(volume)` to the cryoet `Slice`.
 - Story: prism-me › Explorer › CryoET Data Portal (Card, a run of several tomograms: 10518 pt117_ts_001).
 
 ## 5. The URL (prism-me)
