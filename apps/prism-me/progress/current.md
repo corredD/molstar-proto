@@ -6,6 +6,13 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **The small items left by #46-#49** (Ludo, 2026-11-04, interviewed one by one; started 2026-11-04):
+  - `label-selection` (port 1348, [brief](2026-11-04-label-selection.md)): item 1, a label on a selection.
+  - `portal-polish` (port 1349, [brief](2026-11-04-portal-polish.md)): items 2, 5, 8: names, the tilt series' placement
+    switch (decision pending Ludo's comparison), portal descriptions.
+  - `live-forms` (port 1350, [brief](2026-11-04-live-forms.md)): items 6, 3, 7: one checkpoint per drag, the forms live,
+    level 0 measured.
+  - Item 4 (tree tooltips): inline, branch `me/tree-tooltips`.
 - **Colors by zoom by default** (`me/zoom-default`, `~/prism-me-lanes/zoom-default`, port 1347,
   [brief](2026-11-04-zoom-default.md)): Ludo, 2026-11-04: on at load for cellPACK and PetWorld models. Started
   2026-11-04.
