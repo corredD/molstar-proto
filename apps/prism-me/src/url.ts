@@ -21,6 +21,8 @@ export const PortalUrlParameters: readonly string[] = [
   'portal-spacing',
   'portal-annotations',
   'portal-level',
+  'portal-tiltseries',
+  'portal-tiltseries-level',
 ];
 
 /** The `cryoetPortal.load` values the URL asks for, if it names a dataset */
@@ -32,6 +34,10 @@ export function portalLoadOf(search: string): Record<string, unknown> | undefine
   // a tomogram by id picks its spacing too (§5)
   const tomogram = q.get('portal-tomogram');
   const spacing = q.get('portal-spacing');
+  // a tilt series by id, at a level of its own (the tomogram's is not its: 584 MB at level 1 against 146 at 2)
+  const tiltSeries = q.get('portal-tiltseries');
+  const tiltSeriesLevel = q.get('portal-tiltseries-level');
+  const whole = (x: string | undefined) => x !== undefined && /^\d+$/.test(x);
   return {
     dataset,
     run: q.get('portal-run') ?? '',
@@ -39,6 +45,8 @@ export function portalLoadOf(search: string): Record<string, unknown> | undefine
     ...(tomogram !== undefined && /^\d+$/.test(tomogram) ? { tomogram: Number(tomogram) } : {}),
     ...(spacing !== undefined && /^\d+(\.\d+)?$/.test(spacing) ? { spacing: Number(spacing) } : {}),
     ...(level !== undefined && /^\d+$/.test(level) ? { level: Number(level) } : {}),
+    ...(whole(tiltSeries) ? { tiltSeries: Number(tiltSeries) } : {}),
+    ...(whole(tiltSeriesLevel) ? { tiltSeriesLevel: Number(tiltSeriesLevel) } : {}),
   };
 }
 

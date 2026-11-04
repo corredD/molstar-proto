@@ -119,6 +119,27 @@ describe('the portal URL', () => {
     });
   });
 
+  it('loads a tilt series by id, at its own level', () => {
+    expect(portalLoadOf('?portal-dataset=10003&portal-run=TS_08&portal-tiltseries=17086')).toEqual({
+      dataset: 10003,
+      run: 'TS_08',
+      annotations: '',
+      tiltSeries: 17086,
+    });
+    // the tomogram's level and the tilt series' apart
+    expect(
+      portalLoadOf(
+        '?portal-dataset=10003&portal-run=TS_08&portal-tiltseries=17086&portal-tiltseries-level=1&portal-level=0',
+      ),
+    ).toMatchObject({ tiltSeries: 17086, tiltSeriesLevel: 1, level: 0 });
+    expect(PortalUrlParameters).toEqual(expect.arrayContaining(['portal-tiltseries', 'portal-tiltseries-level']));
+    expect(portalLoadOf('?portal-dataset=10003&portal-tiltseries=TS-17086&portal-tiltseries-level=x')).toEqual({
+      dataset: 10003,
+      run: '',
+      annotations: '',
+    });
+  });
+
   it('asks nothing without a dataset, or with a level that is not a number', () => {
     expect(portalLoadOf('?portal-run=TS_08')).toBeUndefined();
     expect(portalLoadOf('?portal-dataset=x')).toBeUndefined();
