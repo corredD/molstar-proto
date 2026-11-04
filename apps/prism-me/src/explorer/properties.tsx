@@ -334,7 +334,7 @@ export const Sections: readonly Section[] = [
       const cryoet = s.api.cryoet!;
       const volume = s.picked.node!.ref;
       if (s.picked.kind === 'volume') return <VolumeSlices api={s.api} cryoet={cryoet} volume={volume} />;
-      return <Slice area={cryoet} volume={volume} axis={sliceAxis(s)!} />;
+      return <Slice api={s.api} area={cryoet} volume={volume} axis={sliceAxis(s)!} />;
     },
   },
   {
@@ -1122,7 +1122,7 @@ function VolumeSlices(props: { api: ViewerApi; cryoet: CryoetApi; volume: string
         {(axis) => (
           <div class={classes.tight}>
             <span class={classes.itemName}>{`Slice ${axis.toUpperCase()}`}</span>
-            <Slice area={cryoet} volume={volume} axis={axis} />
+            <Slice api={api} area={cryoet} volume={volume} axis={axis} />
           </div>
         )}
       </For>
@@ -2182,7 +2182,7 @@ function MeshLook(props: { api: ViewerApi; node: NodeRef }) {
   const ref = props.node.ref;
   return (
     <For each={mapState(list, (l) => l.filter((m) => m.ref === ref).slice(0, 1))} by={(m) => m.ref}>
-      {(m) => <MeshControls area={cryoet} mesh={m} list={list} />}
+      {(m) => <MeshControls api={props.api} area={cryoet} mesh={m} list={list} />}
     </For>
   );
 }

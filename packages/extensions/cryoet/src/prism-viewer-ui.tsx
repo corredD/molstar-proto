@@ -10,6 +10,7 @@ import { domView, For, Show } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import type { SceneNode } from '@molstar/prism-viewer';
+import type { ViewerApi } from '@molstar/prism-viewer/api';
 import type { ViewerExtensionUI, ViewerUIContext } from '@molstar/prism-viewer/spec';
 import { SceneRow } from '@molstar/prism-viewer/views/structure/scene-row';
 import { Decorations, MeshControls, Slice } from './controls.js';
@@ -35,7 +36,7 @@ export function cryoetUI(ctx: ViewerUIContext): ViewerExtensionUI {
         title: 'Segmentations',
         icon: 'box',
         order: 16,
-        render: domView(() => <Segmentations area={area} />),
+        render: domView(() => <Segmentations api={ctx.api} area={area} />),
       },
     ],
     rows: [
@@ -68,7 +69,11 @@ export function cryoetUI(ctx: ViewerUIContext): ViewerExtensionUI {
             s?.slices.length ? s.slices.map((x) => `${x.axis} ${x.index + 1}`).join(' · ') : 'Off',
           );
           return (
-            <SceneRow label="Slice" description={description} body={() => <Slice area={area} volume={volume} />} />
+            <SceneRow
+              label="Slice"
+              description={description}
+              body={() => <Slice api={ctx.api} area={area} volume={volume} />}
+            />
           );
         }),
       },
@@ -83,8 +88,8 @@ function describe(info: DecorationsInfo | undefined) {
 }
 
 /** The segmentation meshes (OBJ, PLY, VTP), each with its eye, surface or wireframe, opacity and color */
-function Segmentations(props: { area: CryoetApi }) {
-  const { area } = props;
+function Segmentations(props: { api: ViewerApi; area: CryoetApi }) {
+  const { api, area } = props;
   const list = area.meshesState();
   return (
     <div style="display: flex; flex-direction: column; gap: var(--msp-space-3); padding: var(--msp-space-3)">
@@ -98,7 +103,7 @@ function Segmentations(props: { area: CryoetApi }) {
       >
         {() => (
           <For each={list} by={(m) => m.ref}>
-            {(m) => <MeshControls area={area} mesh={m} list={list} />}
+            {(m) => <MeshControls api={api} area={area} mesh={m} list={list} />}
           </For>
         )}
       </Show>

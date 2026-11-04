@@ -8,7 +8,9 @@
  */
 
 import { render } from '@molstar/prism-ui';
+import { flushFrame } from '@molstar/prism-ui/reactive/frame-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import type { ViewerApi } from '@molstar/prism-viewer/api/area';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MeshControls } from '../controls.js';
 import type { CryoetApi, MeshInfo } from '../operations.js';
@@ -37,10 +39,19 @@ function mounted() {
   const area = { mesh: vi.fn(async () => ({ ok: true })) } as unknown as CryoetApi;
   const host = document.createElement('div');
   document.body.append(host);
-  const dispose = render(() => <MeshControls area={area} mesh={mesh} list={list.asReadonly} />, host);
+  // a group's API is the same: its `cryoet` area is the one the controls are given
+  const groups: string[] = [];
+  const api = {
+    cryoet: area,
+    group: async (label: string, work: (g: ViewerApi) => Promise<unknown>) => {
+      groups.push(label);
+      return { ok: true, did: label, value: await work(api) };
+    },
+  } as unknown as ViewerApi;
+  const dispose = render(() => <MeshControls api={api} area={area} mesh={mesh} list={list.asReadonly} />, host);
   host.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click();
   const hues = () => Array.from(host.querySelectorAll<HTMLButtonElement>('[aria-label="Palette"] [role=option]'));
-  return { host, area, dispose, hues };
+  return { host, area, groups, dispose, hues };
 }
 
 const hexOf = (b: HTMLElement) => {
@@ -74,6 +85,22 @@ describe("a mesh's color", () => {
     vi.advanceTimersByTime(500);
     expect(area.mesh).toHaveBeenCalledTimes(1);
     expect(area.mesh).toHaveBeenCalledWith({ mesh: 'm', color: last });
+    dispose();
+  });
+});
+
+describe("a mesh's opacity", () => {
+  it('follows the slider during a drag, one group, the release applying the last', async () => {
+    const { host, area, groups, dispose } = mounted();
+    const range = host.querySelector<HTMLInputElement>('input[type=range][aria-label="Opacity"]')!;
+    range.value = '0.5';
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    flushFrame();
+    await vi.waitFor(() => expect(area.mesh).toHaveBeenCalledWith({ mesh: 'm', opacity: 0.5 }));
+    range.value = '0.3';
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(area.mesh).toHaveBeenLastCalledWith({ mesh: 'm', opacity: 0.3 }));
+    expect(groups).toEqual(['Mesh opacity']);
     dispose();
   });
 });

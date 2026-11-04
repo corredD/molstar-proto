@@ -30,6 +30,7 @@ import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
 import type { JSX } from '@molstar/prism-ui/dom/jsx-runtime';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { classes } from './_generated/controls.module.css.js';
 import type { CryoetApi, DecorationsInfo, MeshInfo, ObliqueView, SliceAxis, TargetDecoration } from './operations.js';
 import { mb } from './portal-run.js';
@@ -46,6 +47,32 @@ function Line(props: { label: string; children: JSX.Element }) {
       {props.children}
     </div>
   );
+}
+
+/**
+ * A slider's changes at pointer rate, live: each preview applied as soon as the one before settles (the newest winning,
+ * the ones between dropped), the release applying the last, a drag one undo step; the controls gone, what they showed
+ * is applied. Prism's `gestureSteps`, as its own sliders; no throttle but its own: a step waits as long as the last took,
+ * so the page keeps up with the pointer. `shown`: the changes not landed yet, for the sliders to show over the state (an
+ * earlier step landing does not pull the knob back from the pointer).
+ */
+function live<C extends object>(api: ViewerApi, label: string, apply: (g: ViewerApi, change: C) => Promise<unknown>) {
+  const shown = observableState<C | undefined>(undefined);
+  const steps = gestureSteps<C>(api, {
+    label,
+    apply: (g, _key, c) => apply(g, c),
+    changed: () => shown.set(steps.overlay('')),
+    throttleMs: 0,
+  });
+  onCleanup(() => steps.settle());
+  return {
+    shown: shown.asReadonly,
+    preview: (c: C) => steps.change('', c),
+    commit(c: C) {
+      steps.change('', c);
+      steps.settle();
+    },
+  };
 }
 
 /** Spheres: no decoration (the select's value) */
@@ -273,13 +300,11 @@ export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: s
   const radius = mapState(info, (s) => Math.ceil(s?.radius ?? 100));
   const handles = area.useObliqueHandles(api);
   const on = mapState(handles.target, (t) => t?.slice === slice);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => clearTimeout(timer));
-  // The sliders change at pointer rate: one call a moment after the last.
-  const run = (values: Partial<Record<'x' | 'y' | 'z' | 'ex' | 'ey' | 'contrast', number>>, delay = 60) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => void area.oblique({ volume, slice, ...values } as never), delay);
-  };
+  const place = live<Partial<Record<'x' | 'y' | 'z' | 'ex' | 'ey' | 'contrast', number>>>(
+    api,
+    'Oblique slice',
+    (g, v) => g.cryoet!.oblique({ volume, slice, ...v } as never),
+  );
   const number = (
     label: string,
     read: (o: ObliqueView) => number,
@@ -289,13 +314,13 @@ export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: s
     <Line label={label}>
       <Slider
         aria-label={label}
-        value={mapState(view, (o) => (o ? Math.round(read(o) * 10) / 10 : 0))}
+        value={derive([view, place.shown], (o, p) => p?.[key] ?? (o ? Math.round(read(o) * 10) / 10 : 0))}
         min={range.min}
         max={range.max}
         step={0.1}
         unit={range.unit}
-        onPreview={(v) => run({ [key]: v })}
-        onCommit={(v) => run({ [key]: v })}
+        onPreview={(v) => place.preview({ [key]: v })}
+        onCommit={(v) => place.commit({ [key]: v })}
       />
     </Line>
   );
@@ -318,13 +343,13 @@ export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: s
       <Line label="Contrast">
         <Slider
           aria-label="Contrast"
-          value={mapState(view, (o) => o?.contrast ?? 3)}
+          value={derive([view, place.shown], (o, p) => p?.contrast ?? o?.contrast ?? 3)}
           min={0.5}
           max={10}
           step={0.1}
           unit="±σ"
-          onPreview={(c) => run({ contrast: c })}
-          onCommit={(c) => run({ contrast: c })}
+          onPreview={(c) => place.preview({ contrast: c })}
+          onCommit={(c) => place.commit({ contrast: c })}
         />
       </Line>
     </div>
@@ -464,8 +489,8 @@ export function VolumeData(props: { area: CryoetApi; volume: string }) {
  * A volume's slice along `axis` (one per axis): its position and its gray window; without `axis`, a choice of the axis
  * first (the slice it shows is edited), and the three slices at a click
  */
-export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis }) {
-  const { area, volume } = props;
+export function Slice(props: { api: ViewerApi; area: CryoetApi; volume: string; axis?: SliceAxis }) {
+  const { api, area, volume } = props;
   const info = area.sliceState(volume);
   const picked = observableState<SliceAxis>(props.axis ?? 'z');
   const axis = props.axis ? undefined : picked;
@@ -475,14 +500,13 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
   const count = derive([info, picked.asReadonly], (s, a) =>
     s ? s.dimensions[{ x: 0, y: 1, z: 2 }[props.axis ?? a]] : 1,
   );
-  const contrast = mapState(slice, (s) => s?.contrast ?? 3);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => clearTimeout(timer));
-  // The sliders change at pointer rate: one call a moment after the last.
-  const run = (values: { index?: number; contrast?: number }, delay = 60) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => void area.slice({ volume, axis: current(), ...values } as never), delay);
-  };
+  const contrast = mapState(slice, (s) => s?.contrast);
+  const move = live<{ axis: SliceAxis; index?: number; contrast?: number }>(api, 'Slice', (g, v) =>
+    g.cryoet!.slice({ volume, ...v } as never),
+  );
+  // a value of the slice shown: the drag's not landed yet over the state's
+  const shown = (key: 'index' | 'contrast', now: ReadonlyState<number | undefined>, none: number) =>
+    derive([now, move.shown], (v, p) => (p?.axis === current() ? p[key] : undefined) ?? v ?? none);
   return (
     <div class={classes.tight}>
       {axis ? (
@@ -500,7 +524,7 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
       <Show
         when={mapState(slice, (s) => !!s)}
         fallback={() => (
-          <Button size="sm" onClick={() => run({}, 0)}>
+          <Button size="sm" onClick={() => void area.slice({ volume, axis: current() } as never)}>
             {mapState(picked.asReadonly, (a) => `Show slice ${(props.axis ?? a).toUpperCase()}`)}
           </Button>
         )}
@@ -511,27 +535,27 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
             <Line label="Slice">
               <Slider
                 aria-label="Slice"
-                value={mapState(index, (i) => i ?? 0)}
+                value={shown('index', index, 0)}
                 min={0}
                 max={mapState(count, (n) => Math.max(0, n - 1))}
                 step={1}
                 format={(i) => String(i + 1)}
                 parse={(text) => Math.round(Number.parseFloat(text)) - 1}
                 unit={mapState(count, (n) => `/ ${n}`)}
-                onPreview={(i) => run({ index: i })}
-                onCommit={(i) => run({ index: i })}
+                onPreview={(i) => move.preview({ axis: current(), index: i })}
+                onCommit={(i) => move.commit({ axis: current(), index: i })}
               />
             </Line>
             <Line label="Contrast">
               <Slider
                 aria-label="Contrast"
-                value={contrast}
+                value={shown('contrast', contrast, 3)}
                 min={0.5}
                 max={10}
                 step={0.1}
                 unit="±σ"
-                onPreview={(c) => run({ contrast: c })}
-                onCommit={(c) => run({ contrast: c })}
+                onPreview={(c) => move.preview({ axis: current(), contrast: c })}
+                onCommit={(c) => move.commit({ axis: current(), contrast: c })}
               />
             </Line>
           </>
@@ -554,11 +578,16 @@ export function Slice(props: { area: CryoetApi; volume: string; axis?: SliceAxis
  * A segmentation mesh's look: shown or hidden, its color (Prism's color row: its `ColorPicker`, one change a moment after
  * the last move), surface, wireframe or both, opacity, scale
  */
-export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: ReadonlyState<readonly MeshInfo[]> }) {
-  const { area } = props;
+export function MeshControls(props: {
+  api: ViewerApi;
+  area: CryoetApi;
+  mesh: MeshInfo;
+  list: ReadonlyState<readonly MeshInfo[]>;
+}) {
+  const { api, area } = props;
   const ref = props.mesh.ref;
   const mesh = mapState(props.list, (l) => l.find((m) => m.ref === ref));
-  // one change a moment after the last (a slider, the picker dragged), made at once if the controls go first
+  // one change a moment after the last (the picker dragged), made at once if the controls go first
   let pending: Record<string, unknown> | undefined;
   const write = () => {
     const values = pending;
@@ -571,6 +600,9 @@ export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: Rea
     pending = { ...pending, ...values };
     timer.start(delay);
   };
+  const opacity = live<{ opacity: number }>(api, 'Mesh opacity', (g, v) =>
+    g.cryoet!.mesh({ mesh: ref, ...v } as never),
+  );
   const color = new ParamsFormModel({ color: PD.Color(Color(0xcccccc)) }, undefined, {
     onChange: ({ color }) => set({ color: Color.toHexStyle(color) }, 120),
   });
@@ -604,12 +636,12 @@ export function MeshControls(props: { area: CryoetApi; mesh: MeshInfo; list: Rea
       <Line label="Opacity">
         <Slider
           aria-label="Opacity"
-          value={mapState(mesh, (m) => m?.opacity ?? 1)}
+          value={derive([mesh, opacity.shown], (m, p) => p?.opacity ?? m?.opacity ?? 1)}
           min={0.05}
           max={1}
           step={0.01}
-          onPreview={(opacity) => set({ opacity }, 80)}
-          onCommit={(opacity) => set({ opacity })}
+          onPreview={(o) => opacity.preview({ opacity: o })}
+          onCommit={(o) => opacity.commit({ opacity: o })}
         />
       </Line>
       {/* a mesh in pixels (a segmentation of a tomogram): its scale is the pixel size; the slider goes by powers */}
