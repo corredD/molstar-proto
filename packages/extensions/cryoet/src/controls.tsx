@@ -492,11 +492,24 @@ export function VolumeData(props: { area: CryoetApi; volume: string }) {
   );
 }
 
+/** The tilt angle of a tilt series' image at `index` (from 0), as the portal gives it: '−60.005°'; '' past its images */
+export function tiltAngleText(angles: readonly number[] | undefined, index: number) {
+  const a = angles?.[index];
+  return a === undefined ? '' : `${String(Math.round(a * 1000) / 1000).replace('-', '−')}°`;
+}
+
 /**
  * A volume's slice along `axis` (one per axis): its position and its gray window; without `axis`, a choice of the axis
- * first (the slice it shows is edited), and the three slices at a click
+ * first (the slice it shows is edited), and the three slices at a click. A tilt series' `angles` (one an image): the Z
+ * slice's image's on a Tilt line under it (_spec/portal.md §4)
  */
-export function Slice(props: { api: ViewerApi; area: CryoetApi; volume: string; axis?: SliceAxis }) {
+export function Slice(props: {
+  api: ViewerApi;
+  area: CryoetApi;
+  volume: string;
+  axis?: SliceAxis;
+  angles?: readonly number[];
+}) {
   const { api, area, volume } = props;
   const info = area.sliceState(volume);
   const picked = observableState<SliceAxis>(props.axis ?? 'z');
@@ -515,6 +528,11 @@ export function Slice(props: { api: ViewerApi; area: CryoetApi; volume: string; 
   // a value of the slice shown: what has not landed yet for its axis over the state's
   const shown = (key: 'index' | 'contrast', now: ReadonlyState<number | undefined>, none: number) =>
     derive([now, move.changes, picked.asReadonly], (v) => move.overlay(current())?.[key] ?? v ?? none);
+  // on a line of its own, not the slider's unit: a unit of changing width would resize the track mid-drag; it follows
+  // the slice shown (a drag's value before it lands)
+  const angle = derive([count, shown('index', index, 0), picked.asReadonly], (n, i, a) =>
+    (props.axis ?? a) === 'z' && props.angles?.length === n ? tiltAngleText(props.angles, i) : '',
+  );
   return (
     <div class={classes.tight}>
       {axis ? (
@@ -554,6 +572,13 @@ export function Slice(props: { api: ViewerApi; area: CryoetApi; volume: string; 
                 onCommit={(i) => move.commit({ index: i }, current())}
               />
             </Line>
+            <Show when={mapState(angle, (t) => !!t)}>
+              {() => (
+                <Line label="Tilt">
+                  <span>{angle}</span>
+                </Line>
+              )}
+            </Show>
             <Line label="Contrast">
               <Slider
                 aria-label="Contrast"

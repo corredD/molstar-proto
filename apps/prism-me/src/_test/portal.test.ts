@@ -64,6 +64,21 @@ describe('the shipped portal index', () => {
     expect(byId.get(64005)).not.toHaveProperty('default');
   });
 
+  it('has 10003 TS_08 tilt series 17086: 41 images, their angles by z index, levels of 41 images', () => {
+    const run = read<PortalDataset>('10003').runList.find((r) => r.name === 'TS_08')!;
+    const ts = run.tiltSeries?.find((t) => t.id === 17086);
+    expect(ts).toMatchObject({ zarr: '10003/TS_08/TiltSeries/100/TS_08.zarr', pixelSpacing: 1.7005, tiltAxis: -5 });
+    expect(ts!.angles).toHaveLength(41);
+    expect(ts!.angles[0]).toBeCloseTo(-60.005, 3);
+    expect(ts!.angles[20]).toBeCloseTo(0, 1);
+    expect(ts!.angles[40]).toBeCloseTo(60, 1);
+    expect(ts!.levels.map((l) => l.size)).toEqual([
+      [3838, 3710, 41],
+      [1919, 1855, 41],
+      [960, 928, 41],
+    ]);
+  });
+
   it('has a dataset with GLB meshes (10524)', () => {
     const ds = read<PortalDataset>('10524');
     const formats = new Set(ds.runList.flatMap((r) => r.spacings.flatMap((s) => s.annotations.map((a) => a.format))));
@@ -99,6 +114,27 @@ describe('the portal URL', () => {
     expect(PortalUrlParameters).toEqual(expect.arrayContaining(['portal-tomogram', 'portal-spacing']));
     expect(portalLoadOf('?portal-dataset=10518&portal-tomogram=x&portal-spacing=fine')).toEqual({
       dataset: 10518,
+      run: '',
+      annotations: '',
+    });
+  });
+
+  it('loads a tilt series by id, at its own level', () => {
+    expect(portalLoadOf('?portal-dataset=10003&portal-run=TS_08&portal-tiltseries=17086')).toEqual({
+      dataset: 10003,
+      run: 'TS_08',
+      annotations: '',
+      tiltSeries: 17086,
+    });
+    // the tomogram's level and the tilt series' apart
+    expect(
+      portalLoadOf(
+        '?portal-dataset=10003&portal-run=TS_08&portal-tiltseries=17086&portal-tiltseries-level=1&portal-level=0',
+      ),
+    ).toMatchObject({ tiltSeries: 17086, tiltSeriesLevel: 1, level: 0 });
+    expect(PortalUrlParameters).toEqual(expect.arrayContaining(['portal-tiltseries', 'portal-tiltseries-level']));
+    expect(portalLoadOf('?portal-dataset=10003&portal-tiltseries=TS-17086&portal-tiltseries-level=x')).toEqual({
+      dataset: 10003,
       run: '',
       annotations: '',
     });

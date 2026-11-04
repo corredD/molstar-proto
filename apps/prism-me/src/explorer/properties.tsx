@@ -335,7 +335,9 @@ export const Sections: readonly Section[] = [
       const cryoet = s.api.cryoet!;
       const volume = s.picked.node!.ref;
       if (s.picked.kind === 'volume') return <VolumeSlices api={s.api} cryoet={cryoet} volume={volume} />;
-      return <Slice api={s.api} area={cryoet} volume={volume} axis={sliceAxis(s)!} />;
+      // a portal tilt series: its images' angles on the Z slice's row
+      const angles = s.api.cryoetPortal?.tiltAnglesOf(volume);
+      return <Slice api={s.api} area={cryoet} volume={volume} axis={sliceAxis(s)!} angles={angles} />;
     },
   },
   {
@@ -1126,13 +1128,14 @@ async function addOblique(api: ViewerApi, cryoet: CryoetApi, volume: string) {
 function VolumeSlices(props: { api: ViewerApi; cryoet: CryoetApi; volume: string }) {
   const { api, cryoet, volume } = props;
   const info = cryoet.sliceState(volume);
+  const angles = api.cryoetPortal?.tiltAnglesOf(volume);
   return (
     <div class={classes.stack}>
       <For each={mapState(info, (i) => i?.slices.map((x) => x.axis) ?? [])} by={(a) => a}>
         {(axis) => (
           <div class={classes.tight}>
             <span class={classes.itemName}>{`Slice ${axis.toUpperCase()}`}</span>
-            <Slice api={api} area={cryoet} volume={volume} axis={axis} />
+            <Slice api={api} area={cryoet} volume={volume} axis={axis} angles={angles} />
           </div>
         )}
       </For>

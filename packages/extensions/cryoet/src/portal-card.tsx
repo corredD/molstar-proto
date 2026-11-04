@@ -19,13 +19,14 @@ import {
   levelLine,
   mb,
   type PortalPanelArea,
+  portalTiltSeriesOptions,
   portalTomogramOptions,
   type PortalRunInfo,
   type PortalTomogramView,
 } from './portal-run.js';
 
 // The CryoET Data Portal's card (_spec/portal.md §4): dataset, run, tomogram (every one of the run, across its
-// spacings) and level (with their sizes), the annotations to load, then Load (`cryoetPortal.load`). The fields are a
+// spacings) and level (with their sizes), a tilt series and its level, the annotations to load, then Load (`cryoetPortal.load`). The fields are a
 // `ParamsForm` made from the index; a pick of dataset, run or tomogram makes the form again for what it holds. No viewer import: a story runs it over a fake.
 
 const Muted = 'margin: 0; color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
@@ -104,7 +105,9 @@ function RunForm(props: {
   });
   const busy = observableState(false);
   const said = observableState('');
-  const size = derive(form.values, (v) => mb(bytesOf(info, v.level, v.as, v.annotations)));
+  const size = derive(form.values, (v) =>
+    mb(bytesOf(info, v.level, v.as, v.annotations) + tiltSeriesBytes(info, v.tiltSeries)),
+  );
   const load = async () => {
     const v = form.values.value;
     busy.set(true);
@@ -117,6 +120,9 @@ function RunForm(props: {
         ...(info.tomogram ? { tomogram: info.tomogram.id, level: Number(v.level) } : {}),
         annotations: v.annotations.length ? v.annotations.join(',') : 'none',
         as: v.as,
+        ...(v.tiltSeries.name !== 'none'
+          ? { tiltSeries: Number(v.tiltSeries.name), tiltSeriesLevel: Number(v.tiltSeries.params.level) }
+          : {}),
         large: true,
       });
       said.set(r.ok ? [r.did, ...(r.warnings ?? [])].join(' ') : `${r.message}${r.hint ? ` ${r.hint}` : ''}`);
@@ -166,6 +172,12 @@ function runParams(catalog: PortalCatalog, ds: PortalDataset, info: PortalRunInf
       ],
       { label: 'Show as', isHidden: !t },
     ),
+    // none, or one of the run's: its level (the coarsest first) a row under it
+    tiltSeries: PD.MappedStatic('none', tiltSeriesCases(info), {
+      label: 'Tilt series',
+      options: [['none', 'None'], ...portalTiltSeriesOptions(info.run)] as [string, string][],
+      isHidden: !info.run.tiltSeries?.length,
+    }),
     annotations: PD.MultiSelect(
       info.defaults as string[],
       info.entries.map((e) => [
@@ -174,6 +186,25 @@ function runParams(catalog: PortalCatalog, ds: PortalDataset, info: PortalRunInf
       ]) as [string, string][],
     ),
   };
+}
+
+/** The Tilt series choice's cases: none, or a tilt series by id and its level (a row at the same level) */
+function tiltSeriesCases(info: PortalRunInfo) {
+  const cases: Record<string, PD.Any> = { none: PD.Group({}, { isFlat: true }) };
+  for (const ts of info.run.tiltSeries ?? []) {
+    const levels = ts.levels.map((l) => [l.path, levelLine(l)] as [string, string]);
+    cases[String(ts.id)] = PD.Group(
+      { level: PD.Select(ts.levels[ts.levels.length - 1]?.path ?? '', levels, { label: 'Series level' }) },
+      { isFlat: true },
+    );
+  }
+  return cases;
+}
+
+/** The tilt series' level picked, its bytes (none: 0) */
+function tiltSeriesBytes(info: PortalRunInfo, picked: { name: string; params: { level?: string } }) {
+  const ts = info.run.tiltSeries?.find((x) => String(x.id) === picked.name);
+  return ts?.levels.find((l) => l.path === picked.params.level)?.bytes ?? 0;
 }
 
 function bytesOf(info: PortalRunInfo, level: string, as: PortalTomogramView, keys: readonly string[]) {

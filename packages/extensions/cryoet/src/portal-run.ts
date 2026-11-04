@@ -11,6 +11,7 @@ import type {
   PortalLevel,
   PortalRun,
   PortalSpacing,
+  PortalTiltSeries,
   PortalTomogram,
 } from './portal-index.js';
 
@@ -151,6 +152,34 @@ export function portalTomogramOptions(run: PortalRun): [string, string][] {
   const all = run.spacings.flatMap((s) => s.tomograms.map((t) => ({ t, spacing: s.spacing })));
   all.sort((a, b) => a.t.id - b.t.id);
   return all.map(({ t, spacing }) => [String(t.id), portalTomogramLabel(t, spacing)]);
+}
+
+/** A signed whole degree, as the portal writes a tilt range: '−60°', '+60°' */
+const degrees = (a: number) => {
+  const r = Math.round(a);
+  return `${r < 0 ? '−' : r > 0 ? '+' : ''}${Math.abs(r)}°`;
+};
+
+/**
+ * A tilt series as the portal labels it: 'TS-17086 · 1.7005 Å · 3838×3710×41 · −60°…+60° step 3°' (its full size; the
+ * range of its angles whatever their order in the stack, a dose-symmetric one's too)
+ */
+export function portalTiltSeriesLabel(ts: PortalTiltSeries) {
+  const n = ts.angles.length;
+  const [x, y] = ts.levels[0]?.size ?? [0, 0];
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const a of ts.angles) {
+    if (a < lo) lo = a;
+    if (a > hi) hi = a;
+  }
+  const range = n > 1 ? ` · ${degrees(lo)}…${degrees(hi)} step ${Math.round(((hi - lo) / (n - 1)) * 10) / 10}°` : '';
+  return `TS-${ts.id} · ${ts.pixelSpacing} Å · ${x}×${y}×${n}${range}`;
+}
+
+/** A run's tilt series, the card's choice ([id, label]) */
+export function portalTiltSeriesOptions(run: PortalRun): [string, string][] {
+  return (run.tiltSeries ?? []).map((t) => [String(t.id), portalTiltSeriesLabel(t)]);
 }
 
 function runNames(ds: PortalDataset) {

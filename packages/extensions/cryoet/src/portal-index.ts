@@ -55,6 +55,26 @@ export interface PortalRun {
   readonly id: number;
   readonly name: string;
   readonly spacings: readonly PortalSpacing[];
+  /** Its tilt series (optional: an index without them is of version 1 still) */
+  readonly tiltSeries?: readonly PortalTiltSeries[];
+}
+
+/**
+ * A tilt series: its images as an OME-Zarr whose z is the image index, not a distance (only x, y are binned), and the
+ * tilt angle of each image
+ */
+export interface PortalTiltSeries {
+  readonly id: number;
+  /** The OME-Zarr, relative to `PortalFiles` */
+  readonly zarr: string;
+  /** Its levels: size x, y, images; `spacing` is x's (the zarr's scale, not the portal's pixel size) */
+  readonly levels: readonly PortalLevel[];
+  /** Å a pixel, the portal's */
+  readonly pixelSpacing: number;
+  /** The tilt axis' angle in the image (°) */
+  readonly tiltAxis: number;
+  /** The tilt angle of each image (°): `angles[i]` is image i (z i), by the portal's z index, not by angle */
+  readonly angles: readonly number[];
 }
 
 /** A voxel spacing of a run: its tomograms and the annotations made on them */
