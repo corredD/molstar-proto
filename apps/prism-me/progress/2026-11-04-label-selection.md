@@ -45,3 +45,66 @@ On http://localhost:1348/apps/prism-me/build/?pdb=1cbs: ask the assistant (or �
 residue 10. Right-click an atom › Label: the label is on that atom.
 
 Size: about 40 production lines, plus tests.
+
+## Built (2026-11-04)
+
+- `stage.label` takes a `selection` (a `DistanceTarget`: a text, `A:10@CA`, `A:10`, `chain A`, `ligand`,
+  `<list ref>#<index>`, or a pick `{ loci }`), resolved by `stage.distance`'s `distancePoint` and `pointLoci` (one small
+  `labelPoint` wrapper, no new parser). The label sits at the point's bounding-sphere centre (the centre a distance
+  measures from), sized by the part's radius as before, in front of it by its radius and at least its height (one atom
+  has no radius). Its target is the point's object, so `stage.move` carries it; its row the given one, else its
+  object's. No text: named after the point ("ARG 10 CA (A)"); `text`'s default is now `''` (`|| 'Label'` keeps the old
+  outcome). A selection and x, y, z together, or a selection of nothing, fail with a clear message. `target` scopes a
+  text selection to a structure.
+- The stage skill's guidance and `add_label`'s description say it ("label residue A:10" is selection A:10).
+- ⌘K: the selection is the form's first field and optional (`order`, `form`), so "add label A:10" labels residue 10 and
+  an object's or a point's label still runs without one (review must-fix: it had become required).
+- The right-click's Add a label: a pick smaller than its row (at the selection's granularity: an atom, a residue) is
+  labelled itself (`addLabel`'s `loci`, from `ui.tsx`'s request); a chain's or an object's pick as before.
+- Spec: features.md (Commands row, a new row), ui.md §5 (Add label), `.v6/changelogs/label-selection.md`, TODO (the move
+  caveat, the review's leftovers).
+
+## Decided
+
+- Ludo: "Ours takes a selection" (the brief). Mine: the param is `selection` (the brief's word; `target` stays the
+  object and scopes a text selection, no `structure` param); "smaller than its row" by element count rather than by
+  granularity names, so a chain pick under a multi-chain entity row is labelled too.
+
+## Learned
+
+- The default selection granularity is residue, so right-clicking an atom labels its residue (the highlighted pick).
+  Ludo's check "the label is on that atom" needs Atom granularity. Question for Ludo: keep the granularity's pick, or
+  always the atom?
+- ⌘K has two label commands: Prism's Measure › Label an atom or residue… (alias `label`) comes first for "label A:10";
+  the stage's is "add label A:10". Hiding Prism's measurement commands in prism-me is Ludo's call (TODO).
+- "residue A:10" is not a target in Prism's language (PyMOL reads it and fails); "A:10" is. The assistant maps it.
+
+## Review
+
+Reviewer: 1 must-fix, 4 should-fix, 6 nits. Skeptic: confirmed 1, 3, 7, 9, 10, N1 (⌘K form untested); 2 confirmed as
+spec'd (question for Ludo); 4 partly (test gap only); 8, 11, N2 plausible; 5, 6 refuted.
+
+- Fixed: 1 + N1 (df3d4c5f4, with an invocation test), 3 (c0d6c279d, through `nodeMenuItems`; `ui.tsx`'s line itself
+  still untested: TODO), 4 (c5a378c8b), 7 (64881e9c2), 10 (5f604878c).
+- Left: 2 (Ludo), 8 (`target`'s description says it scopes a selection), 9 (a pick names its own object, kept), 11 and
+  N2 (instance and operator granularities: TODO).
+
+## Checked
+
+- Tests of stage-tools and prism-me, `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`,
+  `pnpm format:check`, `pnpm check:workspace` (after `node scripts/workspace/assets.mjs`).
+- Headed Chromium on http://localhost:1348/apps/prism-me/build/?pdb=1cbs: `stage.label { selection: 'A:10' }` → "ILE 10
+  (A)" on residue 10
+  (/private/tmp/claude-501/-Users-ludovicautin-molstar-pr-review/e37614fe-2a0d-4fa5-b9e0-0668f489ab66/scratchpad/label/1cbs-label-A10.png);
+  a right-click on residue THR 49 › Add a label → "THR 49 (A)" on it, listed under the entity
+  (/private/tmp/claude-501/-Users-ludovicautin-molstar-pr-review/e37614fe-2a0d-4fa5-b9e0-0668f489ab66/scratchpad/label/rclick-menu.png,
+  /private/tmp/claude-501/-Users-ludovicautin-molstar-pr-review/e37614fe-2a0d-4fa5-b9e0-0668f489ab66/scratchpad/label/rclick-atom-label.png);
+  ⌘K "add label A:10" → "ILE 10 (A)"
+  (/private/tmp/claude-501/-Users-ludovicautin-molstar-pr-review/e37614fe-2a0d-4fa5-b9e0-0668f489ab66/scratchpad/label/cmdk-typed.png,
+  /private/tmp/claude-501/-Users-ludovicautin-molstar-pr-review/e37614fe-2a0d-4fa5-b9e0-0668f489ab66/scratchpad/label/cmdk-label-A10.png).
+  The assistant end to end was not run (no model key).
+
+## Size
+
+About 110 production lines against the brief's 40: the ⌘K form fix, the row path kept beside the pick path in
+`addLabel`, and the messages.
