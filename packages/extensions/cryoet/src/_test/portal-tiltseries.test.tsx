@@ -44,6 +44,13 @@ async function until(check: () => boolean, ms = 5000) {
 
 const field = (name: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`);
 const options = () => Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'));
+/** The size beside Load, MB */
+const total = () =>
+  Number(
+    Array.from(document.querySelectorAll('span'), (x) => x.textContent ?? '')
+      .find((t) => /^\d+ MB$/.test(t))
+      ?.split(' ')[0],
+  );
 const loadButton = () => Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('Load'))!;
 
 describe('the portal card, a run with a tilt series', () => {
@@ -67,7 +74,8 @@ describe('the portal card, a run with a tilt series', () => {
     loadButton().click();
     await until(() => loads.length === 1);
     expect(loads[0]).not.toHaveProperty('tiltSeries');
-    const before = host.textContent ?? '';
+    const before = total();
+    expect(before).toBeGreaterThan(0);
 
     field('Tilt series')!.click();
     await until(() => options().length > 0);
@@ -79,7 +87,7 @@ describe('the portal card, a run with a tilt series', () => {
     await until(() => !!field('Series level'));
     // the coarsest, level 2, by default; its size in the total beside Load
     expect(field('Series level')!.textContent).toBe('2: 960×928×41 at 6.8 Å, 146 MB');
-    expect(host.textContent).not.toBe(before);
+    expect(total()).toBe(before + 146);
     loadButton().click();
     await until(() => loads.length === 2);
     expect(loads[1]).toMatchObject({ dataset: 10003, run: 'TS_08', tiltSeries: 17086, tiltSeriesLevel: 2 });
