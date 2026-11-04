@@ -109,5 +109,5 @@ properties (as the classic Focus Info).
 
 ## Size
 
-About 60 production lines (reader 15, label 20, mesoscale 3, properties 20) against the brief's 120: the hover reused
-Mol*'s label and Prism's hover label whole; plus about 230 lines of tests, the story and the specs.
+About 75 production lines with their comments (reader, label, mesoscale, properties) against the brief's 120: the hover
+reused Mol*'s label and Prism's hover label whole; plus about 230 lines of tests, the story and the specs.
