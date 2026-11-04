@@ -17,7 +17,7 @@ import type { ApiResult, ViewerApi } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Slice } from '../controls.js';
+import { ObliqueSlice, Slice } from '../controls.js';
 import type { CryoetApi, SliceAxis, SliceInfo } from '../operations.js';
 import { CryoetExtension } from '../prism-viewer.js';
 
@@ -237,6 +237,49 @@ describe("a Slice slider's drag on a viewer", () => {
       expect(steps()).toBe(n + 1);
       expectOk(await v.api.run('history.undo', {}));
       expect(index()).toBe(2);
+      dispose();
+    } finally {
+      await v.dispose();
+    }
+  });
+});
+
+describe("an oblique slice's sliders on a viewer", () => {
+  it('place it during a drag, X then Y in one gesture each, one undo step a drag', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), CryoetExtension] },
+    });
+    try {
+      expectOk(await v.api.load.files({ files: [mapFile('map.mrc', 12)] }));
+      const c = v.api.cryoet!;
+      const volume = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
+      const added = await c.oblique({ volume } as never);
+      expectOk(added);
+      const slice = (added as { value: { slice: string } }).value.slice;
+      const position = () => (c.sliceState(volume).value as SliceInfo).obliques[0].position.map((x) => Math.round(x));
+      const steps = () => v.managers.history.steps.value.length;
+      const n = steps();
+      const host = document.createElement('div');
+      document.body.append(host);
+      const dispose = render(() => <ObliqueSlice api={v.api} area={c} volume={volume} slice={slice} />, host);
+      const drag = async (label: string, values: number[]) => {
+        const range = host.querySelector<HTMLInputElement>(`input[type=range][aria-label="${label}"]`)!;
+        for (const x of values) {
+          range.value = String(x);
+          range.dispatchEvent(new Event('input', { bubbles: true }));
+          flushFrame();
+          await new Promise((r) => setTimeout(r, 5));
+        }
+        range.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      await drag('X', [1, 2, 3, 4]);
+      await vi.waitFor(() => expect(position()[0]).toBe(4));
+      await drag('Y', [-1, -2, -3]);
+      await vi.waitFor(() => expect(position()).toEqual([4, -3, 0]));
+      await vi.waitFor(() => expect(steps()).toBe(n + 2));
+      expectOk(await v.api.run('history.undo', {}));
+      expect(position()).toEqual([4, 0, 0]);
       dispose();
     } finally {
       await v.dispose();

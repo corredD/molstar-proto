@@ -73,6 +73,23 @@ Size: about 60 production lines (helper 30, call sites 20, history 10), plus tes
   item again when its value changes under the same key, so the first live opacity step remade the controls and the drag
   was lost (seen in Chromium only).
 
+## Review gate
+
+Reviewer (Opus): 1 must-fix, 4 should-fix, 2 nits. Skeptic (Opus): all 7 confirmed (4 narrowed), 2 new (nit,
+should-fix).
+
+- 1 must-fix, the axis picker showed and applied a Z index on X while a Z step landed: fixed `9393c67dd` (steps by axis;
+  failing test first).
+- 3 should-fix, a held arrow key made an undo step per repeat (the old debounce merged repeats under 60 ms): fixed
+  `9393c67dd` (settle only after a drag; failing test first).
+- 5 should-fix, no ObliqueSlice test: a headless one added (fails if the apply runs through the root area).
+- 2 should-fix, a checkpoint per applied change (`gestureSteps`' `continue` group): confirmed, pre-existing in
+  `gestureSteps`, more often here; open (TODO.md, a Prism fix).
+- 4 should-fix, the slice form writes its stale model: pre-existing, not worse; open (TODO.md).
+- 6 nit, N1 the 600 ms quiet holds the history after a form change, a key or a typed value: as Prism's own sliders; open
+  (TODO.md). 7 nit, per-frame literals: negligible (gestureSteps spreads already). N2: the fakes do not model the lock;
+  the headless tests do (TODO.md).
+
 ## Decided (Opus, this lane)
 
 - Undo: a drag is one step (one group). Each `cryoet.slice` call was a step of its own (20 calls: 20 steps).
