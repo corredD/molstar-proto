@@ -6,6 +6,9 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **Portal tilt series** (`me/portal-tiltseries`, `~/prism-me-lanes/portal-tiltseries`, port 1347,
+  [brief](2026-11-03-portal-tiltseries.md)): Ludo, 2026-11-03, "yes": the runs' tilt series in the index, a Tilt series
+  choice on the card (level 2), images stepped along Z with their angle. Started 2026-11-03.
 - **CryoET portal + volume lighting**: **PR #41 merged** by Ludo (2026-11-03, 416c00f0a), with #37-#40 (merged through
   it) and #42 (closed, in #41). Built: OME-Zarr and GLB readers, the portal index and loader (10003, 10453, 10524,
   10518), lighting `local | volumetric | neural` with clips honored, a volume's Data (Level slider) and Direct volume
