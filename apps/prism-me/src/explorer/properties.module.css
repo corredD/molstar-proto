@@ -41,6 +41,12 @@
   animation-timeline: scroll(self inline);
 }
 
+/* an entity's description under its name: the muted text, as the hover label's lines under the title */
+.description {
+  color: var(--msp-color-text-muted);
+  font-size: var(--msp-font-size-sm);
+}
+
 .hint {
   color: var(--msp-color-text-muted);
   font-size: var(--msp-font-size-xs);

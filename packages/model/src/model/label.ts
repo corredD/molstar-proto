@@ -15,6 +15,7 @@ import { Vec3 } from '@molstar/core/math/linear-algebra';
 import { radToDeg } from '@molstar/core/math/misc';
 import { Volume } from './volume.js';
 import { Particle } from './particles/particle-list.js';
+import { markdownInlineText, parseMarkdownInline } from '@molstar/core/util/markdown';
 
 export type LabelGranularity = 'element' | 'conformation' | 'residue' | 'chain' | 'structure';
 
@@ -87,14 +88,30 @@ export function lociLabel(loci: Loci, options: Partial<LabelOptions> = {}): stri
         `${segmentCount === 1 ? `Segment ${firstSegment}` : `${segmentCount} Segments`}`,
       ].join(' | ');
     case 'particle-loci': {
-      // The particle (its own words: "Particle 165 · tomo 1 · class 2"), its list beneath, small; plain text joined as
-      // the volumes' labels are
+      // The particle (its own words: "Particle 165 · tomo 1 · class 2"), its entity's description under it (one
+      // particle), its list beneath, small; plain text joined as the volumes' labels are
       const particle = Particle.getLabel(loci);
       const list = loci.particles.label || 'Particles';
       if (options.htmlStyling === false) return `${particle} | ${list}`;
-      return `<b>${escapeHtml(particle)}</b></br><small>${escapeHtml(list)}</small>`;
+      const description = particleDescription(loci);
+      return `<b>${escapeHtml(particle)}</b></br>${description ? `${escapeHtml(description)}</br>` : ''}<small>${escapeHtml(list)}</small>`;
     }
   }
+}
+
+/** About two lines of a hover label */
+const DescriptionLength = 90;
+
+/** The description of one particle's entity, as text (Markdown links their text), cut at a word past two lines */
+function particleDescription(loci: Particle.Loci): string | undefined {
+  if (OrderedSet.size(loci.indices) !== 1) return;
+  const { particles } = loci;
+  const markdown = particles.entityInfo?.get(Particle.entityOf(particles, OrderedSet.start(loci.indices)))?.description;
+  if (!markdown) return;
+  const text = markdownInlineText(parseMarkdownInline(markdown)).replace(/\s+/g, ' ').trim();
+  if (text.length <= DescriptionLength) return text;
+  const space = text.lastIndexOf(' ', DescriptionLength);
+  return `${text.slice(0, space > 0 ? space : DescriptionLength)}…`;
 }
 
 function countLabel(count: number, label: string) {

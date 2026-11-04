@@ -201,6 +201,44 @@ describe('a particle loci label', () => {
   });
 });
 
+describe('a particle loci label with its entity description', () => {
+  const withEntity = (description: string, count = 1) => ({
+    ...createParticles(new Float32Array(3 * count)),
+    label: 'Exosome',
+    entities: new Int32Array(count),
+    entityInfo: new Map([[0, { name: 'ITG', description }]]),
+  });
+
+  it('puts the description under the particle, before its list', () => {
+    const list = withEntity('Integrin alpha-5, important for cell adhesion and signaling.');
+    expect(lociLabel(Particle.Loci(list, OrderedSet.ofSingleton(0)))).toBe(
+      '<b>0</b></br>Integrin alpha-5, important for cell adhesion and signaling.</br><small>Exosome</small>',
+    );
+  });
+
+  it("shows a Markdown link's text, no brackets, the text escaped", () => {
+    const list = withEntity('CD81 antigen & co PDB entry [5TCX](http://www.rcsb.org/pdb/explore.do?structureId=5TCX)');
+    expect(lociLabel(Particle.Loci(list, OrderedSet.ofSingleton(0)))).toBe(
+      '<b>0</b></br>CD81 antigen &amp; co PDB entry 5TCX</br><small>Exosome</small>',
+    );
+  });
+
+  it('cuts a long description at a word, with an ellipsis (two lines of the hover label)', () => {
+    const long =
+      'Protein argonaute-2, part of the RNA-induced silencing complex (RISC), involved in RNA interference. PDB entry [5AWH](http://www.rcsb.org/)';
+    const label = lociLabel(Particle.Loci(withEntity(long), OrderedSet.ofSingleton(0)));
+    const description = label.split('</br>')[1];
+    expect(description).toBe('Protein argonaute-2, part of the RNA-induced silencing complex (RISC), involved in RNA…');
+  });
+
+  it('has none for several particles', () => {
+    const list = withEntity('Integrin alpha-5.', 2);
+    expect(lociLabel(Particle.Loci(list, OrderedSet.ofBounds(0, 2)))).toBe(
+      '<b>2 particles</b></br><small>Exosome</small>',
+    );
+  });
+});
+
 describe('Particle.getBoundingSphere', () => {
   it('fills the given sphere for the whole list, and leaves the cached boundary as it was', () => {
     const list = createParticles(new Float32Array([0, 0, 0, 10, 0, 0]));

@@ -3,6 +3,7 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
@@ -264,6 +265,11 @@ async function getModelTargets(ctx: RuntimeContext, trajectory: Trajectory): Pro
   return targets;
 }
 
+/** A dotted name with no space (`root.HIV_capsid.membrane`): cellPACK's compartment paths, never a sentence */
+function isCellpackPath(text: string): boolean {
+  return !/\s/.test(text) && /[^.]\.[^.]/.test(text);
+}
+
 function detectMmcifVariant(block: CifBlock): 'cellpack' | 'petworld' | 'standard' {
   if (block.header.toLowerCase().includes('cellpack')) return 'cellpack';
   if (block.categories['pdbx_struct_assembly_gen']?.getField('PDB_model_num')?.isDefined) return 'petworld';
@@ -335,10 +341,15 @@ async function buildCellpackStandardParticleList(
   // CellPack entities whose penultimate segment is "fibers" use each assembly-gen row as
   // a separate ordered fiber. In the 'standard' variant, the full description is used as
   // the entity name with no compartment.
+  // cellPACK writes an entity's description in _entity.pdbx_parent_entity_id (the Exosome:
+  // "Integrin alpha-5, …", Markdown links kept); others hold a compartment path there, the entity's own
+  // or another (MG, HIV: "root.mge.interior.proteins", HIV's membranes "root.HIV_capsid.membrane") or its name, which
+  // are no description.
   const entityToCompartment = new Map<string, string>();
   const entityToName = new Map<string, string>();
   const fiberEntityIds = new Set<string>();
   const entityToFunction = new Map<string, string>();
+  const entityToDescription = new Map<string, string>();
   for (let i = 0, il = db.entity._rowCount; i < il; i++) {
     const entityId = db.entity.id.value(i);
     const desc = db.entity.pdbx_description.value(i).join(',');
@@ -356,6 +367,12 @@ async function buildCellpackStandardParticleList(
     }
     const details = db.entity.details.value(i);
     if (details) entityToFunction.set(entityId, details);
+    if (variant === 'cellpack') {
+      const text = db.entity.pdbx_parent_entity_id.value(i);
+      if (text && !isCellpackPath(text) && text !== entityToName.get(entityId)) {
+        entityToDescription.set(entityId, text);
+      }
+    }
   }
 
   // Build unique compartment name → index map (populated lazily below).
@@ -363,6 +380,7 @@ async function buildCellpackStandardParticleList(
   // Build unique entity name → index map (populated lazily below).
   const entityNameToIdx = new Map<string, number>();
   const entityNameToFunction = new Map<string, string>();
+  const entityNameToDescription = new Map<string, string>();
 
   const { label_asym_id: siteAsymId, label_entity_id: siteEntityId } = db.atom_site;
   const chainBounds = await getAtomSiteBounds(ctx, db, (i) => siteAsymId.value(i));
@@ -469,6 +487,8 @@ async function buildCellpackStandardParticleList(
             entityNameToIdx.set(entityName, entityNameToIdx.size);
             const fn = entityId !== undefined ? entityToFunction.get(entityId) : undefined;
             if (fn !== undefined) entityNameToFunction.set(entityName, fn);
+            const description = entityId !== undefined ? entityToDescription.get(entityId) : undefined;
+            if (description !== undefined) entityNameToDescription.set(entityName, description);
           }
           entities[count] = entityNameToIdx.get(entityName)!;
         }
@@ -506,7 +526,11 @@ async function buildCellpackStandardParticleList(
   // Build entityInfo: entity index → entity info.
   const entityInfo = new Map<number, ParticleEntityInfo>();
   for (const [name, idx] of entityNameToIdx) {
-    entityInfo.set(idx, { name, function: entityNameToFunction.get(name) });
+    entityInfo.set(idx, {
+      name,
+      function: entityNameToFunction.get(name),
+      description: entityNameToDescription.get(name),
+    });
   }
 
   // Build targetInfo: target index → chain name and its (single, by construction) entity index.

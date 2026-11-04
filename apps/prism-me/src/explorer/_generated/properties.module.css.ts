@@ -11,6 +11,7 @@
 import { defineStyles } from '@molstar/prism-ui/styles/registry';
 
 export const classes = {
+  'description': 'msp-me-properties-description',
   'fit': 'msp-me-properties-fit',
   'hint': 'msp-me-properties-hint',
   'inline': 'msp-me-properties-inline',
@@ -56,6 +57,11 @@ defineStyles('me/explorer/properties.module.css', `@layer msp.components {
   animation-fill-mode: both;
   animation-timeline: scroll(self inline);
   overflow: hidden;
+}
+
+.msp-me-properties-description {
+  color: var(--msp-color-text-muted);
+  font-size: var(--msp-font-size-sm);
 }
 
 .msp-me-properties-hint {

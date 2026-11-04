@@ -42,6 +42,8 @@ export interface ParticleEntityInfo {
   readonly name: string;
   /** Optional functional annotation of the entity (e.g. `"Lipid"`). */
   readonly function?: string;
+  /** Optional short description of the entity, Markdown (e.g. `"Integrin alpha-5, important for cell adhesion."`). */
+  readonly description?: string;
 }
 
 /** Lightweight metadata for a single target id, always available (unlike `targetMapping`). */

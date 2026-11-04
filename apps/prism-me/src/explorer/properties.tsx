@@ -125,6 +125,7 @@ export function Properties(props: {
             shell={props.shell}
             name={nameOf(subject)}
             kind={headerKind(props.api, picked)}
+            description={descriptionOf(picked, props.parts.value)}
             subject={subject}
             above={
               picked.node && picked.kind === 'mesoscale model' ? (
@@ -144,6 +145,15 @@ function headerKind(api: ViewerApi, picked: Picked): string {
   if (picked.kind !== 'distance' || !picked.node) return picked.kind;
   const ref = picked.node.ref;
   return api.stage?.distancesState().value.find((d) => d.ref === ref)?.measure ?? picked.kind;
+}
+
+/** A mesoscale entity's description (its file's text, Markdown), for its row */
+function descriptionOf(picked: Picked, parts: Parts): string | undefined {
+  const node = picked.node;
+  if (picked.kind !== 'entity' || !node || !('particles' in node)) return;
+  const ids = node.particles.entities;
+  if (ids?.length !== 1) return;
+  return (parts.get(node.ref) as MesoscaleInfo | undefined)?.entities.find((e) => e.id === ids[0])?.description;
 }
 
 /** A label's name is its text, a clip's its shape: as they change */
