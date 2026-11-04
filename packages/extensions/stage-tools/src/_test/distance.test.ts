@@ -440,6 +440,16 @@ describe('stage.label, a selection', () => {
     expect(byPick).toMatchObject({ text: 'ARG 10 (A)', node: 'e:x:1', position: byText.position });
   });
 
+  it("labels a particle by '<list ref>#<index>' at it, under its list; an index past the end is said", async () => {
+    const v = await viewer();
+    expectOk(await v.api.load.files({ files: [new File([star('10 0 0\n20 0 0\n')], 'p.star')] }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    const l = labelOf(v, await v.api.run('stage.label', { selection: `${list}#1` }));
+    expect(l).toMatchObject({ position: [20, 0, 0], target: list, node: `o:${list}` });
+    expect(l.depth).toBeGreaterThanOrEqual(l.size);
+    expect(await v.api.run('stage.label', { selection: `${list}#7` })).toMatchObject({ ok: false, code: 'invalid' });
+  });
+
   it('says what is wrong: a selection of nothing, a selection and a point both', async () => {
     const v = await viewer();
     const none = await v.api.run('stage.label', { selection: 'A:999' });
