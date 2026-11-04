@@ -323,7 +323,14 @@ export class CryoetPortalApi extends ApiArea {
       if (t && level) {
         if (info.needs) warnings.push(`The tomogram ${info.needs}.`);
         else {
-          const r = await loadTomogram(ctx, PortalFiles + t.zarr, level, v.as, warnings);
+          const r = await loadTomogram(
+            ctx,
+            PortalFiles + t.zarr,
+            level,
+            `${info.run.name} tomogram ${t.id}`,
+            v.as,
+            warnings,
+          );
           if (!r.ok) return r;
           tomogram = true;
           done.push(`tomogram ${t.id} (level ${level.path}, ${level.spacing} Å)`);
@@ -334,13 +341,19 @@ export class CryoetPortalApi extends ApiArea {
           warnings.push(`${e.object} (${e.shape}) ${e.needs}.`);
           continue;
         }
-        const r = await loadEntry(ctx, ds, info.spacing, e, v.level, warnings);
+        const r = await loadEntry(ctx, ds, info.run.name, info.spacing, e, v.level, warnings);
         if (!r.ok) return r;
         done.push(`${e.object} (${e.shape})`);
       }
       if (ts && tsLevel) {
         // beside the tomogram loaded with it; alone, where it lands
-        const r = await loadTiltSeries(ctx, PortalFiles + ts.zarr, tsLevel, tomogram);
+        const r = await loadTiltSeries(
+          ctx,
+          PortalFiles + ts.zarr,
+          tsLevel,
+          `${info.run.name} tilt series ${ts.id}`,
+          tomogram,
+        );
         if (!r.ok) return r;
         done.push(`tilt series ${ts.id} (level ${tsLevel.path}, ${ts.angles.length} images)`);
       }
@@ -452,14 +465,15 @@ async function added(
  * default visual (an isosurface the slices would only hide): the volumes it made. The size was asked about before
  * (`large`), so the format's limit is what the level needs as the format counts it (its voxels and one decoded chunk,
  * `omeZarrLevelNeeds`), read from the file once opened: the index's bytes are the voxels only, and a limit set to them
- * refused the level asked for (Ludo, 2026-11-03: 685 MB against 618).
+ * refused the level asked for (Ludo, 2026-11-03: 685 MB against 618). Named `name` (the format's label, its volume's
+ * with it: _spec/portal.md §2), the address untouched: the readout's angles and the links are found from it.
  */
-async function loadZarr(ctx: ApiContext, url: string, level: PortalLevel) {
+async function loadZarr(ctx: ApiContext, url: string, level: PortalLevel, name: string) {
   const made = await added(ctx, volumeRefs, async () => {
     const opened = ctx.plugin
       .build()
       .toRoot()
-      .apply(OmeZarrFromUrl, { url }, { state: { isGhost: true } });
+      .apply(OmeZarrFromUrl, { url, label: name }, { state: { isGhost: true } });
     await opened.commit({ revertOnError: true });
     const file = ctx.plugin.state.data.cells.get(opened.ref)?.obj?.data as
       | Parameters<typeof getOmeZarrLevel>[0]
@@ -495,10 +509,11 @@ async function loadTomogram(
   ctx: ApiContext,
   url: string,
   level: PortalLevel,
+  name: string,
   as: PortalTomogramView,
   warnings: string[],
 ) {
-  const made = await loadZarr(ctx, url, level);
+  const made = await loadZarr(ctx, url, level, name);
   if (isFailure(made)) return made;
   for (const volume of made) {
     // whatever the format's own visuals: the slices (other representations hidden), as a dropped tomogram shows
@@ -516,8 +531,8 @@ async function loadTomogram(
  * A tilt series at a level: its images, one at a time, as the Z slice (from the middle image, the least tilted): z is the
  * image index, not a distance (the stack is a few pixels thick), so no direct volume and no isosurface (_spec/portal.md §2)
  */
-async function loadTiltSeries(ctx: ApiContext, url: string, level: PortalLevel, beside: boolean) {
-  const made = await loadZarr(ctx, url, level);
+async function loadTiltSeries(ctx: ApiContext, url: string, level: PortalLevel, name: string, beside: boolean) {
+  const made = await loadZarr(ctx, url, level, name);
   if (isFailure(made)) return made;
   for (const volume of made) {
     const r = await ctx.api.run('cryoet.slice', { volume, axis: 'z' });
@@ -569,6 +584,7 @@ export async function showTomogramVolume(ctx: ApiContext, volume: string): Promi
 async function loadEntry(
   ctx: ApiContext,
   ds: PortalDataset,
+  run: string,
   s: PortalSpacing,
   e: PortalEntry,
   level: number | undefined,
@@ -578,7 +594,7 @@ async function loadEntry(
   if (e.format === 'zarr') {
     const l = e.levels?.find((x) => x.path === String(level)) ?? e.levels?.[e.levels.length - 1];
     if (!l) return ApiResult.fail('failed', `${e.object} has no levels in the index.`);
-    const made = await loadZarr(ctx, url, l);
+    const made = await loadZarr(ctx, url, l, `${run} ${e.object} ${e.id}`);
     if (isFailure(made)) return made;
     // a mask: 0 outside, 1 (an instance's id) inside; its surface at 0.5
     for (const volume of made) {

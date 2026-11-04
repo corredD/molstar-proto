@@ -276,6 +276,29 @@ describe('cryoetPortal', () => {
     expect(v.api.cryoetPortal!.tiltAnglesOf(tomogram.cell.transform.ref)).toBeUndefined();
   });
 
+  it("names each volume by its run, kind and id, no two alike (Ludo, 2026-11-04); the addresses are the files'", async () => {
+    const fetch = serve();
+    const v = await viewer();
+    const r = await v.api.run('cryoetPortal.load', {
+      dataset: 1,
+      run: 'TS_01',
+      annotations: '6/SegmentationMask',
+      as: 'slices',
+      tiltSeries: 17,
+    });
+    expectOk(r);
+    const volumes = v.plugin.managers.volume.hierarchy.current.volumes;
+    // the zarrs are all named t.zarr, m.zarr, ts.zarr: before, TS_08's tomogram and tilt series were both TS_08.zarr
+    expect(volumes.map((x) => x.cell.obj?.label)).toEqual([
+      'TS_01 tomogram 7',
+      'TS_01 membrane 6',
+      'TS_01 tilt series 17',
+    ]);
+    // only the name: the files read are the zarrs', and the angles are still found from the tilt series' address
+    expect(fetch.mock.calls.map((c) => String(c[0]))).toContain(`${PortalFiles}1/TS_01/ts.zarr/2/0/0/0`);
+    expect(v.api.cryoetPortal!.tiltAnglesOf(volumes[2].cell.transform.ref)).toEqual([-60, -20, 20, 60]);
+  });
+
   it('loads a tilt series alone where it lands, at the level asked', async () => {
     const fetch = serve();
     StageMoves.calls.length = 0;

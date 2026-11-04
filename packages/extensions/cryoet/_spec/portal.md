@@ -55,6 +55,12 @@ registration); the index tool `tools/portal-index/`.
   format's (`VolumeFromOmeZarr`, library code). Loaded with the tomogram, it goes beside it (`besideTheTomogram`, as the
   average); alone, where it lands. `tiltAnglesOf(ref)`: its angles, found from the volume's download (as `originOf`),
   for the Slice row's readout (§4).
+- **Names: run, kind, id** (Ludo, 2026-11-04): a volume is named `<run> tomogram <id>`, `<run> tilt series <id>`, a mask
+  `<run> <object> <annotation id>` (`TS_08 tomogram 638`, `TS_08 tilt series 17086`, `TS_08 membrane 15656`), the label
+  of `OmeZarrFromUrl`, its volume's with it; every zarr of a run is `<run>.zarr`, so the tomogram and its tilt series
+  were both `TS_08.zarr`. Only the name: the address stays the file's (`originOf`, `tiltAnglesOf` and the Data section
+  read it). A point list keeps its file's name (`chloramphenicol_bound_70s_ribosome-1.0_orientedpoint.ndjson`):
+  `load.url` names a download by its address.
 - **The pixel size is the index's voxel spacing**, never the zarr's scale: they differ in the third decimal.
 - **Points without a decoration are spheres of 50 Å** (`PortalPointRadius`; Ludo, 2026-11-03): their size theme's
   `defaultSize`, not the list's radii (a shape decorating them later would scale by those). The theme's own fallback,
