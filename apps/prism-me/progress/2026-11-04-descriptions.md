@@ -60,3 +60,54 @@ http://localhost:1347/apps/prism-me/build/?example=cellpack-exosome: hover an in
 alpha-5, important for cell adhesion and signaling."; click it: the same text in the properties under its name.
 
 Size: about 120 production lines (reader 25, hover 40, properties 40, the rest specs), plus tests.
+
+## Built (2026-11-04)
+
+- **Reader** (`packages/model`, upstream candidate: `dac4930de`, `43de664ef`): `ParticleEntityInfo.description`, from
+  `_entity.pdbx_parent_entity_id` in the cellpack variant, raw Markdown; not a dotted name with no space (a compartment
+  path) and not the entity's name. `function` keeps `_entity.details`.
+- **Hover** (`packages/model`, `78c0b8514`): a single particle's loci label puts its entity's description between the
+  bold particle line and the small list line; Markdown links as their text, escaped, cut at a word at 90 characters with
+  an ellipsis. Prism's hover label shows it as is (`hoverRich`), no new overlay.
+- **Properties** (`242ccdfe1`, `48d9c01e0`): `MesoEntity.description`; `PropertiesFrame`'s `description` (prism-ui
+  `Markdown`) under the header for a picked model entity; story Explorer/Properties/Model Entity.
+
+## Decided
+
+- The column (checked on the deployed files, 2026-11-04): the Exosome (`cellpack_feb2024_exosome.bcif`, the one
+  `?example=cellpack-exosome` loads; the brief's apr2024 file is the same) has the sentence in `pdbx_parent_entity_id`,
+  `details` empty. MG: `details` a short function (571 of 572 entities), the parent column the entity's compartment.
+  HIV: the parent column a compartment, for its membranes another one (`root.HIV_capsid.membrane`; found by the review).
+  PetWorld (flagellar motor): only `id` and `pdbx_description`. So `function` is untouched and no sentence goes into it.
+- Where the hover text goes: in Mol*'s particle label, not a provider of the extension: a provider's line can only come
+  before the title or after the list name, not "under its name".
+- Two lines by a character cut (90): the label's width is Prism's; a CSS line clamp would be a Prism change. The 32
+  Exosome descriptions fit two lines at the label's 280px (HLAI, 88 characters after the cut: two lines).
+
+## Checked in the app (headed Chromium, WebGPU, port 1347)
+
+Screenshots in the session scratchpad `shots/`: `cellpack-exosome-before-hover.png` (today: no description),
+`cellpack-exosome-after-hover.png` (ITG: "Integrin alpha-5, important for cell adhesion and signaling." under its name),
+`cellpack-exosome-after-properties.png` (clicked: the same under ITG in the properties),
+`cellpack-exosome-long-hover.png` (HLAI cut on two lines with "…"), `cellpack-mg-after-hover.png` (MG: no description
+line). MG's Group by Function: 17 function groups, 0 descriptions. Storybook: Model Entity in light, dark, 360px and
+260px.
+
+## Learned
+
+- `pdbx_parent_entity_id` is cellPACK's free column: a sentence in the newer recipes, a compartment path in the older,
+  `protein_label` (the writer's placeholder) in some archive files (not in the example list: left, review nit).
+- The worktree's `check:workspace` needs `node scripts/workspace/assets.mjs` once (plugin-ui's `./*.css` export).
+
+## Review
+
+Reviewer 10 findings (1 must, 3 should, 6 nits), skeptic: 1 fixed (`43de664ef`, failing test first), 4 recorded here, 2
+refuted (6: the measurement list gets structure loci only; 9: a `#` link is inert), the rest nits left open: the
+`protein_label` placeholder, the description read once per pick (window under a frame), a cut splitting a surrogate pair
+or after an early space, the first entity winning a shared name, a parse per hover, Markdown images loaded in the
+properties (as the classic Focus Info).
+
+## Size
+
+About 60 production lines (reader 15, label 20, mesoscale 3, properties 20) against the brief's 120: the hover reused
+Mol*'s label and Prism's hover label whole; plus about 230 lines of tests, the story and the specs.
