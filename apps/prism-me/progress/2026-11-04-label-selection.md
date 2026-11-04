@@ -108,3 +108,9 @@ spec'd (question for Ludo); 4 partly (test gap only); 8, 11, N2 plausible; 5, 6 
 
 About 110 production lines against the brief's 40: the ⌘K form fix, the row path kept beside the pick path in
 `addLabel`, and the messages.
+
+## Ludo's answers to the lane's questions (2026-11-04)
+
+- Right-click › Add a label on an atom: **"Follow the granularity"**, the label goes on what was highlighted (a residue
+  by default, an atom in Atom mode). As built.
+- ⌘K, Prism's own Measure › Label next to ours: **"Keep both"**. As built; nothing hidden.
