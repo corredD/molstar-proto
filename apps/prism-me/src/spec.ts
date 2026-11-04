@@ -12,10 +12,12 @@ import { PluginConfig } from '@molstar/plugin/config';
 import { PluginSpec } from '@molstar/plugin/spec';
 import { PLUGIN_VERSION } from '@molstar/plugin/version';
 import { assistant } from '@molstar/prism-assistant/spec';
+import { Skills } from '@molstar/prism-viewer/agent/skills';
 import { webStore } from '@molstar/prism-viewer/persist/stores';
 import type { PrismViewerSpec } from '@molstar/prism-viewer/spec';
 import { FullPrismViewerSpec } from '@molstar/prism-viewer-app/full-spec';
 import { optionsFromUrl } from '@molstar/prism-viewer-app/url';
+import { StageSkill } from '@molstar/stage-tools-extension/prism-viewer';
 import { MesoscaleExplorerExtensions } from './extensions.js';
 import { withMesoscaleLook } from './look.js';
 import { withTomogramSlices } from './tomograms.js';
@@ -28,6 +30,7 @@ import { withTomogramSlices } from './tomograms.js';
 export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
   const base = FullPrismViewerSpec();
   const options = optionsFromUrl(search);
+  const baseAgent = base.agent || {};
   return {
     ...base,
     // A particle list with orientations opens as its spheres and its axes (Ludovic, 2026-10-22)
@@ -57,12 +60,29 @@ export function createMesoscaleExplorerSpec(search: string): PrismViewerSpec {
       key: 'prism-me',
       preferences: webStore('local', { prefix: 'prism-me', version: PLUGIN_VERSION, budget: 64 * 1024 }),
     },
-    agent: { ...(base.agent || {}), assistant: assistant() },
+    agent: {
+      ...baseAgent,
+      // The stage tools' labels and measurements (atoms, particles, a mesh's triangle) take the place of Prism's
+      // Measurements tools of the same names (a toolkit refuses a name given twice); its list and remove stay
+      skills: { ...baseAgent.skills, add: [...(baseAgent.skills?.add ?? []), ...withoutStageTools(Skills)] },
+      assistant: assistant(),
+    },
     finalize: (spec) =>
       withTomogramSlices(
         withMesoscaleLook(withModifierSelect(withoutRightClickFocus(base.finalize ? base.finalize(spec) : spec))),
       ),
   };
+}
+
+/**
+ * Prism's skills that name a tool of the stage tools (Measurements: add_label, measure_distance, measure_angle,
+ * measure_dihedral), each with those tools left out: added by the same id, it takes the default's place
+ */
+export function withoutStageTools(skills: typeof Skills): typeof Skills {
+  const stage = new Set(StageSkill.tools.map((t) => t.id));
+  return skills
+    .filter((s) => s.tools.some((t) => stage.has(t.id)))
+    .map((s) => ({ ...s, tools: s.tools.filter((t) => !stage.has(t.id)) }));
 }
 
 /** The parts the explorer's panel replaces (_spec/ui.md §1): their operations stay, for ⌘K and the assistant */
