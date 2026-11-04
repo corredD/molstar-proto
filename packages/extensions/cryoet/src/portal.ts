@@ -266,10 +266,12 @@ export class CryoetPortalApi extends ApiArea {
     const tomogramGrid = tomogram
       ? (this.ctx.plugin.state.data.cells.get(tomogram)?.obj?.data as Volume | undefined)?.grid
       : undefined;
+    // where the tomogram is now, not where it was read (review S3): a stage move is its transform decorator
+    const tomogramAt = tomogram && tomogramGrid ? volumeMatrix(this.ctx, tomogram) : undefined;
     return {
       current: volumeMatrix(this.ctx, volume),
       tomogram: tomogramGrid,
-      matrix: (p: TiltSeriesPlace) => tiltSeriesMatrix(p, data.grid, ts.series.tiltAxis, tomogramGrid),
+      matrix: (p: TiltSeriesPlace) => tiltSeriesMatrix(p, data.grid, ts.series.tiltAxis, tomogramGrid, tomogramAt),
     };
   }
 
@@ -849,8 +851,15 @@ function gridBox(grid: Grid) {
  * image at 0° matched the tomogram's top view at −175.5° (CC 0.66; every other angle and the mirrored image under 0.08),
  * so the tomogram's frame is the image's turned, not mirrored. Beside: then along −x as an average (`besideMatrix`).
  * Overlay: its center on the tomogram's in x, y, its top at the tomogram's bottom (without a tomogram: turned beside).
+ * `tomogramAt` is the tomogram's transform (where it is now); absent, where it was read.
  */
-export function tiltSeriesMatrix(place: TiltSeriesPlace, series: Grid, tiltAxis: number, tomogram?: Grid): Mat4 {
+export function tiltSeriesMatrix(
+  place: TiltSeriesPlace,
+  series: Grid,
+  tiltAxis: number,
+  tomogram?: Grid,
+  tomogramAt?: Mat4,
+): Mat4 {
   const s = gridBox(series);
   const c = Box3D.center(Vec3(), s);
   const turn =
@@ -863,7 +872,8 @@ export function tiltSeriesMatrix(place: TiltSeriesPlace, series: Grid, tiltAxis:
           Mat4.fromTranslation(Mat4(), Vec3.negate(Vec3(), c)),
         );
   if (place !== 'overlay' || !tomogram) return Mat4.mul(Mat4(), besideMatrix(series), turn);
-  const t = gridBox(tomogram);
+  const read = gridBox(tomogram);
+  const t = tomogramAt ? Box3D.transform(Box3D(), read, tomogramAt) : read;
   const ct = Box3D.center(Vec3(), t);
   const shift = Vec3.create(ct[0] - c[0], ct[1] - c[1], t.min[2] - s.max[2]);
   return Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), shift), turn);
