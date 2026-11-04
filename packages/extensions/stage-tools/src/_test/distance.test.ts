@@ -455,8 +455,11 @@ describe('stage.label, a selection', () => {
     const none = await v.api.run('stage.label', { selection: 'A:999' });
     expect(none).toMatchObject({ ok: false, code: 'invalid' });
     expect(!none.ok && none.message).toMatch(/selects nothing/);
-    const both = await v.api.run('stage.label', { selection: 'A:10', x: 1, y: 2, z: 3 });
-    expect(both).toMatchObject({ ok: false, code: 'invalid' });
+    // said before the selection is read (even one of nothing)
+    for (const selection of ['A:10', 'A:999']) {
+      const both = await v.api.run('stage.label', { selection, x: 1, y: 2, z: 3 });
+      expect(!both.ok && both.message).toMatch(/not both/);
+    }
     expect(v.api.stage!.labelsState().value).toHaveLength(0);
   });
 

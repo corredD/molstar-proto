@@ -593,9 +593,9 @@ export class StageApi extends ApiArea {
       const v = values as typeof values &
         Partial<Record<'x' | 'y' | 'z' | 'depth' | 'size' | 'radius', number>> & { color?: string; tether?: boolean };
       // a selection: resolved as a distance's point, on its object as drawn; the label at the point's centre
+      if (v.selection && v.x !== undefined) return ApiResult.fail('invalid', 'Give a selection or x, y, z, not both.');
       const at = v.selection ? await labelPoint(ctx, v.selection, v.target) : undefined;
       if (at && ApiResult.isFailure(at)) return at;
-      if (at && v.x !== undefined) return ApiResult.fail('invalid', 'Give a selection or x, y, z, not both.');
       const target = at?.point.ref ?? v.target;
       const t = stageTargets(ctx).find((x) => x.ref === target);
       const bounds = t ? boundsOf(ctx, t) : undefined;
