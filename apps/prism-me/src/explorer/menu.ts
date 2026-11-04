@@ -361,30 +361,29 @@ export async function addLabel(
   loci?: Loci,
 ) {
   const pick = loci && finerThanRow(area, picked, loci);
-  const anchor = pick ? undefined : area.anchorOf(picked.node);
-  const position = at ?? anchor?.position;
-  // sized by the stage to the node's own radius (its part's) and to its object's
-  const own = anchor?.radius ?? area.boundsOf({ ref: picked.node.ref })?.radius ?? 10;
-  const r = await api.run(
-    'stage.label',
-    pick
-      ? { selection: { loci: pick }, node: picked.key }
-      : {
-          text: picked.label,
-          target: picked.node.ref,
-          node: picked.key,
-          ...(position
-            ? {
-                x: position[0],
-                y: position[1],
-                z: position[2],
-                radius: own,
-                // in front of the node's middle by its radius; a point clicked on it: by the label's height (the stage's)
-                ...(at ? {} : { depth: own }),
-              }
-            : {}),
-        },
-  );
+  // the row's: named after it, where it was clicked, else on it
+  const rowLabel = () => {
+    const anchor = area.anchorOf(picked.node);
+    const position = at ?? anchor?.position;
+    // sized by the stage to the node's own radius (its part's) and to its object's
+    const own = anchor?.radius ?? area.boundsOf({ ref: picked.node.ref })?.radius ?? 10;
+    return {
+      text: picked.label,
+      target: picked.node.ref,
+      node: picked.key,
+      ...(position
+        ? {
+            x: position[0],
+            y: position[1],
+            z: position[2],
+            radius: own,
+            // in front of the node's middle by its radius; a point clicked on it: by the label's height (the stage's)
+            ...(at ? {} : { depth: own }),
+          }
+        : {}),
+    };
+  };
+  const r = await api.run('stage.label', pick ? { selection: { loci: pick }, node: picked.key } : rowLabel());
   const ref = r.ok ? r.changed.nodes?.[0] : undefined;
   const text = ref ? api.stage?.labelsState().value.find((l) => l.ref === ref)?.text : undefined;
   if (ref && reveal) reveal({ key: `l:${ref}`, label: text ?? picked.label, kind: 'label', node: { ref } });
