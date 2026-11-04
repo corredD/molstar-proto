@@ -24,8 +24,8 @@ registration); the index tool `tools/portal-index/`.
   its tilt series (`tiltSeries`, optional, version 1 still: an OME-Zarr's levels, the portal's pixel size, the tilt
   axis, and `angles`, one an image by the portal's `z_index`, so `angles[i]` is image i whatever the rows' order; from
   the client's per-section parameters, `tiltseries_metadata.json` for a series whose rows are not one an image; the
-  client has no default flag for a tilt series, so none). Paths are relative to the file host. A shape's MRC is left
-  out when it has a zarr (a browser reads whole files; the zarr has levels).
+  client has no default flag for a tilt series, so none). Paths are relative to the file host. A shape's MRC is left out
+  when it has a zarr (a browser reads whole files; the zarr has levels).
 - **Curated, not the portal's:** `decorations` by object name: the PDB that decorates the points, the EMDB average, and
   the average's box center in the structure's frame (§3). The portal links no fitted model.
 - Size: 10003 (65 runs) 165 KB, 10453 (95 runs) 383 KB, 10524 (12 runs) 40 KB, 10518 (49 runs, PP7 virus-like particles;
@@ -37,7 +37,8 @@ registration); the index tool `tools/portal-index/`.
   go through `ctx.api`, the zarr's transforms through the plugin's state; the run's checkpoint covers both). Values:
   `dataset`, `run` (name or id), `spacing`, `tomogram`, `level` (absent: the coarsest), `annotations` (`1212`,
   `2321/SegmentationMask`, `none`; empty: the portal's defaults), `as` (`both`: slices and a direct volume, `slices`,
-  `none`), `large`.
+  `none`), `tiltSeries` (an id; absent: none), `tiltSeriesLevel` (absent: the coarsest), `large`. `run` lists the run's
+  tomograms and tilt series by the ids `load` takes.
 - **Which tomogram** (`describePortalRun`; Ludo, 2026-11-03): `tomogram` by id, from whichever spacing of the run holds
   it (its spacing, annotations and levels come with it); `spacing` alone: that spacing's default tomogram, else its
   first; neither: the run's default tomogram, the lowest id flagged `default` (a run may flag one a spacing: 10518
@@ -48,6 +49,12 @@ registration); the index tool `tools/portal-index/`.
   isosurface the slices would only hide), the points' pixel size by `particles.source`, the decoration by
   `cryoet.decorate` (`with: pdb`) and `cryoet.offset`, the slices by `cryoet.slices`, a mask's surface by
   `volume.representation` (isosurface, absolute 0.5), the average by `load.entry` (`emdb`) and `stage.move`.
+- **A tilt series is its Z slice only** (Ludo, 2026-11-03): its zarr's z is the image index, not a distance (only x, y
+  are binned; 10003 TS_08 is 41 images at z 1.7 Å, a stack 70 Å thick and 6500 Å wide), so no direct volume and no
+  isosurface: `loadZarr`, then `cryoet.slice` along z from the middle image (the least tilted). The z scale stays the
+  format's (`VolumeFromOmeZarr`, library code). Loaded with the tomogram, it goes beside it (`besideTheTomogram`, as the
+  average); alone, where it lands. `tiltAnglesOf(ref)`: its angles, found from the volume's download (as `originOf`),
+  for the Slice row's readout (§4).
 - **The pixel size is the index's voxel spacing**, never the zarr's scale: they differ in the third decimal.
 - **Points without a decoration are spheres of 50 Å** (`PortalPointRadius`; Ludo, 2026-11-03): their size theme's
   `defaultSize`, not the list's radii (a shape decorating them later would scale by those). The theme's own fallback,
@@ -75,8 +82,8 @@ registration); the index tool `tools/portal-index/`.
   difference (7PHB: about 7 Å) puts the structure where the average is.
 - OME-Zarr levels in Å from NGFF `scale` (the reader's, `io/src/reader/zarr/_spec/zarr.md`); MB are 1e6 bytes, as the
   format's limit counts them.
-- **Size guard:** above 512 MB decoded (the tomogram's level plus the zarr annotations at that level), a load fails with
-  `confirm` until `large: true`; the card shows the size beside Load and passes `large`.
+- **Size guard:** above 512 MB decoded (the tomogram's level, the zarr annotations at that level and the tilt series'
+  level), a load fails with `confirm` until `large: true`; the card shows the size beside Load and passes `large`.
 - A loaded level is changed in place afterwards (`cryoet.level`, prism-me's Data section: ui.md §4): the same guard, the
   zarr's own `maxSizeMB`, which a load sets from the level's voxels (at least 512 MB).
 
