@@ -569,8 +569,14 @@ export class StageApi extends ApiArea {
     id: 'stage.label',
     title: 'Add a label',
     params: {
-      text: PD.Text('Label', { description: 'What it says (plain text)' }),
-      target: PD.Text('', { description: 'The object it names, by state ref (its place: in front of it)' }),
+      text: PD.Text('', { description: 'What it says (plain text); empty: the name of its selection, else Label' }),
+      target: PD.Text('', {
+        description: "The object it names, by state ref (its place: in front of it); a selection's structure",
+      }),
+      selection: PD.Value<DistanceTarget>('', {
+        description:
+          "What it names, as a distance's point: an atom, a residue, a chain (A:10@CA, A:10, chain A, ligand) on a structure, or a particle as '<list ref>#<index>'; its place: in front of its centre",
+      }),
       x: OptionalParam(PD.Numeric(0, {}, { description: 'Where (Å); absent: in front of its target' })),
       y: OptionalParam(PD.Numeric(0)),
       z: OptionalParam(PD.Numeric(0)),
@@ -586,31 +592,44 @@ export class StageApi extends ApiArea {
     async run(values, ctx) {
       const v = values as typeof values &
         Partial<Record<'x' | 'y' | 'z' | 'depth' | 'size' | 'radius', number>> & { color?: string; tether?: boolean };
-      const t = stageTargets(ctx).find((x) => x.ref === v.target);
+      // a selection: resolved as a distance's point, on its object as drawn; the label at the point's centre
+      if (v.selection && v.x !== undefined) return ApiResult.fail('invalid', 'Give a selection or x, y, z, not both.');
+      const at = v.selection ? await labelPoint(ctx, v.selection, v.target) : undefined;
+      if (at && ApiResult.isFailure(at)) return at;
+      const target = at?.point.ref ?? v.target;
+      const t = stageTargets(ctx).find((x) => x.ref === target);
       const bounds = t ? boundsOf(ctx, t) : undefined;
-      if (v.x === undefined && !bounds) {
-        return ApiResult.fail('invalid', 'Where?', 'Give x, y, z, or a target (a structure, particle list or volume).');
+      if (!at && v.x === undefined && !bounds) {
+        return ApiResult.fail(
+          'invalid',
+          'Where?',
+          'Give x, y, z, a target (a structure, particle list or volume), or a selection (A:10@CA).',
+        );
       }
       const radius = Math.max(bounds?.radius ?? 10, 1);
-      const position = Vec3.create(v.x ?? bounds!.center[0], v.y ?? bounds!.center[1], v.z ?? bounds!.center[2]);
+      const position = at
+        ? at.center
+        : Vec3.create(v.x ?? bounds!.center[0], v.y ?? bounds!.center[1], v.z ?? bounds!.center[2]);
+      const part = v.radius ?? at?.radius;
       const color = v.color ? cssColor(v.color) : Color(0xffffff);
       if (color === undefined) return ApiResult.fail('invalid', `'${v.color}' is not a color.`);
       // readable at the scale of what it names: about its part's size, at least a 15th of its object's, in half-Å
       // steps; a point given on the part (clicked on it): in front of it by its height
       const size =
         v.size ??
-        (v.radius !== undefined
-          ? Math.round(Math.max(2, v.radius / 2, radius / 15) * 2) / 2
-          : Math.max(2, radius / 12));
+        (part !== undefined ? Math.round(Math.max(2, part / 2, radius / 15) * 2) / 2 : Math.max(2, radius / 12));
       const b = ctx.plugin.state.data.build();
       const labelParams = {
-        text: v.text || 'Label',
+        text: v.text || at?.point.label || 'Label',
         position,
-        depth: v.depth ?? (v.x === undefined ? radius : v.radius !== undefined ? size : 0),
+        // a selection's: in front of its centre by its radius, at least by its height (one atom has none)
+        depth:
+          v.depth ?? (at ? Math.max(at.radius, size) : v.x === undefined ? radius : v.radius !== undefined ? size : 0),
         size,
         color,
-        target: v.target,
-        node: v.node,
+        target,
+        // listed under the row given, else its object's (as a distance)
+        node: v.node || (at ? `o:${target}` : ''),
         ...(v.tether !== undefined ? { tether: v.tether } : {}),
       };
       const label = b.toRoot().apply(StageLabel, labelParams);
@@ -620,7 +639,7 @@ export class StageApi extends ApiArea {
         labelLook({ ...PD.getDefaultValues(StageLabelParams), ...labelParams }) as never,
       );
       await b.commit();
-      return ApiResult.ok(`Added the label "${v.text}".`, { nodes: [label.ref] });
+      return ApiResult.ok(`Added the label "${labelParams.text}".`, { nodes: [label.ref] });
     },
   });
 
@@ -1222,6 +1241,20 @@ async function distancePoint(
         : what;
   const point = pointOf(loci, { ref: pick.target.ref, label: label || pick.target.label, key });
   return point ?? notAPoint(which);
+}
+
+/** A label's selection (`stage.label`): its point as a distance's, its centre and size on its object as drawn */
+async function labelPoint(
+  ctx: ApiContext,
+  selection: DistanceTarget,
+  structure: string,
+): Promise<{ point: DistancePoint; center: Vec3; radius: number } | ApiFailure> {
+  const point = await distancePoint(ctx, selection, structure, '', 'label');
+  if (ApiResult.isFailure(point)) return point;
+  const at = pointLoci(ctx.plugin, point);
+  const sphere = at && Loci.getBoundingSphere(at.loci);
+  if (!at || !sphere) return ApiResult.fail('invalid', 'The label point selects nothing.');
+  return { point, center: Vec3.clone(sphere.center), radius: at.radius };
 }
 
 const notAPoint = (which: string) =>

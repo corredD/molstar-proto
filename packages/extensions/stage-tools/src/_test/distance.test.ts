@@ -407,3 +407,68 @@ describe('stage.pickedAt', () => {
     });
   });
 });
+
+// `stage.label` on a selection: its point resolved as a distance's (an atom, a residue, a chain; a particle; a pick),
+// its label at the point's centre, in front of it (apps/prism-me/_spec/features.md, Stage tools)
+describe('stage.label, a selection', () => {
+  const labelOf = (v: PrismViewer, r: ApiResult<unknown>) => {
+    expectOk(r);
+    return v.api.stage!.labelsState().value.find((l) => l.ref === r.changed.nodes![0])!;
+  };
+
+  it('labels an atom by text at the atom, named after it, on its structure', async () => {
+    const v = await viewer();
+    const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    const l = labelOf(v, await v.api.run('stage.label', { selection: 'A:10@CA' }));
+    expect(Vec3.distance(Vec3.create(...l.position), atom(v, 10, 'CA').at)).toBeLessThan(1e-3);
+    expect(l).toMatchObject({ text: 'ARG 10 CA (A)', target: crn, node: `o:${crn}` });
+    // in front of the atom by its height, not through it (one atom's sphere has no radius)
+    expect(l.depth).toBeGreaterThan(0);
+    expect(l.depth).toBeGreaterThanOrEqual(l.size);
+    // its own text kept
+    expect(labelOf(v, await v.api.run('stage.label', { selection: 'A:10@CA', text: 'here' })).text).toBe('here');
+  });
+
+  it("labels a residue at its centre, and a pick ({ loci }) as the right-click's", async () => {
+    const v = await viewer();
+    const residue = Loci.normalize(atom(v, 10, 'CA').loci, 'residue');
+    const centre = Loci.getBoundingSphere(residue)!.center;
+    const byText = labelOf(v, await v.api.run('stage.label', { selection: 'A:10' }));
+    expect(Vec3.distance(Vec3.create(...byText.position), centre)).toBeLessThan(1e-3);
+    expect(byText.text).toBe('ARG 10 (A)');
+    const byPick = labelOf(v, await v.api.run('stage.label', { selection: { loci: residue }, node: 'e:x:1' }));
+    expect(byPick).toMatchObject({ text: 'ARG 10 (A)', node: 'e:x:1', position: byText.position });
+  });
+
+  it("labels a particle by '<list ref>#<index>' at it, under its list; an index past the end is said", async () => {
+    const v = await viewer();
+    expectOk(await v.api.load.files({ files: [new File([star('10 0 0\n20 0 0\n')], 'p.star')] }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    const l = labelOf(v, await v.api.run('stage.label', { selection: `${list}#1` }));
+    expect(l).toMatchObject({ position: [20, 0, 0], target: list, node: `o:${list}` });
+    expect(l.depth).toBeGreaterThanOrEqual(l.size);
+    expect(await v.api.run('stage.label', { selection: `${list}#7` })).toMatchObject({ ok: false, code: 'invalid' });
+  });
+
+  it('says what is wrong: a selection of nothing, a selection and a point both', async () => {
+    const v = await viewer();
+    const none = await v.api.run('stage.label', { selection: 'A:999' });
+    expect(none).toMatchObject({ ok: false, code: 'invalid' });
+    expect(!none.ok && none.message).toMatch(/selects nothing/);
+    // said before the selection is read (even one of nothing)
+    for (const selection of ['A:10', 'A:999']) {
+      const both = await v.api.run('stage.label', { selection, x: 1, y: 2, z: 3 });
+      expect(!both.ok && both.message).toMatch(/not both/);
+    }
+    expect(v.api.stage!.labelsState().value).toHaveLength(0);
+  });
+
+  it('moves with its structure (its target is the structure)', async () => {
+    const v = await viewer();
+    const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    const l = labelOf(v, await v.api.run('stage.label', { selection: 'A:10@CA' }));
+    const up = Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(0, 0, 100)));
+    expectOk(await v.api.run('stage.move', { target: crn, matrix: up }));
+    expect(v.api.stage!.labelsState().value[0].position[2]).toBeCloseTo(l.position[2] + 100, 3);
+  });
+});

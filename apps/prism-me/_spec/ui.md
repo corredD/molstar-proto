@@ -195,7 +195,9 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   release, Esc or an undo during the drag cancels it); **Hide the handles** while they are on. On an object: the object
   itself. On a part (an entity, a chain): **[to decide]** the whole object it belongs to, or only that part.
 - **Color…**: a color for all of it (swatches; a model's or a group's Generate colors first).
-- **Add label**: plain text at that place, for that node (Ludovic, 2026-10-18); it becomes a row under the node.
+- **Add label**: plain text at that place, for that node (Ludovic, 2026-10-18); it becomes a row under the node. On a
+  pick smaller than its row (an atom, a residue, at the selection's granularity) it labels that pick, named after it, at
+  its centre (its bounding sphere's, as a distance's point; `stage.label` `selection`; Ludo, 2026-11-04).
 - **Add clip…** (Ludo, 2026-10-28): a new clip of each shape (New plane, sphere, box, cylinder, cone) that cuts that
   node (only its particles or atoms), then every clip of the scene (Use Plane 1…), used on it too (one step), those on
   it already greyed. A new clip is a row of Clips (§3), its handles shown. Several per node (Ludovic, 2026-10-18; a clip

@@ -153,6 +153,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
         groupBy: model.groupByOf,
         editText: (text, keep) => editInline(root, at, text, keep),
         ...(request.position ? { at: [request.position[0], request.position[1], request.position[2]] as const } : {}),
+        loci: request.loci,
       });
       // a particle picked: its local handle, on it alone (All off) or on its kind's offset (All on)
       const particle = area.particleOf(request.loci);

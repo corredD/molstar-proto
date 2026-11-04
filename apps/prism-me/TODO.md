@@ -182,6 +182,15 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   with the maintainer (2026-10-25): it needs a Mol\* core change, a dependency on an object being one on the object as
   decorated (`packages/core/src/state/state.ts`, `initCells` and the delete loop; review K1: the move is a decorator
   under the object, which the distance's dependency does not see).
+- A label by selection (lane `label-selection`, 2026-11-04) keeps its place, not its selection: `stage.move` moves it
+  with its structure as any label, but a change outside the stage (a model's frame, a structure rebuilt) leaves it where
+  it was; following its atoms is the distances' core issue above.
+- Labels by selection, left open by the review (lane `label-selection`): ⌘K's "label A:10" lands first on Prism's
+  Measure › Label an atom or residue… (Prism's measurement commands stay in ⌘K; the agent's tools are the stage's),
+  while "add label A:10" is the stage's: hide Prism's in prism-me? (Ludo); "residue A:10" is not a target (PyMOL reads
+  it), "A:10" is; no test that the canvas's right-click (`ui.tsx`) gives its loci to the menu (it needs a right-click
+  with a page point and the context menu's DOM); at an instance granularity (residue instances) the pick is every copy,
+  labelled at their centre.
 - Distances, left open by the review: a test for the explorer's click routing on a label (`ui.tsx`: a Ctrl+click on a
   label is refused), which needs canvas clicks with a position and `labelAt`; a volume point keeps one instance (a
   volume of several, from MVS, would be measured from its first).
