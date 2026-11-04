@@ -125,3 +125,7 @@ handle dragged along its normal: the plane moves, the state untouched until the 
 
 Brief: about 60 production lines. Production diff: about 110 lines (helper 25, call sites 35, the knob overlay 15, the
 slice form 20, the mesh ref 15). Over by the overlay, the form (step 4) and the mesh remount, none foreseen.
+
+## PR
+
+https://github.com/corredD/molstar-proto/pull/48 (to `prism-me`; Ludo merges).
