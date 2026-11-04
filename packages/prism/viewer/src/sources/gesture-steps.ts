@@ -7,7 +7,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { ViewerApi } from '../api/area.js';
+import { ApiResult, type ViewerApi } from '../api/area.js';
 
 // Changes at pointer rate as undo steps (a drag, keys held, a color field dragged across): the changes in quick
 // succession are one `api.group`, the latest winning per key; what is not applied yet is shown already (`overlay`).
@@ -15,8 +15,10 @@ import type { ViewerApi } from '../api/area.js';
 // isosurface or a direct volume is heavy, and the pointer must stay smooth); let go, the latest applies at once. A gesture ends on `settle` (the pointer let go) or after a moment's quiet.
 // A gesture's history is one checkpoint, taken at its start; its steps take none (a snapshot a step, on a scene whose
 // snapshot is over the budget, turned undo off in one drag: sequence.md §7.4). So it is all or nothing: a step refused
-// or failed undoes the whole gesture when it ends (api.md §5).
-// The map levels and the transfer function use it (sources/volume-levels.ts, sources/volume-transfer.ts).
+// or failed undoes the whole gesture when it ends (api.md §5), and once one is, the gesture applies nothing more (it
+// would be thrown away).
+// Prism's sliders use it (sources/volume-levels.ts, volume-transfer.ts, representation-quick.ts), and apps' and
+// extensions' live sliders.
 
 export interface GestureSteps<C extends object> {
   /** A change to `key`, merged into what is pending for it; starts a step when none is open. */
@@ -58,7 +60,7 @@ export function gestureSteps<C extends object>(
   options: {
     /** The step's label in the history. */
     readonly label: string;
-    /** Applies a key's merged change, as part of the step (`api` is the group's). */
+    /** Applies a key's merged change, as part of the step (`api` is the group's); a failure returned stops the rest. */
     readonly apply: (api: ViewerApi, key: string, change: C) => Promise<unknown>;
     /** What is shown changed (a change came, or a step ended and its overlay went). */
     readonly changed: () => void;
@@ -80,7 +82,9 @@ export function gestureSteps<C extends object>(
         // a heavy update leaves the page time to follow the pointer.
         let last = Number.NEGATIVE_INFINITY;
         let took = 0;
+        let failed = false;
         for (;;) {
+          if (failed) step.pending.clear();
           const next = step.pending.entries().next();
           if (!next.done) {
             // While the gesture is held, previews are spaced out; let go, the latest goes at once (what waited for
@@ -93,9 +97,11 @@ export function gestureSteps<C extends object>(
             const [key, change] = next.value;
             step.pending.delete(key);
             const t0 = performance.now();
-            await options.apply(g, key, change);
+            const result = await options.apply(g, key, change);
             last = performance.now();
             took = last - t0;
+            // Refused: the group fails at its end (all or nothing); what comes until then is not applied.
+            if (ApiResult.isFailure(result)) failed = true;
             continue;
           }
           if (step.closed) return;

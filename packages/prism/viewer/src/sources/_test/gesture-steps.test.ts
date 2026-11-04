@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { expectOk, headlessViewer, until } from '../../_test/harness.js';
+import { expectOk, headlessViewer, recordRuns, until } from '../../_test/harness.js';
 import { mapFile } from '../../api/_test/volume-fixtures.js';
 import type { ViewerApi } from '../../api/area.js';
 import type { PrismViewer } from '../../viewer.js';
@@ -93,5 +93,23 @@ describe('a gesture', () => {
     await until(() => v.api.running.value.length === 0);
     await until(() => Math.abs(isoOf(v) - before) < 1e-6);
     expect(v.api.history.steps.value.length).toBe(steps);
+  });
+
+  it('applies nothing more once a step was refused: the drag is undone at its end anyway', async () => {
+    const v = await loaded();
+    const before = isoOf(v);
+    const g = isoGesture(v);
+    await drag(v, g, [1.1]);
+    const runs = recordRuns(v);
+    g.change('iso', { value: Number.NaN });
+    await until(() => runs.some((r) => r.result && !r.result.ok));
+    const iso = isoOf(v);
+    g.change('iso', { value: 1.3 });
+    await new Promise((r) => setTimeout(r, 100));
+    // Not applied: it would be thrown away at the end.
+    expect(isoOf(v)).toBeCloseTo(iso, 6);
+    g.settle();
+    await until(() => v.api.running.value.length === 0);
+    await until(() => Math.abs(isoOf(v) - before) < 1e-6);
   });
 });
