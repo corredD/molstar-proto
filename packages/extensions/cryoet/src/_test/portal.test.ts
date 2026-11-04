@@ -30,6 +30,7 @@ import {
   tomogramControlPoints,
 } from '../portal.js';
 import { checkPortalIndex, type PortalCatalog, type PortalDataset, PortalFiles } from '../portal-index.js';
+import { portalAnnotationText } from '../portal-run.js';
 import { CryoetExtension } from '../prism-viewer.js';
 
 // The `cryoetPortal` area on a headless viewer, over an index made in memory and a stubbed `fetch` that serves its
@@ -104,6 +105,8 @@ const dataset: PortalDataset = {
               path: '1/TS_01/m.zarr',
               levels: [level('0', 400, 10), level('2', 100, 40)],
               default: true,
+              description: 'Membrain-seg prediction',
+              goId: 'GO:0016020',
             },
             { id: 8, object: 'lipid', shape: 'Mesh', format: 'tiff', path: '1/TS_01/l.tiff' },
             { id: 9, object: 'membrane', shape: 'Mesh', format: 'glb', path: '1/TS_01/s.glb' },
@@ -407,6 +410,31 @@ describe('cryoetPortal', () => {
     // not a tilt series
     const n = await v.api.run('cryoetPortal.place', { volume: 'nothing', place: 'beside' });
     expect(n.ok).toBe(false);
+  });
+
+  it("gives a mask's and a point list's words by their ref (the properties'), none for a tomogram", async () => {
+    serve();
+    const v = await viewer();
+    expectOk(await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', as: 'slices' }));
+    const [tomogram, mask] = v.plugin.managers.volume.hierarchy.current.volumes;
+    const [list] = v.plugin.managers.particles.hierarchy.current.lists;
+    const portal = v.api.cryoetPortal!;
+    expect(portal.annotationTextOf(mask.cell.transform.ref)).toBe(
+      'membrane: Membrain-seg prediction\n\n[GO:0016020](https://amigo.geneontology.org/amigo/term/GO:0016020)',
+    );
+    // the ribosomes have none of the three words
+    expect(portal.annotationTextOf(list.cell.transform.ref)).toBeUndefined();
+    expect(portal.annotationTextOf(tomogram.cell.transform.ref)).toBeUndefined();
+  });
+
+  it("cuts a long method at a word on one line; the description alone, without its object's colon when none", () => {
+    const method = `Template matching ${'and more filtering '.repeat(10)}`;
+    const text = portalAnnotationText({ ...dataset.runList[0].spacings[0].annotations[0], method })!;
+    const [first, second] = text.split('\n\n');
+    expect(first).toBe('ribosome');
+    expect(second.length).toBeLessThanOrEqual(91);
+    expect(second.endsWith('…')).toBe(true);
+    expect(method.startsWith(second.slice(0, -1))).toBe(true);
   });
 
   it('loads a tilt series alone where it lands, at the level asked', async () => {

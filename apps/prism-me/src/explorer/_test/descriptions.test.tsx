@@ -11,7 +11,7 @@ import { ShellModel } from '@molstar/prism-ui/shell/shell';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { explorerUI } from '../ui.js';
 
@@ -133,5 +133,43 @@ describe("an entity's description in the properties", () => {
     rowOf(host, 'RNA_POLYMERASE')!.click();
     await until(() => nameShown(host) === 'RNA_POLYMERASE');
     expect(description(host)).toBeNull();
+  });
+});
+
+describe("a portal annotation's words in the properties (Ludo, 2026-11-04: the portal's description and method)", () => {
+  it("shows the ribosomes' description, their method on one line, and their GO term as a link", async () => {
+    // the ribosomes' ndjson of 10003 TS_08 (two points), nothing else: the decoration and the average fail, warned
+    const points = [1, 2].map((x) => JSON.stringify({ type: 'point', location: { x, y: x, z: x } })).join('\n');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(typeof input === 'object' && 'url' in input ? input.url : input);
+        return url.endsWith('chloramphenicol_bound_70s_ribosome-1.0_orientedpoint.ndjson')
+          ? new Response(points, { status: 200 })
+          : new Response('not found', { status: 404 });
+      }),
+    );
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), ...MesoscaleExplorerExtensions] },
+    });
+    viewers.push(v);
+    const r = await v.api.run('cryoetPortal.load', { dataset: 10003, run: 'TS_08', annotations: '1212', as: 'none' });
+    if (!r.ok) throw new Error(r.message);
+    const api = v.api.as({ kind: 'person' });
+    const ui = explorerUI({ api, sources: v.sources, managers: v.managers });
+    const host = document.createElement('div');
+    document.body.append(host);
+    ui.tabs![0].render.mount(host, { shell: new ShellModel() } as never, undefined as never);
+    const name = 'chloramphenicol_bound_70s_ribosome-1.0_orientedpoint.ndjson';
+    await until(() => !!rowOf(host, name));
+    rowOf(host, name)!.click();
+    await until(() => nameShown(host) === name);
+    const text = description(host)?.textContent ?? '';
+    expect(text).toContain('cytosolic ribosome: chloramphenicol bound 70S ribosome');
+    expect(text).toContain('Template matching + manual filtering + 3D classification filtering');
+    const link = description(host)?.querySelector('a');
+    expect(link?.textContent).toBe('GO:0022626');
+    expect(link?.getAttribute('href')).toBe('https://amigo.geneontology.org/amigo/term/GO:0022626');
   });
 });

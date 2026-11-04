@@ -46,6 +46,25 @@ export const TiltSeriesPlaces: readonly (readonly [TiltSeriesPlace, string])[] =
   ['overlay', 'Overlay, turned'],
 ];
 
+/** About one line of the properties' text: a longer method is cut at a word */
+const MethodLength = 90;
+
+/**
+ * An annotation in the portal's words, Markdown (_spec/portal.md §4; Ludo, 2026-11-04): its object and description, its
+ * method on one line (cut), its GO term as a link to AmiGO; undefined when the portal gives none of the three
+ */
+export function portalAnnotationText(a: PortalAnnotation): string | undefined {
+  if (!a.description && !a.method && !a.goId) return undefined;
+  const method = a.method?.replace(/\s+/g, ' ').trim();
+  const space = method && method.length > MethodLength ? method.lastIndexOf(' ', MethodLength) : -1;
+  const lines = [
+    `${a.object}${a.description ? `: ${a.description}` : ''}`,
+    ...(method ? [space > 0 ? `${method.slice(0, space)}…` : method] : []),
+    ...(a.goId ? [`[${a.goId}](https://amigo.geneontology.org/amigo/term/${a.goId})`] : []),
+  ];
+  return lines.join('\n\n');
+}
+
 /** An annotation of a run, as `run` lists it and `load` takes it: `<id>` or `<id>/<shape>` */
 export interface PortalEntry extends PortalAnnotation {
   readonly key: string;

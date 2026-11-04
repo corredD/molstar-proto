@@ -132,6 +132,12 @@ registration); the index tool `tools/portal-index/`.
   properties pass `tiltAnglesOf(volume)` to the cryoet `Slice`. Under it, its **Placement**: Beside, raw / Beside,
   turned / Overlay, turned (Prism's `Choices`, a click each, no reload; the one it is in pressed, none once moved by
   hand: `placeState`), §2.
+- **An annotation's words in its properties** (Ludo, 2026-11-04: "Portal: description + method"): a point list's or a
+  mask's, under its name, Markdown (`portalAnnotationText`, by `annotationTextOf(ref)`: the file's download, as
+  `originOf`): `cytosolic ribosome: chloramphenicol bound 70S ribosome`, the method on one line (cut at a word past 90
+  characters: 10453's run to 757), the GO term a link to `https://amigo.geneontology.org/amigo/term/<id>`. Not on hover:
+  Mol\*'s particle label shows an entity's description (`entityInfo`), and a list with entities is a mesoscale model in
+  prism-me's tree; a mask's hover is the volume's label (TODO).
 - Story: prism-me › Explorer › CryoET Data Portal (Card, a run of several tomograms: 10518 pt117_ts_001).
 
 ## 5. The URL (prism-me)

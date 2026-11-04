@@ -5,3 +5,5 @@
 - A portal tilt series' Placement, on its Slice row: Beside, raw (as before, the default), Beside, turned (by its tilt
   axis, −(tilt axis + 180°), measured on 10003 TS_08) and Overlay, turned (under the tomogram, centred on it), a click
   each; `cryoetPortal.place`, `cryoetPortal.load`'s `tiltSeriesPlace` and `?portal-tiltseries-place=`.
+- A portal annotation's description, method and GO term (a link to AmiGO) in its properties, under its name; the index
+  has them (`description`, `method`, `goId`; format version 1 still).

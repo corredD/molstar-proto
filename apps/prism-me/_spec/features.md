@@ -74,6 +74,7 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | … a run's tomograms in one choice, labelled as the portal's list, the portal's default tomogram first chosen              | Done     | the card's Tomogram; `cryoetPortal.load` `tomogram`; `?portal-tomogram=64010`        |
 | … a run's tilt series: its images stepped as the Z slice, each image's tilt angle on its row, beside the tomogram         | Done     | the card's Tilt series; `cryoetPortal.load` `tiltSeries`; `?portal-tiltseries=17086` |
 | … a tilt series placed beside raw (the default), beside turned or under the tomogram turned: a switch                     | Done     | the series' Slice › Placement; `cryoetPortal.place`; `?portal-tiltseries-place`      |
+| … an annotation's description, method and GO term (a link), in its properties                                             | Done     | the index's `description`, `method`, `goId`; not on hover (TODO)                     |
 | … a portal object's run page and DOIs                                                                                     | Done     | right-click › `<dataset> <run>` on the CryoET Data Portal, doi:…                     |
 | … any dataset live (GraphQL search), copick picks, alignments                                                             | Deferred | the portal's CORS allow-list; plan part E                                            |
 

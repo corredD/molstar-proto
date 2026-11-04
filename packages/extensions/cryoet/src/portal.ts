@@ -39,6 +39,7 @@ import {
   type PortalFailure,
   type PortalRunInfo,
   type PortalTomogramView,
+  portalAnnotationText,
   portalTiltSeriesOptions,
   portalTomogramOptions,
   type TiltSeriesPlace,
@@ -46,6 +47,7 @@ import {
 } from './portal-run.js';
 import {
   checkPortalIndex,
+  type PortalAnnotation,
   type PortalCatalog,
   type PortalDataset,
   PortalFiles,
@@ -135,6 +137,8 @@ export class CryoetPortalApi extends ApiArea {
   private readonly tiltSeriesAt = new Map<string, { readonly series: PortalTiltSeries; readonly run: number }>();
   /** The runs of the tomograms of the datasets read, by their zarr's address: a tilt series' tomogram in the scene */
   private readonly tomogramRunAt = new Map<string, number>();
+  /** The annotations of the datasets read, by their file's address: a point list's or mask's words, from its download */
+  private readonly annotationAt = new Map<string, PortalAnnotation>();
   private catalogRead: Promise<PortalCatalog> | undefined;
 
   constructor(
@@ -166,7 +170,10 @@ export class CryoetPortalApi extends ApiArea {
         this.known.set(id, checked);
         for (const r of checked.runList) {
           for (const t of r.tiltSeries ?? []) this.tiltSeriesAt.set(PortalFiles + t.zarr, { series: t, run: r.id });
-          for (const s of r.spacings) for (const t of s.tomograms) this.tomogramRunAt.set(PortalFiles + t.zarr, r.id);
+          for (const s of r.spacings) {
+            for (const t of s.tomograms) this.tomogramRunAt.set(PortalFiles + t.zarr, r.id);
+            for (const a of s.annotations) this.annotationAt.set(PortalFiles + a.path, a);
+          }
         }
         return checked;
       });
@@ -204,6 +211,16 @@ export class CryoetPortalApi extends ApiArea {
    */
   tiltAnglesOf(ref: string): readonly number[] | undefined {
     return this.tiltSeriesOf(ref)?.series.angles;
+  }
+
+  /**
+   * A portal annotation's words (its description, method and GO term: `portalAnnotationText`, Markdown), a point list's
+   * or a mask's by its ref, when its index is read (synchronous: the properties)
+   */
+  annotationTextOf(ref: string): string | undefined {
+    const url = downloadUrlAbove(this.ctx, ref);
+    const a = url ? this.annotationAt.get(url.replace(/\/$/, '')) : undefined;
+    return a && portalAnnotationText(a);
   }
 
   /** A portal tilt series by its volume's ref, and its run, when its index is read */

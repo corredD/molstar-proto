@@ -236,6 +236,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 - **Descriptions, left** (lane `descriptions`, 2026-11-04): a tree row's tooltip with the description (rows have only
   the overflow tip of a cut-off name today); PetWorld's entities have no description in their files (only
-  `pdbx_description`, the name); a portal annotation has its object name only (the index has no description: adding one
-  means rebuilding it); the classic Mesoscale Explorer shows MG's and HIV's compartment path as the description (its
-  `model.ts`), not fixed there.
+  `pdbx_description`, the name); a portal annotation's description, method and GO term are in its properties (lane
+  `portal-polish`), not on hover: the hover's description is an entity's (`entityInfo`), and a portal list given one
+  becomes a mesoscale model in the tree (`operations.ts`'s `model`), so the points' hover needs a loci label provider in
+  the cryoet extension or a label on the ndjson transform (Ludo's call); the classic Mesoscale Explorer shows MG's and
+  HIV's compartment path as the description (its `model.ts`), not fixed there.
