@@ -581,11 +581,12 @@ export function Slice(props: { api: ViewerApi; area: CryoetApi; volume: string; 
 export function MeshControls(props: {
   api: ViewerApi;
   area: CryoetApi;
-  mesh: MeshInfo;
+  /** The mesh by state ref (not its info: the controls stay as it changes, a drag goes on) */
+  mesh: string;
   list: ReadonlyState<readonly MeshInfo[]>;
 }) {
   const { api, area } = props;
-  const ref = props.mesh.ref;
+  const ref = props.mesh;
   const mesh = mapState(props.list, (l) => l.find((m) => m.ref === ref));
   // one change a moment after the last (the picker dragged), made at once if the controls go first
   let pending: Record<string, unknown> | undefined;
@@ -621,7 +622,7 @@ export function MeshControls(props: {
           }
           onClick={() => set({ visible: !(mesh.value?.visible ?? true) })}
         />
-        <strong class={classes.name}>{props.mesh.label}</strong>
+        <strong class={classes.name}>{mapState(mesh, (m) => m?.label ?? '')}</strong>
       </div>
       <ParamsForm form={color} />
       <Choices

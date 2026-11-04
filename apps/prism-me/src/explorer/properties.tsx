@@ -2191,7 +2191,7 @@ function MeshLook(props: { api: ViewerApi; node: NodeRef }) {
   const list = cryoet.meshesState();
   const ref = props.node.ref;
   return (
-    <For each={mapState(list, (l) => l.filter((m) => m.ref === ref).slice(0, 1))} by={(m) => m.ref}>
+    <For each={mapState(list, (l) => (l.some((m) => m.ref === ref) ? [ref] : []))}>
       {(m) => <MeshControls api={props.api} area={cryoet} mesh={m} list={list} />}
     </For>
   );

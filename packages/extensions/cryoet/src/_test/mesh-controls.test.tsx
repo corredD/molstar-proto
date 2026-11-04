@@ -48,7 +48,7 @@ function mounted() {
       return { ok: true, did: label, value: await work(api) };
     },
   } as unknown as ViewerApi;
-  const dispose = render(() => <MeshControls api={api} area={area} mesh={mesh} list={list.asReadonly} />, host);
+  const dispose = render(() => <MeshControls api={api} area={area} mesh="m" list={list.asReadonly} />, host);
   host.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click();
   const hues = () => Array.from(host.querySelectorAll<HTMLButtonElement>('[aria-label="Palette"] [role=option]'));
   return { host, area, groups, dispose, hues };

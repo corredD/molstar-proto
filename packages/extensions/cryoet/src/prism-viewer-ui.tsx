@@ -102,7 +102,7 @@ function Segmentations(props: { api: ViewerApi; area: CryoetApi }) {
         )}
       >
         {() => (
-          <For each={list} by={(m) => m.ref}>
+          <For each={mapState(list, (l) => l.map((m) => m.ref))}>
             {(m) => <MeshControls api={api} area={area} mesh={m} list={list} />}
           </For>
         )}
