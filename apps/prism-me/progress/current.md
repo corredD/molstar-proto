@@ -6,6 +6,9 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **Colors by zoom by default** (`me/zoom-default`, `~/prism-me-lanes/zoom-default`, port 1347,
+  [brief](2026-11-04-zoom-default.md)): Ludo, 2026-11-04: on at load for cellPACK and PetWorld models. Started
+  2026-11-04.
 - **Merged 2026-11-04:** #49 (an entity's description on hover and in the properties, from cellPACK's
   `_entity.pdbx_parent_entity_id`; `2026-11-04-descriptions.md`; open: PetWorld and portal descriptions, tree row
   tooltips).
