@@ -50,26 +50,33 @@ function Line(props: { label: string; children: JSX.Element }) {
 }
 
 /**
- * A slider's changes at pointer rate, live: each preview applied as soon as the one before settles (the newest winning,
- * the ones between dropped), the release applying the last, a drag one undo step; the controls gone, what they showed
- * is applied. Prism's `gestureSteps`, as its own sliders; no throttle but its own: a step waits as long as the last took,
- * so the page keeps up with the pointer. `shown`: the changes not landed yet, for the sliders to show over the state (an
- * earlier step landing does not pull the knob back from the pointer).
+ * A slider's changes at pointer rate, live: each preview applied as soon as the one before settles (the newest winning
+ * per key, the ones between dropped), the release applying the last, a drag one undo step; keys pressed in a row are
+ * one step too (no preview before their commits: the quiet ends it, as Prism's own sliders); the controls gone, what
+ * they showed is applied. Prism's `gestureSteps`; no throttle but its own: a step waits as long as the last took, so the
+ * page keeps up with the pointer. `overlay(key)`, read again on `changes`: what has not landed yet, for the sliders to
+ * show over the state (an earlier step landing does not pull the knob back from the pointer).
  */
-function live<C extends object>(api: ViewerApi, label: string, apply: (g: ViewerApi, change: C) => Promise<unknown>) {
-  const shown = observableState<C | undefined>(undefined);
-  const steps = gestureSteps<C>(api, {
-    label,
-    apply: (g, _key, c) => apply(g, c),
-    changed: () => shown.set(steps.overlay('')),
-    throttleMs: 0,
-  });
+function live<C extends object>(
+  api: ViewerApi,
+  label: string,
+  apply: (g: ViewerApi, key: string, change: C) => Promise<unknown>,
+) {
+  const changes = observableState(0);
+  const steps = gestureSteps<C>(api, { label, apply, changed: () => changes.set(changes.value + 1), throttleMs: 0 });
   onCleanup(() => steps.settle());
+  let dragged = false;
   return {
-    shown: shown.asReadonly,
-    preview: (c: C) => steps.change('', c),
-    commit(c: C) {
-      steps.change('', c);
+    changes: changes.asReadonly,
+    overlay: (key = '') => steps.overlay(key),
+    preview(c: C, key = '') {
+      dragged = true;
+      steps.change(key, c);
+    },
+    commit(c: C, key = '') {
+      steps.change(key, c);
+      if (!dragged) return;
+      dragged = false;
       steps.settle();
     },
   };
@@ -303,7 +310,7 @@ export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: s
   const place = live<Partial<Record<'x' | 'y' | 'z' | 'ex' | 'ey' | 'contrast', number>>>(
     api,
     'Oblique slice',
-    (g, v) => g.cryoet!.oblique({ volume, slice, ...v } as never),
+    (g, _key, v) => g.cryoet!.oblique({ volume, slice, ...v } as never),
   );
   const number = (
     label: string,
@@ -314,7 +321,7 @@ export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: s
     <Line label={label}>
       <Slider
         aria-label={label}
-        value={derive([view, place.shown], (o, p) => p?.[key] ?? (o ? Math.round(read(o) * 10) / 10 : 0))}
+        value={derive([view, place.changes], (o) => place.overlay()?.[key] ?? (o ? Math.round(read(o) * 10) / 10 : 0))}
         min={range.min}
         max={range.max}
         step={0.1}
@@ -343,7 +350,7 @@ export function ObliqueSlice(props: { api: ViewerApi; area: CryoetApi; volume: s
       <Line label="Contrast">
         <Slider
           aria-label="Contrast"
-          value={derive([view, place.shown], (o, p) => p?.contrast ?? o?.contrast ?? 3)}
+          value={derive([view, place.changes], (o) => place.overlay()?.contrast ?? o?.contrast ?? 3)}
           min={0.5}
           max={10}
           step={0.1}
@@ -501,12 +508,13 @@ export function Slice(props: { api: ViewerApi; area: CryoetApi; volume: string; 
     s ? s.dimensions[{ x: 0, y: 1, z: 2 }[props.axis ?? a]] : 1,
   );
   const contrast = mapState(slice, (s) => s?.contrast);
-  const move = live<{ axis: SliceAxis; index?: number; contrast?: number }>(api, 'Slice', (g, v) =>
-    g.cryoet!.slice({ volume, ...v } as never),
+  // a gesture's steps by axis (the picker may change it while one still lands)
+  const move = live<{ index?: number; contrast?: number }>(api, 'Slice', (g, axis, v) =>
+    g.cryoet!.slice({ volume, axis, ...v } as never),
   );
-  // a value of the slice shown: the drag's not landed yet over the state's
+  // a value of the slice shown: what has not landed yet for its axis over the state's
   const shown = (key: 'index' | 'contrast', now: ReadonlyState<number | undefined>, none: number) =>
-    derive([now, move.shown], (v, p) => (p?.axis === current() ? p[key] : undefined) ?? v ?? none);
+    derive([now, move.changes, picked.asReadonly], (v) => move.overlay(current())?.[key] ?? v ?? none);
   return (
     <div class={classes.tight}>
       {axis ? (
@@ -542,8 +550,8 @@ export function Slice(props: { api: ViewerApi; area: CryoetApi; volume: string; 
                 format={(i) => String(i + 1)}
                 parse={(text) => Math.round(Number.parseFloat(text)) - 1}
                 unit={mapState(count, (n) => `/ ${n}`)}
-                onPreview={(i) => move.preview({ axis: current(), index: i })}
-                onCommit={(i) => move.commit({ axis: current(), index: i })}
+                onPreview={(i) => move.preview({ index: i }, current())}
+                onCommit={(i) => move.commit({ index: i }, current())}
               />
             </Line>
             <Line label="Contrast">
@@ -554,8 +562,8 @@ export function Slice(props: { api: ViewerApi; area: CryoetApi; volume: string; 
                 max={10}
                 step={0.1}
                 unit="±σ"
-                onPreview={(c) => move.preview({ axis: current(), contrast: c })}
-                onCommit={(c) => move.commit({ axis: current(), contrast: c })}
+                onPreview={(c) => move.preview({ contrast: c }, current())}
+                onCommit={(c) => move.commit({ contrast: c }, current())}
               />
             </Line>
           </>
@@ -601,7 +609,7 @@ export function MeshControls(props: {
     pending = { ...pending, ...values };
     timer.start(delay);
   };
-  const opacity = live<{ opacity: number }>(api, 'Mesh opacity', (g, v) =>
+  const opacity = live<{ opacity: number }>(api, 'Mesh opacity', (g, _key, v) =>
     g.cryoet!.mesh({ mesh: ref, ...v } as never),
   );
   const color = new ParamsFormModel({ color: PD.Color(Color(0xcccccc)) }, undefined, {
@@ -637,7 +645,7 @@ export function MeshControls(props: {
       <Line label="Opacity">
         <Slider
           aria-label="Opacity"
-          value={derive([mesh, opacity.shown], (m, p) => p?.opacity ?? m?.opacity ?? 1)}
+          value={derive([mesh, opacity.changes], (m) => opacity.overlay()?.opacity ?? m?.opacity ?? 1)}
           min={0.05}
           max={1}
           step={0.01}

@@ -18,7 +18,7 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Slice } from '../controls.js';
-import type { CryoetApi, SliceInfo } from '../operations.js';
+import type { CryoetApi, SliceAxis, SliceInfo } from '../operations.js';
 import { CryoetExtension } from '../prism-viewer.js';
 
 // A volume's Slice slider follows the pointer (apps/prism-me/_spec/features.md, the slice rows): the Slider previews
@@ -34,48 +34,72 @@ afterEach(() => {
 const StepMs = 5;
 const FrameMs = 16;
 
-/** The Slice controls of a 100-deep volume, its z slice at 0; the area's calls, those in flight at most */
-function mounted() {
+/**
+ * The Slice controls of a 100-deep volume, its z slice at 0 and its x slice at 7 (for `axis`; none: the axis picker);
+ * the area's calls, those in flight at most
+ */
+function mounted(options: { axis?: SliceAxis; stepMs?: number } = { axis: 'z' }) {
+  const stepMs = options.stepMs ?? StepMs;
   const info = observableState<SliceInfo | undefined>({
     dimensions: [100, 100, 100],
-    slices: [{ axis: 'z', index: 0, contrast: 3, ref: 's', visible: true }],
+    slices: [
+      { axis: 'z', index: 0, contrast: 3, ref: 'sz', visible: true },
+      { axis: 'x', index: 7, contrast: 3, ref: 'sx', visible: true },
+    ],
     obliques: [],
     radius: 50,
   });
   let running = 0;
   let most = 0;
   // a step lands in the state, as `cryoet.slice` does
-  const slice = vi.fn(async (values: { index?: number }) => {
+  const slice = vi.fn(async (values: { axis: SliceAxis; index?: number; contrast?: number }) => {
     running++;
     most = Math.max(most, running);
-    await new Promise((r) => setTimeout(r, StepMs));
+    await new Promise((r) => setTimeout(r, stepMs));
     running--;
     const now = info.value!;
-    info.set({ ...now, slices: [{ ...now.slices[0], index: values.index ?? now.slices[0].index }] });
+    const slices = now.slices.map((x) =>
+      x.axis === values.axis ? { ...x, index: values.index ?? x.index, contrast: values.contrast ?? x.contrast } : x,
+    );
+    info.set({ ...now, slices });
     return { ok: true };
   });
   const area = { sliceState: () => info.asReadonly, slice } as unknown as CryoetApi;
   // the group's API is the same: its `cryoet` area is the one the controls are given
+  const groups: string[] = [];
   const api = {
     cryoet: area,
-    group: async (label: string, work: (g: ViewerApi) => Promise<unknown>) => ({
-      ok: true,
-      did: label,
-      value: await work(api),
-    }),
+    group: async (label: string, work: (g: ViewerApi) => Promise<unknown>) => {
+      groups.push(label);
+      return { ok: true, did: label, value: await work(api) };
+    },
   } as unknown as ViewerApi;
   const host = document.createElement('div');
   document.body.append(host);
-  const dispose = render(() => <Slice api={api} area={area} volume="v" axis="z" />, host);
+  const dispose = render(
+    () => <Slice api={api} area={area} volume="v" {...(options.axis ? { axis: options.axis } : {})} />,
+    host,
+  );
   const range = host.querySelector<HTMLInputElement>('input[type=range][aria-label="Slice"]')!;
-  const drag = (i: number) => {
-    range.value = String(i);
-    range.dispatchEvent(new Event('input', { bubbles: true }));
+  const contrast = host.querySelector<HTMLInputElement>('input[type=range][aria-label="Contrast"]')!;
+  const drag = (i: number, el = range) => {
+    el.value = String(i);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
     flushFrame();
   };
-  const release = () => range.dispatchEvent(new Event('change', { bubbles: true }));
+  const release = (el = range) => el.dispatchEvent(new Event('change', { bubbles: true }));
+  /** A key step: the native range's input then change, no frame between */
+  const key = (i: number) => {
+    range.value = String(i);
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const pick = (label: string) =>
+    Array.from(host.querySelectorAll<HTMLButtonElement>('button'))
+      .find((b) => b.textContent?.trim() === label)!
+      .click();
   const indices = () => slice.mock.calls.map(([v]) => v.index);
-  return { slice, range, dispose, drag, release, indices, most: () => most };
+  return { slice, info, groups, range, contrast, dispose, drag, release, key, pick, indices, most: () => most };
 }
 
 describe("a volume's Slice slider", () => {
@@ -110,6 +134,44 @@ describe("a volume's Slice slider", () => {
     s.release();
     await vi.advanceTimersByTimeAsync(100);
     expect(s.indices().at(-1)).toBe(20);
+    s.dispose();
+  });
+
+  it("with the axis picker, shows and applies an axis's own values while another's step lands", async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    // a slow step (a fine level): the z drag's last still lands when x is picked
+    const s = mounted({ stepMs: 200 });
+    s.drag(10);
+    s.drag(30);
+    s.release();
+    await vi.advanceTimersByTimeAsync(1);
+    s.pick('X');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s.range.value).toBe('7');
+    s.drag(5, s.contrast);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s.range.value).toBe('7');
+    s.release(s.contrast);
+    await vi.advanceTimersByTimeAsync(2000);
+    const x = s.slice.mock.calls.filter(([v]) => v.axis === 'x').map(([v]) => v);
+    expect(x.every((v) => v.index === undefined)).toBe(true);
+    expect(s.info.value!.slices.map((v) => [v.axis, v.index])).toEqual([
+      ['z', 30],
+      ['x', 7],
+    ]);
+    s.dispose();
+  });
+
+  it('makes keys pressed in a row one undo step', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    const s = mounted();
+    for (let i = 1; i <= 5; i++) {
+      s.key(i);
+      await vi.advanceTimersByTimeAsync(30);
+    }
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(s.indices().at(-1)).toBe(5);
+    expect(s.groups).toHaveLength(1);
     s.dispose();
   });
 
