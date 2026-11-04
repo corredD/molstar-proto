@@ -64,3 +64,47 @@ http://localhost:1349/apps/prism-me/build/?portal-dataset=10003&portal-run=TS_08
 once; hover a ribosome: "chloramphenicol bound 70S ribosome" and its method; its properties link GO:0022626.
 
 Size: about 150 production lines (names 20, placement 60, index 30, display 40), plus tests.
+
+## Built (2026-11-04)
+
+Names, the Placement switch (default beside, raw), and the annotation's description, method and GO link in the
+properties. The four indexes rebuilt (version 1 kept). The turn is −(tilt axis + 180°), measured on 10003 TS_08
+(portal.md §2). Overlay uses the tomogram where it is now.
+
+Hover of a ribosome does **not** show the description. Mol\*'s particle label reads `entityInfo` only, and a list given
+`entityInfo` becomes a mesoscale model in the tree. The brief said not to build a new hover path. Said in portal.md §4,
+TODO.md, and the PR. Ludo's check of the hover still fails until he decides.
+
+## Review
+
+Reviewer: 1 must-fix, 5 should-fix, 7 nits. Skeptic: M1 confirmed (say it, do not build it), S3 and S5 should-fix, S1
+lowered (the Z-slice gate was already in progress), S2's drift refuted (a nit: no button pressed after a tilt-series
+level change), S4 lowered to a nit. Two new nits.
+
+| Finding                                | Verdict                                   | Where                                                                                                       |
+| -------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| M1 hover                               | confirmed, said, not built                | TODO, portal.md §4, this file                                                                               |
+| S1 Placement on every slice axis       | confirmed, fixed `a81a84107`              | Z slice only                                                                                                |
+| S2 level change un-presses the buttons | nit, open                                 | TODO                                                                                                        |
+| S3 overlay ignores a moved tomogram    | confirmed, fixed with the real-stage test | `tiltSeriesMatrix(..., tomogramAt)`                                                                         |
+| S4 `volumeMatrix` copies stage-tools   | nit, open                                 | place cancels it                                                                                            |
+| S5 fake stage only                     | confirmed, fixed                          | `apps/prism-me/src/_test/portal-place.test.ts`                                                              |
+| N1–N7, two new nits                    | open                                      | N4 (two tomograms) in TODO; N7 will conflict with `me/tree-tooltips` on TODO.md and `descriptions.test.tsx` |
+
+## Checked
+
+`pnpm test:unit` on `cryoet/src/_test/portal.test.ts` (23), `slice-angle.test.tsx` (5) and
+`apps/prism-me/src/_test/portal-place.test.ts` (2): 30 passed. The real stage switches beside, overlay, turned and back,
+and overlay follows a tomogram moved by `stage.move`. Headed screenshots of the three placements were not taken in this
+pass (the dev server on 1349 is the worktree's; the matrices are the check).
+
+## Size
+
+Brief about 150 production lines. The diff against `origin/prism-me` is larger: the placement math, the index fields and
+the properties text, plus tests. The room went to the three places and to saying the hover is not built.
+
+## PR
+
+To `prism-me`. Ludo merges. The default placement waits on his comparison:
+`http://localhost:1349/apps/prism-me/build/?portal-dataset=10003&portal-run=TS_08&portal-tiltseries=17086` and
+`?portal-tiltseries-place=beside|turned|overlay`.
