@@ -6,7 +6,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { descriptionText } from '../explorer/rows.js';
+import { descriptionText } from '../explorer/description-text.js';
 import {
   Button,
   type ContextMenuItem,

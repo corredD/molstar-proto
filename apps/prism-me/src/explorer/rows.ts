@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { markdownInlineText, parseMarkdownInline } from '@molstar/core/util/markdown';
+import { descriptionText } from './description-text.js';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import { Color } from '@molstar/core/util/color';
 import { groupEntities, type MesoGroup, type MesoGroupBy } from '@molstar/mesoscale-extension/model';
@@ -912,15 +912,4 @@ function within(part: NodeRef, node: NodeRef): boolean {
     return 'entity' in part && part.entity === node.entity && (!node.chain || part.chain === node.chain);
   }
   return true;
-}
-
-/** How long a description's text goes in a row's card, cut at a word past it (its whole text is in the properties) */
-const DescriptionTipLength = 200;
-
-/** A description (Markdown: an entity's, from its file) as one line of text: a link's text, no brackets; cut past 200 */
-export function descriptionText(markdown: string): string {
-  const text = markdownInlineText(parseMarkdownInline(markdown)).replace(/\s+/g, ' ').trim();
-  if (text.length <= DescriptionTipLength) return text;
-  const space = text.lastIndexOf(' ', DescriptionTipLength);
-  return `${text.slice(0, space > 0 ? space : DescriptionTipLength)}…`;
 }

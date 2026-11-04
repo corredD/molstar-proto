@@ -13,7 +13,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
-import { descriptionText } from '../rows.js';
+import { descriptionText } from '../description-text.js';
 import { explorerUI } from '../ui.js';
 
 // An entity's description under its name in the properties (_spec/ui.md §4; the Mesoscale Explorer's Focus Info), over
