@@ -858,8 +858,7 @@ function ListDecoration(props: { api: ViewerApi; node: NodeRef }) {
 /**
  * The representations of a particle list or a volume (`owner`; those `only` keeps), each with its eye and whole form
  * (the type: spheres, orientation, the targets; isosurface…, then its params), as Prism's inspector shows one; a change
- * runs `operation` a moment after the last (sliders change at pointer rate), a slice's as it goes (one undo step a
- * gesture, Prism's `gestureSteps`; TODO.md: the others too)
+ * runs `operation` as it goes, the newest once the last landed (one undo step a gesture, Prism's `gestureSteps`)
  */
 function Representations(props: {
   api: ViewerApi;
@@ -900,30 +899,29 @@ function Representations(props: {
               if (props.operation === 'particles.update' && next !== theme) await showTheme(g, props.owner);
               theme = next;
             };
-            // a slice follows its sliders (the form's model is not loaded again from the state: no overlay needed)
-            const live =
-              r.type === 'slice'
-                ? gestureSteps(api, { label: 'Slice', apply: (g) => write(g), changed: () => {}, throttleMs: 0 })
-                : undefined;
-            if (live) onCleanup(() => live.settle());
-            const update = live ? undefined : lastWrite(() => write(api));
+            // the form follows its sliders: the form's model is the value shown (loaded again from the state only when
+            // no step is in progress, below), so no overlay is needed
+            const live = gestureSteps(api, {
+              label: r.label,
+              apply: (g) => write(g),
+              changed: () => {},
+              throttleMs: 0,
+            });
+            onCleanup(() => live.settle());
             const params = direct ? withoutTypeParams(form.params, DirectVolumeOwn) : form.params;
             const model = new ParamsFormModel(params, form.values, {
               onChange: (_, name) => {
                 changed.add(name);
-                if (live) live.change('', {});
-                else update?.start(150);
+                live.change('', {});
               },
             });
             // the type's own params open (the iso level, the spheres' size): what is changed most
             model.fold('/type#params', true);
-            // a direct volume's form follows it (the transfer function above sets its color theme; an undo), as Prism's
-            // inspector's does, but not over a change not written yet
-            if (direct) {
-              effect(area.representationParams(r.ref), (now) => {
-                if (now && !update?.pending) model.load(now as PD.Values<PD.Params>);
-              });
-            }
+            // the form follows the state (an undo; a direct volume's transfer function above sets its color theme), as
+            // Prism's inspector's does, but not over a drag in progress: else its next change wrote an undone value back
+            effect(area.representationParams(r.ref), (now) => {
+              if (now && !live.overlay('')) model.load(now as PD.Values<PD.Params>);
+            });
             return (
               <div class={classes.tight}>
                 <div class={classes.tools}>

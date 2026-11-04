@@ -44,6 +44,7 @@ const Params: PD.Params = {
       ['direct-volume', 'Direct Volume'],
       ['isosurface', 'Isosurface'],
       ['slice', 'Slice'],
+      ['spheres', 'Spheres'],
     ],
     (name) =>
       PD.Group<any>(
@@ -55,7 +56,9 @@ const Params: PD.Params = {
             }
           : name === 'slice'
             ? { index: PD.Numeric(0, { min: 0, max: 100, step: 1 }) }
-            : { isoValue: PD.Numeric(1) },
+            : name === 'spheres'
+              ? { size: PD.Numeric(1, { min: 0, max: 100, step: 1 }) }
+              : { isoValue: PD.Numeric(1, { min: 0, max: 100, step: 1 }) },
       ),
   ),
   colorTheme: PD.Mapped<any>(
@@ -368,36 +371,87 @@ describe("a direct volume's form", () => {
   });
 });
 
-describe("a slice's Representation form", () => {
-  it('follows its sliders during a drag, one group', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
-    try {
-      const f = fakes([info('s', 'slice')]);
-      f.params.get('s')!.set({ type: { name: 'slice', params: { index: 0 } }, colorTheme: DirectValues.colorTheme });
-      const subject: Subject = {
-        ...subjectOf(f),
-        picked: { key: 's', label: 'Slice', kind: 'slice', node: { ref: 'v' }, representation: 's' },
-      };
-      const host = document.createElement('div');
-      document.body.append(host);
-      render(() => sectionOf('representation').render(subject), host);
-      const range = host.querySelector<HTMLInputElement>('input[type=range]')!;
-      // a drag of 160 ms, a preview a frame
-      for (let i = 1; i <= 10; i++) {
-        range.value = String(i * 5);
-        range.dispatchEvent(new Event('input', { bubbles: true }));
-        flushFrame();
-        await vi.advanceTimersByTimeAsync(16);
+/** A form's drag, a preview a frame: the update called during it, the release's value applied, one group */
+const Forms = [
+  { type: 'slice', field: 'index', section: 'representation', kind: 'slice', operation: 'volume.update' },
+  { type: 'isosurface', field: 'isoValue', section: 'isosurface', kind: 'volume', operation: 'volume.update' },
+  { type: 'direct-volume', field: 'alpha', section: 'direct-volume', kind: 'volume', operation: 'volume.update' },
+  { type: 'spheres', field: 'size', section: 'representation', kind: 'particle list', operation: 'particles.update' },
+] as const;
+
+describe("a volume's or a particle list's Representation form", () => {
+  for (const form of Forms) {
+    it(`follows its sliders during a drag, one group: ${form.type}`, async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+      try {
+        const f = fakes([info('r', form.type)]);
+        // a direct volume's alpha is from 0 to 1, the others' from 0 to 100
+        const scale = form.type === 'direct-volume' ? 0.01 : 1;
+        const values = form.type === 'direct-volume' ? DirectValues.type.params : { [form.field]: 0 };
+        f.params.get('r')!.set({ type: { name: form.type, params: values }, colorTheme: DirectValues.colorTheme });
+        const picked =
+          form.kind === 'volume'
+            ? subjectOf(f).picked
+            : { key: 'r', label: form.type, kind: form.kind, node: { ref: 'v' }, representation: 'r' };
+        const subject: Subject = { ...subjectOf(f), picked };
+        const host = document.createElement('div');
+        document.body.append(host);
+        render(() => sectionOf(form.section).render(subject), host);
+        const range = host.querySelector<HTMLInputElement>('input[type=range]')!;
+        // a drag of 160 ms, a preview a frame
+        for (let i = 1; i <= 10; i++) {
+          range.value = String(i * 5 * scale);
+          range.dispatchEvent(new Event('input', { bubbles: true }));
+          flushFrame();
+          await vi.advanceTimersByTimeAsync(16);
+        }
+        const during = f.calls.filter(([name]) => name === form.operation);
+        expect(during.length).toBeGreaterThan(3);
+        range.dispatchEvent(new Event('change', { bubbles: true }));
+        await vi.advanceTimersByTimeAsync(1000);
+        const [, last] = f.calls.at(-1) as [string, { params: { type: { params: Record<string, number> } } }];
+        expect(last.params.type.params[form.field]).toBeCloseTo(50 * scale, 6);
+        expect(f.groups).toEqual([form.type]);
+      } finally {
+        vi.useRealTimers();
       }
-      const during = f.calls.filter(([name]) => name === 'volume.update');
-      expect(during.length).toBeGreaterThan(3);
-      range.dispatchEvent(new Event('change', { bubbles: true }));
-      await vi.advanceTimersByTimeAsync(1000);
-      const [, last] = f.calls.at(-1) as [string, { params: { type: { params: { index: number } } } }];
-      expect(last.params.type.params.index).toBe(50);
-      expect(f.groups).toEqual(['Slice']);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+    });
+  }
+});
+
+describe("an isosurface's or a particle list's form after an Undo", () => {
+  for (const form of Forms.filter((f) => f.type === 'isosurface' || f.type === 'spheres')) {
+    it(`shows the state again, so its next change does not write the dragged value back: ${form.type}`, async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+      try {
+        const f = fakes([info('r', form.type)]);
+        const at = (v: number) => ({
+          type: { name: form.type, params: { [form.field]: v } },
+          colorTheme: DirectValues.colorTheme,
+        });
+        f.params.get('r')!.set(at(10));
+        const picked =
+          form.kind === 'volume'
+            ? subjectOf(f).picked
+            : { key: 'r', label: form.type, kind: form.kind, node: { ref: 'v' }, representation: 'r' };
+        const host = document.createElement('div');
+        document.body.append(host);
+        render(() => sectionOf(form.section).render({ ...subjectOf(f), picked }), host);
+        const range = host.querySelector<HTMLInputElement>('input[type=range]')!;
+        range.value = '40';
+        range.dispatchEvent(new Event('input', { bubbles: true }));
+        range.dispatchEvent(new Event('change', { bubbles: true }));
+        flushFrame();
+        await vi.advanceTimersByTimeAsync(1000);
+        f.params.get('r')!.set(at(40));
+        await vi.advanceTimersByTimeAsync(50);
+        // Undo: the state back at 10
+        f.params.get('r')!.set(at(10));
+        await vi.advanceTimersByTimeAsync(50);
+        expect(range.value).toBe('10');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  }
 });
