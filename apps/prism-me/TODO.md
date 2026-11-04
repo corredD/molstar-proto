@@ -231,8 +231,7 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Turning a cut of some particles off on one representation and on again (`clipping` on/off per representation) loses
   its particles: it comes back as a cut of the whole representation (lane `looks-owner`'s review; not probed).
 
-- **Descriptions, left** (lane `descriptions`, 2026-11-04): a tree row's tooltip with the description (rows have only
-  the overflow tip of a cut-off name today); PetWorld's entities have no description in their files (only
-  `pdbx_description`, the name); a portal annotation has its object name only (the index has no description: adding one
-  means rebuilding it); the classic Mesoscale Explorer shows MG's and HIV's compartment path as the description (its
-  `model.ts`), not fixed there.
+- **Descriptions, left** (lane `descriptions`, 2026-11-04; the tree row's tooltip built on `me/tree-tooltips`):
+  PetWorld's entities have no description in their files (only `pdbx_description`, the name); a portal annotation has
+  its object name only (the index has no description: adding one means rebuilding it); the classic Mesoscale Explorer
+  shows MG's and HIV's compartment path as the description (its `model.ts`), not fixed there.

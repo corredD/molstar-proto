@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { markdownInlineText, parseMarkdownInline } from '@molstar/core/util/markdown';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import { Color } from '@molstar/core/util/color';
 import { groupEntities, type MesoGroup, type MesoGroupBy } from '@molstar/mesoscale-extension/model';
@@ -345,6 +346,7 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
               key: `me:${o.ref}:${id}`,
               depth,
               label: e.name,
+              ...(e.description ? { tip: descriptionText(e.description) } : {}),
               kind: 'entity',
               count: e.count.toLocaleString('en'),
               visible: e.visible,
@@ -910,4 +912,9 @@ function within(part: NodeRef, node: NodeRef): boolean {
     return 'entity' in part && part.entity === node.entity && (!node.chain || part.chain === node.chain);
   }
   return true;
+}
+
+/** A description (Markdown: an entity's, from its file) as one line of text: a link's text, no brackets */
+export function descriptionText(markdown: string): string {
+  return markdownInlineText(parseMarkdownInline(markdown)).replace(/\s+/g, ' ').trim();
 }

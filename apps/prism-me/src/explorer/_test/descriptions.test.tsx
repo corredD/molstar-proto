@@ -101,7 +101,7 @@ async function mounted() {
 
 const rowOf = (host: HTMLElement, label: string) =>
   Array.from(host.querySelectorAll<HTMLElement>('[role=treeitem]'))
-    .find((r) => r.querySelector('[data-tip-overflow]')?.textContent === label)
+    .find((r) => r.querySelector('[id^=me-tree-name]')?.textContent === label)
     ?.querySelector<HTMLElement>('[data-tree-row]') ?? undefined;
 /** Every folded row unfolded (once a step: its children show after the next render) */
 const unfoldAll = (host: HTMLElement) => {
@@ -133,5 +133,25 @@ describe("an entity's description in the properties", () => {
     rowOf(host, 'RNA_POLYMERASE')!.click();
     await until(() => nameShown(host) === 'RNA_POLYMERASE');
     expect(description(host)).toBeNull();
+  });
+});
+
+describe("an entity's description in the tree", () => {
+  it("is its row's tooltip card, its name then the description as text; none for an entity without one", async () => {
+    const host = await mounted();
+    await until(() => {
+      unfoldAll(host);
+      return !!rowOf(host, 'RNA_POLYMERASE') && !!rowOf(host, 'ITG');
+    });
+    // Prism's row tip: shown always (`data-tip`), its parts' text (the name, then the muted rest)
+    const parts = (label: string) => {
+      const row = rowOf(host, label)!;
+      if (row.dataset.tipRow === undefined || row.dataset.tip === undefined) return undefined;
+      return Array.from(row.querySelectorAll('[data-tip-part]'), (p) => p.textContent);
+    };
+    expect(parts('ITG')).toEqual(['ITG', 'Integrin alpha-5, important for cell adhesion and signaling.']);
+    expect(parts('CD81')).toEqual(['CD81', 'CD81 antigen PDB entry 5TCX']);
+    expect(parts('RNA_POLYMERASE')).toBeUndefined();
+    expect(rowOf(host, 'RNA_POLYMERASE')!.querySelector('[data-tip-overflow]')?.textContent).toBe('RNA_POLYMERASE');
   });
 });

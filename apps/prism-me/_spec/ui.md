@@ -54,6 +54,9 @@ nothing until looked at). Under Clips, every clip of the scene (§4, Clip).
 | Meshes     | a mesh file (OBJ, PLY, VTP)                                                            | its segments, when it has several                                                                                                                                 |
 | Clips      | a clip (Prism's cut, its tag): its shape and number (Plane 1), how many it cuts        | none: what it cuts is in its properties (§4, Clip)                                                                                                                |
 
+An entity row with a description (its file's text, §4 Properties) shows it as its tooltip, over its name, as text (a
+link's text): `ITG: Integrin alpha-5, …` (Ludo, 2026-11-04).
+
 A model's groups follow its Group by (§4), a model's own choice: compartments (the dotted names' tree) by default when
 it has some, else functions; switching remakes that model's rows only. A group row stands for its entities (their ids),
 so its eye, Look, Clips and picks are the same under both groupings. A label made at a group the model's grouping does
