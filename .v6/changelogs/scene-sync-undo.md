@@ -5,4 +5,4 @@
   load that made both does. The hierarchies are synced one after another inside the update, and the scene rebuilt its
   rows on the first one's word while the particle hierarchy still held the removed list. The scene now rebuilds its rows
   once the update ends, whatever told it (a structure, volume or particle hierarchy, the measurements, shapes, volume
-  streaming's cells)
+  streaming's cells).
