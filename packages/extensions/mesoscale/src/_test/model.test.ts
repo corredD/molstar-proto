@@ -18,6 +18,15 @@ describe('mesoscale model', () => {
     ]);
   });
 
+  it('a moved list (a new object over the same arrays) reuses the counts; a changed table or compartments do not (F6)', () => {
+    const list = cellpackLike();
+    const first = mesoEntities(list);
+    // what stage.move and stage.scale make: the list spread, its coordinates new, the rest kept by identity
+    expect(mesoEntities({ ...list, coordinates: new Float32Array(list.coordinates) })).toBe(first);
+    expect(mesoEntities({ ...list, entityInfo: new Map(list.entityInfo) })).not.toBe(first);
+    expect(mesoEntities({ ...list, compartments: Int32Array.from(list.compartments!) })).not.toBe(first);
+  });
+
   it("keeps an entity's description (Markdown, as the file has it)", () => {
     const list = cellpackLike();
     const entityInfo = new Map(list.entityInfo);
