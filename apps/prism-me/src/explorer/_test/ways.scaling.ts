@@ -17,7 +17,10 @@ it('wayOf of a part of N entities', () => {
       setup: (n) => {
         const ids = Array.from({ length: n }, (_, i) => i);
         const record = { tag: 't', entities: ids, compartments: [], targets: [], mode: 'cut', band: 60, fuzziness: 0 };
-        return { of: { ref: 'r', on: [], records: [record] } as never, node: { ref: 'r', particles: { entities: ids } } };
+        return {
+          of: { ref: 'r', on: [], records: [record] } as never,
+          node: { ref: 'r', particles: { entities: ids } },
+        };
       },
       run: ({ of, node }) => {
         if (!wayOf(of, node)) throw new Error('mixed');
