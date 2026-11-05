@@ -200,19 +200,22 @@ export async function removeObject(api: ViewerApi, area: ExplorerApi, kind: stri
   const labels = api.stage?.labelsState().value.filter((l) => l.target === ref || area.isUnder(l.target, ref)) ?? [];
   const entry = area.entryOf(ref);
   const shared = area.objectsState().value.some((o) => o.ref !== ref && area.entryOf(o.ref) === entry);
-  // a cell by its ref alone (a `#ref` selector reaches only the kinds of nodes: not a download, an example's entry)
-  const r = !shared
-    ? await api.run('state.remove', { node: entry })
-    : kind === 'structure'
-      ? await api.run('structure.remove', { structure: ref })
-      : kind === 'volume'
-        ? await api.run('volume.remove', { volume: ref })
-        : kind === 'mesh'
-          ? await api.run('state.remove', { node: ref })
-          : await api.run('particles.remove', { particles: ref });
-  if (!r.ok) return r;
-  for (const l of labels) await api.run('stage.editLabel', { label: l.ref, remove: true });
-  return r;
+  // one step: the object and its labels
+  return api.group('Remove', async (g) => {
+    // a cell by its ref alone (a `#ref` selector reaches only the kinds of nodes: not a download, an example's entry)
+    const r = !shared
+      ? await g.run('state.remove', { node: entry })
+      : kind === 'structure'
+        ? await g.run('structure.remove', { structure: ref })
+        : kind === 'volume'
+          ? await g.run('volume.remove', { volume: ref })
+          : kind === 'mesh'
+            ? await g.run('state.remove', { node: ref })
+            : await g.run('particles.remove', { particles: ref });
+    if (!r.ok) return r;
+    for (const l of labels) await g.run('stage.editLabel', { label: l.ref, remove: true });
+    return r;
+  });
 }
 
 /**

@@ -505,9 +505,9 @@ still completes its distance.
 - Remove (2026-10-22, Ludovic): a loaded object's menu (a structure, a model, a list, a volume, a mesh; its row's ⋯ and
   its right-click) has a Remove (and its row's trash, §3): the object goes with its file (all the file holds: a model's
   unit cell) and its labels; a file holding another listed object keeps it (Prism's `structure.remove`,
-  `particles.remove`, `volume.remove` of the one object). One step of the history (its labels, if any, a step after it).
-  The entry is given to `state.remove` by its ref alone: an example's (a download, loaded by address) is no kind a
-  `#ref` selector reaches.
+  `particles.remove`, `volume.remove` of the one object). One step of the history, its labels in it (2026-11-05: they
+  were a step each). The entry is given to `state.remove` by its ref alone: an example's (a download, loaded by address)
+  is no kind a `#ref` selector reaches.
 - A volume moves as one (2026-10-24, Ludovic: "the volume, the parent, this should move everything, not jump"): its
   slices and isosurfaces are drawn in its frame and have no place of their own: no Position, and their menu's move shows
   their volume's handles ("Move and turn its volume"); a grid slice moves through the volume by its index only. A
