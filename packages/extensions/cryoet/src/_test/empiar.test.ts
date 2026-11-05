@@ -1,0 +1,297 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+import { readdirSync, readFileSync } from 'node:fs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Mat4, Quat, Tensor } from '@molstar/core/math/linear-algebra';
+import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { Grid } from '@molstar/model/model/volume';
+import { CCP4Writer } from '@molstar/model/formats/writer/ccp4/ccp4';
+import type { ApiResult } from '@molstar/prism-viewer/api/area';
+import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
+import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
+import type { PrismViewer } from '@molstar/prism-viewer/viewer';
+import { EmpiarExtension, readAngles } from '../empiar.js';
+import { EmpiarFiles, empiarIdOf, listingBytes, parseListing, readEmpiarEntry, stemOf } from '../empiar-entry.js';
+import { particleListData } from '../operations.js';
+import { CryoetExtension } from '../prism-viewer.js';
+
+// EMPIAR by id (_spec/empiar.md) over EMPIAR-12534's API reply and folder listings, recorded once by curl (2026-11-04)
+// in `empiar-12534/` (a listing's path, its slashes as `~`), served by a stubbed `fetch`: nothing reaches the network.
+// The tomogram and the mask are 4³ maps; the STAR is the file's header and 7 of its rows (4 of YTC041_1_lam1_1_ts_003).
+
+const dir = new URL('./empiar-12534/', import.meta.url);
+const fixture = (name: string) => readFileSync(new URL(name, dir));
+const Run = 'YTC041_1_lam1_1_ts_003';
+
+/** A 4³ map: a tomogram, or a mask (0 outside, 1 in a 2³ block) */
+function map(mask: boolean) {
+  const values = new Float32Array(64).fill(mask ? 0 : 1);
+  for (const i of [21, 22, 25, 26, 37, 38, 41, 42]) values[i] = mask ? 1 : -1;
+  const grid: Grid = {
+    transform: { kind: 'matrix', matrix: Mat4.fromScaling(Mat4(), [9.98, 9.98, 9.98]) },
+    cells: Tensor.create(Tensor.Space([4, 4, 4], [2, 1, 0], Float32Array), Tensor.Data1(values)),
+    stats: { min: Math.min(...values), max: Math.max(...values), mean: 0, sigma: 1 },
+  };
+  return CCP4Writer.writeMrc(grid, values);
+}
+
+/** The fixture a request names: the API's entry, a listing by its path, the STAR, the maps */
+function body(url: string): BodyInit | null {
+  if (url === 'https://www.ebi.ac.uk/empiar/api/entry/EMPIAR-12534/') return fixture('entry.json');
+  if (!url.startsWith(`${EmpiarFiles}12534/`)) return null;
+  const path = url.slice(`${EmpiarFiles}12534/`.length);
+  if (path.endsWith('/')) {
+    const name = `${
+      path
+        .slice(0, -1)
+        .replace(/^data\/?/, '')
+        .replace(/\//g, '~') || 'data'
+    }.html`;
+    return readdirSync(dir).includes(name) ? fixture(name) : null;
+  }
+  if (path.endsWith('.star')) return fixture('80S_ribosome_CHX.star');
+  if (path.endsWith('.rawtlt')) return fixture(`${Run}.mrc.rawtlt`);
+  if (path.endsWith('_labels.mrc')) return map(true);
+  if (path.endsWith('.mrc')) return map(false);
+  return null;
+}
+
+function serve(own: (url: string) => BodyInit | null | undefined = () => undefined) {
+  const stub = vi.fn(async (input: string | URL | Request) => {
+    const url = String(typeof input === 'object' && 'url' in input ? input.url : input);
+    const b = own(url) ?? body(url);
+    return b ? new Response(b, { status: 200 }) : new Response('not found', { status: 404 });
+  });
+  vi.stubGlobal('fetch', stub);
+  return stub;
+}
+
+const viewers: PrismViewer[] = [];
+afterEach(async () => {
+  for (const v of viewers.splice(0)) await v.dispose();
+});
+
+async function viewer() {
+  const base = DefaultPrismViewerSpec();
+  const v = await createPrismViewerHeadless({
+    spec: { ...base, extensions: [...(base.extensions ?? []), CryoetExtension, EmpiarExtension] },
+  });
+  viewers.push(v);
+  return v;
+}
+
+function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: true }> {
+  if (!r.ok) expect.fail(`${r.code}: ${r.message}${r.hint ? ` (${r.hint})` : ''}`);
+}
+
+describe('the EMPIAR entry, parsed', () => {
+  it('reads the API: title, EMDB cross-references, image sets, the two conditions', () => {
+    const e = readEmpiarEntry(12534, JSON.parse(fixture('entry.json').toString()));
+    expect(e.title).toMatch(/^Cytoplasmic ribosomes on mitochondria/);
+    expect(e.emdb).toEqual(['EMD-48752', 'EMD-48751']);
+    expect(e.conditions).toEqual(['data/EMPIAR_upload', 'data/EMPIAR_upload_nonCHX']);
+    expect(e.segmentations).toContain('data/EMPIAR_upload/Voxel_segmentations');
+    expect(e.imageSets.find((s) => s.category === 'reconstructed volumes')?.pixelSize).toBe(9.98);
+    expect(() => readEmpiarEntry(1, {})).toThrow(/no entry EMPIAR-1/);
+  });
+
+  it("reads a listing's rows and sizes (binary units), not the sort links or the parent; a page not a listing fails", () => {
+    const rows = parseListing(fixture('EMPIAR_upload~Reconstructed_tomograms~YTC041_1.html').toString());
+    expect(rows.length).toBe(24);
+    expect(rows[0]).toEqual({
+      name: `${Run}.mrc_9.98Apx.mrc`,
+      folder: false,
+      size: '834M',
+      bytes: 834 * 1024 ** 2,
+    });
+    expect(parseListing(fixture('EMPIAR_upload.html').toString()).map((r) => r.name)).toEqual([
+      'Frames',
+      'PACE_mdocs',
+      'Particle_lists',
+      'Reconstructed_tomograms',
+      'Surfaces',
+      'Tilt_series',
+      'Tilt_series_rawtlt',
+      'Voxel_segmentations',
+    ]);
+    expect([listingBytes('3.3G'), listingBytes('493K'), listingBytes('165'), listingBytes('-')]).toEqual([
+      Math.round(3.3 * 1024 ** 3),
+      493 * 1024,
+      165,
+      undefined,
+    ]);
+    expect(() => parseListing('<html><title>Not found</title></html>')).toThrow(/Not a folder listing/);
+  });
+
+  it('keys a run by its exact stem, a segmentation suffix off; reads an id and a .rawtlt', () => {
+    expect(stemOf(`${Run}.mrc_9.98Apx.mrc`)).toBe(Run);
+    expect(stemOf(`${Run}_labels.hff`)).toBe(Run);
+    expect(stemOf(`${Run}.mrc.tomostar`)).toBe(Run);
+    expect([empiarIdOf('EMPIAR-12534'), empiarIdOf('12534'), empiarIdOf(' empiar-7 '), empiarIdOf('x')]).toEqual([
+      12534,
+      12534,
+      7,
+      undefined,
+    ]);
+    const angles = readAngles(fixture(`${Run}.mrc.rawtlt`).toString());
+    expect([angles.length, Math.min(...angles), Math.max(...angles)]).toEqual([38, -57, 54]);
+  });
+});
+
+describe('empiar, walked', () => {
+  it('lists the two conditions and their grids (CHX 5, vehicle 2), reading no frames folder and changing nothing', async () => {
+    const fetch = serve();
+    const v = await viewer();
+    const r = await v.api.run('empiar.entry', { id: 12534 });
+    expectOk(r);
+    const { conditions } = r.value as { conditions: { root: string; grids: string[] }[] };
+    expect(conditions.map((c) => [c.root, c.grids])).toEqual([
+      ['data/EMPIAR_upload', ['YTC041_1', 'YTC041_2', 'YTC042_2', 'YTC043_1', 'YTC043_2']],
+      ['data/EMPIAR_upload_nonCHX', ['YTC009_3', 'YTC025_2']],
+    ]);
+    expect(r.did).toContain('EMDB: EMD-48752, EMD-48751');
+    expect(fetch.mock.calls.map((c) => String(c[0])).filter((u) => /Frames/.test(u))).toEqual([]);
+    expect(v.plugin.state.data.cells.size).toBe(1);
+  });
+
+  it("groups a grid's files into runs, each file once: what loads checked by kind, the rest saying why", async () => {
+    serve();
+    const v = await viewer();
+    const r = await v.api.run('empiar.entry', { id: 12534, condition: 'data/EMPIAR_upload', grid: 'YTC041_1' });
+    expectOk(r);
+    const g = r.value as { runs: { stem: string; files: { name: string; kind: string; why?: string }[] }[] };
+    expect(g.runs.length).toBe(24);
+    // the grid's 6 folders, 24 files each, and the condition's 2 particle lists with every run
+    const own = g.runs.flatMap((x) => x.files.filter((f) => f.kind !== 'particles').map((f) => f.name));
+    expect(own.length).toBe(144);
+    expect(new Set(own).size).toBe(144);
+    const run = g.runs.find((x) => x.stem === Run)!;
+    expect(run.files.map((f) => [f.kind, f.why === undefined])).toEqual([
+      ['metadata', false],
+      ['tomogram', true],
+      ['surfaces', false],
+      ['tilt-series', false],
+      ['angles', false],
+      ['mask', true],
+      ['particles', true],
+      ['particles', true],
+    ]);
+    expect(run.files.find((f) => f.kind === 'surfaces')?.why).toMatch(/EMDB-SFF/);
+    expect(run.files.find((f) => f.kind === 'tilt-series')?.why).toMatch(/^too large to read whole in a tab/);
+  });
+});
+
+describe('empiar.load', () => {
+  const load = { id: 12534, run: Run, files: `${Run}.mrc_9.98Apx.mrc,${Run}_labels.mrc,80S_ribosome_CHX.star` };
+
+  it('asks first above the size threshold, by the listing sizes', async () => {
+    serve();
+    const v = await viewer();
+    const r = await v.api.run('empiar.load', { ...load, emdb: 'none' });
+    expect(r).toMatchObject({ ok: false, code: 'confirm' });
+    expect((r as { message: string }).message).toBe(
+      `${Run}: 1263 MB to read whole (tomogram 834 MB, mask 417 MB, particles 12 MB).`,
+    );
+    expect(v.plugin.state.data.cells.size).toBe(1);
+  });
+
+  it("loads the run's tomogram (slices), mask (a surface at 0.5) and particles (its rows only) in one step", async () => {
+    serve();
+    const v = await viewer();
+    const steps = async () => ((await v.api.run('history.list', {})) as { value: unknown[] }).value.length;
+    const before = await steps();
+    const r = await v.api.run('empiar.load', { ...load, emdb: 'none', large: true });
+    expectOk(r);
+    expect(r.warnings ?? []).toEqual([]);
+    const [tomogram, mask] = v.plugin.managers.volume.hierarchy.current.volumes;
+    const types = (x: typeof tomogram) => x.representations.map((y) => (y.cell.transform.params as any).type.name);
+    expect(types(tomogram)).toEqual(['slice', 'slice', 'slice']);
+    expect(types(mask)).toEqual(['isosurface']);
+    expect((mask.representations[0].cell.transform.params as any).type.params.isoValue).toEqual({
+      kind: 'absolute',
+      absoluteValue: 0.5,
+    });
+    const [list] = v.plugin.managers.particles.hierarchy.current.lists;
+    const data = particleListData({ plugin: v.plugin }, list.cell.transform.ref) as ParticleList;
+    expect(data.count).toBe(4);
+    expect(await steps()).toBe(before + 1);
+  });
+
+  // Undone with its particles too, the scene's sync reads the removed list (prism-viewer `sources/scene.ts`,
+  // `particleListData` on a stale hierarchy: an unhandled TypeError, the scene otherwise right); a library fix of its own
+  it('is undone in one step', async () => {
+    serve();
+    const v = await viewer();
+    const files = `${Run}.mrc_9.98Apx.mrc,${Run}_labels.mrc`;
+    expectOk(await v.api.run('empiar.load', { ...load, files, emdb: 'none', large: true }));
+    expect(v.plugin.managers.volume.hierarchy.current.volumes.length).toBe(2);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(v.plugin.state.data.cells.size).toBe(1);
+  });
+
+  // The frame measured on the 834 MB tomogram (_spec/empiar.md §3): EMD-48752 placed at the run's 233 particles by the
+  // reader's rotation correlates at 0.336 (its transpose 0.235, random rotations 0.226, mirrored 0.232; the points at
+  // twice the scale, flipped in z or random: under 0.04). Particle 26 of the run (CC 0.55), its numbers from that check.
+  it('puts a known particle where the tomogram has it: Å by rlnPixelSize (4.99), RELION ZYZ turned as measured', async () => {
+    serve();
+    const v = await viewer();
+    expectOk(await v.api.run('empiar.load', { ...load, files: '80S_ribosome_CHX.star', emdb: 'none' }));
+    const [list] = v.plugin.managers.particles.hierarchy.current.lists;
+    const data = particleListData({ plugin: v.plugin }, list.cell.transform.ref) as ParticleList;
+    const i = 3;
+    const p = Array.from(data.coordinates.slice(3 * i, 3 * i + 3));
+    [2379.28, 2552.93, 1558.01].forEach((x, k) => expect(p[k]).toBeCloseTo(x, 1));
+    // in the tomogram's voxels of 9.98 Å: inside its 682×960×334
+    expect(p.map((x) => Math.round(x / 9.98))).toEqual([238, 256, 156]);
+    const m = Mat4.fromQuat(Mat4(), Quat.fromArray(Quat(), data.rotations!, 4 * i));
+    // A = (Rz(rot) Ry(tilt) Rz(psi))ᵀ for 131.40691, 62.00625, 103.05999 (numpy), rows as rows
+    const A = [
+      [-0.66048, -0.72385, 0.19953],
+      [0.4719, -0.19348, 0.86016],
+      [-0.58402, 0.66228, 0.46938],
+    ];
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) expect(m[c * 4 + r]).toBeCloseTo(A[r][c], 4);
+  });
+
+  it("says when a list has none of the run's particles, and leaves nothing of it", async () => {
+    serve((url) =>
+      url.endsWith('.star') ? fixture('80S_ribosome_CHX.star').toString().replaceAll(Run, 'other') : undefined,
+    );
+    const v = await viewer();
+    const r = await v.api.run('empiar.load', {
+      ...load,
+      files: `${Run}.mrc_9.98Apx.mrc,80S_ribosome_CHX.star`,
+      large: true,
+      emdb: 'none',
+    });
+    expectOk(r);
+    expect(r.warnings).toEqual([`80S_ribosome_CHX.star has no particles of ${Run}.`]);
+    expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(0);
+    expect(v.plugin.managers.volume.hierarchy.current.volumes.length).toBe(1);
+  });
+
+  it("keeps the particles when the entry's first EMDB average cannot be fetched: a warning, spheres", async () => {
+    const fetch = serve();
+    const v = await viewer();
+    const r = await v.api.run('empiar.load', { ...load, files: '80S_ribosome_CHX.star' });
+    expectOk(r);
+    expect(fetch.mock.calls.map((c) => String(c[0]))).toContain(
+      'https://www.ebi.ac.uk/pdbe/densities/emd/emd-48752/cell?detail=3',
+    );
+    expect(r.warnings?.join(' ')).toMatch(/^EMD-48752: .*404/);
+    const [list] = v.plugin.managers.particles.hierarchy.current.lists;
+    const spheres = list.representations.filter((x) => x.cell.transform.params?.type.name === 'spacefill');
+    expect(spheres.map((x) => (x.cell.transform.params?.sizeTheme.params as any).defaultSize)).toEqual([50]);
+  });
+
+  it('refuses a file that cannot load, saying why', async () => {
+    serve();
+    const v = await viewer();
+    const r = await v.api.run('empiar.load', { id: 12534, run: Run, files: `${Run}_labels.hff` });
+    expect(r).toMatchObject({ ok: false, message: expect.stringMatching(/EMDB-SFF/) });
+  });
+});
