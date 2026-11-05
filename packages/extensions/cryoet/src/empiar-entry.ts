@@ -4,6 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { span } from './load-steps.js';
+
 // An EMPIAR entry as the browser walks it (_spec/empiar.md §1): the API's entry, the file host's folder listings, a
 // file's kind and its run. Plain functions of the replies, no viewer, no network: the area (empiar.ts) reads, these
 // parse, the card (empiar-card.tsx) and its story show.
@@ -301,9 +303,6 @@ export const sizeLabel = (f: Pick<EmpiarFile, 'size'>) =>
 
 /** A total in the listing's units (MiB, written MB), so it is the sum of the sizes shown: 834 + 417 + 12 → `1263 MB` */
 export const totalLabel = (bytes: number) => `${Math.round(bytes / 1024 ** 2)} MB`;
-
-/** A duration as the warning says it: `5 min`, `1 h` */
-const span = (s: number) => (s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : `${Math.round(s / 3600)} h`);
 
 /** EBI's usual time for `bytes`, fastest to slowest: `about 1–2 h`, `about 5–10 min`, `about 44 min–1 h` */
 export function ebiTime(bytes: number) {

@@ -99,6 +99,14 @@ async function viewer() {
   return v;
 }
 
+async function until(check: () => boolean, ms = 5000) {
+  const t0 = Date.now();
+  while (!check()) {
+    if (Date.now() - t0 > ms) throw new Error('timed out');
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: true }> {
   if (!r.ok) expect.fail(`${r.code}: ${r.message}${r.hint ? ` (${r.hint})` : ''}`);
 }
@@ -419,6 +427,53 @@ describe('empiar.load', () => {
     expect(Array.from(data.coordinates.slice(3, 6)).map((x) => Math.round(x * 100) / 100)).toEqual([
       19.96, 24.95, 29.94,
     ]);
+  });
+
+  // The history runs its steps one at a time: a download from EBI inside the step (hours for a tomogram) held every
+  // other edit (night review B2). The files are fetched first, outside it; the step builds from memory.
+  it('downloads outside the history step: another edit goes on while a file is read, with its progress', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const stub = serve();
+    const plain = stub.getMockImplementation()!;
+    stub.mockImplementation(async (input) => {
+      if (String(input).endsWith('80S_ribosome_CHX.star')) await gate;
+      return plain(input);
+    });
+    const v = await viewer();
+    const slow = v.api.run('empiar.load', { ...load, files: '80S_ribosome_CHX.star', emdb: 'none' });
+    await until(() => !!v.api.empiar!.fetching.value);
+    expect(v.api.empiar!.fetching.value).toMatchObject({ name: 'particles 80S_ribosome_CHX.star', index: 0, count: 1 });
+    expectOk(await v.api.run('empiar.load', { ...load, files: `${Run}.mrc_9.98Apx.mrc`, emdb: 'none', large: true }));
+    expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(0);
+    release();
+    expectOk(await slow);
+    expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(1);
+    expect(v.api.empiar!.fetching.value).toBeUndefined();
+  });
+
+  it('stops a download when cancelled, even a stalled one: nothing changed, no step', async () => {
+    const stub = serve();
+    const plain = stub.getMockImplementation()!;
+    stub.mockImplementation(async (input, init?: RequestInit) => {
+      if (!String(input).endsWith('80S_ribosome_CHX.star')) return plain(input);
+      // the server never answers: only the signal ends it
+      return new Promise<Response>((_, reject) =>
+        init?.signal?.addEventListener('abort', () => reject(init.signal!.reason), { once: true }),
+      );
+    });
+    const v = await viewer();
+    const steps = async () => ((await v.api.run('history.list', {})) as { value: unknown[] }).value.length;
+    const before = await steps();
+    const stop = new AbortController();
+    const files = '80S_ribosome_CHX.star';
+    const r = v.api.run('empiar.load', { ...load, files, emdb: 'none' }, { signal: stop.signal });
+    await until(() => !!v.api.empiar!.fetching.value);
+    stop.abort();
+    expect(await r).toMatchObject({ ok: false, code: 'aborted' });
+    expect(v.plugin.state.data.cells.size).toBe(1);
+    expect(await steps()).toBe(before);
+    expect(v.api.empiar!.fetching.value).toBeUndefined();
   });
 
   it('refuses a file that cannot load, saying why', async () => {

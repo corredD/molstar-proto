@@ -7,7 +7,7 @@
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
-import { ActionFooter, For, ParamsForm, Show } from '@molstar/prism-ui';
+import { ActionFooter, Button, For, ParamsForm, Show } from '@molstar/prism-ui';
 import { effect } from '@molstar/prism-ui/dom/scope';
 import { latest } from '@molstar/prism-ui/dom/scoped';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
@@ -27,6 +27,7 @@ import {
   totalLabel,
   ebiSpeedWarning,
 } from './empiar-entry.js';
+import { type FetchProgress, progressLine } from './load-steps.js';
 
 // The EMPIAR card (_spec/empiar.md §4): an id, then the entry walked live: its condition, grid and run (selects, as the
 // portal's card), the run's files that load (checked: what a load takes by default) with their sizes, the ones that do
@@ -41,6 +42,8 @@ export interface EmpiarPanelArea {
   condition(id: number, root: string): Promise<EmpiarCondition>;
   grid(id: number, root: string, grid: string): Promise<EmpiarGrid>;
   readonly asked: ReadonlyState<EmpiarAsk | undefined>;
+  /** The download under way (`empiar.load` fetches before its step); absent: none said */
+  readonly fetching?: ReadonlyState<FetchProgress | undefined>;
 }
 
 /** What a run of an operation answers, as the card reads it (the viewer's `ApiResult`, without depending on it) */
@@ -49,7 +52,9 @@ export type EmpiarRunResult =
   | { readonly ok: false; readonly code?: string; readonly message: string; readonly hint?: string };
 
 export interface EmpiarPanelContext {
-  readonly api: { run(id: string, values: Record<string, unknown>): Promise<EmpiarRunResult> };
+  readonly api: {
+    run(id: string, values: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<EmpiarRunResult>;
+  };
 }
 
 interface RunPick {
@@ -118,7 +123,7 @@ export function EmpiarPanel(props: { ctx: EmpiarPanelContext; area: EmpiarPanelA
       </div>
       <Show when={mapState(problem.asReadonly, (m) => !!m)}>{() => <p style={Muted}>{problem.asReadonly}</p>}</Show>
       <For each={forms} by={(p) => `${p.entry.id}/${p.condition.root}/${p.grid.name}/${p.run}`}>
-        {(p) => <RunForm ctx={ctx} pick={p} choose={choose} />}
+        {(p) => <RunForm ctx={ctx} area={area} pick={p} choose={choose} />}
       </For>
     </div>
   );
@@ -134,16 +139,20 @@ function conditionLabel(entry: EmpiarEntry, root: string) {
 
 function RunForm(props: {
   ctx: EmpiarPanelContext;
+  area: EmpiarPanelArea;
   pick: RunPick;
   choose: (id: number, root?: string, grid?: string, run?: string) => Promise<boolean>;
 }) {
-  const { ctx, pick, choose } = props;
+  const { ctx, area, pick, choose } = props;
   const { entry, condition, grid } = pick;
   const run = grid.runs.find((r) => r.stem === pick.run);
   const loadable = run?.files.filter((f) => !f.why) ?? [];
   const greyed = [...(run?.files.filter((f) => f.why) ?? []), ...grid.other];
   const busy = observableState(false);
   const said = observableState('');
+  // the load's download, said as it goes; Cancel stops it (night review B2)
+  let stop: AbortController | undefined;
+  const reading = area.fetching ? mapState(area.fetching, (f) => (f ? progressLine(f) : '')) : undefined;
   // asked first above the threshold: the operation says the size, a second Load goes on (`large`); a yes is for the
   // files it was said for, so changing them asks again (review M1)
   const asking = observableState(false);
@@ -198,8 +207,11 @@ function RunForm(props: {
   const load = async () => {
     const v = form.values.value;
     busy.set(true);
+    stop = new AbortController();
     try {
-      const r = await ctx.api.run('empiar.load', {
+      const r = await ctx.api.run(
+        'empiar.load',
+        {
         id: entry.id,
         condition: condition.root,
         grid: grid.name,
@@ -207,7 +219,9 @@ function RunForm(props: {
         files: v.files.join(','),
         emdb: v.emdb,
         large: asking.value,
-      });
+        },
+        { signal: stop.signal },
+      );
       const confirm = !r.ok && r.code === 'confirm';
       asking.set(confirm);
       said.set(
@@ -221,6 +235,7 @@ function RunForm(props: {
       said.set((e as Error).message ?? String(e));
     } finally {
       busy.set(false);
+      stop = undefined;
     }
   };
   return (
@@ -248,6 +263,16 @@ function RunForm(props: {
         info={size}
         onApply={() => void load()}
       />
+      <Show when={busy.asReadonly}>
+        {() => (
+          <div style="display: flex; gap: var(--msp-space-2); align-items: center; min-width: 0">
+            <p style={`${Muted}; flex: 1`}>{reading ?? 'Loading…'}</p>
+            <Button size="sm" onClick={() => stop?.abort()}>
+              Cancel
+            </Button>
+          </div>
+        )}
+      </Show>
       <Show when={mapState(slow, (m) => !!m)}>{() => <p style={Muted}>{slow}</p>}</Show>
       <Show when={mapState(said.asReadonly, (m) => !!m)}>{() => <p style={Muted}>{said.asReadonly}</p>}</Show>
     </div>

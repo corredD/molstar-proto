@@ -6,7 +6,6 @@
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import {
-  type ApiAreaContext,
   type ApiContext,
   ApiArea,
   type ApiFailure,
@@ -49,6 +48,7 @@ import {
   sizePoints,
   volumeRefs,
 } from './portal.js';
+import { FetchAhead, once } from './load-steps.js';
 
 export { EmpiarCard, type EmpiarAsk, type EmpiarCondition, empiarIdOf } from './empiar-entry.js';
 
@@ -76,19 +76,14 @@ export class EmpiarApiArea extends ApiArea {
   /** What the card was last asked to show */
   readonly asked = this.asking.asReadonly;
 
-  constructor(ctx: ApiAreaContext) {
-    super(ctx);
-  }
+  /** A load's files, fetched before its step (night review B2) */
+  readonly ahead = new FetchAhead(this.ctx.plugin);
+  /** The download under way: the card's progress line */
+  readonly fetching = this.ahead.progress;
 
   /** A read made once; one that failed is asked again next time */
   private once<T>(key: string, read: () => Promise<T>): Promise<T> {
-    let p = this.reads.get(key) as Promise<T> | undefined;
-    if (!p) {
-      p = read();
-      p.catch(() => this.reads.delete(key));
-      this.reads.set(key, p);
-    }
-    return p;
+    return once(this.reads, key, read);
   }
 
   /** The entry as the API gives it */
@@ -192,30 +187,18 @@ export class EmpiarApiArea extends ApiArea {
   readonly load = this.operation({
     id: 'empiar.load',
     title: 'Load an EMPIAR run',
-    params: {
-      id: IdParam(),
-      run: RunParam(),
-      condition: PD.Text('', { description: 'Its condition (data/EMPIAR_upload); empty: found from the run' }),
-      grid: PD.Text('', { description: 'Its grid (YTC041_1); empty: found from the run' }),
-      files: PD.Text('', {
-        description: 'File names, comma-separated; empty: what loads of the run but its tilt series (their size)',
-      }),
-      emdb: PD.Text('', {
-        description:
-          "An EMDB average (EMD-48752) beside the tomogram, decorating the particles; empty: the entry's first; 'none'",
-      }),
-      large: PD.Boolean(false, { description: `Load above ${PortalLargeBytes / 1e6} MB (asked first)` }),
-    },
+    params: LoadParams(),
+    // its files fetched outside the history, which runs its steps one at a time: a download from EBI (hours for a
+    // tomogram) held every other edit (night review B2); then the scene, one step (`empiar.build`), from memory
+    history: false,
     modules: ['network'],
     approval: 'network',
     addresses: () => [EmpiarApi, EmpiarFiles],
     async run(v, ctx) {
       const area = ctx.api.empiar!;
-      const found = await findRun(area, v.id, v.run, v.condition, v.grid);
-      if (isFailure(found)) return found;
-      const { entry, run } = found;
-      const files = pickFiles(run, v.files);
-      if (isFailure(files)) return files;
+      const got = await runFiles(area, v);
+      if (isFailure(got)) return got;
+      const { run, files } = got;
       const bytes = files.reduce((n, f) => n + (f.bytes ?? 0), 0);
       if (bytes > PortalLargeBytes && !v.large) {
         return ApiResult.fail(
@@ -224,7 +207,33 @@ export class EmpiarApiArea extends ApiArea {
           'Pick fewer files, or call again with large: true.',
         );
       }
-      const url = (f: EmpiarFile) => `${EmpiarFiles}${v.id}/${f.path}`;
+      try {
+        for (const [index, f] of files.entries()) {
+          const at = { name: `${f.kind} ${f.name}`, index, count: files.length };
+          const r = await area.ahead.fetch(fileUrl(v.id, f), at, ctx.signal).catch((e: unknown) => e);
+          if (r instanceof Error) return ApiResult.fail('failed', r.message);
+          if (r) throw r;
+        }
+        return await ctx.api.run('empiar.build', { ...v, large: true });
+      } finally {
+        // a large file's bytes go with the step that read them; a small one (a STAR, shared by every run) stays
+        for (const f of files) if ((f.bytes ?? 0) > EmpiarKeepBytes) area.ahead.drop(fileUrl(v.id, f));
+      }
+    },
+  });
+
+  readonly build = this.operation({
+    id: 'empiar.build',
+    title: 'Load an EMPIAR run',
+    params: LoadParams(),
+    surface: { kind: 'ui-only', reason: "empiar.load's step, its files fetched first: tools use empiar.load" },
+    // empiar.load is the record's; this, the step it makes
+    record: false,
+    modules: ['network'],
+    async run(v, ctx) {
+      const got = await runFiles(ctx.api.empiar!, v);
+      if (isFailure(got)) return got;
+      const { entry, run, files } = got;
       const warnings: string[] = [];
       const done: string[] = [];
       const order = ['tomogram', 'volume', 'mask', 'tilt-series', 'particles'];
@@ -236,7 +245,7 @@ export class EmpiarApiArea extends ApiArea {
           average = (await loadAverage(ctx, emdb, warnings)) ?? '';
           if (average) done.push(emdb);
         }
-        const r = await loadFile(ctx, f, url(f), run, average, warnings);
+        const r = await loadFile(ctx, f, fileUrl(v.id, f), run, average, warnings);
         if (isFailure(r)) return r;
         if (r) done.push(`${f.kind} ${f.name}`);
       }
@@ -246,6 +255,35 @@ export class EmpiarApiArea extends ApiArea {
       return ApiResult.ok(`Loaded EMPIAR-${v.id} ${run.stem}: ${done.join(', ')}.`, {}, { warnings });
     },
   });
+}
+
+/** Above this many bytes a file fetched ahead is let go once its step has read it; below (a STAR), kept for the next */
+export const EmpiarKeepBytes = 64e6;
+
+const LoadParams = () => ({
+  id: IdParam(),
+  run: RunParam(),
+  condition: PD.Text('', { description: 'Its condition (data/EMPIAR_upload); empty: found from the run' }),
+  grid: PD.Text('', { description: 'Its grid (YTC041_1); empty: found from the run' }),
+  files: PD.Text('', {
+    description: 'File names, comma-separated; empty: what loads of the run but its tilt series (their size)',
+  }),
+  emdb: PD.Text('', {
+    description:
+      "An EMDB average (EMD-48752) beside the tomogram, decorating the particles; empty: the entry's first; 'none'",
+  }),
+  large: PD.Boolean(false, { description: `Load above ${PortalLargeBytes / 1e6} MB (asked first)` }),
+});
+
+const fileUrl = (id: number, f: EmpiarFile) => `${EmpiarFiles}${id}/${f.path}`;
+
+/** The run and the files a load names */
+async function runFiles(area: EmpiarApiArea, v: { id: number; run: string; condition: string; grid: string; files: string }) {
+  const found = await findRun(area, v.id, v.run, v.condition, v.grid);
+  if (isFailure(found)) return found;
+  const files = pickFiles(found.run, v.files);
+  if (isFailure(files)) return files;
+  return { ...found, files };
 }
 
 const fileLine = (f: EmpiarFile) => `${f.name} (${f.kind}, ${sizeLabel(f)}${f.why ? `; ${f.why}` : ''})`;

@@ -13,6 +13,7 @@ import { render } from '@molstar/prism-ui';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EmpiarPanel, type EmpiarPanelArea, type EmpiarPanelContext } from '../empiar-card.js';
+import type { FetchProgress } from '../load-steps.js';
 import { type EmpiarAsk, parseListing, readEmpiarEntry, walkCondition, walkGrid } from '../empiar-entry.js';
 
 // The EMPIAR card over EMPIAR-12534's recorded API reply and listings (`empiar-12534/`): the entry asked for (the URL's
@@ -226,6 +227,39 @@ describe('the EMPIAR card', () => {
     // 493 KB: no warning
     await until(() => !/from EBI/.test(host.textContent ?? ''));
     expect(host.textContent).toContain('0 MB');
+    dispose();
+  });
+
+  it("shows a download's progress, and Cancel stops it (night review B2)", async () => {
+    const fetching = observableState<FetchProgress | undefined>(undefined);
+    let signal: AbortSignal | undefined;
+    const ctx: EmpiarPanelContext = {
+      api: {
+        run: (_, _values, options) =>
+          new Promise((done) => {
+            signal = options?.signal;
+            const t0 = Date.now() - 10_000;
+            fetching.set({ name: 'particles 80S_ribosome_CHX.star', index: 0, count: 1, loaded: 2e6, total: 12e6, started: t0 });
+            signal?.addEventListener('abort', () => {
+              fetching.set(undefined);
+              done({ ok: false, code: 'aborted', message: 'Stopped before it finished.' });
+            });
+          }),
+      },
+    };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const fake = { ...area({ id: 12534, run: Run }), fetching: fetching.asReadonly };
+    const dispose = render(() => <EmpiarPanel ctx={ctx} area={fake} />, host);
+    const load = () => Array.from(host.querySelectorAll('button')).find((b) => /^\s*Load/.test(b.textContent ?? ''));
+    await until(() => !!load());
+    load()!.click();
+    await until(() => /2 of 12 MB, 0\.20 MB\/s, about 1 min left/.test(host.textContent ?? ''));
+    expect(host.textContent).toContain('Reading particles 80S_ribosome_CHX.star');
+    button(host, 'Cancel').click();
+    await until(() => /Stopped before it finished/.test(host.textContent ?? ''));
+    expect(signal?.aborted).toBe(true);
+    expect(button(host, 'Cancel')).toBeUndefined();
     dispose();
   });
 });

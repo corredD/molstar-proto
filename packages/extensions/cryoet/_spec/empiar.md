@@ -42,6 +42,13 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
 - `empiar.load` (`id`, `run`; `condition`, `grid` found from the run when absent: the grid whose name starts the stem;
   `files`; `emdb`; `large`): one operation, one history step. **Default files:** what loads of the run, without its tilt
   series (their size).
+- **The download is outside the history step** (night review B2): the history runs its steps one at a time, and a file
+  from EBI takes up to hours, which held every other edit. `empiar.load` (no step of its own) fetches the files first
+  into the plugin's assets (`FetchAhead`, `src/load-steps.ts`: one download per address, its progress a state, the
+  call's signal cancels it, a stalled one too), then runs `empiar.build` (the step, `record: false`, no tool), whose
+  `Download`s read them from memory. A cancel or a failed download leaves no step and nothing in the scene. A file above
+  64 MB (`EmpiarKeepBytes`) is let go after its step; a smaller one (a STAR every run of a condition shares) is kept for
+  the next load. An undo then a redo reads the file again (its `Download` runs again), inside that step.
 - **MRCs are read whole, without the format's own visual** (`Ccp4Provider.parse`, no `visuals`): `load.url`'s isosurface
   of a 218 M voxel tomogram costs seconds and memory, only to be hidden by its slices. Tomogram: its three slices
   (`cryoet.slices`), no direct volume (an 875 MB 3D texture). Mask: an isosurface at absolute 0.5 (labels 0, 1, 2). Tilt
@@ -94,8 +101,10 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
   do not load, greyed, with why; the total beside Load.
 - **A slow pick says so**: under Load, a muted line for a pick above 5 MB,
   `834 MB from EBI: about 1–2 h at its usual speed (EMPIAR's server is often slow, 0.1–0.2 MB/s).` (§3); none for a
-  small pick. No live speed or time left while a file loads: the card reaches the viewer only by `api.run`, and the
-  download's progress is not on it.
+  small pick.
+- **While Load runs**, the download said as it goes,
+  `Reading tomogram ….mrc (1 of 4): 120 of 875 MB, 0.15 MB/s, about 1 h left` (the area's `fetching`), and **Cancel**,
+  which stops it: nothing loaded, no step (§2).
 - **Load asks first** above the guard: the operation's `confirm` message (its EBI time with it) with "Load anyway?", the
   button "Load anyway"; a second press passes `large`.
 - Story: prism-me › Explorer › EMPIAR (Card, Card wide: 12534's YTC041_1 over a few recorded folders).

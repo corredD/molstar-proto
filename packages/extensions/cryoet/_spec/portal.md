@@ -42,6 +42,10 @@ registration); the index tool `tools/portal-index/`.
   `2321/SegmentationMask`, `none`; empty: the portal's defaults), `as` (`both`: slices and a direct volume, `slices`,
   `none`), `tiltSeries` (an id; absent: none), `tiltSeriesLevel` (absent: the coarsest), `large`. `run` lists the run's
   tomograms and tilt series by the ids `load` takes.
+- **Its reads stay inside its step**, unlike EMPIAR's (empiar.md §2, night review B2): a tomogram is an OME-Zarr level
+  read chunk by chunk by the format's transforms (many addresses, not one file to fetch ahead), from the portal's CDN at
+  tens of MB/s (seconds, not EBI's hours). If a level ever takes long enough to hold other edits, the zarr's reader is
+  the place for it, not `FetchAhead`.
 - **Which tomogram** (`describePortalRun`; Ludo, 2026-11-03): `tomogram` by id, from whichever spacing of the run holds
   it (its spacing, annotations and levels come with it); `spacing` alone: that spacing's default tomogram, else its
   first; neither: the run's default tomogram, the lowest id flagged `default` (a run may flag one a spacing: 10518
