@@ -6,6 +6,15 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **Bug fixes from the night review** (Ludo, 2026-11-05 morning: "bug fix"; stopped mid-way for a session restart;
+  report [2026-11-05-night-report.md](2026-11-05-night-report.md), findings in [2026-11-05-night/](2026-11-05-night/)):
+  - `scene-sync-undo` (library, from master; `~/prism-me-lanes/scene-sync-undo` and `-pm`): test + fix pushed
+    (`24abc06f8` on master base, cherry-picked to `me/scene-sync-undo-pm` `f97c89c16`); gate started, no PR yet.
+  - PR #56 fix round (`me/empiar`): B2 pushed (`36b7a7ac1`, download outside the history step, progress and Cancel); the
+    card races in progress (uncommitted edits, a new `card-common.tsx`); then units, failures, dedup; gate.
+  - `night-fixes`, **PR #57** (`me/night-fixes`, port 1354): F1 `0925b06e4`, A1 `df5e96130` pushed; F2 `f5c66bfd6`, F16
+    `51ae90b7a` committed not pushed; A3 in progress (uncommitted); then A4, A6, F5, cssColor, perf, F7; gate.
+
 - **Started 2026-11-04** (Ludo: "start two lanes, fast-slice and empiar"; "start by full resolution, and we will
   optimize after"):
   - `fast-slice`: **PR #55 merged** by Ludo (2026-11-04). A level-0 step on TS_08 273 → 87 ms, pixels identical
