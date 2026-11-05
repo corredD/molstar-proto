@@ -544,15 +544,22 @@ async function createGridImage(
   const periodicMapping = Volume.getPeriodicMapping(volume);
   const mapped = periodicMapping ? new Uint8Array(width * height) : undefined;
 
+  // a uniform theme's color is the same at every position: taken once, and no pixel's position computed
+  const uniformColor = isUniform ? color(l, false) : Color(0);
+
   let i = 0;
   for (let iy = y0; iy < ny; ++iy) {
     for (let ix = x0; ix < nx; ++ix) {
       for (let iz = z0; iz < nz; ++iz) {
         const i4 = i * 4;
 
-        Vec3.set(l.position, ix, iy, iz);
-        Vec3.transformMat4(l.position, l.position, gridToCartn);
-        Color.toArray(color(l, false), imageArray, i4);
+        if (isUniform) {
+          Color.toArray(uniformColor, imageArray, i4);
+        } else {
+          Vec3.set(l.position, ix, iy, iz);
+          Vec3.transformMat4(l.position, l.position, gridToCartn);
+          Color.toArray(color(l, false), imageArray, i4);
+        }
 
         const val = normalize(space.get(data, ix, iy, iz), min, max);
         if (isUniform) {
