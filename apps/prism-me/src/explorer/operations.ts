@@ -229,6 +229,11 @@ export class ExplorerApi extends ApiArea {
 
   /** The objects of the scene by category, following the state tree while watched: a read for views */
   objectsState(): ReadonlyState<readonly SceneObject[]> {
+    // one per area: each has its own subscription and rereads every structure's entities on each change (A9)
+    return (this.objects ??= this.watchObjects());
+  }
+  private objects?: ReadonlyState<readonly SceneObject[]>;
+  private watchObjects(): ReadonlyState<readonly SceneObject[]> {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => sceneObjects(plugin),
@@ -438,6 +443,10 @@ export class ExplorerApi extends ApiArea {
    * clip cuts follows this too
    */
   particleLayersState(): ReadonlyState<string> {
+    return (this.layers ??= this.watchLayers());
+  }
+  private layers?: ReadonlyState<string>;
+  private watchLayers(): ReadonlyState<string> {
     const state = this.ctx.plugin.state.data;
     return watchedState(
       () => {

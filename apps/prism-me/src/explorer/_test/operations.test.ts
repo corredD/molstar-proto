@@ -600,4 +600,11 @@ describe('explorer', () => {
     expect(b2).not.toBe(b1);
     expect(b2.visible).toBe(false);
   });
+
+  it('the area keeps one objects state and one layers state: each view shares them, not a subscription of its own (A9)', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    expect(area.objectsState()).toBe(area.objectsState());
+    expect(area.particleLayersState()).toBe(area.particleLayersState());
+  });
 });
