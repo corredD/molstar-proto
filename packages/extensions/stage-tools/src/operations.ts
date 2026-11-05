@@ -22,7 +22,7 @@ import { Color } from '@molstar/core/util/color';
 import { ColorNames } from '@molstar/core/util/color/names';
 import { setSubtreeVisibility } from '@molstar/plugin/behavior/static/state';
 import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
-import { type StateObjectCell, StateTransform } from '@molstar/core/state';
+import { type StateBuilder, type StateObjectCell, StateTransform } from '@molstar/core/state';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { ParticleTargetRepresentationProps } from '@molstar/graphics/repr/particles/representation/target/common';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
@@ -487,17 +487,7 @@ export class StageApi extends ApiArea {
       } else {
         return ApiResult.fail('invalid', `${name} is not a structure, particle list, volume or mesh.`);
       }
-      // what is placed with it: its clip objects, a volume's plane slices, its labels
-      if (t) {
-        for (const r of representationCells(ctx, t)) {
-          const moved = movedRepresentationParams(r.transform.params as { type?: { params?: object } }, m);
-          if (moved) b.to(r).update(moved);
-        }
-      }
-      for (const l of labelsOf(ctx)) {
-        if (l.target !== target) continue;
-        b.to(l.ref).update((p: StageLabelProps) => ({ ...p, position: movedPoint(Vec3.create(...l.position), m) }));
-      }
+      placeWith(ctx, b, target, t, m);
       await b.commit();
       return ApiResult.ok(`Moved ${name}.`, { nodes: [target] });
     },
@@ -1159,6 +1149,29 @@ function structureRefsOf(ctx: Pick<ApiContext, 'plugin'>, structure: Structure):
 }
 
 /** The representations that draw a target */
+/**
+ * What is placed with an object, moved by `m` with it (`stage.move`, `stage.scale`): its clip objects, a volume's plane
+ * slices (its representations', a mesh's own), its labels
+ */
+function placeWith(
+  ctx: Pick<ApiContext, 'plugin'>,
+  b: StateBuilder.Root,
+  target: string,
+  t: StageTarget | undefined,
+  m: Mat4,
+) {
+  const cell = ctx.plugin.state.data.cells.get(target);
+  const reprs = t ? representationCells(ctx, t) : cell && SO.Shape.Representation3D.is(cell.obj) ? [cell] : [];
+  for (const r of reprs) {
+    const moved = movedRepresentationParams(r.transform.params as { type?: { params?: object } }, m);
+    if (moved) b.to(r).update(moved);
+  }
+  for (const l of labelsOf(ctx)) {
+    if (l.target !== target) continue;
+    b.to(l.ref).update((p: StageLabelProps) => ({ ...p, position: movedPoint(Vec3.create(...l.position), m) }));
+  }
+}
+
 function representationCells(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): StateObjectCell[] {
   const p = ctx.plugin.managers;
   if (t.kind === 'structure') {

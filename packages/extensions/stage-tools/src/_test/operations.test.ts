@@ -232,6 +232,10 @@ describe('stage', () => {
       .to(shape)
       .update((p: any) => ({ ...p, transforms: [Mat4.fromScaling(Mat4(), Vec3.create(2, 2, 2))] }))
       .commit();
+    // a clip on it (a shape keeps its clip at `clip`, not under `type.params`): moved with it
+    expectOk(await v.api.run('clipping.add', { shape: 'plane', node: `#${mesh.transform.ref}` }));
+    const cut = () => Array.from(v.api.clipping.cuts.value[0].object.position);
+    const cut0 = cut();
     const r = await s.move({
       target: mesh.transform.ref,
       matrix: Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(5, 0, 0))),
@@ -241,6 +245,7 @@ describe('stage', () => {
     const m = (v.plugin.state.data.cells.get(shape.transform.ref)!.transform.params as any).transforms[0] as Mat4;
     expect(Mat4.getMaxScaleOnAxis(m)).toBeCloseTo(2);
     expect(m[12]).toBeCloseTo(5);
+    cut().forEach((x, i) => expect(x).toBeCloseTo(cut0[i] + (i === 0 ? 5 : 0), 4));
   });
 
   it("runs from ⌘K: 'label A:10' labels the residue; an object's label needs no selection", async () => {
