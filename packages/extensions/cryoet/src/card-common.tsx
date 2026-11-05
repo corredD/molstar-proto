@@ -30,12 +30,29 @@ export interface CardContext {
   };
 }
 
+/** The cards' Loads, by the area they load from, then the context they run through (`LoadAction.of`) */
+const actions = new WeakMap<object, WeakMap<CardContext, LoadAction>>();
+
 /**
  * A card's Load: busy, what the last load said, its Cancel. One a panel: a load in flight keeps its result when the pick
  * changes, and a second Load waits for it. A size question (`confirm`) is for the pick it was asked of (`key`): Load
  * goes on (`large`) for that pick only, so changing the files asks again (review M1).
  */
 export class LoadAction {
+  /**
+   * The Load of a card's area and context, kept while they are (review F2: an overlay card is unmounted when closed, and
+   * a Load made a mount lost the load still running: opened again, no busy, no Cancel, and a second Load). Keyed by
+   * both: the app's two cards share their context, each its own area; a story or a test gives fakes of its own. It holds
+   * states and the load's stop, no view: each mount watches it in its own scope.
+   */
+  static of(area: object, ctx: CardContext): LoadAction {
+    let byCtx = actions.get(area);
+    if (!byCtx) actions.set(area, (byCtx = new WeakMap()));
+    let action = byCtx.get(ctx);
+    if (!action) byCtx.set(ctx, (action = new LoadAction(ctx)));
+    return action;
+  }
+
   readonly busy = observableState(false);
   private readonly said = observableState('');
   private readonly asked = observableState<{ readonly key: string; readonly message: string } | undefined>(undefined);

@@ -63,8 +63,9 @@ export function EmpiarPanel(props: { ctx: EmpiarPanelContext; area: EmpiarPanelA
   const problem = observableState('');
   // the Read button's busy: only the latest of overlapping reads clears it (night review B7)
   const reading = readingFlag();
-  // one Load a panel: a pick remakes the form, not the load in flight (night review B4)
-  const action = new LoadAction(ctx);
+  // one Load a panel: a pick remakes the form, not the load in flight (night review B4); kept by the area, so a card
+  // closed and opened again shows the load still running (review F2)
+  const action = LoadAction.of(area, ctx);
   // one pick at a time: a newer one drops what an older one would show (rendering.md §2.7)
   const read = latest(async (_signal, id: number, root?: string, grid?: string, run?: string): Promise<RunPick> => {
     const entry = await area.entry(id);

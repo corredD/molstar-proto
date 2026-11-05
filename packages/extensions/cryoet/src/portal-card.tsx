@@ -45,8 +45,9 @@ export function PortalPanel(props: { ctx: PortalPanelContext; area: PortalPanelA
   const { ctx, area } = props;
   const pick = observableState<RunPick | undefined>(undefined);
   const problem = observableState('');
-  // one Load a panel: a pick remakes the form, not the load in flight (night review B4)
-  const action = new LoadAction(ctx);
+  // one Load a panel: a pick remakes the form, not the load in flight (night review B4); kept by the area, so a card
+  // closed and opened again shows the load still running (review F2)
+  const action = LoadAction.of(area, ctx);
   const read = latest(
     async (
       _signal,

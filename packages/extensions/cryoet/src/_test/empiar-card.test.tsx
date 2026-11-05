@@ -317,6 +317,46 @@ describe('the EMPIAR card', () => {
     dispose();
   });
 
+  // review F2: the overlay card is unmounted when closed, and its Load with it: opened again, Load was enabled, with no
+  // progress and no Cancel for the load still running, and a second Load duplicated it
+  it('shows a load still running when the card is opened again: Load busy, Cancel stops it', async () => {
+    let signal: AbortSignal | undefined;
+    let calls = 0;
+    const ctx: EmpiarPanelContext = {
+      api: {
+        run: (_, _values, options) =>
+          new Promise((done) => {
+            calls++;
+            signal = options?.signal;
+            signal?.addEventListener('abort', () => done({ ok: false, code: 'aborted', message: 'Stopped.' }));
+          }),
+      },
+    };
+    const fake = area({ id: 12534, run: Run });
+    const open = () => {
+      const host = document.createElement('div');
+      document.body.append(host);
+      const dispose = render(() => <EmpiarPanel ctx={ctx} area={fake} />, host);
+      const load = () => Array.from(host.querySelectorAll('button')).find((b) => /^\s*Load/.test(b.textContent ?? ''));
+      return { host, dispose, load };
+    };
+    const first = open();
+    await until(() => !!first.load());
+    first.load()!.click();
+    await until(() => calls === 1 && !!button(first.host, 'Cancel'));
+    first.dispose();
+    first.host.remove();
+    const again = open();
+    await until(() => !!again.load());
+    expect(again.load()!.disabled).toBe(true);
+    button(again.host, 'Cancel').click();
+    await until(() => /Stopped/.test(again.host.textContent ?? ''));
+    expect(signal?.aborted).toBe(true);
+    expect(again.load()!.disabled).toBe(false);
+    expect(calls).toBe(1);
+    again.dispose();
+  });
+
   // night review B7: an older read that ended cleared "reading" while a newer one was still walking
   it('stays reading until the latest read ends', async () => {
     const base = area({ id: 12534, run: Run });

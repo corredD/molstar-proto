@@ -111,7 +111,8 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
   small pick.
 - **While Load runs**, the download said as it goes,
   `Reading tomogram ….mrc (1 of 4): 120 of 875 MB, 0.15 MB/s, about 1 h left` (the area's `fetching`), and **Cancel**,
-  which stops it: nothing loaded, no step (§2).
+  which stops it: nothing loaded, no step (§2). The Load is the area's (`LoadAction.of`, by the area and the context),
+  not the mount's: the card closed and opened again shows the load still running, busy, with its Cancel (review F2).
 - **Load asks first** above the guard: the operation's `confirm` message (its EBI time with it) with "Load anyway?", the
   button "Load anyway"; a second press passes `large`.
 - Story: prism-me › Explorer › EMPIAR (Card, Card wide: 12534's YTC041_1 over a few recorded folders).
