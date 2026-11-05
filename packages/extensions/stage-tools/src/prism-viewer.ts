@@ -26,7 +26,9 @@ export const StageSkill: ViewerSkill = {
   title: 'Labels, measurements and moves',
   summary: 'put plain-text labels, distances, angles and dihedrals in the scene, move objects',
   guidance: [
-    'Skill stage: add_label puts plain text in front of an object (target: its state ref), change_label edits its',
+    'Skill stage: add_label puts plain text in front of an object (target: its state ref) or of a selection, at its',
+    "centre (selection: an atom, a residue or a chain, A:10@CA, A:10, chain A, ligand; a particle, '<list ref>#<index>';",
+    'named after it when no text is given: "label residue A:10" is selection A:10), change_label edits its',
     'text, size, color, plate or tether, moves, hides or removes it. move_object moves or turns a structure, particle',
     'list, volume or mesh by a matrix, after where it is. scale_particles sets the Å per unit of a particle list (its',
     "positions in a tomogram's pixels: the pixel size). measure_distance draws the distance between two points (an",
@@ -35,7 +37,11 @@ export const StageSkill: ViewerSkill = {
     "four; change_distance sizes, hides or removes any of them. Cuts are the clipping skill's.",
   ].join('\n'),
   tools: [
-    { id: 'add_label', operation: 'stage.label', description: 'Adds a plain-text label in front of an object.' },
+    {
+      id: 'add_label',
+      operation: 'stage.label',
+      description: 'Adds a plain-text label in front of an object, or of an atom, residue or chain by selection.',
+    },
     { id: 'change_label', operation: 'stage.editLabel', description: 'Changes, hides or removes a label.' },
     { id: 'move_object', operation: 'stage.move', description: 'Moves or turns an object by a matrix.' },
     {
@@ -76,7 +82,14 @@ export const StageToolsExtension: ViewerExtension = {
     const s = api.stage;
     if (!s) return [];
     return [
-      operationCommand(api, s.label, { category: 'Labels', icon: 'type', alias: ['label', 'add label', 'annotate'] }),
+      operationCommand(api, s.label, {
+        category: 'Labels',
+        icon: 'type',
+        alias: ['label', 'add label', 'annotate'],
+        // "label A:10": the selection first, the sentence's subject; optional, so an object's or a point's label runs
+        order: ['selection'],
+        form: (p) => ({ ...p, selection: { ...p.selection, isOptional: true } }),
+      }),
       operationCommand(api, s.editLabel, { category: 'Labels', icon: 'type', alias: ['edit label', 'remove label'] }),
       operationCommand(api, s.distance, {
         category: 'Measure',

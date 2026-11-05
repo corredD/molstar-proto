@@ -103,6 +103,8 @@ export interface TreeRowView {
   readonly key: string;
   readonly depth: number;
   readonly label: string;
+  /** Its tooltip's text after its name (an entity's description): shown always; absent, the name's own once cut off */
+  readonly tip?: string;
   /** Atoms, particles, entities: faint after the name */
   readonly count?: string;
   /** Its one color (a dot), where it has one */
@@ -223,10 +225,13 @@ function TreeRow<R extends TreeRowView>(p: {
   const pick = () => props.onPick(row);
   // named by its name alone, not its tools' labels (as Prism's tree)
   const nameId = uniqueId('me-tree-name');
+  // its tip (an entity's description) is its accessible description: the card is a pointer's only
+  const tipId = row.tip ? `${nameId}-tip` : undefined;
   return (
     <div
       role="treeitem"
       aria-labelledby={nameId}
+      aria-describedby={tipId}
       aria-level={row.depth + 1}
       aria-expanded={row.hasChildren ? String(row.expanded) : undefined}
       aria-selected={derive(p.picked, String)}
@@ -236,6 +241,9 @@ function TreeRow<R extends TreeRowView>(p: {
     >
       <div
         data-tree-row=""
+        // a row with a tip (an entity's description): Prism's row card, its name then the tip muted, wrapped, always
+        data-tip-row={row.tip ? '' : undefined}
+        data-tip={row.tip ? '' : undefined}
         class={classes.row}
         classList={{ [classes.picked]: p.picked, [classes.off]: off, [classes.category]: !!row.category }}
         style={`--msp-tree-depth: ${row.depth}`}
@@ -265,9 +273,19 @@ function TreeRow<R extends TreeRowView>(p: {
         </button>
         {row.icon ? <Icon name={row.icon} size={15} class={classes.kind} /> : null}
         {row.color !== undefined ? <Dot row={row} props={props} /> : null}
-        <span id={nameId} class={classes.label} data-tip-overflow="">
+        <span
+          id={nameId}
+          class={classes.label}
+          data-tip-overflow={row.tip ? undefined : ''}
+          data-tip-part={row.tip ? '' : undefined}
+        >
           {row.label}
         </span>
+        {row.tip ? (
+          <span id={tipId} data-tip-part="" hidden>
+            {row.tip}
+          </span>
+        ) : null}
         <span class={classes.count}>{row.count ?? ''}</span>
         <RowActions row={row} off={off} props={props} />
       </div>

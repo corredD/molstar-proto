@@ -13,61 +13,14 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
+import { descriptionText } from '../description-text.js';
 import { explorerUI } from '../ui.js';
+import { CellpackCif as cif } from '../../_test/fixtures.js';
 
 // An entity's description under its name in the properties (_spec/ui.md §4; the Mesoscale Explorer's Focus Info), over
-// a headless viewer in jsdom, from a cellPACK mmCIF made here: the Exosome's rows (the sentence in
+// a headless viewer in jsdom, from the cellPACK mmCIF of `_test/fixtures.ts`: the Exosome's rows (the sentence in
 // `_entity.pdbx_parent_entity_id`, one with a Markdown link) and an MG-like row (its compartment there, `details` a
 // function: no description).
-
-const cif = `data_cellpack_descriptions
-loop_
-_entity.id
-_entity.pdbx_description
-_entity.details
-_entity.pdbx_parent_entity_id
-1 root.exosome.surface.proteins.ITG ? 'Integrin alpha-5, important for cell adhesion and signaling.'
-2 root.exosome.surface.proteins.CD81 ? 'CD81 antigen PDB entry [5TCX](http://www.rcsb.org/pdb/explore.do?structureId=5TCX)'
-3 root.mge.interior.proteins.RNA_POLYMERASE transcription root.mge.interior.proteins
-
-loop_
-_atom_site.group_PDB
-_atom_site.id
-_atom_site.type_symbol
-_atom_site.label_atom_id
-_atom_site.label_comp_id
-_atom_site.label_asym_id
-_atom_site.label_entity_id
-_atom_site.label_seq_id
-_atom_site.Cartn_x
-_atom_site.Cartn_y
-_atom_site.Cartn_z
-ATOM 1 C CA ALA A 1 1 0 0 0
-ATOM 2 C CA ALA B 2 1 0 0 0
-ATOM 3 C CA ALA C 3 1 0 0 0
-
-loop_
-_pdbx_struct_assembly_gen.assembly_id
-_pdbx_struct_assembly_gen.oper_expression
-_pdbx_struct_assembly_gen.asym_id_list
-1 '(1)' A,B,C
-
-loop_
-_pdbx_struct_oper_list.id
-_pdbx_struct_oper_list.matrix[1][1]
-_pdbx_struct_oper_list.matrix[1][2]
-_pdbx_struct_oper_list.matrix[1][3]
-_pdbx_struct_oper_list.matrix[2][1]
-_pdbx_struct_oper_list.matrix[2][2]
-_pdbx_struct_oper_list.matrix[2][3]
-_pdbx_struct_oper_list.matrix[3][1]
-_pdbx_struct_oper_list.matrix[3][2]
-_pdbx_struct_oper_list.matrix[3][3]
-_pdbx_struct_oper_list.vector[1]
-_pdbx_struct_oper_list.vector[2]
-_pdbx_struct_oper_list.vector[3]
-1 1 0 0 0 1 0 0 0 1 0 0 0
-`;
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
@@ -101,7 +54,7 @@ async function mounted() {
 
 const rowOf = (host: HTMLElement, label: string) =>
   Array.from(host.querySelectorAll<HTMLElement>('[role=treeitem]'))
-    .find((r) => r.querySelector('[data-tip-overflow]')?.textContent === label)
+    .find((r) => r.querySelector('[id^=me-tree-name]')?.textContent === label)
     ?.querySelector<HTMLElement>('[data-tree-row]') ?? undefined;
 /** Every folded row unfolded (once a step: its children show after the next render) */
 const unfoldAll = (host: HTMLElement) => {
@@ -133,6 +86,41 @@ describe("an entity's description in the properties", () => {
     rowOf(host, 'RNA_POLYMERASE')!.click();
     await until(() => nameShown(host) === 'RNA_POLYMERASE');
     expect(description(host)).toBeNull();
+  });
+});
+
+describe("an entity's description in the tree", () => {
+  it("is its row's tooltip card, its name then the description as text; none for an entity without one", async () => {
+    const host = await mounted();
+    await until(() => {
+      unfoldAll(host);
+      return !!rowOf(host, 'RNA_POLYMERASE') && !!rowOf(host, 'ITG');
+    });
+    // Prism's row tip: shown always (`data-tip`), its parts' text (the name, then the muted rest)
+    const parts = (label: string) => {
+      const row = rowOf(host, label)!;
+      if (row.dataset.tipRow === undefined || row.dataset.tip === undefined) return undefined;
+      return Array.from(row.querySelectorAll('[data-tip-part]'), (p) => p.textContent);
+    };
+    expect(parts('ITG')).toEqual(['ITG', 'Integrin alpha-5, important for cell adhesion and signaling.']);
+    expect(parts('CD81')).toEqual(['CD81', 'CD81 antigen PDB entry 5TCX']);
+    expect(parts('RNA_POLYMERASE')).toBeUndefined();
+    // its accessible description (a screen reader's), the card being a pointer's only
+    const item = rowOf(host, 'ITG')!.closest<HTMLElement>('[role=treeitem]')!;
+    expect(document.getElementById(item.getAttribute('aria-describedby')!)?.textContent).toBe(
+      'Integrin alpha-5, important for cell adhesion and signaling.',
+    );
+    expect(rowOf(host, 'RNA_POLYMERASE')!.querySelector('[data-tip-overflow]')?.textContent).toBe('RNA_POLYMERASE');
+  });
+});
+
+describe('descriptionText', () => {
+  it('cuts a long description at a word past 200 characters', () => {
+    const long = `${'word '.repeat(100)}end`;
+    const text = descriptionText(long);
+    expect(text.endsWith('…')).toBe(true);
+    expect(text.length).toBeLessThanOrEqual(201);
+    expect(descriptionText('Short [link](http://x)')).toBe('Short link');
   });
 });
 

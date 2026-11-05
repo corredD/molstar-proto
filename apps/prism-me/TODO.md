@@ -188,6 +188,15 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   with the maintainer (2026-10-25): it needs a Mol\* core change, a dependency on an object being one on the object as
   decorated (`packages/core/src/state/state.ts`, `initCells` and the delete loop; review K1: the move is a decorator
   under the object, which the distance's dependency does not see).
+- A label by selection (lane `label-selection`, 2026-11-04) keeps its place, not its selection: `stage.move` moves it
+  with its structure as any label, but a change outside the stage (a model's frame, a structure rebuilt) leaves it where
+  it was; following its atoms is the distances' core issue above.
+- Labels by selection, left open by the review (lane `label-selection`): ⌘K's "label A:10" lands first on Prism's
+  Measure › Label an atom or residue… (Prism's measurement commands stay in ⌘K; the agent's tools are the stage's),
+  while "add label A:10" is the stage's: hide Prism's in prism-me? (Ludo); "residue A:10" is not a target (PyMOL reads
+  it), "A:10" is; no test that the canvas's right-click (`ui.tsx`) gives its loci to the menu (it needs a right-click
+  with a page point and the context menu's DOM); at an instance granularity (residue instances) the pick is every copy,
+  labelled at their centre.
 - Distances, left open by the review: a test for the explorer's click routing on a label (`ui.tsx`: a Ctrl+click on a
   label is refused), which needs canvas clicks with a position and `labelAt`; a volume point keeps one instance (a
   volume of several, from MVS, would be measured from its first).
@@ -204,18 +213,23 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   particle's preview copies every coordinate of its list (`offsetParticles`, architecture §5); a structure's preview
   allocates about 200 KB a pointer event (its representations' `setState` and update); the hosts' tests cover one step
   and an undo during a drag, not a refused commit's restore per host (only `GizmoHandles`' own test does).
-- Live sliders, left open by `live-slice` (2026-11-03): the other Representation forms (isosurface, direct volume, a
-  particle list's) still write 150 ms after the last change (`properties.tsx` `Representations`): they do not follow a
-  drag; the same `gestureSteps` path as a slice's would, at Prism's 250 ms pacing for heavy updates (Ludo's call). A
-  slice's Representation form is made once and does not follow the state: after a Slice drag it holds the old index, and
-  its next change writes it back. A grid slice step costs about 9 ms on TS_08 at level 2, 35 ms at level 1 and 150–230
-  ms at level 0: at level 0 a drag shows 2–3 slices a second. From the review: `gestureSteps` runs its group with
-  `onFailure: 'continue'`, so each applied change takes a full checkpoint (`history.ts` `#nested`); at the live sliders'
-  pace that is one a step (Prism's own sliders: at most 4 a second), and on a scene whose snapshot takes over 50 ms one
-  drag turns per-step checkpoints off. Fix in Prism (an option for no per-run checkpoint), not in the lane. A key press
-  or a typed value on a live slider holds the history for the 600 ms quiet (keys in a row are one step; other runs
-  wait), as Prism's own sliders; the slice's form does the same after each change. The jsdom fakes of `api.group` do not
-  model the history's lock (the headless tests do).
+- Live sliders, left open by `live-slice` (2026-11-03) and `live-forms` (2026-11-04): a key press or a typed value on a
+  live slider holds the history for the 600 ms quiet (keys in a row are one step; other runs wait), as Prism's own
+  sliders; the forms do the same after each change. A drag held still over 600 ms (or a 1 s main-thread stall) is two
+  undo steps (`gestureSteps`' quiet; the form has no release). A form's history label is the representation's when the
+  form was made (a slice's axis changed in its form: still "Slice X"). The jsdom fakes of `api.group` do not model the
+  history's lock (the headless tests do).
+- A slice step at level 0 (lane `live-forms`, item 7, measured 2026-11-04; Ludo: "Measure first"): on TS_08 level 0
+  (928×928×450, WebGPU) one Z step takes about 435 ms (366–526), 89 % of it the image build on the main thread
+  (`createGridImage`, `packages/graphics/src/repr/volume/slice.ts`, 387 ms a step), the texture upload about 12 ms, the
+  render about 3 ms, the GC 23 ms. The build's loop does, for each of the 861k pixels, a theme `color()` call and a
+  `Vec3.transformMat4` (even for a uniform theme), and a `mapping.index.set(o, [i])` (a Map of 861k entries, an array
+  each). Proposal, in this order: (1) a library lane from `origin/master` (upstream candidate): the pixel→cell index
+  made lazily or as a typed array (it is for picking), the color computed once for a uniform theme and the position
+  stepped instead of transformed; expected 3–5× (about 80–130 ms at level 0, a few slices more a second), the same for
+  every Mol* slice. (2) If still over a few frames: a coarser level while dragging (level 1, about 50 ms a step, only if
+  loaded already), the full level at the release. (3) A GPU-side slice (a 3D texture sampled in the shader) would make a
+  step a few ms but is a new representation: not before (1) is measured.
 - The explorer mocks' checks in CI: `pnpm -C apps/prism-me styles:check` and `typecheck:storybook` run nowhere
   (`.github/workflows/node.yml` runs them for `packages/prism/*` only), so a stale `_generated` module or a story's type
   error stays green.
@@ -237,10 +251,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Turning a cut of some particles off on one representation and on again (`clipping` on/off per representation) loses
   its particles: it comes back as a cut of the whole representation (lane `looks-owner`'s review; not probed).
 
-- **Descriptions, left** (lane `descriptions`, 2026-11-04): a tree row's tooltip with the description (rows have only
-  the overflow tip of a cut-off name today); PetWorld's entities have no description in their files (only
-  `pdbx_description`, the name); a portal annotation's description, method and GO term are in its properties (lane
-  `portal-polish`), not on hover: the hover's description is an entity's (`entityInfo`), and a portal list given one
-  becomes a mesoscale model in the tree (`operations.ts`'s `model`), so the points' hover needs a loci label provider in
-  the cryoet extension or a label on the ndjson transform (Ludo's call); the classic Mesoscale Explorer shows MG's and
-  HIV's compartment path as the description (its `model.ts`), not fixed there.
+- **Descriptions, left** (lane `descriptions`, 2026-11-04; the tree row's tooltip built on `me/tree-tooltips`):
+  PetWorld's entities have no description in their files (only `pdbx_description`, the name); a portal annotation's
+  description, method and GO term are in its properties (lane `portal-polish`), not on hover: the hover's description is
+  an entity's (`entityInfo`), and a portal list given one becomes a mesoscale model in the tree (`operations.ts`'s
+  `model`), so the points' hover needs a loci label provider in the cryoet extension or a label on the ndjson transform
+  (Ludo's call); the classic Mesoscale Explorer shows MG's and HIV's compartment path as the description (its
+  `model.ts`), not fixed there.

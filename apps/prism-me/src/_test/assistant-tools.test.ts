@@ -62,4 +62,17 @@ describe("the explorer's assistant", () => {
     expect(ids).toEqual(expect.arrayContaining(['add_label', 'list_measurements', 'remove_measurement']));
     agent.dispose();
   });
+
+  it("labels by selection: add_label's schema takes one, as measure_distance's points (Ludo, 2026-11-04)", async () => {
+    const v = await createPrismViewerHeadless({ spec: createMesoscaleExplorerSpec('') });
+    viewers.push(v);
+    const agent = createViewerAgent({
+      viewer: v,
+      models: { providerFor: () => undefined, default: { provider: 'none', model: 'none' } },
+    });
+    const label = agent.toolkit.allDefinitions().find((d) => d.tool.id === 'add_label');
+    const properties = (label?.inputSchema as { properties?: Record<string, { description?: string }> }).properties;
+    expect(properties?.selection?.description).toMatch(/A:10@CA/);
+    agent.dispose();
+  });
 });
