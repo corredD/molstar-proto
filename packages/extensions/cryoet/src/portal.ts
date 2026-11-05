@@ -65,6 +65,8 @@ import {
   listRefs,
   loadAverage,
   loadResult,
+  quietLoad,
+  showVolumeAs,
   sizeGuard,
   sizePoints,
   volumeRefs,
@@ -545,32 +547,28 @@ function pickLevel(levels: readonly PortalLevel[], level: number | undefined): P
  * with it: _spec/portal.md §2), the address untouched: the readout's angles and the links are found from it.
  */
 async function loadZarr(ctx: ApiContext, url: string, level: PortalLevel, name: string) {
-  const made = await added(ctx, volumeRefs, async () => {
-    const opened = ctx.plugin
-      .build()
-      .toRoot()
-      .apply(OmeZarrFromUrl, { url, label: name }, { state: { isGhost: true } });
-    await opened.commit({ revertOnError: true });
-    const file = ctx.plugin.state.data.cells.get(opened.ref)?.obj?.data as
-      | Parameters<typeof getOmeZarrLevel>[0]
-      | undefined;
-    const needs = file ? omeZarrLevelNeeds(getOmeZarrLevel(file, level.path)) : level.bytes;
-    const maxSizeMB = Math.max(512, Math.ceil(needs / 1e6));
-    try {
+  // nothing left of a level that could not be read, the file's ghost (its only parent) with it (`quietLoad`)
+  const made = await quietLoad(ctx, () =>
+    added(ctx, volumeRefs, async () => {
+      const opened = ctx.plugin
+        .build()
+        .toRoot()
+        .apply(OmeZarrFromUrl, { url, label: name }, { state: { isGhost: true } });
+      await opened.commit({ revertOnError: true });
+      const file = ctx.plugin.state.data.cells.get(opened.ref)?.obj?.data as
+        | Parameters<typeof getOmeZarrLevel>[0]
+        | undefined;
+      const needs = file ? omeZarrLevelNeeds(getOmeZarrLevel(file, level.path)) : level.bytes;
+      const maxSizeMB = Math.max(512, Math.ceil(needs / 1e6));
       await ctx.plugin
         .build()
         .to(opened.ref)
         .apply(VolumeFromOmeZarr, { level: level.path, maxSizeMB, entryId: '' })
         .apply(CustomVolumeProperties)
         .commit({ revertOnError: true });
-    } finally {
-      // nothing left of a level that could not be read (the file's ghost, its only parent)
-      if (!ctx.plugin.state.data.tree.children.get(opened.ref).size) {
-        await ctx.plugin.build().delete(opened.ref).commit();
-      }
-    }
-    return ApiResult.ok('');
-  });
+      return ApiResult.ok('');
+    }),
+  );
   if (!isFailure(made) && !made.length) {
     return ApiResult.fail('failed', `Could not open ${url} at level ${level.path}.`, 'The log says why.');
   }
@@ -592,8 +590,7 @@ async function loadTomogram(
   const made = await loadZarr(ctx, url, level, name);
   if (isFailure(made)) return made;
   for (const volume of made) {
-    // whatever the format's own visuals: the slices (other representations hidden), as a dropped tomogram shows
-    const r = await ctx.api.run('cryoet.slices', { volume });
+    const r = await showVolumeAs(ctx, volume, 'tomogram');
     if (!r.ok) return r;
     if (as === 'both') {
       const d = await showTomogramVolume(ctx, volume);
@@ -618,7 +615,7 @@ async function loadTiltSeries(
   const made = await loadZarr(ctx, url, level, name);
   if (isFailure(made)) return made;
   for (const volume of made) {
-    const r = await ctx.api.run('cryoet.slice', { volume, axis: 'z' });
+    const r = await showVolumeAs(ctx, volume, 'tilt-series');
     if (!r.ok) return r;
     if (!place || !ctx.api.describe('stage.move')) continue;
     const p = await ctx.api.run('cryoetPortal.place', { volume, place });
@@ -667,13 +664,8 @@ async function loadEntry(
     if (!l) return ApiResult.fail('failed', `${e.object} has no levels in the index.`);
     const made = await loadZarr(ctx, url, l, `${run} ${e.object} ${e.id}`);
     if (isFailure(made)) return made;
-    // a mask: 0 outside, 1 (an instance's id) inside; its surface at 0.5
     for (const volume of made) {
-      const r = await ctx.api.run('volume.representation', {
-        volume,
-        type: 'isosurface',
-        params: { isoValue: { kind: 'absolute', absoluteValue: 0.5 } },
-      });
+      const r = await showVolumeAs(ctx, volume, 'mask');
       if (!r.ok) return r;
     }
     return ApiResult.ok('');

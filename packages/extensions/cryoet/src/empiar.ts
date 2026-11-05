@@ -40,6 +40,8 @@ import {
   listRefs,
   loadAverage,
   loadResult,
+  quietLoad,
+  showVolumeAs,
   sizeGuard,
   sizePoints,
   volumeRefs,
@@ -344,18 +346,9 @@ async function loadFile(
   if (f.kind === 'particles') return loadParticles(ctx, url, f.name, run.stem, average, warnings);
   const made = await loadMrc(ctx, url);
   if (isFailure(made)) return made;
+  const kind = f.kind === 'tomogram' || f.kind === 'tilt-series' || f.kind === 'mask' ? f.kind : 'volume';
   for (const volume of made) {
-    const r =
-      f.kind === 'tomogram'
-        ? await ctx.api.run('cryoet.slices', { volume })
-        : f.kind === 'tilt-series'
-          ? await ctx.api.run('cryoet.slice', { volume, axis: 'z' })
-          : await ctx.api.run('volume.representation', {
-              volume,
-              type: 'isosurface',
-              // a mask: 0 outside, its labels (1, 2) inside
-              params: f.kind === 'mask' ? { isoValue: { kind: 'absolute', absoluteValue: 0.5 } } : {},
-            });
+    const r = await showVolumeAs(ctx, volume, kind);
     if (isFailure(r)) return r;
   }
   if (f.kind === 'tilt-series') {
@@ -369,21 +362,20 @@ async function loadFile(
 
 /**
  * An MRC read whole, without the format's own visual: an isosurface of a tomogram (218 M voxels here) costs seconds and
- * memory only to be hidden by its slices. What could not be read leaves nothing.
+ * memory only to be hidden by its slices. What could not be read leaves nothing (`quietLoad`).
  */
 async function loadMrc(ctx: ApiContext, url: string): Promise<string[] | ApiFailure> {
-  const before = new Set(ctx.plugin.state.data.cells.keys());
   try {
-    return await added(ctx, volumeRefs, async () => {
-      // committed without reverting, so a failed download keeps its cause (a 404) to say (review S4)
-      const data = await ctx.plugin.build().toRoot().apply(Download, { url, isBinary: true }).commit();
-      if (data.cell?.status === 'error' || !data.isOk) throw new Error(data.cell?.errorText ?? 'the download failed');
-      await Ccp4Provider.parse(ctx.plugin, data);
-      return ApiResult.ok('');
-    });
+    return await quietLoad(ctx, () =>
+      added(ctx, volumeRefs, async () => {
+        // committed without reverting, so a failed download keeps its cause (a 404) to say (review S4)
+        const data = await ctx.plugin.build().toRoot().apply(Download, { url, isBinary: true }).commit();
+        if (data.cell?.status === 'error' || !data.isOk) throw new Error(data.cell?.errorText ?? 'the download failed');
+        await Ccp4Provider.parse(ctx.plugin, data);
+        return ApiResult.ok('');
+      }),
+    );
   } catch (e) {
-    const left = [...ctx.plugin.state.data.cells.keys()].filter((k) => !before.has(k));
-    if (left.length) await removeLoaded(ctx, left[0]);
     return ApiResult.fail('failed', `Could not read ${url}: ${(e as Error).message}`);
   }
 }

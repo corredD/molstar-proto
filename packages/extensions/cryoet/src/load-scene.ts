@@ -50,6 +50,54 @@ export async function added(
 }
 
 /**
+ * A load that leaves nothing when it fails: what `work` added under the root goes when it throws, fails or made
+ * nothing. The history restores a failed step from its checkpoint already ("Nothing was changed"); this matters when
+ * the step has none, its checkpoints off for a large scene (over the history's budget: prism-ui
+ * `managers/history.ts`, `HistoryOptions.budget`).
+ */
+export async function quietLoad(
+  ctx: ApiContext,
+  work: () => Promise<string[] | ApiFailure>,
+): Promise<string[] | ApiFailure> {
+  const roots = () => ctx.plugin.state.data.tree.children.get(ctx.plugin.state.data.tree.root.ref);
+  const before = new Set(roots().toArray());
+  let made: string[] | ApiFailure | undefined;
+  try {
+    made = await work();
+    return made;
+  } finally {
+    if (!made || isFailure(made) || !made.length) {
+      const left = roots()
+        .toArray()
+        .filter((r) => !before.has(r));
+      if (left.length) {
+        const b = ctx.plugin.build();
+        for (const r of left) b.delete(r);
+        await b.commit();
+      }
+    }
+  }
+}
+
+/** The kinds of volume a cryo-ET source loads, each its own view */
+export type VolumeKind = 'tomogram' | 'tilt-series' | 'mask' | 'volume';
+
+/**
+ * A volume's view by its kind: a tomogram's three slices (other representations hidden, as a dropped tomogram shows); a
+ * tilt series' Z slice (z the image index, not a distance: no direct volume, no isosurface); a mask's surface at 0.5 (0
+ * outside, its labels, 1, 2, …, inside); another volume's isosurface
+ */
+export function showVolumeAs(ctx: Pick<ApiContext, 'api'>, volume: string, kind: VolumeKind): Promise<ApiResult> {
+  if (kind === 'tomogram') return ctx.api.run('cryoet.slices', { volume });
+  if (kind === 'tilt-series') return ctx.api.run('cryoet.slice', { volume, axis: 'z' });
+  return ctx.api.run('volume.representation', {
+    volume,
+    type: 'isosurface',
+    params: kind === 'mask' ? { isoValue: { kind: 'absolute', absoluteValue: 0.5 } } : {},
+  });
+}
+
+/**
  * An average's (EMDB map's) direct volume lit volumetric, its isosurface hidden: a dense map, where the volume's own
  * shadows show (a tomogram's are faint in its noise)
  */
