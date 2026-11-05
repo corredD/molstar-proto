@@ -59,7 +59,25 @@ whether a guard in `getDecoratorRoot` is also warranted.
 
 ## Review
 
-Pending.
+Gate run (Opus reviewer, then Opus skeptic): the fix is sound, no lost or late sync found.
+
+| finding                                                                                                                                                                       | verdict                                                                     | outcome                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| M1 `@author` line missing in scene.ts and scene.test.ts                                                                                                                       | confirmed, must-fix                                                         | fixed, `8c35036b9` (master branch; here `2c6d8915e`)                                                                                       |
+| S1 the scene-sync scaling guard brackets the hierarchies' events, where the sync no longer runs: an injected quadratic read 1.0x (passed), 52x once `isUpdating` is bracketed | confirmed by run, should-fix                                                | fixed, `6ca58f5fd` (here `534d956a2`): `isUpdating` bracketed, `ms` zeroed after setup (X2), comment true (X3); the guard passed on 3 runs |
+| S2 the new tests assert rows only after a timer                                                                                                                               | confirmed, downgraded to nit by the skeptic (the code already satisfies it) | fixed anyway, `178f76ef9` (here `27c82fe6e`): rows asserted right after the awaited commit and undo                                        |
+| N1 comment cites no spec section                                                                                                                                              | confirmed nit                                                               | fixed in `8c35036b9` (view-models.md §3)                                                                                                   |
+| N2 changelog bullet lacks a period                                                                                                                                            | confirmed nit                                                               | fixed in `8c35036b9`                                                                                                                       |
+| X1 (skeptic) the guard reads 7.7 to 8.1x against its 8x band, 7.85x on master too                                                                                             | confirmed, pre-existing                                                     | left open: not raised (never raise a budget); passed 3 of 3 here; the cause of the per-load growth is for a later lane                     |
+| X4 (skeptic) the scene's and the sequence's `isUpdating` subscribers may both sync at one update end                                                                          | plausible nit                                                               | left open, as before the lane; `sync` is incremental                                                                                       |
+| reviewer's "not covered": `object.updated` -> `streamingNode` and `cell.stateUpdated` read hierarchies inside an update                                                       | no failing case                                                             | left open                                                                                                                                  |
+
+The failing-first proof for S1 is the skeptic's probe (quadratic passes before, caught after), not a committed test: the
+guard is the test.
+
+## 5.x
+
+No `CHANGELOG.md` line: prism-viewer exists only on v6.
 
 ## How Ludo checks it
 
@@ -67,3 +85,8 @@ Pending.
   `npx vitest run packages/extensions/cryoet/src/_test/portal.test.ts -t "undoes a load"` (prism-me).
 - In prism-me: load a portal run with a tomogram and its ribosomes, press Undo: the scene empties, the Log shows no
   error.
+
+## Size
+
+113 production lines changed (scene.ts: 17 added, 25 removed, plus the comment); the rest is tests (the five scene
+cases, the cryoet case, the guard).
