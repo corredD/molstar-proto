@@ -486,10 +486,27 @@ describe('empiar.load', () => {
     expect(v.api.empiar!.fetching.value).toBeUndefined();
   });
 
-  it('refuses a file that cannot load, saying why', async () => {
+  // night review S3-like inconsistency: a named file that cannot load failed the whole load, where the portal warns
+  it('warns of a named file that cannot load and loads the rest, as the portal does', async () => {
+    serve();
+    const v = await viewer();
+    const r = await v.api.run('empiar.load', {
+      ...load,
+      files: `${Run}_labels.hff,80S_ribosome_CHX.star`,
+      emdb: 'none',
+    });
+    expect(r).toMatchObject({ ok: true, warnings: [expect.stringMatching(/_labels\.hff cannot load: .*EMDB-SFF/)] });
+    expect((r as { did: string }).did).toContain('80S_ribosome_CHX.star');
+  });
+
+  it('says why when the only file named cannot load', async () => {
     serve();
     const v = await viewer();
     const r = await v.api.run('empiar.load', { id: 12534, run: Run, files: `${Run}_labels.hff` });
-    expect(r).toMatchObject({ ok: false, message: expect.stringMatching(/EMDB-SFF/) });
+    expect(r).toMatchObject({
+      ok: false,
+      message: `Nothing of ${Run} could be loaded.`,
+      hint: expect.stringMatching(/EMDB-SFF/),
+    });
   });
 });

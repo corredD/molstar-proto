@@ -5,12 +5,7 @@
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
-import {
-  type ApiContext,
-  ApiArea,
-  type ApiFailure,
-  ApiResult,
-} from '@molstar/prism-viewer/api/area';
+import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
 import { isFailure } from '@molstar/prism-viewer/api/scope';
 import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension } from '@molstar/prism-viewer/spec';
@@ -234,7 +229,7 @@ export class EmpiarApiArea extends ApiArea {
       const got = await runFiles(ctx.api.empiar!, v);
       if (isFailure(got)) return got;
       const { entry, run, files } = got;
-      const warnings: string[] = [];
+      const warnings: string[] = [...got.skipped];
       const done: string[] = [];
       const order = ['tomogram', 'volume', 'mask', 'tilt-series', 'particles'];
       const sorted = [...files].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
@@ -278,12 +273,15 @@ const LoadParams = () => ({
 const fileUrl = (id: number, f: EmpiarFile) => `${EmpiarFiles}${id}/${f.path}`;
 
 /** The run and the files a load names */
-async function runFiles(area: EmpiarApiArea, v: { id: number; run: string; condition: string; grid: string; files: string }) {
+async function runFiles(
+  area: EmpiarApiArea,
+  v: { id: number; run: string; condition: string; grid: string; files: string },
+) {
   const found = await findRun(area, v.id, v.run, v.condition, v.grid);
   if (isFailure(found)) return found;
-  const files = pickFiles(found.run, v.files);
-  if (isFailure(files)) return files;
-  return { ...found, files };
+  const picked = pickFiles(found.run, v.files);
+  if (isFailure(picked)) return picked;
+  return { ...found, ...picked };
 }
 
 const fileLine = (f: EmpiarFile) => `${f.name} (${f.kind}, ${sizeLabel(f)}${f.why ? `; ${f.why}` : ''})`;
@@ -312,13 +310,18 @@ async function findRun(area: EmpiarApiArea, id: number, stem: string, condition:
   }
 }
 
-function pickFiles(run: EmpiarRun, names: string): readonly EmpiarFile[] | ApiFailure {
+/** The files a load names: one that cannot load is left out with a warning, as the portal's entries that need a reader */
+function pickFiles(
+  run: EmpiarRun,
+  names: string,
+): { files: readonly EmpiarFile[]; skipped: readonly string[] } | ApiFailure {
   const asked = names
     .split(',')
     .map((n) => n.trim())
     .filter((n) => n);
-  if (!asked.length) return defaultFiles(run);
+  if (!asked.length) return { files: defaultFiles(run), skipped: [] };
   const picked: EmpiarFile[] = [];
+  const skipped: string[] = [];
   for (const name of asked) {
     const f = run.files.find((x) => x.name === name);
     if (!f)
@@ -327,10 +330,10 @@ function pickFiles(run: EmpiarRun, names: string): readonly EmpiarFile[] | ApiFa
         `${run.stem} has no file '${name}'.`,
         `It has ${run.files.map((x) => x.name).join(', ')}.`,
       );
-    if (f.why) return ApiResult.fail('unavailable', `${name} cannot load: ${f.why}.`);
-    picked.push(f);
+    if (f.why) skipped.push(`${name} cannot load: ${f.why}.`);
+    else picked.push(f);
   }
-  return picked;
+  return { files: picked, skipped };
 }
 
 /** The EMDB average beside the tomogram, as the portal's (its ref), or a warning */
