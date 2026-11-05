@@ -20,6 +20,7 @@ import { Ccp4Provider } from '@molstar/plugin/state/formats/volume/ccp4';
 import { Download } from '@molstar/plugin/state/transforms/data/fetch';
 import {
   defaultFiles,
+  ebiTime,
   EmpiarApi,
   type EmpiarAsk,
   EmpiarCard,
@@ -219,7 +220,7 @@ export class EmpiarApiArea extends ApiArea {
       if (bytes > PortalLargeBytes && !v.large) {
         return ApiResult.fail(
           'confirm',
-          `${run.stem}: ${totalLabel(bytes)} to read whole (${files.map((f) => `${f.kind} ${sizeLabel(f)}`).join(', ')}).`,
+          `${run.stem}: ${totalLabel(bytes)} to read whole (${files.map((f) => `${f.kind} ${sizeLabel(f)}`).join(', ')}). From EBI: ${ebiTime(bytes)} at its usual speed.`,
           'Pick fewer files, or call again with large: true.',
         );
       }

@@ -90,6 +90,8 @@ describe('the EMPIAR card', () => {
     expect(text).toMatch(/\.mrc\.st · 3\.3 GB: too large to read whole in a tab/);
     // the total beside Load, in the listing's units: the sum of the sizes shown
     expect(text).toContain('1263 MB');
+    // and how long EBI usually takes for it
+    expect(text).toContain("1263 MB from EBI: about 2–4 h at its usual speed (EMPIAR's server is often slow");
     // a condition by its image set's words
     expect(text).toContain('EMPIAR_upload · Reconstructed tomograms of CHX-treated S. cerevisiae lamellae');
 
@@ -201,6 +203,29 @@ describe('the EMPIAR card', () => {
     await new Promise((r) => setTimeout(r, 400));
     expect(host.textContent).toContain('YTC042_2_r');
     expect(host.textContent).not.toContain('YTC041_2_r');
+    dispose();
+  });
+
+  it("warns of EBI's speed for a large pick, with its time, and not for a small one", async () => {
+    const ctx: EmpiarPanelContext = { api: { run: async () => ({ ok: true, did: '' }) } };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const dispose = render(() => <EmpiarPanel ctx={ctx} area={area({ id: 12534, run: Run })} />, host);
+    await until(() => /from EBI/.test(host.textContent ?? ''));
+    button(host, 'Files').click();
+    await tick();
+    for (const f of [`${Run}_labels.mrc`, '80S_ribosome_CHX.star', 'co-translation_ribosome_CHX.star']) {
+      option(f).click();
+      await tick();
+    }
+    // the tomogram alone
+    await until(() => /834 MB from EBI: about 1–2 h at its usual speed/.test(host.textContent ?? ''));
+    option(`${Run}.mrc_9.98Apx.mrc`).click();
+    await tick();
+    option('co-translation_ribosome_CHX.star').click();
+    // 493 KB: no warning
+    await until(() => !/from EBI/.test(host.textContent ?? ''));
+    expect(host.textContent).toContain('0 MB');
     dispose();
   });
 });

@@ -16,6 +16,8 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { EmpiarExtension, readAngles } from '../empiar.js';
 import {
+  ebiSpeedWarning,
+  ebiTime,
   EmpiarFiles,
   empiarIdOf,
   kindOf,
@@ -140,6 +142,16 @@ describe('the EMPIAR entry, parsed', () => {
     expect(() => parseListing('<html><title>Not found</title></html>')).toThrow(/Not a folder listing/);
   });
 
+  it("estimates EBI's time for a pick above a few MB, none below (Ludo: a warning on EMPIAR's speed)", () => {
+    expect(ebiSpeedWarning(834 * 1024 ** 2)).toBe(
+      "834 MB from EBI: about 1–2 h at its usual speed (EMPIAR's server is often slow, 0.1–0.2 MB/s).",
+    );
+    expect(ebiTime(60 * 1024 ** 2)).toBe('about 5–10 min');
+    expect(ebiTime(500 * 1024 ** 2)).toBe('about 44 min–1 h');
+    expect(ebiSpeedWarning(493 * 1024)).toBeUndefined();
+    expect(ebiSpeedWarning(0)).toBeUndefined();
+  });
+
   it('keys a run by its exact stem, a segmentation suffix off; reads an id and a .rawtlt', () => {
     expect(stemOf(`${Run}.mrc_9.98Apx.mrc`)).toBe(Run);
     expect(stemOf(`${Run}_labels.hff`)).toBe(Run);
@@ -248,7 +260,7 @@ describe('empiar.load', () => {
     const r = await v.api.run('empiar.load', { ...load, emdb: 'none' });
     expect(r).toMatchObject({ ok: false, code: 'confirm' });
     expect((r as { message: string }).message).toBe(
-      `${Run}: 1263 MB to read whole (tomogram 834 MB, mask 417 MB, particles 12 MB).`,
+      `${Run}: 1263 MB to read whole (tomogram 834 MB, mask 417 MB, particles 12 MB). From EBI: about 2–4 h at its usual speed.`,
     );
     expect(v.plugin.state.data.cells.size).toBe(1);
   });

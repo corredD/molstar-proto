@@ -25,6 +25,7 @@ import {
   empiarIdOf,
   sizeLabel,
   totalLabel,
+  ebiSpeedWarning,
 } from './empiar-entry.js';
 
 // The EMPIAR card (_spec/empiar.md §4): an id, then the entry walked live: its condition, grid and run (selects, as the
@@ -188,9 +189,12 @@ function RunForm(props: {
       },
     },
   );
-  const size = derive(form.values, (v) =>
-    totalLabel(loadable.filter((f) => v.files.includes(f.name)).reduce((n, f) => n + (f.bytes ?? 0), 0)),
+  const bytes = derive(form.values, (v) =>
+    loadable.filter((f) => v.files.includes(f.name)).reduce((n, f) => n + (f.bytes ?? 0), 0),
   );
+  const size = mapState(bytes, totalLabel);
+  // EBI is often slow: a pick above a few MB says its usual time (Ludo, 2026-11-04; _spec/empiar.md §4)
+  const slow = mapState(bytes, (n) => ebiSpeedWarning(n) ?? '');
   const load = async () => {
     const v = form.values.value;
     busy.set(true);
@@ -244,6 +248,7 @@ function RunForm(props: {
         info={size}
         onApply={() => void load()}
       />
+      <Show when={mapState(slow, (m) => !!m)}>{() => <p style={Muted}>{slow}</p>}</Show>
       <Show when={mapState(said.asReadonly, (m) => !!m)}>{() => <p style={Muted}>{said.asReadonly}</p>}</Show>
     </div>
   );

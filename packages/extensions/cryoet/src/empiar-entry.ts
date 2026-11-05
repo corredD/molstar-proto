@@ -21,6 +21,16 @@ export const EmpiarPages = 'https://www.ebi.ac.uk/empiar/EMPIAR-';
  */
 export const EmpiarWholeMaxBytes = 2e9;
 
+/**
+ * EBI's usual speed for EMPIAR's files, bytes a second, slowest and fastest (measured 2026-11-04 on 12534's tomogram:
+ * 88 KB/s over HTTPS, 219 KB/s over HTTP, 0.15 MB/s a connection from the app; no mirror: PDBj has no EMPIAR files).
+ * A pick's time is said from it (_spec/empiar.md §3).
+ */
+export const EmpiarEbiSpeed = { slow: 0.1e6, fast: 0.2e6 } as const;
+
+/** Above this many bytes a pick's EBI time is said: under it the wait is about a minute or less */
+export const EmpiarSlowBytes = 5e6;
+
 /** The EMPIAR card (empiar-ui.tsx), opened by `empiar.open` (or `view.open({ card })`) */
 export const EmpiarCard = 'cryoet-empiar.overlay.empiar';
 
@@ -291,3 +301,21 @@ export const sizeLabel = (f: Pick<EmpiarFile, 'size'>) =>
 
 /** A total in the listing's units (MiB, written MB), so it is the sum of the sizes shown: 834 + 417 + 12 → `1263 MB` */
 export const totalLabel = (bytes: number) => `${Math.round(bytes / 1024 ** 2)} MB`;
+
+/** A duration as the warning says it: `5 min`, `1 h` */
+const span = (s: number) => (s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : `${Math.round(s / 3600)} h`);
+
+/** EBI's usual time for `bytes`, fastest to slowest: `about 1–2 h`, `about 5–10 min`, `about 44 min–1 h` */
+export function ebiTime(bytes: number) {
+  const [a, b] = [span(bytes / EmpiarEbiSpeed.fast), span(bytes / EmpiarEbiSpeed.slow)];
+  const [na, ua] = a.split(' ');
+  const [nb, ub] = b.split(' ');
+  return ua === ub ? `about ${na}–${nb} ${ub}` : `about ${a}–${b}`;
+}
+
+/** The card's line for a pick above `EmpiarSlowBytes`: its size and EBI's usual time; undefined below */
+export function ebiSpeedWarning(bytes: number): string | undefined {
+  if (bytes <= EmpiarSlowBytes) return undefined;
+  const mbs = (x: number) => x / 1e6;
+  return `${totalLabel(bytes)} from EBI: ${ebiTime(bytes)} at its usual speed (EMPIAR's server is often slow, ${mbs(EmpiarEbiSpeed.slow)}–${mbs(EmpiarEbiSpeed.fast)} MB/s).`;
+}
