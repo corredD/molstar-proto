@@ -127,11 +127,18 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   Delphine; a level read already sent is not cancelled (`cryoet.level`, review X2). An unbounded interval's ends cannot
   cross (v5's can, reversing a colour scale: Ludo may want that back).
 
-- **EMPIAR by id** (planned 2026-11-04, not started; Ludo to say go): an EMPIAR id in, the entry walked live (its API
-  and its file listings are open to browsers: no index), a picker of its runs and files with their sizes, what is picked
-  loaded in one step. Example EMPIAR-12534 (tomograms, tilt series, RELION STAR particles at bin 2, label masks, `.hff`
-  surfaces). Open: an 834 MB tomogram (slices by range, or converted once). Plan:
-  [plans/2026-11-04-empiar.md](plans/2026-11-04-empiar.md).
+- **EMPIAR by id**: steps A and B built (lane `empiar`, `?empiar=12534`; extensions/cryoet/_spec/empiar.md). Open,
+  Ludo's call: step C, a tomogram too big to load whole (EBI serves about 150 KB/s a connection: the 834 MB tomogram
+  takes over an hour; loaded, it peaks at 2.3 GB in the tab, 4.8 GB with its mask's surface): binned on the fly, slices
+  by range, or converted once; the 3.3 GB tilt series wait for it. Step D: `.hff` surfaces (HDF5), other entries'
+  layouts. The default files hold both STARs, and 12534's co-translation picks are a subset of its 80S picks (drawn
+  twice).
+
+- **Undo of a load that made a volume and a particle list in one step** throws in the scene's sync (prism-viewer
+  `sources/scene.ts` `particleListData` → `getDecoratorRoot` on a list no longer in the tree: the particle hierarchy is
+  stale when the sync runs; an unhandled TypeError, the scene otherwise right). Reproduced by `cryoetPortal.load`
+  (`as: 'slices'`, `annotations: '5'`) then `history.undo` in `cryoet/_test/portal.test.ts`'s setup, and by
+  `empiar.load`. A library fix, a lane from `origin/master`: a test that fails first, then a guard on the ref.
 
 - A sphere a clip plane misses entirely (its center is past the plane by more than its radius): skip it in the color
   pass, and skip one the plane misses in the ghost pass (lane `marking-cost`, not built;
