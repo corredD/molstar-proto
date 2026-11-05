@@ -7,6 +7,7 @@
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { Grid, type Volume } from '@molstar/model/model/volume';
 import { type ApiContext, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
+import { isFailure } from '@molstar/prism-viewer/api/scope';
 
 // The scene steps a cryo-ET source's load shares (the portal's, EMPIAR's), by the viewer's operations. Apart from
 // `load-steps.ts` (fetches, progress, the cards' words), which the cards import and so stays without the viewer; apart
@@ -84,6 +85,29 @@ export async function sizePoints(ctx: ApiContext, particles: string): Promise<Ap
     if (!u.ok) return u;
   }
   return ApiResult.ok('');
+}
+
+/**
+ * An EMDB average (`load.entry`) beside the tomogram, its direct volume shown: its ref, or undefined and a warning. Done
+ * only when the entry made a volume: one already in the scene is "already loaded", a volume this load did not make.
+ */
+export async function loadAverage(ctx: ApiContext, emdb: string, warnings: string[]): Promise<string | undefined> {
+  let said = '';
+  const made = await added(ctx, volumeRefs, async () => {
+    const r = await ctx.api.run('load.entry', { source: 'emdb', id: emdb });
+    if (r.ok) said = r.did;
+    return r;
+  });
+  if (isFailure(made) || !made.length) {
+    warnings.push(`${emdb}: ${isFailure(made) ? made.message : `not loaded${said ? ` (${said})` : ''}`}`);
+    return undefined;
+  }
+  // one map, one volume
+  const [average] = made;
+  await besideTheTomogram(ctx, average);
+  const d = await showAverageVolume(ctx, average);
+  if (!d.ok) warnings.push(`${emdb}: no direct volume: ${d.message}`);
+  return average;
 }
 
 /**

@@ -35,12 +35,11 @@ import {
 } from './empiar-entry.js';
 import {
   added,
-  besideTheTomogram,
   downloadUrlAbove,
   LargeBytes,
   listRefs,
+  loadAverage,
   loadResult,
-  showAverageVolume,
   sizeGuard,
   sizePoints,
   volumeRefs,
@@ -331,19 +330,6 @@ function pickFiles(
     else picked.push(f);
   }
   return { files: picked, skipped };
-}
-
-/** The EMDB average beside the tomogram, as the portal's (its ref), or a warning */
-async function loadAverage(ctx: ApiContext, emdb: string, warnings: string[]): Promise<string | undefined> {
-  const made = await added(ctx, volumeRefs, () => ctx.api.run('load.entry', { source: 'emdb', id: emdb }));
-  if (isFailure(made) || !made.length) {
-    warnings.push(`${emdb}: ${isFailure(made) ? made.message : 'not loaded'}`);
-    return undefined;
-  }
-  await besideTheTomogram(ctx, made[0]);
-  const d = await showAverageVolume(ctx, made[0]);
-  if (!d.ok) warnings.push(`${emdb}: no direct volume: ${d.message}`);
-  return made[0];
 }
 
 /** One file by its kind (_spec/empiar.md §2): true loaded, false skipped (a warning), or why it failed */

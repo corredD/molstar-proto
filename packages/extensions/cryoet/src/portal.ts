@@ -60,12 +60,11 @@ import {
 import {
   added,
   besideMatrix,
-  besideTheTomogram,
   downloadUrlAbove,
   LargeBytes,
   listRefs,
+  loadAverage,
   loadResult,
-  showAverageVolume,
   sizeGuard,
   sizePoints,
   volumeRefs,
@@ -466,18 +465,7 @@ export class CryoetPortalApi extends ApiArea {
         done.push(`tilt series ${ts.id} (level ${tsLevel.path}, ${ts.angles.length} images)`);
       }
       const emdb = new Set(entries.map((e) => ds.decorations?.[e.object]?.emdb).filter((x): x is string => !!x));
-      for (const id of emdb) {
-        const made = await added(ctx, volumeRefs, () => ctx.api.run('load.entry', { source: 'emdb', id }));
-        if (isFailure(made)) warnings.push(`${id}: ${made.message}`);
-        else {
-          for (const ref of made) {
-            await besideTheTomogram(ctx, ref);
-            const d = await showAverageVolume(ctx, ref);
-            if (!d.ok) warnings.push(`${id}: no direct volume: ${d.message}`);
-          }
-          done.push(id);
-        }
-      }
+      for (const id of emdb) if (await loadAverage(ctx, id, warnings)) done.push(id);
       return loadResult(info.run.name, `${ds.id} ${info.run.name}`, done, warnings);
     },
   });

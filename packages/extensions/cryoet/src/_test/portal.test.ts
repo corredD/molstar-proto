@@ -17,6 +17,8 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { ViewerExtension } from '@molstar/prism-viewer/spec';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { getOmeZarrLevel, omeZarrLevelNeeds, VolumeFromOmeZarr } from '@molstar/plugin/state/formats/volume/ome-zarr';
+import { Download } from '@molstar/plugin/state/transforms/data/fetch';
+import { ParseJson } from '@molstar/plugin/state/transforms/data/json';
 import { VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
 import { particleListData } from '../operations.js';
 import {
@@ -556,6 +558,24 @@ describe('cryoetPortal', () => {
     expectOk(r);
     expect(r.warnings?.join(' ')).toMatch(/1CBS/);
     expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(1);
+  });
+
+  // review D1: `load.entry` answers "already loaded" and makes nothing; the average is then not one the load made
+  it('says an EMDB average that made nothing, and does not count it loaded', async () => {
+    serve([[/emd-1-seed$/, () => '{}']]);
+    const decorations = { ribosome: { pdb: '1CBS', emdb: 'EMD-1' } };
+    const v = await viewer({ ...source, dataset: async () => ({ ...dataset, decorations }) });
+    // EMD-1 as `load.entry` finds it in the scene: a download by its label, with a result under it
+    await v.plugin
+      .build()
+      .toRoot()
+      .apply(Download, { url: 'https://x/emd-1-seed', label: 'PDBe EMD Density Server: EMD-1' })
+      .apply(ParseJson)
+      .commit();
+    const r = await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', annotations: '5', as: 'none' });
+    expectOk(r);
+    expect(r.did).toBe('Loaded 1 TS_01: ribosome (OrientedPoint).');
+    expect(r.warnings?.join(' ')).toMatch(/^EMD-1: not loaded \(EMD-1 is already loaded\.\)$/);
   });
 
   it('leaves nothing when a file fails midway (the tomogram opened before it)', async () => {
