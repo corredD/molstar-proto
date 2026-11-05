@@ -553,6 +553,35 @@ describe('empiar.load', () => {
     expect(v.plugin.managers.asset.tryFindUrl(g.url())).toBeUndefined();
   });
 
+  // review F3a: the shared download was bound to the first load's signal: cancelling it failed the other load ("Could
+  // not read … aborted"); cancelling the other did nothing until the first ended
+  it('cancels only the load whose signal ends: a shared download goes on for the other', async () => {
+    const stub = serve();
+    const files = '80S_ribosome_CHX.star';
+    const g = gated(stub, files);
+    const v = await viewer();
+    const two = { id: 12534, run: 'YTC041_1_lam1_2_ts_002', files, emdb: 'none' };
+    const stopA = new AbortController();
+    const a = v.api.run('empiar.load', { ...load, files, emdb: 'none' }, { signal: stopA.signal });
+    await until(() => !!v.api.empiar!.fetching.value);
+    const stopB = new AbortController();
+    const b = v.api.run('empiar.load', two, { signal: stopB.signal });
+    const stopC = new AbortController();
+    let cDone = false;
+    const c = v.api.run('empiar.load', two, { signal: stopC.signal }).finally(() => (cDone = true));
+    await new Promise((r) => setTimeout(r, 20));
+    stopA.abort();
+    expect(await a).toMatchObject({ ok: false, code: 'aborted' });
+    // C ends at its own cancel, the download still under way for B
+    stopC.abort();
+    await until(() => cDone);
+    expect(await c).toMatchObject({ ok: false, code: 'aborted' });
+    g.release();
+    expectOk(await b);
+    expect(g.fetches()).toBe(1);
+    expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(1);
+  });
+
   // night review S3-like inconsistency: a named file that cannot load failed the whole load, where the portal warns
   it('warns of a named file that cannot load and loads the rest, as the portal does', async () => {
     serve();

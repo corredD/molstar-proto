@@ -45,12 +45,12 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
 - **The download is outside the history step** (night review B2): the history runs its steps one at a time, and a file
   from EBI takes up to hours, which held every other edit. `empiar.load` (no step of its own) fetches the files first
   into the plugin's assets (`FetchAhead`, `src/load-steps.ts`: one download per address, its progress a state, the
-  call's signal cancels it, a stalled one too), then runs `empiar.build` (the step, `record: false`, no tool), whose
-  `Download`s read them from memory. A cancel or a failed download leaves no step and nothing in the scene. Each load
-  holds its files until its step has read them (`release`); a file above 64 MB (`EmpiarKeepBytes`) is let go at the last
-  hold, so a load sharing it, its step queued, does not read it again inside that step (review F3c); a smaller one (a
-  STAR every run of a condition shares) is kept for the next load. An undo then a redo reads the file again (its
-  `Download` runs again), inside that step.
+  call's signal ends its own wait, a stalled one's too; the download stops when every call waiting for it has, review
+  F3a), then runs `empiar.build` (the step, `record: false`, no tool), whose `Download`s read them from memory. A cancel
+  or a failed download leaves no step and nothing in the scene. Each load holds its files until its step has read them
+  (`release`); a file above 64 MB (`EmpiarKeepBytes`) is let go at the last hold, so a load sharing it, its step queued,
+  does not read it again inside that step (review F3c); a smaller one (a STAR every run of a condition shares) is kept
+  for the next load. An undo then a redo reads the file again (its `Download` runs again), inside that step.
 - **MRCs are read whole, without the format's own visual** (`Ccp4Provider.parse`, no `visuals`): `load.url`'s isosurface
   of a 218 M voxel tomogram costs seconds and memory, only to be hidden by its slices. Tomogram: its three slices
   (`cryoet.slices`), no direct volume (an 875 MB 3D texture). Mask: an isosurface at absolute 0.5 (labels 0, 1, 2). Tilt

@@ -34,15 +34,23 @@ export function once<T>(reads: Map<string, Promise<unknown>>, key: string, read:
   return p;
 }
 
+/** A download several loads may wait for: its own signal, aborted when every load waiting for it is cancelled */
+interface Shared {
+  readonly done: Promise<void>;
+  readonly stop: AbortController;
+  waiters: number;
+}
+
 /**
  * Files fetched ahead of a load's step, into the plugin's assets: the step's `Download` of the same address finds them
  * there (`Asset.getUrlAsset`) and reads no network. A file one load fetches another waits for. Each `fetch` holds its
  * file until its `release`: the file goes at the last one (review F3c: the first load to end let go of a file another,
  * its step still queued, had to read again inside that step). The progress of the one under way is a state (the card's
- * line); the caller's signal cancels it.
+ * line). A caller's signal ends its own wait; the download stops when every caller waiting for it has (review F3a: it
+ * was the first caller's, whose cancel failed the others).
  */
 export class FetchAhead {
-  private readonly fetching = new Map<string, Promise<unknown>>();
+  private readonly fetching = new Map<string, Shared>();
   /** The `fetch`es not released yet, by address */
   private readonly holds = new Map<string, number>();
   private readonly now = observableState<FetchProgress | undefined>(undefined);
@@ -54,14 +62,19 @@ export class FetchAhead {
   /** `url` in the plugin's assets, fetched unless it is there already; held until `release` (whatever the outcome) */
   fetch(url: string, at: Pick<FetchProgress, 'name' | 'index' | 'count'>, signal?: AbortSignal): Promise<unknown> {
     this.holds.set(url, (this.holds.get(url) ?? 0) + 1);
+    if (this.plugin.managers.asset.tryFindUrl(url)) return Promise.resolve();
+    return this.wait(url, this.fetching.get(url) ?? this.start(url, at), signal);
+  }
+
+  private start(url: string, at: Pick<FetchProgress, 'name' | 'index' | 'count'>): Shared {
+    const stop = new AbortController();
     const assets = this.plugin.managers.asset;
-    if (assets.tryFindUrl(url)) return Promise.resolve();
-    return once(this.fetching, url, async () => {
+    const read = async () => {
       const started = Date.now();
       const show = (loaded: number, total: number) => this.now.set({ ...at, loaded, total, started });
       show(0, 0);
       try {
-        const bytes = await fetchData({ url, type: 'binary', signal }).run((p) => {
+        const bytes = await fetchData({ url, type: 'binary', signal: stop.signal }).run((p) => {
           const { current, max, isIndeterminate } = p.root.progress;
           show(current, isIndeterminate ? 0 : max);
         }, 250);
@@ -69,9 +82,40 @@ export class FetchAhead {
       } catch (e) {
         throw new Error(`Could not read ${url}: ${messageOf(e)}`);
       } finally {
-        this.fetching.delete(url);
+        if (this.fetching.get(url)?.stop === stop) this.fetching.delete(url);
         this.now.set(undefined);
       }
+    };
+    const d: Shared = { done: read(), stop, waiters: 0 };
+    // its waiters say its failure; one that every waiter left fails unheard
+    d.done.catch(() => {});
+    this.fetching.set(url, d);
+    return d;
+  }
+
+  /** A caller's wait for a download: ended by its signal; the download stops when its last waiter leaves */
+  private wait(url: string, d: Shared, signal?: AbortSignal): Promise<void> {
+    d.waiters++;
+    return new Promise<void>((resolve, reject) => {
+      const leave = () => {
+        reject(new Error(`Could not read ${url}: ${messageOf(signal?.reason ?? 'aborted')}`));
+        if (--d.waiters > 0) return;
+        // a fetch from now on starts another
+        if (this.fetching.get(url) === d) this.fetching.delete(url);
+        d.stop.abort(signal?.reason);
+      };
+      if (signal?.aborted) return leave();
+      signal?.addEventListener('abort', leave, { once: true });
+      d.done.then(
+        () => {
+          signal?.removeEventListener('abort', leave);
+          resolve();
+        },
+        (e: unknown) => {
+          signal?.removeEventListener('abort', leave);
+          reject(e);
+        },
+      );
     });
   }
 
