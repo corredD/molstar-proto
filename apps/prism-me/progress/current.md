@@ -6,24 +6,21 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-- **Bug fixes from the night review** (Ludo, 2026-11-05 morning: "bug fix"; stopped for a session restart, restarted
-  2026-11-05 on Ludo's "yes continue", three lanes, Sonnet; report
+- **Bug fixes from the night review** (Ludo, 2026-11-05: "bug fix"; restarted on "yes continue"; report
   [2026-11-05-night-report.md](2026-11-05-night-report.md), findings in [2026-11-05-night/](2026-11-05-night/)):
-  - `night-fixes`, **PR #57** (`me/night-fixes`, port 1354): F1 `0925b06e4`, A1 `df5e96130`, F2 `f5c66bfd6`, F16
-    `51ae90b7a`; resumed at A3 (uncommitted), then A4, A6, F5, cssColor, perf, F7; gate.
-  - PR #56 fix round (`me/empiar`, port 1353): B2 `36b7a7ac1`; resumed at the card races (uncommitted, a new
-    `card-common.tsx`), then units, failures, dedup; gate.
-  - `scene-sync-undo` (library, from master; `~/prism-me-lanes/scene-sync-undo` and `-pm`): test + fix pushed
-    (`24abc06f8` on master base, cherry-picked to `me/scene-sync-undo-pm` `f97c89c16`); resumed at the gate, then the PR
-    of `-pm` to prism-me (the master branch kept for upstream).
+  - **Merged 2026-11-05:** #58 (`scene-sync-undo`: undo after a portal or EMPIAR load no longer throws;
+    [progress](2026-11-05-scene-sync-undo.md); `me/scene-sync-undo` from master kept on the fork for upstream) and #56
+    (EMPIAR steps A, B and the fix round: download outside the history step, card races, MB, warnings, `load-scene.ts`;
+    [progress](2026-11-04-empiar.md)). Lanes closed. Left in TODO.md: the tomogram held twice (a library release on
+    `Data.ResponseBody`), the fetch-ahead's third copy to measure, a second run's average.
+  - `night-fixes`, **PR #57**, draft (`me/night-fixes`, port 1354; [progress](2026-11-05-night-fixes.md)): 14 findings
+    fixed, gate done. Waits on Ludo: smoothness on HIV against prism-me (1343), the two library commits (A7 in
+    `packages/model`, `parseColor` into prism-ui), a color file's `"1, 0, 0"` now read as 0-255.
 
 - **Started 2026-11-04** (Ludo: "start two lanes, fast-slice and empiar"; "start by full resolution, and we will
   optimize after"):
   - `fast-slice`: **PR #55 merged** by Ludo (2026-11-04). A level-0 step on TS_08 273 → 87 ms, pixels identical
     ([progress](2026-11-04-fast-slice.md)). Lane closed; `me/fast-slice` (from master) kept on the fork for upstream.
-  - `empiar` (`me/empiar` from `origin/prism-me`, `~/prism-me-lanes/empiar`, port 1353; [brief](2026-11-04-empiar.md)):
-    steps A and B of [the plan](../plans/2026-11-04-empiar.md), tomograms at full resolution (size asked first). Binning
-    on the fly recorded in the plan's step C, not decided.
 - **Merged 2026-11-04:** #50 (tree row tooltips), #51 (colors by zoom on at load for cellPACK and PetWorld, edges 0.27 /
   2.2 / 28.8 px, kept over Look colors), #52 (a label on a selection), #53 (the forms follow a drag, one checkpoint per
   gesture; level 0 measured: `createGridImage` 89 %, proposal in TODO), #54 (portal names, the tilt series under its
