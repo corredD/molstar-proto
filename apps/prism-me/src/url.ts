@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { empiarIdOf } from '@molstar/cryoet-extension/empiar-entry';
 import { TiltSeriesPlaces } from '@molstar/cryoet-extension/portal-run';
 import { parseSearch } from '@molstar/prism-viewer/features/loaders';
 
@@ -53,6 +54,18 @@ export function portalLoadOf(search: string): Record<string, unknown> | undefine
     ...(whole(tiltSeriesLevel) ? { tiltSeriesLevel: Number(tiltSeriesLevel) } : {}),
     ...(TiltSeriesPlaces.some(([p]) => p === place) ? { tiltSeriesPlace: place } : {}),
   };
+}
+
+/** EMPIAR's (extensions/cryoet/_spec/empiar.md §5): `?empiar=12534`, then `empiar-run` */
+export const EmpiarUrlParameters: readonly string[] = ['empiar', 'empiar-run'];
+
+/** The `empiar.open` values the URL asks for (the card on the entry, a run picked; nothing loads), if it names one */
+export function empiarOpenOf(search: string): { id: number; run?: string } | undefined {
+  const q = parseSearch(search);
+  const id = empiarIdOf(q.get('empiar') ?? '');
+  if (!id) return;
+  const run = q.get('empiar-run')?.trim();
+  return run ? { id, run } : { id };
 }
 
 /** The query string with the Mesoscale Explorer's load parameters renamed to the loaders' (unknown ones are kept). */

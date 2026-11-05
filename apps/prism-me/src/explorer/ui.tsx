@@ -8,6 +8,7 @@
 
 import { EmptyLoci } from '@molstar/model/model/loci';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
+import { EmpiarCard } from '@molstar/cryoet-extension/empiar-entry';
 import { PortalCard } from '@molstar/cryoet-extension/portal';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
@@ -636,6 +637,9 @@ function openItems(ctx: ViewerUIContext): ContextMenuItem[] {
     { id: 'examples', label: 'Examples…', run: () => void ctx.managers.commands.open('mesoscale.example') },
     ...(ctx.api.cryoetPortal
       ? [{ id: 'portal', label: 'CryoET Data Portal…', run: () => void ctx.api.view.open({ card: PortalCard }) }]
+      : []),
+    ...(ctx.api.empiar
+      ? [{ id: 'empiar', label: 'EMPIAR id…', run: () => void ctx.api.view.open({ card: EmpiarCard }) }]
       : []),
     { id: 'session', label: 'Session…', run: () => pickFiles(true) },
   ];

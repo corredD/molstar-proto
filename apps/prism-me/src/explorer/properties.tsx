@@ -348,8 +348,8 @@ export const Sections: readonly Section[] = [
       const cryoet = s.api.cryoet!;
       const volume = s.picked.node!.ref;
       if (s.picked.kind === 'volume') return <VolumeSlices api={s.api} cryoet={cryoet} volume={volume} />;
-      // a portal tilt series: its images' angles on the Z slice's row
-      const angles = s.api.cryoetPortal?.tiltAnglesOf(volume);
+      // a portal or EMPIAR tilt series: its images' angles on the Z slice's row
+      const angles = s.api.cryoetPortal?.tiltAnglesOf(volume) ?? s.api.empiar?.tiltAnglesOf(volume);
       return <Slice api={s.api} area={cryoet} volume={volume} axis={sliceAxis(s)!} angles={angles} />;
     },
   },
@@ -1139,7 +1139,7 @@ async function addOblique(api: ViewerApi, cryoet: CryoetApi, volume: string) {
 function VolumeSlices(props: { api: ViewerApi; cryoet: CryoetApi; volume: string }) {
   const { api, cryoet, volume } = props;
   const info = cryoet.sliceState(volume);
-  const angles = api.cryoetPortal?.tiltAnglesOf(volume);
+  const angles = api.cryoetPortal?.tiltAnglesOf(volume) ?? api.empiar?.tiltAnglesOf(volume);
   return (
     <div class={classes.stack}>
       <For each={mapState(info, (i) => i?.slices.map((x) => x.axis) ?? [])} by={(a) => a}>

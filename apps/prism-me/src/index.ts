@@ -13,7 +13,14 @@ import { modesFromUrl, unknownUrlParameters } from '@molstar/prism-viewer-app/ur
 import { SceneTab } from './explorer/ui.js';
 import { applyMesoscaleHandleLook } from './look.js';
 import { createMesoscaleExplorerSpec } from './spec.js';
-import { MesoscaleUrlParameters, PortalUrlParameters, portalLoadOf, toLoaderSearch } from './url.js';
+import {
+  EmpiarUrlParameters,
+  empiarOpenOf,
+  MesoscaleUrlParameters,
+  PortalUrlParameters,
+  portalLoadOf,
+  toLoaderSearch,
+} from './url.js';
 
 // The Mesoscale Explorer on Prism (_spec/README.md): the page, the spec and the viewer, exposed on `window.molstar`.
 // The URL's loads run once the viewer is created, as the loaders feature's operations.
@@ -37,6 +44,7 @@ async function main() {
     ...LoadUrlParameters,
     ...MesoscaleUrlParameters,
     ...PortalUrlParameters,
+    ...EmpiarUrlParameters,
   ]);
   if (unknown.length) console.info(`Ignored URL parameters (not known to the explorer): ${unknown.join(', ')}`);
   const params = parseSearch(search);
@@ -57,6 +65,9 @@ async function main() {
       .then((r) => (r.ok ? r.warnings?.forEach((w) => console.warn(w)) : console.error(r.message)))
       .catch((e: unknown) => console.error(e));
   }
+  // EMPIAR's: `?empiar=12534&empiar-run=YTC041_1_lam1_1_ts_003`, its card open on the entry (nothing loads)
+  const empiar = empiarOpenOf(location.search);
+  if (empiar) viewer.api.run('empiar.open', empiar).catch((e: unknown) => console.error(e));
 }
 
 main().catch((e) => {
