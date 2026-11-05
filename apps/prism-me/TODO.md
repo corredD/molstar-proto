@@ -127,6 +127,12 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   Delphine; a level read already sent is not cancelled (`cryoet.level`, review X2). An unbounded interval's ends cannot
   cross (v5's can, reversing a colour scale: Ludo may want that back).
 
+- **EMPIAR by id** (planned 2026-11-04, not started; Ludo to say go): an EMPIAR id in, the entry walked live (its API
+  and its file listings are open to browsers: no index), a picker of its runs and files with their sizes, what is picked
+  loaded in one step. Example EMPIAR-12534 (tomograms, tilt series, RELION STAR particles at bin 2, label masks, `.hff`
+  surfaces). Open: an 834 MB tomogram (slices by range, or converted once). Plan:
+  [plans/2026-11-04-empiar.md](plans/2026-11-04-empiar.md).
+
 - A sphere a clip plane misses entirely (its center is past the plane by more than its radius): skip it in the color
   pass, and skip one the plane misses in the ghost pass (lane `marking-cost`, not built;
   `progress/2026-10-31-marking-cost.md`). A cone or a scaled sphere is not a safe radius test. It needs a rendered pixel
