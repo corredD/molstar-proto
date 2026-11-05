@@ -14,7 +14,8 @@ import type { MesoEntity } from './model.js';
 //   full cellPACK name, `<compartment path>.<entity>` (`root.HIVenvelop_mature.HIV_capsid.surface.proteins.HIV1_CA_mono_0_1_0`),
 //   the value `{ "x": r, "y": g, "z": b }`, integers in 0-255 (`Color.fromRgb`, as v5 reads it). Unlike v5, a value
 //   with a fraction (a 0-1 color) is not a color here (reported in `invalid`), where v5 drew it near black;
-// - a plain map: the key the entity's name, the value a CSS color (`#rrggbb`, `#rgb`, a color name).
+// - a plain map: the key the entity's name, the value a color as Prism's picker reads it (`#rrggbb`, `#rgb`, a color name, `rgb()`, `hsl()`, channels `r, g, b`; a bare
+// `123` is hex).
 // A key is the entity's name as the particle list has it, else its last dotted part (the compartment path is not
 // checked): the particle model names a cellPACK entity by that part alone, one entity for a name found in several
 // compartments. Two keys for one entity (its copies in two compartments, which v5 colored apart): the last color is

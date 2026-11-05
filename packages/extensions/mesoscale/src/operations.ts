@@ -261,7 +261,11 @@ export class MesoscaleApi extends ApiArea {
       if (isFailure(ids)) return ids;
       const parsed = color ? cssColor(color) : undefined;
       if (color && parsed === undefined) {
-        return ApiResult.fail('invalid', `'${color}' is not a color.`, 'Give a color name (tomato) or #rrggbb.');
+        return ApiResult.fail(
+          'invalid',
+          `'${color}' is not a color.`,
+          'Give a color name (tomato), #rrggbb, rgb() or hsl().',
+        );
       }
       const patch: Partial<EntityStyle> = {
         ...(visible !== undefined ? { visible } : {}),
@@ -309,7 +313,11 @@ export class MesoscaleApi extends ApiArea {
       if (isFailure(ids)) return ids;
       const uniform = scheme === 'uniform' ? cssColor(color) : undefined;
       if (scheme === 'uniform' && uniform === undefined) {
-        return ApiResult.fail('invalid', `'${color}' is not a color.`, 'Give a color name (tomato) or #rrggbb.');
+        return ApiResult.fail(
+          'invalid',
+          `'${color}' is not a color.`,
+          'Give a color name (tomato), #rrggbb, rgb() or hsl().',
+        );
       }
       const data = dataOf(l)!;
       const generated =
@@ -527,8 +535,8 @@ export class MesoscaleApi extends ApiArea {
         b.to(r).update(next);
         nodes.push(r.transform.ref);
       }
-      if (!nodes.length) return ApiResult.already('The colors already follow the zoom so.');
-      await b.commit();
+      if (!nodes.length && !uniform.length) return ApiResult.already('The colors already follow the zoom so.');
+      if (nodes.length) await b.commit();
       if (on === false) return ApiResult.ok('Colors no longer follow the zoom.', { nodes });
       for (const [ref, value] of uniform) {
         const r = await ctx.api.run('mesoscale.theme', {
@@ -670,7 +678,11 @@ export class MesoscaleApi extends ApiArea {
       if (!refs.length) return ApiResult.fail('invalid', 'Which objects?', 'Give their state refs.');
       const one = theme === 'uniform' ? cssColor(color) : undefined;
       if (theme === 'uniform' && one === undefined) {
-        return ApiResult.fail('invalid', `'${color}' is not a color.`, 'Give a color name (tomato) or #rrggbb.');
+        return ApiResult.fail(
+          'invalid',
+          `'${color}' is not a color.`,
+          'Give a color name (tomato), #rrggbb, rgb() or hsl().',
+        );
       }
       const byRef = new Map(graphicsObjects(ctx).map((o) => [o.cell.transform.ref, o]));
       const lists = new Map(

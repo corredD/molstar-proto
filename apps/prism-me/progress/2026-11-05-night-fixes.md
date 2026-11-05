@@ -3,7 +3,8 @@
 ## Built
 
 One commit per finding of the night reviews (`2026-11-05-night/review-app.md`, `review-mesoscale-stage.md`), the finding
-id in each message, a failing test first (a `*.scaling.ts` guard, with its control, for the perf ones):
+id in each message, a failing test first (a `*.scaling.ts` guard for A7 and A8's `wayOf` (with the quadratic control), a
+model test for F6 and an identity test for A9):
 
 - Bugs: F1 (handle release through `stage.move`), A1 (Remove with its labels, one step), F2 (a mesh's clip moves with
   it), F16 (`stage.scale` carries labels and clips), A3 (a picked row whose cell is gone is unpicked), A4 (right-click
@@ -33,6 +34,14 @@ id in each message, a failing test first (a `*.scaling.ts` guard, with its contr
   (a build artefact; not from this lane).
 
 ## Left open
+
+- A8's `shownState` and `entitiesOf` have no guard of their own (`entitiesOf` is private; `shownState` is a watched
+  state).
+- F5 runs one nested `mesoscale.theme` per uniform list (one history step, k+1 commits); the run restores all on a
+  failure.
+- The review gate: A3's group-row case refuted (Group by is shown only with the model picked, which replaces the pick);
+  the misplaced-doc and distance-in-`particleBehind` findings refuted.
+- Library-side commits for Ludo's call: A7 (`packages/model`) and the `parse-color.ts` move (`packages/prism/ui`).
 
 - A2, A5, A9's wider debt (JSON compare per change), D1-D8, E1-E3, B1: not bugs of this lane's list; design or
   duplication, to TODO.md by Ludo's call.

@@ -7,7 +7,7 @@
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import { type ParticleList, Particle } from '@molstar/model/model/particles/particle-list';
 import { expect, it } from 'vitest';
-import { checkLinear, scaling } from '../../../../../packages/sequences/core/_test/model/scaling.js';
+import { checkLinear, quadraticControl, scaling } from '../../../../../packages/sequences/core/_test/model/scaling.js';
 
 // `Particle.selectLoci` over every entity of a list (`test:scaling`; A7): what a group row's hover and pick ask for.
 // Merging the entities' sets one at a time is O(entities x particles): 2.2 s at 16k entities, on a pointer event.
@@ -33,6 +33,10 @@ function list(entities: number): ParticleList {
     _propertyData: Object.create(null),
   } as unknown as ParticleList;
 }
+
+it('the positive control (a copy per item) is caught', () => {
+  checkLinear('quadratic control', scaling(quadraticControl, 2000), false);
+});
 
 it('Particle.selectLoci over every entity of a list', () => {
   const s = scaling(

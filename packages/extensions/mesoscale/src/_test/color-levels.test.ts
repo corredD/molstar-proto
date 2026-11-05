@@ -147,6 +147,23 @@ describe('colors that follow the zoom (mesoscale.colorLevels)', () => {
     expect(new Set(painted)).toEqual(new Set([Color(0xff6347)]));
   });
 
+  it('By zoom already on, then a uniform theme set by Prism: By zoom on again fixes the flat color (F5)', async () => {
+    const v = await viewer();
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expectOk(await v.api.run('mesoscale.colorLevels', { on: true }));
+    const rep = v.plugin.managers.particles.hierarchy.current.lists[0].representations[0].cell;
+    const params = rep.transform.params as Params;
+    await v.plugin
+      .build()
+      .to(rep)
+      .update({ ...params, colorTheme: { name: 'uniform', params: { value: Color(0xff6347) } } } as never)
+      .commit();
+    expect(reps(v).map((p) => p.colorTheme.name)).toEqual(['uniform']);
+    expect(list).toBeTruthy();
+    expectOk(await v.api.run('mesoscale.colorLevels', { on: true }));
+    expect(reps(v).map((p) => p.colorTheme.name)).toEqual(['particle-hierarchy']);
+  });
+
   it('a uniform Look color leaves By zoom on (Ludo, 2026-11-04)', async () => {
     const v = await viewer();
     const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;

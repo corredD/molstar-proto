@@ -5,11 +5,15 @@
  */
 
 import { expect, it } from 'vitest';
-import { checkLinear, scaling } from '../../../../../packages/sequences/core/_test/model/scaling.js';
+import { checkLinear, quadraticControl, scaling } from '../../../../../packages/sequences/core/_test/model/scaling.js';
 import { wayOf } from '../clips.js';
 
 // `wayOf` for a part of N entities, one record holding all of them (`test:scaling`; A8, AGENTS' "never `includes`"): it
 // runs on every state change while a clip's row is shown. `includes` per id reads about x16 at 4n.
+
+it('the positive control (a copy per item) is caught', () => {
+  checkLinear('quadratic control', scaling(quadraticControl, 2000), false);
+});
 
 it('wayOf of a part of N entities', () => {
   const s = scaling(
