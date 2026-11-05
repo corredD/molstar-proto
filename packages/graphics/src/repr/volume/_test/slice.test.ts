@@ -328,6 +328,13 @@ describe('grid slice image, built as before', () => {
     ['skewed, x fastest', () => gridVolume([5, 4, 3], [2, 1, 0], Skewed)],
     ['skewed, z fastest', () => gridVolume([4, 3, 5], [0, 1, 2], Skewed)],
     [
+      'skewed, a copied space (no strides)',
+      () => {
+        const v = gridVolume([4, 5, 3], [2, 1, 0], Skewed);
+        return { ...v, grid: { ...v.grid, cells: { ...v.grid.cells, space: { ...v.grid.cells.space } } } };
+      },
+    ],
+    [
       'periodic, every tile drawn',
       () =>
         gridVolume([3, 4, 2], [2, 1, 0], Scaled, {
