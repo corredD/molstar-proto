@@ -256,6 +256,7 @@ function lazySampledImageIndex(
           if (pixels) pixels.push(i);
           else map.set(k, [i]);
         }
+        mapped = undefined;
       }
       return map.get(key);
     },
