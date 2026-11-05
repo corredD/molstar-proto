@@ -16,12 +16,20 @@ import { clamp, normalize } from '@molstar/core/math/interpolate';
 import { packIntToRGBArray } from '@molstar/core/util/number-packing';
 import { cantorPairing, hashFnv32a } from '@molstar/core/data/util/hash-functions';
 import { PositionLocation } from '@molstar/graphics/geo/util/location-iterator';
-import type { Image } from '@molstar/graphics/geo/geometry/image/image';
+import { Image } from '@molstar/graphics/geo/geometry/image/image';
+import { transformPositionArray } from '@molstar/graphics/geo/util';
 import type { Theme } from '@molstar/graphics/theme/theme';
 import { SizeTheme } from '@molstar/graphics/theme/size';
 import { UniformColorTheme, UniformColorThemeParams } from '@molstar/graphics/theme/color/uniform';
 import { VolumeValueColorTheme, VolumeValueColorThemeParams } from '@molstar/graphics/theme/color/volume-value';
-import { applySliceObjectLoci, applySliceGroupIntervals, createImage, SliceParams, type SliceProps } from '../slice.js';
+import {
+  applySliceObjectLoci,
+  applySliceGroupIntervals,
+  createImage,
+  getSampledImage,
+  SliceParams,
+  type SliceProps,
+} from '../slice.js';
 import { createPeriodicVolume } from '../util.js';
 
 function createTestVolume(instanceCount: number, periodic = false, stats: Grid['stats'] = Grid.One.stats): Volume {
@@ -252,27 +260,133 @@ function referenceGridImage(volume: Volume, theme: Theme, props: SliceProps) {
   return { imageArray, groupArray, valueArray, mapping };
 }
 
-/**
- * The plane/frame sampler's index as it was built: each pixel that maps a cell, pushed in pixel order under its cell
- * (`cantorPairing(instance, cell)` when periodic). A pixel mapped a cell when it fell in the grid (its group packed, so
- * not zero) and, periodic, had an instance there (else its value was set to NaN; a periodic grid's samples wrap and are
- * never NaN on data without NaN)
- */
-function referenceSampledIndex(volume: Volume, image: Image) {
-  const { instance, cell } = image.meta.mapping as ReferenceMapping;
-  const group = image.groupTexture.ref.value.array;
-  const value = image.valueTexture.ref.value.array;
-  const periodic = Volume.isPeriodic(volume);
-  const index = new Map<number, number[]>();
-  for (let i = 0; i < instance.length; ++i) {
-    const packed = group[i * 4] !== 0 || group[i * 4 + 1] !== 0 || group[i * 4 + 2] !== 0;
-    if (!packed || (periodic && Number.isNaN(value[i]))) continue;
-    const key = periodic ? cantorPairing(instance[i], cell[i]) : cell[i];
-    const a = index.get(key);
-    if (a) a.push(i);
-    else index.set(key, [i]);
+/** The plane/frame sampler as it was built, kept as the reference (`getSampledImage` at c1b8ecb82) */
+function referenceSampledImage(
+  volume: Volume,
+  theme: Theme,
+  info: { m: Mat4; width: number; height: number },
+  isoValue: Volume.IsoValue,
+  trim: Image.Trim,
+  image?: Image,
+): Image {
+  const { m, width, height } = info;
+
+  const {
+    cells: { space },
+    stats,
+  } = volume.grid;
+  const { min, max } = stats;
+
+  const isUniform = theme.color.granularity === 'uniform';
+  const color = 'color' in theme.color && theme.color.color ? theme.color.color : () => Color(0xffffff);
+
+  const v = Vec3();
+
+  const gridToCartn = Grid.getGridToCartesianTransform(volume.grid);
+  const cartnToGrid = Mat4.invert(Mat4(), gridToCartn);
+  const [mx, my, mz] = space.dimensions;
+
+  const imageArray = new Uint8Array(width * height * 4);
+  const groupArray = new Uint8Array(width * height * 4);
+  const valueArray = new Float32Array(width * height);
+
+  const mapping: ReferenceMapping = {
+    instance: new Int16Array(width * height),
+    cell: new Uint32Array(width * height),
+    index: new Map(),
+  };
+
+  const gridCoords = Vec3();
+
+  const pl = PositionLocation(Vec3(), Vec3());
+  const getTrilinearlyInterpolated = Grid.makeGetTrilinearlyInterpolated(volume.grid, 'none');
+
+  const periodicMapping = Volume.getPeriodicMapping(volume);
+
+  let i = 0;
+  for (let ih = 0; ih < height; ++ih) {
+    for (let iw = 0; iw < width; ++iw) {
+      const i4 = i * 4;
+
+      const y = clamp(iw + 0.5, 0, width - 1) / width - 0.5;
+      const x = clamp(ih + 0.5, 0, height - 1) / height - 0.5;
+      Vec3.set(v, x, -y, 0);
+      Vec3.transformMat4(v, v, m);
+
+      Vec3.copy(gridCoords, v);
+      Vec3.transformMat4(gridCoords, gridCoords, cartnToGrid);
+
+      const ix = Math.trunc(gridCoords[0]);
+      const iy = Math.trunc(gridCoords[1]);
+      const iz = Math.trunc(gridCoords[2]);
+
+      Vec3.copy(pl.position, v);
+      const c = color(pl, false);
+      Color.toArray(c, imageArray, i4);
+
+      const val = normalize(getTrilinearlyInterpolated(v), min, max);
+      if (isUniform) {
+        imageArray[i4] *= val;
+        imageArray[i4 + 1] *= val;
+        imageArray[i4 + 2] *= val;
+      }
+      valueArray[i] = val;
+
+      if (ix >= 0 && ix < mx && iy >= 0 && iy < my && iz >= 0 && iz < mz) {
+        packIntToRGBArray(i, groupArray, i4);
+
+        if (periodicMapping) {
+          const pm = periodicMapping.get(ix, iy, iz);
+          if (pm) {
+            mapping.instance[i] = pm.instance;
+            mapping.cell[i] = pm.cell;
+            const key = cantorPairing(pm.instance, pm.cell);
+            if (mapping.index.has(key)) {
+              mapping.index.get(key)!.push(i);
+            } else {
+              mapping.index.set(key, [i]);
+            }
+          } else {
+            imageArray[i4] = 0;
+            imageArray[i4 + 1] = 0;
+            imageArray[i4 + 2] = 0;
+            imageArray[i4 + 3] = 0;
+            valueArray[i] = NaN;
+          }
+        } else {
+          const o = space.dataOffset(ix, iy, iz);
+          mapping.instance[i] = -1;
+          mapping.cell[i] = o;
+          if (mapping.index.has(o)) {
+            mapping.index.get(o)!.push(i);
+          } else {
+            mapping.index.set(o, [i]);
+          }
+        }
+      }
+
+      i += 1;
+    }
   }
-  return index;
+
+  const imageTexture = { width, height, array: imageArray, flipY: true };
+  const groupTexture = { width, height, array: groupArray, flipY: true };
+  const valueTexture = { width, height, array: valueArray, flipY: true };
+
+  const corners = new Float32Array([-0.5, 0.5, 0, 0.5, 0.5, 0, -0.5, -0.5, 0, 0.5, -0.5, 0]);
+  transformPositionArray(m, corners, 0, 4);
+
+  const isoLevel = clamp(normalize(Volume.IsoValue.toAbsolute(isoValue, stats).absoluteValue, min, max), 0, 1);
+
+  const im = Image.create(imageTexture, corners, groupTexture, valueTexture, trim, isoLevel, image);
+  im.setBoundingSphere(
+    Volume.isPeriodic(volume)
+      ? Volume.getBoundingSphere(volume, Interval.ofLength(volume.instances.length as Volume.InstanceIndex))
+      : Grid.getBoundingSphere(volume.grid),
+  );
+  im.meta.mapping = mapping;
+
+  return im;
 }
 
 /** A grid whose cell→Cartesian transform has entries no float represents exactly (a shear, thirds, an origin) */
@@ -476,23 +590,37 @@ describe('grid slice image, built as before', () => {
   }
 
   for (const [vName, makeVolume] of volumes) {
-    it(`${vName}: a plane or frame slice's index, as before`, async () => {
-      const volume = makeVolume();
+    it(`${vName}: a plane or frame sampler's pixels, values, mapping and index, as before`, () => {
+      const range = Volume.getPeriodicRange(makeVolume());
+      const volume = range ? createPeriodicVolume(makeVolume(), range.min, range.max) : makeVolume();
       const theme = valueTheme(volume);
-      const range = Volume.getPeriodicRange(volume);
-      const shown = range ? createPeriodicVolume(volume, range.min, range.max) : volume;
-      const center = Vec3.add(Vec3(), Grid.getBoundingSphere(shown.grid).center, Vec3.create(0.01, -0.02, 0.03));
-      const planes: Partial<SliceProps>[] = [
-        { mode: 'plane', plane: { point: center, normal: Vec3.create(1, 0.3, 0.2) } },
-        { mode: 'frame', axis: 'b', offset: 0.1, rotation: { axis: Vec3.create(1, 0, 0), angle: 20 } },
-        { mode: 'frame', axis: 'c', offset: -0.2, rotation: { axis: Vec3.create(0, 1, 1), angle: 0 } },
-      ];
-      for (const p of planes) {
-        const im = await createImage({} as any, volume, 0, theme, sliceProps(p));
-        const mapping = im.meta.mapping as { index: IndexLike };
-        const expected = referenceSampledIndex(volume, im);
-        expect(expected.size).toBeGreaterThan(0);
-        expectSameIndex(mapping.index, expected, keysOf(volume));
+      const sphere = Grid.getBoundingSphere(volume.grid);
+      const isoValue = Volume.IsoValue.relative(0.5);
+      const normals = [Vec3.create(1, 0.3, 0.2), Vec3.create(0, 0, 1), Vec3.create(-0.2, 1, 0.4)];
+      for (const n of normals) {
+        // an oblique plane through the volume's center, as wide as the volume, sampled 9 × 7
+        const m = Mat4.fromPlane(
+          Mat4(),
+          Vec3.normalize(Vec3(), n),
+          Vec3.add(Vec3(), sphere.center, Vec3.create(0.01, -0.02, 0.03)),
+        );
+        Mat4.scale(m, m, Vec3.create(sphere.radius * 2, sphere.radius * 2, sphere.radius * 2));
+        const info = { m, width: 9, height: 7 };
+        const trim = Image.createEmptyTrim();
+        const ref = referenceSampledImage(volume, theme, info, isoValue, trim);
+        const im = getSampledImage(volume, theme, info, isoValue, trim);
+        const at = `normal ${Array.from(n)}`;
+        expect(im.imageTexture.ref.value.array, at).toEqual(ref.imageTexture.ref.value.array);
+        expect(im.groupTexture.ref.value.array, at).toEqual(ref.groupTexture.ref.value.array);
+        expect(bytes(im.valueTexture.ref.value.array as Float32Array), at).toEqual(
+          bytes(ref.valueTexture.ref.value.array as Float32Array),
+        );
+        const mapping = im.meta.mapping as { instance: Int16Array; cell: Uint32Array; index: IndexLike };
+        const expected = ref.meta.mapping as ReferenceMapping;
+        expect(mapping.instance, at).toEqual(expected.instance);
+        expect(mapping.cell, at).toEqual(expected.cell);
+        expect(expected.index.size, at).toBeGreaterThan(0);
+        expectSameIndex(mapping.index, expected.index, keysOf(range ? makeVolume() : volume));
       }
     });
   }
