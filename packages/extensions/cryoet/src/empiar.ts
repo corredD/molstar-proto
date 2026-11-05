@@ -195,7 +195,10 @@ export class EmpiarApiArea extends ApiArea {
       const area = ctx.api.empiar!;
       const got = await runFiles(area, v);
       if (isFailure(got)) return got;
-      const { run, files } = got;
+      const { run } = got;
+      // a volume in the scene already is not read again (its step says so, review N2)
+      const inScene = volumeUrls(ctx);
+      const files = got.files.filter((f) => !inScene.has(fileUrl(v.id, f)));
       const bytes = files.reduce((n, f) => n + (f.bytes ?? 0), 0);
       const asked = sizeGuard(bytes, v.large, () => [
         `${run.stem}: ${totalLabel(bytes)} to read whole (${files.map((f) => `${f.kind} ${sizeLabel(f)}`).join(', ')}). From EBI: ${ebiTime(bytes)} at its usual speed.`,
@@ -351,6 +354,8 @@ async function loadFile(
   warnings: string[],
 ): Promise<ApiFailure | FileLoaded> {
   if (f.kind === 'particles') return loadParticles(ctx, url, f.name, run.stem, average, warnings);
+  // by its address: a raw `Download` has no identity of its own (review N2)
+  if (volumeUrls(ctx).has(url)) return 'already';
   const made = await loadMrc(ctx, url);
   if (isFailure(made)) return made;
   const kind = f.kind === 'tomogram' || f.kind === 'tilt-series' || f.kind === 'mask' ? f.kind : 'volume';
@@ -385,6 +390,16 @@ async function loadMrc(ctx: ApiContext, url: string): Promise<string[] | ApiFail
   } catch (e) {
     return ApiResult.fail('failed', `Could not read ${url}: ${(e as Error).message}`);
   }
+}
+
+/** The addresses the scene's volumes were downloaded from */
+function volumeUrls(ctx: ApiContext) {
+  const urls = new Set<string>();
+  for (const ref of volumeRefs(ctx)) {
+    const url = downloadUrlAbove(ctx, ref);
+    if (url) urls.add(url);
+  }
+  return urls;
 }
 
 /** A `.rawtlt`: one angle a line */

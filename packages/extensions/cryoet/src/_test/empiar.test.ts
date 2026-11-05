@@ -371,6 +371,24 @@ describe('empiar.load', () => {
     expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(1);
   });
 
+  // review N2: a run loaded again added its tomogram again (a raw `Download`, no identity), read from EBI again first
+  it('says a file of the run in the scene already loaded: not read again, not added again; the rest loads', async () => {
+    const fetch = serve();
+    const v = await viewer();
+    const tomogram = `${Run}.mrc_9.98Apx.mrc`;
+    expectOk(await v.api.run('empiar.load', { ...load, files: tomogram, emdb: 'none', large: true }));
+    const r = await v.api.run('empiar.load', { ...load, files: tomogram, emdb: 'none', large: true });
+    expect(r).toMatchObject({ ok: true, did: `${tomogram} is already loaded.` });
+    expect(v.plugin.managers.volume.hierarchy.current.volumes.length).toBe(1);
+    expect(fetch.mock.calls.filter((c) => String(c[0]).endsWith(tomogram)).length).toBe(1);
+    // with a file not loaded yet: that one loads, the other said; the size guard counts only what is read
+    const mask = `${Run}_labels.mrc`;
+    const both = await v.api.run('empiar.load', { ...load, files: `${tomogram},${mask}`, emdb: 'none' });
+    expectOk(both);
+    expect(both.warnings).toEqual([`${tomogram} is already loaded.`]);
+    expect(v.plugin.managers.volume.hierarchy.current.volumes.length).toBe(2);
+  });
+
   it("says when a list has none of the run's particles, and leaves nothing of it", async () => {
     serve((url) =>
       url.endsWith('.star') ? fixture('80S_ribosome_CHX.star').toString().replaceAll(Run, 'other') : undefined,

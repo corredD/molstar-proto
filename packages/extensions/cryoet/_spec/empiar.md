@@ -56,7 +56,8 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
   of a 218 M voxel tomogram costs seconds and memory, only to be hidden by its slices. Tomogram: its three slices
   (`cryoet.slices`), no direct volume (an 875 MB 3D texture). Mask: an isosurface at absolute 0.5 (labels 0, 1, 2). Tilt
   series: its Z slice (`cryoet.slice`, as portal.md §2), its angles from the run's `.rawtlt` on the Slice row. Another
-  MRC: an isosurface.
+  MRC: an isosurface. An MRC whose address a volume of the scene was downloaded from is "already loaded": not read
+  again, not counted by the size guard, not added (review N2).
 - **Particles:** the STAR read whole, then kept to the run's rows (`particles.source`: the names of its
   `rlnMicrographName`, else `rlnTomoName`, whose stem is the run's). None: the list removed, a warning. Decorated with
   the EMDB average (below), else spheres of 50 Å (`PointRadius`, `load-scene.ts`). The STAR is the condition's, shared
