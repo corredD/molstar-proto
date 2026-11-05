@@ -73,10 +73,12 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
     its matrix from the numbers above (CC 0.55).
 - **Size guard:** above `PortalLargeBytes` (512 MB) of picked files, a load fails with `confirm` until `large: true`.
   The card asks first ("…: 1263 MB to read whole (…). Load anyway?") and its second Load goes on.
-- **Measured load** (2026-11-04, M1, Chromium 1243 headed, prism-me dev build): the 834 MB tomogram alone, from a
-  same-origin copy, loads in 5.5 s. The renderer goes from 212 to 1834 MiB at its peak (about twice the file), the
-  browser's processes to 2184 MiB in all. From EBI the same file comes at about 150 KB/s a connection here (0.9 MB/s
-  over 12 ranged connections), so a whole-file load takes over an hour: the case for step C.
+- **Measured load** (2026-11-04, M1, Chromium 1243 headed, prism-me dev build; macOS `vmmap` peak physical footprint, as
+  an RSS sampler misses compressed pages and peaks): the 834 MB tomogram alone, from a same-origin copy, loads in
+  5.3–5.5 s, the renderer at 2.3 GB at its peak (1.9 GB after; JS heap 1.8 GiB, about twice the file), the GPU process
+  0.5 GB. The card's default run (with the mask, both STARs, EMD-48752): 28.7 s, renderer 4.8 GB at its peak, GPU
+  process 3.2 GB (the mask's isosurface over 218 M voxels). From EBI the files come at about 150 KB/s a connection here
+  (0.9 MB/s over 12 ranged connections), so a whole-file load takes over an hour: the case for step C.
 
 ## 4. The card
 
