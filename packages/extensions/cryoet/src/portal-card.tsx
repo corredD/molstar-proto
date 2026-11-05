@@ -7,12 +7,13 @@
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
-import { ActionFooter, For, ParamsForm, Show } from '@molstar/prism-ui';
+import { For, ParamsForm, Show } from '@molstar/prism-ui';
 import { latest } from '@molstar/prism-ui/dom/scoped';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { derive } from '@molstar/prism-ui/reactive/state';
+import { type CardContext, type CardRunResult, LoadAction, Muted } from './card-common.js';
 import type { PortalCatalog, PortalDataset } from './portal-index.js';
 import {
   entryBytes,
@@ -29,8 +30,6 @@ import {
 // spacings) and level (with their sizes), a tilt series and its level, the annotations to load, then Load (`cryoetPortal.load`). The fields are a
 // `ParamsForm` made from the index; a pick of dataset, run or tomogram makes the form again for what it holds. No viewer import: a story runs it over a fake.
 
-const Muted = 'margin: 0; color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
-
 /** What the form is made for: a dataset (read), a run and a tomogram of it (its spacing with it) */
 interface RunPick {
   readonly catalog: PortalCatalog;
@@ -39,20 +38,16 @@ interface RunPick {
   readonly tomogram?: number;
 }
 
-/** What a run of an operation answers, as the card reads it (the viewer's `ApiResult`, without depending on it) */
-export type PortalRunResult =
-  | { readonly ok: true; readonly did: string; readonly warnings?: readonly string[] }
-  | { readonly ok: false; readonly message: string; readonly hint?: string };
-
-/** How the card loads: the viewer's API (`ctx.api`), or a story's fake */
-export interface PortalPanelContext {
-  readonly api: { run(id: string, values: Record<string, unknown>): Promise<PortalRunResult> };
-}
+export type PortalRunResult = CardRunResult;
+export type PortalPanelContext = CardContext;
 
 export function PortalPanel(props: { ctx: PortalPanelContext; area: PortalPanelArea }) {
   const { ctx, area } = props;
   const pick = observableState<RunPick | undefined>(undefined);
   const problem = observableState('');
+  // one Load a panel: a pick remakes the form, not the load in flight (night review B4); kept by the area, so a card
+  // closed and opened again shows the load still running (review F2)
+  const action = LoadAction.of(area, ctx);
   const read = latest(
     async (
       _signal,
@@ -65,80 +60,86 @@ export function PortalPanel(props: { ctx: PortalPanelContext; area: PortalPanelA
       return { catalog, dataset, run, tomogram };
     },
   );
-  const choose = (catalog: PortalCatalog, id: number, run?: string, tomogram?: number) =>
-    read(catalog, id, run ?? '', tomogram).then(
-      (p) => p && pick.set(p),
-      (e: unknown) => problem.set((e as Error).message),
+  const choose = (catalog: PortalCatalog, id: number, run?: string, tomogram?: number) => {
+    problem.set('');
+    return read(catalog, id, run ?? '', tomogram).then(
+      (p) => {
+        if (p) pick.set(p);
+        return true;
+      },
+      (e: unknown) => {
+        problem.set((e as Error).message);
+        return false;
+      },
     );
+  };
   area.catalog().then(
-    (c) => (c.datasets.length ? choose(c, c.datasets[0].id) : problem.set('The portal index lists no dataset.')),
-    (e: unknown) => problem.set((e as Error).message),
+    (c) => void (c.datasets.length ? choose(c, c.datasets[0].id) : problem.set('The portal index lists no dataset.')),
+    (e: unknown) => void problem.set((e as Error).message),
   );
   const forms = mapState(pick.asReadonly, (p) => (p ? [p] : []));
   return (
     <div style="display: grid; gap: var(--msp-space-3); min-width: 0; padding: 0 var(--msp-space-3) var(--msp-space-3)">
       <Show when={mapState(problem.asReadonly, (m) => !!m)}>{() => <p style={Muted}>{problem.asReadonly}</p>}</Show>
       <For each={forms} by={(p) => `${p.dataset.id}/${p.run}/${p.tomogram ?? ''}`}>
-        {(p) => <RunForm ctx={ctx} area={area} pick={p} choose={choose} />}
+        {(p) => <RunForm action={action} area={area} pick={p} choose={choose} />}
       </For>
     </div>
   );
 }
 
 function RunForm(props: {
-  ctx: PortalPanelContext;
+  action: LoadAction;
   area: PortalPanelArea;
   pick: RunPick;
-  choose: (catalog: PortalCatalog, id: number, run?: string, tomogram?: number) => void;
+  choose: (catalog: PortalCatalog, id: number, run?: string, tomogram?: number) => Promise<boolean>;
 }) {
-  const { ctx, area, pick, choose } = props;
+  const { action, area, pick, choose } = props;
   const { catalog, dataset } = pick;
   const info = area.describe(dataset, pick.run, undefined, pick.tomogram);
   if ('ok' in info) return <p style={Muted}>{info.message}</p>;
   const params = runParams(catalog, dataset, info);
   const form = new ParamsFormModel(params, undefined, {
     onChange: (v, changed) => {
-      if (changed === 'dataset') choose(catalog, Number(v.dataset));
-      else if (changed === 'run') choose(catalog, dataset.id, v.run);
-      else if (changed === 'tomogram') choose(catalog, dataset.id, info.run.name, Number(v.tomogram));
+      // a read that fails puts its select back: the form shows the pick Load sends (EMPIAR's review S6, here B5)
+      const back = (ok: boolean) => {
+        if (!ok)
+          form.load({
+            ...form.values.value,
+            dataset: String(dataset.id),
+            run: info.run.name,
+            tomogram: String(info.tomogram?.id ?? ''),
+          });
+      };
+      if (changed === 'dataset') void choose(catalog, Number(v.dataset)).then(back);
+      else if (changed === 'run') void choose(catalog, dataset.id, v.run).then(back);
+      else if (changed === 'tomogram') void choose(catalog, dataset.id, info.run.name, Number(v.tomogram)).then(back);
     },
   });
-  const busy = observableState(false);
-  const said = observableState('');
   const size = derive(form.values, (v) =>
     mb(bytesOf(info, v.level, v.as, v.annotations) + tiltSeriesBytes(info, v.tiltSeries)),
   );
-  const load = async () => {
+  const load = () => {
     const v = form.values.value;
-    busy.set(true);
-    try {
-      // the size is in view beside Load: no second question past the guard
-      const r = await ctx.api.run('cryoetPortal.load', {
-        dataset: dataset.id,
-        run: info.run.name,
-        spacing: info.spacing.spacing,
-        ...(info.tomogram ? { tomogram: info.tomogram.id, level: Number(v.level) } : {}),
-        annotations: v.annotations.length ? v.annotations.join(',') : 'none',
-        as: v.as,
-        ...(v.tiltSeries.name !== 'none'
-          ? { tiltSeries: Number(v.tiltSeries.name), tiltSeriesLevel: Number(v.tiltSeries.params.level) }
-          : {}),
-        large: true,
-      });
-      said.set(r.ok ? [r.did, ...(r.warnings ?? [])].join(' ') : `${r.message}${r.hint ? ` ${r.hint}` : ''}`);
-    } catch (e) {
-      // a load that threw (a format's error out of the state's update) says so, and Load comes back
-      said.set((e as Error).message ?? String(e));
-    } finally {
-      busy.set(false);
-    }
+    // the size is in view beside Load: no second question past the guard
+    void action.run('cryoetPortal.load', {
+      dataset: dataset.id,
+      run: info.run.name,
+      spacing: info.spacing.spacing,
+      ...(info.tomogram ? { tomogram: info.tomogram.id, level: Number(v.level) } : {}),
+      annotations: v.annotations.length ? v.annotations.join(',') : 'none',
+      as: v.as,
+      ...(v.tiltSeries.name !== 'none'
+        ? { tiltSeries: Number(v.tiltSeries.name), tiltSeriesLevel: Number(v.tiltSeries.params.level) }
+        : {}),
+      large: true,
+    });
   };
   return (
     <div style="display: grid; gap: var(--msp-space-2); min-width: 0">
       <ParamsForm form={form} />
       {dataset.dois.length ? <p style={Muted}>{dataset.dois.map((d) => `doi:${d}`).join(' · ')}</p> : null}
-      <ActionFooter icon="download" label="Load" busy={busy.asReadonly} info={size} onApply={() => void load()} />
-      <Show when={mapState(said.asReadonly, (m) => !!m)}>{() => <p style={Muted}>{said.asReadonly}</p>}</Show>
+      {action.view({ info: size, onApply: load })}
     </div>
   );
 }

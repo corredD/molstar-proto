@@ -3,6 +3,7 @@
 Portal data (datasets → runs → voxel spacings → tomograms and annotations) loaded in the browser on a static site, no
 server of ours and no copick (`apps/prism-me/plans/2026-11-02-cryoet-portal.md`, Decision). Code: `src/portal-index.ts`
 (the format), `src/portal.ts` (the `cryoetPortal` area), `src/portal-run.ts` (a run and its sizes, plain functions),
+`src/load-scene.ts` (the scene steps the portal and EMPIAR share, apart from `load-steps.ts`, which the cards import),
 `src/portal-card.tsx` (the card, no viewer import: its story runs it over a fake), `src/portal-ui.tsx` (the card's
 registration); the index tool `tools/portal-index/`.
 
@@ -42,6 +43,10 @@ registration); the index tool `tools/portal-index/`.
   `2321/SegmentationMask`, `none`; empty: the portal's defaults), `as` (`both`: slices and a direct volume, `slices`,
   `none`), `tiltSeries` (an id; absent: none), `tiltSeriesLevel` (absent: the coarsest), `large`. `run` lists the run's
   tomograms and tilt series by the ids `load` takes.
+- **Its reads stay inside its step**, unlike EMPIAR's (empiar.md §2, night review B2): a tomogram is an OME-Zarr level
+  read chunk by chunk by the format's transforms (many addresses, not one file to fetch ahead), from the portal's CDN at
+  tens of MB/s (seconds, not EBI's hours). If a level ever takes long enough to hold other edits, the zarr's reader is
+  the place for it, not `FetchAhead`.
 - **Which tomogram** (`describePortalRun`; Ludo, 2026-11-03): `tomogram` by id, from whichever spacing of the run holds
   it (its spacing, annotations and levels come with it); `spacing` alone: that spacing's default tomogram, else its
   first; neither: the run's default tomogram, the lowest id flagged `default` (a run may flag one a spacing: 10518
@@ -79,9 +84,10 @@ registration); the index tool `tools/portal-index/`.
   read it). A point list keeps its file's name (`chloramphenicol_bound_70s_ribosome-1.0_orientedpoint.ndjson`):
   `load.url` names a download by its address.
 - **The pixel size is the index's voxel spacing**, never the zarr's scale: they differ in the third decimal.
-- **Points without a decoration are spheres of 50 Å** (`PortalPointRadius`; Ludo, 2026-11-03): their size theme's
-  `defaultSize`, not the list's radii (a shape decorating them later would scale by those). The theme's own fallback,
-  half the typical distance between neighbors, made 10453's 4 sparse V-ATPase picks spheres about 900 Å across.
+- **Points without a decoration are spheres of 50 Å** (`PointRadius`, `load-scene.ts`; Ludo, 2026-11-03): their size
+  theme's `defaultSize`, not the list's radii (a shape decorating them later would scale by those). The theme's own
+  fallback, half the typical distance between neighbors, made 10453's 4 sparse V-ATPase picks spheres about 900 Å
+  across.
 - An entry whose format the viewer has no reader for is listed with `needs` and skipped by a load, with a warning.
 - **Extra views warn, files fail:** a file that cannot be read fails the load (nothing is left); a direct volume the
   viewer cannot make, a decoration whose structure cannot be fetched, the EMDB average: warnings, the rest kept.

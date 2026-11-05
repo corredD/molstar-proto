@@ -5,6 +5,7 @@
  */
 
 import { CryoetExtension } from '@molstar/cryoet-extension/prism-viewer';
+import { EmpiarExtension } from '@molstar/cryoet-extension/empiar';
 import { CryoetPortalExtension, type PortalIndexSource } from '@molstar/cryoet-extension/portal';
 import type { PortalCatalog, PortalDataset } from '@molstar/cryoet-extension/portal-index';
 import { MesoscaleExtension } from '@molstar/mesoscale-extension/prism-viewer';
@@ -26,12 +27,13 @@ export const PortalIndex: PortalIndexSource = {
 
 /**
  * The extensions the Mesoscale Explorer adds to the Prism viewer with Mol*'s extensions (`FullPrismViewerSpec`):
- * mesoscale models, cryo-ET data (and the CryoET Data Portal's) and the stage tools (_spec/README.md).
+ * mesoscale models, cryo-ET data (the CryoET Data Portal's, EMPIAR's by id) and the stage tools (_spec/README.md).
  */
 export const MesoscaleExplorerExtensions: readonly (ViewerExtension | LazyViewerExtension)[] = [
   MesoscaleExtension,
   CryoetExtension,
   CryoetPortalExtension(PortalIndex),
+  EmpiarExtension,
   StageToolsExtension,
   ExplorerExtension,
 ];
