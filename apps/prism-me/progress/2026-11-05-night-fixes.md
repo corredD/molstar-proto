@@ -23,6 +23,9 @@ model test for F6 and an identity test for A9):
   fix is a lane from `origin/master`: Ludo decides whether to cherry-pick it there.
 - Agent: F13 changes colour parsing for the three extensions to the picker's (adds `rgb()`, `hsl()`, `#rgb`; a bare
   three-digit string is hex, as in the picker).
+- Ludo (2026-11-05): the two library commits (A7 in `packages/model`, `parseColor` moved into prism-ui) stay in this
+  branch only, no lane from master. F13 kept: a plain color file's text value reads as the picker reads it, so
+  `"1, 0, 0"` is a 0-255 color (near black), no longer invalid; v5's `{ x, y, z }` form is unchanged.
 - Agent: F5 reuses `mesoscale.theme` (nested run inside `colorLevels`) rather than copying its plan.
 
 ## Learned
