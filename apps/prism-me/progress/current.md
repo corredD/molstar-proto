@@ -8,17 +8,15 @@ is not built is [../TODO.md](../TODO.md).
 
 - **Started 2026-11-04** (Ludo: "start two lanes, fast-slice and empiar"; "start by full resolution, and we will
   optimize after"):
-  - `fast-slice` (`me/fast-slice` from `origin/master`, `~/prism-me-lanes/fast-slice`; cherry-picked onto
-    `me/fast-slice-pm` for the PR; port 1352; [brief](2026-11-04-fast-slice.md)): `createGridImage` cheaper (index,
-    colour, position), measured on TS_08 level 0 after each step; stops at ~130 ms and reports.
+  - `fast-slice`: **PR #55 merged** by Ludo (2026-11-04). A level-0 step on TS_08 273 → 87 ms, pixels identical
+    ([progress](2026-11-04-fast-slice.md)). Lane closed; `me/fast-slice` (from master) kept on the fork for upstream.
   - `empiar` (`me/empiar` from `origin/prism-me`, `~/prism-me-lanes/empiar`, port 1353; [brief](2026-11-04-empiar.md)):
     steps A and B of [the plan](../plans/2026-11-04-empiar.md), tomograms at full resolution (size asked first). Binning
     on the fly recorded in the plan's step C, not decided.
 - **Merged 2026-11-04:** #50 (tree row tooltips), #51 (colors by zoom on at load for cellPACK and PetWorld, edges 0.27 /
   2.2 / 28.8 px, kept over Look colors), #52 (a label on a selection), #53 (the forms follow a drag, one checkpoint per
   gesture; level 0 measured: `createGridImage` 89 %, proposal in TODO), #54 (portal names, the tilt series under its
-  tomogram turned, annotations' description, method and GO link). Lanes closed. Waiting on Ludo: the level-0 slice
-  speed-up as a library lane.
+  tomogram turned, annotations' description, method and GO link). Lanes closed. The level-0 slice speed-up: #55.
 - **The small items left by #46-#49** (Ludo, 2026-11-04, interviewed one by one; started 2026-11-04). Claude hit the
   5-hour limit at 09:29 (resets 12:20). Grok took the two that were still open:
   - `label-selection` (port 1348, [brief](2026-11-04-label-selection.md)): **PR #52**, ready. A label on a selection.

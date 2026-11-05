@@ -59,6 +59,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - Periodic volume slices drawn half a box away (`5affa6d17`).
 - Plane slice sized in voxels used as Å (`ea7dc5d3e`).
 - Gizmo: `rotate` axes option, `poseOfFrame`/`frameOfPose` (`ded144e8d`).
+- Grid slice image 3× faster, pixels identical (`me/fast-slice` from master: `3c92cb7ff`..`ad8665a13`; in prism-me by
+  #55; a `CHANGELOG.md` line, 5.x too).
 - MRC reader: mode 6, mode 12 (float16), `.rec`/`.st`/`.mrcs`/`.ali` (`33dbca0c5`, `59ef5aa38`).
 - A whole particle list's bounding sphere filled the wrong way (`me/particle-bounds`, `0927c892b`; in 5.x too).
 - WebGPU: a draw list recorded while the shared quad indices grew replayed the released buffer, nothing drawn until a
@@ -225,17 +227,9 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   undo steps (`gestureSteps`' quiet; the form has no release). A form's history label is the representation's when the
   form was made (a slice's axis changed in its form: still "Slice X"). The jsdom fakes of `api.group` do not model the
   history's lock (the headless tests do).
-- A slice step at level 0 (lane `live-forms`, item 7, measured 2026-11-04; Ludo: "Measure first"): on TS_08 level 0
-  (928×928×450, WebGPU) one Z step takes about 435 ms (366–526), 89 % of it the image build on the main thread
-  (`createGridImage`, `packages/graphics/src/repr/volume/slice.ts`, 387 ms a step), the texture upload about 12 ms, the
-  render about 3 ms, the GC 23 ms. The build's loop does, for each of the 861k pixels, a theme `color()` call and a
-  `Vec3.transformMat4` (even for a uniform theme), and a `mapping.index.set(o, [i])` (a Map of 861k entries, an array
-  each). Proposal, in this order: (1) a library lane from `origin/master` (upstream candidate): the pixel→cell index
-  made lazily or as a typed array (it is for picking), the color computed once for a uniform theme and the position
-  stepped instead of transformed; expected 3–5× (about 80–130 ms at level 0, a few slices more a second), the same for
-  every Mol* slice. (2) If still over a few frames: a coarser level while dragging (level 1, about 50 ms a step, only if
-  loaded already), the full level at the release. (3) A GPU-side slice (a 3D texture sampled in the shader) would make a
-  step a few ms but is a new representation: not before (1) is measured.
+- A slice step at level 0: (1) built, #55 (2026-11-04): TS_08 level 0 273 → 87 ms a Z step (the pixel→cell index
+  computed, not a Map; the position transform inlined; a uniform theme's colour once). Left, if a drag still lags: (2) a
+  coarser level while dragging, the full one at the release; (3) a GPU-side slice (a new representation).
 - The explorer mocks' checks in CI: `pnpm -C apps/prism-me styles:check` and `typecheck:storybook` run nowhere
   (`.github/workflows/node.yml` runs them for `packages/prism/*` only), so a stale `_generated` module or a story's type
   error stays green.
