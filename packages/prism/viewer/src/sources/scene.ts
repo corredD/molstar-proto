@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { type EmptiedComponent, emptiedComponentsOf, hiddenContents } from '../api/contents.js';
@@ -1755,9 +1756,10 @@ export function createSceneSource(
       for (const t of particleTrajectories.values()) t.refreshPlaying();
     }),
   );
-  // The rows are never built inside a state update, only once it ends (once a burst): the hierarchies are synced one
-  // after another then, each telling its subscribers, and one read before its turn still holds a cell the update removed
-  // (a volume's and a particle list's removed together: the volumes tell first, the particle list is still there).
+  // The rows are never built inside a state update, only once it ends (once a burst; view-models.md §3, after the
+  // transaction): the hierarchies are synced one after another then, each telling its subscribers, and one read before
+  // its turn still holds a cell the update removed (a volume's and a particle list's removed together: the volumes tell
+  // first, the particle list is still there).
   let syncStale = false;
   const syncWhenDone = () => {
     if (plugin.state.data.behaviors.isUpdating.value) {
