@@ -16,3 +16,8 @@
 - EMPIAR says sizes in MB of 10^6 bytes, as the portal and its 512 MB guard count (a listing's `834M` reads `875 MB`).
 - `empiar.load` warns of a named file that cannot load and loads the rest, as the portal does; its download runs outside
   the history step, with progress and Cancel.
+- `empiar.load` of another run of a condition loads that run's particles from the condition's STAR already in the scene
+  (its own list); a run, or a run's MRC, already in the scene is said "already loaded", not added or read again.
+- Loads that share a file share its download: a cancel ends only its own load, the file stays until the last of them has
+  built, and the card's progress shows the latest download under way ("Loading…" when none is). A card closed and opened
+  again shows the load still running, with its Cancel.
