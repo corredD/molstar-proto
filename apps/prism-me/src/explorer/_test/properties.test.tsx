@@ -13,10 +13,10 @@ import { ShellModel } from '@molstar/prism-ui/shell/shell';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
 import { removeObject } from '../menu.js';
-import { explorerUI, sceneModelOf } from '../ui.js';
+import { explorerUI, particleBehind, sceneModelOf } from '../ui.js';
 
 // The properties on their mock (_spec/ui.md §4), over a headless viewer in jsdom: 1CRN (data/examples), twice where a
 // category needs two objects. Prism's `SectionList` (open per section from pick to pick), the header naming the kind,
@@ -346,5 +346,16 @@ describe('the properties on their mock', () => {
     await until(() => model.picked.value?.node?.ref === ref);
     await removeObject(api, api.explorer!, 'structure', ref);
     await until(() => model.picked.value === undefined);
+  });
+
+  it('a right-click on a label has no particle behind it, so the label keeps its Move (A4)', async () => {
+    const v = await viewer();
+    const api = v.api.as({ kind: 'person' });
+    const area = api.explorer!;
+    const loci = { kind: 'x' } as never;
+    const spy = vi.spyOn(area, 'particleOf').mockReturnValue({ list: 'l', index: 3 });
+    expect(particleBehind(area, { kind: 'label' } as never, loci)).toBeUndefined();
+    expect(particleBehind(area, { kind: 'structure' } as never, loci)).toEqual({ list: 'l', index: 3 });
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

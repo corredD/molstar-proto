@@ -6,7 +6,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { EmptyLoci } from '@molstar/model/model/loci';
+import { EmptyLoci, type Loci } from '@molstar/model/model/loci';
 import type { DecorationsInfo } from '@molstar/cryoet-extension/operations';
 import { PortalCard } from '@molstar/cryoet-extension/portal';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
@@ -156,7 +156,7 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
         loci: request.loci,
       });
       // a particle picked: its local handle, on it alone (All off) or on its kind's offset (All on)
-      const particle = area.particleOf(request.loci);
+      const particle = particleBehind(area, p, request.loci);
       const handles = stage.useParticleHandles(ctx.api);
       if (particle) {
         const kind = area.particleKind(particle.list, particle.index);
@@ -193,6 +193,14 @@ export function explorerUI(ctx: ViewerUIContext): ViewerExtensionUI {
       },
     ],
   };
+}
+
+/**
+ * The particle a right-click is on, for its handle items: none when the click is on a label, whose text is measured on
+ * screen and has a particle behind it (the one it is anchored to), so the label keeps its own Move
+ */
+export function particleBehind(area: ExplorerApi, picked: PickedNode | undefined, loci: Loci) {
+  return picked?.kind === 'label' ? undefined : area.particleOf(loci);
 }
 
 /** The tree's state of each explorer area (its viewer's): for tests */
