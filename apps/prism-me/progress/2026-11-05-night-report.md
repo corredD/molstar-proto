@@ -7,8 +7,19 @@ tomorrow morning."
 
 ## Summary (read this first)
 
-_In progress. Each section below is filled as its work finishes._ At about 01:30 every agent hit the 5-hour usage limit
-(resets 04:20); the work in flight resumes then from where it stopped.
+At about 01:30 every agent hit the 5-hour usage limit; nothing ran after it. Done:
+
+- **Review** of the app, cryoet + EMPIAR, mesoscale + stage tools: 65 findings, 3 must-fix (below). Not done: the
+  library review (cut by the limit).
+- **Fixes:** only the undo throw is written (`me/scene-sync-undo`, 2 local commits: test + fix, from master; not pushed,
+  no PR, no gate yet). The PR #56 fix round and `night-fixes` had not committed anything.
+- **Physics:** webphysics no; our own bead solver instead (§4).
+- **Citations:** `_spec/references.md` + `.bib`, 70 verified references, 5 candidate novelty claims (§5).
+- **Not done:** the animation and draw-mode evaluations.
+
+The 3 must-fix: (1) a slow EMPIAR/portal load blocks every other edit for its whole download; (2) removing an object
+with labels takes one undo per label; (3) a structure dragged by its handle leaves its clip and label behind. Plus the
+undo throw after a portal or EMPIAR load (fix written).
 
 ## 1. Code review
 
@@ -38,13 +49,16 @@ Three areas done, findings in [2026-11-05-night/](2026-11-05-night/); the librar
 
 ## 2. Fixes (PR)
 
-In flight when the limit hit (each resumes at 04:20):
+Stopped by the limit:
 
-- `scene-sync-undo` (library from master, then a prism-me PR): fix written, its failing-first check under way.
-- PR #56 fix round (EMPIAR and portal): download outside the step, card races, units, shared helpers.
-- `night-fixes` (app + stage tools, from the review's must-fix and should-fix): starting with the handle drag.
+- `scene-sync-undo` (`~/prism-me-lanes/scene-sync-undo`, from master): `09c608d39` test, `24abc06f8` fix (the scene
+  syncs its rows once a state update ends). Left: push, the prism-me cherry-pick, the gate, the PR.
+- PR #56 fix round: nothing committed (`me/empiar` still at `90ad58048`).
+- `night-fixes`: nothing committed (one untracked test file).
 
 ## 3. Animation, a simple interface
+
+Not done (cut by the limit).
 
 ## 4. Draw mode and coarse physics
 
@@ -64,4 +78,18 @@ In flight when the limit hit (each resumes at 04:20):
 
 ## 5. Feature → citation dictionary
 
+[../_spec/references.md](../_spec/references.md) and [../_spec/references.bib](../_spec/references.bib): one table per
+features.md section (feature, references, prior art, novel or not), 70 references checked against a DOI or PubMed, 18
+unverified listed apart. Of 73 rows, 1 is novel, 23 partly, 49 not (most rendering and the particle model are Mol\* v6's
+own, credited to Alexander Rose). Corrections: PetWorld is YASARA's (Ozvoldik 2021); Stories Untold is unpublished. Top
+claims: decoration by live reference (any scene object, swapped without re-parsing); mesoscale models and cryo-ET picks
+in one browser scene; one undoable operation per change, the assistant's included; CryoET Data Portal runs opened in a
+molecular viewer; cellVIEW's per-type cutaways on the web for any data type.
+
 ## 6. Waiting on Ludo
+
+- Which fixes to resume first: the 3 must-fix, the undo throw (fix written), then the should-fix lists.
+- Design points from the reviews (recorded, not changed): clip logic in the app; a shared clip splitting on a move; two
+  writers of the clip variant; the portal's index vs EMPIAR's live walk; duplicated portal/EMPIAR code (Ludo's rule: no
+  repetition).
+- The animation and draw-mode evaluations: still to do.
