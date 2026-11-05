@@ -1173,23 +1173,29 @@ export function exampleAddress(url: string, base: string): string {
   return mirror ? href.replace(mirror[0], mirror[1]) : href;
 }
 
-let examples: Promise<MesoscaleExample[]> | undefined;
+const examples = new Map<string, Promise<MesoscaleExample[]>>();
 
-/** The examples, fetched once from the explorer's list; their addresses made absolute */
+/** The examples, fetched once from the explorer's list; their addresses made absolute. A failed fetch is not kept */
 export function mesoscaleExamples(base = ExamplesBase): Promise<MesoscaleExample[]> {
-  examples ??= fetch(new URL('list.json', base))
-    .then((r) => (r.ok ? r.json() : []))
+  const kept = examples.get(base);
+  if (kept) return kept;
+  const made = fetch(new URL('list.json', base))
+    .then((r) => {
+      if (!r.ok) throw new Error(`examples list: HTTP ${r.status}`);
+      return r.json();
+    })
     // the classic explorer's sessions (molx, molj) need its own transforms (its groups, its cellPACK assembly)
     .then((list: MesoscaleExample[]) =>
       list
         .filter((e) => e.type !== 'molx' && e.type !== 'molj')
         .map((e) => ({ ...e, url: exampleAddress(e.url, base) })),
     )
-    .catch(() => {
-      examples = undefined;
+    .catch((): MesoscaleExample[] => {
+      examples.delete(base);
       return [];
     });
-  return examples;
+  examples.set(base, made);
+  return made;
 }
 
 // --- the particle lists -------------------------------------------------------------------------------------------

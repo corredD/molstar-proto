@@ -13,7 +13,13 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { ExamplesBase, exampleAddress, type MesoscaleInfo, MesoscaleExampleIds } from '../operations.js';
+import {
+  ExamplesBase,
+  exampleAddress,
+  mesoscaleExamples,
+  type MesoscaleInfo,
+  MesoscaleExampleIds,
+} from '../operations.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { TestParticleList } from './fixtures.js';
 
@@ -221,6 +227,24 @@ describe('mesoscale', () => {
     }
     expect(asked).toContain('https://molstar.org/me/examples/list.json');
     expect(asked).toContain('https://molstar.org/me/examples/tiny.bcif');
+  });
+
+  it('an HTTP error on the examples list is not kept: the next ask fetches again (F7)', async () => {
+    const base = 'https://example.test/f7/';
+    const list = [{ id: 'a', label: 'A', url: 'a.bcif', type: 'bcif' }];
+    let calls = 0;
+    vi.stubGlobal('fetch', async () =>
+      ++calls === 1 ? new Response('', { status: 503 }) : new Response(JSON.stringify(list)),
+    );
+    try {
+      expect(await mesoscaleExamples(base)).toEqual([]);
+      expect((await mesoscaleExamples(base)).map((e) => e.id)).toEqual(['a']);
+      // a good list is kept
+      await mesoscaleExamples(base);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(calls).toBe(2);
   });
 
   it('reads an example on CloudFront from mesoscope.scripps.edu: CloudFront allows molstar.org only (Ludo, 2026-11-03)', () => {
