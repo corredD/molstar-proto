@@ -567,10 +567,19 @@ export namespace Particle {
     return Loci(particles, OrderedSet.ofSortedArray(indices));
   }
 
+  // Merged in pairs, level by level: O(N log k) for k sets of N particles in all, not the O(k N) of merging them one
+  // into a growing union (a group row of 16k entities took 2 s)
   function unionOf(sets: (OrderedSet<number> | undefined)[]): OrderedSet<number> {
-    let out: OrderedSet<number> = OrderedSet.Empty;
-    for (const set of sets) if (set) out = OrderedSet.isEmpty(out) ? set : OrderedSet.union(out, set);
-    return out;
+    let level = sets.filter((s): s is OrderedSet<number> => !!s && !OrderedSet.isEmpty(s));
+    if (!level.length) return OrderedSet.Empty;
+    while (level.length > 1) {
+      const next: OrderedSet<number>[] = [];
+      for (let i = 0; i < level.length; i += 2) {
+        next.push(i + 1 < level.length ? OrderedSet.union(level[i], level[i + 1]) : level[i]);
+      }
+      level = next;
+    }
+    return level[0];
   }
 
   /** Remap a loci to a new `ParticleList`; indices outside the new range are dropped. */

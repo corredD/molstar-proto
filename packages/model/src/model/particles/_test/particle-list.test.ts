@@ -155,6 +155,21 @@ describe('Particle.selectLoci', () => {
     expect(select({ entities: [5] })).toEqual([1, 2]);
   });
 
+  it('unions the groups of many entities, in order and without repeats, as many as an odd count of them', () => {
+    const many = {
+      ...createParticles(new Float32Array(3 * 10)),
+      targets: Int32Array.from({ length: 10 }, (_, i) => i % 5),
+      targetInfo: new Map(Array.from({ length: 5 }, (_, e) => [e, { entity: e }] as const)),
+      customProperties: new CustomProperties(),
+      _propertyData: Object.create(null),
+    };
+    const pick = (entities: number[]) => OrderedSet.toArray(Particle.selectLoci(many, { entities }).indices);
+    expect(pick([0, 1, 2, 3, 4])).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(pick([4, 0, 2])).toEqual([0, 2, 4, 5, 7, 9]);
+    expect(pick([3, 3, 1])).toEqual([1, 3, 6, 8]);
+    expect(pick([9])).toEqual([]);
+  });
+
   it('prefers a particle own entity, and intersects the criteria', () => {
     // a list of its own: its computed properties (the entity groups) are its own
     const own = {
