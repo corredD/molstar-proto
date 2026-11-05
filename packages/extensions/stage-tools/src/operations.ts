@@ -19,7 +19,6 @@ import {
 } from './move.js';
 import { getTransformFromParams, type TransformParam } from '@molstar/plugin/state/transforms/helpers';
 import { Color } from '@molstar/core/util/color';
-import { ColorNames } from '@molstar/core/util/color/names';
 import { setSubtreeVisibility } from '@molstar/plugin/behavior/static/state';
 import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
 import { type StateBuilder, type StateObjectCell, StateTransform } from '@molstar/core/state';
@@ -46,6 +45,7 @@ import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { labelOf as structureLabel, loadedStructures } from '@molstar/prism-viewer/api/scope';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
+import { parseColor } from '@molstar/prism-ui/components/color/parse-color';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { ObjectMoveGizmos } from './move-gizmos.js';
 import { ParticleHandles } from './particle-handle.js';
@@ -436,7 +436,13 @@ export class StageApi extends ApiArea {
       const moved = old ? (old.transform.params as { transform: Mat4 }).transform : Mat4.identity();
       const placed = (k: number) => Mat4.mul(Mat4(), moved, Mat4.fromUniformScaling(Mat4(), k));
       const m = Mat4.mul(Mat4(), placed(scale), Mat4.invert(Mat4(), placed(listScale(ctx, target))));
-      placeWith(ctx, b, target, stageTargets(ctx).find((x) => x.ref === target), m);
+      placeWith(
+        ctx,
+        b,
+        target,
+        stageTargets(ctx).find((x) => x.ref === target),
+        m,
+      );
       await b.commit();
       return ApiResult.ok(`Scaled ${rootLabel(ctx, target) ?? l.cell.obj?.label ?? target} to ${scale} Å per unit.`, {
         nodes: [target],
@@ -1114,12 +1120,10 @@ function labelsOf(ctx: Pick<ApiContext, 'plugin'>): LabelInfo[] {
   return out;
 }
 
-/** A CSS color name or #rrggbb */
+/** A color as people write it (#rgb, #rrggbb, rgb(), hsl(), a name: Prism's `parseColor`, the picker's) */
 function cssColor(text: string): Color | undefined {
-  const c = text.trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/.test(c)) return Color(parseInt(c.slice(1), 16));
-  const named = (ColorNames as Record<string, Color | undefined>)[c];
-  return named;
+  const c = parseColor(text);
+  return c === undefined ? undefined : Color(c);
 }
 
 function boundsOf(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): Sphere3D | undefined {

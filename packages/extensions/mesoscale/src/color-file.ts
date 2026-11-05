@@ -4,8 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { parseColor } from '@molstar/prism-ui/components/color/parse-color';
 import { Color } from '@molstar/core/util/color';
-import { ColorNames } from '@molstar/core/util/color/names';
 import type { MesoEntity } from './model.js';
 
 // A color file (_spec/features.md, "Color file import (JSON)"): one JSON object, a color per entity name. Two forms,
@@ -20,13 +20,10 @@ import type { MesoEntity } from './model.js';
 // compartments. Two keys for one entity (its copies in two compartments, which v5 colored apart): the last color is
 // kept and the entity is reported (`overridden`).
 
-/** A CSS color name or #rrggbb (#rgb) */
+/** A color as people write it (#rgb, #rrggbb, rgb(), hsl(), a name: Prism's `parseColor`, the picker's) */
 export function cssColor(text: string): Color | undefined {
-  const c = text.trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/.test(c)) return Color.fromHexStyle(c);
-  if (/^#[0-9a-f]{3}$/.test(c)) return Color.fromHexStyle(`#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}`);
-  const named = (ColorNames as Record<string, Color>)[c.replace(/[\s-]/g, '')];
-  return named;
+  const c = parseColor(text);
+  return c === undefined ? undefined : Color(c);
 }
 
 /** The file's object, or why it is not one (not JSON, not an object) */

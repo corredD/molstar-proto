@@ -7,7 +7,6 @@
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { type StateObjectCell, type StateObjectSelector, StateTransform } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
-import { ColorNames } from '@molstar/core/util/color/names';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
 import { Grid, Volume } from '@molstar/model/model/volume';
@@ -38,6 +37,7 @@ import { type ApiContext, ApiArea, type ApiFailure, ApiResult } from '@molstar/p
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import { isFailure, labelOf as structureLabel, loadedStructures, pickOne } from '@molstar/prism-viewer/api/scope';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
+import { parseColor } from '@molstar/prism-ui/components/color/parse-color';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { type ObliquePose, obliquePlane, obliquePoseOfPlane, type SlicePlane } from './oblique.js';
 import { ObliqueHandles } from './oblique-handle.js';
@@ -1414,11 +1414,10 @@ function scaleOf(shape: StateObjectCell | undefined): number {
   return m ? Mat4.getMaxScaleOnAxis(m) : 1;
 }
 
-/** A CSS color name or #rrggbb */
+/** A color as people write it (#rgb, #rrggbb, rgb(), hsl(), a name: Prism's `parseColor`, the picker's) */
 function cssColor(text: string): Color | undefined {
-  const c = text.trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/.test(c)) return Color.fromHexStyle(c);
-  return (ColorNames as Record<string, Color>)[c.replace(/[\s-]/g, '')];
+  const c = parseColor(text);
+  return c === undefined ? undefined : Color(c);
 }
 
 function describeTarget(t: ParticleTarget): string {
