@@ -62,13 +62,12 @@ import {
   besideMatrix,
   downloadUrlAbove,
   LargeBytes,
-  listRefs,
   loadAverage,
+  loadParticleList,
   loadResult,
   quietLoad,
   showVolumeAs,
   sizeGuard,
-  sizePoints,
   volumeRefs,
 } from './load-scene.js';
 import { once } from './load-steps.js';
@@ -671,20 +670,18 @@ async function loadEntry(
     return ApiResult.ok('');
   }
   if (e.format !== 'ndjson') return ctx.api.run('load.url', { url, format: PortalReaders[e.format] ?? 'auto' });
-  const lists = await added(ctx, listRefs, () => ctx.api.run('load.url', { url, format: PortalReaders.ndjson }));
-  if (isFailure(lists)) return lists;
   const decoration = ds.decorations?.[e.object];
-  for (const particles of lists) {
+  const lists = await loadParticleList(
+    ctx,
+    url,
+    PortalReaders.ndjson,
     // voxels of the annotation's tomogram: its spacing from the index
-    const r = await ctx.api.run('particles.source', { particles, params: { pixelSize: s.spacing } });
-    if (!r.ok) return r;
-    if (!decoration?.pdb) {
-      const p = await sizePoints(ctx, particles);
-      if (!p.ok) return p;
-      continue;
-    }
-    const d = await ctx.api.run('cryoet.decorate', { particles, with: 'pdb', id: decoration.pdb });
-    if (!d.ok) return d;
+    () => ({ pixelSize: s.spacing }),
+    decoration?.pdb ? { with: 'pdb', id: decoration.pdb } : undefined,
+  );
+  if (isFailure(lists)) return lists;
+  if (!decoration?.pdb) return ApiResult.ok('');
+  for (const particles of lists) {
     // a structure that could not be fetched leaves the decoration's transform without a target, and says nothing
     if (!particleListData(ctx, particles)?.targetMapping?.size) {
       warnings.push(`${decoration.pdb} could not be fetched: the ${e.object} points are not decorated.`);

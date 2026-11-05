@@ -159,6 +159,47 @@ export async function loadAverage(ctx: ApiContext, emdb: string, warnings: strin
 }
 
 /**
+ * A particle list file loaded (`load.url`) and each of its lists set up: its source's params (`params`; undefined, none
+ * of the list wanted: the list removed), then its decoration (`cryoet.decorate`'s, but `particles`), else its points
+ * sized (`sizePoints`). The lists kept; a decoration's target that could not be had (a structure not fetched) is the
+ * caller's to check: the decoration says nothing.
+ */
+export async function loadParticleList(
+  ctx: ApiContext,
+  url: string,
+  format: string,
+  params: (list: string) => Record<string, unknown> | undefined,
+  decoration: Record<string, unknown> | undefined,
+): Promise<string[] | ApiFailure> {
+  const lists = await added(ctx, listRefs, () => ctx.api.run('load.url', { url, format }));
+  if (isFailure(lists)) return lists;
+  const kept: string[] = [];
+  for (const particles of lists) {
+    const p = params(particles);
+    if (!p) {
+      await removeLoaded(ctx, particles);
+      continue;
+    }
+    const r = await ctx.api.run('particles.source', { particles, params: p });
+    if (!r.ok) return r;
+    const d = decoration
+      ? await ctx.api.run('cryoet.decorate', { ...decoration, particles })
+      : await sizePoints(ctx, particles);
+    if (!d.ok) return d;
+    kept.push(particles);
+  }
+  return kept;
+}
+
+/** What a load added for a file, from its download down */
+async function removeLoaded(ctx: ApiContext, ref: string) {
+  const { cells, tree } = ctx.plugin.state.data;
+  let top = ref;
+  while (cells.get(top) && cells.get(top)!.transform.parent !== tree.root.ref) top = cells.get(top)!.transform.parent;
+  await ctx.plugin.build().delete(top).commit();
+}
+
+/**
  * An average beside the tomogram (its own place is the origin, the tomogram's corner): moved along -x by its width and a
  * margin (`besideMatrix`), by the stage's move when the viewer has it
  */

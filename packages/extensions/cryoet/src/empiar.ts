@@ -37,13 +37,12 @@ import {
   added,
   downloadUrlAbove,
   LargeBytes,
-  listRefs,
   loadAverage,
+  loadParticleList,
   loadResult,
   quietLoad,
   showVolumeAs,
   sizeGuard,
-  sizePoints,
   volumeRefs,
 } from './load-scene.js';
 import { FetchAhead, once } from './load-steps.js';
@@ -402,23 +401,17 @@ async function loadParticles(
   average: string | undefined,
   warnings: string[],
 ): Promise<ApiFailure | boolean> {
-  const lists = await added(ctx, listRefs, () => ctx.api.run('load.url', { url, format: 'relion_star_particles' }));
-  if (isFailure(lists)) return lists;
-  for (const particles of lists) {
-    const filter = runFilter(ctx, particles, stem);
-    if (!filter) {
-      warnings.push(`${name} has no particles of ${stem}.`);
-      await removeLoaded(ctx, particles);
-      return false;
-    }
-    const r = await ctx.api.run('particles.source', { particles, params: filter });
-    if (isFailure(r)) return r;
-    const d = average
-      ? await ctx.api.run('cryoet.decorate', { particles, with: 'object', object: average })
-      : await sizePoints(ctx, particles);
-    if (isFailure(d)) return d;
-  }
-  return true;
+  const kept = await loadParticleList(
+    ctx,
+    url,
+    'relion_star_particles',
+    (particles) => runFilter(ctx, particles, stem),
+    average ? { with: 'object', object: average } : undefined,
+  );
+  if (isFailure(kept)) return kept;
+  if (kept.length) return true;
+  warnings.push(`${name} has no particles of ${stem}.`);
+  return false;
 }
 
 /** The format's filter for a run's rows, by the names the file holds (the transform's options) */
@@ -437,14 +430,6 @@ function runFilter(ctx: ApiContext, list: string, stem: string): Record<string, 
     if (names.length) return { [key]: names, [other]: [] };
   }
   return undefined;
-}
-
-/** What a load added for a file, from its download down */
-async function removeLoaded(ctx: ApiContext, ref: string) {
-  const { cells, tree } = ctx.plugin.state.data;
-  let top = ref;
-  while (cells.get(top) && cells.get(top)!.transform.parent !== tree.root.ref) top = cells.get(top)!.transform.parent;
-  await ctx.plugin.build().delete(top).commit();
 }
 
 /** EMPIAR by id, in an app (prism-me): the card, `?empiar=` */
