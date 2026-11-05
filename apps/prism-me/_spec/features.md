@@ -80,6 +80,9 @@ agent run (one undo step each); the command menu (⌘K) has each.
 | … an annotation's description, method and GO term (a link), in its properties                                             | Done     | the index's `description`, `method`, `goId`; not on hover (TODO)                     |
 | … a portal object's run page and DOIs                                                                                     | Done     | right-click › `<dataset> <run>` on the CryoET Data Portal, doi:…                     |
 | … any dataset live (GraphQL search), copick picks, alignments                                                             | Deferred | the portal's CORS allow-list; plan part E                                            |
+| EMPIAR by id: the entry walked live (API and listings), its conditions, grids, runs and files with sizes                  | Done     | `empiar.entry`; + Open › EMPIAR id…; `?empiar=12534`; cryoet/_spec/empiar.md         |
+| … a run loaded whole in one step: tomogram slices, masks as surfaces, the run's STAR particles, the EMDB average on them  | Done     | `empiar.load`; asked first above 512 MB; `&empiar-run=YTC041_1_lam1_1_ts_003`        |
+| … surfaces (EMDB-SFF `.hff`), files above 2 GB (tilt series), binning or ranged reads                                     | Deferred | greyed with why; plan steps C and D                                                  |
 
 ## Stage tools (Stories Untold)
 

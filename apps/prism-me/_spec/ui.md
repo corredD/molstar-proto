@@ -37,7 +37,9 @@ filter opens every row again.
 - Drag and drop anywhere: every format (features.md, "Opening files"); each lands in its category. A clip made anywhere
   (a node's Clips, Add clip…) lands in Clips (§3), and so does one a session or a file brings.
 - **+ Open** at the top of the tree: Files…; PDB / PDB-IHM / EMDB id…; Examples (the Mesoscale Explorer's); CryoET Data
-  Portal… (its card: dataset, run, level, annotations; extensions/cryoet/_spec/portal.md §4); Session….
+  Portal… (its card: dataset, run, level, annotations; extensions/cryoet/_spec/portal.md §4); EMPIAR id… (its card: an
+  id, then the entry's condition, grid, run, files with sizes, those that cannot load greyed with why;
+  extensions/cryoet/_spec/empiar.md §4); Session….
 - The tree empty: a short line in its place, "Drop files here, or + Open", with the formats.
 
 ## 3. The tree
