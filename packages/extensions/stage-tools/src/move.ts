@@ -6,6 +6,7 @@
 
 import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { Clip } from '@molstar/core/util/clip';
+import { RepresentationClip } from '@molstar/plugin/state/helpers/representation-clip';
 
 // An object moved or turned on the canvas (apps/prism-me/_spec/ui.md §5, step 3d): the matrix of a drag, and what it
 // does to what is placed in the scene's space with the object (its clip objects, its labels).
@@ -72,25 +73,21 @@ export function movedRepresentationParams<P extends { type?: { name?: string; pa
   params: P,
   m: Mat4,
 ): P | undefined {
-  const type = params.type?.params as
-    | { clip?: Clip.Props; mode?: string; plane?: SlicePlane; [k: string]: unknown }
-    | undefined;
-  if (!type) return undefined;
-  const clip = type.clip?.objects.length
-    ? { ...type.clip, objects: type.clip.objects.map((o) => movedClipObject(o, m)) }
-    : undefined;
+  // the clip where the representation keeps it (a shape's at `clip`, the others' in their type's params)
+  const old = RepresentationClip.get(params);
+  const clip = old?.objects.length ? { ...old, objects: old.objects.map((o) => movedClipObject(o, m)) } : undefined;
+  const type = params.type?.params as { mode?: string; plane?: SlicePlane } | undefined;
   const plane =
-    params.type?.name === 'slice' && type.mode === 'plane' && type.plane
+    params.type?.name === 'slice' && type?.mode === 'plane' && type.plane
       ? {
           point: Vec3.transformMat4(Vec3(), type.plane.point, m),
           normal: Vec3.transformDirection(Vec3(), type.plane.normal, m),
         }
       : undefined;
   if (!clip && !plane) return undefined;
-  return {
-    ...params,
-    type: { ...params.type, params: { ...type, ...(clip ? { clip } : {}), ...(plane ? { plane } : {}) } },
-  };
+  const clipped = clip ? RepresentationClip.set(params, clip) : params;
+  if (!plane) return clipped;
+  return { ...clipped, type: { ...clipped.type, params: { ...clipped.type!.params, plane } } };
 }
 
 /** A point placed by `m` */

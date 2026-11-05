@@ -38,15 +38,38 @@ export interface MesoGroup {
 
 export type MesoGroupBy = 'compartment' | 'function';
 
-const entitiesOf = new WeakMap<ParticleList, MesoEntity[]>();
+/**
+ * The entities of a list kept by what they were counted from: the arrays and tables a decorator keeps by identity (a
+ * move or a scale makes a new list object over the same ones), so the count is not redone for each
+ */
+interface Counted {
+  readonly entityInfo: ParticleList['entityInfo'];
+  readonly targetInfo: ParticleList['targetInfo'];
+  readonly compartments: ParticleList['compartments'];
+  readonly count: number;
+  readonly entities: MesoEntity[];
+}
+const entitiesOf = new WeakMap<object, Counted>();
 
 /**
  * The entities of `particles`, in the order of their ids; a list without `entityInfo` has one per target (its ids the
- * target ids). Computed once per list: it reads every particle.
+ * target ids). Computed once per list data (its entity or target array, with the tables): it reads every particle.
  */
 export function mesoEntities(particles: ParticleList): MesoEntity[] {
-  let entities = entitiesOf.get(particles);
-  if (!entities) entitiesOf.set(particles, (entities = computeEntities(particles)));
+  const key = particles.entities ?? particles.targets;
+  const kept = entitiesOf.get(key);
+  if (
+    kept &&
+    kept.entityInfo === particles.entityInfo &&
+    kept.targetInfo === particles.targetInfo &&
+    kept.compartments === particles.compartments &&
+    kept.count === particles.count
+  ) {
+    return kept.entities;
+  }
+  const { entityInfo, targetInfo, compartments, count } = particles;
+  const entities = computeEntities(particles);
+  entitiesOf.set(key, { entityInfo, targetInfo, compartments, count, entities });
   return entities;
 }
 

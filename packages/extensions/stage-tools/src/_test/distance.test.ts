@@ -416,6 +416,15 @@ describe('stage.label, a selection', () => {
     return v.api.stage!.labelsState().value.find((l) => l.ref === r.changed.nodes![0])!;
   };
 
+  it("takes a color as the picker does: #f80, rgb(), a name with a space, as mesoscale's (F13)", async () => {
+    const v = await viewer();
+    const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    for (const color of ['#f80', 'rgb(255, 136, 0)', 'light blue']) {
+      expectOk(await v.api.run('stage.label', { text: 'c', target: crn, color }));
+    }
+    expect(await v.api.run('stage.label', { text: 'c', target: crn, color: 'nope' })).toMatchObject({ ok: false });
+  });
+
   it('labels an atom by text at the atom, named after it, on its structure', async () => {
     const v = await viewer();
     const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;

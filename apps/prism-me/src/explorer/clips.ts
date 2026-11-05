@@ -405,7 +405,7 @@ export function wayOf(of: CutOfObject | undefined, node: NodeRef): Way | undefin
   for (const id of node.particles[kind] ?? []) {
     let r: ParticleCutProps | undefined;
     for (let i = records.length - 1; i >= 0 && !r; --i) {
-      if (isCover(records[i]) || records[i][kind].includes(id)) r = records[i];
+      if (isCover(records[i]) || idSet(records[i], kind).has(id)) r = records[i];
     }
     const w = r ? wayOfRecord(r) : PlainCut;
     if (way && !sameWay(way, w)) return undefined;

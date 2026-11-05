@@ -4,8 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { parseColor } from '@molstar/prism-ui/components/color/parse-color';
 import { Color } from '@molstar/core/util/color';
-import { ColorNames } from '@molstar/core/util/color/names';
 import type { MesoEntity } from './model.js';
 
 // A color file (_spec/features.md, "Color file import (JSON)"): one JSON object, a color per entity name. Two forms,
@@ -14,19 +14,17 @@ import type { MesoEntity } from './model.js';
 //   full cellPACK name, `<compartment path>.<entity>` (`root.HIVenvelop_mature.HIV_capsid.surface.proteins.HIV1_CA_mono_0_1_0`),
 //   the value `{ "x": r, "y": g, "z": b }`, integers in 0-255 (`Color.fromRgb`, as v5 reads it). Unlike v5, a value
 //   with a fraction (a 0-1 color) is not a color here (reported in `invalid`), where v5 drew it near black;
-// - a plain map: the key the entity's name, the value a CSS color (`#rrggbb`, `#rgb`, a color name).
+// - a plain map: the key the entity's name, the value a color as Prism's picker reads it (`#rrggbb`, `#rgb`, a color name, `rgb()`, `hsl()`, channels `r, g, b`; a bare
+// `123` is hex).
 // A key is the entity's name as the particle list has it, else its last dotted part (the compartment path is not
 // checked): the particle model names a cellPACK entity by that part alone, one entity for a name found in several
 // compartments. Two keys for one entity (its copies in two compartments, which v5 colored apart): the last color is
 // kept and the entity is reported (`overridden`).
 
-/** A CSS color name or #rrggbb (#rgb) */
+/** A color as people write it (#rgb, #rrggbb, rgb(), hsl(), a name: Prism's `parseColor`, the picker's) */
 export function cssColor(text: string): Color | undefined {
-  const c = text.trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/.test(c)) return Color.fromHexStyle(c);
-  if (/^#[0-9a-f]{3}$/.test(c)) return Color.fromHexStyle(`#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}`);
-  const named = (ColorNames as Record<string, Color>)[c.replace(/[\s-]/g, '')];
-  return named;
+  const c = parseColor(text);
+  return c === undefined ? undefined : Color(c);
 }
 
 /** The file's object, or why it is not one (not JSON, not an object) */

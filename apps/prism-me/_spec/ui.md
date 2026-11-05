@@ -405,10 +405,11 @@ still completes its distance.
   Prism cuts whole representations), with their guides. The stage tools' whole-object cuts (`stage.cut`, `adjust`,
   `uncut`, `cuts`, their tree row) are gone.
 - Moving is Prism's too (2026-10-21): Move and turn shows Prism's handles (its gizmo library) on the object, a drag
-  previewed, each release one step: a structure's are Prism's own (`api.move`, its structure-move feature), a particle
-  list's, a volume's or a mesh's the stage's on the same library (`ObjectMoveGizmos`, committing `stage.move`; a mesh's
-  scale kept under the turn); one object's handles at a time; the properties' Position shows or hides them. A label
-  keeps its drag (Move: nothing to turn).
+  previewed, each release one step: a structure's are Prism's own (`api.move`, its structure-move feature), released
+  through `stage.move` (the move from where it was, so its clips and labels go with it; 2026-11-05), a particle list's,
+  a volume's or a mesh's the stage's on the same library (`ObjectMoveGizmos`, committing `stage.move`; a mesh's scale
+  kept under the turn); one object's handles at a time; the properties' Position shows or hides them. A label keeps its
+  drag (Move: nothing to turn).
 - Particle lists (2026-10-22, Ludovic's test): one with orientations opens as its spheres and its axes, both shown
   (`PluginConfig.Particles.ShowOrientations`, on in the app's spec; a library option, off by default); each has its eye
   in Representation. What stands for the particles follows their decoration: the objects while any target is decorated,
@@ -474,10 +475,10 @@ still completes its distance.
 - Particle scale (2026-10-23, Ludovic: "important for tomograms and Simularium"): a list's or model's Position has Scale
   (Å per unit of its file, 0.01–100 on the slider, any value typed): its positions scaled about the file's origin,
   before its move and turn (the list transform's `scale`, a library param), so particles in a tomogram's pixels line up
-  with it; the objects drawn at them keep their size. One step (`stage.scale`, the agent's `scale_particles`); a move
-  keeps it, and the move handles sit on the list as scaled. Next (agreed): the handle's options (six sliders, its place
-  and turn), a decoration's offset per list or target, its local handle (All on: the offset of the group; off: the
-  picked instance itself).
+  with it; the objects drawn at them keep their size. One step (`stage.scale`, the agent's `scale_particles`), its
+  labels and clips placed with the positions (2026-11-05; a clip's size kept); a move keeps it, and the move handles sit
+  on the list as scaled. Next (agreed): the handle's options (six sliders, its place and turn), a decoration's offset
+  per list or target, its local handle (All on: the offset of the group; off: the picked instance itself).
 - Place by numbers (2026-10-23, step 2): Position's handle row has an options button (sliders): six sliders, X, Y, Z
   (where the object's center is, Å, within twice its size of it) and Turn X, Y, Z (Euler, X then Y then Z, °), each with
   its number. A slider shows the object as it goes (`previewPose`) and its release is one step (`stage.pose`: the change
@@ -507,9 +508,9 @@ still completes its distance.
 - Remove (2026-10-22, Ludovic): a loaded object's menu (a structure, a model, a list, a volume, a mesh; its row's ⋯ and
   its right-click) has a Remove (and its row's trash, §3): the object goes with its file (all the file holds: a model's
   unit cell) and its labels; a file holding another listed object keeps it (Prism's `structure.remove`,
-  `particles.remove`, `volume.remove` of the one object). One step of the history (its labels, if any, a step after it).
-  The entry is given to `state.remove` by its ref alone: an example's (a download, loaded by address) is no kind a
-  `#ref` selector reaches.
+  `particles.remove`, `volume.remove` of the one object). One step of the history, its labels in it (2026-11-05: they
+  were a step each). The entry is given to `state.remove` by its ref alone: an example's (a download, loaded by address)
+  is no kind a `#ref` selector reaches.
 - A volume moves as one (2026-10-24, Ludovic: "the volume, the parent, this should move everything, not jump"): its
   slices and isosurfaces are drawn in its frame and have no place of their own: no Position, and their menu's move shows
   their volume's handles ("Move and turn its volume"); a grid slice moves through the volume by its index only. A

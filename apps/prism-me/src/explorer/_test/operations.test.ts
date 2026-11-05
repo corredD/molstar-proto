@@ -116,6 +116,27 @@ describe('explorer', () => {
     expect(left).toEqual([]);
   });
 
+  it('removes an object with its labels in one step: one undo brings all of them back', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const list = area.objectsState().value[1];
+    for (const text of ['a', 'b']) {
+      expectOk(await v.api.run('stage.label', { text, target: list.ref, x: 0, y: 0, z: 0 }));
+    }
+    const steps = v.api.history.steps.value.length;
+    expectOk(await removeObject(v.api, area, 'particle list', list.ref));
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    expect(v.api.stage!.labelsState().value).toEqual([]);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(area.objectsState().value.map((o) => o.label)).toContain('membrane.star');
+    expect(
+      v.api
+        .stage!.labelsState()
+        .value.map((l) => l.text)
+        .sort(),
+    ).toEqual(['a', 'b']);
+  });
+
   it('removes an object loaded from an address (its entry a download), as one dropped', async () => {
     const v = await viewer();
     const area = v.api.explorer!;
@@ -578,5 +599,12 @@ describe('explorer', () => {
     expect(a2).toBe(a1);
     expect(b2).not.toBe(b1);
     expect(b2.visible).toBe(false);
+  });
+
+  it('the area keeps one objects state and one layers state: each view shares them, not a subscription of its own (A9)', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    expect(area.objectsState()).toBe(area.objectsState());
+    expect(area.particleLayersState()).toBe(area.particleLayersState());
   });
 });

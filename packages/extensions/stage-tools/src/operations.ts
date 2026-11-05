@@ -19,10 +19,9 @@ import {
 } from './move.js';
 import { getTransformFromParams, type TransformParam } from '@molstar/plugin/state/transforms/helpers';
 import { Color } from '@molstar/core/util/color';
-import { ColorNames } from '@molstar/core/util/color/names';
 import { setSubtreeVisibility } from '@molstar/plugin/behavior/static/state';
 import { ShapeRepresentation3D } from '@molstar/plugin/state/transforms/shape/representation';
-import { type StateObjectCell, StateTransform } from '@molstar/core/state';
+import { type StateBuilder, type StateObjectCell, StateTransform } from '@molstar/core/state';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { ParticleTargetRepresentationProps } from '@molstar/graphics/repr/particles/representation/target/common';
 import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
@@ -46,6 +45,7 @@ import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { labelOf as structureLabel, loadedStructures } from '@molstar/prism-viewer/api/scope';
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
+import { parseColor } from '@molstar/prism-ui/components/color/parse-color';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { ObjectMoveGizmos } from './move-gizmos.js';
 import { ParticleHandles } from './particle-handle.js';
@@ -388,7 +388,8 @@ export class StageApi extends ApiArea {
         const params = cell.transform.params as TargetRepresentationParams;
         const p = params.type.params;
         const variant = whole === 'instance' ? 'instance' : 'pixel';
-        const clipPrimitive = whole === 'element' ? true : !!p.structure?.clipPrimitive;
+        // Objects clear the atoms' flag too: a graded way sets the variant alone, which left it set and hidden (reads Objects)
+        const clipPrimitive = whole === 'element';
         if (p.clip?.variant === variant && !!p.structure?.clipPrimitive === clipPrimitive) continue;
         const next: TargetRepresentationParams = {
           ...params,
@@ -430,6 +431,18 @@ export class StageApi extends ApiArea {
       const b = plugin.state.data.build();
       if (old) b.to(old).update((p: any) => ({ ...p, scale }));
       else b.to(l.cell).insert(ParticleListTransform, { transform: Mat4.identity(), scale });
+      // its labels and clips with its positions: the change from where they are drawn (moved after scaled) to where
+      // they go, as `stage.move` places them
+      const moved = old ? (old.transform.params as { transform: Mat4 }).transform : Mat4.identity();
+      const placed = (k: number) => Mat4.mul(Mat4(), moved, Mat4.fromUniformScaling(Mat4(), k));
+      const m = Mat4.mul(Mat4(), placed(scale), Mat4.invert(Mat4(), placed(listScale(ctx, target))));
+      placeWith(
+        ctx,
+        b,
+        target,
+        stageTargets(ctx).find((x) => x.ref === target),
+        m,
+      );
       await b.commit();
       return ApiResult.ok(`Scaled ${rootLabel(ctx, target) ?? l.cell.obj?.label ?? target} to ${scale} Å per unit.`, {
         nodes: [target],
@@ -487,17 +500,7 @@ export class StageApi extends ApiArea {
       } else {
         return ApiResult.fail('invalid', `${name} is not a structure, particle list, volume or mesh.`);
       }
-      // what is placed with it: its clip objects, a volume's plane slices, its labels
-      if (t) {
-        for (const r of representationCells(ctx, t)) {
-          const moved = movedRepresentationParams(r.transform.params as { type?: { params?: object } }, m);
-          if (moved) b.to(r).update(moved);
-        }
-      }
-      for (const l of labelsOf(ctx)) {
-        if (l.target !== target) continue;
-        b.to(l.ref).update((p: StageLabelProps) => ({ ...p, position: movedPoint(Vec3.create(...l.position), m) }));
-      }
+      placeWith(ctx, b, target, t, m);
       await b.commit();
       return ApiResult.ok(`Moved ${name}.`, { nodes: [target] });
     },
@@ -1117,12 +1120,10 @@ function labelsOf(ctx: Pick<ApiContext, 'plugin'>): LabelInfo[] {
   return out;
 }
 
-/** A CSS color name or #rrggbb */
+/** A color as people write it (#rgb, #rrggbb, rgb(), hsl(), a name: Prism's `parseColor`, the picker's) */
 function cssColor(text: string): Color | undefined {
-  const c = text.trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/.test(c)) return Color(parseInt(c.slice(1), 16));
-  const named = (ColorNames as Record<string, Color | undefined>)[c];
-  return named;
+  const c = parseColor(text);
+  return c === undefined ? undefined : Color(c);
 }
 
 function boundsOf(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): Sphere3D | undefined {
@@ -1156,6 +1157,29 @@ function structureRefsOf(ctx: Pick<ApiContext, 'plugin'>, structure: Structure):
     }
   }
   return refs;
+}
+
+/**
+ * What is placed with an object, moved by `m` with it (`stage.move`, `stage.scale`): its clip objects, a volume's plane
+ * slices (its representations', a mesh's own), its labels
+ */
+function placeWith(
+  ctx: Pick<ApiContext, 'plugin'>,
+  b: StateBuilder.Root,
+  target: string,
+  t: StageTarget | undefined,
+  m: Mat4,
+) {
+  const cell = ctx.plugin.state.data.cells.get(target);
+  const reprs = t ? representationCells(ctx, t) : cell && SO.Shape.Representation3D.is(cell.obj) ? [cell] : [];
+  for (const r of reprs) {
+    const moved = movedRepresentationParams(r.transform.params as { type?: { params?: object } }, m);
+    if (moved) b.to(r).update(moved);
+  }
+  for (const l of labelsOf(ctx)) {
+    if (l.target !== target) continue;
+    b.to(l.ref).update((p: StageLabelProps) => ({ ...p, position: movedPoint(Vec3.create(...l.position), m) }));
+  }
 }
 
 /** The representations that draw a target */

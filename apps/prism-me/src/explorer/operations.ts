@@ -229,6 +229,11 @@ export class ExplorerApi extends ApiArea {
 
   /** The objects of the scene by category, following the state tree while watched: a read for views */
   objectsState(): ReadonlyState<readonly SceneObject[]> {
+    // one per area: each has its own subscription and rereads every structure's entities on each change (A9)
+    return (this.objects ??= this.watchObjects());
+  }
+  private objects?: ReadonlyState<readonly SceneObject[]>;
+  private watchObjects(): ReadonlyState<readonly SceneObject[]> {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => sceneObjects(plugin),
@@ -389,6 +394,11 @@ export class ExplorerApi extends ApiArea {
     return { center: [sphere.center[0], sphere.center[1], sphere.center[2]], radius: sphere.radius };
   }
 
+  /** Whether a cell is in the state tree */
+  exists(ref: string): boolean {
+    return this.ctx.plugin.state.data.cells.has(ref);
+  }
+
   /** Whether a cell is under another in the state tree (one of an object's representations) */
   isUnder(ref: string, ancestor: string): boolean {
     const { tree } = this.ctx.plugin.state.data;
@@ -433,6 +443,10 @@ export class ExplorerApi extends ApiArea {
    * clip cuts follows this too
    */
   particleLayersState(): ReadonlyState<string> {
+    return (this.layers ??= this.watchLayers());
+  }
+  private layers?: ReadonlyState<string>;
+  private watchLayers(): ReadonlyState<string> {
     const state = this.ctx.plugin.state.data;
     return watchedState(
       () => {
@@ -539,7 +553,7 @@ export class ExplorerApi extends ApiArea {
             const some = !!(l.entities.length || l.compartments.length || l.targets.length);
             // a layer of every particle, or of this kind of ids only, holding all of the part's
             const others = (['entities', 'compartments', 'targets'] as const).some((k) => k !== kind && l[k].length);
-            if (some && (!kind || others || !ids.every((id) => l[kind].includes(id)))) continue;
+            if (some && (!kind || others || !ids.every((id) => idSet(l, kind).has(id)))) continue;
             shown = l.shown;
           }
           return shown;
@@ -789,18 +803,17 @@ function entitiesOf(structure: Structure): StructureEntity[] {
   if (!model) return [];
   const { entities } = model;
   const { chains } = model.atomicHierarchy;
-  const byEntity = new Map<string, string[]>();
+  const byEntity = new Map<string, Set<string>>();
   for (let i = 0, n = chains._rowCount; i < n; ++i) {
     const e = chains.label_entity_id.value(i);
     let list = byEntity.get(e);
-    if (!list) byEntity.set(e, (list = []));
-    const asym = chains.label_asym_id.value(i);
-    if (!list.includes(asym)) list.push(asym);
+    if (!list) byEntity.set(e, (list = new Set()));
+    list.add(chains.label_asym_id.value(i));
   }
   const out: StructureEntity[] = [];
   for (let i = 0, n = entities.data._rowCount; i < n; ++i) {
     const id = entities.data.id.value(i);
-    const chainIds = byEntity.get(id) ?? [];
+    const chainIds = [...(byEntity.get(id) ?? [])];
     if (!chainIds.length) continue;
     const description = entities.data.pdbx_description.value(i)?.[0];
     out.push({ id, label: description || `Entity ${id}`, chains: chainIds });

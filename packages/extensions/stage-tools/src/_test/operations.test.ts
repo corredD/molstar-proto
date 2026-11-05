@@ -202,6 +202,26 @@ describe('stage', () => {
     // one step each
     expectOk(await v.api.run('history.undo', {}));
     expect(params().clip.variant).toBe('instance');
+    // Atoms, then a graded way sets the variant to instance (clipping.settings, on the cut ones): the list reads Proteins with
+    // clipPrimitive hidden, and the next Proteins is not refused as already (A6)
+    expectOk(await v.api.run('stage.clipWhole', { particles: list, whole: 'element' }));
+    const rep = v.plugin.managers.particles.hierarchy.current.lists[0].representations.find(
+      (r) => (r.cell.transform.params as { type: { name: string } }).type.name === 'target',
+    )!.cell;
+    const rp = rep.transform.params as { type: { params: ParticleTargetRepresentationProps } };
+    await v.plugin
+      .build()
+      .to(rep)
+      .update({
+        ...rp,
+        type: { ...rp.type, params: { ...rp.type.params, clip: { ...rp.type.params.clip, variant: 'instance' } } },
+      } as never)
+      .commit();
+    expect(params().structure.clipPrimitive).toBe(true);
+    expect(s.clipWholeState(list).value).toBe('instance');
+    expectOk(await v.api.run('stage.clipWhole', { particles: list, whole: 'instance' }));
+    expect(params().structure.clipPrimitive).toBe(false);
+    expect(s.clipWholeState(list).value).toBe('instance');
   });
 
   it('moves a mesh (its shape, its scale kept), named by its file', async () => {
@@ -232,6 +252,10 @@ describe('stage', () => {
       .to(shape)
       .update((p: any) => ({ ...p, transforms: [Mat4.fromScaling(Mat4(), Vec3.create(2, 2, 2))] }))
       .commit();
+    // a clip on it (a shape keeps its clip at `clip`, not under `type.params`): moved with it
+    expectOk(await v.api.run('clipping.add', { shape: 'plane', node: `#${mesh.transform.ref}` }));
+    const cut = () => Array.from(v.api.clipping.cuts.value[0].object.position);
+    const cut0 = cut();
     const r = await s.move({
       target: mesh.transform.ref,
       matrix: Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(5, 0, 0))),
@@ -241,6 +265,7 @@ describe('stage', () => {
     const m = (v.plugin.state.data.cells.get(shape.transform.ref)!.transform.params as any).transforms[0] as Mat4;
     expect(Mat4.getMaxScaleOnAxis(m)).toBeCloseTo(2);
     expect(m[12]).toBeCloseTo(5);
+    cut().forEach((x, i) => expect(x).toBeCloseTo(cut0[i] + (i === 0 ? 5 : 0), 4));
   });
 
   it("runs from ⌘K: 'label A:10' labels the residue; an object's label needs no selection", async () => {
@@ -359,6 +384,31 @@ describe('stage', () => {
     // not a list: refused
     const crn = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
     expect(await s.scale({ target: crn, scale: 2 } as never)).toMatchObject({ ok: false });
+  });
+
+  it("scales a list's labels and clips with its positions, in the same step", async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const star = 'data_particles\n\nloop_\n_rlnCoordinateX\n_rlnCoordinateY\n_rlnCoordinateZ\n10 0 0\n20 0 0\n';
+    expectOk(await v.api.load.files({ files: [new File([star], 'p.star')] }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expectOk(await v.api.run('stage.label', { text: 'one', target: list, x: 10, y: 0, z: 0 }));
+    expectOk(await v.api.run('clipping.add', { shape: 'plane', node: `#${list}` }));
+    const label = () => s.labelsState().value[0].position.map((x) => Math.round(x * 1e3) / 1e3);
+    const cut = () => Array.from(v.api.clipping.cuts.value[0].object.position);
+    const cut0 = cut();
+    const steps = v.api.history.steps.value.length;
+    expectOk(await s.scale({ target: list, scale: 4 } as never));
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    expect(label()).toEqual([40, 0, 0]);
+    cut().forEach((x, i) => expect(x).toBeCloseTo(cut0[i] * 4, 4));
+    // then 2 (from 4): halved
+    expectOk(await s.scale({ target: list, scale: 2 } as never));
+    expect(label()).toEqual([20, 0, 0]);
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await v.api.run('history.undo', {}));
+    expect(label()).toEqual([10, 0, 0]);
+    cut().forEach((x, i) => expect(x).toBeCloseTo(cut0[i], 4));
   });
 
   it('places a structure and a scaled particle list at a pose (center, Euler turn), read back, one step each', async () => {
