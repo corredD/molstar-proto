@@ -74,6 +74,8 @@ export class FetchAhead {
     const read = async () => {
       const started = Date.now();
       const show = (loaded: number, total: number) => {
+        // a download every waiter left is not under way, though its request may report before it ends
+        if (stop.signal.aborted) return;
         this.running.set(stop, { ...at, loaded, total, started });
         this.showLatest();
       };
@@ -112,9 +114,11 @@ export class FetchAhead {
       const leave = () => {
         reject(new Error(`Could not read ${url}: ${messageOf(signal?.reason ?? 'aborted')}`));
         if (--d.waiters > 0) return;
-        // a fetch from now on starts another
+        // a fetch from now on starts another; its progress goes now, not when its request ends (the load has answered)
         if (this.fetching.get(url) === d) this.fetching.delete(url);
         d.stop.abort(signal?.reason);
+        this.running.delete(d.stop);
+        this.showLatest();
       };
       if (signal?.aborted) return leave();
       signal?.addEventListener('abort', leave, { once: true });

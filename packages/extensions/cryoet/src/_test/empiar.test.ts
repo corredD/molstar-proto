@@ -515,9 +515,12 @@ describe('empiar.load', () => {
     const plain = stub.getMockImplementation()!;
     stub.mockImplementation(async (input, init?: RequestInit) => {
       if (!String(input).endsWith('80S_ribosome_CHX.star')) return plain(input);
-      // the server never answers: only the signal ends it
+      // the server never answers: only the signal ends it, and the request a while after (the load's answer, at the
+      // abort, must not leave its progress said: the F3a fix answered before the download's end cleared it)
       return new Promise<Response>((_, reject) =>
-        init?.signal?.addEventListener('abort', () => reject(init.signal!.reason), { once: true }),
+        init?.signal?.addEventListener('abort', () => setTimeout(() => reject(init.signal!.reason), 100), {
+          once: true,
+        }),
       );
     });
     const v = await viewer();
