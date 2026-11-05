@@ -84,9 +84,10 @@ registration); the index tool `tools/portal-index/`.
   read it). A point list keeps its file's name (`chloramphenicol_bound_70s_ribosome-1.0_orientedpoint.ndjson`):
   `load.url` names a download by its address.
 - **The pixel size is the index's voxel spacing**, never the zarr's scale: they differ in the third decimal.
-- **Points without a decoration are spheres of 50 Å** (`PortalPointRadius`; Ludo, 2026-11-03): their size theme's
-  `defaultSize`, not the list's radii (a shape decorating them later would scale by those). The theme's own fallback,
-  half the typical distance between neighbors, made 10453's 4 sparse V-ATPase picks spheres about 900 Å across.
+- **Points without a decoration are spheres of 50 Å** (`PointRadius`, `load-scene.ts`; Ludo, 2026-11-03): their size
+  theme's `defaultSize`, not the list's radii (a shape decorating them later would scale by those). The theme's own
+  fallback, half the typical distance between neighbors, made 10453's 4 sparse V-ATPase picks spheres about 900 Å
+  across.
 - An entry whose format the viewer has no reader for is listed with `needs` and skipped by a load, with a warning.
 - **Extra views warn, files fail:** a file that cannot be read fails the load (nothing is left); a direct volume the
   viewer cannot make, a decoration whose structure cannot be fetched, the EMDB average: warnings, the rest kept.

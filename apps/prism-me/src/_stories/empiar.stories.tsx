@@ -105,7 +105,7 @@ const ctx: EmpiarPanelContext = {
             done(
               values.large
                 ? { ok: true, did: `Would load EMPIAR-12534 ${values.run}: ${values.files}.` }
-                : { ok: false, code: 'confirm', message: `${values.run}: 1312 MB to read whole.` },
+                : { ok: false, code: 'confirm', message: `${values.run}: 1.3 GB to read whole.` },
             ),
           400,
         ),

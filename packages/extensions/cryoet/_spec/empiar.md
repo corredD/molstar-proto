@@ -23,9 +23,9 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
   pick's answer (`latest`, rendering.md §2.7).
 - **The listing is HTML, not an API** (Apache's `Index of`): each anchor and the size after its date; sort links and the
   parent left out. A page that is not a listing fails as "Could not read the folder …", never as an empty folder.
-- **Sizes are Apache's**, binary units rounded (`834M` is 834 MiB; the file is 874 706 944 bytes). Shown as written,
-  with B (`834 MB`), and a total in the same units, so the sizes add up (834 + 417 + 12 → `1263 MB`). The guard compares
-  bytes.
+- **Sizes are Apache's**, binary units rounded (`834M` is 834 MiB; the file is 874 706 944 bytes). Said in MB of 10^6
+  bytes, as the portal does (`834M` reads `875 MB`; kB and GB at the ends; the default run's total `1.3 GB`), one unit
+  with the guard (512e6 bytes), the speeds and the progress line (night review B3). The guard compares bytes.
 
 ## 2. Runs, kinds, the load
 
@@ -40,8 +40,8 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
   tilt series), unknown formats, and any file above 2 GB (`EmpiarWholeMaxBytes`: read whole it does not fit in a tab;
   12534's 3.3 GB tilt series). Ranged reads are step C.
 - `empiar.load` (`id`, `run`; `condition`, `grid` found from the run when absent: the grid whose name starts the stem;
-  `files`; `emdb`; `large`): one operation, one history step. **Default files:** what loads of the run, without its tilt
-  series (their size).
+  `files`; `emdb`; `large`): one operation, its scene one history step (`empiar.build`, below). **Default files:** what
+  loads of the run, without its tilt series (their size).
 - **The download is outside the history step** (night review B2): the history runs its steps one at a time, and a file
   from EBI takes up to hours, which held every other edit. `empiar.load` (no step of its own) fetches the files first
   into the plugin's assets (`FetchAhead`, `src/load-steps.ts`: one download per address, its progress a state, the
@@ -56,7 +56,7 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
   MRC: an isosurface.
 - **Particles:** the STAR read whole, then kept to the run's rows (`particles.source`: the names of its
   `rlnMicrographName`, else `rlnTomoName`, whose stem is the run's). None: the list removed, a warning. Decorated with
-  the EMDB average (below), else spheres of 50 Å (`PortalPointRadius`).
+  the EMDB average (below), else spheres of 50 Å (`PointRadius`, `load-scene.ts`).
 - **The EMDB average:** the entry's first cross-reference (`emdb`, or `none`), by `load.entry`, beside the tomogram, lit
   volumetric (as portal.md §2). It decorates the particles (`cryoet.decorate`, `with: object`: a volume target is drawn
   about its isosurface's center). Not fetched: a warning, the particles as spheres.
@@ -79,11 +79,11 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
   - Pinned by `_test/empiar.test.ts`: particle 26 of the run at (2379.28, 2552.93, 1558.01) Å, voxel (238, 256, 156),
     its matrix from the numbers above (CC 0.55).
 - **Size guard:** above `PortalLargeBytes` (512 MB) of picked files, a load fails with `confirm` until `large: true`.
-  The card asks first ("…: 1263 MB to read whole (…). Load anyway?") and its second Load goes on.
+  The card asks first ("…: 1.3 GB to read whole (…). Load anyway?") and its second Load goes on.
 - **EBI's speed is said, not hidden** (Ludo, 2026-11-04: "a warning on speed from empiar"): `EmpiarEbiSpeed`, 0.1–0.2
   MB/s, measured by curl on 12534's tomogram (88 KB/s over HTTPS, first byte after 26 s; 219 KB/s over HTTP, 6 s). EBI
   is the only source: PDBj has no EMPIAR files. A pick above 5 MB (`EmpiarSlowBytes`) gets its usual time from it
-  (`ebiTime`: `about 1–2 h` for 834 MB, `about 2–4 h` for the default run's 1263 MB), in the card and in the size
+  (`ebiTime`: `about 1–2 h` for 875 MB, `about 2–4 h` for the default run's 1.3 GB), in the card and in the size
   question.
 - **Measured load** (2026-11-04, M1, Chromium 1243 headed, prism-me dev build; macOS `vmmap` peak physical footprint, as
   an RSS sampler misses compressed pages and peaks): the 834 MB tomogram alone, from a same-origin copy, loads in
@@ -100,7 +100,7 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
   files with kind and size, the default load checked), EMDB average (None or each cross-reference); then the files that
   do not load, greyed, with why; the total beside Load.
 - **A slow pick says so**: under Load, a muted line for a pick above 5 MB,
-  `834 MB from EBI: about 1–2 h at its usual speed (EMPIAR's server is often slow, 0.1–0.2 MB/s).` (§3); none for a
+  `875 MB from EBI: about 1–2 h at its usual speed (EMPIAR's server is often slow, 0.1–0.2 MB/s).` (§3); none for a
   small pick.
 - **While Load runs**, the download said as it goes,
   `Reading tomogram ….mrc (1 of 4): 120 of 875 MB, 0.15 MB/s, about 1 h left` (the area's `fetching`), and **Cancel**,
