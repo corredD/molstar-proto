@@ -2,17 +2,17 @@
 
 ## Built
 
-One commit per finding of the night reviews (`2026-11-05-night/review-app.md`, `review-mesoscale-stage.md`), the
-finding id in each message, a failing test first (a `*.scaling.ts` guard, with its control, for the perf ones):
+One commit per finding of the night reviews (`2026-11-05-night/review-app.md`, `review-mesoscale-stage.md`), the finding
+id in each message, a failing test first (a `*.scaling.ts` guard, with its control, for the perf ones):
 
 - Bugs: F1 (handle release through `stage.move`), A1 (Remove with its labels, one step), F2 (a mesh's clip moves with
   it), F16 (`stage.scale` carries labels and clips), A3 (a picked row whose cell is gone is unpicked), A4 (right-click
   on a label keeps Move), A6 (Clip whole Objects clears `clipPrimitive`), F5 (By zoom on a uniform list keeps its
-  colour), F7 (examples list refetched after an HTTP error), F13 (one colour parser: Prism's `parseColor`, moved to
-  the DOM-free `parse-color.ts` in its own commit).
+  colour), F7 (examples list refetched after an HTTP error), F13 (one colour parser: Prism's `parseColor`, moved to the
+  DOM-free `parse-color.ts` in its own commit).
 - Perf: A7 (`Particle.selectLoci` merges in pairs: x15.8 at 4n before, linear after; `loci.scaling.ts`), A8 (`wayOf`,
-  `shownState`, `entitiesOf` by Set; `ways.scaling.ts`), A9 (one `objectsState` and `particleLayersState` per area),
-  F6 (`mesoEntities` keyed on the arrays a move keeps).
+  `shownState`, `entitiesOf` by Set; `ways.scaling.ts`), A9 (one `objectsState` and `particleLayersState` per area), F6
+  (`mesoEntities` keyed on the arrays a move keeps).
 
 ## Decided
 

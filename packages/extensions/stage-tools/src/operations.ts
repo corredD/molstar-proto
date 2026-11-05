@@ -1159,7 +1159,6 @@ function structureRefsOf(ctx: Pick<ApiContext, 'plugin'>, structure: Structure):
   return refs;
 }
 
-/** The representations that draw a target */
 /**
  * What is placed with an object, moved by `m` with it (`stage.move`, `stage.scale`): its clip objects, a volume's plane
  * slices (its representations', a mesh's own), its labels
@@ -1183,6 +1182,7 @@ function placeWith(
   }
 }
 
+/** The representations that draw a target */
 function representationCells(ctx: Pick<ApiContext, 'plugin'>, t: StageTarget): StateObjectCell[] {
   const p = ctx.plugin.managers;
   if (t.kind === 'structure') {
