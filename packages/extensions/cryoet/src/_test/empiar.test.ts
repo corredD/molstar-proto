@@ -73,7 +73,9 @@ function body(url: string): BodyInit | null {
 function serve(own: (url: string) => BodyInit | null | undefined = () => undefined) {
   const stub = vi.fn(async (input: string | URL | Request) => {
     const url = String(typeof input === 'object' && 'url' in input ? input.url : input);
-    const b = own(url) ?? body(url);
+    // a test's own answer first: undefined passes to the fixtures, null is a 404
+    const o = own(url);
+    const b = o === undefined ? body(url) : o;
     return b ? new Response(b, { status: 200 }) : new Response('not found', { status: 404 });
   });
   vi.stubGlobal('fetch', stub);
@@ -344,6 +346,14 @@ describe('empiar.load', () => {
     expect(params[0].type.params.dimension.name).toBe('z');
     const angles = v.api.empiar!.tiltAnglesOf(ts.cell.transform.ref)!;
     expect([angles.length, Math.min(...angles), Math.max(...angles)]).toEqual([38, -57, 54]);
+  });
+
+  it('says why a file could not be read, and leaves nothing (review S4)', async () => {
+    serve((url) => (url.endsWith('_labels.mrc') ? null : undefined));
+    const v = await viewer();
+    const r = await v.api.run('empiar.load', { ...load, emdb: 'none', large: true });
+    expect(r).toMatchObject({ ok: false, message: expect.stringMatching(/_labels\.mrc.*404/) });
+    expect(v.plugin.state.data.cells.size).toBe(1);
   });
 
   it('refuses a file that cannot load, saying why', async () => {

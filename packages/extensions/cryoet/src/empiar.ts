@@ -17,6 +17,7 @@ import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension } from '@molstar/prism-viewer/spec';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { Ccp4Provider } from '@molstar/plugin/state/formats/volume/ccp4';
+import { Download } from '@molstar/plugin/state/transforms/data/fetch';
 import {
   defaultFiles,
   EmpiarApi,
@@ -349,7 +350,9 @@ async function loadMrc(ctx: ApiContext, url: string): Promise<string[] | ApiFail
   const before = new Set(ctx.plugin.state.data.cells.keys());
   try {
     return await added(ctx, volumeRefs, async () => {
-      const data = await ctx.plugin.builders.data.download({ url, isBinary: true });
+      // committed without reverting, so a failed download keeps its cause (a 404) to say (review S4)
+      const data = await ctx.plugin.build().toRoot().apply(Download, { url, isBinary: true }).commit();
+      if (data.cell?.status === 'error' || !data.isOk) throw new Error(data.cell?.errorText ?? 'the download failed');
       await Ccp4Provider.parse(ctx.plugin, data);
       return ApiResult.ok('');
     });
