@@ -135,6 +135,9 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   parsed grid: an 834 MB tomogram holds about twice; night review P2): needs a release on `Data.ResponseBody` (a library
   lane from `origin/master`), or step C's own parse. Each run's load fetches the condition's shared STAR again (review
   P3). The default files hold both STARs, and 12534's co-translation picks are a subset of its 80S picks (drawn twice).
+  A second run of a condition with its EMDB average: `load.entry` says the average already loaded, so the run's
+  particles are 50 Å spheres with a warning ("EMD-48752: not loaded (… already loaded.)"), not decorated by the average
+  in the scene (review F5): `loadAverage` would need to find the volume of an entry already loaded.
 
 - **Undo of a load that made a volume and a particle list in one step** throws in the scene's sync (prism-viewer
   `sources/scene.ts` `particleListData` → `getDecoratorRoot` on a list no longer in the tree: the particle hierarchy is
