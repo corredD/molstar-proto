@@ -73,6 +73,11 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
     its matrix from the numbers above (CC 0.55).
 - **Size guard:** above `PortalLargeBytes` (512 MB) of picked files, a load fails with `confirm` until `large: true`.
   The card asks first ("…: 1263 MB to read whole (…). Load anyway?") and its second Load goes on.
+- **EBI's speed is said, not hidden** (Ludo, 2026-11-04: "a warning on speed from empiar"): `EmpiarEbiSpeed`, 0.1–0.2
+  MB/s, measured by curl on 12534's tomogram (88 KB/s over HTTPS, first byte after 26 s; 219 KB/s over HTTP, 6 s). EBI
+  is the only source: PDBj has no EMPIAR files. A pick above 5 MB (`EmpiarSlowBytes`) gets its usual time from it
+  (`ebiTime`: `about 1–2 h` for 834 MB, `about 2–4 h` for the default run's 1263 MB), in the card and in the size
+  question.
 - **Measured load** (2026-11-04, M1, Chromium 1243 headed, prism-me dev build; macOS `vmmap` peak physical footprint, as
   an RSS sampler misses compressed pages and peaks): the 834 MB tomogram alone, from a same-origin copy, loads in
   5.3–5.5 s, the renderer at 2.3 GB at its peak (1.9 GB after; JS heap 1.8 GiB, about twice the file), the GPU process
@@ -87,8 +92,12 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
   name), Grid, Run (selects, as the portal's card: a pick reads and makes the form again), Files (the run's loadable
   files with kind and size, the default load checked), EMDB average (None or each cross-reference); then the files that
   do not load, greyed, with why; the total beside Load.
-- **Load asks first** above the guard: the operation's `confirm` message with "Load anyway?", the button "Load anyway";
-  a second press passes `large`.
+- **A slow pick says so**: under Load, a muted line for a pick above 5 MB,
+  `834 MB from EBI: about 1–2 h at its usual speed (EMPIAR's server is often slow, 0.1–0.2 MB/s).` (§3); none for a
+  small pick. No live speed or time left while a file loads: the card reaches the viewer only by `api.run`, and the
+  download's progress is not on it.
+- **Load asks first** above the guard: the operation's `confirm` message (its EBI time with it) with "Load anyway?", the
+  button "Load anyway"; a second press passes `large`.
 - Story: prism-me › Explorer › EMPIAR (Card, Card wide: 12534's YTC041_1 over a few recorded folders).
 
 ## 5. The URL (prism-me)

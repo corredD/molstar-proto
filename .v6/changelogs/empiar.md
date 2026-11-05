@@ -7,3 +7,5 @@
   (no isosurface made to be hidden), masks as surfaces, tilt series as their Z slice with their `.rawtlt` angles, the
   STAR's particles of the run in Å by their own `rlnPixelSize`, the entry's EMDB average beside and on them. The STAR
   frame and EMD-48752's hand were measured on EMPIAR-12534's tomogram (no mirror).
+- The EMPIAR card warns that EBI is often slow (0.1–0.2 MB/s) and gives a pick's usual time above 5 MB ("834 MB from
+  EBI: about 1–2 h at its usual speed"); the size question says it too.
