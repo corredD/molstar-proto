@@ -131,8 +131,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   Ludo's call: step C, a tomogram too big to load whole (EBI serves about 150 KB/s a connection: the 834 MB tomogram
   takes over an hour; loaded, it peaks at 2.3 GB in the tab, 4.8 GB with its mask's surface): binned on the fly, slices
   by range, or converted once; the 3.3 GB tilt series wait for it. Step D: `.hff` surfaces (HDF5), other entries'
-  layouts. The default files hold both STARs, and 12534's co-translation picks are a subset of its 80S picks (drawn
-  twice).
+  layouts. A parsed MRC's file bytes stay in the tree (the `Download` cell's `Data.Response` body holds them beside the
+  parsed grid: an 834 MB tomogram holds about twice; night review P2): needs a release on `Data.ResponseBody` (a library
+  lane from `origin/master`), or step C's own parse. Each run's load fetches the condition's shared STAR again (review
+  P3). The default files hold both STARs, and 12534's co-translation picks are a subset of its 80S picks (drawn twice).
 
 - **Undo of a load that made a volume and a particle list in one step** throws in the scene's sync (prism-viewer
   `sources/scene.ts` `particleListData` → `getDecoratorRoot` on a list no longer in the tree: the particle hierarchy is

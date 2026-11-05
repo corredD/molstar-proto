@@ -7,7 +7,12 @@
   (no isosurface made to be hidden), masks as surfaces, tilt series as their Z slice with their `.rawtlt` angles, the
   STAR's particles of the run in Å by their own `rlnPixelSize`, the entry's EMDB average beside and on them. The STAR
   frame and EMD-48752's hand were measured on EMPIAR-12534's tomogram (no mirror).
-- The EMPIAR card warns that EBI is often slow (0.1–0.2 MB/s) and gives a pick's usual time above 5 MB ("834 MB from
+- The EMPIAR card warns that EBI is often slow (0.1–0.2 MB/s) and gives a pick's usual time above 5 MB ("875 MB from
   EBI: about 1–2 h at its usual speed"); the size question says it too.
 - `cryoetPortal.load` counts an EMDB average as loaded only when it made a volume (one already in the scene is a
   warning, "EMD-…: not loaded (… is already loaded.)"), as `empiar.load` does: both load it by one step.
+- The EMPIAR and portal cards keep a load across a pick (busy, its result and its size question stay with the load and its
+  pick), the portal's failed read puts its select back and clears its error, and the latest read clears Read's busy.
+- EMPIAR says sizes in MB of 10^6 bytes, as the portal and its 512 MB guard count (a listing's `834M` reads `875 MB`).
+- `empiar.load` warns of a named file that cannot load and loads the rest, as the portal does; its download runs outside
+  the history step, with progress and Cancel.
