@@ -14,7 +14,7 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { Color } from '@molstar/core/util/color';
 import { clamp, normalize } from '@molstar/core/math/interpolate';
 import { packIntToRGBArray } from '@molstar/core/util/number-packing';
-import { cantorPairing } from '@molstar/core/data/util/hash-functions';
+import { cantorPairing, hashFnv32a } from '@molstar/core/data/util/hash-functions';
 import { PositionLocation } from '@molstar/graphics/geo/util/location-iterator';
 import type { Image } from '@molstar/graphics/geo/geometry/image/image';
 import type { Theme } from '@molstar/graphics/theme/theme';
@@ -342,6 +342,29 @@ function valueTheme(volume: Volume): Theme {
   };
 }
 
+/**
+ * A position theme as sensitive as can be: the color is a hash of the position's bits, so a position off by one ulp
+ * (float drift, sums in another order) changes the pixel; the volume value theme rounds most such drift away
+ */
+function positionBitsTheme(): Theme {
+  const bits = new Float64Array(3);
+  const words = new Int32Array(bits.buffer);
+  return {
+    color: {
+      factory: positionBitsTheme as any,
+      granularity: 'vertex',
+      color: (l: any) => {
+        bits[0] = l.position[0];
+        bits[1] = l.position[1];
+        bits[2] = l.position[2];
+        return Color(hashFnv32a(Array.from(words)) & 0xffffff);
+      },
+      props: {},
+    },
+    size: SizeTheme.Empty,
+  };
+}
+
 function sliceProps(p: Partial<SliceProps>): SliceProps {
   return { ...PD.getDefaultValues(SliceParams), ...p };
 }
@@ -415,6 +438,7 @@ describe('grid slice image, built as before', () => {
   const themes: [string, (v: Volume) => Theme][] = [
     ['uniform', () => uniformTheme()],
     ['volume value (by position)', (v) => valueTheme(v)],
+    ['position bits', () => positionBitsTheme()],
   ];
 
   for (const [vName, makeVolume] of volumes) {
