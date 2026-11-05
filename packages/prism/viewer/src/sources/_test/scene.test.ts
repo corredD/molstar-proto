@@ -8,7 +8,9 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { config } from 'rxjs';
+import { CreateVolumeStreamingInfo } from '@molstar/plugin/behavior/dynamic/volume-streaming/transformers';
+import { describe, expect, it, vi } from 'vitest';
 import { cbs, crambin, expectOk, headlessViewer, recordRuns, representationTypes, until } from '../../_test/harness.js';
 import { mapFile, particlesFile } from '../../api/_test/volume-fixtures.js';
 import type { SceneNode } from '../../model/scene.js';
@@ -469,5 +471,79 @@ describe('the scene: the tree filtered by the selection', () => {
     expect(components.filter((c) => filter.holds(c)).map((c) => c.label.value)).toEqual(['Polymer']);
     expectOk(await v.api.select.clear());
     expect(filter.on.value).toBe(false);
+  });
+});
+
+describe('the scene: one state update removes a volume and a particle list', () => {
+  // The volume hierarchy is synced (and says so) before the particle one: a sync then, inside the update, would read a
+  // particle hierarchy that still holds the removed list. A subscriber's error reaches no caller: RxJS reports it.
+  const reported = async (run: () => Promise<unknown>) => {
+    const errors: unknown[] = [];
+    const before = config.onUnhandledError;
+    config.onUnhandledError = (e) => errors.push(e);
+    try {
+      await run();
+      await new Promise((resolve) => setTimeout(resolve, 0)); // RxJS reports on a timer
+    } finally {
+      config.onUnhandledError = before;
+    }
+    return errors;
+  };
+
+  it('syncs once the update ends, and the rows follow', async () => {
+    const v = await headlessViewer({ files: [mapFile(), particlesFile()] });
+    expect(data(v.views.scene.roots.value).map((n) => n.kind)).toEqual(['volume', 'particles']);
+    const volume = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expect(await reported(() => v.plugin.state.data.build().delete(volume).delete(list).commit())).toEqual([]);
+    expect(data(v.views.scene.roots.value)).toEqual([]);
+  });
+
+  it('undoes a load that made both', async () => {
+    const v = await headlessViewer();
+    expectOk(await v.api.load.files({ files: [mapFile(), particlesFile()] }));
+    expect(data(v.views.scene.roots.value).map((n) => n.kind)).toEqual(['volume', 'particles']);
+    expect(await reported(async () => expectOk(await v.api.history.undo()))).toEqual([]);
+    expect(data(v.views.scene.roots.value)).toEqual([]);
+  });
+
+  it('removes a structure and a particle list together', async () => {
+    const v = await headlessViewer({ files: [cbs(), particlesFile()] });
+    const structure = v.plugin.managers.structure.hierarchy.current.structures[0].cell.transform.ref;
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expect(await reported(() => v.plugin.state.data.build().delete(structure).delete(list).commit())).toEqual([]);
+    expect(data(v.views.scene.roots.value)).toEqual([]);
+  });
+
+  it('removes a measurement and a particle list together', async () => {
+    const v = await headlessViewer({ files: [cbs(), particlesFile()] });
+    expectOk(await v.api.run('measure.orientation', { target: 'ligand' }));
+    const measurement = v.plugin.managers.structure.measurement.state.orientations[0].transform.ref;
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expect(await reported(() => v.plugin.state.data.build().delete(measurement).delete(list).commit())).toEqual([]);
+    expect(data(v.views.scene.roots.value).map((n) => n.kind)).toEqual(['structure', 'focus']);
+  });
+
+  it("makes a structure's streaming as it removes a particle list", async () => {
+    const v = await headlessViewer({ files: [cbs(), particlesFile()] });
+    const state = v.plugin.state.data;
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    const update = state.build();
+    update.to(v.plugin.managers.structure.hierarchy.current.structures[0].cell).apply(CreateVolumeStreamingInfo, {
+      serverUrl: 'https://density.test',
+      entries: [{ dataId: '1cbs', source: { name: 'x-ray', params: {} } }],
+    });
+    update.delete(list);
+    const header = { channels: [], sampling: [], availablePrecisions: [] };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(header), { status: 200 })),
+    );
+    try {
+      expect(await reported(() => update.commit())).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(data(v.views.scene.roots.value).map((n) => n.kind)).toEqual(['structure', 'focus']);
   });
 });
