@@ -389,6 +389,11 @@ export class ExplorerApi extends ApiArea {
     return { center: [sphere.center[0], sphere.center[1], sphere.center[2]], radius: sphere.radius };
   }
 
+  /** Whether a cell is in the state tree */
+  exists(ref: string): boolean {
+    return this.ctx.plugin.state.data.cells.has(ref);
+  }
+
   /** Whether a cell is under another in the state tree (one of an object's representations) */
   isUnder(ref: string, ancestor: string): boolean {
     const { tree } = this.ctx.plugin.state.data;

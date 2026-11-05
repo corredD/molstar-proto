@@ -15,7 +15,8 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MesoscaleExplorerExtensions } from '../../extensions.js';
-import { explorerUI } from '../ui.js';
+import { removeObject } from '../menu.js';
+import { explorerUI, sceneModelOf } from '../ui.js';
 
 // The properties on their mock (_spec/ui.md §4), over a headless viewer in jsdom: 1CRN (data/examples), twice where a
 // category needs two objects. Prism's `SectionList` (open per section from pick to pick), the header naming the kind,
@@ -320,5 +321,30 @@ describe('the properties on their mock', () => {
     rowOf(host, 'Structures')!.click();
     await until(() => labels()[0].text === 'Crambin typed');
     expect(steps(v)).toBe(n + 1);
+  });
+
+  it('a removed object, or a removed label, is no longer picked: the properties empty', async () => {
+    const v = await viewer();
+    const host = mount(v);
+    const api = v.api.as({ kind: 'person' });
+    const model = sceneModelOf(api.explorer!)!;
+    const ref = structures(v)[0].cell.transform.ref;
+    const r = await v.api.run('stage.label', { text: 'Crambin', target: ref, x: 0, y: 0, z: 0 });
+    if (!r.ok) throw new Error(r.message);
+    // the label's row (under its object's), then the label gone
+    await until(() => !!rowOf(host, '1CRN'));
+    openRow(host, '1CRN');
+    await until(() => !!rowOf(host, 'Crambin'));
+    rowOf(host, 'Crambin')!.click();
+    await until(() => model.picked.value?.kind === 'label');
+    const label = v.api.stage!.labelsState().value[0].ref;
+    await v.api.run('stage.editLabel', { label, remove: true });
+    await until(() => model.picked.value === undefined);
+    // the object's row, then the object gone
+    await until(() => !!rowOf(host, '1CRN'));
+    rowOf(host, '1CRN')!.click();
+    await until(() => model.picked.value?.node?.ref === ref);
+    await removeObject(api, api.explorer!, 'structure', ref);
+    await until(() => model.picked.value === undefined);
   });
 });

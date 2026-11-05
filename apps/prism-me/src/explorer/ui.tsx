@@ -312,6 +312,17 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     [objects, parts.asReadonly, open.asReadonly, filter.asReadonly, labels, distances, clips, folded.asReadonly],
     (o, p, op, f, l, d, k, fo) => keep(rowsOf(o, p, op, f, l, d, k, fo)),
   );
+  // a picked row whose cell is gone (its object, label, distance or representation removed) or whose cut is gone: no
+  // longer picked, so the properties do not act on it
+  effect(rows, () => {
+    const p = picked.value;
+    if (!p) return;
+    const gone =
+      (p.node && !area.exists(p.node.ref)) ||
+      (p.representation && !area.exists(p.representation)) ||
+      (p.clip && !cuts.value.some((c) => c.object.tag === p.clip));
+    if (gone) picked.set(undefined);
+  });
   const pickedKey = derive(picked.asReadonly, (p) => p?.key);
   // the row under the pointer: lit in 3D (the picked row's highlight comes back when it leaves)
   const hover = (row: Row | undefined) => {
