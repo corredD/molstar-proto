@@ -53,8 +53,10 @@ export class FetchAhead {
   private readonly fetching = new Map<string, Shared>();
   /** The `fetch`es not released yet, by address */
   private readonly holds = new Map<string, number>();
+  /** The downloads under way, by their stop, in the order they started */
+  private readonly running = new Map<AbortController, FetchProgress>();
   private readonly now = observableState<FetchProgress | undefined>(undefined);
-  /** The download under way, if one is */
+  /** The latest download under way, if one is (review F3b: one ending cleared it while another went on) */
   readonly progress = this.now.asReadonly;
 
   constructor(private readonly plugin: PluginContext) {}
@@ -71,7 +73,10 @@ export class FetchAhead {
     const assets = this.plugin.managers.asset;
     const read = async () => {
       const started = Date.now();
-      const show = (loaded: number, total: number) => this.now.set({ ...at, loaded, total, started });
+      const show = (loaded: number, total: number) => {
+        this.running.set(stop, { ...at, loaded, total, started });
+        this.showLatest();
+      };
       show(0, 0);
       try {
         const bytes = await fetchData({ url, type: 'binary', signal: stop.signal }).run((p) => {
@@ -83,7 +88,8 @@ export class FetchAhead {
         throw new Error(`Could not read ${url}: ${messageOf(e)}`);
       } finally {
         if (this.fetching.get(url)?.stop === stop) this.fetching.delete(url);
-        this.now.set(undefined);
+        this.running.delete(stop);
+        this.showLatest();
       }
     };
     const d: Shared = { done: read(), stop, waiters: 0 };
@@ -91,6 +97,12 @@ export class FetchAhead {
     d.done.catch(() => {});
     this.fetching.set(url, d);
     return d;
+  }
+
+  private showLatest() {
+    let latest: FetchProgress | undefined;
+    for (const p of this.running.values()) latest = p;
+    this.now.set(latest);
   }
 
   /** A caller's wait for a download: ended by its signal; the download stops when its last waiter leaves */

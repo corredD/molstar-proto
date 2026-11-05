@@ -582,6 +582,25 @@ describe('empiar.load', () => {
     expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(1);
   });
 
+  // review F3b: one download's end cleared the progress while another was still under way
+  it('shows the latest download under way until none is: one ending leaves the other', async () => {
+    const stub = serve();
+    const first = gated(stub, '80S_ribosome_CHX.star');
+    const second = gated(stub, 'co-translation_ribosome_CHX.star');
+    const v = await viewer();
+    const fetching = () => v.api.empiar!.fetching.value;
+    const a = v.api.run('empiar.load', { ...load, files: '80S_ribosome_CHX.star', emdb: 'none' });
+    await until(() => !!fetching());
+    const b = v.api.run('empiar.load', { ...load, files: 'co-translation_ribosome_CHX.star', emdb: 'none' });
+    await until(() => fetching()?.name === 'particles co-translation_ribosome_CHX.star');
+    first.release();
+    expectOk(await a);
+    expect(fetching()?.name).toBe('particles co-translation_ribosome_CHX.star');
+    second.release();
+    expectOk(await b);
+    expect(fetching()).toBeUndefined();
+  });
+
   // night review S3-like inconsistency: a named file that cannot load failed the whole load, where the portal warns
   it('warns of a named file that cannot load and loads the rest, as the portal does', async () => {
     serve();
