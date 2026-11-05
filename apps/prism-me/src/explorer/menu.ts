@@ -11,7 +11,9 @@ import type {} from '@molstar/cryoet-extension/portal';
 import type {} from '@molstar/prism-viewer/features/clipping';
 import type {} from '@molstar/prism-viewer/features/structure-move';
 import { startMoveDrag } from '@molstar/stage-tools-extension/drag';
+import { moveBetween } from '@molstar/stage-tools-extension/move-gizmos';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import type { Mat4 } from '@molstar/core/math/linear-algebra';
 import type { Loci } from '@molstar/model/model/loci';
 import { StructureElement } from '@molstar/model/model/structure';
 import type { ExplorerApi, NodeRef, PickedNode } from './operations.js';
@@ -121,13 +123,26 @@ export function showHandles(api: ViewerApi, ref: string, kind: string) {
   hideHandles(api);
   if (kind === 'structure' && api.move) {
     api.move.gizmos.setTarget(ref);
-    api.move.showGizmos(api);
+    // Prism's handles, their release through the stage: its clips and labels with it
+    api.move.gizmos.show((structure, matrix) => commitStructureMove(api, structure, matrix));
     return;
   }
   const gizmos = api.stage?.moveGizmos;
   if (!gizmos) return;
   gizmos.setTarget(ref);
   gizmos.show();
+}
+
+/**
+ * A structure's handle released at `matrix` (Prism's: from where it was loaded) as one `stage.move`: the move from where
+ * it is, so its clips and labels go with it
+ */
+async function commitStructureMove(api: ViewerApi, structure: string, matrix: Mat4): Promise<boolean> {
+  const from = api.stage?.placementOf(structure);
+  if (!from) return (await api.run('structure.transform', { structure, matrix: [...matrix] })).ok;
+  const m = moveBetween(from, { ...from, matrix });
+  const r = await api.run('stage.move', { target: structure, matrix: Array.from(m) });
+  return r.ok;
 }
 
 export function hideHandles(api: ViewerApi) {
