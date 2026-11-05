@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { type EmptiedComponent, emptiedComponentsOf, hiddenContents } from '../api/contents.js';
@@ -1755,6 +1756,24 @@ export function createSceneSource(
       for (const t of particleTrajectories.values()) t.refreshPlaying();
     }),
   );
+  // The rows are never built inside a state update, only once it ends (once a burst; view-models.md §3, after the
+  // transaction): the hierarchies are synced one after another then, each telling its subscribers, and one read before
+  // its turn still holds a cell the update removed (a volume's and a particle list's removed together: the volumes tell
+  // first, the particle list is still there).
+  let syncStale = false;
+  const syncWhenDone = () => {
+    if (plugin.state.data.behaviors.isUpdating.value) {
+      syncStale = true;
+      return;
+    }
+    syncStale = false;
+    sync();
+  };
+  scope.add(
+    plugin.state.data.behaviors.isUpdating.subscribe((updating) => {
+      if (!updating && syncStale) syncWhenDone();
+    }),
+  );
   // The sequence's rows read otherwise (what the band follows, a track, a filter). Each Sequence node updated in place
   // (its line, eye, menu, its tracks' rows); a structure is built again only when its node comes or goes. Not while a
   // state transaction runs (a structure removed is still in the hierarchy then, its cell gone): once it ends.
@@ -1791,7 +1810,7 @@ export function createSceneSource(
       }),
     );
   }
-  scope.add(plugin.managers.structure.hierarchy.behaviors.selection.subscribe(() => sync()));
+  scope.add(plugin.managers.structure.hierarchy.behaviors.selection.subscribe(syncWhenDone));
   // The scene defaults changed: the rows' look marks are read again (an override is a value other than the default),
   // every structure's, not only those a sync rebuilds (an options change that rewrites no representation leaves the
   // tree's signatures as they were: `signed`); an open inspector's look too. Once a burst, after it.
@@ -1818,8 +1837,8 @@ export function createSceneSource(
     for (const i of inspections.values()) i.look?.refresh();
   };
   scope.add(onceATask(plugin.managers.structure.component.events.optionsUpdated).subscribe(refreshLook));
-  scope.add(plugin.managers.volume.hierarchy.behaviors.selection.subscribe(() => sync()));
-  scope.add(plugin.managers.particles.hierarchy.behaviors.selection.subscribe(() => sync()));
+  scope.add(plugin.managers.volume.hierarchy.behaviors.selection.subscribe(syncWhenDone));
+  scope.add(plugin.managers.particles.hierarchy.behaviors.selection.subscribe(syncWhenDone));
   // The measurements (one added, removed, or given new params: its label, its unit): the manager says its state
   // changed on every state change, so the rows sync only when a list holds other cells, or a cell another transform or
   // object (a cell keeps its identity through an update).
@@ -1835,35 +1854,20 @@ export function createSceneSource(
       }
       const same = now.length === measured.length && now.every((x, i) => x === measured[i]);
       measured = now;
-      if (!same) sync();
+      if (!same) syncWhenDone();
     }),
   );
   // Shapes are in no hierarchy: a shape provider's object made, or one of the shapes' (or their representations')
-  // made, recreated or removed, rebuilds the rows; not a structure's own shapes (a unit cell). Never while a state
-  // transaction runs (a structure removed is still in the hierarchy then, its cell gone): once it ends, once a burst.
-  let shapesStale = false;
-  const syncShapes = () => {
-    if (plugin.state.data.behaviors.isUpdating.value) {
-      shapesStale = true;
-      return;
-    }
-    shapesStale = false;
-    sync();
-  };
+  // made, recreated or removed, rebuilds the rows; not a structure's own shapes (a unit cell).
   const isShapeOfItsOwn = (ref: string, obj: StateObject | undefined) => {
     if (PluginStateObject.Shape.Provider.is(obj)) return true;
     if (!PluginStateObject.Shape.Representation3D.is(obj)) return false;
     const parent = plugin.state.data.tree.transforms.get(ref)?.parent;
     return parent !== undefined && PluginStateObject.Shape.Provider.is(plugin.state.data.cells.get(parent)?.obj);
   };
-  scope.add(plugin.state.data.events.object.created.subscribe((e) => isShapeOfItsOwn(e.ref, e.obj) && syncShapes()));
-  scope.add(plugin.state.data.events.object.removed.subscribe((e) => shapeRefs.has(e.ref) && syncShapes()));
-  scope.add(plugin.state.data.events.object.updated.subscribe((e) => shapeRefs.has(e.ref) && syncShapes()));
-  scope.add(
-    plugin.state.data.behaviors.isUpdating.subscribe((updating) => {
-      if (!updating && shapesStale) syncShapes();
-    }),
-  );
+  scope.add(plugin.state.data.events.object.created.subscribe((e) => isShapeOfItsOwn(e.ref, e.obj) && syncWhenDone()));
+  scope.add(plugin.state.data.events.object.removed.subscribe((e) => shapeRefs.has(e.ref) && syncWhenDone()));
+  scope.add(plugin.state.data.events.object.updated.subscribe((e) => shapeRefs.has(e.ref) && syncWhenDone()));
   // Streaming's cells are not in the hierarchies: their coming and going rebuilds, a params change refreshes the row.
   const isStreaming = (t: { transformer: unknown } | undefined) =>
     t?.transformer === CreateVolumeStreamingInfo || t?.transformer === CreateVolumeStreamingBehavior;
@@ -1872,7 +1876,7 @@ export function createSceneSource(
       if (!isStreaming(e.cell.transform)) return;
       // Its structure's rows are built anew (the hierarchy may not have it yet).
       markStale(e.ref);
-      sync();
+      syncWhenDone();
     }),
   );
   scope.add(
@@ -1880,7 +1884,7 @@ export function createSceneSource(
       if (!streamingOwners.has(e.ref) && !streamingBehaviors.has(e.ref)) return;
       streamingBehaviors.delete(e.ref);
       markStale(e.parent);
-      sync();
+      syncWhenDone();
     }),
   );
   scope.add(

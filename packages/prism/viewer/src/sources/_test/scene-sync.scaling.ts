@@ -4,6 +4,7 @@
  * Developed in collaboration with Anyfold <https://anyfold.ai/>
  *
  * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import { it } from 'vitest';
@@ -27,6 +28,7 @@ async function syncsWhileLoading(n: number): Promise<number> {
   const v = await headlessViewer();
   const p = v.plugin;
   const events = [
+    p.state.data.behaviors.isUpdating,
     p.managers.structure.hierarchy.behaviors.selection,
     p.managers.volume.hierarchy.behaviors.selection,
     p.managers.particles.hierarchy.behaviors.selection,
@@ -38,6 +40,7 @@ async function syncsWhileLoading(n: number): Promise<number> {
   for (const e of events) scope.add((e as Observable<unknown>).subscribe(() => void (t0 = performance.now())));
   createSceneSource(scope, p, v.api);
   for (const e of events) scope.add((e as Observable<unknown>).subscribe(() => void (ms += performance.now() - t0)));
+  ms = 0; // a behavior replays its value on subscribe: the scene source's construction is not a sync
   try {
     for (let i = 0; i < n; i++) expectOk(await v.api.load.files({ files: [cbs()] }));
   } finally {

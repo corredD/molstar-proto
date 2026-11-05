@@ -5,6 +5,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { config } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { Structure } from '@molstar/model/model/structure';
@@ -430,6 +431,29 @@ describe('cryoetPortal', () => {
     // the ribosomes have none of the three words
     expect(portal.annotationTextOf(list.cell.transform.ref)).toBeUndefined();
     expect(portal.annotationTextOf(tomogram.cell.transform.ref)).toBeUndefined();
+  });
+
+  it('undoes a load of a tomogram and a point list, the scene following without an error', async () => {
+    serve();
+    const v = await viewer();
+    expectOk(await v.api.run('cryoetPortal.load', { dataset: 1, run: 'TS_01', as: 'slices', annotations: '5' }));
+    expect(v.plugin.managers.volume.hierarchy.current.volumes).toHaveLength(1);
+    expect(v.plugin.managers.particles.hierarchy.current.lists).toHaveLength(1);
+    // One step removes both: the scene's rows were rebuilt inside it, on the volumes' word, and threw on the list
+    // the particle hierarchy still held. RxJS reports a subscriber's error on a timer.
+    const errors: unknown[] = [];
+    const before = config.onUnhandledError;
+    config.onUnhandledError = (e) => errors.push(e);
+    try {
+      expectOk(await v.api.run('history.undo', {}));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      config.onUnhandledError = before;
+    }
+    expect(errors).toEqual([]);
+    expect(v.plugin.managers.volume.hierarchy.current.volumes).toHaveLength(0);
+    expect(v.plugin.managers.particles.hierarchy.current.lists).toHaveLength(0);
+    expect(v.views.scene.roots.value.filter((n) => n.kind === 'volume' || n.kind === 'particles')).toEqual([]);
   });
 
   it("cuts a long method at a word on one line; the description alone, without its object's colon when none", () => {
