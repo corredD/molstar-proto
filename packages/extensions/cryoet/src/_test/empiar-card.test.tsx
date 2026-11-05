@@ -11,6 +11,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { render } from '@molstar/prism-ui';
 import { observableState } from '@molstar/prism-ui/reactive/observable-state';
+import { ReactiveProbe } from '@molstar/prism-ui/reactive/state';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EmpiarPanel, type EmpiarPanelArea, type EmpiarPanelContext } from '../empiar-card.js';
 import type { FetchProgress } from '../load-steps.js';
@@ -355,6 +356,39 @@ describe('the EMPIAR card', () => {
     expect(again.load()!.disabled).toBe(false);
     expect(calls).toBe(1);
     again.dispose();
+  });
+
+  // review F2: the Load outlives a mount now; what a mount listens to of it goes with the mount
+  it('leaves no listener of a mount behind: closed and opened again five times, the same count', async () => {
+    let live = 0;
+    const probe = { on: ReactiveProbe.on, listened: ReactiveProbe.listened, unlistened: ReactiveProbe.unlistened };
+    ReactiveProbe.on = true;
+    ReactiveProbe.listened = () => (live++, true);
+    ReactiveProbe.unlistened = () => void live--;
+    try {
+      const ctx: EmpiarPanelContext = { api: { run: async () => ({ ok: true, did: 'Loaded.' }) } };
+      const fake = area({ id: 12534, run: Run });
+      const counts: number[] = [];
+      let mounted = 0;
+      for (let i = 0; i < 5; i++) {
+        const host = document.createElement('div');
+        document.body.append(host);
+        const dispose = render(() => <EmpiarPanel ctx={ctx} area={fake} />, host);
+        await until(() =>
+          Array.from(host.querySelectorAll('button')).some((b) => /^\s*Load/.test(b.textContent ?? '')),
+        );
+        await tick();
+        mounted = live;
+        dispose();
+        host.remove();
+        counts.push(live);
+      }
+      // the probe sees a mount's listeners (the control), and none of them stays
+      expect(mounted).toBeGreaterThan(counts[0]);
+      expect(counts).toEqual(counts.map(() => counts[0]));
+    } finally {
+      Object.assign(ReactiveProbe, probe);
+    }
   });
 
   // review F6: between the download's end and the step's, the busy row was empty but for Cancel
