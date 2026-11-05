@@ -166,9 +166,11 @@ export function kindOf(entry: EmpiarEntry, folder: string, name: string): Empiar
   if (e === 'mdoc' || e === 'xf' || e === 'xml' || e === 'txt' || e === 'json') return 'metadata';
   if (e === 'tif' || e === 'tiff' || e === 'eer' || set?.category.startsWith('micrographs')) return 'frames';
   if (!Mrc.has(e)) return 'other';
-  if (segmented || /segment|label|mask/i.test(folder)) return 'mask';
+  if (segmented) return 'mask';
   if (set?.category === 'reconstructed volumes') return 'tomogram';
   if (set?.category === 'tilt series' || e === 'st') return 'tilt-series';
+  // the folder's own words: its name or its kind folder's above a grid, never a parent's (review S3, N7)
+  if (/segment|label|mask/i.test(folder.split('/').slice(-2).join('/'))) return 'mask';
   return 'volume';
 }
 
@@ -255,7 +257,8 @@ export async function walkCondition(entry: EmpiarEntry, root: string, read: List
   const rows = await read(root);
   const shared = rows.filter((r) => !r.folder).map((r) => empiarFile(entry, root, r));
   const frames = (f: string) =>
-    /frames/i.test(f) || entry.imageSets.some((s) => s.directory === f && s.category.startsWith('micrographs'));
+    /frames/i.test(f.slice(f.lastIndexOf('/') + 1)) ||
+    entry.imageSets.some((s) => s.directory === f && s.category.startsWith('micrographs'));
   const walked = rows
     .filter((r) => r.folder)
     .map((r) => `${root}/${r.name}`)

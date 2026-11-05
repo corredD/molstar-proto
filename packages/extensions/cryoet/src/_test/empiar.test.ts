@@ -15,7 +15,17 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { EmpiarExtension, readAngles } from '../empiar.js';
-import { EmpiarFiles, empiarIdOf, listingBytes, parseListing, readEmpiarEntry, stemOf } from '../empiar-entry.js';
+import {
+  EmpiarFiles,
+  empiarIdOf,
+  kindOf,
+  type ListingRow,
+  listingBytes,
+  parseListing,
+  readEmpiarEntry,
+  stemOf,
+  walkCondition,
+} from '../empiar-entry.js';
 import { particleListData } from '../operations.js';
 import { CryoetExtension } from '../prism-viewer.js';
 
@@ -139,6 +149,34 @@ describe('the EMPIAR entry, parsed', () => {
     ]);
     const angles = readAngles(fixture(`${Run}.mrc.rawtlt`).toString());
     expect([angles.length, Math.min(...angles), Math.max(...angles)]).toEqual([38, -57, 54]);
+  });
+});
+
+describe('kinds and folders by their own names (review S3, N7)', () => {
+  const entry = readEmpiarEntry(1, {
+    'EMPIAR-1': {
+      title: 't',
+      imagesets: [{ directory: 'data/Frameshift/unlabelled_tomos', category: 'reconstructed volumes', name: 'n' }],
+    },
+  });
+
+  it("takes a tomogram by its image set before its folder's words", () => {
+    expect(kindOf(entry, 'data/Frameshift/unlabelled_tomos/G1', 'TS_01.mrc')).toBe('tomogram');
+    // words in the folder's own name only, not its parents'
+    expect(kindOf(entry, 'data/Masked_lamellae/maps/G1', 'TS_01.mrc')).toBe('volume');
+    expect(kindOf(entry, 'data/x/Voxel_labels', 'TS_01.mrc')).toBe('mask');
+  });
+
+  it('skips a frames folder by its own name, not a parent whose name holds the word', async () => {
+    const rows: Record<string, ListingRow[]> = {
+      'data/Frameshift': [
+        { name: 'unlabelled_tomos', folder: true, size: '' },
+        { name: 'Frames', folder: true, size: '' },
+      ],
+      'data/Frameshift/unlabelled_tomos': [{ name: 'G1', folder: true, size: '' }],
+    };
+    const c = await walkCondition(entry, 'data/Frameshift', async (f) => rows[f] ?? Promise.reject(new Error(f)));
+    expect(c.grids).toEqual(['G1']);
   });
 });
 
