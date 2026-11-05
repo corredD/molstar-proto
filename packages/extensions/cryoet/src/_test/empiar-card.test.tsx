@@ -357,6 +357,30 @@ describe('the EMPIAR card', () => {
     again.dispose();
   });
 
+  // review F6: between the download's end and the step's, the busy row was empty but for Cancel
+  it('says Loading… while Load runs and no download is under way', async () => {
+    const fetching = observableState<FetchProgress | undefined>(undefined);
+    let finish!: () => void;
+    const ctx: EmpiarPanelContext = {
+      api: { run: () => new Promise((done) => (finish = () => done({ ok: true, did: 'Loaded.' }))) },
+    };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const fake = { ...area({ id: 12534, run: Run }), fetching: fetching.asReadonly };
+    const dispose = render(() => <EmpiarPanel ctx={ctx} area={fake} />, host);
+    const load = () => Array.from(host.querySelectorAll('button')).find((b) => /^\s*Load/.test(b.textContent ?? ''));
+    await until(() => !!load());
+    expect(host.textContent).not.toContain('Loading…');
+    load()!.click();
+    await until(() => !!button(host, 'Cancel'));
+    await tick();
+    expect(host.textContent).toContain('Loading…');
+    finish();
+    await until(() => /Loaded\./.test(host.textContent ?? ''));
+    expect(host.textContent).not.toContain('Loading…');
+    dispose();
+  });
+
   // night review B7: an older read that ended cleared "reading" while a newer one was still walking
   it('stays reading until the latest read ends', async () => {
     const base = area({ id: 12534, run: Run });

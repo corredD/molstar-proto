@@ -91,7 +91,8 @@ export class LoadAction {
     const key = props.key ?? observableState('').asReadonly;
     const asking = derive([this.asked.asReadonly, key], (a, k) => !!a && a.key === k);
     const line = derive([this.said.asReadonly, this.asked.asReadonly, asking], (s, a, on) => (on ? a!.message : s));
-    const reading = props.fetching && mapState(props.fetching, (f) => (f ? progressLine(f) : ''));
+    // no download under way (before the first, between the last and the step's end): the load still runs (review F6)
+    const reading = props.fetching && mapState(props.fetching, (f) => (f ? progressLine(f) : 'Loading…'));
     return (
       <>
         <ActionFooter
