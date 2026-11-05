@@ -36,19 +36,24 @@ export function once<T>(reads: Map<string, Promise<unknown>>, key: string, read:
 
 /**
  * Files fetched ahead of a load's step, into the plugin's assets: the step's `Download` of the same address finds them
- * there (`Asset.getUrlAsset`) and reads no network. Kept (`isStatic`) until `drop`; a file one load fetches another
- * waits for. The progress of the one under way is a state (the card's line); the caller's signal cancels it.
+ * there (`Asset.getUrlAsset`) and reads no network. A file one load fetches another waits for. Each `fetch` holds its
+ * file until its `release`: the file goes at the last one (review F3c: the first load to end let go of a file another,
+ * its step still queued, had to read again inside that step). The progress of the one under way is a state (the card's
+ * line); the caller's signal cancels it.
  */
 export class FetchAhead {
   private readonly fetching = new Map<string, Promise<unknown>>();
+  /** The `fetch`es not released yet, by address */
+  private readonly holds = new Map<string, number>();
   private readonly now = observableState<FetchProgress | undefined>(undefined);
   /** The download under way, if one is */
   readonly progress = this.now.asReadonly;
 
   constructor(private readonly plugin: PluginContext) {}
 
-  /** `url` in the plugin's assets, fetched unless it is there already */
+  /** `url` in the plugin's assets, fetched unless it is there already; held until `release` (whatever the outcome) */
   fetch(url: string, at: Pick<FetchProgress, 'name' | 'index' | 'count'>, signal?: AbortSignal): Promise<unknown> {
+    this.holds.set(url, (this.holds.get(url) ?? 0) + 1);
     const assets = this.plugin.managers.asset;
     if (assets.tryFindUrl(url)) return Promise.resolve();
     return once(this.fetching, url, async () => {
@@ -70,8 +75,18 @@ export class FetchAhead {
     });
   }
 
-  /** Lets go of a file fetched ahead (one the scene holds keeps its own bytes) */
-  drop(url: string) {
+  /**
+   * Ends a `fetch`'s hold of `url`; at the last, the file goes from the assets unless `keep` (one the scene holds keeps
+   * its own bytes)
+   */
+  release(url: string, keep = false) {
+    const n = (this.holds.get(url) ?? 0) - 1;
+    if (n > 0) {
+      this.holds.set(url, n);
+      return;
+    }
+    this.holds.delete(url);
+    if (keep) return;
     const assets = this.plugin.managers.asset;
     const a = assets.tryFindUrl(url);
     if (a) assets.delete(a);

@@ -202,17 +202,20 @@ export class EmpiarApiArea extends ApiArea {
         'Pick fewer files, or call again with large: true.',
       ]);
       if (asked) return asked;
+      // the files this load holds: released once its step has read them (another load may share them, review F3c)
+      const held: EmpiarFile[] = [];
       try {
         for (const [index, f] of files.entries()) {
           const at = { name: `${f.kind} ${f.name}`, index, count: files.length };
+          held.push(f);
           const r = await area.ahead.fetch(fileUrl(v.id, f), at, ctx.signal).catch((e: unknown) => e);
           if (r instanceof Error) return ApiResult.fail('failed', r.message);
           if (r) throw r;
         }
         return await ctx.api.run('empiar.build', { ...v, large: true });
       } finally {
-        // a large file's bytes go with the step that read them; a small one (a STAR, shared by every run) stays
-        for (const f of files) if ((f.bytes ?? 0) > EmpiarKeepBytes) area.ahead.drop(fileUrl(v.id, f));
+        // a large file's bytes go with the last step that read them; a small one (a STAR, shared by every run) stays
+        for (const f of held) area.ahead.release(fileUrl(v.id, f), (f.bytes ?? 0) <= EmpiarKeepBytes);
       }
     },
   });

@@ -516,6 +516,43 @@ describe('empiar.load', () => {
     expect(v.api.empiar!.fetching.value).toBeUndefined();
   });
 
+  /** `name`'s answer held until `release`; its request's signal ends it */
+  function gated(stub: ReturnType<typeof serve>, name: string) {
+    const plain = stub.getMockImplementation()!;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    stub.mockImplementation(async (input, init?: RequestInit) => {
+      if (!String(input).endsWith(name)) return plain(input);
+      await new Promise<void>((res, rej) => {
+        gate.then(res);
+        init?.signal?.addEventListener('abort', () => rej(init.signal!.reason), { once: true });
+      });
+      return plain(input);
+    });
+    const urls = () => stub.mock.calls.map((c) => String(c[0])).filter((u) => u.endsWith(name));
+    return { release, fetches: () => urls().length, url: () => urls()[0] };
+  }
+
+  // review F3c: the first load's `finally` let go of a large file another load shares, its step still queued: that
+  // step's `Download` read it from the network again, inside the history step (night review B2 back)
+  it('keeps a large file two loads share until the last one has built: one fetch, none inside a step', async () => {
+    const stub = serve();
+    const tomogram = `${Run}.mrc_9.98Apx.mrc`;
+    const g = gated(stub, tomogram);
+    const v = await viewer();
+    const one = { ...load, files: tomogram, emdb: 'none', large: true };
+    const a = v.api.run('empiar.load', one);
+    await until(() => !!v.api.empiar!.fetching.value);
+    const b = v.api.run('empiar.load', one);
+    await new Promise((r) => setTimeout(r, 20));
+    g.release();
+    expectOk(await a);
+    expect((await b).ok).toBe(true);
+    expect(g.fetches()).toBe(1);
+    // let go once the last load has built
+    expect(v.plugin.managers.asset.tryFindUrl(g.url())).toBeUndefined();
+  });
+
   // night review S3-like inconsistency: a named file that cannot load failed the whole load, where the portal warns
   it('warns of a named file that cannot load and loads the rest, as the portal does', async () => {
     serve();
