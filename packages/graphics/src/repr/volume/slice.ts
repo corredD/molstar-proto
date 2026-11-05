@@ -221,7 +221,7 @@ function getFrame(volume: Volume, props: SliceProps) {
   return { size, major, minor, normal, center, trim, resolution };
 }
 
-type SamplingInfo = {
+export type SamplingInfo = {
   m: Mat4;
   width: number;
   height: number;
@@ -284,7 +284,8 @@ function gridSliceIndex(
   };
 }
 
-function getSampledImage(
+/** A slice sampled along a plane (`info.m` maps the unit square to it); exported for tests */
+export function getSampledImage(
   volume: Volume,
   theme: Theme,
   info: SamplingInfo,
