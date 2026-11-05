@@ -6,6 +6,14 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **Started 2026-11-04** (Ludo: "start two lanes, fast-slice and empiar"; "start by full resolution, and we will
+  optimize after"):
+  - `fast-slice` (`me/fast-slice` from `origin/master`, `~/prism-me-lanes/fast-slice`; cherry-picked onto
+    `me/fast-slice-pm` for the PR; port 1352; [brief](2026-11-04-fast-slice.md)): `createGridImage` cheaper (index,
+    colour, position), measured on TS_08 level 0 after each step; stops at ~130 ms and reports.
+  - `empiar` (`me/empiar` from `origin/prism-me`, `~/prism-me-lanes/empiar`, port 1353; [brief](2026-11-04-empiar.md)):
+    steps A and B of [the plan](../plans/2026-11-04-empiar.md), tomograms at full resolution (size asked first). Binning
+    on the fly recorded in the plan's step C, not decided.
 - **Merged 2026-11-04:** #50 (tree row tooltips), #51 (colors by zoom on at load for cellPACK and PetWorld, edges 0.27 /
   2.2 / 28.8 px, kept over Look colors), #52 (a label on a selection), #53 (the forms follow a drag, one checkpoint per
   gesture; level 0 measured: `createGridImage` 89 %, proposal in TODO), #54 (portal names, the tilt series under its
