@@ -341,6 +341,36 @@ describe('empiar.load', () => {
     for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) expect(m[c * 4 + r]).toBeCloseTo(A[r][c], 4);
   });
 
+  // review N1: the STAR is the condition's, shared by its runs; `load.url` found it loaded by its address and made no
+  // list for the second run ("has no particles of" it, a false warning)
+  it("loads a second run's particles from the condition's STAR already loaded for the first, in its own list", async () => {
+    serve();
+    const v = await viewer();
+    const files = '80S_ribosome_CHX.star';
+    expectOk(await v.api.run('empiar.load', { ...load, files, emdb: 'none' }));
+    const steps = async () => ((await v.api.run('history.list', {})) as { value: unknown[] }).value.length;
+    const before = await steps();
+    const r = await v.api.run('empiar.load', { id: 12534, run: 'YTC041_1_lam1_2_ts_002', files, emdb: 'none' });
+    expectOk(r);
+    expect(r.warnings ?? []).toEqual([]);
+    expect(await steps()).toBe(before + 1);
+    const counts = v.plugin.managers.particles.hierarchy.current.lists.map(
+      (l) => (particleListData({ plugin: v.plugin }, l.cell.transform.ref) as ParticleList).count,
+    );
+    expect(counts).toEqual([4, 1]);
+  });
+
+  it('says a run whose particles are in the scene already loaded, and adds no list', async () => {
+    serve();
+    const v = await viewer();
+    const files = '80S_ribosome_CHX.star';
+    expectOk(await v.api.run('empiar.load', { ...load, files, emdb: 'none' }));
+    const r = await v.api.run('empiar.load', { ...load, files, emdb: 'none' });
+    expect(r).toMatchObject({ ok: true, did: expect.stringMatching(/already loaded/) });
+    expect(JSON.stringify(r)).not.toMatch(/has no particles/);
+    expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(1);
+  });
+
   it("says when a list has none of the run's particles, and leaves nothing of it", async () => {
     serve((url) =>
       url.endsWith('.star') ? fixture('80S_ribosome_CHX.star').toString().replaceAll(Run, 'other') : undefined,

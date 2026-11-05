@@ -231,6 +231,7 @@ export class EmpiarApiArea extends ApiArea {
       const { entry, run, files } = got;
       const warnings: string[] = [...got.skipped];
       const done: string[] = [];
+      const already: string[] = [];
       const order = ['tomogram', 'volume', 'mask', 'tilt-series', 'particles'];
       const sorted = [...files].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
       let average: string | undefined;
@@ -242,9 +243,10 @@ export class EmpiarApiArea extends ApiArea {
         }
         const r = await loadFile(ctx, f, fileUrl(v.id, f), run, average, warnings);
         if (isFailure(r)) return r;
-        if (r) done.push(`${f.kind} ${f.name}`);
+        if (r === 'loaded') done.push(`${f.kind} ${f.name}`);
+        else if (r === 'already') already.push(f.name);
       }
-      return loadResult(run.stem, `EMPIAR-${v.id} ${run.stem}`, done, warnings);
+      return loadResult(run.stem, `EMPIAR-${v.id} ${run.stem}`, done, warnings, already);
     },
   });
 }
@@ -333,7 +335,10 @@ function pickFiles(
   return { files: picked, skipped };
 }
 
-/** One file by its kind (_spec/empiar.md §2): true loaded, false skipped (a warning), or why it failed */
+/** What became of a file: loaded, skipped (a warning), or in the scene already */
+type FileLoaded = 'loaded' | 'skipped' | 'already';
+
+/** One file by its kind (_spec/empiar.md §2): what became of it, or why it failed */
 async function loadFile(
   ctx: ApiContext,
   f: EmpiarFile,
@@ -341,7 +346,7 @@ async function loadFile(
   run: EmpiarRun,
   average: string | undefined,
   warnings: string[],
-): Promise<ApiFailure | boolean> {
+): Promise<ApiFailure | FileLoaded> {
   if (f.kind === 'particles') return loadParticles(ctx, url, f.name, run.stem, average, warnings);
   const made = await loadMrc(ctx, url);
   if (isFailure(made)) return made;
@@ -356,7 +361,7 @@ async function loadFile(
     const angles = tlt && (await text(url.replace(f.path, tlt.path)).then(readAngles, () => undefined));
     if (angles?.length) ctx.api.empiar!.keepAngles(url, angles);
   }
-  return true;
+  return 'loaded';
 }
 
 /**
@@ -391,7 +396,8 @@ export const readAngles = (s: string) =>
 /**
  * A STAR's particles of one run (_spec/empiar.md §2): read whole, then kept to the rows naming the run
  * (`rlnMicrographName` or `rlnTomoName`, by stem: `<run>.mrc.tomostar`); in Å by the rows' own `rlnPixelSize` (4.99 Å
- * against the tomogram's 9.98: never the tomogram's). None of the run's: the list removed, a warning.
+ * against the tomogram's 9.98: never the tomogram's). None of the run's: the list removed, a warning. The run's list in
+ * the scene already: nothing added (another run's of the same STAR is not it: review N1).
  */
 async function loadParticles(
   ctx: ApiContext,
@@ -400,18 +406,19 @@ async function loadParticles(
   stem: string,
   average: string | undefined,
   warnings: string[],
-): Promise<ApiFailure | boolean> {
-  const kept = await loadParticleList(
+): Promise<ApiFailure | FileLoaded> {
+  const lists = await loadParticleList(
     ctx,
     url,
     'relion_star_particles',
     (particles) => runFilter(ctx, particles, stem),
     average ? { with: 'object', object: average } : undefined,
   );
-  if (isFailure(kept)) return kept;
-  if (kept.length) return true;
+  if (isFailure(lists)) return lists;
+  if (lists.already.length) return 'already';
+  if (lists.kept.length) return 'loaded';
   warnings.push(`${name} has no particles of ${stem}.`);
-  return false;
+  return 'skipped';
 }
 
 /** The format's filter for a run's rows, by the names the file holds (the transform's options) */

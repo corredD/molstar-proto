@@ -681,7 +681,7 @@ async function loadEntry(
   );
   if (isFailure(lists)) return lists;
   if (!decoration?.pdb) return ApiResult.ok('');
-  for (const particles of lists) {
+  for (const particles of lists.kept) {
     // a structure that could not be fetched leaves the decoration's transform without a target, and says nothing
     if (!particleListData(ctx, particles)?.targetMapping?.size) {
       warnings.push(`${decoration.pdb} could not be fetched: the ${e.object} points are not decorated.`);

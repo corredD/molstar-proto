@@ -56,7 +56,10 @@ its story runs it over a fake), `src/empiar-ui.tsx` (the card's registration).
   MRC: an isosurface.
 - **Particles:** the STAR read whole, then kept to the run's rows (`particles.source`: the names of its
   `rlnMicrographName`, else `rlnTomoName`, whose stem is the run's). None: the list removed, a warning. Decorated with
-  the EMDB average (below), else spheres of 50 Å (`PointRadius`, `load-scene.ts`).
+  the EMDB average (below), else spheres of 50 Å (`PointRadius`, `load-scene.ts`). The STAR is the condition's, shared
+  by its runs: another run's is the file loaded again (`load.url`'s `copy`, its bytes from the assets), its own download
+  and list, so removing one run's leaves the other's; the run's list in the scene already is "already loaded", nothing
+  added (`loadParticleList`, review N1).
 - **The EMDB average:** the entry's first cross-reference (`emdb`, or `none`), by `load.entry`, beside the tomogram, lit
   volumetric (as portal.md §2). It decorates the particles (`cryoet.decorate`, `with: object`: a volume target is drawn
   about its isosurface's center). Not fetched: a warning, the particles as spheres.

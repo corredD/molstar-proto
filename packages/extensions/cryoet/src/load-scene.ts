@@ -5,6 +5,7 @@
  */
 
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { deepEqual } from '@molstar/core/util';
 import { Grid, type Volume } from '@molstar/model/model/volume';
 import { type ApiContext, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
 import { isFailure } from '@molstar/prism-viewer/api/scope';
@@ -26,10 +27,21 @@ export function sizeGuard(bytes: number, large: boolean, ask: () => [message: st
   return ApiResult.fail('confirm', message, hint);
 }
 
-/** A load's answer: what it loaded (`done`) with its warnings; nothing loaded, a failure that gives the warnings */
-export function loadResult(name: string, loaded: string, done: readonly string[], warnings: string[]): ApiResult {
+/**
+ * A load's answer: what it loaded (`done`) with its warnings, what the scene had already (`already`) among them; nothing
+ * loaded but some already there, "already loaded" (no step); nothing at all, a failure that gives the warnings
+ */
+export function loadResult(
+  name: string,
+  loaded: string,
+  done: readonly string[],
+  warnings: string[],
+  already: readonly string[] = [],
+): ApiResult {
+  const had = already.length ? `${already.join(', ')} ${already.length === 1 ? 'is' : 'are'} already loaded.` : '';
+  if (!done.length && had) return ApiResult.already([had, ...warnings].join(' '));
   if (!done.length) return ApiResult.fail('unavailable', `Nothing of ${name} could be loaded.`, warnings.join(' '));
-  return ApiResult.ok(`Loaded ${loaded}: ${done.join(', ')}.`, {}, { warnings });
+  return ApiResult.ok(`Loaded ${loaded}: ${done.join(', ')}.`, {}, { warnings: had ? [had, ...warnings] : warnings });
 }
 
 export const listRefs = (ctx: ApiContext) =>
@@ -158,11 +170,22 @@ export async function loadAverage(ctx: ApiContext, emdb: string, warnings: strin
   return average;
 }
 
+/** The lists a particle list file made (`kept`), and those of the scene that were already what was asked (`already`) */
+export interface ParticleLists {
+  readonly kept: string[];
+  readonly already: string[];
+}
+
 /**
  * A particle list file loaded (`load.url`) and each of its lists set up: its source's params (`params`; undefined, none
  * of the list wanted: the list removed), then its decoration (`cryoet.decorate`'s, but `particles`), else its points
  * sized (`sizePoints`). The lists kept; a decoration's target that could not be had (a structure not fetched) is the
  * caller's to check: the decoration says nothing.
+ *
+ * A file the scene has already: a list of it read with the same params is `already` (nothing added); else the file is
+ * loaded again (`copy`: its own download, its bytes from the assets), so a STAR shared by runs gives each run its list
+ * (review N1). Not a list under the first's download: removing one that has none of a run's rows (`removeLoaded`,
+ * from its download down) would take the other's with it.
  */
 export async function loadParticleList(
   ctx: ApiContext,
@@ -170,8 +193,12 @@ export async function loadParticleList(
   format: string,
   params: (list: string) => Record<string, unknown> | undefined,
   decoration: Record<string, unknown> | undefined,
-): Promise<string[] | ApiFailure> {
-  const lists = await added(ctx, listRefs, () => ctx.api.run('load.url', { url, format }));
+): Promise<ParticleLists | ApiFailure> {
+  const ofUrl = [...listRefs(ctx)].filter((ref) => downloadUrlAbove(ctx, ref) === url);
+  const already = ofUrl.filter((ref) => sameParams(ctx, ref, params(ref)));
+  if (already.length) return { kept: [], already };
+  const copy = ofUrl.length > 0;
+  const lists = await added(ctx, listRefs, () => ctx.api.run('load.url', { url, format }, { copy }));
   if (isFailure(lists)) return lists;
   const kept: string[] = [];
   for (const particles of lists) {
@@ -188,7 +215,13 @@ export async function loadParticleList(
     if (!d.ok) return d;
     kept.push(particles);
   }
-  return kept;
+  return { kept, already: [] };
+}
+
+/** Whether a list is read with `params` already (each of them as its transform has it) */
+function sameParams(ctx: ApiContext, list: string, params: Record<string, unknown> | undefined) {
+  const has = ctx.plugin.state.data.cells.get(list)?.transform.params as Record<string, unknown> | undefined;
+  return !!params && !!has && Object.entries(params).every(([k, x]) => deepEqual(has[k], x));
 }
 
 /** What a load added for a file, from its download down */
