@@ -542,6 +542,9 @@ async function createGridImage(
   const periodicMapping = Volume.getPeriodicMapping(volume);
   const mapped = periodicMapping ? new Uint8Array(width * height) : undefined;
 
+  const [m0, m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14, m15] = gridToCartn;
+  const isAffine = m3 === 0 && m7 === 0 && m11 === 0 && m15 === 1;
+
   // a uniform theme's color is the same at every position: taken once, and no pixel's position computed
   const uniformColor = isUniform ? color(l, false) : Color(0);
 
@@ -554,8 +557,16 @@ async function createGridImage(
         if (isUniform) {
           Color.toArray(uniformColor, imageArray, i4);
         } else {
-          Vec3.set(l.position, ix, iy, iz);
-          Vec3.transformMat4(l.position, l.position, gridToCartn);
+          const p = l.position;
+          if (isAffine) {
+            // `Vec3.transformMat4` inlined, its sums in its order (`w` is 1): the same position to the bit
+            p[0] = m0 * ix + m4 * iy + m8 * iz + m12;
+            p[1] = m1 * ix + m5 * iy + m9 * iz + m13;
+            p[2] = m2 * ix + m6 * iy + m10 * iz + m14;
+          } else {
+            Vec3.set(p, ix, iy, iz);
+            Vec3.transformMat4(p, p, gridToCartn);
+          }
           Color.toArray(color(l, false), imageArray, i4);
         }
 
