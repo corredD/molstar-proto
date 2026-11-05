@@ -498,6 +498,22 @@ export class MesoscaleApi extends ApiArea {
       if (!reps.length) {
         return ApiResult.fail('not-found', 'No particles are drawn by their structures.', 'Show a model as targets.');
       }
+      // a list drawn in one color (the uniform theme) has no texture for the levels to follow: its color is kept as a
+      // Look color on the texture theme, as `mesoscale.theme` does (color-levels.md), after the levels are on
+      const uniform: [string, Color][] = [];
+      const drawn = new Set(reps);
+      if (on !== false) {
+        for (const l of one ? [one] : lists(ctx)) {
+          for (const r of l.representations) {
+            const t = (r.cell.transform.params as { colorTheme?: { name: string; params: { value?: Color } } })
+              .colorTheme;
+            if (t?.name === 'uniform' && t.params.value !== undefined && drawn.has(r.cell)) {
+              uniform.push([l.cell.transform.ref, t.params.value]);
+              break;
+            }
+          }
+        }
+      }
       const b = ctx.plugin.state.data.build();
       const nodes: string[] = [];
       for (const r of reps) {
@@ -514,6 +530,14 @@ export class MesoscaleApi extends ApiArea {
       if (!nodes.length) return ApiResult.already('The colors already follow the zoom so.');
       await b.commit();
       if (on === false) return ApiResult.ok('Colors no longer follow the zoom.', { nodes });
+      for (const [ref, value] of uniform) {
+        const r = await ctx.api.run('mesoscale.theme', {
+          objects: [ref],
+          theme: 'uniform',
+          color: Color.toHexStyle(value),
+        });
+        if (!r.ok) return r;
+      }
       // a Look color is an overpaint: while By zoom is on it holds until the atoms (color-levels.md)
       const painted = (one ? [one] : lists(ctx)).some((l) => !!clearedColors(ctx, l));
       const note = painted ? ' A color set in Look is that color until the atoms, and By zoom stays on.' : '';
