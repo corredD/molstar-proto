@@ -472,10 +472,10 @@ still completes its distance.
 - Particle scale (2026-10-23, Ludovic: "important for tomograms and Simularium"): a list's or model's Position has Scale
   (Å per unit of its file, 0.01–100 on the slider, any value typed): its positions scaled about the file's origin,
   before its move and turn (the list transform's `scale`, a library param), so particles in a tomogram's pixels line up
-  with it; the objects drawn at them keep their size. One step (`stage.scale`, the agent's `scale_particles`); a move
-  keeps it, and the move handles sit on the list as scaled. Next (agreed): the handle's options (six sliders, its place
-  and turn), a decoration's offset per list or target, its local handle (All on: the offset of the group; off: the
-  picked instance itself).
+  with it; the objects drawn at them keep their size. One step (`stage.scale`, the agent's `scale_particles`), its
+  labels and clips placed with the positions (2026-11-05; a clip's size kept); a move keeps it, and the move handles sit
+  on the list as scaled. Next (agreed): the handle's options (six sliders, its place and turn), a decoration's offset
+  per list or target, its local handle (All on: the offset of the group; off: the picked instance itself).
 - Place by numbers (2026-10-23, step 2): Position's handle row has an options button (sliders): six sliders, X, Y, Z
   (where the object's center is, Å, within twice its size of it) and Turn X, Y, Z (Euler, X then Y then Z, °), each with
   its number. A slider shows the object as it goes (`previewPose`) and its release is one step (`stage.pose`: the change

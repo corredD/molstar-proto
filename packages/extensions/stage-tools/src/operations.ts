@@ -430,6 +430,12 @@ export class StageApi extends ApiArea {
       const b = plugin.state.data.build();
       if (old) b.to(old).update((p: any) => ({ ...p, scale }));
       else b.to(l.cell).insert(ParticleListTransform, { transform: Mat4.identity(), scale });
+      // its labels and clips with its positions: the change from where they are drawn (moved after scaled) to where
+      // they go, as `stage.move` places them
+      const moved = old ? (old.transform.params as { transform: Mat4 }).transform : Mat4.identity();
+      const placed = (k: number) => Mat4.mul(Mat4(), moved, Mat4.fromUniformScaling(Mat4(), k));
+      const m = Mat4.mul(Mat4(), placed(scale), Mat4.invert(Mat4(), placed(listScale(ctx, target))));
+      placeWith(ctx, b, target, stageTargets(ctx).find((x) => x.ref === target), m);
       await b.commit();
       return ApiResult.ok(`Scaled ${rootLabel(ctx, target) ?? l.cell.obj?.label ?? target} to ${scale} Å per unit.`, {
         nodes: [target],

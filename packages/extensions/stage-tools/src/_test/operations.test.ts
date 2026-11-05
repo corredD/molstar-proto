@@ -366,6 +366,31 @@ describe('stage', () => {
     expect(await s.scale({ target: crn, scale: 2 } as never)).toMatchObject({ ok: false });
   });
 
+  it("scales a list's labels and clips with its positions, in the same step", async () => {
+    const v = await viewer();
+    const s = v.api.stage!;
+    const star = 'data_particles\n\nloop_\n_rlnCoordinateX\n_rlnCoordinateY\n_rlnCoordinateZ\n10 0 0\n20 0 0\n';
+    expectOk(await v.api.load.files({ files: [new File([star], 'p.star')] }));
+    const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    expectOk(await v.api.run('stage.label', { text: 'one', target: list, x: 10, y: 0, z: 0 }));
+    expectOk(await v.api.run('clipping.add', { shape: 'plane', node: `#${list}` }));
+    const label = () => s.labelsState().value[0].position.map((x) => Math.round(x * 1e3) / 1e3);
+    const cut = () => Array.from(v.api.clipping.cuts.value[0].object.position);
+    const cut0 = cut();
+    const steps = v.api.history.steps.value.length;
+    expectOk(await s.scale({ target: list, scale: 4 } as never));
+    expect(v.api.history.steps.value.length).toBe(steps + 1);
+    expect(label()).toEqual([40, 0, 0]);
+    cut().forEach((x, i) => expect(x).toBeCloseTo(cut0[i] * 4, 4));
+    // then 2 (from 4): halved
+    expectOk(await s.scale({ target: list, scale: 2 } as never));
+    expect(label()).toEqual([20, 0, 0]);
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await v.api.run('history.undo', {}));
+    expect(label()).toEqual([10, 0, 0]);
+    cut().forEach((x, i) => expect(x).toBeCloseTo(cut0[i], 4));
+  });
+
   it('places a structure and a scaled particle list at a pose (center, Euler turn), read back, one step each', async () => {
     const v = await viewer();
     const s = v.api.stage!;
