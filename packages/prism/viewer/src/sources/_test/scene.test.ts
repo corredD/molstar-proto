@@ -496,16 +496,22 @@ describe('the scene: one state update removes a volume and a particle list', () 
     expect(data(v.views.scene.roots.value).map((n) => n.kind)).toEqual(['volume', 'particles']);
     const volume = v.plugin.managers.volume.hierarchy.current.volumes[0].cell.transform.ref;
     const list = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
-    expect(await reported(() => v.plugin.state.data.build().delete(volume).delete(list).commit())).toEqual([]);
-    expect(data(v.views.scene.roots.value)).toEqual([]);
+    const errors = await reported(async () => {
+      await v.plugin.state.data.build().delete(volume).delete(list).commit();
+      expect(data(v.views.scene.roots.value)).toEqual([]); // the rows are ready when the commit resolves
+    });
+    expect(errors).toEqual([]);
   });
 
   it('undoes a load that made both', async () => {
     const v = await headlessViewer();
     expectOk(await v.api.load.files({ files: [mapFile(), particlesFile()] }));
     expect(data(v.views.scene.roots.value).map((n) => n.kind)).toEqual(['volume', 'particles']);
-    expect(await reported(async () => expectOk(await v.api.history.undo()))).toEqual([]);
-    expect(data(v.views.scene.roots.value)).toEqual([]);
+    const errors = await reported(async () => {
+      expectOk(await v.api.history.undo());
+      expect(data(v.views.scene.roots.value)).toEqual([]); // the rows are ready when the undo resolves
+    });
+    expect(errors).toEqual([]);
   });
 
   it('removes a structure and a particle list together', async () => {
