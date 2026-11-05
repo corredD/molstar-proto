@@ -13,9 +13,9 @@ is not built is [../TODO.md](../TODO.md).
     (EMPIAR steps A, B and the fix round: download outside the history step, card races, MB, warnings, `load-scene.ts`;
     [progress](2026-11-04-empiar.md)). Lanes closed. Left in TODO.md: the tomogram held twice (a library release on
     `Data.ResponseBody`), the fetch-ahead's third copy to measure, a second run's average.
-  - `night-fixes`, **PR #57**, draft (`me/night-fixes`, port 1354; [progress](2026-11-05-night-fixes.md)): 14 findings
-    fixed, gate done. Waits on Ludo: smoothness on HIV against prism-me (1343), the two library commits (A7 in
-    `packages/model`, `parseColor` into prism-ui), a color file's `"1, 0, 0"` now read as 0-255.
+  - `night-fixes`, **PR #57**, ready (`me/night-fixes`, port 1354; [progress](2026-11-05-night-fixes.md)): 14 findings
+    fixed, gate done. Ludo, 2026-11-05: the HIV smoothness check skipped; the library commits stay in our branch; F13's
+    color parsing kept. Waits on Ludo's merge.
 
 - **Started 2026-11-04** (Ludo: "start two lanes, fast-slice and empiar"; "start by full resolution, and we will
   optimize after"):
