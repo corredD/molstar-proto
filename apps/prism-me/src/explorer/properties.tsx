@@ -125,7 +125,7 @@ export function Properties(props: {
             shell={props.shell}
             name={nameOf(subject)}
             kind={headerKind(props.api, picked)}
-            description={descriptionOf(picked, props.parts.value)}
+            description={descriptionOf(props.api, picked, props.parts.value)}
             subject={subject}
             above={
               picked.node && picked.kind === 'mesoscale model' ? (
@@ -147,9 +147,12 @@ function headerKind(api: ViewerApi, picked: Picked): string {
   return api.stage?.distancesState().value.find((d) => d.ref === ref)?.measure ?? picked.kind;
 }
 
-/** A mesoscale entity's description (its file's text, Markdown), for its row */
-function descriptionOf(picked: Picked, parts: Parts): string | undefined {
+/** A mesoscale entity's description (its file's text, Markdown), a portal annotation's words, for its row */
+function descriptionOf(api: ViewerApi, picked: Picked, parts: Parts): string | undefined {
   const node = picked.node;
+  if (node && (picked.kind === 'particle list' || picked.kind === 'volume')) {
+    return api.cryoetPortal?.annotationTextOf(node.ref);
+  }
   if (picked.kind !== 'entity' || !node || !('particles' in node)) return;
   const ids = node.particles.entities;
   if (ids?.length !== 1) return;

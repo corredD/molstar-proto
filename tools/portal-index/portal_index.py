@@ -180,6 +180,13 @@ def index_dataset(client, dataset_id, max_runs):
             entry['count'] = a.object_count
         if a.ground_truth_status:
             entry['groundTruth'] = True
+        # the portal's words for it (each when it has them): what it is, how it was made, its Gene Ontology term
+        if a.object_description:
+            entry['description'] = a.object_description
+        if a.annotation_method:
+            entry['method'] = a.annotation_method
+        if a.object_id and a.object_id.startswith('GO:'):
+            entry['goId'] = a.object_id
         if f.is_visualization_default:
             entry['default'] = True
         by_spacing[a.tomogram_voxel_spacing_id]['annotations'].append(entry)

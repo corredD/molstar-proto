@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { TiltSeriesPlaces } from '@molstar/cryoet-extension/portal-run';
 import { parseSearch } from '@molstar/prism-viewer/features/loaders';
 
 // The URL of the Mesoscale Explorer (v5 `apps/mesoscale-explorer/src/index.html`) on Prism's loaders (app.md §4):
@@ -23,6 +24,7 @@ export const PortalUrlParameters: readonly string[] = [
   'portal-level',
   'portal-tiltseries',
   'portal-tiltseries-level',
+  'portal-tiltseries-place',
 ];
 
 /** The `cryoetPortal.load` values the URL asks for, if it names a dataset */
@@ -37,6 +39,8 @@ export function portalLoadOf(search: string): Record<string, unknown> | undefine
   // a tilt series by id, at a level of its own (the tomogram's is not its: 584 MB at level 1 against 146 at 2)
   const tiltSeries = q.get('portal-tiltseries');
   const tiltSeriesLevel = q.get('portal-tiltseries-level');
+  // beside, turned or overlay: a switch to compare (another word: the load's default)
+  const place = q.get('portal-tiltseries-place');
   const whole = (x: string | undefined) => x !== undefined && /^\d+$/.test(x);
   return {
     dataset,
@@ -47,6 +51,7 @@ export function portalLoadOf(search: string): Record<string, unknown> | undefine
     ...(level !== undefined && /^\d+$/.test(level) ? { level: Number(level) } : {}),
     ...(whole(tiltSeries) ? { tiltSeries: Number(tiltSeries) } : {}),
     ...(whole(tiltSeriesLevel) ? { tiltSeriesLevel: Number(tiltSeriesLevel) } : {}),
+    ...(TiltSeriesPlaces.some(([p]) => p === place) ? { tiltSeriesPlace: place } : {}),
   };
 }
 

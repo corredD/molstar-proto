@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { Box3D } from '@molstar/core/math/geometry/primitives/box3d';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { Structure } from '@molstar/model/model/structure';
@@ -25,7 +26,9 @@ import {
   omeZarrLevelNeeds,
   VolumeFromOmeZarr,
 } from '@molstar/plugin/state/formats/volume/ome-zarr';
-import { CustomVolumeProperties } from '@molstar/plugin/state/transforms/volume/ops';
+import { CustomVolumeProperties, VolumeTransform } from '@molstar/plugin/state/transforms/volume/ops';
+import { watchedState } from '@molstar/prism-viewer/sources/watched';
+import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { particleListData } from './operations.js';
 import {
   describePortalRun,
@@ -36,11 +39,15 @@ import {
   type PortalFailure,
   type PortalRunInfo,
   type PortalTomogramView,
+  portalAnnotationText,
   portalTiltSeriesOptions,
   portalTomogramOptions,
+  type TiltSeriesPlace,
+  TiltSeriesPlaces,
 } from './portal-run.js';
 import {
   checkPortalIndex,
+  type PortalAnnotation,
   type PortalCatalog,
   type PortalDataset,
   PortalFiles,
@@ -62,6 +69,8 @@ export {
   type PortalPanelArea,
   type PortalRunInfo,
   type PortalTomogramView,
+  type TiltSeriesPlace,
+  TiltSeriesPlaces,
 } from './portal-run.js';
 
 declare module '@molstar/prism-viewer/api' {
@@ -111,13 +120,26 @@ export interface PortalOrigin {
 
 const DatasetParam = () => PD.Numeric(10003, { min: 0, step: 1 }, { description: 'A dataset of the index, by id' });
 const RunParam = () => PD.Text('', { description: 'A run by name (TS_08) or id; empty: the first' });
+const PlaceParam = () =>
+  // overlay the default (Ludo, 2026-11-04, after comparing the three: _spec/portal.md §2)
+  PD.Select<TiltSeriesPlace>('overlay', TiltSeriesPlaces as [TiltSeriesPlace, string][], {
+    description:
+      'Where a tilt series goes by its tomogram: beside it as read, beside it turned by its tilt axis, under it turned',
+  });
 
 export class CryoetPortalApi extends ApiArea {
   readonly id = 'cryoetPortal';
   private readonly loaded = new Map<number, Promise<PortalDataset>>();
   private readonly known = new Map<number, PortalDataset>();
-  /** The tilt series of the datasets read, by their zarr's address: a slice's angles found from its volume's download */
-  private readonly tiltSeriesAt = new Map<string, PortalTiltSeries>();
+  /**
+   * The tilt series of the datasets read and their runs, by their zarr's address: a slice's angles and its placement
+   * found from its volume's download
+   */
+  private readonly tiltSeriesAt = new Map<string, { readonly series: PortalTiltSeries; readonly run: number }>();
+  /** The runs of the tomograms of the datasets read, by their zarr's address: a tilt series' tomogram in the scene */
+  private readonly tomogramRunAt = new Map<string, number>();
+  /** The annotations of the datasets read, by their file's address: a point list's or mask's words, from its download */
+  private readonly annotationAt = new Map<string, PortalAnnotation>();
   private catalogRead: Promise<PortalCatalog> | undefined;
 
   constructor(
@@ -147,8 +169,13 @@ export class CryoetPortalApi extends ApiArea {
       p = this.source.dataset(id).then((d) => {
         const checked = checkPortalIndex(d, `The portal index of dataset ${id}`);
         this.known.set(id, checked);
-        for (const r of checked.runList)
-          for (const t of r.tiltSeries ?? []) this.tiltSeriesAt.set(PortalFiles + t.zarr, t);
+        for (const r of checked.runList) {
+          for (const t of r.tiltSeries ?? []) this.tiltSeriesAt.set(PortalFiles + t.zarr, { series: t, run: r.id });
+          for (const s of r.spacings) {
+            for (const t of s.tomograms) this.tomogramRunAt.set(PortalFiles + t.zarr, r.id);
+            for (const a of s.annotations) this.annotationAt.set(PortalFiles + a.path, a);
+          }
+        }
         return checked;
       });
       p.catch(() => this.loaded.delete(id));
@@ -184,9 +211,93 @@ export class CryoetPortalApi extends ApiArea {
    * (synchronous: the Slice row's readout); undefined for anything else
    */
   tiltAnglesOf(ref: string): readonly number[] | undefined {
-    const url = downloadUrlAbove(this.ctx, ref);
-    return url ? this.tiltSeriesAt.get(url.replace(/\/$/, ''))?.angles : undefined;
+    return this.tiltSeriesOf(ref)?.series.angles;
   }
+
+  /**
+   * A portal annotation's words (its description, method and GO term: `portalAnnotationText`, Markdown), a point list's
+   * or a mask's by its ref, when its index is read (synchronous: the properties)
+   */
+  annotationTextOf(ref: string): string | undefined {
+    const url = downloadUrlAbove(this.ctx, ref);
+    const a = url ? this.annotationAt.get(url.replace(/\/$/, '')) : undefined;
+    return a && portalAnnotationText(a);
+  }
+
+  /** A portal tilt series by its volume's ref, and its run, when its index is read */
+  private tiltSeriesOf(ref: string) {
+    const url = downloadUrlAbove(this.ctx, ref);
+    return url ? this.tiltSeriesAt.get(url.replace(/\/$/, '')) : undefined;
+  }
+
+  /** The volume of a run's tomogram in the scene, if one is */
+  private tomogramOf(run: number): string | undefined {
+    for (const v of this.ctx.plugin.managers.volume.hierarchy.current.volumes) {
+      const url = downloadUrlAbove(this.ctx, v.cell.transform.ref);
+      if (url && this.tomogramRunAt.get(url.replace(/\/$/, '')) === run) return v.cell.transform.ref;
+    }
+    return undefined;
+  }
+
+  /**
+   * Where a portal tilt series is (by its volume's ref) of the places `place` puts it in; undefined when moved
+   * elsewhere, or not a tilt series (synchronous: the Slice row's Placement)
+   */
+  placeOf(volume: string): TiltSeriesPlace | undefined {
+    const at = this.placing(volume);
+    if (!at) return undefined;
+    return TiltSeriesPlaces.find(([p]) => Mat4.areEqual(at.current, at.matrix(p), 1e-3))?.[0];
+  }
+
+  /** `placeOf`, following the state tree while watched: a read for views */
+  placeState(volume: string): ReadonlyState<TiltSeriesPlace | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => this.placeOf(volume),
+      () => plugin.state.data.events.changed,
+    );
+  }
+
+  /** A tilt series' matrix now (the stage's) and for each place, with its tomogram if in the scene */
+  private placing(volume: string) {
+    const ts = this.tiltSeriesOf(volume);
+    const data = this.ctx.plugin.state.data.cells.get(volume)?.obj?.data as Volume | undefined;
+    if (!ts || !data?.grid) return undefined;
+    const tomogram = this.tomogramOf(ts.run);
+    const tomogramGrid = tomogram
+      ? (this.ctx.plugin.state.data.cells.get(tomogram)?.obj?.data as Volume | undefined)?.grid
+      : undefined;
+    // where the tomogram is now, not where it was read (review S3): a stage move is its transform decorator
+    const tomogramAt = tomogram && tomogramGrid ? volumeMatrix(this.ctx, tomogram) : undefined;
+    return {
+      current: volumeMatrix(this.ctx, volume),
+      tomogram: tomogramGrid,
+      matrix: (p: TiltSeriesPlace) => tiltSeriesMatrix(p, data.grid, ts.series.tiltAxis, tomogramGrid, tomogramAt),
+    };
+  }
+
+  readonly place = this.operation({
+    id: 'cryoetPortal.place',
+    title: 'Place a CryoET Data Portal tilt series by its tomogram',
+    params: {
+      volume: PD.Text('', { description: 'The tilt series, by state ref' }),
+      place: PlaceParam(),
+    },
+    async run({ volume, place }, ctx) {
+      if (!ctx.api.describe('stage.move')) return ApiResult.fail('unavailable', 'This viewer cannot move objects.');
+      const at = ctx.api.cryoetPortal!.placing(volume);
+      if (!at) return ApiResult.fail('not-found', `'${volume}' is not a CryoET Data Portal tilt series loaded here.`);
+      if (place === 'overlay' && !at.tomogram) {
+        return ApiResult.fail(
+          'not-found',
+          'Its tomogram is not in the scene.',
+          'Load the run with its tomogram first.',
+        );
+      }
+      const move = Mat4.mul(Mat4(), at.matrix(place), Mat4.invert(Mat4(), at.current));
+      return ctx.api.run('stage.move', { target: volume, matrix: Array.from(move) });
+    },
+  });
 
   readonly datasets = this.operation({
     id: 'cryoetPortal.datasets',
@@ -279,6 +390,7 @@ export class CryoetPortalApi extends ApiArea {
       tiltSeriesLevel: OptionalParam(
         PD.Numeric(2, { min: 0, step: 1 }, { description: "The tilt series' OME-Zarr level; absent: the coarsest" }),
       ),
+      tiltSeriesPlace: PlaceParam(),
       large: PD.Boolean(false, { description: `Load above ${PortalLargeBytes / 1e6} MB decoded (asked first)` }),
     },
     modules: ['network'],
@@ -323,7 +435,14 @@ export class CryoetPortalApi extends ApiArea {
       if (t && level) {
         if (info.needs) warnings.push(`The tomogram ${info.needs}.`);
         else {
-          const r = await loadTomogram(ctx, PortalFiles + t.zarr, level, v.as, warnings);
+          const r = await loadTomogram(
+            ctx,
+            PortalFiles + t.zarr,
+            level,
+            `${info.run.name} tomogram ${t.id}`,
+            v.as,
+            warnings,
+          );
           if (!r.ok) return r;
           tomogram = true;
           done.push(`tomogram ${t.id} (level ${level.path}, ${level.spacing} Å)`);
@@ -334,13 +453,20 @@ export class CryoetPortalApi extends ApiArea {
           warnings.push(`${e.object} (${e.shape}) ${e.needs}.`);
           continue;
         }
-        const r = await loadEntry(ctx, ds, info.spacing, e, v.level, warnings);
+        const r = await loadEntry(ctx, ds, info.run.name, info.spacing, e, v.level, warnings);
         if (!r.ok) return r;
         done.push(`${e.object} (${e.shape})`);
       }
       if (ts && tsLevel) {
-        // beside the tomogram loaded with it; alone, where it lands
-        const r = await loadTiltSeries(ctx, PortalFiles + ts.zarr, tsLevel, tomogram);
+        // by the tomogram loaded with it, at the place asked; alone, where it lands
+        const r = await loadTiltSeries(
+          ctx,
+          PortalFiles + ts.zarr,
+          tsLevel,
+          `${info.run.name} tilt series ${ts.id}`,
+          tomogram ? v.tiltSeriesPlace : undefined,
+          warnings,
+        );
         if (!r.ok) return r;
         done.push(`tilt series ${ts.id} (level ${tsLevel.path}, ${ts.angles.length} images)`);
       }
@@ -452,14 +578,15 @@ async function added(
  * default visual (an isosurface the slices would only hide): the volumes it made. The size was asked about before
  * (`large`), so the format's limit is what the level needs as the format counts it (its voxels and one decoded chunk,
  * `omeZarrLevelNeeds`), read from the file once opened: the index's bytes are the voxels only, and a limit set to them
- * refused the level asked for (Ludo, 2026-11-03: 685 MB against 618).
+ * refused the level asked for (Ludo, 2026-11-03: 685 MB against 618). Named `name` (the format's label, its volume's
+ * with it: _spec/portal.md §2), the address untouched: the readout's angles and the links are found from it.
  */
-async function loadZarr(ctx: ApiContext, url: string, level: PortalLevel) {
+async function loadZarr(ctx: ApiContext, url: string, level: PortalLevel, name: string) {
   const made = await added(ctx, volumeRefs, async () => {
     const opened = ctx.plugin
       .build()
       .toRoot()
-      .apply(OmeZarrFromUrl, { url }, { state: { isGhost: true } });
+      .apply(OmeZarrFromUrl, { url, label: name }, { state: { isGhost: true } });
     await opened.commit({ revertOnError: true });
     const file = ctx.plugin.state.data.cells.get(opened.ref)?.obj?.data as
       | Parameters<typeof getOmeZarrLevel>[0]
@@ -495,10 +622,11 @@ async function loadTomogram(
   ctx: ApiContext,
   url: string,
   level: PortalLevel,
+  name: string,
   as: PortalTomogramView,
   warnings: string[],
 ) {
-  const made = await loadZarr(ctx, url, level);
+  const made = await loadZarr(ctx, url, level, name);
   if (isFailure(made)) return made;
   for (const volume of made) {
     // whatever the format's own visuals: the slices (other representations hidden), as a dropped tomogram shows
@@ -516,13 +644,22 @@ async function loadTomogram(
  * A tilt series at a level: its images, one at a time, as the Z slice (from the middle image, the least tilted): z is the
  * image index, not a distance (the stack is a few pixels thick), so no direct volume and no isosurface (_spec/portal.md §2)
  */
-async function loadTiltSeries(ctx: ApiContext, url: string, level: PortalLevel, beside: boolean) {
-  const made = await loadZarr(ctx, url, level);
+async function loadTiltSeries(
+  ctx: ApiContext,
+  url: string,
+  level: PortalLevel,
+  name: string,
+  place: TiltSeriesPlace | undefined,
+  warnings: string[],
+) {
+  const made = await loadZarr(ctx, url, level, name);
   if (isFailure(made)) return made;
   for (const volume of made) {
     const r = await ctx.api.run('cryoet.slice', { volume, axis: 'z' });
     if (!r.ok) return r;
-    if (beside) await besideTheTomogram(ctx, volume);
+    if (!place || !ctx.api.describe('stage.move')) continue;
+    const p = await ctx.api.run('cryoetPortal.place', { volume, place });
+    if (!p.ok) warnings.push(`The tilt series stays where it landed: ${p.message}`);
   }
   return ApiResult.ok('');
 }
@@ -569,6 +706,7 @@ export async function showTomogramVolume(ctx: ApiContext, volume: string): Promi
 async function loadEntry(
   ctx: ApiContext,
   ds: PortalDataset,
+  run: string,
   s: PortalSpacing,
   e: PortalEntry,
   level: number | undefined,
@@ -578,7 +716,7 @@ async function loadEntry(
   if (e.format === 'zarr') {
     const l = e.levels?.find((x) => x.path === String(level)) ?? e.levels?.[e.levels.length - 1];
     if (!l) return ApiResult.fail('failed', `${e.object} has no levels in the index.`);
-    const made = await loadZarr(ctx, url, l);
+    const made = await loadZarr(ctx, url, l, `${run} ${e.object} ${e.id}`);
     if (isFailure(made)) return made;
     // a mask: 0 outside, 1 (an instance's id) inside; its surface at 0.5
     for (const volume of made) {
@@ -657,15 +795,89 @@ async function centerOnAverage(ctx: ApiContext, particles: string, center: reado
 }
 
 /**
- * An average or a tilt series beside the tomogram (its own place is the origin, the tomogram's corner): moved along -x
- * by its width and a margin, by the stage's move when the viewer has it
+ * An average beside the tomogram (its own place is the origin, the tomogram's corner): moved along -x by its width and a
+ * margin (`besideMatrix`), by the stage's move when the viewer has it
  */
 async function besideTheTomogram(ctx: ApiContext, ref: string) {
   const data = ctx.plugin.state.data.cells.get(ref)?.obj?.data as Volume | undefined;
   if (!data || !ctx.api.describe('stage.move')) return;
-  const { radius } = Grid.getBoundingSphere(data.grid);
-  const matrix = Array.from(Mat4.fromTranslation(Mat4(), Vec3.create(-2.5 * radius, 0, 0)));
-  await ctx.api.run('stage.move', { target: ref, matrix });
+  await ctx.api.run('stage.move', { target: ref, matrix: Array.from(besideMatrix(data.grid)) });
+}
+
+/** Beside the tomogram, from the origin: along -x by 2.5 times the volume's radius (its width and a margin) */
+function besideMatrix(grid: Grid) {
+  const { radius } = Grid.getBoundingSphere(grid);
+  return Mat4.fromTranslation(Mat4(), Vec3.create(-2.5 * radius, 0, 0));
+}
+
+/**
+ * A volume's matrix on top of where it was read: its transform decorator's, which `stage.move` writes (as stage-tools'
+ * own read of it, an extension this one does not import: a matrix, or its parts about the origin); none: the identity
+ */
+function volumeMatrix(ctx: Pick<ApiContext, 'plugin'>, ref: string): Mat4 {
+  const { cells, tree } = ctx.plugin.state.data;
+  for (let at = ref; ; ) {
+    const next = tree.children
+      .get(at)
+      .toArray()
+      .map((c) => cells.get(c))
+      .find((c) => c?.transform.transformer.definition.isDecorator);
+    if (!next) return Mat4.identity();
+    if (next.transform.transformer === VolumeTransform) {
+      const t = (next.transform.params as { transform?: { name: string; params: any } }).transform;
+      if (t?.name === 'matrix') {
+        const m = Mat4.clone(t.params.data);
+        return t.params.transpose ? Mat4.transpose(m, m) : m;
+      }
+      if (t?.name === 'components') {
+        const { translation, axis, angle } = t.params;
+        const r = Mat4.fromRotation(Mat4(), (angle * Math.PI) / 180, axis);
+        return Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), translation), r);
+      }
+      return Mat4.identity();
+    }
+    at = next.transform.ref;
+  }
+}
+
+/** A volume's box as read (its grid's corners in Å): the portal's zarrs are axis-aligned */
+function gridBox(grid: Grid) {
+  const box = Box3D.create(Vec3(), Vec3.ofArray(grid.cells.space.dimensions));
+  return Box3D.transform(box, box, Grid.getGridToCartesianTransform(grid));
+}
+
+/**
+ * A tilt series' matrix for a place (_spec/portal.md §2), on top of where it was read (its corner at the origin, as the
+ * tomogram's). Turned: about z through its center by −(tilt axis + 180°): measured on 10003 TS_08 (tilt axis −5°), its
+ * image at 0° matched the tomogram's top view at −175.5° (CC 0.66; every other angle and the mirrored image under 0.08),
+ * so the tomogram's frame is the image's turned, not mirrored. Beside: then along −x as an average (`besideMatrix`).
+ * Overlay: its center on the tomogram's in x, y, its top at the tomogram's bottom (without a tomogram: turned beside).
+ * `tomogramAt` is the tomogram's transform (where it is now); absent, where it was read.
+ */
+export function tiltSeriesMatrix(
+  place: TiltSeriesPlace,
+  series: Grid,
+  tiltAxis: number,
+  tomogram?: Grid,
+  tomogramAt?: Mat4,
+): Mat4 {
+  const s = gridBox(series);
+  const c = Box3D.center(Vec3(), s);
+  const turn =
+    place === 'beside'
+      ? Mat4.identity()
+      : Mat4.mul3(
+          Mat4(),
+          Mat4.fromTranslation(Mat4(), c),
+          Mat4.fromRotation(Mat4(), (-(tiltAxis + 180) * Math.PI) / 180, Vec3.unitZ),
+          Mat4.fromTranslation(Mat4(), Vec3.negate(Vec3(), c)),
+        );
+  if (place !== 'overlay' || !tomogram) return Mat4.mul(Mat4(), besideMatrix(series), turn);
+  const read = gridBox(tomogram);
+  const t = tomogramAt ? Box3D.transform(Box3D(), read, tomogramAt) : read;
+  const ct = Box3D.center(Vec3(), t);
+  const shift = Vec3.create(ct[0] - c[0], ct[1] - c[1], t.min[2] - s.max[2]);
+  return Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), shift), turn);
 }
 
 /** The address of the download a cell's data came from, the first above it */

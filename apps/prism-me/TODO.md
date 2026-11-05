@@ -109,17 +109,23 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 - **CryoET Data Portal, later** (built 2026-11-02, lane `cryoet-portal`: index, load, card, URL; plan part E left): ask
   CZI to add molstar.org and the lab site to the GraphQL allow-list (then search the whole portal live); copick picks
-  JSON as a particle format; alignments (a tilt series' images are raw, not in the tomogram's frame). EMD-13412 (and
-  7PHB fitted in it) is of the other hand than 10003's tomograms (extensions/cryoet/_spec/portal.md §3): the
-  decorations' positions are right, their orientations at chance against the density, and no rotation fixes a mirror.
-  Ludo to decide: mirror the tomogram and its points in world x, or a mirrored structure as the target, or leave it
-  said. Plan: [plans/2026-11-02-cryoet-portal.md](plans/2026-11-02-cryoet-portal.md). Open from Ludo's test
-  (2026-11-03): the index holds 10003, 10453, 10524, 10518 of the portal's 392 datasets (all of them, rebuilt on a
-  schedule, proposed); a load takes the portal's default tomogram (lane `portal-tomograms`), which for 10453
-  tomogram_003 is 56411 (IsoNet, 10 Å): it shows 4 automated (Octopi) V-ATPase picks, not the 3 manual ground truth at
-  13.44 Å (Ludo to decide: the ground-truth spacing's annotations by default, proposed); curated PDBs for common objects
-  (V-ATPase, clathrin), by Delphine; a level read already sent is not cancelled (`cryoet.level`, review X2). An
-  unbounded interval's ends cannot cross (v5's can, reversing a colour scale: Ludo may want that back).
+  JSON as a particle format; alignments (a tilt series' images are raw, not in the tomogram's frame). A tilt series'
+  placement (lane `portal-polish`): beside raw, beside turned or overlay turned, a switch; overlay the default (Ludo,
+  2026-11-04); its turn, −(tilt axis + 180°), was measured on 10003 TS_08 only (another dataset's reconstruction
+  convention may differ: check one of 10453 or 10518). Left by the review: a point's hover is still not the annotation
+  (the properties have it; a list with `entityInfo` becomes a model); after `cryoet.level` on the tilt series the
+  Placement buttons read none (the box moves a few Å, under a voxel); with two tomograms of one run in the scene,
+  overlay uses the first. EMD-13412 (and 7PHB fitted in it) is of the other hand than 10003's tomograms
+  (extensions/cryoet/_spec/portal.md §3): the decorations' positions are right, their orientations at chance against the
+  density, and no rotation fixes a mirror. Ludo to decide: mirror the tomogram and its points in world x, or a mirrored
+  structure as the target, or leave it said. Plan:
+  [plans/2026-11-02-cryoet-portal.md](plans/2026-11-02-cryoet-portal.md). Open from Ludo's test (2026-11-03): the index
+  holds 10003, 10453, 10524, 10518 of the portal's 392 datasets (all of them, rebuilt on a schedule, proposed); a load
+  takes the portal's default tomogram (lane `portal-tomograms`), which for 10453 tomogram_003 is 56411 (IsoNet, 10 Å):
+  it shows 4 automated (Octopi) V-ATPase picks, not the 3 manual ground truth at 13.44 Å (Ludo to decide: the
+  ground-truth spacing's annotations by default, proposed); curated PDBs for common objects (V-ATPase, clathrin), by
+  Delphine; a level read already sent is not cancelled (`cryoet.level`, review X2). An unbounded interval's ends cannot
+  cross (v5's can, reversing a colour scale: Ludo may want that back).
 
 - A sphere a clip plane misses entirely (its center is past the plane by more than its radius): skip it in the color
   pass, and skip one the plane misses in the ghost pass (lane `marking-cost`, not built;
@@ -246,6 +252,9 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   its particles: it comes back as a cut of the whole representation (lane `looks-owner`'s review; not probed).
 
 - **Descriptions, left** (lane `descriptions`, 2026-11-04; the tree row's tooltip built on `me/tree-tooltips`):
-  PetWorld's entities have no description in their files (only `pdbx_description`, the name); a portal annotation has
-  its object name only (the index has no description: adding one means rebuilding it); the classic Mesoscale Explorer
-  shows MG's and HIV's compartment path as the description (its `model.ts`), not fixed there.
+  PetWorld's entities have no description in their files (only `pdbx_description`, the name); a portal annotation's
+  description, method and GO term are in its properties (lane `portal-polish`), not on hover: the hover's description is
+  an entity's (`entityInfo`), and a portal list given one becomes a mesoscale model in the tree (`operations.ts`'s
+  `model`), so the points' hover needs a loci label provider in the cryoet extension or a label on the ndjson transform
+  (Ludo's call); the classic Mesoscale Explorer shows MG's and HIV's compartment path as the description (its
+  `model.ts`), not fixed there.

@@ -33,7 +33,7 @@ import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { gestureSteps } from '@molstar/prism-viewer/sources/gesture-steps';
 import { classes } from './_generated/controls.module.css.js';
 import type { CryoetApi, DecorationsInfo, MeshInfo, ObliqueView, SliceAxis, TargetDecoration } from './operations.js';
-import { mb } from './portal-run.js';
+import { mb, TiltSeriesPlaces } from './portal-run.js';
 
 // The cryo-ET controls, shown by the extension's own rows and tab and by a host's panels (prism-me's properties):
 // what decorates a list's targets, a volume's slice, a segmentation mesh's look. They read the `cryoet` area and act
@@ -501,7 +501,7 @@ export function tiltAngleText(angles: readonly number[] | undefined, index: numb
 /**
  * A volume's slice along `axis` (one per axis): its position and its gray window; without `axis`, a choice of the axis
  * first (the slice it shows is edited), and the three slices at a click. A tilt series' `angles` (one an image): the Z
- * slice's image's on a Tilt line under it (_spec/portal.md §4)
+ * slice's image's on a Tilt line under it, and its Placement by its tomogram, a click each (_spec/portal.md §4)
  */
 export function Slice(props: {
   api: ViewerApi;
@@ -594,6 +594,12 @@ export function Slice(props: {
           </>
         )}
       </Show>
+      {/* once, on the Z slice's row (the images' axis): the three slices' rows get the same angles (review S1) */}
+      {!!props.angles?.length && api?.cryoetPortal ? (
+        <Show when={mapState(picked.asReadonly, (a) => (props.axis ?? a) === 'z')}>
+          {() => <Placement api={api} volume={volume} />}
+        </Show>
+      ) : null}
       {axis ? (
         <Show when={mapState(info, (s) => (s?.slices.length ?? 0) < 3)}>
           {() => (
@@ -604,6 +610,22 @@ export function Slice(props: {
         </Show>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A portal tilt series' place by its tomogram (`cryoetPortal.place`): beside as read, beside turned, overlay turned; the
+ * one it is in pressed, none once moved elsewhere (a switch to compare: Ludo, 2026-11-04)
+ */
+function Placement(props: { api: ViewerApi; volume: string }) {
+  const portal = props.api.cryoetPortal!;
+  return (
+    <Choices
+      label="Placement"
+      choices={TiltSeriesPlaces.map(([id, label]) => ({ id, label }))}
+      active={portal.placeState(props.volume)}
+      onPick={(place) => void portal.place({ volume: props.volume, place } as never)}
+    />
   );
 }
 

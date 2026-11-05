@@ -40,6 +40,12 @@ describe('the shipped portal index', () => {
     );
     expect(ribosomes).toMatchObject({ shape: 'OrientedPoint', count: 378, default: true });
     expect(ds.decorations?.[ribosomes.object]).toMatchObject({ pdb: '7PHB', emdb: 'EMD-13412' });
+    // the portal's own words for it: its description, its method and its GO term (Ludo, 2026-11-04)
+    expect(ribosomes).toMatchObject({
+      description: 'chloramphenicol bound 70S ribosome',
+      method: expect.stringMatching(/^Template matching/),
+      goId: 'GO:0022626',
+    });
     expect(s.tomograms[0].levels.map((l) => l.size)).toEqual([
       [928, 928, 450],
       [464, 464, 225],
@@ -138,6 +144,16 @@ describe('the portal URL', () => {
       run: '',
       annotations: '',
     });
+  });
+
+  it("places the tilt series as asked, one of the switch's three (Ludo, 2026-11-04: to compare)", () => {
+    const q = '?portal-dataset=10003&portal-run=TS_08&portal-tiltseries=17086&portal-tiltseries-place=';
+    expect(portalLoadOf(`${q}overlay`)).toMatchObject({ tiltSeries: 17086, tiltSeriesPlace: 'overlay' });
+    expect(portalLoadOf(`${q}turned`)).toMatchObject({ tiltSeriesPlace: 'turned' });
+    expect(portalLoadOf(`${q}beside`)).toMatchObject({ tiltSeriesPlace: 'beside' });
+    // another word: the load's default (beside)
+    expect(portalLoadOf(`${q}under`)).not.toHaveProperty('tiltSeriesPlace');
+    expect(PortalUrlParameters).toContain('portal-tiltseries-place');
   });
 
   it('asks nothing without a dataset, or with a level that is not a number', () => {

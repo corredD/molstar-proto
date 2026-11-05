@@ -20,16 +20,19 @@ registration); the index tool `tools/portal-index/`.
   (the reconstruction method: WBP, SART, Fourier_Space), `reconstructionSoftware` and `processingSoftware` (with
   versions: AreTomo3 v2.3.0, IsoNet2), `alignment` (the portal's AL-id) and `default`, the portal's visualization
   default; each written only when the portal has it, so optional, and version 1 still: an older reader ignores them) and
-  annotations (id, object, shape, format, path, size, count, ground truth, the portal's visualization default); per run
-  its tilt series (`tiltSeries`, optional, version 1 still: an OME-Zarr's levels, the portal's pixel size, the tilt
-  axis, and `angles`, one an image by the portal's `z_index`, so `angles[i]` is image i whatever the rows' order; from
-  the client's per-section parameters, `tiltseries_metadata.json` for a series whose rows are not one an image; the
-  client has no default flag for a tilt series, so none). Paths are relative to the file host. A shape's MRC is left out
-  when it has a zarr (a browser reads whole files; the zarr has levels).
+  annotations (id, object, shape, format, path, size, count, ground truth, the portal's visualization default, and the
+  portal's words for it, each when it has them: `description` ("chloramphenicol bound 70S ribosome"), `method`
+  ("Template matching + manual filtering + 3D classification filtering"; up to 759 characters) and `goId`, the object's
+  Gene Ontology term, `GO:` ids only: 10524's `CDPO:0000001` "sample" is left out; Ludo, 2026-11-04); per run its tilt
+  series (`tiltSeries`, optional, version 1 still: an OME-Zarr's levels, the portal's pixel size, the tilt axis, and
+  `angles`, one an image by the portal's `z_index`, so `angles[i]` is image i whatever the rows' order; from the
+  client's per-section parameters, `tiltseries_metadata.json` for a series whose rows are not one an image; the client
+  has no default flag for a tilt series, so none). Paths are relative to the file host. A shape's MRC is left out when
+  it has a zarr (a browser reads whole files; the zarr has levels).
 - **Curated, not the portal's:** `decorations` by object name: the PDB that decorates the points, the EMDB average, and
   the average's box center in the structure's frame (§3). The portal links no fitted model.
-- Size: 10003 (65 runs) 165 KB, 10453 (95 runs) 383 KB, 10524 (12 runs) 40 KB, 10518 (49 runs, PP7 virus-like particles;
-  Ludo, 2026-11-03) 289 KB (the tilt series: +36 %, +18 %, +24 %, +11 %); each loaded on first use only.
+- Size: 10003 (65 runs) 201 KB, 10453 (95 runs) 522 KB, 10524 (12 runs) 45 KB, 10518 (49 runs, PP7 virus-like particles;
+  Ludo, 2026-11-03) 385 KB (the annotations' words: +22 %, +36 %, +12 %, +33 %); each loaded on first use only.
 
 ## 2. The operations
 
@@ -52,9 +55,29 @@ registration); the index tool `tools/portal-index/`.
 - **A tilt series is its Z slice only** (Ludo, 2026-11-03): its zarr's z is the image index, not a distance (only x, y
   are binned; 10003 TS_08 is 41 images at z 1.7 Å, a stack 70 Å thick and 6500 Å wide), so no direct volume and no
   isosurface: `loadZarr`, then `cryoet.slice` along z from the middle image (the least tilted). The z scale stays the
-  format's (`VolumeFromOmeZarr`, library code). Loaded with the tomogram, it goes beside it (`besideTheTomogram`, as the
-  average); alone, where it lands. `tiltAnglesOf(ref)`: its angles, found from the volume's download (as `originOf`),
-  for the Slice row's readout (§4).
+  format's (`VolumeFromOmeZarr`, library code). Loaded with the tomogram, it is placed by it (`tiltSeriesPlace`, below);
+  alone, where it lands. `tiltAnglesOf(ref)`: its angles, found from the volume's download (as `originOf`), for the
+  Slice row's readout (§4).
+- **A tilt series' place, a switch to compare** (Ludo, 2026-11-04: "make it optional so we can compare"; the default is
+  `overlay`, his pick after comparing the three on 10003 TS_08: "Overlay is best"): `cryoetPortal.place` (`volume`,
+  `place`), `load`'s `tiltSeriesPlace`, each an absolute matrix on top of where it was read (`tiltSeriesMatrix`), sent
+  to `stage.move` as the move from where it is (its volume's transform decorator), so a switch back and forth ends where
+  the place says. `beside`: along −x by 2.5 times its radius, as the average (`besideMatrix`), the images as read;
+  `turned`: so, turned about z through its center by **−(tilt axis + 180°)**; `overlay`: turned, its center on the
+  tomogram's in x, y, its top at the tomogram's bottom, where the tomogram is now (its transform), not where it was read
+  (its run's tomogram found in the scene by its download; none: refused). The sign was measured, not assumed: on 10003
+  TS_08 (tilt axis −5°, tomogram 638, Warp), the 0° image (index 20) band-passed and turned over the full circle, with
+  and without a mirror, against the tomogram's top view (level 1 summed over z): one peak at −175.5° (CC 0.66; every
+  other angle under 0.08, the median 0.04; mirrored, at most 0.06), centre to centre within 14 Å, so the tomogram is the
+  image turned, not mirrored, and −(tilt axis + 180°) is 0.5° off the peak (about 28 Å at the field's edge). In the app,
+  overlay's turned image and the tomogram's Z slice show the cell's outline alike. One run measured: another
+  reconstruction's convention may differ (TODO).
+- **Names: run, kind, id** (Ludo, 2026-11-04): a volume is named `<run> tomogram <id>`, `<run> tilt series <id>`, a mask
+  `<run> <object> <annotation id>` (`TS_08 tomogram 638`, `TS_08 tilt series 17086`, `TS_08 membrane 15656`), the label
+  of `OmeZarrFromUrl`, its volume's with it; every zarr of a run is `<run>.zarr`, so the tomogram and its tilt series
+  were both `TS_08.zarr`. Only the name: the address stays the file's (`originOf`, `tiltAnglesOf` and the Data section
+  read it). A point list keeps its file's name (`chloramphenicol_bound_70s_ribosome-1.0_orientedpoint.ndjson`):
+  `load.url` names a download by its address.
 - **The pixel size is the index's voxel spacing**, never the zarr's scale: they differ in the third decimal.
 - **Points without a decoration are spheres of 50 Å** (`PortalPointRadius`; Ludo, 2026-11-03): their size theme's
   `defaultSize`, not the list's radii (a shape decorating them later would scale by those). The theme's own fallback,
@@ -107,15 +130,23 @@ registration); the index tool `tools/portal-index/`.
 - **The tilt angle on the Slice row** (Ludo, 2026-11-03): a portal tilt series' Z slice shows its image's angle on a
   Tilt line under the Slice slider (`−60.005°`), by the image's index from 0 (the box counts from 1). Not in the
   slider's unit: a unit of changing width resizes the track, and a drag went backwards (review S1); prism-me's
-  properties pass `tiltAnglesOf(volume)` to the cryoet `Slice`.
+  properties pass `tiltAnglesOf(volume)` to the cryoet `Slice`. Under it, its **Placement**: Beside, raw / Beside,
+  turned / Overlay, turned (Prism's `Choices`, a click each, no reload; the one it is in pressed, none once moved by
+  hand: `placeState`), §2.
+- **An annotation's words in its properties** (Ludo, 2026-11-04: "Portal: description + method"): a point list's or a
+  mask's, under its name, Markdown (`portalAnnotationText`, by `annotationTextOf(ref)`: the file's download, as
+  `originOf`): `cytosolic ribosome: chloramphenicol bound 70S ribosome`, the method on one line (cut at a word past 90
+  characters: 10453's run to 757), the GO term a link to `https://amigo.geneontology.org/amigo/term/<id>`. Not on hover:
+  Mol\*'s particle label shows an entity's description (`entityInfo`), and a list with entities is a mesoscale model in
+  prism-me's tree; a mask's hover is the volume's label (TODO).
 - Story: prism-me › Explorer › CryoET Data Portal (Card, a run of several tomograms: 10518 pt117_ts_001).
 
 ## 5. The URL (prism-me)
 
 `?portal-dataset=10003&portal-run=TS_08`, then `portal-tomogram` (an id: it picks its spacing too), `portal-spacing`
-(Å), `portal-annotations`, `portal-level`, `portal-tiltseries` (an id) and `portal-tiltseries-level` (its own: the
-tomogram's level is not the tilt series'): `cryoetPortal.load` once the viewer is up (`apps/prism-me/src/url.ts`). A
-value that is not a number is left out (the load's default).
-`?portal-dataset=10518&portal-run=pt117_ts_001&portal-tomogram=64010`: the IsoNet2-denoised tomogram and the membrane
-mask at 10.403 Å. `?portal-dataset=10003&portal-run=TS_08&portal-tiltseries=17086`: TS_08's tomogram and ribosomes, its
-tilt series beside them.
+(Å), `portal-annotations`, `portal-level`, `portal-tiltseries` (an id), `portal-tiltseries-level` (its own: the
+tomogram's level is not the tilt series') and `portal-tiltseries-place` (`beside`, `turned`, `overlay`; another word:
+beside): `cryoetPortal.load` once the viewer is up (`apps/prism-me/src/url.ts`). A value that is not a number is left
+out (the load's default). `?portal-dataset=10518&portal-run=pt117_ts_001&portal-tomogram=64010`: the IsoNet2-denoised
+tomogram and the membrane mask at 10.403 Å. `?portal-dataset=10003&portal-run=TS_08&portal-tiltseries=17086`: TS_08's
+tomogram and ribosomes, its tilt series beside them.
