@@ -6,14 +6,16 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-- **Bug fixes from the night review** (Ludo, 2026-11-05 morning: "bug fix"; stopped mid-way for a session restart;
-  report [2026-11-05-night-report.md](2026-11-05-night-report.md), findings in [2026-11-05-night/](2026-11-05-night/)):
+- **Bug fixes from the night review** (Ludo, 2026-11-05 morning: "bug fix"; stopped for a session restart, restarted
+  2026-11-05 on Ludo's "yes continue", three lanes, Sonnet; report
+  [2026-11-05-night-report.md](2026-11-05-night-report.md), findings in [2026-11-05-night/](2026-11-05-night/)):
+  - `night-fixes`, **PR #57** (`me/night-fixes`, port 1354): F1 `0925b06e4`, A1 `df5e96130`, F2 `f5c66bfd6`, F16
+    `51ae90b7a`; resumed at A3 (uncommitted), then A4, A6, F5, cssColor, perf, F7; gate.
+  - PR #56 fix round (`me/empiar`, port 1353): B2 `36b7a7ac1`; resumed at the card races (uncommitted, a new
+    `card-common.tsx`), then units, failures, dedup; gate.
   - `scene-sync-undo` (library, from master; `~/prism-me-lanes/scene-sync-undo` and `-pm`): test + fix pushed
-    (`24abc06f8` on master base, cherry-picked to `me/scene-sync-undo-pm` `f97c89c16`); gate started, no PR yet.
-  - PR #56 fix round (`me/empiar`): B2 pushed (`36b7a7ac1`, download outside the history step, progress and Cancel); the
-    card races in progress (uncommitted edits, a new `card-common.tsx`); then units, failures, dedup; gate.
-  - `night-fixes`, **PR #57** (`me/night-fixes`, port 1354): F1 `0925b06e4`, A1 `df5e96130` pushed; F2 `f5c66bfd6`, F16
-    `51ae90b7a` committed not pushed; A3 in progress (uncommitted); then A4, A6, F5, cssColor, perf, F7; gate.
+    (`24abc06f8` on master base, cherry-picked to `me/scene-sync-undo-pm` `f97c89c16`); resumed at the gate, then the PR
+    of `-pm` to prism-me (the master branch kept for upstream).
 
 - **Started 2026-11-04** (Ludo: "start two lanes, fast-slice and empiar"; "start by full resolution, and we will
   optimize after"):
@@ -51,33 +53,8 @@ is not built is [../TODO.md](../TODO.md).
   `me/volume-lighting`, `me/volume-neural` kept on the fork for upstream (Ludo); their briefs in `2026-11-02-<slug>.md`.
   What is left: [../TODO.md](../TODO.md) (Volume lighting, later; CryoET Data Portal, later).
 
-- **UI scale** (`me/ui-scale`, `~/prism-me-lanes/ui-scale`, port 1344, [brief](2026-10-30-ui-scale.md)): Ludo,
-  2026-10-30, "really important": Settings › Appearance › UI scale, − and +, the UI larger and the 3D untouched; Prism's
-  size tokens scaled by one variable, its commits upstreamable. PR #25, reviewed (no must-fix stood; 7 findings fixed or
-  to TODO; the drift test found a virtual-list bug, fixed); not yet seen in a browser; served on 1344; waits on Ludo.
-- **8. Dynamic coloring by distance** (cellVIEW's Chameleon; Ludo, 2026-10-30, "add to the queue"; brief in TODO.md
-  `Next` and cellview.md §7, PR #26, docs only, waits on Ludo). Levels like the LOD (far: compartment or entity; closer:
-  chain; closest: residue or atom), blended so a zoom never pops. Step 1 a measurement: re-running `particle-hierarchy`
-  over CellPack MG on WebGPU and WebGL2, which chooses (a) a theme's current level moved on camera change (David's) or
-  (b) a shader blend by view depth (cellVIEW's, library, with Alexander). Open for Ludo: edges in screen pixels or in Å
-  (the lane builds pixels by default, the unit in one place). Started 2026-10-30 (Ludo: "go"): lane `dynamic-color`
-  (`me/dynamic-color`, port 1359), step 1 first. Step 1 measured: recoloring CellPack MG (2.1 M) costs ~1 s (WebGPU) to
-  ~1.8 s (WebGL2) a step, 20+ frames at best, so a theme moved on zoom cannot be smooth: way (b), the shader blend by
-  view depth. Stopped at the size check: (b) is ~360 graphics lines against ~250. Waits on Ludo: full (b), three levels
-  (~290) or WebGPU first (~280); atom or residue as the nearest level; edges in pixels or Å. Ludo, 2026-10-30: full (b),
-  four levels, atom nearest, edges in pixels on screen; the limit lifted to ~420. PR #27, reviewed (2 must-fix, 7
-  should-fix fixed or stated; skeptic confirmed all), real GL on both backends, 0 frames at rest. Waits on Ludo: the
-  blend per atom (vertex stage), not per pixel, changed by the lane without asking (per pixel costs two varyings, both
-  backends near their limit); graphics +449 against ~420 (the TS rule not counted in the estimate). Served on 1344.
-  Ludo's test, 2026-10-30: Firefox (WebGL) does not work; Safari draws only the outline and flickers; Chrome draws
-  normally only once By zoom is on (the levels-off path likely broken too), the coloring then "works great"; zoomed in
-  on spacefill the frame rate drops a lot. Ludo: fix 1 in the lane, a plan for 2 (measured, not built). Done on #27: 1
-  was a WebGPU draw-list bug already in prism-me (and master: a recording replayed a released quad index buffer;
-  PetWorld HIV blank on WebGPU), fixed with tests, to go upstream from master as its own lane; By zoom on a model
-  without compartments colors by entity. Open, on prism-me too: WebKit draws only CellPack HIV's RNA; Safari's flicker
-  not reproduced headless. 2 measured: levels off cost what prism-me costs, on up to +14 %; zoomed in is 1.5-4× the
-  whole view on prism-me already. Plan, not built: skip the blend where a level is whole (~10 lines), then Oklab stored
-  (~25). Waits on Ludo: retest on 1344, merge #27, go for the plan.
+- **Merged 2026-10-31:** #25 (UI scale, Settings › Appearance, − and +) and #26 (dynamic coloring by distance, queued;
+  built as #27, colors by zoom). Lanes closed.
 - **Colors by zoom** (PR #27, with the WebGPU draw-list fix): merged by Ludo, 2026-10-31. #28 has prism-me merged in.
 - **Smooth when zoomed in**: PR #28 merged by Ludo, 2026-10-31; worktree removed. What is left is below.
 - **Smooth when zoomed in** (lane `instance-cull`, `me/instance-cull` from #27's branch, port 1362; brief
