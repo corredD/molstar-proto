@@ -556,13 +556,13 @@ function pickLevel(levels: readonly PortalLevel[], level: number | undefined): P
 
 // --- the loads, by the viewer's operations ------------------------------------------------------------------------
 
-const listRefs = (ctx: ApiContext) =>
+export const listRefs = (ctx: ApiContext) =>
   new Set(ctx.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref));
-const volumeRefs = (ctx: ApiContext) =>
+export const volumeRefs = (ctx: ApiContext) =>
   new Set(ctx.plugin.managers.volume.hierarchy.current.volumes.map((v) => v.cell.transform.ref));
 
 /** What a run of `work` added, of a kind */
-async function added(
+export async function added(
   ctx: ApiContext,
   refs: (ctx: ApiContext) => Set<string>,
   work: () => Promise<ApiResult>,
@@ -768,7 +768,7 @@ export const PortalPointRadius = 50;
  * The list's spheres at `PortalPointRadius`: their size theme's, not the list's radii, so a shape that decorates the list
  * later is not scaled by them (a shape target scales by the particle's radius)
  */
-async function sizePoints(ctx: ApiContext, particles: string): Promise<ApiResult> {
+export async function sizePoints(ctx: ApiContext, particles: string): Promise<ApiResult> {
   const list = ctx.plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === particles);
   for (const r of list?.representations ?? []) {
     if (r.cell.transform.params?.type.name !== 'spacefill') continue;
@@ -798,7 +798,7 @@ async function centerOnAverage(ctx: ApiContext, particles: string, center: reado
  * An average beside the tomogram (its own place is the origin, the tomogram's corner): moved along -x by its width and a
  * margin (`besideMatrix`), by the stage's move when the viewer has it
  */
-async function besideTheTomogram(ctx: ApiContext, ref: string) {
+export async function besideTheTomogram(ctx: ApiContext, ref: string) {
   const data = ctx.plugin.state.data.cells.get(ref)?.obj?.data as Volume | undefined;
   if (!data || !ctx.api.describe('stage.move')) return;
   await ctx.api.run('stage.move', { target: ref, matrix: Array.from(besideMatrix(data.grid)) });
@@ -881,7 +881,7 @@ export function tiltSeriesMatrix(
 }
 
 /** The address of the download a cell's data came from, the first above it */
-function downloadUrlAbove(ctx: Pick<ApiContext, 'plugin'>, ref: string): string | undefined {
+export function downloadUrlAbove(ctx: Pick<ApiContext, 'plugin'>, ref: string): string | undefined {
   const { cells } = ctx.plugin.state.data;
   for (let cell = cells.get(ref); cell; cell = cells.get(cell.transform.parent)) {
     const url = (cell.transform.params as { url?: unknown } | undefined)?.url;
