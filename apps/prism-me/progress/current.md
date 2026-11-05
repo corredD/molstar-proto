@@ -6,16 +6,12 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
-- **Bug fixes from the night review** (Ludo, 2026-11-05: "bug fix"; restarted on "yes continue"; report
-  [2026-11-05-night-report.md](2026-11-05-night-report.md), findings in [2026-11-05-night/](2026-11-05-night/)):
-  - **Merged 2026-11-05:** #58 (`scene-sync-undo`: undo after a portal or EMPIAR load no longer throws;
-    [progress](2026-11-05-scene-sync-undo.md); `me/scene-sync-undo` from master kept on the fork for upstream) and #56
-    (EMPIAR steps A, B and the fix round: download outside the history step, card races, MB, warnings, `load-scene.ts`;
-    [progress](2026-11-04-empiar.md)). Lanes closed. Left in TODO.md: the tomogram held twice (a library release on
-    `Data.ResponseBody`), the fetch-ahead's third copy to measure, a second run's average.
-  - `night-fixes`, **PR #57**, ready (`me/night-fixes`, port 1354; [progress](2026-11-05-night-fixes.md)): 14 findings
-    fixed, gate done. Ludo, 2026-11-05: the HIV smoothness check skipped; the library commits stay in our branch; F13's
-    color parsing kept. Waits on Ludo's merge.
+- **Bug fixes from the night review** (Ludo, 2026-11-05): **merged 2026-11-05**, #58 (undo after a portal or EMPIAR
+  load; [progress](2026-11-05-scene-sync-undo.md)), #56 (EMPIAR A, B and its fix round;
+  [progress](2026-11-04-empiar.md)) and #57 (14 night-review findings; [progress](2026-11-05-night-fixes.md)). Lanes
+  closed, worktrees removed; `me/scene-sync-undo` (from master) kept on the fork for upstream. Left in TODO.md: the
+  tomogram held twice, a second run's average, the findings not taken (A2, A5, B1, D1-D8, E1-E3), the clip design
+  points. Next: Ludo's own review from the workstation.
 
 - **Started 2026-11-04** (Ludo: "start two lanes, fast-slice and empiar"; "start by full resolution, and we will
   optimize after"):
