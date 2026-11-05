@@ -166,4 +166,41 @@ describe('the EMPIAR card', () => {
     expect(calls[0]).toMatchObject({ grid: 'YTC041_1', run: Run });
     dispose();
   });
+
+  it('shows the latest pick when an older read answers after it (review S8, rendering.md §2.7)', async () => {
+    const base = area({ id: 12534, run: Run });
+    // YTC041_2 answers slowly, YTC042_2 at once: picked in that order, YTC042_2 stays
+    const one = (grid: string) => ({
+      condition: 'data/EMPIAR_upload',
+      name: grid,
+      runs: [{ stem: `${grid}_r`, files: [] }],
+      other: [],
+    });
+    const slow: EmpiarPanelArea = {
+      ...base,
+      grid: async (id, root, grid) =>
+        grid === 'YTC041_2'
+          ? new Promise((done) => setTimeout(() => done(one(grid)), 300))
+          : grid === 'YTC042_2'
+            ? one(grid)
+            : base.grid(id, root, grid),
+    };
+    const ctx: EmpiarPanelContext = { api: { run: async () => ({ ok: true, did: '' }) } };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const dispose = render(() => <EmpiarPanel ctx={ctx} area={slow} />, host);
+    await until(() => /YTC041_1_lam1_1_ts_003/.test(host.textContent ?? ''));
+    button(host, 'Grid').click();
+    await tick();
+    option('YTC041_2').click();
+    await tick();
+    button(host, 'Grid').click();
+    await tick();
+    option('YTC042_2').click();
+    await until(() => /YTC042_2_r/.test(host.textContent ?? ''));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(host.textContent).toContain('YTC042_2_r');
+    expect(host.textContent).not.toContain('YTC041_2_r');
+    dispose();
+  });
 });

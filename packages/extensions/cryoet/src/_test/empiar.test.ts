@@ -63,6 +63,7 @@ function body(url: string): BodyInit | null {
     }.html`;
     return readdirSync(dir).includes(name) ? fixture(name) : null;
   }
+  if (path.endsWith('co-translation_ribosome_CHX.star')) return fixture('co-translation_ribosome_CHX.star');
   if (path.endsWith('.star')) return fixture('80S_ribosome_CHX.star');
   if (path.endsWith('.rawtlt')) return fixture(`${Run}.mrc.rawtlt`);
   if (path.endsWith('_labels.mrc')) return map(true);
@@ -225,6 +226,19 @@ describe('empiar, walked', () => {
   });
 });
 
+describe('empiar reads', () => {
+  it('asks again for a read that failed (review S8): a failure is not kept', async () => {
+    let failed = 0;
+    serve((url) => (url.includes('/api/entry/') && !failed++ ? null : undefined));
+    const v = await viewer();
+    expect(await v.api.run('empiar.entry', { id: 12534 })).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/404/),
+    });
+    expectOk(await v.api.run('empiar.entry', { id: 12534 }));
+  });
+});
+
 describe('empiar.load', () => {
   const load = { id: 12534, run: Run, files: `${Run}.mrc_9.98Apx.mrc,${Run}_labels.mrc,80S_ribosome_CHX.star` };
 
@@ -354,6 +368,45 @@ describe('empiar.load', () => {
     const r = await v.api.run('empiar.load', { ...load, emdb: 'none', large: true });
     expect(r).toMatchObject({ ok: false, message: expect.stringMatching(/_labels\.mrc.*404/) });
     expect(v.plugin.state.data.cells.size).toBe(1);
+  });
+
+  // RELION 3.1 (an optics block, rlnPixelSize 3.33, rlnOriginXAngst): its picks are 80S picks, so its Å must be theirs
+  it("reads the co-translation STAR in its own pixels: a pick lands on the run's 80S pick (review S8)", async () => {
+    serve();
+    const v = await viewer();
+    const files = 'co-translation_ribosome_CHX.star';
+    expectOk(await v.api.run('empiar.load', { ...load, files, emdb: 'none' }));
+    const [list] = v.plugin.managers.particles.hierarchy.current.lists;
+    const data = particleListData({ plugin: v.plugin }, list.cell.transform.ref) as ParticleList;
+    expect(data.count).toBe(2);
+    // 1464.73438 × 3.33 less its origin shift (−0.905 Å); the 80S file's pick (977.47, 696.42, 293.66) × 4.99
+    const p = Array.from(data.coordinates.slice(0, 3));
+    [4877.57, 3475.15, 1465.34].forEach((x, k) => expect(Math.abs(p[k] - x)).toBeLessThan(1));
+  });
+
+  it("keeps a run's rows by rlnTomoName when the file names tomograms (review S8)", async () => {
+    const star = [
+      'data_particles',
+      'loop_',
+      '_rlnTomoName',
+      '_rlnCoordinateX',
+      '_rlnCoordinateY',
+      '_rlnCoordinateZ',
+      '_rlnPixelSize',
+      `${Run} 1 2 3 4.99`,
+      `${Run} 4 5 6 4.99`,
+      'YTC041_1_lam1_2_ts_002 7 8 9 4.99',
+      '',
+    ].join('\n');
+    serve((url) => (url.endsWith('80S_ribosome_CHX.star') ? star : undefined));
+    const v = await viewer();
+    expectOk(await v.api.run('empiar.load', { ...load, files: '80S_ribosome_CHX.star', emdb: 'none' }));
+    const [list] = v.plugin.managers.particles.hierarchy.current.lists;
+    const data = particleListData({ plugin: v.plugin }, list.cell.transform.ref) as ParticleList;
+    expect(data.count).toBe(2);
+    expect(Array.from(data.coordinates.slice(3, 6)).map((x) => Math.round(x * 100) / 100)).toEqual([
+      19.96, 24.95, 29.94,
+    ]);
   });
 
   it('refuses a file that cannot load, saying why', async () => {
