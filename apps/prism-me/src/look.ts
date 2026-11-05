@@ -76,9 +76,15 @@ export const MesoscaleCanvasLook: Partial<Canvas3DProps> = {
       },
     },
   } as Canvas3DProps['postprocessing'],
+  // illumination keeps the outlines (Ludo, 2026-11-04; Mol*'s default drops them while it traces): only that, so it
+  // stays off until Lighting turns it on, and the canvas merges it into its own
+  illumination: { ignoreOutline: false } as Canvas3DProps['illumination'],
 };
 
-/** The spec's canvas with the mesoscale look under what it sets itself (its postprocessing merged by effect) */
+/**
+ * The spec's canvas with the mesoscale look under what it sets itself (its postprocessing and illumination merged by
+ * effect)
+ */
 export function withMesoscaleLook(spec: PluginSpec): PluginSpec {
   const own = spec.canvas3d ?? {};
   return {
@@ -91,6 +97,10 @@ export function withMesoscaleLook(spec: PluginSpec): PluginSpec {
         ...(MesoscaleCanvasLook.postprocessing as object),
         ...(own.postprocessing as object),
       } as Canvas3DProps['postprocessing'],
+      illumination: {
+        ...(MesoscaleCanvasLook.illumination as object),
+        ...(own.illumination as object),
+      } as Canvas3DProps['illumination'],
     },
   };
 }
