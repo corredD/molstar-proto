@@ -62,19 +62,23 @@ with `-x`. Only `packages/graphics/src/repr/volume/slice.ts` changes; `util.ts` 
   an ulp away, so a sum in another order passed; with this theme it fails (checked by swapping the order).
 - `27fbb6f09` step 4: the position is `Vec3.transformMat4` inlined for an affine transform, its sums in its order (`w`
   is 1), so the same bits; any other transform still calls it.
-- `aa907b82e` `CHANGELOG.md` line (applies to 5.x); `.v6/changelogs/fast-slice.md` here.
+- `aa907b82e` `CHANGELOG.md` line (applies to 5.x); `1585eac76` `.v6/changelogs/fast-slice.md` (on -pm first in
+  `0bb946563`, the same file, so its cherry-pick was empty).
+- Review fixes: `744012bca` the old `getSampledImage` kept in the test as the reference (pixels, values, mapping, index
+  for three oblique planes on each volume), failing until `facefeac2` exports `getSampledImage` (and `SamplingInfo`);
+  `ad8665a13` the lazy index lets go of its pixel flags once built.
 
 ### Measured (headed Chromium, WebGPU, M-series Mac, port 1352; a Sonnet helper, the script in the session's scratchpad)
 
 TS_08 level 0 (928×928×450), 12 Z steps (+5 each), `api.run('cryoet.slice', …)` plus two frames, awaited one at a time;
 Chrome CPU profile through CDP, 100 µs sampling; ms a step, one session:
 
-| after                 | step, median (range) | `createGridImage` (self) | `trilinearlyInterpolate` | `transformMat4` | GC  | upload (`writeTexture` + `flipRows2`) |
-| --------------------- | -------------------- | ------------------------ | ------------------------ | --------------- | --- | ------------------------------------- |
-| before                | 273 (231–363)        | 260 (189)                | 26                       | 49              | 6.7 | 6.6                                   |
-| 2, the index          | 108 (102–141)        | 94 (49)                  | 26                       | 20              | 2.4 | 6.6                                   |
-| 3, uniform color once | 104 (98–132)         | 93 (50)                  | 25                       | 19              | 1.5 | 6.4                                   |
-| 4, the position       | 87 (78–97)           | 73 (53)                  | 21                       | 0               | 0.8 | 6.4                                   |
+| after                 | step, median (range) | `createGridImage` total (self) | `trilinearlyInterpolate` | `transformMat4` | GC  | upload (`writeTexture` + `flipRows2`) |
+| --------------------- | -------------------- | ------------------------------ | ------------------------ | --------------- | --- | ------------------------------------- |
+| before                | 273 (231–363)        | 260 (189)                      | 26                       | 49              | 6.7 | 6.6                                   |
+| 2, the index          | 108 (102–141)        | 94 (49)                        | 26                       | 20              | 2.4 | 6.6                                   |
+| 3, uniform color once | 104 (98–132)         | 93 (50)                        | 25                       | 19              | 1.5 | 6.4                                   |
+| 4, the position       | 87 (78–97)           | 73 (53)                        | 21                       | 0               | 0.8 | 6.4                                   |
 
 3.1× a step (2.9× at the slowest). This session's "before" (273) is below #53's 436–449 (another session); the ratio is
 what holds. The remaining 73 ms of the build: the volume-value theme's call (its own `transformMat4`, now inlined in the
@@ -114,5 +118,16 @@ loop ~25). Tests: +360 (the reference build ~130, the fixtures and themes ~120, 
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+Reviewer (Opus): 1 must-fix, 1 should-fix, 5 nits; it ran mutation probes (a reordered position sum, a wrong pixel
+formula, set for push, a reversed lazy loop: all caught). Skeptic (Opus): 6 confirmed, 1 refuted, 1 new nit.
+
+| Finding                                                                                                                                    | Severity                            | Verdict                                                                                 | Commit / open                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1 `.v6/changelogs/fast-slice.md` missing on `me/fast-slice` (upstream needs it)                                                            | must-fix (skeptic: before upstream) | confirmed                                                                               | `1585eac76`                                                                                                                                            |
+| 2 the plane/frame index test built its expectation from the new image's own `instance`/`cell`: a wrong cell or instance passed             | should-fix                          | confirmed (mutations survived)                                                          | `744012bca` (failing first) + `facefeac2`; both mutations now fail                                                                                     |
+| 3 the no-strides fixture keeps a `getCoords` that inverts `dataOffset`, so the `Tensor.strides` guard is not exercised                     | nit                                 | confirmed                                                                               | open: a fixture would need its own expectation (the old build kept only the last pixel of a duplicated cell); no production slice reaches such a space |
+| 4 `gridSliceIndex`'s key checks (`< 0`, `>= cellCount`, integer) redundant with its only caller                                            | nit                                 | confirmed                                                                               | left: cheap, they keep `get` total like the Map's                                                                                                      |
+| 5 the lazy closure keeps `mapped` after building                                                                                           | nit                                 | confirmed                                                                               | `ad8665a13`                                                                                                                                            |
+| 6 the first hover after a rebuild of a plane/frame/periodic slice pays the Map                                                             | nit                                 | refuted (in the changelog and Decided; never more work than before)                     | —                                                                                                                                                      |
+| 7 the table's "`createGridImage` (self)" header                                                                                            | nit                                 | confirmed                                                                               | fixed here                                                                                                                                             |
+| N1 a grid slice over a space without strides that shows a cell more than once: the lazy index lists every pixel, the old Map only the last | nit (skeptic)                       | confirmed, unreachable (wrapped volumes are isosurface-only; periodic pairs are unique) | recorded here                                                                                                                                          |
