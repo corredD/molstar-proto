@@ -26,6 +26,7 @@ import {
   parseListing,
   readEmpiarEntry,
   stemOf,
+  totalLabel,
   walkCondition,
 } from '../empiar-entry.js';
 import { particleListData } from '../operations.js';
@@ -150,9 +151,18 @@ describe('the EMPIAR entry, parsed', () => {
     expect(() => parseListing('<html><title>Not found</title></html>')).toThrow(/Not a folder listing/);
   });
 
+  // night review B3: the total was MiB written MB, the guard 512e6 bytes: 489 MiB read "489 MB" and was refused over "512 MB"
+  it('says MB of 10^6 bytes as the guard counts them, the listing as the same unit', () => {
+    expect(totalLabel(listingBytes('489M')!)).toBe('513 MB');
+    expect(listingBytes('489M')!).toBeGreaterThan(512e6);
+    expect(totalLabel(listingBytes('834M')!)).toBe('875 MB');
+    expect(totalLabel(493 * 1024)).toBe('505 kB');
+    expect(totalLabel(165)).toBe('165 B');
+  });
+
   it("estimates EBI's time for a pick above a few MB, none below (Ludo: a warning on EMPIAR's speed)", () => {
     expect(ebiSpeedWarning(834 * 1024 ** 2)).toBe(
-      "834 MB from EBI: about 1–2 h at its usual speed (EMPIAR's server is often slow, 0.1–0.2 MB/s).",
+      "875 MB from EBI: about 1–2 h at its usual speed (EMPIAR's server is often slow, 0.1–0.2 MB/s).",
     );
     expect(ebiTime(60 * 1024 ** 2)).toBe('about 5–10 min');
     expect(ebiTime(500 * 1024 ** 2)).toBe('about 44 min–1 h');
@@ -268,7 +278,7 @@ describe('empiar.load', () => {
     const r = await v.api.run('empiar.load', { ...load, emdb: 'none' });
     expect(r).toMatchObject({ ok: false, code: 'confirm' });
     expect((r as { message: string }).message).toBe(
-      `${Run}: 1263 MB to read whole (tomogram 834 MB, mask 417 MB, particles 12 MB). From EBI: about 2–4 h at its usual speed.`,
+      `${Run}: 1.3 GB to read whole (tomogram 875 MB, mask 437 MB, particles 13 MB). From EBI: about 2–4 h at its usual speed.`,
     );
     expect(v.plugin.state.data.cells.size).toBe(1);
   });

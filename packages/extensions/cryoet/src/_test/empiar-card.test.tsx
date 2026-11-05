@@ -91,15 +91,15 @@ describe('the EMPIAR card', () => {
     await until(() => !!load());
     const text = host.textContent ?? '';
     expect(text).toContain('Cytoplasmic ribosomes on mitochondria');
-    expect(text).toContain(`tomogram · ${Run}.mrc_9.98Apx.mrc · 834 MB`);
-    expect(text).toContain(`mask · ${Run}_labels.mrc · 417 MB`);
-    expect(text).toContain('particles · 80S_ribosome_CHX.star · 12 MB');
-    expect(text).toMatch(new RegExp(`${Run}_labels\\.hff · 3\\.8 MB: needs a reader for EMDB-SFF`));
-    expect(text).toMatch(/\.mrc\.st · 3\.3 GB: too large to read whole in a tab/);
-    // the total beside Load, in the listing's units: the sum of the sizes shown
-    expect(text).toContain('1263 MB');
+    expect(text).toContain(`tomogram · ${Run}.mrc_9.98Apx.mrc · 875 MB`);
+    expect(text).toContain(`mask · ${Run}_labels.mrc · 437 MB`);
+    expect(text).toContain('particles · 80S_ribosome_CHX.star · 13 MB');
+    expect(text).toMatch(new RegExp(`${Run}_labels\\.hff · 4\\.0 MB: needs a reader for EMDB-SFF`));
+    expect(text).toMatch(/\.mrc\.st · 3\.5 GB: too large to read whole in a tab/);
+    // the total beside Load, in MB of 10^6 bytes, as the portal's
+    expect(text).toContain('1.3 GB');
     // and how long EBI usually takes for it
-    expect(text).toContain("1263 MB from EBI: about 2–4 h at its usual speed (EMPIAR's server is often slow");
+    expect(text).toContain("1.3 GB from EBI: about 2–4 h at its usual speed (EMPIAR's server is often slow");
     // a condition by its image set's words
     expect(text).toContain('EMPIAR_upload · Reconstructed tomograms of CHX-treated S. cerevisiae lamellae');
 
@@ -227,13 +227,13 @@ describe('the EMPIAR card', () => {
       await tick();
     }
     // the tomogram alone
-    await until(() => /834 MB from EBI: about 1–2 h at its usual speed/.test(host.textContent ?? ''));
+    await until(() => /875 MB from EBI: about 1–2 h at its usual speed/.test(host.textContent ?? ''));
     option(`${Run}.mrc_9.98Apx.mrc`).click();
     await tick();
     option('co-translation_ribosome_CHX.star').click();
     // 493 KB: no warning
     await until(() => !/from EBI/.test(host.textContent ?? ''));
-    expect(host.textContent).toContain('0 MB');
+    expect(host.textContent).toContain('505 kB');
     dispose();
   });
 

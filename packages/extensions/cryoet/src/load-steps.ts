@@ -80,6 +80,9 @@ export class FetchAhead {
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String((e as { reason?: string })?.reason ?? e));
 
+/** Bytes as every card says them: MB of 10^6 bytes (the format's, and the guards' and speeds' own unit) */
+export const mb = (bytes: number) => `${(bytes / 1e6).toFixed(bytes < 10e6 ? 1 : 0)} MB`;
+
 /** A duration as a card says it: `5 min`, `1 h` */
 export const span = (s: number) => (s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : `${Math.round(s / 3600)} h`);
 

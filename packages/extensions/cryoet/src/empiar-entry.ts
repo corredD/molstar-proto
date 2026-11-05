@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { span } from './load-steps.js';
+import { mb, span } from './load-steps.js';
 
 // An EMPIAR entry as the browser walks it (_spec/empiar.md §1): the API's entry, the file host's folder listings, a
 // file's kind and its run. Plain functions of the replies, no viewer, no network: the area (empiar.ts) reads, these
@@ -297,12 +297,20 @@ export async function walkGrid(entry: EmpiarEntry, c: EmpiarCondition, grid: str
 /** The files a load takes when none are named: what loads, without the tilt series (their size) */
 export const defaultFiles = (run: EmpiarRun) => run.files.filter((f) => !f.why && f.kind !== 'tilt-series');
 
-/** A size as the listing writes it, with its unit: `834 MB`, `493 KB`, `165 B` */
-export const sizeLabel = (f: Pick<EmpiarFile, 'size'>) =>
-  /[KMGT]$/.test(f.size) ? `${f.size.slice(0, -1)} ${f.size.slice(-1)}B` : `${f.size} B`;
+/** A file's size in MB (its bytes), `165 B` when the listing gave no bytes */
+export const sizeLabel = (f: Pick<EmpiarFile, 'size' | 'bytes'>) =>
+  f.bytes === undefined ? (f.size ? `${f.size} B` : '') : totalLabel(f.bytes);
 
-/** A total in the listing's units (MiB, written MB), so it is the sum of the sizes shown: 834 + 417 + 12 → `1263 MB` */
-export const totalLabel = (bytes: number) => `${Math.round(bytes / 1024 ** 2)} MB`;
+/** A size in MB of 10^6 bytes, as the portal says it and as the guard and the speeds count (night review B3): the
+ *  listing's `834M` is 834 MiB, said `875 MB` */
+export const totalLabel = (bytes: number) =>
+  bytes < 1e3
+    ? `${bytes} B`
+    : bytes < 1e6
+      ? `${Math.round(bytes / 1e3)} kB`
+      : bytes < 1e9
+        ? mb(bytes)
+        : `${(bytes / 1e9).toFixed(1)} GB`;
 
 /** EBI's usual time for `bytes`, fastest to slowest: `about 1–2 h`, `about 5–10 min`, `about 44 min–1 h` */
 export function ebiTime(bytes: number) {

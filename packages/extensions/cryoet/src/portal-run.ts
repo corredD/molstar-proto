@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { mb } from './load-steps.js';
 import type {
   PortalAnnotation,
   PortalCatalog,
@@ -223,6 +224,5 @@ export function entryBytes(e: PortalEntry, level: number | undefined) {
   return (e.levels.find((l) => l.path === String(level)) ?? e.levels[e.levels.length - 1]).bytes;
 }
 
-/** MB as the OME-Zarr format counts them (1e6 bytes) */
-export const mb = (bytes: number) => `${(bytes / 1e6).toFixed(bytes < 10e6 ? 1 : 0)} MB`;
+export { mb };
 export const levelLine = (l: PortalLevel) => `${l.path}: ${l.size.join('×')} at ${l.spacing} Å, ${mb(l.bytes)}`;
