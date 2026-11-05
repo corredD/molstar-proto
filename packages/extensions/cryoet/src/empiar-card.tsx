@@ -7,7 +7,7 @@
  */
 
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
-import { ActionFooter, Button, For, ParamsForm, Show } from '@molstar/prism-ui';
+import { ActionFooter, For, ParamsForm, Show } from '@molstar/prism-ui';
 import { effect } from '@molstar/prism-ui/dom/scope';
 import { latest } from '@molstar/prism-ui/dom/scoped';
 import { ParamsFormModel } from '@molstar/prism-ui/forms/params-form';
@@ -27,14 +27,13 @@ import {
   totalLabel,
   ebiSpeedWarning,
 } from './empiar-entry.js';
-import { type FetchProgress, progressLine } from './load-steps.js';
+import { type CardContext, type CardRunResult, LoadAction, Muted, readingFlag } from './card-common.js';
+import type { FetchProgress } from './load-steps.js';
 
 // The EMPIAR card (_spec/empiar.md §4): an id, then the entry walked live: its condition, grid and run (selects, as the
 // portal's card), the run's files that load (checked: what a load takes by default) with their sizes, the ones that do
 // not greyed with why, an EMDB average; then Load (`empiar.load`), which asks first above the size threshold. Only the
 // last pick's reads land (`latest`). No viewer import: a story runs it over a fake.
-
-const Muted = 'margin: 0; color: var(--msp-color-text-muted); font-size: var(--msp-font-size-xs)';
 
 /** What the card reads of the `empiar` area (a story gives a fake) */
 export interface EmpiarPanelArea {
@@ -46,16 +45,8 @@ export interface EmpiarPanelArea {
   readonly fetching?: ReadonlyState<FetchProgress | undefined>;
 }
 
-/** What a run of an operation answers, as the card reads it (the viewer's `ApiResult`, without depending on it) */
-export type EmpiarRunResult =
-  | { readonly ok: true; readonly did: string; readonly warnings?: readonly string[] }
-  | { readonly ok: false; readonly code?: string; readonly message: string; readonly hint?: string };
-
-export interface EmpiarPanelContext {
-  readonly api: {
-    run(id: string, values: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<EmpiarRunResult>;
-  };
-}
+export type EmpiarRunResult = CardRunResult;
+export type EmpiarPanelContext = CardContext;
 
 interface RunPick {
   readonly entry: EmpiarEntry;
@@ -70,7 +61,10 @@ export function EmpiarPanel(props: { ctx: EmpiarPanelContext; area: EmpiarPanelA
   const idForm = new ParamsFormModel({ id: PD.Text('', { label: 'EMPIAR id', placeholder: 'EMPIAR-12534' }) });
   const pick = observableState<RunPick | undefined>(undefined);
   const problem = observableState('');
-  const reading = observableState(false);
+  // the Read button's busy: only the latest of overlapping reads clears it (night review B7)
+  const reading = readingFlag();
+  // one Load a panel: a pick remakes the form, not the load in flight (night review B4)
+  const action = new LoadAction(ctx);
   // one pick at a time: a newer one drops what an older one would show (rendering.md §2.7)
   const read = latest(async (_signal, id: number, root?: string, grid?: string, run?: string): Promise<RunPick> => {
     const entry = await area.entry(id);
@@ -90,19 +84,16 @@ export function EmpiarPanel(props: { ctx: EmpiarPanelContext; area: EmpiarPanelA
   /** A pick read and shown; false when its read failed (the form goes back to the pick it shows) */
   const choose = (id: number, root?: string, grid?: string, run?: string) => {
     problem.set('');
-    reading.set(true);
-    return read(id, root, grid, run)
-      .then(
-        (p) => {
-          if (p) pick.set(p);
-          return true;
-        },
-        (e: unknown) => {
-          problem.set((e as Error).message);
-          return false;
-        },
-      )
-      .finally(() => reading.set(false));
+    return reading.track(read(id, root, grid, run)).then(
+      (p) => {
+        if (p) pick.set(p);
+        return true;
+      },
+      (e: unknown) => {
+        problem.set((e as Error).message);
+        return false;
+      },
+    );
   };
   const open = () => {
     const id = empiarIdOf(idForm.values.value.id);
@@ -119,11 +110,11 @@ export function EmpiarPanel(props: { ctx: EmpiarPanelContext; area: EmpiarPanelA
     <div style="display: grid; gap: var(--msp-space-3); min-width: 0; padding: 0 var(--msp-space-3) var(--msp-space-3)">
       <div style="display: grid; gap: var(--msp-space-2); min-width: 0">
         <ParamsForm form={idForm} />
-        <ActionFooter icon="search" label="Read" busy={reading.asReadonly} onApply={open} />
+        <ActionFooter icon="search" label="Read" busy={reading.state} onApply={open} />
       </div>
       <Show when={mapState(problem.asReadonly, (m) => !!m)}>{() => <p style={Muted}>{problem.asReadonly}</p>}</Show>
       <For each={forms} by={(p) => `${p.entry.id}/${p.condition.root}/${p.grid.name}/${p.run}`}>
-        {(p) => <RunForm ctx={ctx} area={area} pick={p} choose={choose} />}
+        {(p) => <RunForm action={action} area={area} pick={p} choose={choose} />}
       </For>
     </div>
   );
@@ -138,24 +129,16 @@ function conditionLabel(entry: EmpiarEntry, root: string) {
 }
 
 function RunForm(props: {
-  ctx: EmpiarPanelContext;
+  action: LoadAction;
   area: EmpiarPanelArea;
   pick: RunPick;
   choose: (id: number, root?: string, grid?: string, run?: string) => Promise<boolean>;
 }) {
-  const { ctx, area, pick, choose } = props;
+  const { action, area, pick, choose } = props;
   const { entry, condition, grid } = pick;
   const run = grid.runs.find((r) => r.stem === pick.run);
   const loadable = run?.files.filter((f) => !f.why) ?? [];
   const greyed = [...(run?.files.filter((f) => f.why) ?? []), ...grid.other];
-  const busy = observableState(false);
-  const said = observableState('');
-  // the load's download, said as it goes; Cancel stops it (night review B2)
-  let stop: AbortController | undefined;
-  const reading = area.fetching ? mapState(area.fetching, (f) => (f ? progressLine(f) : '')) : undefined;
-  // asked first above the threshold: the operation says the size, a second Load goes on (`large`); a yes is for the
-  // files it was said for, so changing them asks again (review M1)
-  const asking = observableState(false);
   const form = new ParamsFormModel(
     {
       condition: PD.Select(
@@ -191,9 +174,6 @@ function RunForm(props: {
         else if (changed === 'grid' && v.grid !== grid.name) void choose(entry.id, condition.root, v.grid).then(back);
         else if (changed === 'run' && v.run !== pick.run) {
           void choose(entry.id, condition.root, grid.name, v.run).then(back);
-        } else if (changed === 'files' || changed === 'emdb') {
-          asking.set(false);
-          said.set('');
         }
       },
     },
@@ -204,39 +184,25 @@ function RunForm(props: {
   const size = mapState(bytes, totalLabel);
   // EBI is often slow: a pick above a few MB says its usual time (Ludo, 2026-11-04; _spec/empiar.md §4)
   const slow = mapState(bytes, (n) => ebiSpeedWarning(n) ?? '');
-  const load = async () => {
+  // a yes to the size question is for the files it was said for: changing them asks again (review M1)
+  const asked = derive(
+    form.values,
+    (v) => `${condition.root}/${grid.name}/${pick.run}/${[...v.files].sort().join(',')}/${v.emdb}`,
+  );
+  const load = () => {
     const v = form.values.value;
-    busy.set(true);
-    stop = new AbortController();
-    try {
-      const r = await ctx.api.run(
-        'empiar.load',
-        {
+    void action.run(
+      'empiar.load',
+      {
         id: entry.id,
         condition: condition.root,
         grid: grid.name,
         run: pick.run,
         files: v.files.join(','),
         emdb: v.emdb,
-        large: asking.value,
-        },
-        { signal: stop.signal },
-      );
-      const confirm = !r.ok && r.code === 'confirm';
-      asking.set(confirm);
-      said.set(
-        r.ok
-          ? [r.did, ...(r.warnings ?? [])].join(' ')
-          : confirm
-            ? `${r.message} Load anyway?`
-            : `${r.message}${r.hint ? ` ${r.hint}` : ''}`,
-      );
-    } catch (e) {
-      said.set((e as Error).message ?? String(e));
-    } finally {
-      busy.set(false);
-      stop = undefined;
-    }
+      },
+      asked.value,
+    );
   };
   return (
     <div style="display: grid; gap: var(--msp-space-2); min-width: 0">
@@ -256,25 +222,8 @@ function RunForm(props: {
           ))}
         </ul>
       ) : null}
-      <ActionFooter
-        icon="download"
-        label={mapState(asking.asReadonly, (a) => (a ? 'Load anyway' : 'Load'))}
-        busy={busy.asReadonly}
-        info={size}
-        onApply={() => void load()}
-      />
-      <Show when={busy.asReadonly}>
-        {() => (
-          <div style="display: flex; gap: var(--msp-space-2); align-items: center; min-width: 0">
-            <p style={`${Muted}; flex: 1`}>{reading ?? 'Loading…'}</p>
-            <Button size="sm" onClick={() => stop?.abort()}>
-              Cancel
-            </Button>
-          </div>
-        )}
-      </Show>
+      {action.view({ key: asked, info: size, fetching: area.fetching, onApply: load })}
       <Show when={mapState(slow, (m) => !!m)}>{() => <p style={Muted}>{slow}</p>}</Show>
-      <Show when={mapState(said.asReadonly, (m) => !!m)}>{() => <p style={Muted}>{said.asReadonly}</p>}</Show>
     </div>
   );
 }

@@ -14,7 +14,14 @@ import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EmpiarPanel, type EmpiarPanelArea, type EmpiarPanelContext } from '../empiar-card.js';
 import type { FetchProgress } from '../load-steps.js';
-import { type EmpiarAsk, parseListing, readEmpiarEntry, walkCondition, walkGrid } from '../empiar-entry.js';
+import {
+  type EmpiarAsk,
+  type EmpiarGrid,
+  parseListing,
+  readEmpiarEntry,
+  walkCondition,
+  walkGrid,
+} from '../empiar-entry.js';
 
 // The EMPIAR card over EMPIAR-12534's recorded API reply and listings (`empiar-12534/`): the entry asked for (the URL's
 // `?empiar=12534&empiar-run=…`), its run's files with their sizes, what cannot load greyed with why, Load asking first.
@@ -239,7 +246,14 @@ describe('the EMPIAR card', () => {
           new Promise((done) => {
             signal = options?.signal;
             const t0 = Date.now() - 10_000;
-            fetching.set({ name: 'particles 80S_ribosome_CHX.star', index: 0, count: 1, loaded: 2e6, total: 12e6, started: t0 });
+            fetching.set({
+              name: 'particles 80S_ribosome_CHX.star',
+              index: 0,
+              count: 1,
+              loaded: 2e6,
+              total: 12e6,
+              started: t0,
+            });
             signal?.addEventListener('abort', () => {
               fetching.set(undefined);
               done({ ok: false, code: 'aborted', message: 'Stopped before it finished.' });
@@ -260,6 +274,82 @@ describe('the EMPIAR card', () => {
     await until(() => /Stopped before it finished/.test(host.textContent ?? ''));
     expect(signal?.aborted).toBe(true);
     expect(button(host, 'Cancel')).toBeUndefined();
+    dispose();
+  });
+
+  // night review B4: busy, the result and "Load anyway?" lived in the form a pick remakes
+  it("keeps a load in flight across a pick: Load stays busy, its result and its question are its pick's", async () => {
+    let finish!: () => void;
+    const calls: Record<string, unknown>[] = [];
+    const ctx: EmpiarPanelContext = {
+      api: {
+        run: (_, values) => {
+          calls.push(values);
+          return new Promise(
+            (done) =>
+              (finish = () => done({ ok: false, code: 'confirm', message: `${values.run}: 1263 MB to read whole.` })),
+          );
+        },
+      },
+    };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const dispose = render(() => <EmpiarPanel ctx={ctx} area={area({ id: 12534, run: Run })} />, host);
+    const load = () => Array.from(host.querySelectorAll('button')).find((b) => /^\s*Load/.test(b.textContent ?? ''));
+    await until(() => !!load());
+    load()!.click();
+    await until(() => calls.length === 1);
+    button(host, 'Run').click();
+    await tick();
+    option('YTC041_1_lam1_2_ts_002').click();
+    await until(() => button(host, 'Run').textContent?.includes('YTC041_1_lam1_2_ts_002') === true);
+    expect(load()!.disabled).toBe(true);
+    finish();
+    await until(() => !load()!.disabled);
+    // the question was for the other run: this one is not asked about
+    expect(host.textContent).not.toContain('1263 MB to read whole');
+    expect(load()!.textContent).not.toContain('Load anyway');
+    // back to its run: asked
+    button(host, 'Run').click();
+    await tick();
+    option(Run).click();
+    await until(() => /Load anyway/.test(load()!.textContent ?? ''));
+    dispose();
+  });
+
+  // night review B7: an older read that ended cleared "reading" while a newer one was still walking
+  it('stays reading until the latest read ends', async () => {
+    const base = area({ id: 12534, run: Run });
+    const later = (ms: number, grid: string): Promise<EmpiarGrid> =>
+      new Promise((done) =>
+        setTimeout(
+          () =>
+            done({ condition: 'data/EMPIAR_upload', name: grid, runs: [{ stem: `${grid}_r`, files: [] }], other: [] }),
+          ms,
+        ),
+      );
+    const slow: EmpiarPanelArea = {
+      ...base,
+      grid: async (id, root, grid) =>
+        grid === 'YTC041_2' ? later(50, grid) : grid === 'YTC042_2' ? later(400, grid) : base.grid(id, root, grid),
+    };
+    const ctx: EmpiarPanelContext = { api: { run: async () => ({ ok: true, did: '' }) } };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const dispose = render(() => <EmpiarPanel ctx={ctx} area={slow} />, host);
+    const readButton = () =>
+      Array.from(host.querySelectorAll('button')).find((b) => /^\s*Read/.test(b.textContent ?? ''))!;
+    await until(() => /YTC041_1_lam1_1_ts_003/.test(host.textContent ?? ''));
+    button(host, 'Grid').click();
+    await tick();
+    option('YTC041_2').click();
+    button(host, 'Grid').click();
+    await tick();
+    option('YTC042_2').click();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(readButton().disabled).toBe(true);
+    await until(() => /YTC042_2_r/.test(host.textContent ?? ''));
+    expect(readButton().disabled).toBe(false);
     dispose();
   });
 });
