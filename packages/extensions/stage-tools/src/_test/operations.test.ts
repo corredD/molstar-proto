@@ -202,6 +202,26 @@ describe('stage', () => {
     // one step each
     expectOk(await v.api.run('history.undo', {}));
     expect(params().clip.variant).toBe('instance');
+    // Atoms, then a graded way sets the variant to instance (clipping.settings, on the cut ones): the list reads Proteins with
+    // clipPrimitive hidden, and the next Proteins is not refused as already (A6)
+    expectOk(await v.api.run('stage.clipWhole', { particles: list, whole: 'element' }));
+    const rep = v.plugin.managers.particles.hierarchy.current.lists[0].representations.find(
+      (r) => (r.cell.transform.params as { type: { name: string } }).type.name === 'target',
+    )!.cell;
+    const rp = rep.transform.params as { type: { params: ParticleTargetRepresentationProps } };
+    await v.plugin
+      .build()
+      .to(rep)
+      .update({
+        ...rp,
+        type: { ...rp.type, params: { ...rp.type.params, clip: { ...rp.type.params.clip, variant: 'instance' } } },
+      } as never)
+      .commit();
+    expect(params().structure.clipPrimitive).toBe(true);
+    expect(s.clipWholeState(list).value).toBe('instance');
+    expectOk(await v.api.run('stage.clipWhole', { particles: list, whole: 'instance' }));
+    expect(params().structure.clipPrimitive).toBe(false);
+    expect(s.clipWholeState(list).value).toBe('instance');
   });
 
   it('moves a mesh (its shape, its scale kept), named by its file', async () => {

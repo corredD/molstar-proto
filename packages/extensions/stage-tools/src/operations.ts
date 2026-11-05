@@ -388,7 +388,8 @@ export class StageApi extends ApiArea {
         const params = cell.transform.params as TargetRepresentationParams;
         const p = params.type.params;
         const variant = whole === 'instance' ? 'instance' : 'pixel';
-        const clipPrimitive = whole === 'element' ? true : !!p.structure?.clipPrimitive;
+        // Objects clear the atoms' flag too: a graded way sets the variant alone, which left it set and hidden (reads Objects)
+        const clipPrimitive = whole === 'element';
         if (p.clip?.variant === variant && !!p.structure?.clipPrimitive === clipPrimitive) continue;
         const next: TargetRepresentationParams = {
           ...params,
