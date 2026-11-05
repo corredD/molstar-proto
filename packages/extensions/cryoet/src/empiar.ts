@@ -37,12 +37,14 @@ import {
   added,
   besideTheTomogram,
   downloadUrlAbove,
+  LargeBytes,
   listRefs,
-  PortalLargeBytes,
+  loadResult,
   showAverageVolume,
+  sizeGuard,
   sizePoints,
   volumeRefs,
-} from './portal.js';
+} from './load-scene.js';
 import { FetchAhead, once } from './load-steps.js';
 
 export { EmpiarCard, type EmpiarAsk, type EmpiarCondition, empiarIdOf } from './empiar-entry.js';
@@ -195,13 +197,11 @@ export class EmpiarApiArea extends ApiArea {
       if (isFailure(got)) return got;
       const { run, files } = got;
       const bytes = files.reduce((n, f) => n + (f.bytes ?? 0), 0);
-      if (bytes > PortalLargeBytes && !v.large) {
-        return ApiResult.fail(
-          'confirm',
-          `${run.stem}: ${totalLabel(bytes)} to read whole (${files.map((f) => `${f.kind} ${sizeLabel(f)}`).join(', ')}). From EBI: ${ebiTime(bytes)} at its usual speed.`,
-          'Pick fewer files, or call again with large: true.',
-        );
-      }
+      const asked = sizeGuard(bytes, v.large, () => [
+        `${run.stem}: ${totalLabel(bytes)} to read whole (${files.map((f) => `${f.kind} ${sizeLabel(f)}`).join(', ')}). From EBI: ${ebiTime(bytes)} at its usual speed.`,
+        'Pick fewer files, or call again with large: true.',
+      ]);
+      if (asked) return asked;
       try {
         for (const [index, f] of files.entries()) {
           const at = { name: `${f.kind} ${f.name}`, index, count: files.length };
@@ -244,10 +244,7 @@ export class EmpiarApiArea extends ApiArea {
         if (isFailure(r)) return r;
         if (r) done.push(`${f.kind} ${f.name}`);
       }
-      if (!done.length) {
-        return ApiResult.fail('unavailable', `Nothing of ${run.stem} could be loaded.`, warnings.join(' '));
-      }
-      return ApiResult.ok(`Loaded EMPIAR-${v.id} ${run.stem}: ${done.join(', ')}.`, {}, { warnings });
+      return loadResult(run.stem, `EMPIAR-${v.id} ${run.stem}`, done, warnings);
     },
   });
 }
@@ -267,7 +264,7 @@ const LoadParams = () => ({
     description:
       "An EMDB average (EMD-48752) beside the tomogram, decorating the particles; empty: the entry's first; 'none'",
   }),
-  large: PD.Boolean(false, { description: `Load above ${PortalLargeBytes / 1e6} MB (asked first)` }),
+  large: PD.Boolean(false, { description: `Load above ${LargeBytes / 1e6} MB (asked first)` }),
 });
 
 const fileUrl = (id: number, f: EmpiarFile) => `${EmpiarFiles}${id}/${f.path}`;

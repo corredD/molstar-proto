@@ -57,6 +57,20 @@ import {
   type PortalSpacing,
   type PortalTiltSeries,
 } from './portal-index.js';
+import {
+  added,
+  besideMatrix,
+  besideTheTomogram,
+  downloadUrlAbove,
+  LargeBytes,
+  listRefs,
+  loadResult,
+  showAverageVolume,
+  sizeGuard,
+  sizePoints,
+  volumeRefs,
+} from './load-scene.js';
+import { once } from './load-steps.js';
 
 export {
   describePortalRun,
@@ -103,11 +117,8 @@ export const PortalReaders: Readonly<Record<string, string>> = {
   mrc: 'ccp4',
 };
 
-/**
- * Above this many bytes decoded, a load asks first (`large: true` goes on): a browser tab holds about 2 GB, and a
- * level of a tomogram 8 times smaller is one step coarser (_spec/portal.md §3)
- */
-export const PortalLargeBytes = 512e6;
+/** Above this many bytes decoded, a load asks first: the sources' shared guard (`LargeBytes`, load-scene.ts) */
+export const PortalLargeBytes = LargeBytes;
 
 /** Where a scene object came from on the portal (the right-click menu's links) */
 export interface PortalOrigin {
@@ -129,7 +140,8 @@ const PlaceParam = () =>
 
 export class CryoetPortalApi extends ApiArea {
   readonly id = 'cryoetPortal';
-  private readonly loaded = new Map<number, Promise<PortalDataset>>();
+  /** The catalog and the datasets, read once (`once`) */
+  private readonly reads = new Map<string, Promise<unknown>>();
   private readonly known = new Map<number, PortalDataset>();
   /**
    * The tilt series of the datasets read and their runs, by their zarr's address: a slice's angles and its placement
@@ -140,7 +152,6 @@ export class CryoetPortalApi extends ApiArea {
   private readonly tomogramRunAt = new Map<string, number>();
   /** The annotations of the datasets read, by their file's address: a point list's or mask's words, from its download */
   private readonly annotationAt = new Map<string, PortalAnnotation>();
-  private catalogRead: Promise<PortalCatalog> | undefined;
 
   constructor(
     ctx: ApiAreaContext,
@@ -149,39 +160,25 @@ export class CryoetPortalApi extends ApiArea {
     super(ctx);
   }
 
-  /** The catalog, read once */
+  /** The catalog, read once (a failed read, a chunk that did not load or an index that did not check, asked again) */
   catalog(): Promise<PortalCatalog> {
-    // a failed read is asked again next time (a chunk that did not load)
-    this.catalogRead ??= this.source.catalog().then(
-      (c) => checkPortalIndex(c, 'The portal catalog'),
-      (e: unknown) => {
-        this.catalogRead = undefined;
-        throw e;
-      },
-    );
-    return this.catalogRead;
+    return once(this.reads, 'catalog', async () => checkPortalIndex(await this.source.catalog(), 'The portal catalog'));
   }
 
   /** A dataset, read once (a failed read is asked again next time) */
   dataset(id: number): Promise<PortalDataset> {
-    let p = this.loaded.get(id);
-    if (!p) {
-      p = this.source.dataset(id).then((d) => {
-        const checked = checkPortalIndex(d, `The portal index of dataset ${id}`);
-        this.known.set(id, checked);
-        for (const r of checked.runList) {
-          for (const t of r.tiltSeries ?? []) this.tiltSeriesAt.set(PortalFiles + t.zarr, { series: t, run: r.id });
-          for (const s of r.spacings) {
-            for (const t of s.tomograms) this.tomogramRunAt.set(PortalFiles + t.zarr, r.id);
-            for (const a of s.annotations) this.annotationAt.set(PortalFiles + a.path, a);
-          }
+    return once(this.reads, `dataset ${id}`, async () => {
+      const checked = checkPortalIndex(await this.source.dataset(id), `The portal index of dataset ${id}`);
+      this.known.set(id, checked);
+      for (const r of checked.runList) {
+        for (const t of r.tiltSeries ?? []) this.tiltSeriesAt.set(PortalFiles + t.zarr, { series: t, run: r.id });
+        for (const s of r.spacings) {
+          for (const t of s.tomograms) this.tomogramRunAt.set(PortalFiles + t.zarr, r.id);
+          for (const a of s.annotations) this.annotationAt.set(PortalFiles + a.path, a);
         }
-        return checked;
-      });
-      p.catch(() => this.loaded.delete(id));
-      this.loaded.set(id, p);
-    }
-    return p;
+      }
+      return checked;
+    });
   }
 
   /** A run's spacing, tomogram and annotations as a load sees them: a read for views */
@@ -421,13 +418,11 @@ export class CryoetPortalApi extends ApiArea {
 
       const bytes =
         (level?.bytes ?? 0) + (tsLevel?.bytes ?? 0) + entries.reduce((n, e) => n + entryBytes(e, v.level), 0);
-      if (bytes > PortalLargeBytes && !v.large) {
-        return ApiResult.fail(
-          'confirm',
-          `${info.run.name} is ${mb(bytes)} decoded at these levels.`,
-          'Choose a coarser level, or call again with large: true.',
-        );
-      }
+      const asked = sizeGuard(bytes, v.large, () => [
+        `${info.run.name} is ${mb(bytes)} decoded at these levels.`,
+        'Choose a coarser level, or call again with large: true.',
+      ]);
+      if (asked) return asked;
 
       const warnings: string[] = [];
       const done: string[] = [];
@@ -483,10 +478,7 @@ export class CryoetPortalApi extends ApiArea {
           done.push(id);
         }
       }
-      if (!done.length) {
-        return ApiResult.fail('unavailable', `Nothing of ${info.run.name} could be loaded.`, warnings.join(' '));
-      }
-      return ApiResult.ok(`Loaded ${ds.id} ${info.run.name}: ${done.join(', ')}.`, {}, { warnings });
+      return loadResult(info.run.name, `${ds.id} ${info.run.name}`, done, warnings);
     },
   });
 }
@@ -555,23 +547,6 @@ function pickLevel(levels: readonly PortalLevel[], level: number | undefined): P
 }
 
 // --- the loads, by the viewer's operations ------------------------------------------------------------------------
-
-export const listRefs = (ctx: ApiContext) =>
-  new Set(ctx.plugin.managers.particles.hierarchy.current.lists.map((l) => l.cell.transform.ref));
-export const volumeRefs = (ctx: ApiContext) =>
-  new Set(ctx.plugin.managers.volume.hierarchy.current.volumes.map((v) => v.cell.transform.ref));
-
-/** What a run of `work` added, of a kind */
-export async function added(
-  ctx: ApiContext,
-  refs: (ctx: ApiContext) => Set<string>,
-  work: () => Promise<ApiResult>,
-): Promise<string[] | ApiFailure> {
-  const before = refs(ctx);
-  const r = await work();
-  if (!r.ok) return r;
-  return [...refs(ctx)].filter((x) => !before.has(x));
-}
 
 /**
  * An OME-Zarr at a level, by the plugin's own transforms (its metadata, the level as a volume), without the format's
@@ -676,20 +651,6 @@ export function tomogramControlPoints(plugin: ApiContext['plugin'], data: Volume
   return params?.controlPoints?.getPresets?.().find(([, label]) => /^Tomogram/.test(label))?.[0];
 }
 
-/**
- * An average's (EMDB map's) direct volume lit volumetric, its isosurface hidden: a dense map, where the volume's own
- * shadows show (a tomogram's are faint in its noise)
- */
-export async function showAverageVolume(ctx: Pick<ApiContext, 'api'>, volume: string): Promise<ApiResult> {
-  const r = await ctx.api.run('volume.representation', {
-    volume,
-    type: 'direct-volume',
-    params: { lighting: 'volumetric' },
-  });
-  if (!r.ok) return r;
-  return ctx.api.run('volume.visibility', { volume, representation: 'isosurface', visible: false });
-}
-
 /** A tomogram's direct volume (one function, so its other params, its lighting, are given in one place) */
 export async function showTomogramVolume(ctx: ApiContext, volume: string): Promise<ApiResult> {
   const data = ctx.plugin.state.data.cells.get(volume)?.obj?.data as Volume | undefined;
@@ -758,30 +719,6 @@ async function loadEntry(
 }
 
 /**
- * The radius (Å) of points the index has no decoration for (Ludo, 2026-11-03): the particle-size theme's own fallback, half
- * the typical distance between neighbors, is a sphere hundreds of Å across for a few sparse picks (10453's 4 V-ATPases:
- * about 900 Å)
- */
-export const PortalPointRadius = 50;
-
-/**
- * The list's spheres at `PortalPointRadius`: their size theme's, not the list's radii, so a shape that decorates the list
- * later is not scaled by them (a shape target scales by the particle's radius)
- */
-export async function sizePoints(ctx: ApiContext, particles: string): Promise<ApiResult> {
-  const list = ctx.plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === particles);
-  for (const r of list?.representations ?? []) {
-    if (r.cell.transform.params?.type.name !== 'spacefill') continue;
-    const u = await ctx.api.run('particles.update', {
-      node: `#${r.cell.transform.ref}`,
-      params: { sizeTheme: { name: 'particle-size', params: { scale: 1, defaultSize: PortalPointRadius } } },
-    });
-    if (!u.ok) return u;
-  }
-  return ApiResult.ok('');
-}
-
-/**
  * A structure target is drawn about its own center (its boundary's); its point is the average's box center, given in
  * the structure's frame: the shift between them, in the particle's frame, puts the structure where the average is.
  */
@@ -792,22 +729,6 @@ async function centerOnAverage(ctx: ApiContext, particles: string, center: reado
   const [x, y, z] = [c[0] - center[0], c[1] - center[1], c[2] - center[2]];
   if (Math.hypot(x, y, z) < 1) return ApiResult.ok('');
   return ctx.api.run('cryoet.offset', { particles, x, y, z });
-}
-
-/**
- * An average beside the tomogram (its own place is the origin, the tomogram's corner): moved along -x by its width and a
- * margin (`besideMatrix`), by the stage's move when the viewer has it
- */
-export async function besideTheTomogram(ctx: ApiContext, ref: string) {
-  const data = ctx.plugin.state.data.cells.get(ref)?.obj?.data as Volume | undefined;
-  if (!data || !ctx.api.describe('stage.move')) return;
-  await ctx.api.run('stage.move', { target: ref, matrix: Array.from(besideMatrix(data.grid)) });
-}
-
-/** Beside the tomogram, from the origin: along -x by 2.5 times the volume's radius (its width and a margin) */
-function besideMatrix(grid: Grid) {
-  const { radius } = Grid.getBoundingSphere(grid);
-  return Mat4.fromTranslation(Mat4(), Vec3.create(-2.5 * radius, 0, 0));
 }
 
 /**
@@ -878,18 +799,6 @@ export function tiltSeriesMatrix(
   const ct = Box3D.center(Vec3(), t);
   const shift = Vec3.create(ct[0] - c[0], ct[1] - c[1], t.min[2] - s.max[2]);
   return Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), shift), turn);
-}
-
-/** The address of the download a cell's data came from, the first above it */
-export function downloadUrlAbove(ctx: Pick<ApiContext, 'plugin'>, ref: string): string | undefined {
-  const { cells } = ctx.plugin.state.data;
-  for (let cell = cells.get(ref); cell; cell = cells.get(cell.transform.parent)) {
-    const url = (cell.transform.params as { url?: unknown } | undefined)?.url;
-    if (typeof url === 'string') return url;
-    if (url && typeof (url as { url?: unknown }).url === 'string') return (url as { url: string }).url;
-    if (cell.transform.ref === cell.transform.parent) break;
-  }
-  return undefined;
 }
 
 // --- the extension --------------------------------------------------------------------------------------------------

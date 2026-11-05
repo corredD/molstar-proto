@@ -24,11 +24,11 @@ import {
   PortalLargeBytes,
   type PortalIndexSource,
   type PortalRunInfo,
-  showAverageVolume,
   showTomogramVolume,
   tiltSeriesMatrix,
   tomogramControlPoints,
 } from '../portal.js';
+import { showAverageVolume } from '../load-scene.js';
 import { checkPortalIndex, type PortalCatalog, type PortalDataset, PortalFiles } from '../portal-index.js';
 import { portalAnnotationText } from '../portal-run.js';
 import { CryoetExtension } from '../prism-viewer.js';
