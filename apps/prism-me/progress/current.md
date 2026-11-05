@@ -6,6 +6,11 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **Merged 2026-11-04:** #50 (tree row tooltips), #51 (colors by zoom on at load for cellPACK and PetWorld, edges 0.27 /
+  2.2 / 28.8 px, kept over Look colors), #52 (a label on a selection), #53 (the forms follow a drag, one checkpoint per
+  gesture; level 0 measured: `createGridImage` 89 %, proposal in TODO), #54 (portal names, the tilt series under its
+  tomogram turned, annotations' description, method and GO link). Lanes closed. Waiting on Ludo: the level-0 slice
+  speed-up as a library lane.
 - **The small items left by #46-#49** (Ludo, 2026-11-04, interviewed one by one; started 2026-11-04). Claude hit the
   5-hour limit at 09:29 (resets 12:20). Grok took the two that were still open:
   - `label-selection` (port 1348, [brief](2026-11-04-label-selection.md)): **PR #52**, ready. A label on a selection.
@@ -18,16 +23,6 @@ is not built is [../TODO.md](../TODO.md).
     beside raw, pending Ludo's comparison), descriptions in the properties. Hover of a ribosome is not the description
     (said, not built). Grok's commits: `1cc10f5da` (overlay follows a moved tomogram; real-stage test), `fa8696ac9`
     (progress). Claude's before that.
-- **Colors by zoom by default** (`me/zoom-default`, `~/prism-me-lanes/zoom-default`, port 1347,
-  [brief](2026-11-04-zoom-default.md)): **PR #51**. On at load for cellPACK and PetWorld, then Ludo's follow-up (Grok,
-  `1de3bc302`, `5b67c9e70`): edges 0.27, 2.2 and 28.8 px; By zoom stays on for a later theme; a Look color, a uniform
-  color or Generate colors holds until the atoms. Not checked headed.
-- **Merged 2026-11-04:** #49 (an entity's description on hover and in the properties, from cellPACK's
-  `_entity.pdbx_parent_entity_id`; `2026-11-04-descriptions.md`; open: PetWorld and portal descriptions, tree row
-  tooltips).
-- **Descriptions** (`me/descriptions`, `~/prism-me-lanes/descriptions`, port 1347, [brief](2026-11-04-descriptions.md)):
-  Ludo, 2026-11-04: an entity's short description on hover and in the properties, as the classic explorer. Started
-  2026-11-04.
 - **Merged 2026-11-03:** #48 (live slice sliders: the slice, oblique, contrast and mesh opacity follow a drag, one undo
   step; `2026-11-03-live-slice.md`; open: a full checkpoint per step, the other forms' 150 ms wait), #46 (the Assistant
   starts: one name per tool) and #47 (portal tilt series: index, card, Z slice with each image's tilt angle). Their
