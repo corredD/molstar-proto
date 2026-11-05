@@ -28,13 +28,16 @@ const listing = async (folder: string) => {
   return parseListing(read(name));
 };
 
-function area(asked: EmpiarAsk): EmpiarPanelArea {
+function area(asked: EmpiarAsk, failing?: string): EmpiarPanelArea {
   const entry = readEmpiarEntry(12534, JSON.parse(read('entry.json')));
   const condition = (_: number, root: string) => walkCondition(entry, root, listing);
   return {
     entry: async () => entry,
     condition,
-    grid: async (id, root, grid) => walkGrid(entry, await condition(id, root), grid, listing),
+    grid: async (id, root, grid) => {
+      if (grid === failing) throw new Error(`Could not read the grid ${grid}.`);
+      return walkGrid(entry, await condition(id, root), grid, listing);
+    },
     asked: observableState<EmpiarAsk | undefined>(asked).asReadonly,
   };
 }
@@ -50,6 +53,15 @@ async function until(check: () => boolean, ms = 5000) {
     await new Promise((r) => setTimeout(r, 5));
   }
 }
+
+const tick = () => new Promise((r) => setTimeout(r, 50));
+/** A field's button, by its row's label */
+const button = (host: HTMLElement, label: string) =>
+  Array.from(host.querySelectorAll('button')).find(
+    (b) => b.getAttribute('aria-label') === label || b.textContent === label,
+  ) as HTMLButtonElement;
+const option = (text: string) =>
+  Array.from(document.querySelectorAll<HTMLElement>('[role=option]')).find((o) => o.textContent?.includes(text))!;
 
 describe('the EMPIAR card', () => {
   it("shows the entry asked for, its run's files with sizes, the rest greyed with why; Load asks first, then goes on", async () => {
@@ -94,6 +106,64 @@ describe('the EMPIAR card', () => {
     load()!.click();
     await until(() => calls.length === 2 && /Loaded/.test(host.textContent ?? ''));
     expect(calls[1].large).toBe(true);
+    dispose();
+  });
+
+  it('asks again when the files change after a yes (review M1, F3): the size said is the one loaded', async () => {
+    const calls: Record<string, unknown>[] = [];
+    const ctx: EmpiarPanelContext = {
+      api: {
+        run: async (_, values) => {
+          calls.push(values);
+          return values.large
+            ? { ok: true, did: 'Loaded.' }
+            : { ok: false, code: 'confirm', message: `${values.files}: to read whole.` };
+        },
+      },
+    };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const dispose = render(() => <EmpiarPanel ctx={ctx} area={area({ id: 12534, run: Run })} />, host);
+    const load = () => Array.from(host.querySelectorAll('button')).find((b) => /^\s*Load/.test(b.textContent ?? ''));
+    await until(() => !!load());
+    load()!.click();
+    await until(() => calls.length === 1 && /Load anyway/.test(load()!.textContent ?? ''));
+    // the mask unticked: the yes was for another set
+    button(host, 'Files').click();
+    await tick();
+    option(`${Run}_labels.mrc`).click();
+    await until(() => /^\s*Load\s*$/.test(load()!.textContent ?? ''));
+    expect(host.textContent).not.toContain('Load anyway?');
+    load()!.click();
+    await until(() => calls.length === 2);
+    expect(calls[1].large).toBe(false);
+    dispose();
+  });
+
+  it('goes back to the pick it shows when a read fails (review S6): Load sends what the form says', async () => {
+    const calls: Record<string, unknown>[] = [];
+    const ctx: EmpiarPanelContext = {
+      api: {
+        run: async (_, values) => {
+          calls.push(values);
+          return { ok: true, did: 'Loaded.' };
+        },
+      },
+    };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const dispose = render(() => <EmpiarPanel ctx={ctx} area={area({ id: 12534, run: Run }, 'YTC041_2')} />, host);
+    const load = () => Array.from(host.querySelectorAll('button')).find((b) => /^\s*Load/.test(b.textContent ?? ''));
+    await until(() => !!load());
+    button(host, 'Grid').click();
+    await tick();
+    option('YTC041_2').click();
+    await until(() => /Could not read the grid YTC041_2/.test(host.textContent ?? ''));
+    await tick();
+    expect(button(host, 'Grid').textContent).toContain('YTC041_1');
+    load()!.click();
+    await until(() => calls.length === 1);
+    expect(calls[0]).toMatchObject({ grid: 'YTC041_1', run: Run });
     dispose();
   });
 });

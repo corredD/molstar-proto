@@ -81,25 +81,32 @@ export function EmpiarPanel(props: { ctx: EmpiarPanelContext; area: EmpiarPanelA
     const stem = g.runs.find((r) => r.stem === run)?.stem ?? g.runs[0]?.stem ?? '';
     return { entry, conditions, condition, grid: g, run: stem };
   });
+  /** A pick read and shown; false when its read failed (the form goes back to the pick it shows) */
   const choose = (id: number, root?: string, grid?: string, run?: string) => {
     problem.set('');
     reading.set(true);
-    read(id, root, grid, run)
+    return read(id, root, grid, run)
       .then(
-        (p) => p && pick.set(p),
-        (e: unknown) => problem.set((e as Error).message),
+        (p) => {
+          if (p) pick.set(p);
+          return true;
+        },
+        (e: unknown) => {
+          problem.set((e as Error).message);
+          return false;
+        },
       )
       .finally(() => reading.set(false));
   };
   const open = () => {
     const id = empiarIdOf(idForm.values.value.id);
     if (id === undefined) problem.set(`'${idForm.values.value.id}' is not an EMPIAR id: give EMPIAR-12534 or 12534.`);
-    else choose(id);
+    else void choose(id);
   };
   effect(area.asked, (a) => {
     if (!a) return;
     idForm.set('id', `EMPIAR-${a.id}`);
-    choose(a.id, undefined, undefined, a.run);
+    void choose(a.id, undefined, undefined, a.run);
   });
   const forms = mapState(pick.asReadonly, (p) => (p ? [p] : []));
   return (
@@ -127,13 +134,18 @@ function conditionLabel(entry: EmpiarEntry, root: string) {
 function RunForm(props: {
   ctx: EmpiarPanelContext;
   pick: RunPick;
-  choose: (id: number, root?: string, grid?: string, run?: string) => void;
+  choose: (id: number, root?: string, grid?: string, run?: string) => Promise<boolean>;
 }) {
   const { ctx, pick, choose } = props;
   const { entry, condition, grid } = pick;
   const run = grid.runs.find((r) => r.stem === pick.run);
   const loadable = run?.files.filter((f) => !f.why) ?? [];
   const greyed = [...(run?.files.filter((f) => f.why) ?? []), ...grid.other];
+  const busy = observableState(false);
+  const said = observableState('');
+  // asked first above the threshold: the operation says the size, a second Load goes on (`large`); a yes is for the
+  // files it was said for, so changing them asks again (review M1)
+  const asking = observableState(false);
   const form = new ParamsFormModel(
     {
       condition: PD.Select(
@@ -161,16 +173,21 @@ function RunForm(props: {
     undefined,
     {
       onChange: (v, changed) => {
-        if (changed === 'condition') choose(entry.id, v.condition);
-        else if (changed === 'grid') choose(entry.id, condition.root, v.grid);
-        else if (changed === 'run') choose(entry.id, condition.root, grid.name, v.run);
+        // a read that fails puts its select back: the form shows the pick Load sends (review S6)
+        const back = (ok: boolean) => {
+          if (!ok) form.load({ ...form.values.value, condition: condition.root, grid: grid.name, run: pick.run });
+        };
+        if (changed === 'condition' && v.condition !== condition.root) void choose(entry.id, v.condition).then(back);
+        else if (changed === 'grid' && v.grid !== grid.name) void choose(entry.id, condition.root, v.grid).then(back);
+        else if (changed === 'run' && v.run !== pick.run) {
+          void choose(entry.id, condition.root, grid.name, v.run).then(back);
+        } else if (changed === 'files' || changed === 'emdb') {
+          asking.set(false);
+          said.set('');
+        }
       },
     },
   );
-  const busy = observableState(false);
-  const said = observableState('');
-  // asked first above the threshold: the operation says the size, a second Load goes on (`large`)
-  const asking = observableState(false);
   const size = derive(form.values, (v) =>
     totalLabel(loadable.filter((f) => v.files.includes(f.name)).reduce((n, f) => n + (f.bytes ?? 0), 0)),
   );
