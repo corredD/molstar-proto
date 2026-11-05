@@ -31,6 +31,7 @@ import { OrderedSet } from '@molstar/core/data/int/ordered-set';
 import { Interval } from '@molstar/core/data/int/interval';
 import { VolumeVisual } from './visual.js';
 import { cantorPairing } from '@molstar/core/data/util/hash-functions';
+import { Tensor } from '@molstar/core/math/linear-algebra/tensor';
 
 export const SliceParams = {
   ...Image.Params,
@@ -220,19 +221,72 @@ function getFrame(volume: Volume, props: SliceProps) {
   return { size, major, minor, normal, center, trim, resolution };
 }
 
-type SamplingInfo = {
+export type SamplingInfo = {
   m: Mat4;
   width: number;
   height: number;
 };
 
+/** The pixels showing a cell; the key is the cell, or `cantorPairing(instance, cell)` for a periodic volume */
+type SampledImageIndex = { get(key: number): number[] | undefined };
+
 type SampledImageMapping = {
   instance: Int16Array;
   cell: Uint32Array;
-  index: Map<number, number[]>;
+  /** Only read to mark loci (`eachSlice`): computed, or made on its first lookup, never with each image */
+  index: SampledImageIndex;
 };
 
-function getSampledImage(
+/** The index made on its first lookup: each pixel that maps a cell (`mapped`, every pixel if not given), in order */
+function lazySampledImageIndex(
+  instance: Int16Array,
+  cell: Uint32Array,
+  mapped: Uint8Array | undefined,
+  isPeriodic: boolean,
+): SampledImageIndex {
+  let map: Map<number, number[]> | undefined;
+  return {
+    get(key: number) {
+      if (!map) {
+        map = new Map();
+        for (let i = 0, il = cell.length; i < il; ++i) {
+          if (mapped && !mapped[i]) continue;
+          const k = isPeriodic ? cantorPairing(instance[i], cell[i]) : cell[i];
+          const pixels = map.get(k);
+          if (pixels) pixels.push(i);
+          else map.set(k, [i]);
+        }
+        mapped = undefined;
+      }
+      return map.get(key);
+    },
+  };
+}
+
+/**
+ * A non-periodic grid slice's index, computed: each of its pixels shows its own cell, so the pixel of a cell on the
+ * slice follows from the cell's coordinates and the build's order (y, then x, then z fastest). Needs a space whose
+ * `getCoords` inverts `dataOffset` (one with strides)
+ */
+function gridSliceIndex(
+  space: Tensor.Space,
+  { x0, y0, z0, nx, ny, nz }: ReturnType<typeof getSliceInfo>,
+): SampledImageIndex {
+  const [mx, my, mz] = space.dimensions;
+  const cellCount = mx * my * mz;
+  const coords = [0, 0, 0];
+  return {
+    get(cell: number) {
+      if (!Number.isInteger(cell) || cell < 0 || cell >= cellCount) return;
+      const [ix, iy, iz] = space.getCoords(cell, coords);
+      if (ix < x0 || ix >= nx || iy < y0 || iy >= ny || iz < z0 || iz >= nz) return;
+      return [((iy - y0) * (nx - x0) + (ix - x0)) * (nz - z0) + (iz - z0)];
+    },
+  };
+}
+
+/** A slice sampled along a plane (`info.m` maps the unit square to it); exported for tests */
+export function getSampledImage(
   volume: Volume,
   theme: Theme,
   info: SamplingInfo,
@@ -261,11 +315,9 @@ function getSampledImage(
   const groupArray = new Uint8Array(width * height * 4);
   const valueArray = new Float32Array(width * height);
 
-  const mapping: SampledImageMapping = {
-    instance: new Int16Array(width * height),
-    cell: new Uint32Array(width * height),
-    index: new Map(),
-  };
+  const instance = new Int16Array(width * height);
+  const cell = new Uint32Array(width * height);
+  const mapped = new Uint8Array(width * height);
 
   const gridCoords = Vec3();
 
@@ -309,14 +361,9 @@ function getSampledImage(
         if (periodicMapping) {
           const pm = periodicMapping.get(ix, iy, iz);
           if (pm) {
-            mapping.instance[i] = pm.instance;
-            mapping.cell[i] = pm.cell;
-            const key = cantorPairing(pm.instance, pm.cell);
-            if (mapping.index.has(key)) {
-              mapping.index.get(key)!.push(i);
-            } else {
-              mapping.index.set(key, [i]);
-            }
+            instance[i] = pm.instance;
+            cell[i] = pm.cell;
+            mapped[i] = 1;
           } else {
             imageArray[i4] = 0;
             imageArray[i4 + 1] = 0;
@@ -325,14 +372,9 @@ function getSampledImage(
             valueArray[i] = NaN;
           }
         } else {
-          const o = space.dataOffset(ix, iy, iz);
-          mapping.instance[i] = -1;
-          mapping.cell[i] = o;
-          if (mapping.index.has(o)) {
-            mapping.index.get(o)!.push(i);
-          } else {
-            mapping.index.set(o, [i]);
-          }
+          instance[i] = -1;
+          cell[i] = space.dataOffset(ix, iy, iz);
+          mapped[i] = 1;
         }
       }
 
@@ -355,6 +397,11 @@ function getSampledImage(
       ? Volume.getBoundingSphere(volume, Interval.ofLength(volume.instances.length as Volume.InstanceIndex))
       : Grid.getBoundingSphere(volume.grid),
   );
+  const mapping: SampledImageMapping = {
+    instance,
+    cell,
+    index: lazySampledImageIndex(instance, cell, mapped, !!periodicMapping),
+  };
   im.meta.mapping = mapping;
 
   return im;
@@ -475,7 +522,8 @@ async function createGridImage(
   const isUniform = theme.color.granularity === 'uniform';
   const color = 'color' in theme.color && theme.color.color ? theme.color.color : () => Color(0xffffff);
 
-  const { width, height, x, y, z, x0, y0, z0, nx, ny, nz } = getSliceInfo(volume.grid, props);
+  const sliceInfo = getSliceInfo(volume.grid, props);
+  const { width, height, x, y, z, x0, y0, z0, nx, ny, nz } = sliceInfo;
 
   const corners = new Float32Array(
     dim === 'x' || dim === 'relativeX'
@@ -489,16 +537,20 @@ async function createGridImage(
   const groupArray = new Uint8Array(width * height * 4);
   const valueArray = new Float32Array(width * height);
 
-  const mapping: SampledImageMapping = {
-    instance: new Int16Array(width * height),
-    cell: new Uint32Array(width * height),
-    index: new Map(),
-  };
+  const instance = new Int16Array(width * height);
+  const cell = new Uint32Array(width * height);
 
   const gridToCartn = Grid.getGridToCartesianTransform(volume.grid);
   const l = PositionLocation(Vec3(), Vec3());
 
   const periodicMapping = Volume.getPeriodicMapping(volume);
+  const mapped = periodicMapping ? new Uint8Array(width * height) : undefined;
+
+  const [m0, m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14, m15] = gridToCartn;
+  const isAffine = m3 === 0 && m7 === 0 && m11 === 0 && m15 === 1;
+
+  // a uniform theme's color is the same at every position: taken once, and no pixel's position computed
+  const uniformColor = isUniform ? color(l, false) : Color(0);
 
   let i = 0;
   for (let iy = y0; iy < ny; ++iy) {
@@ -506,9 +558,21 @@ async function createGridImage(
       for (let iz = z0; iz < nz; ++iz) {
         const i4 = i * 4;
 
-        Vec3.set(l.position, ix, iy, iz);
-        Vec3.transformMat4(l.position, l.position, gridToCartn);
-        Color.toArray(color(l, false), imageArray, i4);
+        if (isUniform) {
+          Color.toArray(uniformColor, imageArray, i4);
+        } else {
+          const p = l.position;
+          if (isAffine) {
+            // `Vec3.transformMat4` inlined, its sums in its order (`w` is 1): the same position to the bit
+            p[0] = m0 * ix + m4 * iy + m8 * iz + m12;
+            p[1] = m1 * ix + m5 * iy + m9 * iz + m13;
+            p[2] = m2 * ix + m6 * iy + m10 * iz + m14;
+          } else {
+            Vec3.set(p, ix, iy, iz);
+            Vec3.transformMat4(p, p, gridToCartn);
+          }
+          Color.toArray(color(l, false), imageArray, i4);
+        }
 
         const val = normalize(space.get(data, ix, iy, iz), min, max);
         if (isUniform) {
@@ -522,9 +586,9 @@ async function createGridImage(
         if (periodicMapping) {
           const pm = periodicMapping.get(ix, iy, iz);
           if (pm) {
-            mapping.instance[i] = pm.instance;
-            mapping.cell[i] = pm.cell;
-            mapping.index.set(cantorPairing(pm.instance, pm.cell), [i]);
+            instance[i] = pm.instance;
+            cell[i] = pm.cell;
+            mapped![i] = 1;
           } else {
             imageArray[i4] = 0;
             imageArray[i4 + 1] = 0;
@@ -533,10 +597,8 @@ async function createGridImage(
             valueArray[i] = NaN;
           }
         } else {
-          const o = space.dataOffset(ix, iy, iz);
-          mapping.instance[i] = -1;
-          mapping.cell[i] = o;
-          mapping.index.set(o, [i]);
+          instance[i] = -1;
+          cell[i] = space.dataOffset(ix, iy, iz);
         }
 
         i += 1;
@@ -560,6 +622,15 @@ async function createGridImage(
       ? Volume.getBoundingSphere(volume, Interval.ofLength(volume.instances.length as Volume.InstanceIndex))
       : Grid.getBoundingSphere(volume.grid),
   );
+  // periodic (cells by instance) or a space without strides: the index is made on its first lookup
+  const mapping: SampledImageMapping = {
+    instance,
+    cell,
+    index:
+      periodicMapping || !Tensor.strides(space)
+        ? lazySampledImageIndex(instance, cell, mapped, !!periodicMapping)
+        : gridSliceIndex(space, sliceInfo),
+  };
   im.meta.mapping = mapping;
 
   return im;

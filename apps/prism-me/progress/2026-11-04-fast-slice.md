@@ -41,13 +41,93 @@
 
 ## Built
 
+Library commits on `me/fast-slice` (from `origin/master` c1b8ecb82, pushed to the fork for upstream), cherry-picked here
+with `-x`. Only `packages/graphics/src/repr/volume/slice.ts` changes; `util.ts` did not need to (its only reader,
+`createVolumeSliceCellLocationIterator`, reads `mapping.cell.length`).
+
+- `3c92cb7ff` test first: the grid slice built as before is kept in `_test/slice.test.ts` as the reference
+  (`referenceGridImage`, its `getSliceInfo`). The new `createImage` (`mode: 'grid'`) must give the same `imageArray`,
+  `groupArray`, `valueArray` (bytes: NaNs and signed zeros), `mapping.instance`, `mapping.cell` and every index lookup
+  (every cell, every instance × cell when periodic, and keys beyond), for x, y, z (each index) and relative, a uniform
+  and the volume-value theme, on a skewed grid transform with entries no float holds exactly (two axis orders, and a
+  copied space without strides) and two periodic volumes (every tile drawn, a tile missing). The plane and frame
+  sampler's index is checked against the pixels that mapped a cell, pushed in order.
+- `cd001f6b5` step 2, the index: a non-periodic grid slice's `index.get(cell)` is computed (the cell's coordinates by
+  `getCoords`, on the slice or `undefined`, its pixel from the build's order); a periodic slice, a space without strides
+  and `getSampledImage` (plane, frame) make their Map on the first lookup, from `instance`/`cell` and a byte per pixel
+  that maps a cell. `eachSlice` (the only reader of `.index`) is unchanged: `index` keeps the `get(key)` shape.
+- `e493ae114` step 3: a uniform theme's color is taken once, no position computed (the portal gains nothing, see
+  Decided).
+- `a7cd64022` a test theme coloring by a hash of the position's bits: the volume-value theme rounded a position off by
+  an ulp away, so a sum in another order passed; with this theme it fails (checked by swapping the order).
+- `27fbb6f09` step 4: the position is `Vec3.transformMat4` inlined for an affine transform, its sums in its order (`w`
+  is 1), so the same bits; any other transform still calls it.
+- `aa907b82e` `CHANGELOG.md` line (applies to 5.x); `1585eac76` `.v6/changelogs/fast-slice.md` (on -pm first in
+  `0bb946563`, the same file, so its cherry-pick was empty).
+- Review fixes: `744012bca` the old `getSampledImage` kept in the test as the reference (pixels, values, mapping, index
+  for three oblique planes on each volume), failing until `facefeac2` exports `getSampledImage` (and `SamplingInfo`);
+  `ad8665a13` the lazy index lets go of its pixel flags once built.
+
+### Measured (headed Chromium, WebGPU, M-series Mac, port 1352; a Sonnet helper, the script in the session's scratchpad)
+
+TS_08 level 0 (928×928×450), 12 Z steps (+5 each), `api.run('cryoet.slice', …)` plus two frames, awaited one at a time;
+Chrome CPU profile through CDP, 100 µs sampling; ms a step, one session:
+
+| after                 | step, median (range) | `createGridImage` total (self) | `trilinearlyInterpolate` | `transformMat4` | GC  | upload (`writeTexture` + `flipRows2`) |
+| --------------------- | -------------------- | ------------------------------ | ------------------------ | --------------- | --- | ------------------------------------- |
+| before                | 273 (231–363)        | 260 (189)                      | 26                       | 49              | 6.7 | 6.6                                   |
+| 2, the index          | 108 (102–141)        | 94 (49)                        | 26                       | 20              | 2.4 | 6.6                                   |
+| 3, uniform color once | 104 (98–132)         | 93 (50)                        | 25                       | 19              | 1.5 | 6.4                                   |
+| 4, the position       | 87 (78–97)           | 73 (53)                        | 21                       | 0               | 0.8 | 6.4                                   |
+
+3.1× a step (2.9× at the slowest). This session's "before" (273) is below #53's 436–449 (another session); the ratio is
+what holds. The remaining 73 ms of the build: the volume-value theme's call (its own `transformMat4`, now inlined in the
+profile, and the trilinear read) and the loop's own work (value, group packing).
+
 ## Decided
+
+- **Step 1, the theme** (lane, from the code): the portal slice is `volume-value` (`cryoet/src/operations.ts`
+  `sliceParams`: `color: 'volume-value'`, a custom domain mean ± kσ, black → white), granularity `vertex`: its `color()`
+  samples the volume trilinearly at `l.position`. So "the color once for a uniform theme" gains nothing on TS_08 (the
+  table's step 3 is noise); it is kept for every other grid slice with a uniform theme (Mol*'s default for a slice).
+- **The index computed, not lazy, for a non-periodic grid slice** (lane): a lazy Map would only move its cost to the
+  first hover after each step (picking is `voxel` by default, so a hover reads it); each pixel of such a slice shows its
+  own cell, so the lookup is arithmetic and nothing is built. Lazy for the rest, where a cell can have several pixels.
+- **The position in `transformMat4`'s order, not "origin + ix·a + iy·b + iz·c"** (lane): the brief's sum in another
+  order changes the last bit of a position, and a position theme's pixels with it (the bits-theme test fails on it).
+- **Step 5 skipped** (lane): reading the cell instead of interpolating would need the slice to know volume-value's
+  internals (a file outside this lane), and the theme's own Cartesian → grid round trip can land at k − ε on a real
+  transform (13.48 Å voxels), where the interpolated value differs from the cell's in the last bits: pixels equal only
+  most of the time. Its ceiling was the theme's ~21 ms. Not needed: the step is under the 130 ms bar without it.
+- A strided read of the cell (`data[o]` instead of `space.get` and `dataOffset`) was tried: no gain in Node (167 ms for
+  a 928×928 slice either way), not kept.
 
 ## Learned
 
+- The Map was the step: 861k `Map.set` with an array each cost ~165 ms of a 273 ms step (and the GC with it); the pixels
+  themselves were cheap.
+- The volume-value theme is a poor test of "same pixels": its palette quantization hides a position off by an ulp. A
+  theme hashing the position's bits is the sensitive one.
+- On prism-me, `slice.test.ts` already had a periodic-slice describe (`5affa6d17`, `ea7dc5d3e`); the cherry-pick of the
+  test commit conflicted there and kept both.
+
 ## Size
+
+Brief: ~60–100 production lines. `slice.ts`: +105 −40 (the two index helpers and their docs ~55, the producers ~25, the
+loop ~25). Tests: +360 (the reference build ~130, the fixtures and themes ~120, the cases ~110). On size.
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+Reviewer (Opus): 1 must-fix, 1 should-fix, 5 nits; it ran mutation probes (a reordered position sum, a wrong pixel
+formula, set for push, a reversed lazy loop: all caught). Skeptic (Opus): 6 confirmed, 1 refuted, 1 new nit.
+
+| Finding                                                                                                                                    | Severity                            | Verdict                                                                                 | Commit / open                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1 `.v6/changelogs/fast-slice.md` missing on `me/fast-slice` (upstream needs it)                                                            | must-fix (skeptic: before upstream) | confirmed                                                                               | `1585eac76`                                                                                                                                            |
+| 2 the plane/frame index test built its expectation from the new image's own `instance`/`cell`: a wrong cell or instance passed             | should-fix                          | confirmed (mutations survived)                                                          | `744012bca` (failing first) + `facefeac2`; both mutations now fail                                                                                     |
+| 3 the no-strides fixture keeps a `getCoords` that inverts `dataOffset`, so the `Tensor.strides` guard is not exercised                     | nit                                 | confirmed                                                                               | open: a fixture would need its own expectation (the old build kept only the last pixel of a duplicated cell); no production slice reaches such a space |
+| 4 `gridSliceIndex`'s key checks (`< 0`, `>= cellCount`, integer) redundant with its only caller                                            | nit                                 | confirmed                                                                               | left: cheap, they keep `get` total like the Map's                                                                                                      |
+| 5 the lazy closure keeps `mapped` after building                                                                                           | nit                                 | confirmed                                                                               | `ad8665a13`                                                                                                                                            |
+| 6 the first hover after a rebuild of a plane/frame/periodic slice pays the Map                                                             | nit                                 | refuted (in the changelog and Decided; never more work than before)                     | —                                                                                                                                                      |
+| 7 the table's "`createGridImage` (self)" header                                                                                            | nit                                 | confirmed                                                                               | fixed here                                                                                                                                             |
+| N1 a grid slice over a space without strides that shows a cell more than once: the lazy index lists every pixel, the old Map only the last | nit (skeptic)                       | confirmed, unreachable (wrapped volumes are isosurface-only; periodic pairs are unique) | recorded here                                                                                                                                          |
