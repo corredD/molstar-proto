@@ -288,6 +288,26 @@ describe('empiar.load', () => {
     expect(spheres.map((x) => (x.cell.transform.params?.sizeTheme.params as any).defaultSize)).toEqual([50]);
   });
 
+  it("loads a small tilt series as its Z slice, its angles from the run's .rawtlt on the Slice row", async () => {
+    // 12534's are 3.3 GB (greyed): the listing made small, the stack a 4³ map
+    serve((url) =>
+      url.endsWith('/Tilt_series/YTC041_1/')
+        ? fixture('EMPIAR_upload~Tilt_series~YTC041_1.html').toString().replaceAll('3.3G', '9.9M')
+        : url.endsWith('.mrc.st')
+          ? map(false)
+          : undefined,
+    );
+    const v = await viewer();
+    const r = await v.api.run('empiar.load', { ...load, files: `${Run}.mrc.st`, emdb: 'none' });
+    expectOk(r);
+    const [ts] = v.plugin.managers.volume.hierarchy.current.volumes;
+    const params = ts.representations.map((x) => x.cell.transform.params as any);
+    expect(params.map((p) => p.type.name)).toEqual(['slice']);
+    expect(params[0].type.params.dimension.name).toBe('z');
+    const angles = v.api.empiar!.tiltAnglesOf(ts.cell.transform.ref)!;
+    expect([angles.length, Math.min(...angles), Math.max(...angles)]).toEqual([38, -57, 54]);
+  });
+
   it('refuses a file that cannot load, saying why', async () => {
     serve();
     const v = await viewer();
