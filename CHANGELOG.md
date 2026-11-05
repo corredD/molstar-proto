@@ -10,6 +10,9 @@ here.
 
 ## [Unreleased]
 
+- Volume grid slices build about 3x faster (a 928×928 slice of a tomogram, volume-value color: 273 → 87 ms a step): the
+  pixel-to-cell index used for marking is computed or made on first use instead of a Map filled with every image, a
+  uniform color theme is called once, and a pixel's position no longer goes through `Vec3.transformMat4`
 - Marking: fill and dim account for transparent layers (shading, see-through, dim of unmarked transparent objects)
 - Allow negative values for the label text offsets X, Y and Z (domain [-10, 10] instead of [0, 10]) (#1899)
 - Fix `Euler.set` (and `Euler.fromVec3`, which uses it) writing all three angles into the first component
