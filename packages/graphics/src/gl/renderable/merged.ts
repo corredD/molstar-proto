@@ -94,14 +94,21 @@ export const MergedTypes = ['spheres', 'mesh', 'cylinders', 'lines', 'points'] a
  */
 export const InstanceDataVec4s = 5;
 
-/** Packs the instance data of merged `values` into `out` (at least instances times `InstanceDataVec4s` vec4s) */
-export function packInstanceData(values: RenderableValues, out: Float32Array) {
-  const count: number = values.instanceCount.ref.value;
+/**
+ * Packs the instance data of merged `values` into `out` (at least instances times `InstanceDataVec4s` vec4s); with
+ * `start` and `count`, those instances alone, from the start of `out`
+ */
+export function packInstanceData(
+  values: RenderableValues,
+  out: Float32Array,
+  start = 0,
+  count: number = values.instanceCount.ref.value - start,
+) {
   const transform = values.aTransform.ref.value as Float32Array;
   const instance = values.aInstance.ref.value as Float32Array;
   const segment = values.aSegment.ref.value as Float32Array;
-  for (let i = 0; i < count; ++i) {
-    const o = i * InstanceDataVec4s * 4;
+  for (let i = start, il = start + count; i < il; ++i) {
+    const o = (i - start) * InstanceDataVec4s * 4;
     // the transform's rows (`affine-rows.ts`), the instance and its segment's groups, the segment's index
     packAffineRows(transform.subarray(i * 16, i * 16 + 16), 1, out, o);
     out[o + 12] = instance[i];
