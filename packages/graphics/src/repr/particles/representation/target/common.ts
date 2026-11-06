@@ -612,6 +612,45 @@ export interface TargetVisual {
   destroy(): void;
 }
 
+/** The fields of a list a move changes (`offsetParticles`): its frames, and what was computed from it */
+const MovedFields = new Set(['coordinates', 'rotations', '_propertyData']);
+
+/** Whether `next` is `prev` with its particles' frames alone changed: every other field the same (shared) */
+function particlesMovedOnly(prev: ParticleList, next: ParticleList) {
+  const p = prev as unknown as Record<string, unknown>;
+  const n = next as unknown as Record<string, unknown>;
+  let count = 0;
+  for (const key in n) {
+    count++;
+    if (!MovedFields.has(key) && n[key] !== p[key]) return false;
+  }
+  // and no field of `prev` gone
+  return count === Object.keys(p).length;
+}
+
+/** Whether the particles `indices` have the same frames in both lists (no rotations: the identity) */
+function sameFrames(prev: ParticleList, next: ParticleList, indices: OrderedSet<number>) {
+  const pc = prev.coordinates;
+  const nc = next.coordinates;
+  const pr = prev.rotations;
+  const nr = next.rotations;
+  if (pc === nc && pr === nr) return true;
+  // the set read directly (an interval or a sorted array), not through `OrderedSet.getAt` per particle: every particle
+  // of a whole-cell model is compared on a commit
+  const interval = OrderedSet.isInterval(indices);
+  const first = interval ? Interval.start(indices as Interval) : 0;
+  const array = interval ? undefined : (indices as unknown as ArrayLike<number>);
+  for (let k = 0, kl = OrderedSet.size(indices); k < kl; ++k) {
+    const i = array ? array[k] : first + k;
+    if (pc[i * 3] !== nc[i * 3] || pc[i * 3 + 1] !== nc[i * 3 + 1] || pc[i * 3 + 2] !== nc[i * 3 + 2]) return false;
+    for (let c = 0; c < 4; ++c) {
+      const identity = c === 3 ? 1 : 0;
+      if ((pr ? pr[i * 4 + c] : identity) !== (nr ? nr[i * 4 + c] : identity)) return false;
+    }
+  }
+  return true;
+}
+
 export function createTargetVisual(_targetId: number, materialId: number, graphics?: GraphicsContext): TargetVisual {
   const updateState = VisualUpdateState.create();
 
@@ -628,6 +667,8 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
   let currentParticles: ParticleList | undefined;
   let currentParticleIndices: OrderedSet<number> | undefined;
   let currentTarget: ParticleTarget | undefined;
+  /** whether some of its instances are drawn at other frames (`setParticleFrames`) */
+  let previewing = false;
 
   /** Location iterator: groupCount = 1 (particle-granularity), instanceCount = particle count for this target.
    *  Uses the original (unfiltered) `ParticleList` so that themes receive the correct particle index. */
@@ -763,6 +804,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     }
     const scale = targetScaleByRadius(currentTarget, props);
     writeTransforms(renderObject, particles, indices, props, scale, frames, start, end);
+    previewing = !!frames;
     // the bounds of the moved instances, as `createOrUpdate` makes them after a move
     Geometry.getUtils(geometry).updateBoundingSphere(renderObject.values as any, geometry);
     return true;
@@ -795,8 +837,22 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     // `particleIndices` is usually an `Interval`, which is packed into a plain number, so two
     // particle lists with the same target layout (e.g. two frames of a trajectory) compare `===`.
     // The instance data therefore has to be keyed on the `ParticleList` itself as well.
-    const indicesChanged = particleIndices !== currentParticleIndices;
-    const particlesChanged = indicesChanged || particles !== currentParticles;
+    // by value where the set is another (a commit's list computes its targets' sets again: arrays where a target's
+    // particles are not contiguous, as cellPACK's)
+    const indicesChanged =
+      particleIndices !== currentParticleIndices &&
+      !(currentParticleIndices !== undefined && OrderedSet.areEqual(particleIndices, currentParticleIndices));
+    // a commit's list: the old one with some particles moved (`offsetParticles`); where none of this visual's moved and
+    // nothing is previewed, its instances, colors and sizes stand (a move of one particle of a whole-cell model made
+    // every target again, the release's lag: Ludo, 2026-11-06)
+    const unmoved =
+      !indicesChanged &&
+      !previewing &&
+      !!currentParticles &&
+      particles !== currentParticles &&
+      particlesMovedOnly(currentParticles, particles) &&
+      sameFrames(currentParticles, particles, particleIndices);
+    const particlesChanged = indicesChanged || (particles !== currentParticles && !unmoved);
     const scaleByRadius = targetScaleByRadius(target, props);
 
     const geometryPropsChanged =
@@ -889,6 +945,9 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     }
 
     if (renderObject) setColorLevels(renderObject.values as unknown as ColorLevels.Data, theme, props, target);
+    // kept: its locations of the new list (the old one not held)
+    if (unmoved && !updateState.updateColor) locationIt = createLocIt(particles, particleIndices);
+    if (updateState.updateMatrix) previewing = false;
 
     currentTargetData = data;
     currentTargetKind = target.kind;

@@ -46,11 +46,15 @@ function triangle() {
 const target = triangle();
 
 /** Four particles of two targets (0: particles 0 and 1, 1: particles 2 and 3), turned as `rotations` says */
-function particleList(coordinates: Float32Array, rotations?: Float32Array): ParticleList {
+function particleList(
+  coordinates: Float32Array,
+  rotations?: Float32Array,
+  targets = Int32Array.of(0, 0, 1, 1),
+): ParticleList {
   return {
     count: 4,
     keys: Int32Array.of(0, 1, 2, 3),
-    targets: Int32Array.of(0, 0, 1, 1),
+    targets,
     targetInfo: new Map([
       [0, { name: 't0' }],
       [1, { name: 't1' }],
@@ -226,6 +230,79 @@ describe("a target representation's particles drawn at other frames (a drag's pr
     const back = repr.renderObjects[0].values.boundingSphere.ref.value;
     expect(Vec3.distance(back.center, before.center)).toBeLessThan(1e-3);
     expect(back.radius).toBeCloseTo(before.radius, 3);
+    repr.destroy();
+  });
+
+  // A commit's list is the old one with some particles moved (`offsetParticles`: its coordinates and rotations new, the
+  // rest shared). On a whole-cell model every target made again for one moved particle was the release's lag (Ludo,
+  // 2026-11-06: MG, 4470 targets, seconds, the page frozen by the upload of them all): a target none of whose particles
+  // moved keeps its instances and colors.
+  const committed: ParticleList = {
+    ...list,
+    coordinates: movedCoordinates,
+    rotations,
+    _propertyData: Object.create(null),
+  };
+  const versions = (ro: GraphicsRenderObject) => ({
+    aTransform: ro.values.aTransform.ref.version,
+    transform: ro.values.transform.ref.version,
+    tColor: ro.values.tColor.ref.version,
+    boundingSphere: ro.values.boundingSphere.ref.version,
+  });
+
+  it("makes again on a commit only the targets whose particles moved: the others' instances and colors kept", async () => {
+    const repr = await representation(list, false);
+    const [other, own] = repr.renderObjects;
+    const otherBefore = versions(other);
+    const ownBefore = versions(own);
+    await repr.createOrUpdate({}, committed).run();
+    expect(versions(other)).toEqual(otherBefore);
+    expect(versions(own).transform).toBeGreaterThan(ownBefore.transform);
+    const fresh = await representation(committed, false);
+    expectDrawnAs(drawn(repr.renderObjects), drawn(fresh.renderObjects));
+    fresh.destroy();
+    repr.destroy();
+  });
+
+  it('keeps the unmoved targets on a commit where their particles are not contiguous (their sets made again)', async () => {
+    // targets 0 and 1 interleaved (as cellPACK's): each target's particles a sorted array, made again from the
+    // commit's list (its computed properties reset)
+    const interleaved = Int32Array.of(0, 1, 0, 1);
+    const before = particleList(coordinates, undefined, interleaved);
+    const repr = await representation(before, false);
+    const [other, own] = repr.renderObjects;
+    const otherBefore = versions(other);
+    // particle 3 (target 1) moved
+    const moved = Float32Array.from(coordinates);
+    moved.set([31, 1, 5], 9);
+    const commit: ParticleList = { ...before, coordinates: moved, _propertyData: Object.create(null) };
+    await repr.createOrUpdate({}, commit).run();
+    expect(versions(other)).toEqual(otherBefore);
+    expect(versions(own).transform).toBeGreaterThan(0);
+    const fresh = await representation(commit, false);
+    expectDrawnAs(drawn(repr.renderObjects), drawn(fresh.renderObjects));
+    fresh.destroy();
+    repr.destroy();
+  });
+
+  it('draws a commit as made on its list, merged', async () => {
+    const repr = await representation(list, true);
+    await repr.createOrUpdate({}, committed).run();
+    const fresh = await representation(committed, true);
+    expectDrawnAs(drawn(repr.renderObjects), drawn(fresh.renderObjects));
+    fresh.destroy();
+    repr.destroy();
+  });
+
+  it('puts back on a commit a previewed target none of whose particles the commit moved', async () => {
+    const repr = await representation(list, false);
+    // particle 0 (target 0) previewed elsewhere; the commit moves particle 2 (target 1) alone
+    const far = Mat4.fromTranslation(Mat4(), Vec3.create(500, 0, 0));
+    expect(repr.setParticleFrames({ indices: Int32Array.of(0), frames: Float32Array.from(far) })).toBe(true);
+    await repr.createOrUpdate({}, committed).run();
+    const fresh = await representation(committed, false);
+    expectDrawnAs(drawn(repr.renderObjects), drawn(fresh.renderObjects));
+    fresh.destroy();
     repr.destroy();
   });
 
