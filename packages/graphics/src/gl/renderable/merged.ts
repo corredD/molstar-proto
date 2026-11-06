@@ -11,6 +11,7 @@ import { isSphereRasterEligible } from '../compute/sphere-raster-pass.js';
 import { packAffineRows } from '../affine-rows.js';
 import { OctNormalItemSize } from '../oct-normals.js';
 import { ValueCell } from '@molstar/core/util';
+import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { Vec4 } from '@molstar/core/math/linear-algebra/3d/vec4';
 import { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
 import type { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
@@ -425,8 +426,12 @@ export type Merged = {
   readonly type: MergedType;
   readonly values: MergeableValues & SegmentValues;
   readonly segments: MergedSegments;
-  /** sync merged values with member values, returns true if the layout changed */
-  sync: () => boolean;
+  /**
+   * sync merged values with member values, returns true if the layout changed; `growBounds`: the merged bounds only
+   * grown by the members whose bounds changed (O(changed), not a union of every member's: a drag's preview, many
+   * syncs a second), until the next sync without it makes them exact again
+   */
+  sync: (options?: { readonly growBounds?: boolean }) => boolean;
   /** the members' marker cells `sync` reads, observed with the merged values' own (`Renderable.memberCells`) */
   readonly memberCells: readonly ValueCell<unknown>[];
   /**
@@ -742,6 +747,30 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
     ValueCell.update(own.uInvariantBoundingSphere, Vec4.fromSphere(own.uInvariantBoundingSphere.ref.value, ibs));
   }
 
+  /** `out` grown to hold `by` (its center kept; its extrema dropped: no longer what bounds it) */
+  function growSphere(out: Sphere3D, by: Sphere3D) {
+    out.radius = Math.max(out.radius, Vec3.distance(out.center, by.center) + by.radius);
+    out.extrema = undefined;
+    out.extremaRadius = undefined;
+  }
+
+  /**
+   * The merged bounds grown by these members' (`sync`'s `growBounds`): never smaller than the union, O(changed) instead
+   * of the union's pass over every member (most of a drag preview's sync over thousands of members)
+   */
+  function growBoundingSpheres(changed: ArrayLike<number>, count: number) {
+    const bs = own.boundingSphere.ref.value as Sphere3D;
+    const ibs = own.invariantBoundingSphere.ref.value as Sphere3D;
+    for (let c = 0; c < count; ++c) {
+      const m = members[changed[c]];
+      growSphere(bs, m.boundingSphere.ref.value as Sphere3D);
+      growSphere(ibs, m.invariantBoundingSphere.ref.value as Sphere3D);
+    }
+    ValueCell.update(own.boundingSphere, bs);
+    ValueCell.update(own.invariantBoundingSphere, ibs);
+    ValueCell.update(own.uInvariantBoundingSphere, Vec4.fromSphere(own.uInvariantBoundingSphere.ref.value, ibs));
+  }
+
   function updateMarkerAggregates() {
     let average = 0;
     let weight = 0;
@@ -878,6 +907,55 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
     return { instanceTotal, vertexTotal, drawTotal, maxGroupCount };
   }
 
+  /** member i's instances (transforms, ids, segment per instance) and segment data written at its instance base */
+  function writeMemberInstances(
+    i: number,
+    transformArray: Float32Array,
+    instanceArray: Float32Array,
+    segmentInstanceArray: Float32Array,
+    segmentArray: Float32Array,
+  ) {
+    const v = members[i];
+    const instanceCount = segments.instanceCounts[i];
+    const instanceBase = segments.instanceBases[i];
+    transformArray.set((v.aTransform.ref.value as Float32Array).subarray(0, instanceCount * 16), instanceBase * 16);
+    const memberInstance = v.aInstance.ref.value as Float32Array;
+    const ibs = v.invariantBoundingSphere.ref.value as Sphere3D;
+    // the segment's data: invariant bounding sphere, level scales
+    const o = i * 8;
+    segmentArray[o + 0] = ibs.center[0];
+    segmentArray[o + 1] = ibs.center[1];
+    segmentArray[o + 2] = ibs.center[2];
+    segmentArray[o + 3] = ibs.radius;
+    writeSegmentLod(i, segmentArray);
+    for (let k = 0; k < instanceCount; ++k) {
+      instanceArray[instanceBase + k] = memberInstance[k] + instanceBase;
+      const s = (instanceBase + k) * 4;
+      segmentInstanceArray[s] = segmentGroupCounts[i];
+      segmentInstanceArray[s + 1] = segmentGroupInstanceOffsets[i];
+      segmentInstanceArray[s + 2] = segmentGroupBases[i];
+      segmentInstanceArray[s + 3] = i;
+    }
+  }
+
+  /**
+   * Only these members' instances written again, the layout unchanged (a drag's preview moves the instances of one
+   * member of thousands: copying every member's per change was the whole cost of a step, O(instances of all))
+   */
+  function updateMemberInstances(changed: ArrayLike<number>, count: number) {
+    const transformArray = own.aTransform.ref.value as Float32Array;
+    const instanceArray = own.aInstance.ref.value as Float32Array;
+    const segmentInstanceArray = own.aSegment.ref.value as Float32Array;
+    const segmentData = own.tSegment.ref.value as DataArray<Float32Array>;
+    for (let c = 0; c < count; ++c) {
+      writeMemberInstances(changed[c], transformArray, instanceArray, segmentInstanceArray, segmentData.array);
+    }
+    ValueCell.update(own.aTransform, transformArray);
+    ValueCell.update(own.aInstance, instanceArray);
+    ValueCell.update(own.aSegment, segmentInstanceArray);
+    ValueCell.update(own.tSegment, segmentData);
+  }
+
   function rebuildInstances(instanceTotal: number) {
     const segmentInstanceArray = ensureArray(own.aSegment.ref.value, instanceTotal * 4, Float32Array);
     const segmentData = own.tSegment.ref.value as DataArray<Float32Array>;
@@ -887,27 +965,7 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
     const transformArray = ensureArray(own.aTransform.ref.value, instanceTotal * 16, Float32Array);
     const instanceArray = ensureArray(own.aInstance.ref.value, instanceTotal, Float32Array);
     for (let i = 0; i < n; ++i) {
-      const v = members[i];
-      const instanceCount = segments.instanceCounts[i];
-      const instanceBase = segments.instanceBases[i];
-      transformArray.set((v.aTransform.ref.value as Float32Array).subarray(0, instanceCount * 16), instanceBase * 16);
-      const memberInstance = v.aInstance.ref.value as Float32Array;
-      const ibs = v.invariantBoundingSphere.ref.value as Sphere3D;
-      // the segment's data: invariant bounding sphere, level scales
-      const o = i * 8;
-      segmentArray[o + 0] = ibs.center[0];
-      segmentArray[o + 1] = ibs.center[1];
-      segmentArray[o + 2] = ibs.center[2];
-      segmentArray[o + 3] = ibs.radius;
-      writeSegmentLod(i, segmentArray);
-      for (let k = 0; k < instanceCount; ++k) {
-        instanceArray[instanceBase + k] = memberInstance[k] + instanceBase;
-        const s = (instanceBase + k) * 4;
-        segmentInstanceArray[s] = segmentGroupCounts[i];
-        segmentInstanceArray[s + 1] = segmentGroupInstanceOffsets[i];
-        segmentInstanceArray[s + 2] = segmentGroupBases[i];
-        segmentInstanceArray[s + 3] = i;
-      }
+      writeMemberInstances(i, transformArray, instanceArray, segmentInstanceArray, segmentArray);
     }
     ValueCell.update(own.aTransform, transformArray);
     ValueCell.update(own.aInstance, instanceArray);
@@ -976,8 +1034,11 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
   }
 
   const cullVersion = ValueCell.create(0);
+  /** the members a sync finds with changed instances (reused: a sync per frame of a drag allocates nothing) */
+  const changedInstances = new Int32Array(n);
+  const changedBounds = new Int32Array(n);
 
-  function sync() {
+  function sync(options?: { readonly growBounds?: boolean }) {
     if (updateLayout()) {
       rebuild();
       snapshotAll();
@@ -986,7 +1047,9 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
     }
 
     let instancesChanged = false;
+    let changedCount = 0;
     let boundsChanged = false;
+    let changedBoundsCount = 0;
     let markersChanged = false;
     let aggregatesChanged = false;
     let elementsChanged = false;
@@ -1013,9 +1076,11 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
       // the shared grid placement depends on transforms and invariant spheres
       if (mv.aTransform !== transform || mv.aInstance !== instance || mv.invariantBoundingSphere !== invariantBounds) {
         instancesChanged = true;
+        changedInstances[changedCount++] = i;
       }
       if (mv.boundingSphere !== bounds || mv.invariantBoundingSphere !== invariantBounds) {
         boundsChanged = true;
+        changedBounds[changedBoundsCount++] = i;
       }
       // how far the animations move its spheres (`cullSegment`'s allowance)
       if (mv.dWiggle !== dWiggle || mv.uWiggleStrength !== uWiggleStrength) wiggleChanged = true;
@@ -1102,11 +1167,15 @@ export function createMergedValues(type: MergedType, members: readonly Mergeable
       }
     }
 
-    if (instancesChanged) rebuildInstances(own.instanceCount.ref.value as number);
+    // the layout is the same (else `rebuild` above): the members whose instances changed, written in place
+    if (instancesChanged) updateMemberInstances(changedInstances, changedCount);
     for (const key of attributesChanged) ValueCell.update(own[key], own[key].ref.value);
     if (elementsChanged) ValueCell.update(own.elements, own.elements.ref.value);
     if (!instancesChanged && lodChanged) ValueCell.update(own.tSegment, own.tSegment.ref.value);
-    if (boundsChanged) updateBoundingSpheres();
+    if (boundsChanged) {
+      if (options?.growBounds) growBoundingSpheres(changedBounds, changedBoundsCount);
+      else updateBoundingSpheres();
+    }
     if (markersChanged) updateMarkerAggregates();
     if (aggregatesChanged) updateAggregates();
     if (instancesChanged || boundsChanged || lodChanged || wiggleChanged) {
