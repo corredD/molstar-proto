@@ -43,6 +43,7 @@ import {
   createParticleTargetPropsProvider,
   getTargetGeometryChoice,
   getTargetGeometryUtils,
+  type ParticleFrames,
   type TargetVisual,
 } from './common.js';
 import type { ObjectSignature } from '@molstar/graphics/gl/precompile';
@@ -59,8 +60,20 @@ import type { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
 export { ParticleTargetRepresentationParams };
 export type { ParticleTargetRepresentationProps };
 
-export interface ParticleTargetRepresentation
-  extends Representation<ParticleList, ParticleTargetRepresentationParams> {}
+export type { ParticleFrames };
+
+export interface ParticleTargetRepresentation extends Representation<ParticleList, ParticleTargetRepresentationParams> {
+  /**
+   * Some particles drawn at other frames than the list's, their instances' transforms only (a drag's preview);
+   * `undefined` puts them back. True when something drawn changed
+   */
+  setParticleFrames(frames: ParticleFrames | undefined): boolean;
+}
+
+/** A representation that can draw some particles at other frames without being made again (the target one) */
+export function canSetParticleFrames(repr: unknown): repr is Pick<ParticleTargetRepresentation, 'setParticleFrames'> {
+  return typeof (repr as Partial<ParticleTargetRepresentation> | undefined)?.setParticleFrames === 'function';
+}
 
 export type ParticleTargetRepresentationProvider<Id extends string = string> = RepresentationProvider<
   ParticleList,
@@ -160,6 +173,7 @@ export function ParticleTargetRepresentation(
         }
       }
 
+      // `previewed` kept: an update of the same particles (a theme) leaves a preview's instances where it put them
       updateRenderObjectList(entries);
       // made or merged again: they take the representation's transform
       if (!Mat4.isIdentity(_state.transform)) applyTransform(_state.transform);
@@ -208,6 +222,69 @@ export function ParticleTargetRepresentation(
       if (visual.renderObject) applyState(visual.renderObject, state);
       visual.setLayers(state);
     }
+  }
+
+  /** The visuals a preview drew at other frames, put back by the next `setParticleFrames(undefined)` */
+  const previewed = new Set<TargetVisual>();
+  /** Per visual one preview reaches, the range of the frames it is given (reused, cleared after it) */
+  const runStart = new Map<TargetVisual, number>();
+  const runEnd = new Map<TargetVisual, number>();
+
+  /**
+   * Some particles drawn at other frames than the list's (a drag's preview): only their targets' visuals' instance
+   * transforms written, no geometry, color or size made again, the merged objects synced (their bounds grown only);
+   * `undefined`: the visuals previewed back at the list's frames, the bounds exact again. Not a state: the next
+   * `createOrUpdate` draws the list as it is
+   */
+  function setParticleFrames(frames: ParticleFrames | undefined): boolean {
+    if (!_particles) return false;
+    let changed = false;
+    if (!frames) {
+      for (const visual of previewed) changed = visual.setParticleFrames(undefined, 0, 0) || changed;
+      previewed.clear();
+    } else {
+      // the frames in runs of one target (a drag moves one particle, or every particle of some targets, a target's
+      // together): each visual given its own run, one lookup a run, O(moved) in all; a target met again after another
+      // (frames in any order) is given every frame, its visual finding its own among them
+      const { targets, count } = _particles;
+      const { indices } = frames;
+      const n = indices.length;
+      let k = 0;
+      while (k < n) {
+        const pi = indices[k];
+        if (pi < 0 || pi >= count) {
+          k++;
+          continue;
+        }
+        const t = targets[pi];
+        let e = k + 1;
+        while (e < n && indices[e] >= 0 && indices[e] < count && targets[indices[e]] === t) e++;
+        const visual = targetVisuals.get(t);
+        if (visual) {
+          if (runStart.has(visual)) {
+            runStart.set(visual, 0);
+            runEnd.set(visual, n);
+          } else {
+            runStart.set(visual, k);
+            runEnd.set(visual, e);
+          }
+        }
+        k = e;
+      }
+      for (const [visual, start] of runStart) {
+        if (visual.setParticleFrames(frames, start, runEnd.get(visual)!)) {
+          previewed.add(visual);
+          changed = true;
+        }
+      }
+      runStart.clear();
+      runEnd.clear();
+    }
+    if (changed) {
+      const growBounds = frames !== undefined;
+      for (const ro of renderObjects) (ro as Partial<MergedGraphicsRenderObject>).merged?.sync({ growBounds });
+    }
+    return changed;
   }
 
   function setTheme(theme: Theme) {
@@ -274,6 +351,7 @@ export function ParticleTargetRepresentation(
   }
 
   function destroy() {
+    previewed.clear();
     for (const visual of targetVisuals.values()) {
       visual.destroy();
     }
@@ -311,6 +389,7 @@ export function ParticleTargetRepresentation(
     createOrUpdate,
     setState,
     setTheme,
+    setParticleFrames,
     getLoci,
     getAllLoci,
     eachLocation,

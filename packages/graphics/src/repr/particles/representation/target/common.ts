@@ -267,6 +267,15 @@ export function createParticleTargetPropsProvider(
 // ---- Transform helpers -----------------------------------------------------
 
 /**
+ * Some particles' frames other than the list's: `frames` holds 16 floats (a column-major mat4, as
+ * `getParticleTransforms`) for each of `indices` (particle indices of the list), in their order
+ */
+export interface ParticleFrames {
+  readonly indices: ArrayLike<number>;
+  readonly frames: Float32Array;
+}
+
+/**
  * Build per-instance transforms placing the target geometry at each of `indices`.
  *
  * The geometry is built at its actual coordinates, centered at `invariantBoundingSphere.center`
@@ -285,6 +294,9 @@ export function createTargetParticleTransform(
   batchSize: number,
   scaleByRadius: boolean,
   transformData?: TransformData,
+  frames?: ParticleFrames,
+  framesStart = 0,
+  framesEnd = frames?.indices.length ?? 0,
 ): TransformData {
   // Shared across every target visual, so it must not be mutated here.
   const src = getParticleTransforms(particles);
@@ -346,6 +358,34 @@ export function createTargetParticleTransform(
         transformArray[o + 12] = src[so + 12];
         transformArray[o + 13] = src[so + 13];
         transformArray[o + 14] = src[so + 14];
+      }
+    }
+  }
+
+  // some particles drawn at other frames than the list's (a drag's preview): their instances written again from those
+  // (`framesStart` to `framesEnd` of them: the representation gives each target's visual its own)
+  if (frames) {
+    const f = frames.frames;
+    for (let k = framesStart; k < framesEnd; k++) {
+      const pi = frames.indices[k];
+      const i = OrderedSet.indexOf(indices, pi);
+      if (i < 0) continue;
+      const so = k * 16;
+      const o = i * 16;
+      let s = 1;
+      if (radiiArr) {
+        const r = radiiArr[pi];
+        if (r > 0) s = r;
+      }
+      for (let j = 0; j < 12; j++) transformArray[o + j] = f[so + j] * s;
+      transformArray[o + 12] = f[so + 12];
+      transformArray[o + 13] = f[so + 13];
+      transformArray[o + 14] = f[so + 14];
+      transformArray[o + 15] = f[so + 15];
+      if (hasCenter) {
+        transformArray[o + 12] -= transformArray[o + 0] * cx + transformArray[o + 4] * cy + transformArray[o + 8] * cz;
+        transformArray[o + 13] -= transformArray[o + 1] * cx + transformArray[o + 5] * cy + transformArray[o + 9] * cz;
+        transformArray[o + 14] -= transformArray[o + 2] * cx + transformArray[o + 6] * cy + transformArray[o + 10] * cz;
       }
     }
   }
@@ -563,6 +603,12 @@ export interface TargetVisual {
   mark(loci: ModelLoci, action: MarkerAction): boolean;
   /** Applies the layers of a representation state (overpaint, transparency, emissive, substance, clipping) */
   setLayers(state: Partial<Representation.State>): void;
+  /**
+   * Draws these of its particles at other frames (a drag's preview): those of `frames` from `start` to `end`, their
+   * instances' transforms only, the geometry, colors and sizes kept; `undefined`: back to the list's frames. False when
+   * none of them is one of its particles
+   */
+  setParticleFrames(frames: ParticleFrames | undefined, start: number, end: number): boolean;
   destroy(): void;
 }
 
@@ -581,6 +627,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
   let currentTheme: Theme | undefined;
   let currentParticles: ParticleList | undefined;
   let currentParticleIndices: OrderedSet<number> | undefined;
+  let currentTarget: ParticleTarget | undefined;
 
   /** Location iterator: groupCount = 1 (particle-granularity), instanceCount = particle count for this target.
    *  Uses the original (unfiltered) `ParticleList` so that themes receive the correct particle index. */
@@ -665,6 +712,60 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
       Color.toArray(far(location, isSecondary), data.array, instanceIndex * 4);
     }
     ValueCell.update(values.tColorFar, data);
+  }
+
+  /** The instances' transforms written again from the particles (`frames`: some at other frames), with what follows */
+  function writeTransforms(
+    ro: GraphicsRenderObject,
+    particles: ParticleList,
+    particleIndices: OrderedSet<number>,
+    props: ParticleTargetProps,
+    scaleByRadius: boolean,
+    frames: ParticleFrames | undefined,
+    start = 0,
+    end = 0,
+  ) {
+    createTargetParticleTransform(
+      particles,
+      particleIndices,
+      geometry!.boundingSphere,
+      props.cellSize,
+      props.batchSize,
+      scaleByRadius,
+      ro.values as unknown as TransformData,
+      frames,
+      start,
+      end,
+    );
+    const geomUtils = Geometry.getUtils(geometry!);
+    positionIt = geomUtils.createPositionIterator(geometry!, ro.values as any);
+    if ('lodLevels' in ro.values) {
+      // instanceGrid (and its cellCount) was just rebuilt above; bump the `lodLevels`
+      // version to force `renderable.cull` to resize/refresh its per-level multidraw
+      // data (`mdbDataList`) instead of reusing stale, potentially undersized arrays -
+      // otherwise cells beyond the old cellCount are silently dropped from culling,
+      // which can leave the wrong (smaller) LOD level's spheres rendered.
+      ValueCell.update(ro.values.lodLevels, ro.values.lodLevels.ref.value);
+    }
+  }
+
+  function setParticleFrames(frames: ParticleFrames | undefined, start: number, end: number): boolean {
+    const particles = currentParticles;
+    const indices = currentParticleIndices;
+    const props = currentProps;
+    if (!renderObject || !geometry || !particles || !indices || !props || !currentTarget) return false;
+    if (OrderedSet.size(indices) === 0) return false;
+    if (frames) {
+      // given its own run, its first is one of its particles; given every frame, any may be
+      let any = false;
+      for (let k = start; k < end && !any; k++) any = OrderedSet.has(indices, frames.indices[k]);
+      if (!any) return false;
+    }
+    const scale = targetScaleByRadius(currentTarget, props);
+    writeTransforms(renderObject, particles, indices, props, scale, frames, start, end);
+    // the bounds of the moved instances, as `createOrUpdate` makes them after a move
+    Geometry.getUtils(geometry).updateBoundingSphere(renderObject.values as any, geometry);
+    return true;
   }
 
   async function createOrUpdate(
@@ -758,25 +859,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
       }
 
       if (updateState.updateMatrix && OrderedSet.size(particleIndices) > 0) {
-        createTargetParticleTransform(
-          particles,
-          particleIndices,
-          geometry!.boundingSphere,
-          props.cellSize,
-          props.batchSize,
-          scaleByRadius,
-          renderObject.values as unknown as TransformData,
-        );
-        const geomUtils = Geometry.getUtils(geometry!);
-        positionIt = geomUtils.createPositionIterator(geometry!, renderObject.values as any);
-        if ('lodLevels' in renderObject.values) {
-          // instanceGrid (and its cellCount) was just rebuilt above; bump the `lodLevels`
-          // version to force `renderable.cull` to resize/refresh its per-level multidraw
-          // data (`mdbDataList`) instead of reusing stale, potentially undersized arrays -
-          // otherwise cells beyond the old cellCount are silently dropped from culling,
-          // which can leave the wrong (smaller) LOD level's spheres rendered.
-          ValueCell.update(renderObject.values.lodLevels, renderObject.values.lodLevels.ref.value);
-        }
+        writeTransforms(renderObject, particles, particleIndices, props, scaleByRadius, undefined);
       }
 
       if (updateState.updateColor) {
@@ -813,6 +896,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     currentTheme = theme;
     currentParticles = particles;
     currentParticleIndices = particleIndices;
+    currentTarget = target;
   }
 
   /** Applies `apply` to the instances of this visual's particles that `loci` covers, in runs */
@@ -875,6 +959,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     currentTheme = undefined;
     currentParticles = undefined;
     currentParticleIndices = undefined;
+    currentTarget = undefined;
   }
 
   return {
@@ -890,6 +975,7 @@ export function createTargetVisual(_targetId: number, materialId: number, graphi
     createOrUpdate,
     mark,
     setLayers,
+    setParticleFrames,
     destroy,
   };
 }
