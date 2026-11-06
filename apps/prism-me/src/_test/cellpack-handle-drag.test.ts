@@ -8,7 +8,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { Session } from 'node:inspector';
 import { basename } from 'node:path';
-import { PerformanceObserver } from 'node:perf_hooks';
+import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import type { ParticleList } from '@molstar/model/model/particles/particle-list';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import { mountGizmoCanvas } from '@molstar/prism-viewer/testing/gizmo-canvas';
@@ -36,6 +36,8 @@ const post = (method: string) =>
     session.post(method, (e, r) => (e ? reject(e) : resolve(r)));
   });
 if (profile) session.connect();
+const postAlways = (method: string) =>
+  new Promise<unknown>((resolve, reject) => session.post(method, (e, r) => (e ? reject(e) : resolve(r))));
 const Steps = 20;
 /** particles tried: the first targeted ones of so many different targets */
 const Tried = Number(process.env.PRISM_ME_CELLPACK_TRIED ?? 4);
@@ -145,9 +147,29 @@ it.skipIf(!file)(
           console.log(`profile of the steps: ${profile}`);
         }
         const made = reprs.map((x, i) => `${x.name} ${spies[i].mock.calls.length}`).join(', ');
+        // `PRISM_ME_CELLPACK_PROFILE_RELEASE=<.cpuprofile>`: the first release profiled
+        const releaseProfile = process.env.PRISM_ME_CELLPACK_PROFILE_RELEASE;
+        const profilingRelease = !!releaseProfile && index === picked[0] && edit.kind === 'instance';
+        if (profilingRelease) {
+          if (!profile) session.connect();
+          await postAlways('Profiler.enable');
+          await postAlways('Profiler.start');
+        }
+        // the longest the release held the thread (the page frozen that long)
+        const blocked = monitorEventLoopDelay({ resolution: 10 });
+        blocked.enable();
         const r0 = performance.now();
         await canvas.release();
         const releaseMs = performance.now() - r0;
+        blocked.disable();
+        console.log(
+          `  release: ${releaseMs.toFixed(0)} ms, the thread held at most ${(blocked.max / 1e6).toFixed(0)} ms`,
+        );
+        if (profilingRelease) {
+          const { profile: p } = (await postAlways('Profiler.stop')) as { profile: unknown };
+          writeFileSync(releaseProfile!, JSON.stringify(p));
+          console.log(`profile of the release: ${releaseProfile}`);
+        }
         times.sort((a, b) => a - b);
         console.log(
           `particle ${index} (target ${data.targetMapping?.has(data.targets[index]) ? data.targets[index] : 'none'}), ` +
