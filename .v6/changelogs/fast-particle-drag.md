@@ -8,5 +8,5 @@
   from those members alone (`sync({ growBounds })`) rather than a union over every member.
 - Graphics: the GPU culling (WebGPU) of a merged object keeps each member's cells in a block of its own and writes
   only the members that moved; a drag step on MG (2.2 M instances) went from about 1.1 s and 376 MB written to the GPU
-  to 11 ms and 86 KB. WebGL had no GPU culling and did not lag this way.
+  to 11 ms and 86 KB (measured on a fake compute context: CPU work and bytes, not the GPU's upload time).
 - `stage-tools` has a `test:scaling` tier (a drag of 30 steps over n and 4n targets).
