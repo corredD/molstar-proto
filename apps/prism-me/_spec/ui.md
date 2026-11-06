@@ -497,6 +497,12 @@ still completes its distance.
   history, untouched: Prism's watcher would make the steps before unsafe), its release is one step (`cryoet.instance` or
   `cryoet.offset`); the edited offset solved so the particle is where the handle took it, the other offsets around it
   kept. Position shows, while it is on the list: Local handle, the particle, All, hide, and the offset by numbers.
+  - The drag draws only what moves (Ludo, 2026-11-05: on a whole-cell model the drag showed nothing until the release):
+    the moved particles' frames alone, written into the target representation's instances (`setParticleFrames`: no
+    geometry, color or size made again; the merged objects copy the changed members only, their bounds grown); a
+    spacefill of the untargeted particles or the fibers made again only when they draw a moved particle; any other
+    representation (orientation) made again each step. Guarded by `stage-tools` `test:scaling` (a drag of 30 steps over
+    n and 4n targets).
 - Models decorated too (2026-10-23, Ludovic: "why can't we change the target in Simularium"): a model (a list with
   entities: Simularium, cellPACK, PetWorld) has the Decoration section, so each of its targets (an agent, an entity) can
   be drawn as another object of the scene. A particle list's own shape (a Simularium simulation box) is not listed as a
