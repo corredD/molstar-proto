@@ -80,6 +80,13 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
   its sphere against the frustum and the object's distance range and picks its levels, as `cullSegment` does per cell;
   finer cells cost threads, not draws. The copy (below) tests each instance of a drawn cell the same way (GPU
   occlusion step 9). Testing each instance on its own, read per vertex, cost more than it saved.
+- **Cells by member**: each member's cells sit in a block of slots of its own, with a quarter more room (unused
+  slots are empty spheres no instance names). A member whose transforms, grid, spheres or levels changed writes its
+  block, its instances' cells, its segment row, its records and its instances alone; a full layout only where the
+  counts, levels or raster regions changed or a member outgrew its block. Why: a drag's preview moves one member of
+  thousands per pointer event, and a full layout of every instance per event was the lag (MG, 2.2 M instances in 4470
+  members: 1.1 s and 376 MB written a step; by member 11 ms and 86 KB). Each moved instance gets a cell holding its
+  sphere: the copy tests only the instances of drawn cells, so one left in a stale cell would vanish with it.
 - **Wiggle and tumble allowance**: the animations move spheres after culling (`animation.wgsl`), so the tests grow each
   sphere by how far they may (`getAnimationSlack`, `renderable.ts`): √3 times the wiggle's amplitude plus the largest
   per-group strength of the members that wiggle (`dWiggle`, `uWiggleStrength`), and the tumble's amplitude, each where

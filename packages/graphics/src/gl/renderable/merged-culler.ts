@@ -262,7 +262,13 @@ export function createMergedCuller(
   const words = stride / 4;
 
   const createBuffer = (bytes: number, label: string) => compute.createBuffer(Math.max(16, bytes), label);
-  const buffer = (label: string) => ValueCell.create(createBuffer(16, label));
+  /** each buffer's label, kept when `ensure` replaces it */
+  const labels = new Map<ValueCell<StorageBuffer>, string>();
+  const buffer = (label: string) => {
+    const cell = ValueCell.create(createBuffer(16, label));
+    labels.set(cell, label);
+    return cell;
+  };
   const instanceData = buffer('culled instance data');
   const instanceCells = buffer('culled instance cells');
   const segmentData = buffer('culled segment data');
@@ -351,7 +357,7 @@ export function createMergedCuller(
   const ensure = (cell: ValueCell<StorageBuffer>, bytes: number) => {
     if (cell.ref.value.byteLength >= bytes) return;
     cell.ref.value.destroy();
-    ValueCell.update(cell, createBuffer(bytes, 'merged culling'));
+    ValueCell.update(cell, createBuffer(bytes, labels.get(cell) ?? 'merged culling'));
   };
 
   let instanceCount = 0;
@@ -370,6 +376,148 @@ export function createMergedCuller(
   let secondPending = false;
   let secondDispatched = false;
 
+  /**
+   * The cells by member (`merged-render-objects.md` cells by member): each member's in a block of slots of its own (`slotBases`, `slotCounts`: its cells and room to
+   * grow), so a member whose instances moved (a drag's preview: one member of thousands, each pointer event) writes its
+   * block, its instances' cells, its segment and records alone (`syncMembers`), O(its instances); a full layout only
+   * where the structure changed or a member outgrew its block. Slots a member does not use are empty spheres no
+   * instance names (the instance kernel copies the instances of the cells drawn, by their cell)
+   */
+  let slotBases = new Uint32Array(0);
+  let slotCounts = new Uint32Array(0);
+  let slotSpheres = new Float32Array(0);
+  let cellOf = new Uint32Array(0);
+  /** per member the versions its cells, segment and records were written from (`MemberKeyLength` each) */
+  let memberKeys = new Float64Array(0);
+  /** per member its part of `chunkCapacity` */
+  let memberChunks = new Float64Array(0);
+  /** a member's cells (`computeMemberCells`): their spheres, and its instances' cells (member-local) */
+  const memberSpheres: number[] = [];
+  let memberCellOf = new Uint32Array(0);
+  const assignMemberCell = (instance: number, cell: number) => {
+    memberCellOf[instance] = cell;
+  };
+
+  /** member `s`'s cells: per cell of its grid with instances, or one of all its instances without a grid; their count */
+  function computeMemberCells(s: number) {
+    const member = members[s];
+    const n = segments.instanceCounts[s];
+    memberSpheres.length = 0;
+    if (memberCellOf.length < n) memberCellOf = new Uint32Array(Math.max(n, memberCellOf.length * 2));
+    const grid = member.instanceGrid.ref.value;
+    if (grid.cellSize <= 1) {
+      const b = member.boundingSphere.ref.value as Sphere3D;
+      memberSpheres.push(b.center[0], b.center[1], b.center[2], b.radius);
+      memberCellOf.fill(0, 0, n);
+      return 1;
+    }
+    const { cellOffsets, cellSpheres: gridSpheres, cellCount: gridCells } = grid;
+    const transforms = member.aTransform.ref.value as Float32Array;
+    const invariant = member.invariantBoundingSphere.ref.value as Sphere3D;
+    const fine = grid.cellSize / GpuCellDivisions;
+    for (let k = 0; k < gridCells; ++k) {
+      const start = cellOffsets[k];
+      const end = cellOffsets[k + 1];
+      if (start === end) continue;
+      if (end - start === 1) {
+        memberCellOf[start] = memberSpheres.length / 4;
+        for (let q = 0; q < 4; ++q) memberSpheres.push(gridSpheres[k * 4 + q]);
+        continue;
+      }
+      splitCell(transforms, invariant, start, end, fine, memberSpheres, assignMemberCell);
+    }
+    return memberSpheres.length / 4;
+  }
+
+  /** the slots for `cells` cells: a gridless member has one always; a gridded one room for a quarter more */
+  const slotsFor = (s: number, cells: number) =>
+    members[s].instanceGrid.ref.value.cellSize <= 1 ? 1 : cells + Math.max(2, cells >> 2);
+
+  /** member `s`'s cells (`computeMemberCells`, `cells` of them) into its block and its instances' cells */
+  function writeMemberCells(s: number, cells: number) {
+    const base = slotBases[s];
+    for (let q = 0, ql = cells * 4; q < ql; ++q) slotSpheres[base * 4 + q] = memberSpheres[q];
+    slotSpheres.fill(0, (base + cells) * 4, (base + slotCounts[s]) * 4);
+    const first = segments.instanceBases[s];
+    for (let i = 0, il = segments.instanceCounts[s]; i < il; ++i) {
+      cellOf[(first + i) * 2] = base + memberCellOf[i];
+      cellOf[(first + i) * 2 + 1] = s;
+    }
+  }
+
+  const MemberKeyLength = 5;
+  /** whether member `s`'s cells, segment or records may have changed since written; with `store`, marks them written */
+  function memberChanged(s: number, store: boolean) {
+    const m = members[s];
+    const o = s * MemberKeyLength;
+    const a = m.instanceGrid.ref.version;
+    const b = m.aTransform.ref.version;
+    const c = m.invariantBoundingSphere.ref.version;
+    const d = m.boundingSphere.ref.version;
+    const e = m.lodLevels?.ref.version ?? -1;
+    const k = memberKeys;
+    const changed = k[o] !== a || k[o + 1] !== b || k[o + 2] !== c || k[o + 3] !== d || k[o + 4] !== e;
+    if (store) {
+      k[o] = a;
+      k[o + 1] = b;
+      k[o + 2] = c;
+      k[o + 3] = d;
+      k[o + 4] = e;
+    }
+    return changed;
+  }
+
+  /**
+   * region `k`'s record of segment `s` into `out` at `o`, its words but the instance count: the level's count, first
+   * vertex or index, the region's first instance; its chunks where `k` is a level's own region (else 0)
+   */
+  function writeRecord(out: Uint32Array, o: number, k: number, s: number) {
+    const levels = Math.max(1, levelCount);
+    // a raster region as its level's
+    const j = k % levels;
+    const member = members[s];
+    const drawCount: number = member.drawCount.ref.value;
+    // gridless members draw at full detail at each level they overlap, as the CPU culling (`cullSegment`)
+    const gridless = member.instanceGrid.ref.value.cellSize <= 1;
+    const memberLevels = member.lodLevels?.ref.value as LodLevelsValue | undefined;
+    out[o] = levelCount === 0 || gridless || !memberLevels ? drawCount : memberLevels[j][3];
+    const first = k * instanceCount + segments.instanceBases[s];
+    if (indexed) {
+      out[o + 2] = segments.elementOffsets[s] / 4;
+      out[o + 4] = first;
+    } else {
+      out[o + 2] = segments.drawBases[s];
+      out[o + 3] = first;
+    }
+    // quads of 6 vertices (or indices) a sphere
+    return k === j ? Math.ceil(out[o] / 6 / 64) * segments.instanceCounts[s] : 0;
+  }
+
+  /** what the layout is of: the counts, the levels, the raster regions (`structure`) */
+  let structure = new Float64Array(0);
+  function structureChanged() {
+    const lodLevels = members[0].lodLevels?.ref.value as LodLevelsValue | undefined;
+    const n = segments.count;
+    const length = 4 + n * 2;
+    let changed = structure.length !== length;
+    if (changed) structure = new Float64Array(length);
+    const set = (i: number, v: number) => {
+      if (structure[i] !== v) {
+        structure[i] = v;
+        changed = true;
+      }
+    };
+    set(0, values.instanceCount.ref.value);
+    set(1, n);
+    set(2, rasterRegions ? 1 : 0);
+    set(3, lodLevels ? Math.min(lodLevels.length, MaxCullLevels) : 0);
+    for (let s = 0; s < n; ++s) {
+      set(4 + s * 2, segments.instanceCounts[s]);
+      set(5 + s * 2, members[s].drawCount.ref.value);
+    }
+    return changed;
+  }
+
   function syncLayout() {
     const lodLevels = members[0].lodLevels?.ref.value as LodLevelsValue | undefined;
     levelCount = lodLevels ? Math.min(lodLevels.length, MaxCullLevels) : 0;
@@ -380,38 +528,29 @@ export function createMergedCuller(
     const regions = (rasterRegions ? 2 : 1) * levels;
     identityBase = regions * instanceCount;
 
-    // the cells: per member those of its grid with instances, or one of all its instances without a grid
-    const spheres: number[] = [];
-    const cellOf = new Uint32Array(instanceCount * 2);
-    for (let s = 0; s < segmentCount; ++s) {
-      const member = members[s];
-      const base = segments.instanceBases[s];
-      const grid = member.instanceGrid.ref.value;
-      if (grid.cellSize <= 1) {
-        const b = member.boundingSphere.ref.value as Sphere3D;
-        const c = spheres.length / 4;
-        spheres.push(b.center[0], b.center[1], b.center[2], b.radius);
-        for (let i = 0; i < segments.instanceCounts[s]; ++i) cellOf.set([c, s], (base + i) * 2);
-        continue;
-      }
-      const { cellOffsets, cellSpheres: gridSpheres, cellCount: gridCells } = grid;
-      const transforms = member.aTransform.ref.value as Float32Array;
-      const invariant = member.invariantBoundingSphere.ref.value as Sphere3D;
-      const fine = grid.cellSize / GpuCellDivisions;
-      for (let k = 0; k < gridCells; ++k) {
-        const start = cellOffsets[k];
-        const end = cellOffsets[k + 1];
-        if (start === end) continue;
-        if (end - start === 1) {
-          const c = spheres.length / 4;
-          for (let q = 0; q < 4; ++q) spheres.push(gridSpheres[k * 4 + q]);
-          cellOf.set([c, s], (base + start) * 2);
-          continue;
-        }
-        splitCell(transforms, invariant, start, end, fine, spheres, (i, c) => cellOf.set([c, s], (base + i) * 2));
-      }
+    // the cells, each member's in its block
+    if (slotBases.length !== segmentCount) {
+      slotBases = new Uint32Array(segmentCount);
+      slotCounts = new Uint32Array(segmentCount);
+      memberKeys = new Float64Array(segmentCount * MemberKeyLength);
+      memberChunks = new Float64Array(segmentCount);
     }
-    cellCount = spheres.length / 4;
+    if (cellOf.length !== instanceCount * 2) cellOf = new Uint32Array(instanceCount * 2);
+    let slots = 0;
+    for (let s = 0; s < segmentCount; ++s) {
+      const cells = computeMemberCells(s);
+      slotBases[s] = slots;
+      slotCounts[s] = slotsFor(s, cells);
+      slots += slotCounts[s];
+      if (slotSpheres.length < slots * 4) {
+        const grown = new Float32Array(Math.max(slots * 4, slotSpheres.length * 2));
+        grown.set(slotSpheres);
+        slotSpheres = grown;
+      }
+      writeMemberCells(s, cells);
+      memberChanged(s, true);
+    }
+    cellCount = slots;
 
     ensure(instanceData, instanceCount * InstanceDataVec4s * 16);
     ensure(instanceCells, instanceCount * 8);
@@ -426,34 +565,19 @@ export function createMergedCuller(
       ensure(attributes[name as keyof typeof AttributeFloats], (regions + 1) * instanceCount * floats * 4);
     }
     instanceCells.ref.value.write(cellOf);
-    segmentData.ref.value.write(getSegmentData());
+    segmentDataCopy = getSegmentData();
+    segmentData.ref.value.write(segmentDataCopy);
     syncClip(true);
-    cellSpheres.ref.value.write(new Float32Array(spheres));
+    cellSpheres.ref.value.write(slotSpheres.subarray(0, cellCount * 4));
 
-    // the records' words but the instance count: the level's count, first vertex or index, the region's first instance
     const records = new Uint32Array(regions * segmentCount * words);
     chunkCapacity = 0;
+    memberChunks.fill(0);
     for (let k = 0; k < regions; ++k) {
-      // a raster region as its level's
-      const j = k % levels;
       for (let s = 0; s < segmentCount; ++s) {
-        const member = members[s];
-        const drawCount: number = member.drawCount.ref.value;
-        // gridless members draw at full detail at each level they overlap, as the CPU culling (`cullSegment`)
-        const gridless = member.instanceGrid.ref.value.cellSize <= 1;
-        const memberLevels = member.lodLevels?.ref.value as LodLevelsValue | undefined;
-        const o = (k * segmentCount + s) * words;
-        records[o] = levelCount === 0 || gridless || !memberLevels ? drawCount : memberLevels[j][3];
-        // quads of 6 vertices (or indices) a sphere
-        if (k === j) chunkCapacity += Math.ceil(records[o] / 6 / 64) * segments.instanceCounts[s];
-        const first = k * instanceCount + segments.instanceBases[s];
-        if (indexed) {
-          records[o + 2] = segments.elementOffsets[s] / 4;
-          records[o + 4] = first;
-        } else {
-          records[o + 2] = segments.drawBases[s];
-          records[o + 3] = first;
-        }
+        const chunks = writeRecord(records, (k * segmentCount + s) * words, k, s);
+        memberChunks[s] += chunks;
+        chunkCapacity += chunks;
       }
     }
     args.ref.value.write(records);
@@ -465,6 +589,47 @@ export function createMergedCuller(
     ValueCell.updateIfChanged(copyValues.uSegmentCount, segmentCount);
     ValueCell.updateIfChanged(argsValues.uRecordCount, regions * segmentCount);
     ValueCell.updateIfChanged(copyValues.uRasterLevels, rasterRegions ? levels : 0);
+  }
+
+  /**
+   * The members whose cells, segment or records changed (`memberChanged`), the structure the same: their blocks,
+   * instances' cells, segments, records and instances written alone. False where one outgrew its block (nothing
+   * written then: a full layout is due)
+   */
+  const changedMembers: number[] = [];
+  const record = new Uint32Array(words);
+  function syncMembers() {
+    changedMembers.length = 0;
+    for (let s = 0; s < segmentCount; ++s) if (memberChanged(s, false)) changedMembers.push(s);
+    if (changedMembers.length === 0) return true;
+    const regions = (rasterRegions ? 2 : 1) * Math.max(1, levelCount);
+    for (const s of changedMembers) {
+      const cells = computeMemberCells(s);
+      // outgrown: the full layout rewrites what this wrote of the members before
+      if (cells > slotCounts[s]) return false;
+      writeMemberCells(s, cells);
+      memberChanged(s, true);
+      const base = slotBases[s];
+      cellSpheres.ref.value.write(slotSpheres.subarray(base * 4, (base + slotCounts[s]) * 4), base * 16);
+      const first = segments.instanceBases[s];
+      const n = segments.instanceCounts[s];
+      instanceCells.ref.value.write(cellOf.subarray(first * 2, (first + n) * 2), first * 8);
+      writeSegmentRow(segmentDataCopy!, s);
+      segmentData.ref.value.write(segmentDataCopy!.subarray(s * 12, s * 12 + 12), s * 48);
+      chunkCapacity -= memberChunks[s];
+      memberChunks[s] = 0;
+      for (let k = 0; k < regions; ++k) {
+        record.fill(0);
+        memberChunks[s] += writeRecord(record, 0, k, s);
+        const offset = (k * segmentCount + s) * stride;
+        args.ref.value.write(record, offset);
+        secondArgs.ref.value.write(record, offset);
+      }
+      chunkCapacity += memberChunks[s];
+      syncInstanceRange(first, n);
+      segmentScales[s] = segmentScale(s);
+    }
+    return true;
   }
 
   /** the levels' distance ranges for `lod` (`LodView.getRange`) into `levelRanges`, per level a column */
@@ -486,18 +651,23 @@ export function createMergedCuller(
    */
   function getSegmentData() {
     const out = new Float32Array(segmentCount * 12);
-    const bases = new Uint32Array(out.buffer);
-    for (let s = 0; s < segmentCount; ++s) {
-      const member = members[s];
-      const { center, radius } = member.invariantBoundingSphere.ref.value as Sphere3D;
-      out.set([center[0], center[1], center[2], radius], s * 12);
-      bases[s * 12 + 4] = segments.instanceBases[s];
-      out[s * 12 + 5] = (member as { padding?: ValueCell<number> }).padding?.ref.value ?? 0;
-      const gridless = member.instanceGrid.ref.value.cellSize <= 1;
-      const memberLevels = !gridless ? (member.lodLevels?.ref.value as LodLevelsValue | undefined) : undefined;
-      for (let j = 0; j < 4; ++j) out[s * 12 + 8 + j] = memberLevels?.[j]?.[4] ?? 1;
-    }
+    for (let s = 0; s < segmentCount; ++s) writeSegmentRow(out, s);
     return out;
+  }
+  /** segment `s`'s row of `getSegmentData` into `out` */
+  function writeSegmentRow(out: Float32Array, s: number) {
+    const member = members[s];
+    const { center, radius } = member.invariantBoundingSphere.ref.value as Sphere3D;
+    const o = s * 12;
+    out[o] = center[0];
+    out[o + 1] = center[1];
+    out[o + 2] = center[2];
+    out[o + 3] = radius;
+    new Uint32Array(out.buffer, out.byteOffset + (o + 4) * 4, 1)[0] = segments.instanceBases[s];
+    out[o + 5] = (member as { padding?: ValueCell<number> }).padding?.ref.value ?? 0;
+    const gridless = member.instanceGrid.ref.value.cellSize <= 1;
+    const memberLevels = !gridless ? (member.lodLevels?.ref.value as LodLevelsValue | undefined) : undefined;
+    for (let j = 0; j < 4; ++j) out[o + 8 + j] = memberLevels?.[j]?.[4] ?? 1;
   }
 
   /**
@@ -545,6 +715,32 @@ export function createMergedCuller(
     }
   }
 
+  /** `syncInstances` of the instances `start` to `start + count` alone (`syncMembers`) */
+  let rangeData = new Float32Array(0);
+  let rangeRows = new Float32Array(0);
+  function syncInstanceRange(start: number, count: number) {
+    const size = count * InstanceDataVec4s * 4;
+    if (rangeData.length < size) rangeData = new Float32Array(size);
+    const data = rangeData.subarray(0, size);
+    packInstanceData(values, data, start, count);
+    instanceData.ref.value.write(data, start * InstanceDataVec4s * 16);
+    for (const [name, floats] of Object.entries(AttributeFloats)) {
+      const value = values[name].ref.value as Float32Array;
+      let array: Float32Array;
+      if (name === 'aTransform') {
+        if (rangeRows.length < count * floats) rangeRows = new Float32Array(count * floats);
+        array = packAffineRows(
+          value.subarray(start * 16, (start + count) * 16),
+          count,
+          rangeRows.subarray(0, count * floats),
+        );
+      } else {
+        array = value.subarray(start * floats, (start + count) * floats);
+      }
+      attributes[name as keyof typeof AttributeFloats].ref.value.write(array, (identityBase + start) * floats * 4);
+    }
+  }
+
   /** debug mode: what the raster split classifies by (`rasterized`), logged where it changed */
   let rasterInputsLogged = '';
   function logRasterInputs(raster: MergedRasterParams) {
@@ -569,34 +765,30 @@ export function createMergedCuller(
     rasterInputsLogged = text;
   }
 
-  /** what the cells and records are written from: the grids and the instances they split, the counts and the levels */
-  const getLayoutKey = () => {
-    let key = `${values.instanceCount.ref.value},${segments.count},${rasterRegions}`;
-    for (const m of members) {
-      key += `,${m.instanceGrid.ref.version},${m.aTransform.ref.version},${m.invariantBoundingSphere.ref.version},${m.boundingSphere.ref.version},${m.drawCount.ref.value},${m.lodLevels?.ref.version ?? -1}`;
-    }
-    return key;
-  };
   const getInstanceVersions = () =>
     `${values.aTransform.ref.version},${values.aInstance.ref.version},${values.aSegment.ref.version}`;
-  let layoutKey = '';
   let instanceVersions = '';
   /** advanced where the layout or the instances changed: a dispatch culled with an older one is not current */
   let dataVersion = 0;
+  /**
+   * The cells and records are written from the counts and levels (`structureChanged`: a full layout) and per member
+   * from its grid, transforms, spheres and levels (`syncMembers`: those of the members that changed)
+   */
   function sync() {
-    const key = getLayoutKey();
-    const layoutChanged = key !== layoutKey;
-    if (layoutChanged) {
-      layoutKey = key;
-      syncLayout();
-      segmentDataCopy = getSegmentData();
-    }
     const versions = getInstanceVersions();
-    if (layoutChanged || versions !== instanceVersions) {
-      instanceVersions = versions;
+    if (structureChanged() || !syncMembers()) {
+      syncLayout();
       syncInstances();
-      dataVersion += 1;
+    } else if (changedMembers.length > 0) {
+      // the members' instances written by `syncMembers`; the merged object's others stay (`Merged.sync` writes the
+      // members that changed)
+    } else if (versions !== instanceVersions) {
+      syncInstances();
+    } else {
+      return;
     }
+    instanceVersions = versions;
+    dataVersion += 1;
   }
   sync();
   // compiled from now on: a frame waiting for what is pending waits for them, culled on the CPU only meanwhile
@@ -729,21 +921,23 @@ export function createMergedCuller(
   }
   function setSegmentScales() {
     if (segmentScales.length !== segmentCount) segmentScales = new Float32Array(segmentCount);
+    for (let s = 0; s < segmentCount; ++s) segmentScales[s] = segmentScale(s);
+  }
+  /** the largest scale of segment `s`'s instances */
+  function segmentScale(s: number) {
     const t = values.aTransform.ref.value as Float32Array;
-    for (let s = 0; s < segmentCount; ++s) {
-      let max = 0;
-      const begin = segments.instanceBases[s];
-      for (let i = begin, il = begin + segments.instanceCounts[s]; i < il; ++i) {
-        const o = i * 16;
-        max = Math.max(
-          max,
-          t[o] * t[o] + t[o + 1] * t[o + 1] + t[o + 2] * t[o + 2],
-          t[o + 4] * t[o + 4] + t[o + 5] * t[o + 5] + t[o + 6] * t[o + 6],
-          t[o + 8] * t[o + 8] + t[o + 9] * t[o + 9] + t[o + 10] * t[o + 10],
-        );
-      }
-      segmentScales[s] = Math.sqrt(max);
+    let max = 0;
+    const begin = segments.instanceBases[s];
+    for (let i = begin, il = begin + segments.instanceCounts[s]; i < il; ++i) {
+      const o = i * 16;
+      max = Math.max(
+        max,
+        t[o] * t[o] + t[o + 1] * t[o + 1] + t[o + 2] * t[o + 2],
+        t[o + 4] * t[o + 4] + t[o + 5] * t[o + 5] + t[o + 6] * t[o + 6],
+        t[o + 8] * t[o + 8] + t[o + 9] * t[o + 9] + t[o + 10] * t[o + 10],
+      );
     }
+    return Math.sqrt(max);
   }
   /**
    * From each segment's bounds, which hold its instances' spheres: conservative (a margin for the kernels' 32-bit

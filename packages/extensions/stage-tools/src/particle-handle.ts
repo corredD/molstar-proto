@@ -8,7 +8,15 @@ import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
 import type { StateObjectCell } from '@molstar/core/state';
 import type { Representation } from '@molstar/graphics/repr/representation';
 import type { GizmoItem } from '@molstar/graphics/util/gizmo/controller';
-import type { ParticleList, ParticleTarget } from '@molstar/model/model/particles/particle-list';
+import {
+  getFiberParticleMask,
+  getParticleTargetGroups,
+  type ParticleList,
+  type ParticleTarget,
+} from '@molstar/model/model/particles/particle-list';
+import { OrderedSet } from '@molstar/core/data/int';
+import { fillSerial } from '@molstar/core/util/array';
+import { canSetParticleFrames } from '@molstar/graphics/repr/particles/representation/target/representation';
 import { Grid } from '@molstar/model/model/volume';
 import type { PluginContext } from '@molstar/plugin/context';
 import {
@@ -26,8 +34,10 @@ import { placementWith, poseOf } from './move.js';
 // A particle's local handle (apps/prism-me/_spec/ui.md, step 4): Prism's handles (`GizmoHandles`, on a frame:
 // `frameHandles`) on one particle, in its own frame, that edits an offset of what decorates the particles (`ParticleListOffsets`): with All on, its target's (its
 // class, its kind: every particle like it) or the list's; with All off, its own alone (`instances`). A drag shows the
-// particles offset as drawn only (the list's representations given the offset particles: the state, and its history,
-// untouched), its release is one step (`cryoet.offset` or `cryoet.instance`).
+// particles offset as drawn only (the state, and its history, untouched), drawing again only what moves: the target
+// representation writes the moved particles' instances (`setParticleFrames`), another representation that draws one of
+// them is made again from the offset particles (`drawsAny`); its release is one step (`cryoet.offset` or
+// `cryoet.instance`), which draws the list from the state.
 
 /** What a particle's handle edits: one particle's own offset, or some targets' ('': every particle) */
 export type HandleEdit = { readonly kind: 'instance' } | { readonly kind: 'offset'; readonly targets: string };
@@ -78,7 +88,7 @@ function offsetsCell(plugin: PluginContext, list: string): StateObjectCell | und
 }
 
 /** A particle's offsets, as the handle edits one of them */
-interface Stack {
+export interface Stack {
   /** The particles before the offsets (the decorator's input; the list as drawn without one) */
   readonly input: ParticleList;
   readonly offsets: readonly ParticleOffsetProps[];
@@ -148,6 +158,97 @@ export function solveEdit(
   return { translation, euler, stack: { ...stack, offsets, instances } };
 }
 
+/**
+ * The particles a handle's edit moves, in the list's order of targets: the particle alone (`instance`), or every particle
+ * of the edited targets (all of them for `''`)
+ */
+export function movedIndices(input: ParticleList, index: number, edit: HandleEdit): Int32Array {
+  if (edit.kind === 'instance') return Int32Array.of(index);
+  if (!edit.targets) return fillSerial(new Int32Array(input.count));
+  const ids = new Set(edit.targets.split(',').map(Number));
+  // the targets' particles from the list's grouping (cached on it): no scan of the particles
+  const groups = getParticleTargetGroups(input);
+  let n = 0;
+  for (let g = 0; g < groups.targetIds.length; g++)
+    if (ids.has(groups.targetIds[g])) n += OrderedSet.size(groups.sets[g]);
+  const out = new Int32Array(n);
+  let k = 0;
+  for (let g = 0; g < groups.targetIds.length; g++) {
+    if (!ids.has(groups.targetIds[g])) continue;
+    OrderedSet.forEach(groups.sets[g], (i) => {
+      out[k++] = i;
+    });
+  }
+  return out;
+}
+
+const _q = Quat();
+const _m = Mat4();
+
+/**
+ * The frames of `indices` (16 floats each, as `getParticleTransforms`) with a stack's offsets, as `offsetParticles`
+ * places them: the particle's frame, its targets' offsets in order, then its own; into `out` (reused across a drag)
+ */
+export function offsetFrames(stack: Stack, indices: ArrayLike<number>, out?: Float32Array): Float32Array {
+  const n = indices.length;
+  const frames = out && out.length === n * 16 ? out : new Float32Array(n * 16);
+  const { input } = stack;
+  // the offsets as matrices once, and the particles' own by index (a few: those edited alone)
+  const offsets = stack.offsets.map((o) => ({ targets: o.targets, m: offsetMatrix(o.translation, o.euler) }));
+  const own = new Map<number, Mat4>();
+  for (const o of stack.instances) own.set(o.index, offsetMatrix(o.translation, o.euler));
+  // the targets' offsets, composed once per target (a drag of a kind moves many particles of one target)
+  let lastTarget = Number.NaN;
+  const byTarget = Mat4.identity();
+  for (let k = 0; k < n; k++) {
+    const i = indices[k];
+    const target = input.targets[i];
+    if (target !== lastTarget) {
+      lastTarget = target;
+      Mat4.setIdentity(byTarget);
+      for (const o of offsets) if (!o.targets.length || o.targets.includes(target)) Mat4.mul(byTarget, byTarget, o.m);
+    }
+    if (input.rotations) Quat.fromArray(_q, input.rotations, i * 4);
+    else Quat.setIdentity(_q);
+    Mat4.fromQuat(_m, _q);
+    _m[12] = input.coordinates[i * 3];
+    _m[13] = input.coordinates[i * 3 + 1];
+    _m[14] = input.coordinates[i * 3 + 2];
+    Mat4.mul(_m, _m, byTarget);
+    const alone = own.get(i);
+    if (alone) Mat4.mul(_m, _m, alone);
+    Mat4.toArray(_m, frames, k * 16);
+  }
+  return frames;
+}
+
+/**
+ * Whether a representation of the list (other than the target one) draws one of `indices`: a fibers one draws the fiber
+ * particles only, a spacefill one that leaves out the particles with a target (a cellPACK's: `complexVisuals`) those
+ * without; any other, every particle. One read a moved particle, of masks cached on the list
+ */
+export function drawsAny(
+  params: unknown,
+  repr: { readonly props: unknown },
+  list: ParticleList,
+  indices: ArrayLike<number>,
+): boolean {
+  const name = (params as { type?: { name?: string } } | undefined)?.type?.name;
+  if (name === 'fibers') {
+    const mask = getFiberParticleMask(list);
+    if (!mask) return false;
+    for (let k = 0; k < indices.length; k++) if (mask[indices[k]]) return true;
+    return false;
+  }
+  if (name === 'spacefill' && (repr.props as { excludeTargets?: boolean } | undefined)?.excludeTargets) {
+    const mapping = list.targetMapping;
+    if (!mapping) return indices.length > 0;
+    for (let k = 0; k < indices.length; k++) if (!mapping.has(list.targets[indices[k]])) return true;
+    return false;
+  }
+  return indices.length > 0;
+}
+
 /** How long the camera takes to aim at a particle (ms) */
 const AimMs = 250;
 
@@ -196,7 +297,7 @@ export class ParticleHandles {
         const stack = t && stackOf(this.plugin, t.list);
         if (!t || !stack) return;
         const solved = solveEdit(stack, t.index, t.edit, next.frame);
-        await this.#draw(offsetParticles(stack.input, solved.stack.offsets, solved.stack.instances));
+        await this.#draw(t, solved.stack);
       },
       commit: async (_key, _from, next) => {
         const t = this.#target.value;
@@ -211,10 +312,11 @@ export class ParticleHandles {
             ? await this.api.run('cryoet.instance', { particles: t.list, index: t.index, x, y, z, ex, ey, ez })
             : await this.api.run('cryoet.offset', { particles: t.list, targets: t.edit.targets, x, y, z, ex, ey, ez });
         // drawn as the state has it now (offset, or not)
-        if (!r.ok || r.unchanged) await this.#draw(undefined);
+        if (!r.ok || r.unchanged) await this.#draw(t);
+        else this.#settled();
         return r.ok;
       },
-      cancel: () => void this.#draw(undefined),
+      cancel: () => void this.#draw(this.#target.value),
     });
   }
 
@@ -249,21 +351,62 @@ export class ParticleHandles {
     this.#target.set(undefined);
   }
 
-  /** The list's representations given these particles (the drawing only); none: as the state has them */
-  async #draw(particles: ParticleList | undefined) {
-    const t = this.#target.value;
+  /** A commit drew the list from the state again: nothing previewed is left to put back */
+  #settled() {
+    this.#moved = undefined;
+    this.#rebuilt.clear();
+  }
+
+  /** The particles a drag moves and their frames' buffer, for one particle and edit (kept across the drag's previews) */
+  #moved: { key: string; input: ParticleList; indices: Int32Array; frames: Float32Array } | undefined;
+  /** The representations a preview drew made again from other particles (put back by `#draw(undefined)`) */
+  readonly #rebuilt = new Set<Representation<ParticleList>>();
+
+  /**
+   * The list's representations drawn with the particles `stack` places (the drawing only); none: as the state has them.
+   * Only what moves is drawn again (David's "snappy" rule, a drag at pointer rate): the target representation (a
+   * cellPACK's proteins) writes the moved particles' instances alone (`setParticleFrames`); another one that draws a
+   * moved particle is made again from the offset particles
+   */
+  async #draw(t: ParticleHandleTarget | undefined, stack?: Stack) {
     const l = t && this.plugin.managers.particles.hierarchy.current.lists.find((x) => x.cell.transform.ref === t.list);
     if (!l) return;
+    const canvas = this.plugin.canvas3d;
+    let moved: { indices: Int32Array; frames: Float32Array } | undefined;
+    if (stack) {
+      const key = `${t.list}:${t.index}:${t.edit.kind === 'offset' ? t.edit.targets : '#'}`;
+      if (this.#moved?.key !== key || this.#moved.input !== stack.input) {
+        const indices = movedIndices(stack.input, t.index, t.edit);
+        this.#moved = { key, input: stack.input, indices, frames: new Float32Array(indices.length * 16) };
+      }
+      offsetFrames(stack, this.#moved.indices, this.#moved.frames);
+      moved = this.#moved;
+    } else {
+      this.#moved = undefined;
+    }
+    let offset: ParticleList | undefined;
     for (const r of l.representations) {
       const repr = (r.cell.obj?.data as { repr?: Representation<ParticleList> } | undefined)?.repr;
-      const data = particles ?? (r.cell.obj?.data as { sourceData?: ParticleList } | undefined)?.sourceData;
-      if (!repr || !data) continue;
-      await this.plugin.runTask(repr.createOrUpdate({}, data));
+      const source = (r.cell.obj?.data as { sourceData?: ParticleList } | undefined)?.sourceData;
+      if (!repr || !source) continue;
+      if (canSetParticleFrames(repr)) {
+        if (repr.setParticleFrames(moved)) canvas?.update(repr);
+        continue;
+      }
+      if (!stack) {
+        if (!this.#rebuilt.delete(repr)) continue;
+        await this.plugin.runTask(repr.createOrUpdate({}, source));
+      } else {
+        if (!drawsAny(r.cell.transform.params, repr, source, moved!.indices)) continue;
+        offset ??= offsetParticles(stack.input, stack.offsets, stack.instances);
+        this.#rebuilt.add(repr);
+        await this.plugin.runTask(repr.createOrUpdate({}, offset));
+      }
       // the new values given to the canvas, as the state's update would (its renderables upload them there): a redraw
       // request alone draws the particles where they were, until the release's commit
-      this.plugin.canvas3d?.update(repr);
+      canvas?.update(repr);
     }
-    this.plugin.canvas3d?.requestDraw();
+    canvas?.requestDraw();
   }
 
   /** The camera's target moved to a particle, its offset kept (one short move) */
