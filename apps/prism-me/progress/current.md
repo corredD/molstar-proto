@@ -6,6 +6,12 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **Fast particle drag** (Ludo, 2026-11-05, on the workstation: MG lags on a handle's drag, the release blocks): **PR
+  #59 merged 2026-11-06** ([progress](2026-11-05-fast-particle-drag.md)). The handle previews by writing the moved
+  instances; the merged object and the WebGPU culler write only what moved; a release keeps the unmoved targets (MG ~1.5
+  s headless, the thread held ≤24 ms). No review gate run. Open: the whole model's drag (lane 2), the release in a
+  browser, graphics commits for upstream (Ludo).
+
 - **Bug fixes from the night review** (Ludo, 2026-11-05): **merged 2026-11-05**, #58 (undo after a portal or EMPIAR
   load; [progress](2026-11-05-scene-sync-undo.md)), #56 (EMPIAR A, B and its fix round;
   [progress](2026-11-04-empiar.md)) and #57 (14 night-review findings; [progress](2026-11-05-night-fixes.md)). Lanes
