@@ -218,6 +218,9 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   its last surface or interior, so a membrane beside them is in it and a compartment inside it, the capsid in the
   envelope, is not; by function the same, read from the compartments); **Show all again**. Each one step through
   `particles.look`, the object drawn again if hidden.
+- **Wrap with lipids** (Ludo, 2026-11-08; lane `lipid-tiles`): on a mesh, or on a compartment's group of a model grouped
+  by compartment (a sphere fitted to its particles), a lipid bilayer of matched tiles made on the GPU around it
+  (`mesoscale.wrapMembrane`, one step; WebGPU only, the status line says so on WebGL2). It becomes a row of its own.
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit

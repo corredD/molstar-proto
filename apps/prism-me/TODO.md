@@ -88,6 +88,23 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
+- **Lipid membranes, left from lane `lipid-tiles`** (2026-11-08; progress/2026-11-08-lipid-tiles.md, Numbers):
+  - Not smooth zoomed out: a 1 µm sphere (7.9 M lipids, both leaflets) draws in about 380 ms a frame (Dawn, headless,
+    M1, 512²); every atom of every tile is drawn. The spheres' levels of detail do not reach the membrane (the balanced
+    preset changed nothing); a far level is needed (a tile as a few coarse spheres, or a textured triangle).
+  - The tile sets are baked on the main thread when a membrane is first made: the CHARMM-GUI patch about 5 s (16
+    variants a leaflet), 42 s with two vertex colours (128). The brief's worker is not built.
+  - Corner discs are off: the transform makes one vertex colour (`vertexColors: 1`), the brief had two. To decide (two
+    colours give eight times the variants and the bake).
+  - The patch: the right-click wraps with the synthetic one; a real patch only by command (`patchPdb`). Open a bilayer
+    PDB from + Open, and keep a named patch in a session (the registry is the module's: a session with one does not
+    restore).
+  - Bytes a lipid: the spheres' markers are per group and instance (1 B a lipid, CPU and GPU), and the CPU keeps a
+    zeroed 64 B transform a tile (twice, in the member and the merged arrays). Markers per instance would pick a tile,
+    not a lipid.
+  - No membrane on WebGL2 (no compute): a CPU fallback if wanted. A per-lipid hide mask (protein exclusion) is the next
+    lane.
+
 - **Fibre points drawn twice** (lane `fibers-targeted`, 2026-11-08; to decide): a cellPACK fibre's points keep their
   one-atom target under the new tubes (the yeast slab: 2.3M extra instances). Leave fibre points untargeted in the
   reader (lighter, tubes only), or keep both (a cellPACK fibre whose points carry an ingredient)?
