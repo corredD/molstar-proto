@@ -11,8 +11,8 @@ is not built is [../TODO.md](../TODO.md).
   count is a count of objects (its biological assembly, or what its file holds: a nuclear pore is one), never rescaled
   by mass.
   - `cull-dispatch-rows`: **PR #60** (GPU culling past 65,535 workgroups). `fibers-targeted`: **PR #61** (cellPACK
-    fibres as tubes). Master ports: lanes `fix/cull-dispatch-rows`, `fix/fibers-targeted` from `origin/master` (Ludo:
-    master gets both), local; upstream on Ludo's word.
+    fibres as tubes). Master ports built (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted` bb2dbced6, from
+    `origin/master`, local, not pushed); Ludo, 2026-11-08: the fixes go to prism-me (#60, #61), not upstream.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1).
   - `meso-showcase`: prism-me with #60 and #61, for looking only; no PR.
