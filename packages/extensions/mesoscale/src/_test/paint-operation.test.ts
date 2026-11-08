@@ -1,0 +1,153 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+import { readFileSync } from 'node:fs';
+import { afterEach, describe, expect, it } from 'vitest';
+import { Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
+import type { ParticleList } from '@molstar/model/model/particles/particle-list';
+import type { ApiResult } from '@molstar/prism-viewer/api/area';
+import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
+import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
+import type { PrismViewer } from '@molstar/prism-viewer/viewer';
+import { ParticleListTransform } from '@molstar/plugin/state/transforms/particles/ops';
+import { ParticleListPainted } from '../paint.js';
+import { MesoscaleExtension } from '../prism-viewer.js';
+import { setTestTargetStructure, TestTargetList } from './fixtures.js';
+
+// `mesoscale.paint` (progress/2026-11-08-paint.md, Tests: operation) on a cellPACK-like list whose four targets are 1CRN
+// (data/examples), drawn as targets: a stroke is one history step, its copies drawn as instances of their target.
+
+const viewers: PrismViewer[] = [];
+afterEach(async () => {
+  for (const v of viewers.splice(0)) await v.dispose();
+});
+
+function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: true }> {
+  if (!r.ok) expect.fail(`${r.code}: ${r.message}${r.hint ? ` (${r.hint})` : ''}`);
+}
+
+async function viewer() {
+  const base = DefaultPrismViewerSpec();
+  const v = await createPrismViewerHeadless({
+    spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+  });
+  viewers.push(v);
+  const crn = readFileSync(new URL('../../../../../data/examples/1crn.cif', import.meta.url));
+  expectOk(await v.api.load.files({ files: [new File([crn], '1crn.cif')] }));
+  setTestTargetStructure(v.plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data);
+  await v.plugin.build().toRoot().apply(TestTargetList).commit();
+  expectOk(await v.api.particles.representation({ type: 'target' }));
+  return v;
+}
+
+const entry = (v: PrismViewer) => v.plugin.managers.particles.hierarchy.current.lists[0];
+const drawn = (v: PrismViewer) =>
+  (entry(v).representations[0].cell.obj!.data as unknown as { sourceData: ParticleList }).sourceData;
+const instances = (v: PrismViewer) =>
+  (
+    (entry(v).representations[0].cell.obj!.data as unknown as { repr: { renderObjects: { values: any }[] } }).repr
+      .renderObjects ?? []
+  ).reduce((n, ro) => n + ro.values.instanceCount.ref.value, 0);
+const steps = (v: PrismViewer) => v.api.history.steps.value.length;
+const painted = (v: PrismViewer) =>
+  Array.from(v.plugin.state.data.cells.values()).filter((c) => c.transform.transformer === ParticleListPainted);
+const zOf = (list: ParticleList, i: number) =>
+  Vec3.transformQuat(
+    Vec3(),
+    Vec3.create(0, 0, 1),
+    Quat.create(
+      list.rotations![i * 4],
+      list.rotations![i * 4 + 1],
+      list.rotations![i * 4 + 2],
+      list.rotations![i * 4 + 3],
+    ),
+  );
+
+describe('mesoscale.paint', () => {
+  it('paints a stroke as one step: copies drawn, upright on a surface; undo removes it, redo brings it back', async () => {
+    const v = await viewer();
+    const before = { count: drawn(v).count, instances: instances(v), steps: steps(v) };
+    expect(before.count).toBe(7);
+    // CA: its compartment a surface (root.envelope.capsid.surface): +z along the normal
+    const r = await v.api.run('mesoscale.paint', {
+      entity: 'CA',
+      positions: [0, 50, 0, 10, 50, 0, 20, 50, 0],
+      normals: [0, 1, 0, 0, 1, 0, 0, 1, 0],
+      seed: 1,
+    });
+    expectOk(r);
+    expect(r.value).toEqual({ count: 3, orient: 'normal' });
+    expect(steps(v)).toBe(before.steps + 1);
+    const list = drawn(v);
+    expect(list.count).toBe(10);
+    expect(Array.from(list.targets.slice(7))).toEqual([1, 1, 1]);
+    expect(Array.from(list.compartments!.slice(7))).toEqual([1, 1, 1]);
+    for (let i = 7; i < 10; ++i) expect(Vec3.distance(zOf(list, i), Vec3.create(0, 1, 0))).toBeLessThan(1e-5);
+    expect(instances(v)).toBe(before.instances + 3);
+    expect(painted(v).length).toBe(1);
+
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(7);
+    expect(instances(v)).toBe(before.instances);
+    expect(painted(v).length).toBe(0);
+    expectOk(await v.api.run('history.redo', {}));
+    expect(drawn(v).count).toBe(10);
+    expect(instances(v)).toBe(before.instances + 3);
+  });
+
+  it('appends a second stroke to the same decorator, one more step; undo takes the second only', async () => {
+    const v = await viewer();
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [0, 50, 0], normals: [0, 1, 0], seed: 1 }));
+    const s = steps(v);
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'NC', positions: [0, 60, 0, 5, 60, 0], seed: 2 }));
+    expect(steps(v)).toBe(s + 1);
+    expect(painted(v).length).toBe(1);
+    expect(drawn(v).count).toBe(10);
+    expect(Array.from(drawn(v).targets.slice(7))).toEqual([1, 2, 2]);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(8);
+  });
+
+  it('turns a copy of an entity not on a surface at random, repeatably by its seed', async () => {
+    const v = await viewer();
+    const r = await v.api.run('mesoscale.paint', { entity: 'loose', positions: [0, 0, 0, 1, 1, 1], seed: 5 });
+    expectOk(r);
+    expect((r.value as { orient: string }).orient).toBe('random');
+    const a = Array.from(drawn(v).rotations!.slice(28));
+    expectOk(await v.api.run('history.undo', {}));
+    expectOk(await v.api.run('mesoscale.paint', { entity: 'loose', positions: [0, 0, 0, 1, 1, 1], seed: 5 }));
+    expect(Array.from(drawn(v).rotations!.slice(28))).toEqual(a);
+  });
+
+  it('puts the copies at the scene points of a moved and scaled list, which carries them on a later move', async () => {
+    const v = await viewer();
+    const ref = entry(v).cell.transform.ref;
+    const m = Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), Vec3.create(100, 0, 0)), Mat4.rotY90);
+    await v.plugin.build().to(ref).insert(ParticleListTransform, { transform: m, scale: 2 }).commit();
+    expectOk(
+      await v.api.run('mesoscale.paint', { entity: 'CA', positions: [10, 20, 30], normals: [1, 0, 0], seed: 1 }),
+    );
+    const list = drawn(v);
+    const p = Vec3.fromArray(Vec3(), list.coordinates, 7 * 3);
+    expect(Vec3.distance(p, Vec3.create(10, 20, 30))).toBeLessThan(1e-3);
+    expect(Vec3.distance(zOf(list, 7), Vec3.create(1, 0, 0))).toBeLessThan(1e-5);
+    // the painted decorator under the list, above its move
+    const cell = painted(v)[0];
+    expect(cell.transform.parent).toBe(ref);
+  });
+
+  it('refuses no positions, unpaired normals, an unknown or missing entity', async () => {
+    const v = await viewer();
+    expect(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [] })).toMatchObject({ ok: false });
+    expect(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [0, 0, 0], normals: [0, 1] })).toMatchObject({
+      ok: false,
+      code: 'invalid',
+    });
+    expect(await v.api.run('mesoscale.paint', { entity: 'nope', positions: [0, 0, 0] })).toMatchObject({ ok: false });
+    expect(await v.api.run('mesoscale.paint', { entity: '', positions: [0, 0, 0] })).toMatchObject({ ok: false });
+    expect(painted(v).length).toBe(0);
+  });
+});

@@ -5,6 +5,8 @@
  */
 
 import { Color } from '@molstar/core/util/color';
+import { type Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { ParticleListTransform } from '@molstar/plugin/state/transforms/particles/ops';
 import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { VisualQuality } from '@molstar/graphics/geo/geometry/base';
@@ -27,6 +29,16 @@ import { isFailure, labelOf, pickNamed, pickOne } from '@molstar/prism-viewer/ap
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { cssColor, matchColors, parseColorFile } from './color-file.js';
+import {
+  brushOf,
+  decoratorUnder,
+  type PaintOrient,
+  type PaintStroke,
+  ParticleListPainted,
+  paintRotations,
+  principalAxisOf,
+  toListFrame,
+} from './paint.js';
 import {
   findGroup,
   generateColors,
@@ -550,6 +562,119 @@ export class MesoscaleApi extends ApiArea {
       const painted = (one ? [one] : lists(ctx)).some((l) => !!clearedColors(ctx, l));
       const note = painted ? ' A color set in Look is that color until the atoms, and By zoom stays on.' : '';
       return ApiResult.ok(`Colors follow the zoom.${note}`, { nodes });
+    },
+  });
+
+  /**
+   * Paint v1 (progress/2026-11-08-paint.md, Design 2): copies of an entity (a target of a list without entities)
+   * painted at points of the scene, one stroke a run (one commit, one history step: an undo removes the stroke). The
+   * copies go in the list's `ParticleListPainted` (made on the first stroke, right under the list: a later move carries
+   * them), in the list's frame. Orientation (Decided 2): a membrane protein's +z along the normal (its compartment a
+   * surface), anything else at random; `axis` and `view` on request. No collision checks (Decided 3).
+   */
+  readonly paint = this.operation({
+    id: 'mesoscale.paint',
+    title: 'Paint copies of an entity',
+    params: {
+      entity: PD.Text('', { description: 'The brush: an entity by name or id (a list without entities: a target id)' }),
+      positions: PD.Value<number[]>([], { description: 'Where the copies go: x, y, z per copy (Å, the scene)' }),
+      normals: OptionalParam(
+        PD.Value<number[]>([], {
+          description: "The surface's normal at each point, x, y, z per copy (the scene); absent: toward the viewer",
+        }),
+      ),
+      orient: OptionalParam(
+        PD.Select(
+          'normal',
+          [
+            ['normal', 'Its +z along the normal (a membrane protein)'],
+            ['axis', 'Its principal axis along the normal'],
+            ['view', 'Its +z toward the viewer'],
+            ['random', 'At random'],
+          ] as const,
+          { description: 'How each copy is turned; absent: normal for a surface compartment, else random' },
+        ),
+      ),
+      side: PD.Select('out', [
+        ['out', 'Along the normal'],
+        ['in', 'Against the normal'],
+      ] as const),
+      spin: OptionalParam(
+        PD.Numeric(0, { min: 0, max: 360, step: 1 }, { description: 'Turn about that axis, °; absent: at random' }),
+      ),
+      seed: OptionalParam(PD.Numeric(0, { step: 1 }, { description: "The random orientations' seed (repeatable)" })),
+      particles: ListParam(),
+    },
+    async run(values, ctx) {
+      const { entity, positions, side, particles } = values;
+      const { normals, orient, spin, seed } = values as typeof values & {
+        normals?: number[];
+        orient?: PaintOrient;
+        spin?: number;
+        seed?: number;
+      };
+      if (!positions.length || positions.length % 3) {
+        return ApiResult.fail('invalid', "Give the copies' positions, x, y, z each.");
+      }
+      if (normals && normals.length !== positions.length) {
+        return ApiResult.fail('invalid', 'Give a normal for each position, x, y, z each.');
+      }
+      const l = oneList(ctx, particles || undefined);
+      if (isFailure(l)) return l;
+      const data = l.cell.obj?.data;
+      if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
+      const ids = selectEntities(ctx, l, entity, '');
+      if (isFailure(ids)) return ids;
+      if (ids.length !== 1 || !entity.trim()) {
+        return ApiResult.fail('invalid', 'Give one entity to paint with.', 'Read them with mesoscale.entities.');
+      }
+      const brush = brushOf(data, ids[0]);
+      if (!brush) return ApiResult.fail('not-found', 'No particle of that entity to copy.');
+      const how: PaintOrient = orient ?? (brush.surface ? 'normal' : 'random');
+      const state = ctx.plugin.state.data;
+      const moved = decoratorUnder(state, l.cell.transform.ref, ParticleListTransform);
+      const local = [...positions];
+      const k = local.length / 3;
+      let dirs: number[] | undefined;
+      if (how === 'view' || (!normals && how !== 'random')) {
+        const camera = ctx.plugin.canvas3d?.camera.state;
+        const d = camera
+          ? Vec3.normalize(Vec3(), Vec3.sub(Vec3(), camera.position, camera.target))
+          : Vec3.create(0, 0, 1);
+        dirs = new Array(k * 3);
+        for (let i = 0; i < k; ++i) for (let c = 0; c < 3; ++c) dirs[i * 3 + c] = d[c];
+      } else if (normals) {
+        dirs = [...normals];
+      }
+      if (dirs && side === 'in') for (let i = 0; i < dirs.length; ++i) dirs[i] = -dirs[i];
+      toListFrame(moved?.transform.params as { transform: Mat4; scale?: number } | undefined, local, dirs);
+      const rotations = paintRotations(
+        dirs ?? new Array(k * 3).fill(0),
+        how,
+        seed ?? Math.floor(Math.random() * 2 ** 31),
+        {
+          axis: how === 'axis' ? principalAxisOf(data.targetMapping?.get(brush.target)) : undefined,
+          spin,
+        },
+      );
+      const stroke: PaintStroke = {
+        target: brush.target,
+        entity: brush.entity,
+        compartment: brush.compartment,
+        positions: local,
+        rotations,
+      };
+      const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
+      const b = state.build();
+      if (painted) b.to(painted).update((p: { strokes: PaintStroke[] }) => ({ ...p, strokes: [...p.strokes, stroke] }));
+      else b.to(l.cell).insert(ParticleListPainted, { strokes: [stroke] });
+      await b.commit();
+      const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
+      return ApiResult.ok(
+        `Painted ${k} ${k === 1 ? 'copy' : 'copies'} of ${name} (${how}).`,
+        { nodes: [l.cell.transform.ref] },
+        { value: { count: k, orient: how } },
+      );
     },
   });
 

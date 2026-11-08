@@ -8,14 +8,18 @@ import { Column } from '@molstar/core/data/db';
 import { OrderedSet } from '@molstar/core/data/int';
 import { hash3 } from '@molstar/core/data/util/hash-functions';
 import { Clipping } from '@molstar/graphics/theme/clipping';
-import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
-import { StateTransformer } from '@molstar/core/state';
+import { Mat3, Mat4, Quat, Vec3 } from '@molstar/core/math/linear-algebra';
+import { PrincipalAxes } from '@molstar/core/math/linear-algebra/matrix/principal-axes';
+import { type State, type StateObjectCell, StateTransformer } from '@molstar/core/state';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { CustomProperties } from '@molstar/model/model/custom-property';
 import {
+  getParticleEntityGroups,
   getParticleTargetGroups,
+  Particle,
   type ParticleAttribute,
   type ParticleList,
+  type ParticleTarget,
 } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
 
@@ -233,4 +237,107 @@ export function paintRotations(
     out[i * 4 + 3] = _q[3];
   }
   return out;
+}
+
+// --- The operation's helpers (`mesoscale.paint`) ---------------------------------------------------------------------
+
+/** What a brush paints: a target, the entity and compartment of the particle it was read from */
+export interface PaintBrush {
+  readonly target: number;
+  readonly entity: number;
+  readonly compartment: number;
+  /** Whether that compartment is a surface (cellPACK's `….surface…`): a membrane protein, +z along the normal */
+  readonly surface: boolean;
+}
+
+/**
+ * The brush of an entity (a list with entities) or a target (one without: its targets are its entities), read from its
+ * first particle; undefined when no particle has it
+ */
+export function brushOf(list: ParticleList, id: number): PaintBrush | undefined {
+  const set = list.entityInfo?.size
+    ? getParticleEntityGroups(list).get(id)
+    : (() => {
+        const g = getParticleTargetGroups(list);
+        return g.sets[g.groupOfTarget.get(id) ?? -1];
+      })();
+  if (!set || OrderedSet.size(set) === 0) return undefined;
+  const i = OrderedSet.start(set);
+  const compartment = list.compartments?.[i] ?? -1;
+  const name = list.compartmentInfo?.get(compartment)?.name ?? '';
+  return {
+    target: list.targets[i],
+    entity: list.entityInfo?.size ? Particle.entityOf(list, i) : -1,
+    compartment,
+    surface: name.split('.').includes('surface'),
+  };
+}
+
+const axes = new WeakMap<object, Vec3>();
+/** A structure target's principal axis (its atoms' first moment axis, in its frame); +z for any other kind */
+export function principalAxisOf(target: ParticleTarget | undefined): Vec3 {
+  if (target?.kind !== 'structure') return Vec3.create(0, 0, 1);
+  const s = target.structure;
+  const kept = axes.get(s);
+  if (kept) return kept;
+  const xyz: number[] = [];
+  const p = Vec3();
+  for (const u of s.units) {
+    const { elements, conformation } = u;
+    for (let i = 0; i < elements.length; ++i) {
+      conformation.position(elements[i], p);
+      xyz.push(p[0], p[1], p[2]);
+    }
+  }
+  const axis = xyz.length >= 6 ? Vec3.clone(PrincipalAxes.ofPositions(xyz).momentsAxes.dirA) : Vec3.create(0, 0, 1);
+  Vec3.normalize(axis, axis);
+  axes.set(s, axis);
+  return axis;
+}
+
+/** The decorator of `transformer` in the chain of decorators under a cell (a particle list's), if any */
+export function decoratorUnder(state: State, ref: string, transformer: StateTransformer): StateObjectCell | undefined {
+  const { cells, tree } = state;
+  for (let at = ref; ; ) {
+    const next = tree.children
+      .get(at)
+      .toArray()
+      .map((c) => cells.get(c))
+      .find((c) => c?.transform.transformer.definition.isDecorator);
+    if (!next) return undefined;
+    if (next.transform.transformer === transformer) return next;
+    at = next.transform.ref;
+  }
+}
+
+/**
+ * Points and directions of the scene in a list's own frame (before its move and scale, `ParticleListTransform`, where
+ * the painted decorator sits: right under the list), in place: a later move carries the strokes with the list
+ */
+export function toListFrame(
+  transform: { readonly transform: Mat4; readonly scale?: number } | undefined,
+  positions: number[],
+  normals: number[] | undefined,
+) {
+  if (!transform) return;
+  const scale = transform.scale ?? 1;
+  const inverse = Mat4.invert(Mat4(), transform.transform);
+  const turn = Mat3.fromMat4(Mat3(), inverse);
+  const p = Vec3();
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    Vec3.set(p, positions[i], positions[i + 1], positions[i + 2]);
+    Vec3.transformMat4(p, p, inverse);
+    Vec3.scale(p, p, 1 / scale);
+    positions[i] = p[0];
+    positions[i + 1] = p[1];
+    positions[i + 2] = p[2];
+  }
+  if (!normals) return;
+  for (let i = 0; i + 2 < normals.length; i += 3) {
+    Vec3.set(p, normals[i], normals[i + 1], normals[i + 2]);
+    Vec3.transformMat3(p, p, turn);
+    normals[i] = p[0];
+    normals[i + 1] = p[1];
+    normals[i + 2] = p[2];
+  }
 }
