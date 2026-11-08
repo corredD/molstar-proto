@@ -139,6 +139,25 @@ describe('mesoscale.paint', () => {
     expect(cell.transform.parent).toBe(ref);
   });
 
+  it('keeps the strokes in a saved state: opened again, the copies are there, where they were painted', async () => {
+    const v = await viewer();
+    expectOk(
+      await v.api.run('mesoscale.paint', {
+        entity: 'CA',
+        positions: [0, 50, 0, 10, 50, 0],
+        normals: [0, 1, 0, 0, 1, 0],
+        seed: 1,
+      }),
+    );
+    const painted = Array.from(drawn(v).coordinates.slice(21));
+    const snapshot = JSON.parse(JSON.stringify(v.plugin.state.data.getSnapshot()));
+    await v.plugin.build().delete(entry(v).cell.transform.ref).commit();
+    expect(v.plugin.managers.particles.hierarchy.current.lists.length).toBe(0);
+    await v.plugin.runTask(v.plugin.state.data.setSnapshot(snapshot));
+    expect(drawn(v).count).toBe(9);
+    expect(Array.from(drawn(v).coordinates.slice(21))).toEqual(painted);
+  });
+
   it('refuses no positions, unpaired normals, an unknown or missing entity', async () => {
     const v = await viewer();
     expect(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [] })).toMatchObject({ ok: false });
