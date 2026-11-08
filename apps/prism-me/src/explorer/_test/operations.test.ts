@@ -421,6 +421,8 @@ describe('explorer', () => {
     expectOk(await v.api.run('history.undo', {}));
     expectOk(await v.api.run('history.undo', {}));
     expect(v.plugin.state.data.cells.size).toBe(before);
+    // the wrap's undo shows its mesh again: the hiding is part of its step
+    expect(v.plugin.state.data.cells.get(mesh.ref)!.state.isHidden).toBeFalsy();
     // removed with its mesh (review S6): the mesh's row's Remove
     const again = await v.api.run('mesoscale.wrapMembrane', { mesh: mesh.ref, edge: 100 });
     expectOk(again);
