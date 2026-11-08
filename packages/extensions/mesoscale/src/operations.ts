@@ -259,7 +259,24 @@ export class MesoscaleApi extends ApiArea {
         edge,
         leaflets,
       });
-      await b.commit();
+      // a failed transform (an unknown patch, a ref that is not a mesh) leaves no cell and no step: reverted, its error
+      // read as it happened
+      let error: string | undefined;
+      const sub = ctx.plugin.state.data.events.cell.stateUpdated.subscribe((e) => {
+        if (e.ref === node.ref && e.cell.status === 'error') error = e.cell.errorText;
+      });
+      try {
+        await b.commit({ revertOnError: true });
+      } finally {
+        sub.unsubscribe();
+      }
+      const cell = ctx.plugin.state.data.cells.get(node.ref);
+      if (error !== undefined || !cell || cell.status !== 'ok') {
+        return ApiResult.fail(
+          'failed',
+          `No lipid membrane was made: ${error ?? cell?.errorText ?? 'its cell was not made'}`,
+        );
+      }
       const drawn = canDrawLipidMembranes(ctx.plugin);
       return ApiResult.ok(
         `Wrapped ${mesh ? 'the mesh' : compartment || `a sphere of ${Math.round(r)} Å`} with lipids${drawn ? '' : ' (not drawn: WebGPU only)'}.`,

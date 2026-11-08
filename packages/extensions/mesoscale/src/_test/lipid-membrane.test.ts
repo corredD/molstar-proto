@@ -75,4 +75,22 @@ describe('lipid membrane', () => {
     expectOk(await v.api.history.undo({}));
     expect([...v.plugin.state.data.cells.values()].some((c) => c.transform.transformer === LipidMembrane)).toBe(false);
   });
+
+  it('fails, adding nothing, when its transform fails (an unknown patch, a ref that is not a mesh)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const membranes = () =>
+      [...v.plugin.state.data.cells.values()].filter((c) => c.transform.transformer === LipidMembrane).length;
+    const unknown = await v.api.mesoscale!.wrapMembrane({ radius: 400, edge: 80, patch: 'no-such-patch' });
+    expect(unknown.ok).toBe(false);
+    if (!unknown.ok) expect(unknown.message).toMatch(/No lipid patch named no-such-patch/);
+    expect(membranes()).toBe(0);
+    const root = v.plugin.state.data.tree.root.ref;
+    const notMesh = await v.api.mesoscale!.wrapMembrane({ mesh: root, edge: 80, patch: 'test-patch' });
+    expect(notMesh.ok).toBe(false);
+    expect(membranes()).toBe(0);
+  });
 });
