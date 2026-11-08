@@ -123,3 +123,23 @@ export function traceToText(steps: readonly TraceStep[]): string {
     .map((s) => `${'  '.repeat(s.depth)}${s.depth ? `${s.via} ` : ''}${s.kind} ${s.id}: ${s.label}`)
     .join('\n');
 }
+
+/**
+ * A trace as a tree for the S-expression spelling (design.md §3.7): each step a form headed by its kind, its id first,
+ * the steps it leads to grouped under the keyword of their relation (`:cites`, `:realized-by`, `:generated-by`, …).
+ */
+export function traceToSexprData(steps: readonly TraceStep[]): unknown {
+  type N = { kind: string; ref: string; label: string } & Record<string, unknown>;
+  const camel = (via: string) => via.replace(/ ([a-z])/g, (_, c: string) => c.toUpperCase());
+  const roots: N[] = [];
+  const stack: N[] = [];
+  for (const s of steps) {
+    const node: N = { kind: s.kind, ref: s.id, label: s.label };
+    stack.length = s.depth;
+    const parent = stack[s.depth - 1];
+    if (parent) ((parent[camel(s.via)] ??= []) as N[]).push(node);
+    else roots.push(node);
+    stack[s.depth] = node;
+  }
+  return roots.length === 1 ? roots[0] : roots;
+}

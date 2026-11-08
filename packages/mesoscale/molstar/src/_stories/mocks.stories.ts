@@ -12,7 +12,7 @@ import { galleryDoc } from '@molstar/meso-spec/examples/gallery';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
 import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
-import { h, panel, pre, showHistory, showIr, showIssues, Styles } from './ui.js';
+import { h, onSpellingChange, panel, pre, showHistory, showIr, showIssues, Styles } from './ui.js';
 
 // Smaller stories for what the slice leaves out (design.md §4.4): one gallery population kind each, its construction
 // parameter on a slider. A slider moves a number the resolver reads, so the edit is a model edit that reruns that
@@ -52,6 +52,7 @@ function mock(doc: MesoViewSpecDoc, knob: Knob) {
       showIssues(issues, session.issues);
       showHistory(history, session.history);
     };
+    onSpellingChange(() => session && showIssues(issues, session.issues));
     const input = h('input', {
       type: 'range',
       min: String(knob.min),
@@ -84,7 +85,7 @@ function mock(doc: MesoViewSpecDoc, knob: Knob) {
         { style: 'grid-column:1 / 3' },
         panel(doc.metadata.title, h('div', { style: Styles.bar }, knob.label, input, out)),
       ),
-      panel('IR', irPre),
+      panel('IR', irPre, '', true),
       panel('Mol* / Prism', h('div', { style: 'flex:1;min-height:0;position:relative' }, viewer)),
       panel('Issues', issues),
       panel('Edits', history),

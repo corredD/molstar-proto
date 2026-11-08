@@ -12,7 +12,7 @@ import { exosomeDoc, ExosomeResources } from '@molstar/meso-spec/examples/exosom
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
 import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
-import { h, panel, pre, showHistory, showIr, showIssues, showJson, Styles, traceBox } from './ui.js';
+import { h, onSpellingChange, panel, pre, showHistory, showIr, showIssues, showJson, Styles, traceBox } from './ui.js';
 
 // The thin slice (design.md §10): the exosome document, validated and resolved (the cellPACKgpu adapter, the precomputed
 // picks, the bilayer), its IR, and the real Prism viewer drawing it, side by side. Edits go through a session: a color
@@ -71,6 +71,7 @@ function slice(steps?: Step) {
       showIssues(issues, session.issues);
       showHistory(history, session.history);
     };
+    onSpellingChange(() => session && showIssues(issues, session.issues));
     const apply = async (doc: MesoViewSpecDoc, label: string, f?: string) => {
       if (!session) return;
       focus = f;
@@ -197,7 +198,7 @@ function slice(steps?: Step) {
         { style: 'grid-column:1 / 4' },
         panel('MesoViewSpec thin slice: exosome document → validation → resolvers → IR → Prism', controls),
       ),
-      panel('MesoViewSpec document (authored)', docPre),
+      panel('MesoViewSpec document (authored)', docPre, '', true),
       panel('IR (derived; placement buffers summarized)', irPre),
       panel('Mol* / Prism', h('div', { style: 'flex:1;min-height:0;position:relative' }, viewer)),
       panel('Issues (validation, resolution, constraints)', issues),

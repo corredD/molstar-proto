@@ -12,7 +12,7 @@ import { galleryDoc } from '@molstar/meso-spec/examples/gallery';
 import { yeastDoc } from '@molstar/meso-spec/examples/yeast';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
 import { compile } from '@molstar/meso-spec/runtime/runtime';
-import { h, panel, pre, showIr, showIssues, showJson, Styles, traceBox } from './ui.js';
+import { h, onSpellingChange, panel, pre, showIr, showIssues, showJson, Styles, traceBox } from './ui.js';
 
 // The same scene twice (design.md §2, §10): the MesoViewSpec document as authored, the IR the runtime makes of it, the
 // issues, a provenance trace. No viewer: what is shown is the format and the IR, computed live in the browser.
@@ -30,11 +30,12 @@ function paired(doc: MesoViewSpecDoc, traceIds: string[]) {
     void compile(doc, { resolvers: DefaultResolvers, load: (id) => ExosomeResources[id]?.() }).then((r) => {
       showIr(irPre, r.ir);
       showIssues(issues, r.issues);
+      onSpellingChange(() => showIssues(issues, r.issues));
     });
     return h(
       'div',
       { style: `${Styles.grid};grid-template-columns:1fr 1fr;grid-template-rows:2fr 1fr` },
-      panel(`MesoViewSpec: ${doc.metadata.title}`, docPre),
+      panel(`MesoViewSpec: ${doc.metadata.title}`, docPre, '', true),
       panel('IR', irPre),
       panel('Issues', issues),
       panel('Provenance', tracer.el),

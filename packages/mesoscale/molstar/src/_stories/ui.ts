@@ -7,10 +7,13 @@
 import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
 import type { Issue } from '@molstar/meso-spec/format/issues';
 import { irToJson, type IR } from '@molstar/meso-spec/ir/ir';
-import { trace, traceToText } from '@molstar/meso-spec/format/trace';
+import { type DataCodec, DocumentCodec, IRCodec, printData } from '@molstar/meso-spec/format/sexpr';
+import { trace, traceToSexprData, traceToText } from '@molstar/meso-spec/format/trace';
 import type { EditRecord } from '../session.js';
 
-// Plain DOM for the stories: panels of JSON, issues, an edit log. No framework: the stories test the format, not a UI.
+// Plain DOM for the stories: panels of documents, IR, issues, an edit log. No framework: the stories test the format,
+// not a UI. Data panels are spelled as S-expressions by default (design.md §3.7, SeqQL's "one tree, three spellings"),
+// JSON on a toggle: the stored spelling, for comparison.
 
 type Attrs = Record<string, string | ((e: Event) => void) | undefined>;
 
@@ -38,31 +41,86 @@ export const Styles = {
   bar: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 8px',
 };
 
-export function panel(title: string, body: Node, extra = '') {
-  return h('section', { style: `${Styles.panel};${extra}` }, h('div', { style: Styles.title }, title), body);
+export function panel(title: string, body: Node, extra = '', toggle = false) {
+  const head = h(
+    'div',
+    { style: `${Styles.title};display:flex;align-items:center;gap:8px` },
+    title,
+    toggle ? spellingToggle() : undefined,
+  );
+  return h('section', { style: `${Styles.panel};${extra}` }, head, body);
 }
 
 export function pre(text = '') {
   return h('pre', { style: Styles.pre }, text);
 }
 
-/** JSON in a <pre>, the lines naming `focus` marked and scrolled to. */
-export function showJson(el: HTMLElement, value: unknown, focus?: string) {
-  const text = JSON.stringify(value, null, 1);
+export type Spelling = 'sexpr' | 'json';
+let spelling: Spelling = 'sexpr';
+const shown = new Map<HTMLElement, { value: unknown; codec: DataCodec; focus?: string }>();
+const toggles = new Set<HTMLElement>();
+const listeners = new Set<() => void>();
+
+/** Called after the spelling changes (panels that are not plain data: issues, traces). */
+export function onSpellingChange(f: () => void) {
+  listeners.add(f);
+}
+
+/** The spelling every data panel uses; switching re-renders them all. */
+export function setSpelling(s: Spelling) {
+  spelling = s;
+  for (const [el, v] of shown) if (el.isConnected) render(el, v.value, v.codec, v.focus, false);
+  for (const f of listeners) f();
+  for (const t of toggles)
+    if (t.isConnected) t.textContent = s === 'sexpr' ? 'S-expression · JSON' : 'JSON · S-expression';
+}
+
+/** A button that flips the spelling of every data panel (S-expression first, JSON second). */
+export function spellingToggle() {
+  const b = h('button', {
+    style: 'margin-left:auto;font:11px system-ui',
+    title: 'Switch the spelling of the data panels',
+  });
+  b.textContent = spelling === 'sexpr' ? 'S-expression · JSON' : 'JSON · S-expression';
+  b.addEventListener('click', () => setSpelling(spelling === 'sexpr' ? 'json' : 'sexpr'));
+  toggles.add(b);
+  return b;
+}
+
+function render(el: HTMLElement, value: unknown, codec: DataCodec, focus: string | undefined, scroll: boolean) {
+  const text = spelling === 'sexpr' ? printData(value, codec) : JSON.stringify(value, null, 1);
   el.textContent = '';
   let first: HTMLElement | undefined;
+  const needle = focus
+    ? spelling === 'sexpr'
+      ? new RegExp(`(^|[\\s(\\[])${focus.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[\\s)\\]])`)
+      : `"${focus}"`
+    : undefined;
   for (const line of text.split('\n')) {
-    const hit = focus && line.includes(`"${focus}"`);
+    const hit = needle !== undefined && (typeof needle === 'string' ? line.includes(needle) : needle.test(line));
     const span = h('div', hit ? { style: 'background:#fff3b0' } : {}, line);
     if (hit && !first) first = span;
     el.append(span);
   }
-  first?.scrollIntoView({ block: 'center' });
+  if (scroll) first?.scrollIntoView({ block: 'center' });
+}
+
+/** A value in the current spelling, in a <pre>; the lines naming `focus` marked and scrolled to. */
+export function showData(el: HTMLElement, value: unknown, codec: DataCodec = DocumentCodec, focus?: string) {
+  shown.set(el, { value, codec, focus });
+  render(el, value, codec, focus, true);
+}
+
+/** A MesoViewSpec document. */
+export function showJson(el: HTMLElement, value: unknown, focus?: string) {
+  showData(el, value, DocumentCodec, focus);
 }
 
 export function showIr(el: HTMLElement, ir: IR | undefined, focus?: string) {
-  showJson(el, ir ? irToJson(ir) : { note: 'no IR: the document has errors' }, focus);
+  showData(el, ir ? irToJson(ir) : { note: 'no IR: the document has errors' }, IRCodec, focus);
 }
+
+const omit = (o: object, ...keys: string[]) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
 
 const sevColor = { error: '#c0392b', warning: '#b7791f', info: '#4a6fa5' } as const;
 
@@ -93,6 +151,13 @@ export function showIssues(el: HTMLElement, issues: readonly Issue[]) {
         i.path
           ? h('div', { style: 'color:#888' }, `at ${i.path} (${i.phase})`)
           : h('div', { style: 'color:#888' }, `(${i.phase})`),
+        spelling === 'sexpr'
+          ? h(
+              'pre',
+              { style: `${Styles.pre};padding:2px 0 0;color:#555` },
+              printData({ kind: i.code, ...omit(i, 'code', 'message') }, IRCodec),
+            )
+          : undefined,
       ),
     );
   }
@@ -151,8 +216,13 @@ export function traceBox(doc: () => MesoViewSpecDoc, ids: readonly string[], ini
     {},
     ...ids.map((id) => h('option', id === initial ? { value: id, selected: '' } : { value: id }, id)),
   );
-  const update = () => (out.textContent = traceToText(trace(doc(), (select as HTMLSelectElement).value)));
+  const update = () => {
+    const steps = trace(doc(), (select as HTMLSelectElement).value);
+    if (spelling === 'sexpr') showData(out, traceToSexprData(steps), IRCodec);
+    else out.textContent = traceToText(steps);
+  };
   select.addEventListener('change', update);
+  onSpellingChange(update);
   update();
   return {
     el: h(
