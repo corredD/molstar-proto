@@ -69,11 +69,18 @@ export interface IRLook {
   readonly color?: number;
   readonly visible?: boolean;
   readonly transparency?: number;
+  /**
+   * Only these copies of the type (runs of copy indices), when the look's address picks part of a type (a few copies, a
+   * `within`): applied after the whole-type looks.
+   */
+  readonly runs?: readonly number[];
   /** The view's hint (design.md §5); absent: spheres. */
   readonly representation?: 'spheres' | 'structure' | 'surface';
 }
 
 export interface IRView {
+  /** What the view's addresses could not materialize (MesoQL issues, phase `resolve`). */
+  readonly issues?: readonly Issue[];
   readonly id: string;
   /** Å, world frame. */
   readonly camera?: {
@@ -82,13 +89,10 @@ export interface IRView {
     readonly up: readonly number[];
     readonly fov?: number;
   };
-  /** One per (set, type), every type of every set: what an adapter writes. */
+  /** One per (set, type), every type of every set, then the partial looks (`runs`): what an adapter writes. */
   readonly looks: readonly IRLook[];
-  readonly selection?: readonly {
-    readonly set: string;
-    readonly type: number;
-    readonly ordinals?: readonly number[];
-  }[];
+  /** The view's selection, materialized: runs of copy indices per set. */
+  readonly selection?: readonly { readonly set: string; readonly runs: readonly number[] }[];
   readonly annotations?: readonly {
     readonly id: string;
     readonly text: string;

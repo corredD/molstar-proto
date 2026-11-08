@@ -4,8 +4,9 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { type Id, IdPattern, type MesoViewSpecDoc, type Length, type Selector, type Abundance } from './doc.js';
+import { type Id, IdPattern, type MesoViewSpecDoc, type Length, type Abundance } from './doc.js';
 import { type Issue, type IssueCode, issue } from './issues.js';
+import { parseMesoQL } from './mesoql.js';
 import { ConcentrationToMolar, DensityToPerA2, isLengthUnit } from './units.js';
 
 // Static validation (design.md §7.4, phase `static`): the document alone, no resource loaded, no resolver run. Every
@@ -321,22 +322,25 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
     );
   });
 
-  // views
-  const selector = (s: Selector | undefined, path: string) => {
-    if (!s) return;
-    (s.populations ?? []).forEach((x, j) => ref(x, 'population', `${path}/populations/${j}`));
-    (s.entities ?? []).forEach((x, j) => ref(x, 'entity', `${path}/entities/${j}`));
-    (s.compartments ?? []).forEach((x, j) => ref(x, 'compartment', `${path}/compartments/${j}`));
-    (s.instances ?? []).forEach((x, j) => {
-      const [pop, k] = x.split('#');
-      ref(pop, 'population', `${path}/instances/${j}`);
-      if (!/^\d+$/.test(k ?? '')) err('value.range', `instance ${x} is <population>#<n>`, `${path}/instances/${j}`);
-    });
+  // MesoQL addresses (design.md §3.8): parsed and their ids checked against the document
+  const address = (q: string | undefined, path: string) => {
+    if (q === undefined) return;
+    if (typeof q !== 'string') return err('mesoql.syntax', 'an address is a MesoQL string, (entity e.x)', path);
+    for (const i of parseMesoQL(q, { kinds }, path).issues) out.push(i);
   };
+  doc.entities.forEach((e, i) =>
+    (e.sites ?? []).forEach((s, j) => {
+      const p = `/entities/${i}/sites/${j}`;
+      if (!s.at && !s.position) err('value.range', `site ${s.id} needs residues (:at) or a position`, p, [e.id]);
+      address(s.at, `${p}/at`);
+      if (s.axis && Math.abs(Math.hypot(...s.axis) - 1) > 1e-3)
+        err('value.range', 'a site axis is a unit vector', `${p}/axis`);
+    }),
+  );
   (doc.views ?? []).forEach((v, i) => {
     ref(v.frame, 'frame', `/views/${i}/frame`);
     (v.looks ?? []).forEach((l, j) => {
-      selector(l.select, `/views/${i}/looks/${j}/select`);
+      address(l.select, `/views/${i}/looks/${j}/select`);
       if (l.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(l.color))
         err('value.range', `color ${l.color} is #rrggbb`, `/views/${i}/looks/${j}/color`);
       if (l.representation !== undefined && !['spheres', 'structure', 'surface'].includes(l.representation))
@@ -348,10 +352,10 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
       if (l.transparency !== undefined && !(l.transparency >= 0 && l.transparency <= 1))
         err('value.range', 'transparency is in [0, 1]', `/views/${i}/looks/${j}/transparency`);
     });
-    selector(v.selection, `/views/${i}/selection`);
+    address(v.selection, `/views/${i}/selection`);
     (v.annotations ?? []).forEach((a, j) => {
-      if ('position' in a.target) return;
-      selector(a.target, `/views/${i}/annotations/${j}/target`);
+      if (typeof a.target !== 'string') return;
+      address(a.target, `/views/${i}/annotations/${j}/target`);
       evidence(a.evidence, `/views/${i}/annotations/${j}/evidence`);
     });
   });

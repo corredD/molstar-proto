@@ -263,9 +263,18 @@ describe('views', () => {
       .map((l) => typeOf(l).population)
       .sort();
     expect(hidden).toEqual(['p.ALB', 'p.TF', 'p.lipids']);
-    expect(ir.view.selection?.map((s) => sets.find((x) => x.key === s.set)!.typeTable[s.type].population)).toEqual([
-      'p.catalase.observed',
-    ]);
+    expect(
+      ir.view.selection?.flatMap((s) => [
+        ...new Set(
+          Array.from(
+            { length: s.runs.length / 2 },
+            (_, k) =>
+              sets.find((x) => x.key === s.set)!.typeTable[sets.find((x) => x.key === s.set)!.types[s.runs[2 * k]]]
+                .population,
+          ),
+        ),
+      ]),
+    ).toEqual(['p.catalase.observed']);
     const hinted = ir.view.looks
       .filter((l) => l.representation === 'structure')
       .map((l) => typeOf(l).population)

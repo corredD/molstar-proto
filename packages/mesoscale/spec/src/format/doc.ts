@@ -159,6 +159,36 @@ export interface Entity {
   readonly mass?: Quantity<MassUnit>;
   /** Membrane topology: how it sits in a membrane, in biological terms. */
   readonly topology?: MembraneTopology;
+  /**
+   * Named sites: the "pointers" relations attach to (DNA entry and exit of a polymerase or of HU, an Arp2/3 branch
+   * point). A site is schematized by residues (resolved once the structure is loaded) and/or materialized by a point
+   * and an axis in the entity's own frame (Å) (design.md §3.9).
+   */
+  readonly sites?: readonly Site[];
+  /** Conformational states, by value or by reference (design.md §3.10); one is the default. */
+  readonly states?: readonly EntityState[];
+  readonly evidence?: readonly Id[];
+}
+
+export interface Site {
+  readonly id: Id;
+  readonly label?: string;
+  /** A MesoQL residue address, `(residues e.hu :chain A :range 53-63)`. */
+  readonly at?: MesoQL;
+  /** Å, in the entity's frame (its structure's coordinates). */
+  readonly position?: Vec3;
+  /** A unit direction in the entity's frame (the strand's direction through an entry site). */
+  readonly axis?: Vec3;
+  readonly evidence?: readonly Id[];
+}
+
+export interface EntityState {
+  readonly id: Id;
+  readonly label?: string;
+  /** By reference: another structure. */
+  readonly structure?: { readonly resource: Id; readonly assembly?: string };
+  /** The share of copies in this state (0–1). */
+  readonly fraction?: number;
   readonly evidence?: readonly Id[];
 }
 
@@ -327,16 +357,15 @@ export interface Activity {
 
 // ---- persistent view state (design.md §5) ----
 
-export interface Selector {
-  readonly populations?: readonly Id[];
-  readonly entities?: readonly Id[];
-  readonly compartments?: readonly Id[];
-  /** Copies by stable id, `<population>#<k>` (valid for one resolution, design.md §7.2). */
-  readonly instances?: readonly string[];
-}
+/**
+ * A MesoQL address (design.md §3.8), in its S-expression spelling: `(entity e.catalase)`,
+ * `(and (in c.exosome) (not (population p.lipids)))`, `(copies p.catalase 12)`. Checked by `validate`, materialized by
+ * the runtime into MesoLoci (ir/loci.ts).
+ */
+export type MesoQL = string;
 
 export interface Look {
-  readonly select: Selector;
+  readonly select: MesoQL;
   /** `#rrggbb` */
   readonly color?: string;
   readonly visible?: boolean;
@@ -360,7 +389,8 @@ export interface Camera {
 
 export interface Annotation {
   readonly id: Id;
-  readonly target: Selector | { readonly position: Vec3 };
+  /** A MesoQL selection (anchored at its copies' centroid) or a point in the view's frame. */
+  readonly target: MesoQL | { readonly position: Vec3 };
   readonly text: string;
   readonly evidence?: readonly Id[];
 }
@@ -372,7 +402,7 @@ export interface View {
   readonly camera?: Camera;
   /** Later looks win where selectors overlap. */
   readonly looks?: readonly Look[];
-  readonly selection?: Selector;
+  readonly selection?: MesoQL;
   readonly annotations?: readonly Annotation[];
   readonly description?: string;
 }

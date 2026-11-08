@@ -85,7 +85,8 @@ export class PrismMesoAdapter implements RendererAdapter {
       const lists = [...this.placed].map(([key, p]) => ({
         particles: p.ref,
         layers: plan.looks
-          .filter((l) => l.set === key)
+          // a look on part of a type (copy runs) has no Prism layer selector (renderer-recommendations.md R8)
+          .filter((l) => l.set === key && !l.runs)
           .map((l) => ({
             selector: { targets: [...l.types] },
             color: l.color !== undefined ? Color(l.color) : null,
@@ -126,6 +127,16 @@ export class PrismMesoAdapter implements RendererAdapter {
     const t3 = now();
     // representation hints: spheres drawn; structure and surface fall back to spheres here, said once per hint
     const issues: Issue[] = [];
+    const partial = ir.view.looks.filter((l) => l.runs);
+    if (partial.length)
+      issues.push(
+        issue(
+          'look.partial',
+          'warning',
+          'render',
+          `${partial.length} look${partial.length === 1 ? '' : 's'} on part of a population (${partial.reduce((n, l) => n + (l.runs!.length >> 1), 0)} copy runs) not drawn: Prism layers select whole targets only`,
+        ),
+      );
     for (const hint of ['structure', 'surface'] as const) {
       const n = ir.view.looks.filter((l) => l.representation === hint).length;
       if (n)

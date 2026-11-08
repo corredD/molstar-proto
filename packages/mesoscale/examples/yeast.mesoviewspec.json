@@ -611,15 +611,11 @@
       "label": "Nucleus",
       "looks": [
         {
-          "select": {
-            "compartments": ["c.cell"]
-          },
+          "select": "(in c.cell)",
           "visible": false
         },
         {
-          "select": {
-            "compartments": ["c.nucleus"]
-          },
+          "select": "(in c.nucleus)",
           "visible": true
         }
       ]

@@ -36,10 +36,8 @@ function withLook(doc: MesoViewSpecDoc, population: string, color: string): Meso
         ? {
             ...v,
             looks: [
-              ...(v.looks ?? []).filter(
-                (l) => !(l.select.populations?.length === 1 && l.select.populations[0] === population && l.color),
-              ),
-              { select: { populations: [population] }, color },
+              ...(v.looks ?? []).filter((l) => !(l.select === `(population ${population})` && l.color)),
+              { select: `(population ${population})`, color },
             ],
           }
         : v,

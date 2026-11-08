@@ -52,7 +52,7 @@ describe('adapter performance', () => {
         }
         const recolored = {
           ...doc,
-          views: [{ ...doc.views![0], looks: [{ select: { compartments: ['c.cell'] }, color: '#d0453a' }] }],
+          views: [{ ...doc.views![0], looks: [{ select: '(in c.cell)', color: '#d0453a' }] }],
         };
         const look = await adapter.commit(updateView(recolored, r.ir!));
         let image2Ms: number | undefined;

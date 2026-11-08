@@ -240,39 +240,27 @@
       },
       "looks": [
         {
-          "select": {
-            "entities": ["e.ribosome"]
-          },
+          "select": "(entity e.ribosome)",
           "color": "#7a9cc6"
         },
         {
-          "select": {
-            "entities": ["e.pore"]
-          },
+          "select": "(entity e.pore)",
           "color": "#e0b04c"
         },
         {
-          "select": {
-            "entities": ["e.atpsynthase"]
-          },
+          "select": "(entity e.atpsynthase)",
           "color": "#c0504d"
         },
         {
-          "select": {
-            "entities": ["e.actin"]
-          },
+          "select": "(entity e.actin)",
           "color": "#5aa55a"
         },
         {
-          "select": {
-            "entities": ["e.tubulin"]
-          },
+          "select": "(entity e.tubulin)",
           "color": "#9b59b6"
         },
         {
-          "select": {
-            "entities": ["e.lipid"]
-          },
+          "select": "(entity e.lipid)",
           "color": "#e8d8b0"
         }
       ]

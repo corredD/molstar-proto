@@ -251,14 +251,14 @@ export function exosomeDoc(): MesoViewSpecDoc {
         label: 'Overview',
         camera: { position: [0, 0, 260], target: [0, 0, 0], up: [0, 1, 0] },
         looks: [
-          { select: { populations: ['p.lipids'] }, color: '#e8d8b0', transparency: 0.6 },
-          { select: { entities: ['e.catalase'] }, color: '#d0453a' },
-          { select: { populations: ['p.catalase.observed'] }, color: '#ffb000' },
+          { select: '(population p.lipids)', color: '#e8d8b0', transparency: 0.6 },
+          { select: '(entity e.catalase)', color: '#d0453a' },
+          { select: '(population p.catalase.observed)', color: '#ffb000' },
         ],
         annotations: [
           {
             id: 'an.picks',
-            target: { populations: ['p.catalase.observed'] },
+            target: '(population p.catalase.observed)',
             text: 'Catalase found by template matching (synthetic)',
             evidence: ['ev.catalase-picked'],
           },
@@ -269,11 +269,32 @@ export function exosomeDoc(): MesoViewSpecDoc {
         label: 'Lumen only',
         camera: { position: [0, 0, 160], target: [0, 0, 0], up: [0, 1, 0] },
         looks: [
-          { select: { compartments: ['medium'] }, visible: false },
-          { select: { populations: ['p.lipids'] }, visible: false },
-          { select: { entities: ['e.catalase'] }, color: '#d0453a', representation: 'structure' },
+          { select: '(in medium :nested false)', visible: false },
+          { select: '(population p.lipids)', visible: false },
+          { select: '(entity e.catalase)', color: '#d0453a', representation: 'structure' },
         ],
-        selection: { populations: ['p.catalase.observed'] },
+        selection: '(population p.catalase.observed)',
+      },
+      {
+        id: 'v.near-picks',
+        label: 'Near the picked catalase',
+        description:
+          'Everything within 15 nm of a picked copy, picked copies in amber; membrane proteins without the lipids',
+        camera: { position: [0, 0, 160], target: [0, 0, 0], up: [0, 1, 0] },
+        looks: [
+          { select: '(all)', visible: false },
+          {
+            select: '(within (in c.exosome) :of (population p.catalase.observed) :distance 15)',
+            visible: true,
+            color: '#9db4d0',
+          },
+          {
+            select: '(and (in c.exosome :location membrane) (not (population p.lipids)))',
+            visible: true,
+            color: '#3b7dd8',
+          },
+          { select: '(population p.catalase.observed)', visible: true, color: '#ffb000' },
+        ],
       },
     ],
     session: { view: 'v.overview' },

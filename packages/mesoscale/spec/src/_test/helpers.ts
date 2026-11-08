@@ -44,7 +44,7 @@ export function editPopulation(
 export function recolor(doc: MesoViewSpecDoc, population: string, color: string): MesoViewSpecDoc {
   const views = (doc.views ?? []).map((v) =>
     v.id === (doc.session?.view ?? doc.views?.[0]?.id)
-      ? { ...v, looks: [...(v.looks ?? []), { select: { populations: [population] }, color }] }
+      ? { ...v, looks: [...(v.looks ?? []), { select: `(population ${population})`, color }] }
       : v,
   );
   return { ...doc, views };

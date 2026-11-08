@@ -73,7 +73,7 @@ describe('performance', () => {
     const [first] = await time(() => compile(doc, { resolvers: DefaultResolvers, cache }));
     const recolored = {
       ...doc,
-      views: [{ ...doc.views![0], looks: [{ select: { compartments: ['c.cell'] }, color: '#d0453a' }] }],
+      views: [{ ...doc.views![0], looks: [{ select: '(in c.cell)', color: '#d0453a' }] }],
     };
     const [ir, viewMs] = await time(async () => updateView(recolored, first.ir!));
     const [again, cachedMs] = await time(() => compile(recolored, { resolvers: DefaultResolvers, cache }));

@@ -663,7 +663,8 @@
     "annotations": [
       {
         "id": "an.picks",
-        "text": "Catalase found by template matching (synthetic)"
+        "text": "Catalase found by template matching (synthetic)",
+        "position": [44.675000270207725, -2.9708333810170493, -0.1666651169459025]
       }
     ]
   },

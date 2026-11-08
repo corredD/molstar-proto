@@ -203,7 +203,7 @@ export function layout(d: Doc, column = 0): string {
   return `${out}${close(d.open)}`;
 }
 
-function fill(d: Doc & { open: '[' }, column: number): string {
+function fill(d: Exclude<Doc, string>, column: number): string {
   const lines: string[] = [];
   let cur = '[';
   let width = column + 1;

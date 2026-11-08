@@ -11,7 +11,6 @@ import type {
   LengthUnit,
   MesoViewSpecDoc,
   Model,
-  Selector,
   Transform,
   View,
 } from '../format/doc.js';
@@ -19,7 +18,9 @@ import { hasErrors, issue, type Issue } from '../format/issues.js';
 import { abundanceToCount, LengthToAngstrom, toAngstrom } from '../format/units.js';
 import { validate } from '../format/validate.js';
 import { contentHash } from '../ir/hash.js';
-import type { IR, IRLook, IRNode, IRShape, IRView } from '../ir/ir.js';
+import { type IR, type IRLook, type IRNode, type IRShape, type IRView, placementSets } from '../ir/ir.js';
+import { evaluateMesoQL, intersectRuns, lociCentroid, type MesoLoci, runsSize, typeRuns } from '../ir/loci.js';
+import { parseMesoQL } from '../format/mesoql.js';
 import { meshArea } from '../resolvers/geometry.js';
 import { DefaultReaders, readerFor } from './readers.js';
 import type {
@@ -757,50 +758,61 @@ function hsl(h: number, s: number, l: number) {
 export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
   const view: View | undefined = (doc.views ?? []).find((v) => v.id === doc.session?.view) ?? doc.views?.[0];
   const unit = doc.units?.length ?? 'nm';
-  const popComp = new Map(doc.populations.map((p) => [p.id, p.compartment]));
-  const matches = (s: Selector, population: string, entity: string) =>
-    (s.populations?.includes(population) ?? false) ||
-    (s.entities?.includes(entity) ?? false) ||
-    (s.compartments?.includes(popComp.get(population) ?? '') ?? false);
-  const looks: IRLook[] = [];
-  const selection: { set: string; type: number; ordinals?: number[] }[] = [];
-  const stack: IRNode[] = [root];
-  while (stack.length) {
-    const n = stack.pop()!;
-    for (const c of n.children ?? []) stack.push(c);
-    if (n.kind !== 'placements') continue;
-    const set = n.params.set;
-    for (const t of set.typeTable) {
-      let color = defaultColor(t.population);
-      let visible = true;
-      let transparency: number | undefined;
-      let representation: IRLook['representation'];
-      for (const l of view?.looks ?? []) {
-        if (!matches(l.select, t.population, t.entity)) continue;
-        if (l.color) color = parseInt(l.color.slice(1), 16);
-        if (l.visible !== undefined) visible = l.visible;
-        if (l.transparency !== undefined) transparency = l.transparency;
-        if (l.representation !== undefined) representation = l.representation;
-      }
-      looks.push({
-        set: set.key,
+  const ir = { root, view: { id: '', looks: [] } } as IR;
+  const issues: Issue[] = [];
+  const parsed = new Map<string, MesoLoci>();
+  const materialize = (q: string): MesoLoci => {
+    let l = parsed.get(q);
+    if (l) return l;
+    const p = parseMesoQL(q);
+    issues.push(...p.issues);
+    if (!p.expr) l = new Map();
+    else {
+      const e = evaluateMesoQL(p.expr, { doc, ir });
+      issues.push(...e.issues);
+      l = e.loci;
+    }
+    parsed.set(q, l);
+    return l;
+  };
+  const sets = placementSets(ir);
+  // whole-type looks: one per (set, type), the defaults overridden by every look that covers the whole type, in order;
+  // a look that covers part of a type (a few copies) becomes a partial look with its runs, applied after
+  const whole = new Map<string, IRLook>();
+  for (const s of sets)
+    for (const t of s.typeTable)
+      whole.set(`${s.key}#${t.index}`, {
+        set: s.key,
         types: [t.index],
-        color,
-        visible,
-        transparency,
-        ...(representation ? { representation } : {}),
+        color: defaultColor(t.population),
+        visible: true,
       });
-      const sel = view?.selection;
-      if (sel) {
-        if (matches(sel, t.population, t.entity)) selection.push({ set: set.key, type: t.index });
-        const ords = (sel.instances ?? [])
-          .filter((x) => x.split('#')[0] === t.population)
-          .map((x) => Number(x.split('#')[1]));
-        if (ords.length) selection.push({ set: set.key, type: t.index, ordinals: ords });
+  const partial: IRLook[] = [];
+  for (const l of view?.looks ?? []) {
+    const loci = materialize(l.select);
+    const props = {
+      ...(l.color ? { color: parseInt(l.color.slice(1), 16) } : {}),
+      ...(l.visible !== undefined ? { visible: l.visible } : {}),
+      ...(l.transparency !== undefined ? { transparency: l.transparency } : {}),
+      ...(l.representation !== undefined ? { representation: l.representation } : {}),
+    };
+    for (const s of sets) {
+      const runs = loci.get(s.key);
+      if (!runs) continue;
+      const tr = typeRuns(s);
+      for (const t of s.typeTable) {
+        const inter = intersectRuns(tr[t.index], runs);
+        if (!inter.length) continue;
+        const key = `${s.key}#${t.index}`;
+        if (runsSize(inter) === runsSize(tr[t.index])) whole.set(key, { ...whole.get(key)!, ...props });
+        else partial.push({ set: s.key, types: [t.index], runs: inter, ...props });
       }
     }
   }
-  looks.sort((a, b) => (a.set < b.set ? -1 : a.set > b.set ? 1 : a.types[0] - b.types[0]));
+  const looks = [...whole.values()].sort((a, b) => (a.set < b.set ? -1 : a.set > b.set ? 1 : a.types[0] - b.types[0]));
+  const selection = view?.selection
+    ? [...materialize(view.selection)].map(([set, runs]) => ({ set, runs }))
+    : undefined;
   const f = LengthToAngstrom[unit];
   const cam = view?.camera;
   return {
@@ -813,12 +825,14 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
           fov: cam.fov,
         }
       : undefined,
-    looks,
-    selection: selection.length ? selection : undefined,
+    looks: [...looks, ...partial],
+    selection: selection?.length ? selection : undefined,
     annotations: view?.annotations?.map((a) => ({
       id: a.id,
       text: a.text,
-      position: 'position' in a.target ? a.target.position.map((x) => x * f) : undefined,
+      position:
+        typeof a.target === 'string' ? lociCentroid(materialize(a.target), ir) : a.target.position.map((x) => x * f),
     })),
+    ...(issues.length ? { issues } : {}),
   };
 }

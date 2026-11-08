@@ -95,7 +95,7 @@ describe('validate', () => {
         { ...d.populations[1], abundance: { concentration: { value: 1, unit: 'mol' as 'M' } } },
         ...d.populations.slice(2),
       ],
-      views: [{ id: 'v', looks: [{ select: { populations: ['p.pores'] }, color: 'red' }] }],
+      views: [{ id: 'v', looks: [{ select: '(population p.pores)', color: 'red' }] }],
     };
     expect(
       errors(bad)

@@ -52,7 +52,7 @@ describe('the Prism adapter, rendered', () => {
           ...exosomeDoc(),
           views: exosomeDoc().views!.map((x) => ({
             ...x,
-            looks: [...(x.looks ?? []), { select: { compartments: ['medium', 'c.exosome'] }, color: '#00ff00' }],
+            looks: [...(x.looks ?? []), { select: '(in medium c.exosome)', color: '#00ff00' }],
           })),
         };
         const report = await adapter.commit(updateView(doc, r.ir!));

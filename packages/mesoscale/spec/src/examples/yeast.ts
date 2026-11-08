@@ -406,8 +406,8 @@ export function yeastDoc(): MesoViewSpecDoc {
         id: 'v.nucleus',
         label: 'Nucleus',
         looks: [
-          { select: { compartments: ['c.cell'] }, visible: false },
-          { select: { compartments: ['c.nucleus'] }, visible: true },
+          { select: '(in c.cell)', visible: false },
+          { select: '(in c.nucleus)', visible: true },
         ],
       },
     ],

@@ -53,7 +53,7 @@ function probe() {
       const t2 = await frame();
       const recolored = {
         ...doc,
-        views: [{ ...doc.views![0], looks: [{ select: { compartments: ['c.cell'] }, color: '#d0453a' }] }],
+        views: [{ ...doc.views![0], looks: [{ select: '(in c.cell)', color: '#d0453a' }] }],
       };
       const t3 = performance.now();
       const look = await adapter.commit(updateView(recolored, r.ir!));

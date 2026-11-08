@@ -72,7 +72,7 @@ describe('the Prism adapter (headless)', () => {
       ...exosomeDoc(),
       views: exosomeDoc().views!.map((x) =>
         x.id === 'v.overview'
-          ? { ...x, looks: [...x.looks!, { select: { populations: ['p.miRNA'] }, color: '#00ff00' }] }
+          ? { ...x, looks: [...x.looks!, { select: '(population p.miRNA)', color: '#00ff00' }] }
           : x,
       ),
     };
