@@ -1476,8 +1476,12 @@ export { cssColor };
 export function compartmentSphere(data: ParticleList, path: string) {
   const { compartments, compartmentInfo, coordinates, count } = data;
   if (!compartments || !compartmentInfo) return undefined;
-  const inside = new Set<number>();
-  for (const [id, info] of compartmentInfo) if (info.name === path || info.name.startsWith(`${path}.`)) inside.add(id);
+  // its surface where it has one (the membrane's particles), else all of it
+  const surface = `${path}.surface`;
+  const within = (name: string, p: string) => name === p || name.startsWith(`${p}.`);
+  let names = [...compartmentInfo].filter(([, info]) => within(info.name, surface));
+  if (!names.length) names = [...compartmentInfo].filter(([, info]) => within(info.name, path));
+  const inside = new Set(names.map(([id]) => id));
   const center = Vec3.zero();
   let n = 0;
   for (let i = 0; i < count; ++i) {

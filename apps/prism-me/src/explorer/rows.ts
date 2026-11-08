@@ -333,7 +333,7 @@ function objectRows(o: SceneObject, part: MesoscaleInfo | DecorationsInfo | unde
               count: String(members.length),
               visible: shown,
               hasChildren: true,
-              node: { ref: o.ref, particles: { entities: members } },
+              node: { ref: o.ref, particles: { entities: members }, path: child.path },
             },
             () => walk(child, depth + 1),
           );

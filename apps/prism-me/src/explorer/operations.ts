@@ -125,6 +125,8 @@ export type NodeRef =
         readonly compartments?: number[];
         readonly targets?: number[];
       };
+      /** a group's compartment path or function (`MesoGroup.path`) */
+      readonly path?: string;
     };
 
 /** The particle representation types as the explorer names them (the others by their own label) */

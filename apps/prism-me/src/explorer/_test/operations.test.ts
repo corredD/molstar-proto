@@ -388,7 +388,25 @@ describe('explorer', () => {
     expect(area.pickedOf(Shape.Loci(shape))).toMatchObject(row);
     expect(area.pickedOf(ShapeGroup.Loci(shape, [{ ids: OrderedSet.ofSingleton(0), instance: 0 }]))).toMatchObject(row);
     const ids = nodeMenuItems(v.api, area, area.pickedOf(Shape.Loci(shape)), { open: () => {} }).map((i) => i.id);
-    expect(ids).toEqual(['focus', 'move', 'color', 'label', 'clip', 'remove']);
+    expect(ids).toEqual(['focus', 'move', 'color', 'label', 'clip', 'wrap-lipids', 'remove']);
+    // Wrap with lipids: a lipid membrane of the mesh, one step (not drawn headless: WebGPU only)
+    const before = v.plugin.state.data.cells.size;
+    const r = await v.api.run('mesoscale.wrapMembrane', { mesh: mesh.ref, edge: 100 });
+    expectOk(r);
+    expect(v.plugin.state.data.cells.size).toBe(before + 1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(v.plugin.state.data.cells.size).toBe(before);
+    // a compartment's group, grouped by compartment: Wrap with lipids (a sphere fitted to it); by function: none
+    const group = {
+      key: 'g',
+      label: 'envelope',
+      kind: 'group',
+      node: { ref: mesh.ref, particles: { entities: [0] }, path: 'root.envelope' },
+    };
+    const wrap = (by: 'compartment' | 'function') =>
+      nodeMenuItems(v.api, area, group, { groupBy: () => by }).some((i) => i.id === 'wrap-lipids');
+    expect(wrap('compartment')).toBe(true);
+    expect(wrap('function')).toBe(false);
   });
 
   it("adds several clips to an object and one to a target (Prism's), each on what it cuts, and colors a target", async () => {
