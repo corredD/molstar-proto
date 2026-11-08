@@ -161,8 +161,9 @@ fn sphereLevels(s: vec4<f32>) -> u32 {
 export const cell_cull_wgsl = /* wgsl */ `
 ${sphere_test_wgsl}
 @compute @workgroup_size(WorkgroupSizeX)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    let cell = id.x;
+fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    // the workgroups in rows past the dispatch's limit (\`workgroupRows\`)
+    let cell = id.x + id.y * groups.x * WorkgroupSizeX;
     if (cell >= u32(uParams.uCellCount)) {
         return;
     }
@@ -237,8 +238,11 @@ fn main(
     @builtin(global_invocation_id) id: vec3<u32>,
     @builtin(local_invocation_index) local: u32,
     @builtin(workgroup_id) wid: vec3<u32>,
+    @builtin(num_workgroups) groups: vec3<u32>,
 ) {
-    let instance = id.x;
+    // the workgroups in rows past the dispatch's limit (\`workgroupRows\`)
+    let group = wid.x + wid.y * groups.x;
+    let instance = group * WorkgroupSizeX + local;
     let instanceCount = u32(uParams.uInstanceCount);
     let segmentCount = u32(uParams.uSegmentCount);
     let valid = instance < instanceCount;
@@ -267,8 +271,9 @@ fn main(
         }
     }
     let rasterBase = u32(uParams.uRasterLevels);
-    // the segment of the workgroup's first instance (always valid)
-    let wgSegment = instanceCells[wid.x * WorkgroupSizeX].y;
+    // the segment of the workgroup's first instance (valid but in the idle workgroups past the last row's end, which
+    // copy nothing)
+    let wgSegment = instanceCells[min(group * WorkgroupSizeX, instanceCount - 1u)].y;
     let firstSegment = segment == wgSegment;
     let o = instance * ${InstanceDataVec4s}u;
     for (var j = 0u; j < 4u; j++) {
@@ -316,8 +321,9 @@ fn main(
  */
 export const cull_args_wgsl = /* wgsl */ `
 @compute @workgroup_size(WorkgroupSizeX)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    let k = id.x;
+fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    // the workgroups in rows past the dispatch's limit (\`workgroupRows\`)
+    let k = id.x + id.y * groups.x * WorkgroupSizeX;
     if (k >= u32(uParams.uRecordCount)) {
         return;
     }

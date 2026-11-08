@@ -176,6 +176,8 @@ export interface KernelRequest {
 export interface ComputeContext {
   /** Largest storage buffer a kernel can bind, in bytes */
   readonly maxStorageBufferSize: number;
+  /** Most workgroups a dispatch has in a dimension (WebGPU's `maxComputeWorkgroupsPerDimension`, 65535 by default) */
+  readonly maxWorkgroupsPerDimension: number;
   /** Bytes of the storage buffers created and not destroyed yet */
   getStorageBufferByteCount: () => number;
   /**

@@ -6,6 +6,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
+import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
+import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { ColorNames } from '@molstar/core/util/color/names';
@@ -14,8 +16,9 @@ import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { SpheresBuilder } from '@molstar/graphics/geo/geometry/spheres/spheres-builder';
 import { createTransform, type TransformData } from '@molstar/graphics/geo/geometry/transform-data';
 import { packAffineRows } from '../affine-rows.js';
-import type { ComputeContext, StorageBuffer } from '../compute.js';
+import type { ComputeContext, KernelCode, StorageBuffer } from '../compute.js';
 import type { GraphicsResources } from '../context.js';
+import { LodView } from '../renderable.js';
 import { createMergedRenderObject, createRenderObject, type GraphicsRenderObject } from '../render-object.js';
 import { createMergedCuller } from '../renderable/merged-culler.js';
 import { InstanceDataVec4s, type MergeableValues, packInstanceData } from '../renderable/merged.js';
@@ -31,8 +34,10 @@ interface FakeBuffer extends StorageBuffer {
   readonly bytes: Uint8Array;
 }
 
-function fakeCompute() {
+/** `limit`: the kernels ready, a dispatch over more workgroups than it in a dimension throwing as WebGPU's does */
+function fakeCompute(limit?: number) {
   let written = 0;
+  const dispatches: { kernel: string; x: number; y: number; z: number }[] = [];
   let nextId = 0;
   const latest = new Map<string, FakeBuffer>();
   const createBuffer = (byteLength: number, label = '') => {
@@ -61,10 +66,18 @@ function fakeCompute() {
     maxStorageBufferSize: 2 ** 31,
     getStorageBufferByteCount: () => 0,
     isKernelSupported: () => true,
-    createKernel: () => ({}),
-    // never ready: the culler culls on the CPU meanwhile, its buffers written all the same
+    maxWorkgroupsPerDimension: limit ?? 65535,
+    createKernel: (code: KernelCode) => ({
+      dispatch: (x: number, y = 1, z = 1) => {
+        if (limit !== undefined && (x > limit || y > limit || z > limit)) {
+          throw new Error(`kernel '${code.name}': ${x} × ${y} × ${z} workgroups exceed ${limit} per dimension`);
+        }
+        dispatches.push({ kernel: code.name, x, y, z });
+      },
+    }),
+    // without a limit never ready: the culler culls on the CPU meanwhile, its buffers written all the same
     prepareKernels: () => new Promise<void>(() => {}),
-    hasKernels: () => false,
+    hasKernels: () => limit !== undefined,
     createBuffer,
     tryCreateBuffer: async (n: number, label?: string) => createBuffer(n, label),
     ownsBuffer: () => true,
@@ -75,6 +88,7 @@ function fakeCompute() {
   return {
     compute,
     resources,
+    dispatches,
     get written() {
       return written;
     },
@@ -96,7 +110,7 @@ const Invariant = Sphere3D.create(Vec3(), 2);
 const PerMember = 8;
 
 /** `count` spheres objects of `PerMember` instances each, in a row along y, gridded (cells of 20 Å) */
-function scene(count: number) {
+function scene(count: number, limit?: number) {
   const builder = SpheresBuilder.create(2, 1);
   builder.add(0, 0, 0, 0);
   builder.add(1, 0, 0, 1);
@@ -114,7 +128,7 @@ function scene(count: number) {
   }
   const ro = createMergedRenderObject(objects, { gpuCulling: true });
   ro.merged.sync();
-  const fake = fakeCompute();
+  const fake = fakeCompute(limit);
   const members = objects.map((o) => o.values as MergeableValues);
   const culler = createMergedCuller(fake.compute, fake.resources, ro.merged, members, false);
 
@@ -190,5 +204,16 @@ describe('the GPU culler of a merged object', () => {
     const large = written(200);
     // the control: a full layout writes about 4x at 4x the members
     expect(large).toBeLessThan(small * 1.5);
+  });
+
+  it('dispatches more workgroups than a dimension holds in rows (a yeast slab: 6.7M instances, 104k groups)', () => {
+    // 40 members of 8: 320 instances, 5 workgroups of 64, over a limit of 4 a dimension
+    const s = scene(40, 4);
+    const dispatched = s.culler.dispatch(Plane3D.create(Vec3.create(0, 0, -1), 0), Frustum3D(), LodView());
+    expect(dispatched).toBe(true);
+    const copy = s.fake.dispatches.find((d) => d.kernel === 'instance-copy')!;
+    expect(copy.x).toBeLessThanOrEqual(4);
+    // every instance has a thread: the kernels index workgroups by \`wid.x + wid.y * num_workgroups.x\`
+    expect(copy.x * copy.y * copy.z * 64).toBeGreaterThanOrEqual(320);
   });
 });

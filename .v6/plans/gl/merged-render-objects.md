@@ -79,7 +79,9 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
 - **Cells, then instances**: a thread per cell of the members' instance grids (a member without a grid one cell) tests
   its sphere against the frustum and the object's distance range and picks its levels, as `cullSegment` does per cell;
   finer cells cost threads, not draws. The copy (below) tests each instance of a drawn cell the same way (GPU
-  occlusion step 9). Testing each instance on its own, read per vertex, cost more than it saved.
+  occlusion step 9). Testing each instance on its own, read per vertex, cost more than it saved. The kernels'
+  workgroups go in rows past the device's limit per dimension (`workgroupRows`: 65535 workgroups of 64 hold 4.2M
+  threads, a whole-cell cellPACK object has more instances), indexed by `wid.x + wid.y * num_workgroups.x`.
 - **Cells by member**: each member's cells sit in a block of slots of its own, with a quarter more room (unused
   slots are empty spheres no instance names). A member whose transforms, grid, spheres or levels changed writes its
   block, its instances' cells, its segment row, its records and its instances alone; a full layout only where the

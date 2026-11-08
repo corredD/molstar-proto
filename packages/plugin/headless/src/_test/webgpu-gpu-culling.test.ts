@@ -61,167 +61,174 @@ function createMember(offset: Vec3, color: number, params: Partial<PD.Values<Sph
 }
 
 describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
-  it('draws the instances of the cells the CPU culling draws whose own sphere touches the view, from indirect lists', async () => {
-    const plugin = await HeadlessPluginContext.create(
-      { webgpu: WebGPU.module! },
-      DefaultPluginSpec(),
-      { width: Size, height: Size },
-      { backend: 'webgpu' },
-    );
-    try {
-      await plugin.init();
-      const graphics = plugin.canvas3d!.graphics;
-      const members = [
-        createMember(Vec3.create(0, 0, 0), ColorNames.orange),
-        createMember(Vec3.create(2.5, 2.5, 1), ColorNames.green),
-        createMember(Vec3.create(-2.5, 3, -1), ColorNames.blue),
-      ];
-      const cpu = createMergedRenderObject(members);
-      const gpu = createMergedRenderObject(members, { gpuCulling: true });
+  // limit 1: every kernel's workgroups in rows of one, as a cell of more instances than a dimension holds has them
+  // (\`workgroupRows\`: 65535 workgroups of 64, 4.2M instances; a yeast slab has 6.7M)
+  it.each([0, 1])(
+    'draws the instances of the cells the CPU culling draws whose own sphere touches the view, from indirect lists (workgroups a dimension: %i, 0 the device limit)',
+    async (limit) => {
+      const plugin = await HeadlessPluginContext.create(
+        { webgpu: WebGPU.module! },
+        DefaultPluginSpec(),
+        { width: Size, height: Size },
+        { backend: 'webgpu' },
+      );
+      try {
+        await plugin.init();
+        const graphics = plugin.canvas3d!.graphics;
+        if (limit) (graphics.compute as { maxWorkgroupsPerDimension: number }).maxWorkgroupsPerDimension = limit;
+        const members = [
+          createMember(Vec3.create(0, 0, 0), ColorNames.orange),
+          createMember(Vec3.create(2.5, 2.5, 1), ColorNames.green),
+          createMember(Vec3.create(-2.5, 3, -1), ColorNames.blue),
+        ];
+        const cpu = createMergedRenderObject(members);
+        const gpu = createMergedRenderObject(members, { gpuCulling: true });
 
-      const createScene = (o: GraphicsRenderObject) => {
-        const scene = Scene.create(graphics);
-        scene.add(o);
-        scene.commit();
-        return scene;
-      };
-      const cpuScene = createScene(cpu);
-      const gpuScene = createScene(gpu);
-
-      // a part of the grid in view: the frustum culls instances
-      const camera = new Camera();
-      Viewport.set(camera.viewport, 0, 0, Size, Size);
-      const { center, radius } = cpuScene.boundingSphere;
-      camera.setState(camera.getFocus(Vec3.add(Vec3(), center, Vec3.create(radius * 0.3, 0, 0)), radius * 0.35), 0);
-      camera.update();
-
-      // the GPU culling's lists as the impostors draw them: without the sphere raster's regions (`sphereRaster` 'auto')
-      const renderer = Renderer.create(graphics, { sphereRaster: 'off' });
-      const target = graphics.createRenderTarget(Size, Size, 'depth-stencil');
-      for (const scene of [cpuScene, gpuScene]) {
-        await graphics.resources.preparePipelines(
-          renderer.collect({ name: 'opaque' }, scene, graphics.describeTarget(target)),
-        );
-      }
-
-      // the lists each object draws with
-      const drawn = new Map<Scene, MultiDrawBaseData[]>();
-      for (const scene of [cpuScene, gpuScene]) {
-        const item = scene.renderables[0].renderItem;
-        const render = item.render;
-        item.render = (variant, globals, list) => {
-          if (list) drawn.set(scene, list);
-          render(variant, globals, list);
+        const createScene = (o: GraphicsRenderObject) => {
+          const scene = Scene.create(graphics);
+          scene.add(o);
+          scene.commit();
+          return scene;
         };
-      }
+        const cpuScene = createScene(cpu);
+        const gpuScene = createScene(gpu);
 
-      const frame = async (scene: Scene, cullOnGpu = true) => {
-        // GPU culling dispatches before the passes, with the planes of `update`
-        renderer.update(camera, scene, createFrame());
-        if (cullOnGpu) renderer.prepareCull(scene);
-        graphics.beginRenderPass(target);
-        renderer.clear(true);
-        renderer.setViewport(0, 0, Size, Size);
-        renderer.renderOpaque(scene, camera);
-        graphics.flush();
-        const pixels = Array.from(await graphics.readRenderTarget(target, 0, 0, Size, Size));
-        await graphics.resources.pending.whenReady();
-        return pixels;
-      };
-      // the culling kernels compile in the background: the CPU culling's lists until they are ready
-      for (let i = 0; i < 20 && !drawn.get(gpuScene)?.[0].indirect; ++i) await frame(gpuScene);
-      const gpuImage = await frame(gpuScene);
-      expect(drawn.get(gpuScene)![0].indirect).toBeDefined();
-      const cpuImage = await frame(cpuScene);
-      const cpuList = drawn.get(cpuScene)![0];
-      expect(cpuList.indirect).toBeUndefined();
-      let cpuInstances = 0;
-      for (let i = 0; i < cpuList.count; ++i) cpuInstances += cpuList.instanceCounts[i];
-      // some cells culled, some drawn
-      const total = members.length * Copies * Copies;
-      expect(cpuInstances).toBeGreaterThan(0);
-      expect(cpuInstances).toBeLessThan(total);
-      // the GPU at most the CPU's: its cells split those of the grid (finer frustum tests), the same image; the instance
-      // counts of the argument records
-      const gpuList = drawn.get(gpuScene)![0];
-      const { buffer, byteOffset, indexed } = gpuList.indirect!;
-      // sphere quads draw indexed by the shared quad indices: indexed records (5 words)
-      expect(indexed).toBe(true);
-      const words = indexed ? 5 : 4;
-      const listInstances = async () => {
-        const list = drawn.get(gpuScene)![0];
-        const { records } = list.indirect!;
-        const args = new Uint32Array(await buffer.readAsync(byteOffset));
-        let n = 0;
-        for (let i = 0; i < list.count; ++i) n += args[(records ? records[i] : i) * words + 1];
-        return n;
-      };
-      const gpuInstances = await listInstances();
-      // of the cells' instances, those whose own sphere touches the view (the cells hold a few each)
-      expect(gpuInstances).toBe(countInView(members, camera, 1)[0]);
-      expect(gpuInstances).toBeGreaterThan(0);
-      expect(gpuInstances).toBeLessThan(cpuInstances);
-      expect(new Set(cpuImage).size).toBeGreaterThan(2);
-      expect(gpuImage).toEqual(cpuImage);
-
-      // the instances of all records of the list, drawn or not: those it leaves out are empty
-      const allInstances = async () => {
-        const args = new Uint32Array(await buffer.readAsync(byteOffset));
-        let n = 0;
-        for (let i = 0; i < members.length; ++i) n += args[i * words + 1];
-        return n;
-      };
-
-      // a still camera: the lists drawing only the records with instances, the same instances and image
-      for (let i = 0; i < 10; ++i) await frame(gpuScene);
-      const stillImage = await frame(gpuScene);
-      const still = drawn.get(gpuScene)![0];
-      expect(still.indirect!.records).toBeDefined();
-      expect(still.count).toBeLessThanOrEqual(members.length);
-      expect(await listInstances()).toBe(gpuInstances);
-      expect(await allInstances()).toBe(gpuInstances);
-      expect(stillImage).toEqual(gpuImage);
-
-      // moving: the records the bounds do not rule out, none with instances left out; back, the same image at rest
-      const home = camera.getSnapshot();
-      for (const x of [0.2, 0.6, 1.1, -0.8]) {
-        camera.setState(camera.getFocus(Vec3.add(Vec3(), center, Vec3.create(radius * x, 0, 0)), radius * 0.5), 0);
+        // a part of the grid in view: the frustum culls instances
+        const camera = new Camera();
+        Viewport.set(camera.viewport, 0, 0, Size, Size);
+        const { center, radius } = cpuScene.boundingSphere;
+        camera.setState(camera.getFocus(Vec3.add(Vec3(), center, Vec3.create(radius * 0.3, 0, 0)), radius * 0.35), 0);
         camera.update();
-        await frame(gpuScene);
-        expect(await listInstances()).toBe(await allInstances());
+
+        // the GPU culling's lists as the impostors draw them: without the sphere raster's regions (`sphereRaster` 'auto')
+        const renderer = Renderer.create(graphics, { sphereRaster: 'off' });
+        const target = graphics.createRenderTarget(Size, Size, 'depth-stencil');
+        for (const scene of [cpuScene, gpuScene]) {
+          await graphics.resources.preparePipelines(
+            renderer.collect({ name: 'opaque' }, scene, graphics.describeTarget(target)),
+          );
+        }
+
+        // the lists each object draws with
+        const drawn = new Map<Scene, MultiDrawBaseData[]>();
+        for (const scene of [cpuScene, gpuScene]) {
+          const item = scene.renderables[0].renderItem;
+          const render = item.render;
+          item.render = (variant, globals, list) => {
+            if (list) drawn.set(scene, list);
+            render(variant, globals, list);
+          };
+        }
+
+        const frame = async (scene: Scene, cullOnGpu = true) => {
+          // GPU culling dispatches before the passes, with the planes of `update`
+          renderer.update(camera, scene, createFrame());
+          if (cullOnGpu) renderer.prepareCull(scene);
+          graphics.beginRenderPass(target);
+          renderer.clear(true);
+          renderer.setViewport(0, 0, Size, Size);
+          renderer.renderOpaque(scene, camera);
+          graphics.flush();
+          const pixels = Array.from(await graphics.readRenderTarget(target, 0, 0, Size, Size));
+          await graphics.resources.pending.whenReady();
+          return pixels;
+        };
+        // the culling kernels compile in the background: the CPU culling's lists until they are ready
+        for (let i = 0; i < 20 && !drawn.get(gpuScene)?.[0].indirect; ++i) await frame(gpuScene);
+        const gpuImage = await frame(gpuScene);
+        expect(drawn.get(gpuScene)![0].indirect).toBeDefined();
+        const cpuImage = await frame(cpuScene);
+        const cpuList = drawn.get(cpuScene)![0];
+        expect(cpuList.indirect).toBeUndefined();
+        let cpuInstances = 0;
+        for (let i = 0; i < cpuList.count; ++i) cpuInstances += cpuList.instanceCounts[i];
+        // some cells culled, some drawn
+        const total = members.length * Copies * Copies;
+        expect(cpuInstances).toBeGreaterThan(0);
+        expect(cpuInstances).toBeLessThan(total);
+        // the GPU at most the CPU's: its cells split those of the grid (finer frustum tests), the same image; the instance
+        // counts of the argument records
+        const gpuList = drawn.get(gpuScene)![0];
+        const { buffer, byteOffset, indexed } = gpuList.indirect!;
+        // sphere quads draw indexed by the shared quad indices: indexed records (5 words)
+        expect(indexed).toBe(true);
+        const words = indexed ? 5 : 4;
+        const listInstances = async () => {
+          const list = drawn.get(gpuScene)![0];
+          const { records } = list.indirect!;
+          const args = new Uint32Array(await buffer.readAsync(byteOffset));
+          let n = 0;
+          for (let i = 0; i < list.count; ++i) n += args[(records ? records[i] : i) * words + 1];
+          return n;
+        };
+        const gpuInstances = await listInstances();
+        // of the cells' instances, those whose own sphere touches the view (the cells hold a few each)
+        expect(gpuInstances).toBe(countInView(members, camera, 1)[0]);
+        expect(gpuInstances).toBeGreaterThan(0);
+        expect(gpuInstances).toBeLessThan(cpuInstances);
+        expect(new Set(cpuImage).size).toBeGreaterThan(2);
+        expect(gpuImage).toEqual(cpuImage);
+
+        // the instances of all records of the list, drawn or not: those it leaves out are empty
+        const allInstances = async () => {
+          const args = new Uint32Array(await buffer.readAsync(byteOffset));
+          let n = 0;
+          for (let i = 0; i < members.length; ++i) n += args[i * words + 1];
+          return n;
+        };
+
+        // a still camera: the lists drawing only the records with instances, the same instances and image
+        for (let i = 0; i < 10; ++i) await frame(gpuScene);
+        const stillImage = await frame(gpuScene);
+        const still = drawn.get(gpuScene)![0];
+        expect(still.indirect!.records).toBeDefined();
+        expect(still.count).toBeLessThanOrEqual(members.length);
+        expect(await listInstances()).toBe(gpuInstances);
+        expect(await allInstances()).toBe(gpuInstances);
+        expect(stillImage).toEqual(gpuImage);
+
+        // moving: the records the bounds do not rule out, none with instances left out; back, the same image at rest
+        const home = camera.getSnapshot();
+        for (const x of [0.2, 0.6, 1.1, -0.8]) {
+          camera.setState(camera.getFocus(Vec3.add(Vec3(), center, Vec3.create(radius * x, 0, 0)), radius * 0.5), 0);
+          camera.update();
+          await frame(gpuScene);
+          expect(await listInstances()).toBe(await allInstances());
+        }
+        camera.setState(home, 0);
+        camera.update();
+        for (let i = 0; i < 10; ++i) await frame(gpuScene);
+        expect(await frame(gpuScene)).toEqual(gpuImage);
+
+        // another view not culled on the GPU (no `prepareCull`) draws the CPU culling's lists from the instances in their
+        // own order after the regions (the identity region): its transforms as the rows the regions hold
+        camera.setState(camera.getFocus(Vec3.add(Vec3(), center, Vec3.create(-radius * 0.3, 0, 0)), radius * 0.35), 0);
+        camera.update();
+        const identityImage = await frame(gpuScene, false);
+        expect(drawn.get(gpuScene)![0].indirect).toBeUndefined();
+        const movedImage = await frame(cpuScene);
+        expect(new Set(movedImage).size).toBeGreaterThan(2);
+        expect(identityImage).toEqual(movedImage);
+
+        // `update` never culls on the GPU: passes call it with their render pass open (pick, marking), a compute pass
+        // would end it; `prepareCull` does, before the passes
+        const renderable = gpuScene.renderables[0];
+        const prepare = renderable.prepareCull!;
+        let prepared = 0;
+        renderable.prepareCull = (...args) => {
+          prepared += 1;
+          return prepare(...args);
+        };
+        renderer.update(camera, gpuScene, createFrame());
+        expect(prepared).toBe(0);
+        renderer.prepareCull(gpuScene);
+        expect(prepared).toBe(1);
+      } finally {
+        plugin.dispose();
       }
-      camera.setState(home, 0);
-      camera.update();
-      for (let i = 0; i < 10; ++i) await frame(gpuScene);
-      expect(await frame(gpuScene)).toEqual(gpuImage);
-
-      // another view not culled on the GPU (no `prepareCull`) draws the CPU culling's lists from the instances in their
-      // own order after the regions (the identity region): its transforms as the rows the regions hold
-      camera.setState(camera.getFocus(Vec3.add(Vec3(), center, Vec3.create(-radius * 0.3, 0, 0)), radius * 0.35), 0);
-      camera.update();
-      const identityImage = await frame(gpuScene, false);
-      expect(drawn.get(gpuScene)![0].indirect).toBeUndefined();
-      const movedImage = await frame(cpuScene);
-      expect(new Set(movedImage).size).toBeGreaterThan(2);
-      expect(identityImage).toEqual(movedImage);
-
-      // `update` never culls on the GPU: passes call it with their render pass open (pick, marking), a compute pass
-      // would end it; `prepareCull` does, before the passes
-      const renderable = gpuScene.renderables[0];
-      const prepare = renderable.prepareCull!;
-      let prepared = 0;
-      renderable.prepareCull = (...args) => {
-        prepared += 1;
-        return prepare(...args);
-      };
-      renderer.update(camera, gpuScene, createFrame());
-      expect(prepared).toBe(0);
-      renderer.prepareCull(gpuScene);
-      expect(prepared).toBe(1);
-    } finally {
-      plugin.dispose();
-    }
-  }, 60_000);
+    },
+    60_000,
+  );
 
   // rework: a coarse level's spheres grown by the member's padding in the instance test (fb5b94520): #2061's instance
   // test (`instance_copy_wgsl`) uses the invariant sphere alone; here level 1 draws 11 instances, not 12 (the image the same)
