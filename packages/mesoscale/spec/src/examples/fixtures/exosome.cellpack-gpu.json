@@ -1,0 +1,608 @@
+{
+ "local_id": 0,
+ "unique_id": 0,
+ "name": "root",
+ "Compartments": [
+  {
+   "local_id": 0,
+   "unique_id": 1,
+   "name": "exosome",
+   "Compartments": [
+    {
+     "local_id": 0,
+     "unique_id": 2,
+     "name": "surface",
+     "Compartments": [],
+     "IngredientGroups": [
+      {
+       "local_id": 0,
+       "unique_id": 1,
+       "name": "proteins",
+       "Ingredients": [
+        {
+         "ingredient_id": 12,
+         "name": "CD63",
+         "path": "",
+         "encapsulatingRadius": 25,
+         "source": {
+          "pdb": "CD63_nG.pdb",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "uniprot": "P08962",
+          "transform": {
+           "offset": [
+            3,
+            10,
+            16
+           ]
+          }
+         },
+         "nbMol": 0,
+         "molarity": 1.00662e-06,
+         "principalVector": [
+          0,
+          0,
+          1
+         ],
+         "description": "CD63 antigen",
+         "ingtype": "protein",
+         "buildtype": "random",
+         "comments": "Tetraspanin opm",
+         "color": [
+          0.9647058823529412,
+          0.6470588235294118,
+          0.2235294117647059
+         ],
+         "uniprot": "",
+         "molecularweight": 25505.41
+        },
+        {
+         "ingredient_id": 14,
+         "name": "CD9",
+         "path": "",
+         "encapsulatingRadius": 25,
+         "source": {
+          "pdb": "CD9_nG.pdb",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "uniprot": "P21926",
+          "transform": {
+           "offset": [
+            5,
+            2,
+            14
+           ]
+          }
+         },
+         "nbMol": 0,
+         "molarity": 1.6777e-05,
+         "principalVector": [
+          0,
+          0,
+          1
+         ],
+         "description": "CD9 antigen",
+         "ingtype": "protein",
+         "buildtype": "random",
+         "comments": "Tetraspanin opm",
+         "color": [
+          0.8941176470588236,
+          0.6274509803921569,
+          0.1843137254901961
+         ],
+         "uniprot": "",
+         "molecularweight": 25284.87
+        },
+        {
+         "ingredient_id": 15,
+         "name": "ITG",
+         "path": "",
+         "encapsulatingRadius": 25,
+         "source": {
+          "pdb": "4wk4_2k9j_1m8o.pdb",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "uniprot": "P08648",
+          "transform": {
+           "offset": [
+            -29,
+            -61,
+            -13
+           ]
+          }
+         },
+         "nbMol": 0,
+         "molarity": 2.39671e-05,
+         "principalVector": [
+          -0.13,
+          -0.94,
+          -0.31
+         ],
+         "description": "Integrin alpha-5",
+         "ingtype": "protein",
+         "buildtype": "random",
+         "comments": "Integrin beta 1 + integrin alpha 6  3 domains, big extracellular domain (708), transmembrane (23) y cytoplasmic (47)  opm",
+         "color": [
+          0.9764705882352941,
+          0.5803921568627451,
+          0.403921568627451
+         ],
+         "uniprot": "P08648",
+         "molecularweight": 210551.31
+        },
+        {
+         "ingredient_id": 16,
+         "name": "RAB5A",
+         "path": "",
+         "encapsulatingRadius": 25,
+         "source": {
+          "pdb": "1n6h_opm.pdb",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "uniprot": "P20339",
+          "transform": {
+           "offset": [
+            -1,
+            -10,
+            31
+           ]
+          }
+         },
+         "nbMol": 0,
+         "molarity": 7.9e-05,
+         "principalVector": [
+          0,
+          0,
+          -1
+         ],
+         "description": "Ras-related protein Rab-5A",
+         "ingtype": "protein",
+         "buildtype": "random",
+         "comments": "",
+         "color": [
+          0.9764705882352941,
+          0.5803921568627451,
+          0.403921568627451
+         ],
+         "uniprot": "P20339",
+         "molecularweight": 23658.68
+        }
+       ],
+       "groupType": 0,
+       "compartmentId": 2
+      }
+     ]
+    },
+    {
+     "local_id": 1,
+     "unique_id": 2,
+     "name": "interior",
+     "Compartments": [],
+     "IngredientGroups": [
+      {
+       "local_id": 0,
+       "unique_id": 2,
+       "name": "proteins",
+       "Ingredients": [
+        {
+         "ingredient_id": 21,
+         "name": "DNA",
+         "path": "",
+         "encapsulatingRadius": 40,
+         "source": {
+          "pdb": "DNA_oneTurn.pdb",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "transform": {
+           "offset": [
+            0,
+            0,
+            0
+           ]
+          }
+         },
+         "nbMol": 0,
+         "molarity": 0,
+         "principalVector": [
+          0,
+          0,
+          1
+         ],
+         "description": "DNA",
+         "ingtype": "fiber",
+         "buildtype": "random",
+         "comments": "",
+         "color": [
+          1,
+          0.498,
+          0.314
+         ],
+         "uniprot": "",
+         "molecularweight": 0
+        },
+        {
+         "ingredient_id": 24,
+         "name": "HSPA8",
+         "path": "",
+         "encapsulatingRadius": 25,
+         "source": {
+          "pdb": "1dkz_3hsc_cl.pdb",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "uniprot": "P11142",
+          "transform": {
+           "offset": [
+            0,
+            0,
+            0
+           ]
+          }
+         },
+         "nbMol": 0,
+         "molarity": 1.34901e-05,
+         "principalVector": [
+          0,
+          0,
+          1
+         ],
+         "description": "Heat shock cognate 71kDa protein",
+         "ingtype": "protein",
+         "buildtype": "random",
+         "comments": "Heat shock protein",
+         "color": [
+          0.8627450980392157,
+          0.5647058823529412,
+          0.5137254901960784
+         ],
+         "uniprot": "",
+         "molecularweight": 70766.9
+        },
+        {
+         "ingredient_id": 25,
+         "name": "ENO1",
+         "path": "",
+         "encapsulatingRadius": 25,
+         "source": {
+          "pdb": "2PSN",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "uniprot": "P06733",
+          "transform": {
+           "offset": [
+            0,
+            0,
+            0
+           ]
+          }
+         },
+         "nbMol": 0,
+         "molarity": 1.50308e-05,
+         "principalVector": [
+          0,
+          0,
+          1
+         ],
+         "description": "Alpha-enolase",
+         "ingtype": "protein",
+         "buildtype": "random",
+         "comments": "",
+         "color": [
+          1,
+          0.8156862745098039,
+          0.8784313725490196
+         ],
+         "uniprot": "",
+         "molecularweight": 47037.77
+        },
+        {
+         "ingredient_id": 32,
+         "name": "PPIA",
+         "path": "",
+         "encapsulatingRadius": 25,
+         "source": {
+          "pdb": "5noq_nG.pdb",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "uniprot": "P62937",
+          "transform": {
+           "offset": [
+            0,
+            0,
+            0
+           ]
+          }
+         },
+         "nbMol": 0,
+         "molarity": 3.35882e-05,
+         "principalVector": [
+          0,
+          0,
+          1
+         ],
+         "description": "Peptidyl-prolyl cis-trans isomerase A",
+         "ingtype": "protein",
+         "buildtype": "random",
+         "comments": "Peptidyl-prolyl cis-trans isomerase A",
+         "color": [
+          0.8823529411764706,
+          0.6196078431372549,
+          0.7607843137254902
+         ],
+         "uniprot": "",
+         "molecularweight": 18012.49
+        },
+        {
+         "ingredient_id": 38,
+         "name": "YWHAZ",
+         "path": "",
+         "encapsulatingRadius": 25,
+         "source": {
+          "pdb": "1QJA",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "uniprot": "P63104",
+          "transform": {
+           "offset": [
+            0,
+            0,
+            0
+           ]
+          }
+         },
+         "nbMol": 0,
+         "molarity": 3.03013e-05,
+         "principalVector": [
+          0,
+          0,
+          1
+         ],
+         "description": "14-3-3 protein zeta/delta",
+         "ingtype": "protein",
+         "buildtype": "random",
+         "comments": "Adapter protein",
+         "color": [
+          0.8705882352941177,
+          0.4823529411764706,
+          0.49411764705882355
+         ],
+         "uniprot": "",
+         "molecularweight": 27745.1
+        },
+        {
+         "ingredient_id": 43,
+         "name": "miRNA",
+         "path": "",
+         "encapsulatingRadius": 25,
+         "source": {
+          "pdb": "5uzt",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "transform": {
+           "offset": [
+            0,
+            0,
+            0
+           ]
+          }
+         },
+         "nbMol": 0,
+         "molarity": 0.0004,
+         "principalVector": [
+          0,
+          0,
+          1
+         ],
+         "description": "miRNA",
+         "ingtype": "protein",
+         "buildtype": "random",
+         "comments": "",
+         "color": [
+          0.8431372549019608,
+          0.807843137254902,
+          0.9921568627450981
+         ],
+         "uniprot": "",
+         "molecularweight": 0
+        },
+        {
+         "ingredient_id": 45,
+         "name": "ARNm",
+         "path": "",
+         "encapsulatingRadius": 25,
+         "source": {
+          "pdb": "DNA_oneTurn.pdb",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "transform": {
+           "offset": [
+            0,
+            0,
+            0
+           ]
+          }
+         },
+         "nbMol": 10,
+         "molarity": 0,
+         "principalVector": [
+          0,
+          0,
+          1
+         ],
+         "description": "ARNm",
+         "ingtype": "protein",
+         "buildtype": "random",
+         "comments": "",
+         "color": [
+          0.6901960784313725,
+          0.6666666666666666,
+          0.8196078431372549
+         ],
+         "uniprot": "",
+         "molecularweight": 0
+        },
+        {
+         "ingredient_id": 46,
+         "name": "catalase",
+         "path": "",
+         "encapsulatingRadius": 40,
+         "source": {
+          "pdb": "8cat",
+          "bu": "BU1",
+          "selection": "",
+          "model": "",
+          "transform": {
+           "offset": [
+            0,
+            0,
+            0
+           ]
+          }
+         },
+         "nbMol": 506,
+         "molarity": 0,
+         "principalVector": [
+          0,
+          0,
+          1
+         ],
+         "description": "catalse",
+         "ingtype": "protein",
+         "buildtype": "random",
+         "comments": "",
+         "color": [
+          1,
+          0,
+          0
+         ],
+         "uniprot": "",
+         "molecularweight": 0
+        }
+       ],
+       "groupType": 0,
+       "compartmentId": 2
+      }
+     ]
+    }
+   ],
+   "IngredientGroups": [],
+   "geom_type": "mb",
+   "mb": {
+    "positions": [
+     0,
+     0,
+     0
+    ],
+    "radii": [
+     500
+    ],
+    "types": [
+     1
+    ]
+   },
+   "thickness": 7.5,
+   "color": [
+    0,
+    1,
+    0
+   ]
+  }
+ ],
+ "IngredientGroups": [
+  {
+   "local_id": 0,
+   "unique_id": 0,
+   "name": "proteins",
+   "Ingredients": [
+    {
+     "ingredient_id": 0,
+     "name": "ALB",
+     "path": "",
+     "encapsulatingRadius": 25,
+     "source": {
+      "pdb": "1e7i",
+      "bu": "BU1",
+      "selection": "",
+      "model": "",
+      "uniprot": "P02768",
+      "transform": {
+       "offset": [
+        0,
+        0,
+        0
+       ]
+      }
+     },
+     "nbMol": 0,
+     "molarity": 0.00064,
+     "principalVector": [
+      1,
+      0,
+      0
+     ],
+     "description": "Serum albumin",
+     "ingtype": "protein",
+     "buildtype": "random",
+     "comments": "",
+     "color": [
+      0.6431372549019608,
+      0.7098039215686275,
+      0.5137254901960784
+     ],
+     "uniprot": "P02768",
+     "molecularweight": 0
+    },
+    {
+     "ingredient_id": 1,
+     "name": "TF",
+     "path": "",
+     "encapsulatingRadius": 25,
+     "source": {
+      "pdb": "3v83_nG.pdb",
+      "bu": "BU1",
+      "selection": "",
+      "model": "",
+      "uniprot": "P02787",
+      "transform": {
+       "offset": [
+        0,
+        0,
+        0
+       ]
+      }
+     },
+     "nbMol": 0,
+     "molarity": 4.2e-05,
+     "principalVector": [
+      0,
+      0,
+      1
+     ],
+     "description": "Serotransferrin",
+     "ingtype": "protein",
+     "buildtype": "random",
+     "comments": "monomer",
+     "color": [
+      1,
+      0,
+      0
+     ],
+     "uniprot": "P02787",
+     "molecularweight": 75195.46
+    }
+   ],
+   "groupType": 0,
+   "compartmentId": 0
+  }
+ ]
+}

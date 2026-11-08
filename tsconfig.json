@@ -255,6 +255,12 @@
     },
     {
       "path": "./packages/sequences/nightingale"
+    },
+    {
+      "path": "./packages/mesoscale/spec"
+    },
+    {
+      "path": "./packages/mesoscale/molstar"
     }
   ]
 }

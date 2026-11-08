@@ -545,6 +545,18 @@
       "path": "packages/sequences/storybook",
       "kind": "storybook",
       "private": true
+    },
+    {
+      "name": "@molstar/meso-spec",
+      "path": "packages/mesoscale/spec",
+      "kind": "library",
+      "private": true
+    },
+    {
+      "name": "@molstar/meso-molstar",
+      "path": "packages/mesoscale/molstar",
+      "kind": "library",
+      "private": true
     }
   ]
 }

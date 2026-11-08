@@ -4,6 +4,7 @@ packages:
   - 'packages/prism/*'
   - 'packages/ai'
   - 'packages/mvs/*'
+  - 'packages/mesoscale/*'
   - 'packages/sequences/*'
   - 'packages/extensions/*'
   - 'apps/*'

@@ -1,0 +1,44 @@
+{
+  "name": "@molstar/meso-molstar",
+  "version": "6.0.0-dev.0",
+  "private": true,
+  "type": "module",
+  "description": "MesoViewSpec prototype: the Mol*/Prism renderer adapter, the MolViewSpec export, its stories",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "exports": {
+    "./*": {
+      "molstar-src": "./src/*.ts",
+      "types": "./lib/*.d.ts",
+      "import": "./lib/*.js"
+    },
+    "./_test/*": null
+  },
+  "files": ["lib", "src", "!**/_test/**", "!**/*.tsbuildinfo"],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "typecheck:storybook": "tsc -p tsconfig.storybook.json"
+  },
+  "dependencies": {
+    "@molstar/core": "workspace:*",
+    "@molstar/meso-spec": "workspace:*",
+    "@molstar/model": "workspace:*",
+    "@molstar/mvs-builder": "workspace:*",
+    "@molstar/plugin": "workspace:*",
+    "@molstar/prism-viewer": "workspace:*",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "@molstar/plugin-headless": "workspace:*",
+    "@molstar/prism-me-app": "workspace:*",
+    "@molstar/prism-ui": "workspace:*",
+    "@storybook/web-components-vite": "catalog:",
+    "@types/gl": "catalog:",
+    "@types/node": "catalog:",
+    "@types/webxr": "catalog:",
+    "typescript": "catalog:"
+  }
+}
