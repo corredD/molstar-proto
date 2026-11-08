@@ -502,7 +502,7 @@ export function nodeMenuItems(
     items.push({ id: 'clip', label: 'Add clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
   }
   items.push(...showOnlyItems(api, picked, actions.groupBy));
-  items.push(...wrapItems(api, picked, actions.groupBy));
+  items.push(...wrapItems(api, area, picked, actions.groupBy));
   items.push(...portalItems(api, node.ref));
   if (removable(kind, node)) {
     items.push({
@@ -529,14 +529,18 @@ export function nodeMenuItems(
  */
 function wrapItems(
   api: ViewerApi,
+  area: ExplorerApi,
   picked: PickedNode,
   groupBy?: (model: string) => MesoGroupBy | undefined,
 ): ContextMenuItem[] {
   if (!api.describe('mesoscale.wrapMembrane')) return [];
   const { node, kind } = picked;
   const wrap = (values: Record<string, unknown>) => () => void api.run('mesoscale.wrapMembrane', values);
-  if (kind === 'mesh')
+  if (kind === 'mesh') {
+    // a membrane is not wrapped again
+    if (area.objectsState().value.some((o) => o.ref === node.ref && o.membrane)) return [];
     return [{ id: 'wrap-lipids', label: 'Wrap with lipids', icon: 'layers', run: wrap({ mesh: node.ref }) }];
+  }
   const path = 'path' in node ? node.path : undefined;
   if (kind !== 'group' || !path || (groupBy?.(node.ref) ?? 'compartment') !== 'compartment') return [];
   return [

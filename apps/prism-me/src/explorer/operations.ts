@@ -56,6 +56,8 @@ export interface SceneObject {
   readonly label: string;
   /** What the count at the end of its row says: atoms, particles, voxels */
   readonly count?: string;
+  /** a lipid membrane (`mesoscale.wrapMembrane`): a mesh row, not wrapped again */
+  readonly membrane?: true;
   readonly visible: boolean;
   /** A structure's entities, with their chains */
   readonly entities?: readonly StructureEntity[];
@@ -767,12 +769,31 @@ function fileLabel(plugin: PluginContext, ref: string): string | undefined {
   return SO.Data.String.is(data) || SO.Data.Binary.is(data) || SO.Data.Response.is(data) ? data.label : undefined;
 }
 
-/** The shape representations of meshes loaded from files (not the shapes the viewer makes itself) */
+/** The lipid membrane's transformer by name (`mesoscale/lipids/membrane.ts`; not imported: the baker stays out of here) */
+const LipidMembraneTransformer = 'mesoscale-lipid-membrane';
+
+/**
+ * The shape representations of meshes loaded from files (not the shapes the viewer makes itself), and the lipid
+ * membranes
+ */
 function meshes(plugin: PluginContext): SceneObject[] {
   const { cells, tree } = plugin.state.data;
   const out: SceneObject[] = [];
   for (const cell of cells.values()) {
     if (cell.state.isGhost || !SO.Shape.Representation3D.is(cell.obj)) continue;
+    // a lipid membrane (`mesoscale.wrapMembrane`, made at the root): a row of its own, its counts
+    if (cell.transform.transformer.definition.name === LipidMembraneTransformer) {
+      out.push({
+        ref: cell.transform.ref,
+        category: 'meshes',
+        kind: 'mesh',
+        label: cell.obj.label,
+        ...(cell.obj.description ? { count: cell.obj.description } : {}),
+        visible: !cell.state.isHidden,
+        membrane: true,
+      });
+      continue;
+    }
     // a mesh file's shape: its root is the file's data, and no model is on the way (a unit cell is a model's shape)
     let root = cell.transform.ref;
     let ofModel = false;

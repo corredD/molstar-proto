@@ -398,6 +398,18 @@ describe('explorer', () => {
     const made = v.plugin.state.data.cells.get(r.changed!.nodes![0])!;
     expect(made.status).toBe('ok');
     expect(made.obj!.description).toMatch(/[1-9][\d,]* lipids/);
+    // a row of its own (review M3), whose menu does not wrap it again
+    const membrane = area.objectsState().value.find((o) => o.ref === made.transform.ref);
+    expect(membrane).toMatchObject({ kind: 'mesh', label: 'Lipid membrane' });
+    const membraneRow = {
+      key: `o:${membrane!.ref}`,
+      label: membrane!.label,
+      kind: 'mesh',
+      node: { ref: membrane!.ref },
+    };
+    const membraneIds = nodeMenuItems(v.api, area, membraneRow as never, { open: () => {} }).map((i) => i.id);
+    expect(membraneIds).toContain('remove');
+    expect(membraneIds).not.toContain('wrap-lipids');
     expectOk(await v.api.run('history.undo', {}));
     expect(v.plugin.state.data.cells.size).toBe(before);
     // a compartment's group, grouped by compartment: Wrap with lipids (a sphere fitted to it); by function: none
