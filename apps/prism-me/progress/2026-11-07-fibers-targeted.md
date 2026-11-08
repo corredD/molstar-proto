@@ -36,3 +36,42 @@ Must-fix 0, should-fix 2, nits 3 (one reported as fine: headers):
 3. Nit, features.md had no line for fibres as tubes: added (Done).
 4. Nit, the test did not pin that the fibre points are targeted: it now asserts every fibre point's target is mapped.
    Skeptic pass not run (the two should-fixes are bookkeeping, not behaviour).
+
+## PR body (draft; not opened)
+
+`gh pr create -R corredD/molstar-proto --base prism-me --head me/fibers-targeted --title "plugin: a cellPACK list's default visuals show its fibers whose points have a target" --body-file <this section>`
+
+### What
+
+A cellPACK file's fibres (entities below a `fibers` compartment) never showed as tubes: `complexVisuals` added the
+fibers representation only where some particles had no target, and a cellPACK fibre's chain must have an atom in
+`_atom_site` (the reader maps the chain to the fibre entity through it), so its points always have one.
+
+### Changes
+
+- `complexVisuals` (`packages/plugin/core/src/state/formats/particles/provider.ts`) adds the fibers representation
+  wherever the list has fibres, its points targeted or not (still one representation).
+- `features.md`: cellPACK fibres as tubes, Done. TODO: the master port; "fibre points drawn twice" (to decide).
+- Changelog `.v6/changelogs/fibers-targeted.md`.
+
+### Notes for review
+
+- A library fix made on a prism-me lane; master has the same `hasUntargeted` guard: the port waits on Ludo.
+- Fibre points keep their one-atom target under the tubes (the yeast slab: 2.3M extra instances): whether the reader
+  should leave fibre points untargeted is open (TODO.md Backlog).
+
+### Testing
+
+- `visuals.test.ts`: a cellPACK CIF of two fibres and a protein, each chain one atom: `['target']` before the fix,
+  `['target', 'fibers']` after; it asserts every fibre point's target is mapped (the case it guards).
+- `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `pnpm check:workspace` (after
+  `node scripts/workspace/assets.mjs`), quick lane of plugin/core, mesoscale, stage-tools (648) and apps/prism-me,
+  cryoet, prism/viewer (1748).
+- In the app: the yeast slab's fibres drawn (Ludo, 2026-11-07); a mesobuild exosome loads in prism-me's own composition
+  (headless) with a target and a fibers representation.
+
+### Review
+
+Lane-reviewer (Opus): 0 must-fix, 2 should-fix, 3 nits, addressed in 00f941648 (above).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
