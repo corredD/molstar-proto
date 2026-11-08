@@ -151,10 +151,11 @@ lipids, colour by residue name or uniform), merged with `gpuCulling: true` and t
 - **Guards:** `lipid-membrane.scaling.ts` (the assignment over N triangles and a sphere of N tiles built, n and 4n, the
   quadratic control caught; passes).
 
-Size: about 2,870 production lines against the brief's 1,300–1,800 (tests 860). What took the room: the remesh, 1,081
-against ~250 (an isotropic remesh with projection on the input surface, its own half-edge structure and surface grid:
-nothing in `@molstar/core` or `graphics` remeshes); the baker 547 + patch 250 against ~500; the membrane and its
-operation 540 against ~300. The renderer path came under (45 against ~300): the culler already took GPU-side data.
+Size: about 2,970 production lines against the brief's 1,300–1,800 (tests 980), after the review's fixes. What took the
+room: the remesh, 1,081 against ~250 (an isotropic remesh with projection on the input surface, its own half-edge
+structure and surface grid: nothing in `@molstar/core` or `graphics` remeshes); the baker 547 + patch 250 against ~500;
+the membrane and its operation 540 against ~300. The renderer path came under (45 against ~300): the culler already took
+GPU-side data.
 
 ## Decided
 
@@ -175,7 +176,7 @@ operation 540 against ~300. The renderer path came under (45 against ~300): the 
 - The spheres' levels of detail (`Spheres.LodPixelPresets.balanced` on the membrane's params) changed nothing on a 1 µm
   sphere (380 ms → 390 ms a frame): the merged GPU-culled path with GPU-written instances does not take them as is.
 
-## Checks (2026-11-08, after `0d5fbb48c`)
+## Checks (2026-11-08, first after `0d5fbb48c`, again after the review's fixes `5d5c8e522`)
 
 `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm check:workspace` pass; `pnpm format:check` passes
 after this file's formatting. Quick lane: `pnpm test:unit packages/extensions/mesoscale apps/prism-me` (44 files, 287
@@ -205,3 +206,71 @@ first culling, readback).
   one (the app's); the synthetic patch 2.4 s.
 - **Largest that ran:** R 10,000 Å (31 M lipids), stopped by time (its first image 44 s), not memory (about 1 GB RSS).
 - **Not met:** the brief's "zoom far out on a 1 µm sphere and it stays smooth": 384 ms a frame (TODO.md).
+
+After the review's fixes: the same pass (quick lane 46 files, 300 tests; medium `lipid-tiles.test.ts`; Dawn 63 files,
+242 tests; the scaling guards, 4 tests with the remesh's).
+
+- **Seams on a sphere** (synthetic patch, outer leaflet on an icosphere, one edge type, one colour, two variants; the
+  skeptic's probe): atom pairs under 2 Å across seams, 394 at L 60 / R 300 (20,160 lipids, closest 1.27 Å), 677 at L 60
+  / R 1,000 (224,000), 2,592 at L 80 / R 300 (25,000, closest 1.07 Å), 1,874 at L 80 / R 1,000 (225,000); 0 on a flat
+  plane at every L. Bounded in `lipid-tiles.test.ts` (medium lane).
+
+## Review (2026-11-08)
+
+An Opus reviewer read the diff against the brief and the specs (4 must-fix, 5 should-fix, 3 nits); a skeptic re-ran the
+probes (9 confirmed, 1 partly refuted, 1 refuted, 2 new). Each confirmed must-fix and should-fix got a test that failed
+first, then its fix:
+
+| Finding                                                                                        | Outcome                                                                      |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| M1 Wrap with lipids on an OBJ (PLY) mesh always threw: `getShape` with `{}` props              | fixed `16200ecb5` (the provider's defaults; the app test checks lipids made) |
+| M2 `wrapMembrane` said ok on an errored cell                                                   | fixed `7de257147` (reverted on error, its error said)                        |
+| M3 the membrane had no scene-tree row (ui.md §5 says it does)                                  | fixed `cdeb86878` (a mesh row, `membrane` flag, not wrapped again)           |
+| M4 the remesh did nothing on an unwelded mesh (all boundary)                                   | fixed `5db7fa5f1` (`weldVertices` before the remesh)                         |
+| S5 the bake runs on WebGL2 before saying nothing is drawn (and X2: the menu offers it there)   | open, TODO.md: failing first changes the brief's §6, Ludo's call             |
+| S6 the membrane was not tied to its mesh                                                       | fixed in part `00274f96a` (removed with it); following a move: TODO.md       |
+| S7 "measured on curved" not done                                                               | measured (Numbers), bounded `e0a8054b2` (medium); bending the bands: TODO.md |
+| S8 the remesh had no scaling guard                                                             | fixed `dc71bd470`                                                            |
+| S9 the library test missed the writer call in `syncMembers` (the `syncInstances` half refuted) | fixed `9008d77de` (fails without the call, checked)                          |
+| X1 compartment paths untested on the tree's groups                                             | tested `579826ec6`: held                                                     |
+| N1 the culler's raster prediction reads the writer's zeroed CPU transforms                     | open, TODO.md (the library commit; plausible impact only)                    |
+| N2 gridless members ignore levels of detail                                                    | refuted as this lane's bug (deliberate in the culler); TODO.md               |
+| N3 a `Vec3` per vertex once a build; a compute pass per variant                                | left (once a build, a layout change); nits                                   |
+
+Also found while measuring: the assignment's Dawn test let its GPU instance be collected (segfault): `d1063d12a`.
+
+## PR body (draft)
+
+**What.** Procedural lipid membranes for prism-me, made on the GPU from matched-edge triangle tiles (lane `lipid-tiles`,
+Ludo's brief of 2026-11-08): right-click a mesh or a compartment's group › Wrap with lipids, and a bilayer of a patch's
+lipids covers it, a row of its own in the scene tree. WebGPU only.
+
+**Changes.**
+
+- Library (`packages/graphics`, an upstream candidate, its own lane from `origin/master` before it goes up): `b08d2d574`
+  a merged member's `gpuInstances` writer, called by the GPU culler after its CPU writes; its Dawn test
+  (`plugin/headless/src/_test/webgpu-gpu-instances.test.ts`, extended in `9008d77de`).
+- `packages/extensions/mesoscale/src/lipids/`: the remesh (icosphere, offsets, isotropic remesh, weld), the patch reader
+  and tile baker, the assignment (TypeScript reference and WGSL kernel), the membrane transform and representation;
+  `mesoscale.wrapMembrane` (one step) and its command.
+- `apps/prism-me`: the right-click item, the membrane's row; ui.md §5, features.md (Partial), TODO.md, the changelog.
+
+**Notes for review.**
+
+- Transforms stay on the GPU; the CPU computes each variant's count and a slot a triangle (4 B), the merged layout needs
+  the counts before any dispatch.
+- Defaults: tile edge 200 Å, both leaflets, one edge type, two variants, **one vertex colour** (the brief had two: 8×
+  the variants and the bake). The right-click uses the synthetic patch; a CHARMM-GUI patch only by command (`patchPdb`),
+  not saved in sessions.
+- Brief items not met (TODO.md): the bake's worker (main thread: about 5 s for CHARMM-GUI's patch), smooth when zoomed
+  out on a 1 µm sphere (384 ms a frame headless), picking a lipid, color through Mol*'s themes, following a moved mesh,
+  WebGL2.
+- Size: about 2,970 production lines against 1,300–1,800; the remesh took 1,100 against 250.
+
+**Testing.** `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`,
+`pnpm check:workspace`; quick lane of mesoscale, prism-me and the merged culler (300 tests); medium (the curved seams);
+Dawn (`pnpm native:run`: 63 files, the kernel against the reference tile for tile, a wrapped sphere drawn, the
+`gpuInstances` path); the scaling guards (assignment, remesh, a sphere built; the quadratic control caught). Numbers
+above, headless Dawn on the M1. Not yet tried in the app in a browser.
+
+**Review.** The table above.
