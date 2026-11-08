@@ -13,6 +13,9 @@ is not built is [../TODO.md](../TODO.md).
   - **#60** (GPU culling past 65,535 workgroups) and **#61** (cellPACK fibres as tubes) merged by Ludo 2026-11-08; lanes
     closed, worktrees removed (and `meso-showcase`'s). Master ports kept as local branches only
     (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted` bb2dbced6); Ludo: the fixes go to prism-me, not upstream.
+  - `lipid-tiles` (`me/lipid-tiles`, port 1353, [brief](2026-11-08-lipid-tiles.md) on its branch): procedural lipid
+    membranes on the GPU (Ludo, 2026-11-08: "just do the gpu"), matched-edge triangle tiles, design in
+    `~/prism-me-lanes/mesobuild/docs/lipids.md`. WebGL2 shows no membrane in this lane.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1).
 
