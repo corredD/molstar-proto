@@ -2483,10 +2483,16 @@ importers:
       '@molstar/prism-viewer':
         specifier: workspace:*
         version: link:../../prism/viewer
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
     devDependencies:
+      '@molstar/plugin-headless':
+        specifier: workspace:*
+        version: link:../../plugin/headless
       '@types/node':
         specifier: 22.20.1
         version: 22.20.1

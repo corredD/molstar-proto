@@ -42,9 +42,11 @@
     "@molstar/graphics": "workspace:*",
     "@molstar/plugin": "workspace:*",
     "@molstar/prism-viewer": "workspace:*",
-    "@molstar/prism-ui": "workspace:*"
+    "@molstar/prism-ui": "workspace:*",
+    "rxjs": "catalog:"
   },
   "devDependencies": {
+    "@molstar/plugin-headless": "workspace:*",
     "typescript": "catalog:",
     "@types/node": "catalog:",
     "@types/webxr": "catalog:",

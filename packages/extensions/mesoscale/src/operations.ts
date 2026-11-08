@@ -27,6 +27,8 @@ import { isFailure, labelOf, pickNamed, pickOne } from '@molstar/prism-viewer/ap
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { cssColor, matchColors, parseColorFile } from './color-file.js';
+import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
+import { canDrawLipidMembranes, LipidMembrane, LipidMembraneParams, registerLipidPatch } from './lipids/membrane.js';
 import {
   findGroup,
   generateColors,
@@ -201,6 +203,70 @@ export class MesoscaleApi extends ApiArea {
   fileUnreadable(name: string, e: unknown): void {
     this.ctx.plugin.log.error(`${name} could not be read: ${e instanceof Error ? e.message : String(e)}`);
   }
+
+  /**
+   * Wraps a mesh, a compartment's membrane or a sphere with lipid tiles (progress/2026-11-08-lipid-tiles.md): a lipid
+   * membrane object, one history step. WebGPU only: on WebGL2 the object is made and the status line says it is not
+   * drawn.
+   */
+  readonly wrapMembrane = this.operation({
+    id: 'mesoscale.wrapMembrane',
+    title: 'Wrap with lipids',
+    params: {
+      mesh: PD.Text('', { description: 'A mesh by state ref (a shape opened from OBJ, PLY, VTP)' }),
+      compartment: PD.Text('', {
+        description:
+          'A compartment of a particle list by its dotted path (root.exosome): a sphere fitted to its particles',
+      }),
+      particles: ListParam(),
+      radius: PD.Numeric(
+        0,
+        { min: 0, max: 100000, step: 10 },
+        { description: 'A sphere of this radius, Å (no mesh, no compartment)' },
+      ),
+      patch: PD.Text('synthetic', { description: 'The lipid patch by name: synthetic, or the name of `patchPdb`' }),
+      patchPdb: PD.Text('', { description: "A bilayer patch's PDB text (CHARMM-GUI's), registered under `patch`" }),
+      edge: PD.Numeric(200, { min: 40, max: 400, step: 10 }, { description: 'The tiles’ edge, Å' }),
+      leaflets: PD.Select('both', [
+        ['both', 'Both'],
+        ['outer', 'Outer'],
+        ['inner', 'Inner'],
+      ] as const),
+    },
+    async run({ mesh, compartment, particles, radius, patch, patchPdb, edge, leaflets }, ctx) {
+      if (patchPdb) registerLipidPatch(patch, patchPdb);
+      let center = Vec3.zero();
+      let r = radius || 500;
+      if (compartment) {
+        const l = oneList(ctx, particles || undefined);
+        if (isFailure(l)) return l;
+        const data = dataOf(l);
+        if (!data) return ApiResult.fail('not-found', 'The particle list is not loaded yet.');
+        const fit = compartmentSphere(data, compartment);
+        if (!fit) return ApiResult.fail('not-found', `No particle is in compartment ${compartment}.`);
+        center = fit.center;
+        r = fit.radius;
+      } else if (mesh && !ctx.plugin.state.data.cells.has(mesh)) {
+        return ApiResult.fail('not-found', `No mesh ${mesh} in the scene.`);
+      }
+      const b = ctx.plugin.state.data.build();
+      const node = b.toRoot().apply(LipidMembrane, {
+        ...PD.getDefaultValues(LipidMembraneParams),
+        mesh,
+        center,
+        radius: r,
+        patch,
+        edge,
+        leaflets,
+      });
+      await b.commit();
+      const drawn = canDrawLipidMembranes(ctx.plugin);
+      return ApiResult.ok(
+        `Wrapped ${mesh ? 'the mesh' : compartment || `a sphere of ${Math.round(r)} Å`} with lipids${drawn ? '' : ' (not drawn: WebGPU only)'}.`,
+        { nodes: [node.ref] },
+      );
+    },
+  });
 
   readonly entities = this.operation({
     id: 'mesoscale.entities',
@@ -1402,3 +1468,35 @@ async function writeStyles(
 }
 
 export { cssColor };
+
+/**
+ * The sphere of a compartment's particles (its path and the compartments below it): their mean, and their mean
+ * distance from it as the radius; one pass
+ */
+export function compartmentSphere(data: ParticleList, path: string) {
+  const { compartments, compartmentInfo, coordinates, count } = data;
+  if (!compartments || !compartmentInfo) return undefined;
+  const inside = new Set<number>();
+  for (const [id, info] of compartmentInfo) if (info.name === path || info.name.startsWith(`${path}.`)) inside.add(id);
+  const center = Vec3.zero();
+  let n = 0;
+  for (let i = 0; i < count; ++i) {
+    if (!inside.has(compartments[i])) continue;
+    center[0] += coordinates[i * 3];
+    center[1] += coordinates[i * 3 + 1];
+    center[2] += coordinates[i * 3 + 2];
+    n += 1;
+  }
+  if (!n) return undefined;
+  Vec3.scale(center, center, 1 / n);
+  let radius = 0;
+  for (let i = 0; i < count; ++i) {
+    if (!inside.has(compartments[i])) continue;
+    radius += Math.hypot(
+      coordinates[i * 3] - center[0],
+      coordinates[i * 3 + 1] - center[1],
+      coordinates[i * 3 + 2] - center[2],
+    );
+  }
+  return { center, radius: radius / n };
+}

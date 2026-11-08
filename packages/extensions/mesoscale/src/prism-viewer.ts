@@ -6,6 +6,7 @@
 
 import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension, ViewerSkill } from '@molstar/prism-viewer/spec';
+import { LipidMembrane } from './lipids/membrane.js';
 import { MesoscaleApi } from './operations.js';
 
 declare module '@molstar/prism-viewer/api' {
@@ -71,6 +72,12 @@ export const MesoscaleSkill: ViewerSkill = {
         'Colors a mesoscale model by the zoom: its compartments far away, its entities, chains and atoms (by element) closer; the edges in pixels an atom covers.',
     },
     {
+      id: 'wrap_with_lipids',
+      operation: 'mesoscale.wrapMembrane',
+      description:
+        'Wraps a mesh, a compartment (a sphere fitted to its particles) or a sphere with a lipid bilayer of matched tiles (WebGPU).',
+    },
+    {
       id: 'open_mesoscale_example',
       operation: 'mesoscale.example',
       description: "Opens one of the Mesoscale Explorer's examples by id.",
@@ -94,6 +101,8 @@ export const MesoscaleExtension: ViewerExtension = {
   id: 'mesoscale',
   title: 'Mesoscale',
   api: { mesoscale: (ctx) => new MesoscaleApi(ctx) },
+  // the lipid membrane's transform, in saved states and history (`lipids/membrane.ts`)
+  plugin: { registry: [{ actions: [LipidMembrane] }] },
   commands: (api) => {
     const m = api.mesoscale;
     if (!m) return [];
@@ -141,6 +150,12 @@ export const MesoscaleExtension: ViewerExtension = {
         alias: ['example', 'mesoscale example', 'cellpack', 'petworld'],
       }),
       operationCommand(api, m.entities, { category, icon: 'info', alias: ['mesoscale entities', 'compartments'] }),
+      operationCommand(api, m.wrapMembrane, {
+        category,
+        icon: 'layers',
+        alias: ['lipids', 'membrane', 'wrap with lipids', 'bilayer', 'lipid wrapper'],
+        action: 'Wrap',
+      }),
     ];
   },
   skills: [MesoscaleSkill],
