@@ -89,13 +89,20 @@ function syntheticPatch(): LipidPatch {
  */
 const tileSets = new Map<string, TileSet>();
 
+/**
+ * Lipids may reach this far across a seam outside its band, Å (`TileSetParams.slack`): small tiles, as a cow's 42 Å, left
+ * a star of gaps at every vertex at 0 (Ludo's first try, 2026-11-08); atoms of two tiles meet there instead, under the
+ * 2 Å spheres
+ */
+const SeamSlack = 3;
+
 function getTileSet(patch: string, leaflet: 'outer' | 'inner', edge: number, kinds: TileKinds) {
   const key = `${patch}|${leaflet}|${edge}|${kinds.edgeTypes}|${kinds.vertexColors}|${kinds.variants}|${kinds.seed}`;
   let set = tileSets.get(key);
   if (!set) {
     const p = getPatch(patch);
     if (!p) return undefined;
-    set = bakeTileSet(p[leaflet], { edge, ...kinds });
+    set = bakeTileSet(p[leaflet], { edge, ...kinds, slack: SeamSlack });
     tileSets.set(key, set);
   }
   return set;

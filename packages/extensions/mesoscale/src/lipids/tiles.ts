@@ -33,6 +33,12 @@ export interface TileSetParams extends TileKinds {
   readonly clash: number;
   /** trial placements per hole */
   readonly fillTries: number;
+  /**
+   * How far, Å, an interior or filling lipid (its head inside) may reach across an edge outside the bands: 0 keeps every
+   * seam clear by construction; more closes the gaps along an edge's ends and at the vertices that small tiles leave
+   * (their corner radius a third of the edge), at the cost of atoms of two tiles meeting there (Ludo's cow, 2026-11-08)
+   */
+  readonly slack?: number;
 }
 
 export const DefaultTileSetParams: TileSetParams = {
@@ -235,6 +241,11 @@ function wholeInside(positions: Float32Array, L: number, delta: number) {
   return true;
 }
 
+/** Whether (x, y) is inside the template triangle */
+function headInside(x: number, y: number, L: number) {
+  return y >= 0 && Sqrt3 * (L - x) - y >= 0 && Sqrt3 * x - y >= 0;
+}
+
 /** Whether every atom of a strip lipid (strip frame) lies `r` or more from both ends of the edge */
 function clearOfCorners(positions: Float32Array, L: number, r: number) {
   for (let i = 0; i < positions.length; i += 3) {
@@ -260,6 +271,8 @@ function bakeVariant(
 ): Tile {
   const L = params.edge;
   const delta = params.clearance;
+  // interior and filling lipids: atoms inside by delta, or out by the slack (their heads stay inside)
+  const inside = -(params.slack ?? 0) || delta;
   const own: Placed[] = [];
   const obstacles: Placed[] = [];
   const inBand = (x: number, y: number) => {
@@ -315,9 +328,9 @@ function bakeVariant(
     L / 2,
     (L * Sqrt3) / 6,
     L / Sqrt3 + 1,
-    (x, y) => !inBand(x, y) && !nearCorner(x, y),
+    (x, y) => !inBand(x, y) && !nearCorner(x, y) && headInside(x, y, L),
   )) {
-    if (wholeInside(lipid.positions, L, delta)) own.push(lipid);
+    if (wholeInside(lipid.positions, L, inside)) own.push(lipid);
   }
 
   const all = own.concat(obstacles);
@@ -343,7 +356,7 @@ function bakeVariant(
       if (heads.anyHeadWithin(x, y, spacing * 0.9)) continue;
       for (let t = 0; t < params.fillTries; ++t) {
         const lipid = placeLipid(leaflet, Math.floor(rand() * leaflet.lipidHead.length), x, y, rand() * 2 * Math.PI);
-        if (!wholeInside(lipid.positions, L, delta) || grid.clashes(lipid.positions, params.clash, alive)) continue;
+        if (!wholeInside(lipid.positions, L, inside) || grid.clashes(lipid.positions, params.clash, alive)) continue;
         const i = all.length;
         all.push(lipid);
         alive.push(true);

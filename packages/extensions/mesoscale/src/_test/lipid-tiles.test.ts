@@ -103,3 +103,26 @@ describe('lipid tile set', () => {
     );
   });
 });
+
+describe('seam slack (Ludo’s cow, 2026-11-08)', () => {
+  // small tiles (corner radius a third of the edge) left the ends of every edge empty: a star of gaps at each vertex
+  it('lets lipids reach across an edge’s ends, filling its vertex regions', () => {
+    const kinds = { edgeTypes: 1, vertexColors: 1, variants: 4, seed: 3 };
+    const edge = 42;
+    const nearVertices = (slack: number) => {
+      const set = bakeTileSet(patch.outer, { edge, ...kinds, slack });
+      const corners = [0, 0, edge, 0, edge / 2, (edge * Math.sqrt(3)) / 2];
+      let n = 0;
+      for (const t of set.variants) {
+        for (let l = 0; l < t.lipidSpecies.length; ++l) {
+          for (let a = t.lipidAtomStart[l]; a < t.lipidAtomStart[l + 1]; ++a) {
+            const [x, y] = [t.positions[3 * a], t.positions[3 * a + 1]];
+            for (let k = 0; k < 3; ++k) if (Math.hypot(x - corners[2 * k], y - corners[2 * k + 1]) < edge / 6) n += 1;
+          }
+        }
+      }
+      return n;
+    };
+    expect(nearVertices(3)).toBeGreaterThan(1.3 * nearVertices(0));
+  });
+});
