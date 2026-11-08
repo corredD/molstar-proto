@@ -38,9 +38,23 @@ draw, by dispatching each model to a **resolver**; a **renderer adapter** puts t
 6. **No copies, no quadratic work.** Placement buffers are in the renderer's own layout and handed over as they are;
    packing looks up overlaps in a hash grid. *Performance › Probe* measures it; the heavy test lane bounds it.
 
+## Version 0.2: after David's review
+
+7. **One tree, three spellings.** Every panel shows the document, the IR, issues and traces as S-expressions (JSON on
+   a toggle). `read(print(json))` is the JSON; `print(read(text))` is a fixed point.
+8. **Addresses are data too.** MesoQL addresses (`(within (in c.exosome) :of (population p.catalase.observed) :distance 15)`)
+   are checked against the document and materialize as MesoLoci, runs of copies: one run a population.
+9. **Describe once, place many.** A superstructure (an insulin granule) is resolved once and placed as poses; a
+   population draws it as parts or as one body. *Superstructures and addresses › Beta cell*.
+10. **Relations attach by sites.** HU bends DNA at its entry and exit sites; resolvers that honour a relation reconcile
+    it, the others say they did not. *Resolver mocks › Relations: HU bends DNA*.
+11. **Engines compose.** A model can refine another: a relax stage after the packing meets the catalase count the
+    packing could not, and the packing is a cache hit. *Thin slice* › "Add a relax stage".
+
 ## Where to look
 
 - *Docs › Paired examples*: the same scene as MesoViewSpec and as IR (exosome, gallery, yeast).
 - *Thin slice*: the end-to-end path into the real Prism viewer.
 - *Resolver mocks*: membrane lattices, compartment packing, fibers, bilayers.
 - *Performance › Probe*: resolution, commit, first frame and a color edit, measured apart.
+- *Superstructures and addresses*: the β-cell, and a MesoQL playground over the exosome and the β-cell.

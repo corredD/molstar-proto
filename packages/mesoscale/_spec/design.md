@@ -9,9 +9,26 @@ For David's review. Renderer findings are in a separate document,
 - **Code:** `packages/mesoscale/spec` (`@molstar/meso-spec`: the format, IR, runtime and resolvers; no Mol\* imports)
   and `packages/mesoscale/molstar` (`@molstar/meso-molstar`: the Prism adapter, the MolViewSpec export and the stories).
 - **Paired examples:** each scene as a document and as the IR the runtime makes of it, in `packages/mesoscale/examples/`
-  (`exosome`, `gallery`, `yeast`, as `*.mesoviewspec.json` and `*.ir.json`). A quick-lane test keeps them current.
+  (`exosome`, `gallery`, `yeast`, `betacell`, `nucleoid`, as `*.mesoviewspec.json` and `*.ir.json`). A quick-lane test
+  keeps them current.
 - **Number labels:** **[measured]** (with where and how), **[target]** (proposed) or **[fixture]** (computed on
   synthetic or trimmed inputs). Hypotheses are labelled as such.
+
+**Version 0.2, after David's review (2026-11-08).** David asked for a high-level scene graph that compiles through two
+or three layers, declarative addresses ("MesoQL"), reusable nested ultrastructures, relations reconciled by the runtime,
+and engines composed over a common representation. Ludo's list of what goes wrong in practice (DNA-bending proteins,
+flagellar motors, nuclear pores, lattices with defects, lipid composition) was the test set. What changed:
+
+| Change                                                                           | Section | Status                                                      |
+| -------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------- |
+| The layers, named: document → constraint graph → MesoComplex → render IR         | §1      | built                                                       |
+| S-expression spelling: the document, IR, issues and traces in the UI             | §3.7    | built, round-trip tested                                    |
+| MesoQL: addresses, MesoLocation and MesoLoci (runs)                              | §3.8    | built: 13 symbols, views use it                             |
+| Superstructures: reusable, nested, instanced; `parts` or `entity` detail         | §3.9    | built: β-cell, 120 granules from Ludo's ISG recipe          |
+| Values by value or by reference: lipid composition, conformational states, sites | §3.10   | language; sites used by relations                           |
+| Relations as constraints with site addresses (binds, bends, branches, contacts)  | §3.11   | `bends` and `binds` reconciled (HU on DNA); others reported |
+| Application composition: a model `refines` another                               | §6.7    | built: `meso.relax`, catalase 354 → 506 of 506              |
+| MesoCraft (Ivan's paper) mapped onto these concepts                              | §3.12   | reference                                                   |
 
 ## 1. What it is for
 
@@ -30,12 +47,23 @@ It is **not**:
 - a replacement for the formats it points to.
 
 A **runtime** validates the document and gives each model to a pluggable **resolver**. The resolvers' output is an
-**IR**, which a **renderer adapter** puts into a viewer.
+**IR**, which a **renderer adapter** puts into a viewer. In David's words, a high-level scene graph "which still has 2-3
+layers it compiles to below". The prototype has these four:
 
-```
-MesoViewSpec ──validate──▶ normalize (Å, counts, frames) ──▶ resolvers (keyed, cached) ──▶ IR ──▶ adapter ──▶ Mol*/Prism
-   authored                      runtime                       derived                    derived      view
-```
+| Layer                          | What it holds                                                                                                                                                                                        | Where                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **1. Document** (MesoViewSpec) | biology, evidence, provenance, relations, views, by id; addresses as MesoQL                                                                                                                          | `format/doc.ts`                                                                   |
+| **2. Constraint graph**        | the document normalized: Å, counts, frame matrices, MesoQL checked, relation sites materialized, superstructures as sub-documents                                                                    | `runtime/runtime.ts` (`NormalizedPopulation`, `NormalizedRelation`, `ResolveJob`) |
+| **3. MesoComplex**             | what resolvers and refine stages produce and consume: placement sets, superstructure templates and their instances (David's name for the common representation, the analogue of Mol\*'s `Structure`) | the IR's `resolve`, `placements`, `superstructure`, `instances` nodes             |
+| **4. Render IR**               | what an adapter commits: drawable world sets, looks, camera; instances expanded when the renderer cannot instance                                                                                    | `runtime/instancing.ts` (`flattenInstances`), `runtime/adapter.ts`                |
+
+Engines compose at layer 3: a rigid-body placement feeds a relaxation (§6.7), each reconciling the same layer-2
+constraints. Addresses (MesoQL) are written at layer 1 and materialize at layer 3 (MesoLoci).
+
+**Why agents.** A document is plain data with one id namespace, an S-expression spelling, checked addresses and issues
+with reasons. An agent that reasons in it leaves a scene anyone can inspect, diff and trace back to evidence
+("inspectable by default", David). The same document is the glue for Ludo's twin of mesoscale models and cryo-ET: a
+model and its simulated tomogram come from one description (open decision 9).
 
 ## 2. The same scene, twice
 
@@ -208,7 +236,163 @@ A `Resource` is `{kind, format, uri | accession, frame, checksum, license, selec
 - **The gap.** The runtime has no catalog expander yet and says so (`catalog.unexpanded`).
 - **Open:** expand catalogs in the runtime (a reader that emits populations), or let a resolver consume them directly.
 
-### 3.7 Not in the document
+### 3.7 The S-expression spelling (`format/sexpr.ts`)
+
+One tree, three spellings, as SeqQL has them (`packages/sequences/_spec/seqql.md`): the S-expression for people, agents
+and tests; JSON for storage; the types for code. Every data panel in the stories shows the S-expression first, with a
+JSON toggle.
+
+```lisp
+(meso_view_spec
+  :version 0.2.0
+  :populations
+    [(population p.catalase.observed
+       :entity e.catalase
+       :compartment c.exosome
+       :location interior
+       :abundance (:count 24)
+       :evidence [ev.catalase-picked])]
+  :views
+    [(view v.near-picks
+       :looks
+         [(:select (all) :visible false)
+          (:select (within (in c.exosome) :of (population p.catalase.observed) :distance 15) :visible true)])])
+```
+
+- **Codec:** a section item is `(section-singular id :key value …)`; an object with a `kind` word is `(kind …)`; a
+  quantity is `(15 A)`; any other object is a record `(:key value …)`; arrays are `[…]`; camelCase keys are kebab-case
+  keywords, and a key that would not read back (an id used as a key) is quoted, `:"p.ALB"`. MesoQL values (`select`,
+  `selection`, `at`, `target`, `entry`, `exit`) are written as forms, not strings.
+- **Layout:** SeqQL's printer rules (positionals then keywords, one line when it fits 80 columns), Lisp indentation.
+- **Tested:** `read(print(json))` equals `json` and `print(read(text))` is a fixed point, on all five example documents
+  and their IR summaries (`_test/sexpr.test.ts`).
+- **Not done:** the S-expression is not yet editable in the stories (they display it); the reader exists for that.
+
+### 3.8 MesoQL: addresses, MesoLocation, MesoLoci (`format/mesoql.ts`, `ir/loci.ts`)
+
+David: "you need something like MesoQL … declarative addresses which then the runtime can resolve", with a schematized
+form and a materialized one, as Mol\* has `SchemaItem` and `Location`/`Loci`.
+
+- **Schematized:** an address is written with document ids, `(and (entity e.catalase) (in c.exosome))`. It is checked
+  against the document (symbol, arity, types, and that every id names a node of the right kind), with issues at the
+  document path, like any other.
+- **Materialized:** `evaluateMesoQL` turns it into **MesoLoci**: per placement set, sorted runs `[start, end)` of copy
+  indices. A **MesoLocation** is one copy, `{set, index}`, with the stable id `<population>#<ordinal>`. Runs, not one
+  entry per copy: every resolver writes a population contiguously, so `(population p.lipids)` is one run however many
+  lipids there are (the exosome's 88,666; a quick test checks every population of the exosome is one run). This is what
+  renderer finding R1 asks Mol\* for.
+- **Symbols** (the reference is generated from the table, `mesoQLReference`):
+
+| Symbol                                         | Returns   | Meaning                                                                                 |
+| ---------------------------------------------- | --------- | --------------------------------------------------------------------------------------- |
+| `(all)`                                        | selection | every copy                                                                              |
+| `(population p…)`, `(entity e…)`, `(model m…)` | selection | copies by population, entity or model                                                   |
+| `(in c… :nested :location)`                    | selection | copies in compartments (and those nested in them unless `:nested false`), at a location |
+| `(copies p start count)`                       | selection | copies by ordinal (valid for one resolution)                                            |
+| `(and …)`, `(or …)`, `(not Q :in U)`           | selection | set algebra on runs                                                                     |
+| `(within Q :of Q2 :distance d)`                | selection | copies near others (hash grid, O(N))                                                    |
+| `(part Q p.inner)`                             | selection | an inner population in the superstructure instances `Q` picks (§3.9)                    |
+| `(site e name)`                                | site      | a named site of an entity: the "pointer" relations attach to (§3.11)                    |
+| `(residues e :chain :range)`                   | residues  | a schematized residue address; needs the structure loaded                               |
+
+- **Where it is used:** a view's `looks[].select`, `selection` and annotation `target` (anchored at the selected copies'
+  centroid); relation `entry` and `exit`; site `at`. A look that covers part of a population becomes a partial look with
+  its runs; Prism cannot draw it (renderer finding R8) and the adapter says so.
+- **Stored as** its canonical S-expression string in JSON. SeqQL stores a JSON tree with full names; which to keep is
+  open decision 10.
+
+### 3.9 Superstructures: reusable, nested, instanced (`format/doc.ts` `Superstructure`)
+
+Ludo: "a virus is an ultrastructure made of ultrastructures made of molecules made of atoms"; an insulin granule "can
+have thousands of instances in a cell". David: `.superstructure({ params })`, holding "both" the reconstructed and the
+opaque form, "depending on context".
+
+- **In the document:** `superstructures[]`, each a fragment of a document (compartments, populations, models, relations,
+  its own entities) in its own frame, centred on its envelope compartment. An entity names one (`superstructure`), as an
+  entity names its structure: the insulin granule is an entity whose parts are a superstructure. Populations instance it
+  like any entity. Superstructures nest; a cycle is refused (`superstructure.cycle`).
+- **Both levels from one description:** a population's `detail` is `parts` (each copy resolved into the superstructure's
+  contents) or `entity` (one body a copy). Ids inside share the document's namespace, so MesoQL addresses them.
+- **Resolved once:** the runtime compiles each superstructure as a document of its own, with the session's cache
+  (`superstructureDoc`), and the IR keeps one `superstructure` node (its template sets, its frame) plus an `instances`
+  node under each placement set whose copies stand for it. Nothing is multiplied in the IR.
+- **Copy ids through the nesting:** `(part (copies p.granules 12) p.Vamp2)` materializes as one virtual set per
+  instance, and its copies read `p.granules#12/p.Vamp2#305`.
+- **Measured [fixture]:** the β-cell example (`examples/betacell.ts`) imports the granule from Ludo's cellPACKgpu ISG
+  recipe (trimmed to Vamp2, Rab3a, Chga, Scg2: 2,229 copies) and places 120 granules. The template resolves once; more
+  granules rerun only the cell's packing; `detail: entity` reruns nothing and keeps the granules' poses. The IR holds 83
+  kB for the granules; expanded for Prism they are 267,480 copies, 9.2 MB (renderer finding R7).
+- **Answers open decision 1 (placement frames) for superstructures:** frames travel (instances are poses in the IR), and
+  the adapter expands only because Prism cannot instance lists. Plain placement sets stay baked in the world frame.
+
+### 3.10 By value or by reference
+
+David: "it could be passed by value or reference … rigid and strict in one place, and use a recipe in another".
+
+- **Lipid composition:** `membrane.composition` is either `{lipids: [{entity, fraction, leaflet}]}` (by value) or
+  `{resource}` (a recipe or a table, by reference). It is metadata a resolver may honour; the prototype's bilayer draws
+  one lipid kind.
+- **Conformational states:** `entity.states[]`, each a structure reference and a fraction.
+- **Sites:** `entity.sites[]`, each a point and an axis in the entity's frame (by value) and/or a residue address (by
+  reference to the structure, materialized when it is loaded).
+- **Lattices with defects:** `arrangement.defects.vacancy`, the share of empty sites, honoured by `meso.lattice`
+  (seeded: the same holes every run). Ludo's example: a membrane protein placed at random until a cryo-ET study showed a
+  hexagonal lattice with defects. The fix is an edit of one arrangement, citing the new evidence.
+
+### 3.11 Relations as constraints with addresses
+
+David: "encode the relations as a graph … and then reconcile that in the runtime"; Ludo: "the bending is highly
+specific, you need point of entry/output".
+
+```lisp
+(relation rel.hu-bends-dna
+  :kind bends
+  :subjects [p.hu]
+  :objects [p.dna]
+  :entry (site e.hu dna-entry)
+  :exit (site e.hu dna-exit)
+  :angle 120
+  :spacing 30)
+```
+
+- **Kinds:** `binds`, `bends`, `branches` (Arp2/3, 73° in the yeast model), `contacts` (residue pairs for
+  bead-and-spring engines: `a`, `b` residue addresses, a distance), `part-of`, `colocalizes`, `anchored-to`, `excludes`.
+- **Reconciled by the resolvers that honour them** (`Resolver.honours`). `meso.fiber` honours `binds` and `bends`: every
+  `spacing` of strand it places a subject copy with its entry site on the strand and its entry→exit axis along it, using
+  MesoCraft's attachment-point rule `x = q − R·p` (Jia et al. 2026, eq. 1). The strand resumes at the exit site, turned
+  by the angle. A quick test checks every HU's entry site sits on a DNA copy, the next copy sits at its exit site, and
+  the turn is the stated angle. A traced path is an observation: binders go on it, but it is not bent (an info issue).
+- **Not reconciled, reported:** a site given only by residues cannot be materialized without the structure (IHF in the
+  nucleoid example: `constraint.unmet` with that reason); `branches` and `contacts` have no resolver yet
+  (`relation.ignored`).
+- **Rigid or bead-and-spring is the engine's choice, not the language's** (Ludo's question): a rigid-body engine uses
+  sites and angles; a bead-and-spring engine uses `contacts`. Each declares what it honours, and the runtime reports the
+  rest.
+
+### 3.12 MesoCraft, mapped (Ivan's paper)
+
+MesoCraft (Jia, Kouyoumdjian, Strnad, …, Viola, arXiv 2610.37954, [html](https://arxiv.org/html/2610.37954v1)) is a
+rule-based procedural modeller: ingredients, skeletons (geometric references), rules with distributions, and an enriched
+mmCIF carrying the rule graph. Its constraint catalogue is in `~/Dev/mesocraft-react/modeling/capabilityCatalog.mjs`.
+
+| MesoCraft                               | MesoViewSpec                                                                                                   |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| ingredient, instance                    | entity, copy (placement set)                                                                                   |
+| skeleton (17 shapes, OBJ)               | compartment geometry; a skeleton that is not a compartment (a scaffold, a guide path) has no concept yet (gap) |
+| placement `(x, R)`, pivot `x = q − R·p` | site + relation, materialized by the resolver (§3.11)                                                          |
+| Parent–Child Distance                   | population at `outer-surface`/`membrane` with an offset (a resolver param)                                     |
+| Parent–Child Relative                   | lattice or superstructure sites (gap: placement at a scaffold's sites)                                         |
+| Siblings, Siblings–Parent               | fiber (rise, twist) along a path or a growth rule                                                              |
+| Fill                                    | `random` population in a compartment                                                                           |
+| Connection                              | a fiber by path between two copies (gap: a path defined by two addresses)                                      |
+| Symmetry Assembly                       | superstructure, or a helical arrangement (gap: the microtubule case)                                           |
+| distributions (uniform, Gaussian)       | gap: arrangement parameters are numbers, not distributions                                                     |
+| rule graph in enriched mmCIF            | models, `refines`, `avoid` in the document                                                                     |
+
+A MesoCraft rule graph could be a resolver (`mesocraft`) that takes it as a model's input, as cellPACKgpu's recipe is.
+The gaps above are where its vocabulary is richer than this format's.
+
+### 3.13 Not in the document
 
 - placements and other derived results;
 - renderer settings: representation types, LOD, quality;
@@ -227,6 +411,9 @@ See §5.
   - **space:** `scene`, `frame`, `compartment` (shape, free volume, area), `membrane` (thickness);
   - **construction:** `resolve` (model, resolver, version, normalized `input`, `key`, `cached`);
   - **evaluated:** `placements` (a placement set).
+- **(v0.2) superstructures:** `superstructure` (a superstructure's resolved tree, once) and `instances` (under a
+  placement set: its copies of one type stand for a superstructure, `parts` or `entity`). Together with the placement
+  sets, this evaluated part is what David calls the MesoComplex.
 - **Looks and the camera are not in the tree.** They live in `IRView`: one look per (set, type), concrete colors, the
   camera in Å. A color edit never touches a node.
 - **Refs come from document ids, never from content** (`m.recipe/placements/0`, `c.exosome/membrane`). The same scene
@@ -393,14 +580,15 @@ A `ResolveJob` holds:
 
 ### 6.3 Resolvers in the prototype
 
-| Id                 | Realizes                                                                           | Complexity   |
-| ------------------ | ---------------------------------------------------------------------------------- | ------------ |
-| `meso.pack`        | random populations: interiors, membranes, surfaces, the space around a compartment | O(N · tries) |
-| `meso.lattice`     | lattices on spheres and ellipsoids                                                 | O(N)         |
-| `meso.fiber`       | fibers by path or by growth                                                        | O(N)         |
-| `meso.bilayer`     | lipid bilayers                                                                     | O(N)         |
-| `meso.precomputed` | RELION STAR, placement JSON                                                        | O(rows)      |
-| `cellpack-gpu`     | cellPACKgpu serialized recipes                                                     | O(N · tries) |
+| Id                 | Realizes                                                                                  | Complexity        |
+| ------------------ | ----------------------------------------------------------------------------------------- | ----------------- |
+| `meso.pack`        | random populations: interiors, membranes, surfaces, the space around a compartment        | O(N · tries)      |
+| `meso.lattice`     | lattices on spheres and ellipsoids                                                        | O(N)              |
+| `meso.fiber`       | fibers by path or by growth; honours `binds` and `bends` (subjects placed by their sites) | O(N)              |
+| `meso.bilayer`     | lipid bilayers                                                                            | O(N)              |
+| `meso.precomputed` | RELION STAR, placement JSON                                                               | O(rows)           |
+| `cellpack-gpu`     | cellPACKgpu serialized recipes                                                            | O(N · tries)      |
+| `meso.relax`       | (v0.2) refine stage: inserts missing copies, relaxes overlaps (§6.7)                      | O(N · iterations) |
 
 All of them are in `resolvers/index.ts`, `DefaultResolvers`.
 
@@ -493,6 +681,23 @@ gives the same diff to every adapter:
   is an MVS proposal, outside this prototype.
 - **Treat MolViewSpec as a view target, not as this format's IR.** MVS describes how to draw a structure; MesoViewSpec
   describes a scene and its evidence. The two meet in a view.
+
+### 6.7 Application composition: refine stages
+
+David: "one engine/runtime can use some cheap fills, other can do a physical simulation … all trying to reconcile the
+same high-level constraints"; "Ivan's rigid body could feed into a simulation process that refines the structure".
+
+- **In the document:** a model with `refines: <model>` takes that model's result as its input and replaces it. It
+  realizes the same populations and is checked against the same constraints.
+- **In the runtime:** refine stages run after what they refine (`topoOrder`); their key includes the upstream key, so
+  re-resolving the upstream reruns them and nothing else; the refined model keeps its `resolve` node (key, input,
+  `refinedBy`) but its sets leave the IR.
+- **`meso.relax`** (`resolvers/relax.ts`): inserts the copies still missing, relaxes overlaps by pushing pairs apart
+  (hash grid, O(N) an iteration), and keeps copies in their compartments with signed distance grids (`sdfGrid` in
+  `resolvers/geometry.ts`, which also answers the O(triangles) mesh gap). Membrane copies and avoided models stay fixed.
+- **Measured [fixture]:** on the exosome, the recipe's packing stops at 354 of 506 catalase; adding `m.relax` inserts
+  152, converges in 41 iterations with a largest overlap of 0.98 Å (tolerance 1 Å), and meets 506 of 506. The packing is
+  a cache hit when the stage is added. mesobuild's `relax.py` reached 506 of 506 on the same recipe.
 
 ## 7. Units, ids, reproducibility, failures
 
@@ -595,13 +800,13 @@ The stories show each case:
 
 **Runtime (Node, `spec/src/_test/perf.test.ts`):**
 
-| Measure                                                 | Result                                                                                          |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Packing 5k / 20k / 80k copies (15% volume fraction)     | 34 / 64 / 257 ms; 6.9 / 3.2 / 3.2 µs a copy: linear once warm (the 5k run includes JIT warm-up) |
-| Bilayer, 1,000,038 lipids                               | 145 ms to resolve; 34.3 MB of placements; ArrayBuffer growth 30.7 MB (allocated once; GC noise) |
-| On the 1M scene: view edit (`updateView`)               | 0.1 ms                                                                                          |
-| On the 1M scene: cached compile of a recolored document | 0.4 ms, 0 resolver runs                                                                         |
-| On the 1M scene: `planCommit`                           | 0.1 ms                                                                                          |
+| Measure                                                 | Result                                                                                                                  |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Packing 5k / 20k / 80k copies (15% volume fraction)     | 34 / 64 / 257 ms; 6.9 / 3.2 / 3.2 µs a copy: linear once warm (the 5k run includes JIT warm-up)                         |
+| Bilayer, 1,000,038 lipids                               | 145 ms to resolve; 34.3 MB of placements; ArrayBuffer growth 30.7 MB (allocated once; GC noise)                         |
+| On the 1M scene: view edit (`updateView`)               | 0.1 ms; (v0.2) 2.8 ms now that looks are MesoQL addresses: one O(N) scan a set for its type runs, cached, then O(types) |
+| On the 1M scene: cached compile of a recolored document | 0.4 ms, 0 resolver runs                                                                                                 |
+| On the 1M scene: `planCommit`                           | 0.1 ms                                                                                                                  |
 
 **Adapter and renderer (Node + headless `gl`, `molstar/src/_test/perf.test.ts`):**
 
@@ -661,10 +866,15 @@ The GC-dependent heap numbers are approximate. The placement and adapter numbers
 | _Thin slice_ (End to end, Color edit, Density edit, Unmet constraint)     | document → validation → resolvers → IR → **the real Prism viewer**, side by side. The edit bar applies view and model edits, and an edit table shows each edit's kind, resolver runs, cache hits, compile and commit times, and sets added, removed and kept. The Color edit story shows `0` runs and `=3` sets kept; the Density edit story shows 1 run and `+1 −1 =2`; the Unmet constraint story explains the shortfall, then meets the constraint by asking for 150 |
 | _Resolver mocks_ (Membrane lattice, Compartment packing, Fibers, Bilayer) | the cases the slice leaves out, each with its construction parameter on a slider (a model edit that reruns that resolver alone)                                                                                                                                                                                                                                                                                                                                         |
 | _Performance › Probe_                                                     | resolve, commit, first frame and a color edit at 10k–1M copies, measured separately in the browser                                                                                                                                                                                                                                                                                                                                                                      |
+| _Superstructures and addresses › Beta cell_ (v0.2)                        | 120 insulin granules from Ludo's ISG recipe, resolved once: a slider for the count (only the cell packing reruns), a switch between parts and one body a granule (nothing reruns), the expansion Prism needs reported                                                                                                                                                                                                                                                   |
+| _Superstructures and addresses › Addresses (exosome, β-cell)_ (v0.2)      | type a MesoQL address: its canonical form, its issues, its MesoLoci (copies, sets, runs, time) and the first copies by stable id, nested ones included; the reference generated from the table                                                                                                                                                                                                                                                                          |
+| _Resolver mocks › Relations: HU bends DNA_ (v0.2)                         | HU on a DNA strand by its sites, a slider for the bend angle; IHF's residue-only site reported                                                                                                                                                                                                                                                                                                                                                                          |
+| _Thin slice_ (v0.2 additions)                                             | the S-expression spelling in every panel with a JSON toggle; an "Add a relax stage" button (composition: the packing is a cache hit, the constraint becomes met)                                                                                                                                                                                                                                                                                                        |
 
-**Checked in a browser:** I loaded all 13 stories in headless Chromium through Playwright, and the probe headed. None
-raised a console error. I looked at screenshots of the thin slice, the probe and the Fibers mock; the Fibers mock
-exposed the adapter's `excludeFibers` bug (§11).
+**Checked in a browser:** (v0.2) the new stories and the S-expression panels were loaded in headless Chromium too,
+without a console error. Before that, I loaded all 13 stories in headless Chromium through Playwright, and the probe
+headed. None raised a console error. I looked at screenshots of the thin slice, the probe and the Fibers mock; the
+Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 
 **Run them:** `pnpm -C storybook storybook` (port 6006), or `npx storybook dev -p 6011` in `storybook/`.
 
@@ -672,7 +882,7 @@ exposed the adapter's `excludeFibers` bug (§11).
 
 | Lane                                | Command                                                                                                                                                     | What it verifies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **quick** (default; 41 tests, ~6 s) | `pnpm test:unit packages/mesoscale`                                                                                                                         | **Validation:** every rule, on broken documents. **Units and imports:** counts from concentrations and densities; the cellPACKgpu import (both count rules, the surface unit). **Provenance:** traces. **Determinism:** the same placements from the same document. **Edits:** a color edit is 0 resolver runs with the same placement objects; a density edit is 1 run, the right one. **Scene:** an unmet constraint with its reason; procedural copies avoid the picks; frames carry the picks from voxels to world Å; membrane orientation; 36 B a copy. **Runtime:** dispatch by arrangement; nesting, lattices, fibers, bilayers; the yeast document's issues; a toy resolver plugged in. **Mol\* side:** the paired example files are current; the MVS export validates; STAR rotations match Mol\*'s; the particle list shares the IR's buffers |
+| **quick** (default; 76 tests, ~8 s) | `pnpm test:unit packages/mesoscale`                                                                                                                         | **Validation:** every rule, on broken documents. **Units and imports:** counts from concentrations and densities; the cellPACKgpu import (both count rules, the surface unit). **Provenance:** traces. **Determinism:** the same placements from the same document. **Edits:** a color edit is 0 resolver runs with the same placement objects; a density edit is 1 run, the right one. **Scene:** an unmet constraint with its reason; procedural copies avoid the picks; frames carry the picks from voxels to world Å; membrane orientation; 36 B a copy. **Runtime:** dispatch by arrangement; nesting, lattices, fibers, bilayers; the yeast document's issues; a toy resolver plugged in. **Mol\* side:** the paired example files are current; the MVS export validates; STAR rotations match Mol\*'s; the particle list shares the IR's buffers |
 | **integration** (medium)            | `pnpm test:medium packages/mesoscale`; with GL: `pnpm native:install` once, then `NODE_PATH=.cache/native/node_modules pnpm test:medium packages/mesoscale` | the real Prism viewer, headless, with prism-me's spec: lists hold the IR's buffers; a color edit replaces no list or representation object; a density edit replaces only the rerun model's list. With `gl`: the scene draws, and a color edit changes pixels without a new list. Without `gl`, the GL test is skipped, not failed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **performance** (heavy, opt-in)     | `pnpm test:heavy packages/mesoscale` (`MESO_PERF_OUT=<file>` writes the numbers as JSON)                                                                    | packing scales linearly (16× copies, under 3× the time per copy); 1M lipids are allocated once, exactly; on 1M copies, view edits, cached compiles and commit plans are N-independent; adapter commit, first image and color edit at 50k and 1M; MVS bytes a copy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
@@ -694,16 +904,28 @@ exposed the adapter's `excludeFibers` bug (§11).
   - in the browser.
 - **Assumptions as evidence.** The cellPACKgpu ambiguities became visible, citable data instead of hidden defaults.
 - **Issues with requested, achieved and a reason.** The UI explains a shortfall without knowing the resolver.
+- **(v0.2) The same keyed runtime carried superstructures, relations and refine stages** without a new mechanism: a
+  superstructure is a sub-document resolved with the same cache, a relation is resolver input, a refine stage is a model
+  whose key includes its upstream's.
+- **(v0.2) Runs as the materialized address.** Every address the examples use is one run a population, which keeps view
+  edits O(types) after one scan a set.
 
 **Gaps the prototypes exposed:**
 
 | Gap                                                                         | Layer                | Note                                                                                                          |
 | --------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------- |
-| A helical lattice on a tube (microtubules, 13 protofilaments)               | language             | `fiber` is one copy per rise                                                                                  |
+| A helical lattice on a tube (microtubules, 13 protofilaments)               | language             | `fiber` is one copy per rise; MesoCraft's Symmetry Assembly is the model                                      |
+| Distributions for arrangement parameters (MesoCraft's uniform, Gaussian)    | language             | numbers only today                                                                                            |
+| Skeletons that are not compartments; paths between two addresses            | language             | MesoCraft's skeletons and Connection rule (§3.12)                                                             |
+| `branches` and `contacts` relations                                         | resolver             | reported as not reconciled; no resolver grows branches or simulates beads                                     |
+| Superstructure detail per view (LOD)                                        | language / adapter   | `detail` is per population; "depending on context" suggests the view chooses                                  |
+| Partial looks (copy runs)                                                   | adapter              | Prism layers select whole targets (renderer R8)                                                               |
+| Nested instancing                                                           | renderer             | the adapter expands instances × template (renderer R7)                                                        |
+| `meso.relax` rebuilds sets type by type                                     | resolver             | a refined fiber's CSR would need remapping; the prototype refines packings only                               |
 | Catalogs                                                                    | runtime              | not expanded (§3.6)                                                                                           |
 | Segmentation surface extraction                                             | resolver             | prototype takes meshes only                                                                                   |
-| Mesh inside test is O(triangles)                                            | resolver             | needs a signed distance grid, as mesobuild's `engine/geometry.py` has                                         |
-| Random sequential addition stops at a give-up heuristic                     | resolver             | 354/506 catalase; relaxation (mesobuild `engine/relax.py`) would place more                                   |
+| Mesh inside test is O(triangles)                                            | resolver             | (v0.2) signed distance grids for the relax stage; the packer still uses the exact test                        |
+| Random sequential addition stops at a give-up heuristic                     | resolver             | (v0.2) answered by composition: a `meso.relax` stage reaches 506/506 (§6.7)                                   |
 | `min-distance` constraints and relations are reported, not honoured         | resolver             |                                                                                                               |
 | Representations beyond spheres, clipping, drawn annotations                 | adapter / view state |                                                                                                               |
 | The camera snapshot needs the scene radius                                  | adapter              | fixed: a radius left from a smaller scene clipped the front of a larger one                                   |
@@ -717,8 +939,8 @@ exposed the adapter's `excludeFibers` bug (§11).
 **Open decisions for David:**
 
 1. **Placement frames.** The prototype bakes every placement set into the world frame at resolution, and `frame` nodes
-   record the matrices. For 10⁷-copy precomputed sets, an adapter-side transform would avoid a pass. Bake, or carry
-   frames to the renderer?
+   record the matrices. (v0.2) Superstructure instances already carry their frames to the renderer (§3.9). Bake plain
+   sets, or carry every frame?
 2. **Catalogs.** Runtime expansion into populations, or a resolver input?
 3. **Derived results as resources.** Store a resolution as a `placements` resource with `derivedFrom: {model, key}`, so
    an expensive procedural result (cellPACKgpu on a GPU) can be shipped and replayed?
@@ -729,6 +951,15 @@ exposed the adapter's `excludeFibers` bug (§11).
    or whole documents with `classifyEdit`, as the prototype does?
 7. **Schema.** JSON Schema or OpenAPI published (as MolViewSpec), or reference tables generated from the types (as
    SeqViewSpec)?
+8. **(v0.2) Detail per view.** Is `parts` vs `entity` a population's property (now) or a view's (David's "depending on
+   context")? A view-level choice needs both levels resolved, or resolution on demand.
+9. **(v0.2) Derived products.** Should a document declare derived products (a simulated tilt series of the model, for
+   training data, Ludo's twin) as activities whose outputs are resources, so the model and its synthetic data share one
+   provenance graph?
+10. **(v0.2) MesoQL storage.** The canonical S-expression string (now) or a JSON tree with full names (SeqQL)?
+11. **(v0.2) Authoring by agents and by hand.** Painting (cellPAINT-style strokes) and agent edits as `activities` with
+    an `agent`, their result a precomputed model: is that enough to keep hand-made placements inspectable and
+    replayable?
 
 ## 12. Packaging
 
@@ -800,7 +1031,18 @@ exposed the adapter's `excludeFibers` bug (§11).
   - **No license is stated:** only a description is used, and no data or text is copied.
   - **The two sources disagree** on the instance count: 25.2 M on the viewer page, 21.6 M in `MODEL.md`.
 
-**Missing:**
+**Found after the first draft:**
+
+- **Ivan's paper: MesoCraft.** D. Jia, A. Kouyoumdjian, O. Strnad, U. Smajdek, C. Bohak, D. Bayraktar, A. Esparza, P.
+  Mindek, T. Klein, S. T. Arold, I. Viola. _MesoCraft: a web-based tool for interactive procedural modeling of mesoscale
+  biological structures._ arXiv 2610.37954, https://arxiv.org/html/2610.37954v1. Mapped in §3.12. Its rule framework
+  extends Nguyen et al. 2021 (_Modeling in the time of COVID-19: statistical and rule-based mesoscale models_, IEEE TVCG
+  27(2)).
+- **Ludo's NIH research strategy** (`~/Documents/MIRA/02_Research_Strategy/03_Research_Strategy_DRAFT_v17.md`): the
+  bidirectional coupling of mesoscale models and cryo-ET (synthetic tomograms from lab-built models as training data),
+  the motivation for open decision 9.
+
+**Was missing in the first draft:**
 
 - **Ivan's paper: not found.**
   - Not among the local PDFs. The Obsidian vault was unreachable (its local API refused connections).

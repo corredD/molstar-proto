@@ -17,14 +17,16 @@ from outside it.
 
 ## Priorities
 
-| #   | Finding                                                                                             | Layer                        | Status                      | Impact on mesoscale workflows                                           | Priority                  |
-| --- | --------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------------- | ----------------------------------------------------------------------- | ------------------------- |
-| R1  | A per-type color or visibility edit costs O(copies)                                                 | renderer (looks / overpaint) | confirmed                   | recoloring, hiding a population, look animation on 10⁶–10⁷ copies       | **P1**                    |
-| R3  | Memory per copy beyond the IR is not measured reliably (21–87 B a copy by the JS heap; GPU unknown) | renderer (measurement)       | observed; a measurement gap | sets the ceiling on scene size                                          | P2 (measure first)        |
-| R4  | Sub-pixel copies alias into moiré                                                                   | renderer (impostors, LOD)    | observed                    | whole-cell and membrane views, where most copies are under a pixel      | P2                        |
-| R2  | A radius and a key are required per copy                                                            | renderer / model API         | confirmed                   | 8 B a copy, an O(N) pass at load                                        | P2                        |
-| R5  | One list and representation per placement set                                                       | renderer / plugin            | hypothesis, untested        | tiled scenes (the yeast cell's 6,416 tiles) would be thousands of lists | P3                        |
-| R6  | In-memory data enter the state only through a side store                                            | plugin API                   | confirmed                   | sessions holding generated data cannot be saved or restored             | P2 (plugin, not renderer) |
+| #   | Finding                                                                                             | Layer                        | Status                      | Impact on mesoscale workflows                                                            | Priority                  |
+| --- | --------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------------- | ---------------------------------------------------------------------------------------- | ------------------------- |
+| R1  | A per-type color or visibility edit costs O(copies)                                                 | renderer (looks / overpaint) | confirmed                   | recoloring, hiding a population, look animation on 10⁶–10⁷ copies                        | **P1**                    |
+| R3  | Memory per copy beyond the IR is not measured reliably (21–87 B a copy by the JS heap; GPU unknown) | renderer (measurement)       | observed; a measurement gap | sets the ceiling on scene size                                                           | P2 (measure first)        |
+| R4  | Sub-pixel copies alias into moiré                                                                   | renderer (impostors, LOD)    | observed                    | whole-cell and membrane views, where most copies are under a pixel                       | P2                        |
+| R2  | A radius and a key are required per copy                                                            | renderer / model API         | confirmed                   | 8 B a copy, an O(N) pass at load                                                         | P2                        |
+| R5  | One list and representation per placement set                                                       | renderer / plugin            | hypothesis, untested        | tiled scenes (the yeast cell's 6,416 tiles) would be thousands of lists                  | P3                        |
+| R6  | In-memory data enter the state only through a side store                                            | plugin API                   | confirmed                   | sessions holding generated data cannot be saved or restored                              | P2 (plugin, not renderer) |
+| R7  | (v0.2) No nested instancing: a particle list cannot target another list                             | renderer / model API         | confirmed                   | every superstructure (granules, virions, pores) is expanded instances × template         | **P1**                    |
+| R8  | (v0.2) Looks select whole targets: no layer for a range of copies                                   | Prism layers / renderer      | confirmed                   | an address that picks some copies (one granule, copies near the picks) cannot be colored | P2                        |
 
 ## R1. A per-type look edit costs O(copies) — confirmed
 
@@ -201,6 +203,47 @@ recompute from a document) that a transform can reference.
 
 - Saveable sessions of generated scenes.
 - A clean place for a future `particle list` node in MolViewSpec.
+
+## R7. No nested instancing — confirmed (v0.2)
+
+**Use case.** A superstructure placed many times: insulin granules in a β-cell, virions in plasma, nuclear pores in an
+envelope. The format keeps it once (its template sets) and its copies as poses (design.md §3.9).
+
+**Observed.** `ParticleList.targetMapping` maps a target to a structure, a shape or a volume
+(`packages/model/src/model/particles/particle-list.ts`, `ParticleTarget`), not to another particle list. So the adapter
+expands every instance × template into world-frame copies (`flattenInstances`, `runtime/instancing.ts`), cached by key.
+
+| Scene                                                                | Template     | Instances | Expanded copies | Expanded | Held by the IR |
+| -------------------------------------------------------------------- | ------------ | --------- | --------------- | -------- | -------------- |
+| β-cell slice (Storybook _Superstructures and addresses › Beta cell_) | 2,229 copies | 120       | 267,480         | 9.2 MB   | 83 kB          |
+
+The expansion grows as instances × template. The full ISG recipe asks for 2,138,813 copies a granule (its `nbMol`
+summed), so even 100 full granules would be over 2 × 10⁸ copies expanded: out of reach this way, while the IR would hold
+one template and 100 poses.
+
+**Reproduce.** The story above, or `_test/superstructure.test.ts` ("flattened for a renderer without nested
+instancing").
+
+**Recommendation.** A particle target that is itself a particle list (with its own targets): the instance transform
+composed on the GPU with the template's per-copy transforms, two levels at least. Looks on template targets then apply
+to every instance at once, as they already do in the IR.
+
+**What it enables.** Whole-cell scenes with organelle-scale reuse at template memory, not product memory; a level of
+detail per superstructure (one body far away, parts near).
+
+## R8. Looks select whole targets only — confirmed (v0.2)
+
+**Use case.** A look on an address that picks some copies of a population: one granule's Vamp2, the copies within 15 nm
+of the picked catalase, a selection made by a click.
+
+**Observed.** Prism's layer selector is `{entities, compartments, targets}` (`ParticleLookSelector`,
+`packages/prism/viewer/src/sources/particles/look.ts`). MesoQL materializes such an address as runs of copy indices; the
+adapter cannot pass them on and reports `look.partial` (the exosome's _Near the picked catalase_ view).
+
+**Recommendation.** A layer selector that takes copy-index runs (the MesoLoci form), applied after the target layers.
+Runs keep it compact: an address over a population is one run.
+
+**What it enables.** Every MesoQL address drawable as a look; selections and annotations drawn on the copies they name.
 
 ## Not renderer findings
 
