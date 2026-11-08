@@ -78,7 +78,10 @@ function syntheticPatch(): LipidPatch {
   return parsePatchPdb(lines.join('\n'), { box: [24 * 8, 28 * 8 * 0.866] });
 }
 
-/** Tile sets by patch, leaflet and kinds: baked once (the slow part, seconds for a CHARMM-GUI patch) */
+/**
+ * Tile sets by patch, leaflet and kinds: baked once, on the main thread (CHARMM-GUI's step4 patch, both leaflets: 5 s
+ * at 16 variants, 42 s at 128 on the M1; the worker is a TODO)
+ */
 const tileSets = new Map<string, TileSet>();
 
 function getTileSet(patch: string, leaflet: 'outer' | 'inner', edge: number, kinds: TileKinds) {
