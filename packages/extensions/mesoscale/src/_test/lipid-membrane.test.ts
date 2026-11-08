@@ -114,6 +114,12 @@ describe('lipid membrane', () => {
     expect(suitedVariants(200)).toBe(2);
   });
 
+  it('says a mesh too small for lipids: scale it first (a cow in cm is 12 Å long)', () => {
+    const positions = new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]);
+    const indices = new Uint32Array([0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]);
+    expect(buildMembrane({ mesh: { positions, indices } }, 'test-patch', 0, 'both', kinds)).toMatch(/scale it/);
+  });
+
   it('says an unknown patch', () => {
     expect(buildMembrane({ radius: 400 }, 'nope', 80, 'both', kinds)).toMatch(/No lipid patch/);
   });

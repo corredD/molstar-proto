@@ -148,6 +148,12 @@ export function buildMembrane(
   kinds: TileKinds,
 ): MembraneData | string {
   let base: TriMesh;
+  if (surface.mesh) {
+    const size = boundsDiagonal(surface.mesh.positions);
+    if (size < 4 * MinTileEdge) {
+      return `The mesh is ${size.toFixed(1)} Å across, too small for lipids (tiles of ${MinTileEdge} Å or more): scale it first (a mesh in cm or nm wants ×100 or ×10).`;
+    }
+  }
   if (!(edge > 0)) edge = suitedEdge(surface);
   if (surface.mesh) base = isotropicRemesh(surface.mesh, edge);
   else {
@@ -180,19 +186,7 @@ export const MinTileEdge = 40;
  * keeps its shape only at the smallest
  */
 export function suitedEdge(surface: { readonly mesh?: TriMesh; readonly radius?: number }) {
-  let diagonal = 2 * Math.sqrt(3) * (surface.radius ?? 500);
-  if (surface.mesh) {
-    const p = surface.mesh.positions;
-    const lo = [Infinity, Infinity, Infinity];
-    const hi = [-Infinity, -Infinity, -Infinity];
-    for (let i = 0; i < p.length; i += 3) {
-      for (let k = 0; k < 3; ++k) {
-        lo[k] = Math.min(lo[k], p[i + k]);
-        hi[k] = Math.max(hi[k], p[i + k]);
-      }
-    }
-    diagonal = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
-  }
+  const diagonal = surface.mesh ? boundsDiagonal(surface.mesh.positions) : 2 * Math.sqrt(3) * (surface.radius ?? 500);
   return Math.round(Math.min(200, Math.max(MinTileEdge, diagonal / 30)));
 }
 
@@ -203,6 +197,19 @@ export function suitedEdge(surface: { readonly mesh?: TriMesh; readonly radius?:
  */
 export function suitedVariants(edge: number) {
   return Math.max(2, Math.min(8, Math.round(8 * (60 / edge) ** 2)));
+}
+
+/** The diagonal of the positions' bounding box, Å */
+function boundsDiagonal(p: Float32Array) {
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < p.length; i += 3) {
+    for (let k = 0; k < 3; ++k) {
+      lo[k] = Math.min(lo[k], p[i + k]);
+      hi[k] = Math.max(hi[k], p[i + k]);
+    }
+  }
+  return p.length ? Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) : 0;
 }
 
 function boundingSphereOf(p: Float32Array, out: Sphere3D) {
