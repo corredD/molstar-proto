@@ -57,6 +57,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 `v5` branch).
 
 - Periodic volume slices drawn half a box away (`5affa6d17`).
+- cellPACK fibres drawn as tubes when their points have a target (lane `fibers-targeted`, made on a prism-me lane:
+  master has the same `hasUntargeted` guard in `complexVisuals`; port when Ludo says).
 - Plane slice sized in voxels used as Å (`ea7dc5d3e`).
 - Gizmo: `rotate` axes option, `poseOfFrame`/`frameOfPose` (`ded144e8d`).
 - Grid slice image 3× faster, pixels identical (`me/fast-slice` from master: `3c92cb7ff`..`ad8665a13`; in prism-me by
@@ -85,6 +87,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   prism-me in commits that name no extension: `dac4930de`, `78c0b8514`, `43de664ef`).
 
 ## Backlog
+
+- **Fibre points drawn twice** (lane `fibers-targeted`, 2026-11-08; to decide): a cellPACK fibre's points keep their
+  one-atom target under the new tubes (the yeast slab: 2.3M extra instances). Leave fibre points untargeted in the
+  reader (lighter, tubes only), or keep both (a cellPACK fibre whose points carry an ingredient)?
 
 - **Automatic transfer-function preset** (Ludo, 2026-11-03; to decide): "a great preset automatically" for a direct
   volume, an Auto entry in the transfer editor's Presets. Pointer: Barthel, "Automatic Generation of Volumetric Transfer
