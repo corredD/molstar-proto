@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -54,7 +54,30 @@ describe('lipid membrane', () => {
     // a 1,000 × 120 × 120 Å box: at the old fixed 200 Å edge it remeshed to a few chords inside the body
     const [X, Y] = [500, 60];
     const positions = new Float32Array([
-      -X, -Y, -Y, X, -Y, -Y, X, Y, -Y, -X, Y, -Y, -X, -Y, Y, X, -Y, Y, X, Y, Y, -X, Y, Y,
+      -X,
+      -Y,
+      -Y,
+      X,
+      -Y,
+      -Y,
+      X,
+      Y,
+      -Y,
+      -X,
+      Y,
+      -Y,
+      -X,
+      -Y,
+      Y,
+      X,
+      -Y,
+      Y,
+      X,
+      Y,
+      Y,
+      -X,
+      Y,
+      Y,
     ]);
     const indices = new Uint32Array([
       0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
@@ -114,6 +137,22 @@ describe('lipid membrane', () => {
     expect(cells[0].obj!.data.repr.renderObjects.length).toBe(0);
     expectOk(await v.api.history.undo({}));
     expect([...v.plugin.state.data.cells.values()].some((c) => c.transform.transformer === LipidMembrane)).toBe(false);
+  });
+
+  it('fetches a patch by its URL on the first wrap only (the app ships CHARMM-GUI’s as a static file)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const text = syntheticPatchPdb().text;
+    const fetch = vi.fn(async () => new Response(text));
+    vi.stubGlobal('fetch', fetch);
+    const wrap = () =>
+      v.api.mesoscale!.wrapMembrane({ radius: 300, edge: 80, patch: 'url-patch', patchUrl: 'patch.dat' });
+    expectOk(await wrap());
+    expectOk(await wrap());
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('fails, adding nothing, when its transform fails (an unknown patch, a ref that is not a mesh)', async () => {

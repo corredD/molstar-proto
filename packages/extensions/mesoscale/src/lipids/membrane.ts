@@ -45,6 +45,11 @@ export function registerLipidPatch(name: string, pdb: string) {
   for (const k of tileSets.keys()) if (k.startsWith(`${name}|`)) tileSets.delete(k);
 }
 
+/** Whether a patch is known by `name` (registered, or `synthetic`) */
+export function hasLipidPatch(name: string) {
+  return name === 'synthetic' || patches.has(name);
+}
+
 function getPatch(name: string) {
   let p = patches.get(name) ?? (name === 'synthetic' ? syntheticPatch : undefined);
   if (typeof p === 'function') {

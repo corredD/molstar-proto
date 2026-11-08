@@ -6,6 +6,8 @@
 
 import './favicon.ico';
 import './index.html';
+// CHARMM-GUI's bilayer patch (heavy atoms), copied beside the page and fetched on the first Wrap with lipids (menu.ts)
+import './lipid-patch-charmm-gui.dat';
 import { setDebugMode, setTimingMode } from '@molstar/core/util/debug';
 import { LoadUrlParameters, parseSearch, runUrlLoads } from '@molstar/prism-viewer/features/loaders';
 import { createPrismViewer } from '@molstar/prism-viewer/page';

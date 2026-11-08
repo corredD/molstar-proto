@@ -28,7 +28,13 @@ import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { cssColor, matchColors, parseColorFile } from './color-file.js';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
-import { canDrawLipidMembranes, LipidMembrane, LipidMembraneParams, registerLipidPatch } from './lipids/membrane.js';
+import {
+  canDrawLipidMembranes,
+  LipidMembrane,
+  LipidMembraneParams,
+  hasLipidPatch,
+  registerLipidPatch,
+} from './lipids/membrane.js';
 import {
   findGroup,
   generateColors,
@@ -226,6 +232,10 @@ export class MesoscaleApi extends ApiArea {
       ),
       patch: PD.Text('synthetic', { description: 'The lipid patch by name: synthetic, or the name of `patchPdb`' }),
       patchPdb: PD.Text('', { description: "A bilayer patch's PDB text (CHARMM-GUI's), registered under `patch`" }),
+      patchUrl: PD.Text('', {
+        description:
+          "A bilayer patch's PDB by URL, fetched once and registered under `patch` (the app's CHARMM-GUI patch)",
+      }),
       edge: PD.Numeric(
         0,
         { min: 0, max: 400, step: 10 },
@@ -237,8 +247,15 @@ export class MesoscaleApi extends ApiArea {
         ['inner', 'Inner'],
       ] as const),
     },
-    async run({ mesh, compartment, particles, radius, patch, patchPdb, edge, leaflets }, ctx) {
+    async run({ mesh, compartment, particles, radius, patch, patchPdb, patchUrl, edge, leaflets }, ctx) {
       if (patchPdb) registerLipidPatch(patch, patchPdb);
+      else if (patchUrl && !hasLipidPatch(patch)) {
+        // a static file, fetched on the first wrap (never in the start bundle)
+        const response = await fetch(patchUrl);
+        if (!response.ok)
+          return ApiResult.fail('failed', `The lipid patch ${patchUrl} did not load (${response.status}).`);
+        registerLipidPatch(patch, await response.text());
+      }
       let center = Vec3.zero();
       let r = radius || 500;
       if (compartment) {

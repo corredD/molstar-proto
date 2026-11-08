@@ -530,6 +530,9 @@ function isMembrane(area: ExplorerApi, picked: PickedNode) {
   return picked.kind === 'mesh' && area.objectsState().value.some((o) => o.ref === picked.node.ref && o.membrane);
 }
 
+/** The app's lipid patch: CHARMM-GUI's step4 bilayer, heavy atoms (src/lipid-patch-charmm-gui.dat, copied by the build) */
+const LipidPatchFile = 'lipid-patch-charmm-gui.dat';
+
 /**
  * Wrap with lipids (lane lipid-tiles, `mesoscale.wrapMembrane`): a mesh, or a compartment of a model grouped by
  * compartment (a sphere fitted to its particles). One step; WebGPU draws it.
@@ -542,7 +545,10 @@ function wrapItems(
 ): ContextMenuItem[] {
   if (!api.describe('mesoscale.wrapMembrane')) return [];
   const { node, kind } = picked;
-  const wrap = (values: Record<string, unknown>) => () => void api.run('mesoscale.wrapMembrane', values);
+  // CHARMM-GUI's patch (14 species), a static file beside the page (index.ts), fetched on the first wrap
+  const patch = { patch: 'charmm-gui', patchUrl: new URL(LipidPatchFile, document.baseURI).href };
+  const wrap = (values: Record<string, unknown>) => () =>
+    void api.run('mesoscale.wrapMembrane', { ...patch, ...values });
   if (kind === 'mesh') {
     // a membrane is not wrapped again
     if (isMembrane(area, picked)) return [];
