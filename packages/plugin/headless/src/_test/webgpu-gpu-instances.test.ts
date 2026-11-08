@@ -139,6 +139,16 @@ describe.skipIf(!WebGPU.module)('GPU-written instances of merged render objects'
       // culled on the CPU: the identity region of the compacted transforms
       const [cpuReference, cpuWritten] = [await frame(scenes[0], false), await frame(scenes[1], false)];
       expect(cpuWritten).toEqual(cpuReference);
+      // the writer member's CPU transforms written again (a member update, `syncMembers`): its rows written again after
+      const calls = written[1].calls();
+      const member = written[1].object.values;
+      ValueCell.update(member.aTransform, new Float32Array(member.aTransform.ref.value.length));
+      scenes[1].update(void 0, false);
+      scenes[1].commit();
+      for (let i = 0; i < 4; ++i) await frame(scenes[1], true);
+      expect(written[1].calls()).toBeGreaterThan(calls);
+      expect(await frame(scenes[1], true)).toEqual(gpuReference);
+      expect(await frame(scenes[1], false)).toEqual(cpuReference);
       expect(graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       plugin.dispose();
