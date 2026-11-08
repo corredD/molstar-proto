@@ -303,6 +303,8 @@ export class MesoscaleApi extends ApiArea {
           `No lipid membrane was made: ${error ?? cell?.errorText ?? 'its cell was not made'}`,
         );
       }
+      // the mesh hidden under its membrane, as cellPACKgpu shows it (its eye shows it again)
+      if (mesh) ctx.plugin.state.data.updateCellState(mesh, { isHidden: true });
       const drawn = canDrawLipidMembranes(ctx.plugin);
       return ApiResult.ok(
         `Wrapped ${mesh ? 'the mesh' : compartment || `a sphere of ${Math.round(r)} Å`} with lipids${drawn ? '' : ' (not drawn: WebGPU only)'}.`,

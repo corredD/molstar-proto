@@ -398,6 +398,8 @@ describe('explorer', () => {
     const made = v.plugin.state.data.cells.get(r.changed!.nodes![0])!;
     expect(made.status).toBe('ok');
     expect(made.obj!.description).toMatch(/[1-9][\d,]* lipids/);
+    // the mesh hidden under its membrane, as cellPACKgpu shows it (Ludo's first try, 2026-11-08)
+    expect(v.plugin.state.data.cells.get(mesh.ref)!.state.isHidden).toBe(true);
     // a row of its own (review M3), whose menu does not wrap it again
     const membrane = area.objectsState().value.find((o) => o.ref === made.transform.ref);
     expect(membrane).toMatchObject({ kind: 'mesh', label: 'Lipid membrane' });
