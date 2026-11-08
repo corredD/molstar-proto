@@ -58,6 +58,9 @@ export interface PackInput {
 
 export const DefaultPackParams = { attempts: 30, giveUp: 25 };
 
+/** Points drawn from a compartment's bounds to find one in its free space (a geometry miss is not a try). */
+const GeometrySamples = 64;
+
 /** The compartments a set of items touches: theirs, their parents and children (for exclusion). */
 export function packCompartments(job: ResolveJob, ids: Iterable<Id>): Record<Id, PackCompartment> {
   const out: Record<Id, PackCompartment> = {};
@@ -209,21 +212,28 @@ export function pack(input: PackInput, job: ResolveJob, model: string, key: stri
     const tryOnce = (): boolean => {
       switch (it.location) {
         case 'interior': {
-          const x = rand.range(s.min[0], s.max[0]), y = rand.range(s.min[1], s.max[1]), z = rand.range(s.min[2], s.max[2]);
-          if (!s.contains(x, y, z, it.radius + half) || !outsideChildren(comp, x, y, z)) return false;
-          [p[0], p[1], p[2]] = [x, y, z];
-          randomQuat(rand, q);
-          return true;
+          // a point in the free space: rejection from the bounds, not counted as a try (only overlaps are)
+          for (let g = 0; g < GeometrySamples; g++) {
+            const x = rand.range(s.min[0], s.max[0]), y = rand.range(s.min[1], s.max[1]), z = rand.range(s.min[2], s.max[2]);
+            if (!s.contains(x, y, z, it.radius + half) || !outsideChildren(comp, x, y, z)) continue;
+            [p[0], p[1], p[2]] = [x, y, z];
+            randomQuat(rand, q);
+            return true;
+          }
+          return false;
         }
         case 'exterior': {
           const ps = parent;
           const pc = comp.parent ? input.compartments[comp.parent] : undefined;
           if (!ps || !pc) return false;
-          const x = rand.range(ps.min[0], ps.max[0]), y = rand.range(ps.min[1], ps.max[1]), z = rand.range(ps.min[2], ps.max[2]);
-          if (!ps.contains(x, y, z, it.radius + pc.thickness / 2) || !outsideChildren(pc, x, y, z)) return false;
-          [p[0], p[1], p[2]] = [x, y, z];
-          randomQuat(rand, q);
-          return true;
+          for (let g = 0; g < GeometrySamples; g++) {
+            const x = rand.range(ps.min[0], ps.max[0]), y = rand.range(ps.min[1], ps.max[1]), z = rand.range(ps.min[2], ps.max[2]);
+            if (!ps.contains(x, y, z, it.radius + pc.thickness / 2) || !outsideChildren(pc, x, y, z)) continue;
+            [p[0], p[1], p[2]] = [x, y, z];
+            randomQuat(rand, q);
+            return true;
+          }
+          return false;
         }
         default: {
           s.sampleSurface(rand, p, n);
@@ -247,7 +257,7 @@ export function pack(input: PackInput, job: ResolveJob, model: string, key: stri
     while (placed < it.requested && failures < input.giveUp) {
       let ok = false;
       for (let a = 0; a < input.attempts && !ok; a++) {
-        if (!tryOnce()) continue;
+        if (!tryOnce()) break;
         if (grid.overlaps(p[0], p[1], p[2], it.radius)) continue;
         ok = true;
       }

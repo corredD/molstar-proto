@@ -1,0 +1,178 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+import { describe, expect, it } from 'vitest';
+import { exosomeDoc } from '../examples/exosome.js';
+import { placementSets } from '../ir/ir.js';
+import { contentHash } from '../ir/hash.js';
+import { BytesPerPlacement, placementBytes, rotateVec } from '../ir/placements.js';
+import { planCommit } from '../runtime/adapter.js';
+import { classifyEdit, compile, updateView } from '../runtime/runtime.js';
+import { DefaultResolvers } from '../resolvers/index.js';
+import type { Resolver } from '../runtime/resolver.js';
+import { compileExosome, countingResolvers, editPopulation, exosomeOptions, recolor } from './helpers.js';
+
+// The runtime's contracts (design.md §6–7) on the thin slice's document: deterministic results, a color edit that
+// resolves nothing and keeps every placement object, a density edit that reruns exactly the model it touches, an unmet
+// constraint explained, failures reported where they happen.
+
+describe('runtime', () => {
+  it('is deterministic: the same document, the same placements', async () => {
+    const a = await compileExosome(exosomeDoc());
+    const b = await compileExosome(exosomeDoc());
+    const digest = (r: typeof a) => placementSets(r.ir!).map((s) => contentHash([s.positions, s.rotations, s.types]));
+    expect(digest(a)).toEqual(digest(b));
+    expect(a.stats.resolverRuns).toBe(3);
+  });
+
+  it('a color edit is a view edit: no resolver runs, the same placement objects', async () => {
+    const counting = countingResolvers();
+    const cache = new Map();
+    const before = await compile(exosomeDoc(), exosomeOptions({ resolvers: counting.resolvers, cache }));
+    expect(counting.total()).toBe(3);
+    const edited = recolor(exosomeDoc(), 'p.miRNA', '#00ff00');
+    expect(classifyEdit(exosomeDoc(), edited)).toBe('view');
+
+    // the fast path: no compile at all
+    const ir = updateView(edited, before.ir!);
+    expect(ir.root).toBe(before.ir!.root);
+    const look = ir.view.looks.find((l) => placementSets(ir).find((s) => s.key === l.set)?.typeTable[l.types[0]].population === 'p.miRNA');
+    expect(look?.color).toBe(0x00ff00);
+
+    // the full path, with the session's cache: every model a cache hit, every set the same object
+    const after = await compile(edited, exosomeOptions({ resolvers: counting.resolvers, cache }));
+    expect(counting.total()).toBe(3);
+    expect(after.stats).toMatchObject({ resolverRuns: 0, cacheHits: 3 });
+    const sb = placementSets(before.ir!), sa = placementSets(after.ir!);
+    sa.forEach((s, i) => expect(s).toBe(sb[i]));
+    const plan = planCommit(before.ir, ir);
+    expect(plan).toMatchObject({ add: [], remove: [], looksChanged: true });
+    expect(plan.keep.length).toBe(3);
+  });
+
+  it('a density edit reruns the model it touches, and only that one', async () => {
+    const counting = countingResolvers();
+    const cache = new Map();
+    const before = await compile(exosomeDoc(), exosomeOptions({ resolvers: counting.resolvers, cache }));
+    const edited = editPopulation(exosomeDoc(), 'p.miRNA', (p) => ({ ...p, abundance: { concentration: { value: 0.0008, unit: 'M' } } }));
+    expect(classifyEdit(exosomeDoc(), edited)).toBe('model');
+    const after = await compile(edited, exosomeOptions({ resolvers: counting.resolvers, cache }));
+    expect(after.stats).toMatchObject({ resolverRuns: 1, cacheHits: 2 });
+    expect(counting.calls.get('cellpack-gpu')).toBe(2);
+    expect(after.counts['p.miRNA'].requested).toBe(2 * before.counts['p.miRNA'].requested!);
+    const plan = planCommit(before.ir, after.ir!);
+    expect(plan.add.map((s) => s.model)).toEqual(['m.recipe']);
+    expect(plan.remove.length).toBe(1);
+    expect(plan.keep.length).toBe(2);
+  });
+
+  it('an unmet constraint says what was asked, what came out and why', async () => {
+    const r = await compileExosome(exosomeDoc());
+    const unmet = r.issues.filter((i) => i.code === 'constraint.unmet');
+    expect(unmet.map((i) => i.ids?.[0])).toEqual(['p.catalase']);
+    const c = unmet[0].constraint!;
+    expect(c.requested).toBe(506);
+    expect(c.achieved).toBeLessThan(506);
+    expect(c.achieved).toBeGreaterThan(200);
+    expect(c.reason).toMatch(/fit in the inside of exosome, now \d+% filled/);
+    // fewer asked: met
+    const fewer = await compileExosome(editPopulation(exosomeDoc(), 'p.catalase', (p) => ({ ...p, abundance: { count: 150 } })));
+    expect(fewer.issues.filter((i) => i.code === 'constraint.unmet')).toEqual([]);
+    // a looser constraint: met, at the same placements
+    const loose = await compileExosome(editPopulation(exosomeDoc(), 'p.catalase', (p) => ({ ...p, constraints: [{ kind: 'placed-fraction', min: 0.5 }] })));
+    expect(loose.issues.filter((i) => i.code === 'constraint.unmet')).toEqual([]);
+  });
+
+  it('procedural copies avoid the precomputed ones', async () => {
+    const r = await compileExosome(exosomeDoc());
+    const [picks, recipe] = ['m.picks', 'm.recipe'].map((m) => placementSets(r.ir!).find((s) => s.model === m)!);
+    let closest = Infinity;
+    for (let i = 0; i < recipe.count; i++)
+      for (let j = 0; j < picks.count; j++) {
+        const d = Math.hypot(...[0, 1, 2].map((k) => recipe.positions[3 * i + k] - picks.positions[3 * j + k]));
+        closest = Math.min(closest, d - recipe.typeTable[recipe.types[i]].radius - picks.typeTable[picks.types[j]].radius);
+      }
+    expect(closest).toBeGreaterThanOrEqual(-1e-3);
+  });
+
+  it('frames: picks in voxels end in the world frame in Å', async () => {
+    const r = await compileExosome(exosomeDoc());
+    const picks = placementSets(r.ir!).find((s) => s.model === 'm.picks')!;
+    expect(picks.count).toBe(24);
+    // within 30 nm of the vesicle centre, which the alignment puts at the origin
+    for (let i = 0; i < picks.count; i++) expect(Math.hypot(picks.positions[3 * i], picks.positions[3 * i + 1], picks.positions[3 * i + 2])).toBeLessThanOrEqual(300.5);
+  });
+
+  it('placement sets are 36 bytes a copy, exactly sized', async () => {
+    const r = await compileExosome(exosomeDoc());
+    for (const s of placementSets(r.ir!)) {
+      expect(placementBytes(s) - (s.fibers ? s.fibers.offsets.byteLength + s.fibers.indices.byteLength : 0)).toBe(s.count * BytesPerPlacement);
+      expect(s.positions.buffer.byteLength).toBe(s.count * 12);
+    }
+  });
+
+  it('membrane proteins point their axis along the normal', async () => {
+    const r = await compileExosome(exosomeDoc());
+    const s = placementSets(r.ir!).find((x) => x.model === 'm.recipe')!;
+    const rab = s.typeTable.find((t) => t.population === 'p.RAB5A')!;
+    // RAB5A's principal vector is -z: its rotation turns -z onto the outward normal, which for this near-sphere
+    // points away from the centre
+    const v = [0, 0, 0];
+    let agree = 0, n = 0;
+    for (let i = 0; i < s.count; i++) {
+      if (s.types[i] !== rab.index) continue;
+      rotateVec(v, s.rotations.subarray(4 * i, 4 * i + 4), 0, 0, -1);
+      const p = s.positions.subarray(3 * i, 3 * i + 3);
+      agree += v[0] * p[0] + v[1] * p[1] + v[2] * p[2] > 0 ? 1 : 0;
+      n++;
+    }
+    expect(n).toBeGreaterThan(100);
+    expect(agree / n).toBeGreaterThan(0.95);
+  });
+
+  it('an unavailable resource fails its model and the models that avoid it, and says so', async () => {
+    const r = await compile(exosomeDoc(), exosomeOptions({ load: (id) => (id === 'r.picks' ? undefined : exosomeOptions().load!(id)) }));
+    const by = (code: string) => r.issues.filter((i) => i.code === code).map((i) => i.ids?.[0]);
+    expect(by('resource.unavailable')).toEqual(['r.picks']);
+    expect(by('resolver.failed').sort()).toEqual(['m.picks', 'm.recipe']);
+    expect(placementSets(r.ir!).map((s) => s.model)).toEqual(['default:meso.bilayer']);
+  });
+
+  it('an unknown method is reported, the rest resolves', async () => {
+    const d = exosomeDoc();
+    const r = await compileExosome({ ...d, models: d.models!.map((m) => (m.id === 'm.picks' ? { ...m, method: 'nobody' } : m)) });
+    expect(r.issues.find((i) => i.code === 'resolver.unknown')?.ids).toContain('m.picks');
+  });
+
+  it('a new recipe kind plugs in as a resolver, without touching the format or the IR', async () => {
+    // a toy recipe kind: copies on a cubic grid inside the compartment's bounds
+    const Grid: Resolver<{ n: number; spacing: number; pops: string[] }> = {
+      id: 'toy.grid',
+      version: '1',
+      description: 'copies on a cubic grid',
+      arrangements: ['random'],
+      locations: ['interior'],
+      project: (job) => ({ n: job.populations[0].requested ?? 0, spacing: Number(job.model.params?.spacing ?? 100), pops: job.populations.map((p) => p.id) }),
+      resolve: (input, job) => {
+        const p = job.populations[0];
+        const positions = new Float32Array(input.n * 3);
+        for (let i = 0; i < input.n; i++) positions.set([(i % 5) * input.spacing, (Math.floor(i / 5) % 5) * input.spacing, Math.floor(i / 25) * input.spacing], 3 * i);
+        const rotations = new Float32Array(input.n * 4);
+        for (let i = 0; i < input.n; i++) rotations[4 * i + 3] = 1;
+        return {
+          sets: [{ key: '', model: job.model.id, frame: 'world', count: input.n, positions, rotations, types: new Int32Array(input.n), ordinals: Int32Array.from({ length: input.n }, (_, i) => i), typeTable: [{ index: 0, population: p.id, entity: p.entity.id, label: p.entity.label, compartment: p.compartment, radius: 10 }] }],
+          achieved: { [p.id]: input.n },
+        };
+      },
+    };
+    const d = exosomeDoc();
+    const doc = { ...d, models: [...d.models!.map((m) => (m.id === 'm.recipe' ? { ...m, populations: m.populations.filter((x) => x !== 'p.miRNA') } : m)), { id: 'm.grid', kind: 'procedural' as const, method: 'toy.grid', populations: ['p.miRNA'], params: { spacing: 50 } }] };
+    const r = await compile(doc, exosomeOptions({ resolvers: [...DefaultResolvers, Grid] }));
+    const s = placementSets(r.ir!).find((x) => x.model === 'm.grid')!;
+    expect(s.count).toBe(r.counts['p.miRNA'].requested);
+    expect(r.ir!.view.looks.some((l) => l.set === s.key)).toBe(true);
+  });
+});

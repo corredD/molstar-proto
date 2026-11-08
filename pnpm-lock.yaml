@@ -3013,6 +3013,68 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  packages/mesoscale/molstar:
+    dependencies:
+      '@molstar/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@molstar/meso-spec':
+        specifier: workspace:*
+        version: link:../spec
+      '@molstar/model':
+        specifier: workspace:*
+        version: link:../../model
+      '@molstar/mvs-builder':
+        specifier: workspace:*
+        version: link:../../mvs/builder
+      '@molstar/plugin':
+        specifier: workspace:*
+        version: link:../../plugin/core
+      '@molstar/prism-viewer':
+        specifier: workspace:*
+        version: link:../../prism/viewer
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      '@molstar/plugin-headless':
+        specifier: workspace:*
+        version: link:../../plugin/headless
+      '@molstar/prism-me-app':
+        specifier: workspace:*
+        version: link:../../../apps/prism-me
+      '@molstar/prism-ui':
+        specifier: workspace:*
+        version: link:../../prism/ui
+      '@storybook/web-components-vite':
+        specifier: 'catalog:'
+        version: 10.6.0(lit@3.3.3)(storybook@10.6.0(@types/react@18.3.31)(prettier@3.9.9)(react@18.3.1))(vite@8.3.1(@types/node@22.20.1)(esbuild@0.28.1)(sass-embedded@1.105.1)(sass@1.105.1)(yaml@2.9.1))
+      '@types/gl':
+        specifier: 'catalog:'
+        version: 6.0.5
+      '@types/node':
+        specifier: 22.20.1
+        version: 22.20.1
+      '@types/webxr':
+        specifier: 'catalog:'
+        version: 0.5.24
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
+  packages/mesoscale/spec:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   packages/model:
     dependencies:
       '@molstar/core':
