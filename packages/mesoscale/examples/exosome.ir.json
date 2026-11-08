@@ -1,920 +1,700 @@
 {
- "root": {
-  "ref": "scene",
-  "kind": "scene",
-  "params": {
-   "units": "A",
-   "title": "Exosome in plasma"
-  },
-  "children": [
-   {
-    "ref": "frame:f.model",
-    "kind": "frame",
-    "origin": [
-     "f.model"
-    ],
+  "root": {
+    "ref": "scene",
+    "kind": "scene",
     "params": {
-     "frame": "f.model",
-     "matrix": [
-      1,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1
-     ]
+      "units": "A",
+      "title": "Exosome in plasma"
     },
     "children": [
-     {
-      "ref": "medium",
-      "kind": "compartment",
-      "origin": [
-       "medium"
-      ],
-      "params": {
-       "compartment": "medium",
-       "shape": {
-        "kind": "box",
-        "center": [
-         0,
-         0,
-         0
-        ],
-        "size": [
-         1500,
-         1500,
-         1500
-        ]
-       },
-       "volume": 2918713172.0781584,
-       "area": 13500000
-      },
-      "children": [
-       {
-        "ref": "c.exosome",
-        "kind": "compartment",
-        "origin": [
-         "c.exosome"
-        ],
+      {
+        "ref": "frame:f.model",
+        "kind": "frame",
+        "origin": ["f.model"],
         "params": {
-         "compartment": "c.exosome",
-         "shape": {
-          "kind": "mesh",
-          "resource": "r.membrane-mesh",
-          "vertexCount": 162,
-          "triangleCount": 320
-         },
-         "volume": 456286827.92184144,
-         "area": 2881616.6031856504
+          "frame": "f.model",
+          "matrix": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
         },
         "children": [
-         {
-          "ref": "c.exosome/membrane",
-          "kind": "membrane",
-          "origin": [
-           "c.exosome"
-          ],
-          "params": {
-           "compartment": "c.exosome",
-           "thickness": 15
+          {
+            "ref": "medium",
+            "kind": "compartment",
+            "origin": ["medium"],
+            "params": {
+              "compartment": "medium",
+              "shape": {
+                "kind": "box",
+                "center": [0, 0, 0],
+                "size": [1500, 1500, 1500]
+              },
+              "volume": 2918713172.0781584,
+              "area": 13500000
+            },
+            "children": [
+              {
+                "ref": "c.exosome",
+                "kind": "compartment",
+                "origin": ["c.exosome"],
+                "params": {
+                  "compartment": "c.exosome",
+                  "shape": {
+                    "kind": "mesh",
+                    "resource": "r.membrane-mesh",
+                    "vertexCount": 162,
+                    "triangleCount": 320
+                  },
+                  "volume": 456286827.92184144,
+                  "area": 2881616.6031856504
+                },
+                "children": [
+                  {
+                    "ref": "c.exosome/membrane",
+                    "kind": "membrane",
+                    "origin": ["c.exosome"],
+                    "params": {
+                      "compartment": "c.exosome",
+                      "thickness": 15
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ref": "m.picks/resolve",
+            "kind": "resolve",
+            "origin": ["m.picks", "p.catalase.observed"],
+            "params": {
+              "model": "m.picks",
+              "resolver": "meso.precomputed",
+              "version": "0.1.0",
+              "key": "m.picks@cde3af8d53db8f44",
+              "input": {
+                "resources": [
+                  {
+                    "id": "r.picks",
+                    "format": "relion-star",
+                    "contentKey": "941694e4997102f5",
+                    "toWorld": [10, 0, 0, 0, 0, 10, 0, 0, 0, 0, 10, 0, -2000, -2000, -1000, 1]
+                  }
+                ],
+                "populations": "p.catalase.observed",
+                "types": [
+                  {
+                    "population": "p.catalase.observed",
+                    "entity": "e.catalase",
+                    "label": "catalase (catalse)",
+                    "compartment": "c.exosome",
+                    "radius": 40,
+                    "requested": 24
+                  }
+                ]
+              },
+              "cached": false
+            },
+            "children": [
+              {
+                "ref": "m.picks/placements/0",
+                "kind": "placements",
+                "origin": ["p.catalase.observed"],
+                "params": {
+                  "set": {
+                    "key": "m.picks@cde3af8d53db8f44#0",
+                    "model": "m.picks",
+                    "frame": "world",
+                    "count": 24,
+                    "bytes": 864,
+                    "types": [
+                      {
+                        "index": 0,
+                        "population": "p.catalase.observed",
+                        "entity": "e.catalase",
+                        "label": "catalase (catalse)",
+                        "compartment": "c.exosome",
+                        "radius": 40
+                      }
+                    ],
+                    "first": [119.4, 12.9, -47.2, -20.3, -156, 26.7]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "ref": "m.recipe/resolve",
+            "kind": "resolve",
+            "origin": [
+              "m.recipe",
+              "p.ALB",
+              "p.TF",
+              "p.CD63",
+              "p.CD9",
+              "p.ITG",
+              "p.RAB5A",
+              "p.HSPA8",
+              "p.ENO1",
+              "p.PPIA",
+              "p.YWHAZ",
+              "p.miRNA",
+              "p.ARNm",
+              "p.catalase"
+            ],
+            "params": {
+              "model": "m.recipe",
+              "resolver": "cellpack-gpu",
+              "version": "0.1.0",
+              "key": "m.recipe@876372d7e3c63d42",
+              "input": {
+                "recipe": "c6584b4b914d0f56",
+                "items": [
+                  {
+                    "population": "p.ALB",
+                    "entity": "e.ALB",
+                    "label": "ALB (Serum albumin)",
+                    "radius": 25,
+                    "requested": 1125,
+                    "location": "interior",
+                    "compartment": "medium",
+                    "axis": [1, 0, 0],
+                    "offset": 0
+                  },
+                  {
+                    "population": "p.TF",
+                    "entity": "e.TF",
+                    "label": "TF (Serotransferrin)",
+                    "radius": 25,
+                    "requested": 74,
+                    "location": "interior",
+                    "compartment": "medium",
+                    "axis": [0, 0, 1],
+                    "offset": 0
+                  },
+                  {
+                    "population": "p.CD63",
+                    "entity": "e.CD63",
+                    "label": "CD63 (CD63 antigen)",
+                    "radius": 25,
+                    "requested": 3,
+                    "location": "membrane",
+                    "compartment": "c.exosome",
+                    "axis": [0, 0, 1],
+                    "offset": 16
+                  },
+                  {
+                    "population": "p.CD9",
+                    "entity": "e.CD9",
+                    "label": "CD9 (CD9 antigen)",
+                    "radius": 25,
+                    "requested": 48,
+                    "location": "membrane",
+                    "compartment": "c.exosome",
+                    "axis": [0, 0, 1],
+                    "offset": 14
+                  },
+                  {
+                    "population": "p.ITG",
+                    "entity": "e.ITG",
+                    "label": "ITG (Integrin alpha-5)",
+                    "radius": 25,
+                    "requested": 69,
+                    "location": "membrane",
+                    "compartment": "c.exosome",
+                    "axis": [-0.13022156515148983, -0.9416020864800033, -0.3105283476689373],
+                    "offset": 65.25102118436959
+                  },
+                  {
+                    "population": "p.RAB5A",
+                    "entity": "e.RAB5A",
+                    "label": "RAB5A (Ras-related protein Rab-5A)",
+                    "radius": 25,
+                    "requested": 228,
+                    "location": "membrane",
+                    "compartment": "c.exosome",
+                    "axis": [0, 0, -1],
+                    "offset": -31
+                  },
+                  {
+                    "population": "p.HSPA8",
+                    "entity": "e.HSPA8",
+                    "label": "HSPA8 (Heat shock cognate 71kDa protein)",
+                    "radius": 25,
+                    "requested": 4,
+                    "location": "interior",
+                    "compartment": "c.exosome",
+                    "axis": [0, 0, 1],
+                    "offset": 0
+                  },
+                  {
+                    "population": "p.ENO1",
+                    "entity": "e.ENO1",
+                    "label": "ENO1 (Alpha-enolase)",
+                    "radius": 25,
+                    "requested": 4,
+                    "location": "interior",
+                    "compartment": "c.exosome",
+                    "axis": [0, 0, 1],
+                    "offset": 0
+                  },
+                  {
+                    "population": "p.PPIA",
+                    "entity": "e.PPIA",
+                    "label": "PPIA (Peptidyl-prolyl cis-trans isomerase A)",
+                    "radius": 25,
+                    "requested": 9,
+                    "location": "interior",
+                    "compartment": "c.exosome",
+                    "axis": [0, 0, 1],
+                    "offset": 0
+                  },
+                  {
+                    "population": "p.YWHAZ",
+                    "entity": "e.YWHAZ",
+                    "label": "YWHAZ (14-3-3 protein zeta/delta)",
+                    "radius": 25,
+                    "requested": 8,
+                    "location": "interior",
+                    "compartment": "c.exosome",
+                    "axis": [0, 0, 1],
+                    "offset": 0
+                  },
+                  {
+                    "population": "p.miRNA",
+                    "entity": "e.miRNA",
+                    "label": "miRNA (miRNA)",
+                    "radius": 25,
+                    "requested": 110,
+                    "location": "interior",
+                    "compartment": "c.exosome",
+                    "axis": [0, 0, 1],
+                    "offset": 0
+                  },
+                  {
+                    "population": "p.ARNm",
+                    "entity": "e.ARNm",
+                    "label": "ARNm (ARNm)",
+                    "radius": 25,
+                    "requested": 10,
+                    "location": "interior",
+                    "compartment": "c.exosome",
+                    "axis": [0, 0, 1],
+                    "offset": 0
+                  },
+                  {
+                    "population": "p.catalase",
+                    "entity": "e.catalase",
+                    "label": "catalase (catalse)",
+                    "radius": 40,
+                    "requested": 506,
+                    "location": "interior",
+                    "compartment": "c.exosome",
+                    "axis": [0, 0, 1],
+                    "offset": 0
+                  }
+                ],
+                "compartments": {
+                  "medium": {
+                    "shape": {
+                      "kind": "box",
+                      "center": [0, 0, 0],
+                      "size": [1500, 1500, 1500]
+                    },
+                    "children": ["c.exosome"],
+                    "thickness": 0,
+                    "label": "medium",
+                    "freeVolume": 2918713172.0781584,
+                    "area": 13500000
+                  },
+                  "c.exosome": {
+                    "shape": {
+                      "kind": "mesh",
+                      "resource": "r.membrane-mesh",
+                      "vertexCount": 162,
+                      "triangleCount": 320
+                    },
+                    "meshKey": "13a99f05d7311bbe7c66366f46deb0c0",
+                    "parent": "medium",
+                    "children": [],
+                    "thickness": 15,
+                    "label": "exosome",
+                    "freeVolume": 456286827.92184144,
+                    "area": 2881616.6031856504
+                  }
+                },
+                "seed": 1,
+                "attempts": 30,
+                "giveUp": 25
+              },
+              "cached": false
+            },
+            "children": [
+              {
+                "ref": "m.recipe/placements/0",
+                "kind": "placements",
+                "origin": [
+                  "p.ALB",
+                  "p.TF",
+                  "p.CD63",
+                  "p.CD9",
+                  "p.ITG",
+                  "p.RAB5A",
+                  "p.HSPA8",
+                  "p.ENO1",
+                  "p.PPIA",
+                  "p.YWHAZ",
+                  "p.miRNA",
+                  "p.ARNm",
+                  "p.catalase"
+                ],
+                "params": {
+                  "set": {
+                    "key": "m.recipe@876372d7e3c63d42#0",
+                    "model": "m.recipe",
+                    "frame": "world",
+                    "count": 2046,
+                    "bytes": 73656,
+                    "types": [
+                      {
+                        "index": 0,
+                        "population": "p.ALB",
+                        "entity": "e.ALB",
+                        "label": "ALB (Serum albumin)",
+                        "compartment": "medium",
+                        "radius": 25
+                      },
+                      {
+                        "index": 1,
+                        "population": "p.TF",
+                        "entity": "e.TF",
+                        "label": "TF (Serotransferrin)",
+                        "compartment": "medium",
+                        "radius": 25
+                      },
+                      {
+                        "index": 2,
+                        "population": "p.CD63",
+                        "entity": "e.CD63",
+                        "label": "CD63 (CD63 antigen)",
+                        "compartment": "c.exosome",
+                        "radius": 25
+                      },
+                      {
+                        "index": 3,
+                        "population": "p.CD9",
+                        "entity": "e.CD9",
+                        "label": "CD9 (CD9 antigen)",
+                        "compartment": "c.exosome",
+                        "radius": 25
+                      },
+                      {
+                        "index": 4,
+                        "population": "p.ITG",
+                        "entity": "e.ITG",
+                        "label": "ITG (Integrin alpha-5)",
+                        "compartment": "c.exosome",
+                        "radius": 25
+                      },
+                      {
+                        "index": 5,
+                        "population": "p.RAB5A",
+                        "entity": "e.RAB5A",
+                        "label": "RAB5A (Ras-related protein Rab-5A)",
+                        "compartment": "c.exosome",
+                        "radius": 25
+                      },
+                      {
+                        "index": 6,
+                        "population": "p.HSPA8",
+                        "entity": "e.HSPA8",
+                        "label": "HSPA8 (Heat shock cognate 71kDa protein)",
+                        "compartment": "c.exosome",
+                        "radius": 25
+                      },
+                      {
+                        "index": 7,
+                        "population": "p.ENO1",
+                        "entity": "e.ENO1",
+                        "label": "ENO1 (Alpha-enolase)",
+                        "compartment": "c.exosome",
+                        "radius": 25
+                      },
+                      {
+                        "index": 8,
+                        "population": "p.PPIA",
+                        "entity": "e.PPIA",
+                        "label": "PPIA (Peptidyl-prolyl cis-trans isomerase A)",
+                        "compartment": "c.exosome",
+                        "radius": 25
+                      },
+                      {
+                        "index": 9,
+                        "population": "p.YWHAZ",
+                        "entity": "e.YWHAZ",
+                        "label": "YWHAZ (14-3-3 protein zeta/delta)",
+                        "compartment": "c.exosome",
+                        "radius": 25
+                      },
+                      {
+                        "index": 10,
+                        "population": "p.miRNA",
+                        "entity": "e.miRNA",
+                        "label": "miRNA (miRNA)",
+                        "compartment": "c.exosome",
+                        "radius": 25
+                      },
+                      {
+                        "index": 11,
+                        "population": "p.ARNm",
+                        "entity": "e.ARNm",
+                        "label": "ARNm (ARNm)",
+                        "compartment": "c.exosome",
+                        "radius": 25
+                      },
+                      {
+                        "index": 12,
+                        "population": "p.catalase",
+                        "entity": "e.catalase",
+                        "label": "catalase (catalse)",
+                        "compartment": "c.exosome",
+                        "radius": 40
+                      }
+                    ],
+                    "first": [249.94, -32.31, -410.6, 46.91, 504.23, -7.05]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "ref": "default:meso.bilayer/resolve",
+            "kind": "resolve",
+            "origin": ["p.lipids"],
+            "params": {
+              "model": "default:meso.bilayer",
+              "resolver": "meso.bilayer",
+              "version": "0.1.0",
+              "key": "default:meso.bilayer@53ae1b406706a313",
+              "input": {
+                "items": [
+                  {
+                    "population": "p.lipids",
+                    "entity": "e.lipid",
+                    "label": "phospholipid",
+                    "radius": 4.5,
+                    "density": 0.015384766991899446,
+                    "requested": 88666,
+                    "compartment": "c.exosome"
+                  }
+                ],
+                "compartments": {
+                  "c.exosome": {
+                    "shape": {
+                      "kind": "mesh",
+                      "resource": "r.membrane-mesh",
+                      "vertexCount": 162,
+                      "triangleCount": 320
+                    },
+                    "meshKey": "13a99f05d7311bbe7c66366f46deb0c0",
+                    "parent": "medium",
+                    "children": [],
+                    "thickness": 15,
+                    "label": "exosome",
+                    "freeVolume": 456286827.92184144,
+                    "area": 2881616.6031856504
+                  },
+                  "medium": {
+                    "shape": {
+                      "kind": "box",
+                      "center": [0, 0, 0],
+                      "size": [1500, 1500, 1500]
+                    },
+                    "children": ["c.exosome"],
+                    "thickness": 0,
+                    "label": "medium",
+                    "freeVolume": 2918713172.0781584,
+                    "area": 13500000
+                  }
+                },
+                "seed": 1
+              },
+              "cached": false
+            },
+            "children": [
+              {
+                "ref": "default:meso.bilayer/placements/0",
+                "kind": "placements",
+                "origin": ["p.lipids"],
+                "params": {
+                  "set": {
+                    "key": "default:meso.bilayer@53ae1b406706a313#0",
+                    "model": "default:meso.bilayer",
+                    "frame": "world",
+                    "count": 88666,
+                    "bytes": 3191976,
+                    "types": [
+                      {
+                        "index": 0,
+                        "population": "p.lipids",
+                        "entity": "e.lipid",
+                        "label": "phospholipid",
+                        "compartment": "c.exosome",
+                        "radius": 4.5
+                      }
+                    ],
+                    "first": [160.15, 460.49, 107.71, -488.81, -43.82, -39.48]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "ref": "frame:f.tomo",
+            "kind": "frame",
+            "origin": ["f.tomo"],
+            "params": {
+              "frame": "f.tomo",
+              "matrix": [10, 0, 0, 0, 0, 10, 0, 0, 0, 0, 10, 0, -2000, -2000, -1000, 1],
+              "via": "al.tomo-model"
+            }
           }
-         }
         ]
-       }
-      ]
-     },
-     {
-      "ref": "m.picks/resolve",
-      "kind": "resolve",
-      "origin": [
-       "m.picks",
-       "p.catalase.observed"
-      ],
-      "params": {
-       "model": "m.picks",
-       "resolver": "meso.precomputed",
-       "version": "0.1.0",
-       "key": "m.picks@cde3af8d53db8f44",
-       "input": {
-        "resources": [
-         {
-          "id": "r.picks",
-          "format": "relion-star",
-          "contentKey": "941694e4997102f5",
-          "toWorld": [
-           10,
-           0,
-           0,
-           0,
-           0,
-           10,
-           0,
-           0,
-           0,
-           0,
-           10,
-           0,
-           -2000,
-           -2000,
-           -1000,
-           1
-          ]
-         }
-        ],
-        "populations": "p.catalase.observed",
-        "types": [
-         {
-          "population": "p.catalase.observed",
-          "entity": "e.catalase",
-          "label": "catalase (catalse)",
-          "compartment": "c.exosome",
-          "radius": 40,
-          "requested": 24
-         }
-        ]
-       },
-       "cached": false
-      },
-      "children": [
-       {
-        "ref": "m.picks/placements/0",
-        "kind": "placements",
-        "origin": [
-         "p.catalase.observed"
-        ],
-        "params": {
-         "set": {
-          "key": "m.picks@cde3af8d53db8f44#0",
-          "model": "m.picks",
-          "frame": "world",
-          "count": 24,
-          "bytes": 864,
-          "types": [
-           {
-            "index": 0,
-            "population": "p.catalase.observed",
-            "entity": "e.catalase",
-            "label": "catalase (catalse)",
-            "compartment": "c.exosome",
-            "radius": 40
-           }
-          ],
-          "first": [
-           119.4,
-           12.9,
-           -47.2,
-           -20.3,
-           -156,
-           26.7
-          ]
-         }
-        }
-       }
-      ]
-     },
-     {
-      "ref": "m.recipe/resolve",
-      "kind": "resolve",
-      "origin": [
-       "m.recipe",
-       "p.ALB",
-       "p.TF",
-       "p.CD63",
-       "p.CD9",
-       "p.ITG",
-       "p.RAB5A",
-       "p.HSPA8",
-       "p.ENO1",
-       "p.PPIA",
-       "p.YWHAZ",
-       "p.miRNA",
-       "p.ARNm",
-       "p.catalase"
-      ],
-      "params": {
-       "model": "m.recipe",
-       "resolver": "cellpack-gpu",
-       "version": "0.1.0",
-       "key": "m.recipe@876372d7e3c63d42",
-       "input": {
-        "recipe": "c6584b4b914d0f56",
-        "items": [
-         {
-          "population": "p.ALB",
-          "entity": "e.ALB",
-          "label": "ALB (Serum albumin)",
-          "radius": 25,
-          "requested": 1125,
-          "location": "interior",
-          "compartment": "medium",
-          "axis": [
-           1,
-           0,
-           0
-          ],
-          "offset": 0
-         },
-         {
-          "population": "p.TF",
-          "entity": "e.TF",
-          "label": "TF (Serotransferrin)",
-          "radius": 25,
-          "requested": 74,
-          "location": "interior",
-          "compartment": "medium",
-          "axis": [
-           0,
-           0,
-           1
-          ],
-          "offset": 0
-         },
-         {
-          "population": "p.CD63",
-          "entity": "e.CD63",
-          "label": "CD63 (CD63 antigen)",
-          "radius": 25,
-          "requested": 3,
-          "location": "membrane",
-          "compartment": "c.exosome",
-          "axis": [
-           0,
-           0,
-           1
-          ],
-          "offset": 16
-         },
-         {
-          "population": "p.CD9",
-          "entity": "e.CD9",
-          "label": "CD9 (CD9 antigen)",
-          "radius": 25,
-          "requested": 48,
-          "location": "membrane",
-          "compartment": "c.exosome",
-          "axis": [
-           0,
-           0,
-           1
-          ],
-          "offset": 14
-         },
-         {
-          "population": "p.ITG",
-          "entity": "e.ITG",
-          "label": "ITG (Integrin alpha-5)",
-          "radius": 25,
-          "requested": 69,
-          "location": "membrane",
-          "compartment": "c.exosome",
-          "axis": [
-           -0.13022156515148983,
-           -0.9416020864800033,
-           -0.3105283476689373
-          ],
-          "offset": 65.25102118436959
-         },
-         {
-          "population": "p.RAB5A",
-          "entity": "e.RAB5A",
-          "label": "RAB5A (Ras-related protein Rab-5A)",
-          "radius": 25,
-          "requested": 228,
-          "location": "membrane",
-          "compartment": "c.exosome",
-          "axis": [
-           0,
-           0,
-           -1
-          ],
-          "offset": -31
-         },
-         {
-          "population": "p.HSPA8",
-          "entity": "e.HSPA8",
-          "label": "HSPA8 (Heat shock cognate 71kDa protein)",
-          "radius": 25,
-          "requested": 4,
-          "location": "interior",
-          "compartment": "c.exosome",
-          "axis": [
-           0,
-           0,
-           1
-          ],
-          "offset": 0
-         },
-         {
-          "population": "p.ENO1",
-          "entity": "e.ENO1",
-          "label": "ENO1 (Alpha-enolase)",
-          "radius": 25,
-          "requested": 4,
-          "location": "interior",
-          "compartment": "c.exosome",
-          "axis": [
-           0,
-           0,
-           1
-          ],
-          "offset": 0
-         },
-         {
-          "population": "p.PPIA",
-          "entity": "e.PPIA",
-          "label": "PPIA (Peptidyl-prolyl cis-trans isomerase A)",
-          "radius": 25,
-          "requested": 9,
-          "location": "interior",
-          "compartment": "c.exosome",
-          "axis": [
-           0,
-           0,
-           1
-          ],
-          "offset": 0
-         },
-         {
-          "population": "p.YWHAZ",
-          "entity": "e.YWHAZ",
-          "label": "YWHAZ (14-3-3 protein zeta/delta)",
-          "radius": 25,
-          "requested": 8,
-          "location": "interior",
-          "compartment": "c.exosome",
-          "axis": [
-           0,
-           0,
-           1
-          ],
-          "offset": 0
-         },
-         {
-          "population": "p.miRNA",
-          "entity": "e.miRNA",
-          "label": "miRNA (miRNA)",
-          "radius": 25,
-          "requested": 110,
-          "location": "interior",
-          "compartment": "c.exosome",
-          "axis": [
-           0,
-           0,
-           1
-          ],
-          "offset": 0
-         },
-         {
-          "population": "p.ARNm",
-          "entity": "e.ARNm",
-          "label": "ARNm (ARNm)",
-          "radius": 25,
-          "requested": 10,
-          "location": "interior",
-          "compartment": "c.exosome",
-          "axis": [
-           0,
-           0,
-           1
-          ],
-          "offset": 0
-         },
-         {
-          "population": "p.catalase",
-          "entity": "e.catalase",
-          "label": "catalase (catalse)",
-          "radius": 40,
-          "requested": 506,
-          "location": "interior",
-          "compartment": "c.exosome",
-          "axis": [
-           0,
-           0,
-           1
-          ],
-          "offset": 0
-         }
-        ],
-        "compartments": {
-         "medium": {
-          "shape": {
-           "kind": "box",
-           "center": [
-            0,
-            0,
-            0
-           ],
-           "size": [
-            1500,
-            1500,
-            1500
-           ]
-          },
-          "children": [
-           "c.exosome"
-          ],
-          "thickness": 0,
-          "label": "medium",
-          "freeVolume": 2918713172.0781584,
-          "area": 13500000
-         },
-         "c.exosome": {
-          "shape": {
-           "kind": "mesh",
-           "resource": "r.membrane-mesh",
-           "vertexCount": 162,
-           "triangleCount": 320
-          },
-          "meshKey": "13a99f05d7311bbe7c66366f46deb0c0",
-          "parent": "medium",
-          "children": [],
-          "thickness": 15,
-          "label": "exosome",
-          "freeVolume": 456286827.92184144,
-          "area": 2881616.6031856504
-         }
-        },
-        "seed": 1,
-        "attempts": 30,
-        "giveUp": 25
-       },
-       "cached": false
-      },
-      "children": [
-       {
-        "ref": "m.recipe/placements/0",
-        "kind": "placements",
-        "origin": [
-         "p.ALB",
-         "p.TF",
-         "p.CD63",
-         "p.CD9",
-         "p.ITG",
-         "p.RAB5A",
-         "p.HSPA8",
-         "p.ENO1",
-         "p.PPIA",
-         "p.YWHAZ",
-         "p.miRNA",
-         "p.ARNm",
-         "p.catalase"
-        ],
-        "params": {
-         "set": {
-          "key": "m.recipe@876372d7e3c63d42#0",
-          "model": "m.recipe",
-          "frame": "world",
-          "count": 2046,
-          "bytes": 73656,
-          "types": [
-           {
-            "index": 0,
-            "population": "p.ALB",
-            "entity": "e.ALB",
-            "label": "ALB (Serum albumin)",
-            "compartment": "medium",
-            "radius": 25
-           },
-           {
-            "index": 1,
-            "population": "p.TF",
-            "entity": "e.TF",
-            "label": "TF (Serotransferrin)",
-            "compartment": "medium",
-            "radius": 25
-           },
-           {
-            "index": 2,
-            "population": "p.CD63",
-            "entity": "e.CD63",
-            "label": "CD63 (CD63 antigen)",
-            "compartment": "c.exosome",
-            "radius": 25
-           },
-           {
-            "index": 3,
-            "population": "p.CD9",
-            "entity": "e.CD9",
-            "label": "CD9 (CD9 antigen)",
-            "compartment": "c.exosome",
-            "radius": 25
-           },
-           {
-            "index": 4,
-            "population": "p.ITG",
-            "entity": "e.ITG",
-            "label": "ITG (Integrin alpha-5)",
-            "compartment": "c.exosome",
-            "radius": 25
-           },
-           {
-            "index": 5,
-            "population": "p.RAB5A",
-            "entity": "e.RAB5A",
-            "label": "RAB5A (Ras-related protein Rab-5A)",
-            "compartment": "c.exosome",
-            "radius": 25
-           },
-           {
-            "index": 6,
-            "population": "p.HSPA8",
-            "entity": "e.HSPA8",
-            "label": "HSPA8 (Heat shock cognate 71kDa protein)",
-            "compartment": "c.exosome",
-            "radius": 25
-           },
-           {
-            "index": 7,
-            "population": "p.ENO1",
-            "entity": "e.ENO1",
-            "label": "ENO1 (Alpha-enolase)",
-            "compartment": "c.exosome",
-            "radius": 25
-           },
-           {
-            "index": 8,
-            "population": "p.PPIA",
-            "entity": "e.PPIA",
-            "label": "PPIA (Peptidyl-prolyl cis-trans isomerase A)",
-            "compartment": "c.exosome",
-            "radius": 25
-           },
-           {
-            "index": 9,
-            "population": "p.YWHAZ",
-            "entity": "e.YWHAZ",
-            "label": "YWHAZ (14-3-3 protein zeta/delta)",
-            "compartment": "c.exosome",
-            "radius": 25
-           },
-           {
-            "index": 10,
-            "population": "p.miRNA",
-            "entity": "e.miRNA",
-            "label": "miRNA (miRNA)",
-            "compartment": "c.exosome",
-            "radius": 25
-           },
-           {
-            "index": 11,
-            "population": "p.ARNm",
-            "entity": "e.ARNm",
-            "label": "ARNm (ARNm)",
-            "compartment": "c.exosome",
-            "radius": 25
-           },
-           {
-            "index": 12,
-            "population": "p.catalase",
-            "entity": "e.catalase",
-            "label": "catalase (catalse)",
-            "compartment": "c.exosome",
-            "radius": 40
-           }
-          ],
-          "first": [
-           249.94,
-           -32.31,
-           -410.6,
-           46.91,
-           504.23,
-           -7.05
-          ]
-         }
-        }
-       }
-      ]
-     },
-     {
-      "ref": "default:meso.bilayer/resolve",
-      "kind": "resolve",
-      "origin": [
-       "p.lipids"
-      ],
-      "params": {
-       "model": "default:meso.bilayer",
-       "resolver": "meso.bilayer",
-       "version": "0.1.0",
-       "key": "default:meso.bilayer@53ae1b406706a313",
-       "input": {
-        "items": [
-         {
-          "population": "p.lipids",
-          "entity": "e.lipid",
-          "label": "phospholipid",
-          "radius": 4.5,
-          "density": 0.015384766991899446,
-          "requested": 88666,
-          "compartment": "c.exosome"
-         }
-        ],
-        "compartments": {
-         "c.exosome": {
-          "shape": {
-           "kind": "mesh",
-           "resource": "r.membrane-mesh",
-           "vertexCount": 162,
-           "triangleCount": 320
-          },
-          "meshKey": "13a99f05d7311bbe7c66366f46deb0c0",
-          "parent": "medium",
-          "children": [],
-          "thickness": 15,
-          "label": "exosome",
-          "freeVolume": 456286827.92184144,
-          "area": 2881616.6031856504
-         },
-         "medium": {
-          "shape": {
-           "kind": "box",
-           "center": [
-            0,
-            0,
-            0
-           ],
-           "size": [
-            1500,
-            1500,
-            1500
-           ]
-          },
-          "children": [
-           "c.exosome"
-          ],
-          "thickness": 0,
-          "label": "medium",
-          "freeVolume": 2918713172.0781584,
-          "area": 13500000
-         }
-        },
-        "seed": 1
-       },
-       "cached": false
-      },
-      "children": [
-       {
-        "ref": "default:meso.bilayer/placements/0",
-        "kind": "placements",
-        "origin": [
-         "p.lipids"
-        ],
-        "params": {
-         "set": {
-          "key": "default:meso.bilayer@53ae1b406706a313#0",
-          "model": "default:meso.bilayer",
-          "frame": "world",
-          "count": 88666,
-          "bytes": 3191976,
-          "types": [
-           {
-            "index": 0,
-            "population": "p.lipids",
-            "entity": "e.lipid",
-            "label": "phospholipid",
-            "compartment": "c.exosome",
-            "radius": 4.5
-           }
-          ],
-          "first": [
-           160.15,
-           460.49,
-           107.71,
-           -488.81,
-           -43.82,
-           -39.48
-          ]
-         }
-        }
-       }
-      ]
-     },
-     {
-      "ref": "frame:f.tomo",
-      "kind": "frame",
-      "origin": [
-       "f.tomo"
-      ],
-      "params": {
-       "frame": "f.tomo",
-       "matrix": [
-        10,
-        0,
-        0,
-        0,
-        0,
-        10,
-        0,
-        0,
-        0,
-        0,
-        10,
-        0,
-        -2000,
-        -2000,
-        -1000,
-        1
-       ],
-       "via": "al.tomo-model"
       }
-     }
     ]
-   }
+  },
+  "view": {
+    "id": "v.overview",
+    "camera": {
+      "position": [0, 0, 2600],
+      "target": [0, 0, 0],
+      "up": [0, 1, 0]
+    },
+    "looks": [
+      {
+        "set": "default:meso.bilayer@53ae1b406706a313#0",
+        "types": [0],
+        "color": 15259824,
+        "visible": true,
+        "transparency": 0.6
+      },
+      {
+        "set": "m.picks@cde3af8d53db8f44#0",
+        "types": [0],
+        "color": 16756736,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [0],
+        "color": 9202131,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [1],
+        "color": 7956947,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [2],
+        "color": 10512851,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [3],
+        "color": 13855168,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [4],
+        "color": 13881961,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [5],
+        "color": 13199827,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [6],
+        "color": 13856361,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [7],
+        "color": 10670953,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [8],
+        "color": 6917075,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [9],
+        "color": 6934739,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [10],
+        "color": 12964713,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [11],
+        "color": 13866345,
+        "visible": true
+      },
+      {
+        "set": "m.recipe@876372d7e3c63d42#0",
+        "types": [12],
+        "color": 13649210,
+        "visible": true
+      }
+    ],
+    "annotations": [
+      {
+        "id": "an.picks",
+        "text": "Catalase found by template matching (synthetic)"
+      }
+    ]
+  },
+  "issues": [
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.lipids has no model: the default resolver for bilayer arrangements places it",
+      "path": "/populations/14",
+      "ids": ["p.lipids"]
+    },
+    {
+      "code": "constraint.unmet",
+      "severity": "warning",
+      "phase": "resolve",
+      "message": "p.catalase: 354 of 506 placed",
+      "ids": ["p.catalase", "m.recipe"],
+      "constraint": {
+        "kind": "placed-fraction",
+        "requested": 506,
+        "achieved": 354,
+        "reason": "354 of 506 fit in the inside of exosome, now 22% filled by the spheres of every copy in it; the packer stopped after 25 copies in a row found no free spot in 30 tries each (random sequential addition of equal spheres jams near 38%; more tries may place a few more)"
+      }
+    },
+    {
+      "code": "relation.ignored",
+      "severity": "info",
+      "phase": "resolve",
+      "message": "relation rel.tetraspanins (colocalizes) is the document's statement; no resolver here honours it",
+      "ids": ["rel.tetraspanins"]
+    }
   ]
- },
- "view": {
-  "id": "v.overview",
-  "camera": {
-   "position": [
-    0,
-    0,
-    2600
-   ],
-   "target": [
-    0,
-    0,
-    0
-   ],
-   "up": [
-    0,
-    1,
-    0
-   ]
-  },
-  "looks": [
-   {
-    "set": "default:meso.bilayer@53ae1b406706a313#0",
-    "types": [
-     0
-    ],
-    "color": 15259824,
-    "visible": true,
-    "transparency": 0.6
-   },
-   {
-    "set": "m.picks@cde3af8d53db8f44#0",
-    "types": [
-     0
-    ],
-    "color": 16756736,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     0
-    ],
-    "color": 9202131,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     1
-    ],
-    "color": 7956947,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     2
-    ],
-    "color": 10512851,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     3
-    ],
-    "color": 13855168,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     4
-    ],
-    "color": 13881961,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     5
-    ],
-    "color": 13199827,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     6
-    ],
-    "color": 13856361,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     7
-    ],
-    "color": 10670953,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     8
-    ],
-    "color": 6917075,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     9
-    ],
-    "color": 6934739,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     10
-    ],
-    "color": 12964713,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     11
-    ],
-    "color": 13866345,
-    "visible": true
-   },
-   {
-    "set": "m.recipe@876372d7e3c63d42#0",
-    "types": [
-     12
-    ],
-    "color": 13649210,
-    "visible": true
-   }
-  ],
-  "annotations": [
-   {
-    "id": "an.picks",
-    "text": "Catalase found by template matching (synthetic)"
-   }
-  ]
- },
- "issues": [
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.lipids has no model: the default resolver for bilayer arrangements places it",
-   "path": "/populations/14",
-   "ids": [
-    "p.lipids"
-   ]
-  },
-  {
-   "code": "constraint.unmet",
-   "severity": "warning",
-   "phase": "resolve",
-   "message": "p.catalase: 354 of 506 placed",
-   "ids": [
-    "p.catalase",
-    "m.recipe"
-   ],
-   "constraint": {
-    "kind": "placed-fraction",
-    "requested": 506,
-    "achieved": 354,
-    "reason": "354 of 506 fit in the inside of exosome, now 22% filled by the spheres of every copy in it; the packer stopped after 25 copies in a row found no free spot in 30 tries each (random sequential addition of equal spheres jams near 38%; more tries may place a few more)"
-   }
-  },
-  {
-   "code": "relation.ignored",
-   "severity": "info",
-   "phase": "resolve",
-   "message": "relation rel.tetraspanins (colocalizes) is the document's statement; no resolver here honours it",
-   "ids": [
-    "rel.tetraspanins"
-   ]
-  }
- ]
 }

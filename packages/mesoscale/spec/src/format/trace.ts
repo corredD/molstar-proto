@@ -119,5 +119,7 @@ export function trace(doc: MesoViewSpecDoc, start: Id): TraceStep[] {
 
 /** A trace as indented lines, for a UI or a test. */
 export function traceToText(steps: readonly TraceStep[]): string {
-  return steps.map((s) => `${'  '.repeat(s.depth)}${s.depth ? `${s.via} ` : ''}${s.kind} ${s.id}: ${s.label}`).join('\n');
+  return steps
+    .map((s) => `${'  '.repeat(s.depth)}${s.depth ? `${s.via} ` : ''}${s.kind} ${s.id}: ${s.label}`)
+    .join('\n');
 }

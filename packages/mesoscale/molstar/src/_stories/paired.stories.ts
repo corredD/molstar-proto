@@ -43,7 +43,9 @@ function paired(doc: MesoViewSpecDoc, traceIds: string[]) {
 }
 
 /** The thin slice's scene: a recipe, a segmentation and picks in one document. */
-export const Exosome: StoryObj = { render: () => paired(exosomeDoc(), ['p.catalase.observed', 'c.exosome', 'p.CD63', 'al.tomo-model']) };
+export const Exosome: StoryObj = {
+  render: () => paired(exosomeDoc(), ['p.catalase.observed', 'c.exosome', 'p.CD63', 'al.tomo-model']),
+};
 
 /** Nesting, lattices, fibers, a bilayer, dispatched by arrangement. */
 export const Gallery: StoryObj = { render: () => paired(galleryDoc(), ['p.pores', 'p.atpsynthase', 'p.actin']) };

@@ -24,7 +24,8 @@ import { h, panel, Styles } from './ui.js';
 const meta: Meta = { title: 'Performance', parameters: { layout: 'fullscreen' } };
 export default meta;
 
-const frame = () => new Promise<number>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(performance.now()))));
+const frame = () =>
+  new Promise<number>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(performance.now()))));
 const heap = () => (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize;
 const mb = (b?: number) => (b === undefined ? 'n/a' : `${(b / 2 ** 20).toFixed(1)} MB`);
 
@@ -46,7 +47,10 @@ function probe() {
       const t1 = performance.now();
       const commit = await adapter.commit(r.ir!);
       const t2 = await frame();
-      const recolored = { ...doc, views: [{ ...doc.views![0], looks: [{ select: { compartments: ['c.cell'] }, color: '#d0453a' }] }] };
+      const recolored = {
+        ...doc,
+        views: [{ ...doc.views![0], looks: [{ select: { compartments: ['c.cell'] }, color: '#d0453a' }] }],
+      };
       const t3 = performance.now();
       const look = await adapter.commit(updateView(recolored, r.ir!));
       const t4 = await frame();
@@ -65,14 +69,49 @@ function probe() {
         mb(copies * 8),
         mb(h0 === undefined ? undefined : (heap() ?? 0) - h0),
       ];
-      rows.append(h('tr', {}, ...cells.map((c) => h('td', { style: 'padding:2px 8px;border-bottom:1px solid #eee;text-align:right' }, c))));
+      rows.append(
+        h(
+          'tr',
+          {},
+          ...cells.map((c) => h('td', { style: 'padding:2px 8px;border-bottom:1px solid #eee;text-align:right' }, c)),
+        ),
+      );
       status.textContent = `${kind} ${n.toLocaleString('en-US')}: done`;
     };
-    const buttons = ([['pack', 10_000], ['pack', 50_000], ['bilayer', 100_000], ['bilayer', 1_000_000]] as const).map(([k, n]) =>
-      h('button', { onclick: () => run(k, n) }, `${k} ${n.toLocaleString('en-US')}`),
+    const buttons = (
+      [
+        ['pack', 10_000],
+        ['pack', 50_000],
+        ['bilayer', 100_000],
+        ['bilayer', 1_000_000],
+      ] as const
+    ).map(([k, n]) => h('button', { onclick: () => run(k, n) }, `${k} ${n.toLocaleString('en-US')}`));
+    const head = [
+      'scene',
+      'copies',
+      'resolve ms',
+      'commit ms',
+      'first frame ms',
+      'color edit ms (to frame)',
+      'lists rebuilt by color',
+      'placements',
+      'adapter adds',
+      'JS heap Δ',
+    ];
+    const table = h(
+      'table',
+      { style: 'border-collapse:collapse;width:100%' },
+      h(
+        'thead',
+        {},
+        h(
+          'tr',
+          {},
+          ...head.map((x) => h('th', { style: 'padding:2px 8px;text-align:right;border-bottom:1px solid #ccc' }, x)),
+        ),
+      ),
+      rows,
     );
-    const head = ['scene', 'copies', 'resolve ms', 'commit ms', 'first frame ms', 'color edit ms (to frame)', 'lists rebuilt by color', 'placements', 'adapter adds', 'JS heap Δ'];
-    const table = h('table', { style: 'border-collapse:collapse;width:100%' }, h('thead', {}, h('tr', {}, ...head.map((x) => h('th', { style: 'padding:2px 8px;text-align:right;border-bottom:1px solid #ccc' }, x)))), rows);
     const host = RealViewerStory({
       spec: (base) => base,
       style: 'height:100%',
@@ -84,7 +123,10 @@ function probe() {
     return h(
       'div',
       { style: `${Styles.grid};grid-template-rows:auto 1fr 1.3fr` },
-      panel('Measured in this browser; one scene at a time (each run replaces the last)', h('div', { style: Styles.bar }, ...buttons, status)),
+      panel(
+        'Measured in this browser; one scene at a time (each run replaces the last)',
+        h('div', { style: Styles.bar }, ...buttons, status),
+      ),
       panel('Runs', table),
       panel('Mol* / Prism', h('div', { style: 'flex:1;min-height:0;position:relative' }, host)),
     );

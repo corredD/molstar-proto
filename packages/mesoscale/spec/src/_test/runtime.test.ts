@@ -39,14 +39,17 @@ describe('runtime', () => {
     // the fast path: no compile at all
     const ir = updateView(edited, before.ir!);
     expect(ir.root).toBe(before.ir!.root);
-    const look = ir.view.looks.find((l) => placementSets(ir).find((s) => s.key === l.set)?.typeTable[l.types[0]].population === 'p.miRNA');
+    const look = ir.view.looks.find(
+      (l) => placementSets(ir).find((s) => s.key === l.set)?.typeTable[l.types[0]].population === 'p.miRNA',
+    );
     expect(look?.color).toBe(0x00ff00);
 
     // the full path, with the session's cache: every model a cache hit, every set the same object
     const after = await compile(edited, exosomeOptions({ resolvers: counting.resolvers, cache }));
     expect(counting.total()).toBe(3);
     expect(after.stats).toMatchObject({ resolverRuns: 0, cacheHits: 3 });
-    const sb = placementSets(before.ir!), sa = placementSets(after.ir!);
+    const sb = placementSets(before.ir!),
+      sa = placementSets(after.ir!);
     sa.forEach((s, i) => expect(s).toBe(sb[i]));
     const plan = planCommit(before.ir, ir);
     expect(plan).toMatchObject({ add: [], remove: [], looksChanged: true });
@@ -57,7 +60,10 @@ describe('runtime', () => {
     const counting = countingResolvers();
     const cache = new Map();
     const before = await compile(exosomeDoc(), exosomeOptions({ resolvers: counting.resolvers, cache }));
-    const edited = editPopulation(exosomeDoc(), 'p.miRNA', (p) => ({ ...p, abundance: { concentration: { value: 0.0008, unit: 'M' } } }));
+    const edited = editPopulation(exosomeDoc(), 'p.miRNA', (p) => ({
+      ...p,
+      abundance: { concentration: { value: 0.0008, unit: 'M' } },
+    }));
     expect(classifyEdit(exosomeDoc(), edited)).toBe('model');
     const after = await compile(edited, exosomeOptions({ resolvers: counting.resolvers, cache }));
     expect(after.stats).toMatchObject({ resolverRuns: 1, cacheHits: 2 });
@@ -79,10 +85,17 @@ describe('runtime', () => {
     expect(c.achieved).toBeGreaterThan(200);
     expect(c.reason).toMatch(/fit in the inside of exosome, now \d+% filled/);
     // fewer asked: met
-    const fewer = await compileExosome(editPopulation(exosomeDoc(), 'p.catalase', (p) => ({ ...p, abundance: { count: 150 } })));
+    const fewer = await compileExosome(
+      editPopulation(exosomeDoc(), 'p.catalase', (p) => ({ ...p, abundance: { count: 150 } })),
+    );
     expect(fewer.issues.filter((i) => i.code === 'constraint.unmet')).toEqual([]);
     // a looser constraint: met, at the same placements
-    const loose = await compileExosome(editPopulation(exosomeDoc(), 'p.catalase', (p) => ({ ...p, constraints: [{ kind: 'placed-fraction', min: 0.5 }] })));
+    const loose = await compileExosome(
+      editPopulation(exosomeDoc(), 'p.catalase', (p) => ({
+        ...p,
+        constraints: [{ kind: 'placed-fraction', min: 0.5 }],
+      })),
+    );
     expect(loose.issues.filter((i) => i.code === 'constraint.unmet')).toEqual([]);
   });
 
@@ -93,7 +106,10 @@ describe('runtime', () => {
     for (let i = 0; i < recipe.count; i++)
       for (let j = 0; j < picks.count; j++) {
         const d = Math.hypot(...[0, 1, 2].map((k) => recipe.positions[3 * i + k] - picks.positions[3 * j + k]));
-        closest = Math.min(closest, d - recipe.typeTable[recipe.types[i]].radius - picks.typeTable[picks.types[j]].radius);
+        closest = Math.min(
+          closest,
+          d - recipe.typeTable[recipe.types[i]].radius - picks.typeTable[picks.types[j]].radius,
+        );
       }
     expect(closest).toBeGreaterThanOrEqual(-1e-3);
   });
@@ -103,13 +119,18 @@ describe('runtime', () => {
     const picks = placementSets(r.ir!).find((s) => s.model === 'm.picks')!;
     expect(picks.count).toBe(24);
     // within 30 nm of the vesicle centre, which the alignment puts at the origin
-    for (let i = 0; i < picks.count; i++) expect(Math.hypot(picks.positions[3 * i], picks.positions[3 * i + 1], picks.positions[3 * i + 2])).toBeLessThanOrEqual(300.5);
+    for (let i = 0; i < picks.count; i++)
+      expect(
+        Math.hypot(picks.positions[3 * i], picks.positions[3 * i + 1], picks.positions[3 * i + 2]),
+      ).toBeLessThanOrEqual(300.5);
   });
 
   it('placement sets are 36 bytes a copy, with at most 1/8 unused capacity behind them', async () => {
     const r = await compileExosome(exosomeDoc());
     for (const s of placementSets(r.ir!)) {
-      expect(placementBytes(s) - (s.fibers ? s.fibers.offsets.byteLength + s.fibers.indices.byteLength : 0)).toBe(s.count * BytesPerPlacement);
+      expect(placementBytes(s) - (s.fibers ? s.fibers.offsets.byteLength + s.fibers.indices.byteLength : 0)).toBe(
+        s.count * BytesPerPlacement,
+      );
       expect(s.positions.buffer.byteLength).toBeLessThanOrEqual(Math.ceil((s.count * 12 * 8) / 7) + 12 * 16);
     }
   });
@@ -121,7 +142,8 @@ describe('runtime', () => {
     // RAB5A's principal vector is -z: its rotation turns -z onto the outward normal, which for this near-sphere
     // points away from the centre
     const v = [0, 0, 0];
-    let agree = 0, n = 0;
+    let agree = 0,
+      n = 0;
     for (let i = 0; i < s.count; i++) {
       if (s.types[i] !== rab.index) continue;
       rotateVec(v, s.rotations.subarray(4 * i, 4 * i + 4), 0, 0, -1);
@@ -134,7 +156,10 @@ describe('runtime', () => {
   });
 
   it('an unavailable resource fails its model and the models that avoid it, and says so', async () => {
-    const r = await compile(exosomeDoc(), exosomeOptions({ load: (id) => (id === 'r.picks' ? undefined : exosomeOptions().load!(id)) }));
+    const r = await compile(
+      exosomeDoc(),
+      exosomeOptions({ load: (id) => (id === 'r.picks' ? undefined : exosomeOptions().load!(id)) }),
+    );
     const by = (code: string) => r.issues.filter((i) => i.code === code).map((i) => i.ids?.[0]);
     expect(by('resource.unavailable')).toEqual(['r.picks']);
     expect(by('resolver.failed').sort()).toEqual(['m.picks', 'm.recipe']);
@@ -143,7 +168,10 @@ describe('runtime', () => {
 
   it('an unknown method is reported, the rest resolves', async () => {
     const d = exosomeDoc();
-    const r = await compileExosome({ ...d, models: d.models!.map((m) => (m.id === 'm.picks' ? { ...m, method: 'nobody' } : m)) });
+    const r = await compileExosome({
+      ...d,
+      models: d.models!.map((m) => (m.id === 'm.picks' ? { ...m, method: 'nobody' } : m)),
+    });
     expect(r.issues.find((i) => i.code === 'resolver.unknown')?.ids).toContain('m.picks');
   });
 
@@ -155,21 +183,64 @@ describe('runtime', () => {
       description: 'copies on a cubic grid',
       arrangements: ['random'],
       locations: ['interior'],
-      project: (job) => ({ n: job.populations[0].requested ?? 0, spacing: Number(job.model.params?.spacing ?? 100), pops: job.populations.map((p) => p.id) }),
+      project: (job) => ({
+        n: job.populations[0].requested ?? 0,
+        spacing: Number(job.model.params?.spacing ?? 100),
+        pops: job.populations.map((p) => p.id),
+      }),
       resolve: (input, job) => {
         const p = job.populations[0];
         const positions = new Float32Array(input.n * 3);
-        for (let i = 0; i < input.n; i++) positions.set([(i % 5) * input.spacing, (Math.floor(i / 5) % 5) * input.spacing, Math.floor(i / 25) * input.spacing], 3 * i);
+        for (let i = 0; i < input.n; i++)
+          positions.set(
+            [(i % 5) * input.spacing, (Math.floor(i / 5) % 5) * input.spacing, Math.floor(i / 25) * input.spacing],
+            3 * i,
+          );
         const rotations = new Float32Array(input.n * 4);
         for (let i = 0; i < input.n; i++) rotations[4 * i + 3] = 1;
         return {
-          sets: [{ key: '', model: job.model.id, frame: 'world', count: input.n, positions, rotations, types: new Int32Array(input.n), ordinals: Int32Array.from({ length: input.n }, (_, i) => i), typeTable: [{ index: 0, population: p.id, entity: p.entity.id, label: p.entity.label, compartment: p.compartment, radius: 10 }] }],
+          sets: [
+            {
+              key: '',
+              model: job.model.id,
+              frame: 'world',
+              count: input.n,
+              positions,
+              rotations,
+              types: new Int32Array(input.n),
+              ordinals: Int32Array.from({ length: input.n }, (_, i) => i),
+              typeTable: [
+                {
+                  index: 0,
+                  population: p.id,
+                  entity: p.entity.id,
+                  label: p.entity.label,
+                  compartment: p.compartment,
+                  radius: 10,
+                },
+              ],
+            },
+          ],
           achieved: { [p.id]: input.n },
         };
       },
     };
     const d = exosomeDoc();
-    const doc = { ...d, models: [...d.models!.map((m) => (m.id === 'm.recipe' ? { ...m, populations: m.populations.filter((x) => x !== 'p.miRNA') } : m)), { id: 'm.grid', kind: 'procedural' as const, method: 'toy.grid', populations: ['p.miRNA'], params: { spacing: 50 } }] };
+    const doc = {
+      ...d,
+      models: [
+        ...d.models!.map((m) =>
+          m.id === 'm.recipe' ? { ...m, populations: m.populations.filter((x) => x !== 'p.miRNA') } : m,
+        ),
+        {
+          id: 'm.grid',
+          kind: 'procedural' as const,
+          method: 'toy.grid',
+          populations: ['p.miRNA'],
+          params: { spacing: 50 },
+        },
+      ],
+    };
     const r = await compile(doc, exosomeOptions({ resolvers: [...DefaultResolvers, Grid] }));
     const s = placementSets(r.ir!).find((x) => x.model === 'm.grid')!;
     expect(s.count).toBe(r.counts['p.miRNA'].requested);

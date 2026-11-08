@@ -9,7 +9,13 @@ import type { Issue } from '@molstar/meso-spec/format/issues';
 import type { IR } from '@molstar/meso-spec/ir/ir';
 import type { CommitReport, RendererAdapter } from '@molstar/meso-spec/runtime/adapter';
 import type { ResolveOutput } from '@molstar/meso-spec/runtime/resolver';
-import { classifyEdit, compile, type CompileResult, type RuntimeOptions, updateView } from '@molstar/meso-spec/runtime/runtime';
+import {
+  classifyEdit,
+  compile,
+  type CompileResult,
+  type RuntimeOptions,
+  updateView,
+} from '@molstar/meso-spec/runtime/runtime';
 
 // A session (design.md §5, §6.1): one document, edited, with the runtime's cache and an adapter. An edit is classified
 // first: a view edit (looks, camera, selection) derives a new view over the same IR and commits it; a model edit
@@ -64,7 +70,15 @@ export class MesoSession {
       this.counts = r.counts;
       if (r.ir) this.ir = r.ir;
       const commit = r.ir ? await this.adapter?.commit(r.ir) : undefined;
-      record = { label, kind, resolverRuns: r.stats.resolverRuns, cacheHits: r.stats.cacheHits, compileMs: r.stats.ms, commit, totalMs: performance.now() - t0 };
+      record = {
+        label,
+        kind,
+        resolverRuns: r.stats.resolverRuns,
+        cacheHits: r.stats.cacheHits,
+        compileMs: r.stats.ms,
+        commit,
+        totalMs: performance.now() - t0,
+      };
     }
     this.doc = next;
     this.history.push(record);

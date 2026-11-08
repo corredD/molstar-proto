@@ -15,9 +15,21 @@ describe('trace', () => {
   it('picked catalase: its model, the picks, the picking, the tomogram, its reconstruction and acquisition', () => {
     const t = trace(exosomeDoc(), 'p.catalase.observed');
     const ids = t.map((s) => s.id);
-    for (const id of ['m.picks', 'r.picks', 'act.pick', 'r.tomogram', 'act.reconstruct', 'r.tilts', 'act.acquire', 'ev.catalase-picked', 'al.tomo-model'])
+    for (const id of [
+      'm.picks',
+      'r.picks',
+      'act.pick',
+      'r.tomogram',
+      'act.reconstruct',
+      'r.tilts',
+      'act.acquire',
+      'ev.catalase-picked',
+      'al.tomo-model',
+    ])
       expect(ids).toContain(id);
-    expect(traceToText(t).split('\n')[0]).toBe('population p.catalase.observed: catalase (catalse) in c.exosome (interior)');
+    expect(traceToText(t).split('\n')[0]).toBe(
+      'population p.catalase.observed: catalase (catalse) in c.exosome (interior)',
+    );
   });
 
   it('the exosome: its geometry is the segmentation, made from the tomogram', () => {
@@ -28,6 +40,8 @@ describe('trace', () => {
 
   it('yeast ribosomes: two pieces of evidence that disagree, both kept', () => {
     const ids = trace(yeastDoc(), 'p.ribosomes').map((s) => s.id);
-    expect(ids).toEqual(expect.arrayContaining(['ev.ribosome-count', 'ev.ribosome-growth-law', 'm.yeast', 'r.tiles', 'act.pack']));
+    expect(ids).toEqual(
+      expect.arrayContaining(['ev.ribosome-count', 'ev.ribosome-growth-law', 'm.yeast', 'r.tiles', 'act.pack']),
+    );
   });
 });

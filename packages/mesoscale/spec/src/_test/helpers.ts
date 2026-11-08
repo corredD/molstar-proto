@@ -32,14 +32,20 @@ export function compileExosome(doc: MesoViewSpecDoc, extra: Partial<RuntimeOptio
 }
 
 /** A shallow edit of one population. */
-export function editPopulation(doc: MesoViewSpecDoc, id: string, edit: (p: MesoViewSpecDoc['populations'][number]) => MesoViewSpecDoc['populations'][number]): MesoViewSpecDoc {
+export function editPopulation(
+  doc: MesoViewSpecDoc,
+  id: string,
+  edit: (p: MesoViewSpecDoc['populations'][number]) => MesoViewSpecDoc['populations'][number],
+): MesoViewSpecDoc {
   return { ...doc, populations: doc.populations.map((p) => (p.id === id ? edit(p) : p)) };
 }
 
 /** A shallow edit of the session's view's looks. */
 export function recolor(doc: MesoViewSpecDoc, population: string, color: string): MesoViewSpecDoc {
   const views = (doc.views ?? []).map((v) =>
-    v.id === (doc.session?.view ?? doc.views?.[0]?.id) ? { ...v, looks: [...(v.looks ?? []), { select: { populations: [population] }, color }] } : v,
+    v.id === (doc.session?.view ?? doc.views?.[0]?.id)
+      ? { ...v, looks: [...(v.looks ?? []), { select: { populations: [population] }, color }] }
+      : v,
   );
   return { ...doc, views };
 }

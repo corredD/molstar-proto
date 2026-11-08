@@ -42,7 +42,14 @@ describe('validate', () => {
 
   it('references must name a node of the right kind', () => {
     const d = exosomeDoc();
-    const bad = { ...d, populations: [{ ...d.populations[0], entity: 'c.exosome' }, { ...d.populations[1], compartment: 'nowhere' }, ...d.populations.slice(2)] };
+    const bad = {
+      ...d,
+      populations: [
+        { ...d.populations[0], entity: 'c.exosome' },
+        { ...d.populations[1], compartment: 'nowhere' },
+        ...d.populations.slice(2),
+      ],
+    };
     const e = errors(bad);
     expect(e.find((i) => i.code === 'ref.kind')?.path).toBe('/populations/0/entity');
     expect(e.find((i) => i.code === 'ref.missing')?.path).toBe('/populations/1/compartment');
@@ -50,19 +57,31 @@ describe('validate', () => {
 
   it('compartments that contain each other', () => {
     const d = galleryDoc();
-    const cyc = { ...d, compartments: d.compartments.map((c) => (c.id === 'c.cell' ? { ...c, parent: 'c.nucleus' } : c)) };
+    const cyc = {
+      ...d,
+      compartments: d.compartments.map((c) => (c.id === 'c.cell' ? { ...c, parent: 'c.nucleus' } : c)),
+    };
     expect(codes(cyc)).toContain('compartment.cycle');
   });
 
   it('a membrane location needs a membrane', () => {
     const d = galleryDoc();
-    const noMembrane = { ...d, compartments: d.compartments.map((c) => (c.id === 'c.nucleus' ? { ...c, membrane: undefined } : c)) };
+    const noMembrane = {
+      ...d,
+      compartments: d.compartments.map((c) => (c.id === 'c.nucleus' ? { ...c, membrane: undefined } : c)),
+    };
     expect(errors(noMembrane).map((i) => i.code)).toEqual(['location.membrane']);
   });
 
   it('a population realized twice, and models avoiding each other in a cycle', () => {
     const d = exosomeDoc();
-    const twice = { ...d, models: [...d.models!, { id: 'm.again', kind: 'procedural' as const, method: 'meso.pack', populations: ['p.ALB'] }] };
+    const twice = {
+      ...d,
+      models: [
+        ...d.models!,
+        { id: 'm.again', kind: 'procedural' as const, method: 'meso.pack', populations: ['p.ALB'] },
+      ],
+    };
     expect(codes(twice)).toContain('model.overlap');
     const cycle = { ...d, models: d.models!.map((m) => (m.id === 'm.picks' ? { ...m, avoid: ['m.recipe'] } : m)) };
     expect(codes(cycle)).toContain('model.cycle');
@@ -72,10 +91,17 @@ describe('validate', () => {
     const d = galleryDoc();
     const bad: MesoViewSpecDoc = {
       ...d,
-      populations: [{ ...d.populations[1], abundance: { concentration: { value: 1, unit: 'mol' as 'M' } } }, ...d.populations.slice(2)],
+      populations: [
+        { ...d.populations[1], abundance: { concentration: { value: 1, unit: 'mol' as 'M' } } },
+        ...d.populations.slice(2),
+      ],
       views: [{ id: 'v', looks: [{ select: { populations: ['p.pores'] }, color: 'red' }] }],
     };
-    expect(errors(bad).map((i) => i.code).sort()).toEqual(['unit.unknown', 'value.range']);
+    expect(
+      errors(bad)
+        .map((i) => i.code)
+        .sort(),
+    ).toEqual(['unit.unknown', 'value.range']);
   });
 
   it('a spatial resource whose frame no alignment reaches the world', () => {

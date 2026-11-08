@@ -32,11 +32,34 @@ export function scaleDoc(kind: ScaleKind, n: number): MesoViewSpecDoc {
       ...radii.map((r, i) => ({ id: `e.p${i}`, label: `protein ${i}`, kind: 'protein' as const, radius: r })),
       { id: 'e.lipid', label: 'lipid', kind: 'lipid', radius: 0.45 },
     ],
-    compartments: [{ id: 'c.cell', label: 'cell', kind: 'cell', geometry: { kind: 'sphere', radius: R }, membrane: { thickness: 4 } }],
+    compartments: [
+      {
+        id: 'c.cell',
+        label: 'cell',
+        kind: 'cell',
+        geometry: { kind: 'sphere', radius: R },
+        membrane: { thickness: 4 },
+      },
+    ],
     populations:
       kind === 'pack'
-        ? radii.map((_, i) => ({ id: `p.p${i}`, entity: `e.p${i}`, compartment: 'c.cell', location: 'interior' as const, abundance: { count: i === 2 ? n - 2 * per : per } }))
-        : [{ id: 'p.lipids', entity: 'e.lipid', compartment: 'c.cell', location: 'membrane', abundance: { density: { value: 1.5, unit: 'per_nm2' } }, arrangement: { kind: 'bilayer' } }],
+        ? radii.map((_, i) => ({
+            id: `p.p${i}`,
+            entity: `e.p${i}`,
+            compartment: 'c.cell',
+            location: 'interior' as const,
+            abundance: { count: i === 2 ? n - 2 * per : per },
+          }))
+        : [
+            {
+              id: 'p.lipids',
+              entity: 'e.lipid',
+              compartment: 'c.cell',
+              location: 'membrane',
+              abundance: { density: { value: 1.5, unit: 'per_nm2' } },
+              arrangement: { kind: 'bilayer' },
+            },
+          ],
     views: [{ id: 'v', camera: { position: [0, 0, 3.2 * R], target: [0, 0, 0] } }],
   };
 }

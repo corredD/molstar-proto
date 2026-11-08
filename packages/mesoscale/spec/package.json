@@ -21,7 +21,12 @@
     },
     "./_test/*": null
   },
-  "files": ["lib", "src", "!**/_test/**", "!**/*.tsbuildinfo"],
+  "files": [
+    "lib",
+    "src",
+    "!**/_test/**",
+    "!**/*.tsbuildinfo"
+  ],
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b"

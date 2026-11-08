@@ -144,14 +144,7 @@ export interface Resource {
 
 // ---- biology ----
 
-export type EntityKind =
-  | 'protein'
-  | 'complex'
-  | 'nucleic-acid'
-  | 'lipid'
-  | 'glycan'
-  | 'small-molecule'
-  | 'assembly';
+export type EntityKind = 'protein' | 'complex' | 'nucleic-acid' | 'lipid' | 'glycan' | 'small-molecule' | 'assembly';
 
 export interface Entity {
   readonly id: Id;
@@ -293,13 +286,7 @@ export interface Model {
   readonly evidence?: readonly Id[];
 }
 
-export type EvidenceKind =
-  | 'observation'
-  | 'measurement'
-  | 'literature'
-  | 'database'
-  | 'prediction'
-  | 'assumption';
+export type EvidenceKind = 'observation' | 'measurement' | 'literature' | 'database' | 'prediction' | 'assumption';
 
 export interface Evidence {
   readonly id: Id;

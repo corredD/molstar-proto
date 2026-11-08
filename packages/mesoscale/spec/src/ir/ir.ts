@@ -74,11 +74,24 @@ export interface IRLook {
 export interface IRView {
   readonly id: string;
   /** Å, world frame. */
-  readonly camera?: { readonly position: readonly number[]; readonly target: readonly number[]; readonly up: readonly number[]; readonly fov?: number };
+  readonly camera?: {
+    readonly position: readonly number[];
+    readonly target: readonly number[];
+    readonly up: readonly number[];
+    readonly fov?: number;
+  };
   /** One per (set, type), every type of every set: what an adapter writes. */
   readonly looks: readonly IRLook[];
-  readonly selection?: readonly { readonly set: string; readonly type: number; readonly ordinals?: readonly number[] }[];
-  readonly annotations?: readonly { readonly id: string; readonly text: string; readonly position?: readonly number[] }[];
+  readonly selection?: readonly {
+    readonly set: string;
+    readonly type: number;
+    readonly ordinals?: readonly number[];
+  }[];
+  readonly annotations?: readonly {
+    readonly id: string;
+    readonly text: string;
+    readonly position?: readonly number[];
+  }[];
 }
 
 export interface IR {

@@ -42,7 +42,10 @@ describe('performance', () => {
     }
     record('pack.resolve_ms', Object.fromEntries(sizes.map((n, i) => [n, Math.round(ms[i])])));
     const perCopy = ms.map((t, i) => t / sizes[i]);
-    record('pack.us_per_copy', perCopy.map((x) => +(1000 * x).toFixed(2)));
+    record(
+      'pack.us_per_copy',
+      perCopy.map((x) => +(1000 * x).toFixed(2)),
+    );
     expect(perCopy[2] / perCopy[0]).toBeLessThan(3);
   });
 
@@ -51,7 +54,12 @@ describe('performance', () => {
     const [r, t] = await time(() => compile(scaleDoc('bilayer', 1_000_000), { resolvers: DefaultResolvers }));
     const after = process.memoryUsage().arrayBuffers;
     const [s] = placementSets(r.ir!);
-    record('bilayer1M', { copies: s.count, resolve_ms: Math.round(t), placement_MB: +(placementBytes(s) / 2 ** 20).toFixed(1), arrayBuffers_delta_MB: +((after - before) / 2 ** 20).toFixed(1) });
+    record('bilayer1M', {
+      copies: s.count,
+      resolve_ms: Math.round(t),
+      placement_MB: +(placementBytes(s) / 2 ** 20).toFixed(1),
+      arrayBuffers_delta_MB: +((after - before) / 2 ** 20).toFixed(1),
+    });
     expect(placementBytes(s)).toBe(s.count * BytesPerPlacement);
     // allocated once, exactly: no growth, no trim (the buffers are the set's, not a view of a larger one)
     expect(s.positions.buffer.byteLength).toBe(s.count * 12);
@@ -63,11 +71,18 @@ describe('performance', () => {
     const doc = scaleDoc('bilayer', 1_000_000);
     const cache = new Map();
     const [first] = await time(() => compile(doc, { resolvers: DefaultResolvers, cache }));
-    const recolored = { ...doc, views: [{ ...doc.views![0], looks: [{ select: { compartments: ['c.cell'] }, color: '#d0453a' }] }] };
+    const recolored = {
+      ...doc,
+      views: [{ ...doc.views![0], looks: [{ select: { compartments: ['c.cell'] }, color: '#d0453a' }] }],
+    };
     const [ir, viewMs] = await time(async () => updateView(recolored, first.ir!));
     const [again, cachedMs] = await time(() => compile(recolored, { resolvers: DefaultResolvers, cache }));
     const [plan, planMs] = await time(async () => planCommit(first.ir, ir));
-    record('edits1M', { view_edit_ms: +viewMs.toFixed(2), cached_compile_ms: +cachedMs.toFixed(1), plan_ms: +planMs.toFixed(2) });
+    record('edits1M', {
+      view_edit_ms: +viewMs.toFixed(2),
+      cached_compile_ms: +cachedMs.toFixed(1),
+      plan_ms: +planMs.toFixed(2),
+    });
     expect(again.stats.resolverRuns).toBe(0);
     expect(plan.add).toEqual([]);
     expect(viewMs).toBeLessThan(20);

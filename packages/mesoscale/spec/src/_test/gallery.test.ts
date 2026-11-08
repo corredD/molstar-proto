@@ -21,7 +21,12 @@ const run = (d = galleryDoc()) => compile(d, { resolvers: DefaultResolvers });
 describe('the gallery', () => {
   it('each arrangement goes to its default resolver', async () => {
     const r = await run();
-    expect(r.stats.models.map((m) => m.resolver).sort()).toEqual(['meso.bilayer', 'meso.fiber', 'meso.lattice', 'meso.pack']);
+    expect(r.stats.models.map((m) => m.resolver).sort()).toEqual([
+      'meso.bilayer',
+      'meso.fiber',
+      'meso.lattice',
+      'meso.pack',
+    ]);
   });
 
   it('nested compartments: ribosomes stay out of the nucleus, the vesicle and the mitochondrion', async () => {
@@ -34,7 +39,8 @@ describe('the gallery', () => {
       const [x, y, z] = s.positions.subarray(3 * i, 3 * i + 3);
       if (Math.hypot(x - 400, y, z) < 550 + 130) inside++; // nucleus (Å), its membrane and the ribosome radius
       if (Math.hypot(x + 800, y - 500, z) < 250 + 130) inside++;
-      if (((x + 500) / (450 + 130)) ** 2 + (y + 700) ** 2 / (200 + 130) ** 2 + z * z / (200 + 130) ** 2 < 0.99) inside++;
+      if (((x + 500) / (450 + 130)) ** 2 + (y + 700) ** 2 / (200 + 130) ** 2 + (z * z) / (200 + 130) ** 2 < 0.99)
+        inside++;
     }
     expect(inside).toBe(0);
     expect(r.counts['p.ribosomes'].achieved).toBe(300);
@@ -65,7 +71,9 @@ describe('the gallery', () => {
     const dir = [70, 20, 20].map((x) => x / Math.hypot(70, 20, 20));
     expect(v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2]).toBeGreaterThan(0.99);
     const actin = s.typeTable.find((t) => t.population === 'p.actin')!.index;
-    for (let i = 0; i < s.count; i++) if (s.types[i] === actin) expect(Math.hypot(s.positions[3 * i], s.positions[3 * i + 1], s.positions[3 * i + 2])).toBeLessThan(1500);
+    for (let i = 0; i < s.count; i++)
+      if (s.types[i] === actin)
+        expect(Math.hypot(s.positions[3 * i], s.positions[3 * i + 1], s.positions[3 * i + 2])).toBeLessThan(1500);
   });
 
   it('a bilayer: both leaflets at the density, heads out on the outer leaflet and in on the inner', async () => {
@@ -82,6 +90,8 @@ describe('the yeast document', () => {
     const r = await compile(yeastDoc(), { resolvers: DefaultResolvers });
     const codes = [...new Set(r.issues.filter((i) => i.severity !== 'info').map((i) => i.code))].sort();
     expect(codes).toEqual(['catalog.unexpanded', 'frame.handedness', 'resolver.unknown']);
-    expect(r.issues.find((i) => i.code === 'resolver.unknown')!.message).toMatch(/no resolver yeast-cell-viewer\.tiles/);
+    expect(r.issues.find((i) => i.code === 'resolver.unknown')!.message).toMatch(
+      /no resolver yeast-cell-viewer\.tiles/,
+    );
   });
 });

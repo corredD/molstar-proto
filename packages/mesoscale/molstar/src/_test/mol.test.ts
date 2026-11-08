@@ -49,10 +49,22 @@ describe('the Mol* side, without a viewer', () => {
     const q = relionQuat([0, 0, 0, 0], rot, tilt, psi);
     // the matrix of q, against Rᵀ built from Euler matrices
     const R = (a: number, axis: 'y' | 'z') => {
-      const c = Math.cos((a * Math.PI) / 180), s = Math.sin((a * Math.PI) / 180);
-      return axis === 'z' ? [[c, -s, 0], [s, c, 0], [0, 0, 1]] : [[c, 0, s], [0, 1, 0], [-s, 0, c]];
+      const c = Math.cos((a * Math.PI) / 180),
+        s = Math.sin((a * Math.PI) / 180);
+      return axis === 'z'
+        ? [
+            [c, -s, 0],
+            [s, c, 0],
+            [0, 0, 1],
+          ]
+        : [
+            [c, 0, s],
+            [0, 1, 0],
+            [-s, 0, c],
+          ];
     };
-    const mul = (a: number[][], b: number[][]) => a.map((r) => [0, 1, 2].map((j) => r.reduce((s, x, k) => s + x * b[k][j], 0)));
+    const mul = (a: number[][], b: number[][]) =>
+      a.map((r) => [0, 1, 2].map((j) => r.reduce((s, x, k) => s + x * b[k][j], 0)));
     const M = mul(mul(R(rot, 'z'), R(tilt, 'y')), R(psi, 'z'));
     const [x, y, z, w] = q;
     const Q = [

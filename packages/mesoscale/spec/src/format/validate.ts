@@ -4,14 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import {
-  type Id,
-  IdPattern,
-  type MesoViewSpecDoc,
-  type Length,
-  type Selector,
-  type Abundance,
-} from './doc.js';
+import { type Id, IdPattern, type MesoViewSpecDoc, type Length, type Selector, type Abundance } from './doc.js';
 import { type Issue, type IssueCode, issue } from './issues.js';
 import { ConcentrationToMolar, DensityToPerA2, isLengthUnit } from './units.js';
 
@@ -107,7 +100,8 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
   for (const [section] of Sections) {
     ((doc[section] as readonly { id: Id }[] | undefined) ?? []).forEach((x, i) => {
       const path = `/${section}/${i}/id`;
-      if (typeof x.id !== 'string' || !IdPattern.test(x.id)) return err('id.invalid', `id ${JSON.stringify(x.id)}`, path);
+      if (typeof x.id !== 'string' || !IdPattern.test(x.id))
+        return err('id.invalid', `id ${JSON.stringify(x.id)}`, path);
       const before = seen.get(x.id);
       if (before) err('id.duplicate', `id ${x.id} is also at ${before}`, path, [x.id]);
       else seen.set(x.id, path);
@@ -156,7 +150,8 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
     ref(a.activity, 'activity', `/alignments/${i}/activity`);
     evidence(a.evidence, `/alignments/${i}/evidence`);
     const t = a.transform;
-    if (t.matrix && t.matrix.length !== 16) err('value.range', 'matrix has 16 numbers', `/alignments/${i}/transform/matrix`);
+    if (t.matrix && t.matrix.length !== 16)
+      err('value.range', 'matrix has 16 numbers', `/alignments/${i}/transform/matrix`);
     if (t.rotation && Math.abs(Math.hypot(...t.rotation) - 1) > 1e-3)
       err('value.range', 'rotation is not a unit quaternion', `/alignments/${i}/transform/rotation`);
     length(a.residual, `/alignments/${i}/residual`, false);
@@ -168,7 +163,12 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
     if (!r.uri && !r.accession)
       warn('resource.unavailable', `resource ${r.id} has neither a uri nor an accession`, `/resources/${i}`, [r.id]);
     if (r.frame && frames.length && !aligned.has(r.frame))
-      warn('frame.unaligned', `resource ${r.id} is in frame ${r.frame}, which no alignment ties to the world`, `/resources/${i}/frame`, [r.id]);
+      warn(
+        'frame.unaligned',
+        `resource ${r.id} is in frame ${r.frame}, which no alignment ties to the world`,
+        `/resources/${i}/frame`,
+        [r.id],
+      );
   });
 
   // entities
@@ -190,7 +190,8 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
     else if (g.kind === 'ellipsoid') g.radii.forEach((r, j) => length(r, `${p}/geometry/radii/${j}`));
     else if (g.kind === 'box') g.size.forEach((r, j) => length(r, `${p}/geometry/size/${j}`));
     else if (g.kind === 'mesh' || g.kind === 'segmentation') ref(g.resource, 'resource', `${p}/geometry/resource`);
-    else if (g.kind !== 'implicit') err('value.range', `geometry kind ${(g as { kind: string }).kind}`, `${p}/geometry/kind`);
+    else if (g.kind !== 'implicit')
+      err('value.range', `geometry kind ${(g as { kind: string }).kind}`, `${p}/geometry/kind`);
     length(c.membrane?.thickness, `${p}/membrane/thickness`);
     ref(c.membrane?.leaflets?.inner, 'entity', `${p}/membrane/leaflets/inner`);
     ref(c.membrane?.leaflets?.outer, 'entity', `${p}/membrane/leaflets/outer`);
@@ -213,7 +214,9 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
     const c = comps.get(pop.compartment);
     const onMembrane = pop.location === 'membrane' || pop.arrangement?.kind === 'bilayer';
     if (c && onMembrane && !c.membrane)
-      err('location.membrane', `${pop.id} is in ${c.id}'s membrane, which ${c.id} does not declare`, `${p}/location`, [pop.id]);
+      err('location.membrane', `${pop.id} is in ${c.id}'s membrane, which ${c.id} does not declare`, `${p}/location`, [
+        pop.id,
+      ]);
     abundance(pop.abundance, `${p}/abundance`);
     const a = pop.arrangement;
     if (a?.kind === 'lattice') length(a.spacing, `${p}/arrangement/spacing`);
@@ -240,13 +243,17 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
     if ('count' in a) {
       if (!(a.count >= 0)) err('value.range', 'count is not negative', `${path}/count`);
     } else if ('concentration' in a) {
-      if (!(a.concentration.unit in ConcentrationToMolar)) err('unit.unknown', `concentration unit ${a.concentration.unit}`, `${path}/concentration/unit`);
-      if (!(a.concentration.value >= 0)) err('value.range', 'concentration is not negative', `${path}/concentration/value`);
+      if (!(a.concentration.unit in ConcentrationToMolar))
+        err('unit.unknown', `concentration unit ${a.concentration.unit}`, `${path}/concentration/unit`);
+      if (!(a.concentration.value >= 0))
+        err('value.range', 'concentration is not negative', `${path}/concentration/value`);
     } else if ('density' in a) {
-      if (!(a.density.unit in DensityToPerA2)) err('unit.unknown', `density unit ${a.density.unit}`, `${path}/density/unit`);
+      if (!(a.density.unit in DensityToPerA2))
+        err('unit.unknown', `density unit ${a.density.unit}`, `${path}/density/unit`);
       if (!(a.density.value >= 0)) err('value.range', 'density is not negative', `${path}/density/value`);
     } else if ('volumeFraction' in a) {
-      if (!(a.volumeFraction >= 0 && a.volumeFraction < 1)) err('value.range', 'volumeFraction is in [0, 1)', `${path}/volumeFraction`);
+      if (!(a.volumeFraction >= 0 && a.volumeFraction < 1))
+        err('value.range', 'volumeFraction is in [0, 1)', `${path}/volumeFraction`);
     } else err('value.range', 'abundance is a count, concentration, density or volumeFraction', path);
   }
 
@@ -256,7 +263,9 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
   });
   (doc.relations ?? []).forEach((r, i) => {
     r.subjects.forEach((s, j) => ref(s, ['population', 'entity', 'compartment'], `/relations/${i}/subjects/${j}`));
-    (r.objects ?? []).forEach((s, j) => ref(s, ['population', 'entity', 'compartment'], `/relations/${i}/objects/${j}`));
+    (r.objects ?? []).forEach((s, j) =>
+      ref(s, ['population', 'entity', 'compartment'], `/relations/${i}/objects/${j}`),
+    );
     evidence(r.evidence, `/relations/${i}/evidence`);
   });
 
@@ -292,14 +301,24 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
   for (const m of models) if (visit(m.id, [])) break;
   doc.populations.forEach((pop, i) => {
     if (!realizedBy.has(pop.id))
-      out.push(issue('model.unrealized', 'info', 'static', `${pop.id} has no model: the default resolver for ${pop.arrangement?.kind ?? 'random'} arrangements places it`, { path: `/populations/${i}`, ids: [pop.id] }));
+      out.push(
+        issue(
+          'model.unrealized',
+          'info',
+          'static',
+          `${pop.id} has no model: the default resolver for ${pop.arrangement?.kind ?? 'random'} arrangements places it`,
+          { path: `/populations/${i}`, ids: [pop.id] },
+        ),
+      );
   });
 
   // evidence and provenance
   (doc.evidence ?? []).forEach((e, i) => ref(e.source?.resource, 'resource', `/evidence/${i}/source/resource`));
   (doc.activities ?? []).forEach((a, i) => {
     (a.used ?? []).forEach((r, j) => ref(r, 'resource', `/activities/${i}/used/${j}`));
-    (a.generated ?? []).forEach((r, j) => ref(r, ['resource', 'model', 'alignment'], `/activities/${i}/generated/${j}`));
+    (a.generated ?? []).forEach((r, j) =>
+      ref(r, ['resource', 'model', 'alignment'], `/activities/${i}/generated/${j}`),
+    );
   });
 
   // views

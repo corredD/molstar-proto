@@ -4,7 +4,17 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { Arrangement, Compartment, Id, LengthUnit, MesoViewSpecDoc, Model, Selector, Transform, View } from '../format/doc.js';
+import type {
+  Arrangement,
+  Compartment,
+  Id,
+  LengthUnit,
+  MesoViewSpecDoc,
+  Model,
+  Selector,
+  Transform,
+  View,
+} from '../format/doc.js';
 import { hasErrors, issue, type Issue } from '../format/issues.js';
 import { abundanceToCount, LengthToAngstrom, toAngstrom } from '../format/units.js';
 import { validate } from '../format/validate.js';
@@ -40,9 +50,20 @@ export interface RuntimeOptions {
 export interface CompileStats {
   readonly resolverRuns: number;
   readonly cacheHits: number;
-  readonly ms: { readonly validate: number; readonly normalize: number; readonly resolve: number; readonly assemble: number };
+  readonly ms: {
+    readonly validate: number;
+    readonly normalize: number;
+    readonly resolve: number;
+    readonly assemble: number;
+  };
   /** Per model: resolver, key, whether it came from the cache, ms spent resolving. */
-  readonly models: readonly { readonly model: Id; readonly resolver: string; readonly key: string; readonly cached: boolean; readonly ms: number }[];
+  readonly models: readonly {
+    readonly model: Id;
+    readonly resolver: string;
+    readonly key: string;
+    readonly cached: boolean;
+    readonly ms: number;
+  }[];
 }
 
 export interface CompileResult {
@@ -70,7 +91,12 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
   const t1 = now();
   const empty = (ms: Partial<CompileStats['ms']> = {}): CompileResult => ({
     issues,
-    stats: { resolverRuns: 0, cacheHits: 0, ms: { validate: t1 - t0, normalize: 0, resolve: 0, assemble: 0, ...ms }, models: [] },
+    stats: {
+      resolverRuns: 0,
+      cacheHits: 0,
+      ms: { validate: t1 - t0, normalize: 0, resolve: 0, assemble: 0, ...ms },
+      models: [],
+    },
     counts: {},
     reports: {},
   });
@@ -92,25 +118,45 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
     if (!resource) return undefined;
     const raw = o.load ? await o.load(id) : undefined;
     if (raw === undefined) {
-      issues.push(issue('resource.unavailable', 'error', 'load', `${id} (${resource.format}${resource.uri ? `, ${resource.uri}` : ''}) could not be loaded`, { ids: [id] }));
+      issues.push(
+        issue(
+          'resource.unavailable',
+          'error',
+          'load',
+          `${id} (${resource.format}${resource.uri ? `, ${resource.uri}` : ''}) could not be loaded`,
+          { ids: [id] },
+        ),
+      );
       return undefined;
     }
     const reader = readerFor(readers, resource);
     if (!reader) {
-      issues.push(issue('resource.unavailable', 'error', 'load', `${id}: no reader for format ${resource.format}`, { ids: [id] }));
+      issues.push(
+        issue('resource.unavailable', 'error', 'load', `${id}: no reader for format ${resource.format}`, { ids: [id] }),
+      );
       return undefined;
     }
     let content: unknown;
     try {
       content = reader.read(raw, resource);
     } catch (e) {
-      issues.push(issue('resource.unavailable', 'error', 'load', `${id}: ${resource.format} could not be read (${(e as Error).message})`, { ids: [id] }));
+      issues.push(
+        issue(
+          'resource.unavailable',
+          'error',
+          'load',
+          `${id}: ${resource.format} could not be read (${(e as Error).message})`,
+          { ids: [id] },
+        ),
+      );
       return undefined;
     }
     const lr: LoadedResource = {
       resource,
       content,
-      contentKey: resource.checksum ?? contentHash(typeof raw === 'string' ? raw : raw instanceof Uint8Array ? raw : JSON.stringify(raw)),
+      contentKey:
+        resource.checksum ??
+        contentHash(typeof raw === 'string' ? raw : raw instanceof Uint8Array ? raw : JSON.stringify(raw)),
       toWorld: resource.frame ? frameToWorld.get(resource.frame) : undefined,
     };
     loaded.set(id, lr);
@@ -121,7 +167,8 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
   const children = new Map<Id, Id[]>();
   for (const c of doc.compartments) if (c.parent) children.set(c.parent, [...(children.get(c.parent) ?? []), c.id]);
   const comps = new Map<Id, NormalizedCompartment>();
-  for (const c of doc.compartments) comps.set(c.id, await normalizeCompartment(c, children.get(c.id) ?? [], A, loadResource));
+  for (const c of doc.compartments)
+    comps.set(c.id, await normalizeCompartment(c, children.get(c.id) ?? [], A, loadResource));
   for (const [id, c] of comps) {
     if (c.volume === undefined) continue;
     let free = c.volume;
@@ -149,7 +196,12 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
     // a bilayer's density is per leaflet: both leaflets are asked for
     const count = counted.count !== undefined && p.arrangement?.kind === 'bilayer' ? 2 * counted.count : counted.count;
     if (count === undefined)
-      issues.push(issue('constraint.unmet', 'warning', 'resolve', `${p.id}: no count (${why})`, { path: `/populations/${i}/abundance`, ids: [p.id] }));
+      issues.push(
+        issue('constraint.unmet', 'warning', 'resolve', `${p.id}: no count (${why})`, {
+          path: `/populations/${i}/abundance`,
+          ids: [p.id],
+        }),
+      );
     const e = ents.get(p.entity)!;
     pops.set(p.id, {
       id: p.id,
@@ -161,11 +213,21 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
       minFraction: p.constraints?.find((k) => k.kind === 'placed-fraction')?.min ?? 1,
       radius: e.radius !== undefined ? A(e.radius) : undefined,
       arrangement: normalizeArrangement(p.arrangement, A),
-      minDistances: (p.constraints ?? []).flatMap((k) => (k.kind === 'min-distance' ? [{ to: k.to, distance: A(k.distance) }] : [])),
+      minDistances: (p.constraints ?? []).flatMap((k) =>
+        k.kind === 'min-distance' ? [{ to: k.to, distance: A(k.distance) }] : [],
+      ),
     });
   });
   for (const cat of doc.catalogs ?? [])
-    issues.push(issue('catalog.unexpanded', 'warning', 'resolve', `catalog ${cat.id}: no catalog expander in this runtime; its populations are not placed`, { ids: [cat.id] }));
+    issues.push(
+      issue(
+        'catalog.unexpanded',
+        'warning',
+        'resolve',
+        `catalog ${cat.id}: no catalog expander in this runtime; its populations are not placed`,
+        { ids: [cat.id] },
+      ),
+    );
 
   // ---- models: the document's, then the default ones for what no model realizes ----
   const models: Model[] = [...(doc.models ?? [])];
@@ -176,13 +238,17 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
     const r = DefaultResolverByArrangement[p.arrangement?.kind ?? 'random'];
     byDefault.set(r, [...(byDefault.get(r) ?? []), p.id]);
   }
-  for (const [method, ps] of byDefault) models.push({ id: `default:${method}`, kind: 'procedural', method, populations: ps, seed: 1 });
+  for (const [method, ps] of byDefault)
+    models.push({ id: `default:${method}`, kind: 'procedural', method, populations: ps, seed: 1 });
   const t2 = now();
 
   // ---- resolve, in `avoid` order ----
   const cache = o.cache ?? new Map<string, ResolveOutput>();
   const order = topoOrder(models);
-  const outputs = new Map<Id, { key: string; out: ResolveOutput; cached: boolean; resolver: Resolver; input: unknown }>();
+  const outputs = new Map<
+    Id,
+    { key: string; out: ResolveOutput; cached: boolean; resolver: Resolver; input: unknown }
+  >();
   const statsModels: { model: Id; resolver: string; key: string; cached: boolean; ms: number }[] = [];
   let runs = 0;
   let hits = 0;
@@ -193,12 +259,30 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
     const popsOf = m.populations.map((id) => pops.get(id)!).filter(Boolean);
     for (const p of popsOf) counts[p.id] = { requested: p.requested, achieved: 0 };
     if (!resolver) {
-      issues.push(issue('resolver.unknown', 'error', 'resolve', `${m.id}: no resolver ${m.method}; ${m.populations.join(', ')} not placed`, { ids: [m.id, ...m.populations] }));
+      issues.push(
+        issue(
+          'resolver.unknown',
+          'error',
+          'resolve',
+          `${m.id}: no resolver ${m.method}; ${m.populations.join(', ')} not placed`,
+          { ids: [m.id, ...m.populations] },
+        ),
+      );
       continue;
     }
-    const unsupported = popsOf.filter((p) => !resolver.arrangements.includes(p.arrangement.kind) || !resolver.locations.includes(p.location));
+    const unsupported = popsOf.filter(
+      (p) => !resolver.arrangements.includes(p.arrangement.kind) || !resolver.locations.includes(p.location),
+    );
     for (const p of unsupported)
-      issues.push(issue('resolver.unsupported', 'error', 'resolve', `${m.method} cannot place ${p.id} (${p.arrangement.kind}, ${p.location})`, { ids: [p.id, m.id] }));
+      issues.push(
+        issue(
+          'resolver.unsupported',
+          'error',
+          'resolve',
+          `${m.method} cannot place ${p.id} (${p.arrangement.kind}, ${p.location})`,
+          { ids: [p.id, m.id] },
+        ),
+      );
     const inputs = new Map<Id, LoadedResource>();
     let missing = false;
     for (const id of m.inputs ?? []) {
@@ -208,7 +292,15 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
     }
     const avoided = (m.avoid ?? []).map((a) => outputs.get(a));
     if (missing || avoided.some((a) => !a)) {
-      issues.push(issue('resolver.failed', 'error', 'resolve', `${m.id} not resolved: ${missing ? 'an input is unavailable' : 'a model it avoids failed'}`, { ids: [m.id, ...m.populations] }));
+      issues.push(
+        issue(
+          'resolver.failed',
+          'error',
+          'resolve',
+          `${m.id} not resolved: ${missing ? 'an input is unavailable' : 'a model it avoids failed'}`,
+          { ids: [m.id, ...m.populations] },
+        ),
+      );
       continue;
     }
     const job: ResolveJob = {
@@ -226,7 +318,15 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
       input = resolver.project(job);
       key = `${m.id}@${contentHash({ resolver: resolver.id, version: resolver.version, input, avoid: avoided.map((a) => a!.key) })}`;
     } catch (e) {
-      issues.push(issue('resolver.failed', 'error', 'resolve', `${m.id}: ${resolver.id} could not read its input (${(e as Error).message})`, { ids: [m.id] }));
+      issues.push(
+        issue(
+          'resolver.failed',
+          'error',
+          'resolve',
+          `${m.id}: ${resolver.id} could not read its input (${(e as Error).message})`,
+          { ids: [m.id] },
+        ),
+      );
       continue;
     }
     let out = cache.get(key);
@@ -240,7 +340,11 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
         runs++;
         cache.set(key, out);
       } catch (e) {
-        issues.push(issue('resolver.failed', 'error', 'resolve', `${m.id}: ${resolver.id} threw (${(e as Error).message})`, { ids: [m.id] }));
+        issues.push(
+          issue('resolver.failed', 'error', 'resolve', `${m.id}: ${resolver.id} threw (${(e as Error).message})`, {
+            ids: [m.id],
+          }),
+        );
         continue;
       }
     }
@@ -254,19 +358,47 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
       const need = Math.ceil((p.requested ?? 0) * p.minFraction);
       if (achieved < need)
         issues.push(
-          issue('constraint.unmet', p.minFraction < 1 || achieved === 0 ? 'error' : 'warning', 'resolve', `${p.id}: ${achieved} of ${p.requested} placed`, {
-            ids: [p.id, m.id],
-            constraint: { kind: 'placed-fraction', requested: p.requested ?? 0, achieved, reason: out.shortfall?.[p.id] },
-          }),
+          issue(
+            'constraint.unmet',
+            p.minFraction < 1 || achieved === 0 ? 'error' : 'warning',
+            'resolve',
+            `${p.id}: ${achieved} of ${p.requested} placed`,
+            {
+              ids: [p.id, m.id],
+              constraint: {
+                kind: 'placed-fraction',
+                requested: p.requested ?? 0,
+                achieved,
+                reason: out.shortfall?.[p.id],
+              },
+            },
+          ),
         );
     }
   }
   for (const p of pops.values())
     if (p.minDistances.length)
-      issues.push(issue('resolver.unsupported', 'warning', 'resolve', `${p.id}: min-distance constraints are not honoured by this prototype's resolvers`, { ids: [p.id] }));
+      issues.push(
+        issue(
+          'resolver.unsupported',
+          'warning',
+          'resolve',
+          `${p.id}: min-distance constraints are not honoured by this prototype's resolvers`,
+          { ids: [p.id] },
+        ),
+      );
   for (const r of doc.relations ?? []) {
     const honoured = [...outputs.values()].some((x) => x.resolver.honours?.includes(r.kind));
-    if (!honoured) issues.push(issue('relation.ignored', 'info', 'resolve', `relation ${r.id} (${r.kind}) is the document's statement; no resolver here honours it`, { ids: [r.id] }));
+    if (!honoured)
+      issues.push(
+        issue(
+          'relation.ignored',
+          'info',
+          'resolve',
+          `relation ${r.id} (${r.kind}) is the document's statement; no resolver here honours it`,
+          { ids: [r.id] },
+        ),
+      );
   }
   const t3 = now();
 
@@ -325,7 +457,10 @@ async function normalizeCompartment(
     shape = { kind: 'ellipsoid', center: center(g.center), radii };
     volume = (4 / 3) * Math.PI * radii[0] * radii[1] * radii[2];
     const p = 1.6075;
-    area = 4 * Math.PI * (((radii[0] * radii[1]) ** p + (radii[0] * radii[2]) ** p + (radii[1] * radii[2]) ** p) / 3) ** (1 / p);
+    area =
+      4 *
+      Math.PI *
+      (((radii[0] * radii[1]) ** p + (radii[0] * radii[2]) ** p + (radii[1] * radii[2]) ** p) / 3) ** (1 / p);
   } else if (g.kind === 'box') {
     const size = g.size.map((x) => A(x));
     shape = { kind: 'box', center: center(g.center), size };
@@ -340,10 +475,18 @@ async function normalizeCompartment(
       const m = meshArea(mesh);
       volume = m.volume;
       area = m.area;
-      shape = { kind: 'mesh', resource: g.resource, vertexCount: mesh.positions.length / 3, triangleCount: mesh.indices.length / 3 };
+      shape = {
+        kind: 'mesh',
+        resource: g.resource,
+        vertexCount: mesh.positions.length / 3,
+        triangleCount: mesh.indices.length / 3,
+      };
     } else shape = { kind: 'implicit', description: `mesh ${g.resource} unavailable` };
   } else if (g.kind === 'segmentation') {
-    shape = { kind: 'implicit', description: `segmentation ${g.resource}${g.label !== undefined ? ` label ${g.label}` : ''}: surface extraction is not in this prototype` };
+    shape = {
+      kind: 'implicit',
+      description: `segmentation ${g.resource}${g.label !== undefined ? ` label ${g.label}` : ''}: surface extraction is not in this prototype`,
+    };
   } else shape = { kind: 'implicit', description: g.description };
   return {
     id: c.id,
@@ -363,7 +506,9 @@ function transformMesh(m: MeshData, M?: readonly number[]): MeshData {
   if (!M) return m;
   const p = new Float32Array(m.positions.length);
   for (let i = 0; i < p.length; i += 3) {
-    const x = m.positions[i], y = m.positions[i + 1], z = m.positions[i + 2];
+    const x = m.positions[i],
+      y = m.positions[i + 1],
+      z = m.positions[i + 2];
     p[i] = M[0] * x + M[4] * y + M[8] * z + M[12];
     p[i + 1] = M[1] * x + M[5] * y + M[9] * z + M[13];
     p[i + 2] = M[2] * x + M[6] * y + M[10] * z + M[14];
@@ -380,7 +525,9 @@ function normalizeArrangement(a: Arrangement | undefined, A: (l: any) => number)
     rise: A(a.rise),
     twist: a.twist ?? 0,
     path: a.path?.points?.map((p) => [A(p[0]), A(p[1]), A(p[2])] as [number, number, number]),
-    growth: a.growth ? { persistence: A(a.growth.persistence), length: A(a.growth.length), count: a.growth.count } : undefined,
+    growth: a.growth
+      ? { persistence: A(a.growth.persistence), length: A(a.growth.length), count: a.growth.count }
+      : undefined,
   };
 }
 
@@ -391,14 +538,32 @@ const Identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 /** Column-major product a·b. */
 export function mat4Mul(a: readonly number[], b: readonly number[]): number[] {
   const o = new Array(16).fill(0);
-  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[4 * c + r] += a[4 * k + r] * b[4 * c + k];
+  for (let c = 0; c < 4; c++)
+    for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[4 * c + r] += a[4 * k + r] * b[4 * c + k];
   return o;
 }
 
 function invertSimilarity(m: readonly number[]): number[] {
   // R·s and t: inverse is Rᵀ/s and -Rᵀt/s
   const s2 = m[0] * m[0] + m[1] * m[1] + m[2] * m[2];
-  const o = [m[0] / s2, m[4] / s2, m[8] / s2, 0, m[1] / s2, m[5] / s2, m[9] / s2, 0, m[2] / s2, m[6] / s2, m[10] / s2, 0, 0, 0, 0, 1];
+  const o = [
+    m[0] / s2,
+    m[4] / s2,
+    m[8] / s2,
+    0,
+    m[1] / s2,
+    m[5] / s2,
+    m[9] / s2,
+    0,
+    m[2] / s2,
+    m[6] / s2,
+    m[10] / s2,
+    0,
+    0,
+    0,
+    0,
+    1,
+  ];
   for (let r = 0; r < 3; r++) o[12 + r] = -(o[r] * m[12] + o[4 + r] * m[13] + o[8 + r] * m[14]);
   return o;
 }
@@ -414,10 +579,22 @@ export function transformMatrix(t: Transform, unit: LengthUnit): number[] {
   const s = t.scale ?? 1;
   const tr = (t.translation ?? [0, 0, 0]).map((v) => v * LengthToAngstrom[unit]);
   return [
-    s * (1 - 2 * (y * y + z * z)), s * 2 * (x * y + z * w), s * 2 * (x * z - y * w), 0,
-    s * 2 * (x * y - z * w), s * (1 - 2 * (x * x + z * z)), s * 2 * (y * z + x * w), 0,
-    s * 2 * (x * z + y * w), s * 2 * (y * z - x * w), s * (1 - 2 * (x * x + y * y)), 0,
-    tr[0], tr[1], tr[2], 1,
+    s * (1 - 2 * (y * y + z * z)),
+    s * 2 * (x * y + z * w),
+    s * 2 * (x * z - y * w),
+    0,
+    s * 2 * (x * y - z * w),
+    s * (1 - 2 * (x * x + z * z)),
+    s * 2 * (y * z + x * w),
+    0,
+    s * 2 * (x * z + y * w),
+    s * 2 * (y * z - x * w),
+    s * (1 - 2 * (x * x + y * y)),
+    0,
+    tr[0],
+    tr[1],
+    tr[2],
+    1,
   ];
 }
 
@@ -483,7 +660,13 @@ function assemble(
   const compNode = (id: Id): IRNode => {
     const c = comps.get(id)!;
     const kids: IRNode[] = [];
-    if (c.membrane) kids.push({ ref: `${id}/membrane`, kind: 'membrane', params: { compartment: id, thickness: c.membrane.thickness }, origin: [id] });
+    if (c.membrane)
+      kids.push({
+        ref: `${id}/membrane`,
+        kind: 'membrane',
+        params: { compartment: id, thickness: c.membrane.thickness },
+        origin: [id],
+      });
     for (const k of c.children) kids.push(compNode(k));
     return {
       ref: id,
@@ -502,8 +685,20 @@ function assemble(
       ref: `${m.id}/resolve`,
       kind: 'resolve',
       origin: m.id.startsWith('default:') ? [...m.populations] : [m.id, ...m.populations],
-      params: { model: m.id, resolver: o.resolver.id, version: o.resolver.version, key: o.key, input: summarizeInput(o.input), cached: o.cached },
-      children: o.out.sets.map((set, i) => ({ ref: `${m.id}/placements/${i}`, kind: 'placements', params: { set }, origin: [...new Set(set.typeTable.map((t) => t.population))] })),
+      params: {
+        model: m.id,
+        resolver: o.resolver.id,
+        version: o.resolver.version,
+        key: o.key,
+        input: summarizeInput(o.input),
+        cached: o.cached,
+      },
+      children: o.out.sets.map((set, i) => ({
+        ref: `${m.id}/placements/${i}`,
+        kind: 'placements',
+        params: { set },
+        origin: [...new Set(set.typeTable.map((t) => t.population))],
+      })),
     });
   }
   const frameNodes: IRNode[] = [...frames]
@@ -519,7 +714,15 @@ function assemble(
     ref: 'scene',
     kind: 'scene',
     params: { units: 'A', title: doc.metadata.title },
-    children: [{ ref: `frame:${world}`, kind: 'frame', params: { frame: world, matrix: Identity }, origin: [world], children: [...tops, ...resolves, ...frameNodes] }],
+    children: [
+      {
+        ref: `frame:${world}`,
+        kind: 'frame',
+        params: { frame: world, matrix: Identity },
+        origin: [world],
+        children: [...tops, ...resolves, ...frameNodes],
+      },
+    ],
   };
 }
 
@@ -581,7 +784,9 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
       const sel = view?.selection;
       if (sel) {
         if (matches(sel, t.population, t.entity)) selection.push({ set: set.key, type: t.index });
-        const ords = (sel.instances ?? []).filter((x) => x.split('#')[0] === t.population).map((x) => Number(x.split('#')[1]));
+        const ords = (sel.instances ?? [])
+          .filter((x) => x.split('#')[0] === t.population)
+          .map((x) => Number(x.split('#')[1]));
         if (ords.length) selection.push({ set: set.key, type: t.index, ordinals: ords });
       }
     }
@@ -591,9 +796,20 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
   const cam = view?.camera;
   return {
     id: view?.id ?? 'default',
-    camera: cam ? { position: cam.position.map((x) => x * f), target: cam.target.map((x) => x * f), up: [...(cam.up ?? [0, 1, 0])], fov: cam.fov } : undefined,
+    camera: cam
+      ? {
+          position: cam.position.map((x) => x * f),
+          target: cam.target.map((x) => x * f),
+          up: [...(cam.up ?? [0, 1, 0])],
+          fov: cam.fov,
+        }
+      : undefined,
     looks,
     selection: selection.length ? selection : undefined,
-    annotations: view?.annotations?.map((a) => ({ id: a.id, text: a.text, position: 'position' in a.target ? a.target.position.map((x) => x * f) : undefined })),
+    annotations: view?.annotations?.map((a) => ({
+      id: a.id,
+      text: a.text,
+      position: 'position' in a.target ? a.target.position.map((x) => x * f) : undefined,
+    })),
   };
 }

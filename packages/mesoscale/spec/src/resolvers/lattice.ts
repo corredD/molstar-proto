@@ -33,7 +33,8 @@ interface LatticeInput {
 export const MesoLatticeResolver: Resolver<LatticeInput> = {
   id: 'meso.lattice',
   version: '0.1.0',
-  description: 'Lattices on spherical and ellipsoidal membranes: Fibonacci sites at the lattice density, patches by count',
+  description:
+    'Lattices on spherical and ellipsoidal membranes: Fibonacci sites at the lattice density, patches by count',
   arrangements: ['lattice'],
   locations: ['membrane', 'outer-surface', 'inner-surface'],
   project(job: ResolveJob): LatticeInput {
@@ -52,12 +53,22 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
           lattice: a.lattice,
         };
       }),
-      compartments: packCompartments(job, job.populations.map((p) => p.compartment)),
+      compartments: packCompartments(
+        job,
+        job.populations.map((p) => p.compartment),
+      ),
       seed: job.seed,
     };
   },
   resolve(input, job): ResolveOutput {
-    const typeTable: PlacementType[] = input.items.map((it, index) => ({ index, population: it.population, entity: it.entity, label: it.label, compartment: it.compartment, radius: it.radius }));
+    const typeTable: PlacementType[] = input.items.map((it, index) => ({
+      index,
+      population: it.population,
+      entity: it.entity,
+      label: it.label,
+      compartment: it.compartment,
+      radius: it.radius,
+    }));
     const b = new PlacementBuilder(input.items.reduce((s, i) => s + i.requested, 0));
     const achieved: Record<Id, number> = {};
     const shortfall: Record<Id, string> = {};
@@ -67,12 +78,14 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
       const shape = c?.shape;
       if (!shape || (shape.kind !== 'sphere' && shape.kind !== 'ellipsoid')) {
         achieved[it.population] = 0;
-        shortfall[it.population] = `a lattice needs a sphere or an ellipsoid; ${it.compartment} is ${shape?.kind ?? 'unknown'}`;
+        shortfall[it.population] =
+          `a lattice needs a sphere or an ellipsoid; ${it.compartment} is ${shape?.kind ?? 'unknown'}`;
         return;
       }
       const center = shape.center;
       const radii = shape.kind === 'sphere' ? [shape.radius, shape.radius, shape.radius] : shape.radii;
-      const d = it.location === 'membrane' ? 0 : (it.location === 'outer-surface' ? 1 : -1) * (c.thickness / 2 + it.radius);
+      const d =
+        it.location === 'membrane' ? 0 : (it.location === 'outer-surface' ? 1 : -1) * (c.thickness / 2 + it.radius);
       const R = radii.map((r) => r + d);
       const mean = Math.cbrt(R[0] * R[1] * R[2]);
       const cellArea = it.lattice === 'hexagonal' ? (Math.sqrt(3) / 2) * it.spacing ** 2 : it.spacing ** 2;
@@ -91,9 +104,13 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
         const r = Math.sqrt(1 - z * z);
         const phi = i * golden;
         rotate(v, rot, r * Math.cos(phi), r * Math.sin(phi), z);
-        const x = center[0] + R[0] * v[0], y = center[1] + R[1] * v[1], zz = center[2] + R[2] * v[2];
+        const x = center[0] + R[0] * v[0],
+          y = center[1] + R[1] * v[1],
+          zz = center[2] + R[2] * v[2];
         // the ellipsoid normal
-        const nx = v[0] / R[0], ny = v[1] / R[1], nz = v[2] / R[2];
+        const nx = v[0] / R[0],
+          ny = v[1] / R[1],
+          nz = v[2] / R[2];
         const nl = Math.hypot(nx, ny, nz);
         // in-plane orientation follows the spiral's direction so neighbours share a heading
         quatFromTo(q, 0, 0, 1, nx / nl, ny / nl, nz / nl, phi);
@@ -101,7 +118,8 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
       }
       achieved[it.population] = n;
       if (n < it.requested)
-        shortfall[it.population] = `the ${it.location} of ${c.label} holds ${sites} ${it.lattice} sites ${it.spacing.toFixed(0)} Å apart; ${it.requested} asked`;
+        shortfall[it.population] =
+          `the ${it.location} of ${c.label} holds ${sites} ${it.lattice} sites ${it.spacing.toFixed(0)} Å apart; ${it.requested} asked`;
     });
     return { sets: [b.finish({ key: '', model: job.model.id, frame: 'world', typeTable })], achieved, shortfall };
   },
@@ -109,7 +127,9 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
 
 function rotate(out: number[], q: number[], x: number, y: number, z: number) {
   const [qx, qy, qz, qw] = q;
-  const tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
+  const tx = 2 * (qy * z - qz * y),
+    ty = 2 * (qz * x - qx * z),
+    tz = 2 * (qx * y - qy * x);
   out[0] = x + qw * tx + (qy * tz - qz * ty);
   out[1] = y + qw * ty + (qz * tx - qx * tz);
   out[2] = z + qw * tz + (qx * ty - qy * tx);

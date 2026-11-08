@@ -30,7 +30,10 @@ export const MesoPackResolver: Resolver<PackInput> = {
         compartment: p.compartment,
         inward: p.entity.topology?.nTerminus === 'inside',
       })),
-      compartments: packCompartments(job, job.populations.map((p) => p.compartment)),
+      compartments: packCompartments(
+        job,
+        job.populations.map((p) => p.compartment),
+      ),
       seed: job.seed,
       attempts: Number(params.attempts ?? DefaultPackParams.attempts),
       giveUp: Number(params.giveUp ?? DefaultPackParams.giveUp),

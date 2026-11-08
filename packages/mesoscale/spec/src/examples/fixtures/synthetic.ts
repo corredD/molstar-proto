@@ -17,11 +17,40 @@ export const SyntheticTomogram = { voxelNm: 1, center: [200, 200, 100] as const,
 export function syntheticVesicleObj(level = 2): string {
   const t = (1 + Math.sqrt(5)) / 2;
   let v: number[][] = [
-    [-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1],
+    [-1, t, 0],
+    [1, t, 0],
+    [-1, -t, 0],
+    [1, -t, 0],
+    [0, -1, t],
+    [0, 1, t],
+    [0, -1, -t],
+    [0, 1, -t],
+    [t, 0, -1],
+    [t, 0, 1],
+    [-t, 0, -1],
+    [-t, 0, 1],
   ].map(norm);
   let f = [
-    [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
-    [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+    [0, 11, 5],
+    [0, 5, 1],
+    [0, 1, 7],
+    [0, 7, 10],
+    [0, 10, 11],
+    [1, 5, 9],
+    [5, 11, 4],
+    [11, 10, 2],
+    [10, 7, 6],
+    [7, 1, 8],
+    [3, 9, 4],
+    [3, 4, 2],
+    [3, 2, 6],
+    [3, 6, 8],
+    [3, 8, 9],
+    [4, 9, 5],
+    [2, 4, 11],
+    [6, 2, 10],
+    [8, 6, 7],
+    [9, 8, 1],
   ];
   for (let l = 0; l < level; l++) {
     const mid = new Map<string, number>();
@@ -34,8 +63,15 @@ export function syntheticVesicleObj(level = 2): string {
       return mid.get(k)!;
     };
     f = f.flatMap(([a, b, c]) => {
-      const ab = m(a, b), bc = m(b, c), ca = m(c, a);
-      return [[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]];
+      const ab = m(a, b),
+        bc = m(b, c),
+        ca = m(c, a);
+      return [
+        [a, ab, ca],
+        [b, bc, ab],
+        [c, ca, bc],
+        [ab, bc, ca],
+      ];
     });
   }
   const [cx, cy, cz] = SyntheticTomogram.center;
@@ -44,7 +80,9 @@ export function syntheticVesicleObj(level = 2): string {
     const wobble = 1 + 0.08 * x * y + 0.05 * (z * z - 0.33);
     return [cx + R * wobble * x, cy + R * wobble * y, cz + R * 0.9 * wobble * z];
   });
-  const lines = ['# synthetic fixture: a deformed icosphere standing in for a segmented vesicle membrane (voxels, 1 nm)'];
+  const lines = [
+    '# synthetic fixture: a deformed icosphere standing in for a segmented vesicle membrane (voxels, 1 nm)',
+  ];
   for (const p of v) lines.push(`v ${p.map((x) => x.toFixed(3)).join(' ')}`);
   for (const [a, b, c] of f) lines.push(`f ${a + 1} ${b + 1} ${c + 1}`);
   return `${lines.join('\n')}\n`;

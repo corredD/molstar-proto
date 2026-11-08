@@ -70,7 +70,10 @@ export class PrismMesoAdapter implements RendererAdapter {
       const r = await particles.representation({
         type: this.options.representation ?? 'spacefill',
         particles: b.ref,
-        params: {},
+        // spacefill hides fiber particles by default (a Fibers representation draws them); here a filament's subunits
+        // are the copies to draw (renderer-recommendations.md A8)
+        params:
+          set.fibers && (this.options.representation ?? 'spacefill') === 'spacefill' ? { excludeFibers: false } : {},
       } as Parameters<typeof particles.representation>[0]);
       if (!r.ok) throw new Error(`Could not show ${label}: ${r.message}`);
     }

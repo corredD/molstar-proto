@@ -29,14 +29,21 @@ function check(name: string, text: string) {
     return;
   }
   expect(existsSync(file), `${name} is missing: run with MESO_UPDATE_EXAMPLES=1`).toBe(true);
-  expect(readFileSync(file, 'utf8')).toBe(text);
+  const committed = readFileSync(file, 'utf8');
+  // JSON by value (the repository's formatter lays the files out its own way), the native formats by text
+  if (name.endsWith('.json')) expect(JSON.parse(committed)).toEqual(JSON.parse(text));
+  else expect(committed).toBe(text);
 }
 
 const json = (x: unknown) => `${JSON.stringify(x, null, 1)}\n`;
 const load = (id: string) => ExosomeResources[id]?.();
 
 describe('paired examples', () => {
-  for (const [name, doc] of [['exosome', exosomeDoc()], ['gallery', galleryDoc()], ['yeast', yeastDoc()]] as const) {
+  for (const [name, doc] of [
+    ['exosome', exosomeDoc()],
+    ['gallery', galleryDoc()],
+    ['yeast', yeastDoc()],
+  ] as const) {
     it(`${name}: the document and its IR`, async () => {
       check(`${name}.mesoviewspec.json`, json(doc));
       const r = await compile(doc, { resolvers: DefaultResolvers, load });

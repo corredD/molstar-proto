@@ -1,214 +1,158 @@
 {
- "local_id": 0,
- "unique_id": 0,
- "name": "root",
- "Compartments": [
-  {
-   "local_id": 0,
-   "unique_id": 1,
-   "name": "isg",
-   "Compartments": [
+  "local_id": 0,
+  "unique_id": 0,
+  "name": "root",
+  "Compartments": [
     {
-     "local_id": 0,
-     "unique_id": 2,
-     "name": "surface",
-     "Compartments": [],
-     "IngredientGroups": [
-      {
-       "local_id": 0,
-       "unique_id": 1,
-       "name": "proteins",
-       "Ingredients": [
+      "local_id": 0,
+      "unique_id": 1,
+      "name": "isg",
+      "Compartments": [
         {
-         "ingredient_id": 4,
-         "name": "Vamp2",
-         "path": "",
-         "encapsulatingRadius": 25,
-         "source": {
-          "pdb": "VAMP.pdb",
-          "bu": "AU",
-          "selection": "",
-          "model": "",
-          "transform": {
-           "offset": [
-            -15,
-            25,
-            -10
-           ]
-          }
-         },
-         "nbMol": 548,
-         "molarity": 3.4e-05,
-         "principalVector": [
-          -0.53,
-          0.85,
-          0.08
-         ],
-         "description": "VAMP-2",
-         "ingtype": "protein",
-         "buildtype": "random",
-         "comments": "",
-         "color": [
-          1,
-          0,
-          0
-         ],
-         "uniprot": "",
-         "molecularweight": 0
+          "local_id": 0,
+          "unique_id": 2,
+          "name": "surface",
+          "Compartments": [],
+          "IngredientGroups": [
+            {
+              "local_id": 0,
+              "unique_id": 1,
+              "name": "proteins",
+              "Ingredients": [
+                {
+                  "ingredient_id": 4,
+                  "name": "Vamp2",
+                  "path": "",
+                  "encapsulatingRadius": 25,
+                  "source": {
+                    "pdb": "VAMP.pdb",
+                    "bu": "AU",
+                    "selection": "",
+                    "model": "",
+                    "transform": {
+                      "offset": [-15, 25, -10]
+                    }
+                  },
+                  "nbMol": 548,
+                  "molarity": 3.4e-5,
+                  "principalVector": [-0.53, 0.85, 0.08],
+                  "description": "VAMP-2",
+                  "ingtype": "protein",
+                  "buildtype": "random",
+                  "comments": "",
+                  "color": [1, 0, 0],
+                  "uniprot": "",
+                  "molecularweight": 0
+                },
+                {
+                  "ingredient_id": 13,
+                  "name": "Rab3a",
+                  "path": "",
+                  "encapsulatingRadius": 25,
+                  "source": {
+                    "pdb": "3rab",
+                    "bu": "BU1",
+                    "selection": "",
+                    "model": "",
+                    "transform": {
+                      "offset": [-41, 11, -3]
+                    }
+                  },
+                  "nbMol": 940,
+                  "molarity": 2.92e-5,
+                  "principalVector": [-0.95, 0.28, -0.12],
+                  "description": "Ras-related protein Rab-3A",
+                  "ingtype": "protein",
+                  "buildtype": "random",
+                  "comments": "",
+                  "color": [1, 0, 0],
+                  "uniprot": "",
+                  "molecularweight": 0
+                }
+              ],
+              "groupType": 0,
+              "compartmentId": 2
+            }
+          ]
         },
         {
-         "ingredient_id": 13,
-         "name": "Rab3a",
-         "path": "",
-         "encapsulatingRadius": 25,
-         "source": {
-          "pdb": "3rab",
-          "bu": "BU1",
-          "selection": "",
-          "model": "",
-          "transform": {
-           "offset": [
-            -41,
-            11,
-            -3
-           ]
-          }
-         },
-         "nbMol": 940,
-         "molarity": 2.92e-05,
-         "principalVector": [
-          -0.95,
-          0.28,
-          -0.12
-         ],
-         "description": "Ras-related protein Rab-3A",
-         "ingtype": "protein",
-         "buildtype": "random",
-         "comments": "",
-         "color": [
-          1,
-          0,
-          0
-         ],
-         "uniprot": "",
-         "molecularweight": 0
+          "local_id": 1,
+          "unique_id": 2,
+          "name": "interior",
+          "Compartments": [],
+          "IngredientGroups": [
+            {
+              "local_id": 0,
+              "unique_id": 2,
+              "name": "proteins",
+              "Ingredients": [
+                {
+                  "ingredient_id": 30,
+                  "name": "Chga",
+                  "path": "",
+                  "encapsulatingRadius": 25,
+                  "source": {
+                    "pdb": "Cga.pdb",
+                    "bu": "AU",
+                    "selection": "",
+                    "model": "",
+                    "transform": {
+                      "offset": [0, 0, 0]
+                    }
+                  },
+                  "nbMol": 454,
+                  "molarity": 4.3945e-5,
+                  "principalVector": [0, 0, 1],
+                  "description": "Chromogranin-A",
+                  "ingtype": "protein",
+                  "buildtype": "random",
+                  "comments": "",
+                  "color": [1, 0, 0],
+                  "uniprot": "",
+                  "molecularweight": 0
+                },
+                {
+                  "ingredient_id": 35,
+                  "name": "Scg2",
+                  "path": "",
+                  "encapsulatingRadius": 25,
+                  "source": {
+                    "pdb": "Scg2.pdb",
+                    "bu": "AU",
+                    "selection": "",
+                    "model": "",
+                    "transform": {
+                      "offset": [0, 0, 0]
+                    }
+                  },
+                  "nbMol": 287,
+                  "molarity": 2.77802e-5,
+                  "principalVector": [0, 0, 1],
+                  "description": "Secretogranin-2",
+                  "ingtype": "protein",
+                  "buildtype": "random",
+                  "comments": "",
+                  "color": [1, 0, 0],
+                  "uniprot": "",
+                  "molecularweight": 0
+                }
+              ],
+              "groupType": 0,
+              "compartmentId": 2
+            }
+          ]
         }
-       ],
-       "groupType": 0,
-       "compartmentId": 2
-      }
-     ]
-    },
-    {
-     "local_id": 1,
-     "unique_id": 2,
-     "name": "interior",
-     "Compartments": [],
-     "IngredientGroups": [
-      {
-       "local_id": 0,
-       "unique_id": 2,
-       "name": "proteins",
-       "Ingredients": [
-        {
-         "ingredient_id": 30,
-         "name": "Chga",
-         "path": "",
-         "encapsulatingRadius": 25,
-         "source": {
-          "pdb": "Cga.pdb",
-          "bu": "AU",
-          "selection": "",
-          "model": "",
-          "transform": {
-           "offset": [
-            0,
-            0,
-            0
-           ]
-          }
-         },
-         "nbMol": 454,
-         "molarity": 4.3945e-05,
-         "principalVector": [
-          0,
-          0,
-          1
-         ],
-         "description": "Chromogranin-A",
-         "ingtype": "protein",
-         "buildtype": "random",
-         "comments": "",
-         "color": [
-          1,
-          0,
-          0
-         ],
-         "uniprot": "",
-         "molecularweight": 0
-        },
-        {
-         "ingredient_id": 35,
-         "name": "Scg2",
-         "path": "",
-         "encapsulatingRadius": 25,
-         "source": {
-          "pdb": "Scg2.pdb",
-          "bu": "AU",
-          "selection": "",
-          "model": "",
-          "transform": {
-           "offset": [
-            0,
-            0,
-            0
-           ]
-          }
-         },
-         "nbMol": 287,
-         "molarity": 2.77802e-05,
-         "principalVector": [
-          0,
-          0,
-          1
-         ],
-         "description": "Secretogranin-2",
-         "ingtype": "protein",
-         "buildtype": "random",
-         "comments": "",
-         "color": [
-          1,
-          0,
-          0
-         ],
-         "uniprot": "",
-         "molecularweight": 0
-        }
-       ],
-       "groupType": 0,
-       "compartmentId": 2
-      }
-     ]
+      ],
+      "IngredientGroups": [],
+      "geom_type": "mb",
+      "mb": {
+        "positions": [0, 0, 0],
+        "radii": [1370],
+        "types": [1]
+      },
+      "thickness": 7.5,
+      "color": null
     }
-   ],
-   "IngredientGroups": [],
-   "geom_type": "mb",
-   "mb": {
-    "positions": [
-     0,
-     0,
-     0
-    ],
-    "radii": [
-     1370
-    ],
-    "types": [
-     1
-    ]
-   },
-   "thickness": 7.5,
-   "color": null
-  }
- ],
- "IngredientGroups": []
+  ],
+  "IngredientGroups": []
 }

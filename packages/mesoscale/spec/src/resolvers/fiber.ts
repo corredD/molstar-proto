@@ -50,12 +50,22 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
           arrangement: a,
         };
       }),
-      compartments: packCompartments(job, job.populations.map((p) => p.compartment)),
+      compartments: packCompartments(
+        job,
+        job.populations.map((p) => p.compartment),
+      ),
       seed: job.seed,
     };
   },
   resolve(input, job): ResolveOutput {
-    const typeTable: PlacementType[] = input.items.map((it, index) => ({ index, population: it.population, entity: it.entity, label: it.label, compartment: it.compartment, radius: it.radius }));
+    const typeTable: PlacementType[] = input.items.map((it, index) => ({
+      index,
+      population: it.population,
+      entity: it.entity,
+      label: it.label,
+      compartment: it.compartment,
+      radius: it.radius,
+    }));
     const b = new PlacementBuilder(input.items.reduce((s, i) => s + i.requested, 0));
     const offsets: number[] = [0];
     const achieved: Record<Id, number> = {};
@@ -74,7 +84,9 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
           const [x1, y1, z1] = a.path[s + 1];
           const len = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
           if (len === 0) continue;
-          const tx = (x1 - x0) / len, ty = (y1 - y0) / len, tz = (z1 - z0) / len;
+          const tx = (x1 - x0) / len,
+            ty = (y1 - y0) / len,
+            tz = (z1 - z0) / len;
           for (let u = carry; u <= len && b.count - start < it.requested; u += a.rise) {
             quatFromTo(q, 0, 0, 1, tx, ty, tz, twist * k++);
             b.push(t, x0 + tx * u, y0 + ty * u, z0 + tz * u, q);
@@ -98,7 +110,9 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
         const dir = [0, 0, 1];
         const tmp = [0, 0, 0];
         for (let f = 0; f < fibers && b.count - start < it.requested; f++) {
-          let x = 0, y = 0, z = 0;
+          let x = 0,
+            y = 0,
+            z = 0;
           for (let tries = 0; tries < 100; tries++) {
             x = rand.range(s.min[0], s.max[0]);
             y = rand.range(s.min[1], s.max[1]);
@@ -114,9 +128,13 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
             for (let j = 0; j < 3; j++) dir[j] += sigma * tmp[j];
             let l = Math.hypot(dir[0], dir[1], dir[2]);
             for (let j = 0; j < 3; j++) dir[j] /= l;
-            let nx = x + dir[0] * a.rise, ny = y + dir[1] * a.rise, nz = z + dir[2] * a.rise;
+            let nx = x + dir[0] * a.rise,
+              ny = y + dir[1] * a.rise,
+              nz = z + dir[2] * a.rise;
             if (!s.contains(nx, ny, nz, it.radius + c.thickness / 2)) {
-              const mx = (s.min[0] + s.max[0]) / 2 - x, my = (s.min[1] + s.max[1]) / 2 - y, mz = (s.min[2] + s.max[2]) / 2 - z;
+              const mx = (s.min[0] + s.max[0]) / 2 - x,
+                my = (s.min[1] + s.max[1]) / 2 - y,
+                mz = (s.min[2] + s.max[2]) / 2 - z;
               l = Math.hypot(mx, my, mz) || 1;
               dir[0] = mx / l;
               dir[1] = my / l;
@@ -139,13 +157,22 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
           ? `the path is ${pathLength(a.path).toFixed(0)} Å long: ${placed} copies ${a.rise} Å apart; ${it.requested} asked`
           : `${a.growth?.count ?? '?'} filaments of ${a.growth?.length} Å hold ${placed}; ${it.requested} asked`;
     });
-    const fibers = { count: offsets.length - 1, offsets: Int32Array.from(offsets), indices: Int32Array.from({ length: b.count }, (_, i) => i) };
-    return { sets: [b.finish({ key: '', model: job.model.id, frame: 'world', typeTable }, fibers)], achieved, shortfall };
+    const fibers = {
+      count: offsets.length - 1,
+      offsets: Int32Array.from(offsets),
+      indices: Int32Array.from({ length: b.count }, (_, i) => i),
+    };
+    return {
+      sets: [b.finish({ key: '', model: job.model.id, frame: 'world', typeTable }, fibers)],
+      achieved,
+      shortfall,
+    };
   },
 };
 
 function pathLength(p: readonly (readonly number[])[]) {
   let s = 0;
-  for (let i = 1; i < p.length; i++) s += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1], p[i][2] - p[i - 1][2]);
+  for (let i = 1; i < p.length; i++)
+    s += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1], p[i][2] - p[i - 1][2]);
   return s;
 }

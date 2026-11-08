@@ -53,17 +53,28 @@ export const MesoBilayerResolver: Resolver<BilayerInput> = {
           compartment: p.compartment,
         };
       }),
-      compartments: packCompartments(job, job.populations.map((p) => p.compartment)),
+      compartments: packCompartments(
+        job,
+        job.populations.map((p) => p.compartment),
+      ),
       seed: job.seed,
     };
   },
   resolve(input, job): ResolveOutput {
-    const typeTable: PlacementType[] = input.items.map((it, index) => ({ index, population: it.population, entity: it.entity, label: it.label, compartment: it.compartment, radius: it.radius }));
+    const typeTable: PlacementType[] = input.items.map((it, index) => ({
+      index,
+      population: it.population,
+      entity: it.entity,
+      label: it.label,
+      compartment: it.compartment,
+      radius: it.radius,
+    }));
     // each leaflet's count first (its own area, a quarter thickness off the middle), so the buffers are allocated once,
     // exactly (design.md §8: no growth, no trim)
     const plans = input.items.map((it) => {
       const c = input.compartments[it.compartment];
-      const sampler = c.shape.kind === 'sphere' ? undefined : shapeSampler(c.shape, job.compartments.get(it.compartment)?.mesh);
+      const sampler =
+        c.shape.kind === 'sphere' ? undefined : shapeSampler(c.shape, job.compartments.get(it.compartment)?.mesh);
       const leaflets = [1, -1].map((side) => {
         const d = (side * c.thickness) / 4;
         const area = c.shape.kind === 'sphere' ? 4 * Math.PI * (c.shape.radius + d) ** 2 : (sampler?.area ?? 0);
@@ -75,7 +86,8 @@ export const MesoBilayerResolver: Resolver<BilayerInput> = {
     const achieved: Record<Id, number> = {};
     const shortfall: Record<Id, string> = {};
     const q = [0, 0, 0, 1];
-    const p = [0, 0, 0], n = [0, 0, 0];
+    const p = [0, 0, 0],
+      n = [0, 0, 0];
     plans.forEach(({ it, c, sampler, leaflets }, t) => {
       const start = b.count;
       for (const { side, d, count } of leaflets) {
@@ -86,7 +98,8 @@ export const MesoBilayerResolver: Resolver<BilayerInput> = {
           for (let i = 0; i < count; i++) {
             const z = 1 - (2 * (i + 0.5)) / count;
             const r = Math.sqrt(1 - z * z);
-            const nx = r * Math.cos(i * golden), ny = r * Math.sin(i * golden);
+            const nx = r * Math.cos(i * golden),
+              ny = r * Math.sin(i * golden);
             quatFromTo(q, 0, 0, 1, side * nx, side * ny, side * z, i);
             b.push(t, cx + R * nx, cy + R * ny, cz + R * z, q);
           }

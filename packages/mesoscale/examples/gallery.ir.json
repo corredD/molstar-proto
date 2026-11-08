@@ -1,1020 +1,750 @@
 {
- "root": {
-  "ref": "scene",
-  "kind": "scene",
-  "params": {
-   "units": "A",
-   "title": "Gallery: nesting, lattices, fibers, bilayers"
-  },
-  "children": [
-   {
-    "ref": "frame:f.world",
-    "kind": "frame",
-    "origin": [
-     "f.world"
-    ],
+  "root": {
+    "ref": "scene",
+    "kind": "scene",
     "params": {
-     "frame": "f.world",
-     "matrix": [
-      1,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1
-     ]
+      "units": "A",
+      "title": "Gallery: nesting, lattices, fibers, bilayers"
     },
     "children": [
-     {
-      "ref": "c.cell",
-      "kind": "compartment",
-      "origin": [
-       "c.cell"
-      ],
-      "params": {
-       "compartment": "c.cell",
-       "shape": {
-        "kind": "sphere",
-        "center": [
-         0,
-         0,
-         0
-        ],
-        "radius": 1500
-       },
-       "volume": 13299408900.19679,
-       "area": 28274333.882308137
-      },
-      "children": [
-       {
-        "ref": "c.cell/membrane",
-        "kind": "membrane",
-        "origin": [
-         "c.cell"
-        ],
+      {
+        "ref": "frame:f.world",
+        "kind": "frame",
+        "origin": ["f.world"],
         "params": {
-         "compartment": "c.cell",
-         "thickness": 40
-        }
-       },
-       {
-        "ref": "c.nucleus",
-        "kind": "compartment",
-        "origin": [
-         "c.nucleus"
-        ],
-        "params": {
-         "compartment": "c.nucleus",
-         "shape": {
-          "kind": "sphere",
-          "center": [
-           400,
-           0,
-           0
-          ],
-          "radius": 550
-         },
-         "volume": 696909970.3213357,
-         "area": 3801327.1108436496
+          "frame": "f.world",
+          "matrix": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
         },
         "children": [
-         {
-          "ref": "c.nucleus/membrane",
-          "kind": "membrane",
-          "origin": [
-           "c.nucleus"
-          ],
-          "params": {
-           "compartment": "c.nucleus",
-           "thickness": 40
-          }
-         }
-        ]
-       },
-       {
-        "ref": "c.vesicle",
-        "kind": "compartment",
-        "origin": [
-         "c.vesicle"
-        ],
-        "params": {
-         "compartment": "c.vesicle",
-         "shape": {
-          "kind": "sphere",
-          "center": [
-           -800,
-           500,
-           0
-          ],
-          "radius": 250
-         },
-         "volume": 65449846.94978735,
-         "area": 785398.1633974483
-        },
-        "children": [
-         {
-          "ref": "c.vesicle/membrane",
-          "kind": "membrane",
-          "origin": [
-           "c.vesicle"
-          ],
-          "params": {
-           "compartment": "c.vesicle",
-           "thickness": 40
-          }
-         }
-        ]
-       },
-       {
-        "ref": "c.mito",
-        "kind": "compartment",
-        "origin": [
-         "c.mito"
-        ],
-        "params": {
-         "compartment": "c.mito",
-         "shape": {
-          "kind": "ellipsoid",
-          "center": [
-           -500,
-           -700,
-           0
-          ],
-          "radii": [
-           450,
-           200,
-           200
-          ]
-         },
-         "volume": 75398223.68615504,
-         "area": 951275.9742583687
-        },
-        "children": [
-         {
-          "ref": "c.mito/membrane",
-          "kind": "membrane",
-          "origin": [
-           "c.mito"
-          ],
-          "params": {
-           "compartment": "c.mito",
-           "thickness": 40
-          }
-         }
-        ]
-       }
-      ]
-     },
-     {
-      "ref": "default:meso.pack/resolve",
-      "kind": "resolve",
-      "origin": [
-       "p.ribosomes",
-       "p.proteasomes"
-      ],
-      "params": {
-       "model": "default:meso.pack",
-       "resolver": "meso.pack",
-       "version": "0.1.0",
-       "key": "default:meso.pack@03af84e1d1d92c24",
-       "input": {
-        "items": [
-         {
-          "population": "p.ribosomes",
-          "entity": "e.ribosome",
-          "label": "ribosome",
-          "radius": 130,
-          "requested": 300,
-          "location": "interior",
-          "compartment": "c.cell",
-          "inward": false
-         },
-         {
-          "population": "p.proteasomes",
-          "entity": "e.proteasome",
-          "label": "proteasome",
-          "radius": 80,
-          "requested": 4,
-          "location": "interior",
-          "compartment": "c.cell",
-          "inward": false
-         }
-        ],
-        "compartments": {
-         "c.cell": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            0,
-            0,
-            0
-           ],
-           "radius": 1500
-          },
-          "children": [
-           "c.nucleus",
-           "c.vesicle",
-           "c.mito"
-          ],
-          "thickness": 40,
-          "label": "cell",
-          "freeVolume": 13299408900.19679,
-          "area": 28274333.882308137
-         },
-         "c.nucleus": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            400,
-            0,
-            0
-           ],
-           "radius": 550
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "nucleus",
-          "freeVolume": 696909970.3213357,
-          "area": 3801327.1108436496
-         },
-         "c.vesicle": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            -800,
-            500,
-            0
-           ],
-           "radius": 250
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "vesicle",
-          "freeVolume": 65449846.94978735,
-          "area": 785398.1633974483
-         },
-         "c.mito": {
-          "shape": {
-           "kind": "ellipsoid",
-           "center": [
-            -500,
-            -700,
-            0
-           ],
-           "radii": [
-            450,
-            200,
-            200
-           ]
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "mitochondrion",
-          "freeVolume": 75398223.68615504,
-          "area": 951275.9742583687
-         }
-        },
-        "seed": 1,
-        "attempts": 30,
-        "giveUp": 25
-       },
-       "cached": false
-      },
-      "children": [
-       {
-        "ref": "default:meso.pack/placements/0",
-        "kind": "placements",
-        "origin": [
-         "p.ribosomes",
-         "p.proteasomes"
-        ],
-        "params": {
-         "set": {
-          "key": "default:meso.pack@03af84e1d1d92c24#0",
-          "model": "default:meso.pack",
-          "frame": "world",
-          "count": 304,
-          "bytes": 10944,
-          "types": [
-           {
-            "index": 0,
-            "population": "p.ribosomes",
-            "entity": "e.ribosome",
-            "label": "ribosome",
-            "compartment": "c.cell",
-            "radius": 130
-           },
-           {
-            "index": 1,
-            "population": "p.proteasomes",
-            "entity": "e.proteasome",
-            "label": "proteasome",
-            "compartment": "c.cell",
-            "radius": 80
-           }
-          ],
-          "first": [
-           -115.07,
-           -293.5,
-           1238.29,
-           -941.69,
-           -280.66,
-           407.5
-          ]
-         }
-        }
-       }
-      ]
-     },
-     {
-      "ref": "default:meso.lattice/resolve",
-      "kind": "resolve",
-      "origin": [
-       "p.pores",
-       "p.atpsynthase"
-      ],
-      "params": {
-       "model": "default:meso.lattice",
-       "resolver": "meso.lattice",
-       "version": "0.1.0",
-       "key": "default:meso.lattice@6bdbb9d4297cb9c1",
-       "input": {
-        "items": [
-         {
-          "population": "p.pores",
-          "entity": "e.pore",
-          "label": "nuclear pore (coarse)",
-          "radius": 60,
-          "requested": 60,
-          "compartment": "c.nucleus",
-          "location": "membrane",
-          "spacing": 220,
-          "lattice": "hexagonal"
-         },
-         {
-          "population": "p.atpsynthase",
-          "entity": "e.atpsynthase",
-          "label": "ATP synthase",
-          "radius": 60,
-          "requested": 400,
-          "compartment": "c.mito",
-          "location": "membrane",
-          "spacing": 120,
-          "lattice": "hexagonal"
-         }
-        ],
-        "compartments": {
-         "c.nucleus": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            400,
-            0,
-            0
-           ],
-           "radius": 550
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "nucleus",
-          "freeVolume": 696909970.3213357,
-          "area": 3801327.1108436496
-         },
-         "c.cell": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            0,
-            0,
-            0
-           ],
-           "radius": 1500
-          },
-          "children": [
-           "c.nucleus",
-           "c.vesicle",
-           "c.mito"
-          ],
-          "thickness": 40,
-          "label": "cell",
-          "freeVolume": 13299408900.19679,
-          "area": 28274333.882308137
-         },
-         "c.vesicle": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            -800,
-            500,
-            0
-           ],
-           "radius": 250
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "vesicle",
-          "freeVolume": 65449846.94978735,
-          "area": 785398.1633974483
-         },
-         "c.mito": {
-          "shape": {
-           "kind": "ellipsoid",
-           "center": [
-            -500,
-            -700,
-            0
-           ],
-           "radii": [
-            450,
-            200,
-            200
-           ]
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "mitochondrion",
-          "freeVolume": 75398223.68615504,
-          "area": 951275.9742583687
-         }
-        },
-        "seed": 1
-       },
-       "cached": false
-      },
-      "children": [
-       {
-        "ref": "default:meso.lattice/placements/0",
-        "kind": "placements",
-        "origin": [
-         "p.pores",
-         "p.atpsynthase"
-        ],
-        "params": {
-         "set": {
-          "key": "default:meso.lattice@6bdbb9d4297cb9c1#0",
-          "model": "default:meso.lattice",
-          "frame": "world",
-          "count": 129,
-          "bytes": 4644,
-          "types": [
-           {
-            "index": 0,
-            "population": "p.pores",
-            "entity": "e.pore",
-            "label": "nuclear pore (coarse)",
-            "compartment": "c.nucleus",
-            "radius": 60
-           },
-           {
-            "index": 1,
-            "population": "p.atpsynthase",
-            "entity": "e.atpsynthase",
-            "label": "ATP synthase",
-            "compartment": "c.mito",
-            "radius": 60
-           }
-          ],
-          "first": [
-           352.84,
-           0,
-           -547.97,
-           537.29,
-           95.12,
-           -524.03
-          ]
-         }
-        }
-       }
-      ]
-     },
-     {
-      "ref": "default:meso.fiber/resolve",
-      "kind": "resolve",
-      "origin": [
-       "p.actin",
-       "p.microtubule"
-      ],
-      "params": {
-       "model": "default:meso.fiber",
-       "resolver": "meso.fiber",
-       "version": "0.1.0",
-       "key": "default:meso.fiber@678be210557880f5",
-       "input": {
-        "items": [
-         {
-          "population": "p.actin",
-          "entity": "e.actin",
-          "label": "actin subunit",
-          "radius": 27,
-          "requested": 480,
-          "compartment": "c.cell",
-          "arrangement": {
-           "kind": "fiber",
-           "rise": 27.5,
-           "twist": -166.6,
-           "growth": {
-            "persistence": 10000,
-            "length": 2200,
-            "count": 6
-           }
-          }
-         },
-         {
-          "population": "p.microtubule",
-          "entity": "e.tubulin",
-          "label": "tubulin dimer",
-          "radius": 40,
-          "requested": 30,
-          "compartment": "c.cell",
-          "arrangement": {
-           "kind": "fiber",
-           "rise": 80,
-           "twist": 0,
-           "path": [
-            [
-             -1300,
-             0,
-             400
-            ],
-            [
-             -600,
-             200,
-             600
-            ],
-            [
-             0,
-             0,
-             800
-            ],
-            [
-             700,
-             -300,
-             600
-            ],
-            [
-             1200,
-             -200,
-             300
+          {
+            "ref": "c.cell",
+            "kind": "compartment",
+            "origin": ["c.cell"],
+            "params": {
+              "compartment": "c.cell",
+              "shape": {
+                "kind": "sphere",
+                "center": [0, 0, 0],
+                "radius": 1500
+              },
+              "volume": 13299408900.19679,
+              "area": 28274333.882308137
+            },
+            "children": [
+              {
+                "ref": "c.cell/membrane",
+                "kind": "membrane",
+                "origin": ["c.cell"],
+                "params": {
+                  "compartment": "c.cell",
+                  "thickness": 40
+                }
+              },
+              {
+                "ref": "c.nucleus",
+                "kind": "compartment",
+                "origin": ["c.nucleus"],
+                "params": {
+                  "compartment": "c.nucleus",
+                  "shape": {
+                    "kind": "sphere",
+                    "center": [400, 0, 0],
+                    "radius": 550
+                  },
+                  "volume": 696909970.3213357,
+                  "area": 3801327.1108436496
+                },
+                "children": [
+                  {
+                    "ref": "c.nucleus/membrane",
+                    "kind": "membrane",
+                    "origin": ["c.nucleus"],
+                    "params": {
+                      "compartment": "c.nucleus",
+                      "thickness": 40
+                    }
+                  }
+                ]
+              },
+              {
+                "ref": "c.vesicle",
+                "kind": "compartment",
+                "origin": ["c.vesicle"],
+                "params": {
+                  "compartment": "c.vesicle",
+                  "shape": {
+                    "kind": "sphere",
+                    "center": [-800, 500, 0],
+                    "radius": 250
+                  },
+                  "volume": 65449846.94978735,
+                  "area": 785398.1633974483
+                },
+                "children": [
+                  {
+                    "ref": "c.vesicle/membrane",
+                    "kind": "membrane",
+                    "origin": ["c.vesicle"],
+                    "params": {
+                      "compartment": "c.vesicle",
+                      "thickness": 40
+                    }
+                  }
+                ]
+              },
+              {
+                "ref": "c.mito",
+                "kind": "compartment",
+                "origin": ["c.mito"],
+                "params": {
+                  "compartment": "c.mito",
+                  "shape": {
+                    "kind": "ellipsoid",
+                    "center": [-500, -700, 0],
+                    "radii": [450, 200, 200]
+                  },
+                  "volume": 75398223.68615504,
+                  "area": 951275.9742583687
+                },
+                "children": [
+                  {
+                    "ref": "c.mito/membrane",
+                    "kind": "membrane",
+                    "origin": ["c.mito"],
+                    "params": {
+                      "compartment": "c.mito",
+                      "thickness": 40
+                    }
+                  }
+                ]
+              }
             ]
-           ]
+          },
+          {
+            "ref": "default:meso.pack/resolve",
+            "kind": "resolve",
+            "origin": ["p.ribosomes", "p.proteasomes"],
+            "params": {
+              "model": "default:meso.pack",
+              "resolver": "meso.pack",
+              "version": "0.1.0",
+              "key": "default:meso.pack@03af84e1d1d92c24",
+              "input": {
+                "items": [
+                  {
+                    "population": "p.ribosomes",
+                    "entity": "e.ribosome",
+                    "label": "ribosome",
+                    "radius": 130,
+                    "requested": 300,
+                    "location": "interior",
+                    "compartment": "c.cell",
+                    "inward": false
+                  },
+                  {
+                    "population": "p.proteasomes",
+                    "entity": "e.proteasome",
+                    "label": "proteasome",
+                    "radius": 80,
+                    "requested": 4,
+                    "location": "interior",
+                    "compartment": "c.cell",
+                    "inward": false
+                  }
+                ],
+                "compartments": {
+                  "c.cell": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [0, 0, 0],
+                      "radius": 1500
+                    },
+                    "children": ["c.nucleus", "c.vesicle", "c.mito"],
+                    "thickness": 40,
+                    "label": "cell",
+                    "freeVolume": 13299408900.19679,
+                    "area": 28274333.882308137
+                  },
+                  "c.nucleus": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [400, 0, 0],
+                      "radius": 550
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "nucleus",
+                    "freeVolume": 696909970.3213357,
+                    "area": 3801327.1108436496
+                  },
+                  "c.vesicle": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [-800, 500, 0],
+                      "radius": 250
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "vesicle",
+                    "freeVolume": 65449846.94978735,
+                    "area": 785398.1633974483
+                  },
+                  "c.mito": {
+                    "shape": {
+                      "kind": "ellipsoid",
+                      "center": [-500, -700, 0],
+                      "radii": [450, 200, 200]
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "mitochondrion",
+                    "freeVolume": 75398223.68615504,
+                    "area": 951275.9742583687
+                  }
+                },
+                "seed": 1,
+                "attempts": 30,
+                "giveUp": 25
+              },
+              "cached": false
+            },
+            "children": [
+              {
+                "ref": "default:meso.pack/placements/0",
+                "kind": "placements",
+                "origin": ["p.ribosomes", "p.proteasomes"],
+                "params": {
+                  "set": {
+                    "key": "default:meso.pack@03af84e1d1d92c24#0",
+                    "model": "default:meso.pack",
+                    "frame": "world",
+                    "count": 304,
+                    "bytes": 10944,
+                    "types": [
+                      {
+                        "index": 0,
+                        "population": "p.ribosomes",
+                        "entity": "e.ribosome",
+                        "label": "ribosome",
+                        "compartment": "c.cell",
+                        "radius": 130
+                      },
+                      {
+                        "index": 1,
+                        "population": "p.proteasomes",
+                        "entity": "e.proteasome",
+                        "label": "proteasome",
+                        "compartment": "c.cell",
+                        "radius": 80
+                      }
+                    ],
+                    "first": [-115.07, -293.5, 1238.29, -941.69, -280.66, 407.5]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "ref": "default:meso.lattice/resolve",
+            "kind": "resolve",
+            "origin": ["p.pores", "p.atpsynthase"],
+            "params": {
+              "model": "default:meso.lattice",
+              "resolver": "meso.lattice",
+              "version": "0.1.0",
+              "key": "default:meso.lattice@6bdbb9d4297cb9c1",
+              "input": {
+                "items": [
+                  {
+                    "population": "p.pores",
+                    "entity": "e.pore",
+                    "label": "nuclear pore (coarse)",
+                    "radius": 60,
+                    "requested": 60,
+                    "compartment": "c.nucleus",
+                    "location": "membrane",
+                    "spacing": 220,
+                    "lattice": "hexagonal"
+                  },
+                  {
+                    "population": "p.atpsynthase",
+                    "entity": "e.atpsynthase",
+                    "label": "ATP synthase",
+                    "radius": 60,
+                    "requested": 400,
+                    "compartment": "c.mito",
+                    "location": "membrane",
+                    "spacing": 120,
+                    "lattice": "hexagonal"
+                  }
+                ],
+                "compartments": {
+                  "c.nucleus": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [400, 0, 0],
+                      "radius": 550
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "nucleus",
+                    "freeVolume": 696909970.3213357,
+                    "area": 3801327.1108436496
+                  },
+                  "c.cell": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [0, 0, 0],
+                      "radius": 1500
+                    },
+                    "children": ["c.nucleus", "c.vesicle", "c.mito"],
+                    "thickness": 40,
+                    "label": "cell",
+                    "freeVolume": 13299408900.19679,
+                    "area": 28274333.882308137
+                  },
+                  "c.vesicle": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [-800, 500, 0],
+                      "radius": 250
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "vesicle",
+                    "freeVolume": 65449846.94978735,
+                    "area": 785398.1633974483
+                  },
+                  "c.mito": {
+                    "shape": {
+                      "kind": "ellipsoid",
+                      "center": [-500, -700, 0],
+                      "radii": [450, 200, 200]
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "mitochondrion",
+                    "freeVolume": 75398223.68615504,
+                    "area": 951275.9742583687
+                  }
+                },
+                "seed": 1
+              },
+              "cached": false
+            },
+            "children": [
+              {
+                "ref": "default:meso.lattice/placements/0",
+                "kind": "placements",
+                "origin": ["p.pores", "p.atpsynthase"],
+                "params": {
+                  "set": {
+                    "key": "default:meso.lattice@6bdbb9d4297cb9c1#0",
+                    "model": "default:meso.lattice",
+                    "frame": "world",
+                    "count": 129,
+                    "bytes": 4644,
+                    "types": [
+                      {
+                        "index": 0,
+                        "population": "p.pores",
+                        "entity": "e.pore",
+                        "label": "nuclear pore (coarse)",
+                        "compartment": "c.nucleus",
+                        "radius": 60
+                      },
+                      {
+                        "index": 1,
+                        "population": "p.atpsynthase",
+                        "entity": "e.atpsynthase",
+                        "label": "ATP synthase",
+                        "compartment": "c.mito",
+                        "radius": 60
+                      }
+                    ],
+                    "first": [352.84, 0, -547.97, 537.29, 95.12, -524.03]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "ref": "default:meso.fiber/resolve",
+            "kind": "resolve",
+            "origin": ["p.actin", "p.microtubule"],
+            "params": {
+              "model": "default:meso.fiber",
+              "resolver": "meso.fiber",
+              "version": "0.1.0",
+              "key": "default:meso.fiber@678be210557880f5",
+              "input": {
+                "items": [
+                  {
+                    "population": "p.actin",
+                    "entity": "e.actin",
+                    "label": "actin subunit",
+                    "radius": 27,
+                    "requested": 480,
+                    "compartment": "c.cell",
+                    "arrangement": {
+                      "kind": "fiber",
+                      "rise": 27.5,
+                      "twist": -166.6,
+                      "growth": {
+                        "persistence": 10000,
+                        "length": 2200,
+                        "count": 6
+                      }
+                    }
+                  },
+                  {
+                    "population": "p.microtubule",
+                    "entity": "e.tubulin",
+                    "label": "tubulin dimer",
+                    "radius": 40,
+                    "requested": 30,
+                    "compartment": "c.cell",
+                    "arrangement": {
+                      "kind": "fiber",
+                      "rise": 80,
+                      "twist": 0,
+                      "path": [[-1300, 0, 400], [-600, 200, 600], [0, 0, 800], [700, -300, 600], [1200, -200, 300]]
+                    }
+                  }
+                ],
+                "compartments": {
+                  "c.cell": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [0, 0, 0],
+                      "radius": 1500
+                    },
+                    "children": ["c.nucleus", "c.vesicle", "c.mito"],
+                    "thickness": 40,
+                    "label": "cell",
+                    "freeVolume": 13299408900.19679,
+                    "area": 28274333.882308137
+                  },
+                  "c.nucleus": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [400, 0, 0],
+                      "radius": 550
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "nucleus",
+                    "freeVolume": 696909970.3213357,
+                    "area": 3801327.1108436496
+                  },
+                  "c.vesicle": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [-800, 500, 0],
+                      "radius": 250
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "vesicle",
+                    "freeVolume": 65449846.94978735,
+                    "area": 785398.1633974483
+                  },
+                  "c.mito": {
+                    "shape": {
+                      "kind": "ellipsoid",
+                      "center": [-500, -700, 0],
+                      "radii": [450, 200, 200]
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "mitochondrion",
+                    "freeVolume": 75398223.68615504,
+                    "area": 951275.9742583687
+                  }
+                },
+                "seed": 1
+              },
+              "cached": false
+            },
+            "children": [
+              {
+                "ref": "default:meso.fiber/placements/0",
+                "kind": "placements",
+                "origin": ["p.actin", "p.microtubule"],
+                "params": {
+                  "set": {
+                    "key": "default:meso.fiber@678be210557880f5#0",
+                    "model": "default:meso.fiber",
+                    "frame": "world",
+                    "count": 510,
+                    "bytes": 18360,
+                    "types": [
+                      {
+                        "index": 0,
+                        "population": "p.actin",
+                        "entity": "e.actin",
+                        "label": "actin subunit",
+                        "compartment": "c.cell",
+                        "radius": 27
+                      },
+                      {
+                        "index": 1,
+                        "population": "p.microtubule",
+                        "entity": "e.tubulin",
+                        "label": "tubulin dimer",
+                        "compartment": "c.cell",
+                        "radius": 40
+                      }
+                    ],
+                    "fibers": {
+                      "count": 7
+                    },
+                    "first": [40.46, -1042.34, -642.02, 54.21, -1061.84, -628.35]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "ref": "default:meso.bilayer/resolve",
+            "kind": "resolve",
+            "origin": ["p.vesicle-lipids"],
+            "params": {
+              "model": "default:meso.bilayer",
+              "resolver": "meso.bilayer",
+              "version": "0.1.0",
+              "key": "default:meso.bilayer@52bb1c25fbbf6dc8",
+              "input": {
+                "items": [
+                  {
+                    "population": "p.vesicle-lipids",
+                    "entity": "e.lipid",
+                    "label": "phospholipid",
+                    "radius": 4.5,
+                    "density": 0.015000035076524953,
+                    "requested": 23562,
+                    "compartment": "c.vesicle"
+                  }
+                ],
+                "compartments": {
+                  "c.vesicle": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [-800, 500, 0],
+                      "radius": 250
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "vesicle",
+                    "freeVolume": 65449846.94978735,
+                    "area": 785398.1633974483
+                  },
+                  "c.cell": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [0, 0, 0],
+                      "radius": 1500
+                    },
+                    "children": ["c.nucleus", "c.vesicle", "c.mito"],
+                    "thickness": 40,
+                    "label": "cell",
+                    "freeVolume": 13299408900.19679,
+                    "area": 28274333.882308137
+                  },
+                  "c.nucleus": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [400, 0, 0],
+                      "radius": 550
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "nucleus",
+                    "freeVolume": 696909970.3213357,
+                    "area": 3801327.1108436496
+                  },
+                  "c.mito": {
+                    "shape": {
+                      "kind": "ellipsoid",
+                      "center": [-500, -700, 0],
+                      "radii": [450, 200, 200]
+                    },
+                    "parent": "c.cell",
+                    "children": [],
+                    "thickness": 40,
+                    "label": "mitochondrion",
+                    "freeVolume": 75398223.68615504,
+                    "area": 951275.9742583687
+                  }
+                },
+                "seed": 1
+              },
+              "cached": false
+            },
+            "children": [
+              {
+                "ref": "default:meso.bilayer/placements/0",
+                "kind": "placements",
+                "origin": ["p.vesicle-lipids"],
+                "params": {
+                  "set": {
+                    "key": "default:meso.bilayer@52bb1c25fbbf6dc8#0",
+                    "model": "default:meso.bilayer",
+                    "frame": "world",
+                    "count": 23599,
+                    "bytes": 849564,
+                    "types": [
+                      {
+                        "index": 0,
+                        "population": "p.vesicle-lipids",
+                        "entity": "e.lipid",
+                        "label": "phospholipid",
+                        "compartment": "c.vesicle",
+                        "radius": 4.5
+                      }
+                    ],
+                    "first": [-796.74, 500, 259.98, -804.16, 503.81, 259.94]
+                  }
+                }
+              }
+            ]
           }
-         }
-        ],
-        "compartments": {
-         "c.cell": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            0,
-            0,
-            0
-           ],
-           "radius": 1500
-          },
-          "children": [
-           "c.nucleus",
-           "c.vesicle",
-           "c.mito"
-          ],
-          "thickness": 40,
-          "label": "cell",
-          "freeVolume": 13299408900.19679,
-          "area": 28274333.882308137
-         },
-         "c.nucleus": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            400,
-            0,
-            0
-           ],
-           "radius": 550
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "nucleus",
-          "freeVolume": 696909970.3213357,
-          "area": 3801327.1108436496
-         },
-         "c.vesicle": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            -800,
-            500,
-            0
-           ],
-           "radius": 250
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "vesicle",
-          "freeVolume": 65449846.94978735,
-          "area": 785398.1633974483
-         },
-         "c.mito": {
-          "shape": {
-           "kind": "ellipsoid",
-           "center": [
-            -500,
-            -700,
-            0
-           ],
-           "radii": [
-            450,
-            200,
-            200
-           ]
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "mitochondrion",
-          "freeVolume": 75398223.68615504,
-          "area": 951275.9742583687
-         }
-        },
-        "seed": 1
-       },
-       "cached": false
-      },
-      "children": [
-       {
-        "ref": "default:meso.fiber/placements/0",
-        "kind": "placements",
-        "origin": [
-         "p.actin",
-         "p.microtubule"
-        ],
-        "params": {
-         "set": {
-          "key": "default:meso.fiber@678be210557880f5#0",
-          "model": "default:meso.fiber",
-          "frame": "world",
-          "count": 510,
-          "bytes": 18360,
-          "types": [
-           {
-            "index": 0,
-            "population": "p.actin",
-            "entity": "e.actin",
-            "label": "actin subunit",
-            "compartment": "c.cell",
-            "radius": 27
-           },
-           {
-            "index": 1,
-            "population": "p.microtubule",
-            "entity": "e.tubulin",
-            "label": "tubulin dimer",
-            "compartment": "c.cell",
-            "radius": 40
-           }
-          ],
-          "fibers": {
-           "count": 7
-          },
-          "first": [
-           40.46,
-           -1042.34,
-           -642.02,
-           54.21,
-           -1061.84,
-           -628.35
-          ]
-         }
-        }
-       }
-      ]
-     },
-     {
-      "ref": "default:meso.bilayer/resolve",
-      "kind": "resolve",
-      "origin": [
-       "p.vesicle-lipids"
-      ],
-      "params": {
-       "model": "default:meso.bilayer",
-       "resolver": "meso.bilayer",
-       "version": "0.1.0",
-       "key": "default:meso.bilayer@52bb1c25fbbf6dc8",
-       "input": {
-        "items": [
-         {
-          "population": "p.vesicle-lipids",
-          "entity": "e.lipid",
-          "label": "phospholipid",
-          "radius": 4.5,
-          "density": 0.015000035076524953,
-          "requested": 23562,
-          "compartment": "c.vesicle"
-         }
-        ],
-        "compartments": {
-         "c.vesicle": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            -800,
-            500,
-            0
-           ],
-           "radius": 250
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "vesicle",
-          "freeVolume": 65449846.94978735,
-          "area": 785398.1633974483
-         },
-         "c.cell": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            0,
-            0,
-            0
-           ],
-           "radius": 1500
-          },
-          "children": [
-           "c.nucleus",
-           "c.vesicle",
-           "c.mito"
-          ],
-          "thickness": 40,
-          "label": "cell",
-          "freeVolume": 13299408900.19679,
-          "area": 28274333.882308137
-         },
-         "c.nucleus": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            400,
-            0,
-            0
-           ],
-           "radius": 550
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "nucleus",
-          "freeVolume": 696909970.3213357,
-          "area": 3801327.1108436496
-         },
-         "c.mito": {
-          "shape": {
-           "kind": "ellipsoid",
-           "center": [
-            -500,
-            -700,
-            0
-           ],
-           "radii": [
-            450,
-            200,
-            200
-           ]
-          },
-          "parent": "c.cell",
-          "children": [],
-          "thickness": 40,
-          "label": "mitochondrion",
-          "freeVolume": 75398223.68615504,
-          "area": 951275.9742583687
-         }
-        },
-        "seed": 1
-       },
-       "cached": false
-      },
-      "children": [
-       {
-        "ref": "default:meso.bilayer/placements/0",
-        "kind": "placements",
-        "origin": [
-         "p.vesicle-lipids"
-        ],
-        "params": {
-         "set": {
-          "key": "default:meso.bilayer@52bb1c25fbbf6dc8#0",
-          "model": "default:meso.bilayer",
-          "frame": "world",
-          "count": 23599,
-          "bytes": 849564,
-          "types": [
-           {
-            "index": 0,
-            "population": "p.vesicle-lipids",
-            "entity": "e.lipid",
-            "label": "phospholipid",
-            "compartment": "c.vesicle",
-            "radius": 4.5
-           }
-          ],
-          "first": [
-           -796.74,
-           500,
-           259.98,
-           -804.16,
-           503.81,
-           259.94
-          ]
-         }
-        }
-       }
-      ]
-     }
+        ]
+      }
     ]
-   }
+  },
+  "view": {
+    "id": "v.all",
+    "camera": {
+      "position": [0, 0, 4500],
+      "target": [0, 0, 0],
+      "up": [0, 1, 0]
+    },
+    "looks": [
+      {
+        "set": "default:meso.bilayer@52bb1c25fbbf6dc8#0",
+        "types": [0],
+        "color": 15259824,
+        "visible": true
+      },
+      {
+        "set": "default:meso.fiber@678be210557880f5#0",
+        "types": [0],
+        "color": 5940570,
+        "visible": true
+      },
+      {
+        "set": "default:meso.fiber@678be210557880f5#0",
+        "types": [1],
+        "color": 10181046,
+        "visible": true
+      },
+      {
+        "set": "default:meso.lattice@6bdbb9d4297cb9c1#0",
+        "types": [0],
+        "color": 14725196,
+        "visible": true
+      },
+      {
+        "set": "default:meso.lattice@6bdbb9d4297cb9c1#0",
+        "types": [1],
+        "color": 12603469,
+        "visible": true
+      },
+      {
+        "set": "default:meso.pack@03af84e1d1d92c24#0",
+        "types": [0],
+        "color": 8035526,
+        "visible": true
+      },
+      {
+        "set": "default:meso.pack@03af84e1d1d92c24#0",
+        "types": [1],
+        "color": 6935452,
+        "visible": true
+      }
+    ]
+  },
+  "issues": [
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.ribosomes has no model: the default resolver for random arrangements places it",
+      "path": "/populations/0",
+      "ids": ["p.ribosomes"]
+    },
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.proteasomes has no model: the default resolver for random arrangements places it",
+      "path": "/populations/1",
+      "ids": ["p.proteasomes"]
+    },
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.pores has no model: the default resolver for lattice arrangements places it",
+      "path": "/populations/2",
+      "ids": ["p.pores"]
+    },
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.atpsynthase has no model: the default resolver for lattice arrangements places it",
+      "path": "/populations/3",
+      "ids": ["p.atpsynthase"]
+    },
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.actin has no model: the default resolver for fiber arrangements places it",
+      "path": "/populations/4",
+      "ids": ["p.actin"]
+    },
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.microtubule has no model: the default resolver for fiber arrangements places it",
+      "path": "/populations/5",
+      "ids": ["p.microtubule"]
+    },
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.vesicle-lipids has no model: the default resolver for bilayer arrangements places it",
+      "path": "/populations/6",
+      "ids": ["p.vesicle-lipids"]
+    },
+    {
+      "code": "constraint.unmet",
+      "severity": "error",
+      "phase": "resolve",
+      "message": "p.atpsynthase: 69 of 400 placed",
+      "ids": ["p.atpsynthase", "default:meso.lattice"],
+      "constraint": {
+        "kind": "placed-fraction",
+        "requested": 400,
+        "achieved": 69,
+        "reason": "the membrane of mitochondrion holds 69 hexagonal sites 120 Å apart; 400 asked"
+      }
+    }
   ]
- },
- "view": {
-  "id": "v.all",
-  "camera": {
-   "position": [
-    0,
-    0,
-    4500
-   ],
-   "target": [
-    0,
-    0,
-    0
-   ],
-   "up": [
-    0,
-    1,
-    0
-   ]
-  },
-  "looks": [
-   {
-    "set": "default:meso.bilayer@52bb1c25fbbf6dc8#0",
-    "types": [
-     0
-    ],
-    "color": 15259824,
-    "visible": true
-   },
-   {
-    "set": "default:meso.fiber@678be210557880f5#0",
-    "types": [
-     0
-    ],
-    "color": 5940570,
-    "visible": true
-   },
-   {
-    "set": "default:meso.fiber@678be210557880f5#0",
-    "types": [
-     1
-    ],
-    "color": 10181046,
-    "visible": true
-   },
-   {
-    "set": "default:meso.lattice@6bdbb9d4297cb9c1#0",
-    "types": [
-     0
-    ],
-    "color": 14725196,
-    "visible": true
-   },
-   {
-    "set": "default:meso.lattice@6bdbb9d4297cb9c1#0",
-    "types": [
-     1
-    ],
-    "color": 12603469,
-    "visible": true
-   },
-   {
-    "set": "default:meso.pack@03af84e1d1d92c24#0",
-    "types": [
-     0
-    ],
-    "color": 8035526,
-    "visible": true
-   },
-   {
-    "set": "default:meso.pack@03af84e1d1d92c24#0",
-    "types": [
-     1
-    ],
-    "color": 6935452,
-    "visible": true
-   }
-  ]
- },
- "issues": [
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.ribosomes has no model: the default resolver for random arrangements places it",
-   "path": "/populations/0",
-   "ids": [
-    "p.ribosomes"
-   ]
-  },
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.proteasomes has no model: the default resolver for random arrangements places it",
-   "path": "/populations/1",
-   "ids": [
-    "p.proteasomes"
-   ]
-  },
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.pores has no model: the default resolver for lattice arrangements places it",
-   "path": "/populations/2",
-   "ids": [
-    "p.pores"
-   ]
-  },
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.atpsynthase has no model: the default resolver for lattice arrangements places it",
-   "path": "/populations/3",
-   "ids": [
-    "p.atpsynthase"
-   ]
-  },
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.actin has no model: the default resolver for fiber arrangements places it",
-   "path": "/populations/4",
-   "ids": [
-    "p.actin"
-   ]
-  },
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.microtubule has no model: the default resolver for fiber arrangements places it",
-   "path": "/populations/5",
-   "ids": [
-    "p.microtubule"
-   ]
-  },
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.vesicle-lipids has no model: the default resolver for bilayer arrangements places it",
-   "path": "/populations/6",
-   "ids": [
-    "p.vesicle-lipids"
-   ]
-  },
-  {
-   "code": "constraint.unmet",
-   "severity": "error",
-   "phase": "resolve",
-   "message": "p.atpsynthase: 69 of 400 placed",
-   "ids": [
-    "p.atpsynthase",
-    "default:meso.lattice"
-   ],
-   "constraint": {
-    "kind": "placed-fraction",
-    "requested": 400,
-    "achieved": 69,
-    "reason": "the membrane of mitochondrion holds 69 hexagonal sites 120 Å apart; 400 asked"
-   }
-  }
- ]
 }

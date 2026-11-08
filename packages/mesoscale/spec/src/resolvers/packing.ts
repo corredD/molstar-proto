@@ -125,14 +125,18 @@ export class SpatialHash {
 
   overlaps(x: number, y: number, z: number, r: number): boolean {
     const reach = Math.ceil((r + this.maxRadius) / this.cell);
-    const cx = Math.floor(x / this.cell), cy = Math.floor(y / this.cell), cz = Math.floor(z / this.cell);
+    const cx = Math.floor(x / this.cell),
+      cy = Math.floor(y / this.cell),
+      cz = Math.floor(z / this.cell);
     for (let i = cx - reach; i <= cx + reach; i++)
       for (let j = cy - reach; j <= cy + reach; j++)
         for (let k = cz - reach; k <= cz + reach; k++) {
           const list = this.cells.get(this.key(i, j, k));
           if (!list) continue;
           for (const q of list) {
-            const dx = this.xs[q] - x, dy = this.ys[q] - y, dz = this.zs[q] - z;
+            const dx = this.xs[q] - x,
+              dy = this.ys[q] - y,
+              dz = this.zs[q] - z;
             const d = this.rs[q] + r;
             if (dx * dx + dy * dy + dz * dz < d * d) return true;
           }
@@ -143,8 +147,11 @@ export class SpatialHash {
 
 /** A uniformly random rotation (Shoemake). */
 export function randomQuat(r: Random, out: number[]): number[] {
-  const u1 = r.next(), u2 = r.next() * 2 * Math.PI, u3 = r.next() * 2 * Math.PI;
-  const a = Math.sqrt(1 - u1), b = Math.sqrt(u1);
+  const u1 = r.next(),
+    u2 = r.next() * 2 * Math.PI,
+    u3 = r.next() * 2 * Math.PI;
+  const a = Math.sqrt(1 - u1),
+    b = Math.sqrt(u1);
   out[0] = a * Math.sin(u2);
   out[1] = a * Math.cos(u2);
   out[2] = b * Math.sin(u3);
@@ -166,7 +173,11 @@ export function pack(input: PackInput, job: ResolveJob, model: string, key: stri
     compartment: it.compartment,
     radius: it.radius,
   }));
-  const maxR = Math.max(1, ...input.items.map((i) => i.radius), ...job.obstacles.flatMap((o) => o.typeTable.map((t) => t.radius)));
+  const maxR = Math.max(
+    1,
+    ...input.items.map((i) => i.radius),
+    ...job.obstacles.flatMap((o) => o.typeTable.map((t) => t.radius)),
+  );
   const grid = new SpatialHash(2 * maxR);
   for (const o of job.obstacles)
     for (let i = 0; i < o.count; i++)
@@ -179,12 +190,15 @@ export function pack(input: PackInput, job: ResolveJob, model: string, key: stri
   const order = input.items
     .map((it, i) => i)
     .sort((i, j) => {
-      const a = input.items[i], c = input.items[j];
+      const a = input.items[i],
+        c = input.items[j];
       const sa = a.location === 'interior' || a.location === 'exterior' ? 1 : 0;
       const sc = c.location === 'interior' || c.location === 'exterior' ? 1 : 0;
       return sa - sc || (c.priority ?? 0) - (a.priority ?? 0) || c.radius - a.radius || i - j;
     });
-  const p = [0, 0, 0], n = [0, 0, 0], q = [0, 0, 0, 1];
+  const p = [0, 0, 0],
+    n = [0, 0, 0],
+    q = [0, 0, 0, 1];
 
   for (const t of order) {
     const it = input.items[t];
@@ -214,7 +228,9 @@ export function pack(input: PackInput, job: ResolveJob, model: string, key: stri
         case 'interior': {
           // a point in the free space: rejection from the bounds, not counted as a try (only overlaps are)
           for (let g = 0; g < GeometrySamples; g++) {
-            const x = rand.range(s.min[0], s.max[0]), y = rand.range(s.min[1], s.max[1]), z = rand.range(s.min[2], s.max[2]);
+            const x = rand.range(s.min[0], s.max[0]),
+              y = rand.range(s.min[1], s.max[1]),
+              z = rand.range(s.min[2], s.max[2]);
             if (!s.contains(x, y, z, it.radius + half) || !outsideChildren(comp, x, y, z)) continue;
             [p[0], p[1], p[2]] = [x, y, z];
             randomQuat(rand, q);
@@ -227,7 +243,9 @@ export function pack(input: PackInput, job: ResolveJob, model: string, key: stri
           const pc = comp.parent ? input.compartments[comp.parent] : undefined;
           if (!ps || !pc) return false;
           for (let g = 0; g < GeometrySamples; g++) {
-            const x = rand.range(ps.min[0], ps.max[0]), y = rand.range(ps.min[1], ps.max[1]), z = rand.range(ps.min[2], ps.max[2]);
+            const x = rand.range(ps.min[0], ps.max[0]),
+              y = rand.range(ps.min[1], ps.max[1]),
+              z = rand.range(ps.min[2], ps.max[2]);
             if (!ps.contains(x, y, z, it.radius + pc.thickness / 2) || !outsideChildren(pc, x, y, z)) continue;
             [p[0], p[1], p[2]] = [x, y, z];
             randomQuat(rand, q);
@@ -276,14 +294,18 @@ export function pack(input: PackInput, job: ResolveJob, model: string, key: stri
       const owner = it.location === 'exterior' ? comp.parent! : it.compartment;
       const room = volume ? input.compartments[owner]?.freeVolume : comp.area;
       const where = volume
-        ? it.location === 'exterior' ? `the space around ${comp.label}` : `the inside of ${comp.label}`
+        ? it.location === 'exterior'
+          ? `the space around ${comp.label}`
+          : `the inside of ${comp.label}`
         : `the ${it.location} of ${comp.label}`;
       const fill = room ? fillOf(b, typeTable, input.items, job, owner, volume, room) : undefined;
       reason(
         `${placed} of ${it.requested} fit in ${where}` +
           (fill !== undefined ? `, now ${Math.round(100 * fill)}% filled by the spheres of every copy in it` : '') +
           `; the packer stopped after ${input.giveUp} copies in a row found no free spot in ${input.attempts} tries each` +
-          (volume ? ' (random sequential addition of equal spheres jams near 38%; more tries may place a few more)' : ''),
+          (volume
+            ? ' (random sequential addition of equal spheres jams near 38%; more tries may place a few more)'
+            : ''),
       );
     }
   }
@@ -305,7 +327,8 @@ function fillOf(
   let used = 0;
   items.forEach((it, t) => {
     const inIt = volume
-      ? (it.location === 'interior' && it.compartment === owner) || (it.location === 'exterior' && job.compartments.get(it.compartment)?.parent === owner)
+      ? (it.location === 'interior' && it.compartment === owner) ||
+        (it.location === 'exterior' && job.compartments.get(it.compartment)?.parent === owner)
       : it.compartment === owner && it.location !== 'interior' && it.location !== 'exterior';
     if (inIt) used += b.countOf(t) * size(typeTable[t].radius);
   });

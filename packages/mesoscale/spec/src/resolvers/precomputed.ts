@@ -20,9 +20,21 @@ import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js
 type PopulationMap = Id | { readonly column: string; readonly values: Readonly<Record<string, Id>> };
 
 interface PrecomputedInput {
-  readonly resources: readonly { readonly id: Id; readonly format: string; readonly contentKey: string; readonly toWorld?: readonly number[] }[];
+  readonly resources: readonly {
+    readonly id: Id;
+    readonly format: string;
+    readonly contentKey: string;
+    readonly toWorld?: readonly number[];
+  }[];
   readonly populations: PopulationMap;
-  readonly types: readonly { readonly population: Id; readonly entity: Id; readonly label: string; readonly compartment: Id; readonly radius: number; readonly requested?: number }[];
+  readonly types: readonly {
+    readonly population: Id;
+    readonly entity: Id;
+    readonly label: string;
+    readonly compartment: Id;
+    readonly radius: number;
+    readonly requested?: number;
+  }[];
 }
 
 export const MesoPrecomputedResolver: Resolver<PrecomputedInput> = {
@@ -39,7 +51,14 @@ export const MesoPrecomputedResolver: Resolver<PrecomputedInput> = {
         return { id, format: r.resource.format, contentKey: r.contentKey, toWorld: r.toWorld };
       }),
       populations: (job.model.params?.populations ?? job.populations[0]?.id) as PopulationMap,
-      types: job.populations.map((p) => ({ population: p.id, entity: p.entity.id, label: p.entity.label, compartment: p.compartment, radius: p.radius ?? 10, requested: p.requested })),
+      types: job.populations.map((p) => ({
+        population: p.id,
+        entity: p.entity.id,
+        label: p.entity.label,
+        compartment: p.compartment,
+        radius: p.radius ?? 10,
+        requested: p.requested,
+      })),
     };
   },
   resolve(input, job): ResolveOutput {
@@ -62,7 +81,11 @@ export const MesoPrecomputedResolver: Resolver<PrecomputedInput> = {
         const tables = content as Map<string, StarTable>;
         const table = [...tables.values()].find((t) => t.columns.includes('rlnCoordinateX'));
         if (!table) {
-          issues.push(issue('resolver.unsupported', 'error', 'resolve', `${r.id} has no table with rlnCoordinateX`, { ids: [r.id] }));
+          issues.push(
+            issue('resolver.unsupported', 'error', 'resolve', `${r.id} has no table with rlnCoordinateX`, {
+              ids: [r.id],
+            }),
+          );
           continue;
         }
         const col = (n: string) => table.columns.indexOf(n);
@@ -82,7 +105,10 @@ export const MesoPrecomputedResolver: Resolver<PrecomputedInput> = {
         const data = content as { population?: Id; positions: number[]; rotations?: number[]; populations?: Id[] };
         const n = data.positions.length / 3;
         for (let i = 0; i < n; i++) {
-          const pop = data.populations?.[i] ?? data.population ?? (typeof input.populations === 'string' ? input.populations : undefined);
+          const pop =
+            data.populations?.[i] ??
+            data.population ??
+            (typeof input.populations === 'string' ? input.populations : undefined);
           const type = pop === undefined ? undefined : typeOf.get(pop);
           if (type === undefined) continue;
           const rq = data.rotations ? data.rotations.slice(4 * i, 4 * i + 4) : [0, 0, 0, 1];
@@ -95,8 +121,14 @@ export const MesoPrecomputedResolver: Resolver<PrecomputedInput> = {
     const shortfall: Record<Id, string> = {};
     for (const t of input.types)
       if (t.requested !== undefined && achieved[t.population] < t.requested)
-        shortfall[t.population] = `the file has ${achieved[t.population]} rows for ${t.population}; the document says ${t.requested}`;
-    return { sets: [b.finish({ key: '', model: job.model.id, frame: 'world', typeTable })], achieved, shortfall, issues };
+        shortfall[t.population] =
+          `the file has ${achieved[t.population]} rows for ${t.population}; the document says ${t.requested}`;
+    return {
+      sets: [b.finish({ key: '', model: job.model.id, frame: 'world', typeTable })],
+      achieved,
+      shortfall,
+      issues,
+    };
   },
 };
 
@@ -127,7 +159,17 @@ export function mulQuat(out: number[], a: ArrayLike<number>, b: ArrayLike<number
 /** The rotation of a column-major 4×4 similarity, as a quaternion (its scale divided out). */
 export function rotationOf(m: readonly number[]): number[] {
   const s = Math.hypot(m[0], m[1], m[2]) || 1;
-  const [m00, m01, m02, m10, m11, m12, m20, m21, m22] = [m[0] / s, m[4] / s, m[8] / s, m[1] / s, m[5] / s, m[9] / s, m[2] / s, m[6] / s, m[10] / s];
+  const [m00, m01, m02, m10, m11, m12, m20, m21, m22] = [
+    m[0] / s,
+    m[4] / s,
+    m[8] / s,
+    m[1] / s,
+    m[5] / s,
+    m[9] / s,
+    m[2] / s,
+    m[6] / s,
+    m[10] / s,
+  ];
   const tr = m00 + m11 + m22;
   let x: number, y: number, z: number, w: number;
   if (tr > 0) {

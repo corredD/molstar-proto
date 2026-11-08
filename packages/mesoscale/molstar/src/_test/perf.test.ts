@@ -30,7 +30,10 @@ const record = (k: string, v: unknown) => {
 const gl = tryGl();
 
 describe('adapter performance', () => {
-  for (const [kind, n] of [['pack', 50_000], ['bilayer', 1_000_000]] as const) {
+  for (const [kind, n] of [
+    ['pack', 50_000],
+    ['bilayer', 1_000_000],
+  ] as const) {
     it(`${kind} ${n}: commit, first image, color edit`, { tags: ['heavy'] }, async () => {
       const v = await createPrismViewerHeadless({
         spec: createMesoscaleExplorerSpec(''),
@@ -47,7 +50,10 @@ describe('adapter performance', () => {
           await (v.plugin as HeadlessPluginContext).getImageRaw({ width: 400, height: 300 });
           imageMs = performance.now() - t;
         }
-        const recolored = { ...doc, views: [{ ...doc.views![0], looks: [{ select: { compartments: ['c.cell'] }, color: '#d0453a' }] }] };
+        const recolored = {
+          ...doc,
+          views: [{ ...doc.views![0], looks: [{ select: { compartments: ['c.cell'] }, color: '#d0453a' }] }],
+        };
         const look = await adapter.commit(updateView(recolored, r.ir!));
         let image2Ms: number | undefined;
         if (gl) {
@@ -77,6 +83,11 @@ describe('adapter performance', () => {
     const t = performance.now();
     const { data, copies } = irToMolViewSpec(r.ir!);
     const json = JSON.stringify(data);
-    record('mvs50k', { copies, export_ms: Math.round(performance.now() - t), json_MB: +(json.length / 2 ** 20).toFixed(1), bytes_per_copy: Math.round(json.length / copies) });
+    record('mvs50k', {
+      copies,
+      export_ms: Math.round(performance.now() - t),
+      json_MB: +(json.length / 2 ** 20).toFixed(1),
+      bytes_per_copy: Math.round(json.length / copies),
+    });
   });
 });

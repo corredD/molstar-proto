@@ -35,7 +35,10 @@ function only(ids: string[]): MesoViewSpecDoc {
   return { ...d, populations: d.populations.filter((p) => ids.includes(p.id)) };
 }
 
-const setPop = (doc: MesoViewSpecDoc, id: string, edit: (p: Population) => Population) => ({ ...doc, populations: doc.populations.map((p) => (p.id === id ? edit(p) : p)) });
+const setPop = (doc: MesoViewSpecDoc, id: string, edit: (p: Population) => Population) => ({
+  ...doc,
+  populations: doc.populations.map((p) => (p.id === id ? edit(p) : p)),
+});
 
 function mock(doc: MesoViewSpecDoc, knob: Knob) {
   return story(() => {
@@ -49,7 +52,13 @@ function mock(doc: MesoViewSpecDoc, knob: Knob) {
       showIssues(issues, session.issues);
       showHistory(history, session.history);
     };
-    const input = h('input', { type: 'range', min: String(knob.min), max: String(knob.max), step: String(knob.step), value: String(knob.value) });
+    const input = h('input', {
+      type: 'range',
+      min: String(knob.min),
+      max: String(knob.max),
+      step: String(knob.step),
+      value: String(knob.value),
+    });
     const out = h('span', {}, String(knob.value));
     input.addEventListener('input', () => (out.textContent = (input as HTMLInputElement).value));
     input.addEventListener('change', async () => {
@@ -70,7 +79,11 @@ function mock(doc: MesoViewSpecDoc, knob: Knob) {
     return h(
       'div',
       { style: `${Styles.grid};grid-template-columns:1fr 1.6fr;grid-template-rows:auto 1.5fr 1fr` },
-      h('div', { style: 'grid-column:1 / 3' }, panel(doc.metadata.title, h('div', { style: Styles.bar }, knob.label, input, out))),
+      h(
+        'div',
+        { style: 'grid-column:1 / 3' },
+        panel(doc.metadata.title, h('div', { style: Styles.bar }, knob.label, input, out)),
+      ),
       panel('IR', irPre),
       panel('Mol* / Prism', h('div', { style: 'flex:1;min-height:0;position:relative' }, viewer)),
       panel('Issues', issues),
@@ -88,7 +101,11 @@ export const MembraneLattice: StoryObj = {
       max: 20,
       step: 1,
       value: 12,
-      apply: (d, v) => setPop(d, 'p.atpsynthase', (p) => ({ ...p, arrangement: { kind: 'lattice', lattice: 'hexagonal', spacing: v } })),
+      apply: (d, v) =>
+        setPop(d, 'p.atpsynthase', (p) => ({
+          ...p,
+          arrangement: { kind: 'lattice', lattice: 'hexagonal', spacing: v },
+        })),
     }),
 };
 
@@ -115,7 +132,10 @@ export const Fibers: StoryObj = {
       step: 20,
       value: 1000,
       apply: (d, v) =>
-        setPop(d, 'p.actin', (p) => ({ ...p, arrangement: { kind: 'fiber', rise: 2.75, twist: -166.6, growth: { persistence: v, length: 220, count: 6 } } })),
+        setPop(d, 'p.actin', (p) => ({
+          ...p,
+          arrangement: { kind: 'fiber', rise: 2.75, twist: -166.6, growth: { persistence: v, length: 220, count: 6 } },
+        })),
     }),
 };
 
@@ -128,6 +148,7 @@ export const Bilayer: StoryObj = {
       max: 2.5,
       step: 0.1,
       value: 1.5,
-      apply: (d, v) => setPop(d, 'p.vesicle-lipids', (p) => ({ ...p, abundance: { density: { value: v, unit: 'per_nm2' } } })),
+      apply: (d, v) =>
+        setPop(d, 'p.vesicle-lipids', (p) => ({ ...p, abundance: { density: { value: v, unit: 'per_nm2' } } })),
     }),
 };

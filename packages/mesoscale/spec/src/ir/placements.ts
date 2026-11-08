@@ -146,7 +146,9 @@ export function quatFromTo(
   let x: number, y: number, z: number, w: number;
   if (d < -0.999999) {
     // opposite: half a turn about any axis perpendicular to a
-    let px = 0, py = -az, pz = ay;
+    let px = 0,
+      py = -az,
+      pz = ay;
     if (px * px + py * py + pz * pz < 1e-12) [px, py, pz] = [-az, 0, ax];
     const l = Math.hypot(px, py, pz);
     [x, y, z, w] = [px / l, py / l, pz / l, 0];
@@ -166,7 +168,9 @@ export function quatFromTo(
     const h = spin / 2;
     const sw = Math.cos(h);
     const ss = Math.sin(h);
-    const sx = bx * ss, sy = by * ss, sz = bz * ss;
+    const sx = bx * ss,
+      sy = by * ss,
+      sz = bz * ss;
     out[0] = sw * x + sx * w + sy * z - sz * y;
     out[1] = sw * y - sx * z + sy * w + sz * x;
     out[2] = sw * z + sx * y - sy * x + sz * w;

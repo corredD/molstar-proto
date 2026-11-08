@@ -27,7 +27,11 @@ afterEach(async () => {
   for (const v of viewers.splice(0)) await v.dispose();
 });
 
-const options = (cache: Map<string, unknown>) => ({ resolvers: DefaultResolvers, load: (id: string) => ExosomeResources[id]?.(), cache: cache as Map<string, never> });
+const options = (cache: Map<string, unknown>) => ({
+  resolvers: DefaultResolvers,
+  load: (id: string) => ExosomeResources[id]?.(),
+  cache: cache as Map<string, never>,
+});
 
 async function session() {
   const v = await createPrismViewerHeadless({ spec: createMesoscaleExplorerSpec('') });
@@ -39,7 +43,8 @@ async function session() {
   return { v, adapter, cache, result, report };
 }
 
-const reprObjects = (v: PrismViewer) => v.plugin.managers.particles.hierarchy.current.lists.flatMap((l) => l.representations.map((r) => r.cell.obj));
+const reprObjects = (v: PrismViewer) =>
+  v.plugin.managers.particles.hierarchy.current.lists.flatMap((l) => l.representations.map((r) => r.cell.obj));
 
 describe('the Prism adapter (headless)', () => {
   it('one list and one representation per placement set, holding the IR buffers', { tags: ['medium'] }, async () => {
@@ -63,7 +68,14 @@ describe('the Prism adapter (headless)', () => {
     const { v, adapter, result } = await session();
     const lists = placementSets(result.ir!).map((s) => adapter.listObject(s.key));
     const reprs = reprObjects(v);
-    const doc: MesoViewSpecDoc = { ...exosomeDoc(), views: exosomeDoc().views!.map((x) => (x.id === 'v.overview' ? { ...x, looks: [...x.looks!, { select: { populations: ['p.miRNA'] }, color: '#00ff00' }] } : x)) };
+    const doc: MesoViewSpecDoc = {
+      ...exosomeDoc(),
+      views: exosomeDoc().views!.map((x) =>
+        x.id === 'v.overview'
+          ? { ...x, looks: [...x.looks!, { select: { populations: ['p.miRNA'] }, color: '#00ff00' }] }
+          : x,
+      ),
+    };
     const report = await adapter.commit(updateView(doc, result.ir!));
     expect(report).toMatchObject({ added: [], removed: [] });
     expect(report.kept.length).toBe(3);
@@ -75,7 +87,12 @@ describe('the Prism adapter (headless)', () => {
   it("a density edit: the rerun model's list replaced, the others kept", { tags: ['medium'] }, async () => {
     const { adapter, cache, result } = await session();
     const before = new Map(placementSets(result.ir!).map((s) => [s.model, adapter.listObject(s.key)]));
-    const doc: MesoViewSpecDoc = { ...exosomeDoc(), populations: exosomeDoc().populations.map((p) => (p.id === 'p.miRNA' ? { ...p, abundance: { concentration: { value: 0.0008, unit: 'M' as const } } } : p)) };
+    const doc: MesoViewSpecDoc = {
+      ...exosomeDoc(),
+      populations: exosomeDoc().populations.map((p) =>
+        p.id === 'p.miRNA' ? { ...p, abundance: { concentration: { value: 0.0008, unit: 'M' as const } } } : p,
+      ),
+    };
     const next: CompileResult = await compile(doc, options(cache));
     expect(next.stats.resolverRuns).toBe(1);
     const report = await adapter.commit(next.ir!);

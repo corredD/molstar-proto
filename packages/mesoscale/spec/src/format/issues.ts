@@ -52,7 +52,7 @@ export const IssueCodes = {
   'constraint.unmet': 'A constraint was not met',
   'relation.ignored': "A relation no resolver of the scene honours (it stays the document's statement)",
   'catalog.unexpanded': 'A catalog was not expanded into populations',
-  'assumption': 'The resolver made a choice the document did not make',
+  assumption: 'The resolver made a choice the document did not make',
 } as const;
 
 export type IssueCode = keyof typeof IssueCodes | `${string}.${string}`;

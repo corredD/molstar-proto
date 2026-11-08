@@ -184,7 +184,14 @@ export function importCellpackGpuRecipe(recipe: CellpackGpuRecipe, o: CellpackIm
       id: 'medium',
       label: 'medium',
       kind: 'medium',
-      geometry: { kind: 'box', size: [{ value: size, unit: 'A' }, { value: size, unit: 'A' }, { value: size, unit: 'A' }] },
+      geometry: {
+        kind: 'box',
+        size: [
+          { value: size, unit: 'A' },
+          { value: size, unit: 'A' },
+          { value: size, unit: 'A' },
+        ],
+      },
       evidence: ['cellpack.medium-box'],
     });
     evidence.push({
@@ -196,7 +203,15 @@ export function importCellpackGpuRecipe(recipe: CellpackGpuRecipe, o: CellpackIm
   }
   for (const c of recipe.compartments) {
     if (c.radius === undefined) {
-      issues.push(issue('cellpack.geometry', 'warning', 'load', `${c.path} is ${c.geomType}: only one-metaball and sphere compartments import as spheres`, { ids: [compId(c.path)] }));
+      issues.push(
+        issue(
+          'cellpack.geometry',
+          'warning',
+          'load',
+          `${c.path} is ${c.geomType}: only one-metaball and sphere compartments import as spheres`,
+          { ids: [compId(c.path)] },
+        ),
+      );
     }
     compartments.push({
       id: compId(c.path),
@@ -215,7 +230,8 @@ export function importCellpackGpuRecipe(recipe: CellpackGpuRecipe, o: CellpackIm
     evidence.push({
       id: 'cellpack.thickness',
       kind: 'assumption',
-      statement: "The recipe's compartment thickness (7.5) is read as half the membrane's thickness in Å; the recipe states no unit",
+      statement:
+        "The recipe's compartment thickness (7.5) is read as half the membrane's thickness in Å; the recipe states no unit",
       source: { resource: o.resource },
       confidence: 'low',
     });
@@ -229,7 +245,9 @@ export function importCellpackGpuRecipe(recipe: CellpackGpuRecipe, o: CellpackIm
         : 'Counts: a molarity in (0, 1) wins over nbMol (cellPACKgpu PopulateTest.cs:4939)',
     source: { resource: o.resource },
   });
-  const surfaceUsesMolarity = recipe.ingredients.some((i) => i.side === 'surface' && i.molarity > 0 && !(countRule === 'nbMol-first' && i.nbMol > 0));
+  const surfaceUsesMolarity = recipe.ingredients.some(
+    (i) => i.side === 'surface' && i.molarity > 0 && !(countRule === 'nbMol-first' && i.nbMol > 0),
+  );
   if (surfaceUsesMolarity) {
     const unit = o.surfaceMolarityUnit ?? 'per_A2';
     evidence.push({
@@ -240,7 +258,15 @@ export function importCellpackGpuRecipe(recipe: CellpackGpuRecipe, o: CellpackIm
       confidence: 'low',
     });
     if (!o.surfaceMolarityUnit)
-      issues.push(issue('assumption', 'warning', 'load', 'Surface molarities read as copies per Å² (the recipe does not say its unit)', { ids: ['cellpack.surface-unit'] }));
+      issues.push(
+        issue(
+          'assumption',
+          'warning',
+          'load',
+          'Surface molarities read as copies per Å² (the recipe does not say its unit)',
+          { ids: ['cellpack.surface-unit'] },
+        ),
+      );
   }
 
   const entities: Entity[] = [];
@@ -248,7 +274,15 @@ export function importCellpackGpuRecipe(recipe: CellpackGpuRecipe, o: CellpackIm
   const params: Record<Id, { path: string }> = {};
   for (const ing of recipe.ingredients) {
     if (ing.ingtype === 'fiber') {
-      issues.push(issue('cellpack.fiber', 'info', 'load', `${ing.path} is a cellPACK fiber with no length or path in the serialized recipe: not imported`, {}));
+      issues.push(
+        issue(
+          'cellpack.fiber',
+          'info',
+          'load',
+          `${ing.path} is a cellPACK fiber with no length or path in the serialized recipe: not imported`,
+          {},
+        ),
+      );
       continue;
     }
     const eid = `e.${slug(ing.name)}`;
@@ -261,14 +295,24 @@ export function importCellpackGpuRecipe(recipe: CellpackGpuRecipe, o: CellpackIm
       id: eid,
       label: ing.description ? `${ing.name} (${ing.description})` : ing.name,
       kind: 'protein',
-      identifiers: { ...(ing.uniprot ? { uniprot: ing.uniprot } : {}), ...(ing.pdb && /^[0-9][A-Za-z0-9]{3}$/.test(ing.pdb) ? { pdb: ing.pdb.toUpperCase() } : {}) },
+      identifiers: {
+        ...(ing.uniprot ? { uniprot: ing.uniprot } : {}),
+        ...(ing.pdb && /^[0-9][A-Za-z0-9]{3}$/.test(ing.pdb) ? { pdb: ing.pdb.toUpperCase() } : {}),
+      },
       radius: { value: ing.radius, unit: 'A' },
     });
     let abundance: Abundance;
-    const useCount = countRule === 'nbMol-first' ? ing.nbMol > 0 : !(ing.molarity > 0 && ing.molarity < 1) && ing.nbMol > 0;
+    const useCount =
+      countRule === 'nbMol-first' ? ing.nbMol > 0 : !(ing.molarity > 0 && ing.molarity < 1) && ing.nbMol > 0;
     if (ing.nbMol > 0 && ing.molarity > 0)
       issues.push(
-        issue('cellpack.count-conflict', 'warning', 'load', `${ing.name}: nbMol ${ing.nbMol} and molarity ${ing.molarity} both set; ${useCount ? 'nbMol' : 'molarity'} wins (${countRule})`, { ids: [pid] }),
+        issue(
+          'cellpack.count-conflict',
+          'warning',
+          'load',
+          `${ing.name}: nbMol ${ing.nbMol} and molarity ${ing.molarity} both set; ${useCount ? 'nbMol' : 'molarity'} wins (${countRule})`,
+          { ids: [pid] },
+        ),
       );
     if (useCount) abundance = { count: ing.nbMol };
     else if (ing.side === 'surface') {
@@ -288,7 +332,12 @@ export function importCellpackGpuRecipe(recipe: CellpackGpuRecipe, o: CellpackIm
       ],
     });
     if (ing.comments)
-      evidence.push({ id: `ev.${slug(ing.name)}`, kind: 'literature', statement: ing.comments, source: { resource: o.resource, location: ing.path } });
+      evidence.push({
+        id: `ev.${slug(ing.name)}`,
+        kind: 'literature',
+        statement: ing.comments,
+        source: { resource: o.resource, location: ing.path },
+      });
     params[pid] = { path: ing.path };
     void ownerPath;
   }
@@ -312,12 +361,15 @@ export function importCellpackGpuRecipe(recipe: CellpackGpuRecipe, o: CellpackIm
 export const CellpackGpuResolver: Resolver<PackInput & { readonly recipe: string }> = {
   id: 'cellpack-gpu',
   version: '0.1.0',
-  description: "cellPACKgpu serialized recipes: the recipe's principal vectors and membrane offsets on the shared packer",
+  description:
+    "cellPACKgpu serialized recipes: the recipe's principal vectors and membrane offsets on the shared packer",
   arrangements: ['random'],
   locations: ['interior', 'membrane', 'outer-surface', 'inner-surface', 'exterior'],
   formats: ['cellpack-gpu-serialized'],
   project(job: ResolveJob) {
-    const inputId = (job.model.inputs ?? []).find((id) => job.inputs.get(id)?.resource.format === 'cellpack-gpu-serialized');
+    const inputId = (job.model.inputs ?? []).find(
+      (id) => job.inputs.get(id)?.resource.format === 'cellpack-gpu-serialized',
+    );
     const loaded = inputId ? job.inputs.get(inputId) : undefined;
     const recipe = loaded ? parseCellpackGpuRecipe(loaded.content) : { compartments: [], ingredients: [] };
     const byPath = new Map(recipe.ingredients.map((i) => [i.path, i]));
@@ -344,7 +396,10 @@ export const CellpackGpuResolver: Resolver<PackInput & { readonly recipe: string
           offset: p.location === 'membrane' ? along : 0,
         };
       }),
-      compartments: packCompartments(job, job.populations.map((p) => p.compartment)),
+      compartments: packCompartments(
+        job,
+        job.populations.map((p) => p.compartment),
+      ),
       seed: job.seed,
       attempts: Number(params.attempts ?? DefaultPackParams.attempts),
       giveUp: Number(params.giveUp ?? DefaultPackParams.giveUp),
@@ -355,7 +410,15 @@ export const CellpackGpuResolver: Resolver<PackInput & { readonly recipe: string
     const map = (job.model.params?.ingredients ?? {}) as Record<Id, { path: string }>;
     for (const p of job.populations)
       if (!map[p.id])
-        issues.push(issue('resolver.unsupported', 'info', 'resolve', `${p.id} names no recipe ingredient: placed with the document's numbers only`, { ids: [p.id] }));
+        issues.push(
+          issue(
+            'resolver.unsupported',
+            'info',
+            'resolve',
+            `${p.id} names no recipe ingredient: placed with the document's numbers only`,
+            { ids: [p.id] },
+          ),
+        );
     const out = pack(input, job, job.model.id, '');
     return { ...out, issues };
   },
