@@ -136,7 +136,12 @@ export class PrismMesoAdapter implements RendererAdapter {
     const issues: Issue[] = [];
     if (ir.view.cutaway?.length)
       issues.push(
-        issue('view.cutaway', 'info', 'render', 'the view asks to cut away some copies so its focus shows: Prism clips by planes, not by copies (not drawn)'),
+        issue(
+          'view.cutaway',
+          'info',
+          'render',
+          'the view asks to cut away some copies so its focus shows: Prism clips by planes, not by copies (not drawn)',
+        ),
       );
     const partial = ir.view.looks.filter((l) => l.runs);
     if (partial.length)

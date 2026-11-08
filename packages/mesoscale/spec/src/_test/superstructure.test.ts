@@ -29,22 +29,24 @@ describe('superstructures', () => {
     expect(r.issues.filter((i) => i.severity === 'error')).toEqual([]);
     expect(counting.calls.get('cellpack-gpu')).toBe(1);
     const nodes = [...walk(r.ir!.root)].map(([n]) => n);
-    const inst = nodes.find((n) => n.kind === 'instances')!;
-    expect(inst.params).toMatchObject({ superstructure: 's.isg', detail: 'parts', instances: 120 });
+    // one instances node per population: the packed 120, and each granule the document names (a population of one)
+    const inst = nodes.filter((n) => n.kind === 'instances').map((n) => n.params as { instances: number });
+    expect(inst.every((p) => (p as unknown as { superstructure: string }).superstructure === 's.isg')).toBe(true);
+    expect(inst.map((p) => p.instances).sort((x, y) => x - y)).toEqual([1, 1, 120]);
     const ss = nodes.find((n) => n.kind === 'superstructure')!;
     expect(ss.params).toMatchObject({ superstructure: 's.isg', copies: PerGranule });
     expect(ss.children?.every((c) => c.ref.startsWith('s.isg/'))).toBe(true);
   });
 
-  it('flattened for a renderer without nested instancing: 120 × the template, cached across view edits', async () => {
+  it('flattened for a renderer without nested instancing: (120 + 2 named) × the template, cached across view edits', async () => {
     const r = await compile(betaCellDoc(), { resolvers: countingResolvers().resolvers, load });
     const cache = new Map();
     const a = flattenInstances(r.ir!, cache);
-    expect(a.expandedCopies).toBe(120 * PerGranule);
+    expect(a.expandedCopies).toBe(122 * PerGranule);
     expect(a.expandedBytes / a.instancedBytes).toBeGreaterThan(100);
     // the granules' own copies are hidden when drawn as parts; the template's looks follow its expansion
     const vamp = a.ir.view.looks.filter((l) => l.set.includes('*') && l.color === 0xd0453a);
-    expect(vamp.length).toBe(1);
+    expect(vamp.length).toBe(3); // the population's expansion and each named granule's
     const recolored = {
       ...betaCellDoc(),
       views: [{ ...betaCellDoc().views![0], looks: [{ select: '(population p.Chga)', color: '#ffffff' }] }],

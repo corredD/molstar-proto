@@ -1,340 +1,231 @@
 {
- "root": {
-  "ref": "scene",
-  "kind": "scene",
-  "params": {
-   "units": "A",
-   "title": "Whole yeast cell (S. cerevisiae BY4741, YPD log phase), described"
-  },
-  "children": [
-   {
-    "ref": "frame:f.cell",
-    "kind": "frame",
-    "origin": [
-     "f.cell"
-    ],
+  "root": {
+    "ref": "scene",
+    "kind": "scene",
     "params": {
-     "frame": "f.cell",
-     "matrix": [
-      1,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1
-     ]
+      "units": "A",
+      "title": "Whole yeast cell (S. cerevisiae BY4741, YPD log phase), described"
     },
     "children": [
-     {
-      "ref": "c.cell",
-      "kind": "compartment",
-      "origin": [
-       "c.cell"
-      ],
-      "params": {
-       "compartment": "c.cell",
-       "shape": {
-        "kind": "implicit",
-        "description": "segmentation r.seg08 label outline: surface extraction is not in this prototype"
-       }
-      },
-      "children": [
-       {
-        "ref": "c.cell/membrane",
-        "kind": "membrane",
-        "origin": [
-         "c.cell"
-        ],
+      {
+        "ref": "frame:f.cell",
+        "kind": "frame",
+        "origin": ["f.cell"],
         "params": {
-         "compartment": "c.cell",
-         "thickness": 40
-        }
-       },
-       {
-        "ref": "c.nucleus",
-        "kind": "compartment",
-        "origin": [
-         "c.nucleus"
-        ],
-        "params": {
-         "compartment": "c.nucleus",
-         "shape": {
-          "kind": "implicit",
-          "description": "segmentation r.seg05 label nucleus: surface extraction is not in this prototype"
-         }
+          "frame": "f.cell",
+          "matrix": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
         },
         "children": [
-         {
-          "ref": "c.nucleus/membrane",
-          "kind": "membrane",
-          "origin": [
-           "c.nucleus"
-          ],
-          "params": {
-           "compartment": "c.nucleus",
-           "thickness": 340
+          {
+            "ref": "c.cell",
+            "kind": "compartment",
+            "origin": ["c.cell"],
+            "params": {
+              "compartment": "c.cell",
+              "shape": {
+                "kind": "implicit",
+                "description": "segmentation r.seg08 label outline: surface extraction is not in this prototype"
+              }
+            },
+            "children": [
+              {
+                "ref": "c.cell/membrane",
+                "kind": "membrane",
+                "origin": ["c.cell"],
+                "params": {
+                  "compartment": "c.cell",
+                  "thickness": 40
+                }
+              },
+              {
+                "ref": "c.nucleus",
+                "kind": "compartment",
+                "origin": ["c.nucleus"],
+                "params": {
+                  "compartment": "c.nucleus",
+                  "shape": {
+                    "kind": "implicit",
+                    "description": "segmentation r.seg05 label nucleus: surface extraction is not in this prototype"
+                  }
+                },
+                "children": [
+                  {
+                    "ref": "c.nucleus/membrane",
+                    "kind": "membrane",
+                    "origin": ["c.nucleus"],
+                    "params": {
+                      "compartment": "c.nucleus",
+                      "thickness": 340
+                    }
+                  },
+                  {
+                    "ref": "c.nucleolus",
+                    "kind": "compartment",
+                    "origin": ["c.nucleolus"],
+                    "params": {
+                      "compartment": "c.nucleolus",
+                      "shape": {
+                        "kind": "implicit",
+                        "description": "procedural (MODEL.md §3.3)"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "ref": "c.vacuole",
+                "kind": "compartment",
+                "origin": ["c.vacuole"],
+                "params": {
+                  "compartment": "c.vacuole",
+                  "shape": {
+                    "kind": "implicit",
+                    "description": "segmentation r.seg08 label vacuoles: surface extraction is not in this prototype"
+                  }
+                },
+                "children": [
+                  {
+                    "ref": "c.vacuole/membrane",
+                    "kind": "membrane",
+                    "origin": ["c.vacuole"],
+                    "params": {
+                      "compartment": "c.vacuole",
+                      "thickness": 40
+                    }
+                  }
+                ]
+              },
+              {
+                "ref": "c.mito",
+                "kind": "compartment",
+                "origin": ["c.mito"],
+                "params": {
+                  "compartment": "c.mito",
+                  "shape": {
+                    "kind": "implicit",
+                    "description": "one procedural reticulum, tubule radius 150 nm (MODEL.md §3.3)"
+                  }
+                },
+                "children": [
+                  {
+                    "ref": "c.mito/membrane",
+                    "kind": "membrane",
+                    "origin": ["c.mito"],
+                    "params": {
+                      "compartment": "c.mito",
+                      "thickness": 40
+                    }
+                  }
+                ]
+              },
+              {
+                "ref": "c.er",
+                "kind": "compartment",
+                "origin": ["c.er"],
+                "params": {
+                  "compartment": "c.er",
+                  "shape": {
+                    "kind": "implicit",
+                    "description": "sheets 27 nm beneath the plasma membrane, 20 nm lumen (MODEL.md §3.3)"
+                  }
+                },
+                "children": [
+                  {
+                    "ref": "c.er/membrane",
+                    "kind": "membrane",
+                    "origin": ["c.er"],
+                    "params": {
+                      "compartment": "c.er",
+                      "thickness": 40
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ref": "c.wall",
+            "kind": "compartment",
+            "origin": ["c.wall"],
+            "params": {
+              "compartment": "c.wall",
+              "shape": {
+                "kind": "implicit",
+                "description": "a 110 nm shell: β-1,3-glucan inside, mannan outside (MODEL.md §3.1, §7)"
+              }
+            }
+          },
+          {
+            "ref": "frame:f.fibsem08",
+            "kind": "frame",
+            "origin": ["f.fibsem08"],
+            "params": {
+              "frame": "f.fibsem08",
+              "matrix": [9.831, 0, 0, 0, 0, 9.831, 0, 0, 0, 0, 9.831, 0, 0, 0, 0, 1],
+              "via": "al.cell08"
+            }
+          },
+          {
+            "ref": "frame:f.fibsem05",
+            "kind": "frame",
+            "origin": ["f.fibsem05"],
+            "params": {
+              "frame": "f.fibsem05",
+              "matrix": [10, 0, 0, 0, 0, 10, 0, 0, 0, 0, 10, 0, 0, 0, 0, 1],
+              "via": "al.cell05"
+            }
           }
-         },
-         {
-          "ref": "c.nucleolus",
-          "kind": "compartment",
-          "origin": [
-           "c.nucleolus"
-          ],
-          "params": {
-           "compartment": "c.nucleolus",
-           "shape": {
-            "kind": "implicit",
-            "description": "procedural (MODEL.md §3.3)"
-           }
-          }
-         }
         ]
-       },
-       {
-        "ref": "c.vacuole",
-        "kind": "compartment",
-        "origin": [
-         "c.vacuole"
-        ],
-        "params": {
-         "compartment": "c.vacuole",
-         "shape": {
-          "kind": "implicit",
-          "description": "segmentation r.seg08 label vacuoles: surface extraction is not in this prototype"
-         }
-        },
-        "children": [
-         {
-          "ref": "c.vacuole/membrane",
-          "kind": "membrane",
-          "origin": [
-           "c.vacuole"
-          ],
-          "params": {
-           "compartment": "c.vacuole",
-           "thickness": 40
-          }
-         }
-        ]
-       },
-       {
-        "ref": "c.mito",
-        "kind": "compartment",
-        "origin": [
-         "c.mito"
-        ],
-        "params": {
-         "compartment": "c.mito",
-         "shape": {
-          "kind": "implicit",
-          "description": "one procedural reticulum, tubule radius 150 nm (MODEL.md §3.3)"
-         }
-        },
-        "children": [
-         {
-          "ref": "c.mito/membrane",
-          "kind": "membrane",
-          "origin": [
-           "c.mito"
-          ],
-          "params": {
-           "compartment": "c.mito",
-           "thickness": 40
-          }
-         }
-        ]
-       },
-       {
-        "ref": "c.er",
-        "kind": "compartment",
-        "origin": [
-         "c.er"
-        ],
-        "params": {
-         "compartment": "c.er",
-         "shape": {
-          "kind": "implicit",
-          "description": "sheets 27 nm beneath the plasma membrane, 20 nm lumen (MODEL.md §3.3)"
-         }
-        },
-        "children": [
-         {
-          "ref": "c.er/membrane",
-          "kind": "membrane",
-          "origin": [
-           "c.er"
-          ],
-          "params": {
-           "compartment": "c.er",
-           "thickness": 40
-          }
-         }
-        ]
-       }
-      ]
-     },
-     {
-      "ref": "c.wall",
-      "kind": "compartment",
-      "origin": [
-       "c.wall"
-      ],
-      "params": {
-       "compartment": "c.wall",
-       "shape": {
-        "kind": "implicit",
-        "description": "a 110 nm shell: β-1,3-glucan inside, mannan outside (MODEL.md §3.1, §7)"
-       }
       }
-     },
-     {
-      "ref": "frame:f.fibsem08",
-      "kind": "frame",
-      "origin": [
-       "f.fibsem08"
-      ],
-      "params": {
-       "frame": "f.fibsem08",
-       "matrix": [
-        9.831,
-        0,
-        0,
-        0,
-        0,
-        9.831,
-        0,
-        0,
-        0,
-        0,
-        9.831,
-        0,
-        0,
-        0,
-        0,
-        1
-       ],
-       "via": "al.cell08"
-      }
-     },
-     {
-      "ref": "frame:f.fibsem05",
-      "kind": "frame",
-      "origin": [
-       "f.fibsem05"
-      ],
-      "params": {
-       "frame": "f.fibsem05",
-       "matrix": [
-        10,
-        0,
-        0,
-        0,
-        0,
-        10,
-        0,
-        0,
-        0,
-        0,
-        10,
-        0,
-        0,
-        0,
-        0,
-        1
-       ],
-       "via": "al.cell05"
-      }
-     }
     ]
-   }
+  },
+  "view": {
+    "id": "v.cell",
+    "camera": {
+      "position": [0, 0, 90000],
+      "target": [0, 0, 0],
+      "up": [0, 1, 0]
+    },
+    "looks": []
+  },
+  "issues": [
+    {
+      "code": "frame.handedness",
+      "severity": "warning",
+      "phase": "static",
+      "message": "frame f.cell does not say its handedness",
+      "path": "/frames/0",
+      "ids": ["f.cell"]
+    },
+    {
+      "code": "frame.handedness",
+      "severity": "warning",
+      "phase": "static",
+      "message": "frame f.fibsem08 does not say its handedness",
+      "path": "/frames/1",
+      "ids": ["f.fibsem08"]
+    },
+    {
+      "code": "frame.handedness",
+      "severity": "warning",
+      "phase": "static",
+      "message": "frame f.fibsem05 does not say its handedness",
+      "path": "/frames/2",
+      "ids": ["f.fibsem05"]
+    },
+    {
+      "code": "catalog.unexpanded",
+      "severity": "warning",
+      "phase": "resolve",
+      "message": "catalog cat.proteome: no catalog expander in this runtime; its populations are not placed",
+      "ids": ["cat.proteome"]
+    },
+    {
+      "code": "resolver.unknown",
+      "severity": "error",
+      "phase": "resolve",
+      "message": "m.yeast: no resolver yeast-cell-viewer.tiles; p.ribosomes, p.npc, p.nucleosomes, p.microtubules, p.pma1, p.vatpase not placed",
+      "ids": ["m.yeast", "p.ribosomes", "p.npc", "p.nucleosomes", "p.microtubules", "p.pma1", "p.vatpase"]
+    }
   ]
- },
- "view": {
-  "id": "v.cell",
-  "camera": {
-   "position": [
-    0,
-    0,
-    90000
-   ],
-   "target": [
-    0,
-    0,
-    0
-   ],
-   "up": [
-    0,
-    1,
-    0
-   ]
-  },
-  "looks": []
- },
- "issues": [
-  {
-   "code": "frame.handedness",
-   "severity": "warning",
-   "phase": "static",
-   "message": "frame f.cell does not say its handedness",
-   "path": "/frames/0",
-   "ids": [
-    "f.cell"
-   ]
-  },
-  {
-   "code": "frame.handedness",
-   "severity": "warning",
-   "phase": "static",
-   "message": "frame f.fibsem08 does not say its handedness",
-   "path": "/frames/1",
-   "ids": [
-    "f.fibsem08"
-   ]
-  },
-  {
-   "code": "frame.handedness",
-   "severity": "warning",
-   "phase": "static",
-   "message": "frame f.fibsem05 does not say its handedness",
-   "path": "/frames/2",
-   "ids": [
-    "f.fibsem05"
-   ]
-  },
-  {
-   "code": "catalog.unexpanded",
-   "severity": "warning",
-   "phase": "resolve",
-   "message": "catalog cat.proteome: no catalog expander in this runtime; its populations are not placed",
-   "ids": [
-    "cat.proteome"
-   ]
-  },
-  {
-   "code": "resolver.unknown",
-   "severity": "error",
-   "phase": "resolve",
-   "message": "m.yeast: no resolver yeast-cell-viewer.tiles; p.ribosomes, p.npc, p.nucleosomes, p.microtubules, p.pma1, p.vatpase not placed",
-   "ids": [
-    "m.yeast",
-    "p.ribosomes",
-    "p.npc",
-    "p.nucleosomes",
-    "p.microtubules",
-    "p.pma1",
-    "p.vatpase"
-   ]
-  }
- ]
 }

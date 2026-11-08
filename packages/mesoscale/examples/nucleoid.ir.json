@@ -1,331 +1,244 @@
 {
- "root": {
-  "ref": "scene",
-  "kind": "scene",
-  "params": {
-   "units": "A",
-   "title": "Nucleoid stretch: HU bends DNA"
-  },
-  "children": [
-   {
-    "ref": "frame:f.world",
-    "kind": "frame",
-    "origin": [
-     "f.world"
-    ],
+  "root": {
+    "ref": "scene",
+    "kind": "scene",
     "params": {
-     "frame": "f.world",
-     "matrix": [
-      1,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1
-     ]
+      "units": "A",
+      "title": "Nucleoid stretch: HU bends DNA"
     },
     "children": [
-     {
-      "ref": "c.nucleoid",
-      "kind": "compartment",
-      "origin": [
-       "c.nucleoid"
-      ],
-      "params": {
-       "compartment": "c.nucleoid",
-       "shape": {
-        "kind": "sphere",
-        "center": [
-         0,
-         0,
-         0
-        ],
-        "radius": 2500
-       },
-       "volume": 65449846949.78735,
-       "area": 78539816.33974484
-      }
-     },
-     {
-      "ref": "default:meso.fiber/resolve",
-      "kind": "resolve",
-      "origin": [
-       "p.dna",
-       "p.hu",
-       "p.ihf"
-      ],
-      "params": {
-       "model": "default:meso.fiber",
-       "resolver": "meso.fiber",
-       "version": "0.2.0",
-       "key": "default:meso.fiber@94913c290d60ce8c",
-       "input": {
-        "strands": [
-         {
-          "population": "p.dna",
-          "entity": "e.dna",
-          "label": "DNA (10 bp segment)",
-          "radius": 10,
-          "requested": 440,
-          "compartment": "c.nucleoid",
-          "arrangement": {
-           "kind": "fiber",
-           "rise": 34,
-           "twist": 36,
-           "growth": {
-            "persistence": 500,
-            "length": 15000,
-            "count": 1
-           }
-          }
-         }
-        ],
-        "binders": [
-         {
-          "population": "p.hu",
-          "entity": "e.hu",
-          "label": "HU (dimer)",
-          "radius": 25,
-          "requested": 40,
-          "compartment": "c.nucleoid",
-          "relation": {
-           "id": "rel.hu-bends-dna",
-           "kind": "bends",
-           "subjects": [
-            "p.hu"
-           ],
-           "objects": [
-            "p.dna"
-           ],
-           "entry": {
-            "position": [
-             0,
-             0,
-             -15
-            ]
-           },
-           "exit": {
-            "position": [
-             0,
-             0,
-             15
-            ]
-           },
-           "angle": 2.0943951023931953,
-           "spacing": 300
-          },
-          "strand": "p.dna"
-         },
-         {
-          "population": "p.ihf",
-          "entity": "e.ihf",
-          "label": "IHF",
-          "radius": 30,
-          "requested": 5,
-          "compartment": "c.nucleoid",
-          "relation": {
-           "id": "rel.ihf-bends-dna",
-           "kind": "bends",
-           "subjects": [
-            "p.ihf"
-           ],
-           "objects": [
-            "p.dna"
-           ],
-           "angle": 2.792526803190927,
-           "spacing": 1000,
-           "unresolved": "site e.ihf/dna-entry is given by residues ((residues e.ihf :chain A :range 60-70)); materializing it needs the structure loaded"
-          },
-          "strand": "p.dna"
-         }
-        ],
-        "stray": [],
-        "compartments": {
-         "c.nucleoid": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            0,
-            0,
-            0
-           ],
-           "radius": 2500
-          },
-          "children": [],
-          "thickness": 0,
-          "label": "nucleoid region",
-          "freeVolume": 65449846949.78735,
-          "area": 78539816.33974484
-         }
-        },
-        "seed": 1
-       },
-       "cached": false
-      },
-      "children": [
-       {
-        "ref": "default:meso.fiber/placements/0",
-        "kind": "placements",
-        "origin": [
-         "p.dna",
-         "p.hu",
-         "p.ihf"
-        ],
+      {
+        "ref": "frame:f.world",
+        "kind": "frame",
+        "origin": ["f.world"],
         "params": {
-         "set": {
-          "key": "default:meso.fiber@94913c290d60ce8c#0",
-          "model": "default:meso.fiber",
-          "frame": "world",
-          "count": 480,
-          "bytes": 17280,
-          "types": [
-           {
-            "index": 0,
-            "population": "p.dna",
-            "entity": "e.dna",
-            "label": "DNA (10 bp segment)",
-            "compartment": "c.nucleoid",
-            "radius": 10
-           },
-           {
-            "index": 1,
-            "population": "p.hu",
-            "entity": "e.hu",
-            "label": "HU (dimer)",
-            "compartment": "c.nucleoid",
-            "radius": 25
-           },
-           {
-            "index": 2,
-            "population": "p.ihf",
-            "entity": "e.ihf",
-            "label": "IHF",
-            "compartment": "c.nucleoid",
-            "radius": 30
-           }
-          ],
-          "fibers": {
-           "count": 1
+          "frame": "f.world",
+          "matrix": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+        },
+        "children": [
+          {
+            "ref": "c.nucleoid",
+            "kind": "compartment",
+            "origin": ["c.nucleoid"],
+            "params": {
+              "compartment": "c.nucleoid",
+              "shape": {
+                "kind": "sphere",
+                "center": [0, 0, 0],
+                "radius": 2500
+              },
+              "volume": 65449846949.78735,
+              "area": 78539816.33974484
+            }
           },
-          "first": [
-           1683.73,
-           1159.19,
-           -1075.75,
-           1670.8,
-           1178.75,
-           -1100.37
-          ]
-         }
-        }
-       }
-      ]
-     }
+          {
+            "ref": "default:meso.fiber/resolve",
+            "kind": "resolve",
+            "origin": ["p.dna", "p.hu", "p.ihf"],
+            "params": {
+              "model": "default:meso.fiber",
+              "resolver": "meso.fiber",
+              "version": "0.2.0",
+              "key": "default:meso.fiber@94913c290d60ce8c",
+              "input": {
+                "strands": [
+                  {
+                    "population": "p.dna",
+                    "entity": "e.dna",
+                    "label": "DNA (10 bp segment)",
+                    "radius": 10,
+                    "requested": 440,
+                    "compartment": "c.nucleoid",
+                    "arrangement": {
+                      "kind": "fiber",
+                      "rise": 34,
+                      "twist": 36,
+                      "growth": {
+                        "persistence": 500,
+                        "length": 15000,
+                        "count": 1
+                      }
+                    }
+                  }
+                ],
+                "binders": [
+                  {
+                    "population": "p.hu",
+                    "entity": "e.hu",
+                    "label": "HU (dimer)",
+                    "radius": 25,
+                    "requested": 40,
+                    "compartment": "c.nucleoid",
+                    "relation": {
+                      "id": "rel.hu-bends-dna",
+                      "kind": "bends",
+                      "subjects": ["p.hu"],
+                      "objects": ["p.dna"],
+                      "entry": {
+                        "position": [0, 0, -15]
+                      },
+                      "exit": {
+                        "position": [0, 0, 15]
+                      },
+                      "angle": 2.0943951023931953,
+                      "spacing": 300
+                    },
+                    "strand": "p.dna"
+                  },
+                  {
+                    "population": "p.ihf",
+                    "entity": "e.ihf",
+                    "label": "IHF",
+                    "radius": 30,
+                    "requested": 5,
+                    "compartment": "c.nucleoid",
+                    "relation": {
+                      "id": "rel.ihf-bends-dna",
+                      "kind": "bends",
+                      "subjects": ["p.ihf"],
+                      "objects": ["p.dna"],
+                      "angle": 2.792526803190927,
+                      "spacing": 1000,
+                      "unresolved": "site e.ihf/dna-entry is given by residues ((residues e.ihf :chain A :range 60-70)); materializing it needs the structure loaded"
+                    },
+                    "strand": "p.dna"
+                  }
+                ],
+                "stray": [],
+                "compartments": {
+                  "c.nucleoid": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [0, 0, 0],
+                      "radius": 2500
+                    },
+                    "children": [],
+                    "thickness": 0,
+                    "label": "nucleoid region",
+                    "freeVolume": 65449846949.78735,
+                    "area": 78539816.33974484
+                  }
+                },
+                "seed": 1
+              },
+              "cached": false
+            },
+            "children": [
+              {
+                "ref": "default:meso.fiber/placements/0",
+                "kind": "placements",
+                "origin": ["p.dna", "p.hu", "p.ihf"],
+                "params": {
+                  "set": {
+                    "key": "default:meso.fiber@94913c290d60ce8c#0",
+                    "model": "default:meso.fiber",
+                    "frame": "world",
+                    "count": 480,
+                    "bytes": 17280,
+                    "types": [
+                      {
+                        "index": 0,
+                        "population": "p.dna",
+                        "entity": "e.dna",
+                        "label": "DNA (10 bp segment)",
+                        "compartment": "c.nucleoid",
+                        "radius": 10
+                      },
+                      {
+                        "index": 1,
+                        "population": "p.hu",
+                        "entity": "e.hu",
+                        "label": "HU (dimer)",
+                        "compartment": "c.nucleoid",
+                        "radius": 25
+                      },
+                      {
+                        "index": 2,
+                        "population": "p.ihf",
+                        "entity": "e.ihf",
+                        "label": "IHF",
+                        "compartment": "c.nucleoid",
+                        "radius": 30
+                      }
+                    ],
+                    "fibers": {
+                      "count": 1
+                    },
+                    "first": [1683.73, 1159.19, -1075.75, 1670.8, 1178.75, -1100.37]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
     ]
-   }
+  },
+  "view": {
+    "id": "v.strand",
+    "camera": {
+      "position": [0, 0, 8000],
+      "target": [0, 0, 0],
+      "up": [0, 1, 0]
+    },
+    "looks": [
+      {
+        "set": "default:meso.fiber@94913c290d60ce8c#0",
+        "types": [0],
+        "color": 8035526,
+        "visible": true
+      },
+      {
+        "set": "default:meso.fiber@94913c290d60ce8c#0",
+        "types": [1],
+        "color": 13649210,
+        "visible": true
+      },
+      {
+        "set": "default:meso.fiber@94913c290d60ce8c#0",
+        "types": [2],
+        "color": 13855159,
+        "visible": true
+      }
+    ]
+  },
+  "issues": [
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.dna has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
+      "path": "/populations/0",
+      "ids": ["p.dna"]
+    },
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.hu has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
+      "path": "/populations/1",
+      "ids": ["p.hu"]
+    },
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.ihf has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
+      "path": "/populations/2",
+      "ids": ["p.ihf"]
+    },
+    {
+      "code": "constraint.unmet",
+      "severity": "error",
+      "phase": "resolve",
+      "message": "p.ihf: 0 of 5 placed",
+      "ids": ["p.ihf", "default:meso.fiber"],
+      "constraint": {
+        "kind": "placed-fraction",
+        "requested": 5,
+        "achieved": 0,
+        "reason": "relation rel.ihf-bends-dna is not reconciled: site e.ihf/dna-entry is given by residues ((residues e.ihf :chain A :range 60-70)); materializing it needs the structure loaded"
+      }
+    }
   ]
- },
- "view": {
-  "id": "v.strand",
-  "camera": {
-   "position": [
-    0,
-    0,
-    8000
-   ],
-   "target": [
-    0,
-    0,
-    0
-   ],
-   "up": [
-    0,
-    1,
-    0
-   ]
-  },
-  "looks": [
-   {
-    "set": "default:meso.fiber@94913c290d60ce8c#0",
-    "types": [
-     0
-    ],
-    "color": 8035526,
-    "visible": true
-   },
-   {
-    "set": "default:meso.fiber@94913c290d60ce8c#0",
-    "types": [
-     1
-    ],
-    "color": 13649210,
-    "visible": true
-   },
-   {
-    "set": "default:meso.fiber@94913c290d60ce8c#0",
-    "types": [
-     2
-    ],
-    "color": 13855159,
-    "visible": true
-   }
-  ]
- },
- "issues": [
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.dna has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
-   "path": "/populations/0",
-   "ids": [
-    "p.dna"
-   ]
-  },
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.hu has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
-   "path": "/populations/1",
-   "ids": [
-    "p.hu"
-   ]
-  },
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.ihf has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
-   "path": "/populations/2",
-   "ids": [
-    "p.ihf"
-   ]
-  },
-  {
-   "code": "constraint.unmet",
-   "severity": "error",
-   "phase": "resolve",
-   "message": "p.ihf: 0 of 5 placed",
-   "ids": [
-    "p.ihf",
-    "default:meso.fiber"
-   ],
-   "constraint": {
-    "kind": "placed-fraction",
-    "requested": 5,
-    "achieved": 0,
-    "reason": "relation rel.ihf-bends-dna is not reconciled: site e.ihf/dna-entry is given by residues ((residues e.ihf :chain A :range 60-70)); materializing it needs the structure loaded"
-   }
-  }
- ]
 }

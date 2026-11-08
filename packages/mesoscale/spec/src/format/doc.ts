@@ -53,6 +53,12 @@ export interface MesoViewSpecDoc {
   readonly superstructures?: readonly Superstructure[];
   readonly compartments: readonly Compartment[];
   readonly populations: readonly Population[];
+  /**
+   * Copies stated one by one (design.md §3.14): each with an id that survives re-resolution, an entity, where it sits
+   * and its pose. A population states copies statistically (how many, how arranged), an instance individually; both
+   * end as placement sets, and the copies a population packs avoid the instances.
+   */
+  readonly instances?: readonly Instance[];
   /** Tables of populations (a proteome's abundances): too many to list, each row a population (design.md §3.6). */
   readonly catalogs?: readonly Catalog[];
   readonly relations?: readonly Relation[];
@@ -294,6 +300,23 @@ export interface Population {
    * For an entity with a superstructure: `parts` (default) resolves each copy into the superstructure's contents,
    * `entity` draws each copy as one body. One description, both levels (design.md §3.9).
    */
+  readonly detail?: 'parts' | 'entity';
+  readonly evidence?: readonly Id[];
+}
+
+/** One copy, stated individually (design.md §3.14): a granule someone segmented, a named organelle, a reference copy. */
+export interface Instance {
+  readonly id: Id;
+  readonly label?: string;
+  readonly entity: Id;
+  readonly compartment: Id;
+  /** Default `interior`. */
+  readonly location?: Location;
+  /** Its pose: translation in the document's length unit (or in `frame`'s own coordinates), rotation as a quaternion. */
+  readonly pose: Transform;
+  /** The frame the pose is in (a tomogram's voxels); default the world frame. */
+  readonly frame?: Id;
+  /** As for a population: an entity with a superstructure is resolved into parts (default) or drawn as one body. */
   readonly detail?: 'parts' | 'entity';
   readonly evidence?: readonly Id[];
 }

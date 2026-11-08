@@ -135,7 +135,8 @@ export function evaluateMesoQL(e: QExpr, ctx: LociContext): { loci: MesoLoci; is
   const issues: Issue[] = [];
   const sets = placementSets(ctx.ir);
   const unit = LengthToAngstrom[ctx.doc.units?.length ?? 'nm'];
-  const pops = new Map(ctx.doc.populations.map((p) => [p.id, p]));
+  const pops = new Map<string, { readonly location?: string }>(ctx.doc.populations.map((p) => [p.id, p]));
+  for (const x of ctx.doc.instances ?? []) pops.set(x.id, { location: x.location ?? 'interior' });
   const children = new Map<string, string[]>();
   for (const c of ctx.doc.compartments) if (c.parent) children.set(c.parent, [...(children.get(c.parent) ?? []), c.id]);
   const byTypes = (test: (t: PlacementSet['typeTable'][number]) => boolean): MesoLoci => {
@@ -154,6 +155,8 @@ export function evaluateMesoQL(e: QExpr, ctx: LociContext): { loci: MesoLoci; is
       case 'all':
         return new Map(sets.filter((s) => s.count).map((s) => [s.key, [0, s.count]]));
       case 'population':
+      case 'instance':
+        // an instance is realized as a population of one copy, under its own id
         return byTypes((t) => ids.includes(t.population));
       case 'entity':
         return byTypes((t) => ids.includes(t.entity));
@@ -366,11 +369,15 @@ export function lociSphere(l: MesoLoci, ir: IR): { center: [number, number, numb
     const i0 = m ? Number(m[2]) : -1;
     for (let j = 0; j < r.length; j += 2)
       for (let i = r[j]; i < r[j + 1]; i++) {
-        let x = s.positions[3 * i], y = s.positions[3 * i + 1], z = s.positions[3 * i + 2];
+        let x = s.positions[3 * i],
+          y = s.positions[3 * i + 1],
+          z = s.positions[3 * i + 2];
         if (outer) {
           const q = outer.rotations.subarray(4 * i0, 4 * i0 + 4);
           const [qx, qy, qz, qw] = [q[0], q[1], q[2], q[3]];
-          const tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
+          const tx = 2 * (qy * z - qz * y),
+            ty = 2 * (qz * x - qx * z),
+            tz = 2 * (qx * y - qy * x);
           v[0] = x + qw * tx + (qy * tz - qz * ty) + outer.positions[3 * i0];
           v[1] = y + qw * ty + (qz * tx - qx * tz) + outer.positions[3 * i0 + 1];
           v[2] = z + qw * tz + (qx * ty - qy * tx) + outer.positions[3 * i0 + 2];
@@ -385,6 +392,7 @@ export function lociSphere(l: MesoLoci, ir: IR): { center: [number, number, numb
   const c: [number, number, number] = [0, 0, 0];
   for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) c[k] += pts[3 * i + k] / n;
   let radius = 0;
-  for (let i = 0; i < n; i++) radius = Math.max(radius, Math.hypot(pts[3 * i] - c[0], pts[3 * i + 1] - c[1], pts[3 * i + 2] - c[2]) + rs[i]);
+  for (let i = 0; i < n; i++)
+    radius = Math.max(radius, Math.hypot(pts[3 * i] - c[0], pts[3 * i + 1] - c[1], pts[3 * i + 2] - c[2]) + rs[i]);
   return { center: c, radius };
 }

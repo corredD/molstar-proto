@@ -271,6 +271,7 @@ export const DocumentCodec: DataCodec = {
     entities: 'entity',
     compartments: 'compartment',
     populations: 'population',
+    instances: 'instance',
     catalogs: 'catalog',
     relations: 'relation',
     models: 'model',

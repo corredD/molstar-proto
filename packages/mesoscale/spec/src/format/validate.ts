@@ -30,7 +30,8 @@ type Kind =
   | 'view'
   | 'annotation'
   | 'superstructure'
-  | 'tour';
+  | 'tour'
+  | 'instance';
 
 const Sections: readonly [keyof MesoViewSpecDoc, Kind][] = [
   ['frames', 'frame'],
@@ -39,6 +40,7 @@ const Sections: readonly [keyof MesoViewSpecDoc, Kind][] = [
   ['entities', 'entity'],
   ['compartments', 'compartment'],
   ['populations', 'population'],
+  ['instances', 'instance'],
   ['catalogs', 'catalog'],
   ['relations', 'relation'],
   ['models', 'model'],
@@ -169,7 +171,8 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     const k = kinds.get(id);
     const wants = typeof want === 'string' ? [want] : want;
     if (!k) err('ref.missing', `${id} names nothing`, path, [id]);
-    else if (!wants.includes(k)) err('ref.kind', `${id} is a ${k}, not a ${wants.join(' or ')}`, path, [id]);
+    else if (!wants.includes(k))
+      err('ref.kind', `${id} is ${/^[aeiou]/.test(k) ? 'an' : 'a'} ${k}, not ${wants.join(' or ')}`, path, [id]);
   };
   const length = (l: Length | undefined, path: string, positive = true) => {
     if (l === undefined) return;
@@ -335,9 +338,11 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
       for (const k of ['a', 'b'] as const)
         out.push(...parseMesoQL(c[k], { kinds }, `/relations/${i}/contacts/${j}/${k}`).issues);
     });
-    r.subjects.forEach((s, j) => ref(s, ['population', 'entity', 'compartment'], `/relations/${i}/subjects/${j}`));
+    r.subjects.forEach((s, j) =>
+      ref(s, ['population', 'instance', 'entity', 'compartment'], `/relations/${i}/subjects/${j}`),
+    );
     (r.objects ?? []).forEach((s, j) =>
-      ref(s, ['population', 'entity', 'compartment'], `/relations/${i}/objects/${j}`),
+      ref(s, ['population', 'instance', 'entity', 'compartment'], `/relations/${i}/objects/${j}`),
     );
     evidence(r.evidence, `/relations/${i}/evidence`);
   });
@@ -421,7 +426,8 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     ref(v.frame, 'frame', `/views/${i}/frame`);
     const cam = v.camera;
     if (cam) {
-      if (!cam.focus && !(cam.position && cam.target)) err('value.range', 'a camera has a focus or a position and a target', `/views/${i}/camera`, [v.id]);
+      if (!cam.focus && !(cam.position && cam.target))
+        err('value.range', 'a camera has a focus or a position and a target', `/views/${i}/camera`, [v.id]);
       address(cam.focus, `/views/${i}/camera/focus`);
     }
     address(v.cutaway, `/views/${i}/cutaway`);
@@ -455,6 +461,22 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
   for (const e of [...doc.entities, ...(doc.superstructures ?? []).flatMap((x) => x.entities ?? [])])
     if (e.superstructure) entSs.set(e.id, e.superstructure);
   doc.entities.forEach((e, i) => ref(e.superstructure, 'superstructure', `/entities/${i}/superstructure`));
+  // instances: what they are, where they sit, and a pose that is a pose
+  (doc.instances ?? []).forEach((x, i) => {
+    const p = `/instances/${i}`;
+    ref(x.entity, 'entity', `${p}/entity`);
+    ref(x.compartment, 'compartment', `${p}/compartment`);
+    ref(x.frame, 'frame', `${p}/frame`);
+    evidence(x.evidence, `${p}/evidence`);
+    const t = x.pose?.translation;
+    if (!x.pose || (!x.pose.matrix && !(t && t.length === 3 && t.every(Number.isFinite))))
+      err('value.range', `${x.id}: a pose needs a translation [x y z] (or a matrix)`, `${p}/pose`, [x.id]);
+    const q = x.pose?.rotation;
+    if (q && (q.length !== 4 || Math.abs(Math.hypot(...q) - 1) > 1e-3))
+      err('value.range', `${x.id}: the rotation is a unit quaternion [x y z w]`, `${p}/pose/rotation`, [x.id]);
+    if (x.detail && !entSs.has(x.entity))
+      warn('value.range', `${x.id} sets a detail but ${x.entity} has no superstructure`, `${p}/detail`, [x.id]);
+  });
   doc.populations.forEach((p, i) => {
     if (p.detail && !entSs.has(p.entity))
       warn('value.range', `${p.id} sets a detail but ${p.entity} has no superstructure`, `/populations/${i}/detail`, [

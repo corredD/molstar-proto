@@ -23,6 +23,7 @@ import { type IR, type IRLook, type IRNode, type IRShape, type IRView, placement
 import { evaluateMesoQL, intersectRuns, lociSphere, type MesoLoci, runsSize, typeRuns } from '../ir/loci.js';
 import { parseMesoQL } from '../format/mesoql.js';
 import { meshArea } from '../resolvers/geometry.js';
+import { rotationOf } from '../resolvers/precomputed.js';
 import { DefaultReaders, readerFor } from './readers.js';
 import type {
   LoadedResource,
@@ -108,6 +109,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     reports: {},
   });
   if (hasErrors(issues)) return empty();
+  doc = withInstances(doc);
 
   const unit: LengthUnit = doc.units?.length ?? 'nm';
   const A = (l: Parameters<typeof toAngstrom>[0]) => toAngstrom(l, unit)!;
@@ -297,7 +299,14 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     byDefault.set(r, [...(byDefault.get(r) ?? []), p.id]);
   }
   for (const [method, ps] of byDefault)
-    models.push({ id: `default:${method}`, kind: 'procedural', method, populations: ps, seed: 1 });
+    models.push({
+      id: `default:${method}`,
+      kind: 'procedural',
+      method,
+      populations: ps,
+      seed: 1,
+      ...(doc.instances?.length ? { avoid: [InstancesModel] } : {}),
+    });
   const t2 = now();
 
   // ---- relations: sites materialized (design.md §3.11) ----
@@ -708,6 +717,58 @@ export function transformMatrix(t: Transform, unit: LengthUnit): number[] {
 }
 
 /** Each frame's raw coordinates (its unit, or voxels) to world Å, through the alignments (either direction). */
+/** The model that places the document's instances. */
+export const InstancesModel = 'default:meso.instances';
+
+/**
+ * The document's instances (design.md §3.14) as what the runtime already resolves: each a population of one copy under
+ * its own id, all placed by one `meso.precomputed` model from an inline table in world Å; every procedural model avoids
+ * them. Their ids are population ids from here on, so looks, relations, superstructure expansion and MesoQL need nothing new.
+ */
+export function withInstances(doc: MesoViewSpecDoc): MesoViewSpecDoc {
+  const xs = doc.instances ?? [];
+  if (!xs.length) return doc;
+  const unit: LengthUnit = doc.units?.length ?? 'nm';
+  const frames = frameMatrices(doc, unit);
+  const positions: number[] = [];
+  const rotations: number[] = [];
+  for (const x of xs) {
+    // the pose in its frame's raw coordinates (or the document's unit), then the frame to world Å
+    const T = transformMatrix(x.pose, x.frame ? 'A' : unit);
+    const M = x.frame ? mat4Mul(frames.get(x.frame) ?? Identity, T) : T;
+    positions.push(M[12], M[13], M[14]);
+    rotations.push(...rotationOf(M));
+  }
+  const ids = xs.map((x) => x.id);
+  return {
+    ...doc,
+    populations: [
+      ...doc.populations,
+      ...xs.map((x) => ({
+        id: x.id,
+        entity: x.entity,
+        compartment: x.compartment,
+        location: x.location ?? 'interior',
+        abundance: { count: 1 },
+        ...(x.detail ? { detail: x.detail } : {}),
+        ...(x.evidence ? { evidence: x.evidence } : {}),
+      })),
+    ],
+    models: [
+      {
+        id: InstancesModel,
+        kind: 'precomputed',
+        method: 'meso.precomputed',
+        populations: ids,
+        params: { placements: { positions, rotations, populations: ids } },
+      },
+      ...(doc.models ?? []).map((m) =>
+        m.kind === 'procedural' && !m.refines ? { ...m, avoid: [...(m.avoid ?? []), InstancesModel] } : m,
+      ),
+    ],
+  };
+}
+
 export function frameMatrices(doc: MesoViewSpecDoc, unit: LengthUnit): Map<Id, number[]> {
   const frames = doc.frames ?? [];
   const scaleOf = (id: Id) => {
@@ -1007,7 +1068,9 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
       id: a.id,
       text: a.text,
       position:
-        typeof a.target === 'string' ? lociSphere(materialize(a.target), ir)?.center : a.target.position.map((x) => x * f),
+        typeof a.target === 'string'
+          ? lociSphere(materialize(a.target), ir)?.center
+          : a.target.position.map((x) => x * f),
     })),
     ...(view?.cutaway ? { cutaway: [...materialize(view.cutaway)].map(([set, runs]) => ({ set, runs })) } : {}),
     ...(issues.length ? { issues } : {}),
@@ -1019,7 +1082,12 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
  * camera written in a tomogram's frame lands where the tomogram is). Semantic: the focus address materialized, its
  * bounding sphere framed from the given direction at the framing's distance.
  */
-function deriveCamera(doc: MesoViewSpecDoc, view: View | undefined, ir: IR, materialize: (q: string) => MesoLoci): IRView['camera'] {
+function deriveCamera(
+  doc: MesoViewSpecDoc,
+  view: View | undefined,
+  ir: IR,
+  materialize: (q: string) => MesoLoci,
+): IRView['camera'] {
   const cam = view?.camera;
   if (!cam) return undefined;
   const unit = doc.units?.length ?? 'nm';
@@ -1036,7 +1104,14 @@ function deriveCamera(doc: MesoViewSpecDoc, view: View | undefined, ir: IR, mate
       let dir: number[];
       if (cam.from === 'outside') {
         // from beyond the scene's centre, through the focus
-        const all = lociSphere(new Map(placementSets(ir).filter((x) => !isUnderSuperstructure(ir, x.key)).map((x) => [x.key, [0, x.count]])), ir);
+        const all = lociSphere(
+          new Map(
+            placementSets(ir)
+              .filter((x) => !isUnderSuperstructure(ir, x.key))
+              .map((x) => [x.key, [0, x.count]]),
+          ),
+          ir,
+        );
         const c = all?.center ?? [0, 0, 0];
         dir = sphere.center.map((v, k) => v - c[k]);
         if (Math.hypot(dir[0], dir[1], dir[2]) < 1e-6) dir = [0, 0, 1];

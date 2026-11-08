@@ -90,6 +90,26 @@ export function betaCellDoc(granules = 120, detail: 'parts' | 'entity' = 'parts'
         abundance: { count: 2000 },
       },
     ],
+    // two granules stated one by one (design.md §3.14): ids that survive repacking, poses someone measured
+    instances: [
+      {
+        id: 'i.granule-docked',
+        label: 'a docked granule',
+        entity: 'e.granule',
+        compartment: 'c.cell',
+        pose: { translation: [0, -1300, 0] },
+        evidence: ['ev.docked'],
+        detail,
+      },
+      {
+        id: 'i.granule-deep',
+        label: 'a granule deep in the cytoplasm',
+        entity: 'e.granule',
+        compartment: 'c.cell',
+        pose: { translation: [450, 300, -250], rotation: [0, 0.3826834, 0, 0.9238795] },
+        detail,
+      },
+    ],
     evidence: [
       ...isg.evidence,
       {
@@ -97,6 +117,12 @@ export function betaCellDoc(granules = 120, detail: 'parts' | 'entity' = 'parts'
         kind: 'database',
         statement: "The granule's contents: cellPACKgpu insulin granule recipe (trimmed to Vamp2, Rab3a, Chga, Scg2)",
         source: { resource: 'r.isg-recipe' },
+      },
+      {
+        id: 'ev.docked',
+        kind: 'assumption',
+        statement: 'Illustrative: a granule docked under the plasma membrane, as in the readily releasable pool',
+        confidence: 'low',
       },
       {
         id: 'ev.granule-count',
@@ -136,7 +162,12 @@ export function betaCellDoc(granules = 120, detail: 'parts' | 'entity' = 'parts'
         id: 'v.granule-12',
         label: 'Granule 12, from outside the cell',
         description: 'Framed on granule 12 by its address; the ribosomes near it would be cut away',
-        camera: { focus: '(part (copies p.granules 12) p.Vamp2)', framing: 'context', from: 'outside', transition: 1500 },
+        camera: {
+          focus: '(part (copies p.granules 12) p.Vamp2)',
+          framing: 'context',
+          from: 'outside',
+          transition: 1500,
+        },
         cutaway: '(within (population p.ribosomes) :of (copies p.granules 12) :distance 250)',
         looks: [
           { select: '(population p.ribosomes)', color: '#7a9cc6', transparency: 0.5 },
@@ -148,6 +179,23 @@ export function betaCellDoc(granules = 120, detail: 'parts' | 'entity' = 'parts'
         ],
         annotations: [{ id: 'an.g12', target: '(part (copies p.granules 12) p.Vamp2)', text: 'Granule 12: its VAMP2' }],
       },
+      {
+        id: 'v.docked',
+        label: 'The docked granule, by its id',
+        description: 'Framed on an instance: the same granule whatever the packing does around it',
+        camera: { focus: '(instance i.granule-docked)', framing: 'context', from: 'outside', transition: 1500 },
+        cutaway: '(within (population p.ribosomes) :of (instance i.granule-docked) :distance 250)',
+        looks: [
+          { select: '(population p.ribosomes)', color: '#7a9cc6', transparency: 0.5 },
+          { select: '(population p.Vamp2)', color: '#d0453a' },
+          { select: '(population p.Rab3a)', color: '#e0b04c' },
+          { select: '(population p.Chga)', color: '#5aa55a' },
+          { select: '(population p.Scg2)', color: '#9b59b6' },
+          { select: '(population p.granules)', color: '#c8b8e0' },
+          { select: '(instance i.granule-docked i.granule-deep)', color: '#f08c3c' },
+        ],
+        annotations: [{ id: 'an.docked', target: '(instance i.granule-docked)', text: 'Docked granule' }],
+      },
     ],
     tours: [
       {
@@ -156,6 +204,7 @@ export function betaCellDoc(granules = 120, detail: 'parts' | 'entity' = 'parts'
         steps: [
           { view: 'v.cell', duration: 3000, caption: 'A slice of a β-cell, 120 granules' },
           { view: 'v.granule-12', duration: 4000, caption: 'One granule, its membrane proteins and cargo' },
+          { view: 'v.docked', duration: 4000, caption: 'A granule named in the document: docked under the membrane' },
         ],
       },
     ],

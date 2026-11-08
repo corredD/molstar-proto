@@ -25,7 +25,7 @@ export interface QSymbol {
   readonly args: readonly {
     readonly name: string;
     readonly kind: 'id' | 'int' | 'word' | QType;
-    readonly ref?: 'population' | 'entity' | 'compartment' | 'model' | 'superstructure';
+    readonly ref?: 'population' | 'instance' | 'entity' | 'compartment' | 'model' | 'superstructure';
     readonly rest?: boolean;
     readonly optional?: boolean;
   }[];
@@ -49,6 +49,14 @@ export const MesoQLSymbols: readonly QSymbol[] = [
     description: 'the copies of populations',
     args: [{ name: 'ids', kind: 'id', ref: 'population', rest: true }],
     example: '(population p.catalase)',
+  },
+  {
+    name: 'instance',
+    full: 'meso.instance',
+    returns: 'selection',
+    description: 'copies stated individually, by id: the same copy across re-resolutions (unlike `copies`)',
+    args: [{ name: 'ids', kind: 'id', ref: 'instance', rest: true }],
+    example: '(instance i.granule-a)',
   },
   {
     name: 'entity',
@@ -158,6 +166,9 @@ export const MesoQLSymbols: readonly QSymbol[] = [
   },
 ];
 
+/** `a population`, `an instance`. */
+const an = (w: string) => `${/^[aeiou]/.test(w) ? 'an' : 'a'} ${w}`;
+
 const bySymbol = new Map(MesoQLSymbols.flatMap((s) => [[s.name, s] as const, [s.full, s] as const]));
 
 /** A checked MesoQL expression: the symbol, its positional values (ids, numbers, sub-expressions) and keywords. */
@@ -250,7 +261,7 @@ export function parseMesoQL(text: string, ctx: QContext = {}, path?: string): { 
         if (def.kind === 'id' && def.ref && ctx.kinds) {
           const k = ctx.kinds.get(it.value);
           if (!k) err('ref.missing', `${it.value} names nothing (${s.name} takes a ${def.ref})`);
-          else if (k !== def.ref) err('ref.kind', `${it.value} is a ${k}; (${s.name}) takes a ${def.ref}`);
+          else if (k !== def.ref) err('ref.kind', `${it.value} is ${an(k)}; (${s.name}) takes ${an(def.ref)}`);
         }
         args.push(it.value);
       } else err('argument', `${def.name} of (${s.name}) is a ${def.kind}, found ${text.slice(it.start, it.end)}`);

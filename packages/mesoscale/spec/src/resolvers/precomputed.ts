@@ -15,6 +15,9 @@ import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js
 // after the resolver: both end as placement sets. Formats: RELION STAR (coordinates in voxels, ZYZ angles, as Mol*'s
 // reader reads them: packages/model/src/formats/particles/star.ts `relionEulerToRotation`) and a small JSON one.
 //
+// `params.placements`: an inline table in the same JSON shape, already in world Å (the runtime writes the document's
+// instances, design.md §3.14, this way, so given poses have one code path whether a file or the document holds them).
+//
 // `params.populations`: which population each row is: one id for the whole file, or `{ column, values: { <value>: id } }`.
 
 type PopulationMap = Id | { readonly column: string; readonly values: Readonly<Record<string, Id>> };
@@ -26,6 +29,7 @@ interface PrecomputedInput {
     readonly contentKey: string;
     readonly toWorld?: readonly number[];
   }[];
+  readonly inline?: PlacementsJson;
   readonly populations: PopulationMap;
   readonly types: readonly {
     readonly population: Id;
@@ -37,10 +41,18 @@ interface PrecomputedInput {
   }[];
 }
 
+interface PlacementsJson {
+  readonly population?: Id;
+  readonly positions: readonly number[];
+  readonly rotations?: readonly number[];
+  readonly populations?: readonly Id[];
+}
+
 export const MesoPrecomputedResolver: Resolver<PrecomputedInput> = {
   id: 'meso.precomputed',
-  version: '0.1.0',
-  description: 'Placements from a file: RELION STAR particle lists, MesoViewSpec placement JSON',
+  version: '0.2.0',
+  description:
+    "Placements from a file (RELION STAR particle lists, MesoViewSpec placement JSON) or the document's instances",
   arrangements: ['random', 'lattice', 'fiber'],
   locations: ['interior', 'membrane', 'outer-surface', 'inner-surface', 'exterior'],
   formats: ['relion-star', 'meso-placements+json'],
@@ -50,6 +62,7 @@ export const MesoPrecomputedResolver: Resolver<PrecomputedInput> = {
         const r = job.inputs.get(id)!;
         return { id, format: r.resource.format, contentKey: r.contentKey, toWorld: r.toWorld };
       }),
+      inline: job.model.params?.placements as PlacementsJson | undefined,
       populations: (job.model.params?.populations ?? job.populations[0]?.id) as PopulationMap,
       types: job.populations.map((p) => ({
         population: p.id,
@@ -67,8 +80,14 @@ export const MesoPrecomputedResolver: Resolver<PrecomputedInput> = {
     const b = new PlacementBuilder(256);
     const issues: Issue[] = [];
     const q = [0, 0, 0, 1];
-    for (const r of input.resources) {
-      const content = job.inputs.get(r.id)?.content;
+    const sources = [
+      ...input.resources.map((r) => ({ ...r, content: job.inputs.get(r.id)?.content })),
+      ...(input.inline
+        ? [{ id: job.model.id, format: 'meso-placements+json', content: input.inline as unknown, toWorld: undefined }]
+        : []),
+    ];
+    for (const r of sources) {
+      const content = r.content;
       const M = r.toWorld ?? [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
       const Mq = rotationOf(M);
       const put = (type: number, x: number, y: number, z: number, rq: number[]) => {
@@ -102,7 +121,7 @@ export const MesoPrecomputedResolver: Resolver<PrecomputedInput> = {
           put(type, +row[cx], +row[cy], +row[cz], rq);
         }
       } else if (r.format === 'meso-placements+json') {
-        const data = content as { population?: Id; positions: number[]; rotations?: number[]; populations?: Id[] };
+        const data = content as PlacementsJson;
         const n = data.positions.length / 3;
         for (let i = 0; i < n; i++) {
           const pop =

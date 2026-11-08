@@ -1,509 +1,498 @@
 {
- "root": {
-  "ref": "scene",
-  "kind": "scene",
-  "params": {
-   "units": "A",
-   "title": "β-cell slice with insulin granules"
-  },
-  "children": [
-   {
-    "ref": "frame:f.cell",
-    "kind": "frame",
-    "origin": [
-     "f.cell"
-    ],
+  "root": {
+    "ref": "scene",
+    "kind": "scene",
     "params": {
-     "frame": "f.cell",
-     "matrix": [
-      1,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1
-     ]
+      "units": "A",
+      "title": "β-cell slice with insulin granules"
     },
     "children": [
-     {
-      "ref": "c.cell",
-      "kind": "compartment",
-      "origin": [
-       "c.cell"
-      ],
-      "params": {
-       "compartment": "c.cell",
-       "shape": {
-        "kind": "sphere",
-        "center": [
-         0,
-         0,
-         0
-        ],
-        "radius": 15000
-       },
-       "volume": 14137166941154.068,
-       "area": 2827433388.230814
-      },
-      "children": [
-       {
-        "ref": "c.cell/membrane",
-        "kind": "membrane",
-        "origin": [
-         "c.cell"
-        ],
+      {
+        "ref": "frame:f.cell",
+        "kind": "frame",
+        "origin": ["f.cell"],
         "params": {
-         "compartment": "c.cell",
-         "thickness": 40
-        }
-       }
-      ]
-     },
-     {
-      "ref": "default:meso.pack/resolve",
-      "kind": "resolve",
-      "origin": [
-       "p.granules",
-       "p.ribosomes"
-      ],
-      "params": {
-       "model": "default:meso.pack",
-       "resolver": "meso.pack",
-       "version": "0.1.0",
-       "key": "default:meso.pack@dc1ba96c2b07207b",
-       "input": {
-        "items": [
-         {
-          "population": "p.granules",
-          "entity": "e.granule",
-          "label": "insulin secretory granule",
-          "radius": 1377.5,
-          "requested": 120,
-          "location": "interior",
-          "compartment": "c.cell",
-          "inward": false
-         },
-         {
-          "population": "p.ribosomes",
-          "entity": "e.ribosome",
-          "label": "ribosome",
-          "radius": 130,
-          "requested": 2000,
-          "location": "interior",
-          "compartment": "c.cell",
-          "inward": false
-         }
-        ],
-        "compartments": {
-         "c.cell": {
-          "shape": {
-           "kind": "sphere",
-           "center": [
-            0,
-            0,
-            0
-           ],
-           "radius": 15000
-          },
-          "children": [],
-          "thickness": 40,
-          "label": "β-cell (slice)",
-          "freeVolume": 14137166941154.068,
-          "area": 2827433388.230814
-         }
-        },
-        "seed": 1,
-        "attempts": 30,
-        "giveUp": 25
-       },
-       "cached": false
-      },
-      "children": [
-       {
-        "ref": "default:meso.pack/placements/0",
-        "kind": "placements",
-        "origin": [
-         "p.granules",
-         "p.ribosomes"
-        ],
-        "params": {
-         "set": {
-          "key": "default:meso.pack@dc1ba96c2b07207b#0",
-          "model": "default:meso.pack",
-          "frame": "world",
-          "count": 2120,
-          "bytes": 76320,
-          "types": [
-           {
-            "index": 0,
-            "population": "p.granules",
-            "entity": "e.granule",
-            "label": "insulin secretory granule",
-            "compartment": "c.cell",
-            "radius": 1377.5
-           },
-           {
-            "index": 1,
-            "population": "p.ribosomes",
-            "entity": "e.ribosome",
-            "label": "ribosome",
-            "compartment": "c.cell",
-            "radius": 130
-           }
-          ],
-          "first": [
-           3425.09,
-           421.68,
-           -5062.16,
-           -6294.3,
-           10084.3,
-           4448.05
-          ]
-         }
+          "frame": "f.cell",
+          "matrix": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
         },
         "children": [
-         {
-          "ref": "default:meso.pack/placements/0/instances/0",
-          "kind": "instances",
-          "origin": [
-           "p.granules",
-           "s.isg"
-          ],
-          "params": {
-           "type": 0,
-           "entity": "e.granule",
-           "superstructure": "s.isg",
-           "detail": "parts",
-           "instances": 120,
-           "templates": [
-            "m.isg@ae395e1e7b6269f3#0"
-           ]
-          }
-         }
-        ]
-       }
-      ]
-     },
-     {
-      "ref": "superstructure:s.isg",
-      "kind": "superstructure",
-      "origin": [
-       "s.isg"
-      ],
-      "params": {
-       "superstructure": "s.isg",
-       "radius": 1377.5,
-       "copies": 2229
-      },
-      "children": [
-       {
-        "ref": "s.isg/c.isg",
-        "kind": "compartment",
-        "origin": [
-         "c.isg"
-        ],
-        "params": {
-         "compartment": "c.isg",
-         "shape": {
-          "kind": "sphere",
-          "center": [
-           0,
-           0,
-           0
-          ],
-          "radius": 1370
-         },
-         "volume": 10770858259.4481,
-         "area": 23585821.00609073
-        },
-        "children": [
-         {
-          "ref": "s.isg/c.isg/membrane",
-          "kind": "membrane",
-          "origin": [
-           "c.isg"
-          ],
-          "params": {
-           "compartment": "c.isg",
-           "thickness": 15
-          }
-         }
-        ]
-       },
-       {
-        "ref": "s.isg/m.isg/resolve",
-        "kind": "resolve",
-        "origin": [
-         "m.isg",
-         "p.Vamp2",
-         "p.Rab3a",
-         "p.Chga",
-         "p.Scg2"
-        ],
-        "params": {
-         "model": "m.isg",
-         "resolver": "cellpack-gpu",
-         "version": "0.1.0",
-         "key": "m.isg@ae395e1e7b6269f3",
-         "input": {
-          "recipe": "e08c3107d1a36a1c",
-          "items": [
-           {
-            "population": "p.Vamp2",
-            "entity": "e.Vamp2",
-            "label": "Vamp2 (VAMP-2)",
-            "radius": 25,
-            "requested": 548,
-            "location": "membrane",
-            "compartment": "c.isg",
-            "axis": [
-             -0.5274219333901035,
-             0.8458653648709205,
-             0.07961085787020429
-            ],
-            "offset": 28.26185454392252
-           },
-           {
-            "population": "p.Rab3a",
-            "entity": "e.Rab3a",
-            "label": "Rab3a (Ras-related protein Rab-3A)",
-            "radius": 25,
-            "requested": 940,
-            "location": "membrane",
-            "compartment": "c.isg",
-            "axis": [
-             -0.952240400512249,
-             0.2806603285720313,
-             -0.12028299795944199
-            ],
-            "offset": 42.489969029172876
-           },
-           {
-            "population": "p.Chga",
-            "entity": "e.Chga",
-            "label": "Chga (Chromogranin-A)",
-            "radius": 25,
-            "requested": 454,
-            "location": "interior",
-            "compartment": "c.isg",
-            "axis": [
-             0,
-             0,
-             1
-            ],
-            "offset": 0
-           },
-           {
-            "population": "p.Scg2",
-            "entity": "e.Scg2",
-            "label": "Scg2 (Secretogranin-2)",
-            "radius": 25,
-            "requested": 287,
-            "location": "interior",
-            "compartment": "c.isg",
-            "axis": [
-             0,
-             0,
-             1
-            ],
-            "offset": 0
-           }
-          ],
-          "compartments": {
-           "c.isg": {
-            "shape": {
-             "kind": "sphere",
-             "center": [
-              0,
-              0,
-              0
-             ],
-             "radius": 1370
+          {
+            "ref": "c.cell",
+            "kind": "compartment",
+            "origin": ["c.cell"],
+            "params": {
+              "compartment": "c.cell",
+              "shape": {
+                "kind": "sphere",
+                "center": [0, 0, 0],
+                "radius": 15000
+              },
+              "volume": 14137166941154.068,
+              "area": 2827433388.230814
             },
-            "children": [],
-            "thickness": 15,
-            "label": "isg",
-            "freeVolume": 10770858259.4481,
-            "area": 23585821.00609073
-           }
-          },
-          "seed": 3,
-          "attempts": 30,
-          "giveUp": 25
-         },
-         "cached": false
-        },
-        "children": [
-         {
-          "ref": "s.isg/m.isg/placements/0",
-          "kind": "placements",
-          "origin": [
-           "p.Vamp2",
-           "p.Rab3a",
-           "p.Chga",
-           "p.Scg2"
-          ],
-          "params": {
-           "set": {
-            "key": "m.isg@ae395e1e7b6269f3#0",
-            "model": "m.isg",
-            "frame": "world",
-            "count": 2229,
-            "bytes": 80244,
-            "types": [
-             {
-              "index": 0,
-              "population": "p.Vamp2",
-              "entity": "e.Vamp2",
-              "label": "Vamp2 (VAMP-2)",
-              "compartment": "c.isg",
-              "radius": 25
-             },
-             {
-              "index": 1,
-              "population": "p.Rab3a",
-              "entity": "e.Rab3a",
-              "label": "Rab3a (Ras-related protein Rab-3A)",
-              "compartment": "c.isg",
-              "radius": 25
-             },
-             {
-              "index": 2,
-              "population": "p.Chga",
-              "entity": "e.Chga",
-              "label": "Chga (Chromogranin-A)",
-              "compartment": "c.isg",
-              "radius": 25
-             },
-             {
-              "index": 3,
-              "population": "p.Scg2",
-              "entity": "e.Scg2",
-              "label": "Scg2 (Secretogranin-2)",
-              "compartment": "c.isg",
-              "radius": 25
-             }
-            ],
-            "first": [
-             1147.97,
-             778.96,
-             174.75,
-             -723.49,
-             1067.05,
-             -541.39
+            "children": [
+              {
+                "ref": "c.cell/membrane",
+                "kind": "membrane",
+                "origin": ["c.cell"],
+                "params": {
+                  "compartment": "c.cell",
+                  "thickness": 40
+                }
+              }
             ]
-           }
+          },
+          {
+            "ref": "default:meso.instances/resolve",
+            "kind": "resolve",
+            "origin": ["i.granule-docked", "i.granule-deep"],
+            "params": {
+              "model": "default:meso.instances",
+              "resolver": "meso.precomputed",
+              "version": "0.2.0",
+              "key": "default:meso.instances@3d98815227f311d3",
+              "input": {
+                "resources": [],
+                "inline": {
+                  "positions": [0, -13000, 0, 4500, 3000, -2500],
+                  "rotations": [0, 0, 0, 1, 0, 0.3826833871279867, 0, 0.9238795540344609],
+                  "populations": ["i.granule-docked", "i.granule-deep"]
+                },
+                "populations": "i.granule-docked",
+                "types": [
+                  {
+                    "population": "i.granule-docked",
+                    "entity": "e.granule",
+                    "label": "insulin secretory granule",
+                    "compartment": "c.cell",
+                    "radius": 1377.5,
+                    "requested": 1
+                  },
+                  {
+                    "population": "i.granule-deep",
+                    "entity": "e.granule",
+                    "label": "insulin secretory granule",
+                    "compartment": "c.cell",
+                    "radius": 1377.5,
+                    "requested": 1
+                  }
+                ]
+              },
+              "cached": false
+            },
+            "children": [
+              {
+                "ref": "default:meso.instances/placements/0",
+                "kind": "placements",
+                "origin": ["i.granule-docked", "i.granule-deep"],
+                "params": {
+                  "set": {
+                    "key": "default:meso.instances@3d98815227f311d3#0",
+                    "model": "default:meso.instances",
+                    "frame": "world",
+                    "count": 2,
+                    "bytes": 72,
+                    "types": [
+                      {
+                        "index": 0,
+                        "population": "i.granule-docked",
+                        "entity": "e.granule",
+                        "label": "insulin secretory granule",
+                        "compartment": "c.cell",
+                        "radius": 1377.5
+                      },
+                      {
+                        "index": 1,
+                        "population": "i.granule-deep",
+                        "entity": "e.granule",
+                        "label": "insulin secretory granule",
+                        "compartment": "c.cell",
+                        "radius": 1377.5
+                      }
+                    ],
+                    "first": [0, -13000, 0, 4500, 3000, -2500]
+                  }
+                },
+                "children": [
+                  {
+                    "ref": "default:meso.instances/placements/0/instances/0",
+                    "kind": "instances",
+                    "origin": ["i.granule-docked", "s.isg"],
+                    "params": {
+                      "type": 0,
+                      "entity": "e.granule",
+                      "superstructure": "s.isg",
+                      "detail": "parts",
+                      "instances": 1,
+                      "templates": ["m.isg@ae395e1e7b6269f3#0"]
+                    }
+                  },
+                  {
+                    "ref": "default:meso.instances/placements/0/instances/1",
+                    "kind": "instances",
+                    "origin": ["i.granule-deep", "s.isg"],
+                    "params": {
+                      "type": 1,
+                      "entity": "e.granule",
+                      "superstructure": "s.isg",
+                      "detail": "parts",
+                      "instances": 1,
+                      "templates": ["m.isg@ae395e1e7b6269f3#0"]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ref": "default:meso.pack/resolve",
+            "kind": "resolve",
+            "origin": ["p.granules", "p.ribosomes"],
+            "params": {
+              "model": "default:meso.pack",
+              "resolver": "meso.pack",
+              "version": "0.1.0",
+              "key": "default:meso.pack@591515e48b91cffd",
+              "input": {
+                "items": [
+                  {
+                    "population": "p.granules",
+                    "entity": "e.granule",
+                    "label": "insulin secretory granule",
+                    "radius": 1377.5,
+                    "requested": 120,
+                    "location": "interior",
+                    "compartment": "c.cell",
+                    "inward": false
+                  },
+                  {
+                    "population": "p.ribosomes",
+                    "entity": "e.ribosome",
+                    "label": "ribosome",
+                    "radius": 130,
+                    "requested": 2000,
+                    "location": "interior",
+                    "compartment": "c.cell",
+                    "inward": false
+                  }
+                ],
+                "compartments": {
+                  "c.cell": {
+                    "shape": {
+                      "kind": "sphere",
+                      "center": [0, 0, 0],
+                      "radius": 15000
+                    },
+                    "children": [],
+                    "thickness": 40,
+                    "label": "β-cell (slice)",
+                    "freeVolume": 14137166941154.068,
+                    "area": 2827433388.230814
+                  }
+                },
+                "seed": 1,
+                "attempts": 30,
+                "giveUp": 25
+              },
+              "cached": false
+            },
+            "children": [
+              {
+                "ref": "default:meso.pack/placements/0",
+                "kind": "placements",
+                "origin": ["p.granules", "p.ribosomes"],
+                "params": {
+                  "set": {
+                    "key": "default:meso.pack@591515e48b91cffd#0",
+                    "model": "default:meso.pack",
+                    "frame": "world",
+                    "count": 2120,
+                    "bytes": 76320,
+                    "types": [
+                      {
+                        "index": 0,
+                        "population": "p.granules",
+                        "entity": "e.granule",
+                        "label": "insulin secretory granule",
+                        "compartment": "c.cell",
+                        "radius": 1377.5
+                      },
+                      {
+                        "index": 1,
+                        "population": "p.ribosomes",
+                        "entity": "e.ribosome",
+                        "label": "ribosome",
+                        "compartment": "c.cell",
+                        "radius": 130
+                      }
+                    ],
+                    "first": [3425.09, 421.68, -5062.16, -6294.3, 10084.3, 4448.05]
+                  }
+                },
+                "children": [
+                  {
+                    "ref": "default:meso.pack/placements/0/instances/0",
+                    "kind": "instances",
+                    "origin": ["p.granules", "s.isg"],
+                    "params": {
+                      "type": 0,
+                      "entity": "e.granule",
+                      "superstructure": "s.isg",
+                      "detail": "parts",
+                      "instances": 120,
+                      "templates": ["m.isg@ae395e1e7b6269f3#0"]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ref": "superstructure:s.isg",
+            "kind": "superstructure",
+            "origin": ["s.isg"],
+            "params": {
+              "superstructure": "s.isg",
+              "radius": 1377.5,
+              "copies": 2229
+            },
+            "children": [
+              {
+                "ref": "s.isg/c.isg",
+                "kind": "compartment",
+                "origin": ["c.isg"],
+                "params": {
+                  "compartment": "c.isg",
+                  "shape": {
+                    "kind": "sphere",
+                    "center": [0, 0, 0],
+                    "radius": 1370
+                  },
+                  "volume": 10770858259.4481,
+                  "area": 23585821.00609073
+                },
+                "children": [
+                  {
+                    "ref": "s.isg/c.isg/membrane",
+                    "kind": "membrane",
+                    "origin": ["c.isg"],
+                    "params": {
+                      "compartment": "c.isg",
+                      "thickness": 15
+                    }
+                  }
+                ]
+              },
+              {
+                "ref": "s.isg/m.isg/resolve",
+                "kind": "resolve",
+                "origin": ["m.isg", "p.Vamp2", "p.Rab3a", "p.Chga", "p.Scg2"],
+                "params": {
+                  "model": "m.isg",
+                  "resolver": "cellpack-gpu",
+                  "version": "0.1.0",
+                  "key": "m.isg@ae395e1e7b6269f3",
+                  "input": {
+                    "recipe": "e08c3107d1a36a1c",
+                    "items": [
+                      {
+                        "population": "p.Vamp2",
+                        "entity": "e.Vamp2",
+                        "label": "Vamp2 (VAMP-2)",
+                        "radius": 25,
+                        "requested": 548,
+                        "location": "membrane",
+                        "compartment": "c.isg",
+                        "axis": [-0.5274219333901035, 0.8458653648709205, 0.07961085787020429],
+                        "offset": 28.26185454392252
+                      },
+                      {
+                        "population": "p.Rab3a",
+                        "entity": "e.Rab3a",
+                        "label": "Rab3a (Ras-related protein Rab-3A)",
+                        "radius": 25,
+                        "requested": 940,
+                        "location": "membrane",
+                        "compartment": "c.isg",
+                        "axis": [-0.952240400512249, 0.2806603285720313, -0.12028299795944199],
+                        "offset": 42.489969029172876
+                      },
+                      {
+                        "population": "p.Chga",
+                        "entity": "e.Chga",
+                        "label": "Chga (Chromogranin-A)",
+                        "radius": 25,
+                        "requested": 454,
+                        "location": "interior",
+                        "compartment": "c.isg",
+                        "axis": [0, 0, 1],
+                        "offset": 0
+                      },
+                      {
+                        "population": "p.Scg2",
+                        "entity": "e.Scg2",
+                        "label": "Scg2 (Secretogranin-2)",
+                        "radius": 25,
+                        "requested": 287,
+                        "location": "interior",
+                        "compartment": "c.isg",
+                        "axis": [0, 0, 1],
+                        "offset": 0
+                      }
+                    ],
+                    "compartments": {
+                      "c.isg": {
+                        "shape": {
+                          "kind": "sphere",
+                          "center": [0, 0, 0],
+                          "radius": 1370
+                        },
+                        "children": [],
+                        "thickness": 15,
+                        "label": "isg",
+                        "freeVolume": 10770858259.4481,
+                        "area": 23585821.00609073
+                      }
+                    },
+                    "seed": 3,
+                    "attempts": 30,
+                    "giveUp": 25
+                  },
+                  "cached": false
+                },
+                "children": [
+                  {
+                    "ref": "s.isg/m.isg/placements/0",
+                    "kind": "placements",
+                    "origin": ["p.Vamp2", "p.Rab3a", "p.Chga", "p.Scg2"],
+                    "params": {
+                      "set": {
+                        "key": "m.isg@ae395e1e7b6269f3#0",
+                        "model": "m.isg",
+                        "frame": "world",
+                        "count": 2229,
+                        "bytes": 80244,
+                        "types": [
+                          {
+                            "index": 0,
+                            "population": "p.Vamp2",
+                            "entity": "e.Vamp2",
+                            "label": "Vamp2 (VAMP-2)",
+                            "compartment": "c.isg",
+                            "radius": 25
+                          },
+                          {
+                            "index": 1,
+                            "population": "p.Rab3a",
+                            "entity": "e.Rab3a",
+                            "label": "Rab3a (Ras-related protein Rab-3A)",
+                            "compartment": "c.isg",
+                            "radius": 25
+                          },
+                          {
+                            "index": 2,
+                            "population": "p.Chga",
+                            "entity": "e.Chga",
+                            "label": "Chga (Chromogranin-A)",
+                            "compartment": "c.isg",
+                            "radius": 25
+                          },
+                          {
+                            "index": 3,
+                            "population": "p.Scg2",
+                            "entity": "e.Scg2",
+                            "label": "Scg2 (Secretogranin-2)",
+                            "compartment": "c.isg",
+                            "radius": 25
+                          }
+                        ],
+                        "first": [1147.97, 778.96, 174.75, -723.49, 1067.05, -541.39]
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
           }
-         }
         ]
-       }
-      ]
-     }
+      }
     ]
-   }
-  ]
- },
- "view": {
-  "id": "v.granules",
-  "camera": {
-   "position": [
-    0,
-    0,
-    42000
-   ],
-   "target": [
-    0,
-    0,
-    0
-   ],
-   "up": [
-    0,
-    1,
-    0
-   ]
   },
-  "looks": [
-   {
-    "set": "default:meso.pack@dc1ba96c2b07207b#0",
-    "types": [
-     0
-    ],
-    "color": 13154528,
-    "visible": true
-   },
-   {
-    "set": "default:meso.pack@dc1ba96c2b07207b#0",
-    "types": [
-     1
-    ],
-    "color": 8035526,
-    "visible": true,
-    "transparency": 0.5
-   },
-   {
-    "set": "m.isg@ae395e1e7b6269f3#0",
-    "types": [
-     0
-    ],
-    "color": 13649210,
-    "visible": true
-   },
-   {
-    "set": "m.isg@ae395e1e7b6269f3#0",
-    "types": [
-     1
-    ],
-    "color": 14725196,
-    "visible": true
-   },
-   {
-    "set": "m.isg@ae395e1e7b6269f3#0",
-    "types": [
-     2
-    ],
-    "color": 5940570,
-    "visible": true
-   },
-   {
-    "set": "m.isg@ae395e1e7b6269f3#0",
-    "types": [
-     3
-    ],
-    "color": 10181046,
-    "visible": true
-   }
-  ]
- },
- "issues": [
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.granules has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
-   "path": "/populations/0",
-   "ids": [
-    "p.granules"
-   ]
+  "view": {
+    "id": "v.granules",
+    "camera": {
+      "position": [0, 0, 42000],
+      "target": [0, 0, 0],
+      "up": [0, 1, 0]
+    },
+    "looks": [
+      {
+        "set": "default:meso.instances@3d98815227f311d3#0",
+        "types": [0],
+        "color": 6927827,
+        "visible": true
+      },
+      {
+        "set": "default:meso.instances@3d98815227f311d3#0",
+        "types": [1],
+        "color": 6924243,
+        "visible": true
+      },
+      {
+        "set": "default:meso.pack@591515e48b91cffd#0",
+        "types": [0],
+        "color": 13154528,
+        "visible": true
+      },
+      {
+        "set": "default:meso.pack@591515e48b91cffd#0",
+        "types": [1],
+        "color": 8035526,
+        "visible": true,
+        "transparency": 0.5
+      },
+      {
+        "set": "m.isg@ae395e1e7b6269f3#0",
+        "types": [0],
+        "color": 13649210,
+        "visible": true
+      },
+      {
+        "set": "m.isg@ae395e1e7b6269f3#0",
+        "types": [1],
+        "color": 14725196,
+        "visible": true
+      },
+      {
+        "set": "m.isg@ae395e1e7b6269f3#0",
+        "types": [2],
+        "color": 5940570,
+        "visible": true
+      },
+      {
+        "set": "m.isg@ae395e1e7b6269f3#0",
+        "types": [3],
+        "color": 10181046,
+        "visible": true
+      }
+    ]
   },
-  {
-   "code": "model.unrealized",
-   "severity": "info",
-   "phase": "static",
-   "message": "p.ribosomes has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
-   "path": "/populations/1",
-   "ids": [
-    "p.ribosomes"
-   ]
-  }
- ]
+  "issues": [
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.granules has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
+      "path": "/populations/0",
+      "ids": ["p.granules"]
+    },
+    {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.ribosomes has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
+      "path": "/populations/1",
+      "ids": ["p.ribosomes"]
+    }
+  ]
 }
