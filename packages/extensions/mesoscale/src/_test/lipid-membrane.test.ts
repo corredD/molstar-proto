@@ -11,6 +11,7 @@ import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { buildMembrane, LipidMembrane, membraneCounts, registerLipidPatch } from '../lipids/membrane.js';
+import { type MesoGroup, mesoEntities, mesoGroups } from '../model.js';
 import { compartmentSphere } from '../operations.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { cellpackLike } from './fixtures.js';
@@ -57,6 +58,18 @@ describe('lipid membrane', () => {
     const fit = compartmentSphere(cellpackLike(), 'root')!;
     expect(fit.radius).toBeGreaterThan(0);
     expect(compartmentSphere(cellpackLike(), 'nowhere')).toBeUndefined();
+  });
+
+  it('fits a sphere to every compartment group the tree shows (its rows’ paths; review X1)', () => {
+    const data = cellpackLike();
+    const paths: string[] = [];
+    const walk = (g: MesoGroup) => {
+      if (g.path) paths.push(g.path);
+      for (const c of g.groups) walk(c);
+    };
+    walk(mesoGroups(data, mesoEntities(data), 'compartment'));
+    expect(paths.length).toBeGreaterThan(1);
+    for (const path of paths) expect(compartmentSphere(data, path), path).toBeDefined();
   });
 
   it('wraps a sphere in one step, not drawn without WebGPU (said), undone in one step', async () => {
