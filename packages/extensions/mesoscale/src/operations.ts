@@ -5,7 +5,7 @@
  */
 
 import { Color } from '@molstar/core/util/color';
-import { type Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
+import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
 import { ParticleListTransform } from '@molstar/plugin/state/transforms/particles/ops';
 import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
@@ -679,7 +679,13 @@ export class MesoscaleApi extends ApiArea {
       const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
       const b = state.build();
       if (painted) b.to(painted).update((p: { strokes: PaintStroke[] }) => ({ ...p, strokes: [...p.strokes, stroke] }));
-      else b.to(l.cell).insert(ParticleListPainted, { strokes: [stroke] });
+      else {
+        const at = b.to(l.cell).insert(ParticleListPainted, { strokes: [stroke] });
+        // the list's move under the copies (review must-fix 1): a move or scale of the list (`stage.move`, `stage.scale`)
+        // updates the Transform it finds in the chain; one inserted later would go right under the list, above the
+        // copies, and leave them behind
+        if (!moved) at.insert(ParticleListTransform, { transform: Mat4.identity(), scale: 1 });
+      }
       await b.commit();
       const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
       return ApiResult.ok(

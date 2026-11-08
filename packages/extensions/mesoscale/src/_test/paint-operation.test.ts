@@ -122,7 +122,7 @@ describe('mesoscale.paint', () => {
     expect(Array.from(drawn(v).rotations!.slice(28))).toEqual(a);
   });
 
-  it('puts the copies at the scene points of a moved and scaled list, which carries them on a later move', async () => {
+  it('puts the copies at the scene points of a list moved and scaled before', async () => {
     const v = await viewer();
     const ref = entry(v).cell.transform.ref;
     const m = Mat4.mul(Mat4(), Mat4.fromTranslation(Mat4(), Vec3.create(100, 0, 0)), Mat4.rotY90);
