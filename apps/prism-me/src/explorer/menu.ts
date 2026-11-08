@@ -472,7 +472,8 @@ export function nodeMenuItems(
     items.push({ id: 'focus', label: `Focus on ${info?.text ?? label}`, icon: 'scan', run: () => area.focus(node) });
   } else {
     items.push({ id: 'focus', label: `Focus on ${picked.label}`, icon: 'scan', run: () => area.focus(node) });
-    items.push(...moveItems(api, area, picked));
+    // a lipid membrane has no shape of its own to move, color or clip (`mesoscale.wrapMembrane`): focus, label, remove
+    if (!isMembrane(area, picked)) items.push(...moveItems(api, area, picked));
   }
   if (kind === 'label') {
     items.push({
@@ -484,7 +485,8 @@ export function nodeMenuItems(
     return items;
   }
   const open = actions.open;
-  if (open && colorable(kind, node)) {
+  const membrane = isMembrane(area, picked);
+  if (open && !membrane && colorable(kind, node)) {
     items.push({
       id: 'color',
       label: 'Color…',
@@ -498,7 +500,7 @@ export function nodeMenuItems(
     icon: 'type',
     run: () => void addLabel(api, area, picked, actions.reveal, actions.at, actions.loci),
   });
-  if (open && clippable(kind, node)) {
+  if (open && !membrane && clippable(kind, node)) {
     items.push({ id: 'clip', label: 'Add clip…', icon: 'scissors', run: () => open(clipItems(api, area, picked)) });
   }
   items.push(...showOnlyItems(api, picked, actions.groupBy));
@@ -523,6 +525,11 @@ export function nodeMenuItems(
   return items;
 }
 
+/** Whether `picked` is a lipid membrane's row (`SceneObject.membrane`) */
+function isMembrane(area: ExplorerApi, picked: PickedNode) {
+  return picked.kind === 'mesh' && area.objectsState().value.some((o) => o.ref === picked.node.ref && o.membrane);
+}
+
 /**
  * Wrap with lipids (lane lipid-tiles, `mesoscale.wrapMembrane`): a mesh, or a compartment of a model grouped by
  * compartment (a sphere fitted to its particles). One step; WebGPU draws it.
@@ -538,7 +545,7 @@ function wrapItems(
   const wrap = (values: Record<string, unknown>) => () => void api.run('mesoscale.wrapMembrane', values);
   if (kind === 'mesh') {
     // a membrane is not wrapped again
-    if (area.objectsState().value.some((o) => o.ref === node.ref && o.membrane)) return [];
+    if (isMembrane(area, picked)) return [];
     return [{ id: 'wrap-lipids', label: 'Wrap with lipids', icon: 'layers', run: wrap({ mesh: node.ref }) }];
   }
   const path = 'path' in node ? node.path : undefined;

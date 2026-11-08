@@ -596,6 +596,10 @@ async function setEye(api: ViewerApi, area: ExplorerApi, row: EyeRow, visible: b
     case 'volume representation':
       return api.run('volume.visibility', { node: row.representation!, visible });
     case 'mesh':
+      // a lipid membrane is not a mesh file's (`cryoet.mesh` does not know it): its cell
+      if (area.objectsState().value.some((o) => o.ref === node.ref && o.membrane)) {
+        return api.run('state.visibility', { node: `#${node.ref}`, visible });
+      }
       return api.run('cryoet.mesh', { mesh: node.ref, visible });
     case 'label':
       return api.run('stage.editLabel', { label: node.ref, visible });
