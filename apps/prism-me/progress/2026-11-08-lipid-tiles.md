@@ -279,3 +279,43 @@ Dawn (`pnpm native:run`: 63 files, the kernel against the reference tile for til
 above, headless Dawn on the M1. Not yet tried in the app in a browser.
 
 **Review.** The table above.
+
+## Ludo's first try, 2026-11-08
+
+Ludo opened `cow-nonormals.obj` (4,583 vertices, 5,804 quads, no normals, cm), scaled it ×100 (about 1,045 Å long) and
+chose Wrap with lipids in Chrome (WebGPU): a few patches of lipids on a grey cow, rows of sticks in a regular lattice.
+"Need to look as good as cellpackgpu or at least yasara." Fixed in a time-boxed session; the reviewer and skeptic gate
+was skipped this round (for Ludo to look at, not a PR).
+
+**Causes, measured on the cow ×100 headless (Dawn):**
+
+- Not the winding: the cow welds to one closed component, no inconsistent edge, positive volume; the remesh keeps it.
+- The tile edge: a fixed 200 Å remeshed the cow to 20 triangles (an icosahedron, 40 tiles in both leaflets), flat chords
+  inside the body: the opaque mesh hid most of them. At 42 Å: 1,232 triangles, the volume within 4 %, 2.4 % of triangles
+  under 30° (min angle about 1°).
+- The sticks and the lattice: the right-click used the synthetic patch (straight 11-carbon chains on a lattice, 2
+  variants a tile).
+- Small tiles left a star of gaps at each vertex: the corner radius is a third of the edge at 42 Å, the bands cover only
+  the middle third of each edge, and the rest held lipids wholly inside with 1 Å clearance.
+- The scale is honoured (the shape's transform is read); wrapping before the ×100 gives a 12 Å mesh.
+
+**Fixes:** `87d6b87e0` the edge suits the surface (a thirtieth of its bounding diagonal, 40–200 Å; 42 Å on the cow);
+`ae1501181` + `0c516dcb4` CHARMM-GUI's step4 patch (14 species, heavy atoms, 5 MB) shipped as
+`src/lipid-patch-charmm-gui.dat`, copied beside the page by the build and fetched on the first wrap (`patchUrl`);
+`7ed2fd076` the wrap hides its mesh (in its undo step, tested `fc7014c01`); `d5b5602f0` interior variants 8 up to 60 Å
+(fewer for larger tiles), atoms at 2 Å; `5689e1696` a 3 Å seam slack (`TileSetParams.slack`, 0 by default); `675c8d9a8`
+a mesh under 160 Å across is refused, "scale it first".
+
+**Numbers (cow ×100, M1, headless Dawn):** build (bake both leaflets, remesh, slots) 0.7 s (bake 0.26 s a leaflet at 64
+variants); 2,464 tiles, 24,640 lipids; a 512² image with readback 245 ms against 59 ms before (40 tiles, 12,520 lipids);
+2 variants give the same (250 ms), so the cost is tiles or atoms, not segments. Not measured in Chrome.
+
+**Deviation for Ludo:** the slack gives up "seams clear by construction": atom pairs under 2 Å across tiles on the cow's
+outer leaflet 27,056 at slack 0 (curvature and skinny triangles already) and 74,456 at 3 Å (13,552 lipids).
+
+**Images** (`~/prism-me-lanes/lipid-tiles-shots/`): `before-*` (as Ludo saw it), `edge-*` (the edge fix alone, synthetic
+patch), `charmm-*` (the patch), `slack-*`, `final-*` (HEAD, mesh hidden: whole, nomesh, flank, closeup).
+
+**Open (TODO.md):** the legs below the knee (thinner than 40 Å) are lost; the bands still repeat along edges (one edge
+type); heads and tails share a colour; the membrane does not follow a later scale; not tried in a browser (the Chrome
+extension was not connected); the 5 MB patch in git.
