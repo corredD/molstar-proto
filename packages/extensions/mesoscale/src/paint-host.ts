@@ -60,8 +60,8 @@ export function pluginPaintHost(
         : getParticleEntityGroups(data).get(brush.entity);
       return (set && OrderedSet.size(set) && data.radii?.[OrderedSet.start(set)]) || 10;
     },
-    paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals) {
-      return paint({
+    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals) {
+      const r = (await paint({
         particles: brush.particles,
         entity: String(brush.entity),
         positions,
@@ -69,7 +69,10 @@ export function pluginPaintHost(
         side: s.side,
         ...(s.orient !== 'auto' ? { orient: s.orient } : {}),
         ...(s.spin !== undefined ? { spin: s.spin } : {}),
-      });
+      })) as { ok?: boolean; message?: string } | undefined;
+      // a stroke refused is said, not dropped (review N1)
+      if (r && r.ok === false) plugin.log.warn(`Not painted: ${r.message ?? 'the stroke was refused.'}`);
+      return r;
     },
     has: (brush) => !!listOf(brush.particles),
     changed(fn) {
