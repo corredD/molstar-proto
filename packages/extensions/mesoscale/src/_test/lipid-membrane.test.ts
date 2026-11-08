@@ -10,7 +10,13 @@ import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
-import { buildMembrane, LipidMembrane, membraneCounts, registerLipidPatch } from '../lipids/membrane.js';
+import {
+  buildMembrane,
+  LipidMembrane,
+  membraneCounts,
+  registerLipidPatch,
+  suitedVariants,
+} from '../lipids/membrane.js';
 import { type MesoGroup, mesoEntities, mesoGroups } from '../model.js';
 import { compartmentSphere } from '../operations.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
@@ -98,6 +104,14 @@ describe('lipid membrane', () => {
     }
     const box = 4 * (2 * X) * (2 * Y) + 2 * (2 * Y) * (2 * Y);
     expect(area / box).toBeGreaterThan(0.85);
+  });
+
+  it('bakes more interior variants for small tiles, fewer for large (a bake of about the same work)', () => {
+    // Ludo's first try: two variants read as a repeated lattice; the bake costs variants × edge²
+    expect(suitedVariants(42)).toBe(8);
+    expect(suitedVariants(60)).toBe(8);
+    expect(suitedVariants(100)).toBe(3);
+    expect(suitedVariants(200)).toBe(2);
   });
 
   it('says an unknown patch', () => {

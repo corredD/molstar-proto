@@ -189,6 +189,15 @@ export function suitedEdge(surface: { readonly mesh?: TriMesh; readonly radius?:
   return Math.round(Math.min(200, Math.max(MinTileEdge, diagonal / 30)));
 }
 
+/**
+ * Interior variants a tile set gets at `edge` (Ludo's first try, 2026-11-08: two read as a lattice): 8 up to 60 Å
+ * tiles, then fewer as the bake's work grows with the tile's area (variants × edge²), 2 at 200 Å (CHARMM-GUI's patch,
+ * both leaflets: under a second at 42 Å, about 5 s at 200 Å on the M1)
+ */
+export function suitedVariants(edge: number) {
+  return Math.max(2, Math.min(8, Math.round(8 * (60 / edge) ** 2)));
+}
+
 function boundingSphereOf(p: Float32Array, out: Sphere3D) {
   const c = Vec3.zero();
   const n = p.length / 3;
@@ -207,7 +216,8 @@ export const LipidMembraneReprParams = {
     ['uniform', 'Uniform'],
   ] as const),
   color: PD.Color(Color(0xd9b99b)),
-  sizeFactor: PD.Numeric(1.6, { min: 0.5, max: 3, step: 0.1 }, { description: 'The atoms’ radius, Å' }),
+  // 2 Å: heavy atoms only, a united-atom radius (hydrogens folded in) that closes the gaps a carbon's 1.7 Å leaves
+  sizeFactor: PD.Numeric(2, { min: 0.5, max: 3, step: 0.1 }, { description: 'The atoms’ radius, Å' }),
 };
 export type LipidMembraneReprProps = PD.Values<typeof LipidMembraneReprParams>;
 
@@ -362,7 +372,11 @@ export const LipidMembraneParams = {
     ['outer', 'Outer'],
     ['inner', 'Inner'],
   ] as const),
-  variants: PD.Numeric(2, { min: 1, max: 4, step: 1 }),
+  variants: PD.Numeric(
+    0,
+    { min: 0, max: 16, step: 1 },
+    { description: 'Interior variants of each tile (0: suited to the edge, `suitedVariants`)' },
+  ),
   edgeTypes: PD.Numeric(1, { min: 1, max: 2, step: 1 }),
   seed: PD.Numeric(1, { min: 0, max: 1e6, step: 1 }),
   ...LipidMembraneReprParams,
@@ -421,14 +435,11 @@ export const LipidMembrane = PluginStateTransform.BuiltIn({
     return Task.create('Lipid membrane', async (runtime) => {
       const mesh = params.mesh ? await shapeMesh(plugin, params.mesh, runtime) : undefined;
       if (params.mesh && !mesh) throw new Error(`No mesh at ${params.mesh}.`);
-      const kinds = { edgeTypes: params.edgeTypes, vertexColors: 1, variants: params.variants, seed: params.seed };
-      const data = buildMembrane(
-        { mesh, center: params.center, radius: params.radius },
-        params.patch,
-        params.edge,
-        params.leaflets,
-        kinds,
-      );
+      const surface = { mesh, center: params.center, radius: params.radius };
+      const edge = params.edge > 0 ? params.edge : suitedEdge(surface);
+      const variants = params.variants > 0 ? params.variants : suitedVariants(edge);
+      const kinds = { edgeTypes: params.edgeTypes, vertexColors: 1, variants, seed: params.seed };
+      const data = buildMembrane(surface, params.patch, edge, params.leaflets, kinds);
       if (typeof data === 'string') throw new Error(data);
       if (!canDrawLipidMembranes(plugin)) {
         plugin.log.warn('Lipid membranes are drawn with WebGPU only: switch the backend to WebGPU to see this one.');
