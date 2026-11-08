@@ -773,11 +773,14 @@ same high-level constraints"; "Ivan's rigid body could feed into a simulation pr
   re-resolving the upstream reruns them and nothing else; the refined model keeps its `resolve` node (key, input,
   `refinedBy`) but its sets leave the IR.
 - **`meso.relax`** (`resolvers/relax.ts`): inserts the copies still missing, relaxes overlaps by pushing pairs apart
-  (hash grid, O(N) an iteration), and keeps copies in their compartments with signed distance grids (`sdfGrid` in
-  `resolvers/geometry.ts`, which also answers the O(triangles) mesh gap). Membrane copies and avoided models stay fixed.
+  (hash grid, O(N) an iteration), and keeps copies in their compartments with signed distance grids, then a last phase
+  with the exact inside test (`sdfGrid` in `resolvers/geometry.ts`, which also answers the O(triangles) mesh gap).
+  Membrane copies and avoided models stay fixed.
 - **Measured [fixture]:** on the exosome, the recipe's packing stops at 354 of 506 catalase; adding `m.relax` inserts
-  152, converges in 41 iterations with a largest overlap of 0.98 Å (tolerance 1 Å), and meets 506 of 506. The packing is
-  a cache hit when the stage is added. mesobuild's `relax.py` reached 506 of 506 on the same recipe.
+  152, converges in 41 iterations, then checks every copy against the exact mesh with its margin; it meets 506 of 506
+  with a largest overlap of 0.77 Å measured after the last step (tolerance 1 Å) and no copy outside the membrane. Lipids
+  are not part of the check: the bilayer is drawn without the proteins' footprints (a gap, §11). The packing is a cache
+  hit when the stage is added. mesobuild's `relax.py` reached 506 of 506 on the same recipe.
 
 ## 7. Units, ids, reproducibility, failures
 
@@ -1001,6 +1004,7 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 | Superstructure detail per view (LOD)                                        | language / adapter   | `detail` is per population; "depending on context" suggests the view chooses                                  |
 | Partial looks (copy runs)                                                   | adapter              | Prism layers select whole targets (renderer R8)                                                               |
 | Nested instancing                                                           | renderer             | the adapter expands instances × template (renderer R7)                                                        |
+| Membrane proteins overlap lipids (up to 28 Å on the exosome)                | resolver             | the bilayer is drawn without the proteins' footprints; no resolver packs lipids around them                   |
 | `meso.relax` rebuilds sets type by type                                     | resolver             | a refined fiber's CSR would need remapping; the prototype refines packings only                               |
 | Catalogs                                                                    | runtime              | not expanded (§3.6)                                                                                           |
 | Segmentation surface extraction                                             | resolver             | prototype takes meshes only                                                                                   |
