@@ -15,7 +15,7 @@ import type { MesoViewSpecDoc } from '../format/doc.js';
 export function galleryDoc(): MesoViewSpecDoc {
   return {
     format: 'meso_view_spec',
-    version: '0.1.0',
+    version: '0.2.0',
     metadata: {
       title: 'Gallery: nesting, lattices, fibers, bilayers',
       description: 'An illustrative cell for the IR and resolver cases; the numbers are not measurements.',

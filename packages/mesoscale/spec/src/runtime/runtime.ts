@@ -983,6 +983,14 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
         else partial.push({ set: s.key, types: [t.index], runs: inter, ...props });
       }
     }
+    // copies inside particular superstructure instances (`part`): virtual sets `<instance set>@<i>><template>`, kept as
+    // partial looks for the instancing step to place (runtime/instancing.ts)
+    for (const [k, runs] of loci) {
+      if (!/@\d+>/.test(k)) continue;
+      const tpl = sets.find((x) => x.key === k.slice(k.lastIndexOf('>') + 1));
+      const types = tpl ? [...new Set(Array.from({ length: runs.length / 2 }, (_, j) => tpl.types[runs[2 * j]]))] : [];
+      partial.push({ set: k, types, runs, ...props });
+    }
   }
   const looks = [...whole.values()].sort((a, b) => (a.set < b.set ? -1 : a.set > b.set ? 1 : a.types[0] - b.types[0]));
   const selection = view?.selection

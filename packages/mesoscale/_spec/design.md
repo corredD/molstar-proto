@@ -75,40 +75,118 @@ The thin slice is an exosome in plasma:
 
 The cryo-ET data are synthetic fixtures, labelled as such in the document (`custom.meso.fixture`); the recipe is real.
 
-**MesoViewSpec** (excerpt of `examples/exosome.mesoviewspec.json`):
+**MesoViewSpec** (excerpt of `examples/exosome.mesoviewspec.json`, printed in its S-expression spelling by `printData`;
+the file is the JSON spelling of the same tree):
 
-```json
-{ "frames": [
-    { "id": "f.model", "kind": "world", "units": "nm", "handedness": "right", "convention": "origin at the vesicle centroid" },
-    { "id": "f.tomo", "kind": "instrument", "units": "nm", "voxelSize": 1, "handedness": "right" } ],
-  "alignments": [ { "id": "al.tomo-model", "from": "f.tomo", "to": "f.model",
-                    "transform": { "translation": [-200, -200, -100] }, "activity": "act.align" } ],
-  "compartments": [ { "id": "c.exosome", "kind": "vesicle", "parent": "medium",
-                      "geometry": { "kind": "mesh", "resource": "r.membrane-mesh" },
-                      "membrane": { "thickness": { "value": 15, "unit": "A" } }, "evidence": ["ev.membrane-segmented"] } ],
-  "populations": [
-    { "id": "p.catalase.observed", "entity": "e.catalase", "compartment": "c.exosome", "location": "interior",
-      "abundance": { "count": 24 }, "evidence": ["ev.catalase-picked"] },
-    { "id": "p.catalase", "entity": "e.catalase", "compartment": "c.exosome", "location": "interior",
-      "abundance": { "count": 506 }, "evidence": ["cellpack.count-rule"] } ],
-  "models": [
-    { "id": "m.picks", "kind": "precomputed", "method": "meso.precomputed", "populations": ["p.catalase.observed"],
-      "inputs": ["r.picks"], "activity": "act.pick" },
-    { "id": "m.recipe", "kind": "procedural", "method": "cellpack-gpu", "populations": ["p.ALB", "…", "p.catalase"],
-      "inputs": ["r.recipe"], "avoid": ["m.picks"], "seed": 1,
-      "params": { "ingredients": { "p.catalase": { "path": "root.exosome.interior.proteins.catalase" } } } } ] }
+```lisp
+(meso_view_spec
+  :version 0.2.0
+  :frames
+    [(frame f.model
+       :kind world
+       :units nm
+       :handedness right
+       :convention "origin at the vesicle centroid")
+     (frame f.tomo
+       :kind instrument
+       :units nm
+       :voxel-size 1
+       :handedness right
+       :convention "voxel indices, origin at the first voxel's corner")]
+  :alignments
+    [(alignment al.tomo-model
+       :from f.tomo
+       :to f.model
+       :transform (:translation [-200 -200 -100])
+       :method "centred on the segmentation centroid"
+       :activity act.align)]
+  :compartments
+    [(compartment c.exosome
+       :label exosome
+       :kind vesicle
+       :parent medium
+       :geometry (mesh :resource r.membrane-mesh)
+       :membrane (:thickness (15 A))
+       :evidence [ev.membrane-segmented])]
+  :populations
+    [(population p.catalase
+       :entity e.catalase
+       :compartment c.exosome
+       :location interior
+       :abundance (:count 506)
+       :evidence [cellpack.count-rule])
+     (population p.catalase.observed
+       :entity e.catalase
+       :compartment c.exosome
+       :location interior
+       :abundance (:count 24)
+       :evidence [ev.catalase-picked])]
+  :models
+    [(model m.picks
+       :label "catalase, picked"
+       :kind precomputed
+       :method meso.precomputed
+       :populations [p.catalase.observed]
+       :inputs [r.picks]
+       :activity act.pick)
+     (model m.recipe
+       :label "cellPACKgpu recipe, packed"
+       :kind procedural
+       :method cellpack-gpu
+       :populations [p.ALB … p.catalase]
+       :inputs [r.recipe]
+       :seed 1
+       :params
+         (:ingredients
+            (:"p.catalase" (:path root.exosome.interior.proteins.catalase)))
+       :avoid [m.picks]
+       :activity act.pack)])
 ```
 
-**IR** (excerpt of `examples/exosome.ir.json`; the placement buffers are summarized):
+**IR** (excerpt of `examples/exosome.ir.json`, printed by `printData` with the IR codec; the placement buffers are
+summarized):
 
-```json
-{ "ref": "m.picks/resolve", "kind": "resolve", "origin": ["m.picks", "p.catalase.observed"],
-  "params": { "resolver": "meso.precomputed", "version": "0.1.0", "key": "m.picks@cde3af8d53db8f44",
-    "input": { "resources": [ { "id": "r.picks", "format": "relion-star", "contentKey": "941694e4997102f5",
-                                "toWorld": [10,0,0,0, 0,10,0,0, 0,0,10,0, -2000,-2000,-1000,1] } ],
-               "types": [ { "population": "p.catalase.observed", "radius": 40, "requested": 24 } ] } },
-  "children": [ { "ref": "m.picks/placements/0", "kind": "placements",
-                  "params": { "set": { "key": "m.picks@cde3af8d53db8f44#0", "frame": "world", "count": 24, "bytes": 864 } } } ] }
+```lisp
+(resolve m.picks/resolve
+  :origin [m.picks p.catalase.observed]
+  :params
+    (:model m.picks
+     :resolver meso.precomputed
+     :version 0.1.0
+     :key m.picks@cde3af8d53db8f44
+     :input
+       (:resources
+          [(:id r.picks
+            :format relion-star
+            :content-key 941694e4997102f5
+            :to-world [10 0 0 0 0 10 0 0 0 0 10 0 -2000 -2000 -1000 1])]
+        :populations p.catalase.observed
+        :types
+          [(:population p.catalase.observed
+            :entity e.catalase
+            :label "catalase (catalse)"
+            :compartment c.exosome
+            :radius 40
+            :requested 24)])
+     :cached false)
+  :children
+    [(placements m.picks/placements/0
+       :origin [p.catalase.observed]
+       :params
+         (:set
+            (:key m.picks@cde3af8d53db8f44#0
+             :model m.picks
+             :frame world
+             :count 24
+             :bytes 864
+             :types
+               [(:index 0
+                 :population p.catalase.observed
+                 :entity e.catalase
+                 :label "catalase (catalse)"
+                 :compartment c.exosome
+                 :radius 40)]
+             :first [119.4 12.9 -47.2 -20.3 -156 26.7])))])
 ```
 
 The two layers hold different things:
@@ -155,7 +233,9 @@ A document is plain JSON:
   The tree belongs in the IR (§4).
 
 - **`custom` is keyed by namespace** (as in SeqViewSpec), so an unknown extension is kept and ignored.
-- **Versioning:** semver; a minor version only adds. A newer major version is refused (`format.version`).
+- **Versioning:** semver. From 1.0 a minor version only adds; while the format is 0.x a minor version may break (0.2
+  made looks MesoQL strings instead of selector objects), with no upgrade path yet. A newer major version is refused
+  (`format.version`).
 
 ### 3.2 Biology
 

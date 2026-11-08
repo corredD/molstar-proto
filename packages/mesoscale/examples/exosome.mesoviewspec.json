@@ -1,6 +1,6 @@
 {
   "format": "meso_view_spec",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "metadata": {
     "title": "Exosome in plasma",
     "description": "A cellPACKgpu exosome recipe (trimmed) packed inside a membrane segmented from a cryo-electron tomogram, with catalase copies picked in the same tomogram. The tomogram, segmentation and picks are synthetic fixtures.",

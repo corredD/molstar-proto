@@ -69,6 +69,16 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
           expandedCopies += e.count;
           expandedBytes += e.count * 36;
           for (const l of looksBySet.get(t.key) ?? []) if (!l.runs) remapped.push({ ...l, set: key });
+          // looks on copies inside one instance (`part`): the instance's block of the expansion, in pose order
+          for (const l of ir.view.looks) {
+            const m = /^(.*)@(\d+)>(.*)$/.exec(l.set);
+            if (!m || m[1] !== set.key || m[3] !== t.key || !l.runs) continue;
+            const at = Number(m[2]);
+            if (set.types[at] !== i.params.type) continue;
+            let rank = 0;
+            for (let q = 0; q < at; q++) if (set.types[q] === i.params.type) rank++;
+            remapped.push({ ...l, set: key, runs: l.runs.map((v) => v + rank * t.count) });
+          }
           out.push(e);
         }
       }

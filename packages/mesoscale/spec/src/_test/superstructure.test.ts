@@ -88,6 +88,23 @@ describe('superstructures', () => {
     expect(lociSize(all.loci)).toBe(548);
   });
 
+  it("a look on one granule's Vamp2 lands on that granule's block of the expansion", async () => {
+    const r = await compile(betaCellDoc(), { resolvers: countingResolvers().resolvers, load });
+    const doc = {
+      ...betaCellDoc(),
+      views: [{ id: 'v', looks: [{ select: '(part (copies p.granules 12) p.Vamp2)', color: '#00ff00' }] }],
+    };
+    const ir = updateView(doc, r.ir!);
+    const virtual = ir.view.looks.filter((l) => /@\d+>/.test(l.set));
+    expect(virtual.length).toBe(1);
+    const flat = flattenInstances(ir).ir;
+    const placed = flat.view.looks.filter((l) => l.color === 0x00ff00);
+    expect(placed.length).toBe(1);
+    const [start, end] = placed[0].runs!;
+    expect(end - start).toBe(548);
+    expect(Math.floor(start / PerGranule)).toBe(12);
+  });
+
   it('nests: a superstructure of superstructures, flattened through both levels', async () => {
     const doc: MesoViewSpecDoc = {
       format: 'meso_view_spec',

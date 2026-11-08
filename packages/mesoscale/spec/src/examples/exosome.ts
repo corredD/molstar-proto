@@ -62,7 +62,7 @@ export function exosomeDoc(options: { relax?: boolean } = {}): MesoViewSpecDoc {
   };
   return {
     format: 'meso_view_spec',
-    version: '0.1.0',
+    version: '0.2.0',
     metadata: {
       title: 'Exosome in plasma',
       description:

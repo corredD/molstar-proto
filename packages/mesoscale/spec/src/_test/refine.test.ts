@@ -24,7 +24,7 @@ describe('refine stages', () => {
     expect((relaxed.reports['m.relax'] as { largestOverlap: number }).largestOverlap).toBeLessThanOrEqual(1);
   });
 
-  it('no two copies overlap by more than the tolerance; the picks did not move', async () => {
+  it('no two copies overlap by more than the 1 Å tolerance after the last step; all inside the membrane, exactly', async () => {
     const r = await compileExosome(exosomeDoc({ relax: true }));
     const sets = placementSets(r.ir!);
     const picks = sets.find((s) => s.model === 'm.picks')!;
@@ -53,8 +53,10 @@ describe('refine stages', () => {
               worst = Math.max(worst, a[3] + b[3] - Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]));
             }
     });
-    // membrane proteins sit fixed in the membrane: interior copies settle against them within the tolerance
-    expect(worst).toBeLessThanOrEqual(1.5);
+    // measured after the last step, every pair (lipids aside: the bilayer is drawn without proteins' footprints)
+    expect(worst).toBeLessThanOrEqual(1);
+    // and every interior copy inside the segmented membrane by the exact mesh test, with its margin
+    expect((r.reports['m.relax'] as { outsideExact: number }).outsideExact).toBe(0);
   });
 
   it('adding the stage reruns only the stage: the packing is a cache hit, and its resolve node is superseded', async () => {

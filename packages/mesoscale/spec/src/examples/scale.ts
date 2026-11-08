@@ -25,7 +25,7 @@ export function scaleDoc(kind: ScaleKind, n: number): MesoViewSpecDoc {
   const per = Math.floor(n / 3);
   return {
     format: 'meso_view_spec',
-    version: '0.1.0',
+    version: '0.2.0',
     metadata: { title: `${kind}, ${n.toLocaleString('en-US')} copies` },
     units: { length: 'nm' },
     entities: [

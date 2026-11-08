@@ -8,7 +8,7 @@ import type { Id, Location } from '../format/doc.js';
 import { PlacementBuilder, type PlacementSet, type PlacementType } from '../ir/placements.js';
 import { createRandom, subSeed } from '../runtime/random.js';
 import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
-import { type SdfGrid, sdfGrid, shapeSampler } from './geometry.js';
+import { type SdfGrid, type ShapeSampler, sdfGrid, shapeSampler } from './geometry.js';
 import { type PackCompartment, packCompartments, randomQuat } from './packing.js';
 
 // `meso.relax` (design.md §6.7): a refine stage. It takes the result of the model it refines (a rigid-body placement
@@ -281,6 +281,81 @@ export const MesoRelaxResolver: Resolver<RelaxInput> = {
       if (largest <= input.tolerance) break;
     }
 
+    // the grids are approximate (cells of tens of Å): a last phase checks each copy with its compartment's exact inside
+    // test (with its margin), steps a copy that is out back in along the grid's gradient, and resolves the overlaps that
+    // creates, until both hold; then the largest overlap is measured after the last step, not during it
+    const exactShapes = new Map<Id, ShapeSampler | undefined>();
+    const exact = (id: Id) => {
+      if (!exactShapes.has(id))
+        exactShapes.set(id, shapeSampler(input.compartments[id].shape, job.compartments.get(id)?.mesh));
+      return exactShapes.get(id);
+    };
+    const isOut = (b: Body) => !!b.owner && exact(b.owner)?.contains(b.x, b.y, b.z, b.margin) === false;
+    const pairPass = (push: boolean) => {
+      const cells = new Map<number, number[]>();
+      bodies.forEach((b, i) => {
+        const k = key(Math.floor(b.x / cell), Math.floor(b.y / cell), Math.floor(b.z / cell));
+        const l = cells.get(k);
+        if (l) l.push(i);
+        else cells.set(k, [i]);
+      });
+      let worst = 0;
+      for (let i = 0; i < bodies.length; i++) {
+        const a = bodies[i];
+        const ci = Math.floor(a.x / cell),
+          cj = Math.floor(a.y / cell),
+          ck = Math.floor(a.z / cell);
+        for (let u = -1; u <= 1; u++)
+          for (let v = -1; v <= 1; v++)
+            for (let w = -1; w <= 1; w++)
+              for (const j of cells.get(key(ci + u, cj + v, ck + w)) ?? []) {
+                if (j <= i) continue;
+                const b = bodies[j];
+                if (a.fixed && b.fixed) continue;
+                const dx = b.x - a.x,
+                  dy = b.y - a.y,
+                  dz = b.z - a.z;
+                const d = Math.hypot(dx, dy, dz);
+                const overlap = a.r + b.r - d;
+                if (overlap <= 0) continue;
+                worst = Math.max(worst, overlap);
+                if (!push) continue;
+                const nx = d > 1e-6 ? dx / d : 1,
+                  ny = d > 1e-6 ? dy / d : 0,
+                  nz = d > 1e-6 ? dz / d : 0;
+                // a copy that is in only by its margin is not pushed further out: its partner moves
+                const sa = a.fixed ? 0 : b.fixed ? 1 : 0.5;
+                const p = overlap * 1.02;
+                a.x -= nx * p * sa;
+                a.y -= ny * p * sa;
+                a.z -= nz * p * sa;
+                b.x += nx * p * (1 - sa);
+                b.y += ny * p * (1 - sa);
+                b.z += nz * p * (1 - sa);
+              }
+      }
+      return worst;
+    };
+    let outsideCount = 0;
+    for (let round = 0; round < 80; round++) {
+      outsideCount = 0;
+      for (const b of bodies) {
+        if (b.fixed || !b.owner || !isOut(b)) continue;
+        outsideCount++;
+        const g = grid(b.owner);
+        for (let k = 0; k < 30 && isOut(b); k++) {
+          if (g) g.gradient(gr, b.x, b.y, b.z);
+          b.x -= gr[0] * 2;
+          b.y -= gr[1] * 2;
+          b.z -= gr[2] * 2;
+        }
+      }
+      largest = pairPass(true);
+      if (!outsideCount && largest <= input.tolerance) break;
+    }
+    largest = pairPass(false);
+    outsideCount = bodies.filter((b) => !b.fixed && isOut(b)).length;
+
     // what still overlaps by more than the tolerance after the last iteration: inserted copies dropped, greedily
     const dropped = new Set<number>();
     if (largest > input.tolerance) {
@@ -330,6 +405,7 @@ export const MesoRelaxResolver: Resolver<RelaxInput> = {
       report: {
         iterations: it,
         largestOverlap: Math.round(largest * 100) / 100,
+        outsideExact: outsideCount,
         inserted,
         dropped: dropped.size,
         tolerance: input.tolerance,
