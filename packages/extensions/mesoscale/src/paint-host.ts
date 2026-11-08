@@ -14,6 +14,7 @@ import {
 } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
 import type { PaintBrushTarget, PaintHost, PaintSettings } from './paint-mode.js';
+import { brushOf } from './paint.js';
 import { membraneFrame } from './pick-surface.js';
 
 // Paint mode's host on the viewer (paint-mode.ts): the plugin's canvas, its picks and camera, and the stroke run as
@@ -37,6 +38,10 @@ export function pluginPaintHost(
       const loci = plugin.canvas3d?.getLoci(point.id as PickingId).loci;
       if (!loci || !Particle.isLoci(loci) || OrderedSet.size(loci.indices) !== 1) return;
       membraneFrame(loci.particles, OrderedSet.start(loci.indices), point);
+    },
+    upright(brush) {
+      const data = listOf(brush.particles)?.cell.obj?.data;
+      return !!data && !!brushOf(data, brush.entity)?.surface;
     },
     project(out, p) {
       const canvas = plugin.canvas3d;

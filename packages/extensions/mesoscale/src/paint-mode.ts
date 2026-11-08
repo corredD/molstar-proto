@@ -48,6 +48,8 @@ export interface PaintHost {
   eye(out: Vec3): Vec3;
   /** The membrane at a point when its pick is a membrane particle's (`membraneFrame`); the point as it is else */
   refine(point: SurfacePoint): void;
+  /** Whether the brush stands upright in a membrane (a membrane protein): only its copies go on the mid-plane */
+  upright(brush: PaintBrushTarget): boolean;
   /** A point of the scene on the canvas: CSS pixels from its top left (out[0], out[1]) */
   project(out: Vec3, p: Vec3): Vec3;
   /** A copy's radius, Å (its spacing's default and the preview's disc) */
@@ -160,6 +162,9 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   let stroke: Stroke | undefined;
   let spacing = 0;
   let radius = 1;
+  let upright = false;
+  /** Strokes painted and not committed yet: their own change of the state is not an undo */
+  let committing = 0;
   const clear = () => ctx?.clearRect(0, 0, preview.width, preview.height);
 
   /** Reads the surface at (x, y): a point kept a spacing from the last; false while the pick is read */
@@ -167,7 +172,8 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     const r = surfaceAt(host.identify, x, y, NormalStep, host.eye(_eye), _point);
     if (r === 'pending') return false;
     if (!r) return true;
-    host.refine(_point);
+    // a membrane protein in the membrane's mid-plane; anything else on the surface picked (review should-fix 3)
+    if (upright) host.refine(_point);
     const k = s.positions.length;
     if (k) {
       Vec3.set(_a, s.positions[k - 3], s.positions[k - 2], s.positions[k - 1]);
@@ -240,6 +246,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       const rect = canvas.getBoundingClientRect();
       const settings = mode.settings.value;
       radius = Math.max(host.radius(brush), 1e-3);
+      upright = host.upright(brush);
       spacing = settings.spacing > 0 ? settings.spacing : 2 * radius;
       clear();
       const s: Stroke = {
@@ -270,14 +277,18 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       // the release's own place, read now when the pick is there
       if (how === 'up' && s.pending) sample(s);
       clear();
-      if (how === 'up' && s.positions.length) void host.paint(brush, mode.settings.value, s.positions, s.normals);
+      if (how === 'up' && s.positions.length) {
+        committing++;
+        void host.paint(brush, mode.settings.value, s.positions, s.normals).finally(() => committing--);
+      }
     },
   });
 
   // an undo (or any change of the state) while drawing cancels the stroke: it was read on the scene before;
   // the brush's list removed: the mode ends
   const unchanged = host.changed(() => {
-    if (stroke) gesture.cancel();
+    // a stroke's own commit landing while the next is drawn is not one (review should-fix 4)
+    if (stroke && !committing) gesture.cancel();
     if (!host.has(brush)) mode.stop();
   });
   on<KeyboardEvent>(

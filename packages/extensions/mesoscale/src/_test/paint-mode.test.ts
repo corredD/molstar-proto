@@ -22,7 +22,7 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-function setup(pending = 0) {
+function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolean } = {}) {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   const root = document.createElement('div');
   const canvas = document.createElement('canvas');
@@ -32,6 +32,7 @@ function setup(pending = 0) {
   const listeners = new Set<() => void>();
   let lists = true;
   let reads = pending;
+  const refined: number[] = [];
   const host: PaintHost = {
     canvas: () => canvas,
     identify: (x, y) => {
@@ -42,11 +43,19 @@ function setup(pending = 0) {
       return { id: { objectId: 0, instanceId: 0, groupId: 0 }, position: Vec3.create(x, -y, 0) } as PickResult;
     },
     eye: (out) => Vec3.set(out, 0, 0, 100),
-    refine: () => {},
+    refine: (p) => {
+      refined.push(p.position[0]);
+    },
+    upright: () => options.upright ?? true,
     project: (out, p) => Vec3.set(out, p[0], -p[1], 0),
     radius: () => 5,
     paint: async (_b, _s, positions, normals) => {
       strokes.push({ positions, normals });
+      // the commit's own change of the state, a moment later (a large list's rebuild)
+      if (options.changeOnPaint) {
+        await Promise.resolve();
+        for (const fn of listeners) fn();
+      }
     },
     has: () => lists,
     changed: (fn) => {
@@ -59,7 +68,7 @@ function setup(pending = 0) {
   const change = () => {
     for (const fn of listeners) fn();
   };
-  return { mode, layer, strokes, change, listeners, removeList: () => (lists = false) };
+  return { mode, layer, strokes, change, listeners, refined, removeList: () => (lists = false) };
 }
 
 const brush = { particles: 'list', entity: 1, name: 'CD9' };
@@ -72,7 +81,10 @@ describe('paint mode', () => {
       target: layer,
       from: { x: 10, y: 10 },
       to: { x: 60, y: 10 },
-      reset: () => (strokes.length = 0),
+      reset: () => {
+        // the lost releases painted nothing
+        expect(strokes.length).toBe(0);
+      },
       worked: () => strokes.length === 1,
     });
     expect(r.grown).toBe(0);
@@ -101,6 +113,34 @@ describe('paint mode', () => {
     el.dispatchEvent(pointer('pointerup', { x: 30, y: 10 }));
     expect(strokes.length).toBe(1);
     expect(strokes[0].positions.length).toBeGreaterThan(0);
+    mode.stop();
+  });
+
+  it("snaps to a membrane's mid-plane only for an upright brush (a membrane protein)", () => {
+    for (const upright of [true, false]) {
+      const { mode, layer, strokes, refined } = setup(0, { upright });
+      mode.start(brush);
+      const el = layer();
+      el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+      el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+      expect(strokes.length).toBe(1);
+      expect(refined.length).toBe(upright ? 1 : 0);
+      mode.stop();
+    }
+  });
+
+  it("the previous stroke's commit does not cancel the stroke drawn after it", async () => {
+    const { mode, layer, strokes } = setup(0, { changeOnPaint: true });
+    mode.start(brush);
+    const el = layer();
+    el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+    el.dispatchEvent(pointer('pointerup', { x: 10, y: 10 }));
+    el.dispatchEvent(pointer('pointerdown', { x: 40, y: 10 }));
+    // the first stroke's commit lands
+    await Promise.resolve();
+    await Promise.resolve();
+    el.dispatchEvent(pointer('pointerup', { x: 40, y: 10 }));
+    expect(strokes.length).toBe(2);
     mode.stop();
   });
 
