@@ -31,6 +31,7 @@ passed), the WebGPU culling and raster suites on Dawn (25 passed). Not checked i
 ## Review (2026-11-08, lane-reviewer, Opus)
 
 Must-fix 0, should-fix 0, nits 3, all fixed in 2d05e8bfc:
+
 1. The clamped segment read for idle workgroups never ran on a GPU (limit 1 gives rows of one) → the Dawn case runs
    again at a limit of 2 with a fourth member (3 workgroups in rows of 2, one idle).
 2. sphere-raster.ts computed the same rows inline → it dispatches through `workgroupRows` (rows of 65535, which its
