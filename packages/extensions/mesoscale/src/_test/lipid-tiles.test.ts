@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { assignSlots, triangleVariant, variantCount } from '../lipids/assign.js';
 import { parsePatchPdb } from '../lipids/patch.js';
+import { icosphere, offsetSurface } from '../lipids/remesh.js';
 import { bakeTileSet } from '../lipids/tiles.js';
 import { closePairs, flatMesh, placeTiles, syntheticPatchPdb } from './lipid-fixtures.js';
 
@@ -45,6 +46,21 @@ describe('lipid tile set', () => {
     const pairs = closePairs(placed.atoms, placed.atomLipid, placed.atomTile, 2);
     expect(pairs.across).toBe(0);
     expect(pairs.within).toBe(0);
+  });
+
+  // medium: 2 s (25,000 lipids, their atom pairs); the flat plane above is its quick representative
+  it('tiles a sphere (R 300 Å, curved) with few atom pairs under 2 Å across seams: a measured bound, not 0', {
+    tags: ['medium'],
+  }, () => {
+    // review S7: the brief's "measured on curved". Tiles bent over a sphere overlap a little at their seams (the bands
+    // are flat chords); 2% of the lipids at R 300 Å, L 60 Å (progress file, Numbers). The bound keeps it from growing.
+    const sphere = offsetSurface(icosphere(300, L), set.offset);
+    const s = assignSlots(kinds, sphere.indices);
+    const p = placeTiles(kinds, L, set.variants, sphere, (t) => s.variant[t]);
+    const pairs = closePairs(p.atoms, p.atomLipid, p.atomTile, 2);
+    const lipids = p.atomLipid[p.atomLipid.length - 1] + 1;
+    expect(lipids).toBeGreaterThan(10000);
+    expect(pairs.across / lipids).toBeLessThan(0.03);
   });
 
   it('owns each lipid once: no two heads on one spot', () => {
