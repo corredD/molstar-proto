@@ -114,6 +114,11 @@ culled on the GPU as a merged object of one member (`mergeRenderObjectsByType`).
 - **Fallback**: the compacted buffers end with all instances in their own order (the identity region); views not culled
   on the GPU (another view of the frame, a scaled model, the kernels compiling) draw the CPU culling's lists shifted to
   it, with the same programs and buffers.
+- **Instances made on the GPU** (lipid tiles, 2026-11-08): a member with a `gpuInstances` writer (`GpuInstanceWriter`)
+  has its affine rows written by its own kernel into `instanceData` and the identity region, after every CPU write over
+  its range (layout, `syncInstanceRange`); its CPU `aTransform` is a placeholder and it is gridless (one cell: its
+  bounding sphere), so the counts per segment and the cells stay the CPU's and the kernels are unchanged. Only with GPU
+  culling: without a culler such a member has no transforms.
 - **When**: before the passes (`Renderer.prepareCull`, called by the draw pass after its `update`; passes update the
   renderer with their render pass open, a compute pass would end it), once per frame for its first view.
 - **Draw lists**: the draw key of indirect lists is their buffers (the GPU writes the counts): recordings stay valid

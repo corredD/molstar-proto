@@ -100,6 +100,28 @@ export interface MergedCuller {
 }
 
 /**
+ * Where a member's instances written on the GPU go (`GpuInstanceWriter`): the affine rows (`affine-rows.ts`, three
+ * vec4s) of instance `i` of the member at vec4 `(instanceBase + i) * InstanceDataVec4s` of `instanceData` (its other
+ * vec4s, the instance and segment, are the CPU's) and at vec4 `(identityBase + instanceBase + i) * 3` of `transforms`
+ * (the identity region of the compacted transforms, which views not culled on the GPU draw)
+ */
+export interface GpuInstanceTarget {
+  readonly instanceData: StorageBuffer;
+  readonly transforms: StorageBuffer;
+  readonly instanceBase: number;
+  readonly identityBase: number;
+  readonly count: number;
+}
+
+/**
+ * A member's transforms made on the GPU (a member value `gpuInstances`): its own kernel writes them into `target`. The
+ * culler calls it after every CPU write over the member's instances (a layout, its range), the dispatch after the write
+ * (a buffer write lands before the commands of its submission); the member's CPU `aTransform` is a placeholder of its
+ * instance count, and its grid is empty (one cell: its bounding sphere), so nothing on the CPU reads its transforms.
+ */
+export type GpuInstanceWriter = (compute: ComputeContext, target: GpuInstanceTarget) => void;
+
+/**
  * The compacted instances of a dispatch for kernels drawing them (the sphere raster): a region per level and segment,
  * its count, vertex count and first vertex in `records` (the indirect records, level-major: `j * segmentCount + s`)
  */
@@ -448,7 +470,7 @@ export function createMergedCuller(
     }
   }
 
-  const MemberKeyLength = 5;
+  const MemberKeyLength = 6;
   /** whether member `s`'s cells, segment or records may have changed since written; with `store`, marks them written */
   function memberChanged(s: number, store: boolean) {
     const m = members[s];
@@ -458,14 +480,17 @@ export function createMergedCuller(
     const c = m.invariantBoundingSphere.ref.version;
     const d = m.boundingSphere.ref.version;
     const e = m.lodLevels?.ref.version ?? -1;
+    const f = (m as { gpuInstances?: ValueCell<unknown> }).gpuInstances?.ref.version ?? -1;
     const k = memberKeys;
-    const changed = k[o] !== a || k[o + 1] !== b || k[o + 2] !== c || k[o + 3] !== d || k[o + 4] !== e;
+    const changed =
+      k[o] !== a || k[o + 1] !== b || k[o + 2] !== c || k[o + 3] !== d || k[o + 4] !== e || k[o + 5] !== f;
     if (store) {
       k[o] = a;
       k[o + 1] = b;
       k[o + 2] = c;
       k[o + 3] = d;
       k[o + 4] = e;
+      k[o + 5] = f;
     }
     return changed;
   }
@@ -630,6 +655,7 @@ export function createMergedCuller(
       }
       chunkCapacity += memberChunks[s];
       syncInstanceRange(first, n);
+      writeGpuInstances(s);
       segmentScales[s] = segmentScale(s);
     }
     return true;
@@ -701,6 +727,20 @@ export function createMergedCuller(
     return true;
   }
 
+  /** member `s`'s instances by its GPU writer, where it has one (`GpuInstanceWriter`) */
+  function writeGpuInstances(s: number) {
+    const writer = (members[s] as { gpuInstances?: ValueCell<GpuInstanceWriter | undefined> }).gpuInstances?.ref.value;
+    const count = segments.instanceCounts[s];
+    if (!writer || count === 0) return;
+    writer(compute, {
+      instanceData: instanceData.ref.value,
+      transforms: attributes.aTransform.ref.value,
+      instanceBase: segments.instanceBases[s],
+      identityBase,
+      count,
+    });
+  }
+
   /** the instances' data for the kernel, and their own order after the regions (the identity region) */
   function syncInstances() {
     const data = new Float32Array(instanceCount * InstanceDataVec4s * 4);
@@ -716,6 +756,7 @@ export function createMergedCuller(
           : value.subarray(0, instanceCount * floats);
       attributes[name as keyof typeof AttributeFloats].ref.value.write(array, identityBase * floats * 4);
     }
+    for (let s = 0; s < segmentCount; ++s) writeGpuInstances(s);
   }
 
   /** `syncInstances` of the instances `start` to `start + count` alone (`syncMembers`) */
