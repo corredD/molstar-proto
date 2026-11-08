@@ -140,10 +140,11 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   const hint = document.createElement('div');
   hint.textContent = `Painting with ${brush.name} · drag on a surface · Esc to stop`;
   hint.style.cssText =
-    'position: absolute; left: 50%; top: var(--msp-space-3, 12px); transform: translateX(-50%); padding: var(--msp-space-1, 4px) var(--msp-space-3, 12px); border-radius: 6px; background: var(--msp-color-surface, #222); color: var(--msp-color-text, #eee); font-size: 12px; pointer-events: none';
+    'position: absolute; left: 50%; top: var(--msp-space-3); transform: translateX(-50%); padding: var(--msp-space-1) var(--msp-space-3); border-radius: var(--msp-radius-md); background: var(--msp-color-raised); color: var(--msp-color-text); font-size: var(--msp-font-size-sm); pointer-events: none';
   layer.append(preview, hint);
   root.appendChild(layer);
   const ctx = preview.getContext('2d') ?? undefined;
+  const accent = getComputedStyle(root).getPropertyValue('--msp-color-accent').trim() || 'orange';
   const place = () => {
     const rect = canvas.getBoundingClientRect();
     const rootRect = root.getBoundingClientRect();
@@ -228,11 +229,15 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     ctx.beginPath();
     ctx.arc(0, 0, 1, 0, 2 * Math.PI);
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    ctx.fillStyle = 'rgba(255, 196, 64, 0.35)';
-    ctx.strokeStyle = 'rgba(255, 196, 64, 0.9)';
+    // the accent (Prism's token, read once at the mode's start): an action's color
+    ctx.fillStyle = accent;
+    ctx.strokeStyle = accent;
     ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.35;
     ctx.fill();
+    ctx.globalAlpha = 0.9;
     ctx.stroke();
+    ctx.globalAlpha = 1;
   };
 
   // once a frame, the pointer's last place read (the pick is read once a scene and camera; its first may be pending)

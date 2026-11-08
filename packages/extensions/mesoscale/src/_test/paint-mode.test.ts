@@ -144,6 +144,18 @@ describe('paint mode', () => {
     mode.stop();
   });
 
+  it("its hint is drawn in Prism's tokens (light and dark), no literal color or size", () => {
+    const { mode, layer } = setup();
+    mode.start(brush);
+    const hint = layer().querySelector<HTMLElement>('div')!;
+    const css = hint.getAttribute('style') ?? '';
+    for (const token of ['--msp-color-raised', '--msp-color-text', '--msp-font-size-sm', '--msp-radius-md'])
+      expect(css).toContain(token);
+    expect(css).not.toContain('--msp-color-surface');
+    expect(css).not.toMatch(/#[0-9a-f]{3}|\d+px/i);
+    mode.stop();
+  });
+
   it('Esc leaves the mode: its layer, its listeners and its brush gone', () => {
     const counter = countListeners();
     try {
