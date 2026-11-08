@@ -82,6 +82,29 @@ export interface ResolveJob {
   /** The placement sets of the models it avoids, world frame. */
   readonly obstacles: readonly PlacementSet[];
   readonly seed: number;
+  /** The relations among its populations, their sites materialized (Å, the subject entity's frame). */
+  readonly relations: readonly NormalizedRelation[];
+}
+
+export interface MaterializedSite {
+  /** Å, in the entity's frame. */
+  readonly position: readonly [number, number, number];
+  readonly axis?: readonly [number, number, number];
+}
+
+export interface NormalizedRelation {
+  readonly id: Id;
+  readonly kind: Relation['kind'];
+  readonly subjects: readonly Id[];
+  readonly objects: readonly Id[];
+  readonly entry?: MaterializedSite;
+  readonly exit?: MaterializedSite;
+  /** Radians. */
+  readonly angle?: number;
+  /** Å. */
+  readonly spacing?: number;
+  /** Why a site could not be materialized (a residue address with no structure loaded). */
+  readonly unresolved?: string;
 }
 
 export interface ResolveOutput {

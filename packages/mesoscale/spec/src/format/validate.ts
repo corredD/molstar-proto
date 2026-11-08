@@ -316,6 +316,21 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     evidence(c.evidence, `/catalogs/${i}/evidence`);
   });
   (doc.relations ?? []).forEach((r, i) => {
+    for (const k of ['entry', 'exit'] as const) {
+      const q = r[k];
+      if (q === undefined) continue;
+      const parsed = parseMesoQL(q, { kinds }, `/relations/${i}/${k}`);
+      out.push(...parsed.issues);
+      if (parsed.expr && parsed.expr.symbol.name !== 'site')
+        err('mesoql.type', `${k} is a site, (site e.x name)`, `/relations/${i}/${k}`, [r.id]);
+    }
+    if (r.angle !== undefined && !(r.angle >= 0 && r.angle <= 180))
+      err('value.range', 'angle is in [0, 180] degrees', `/relations/${i}/angle`, [r.id]);
+    length(r.spacing, `/relations/${i}/spacing`);
+    (r.contacts ?? []).forEach((c, j) => {
+      for (const k of ['a', 'b'] as const)
+        out.push(...parseMesoQL(c[k], { kinds }, `/relations/${i}/contacts/${j}/${k}`).issues);
+    });
     r.subjects.forEach((s, j) => ref(s, ['population', 'entity', 'compartment'], `/relations/${i}/subjects/${j}`));
     (r.objects ?? []).forEach((s, j) =>
       ref(s, ['population', 'entity', 'compartment'], `/relations/${i}/objects/${j}`),

@@ -318,11 +318,28 @@ export interface Catalog {
   readonly evidence?: readonly Id[];
 }
 
+/**
+ * A relation between populations, entities or compartments (design.md §3.11): a statement the document makes, and a
+ * constraint for the resolvers that honour it (`Resolver.honours`); the others report it as not reconciled. Relations
+ * on a fiber attach by sites: `entry` and `exit` are MesoQL site addresses on the subject, `(site e.hu dna-entry)`.
+ */
 export interface Relation {
   readonly id: Id;
-  readonly kind: 'binds' | 'part-of' | 'colocalizes' | 'anchored-to' | 'excludes';
+  readonly kind: 'binds' | 'bends' | 'branches' | 'contacts' | 'part-of' | 'colocalizes' | 'anchored-to' | 'excludes';
   readonly subjects: readonly Id[];
   readonly objects?: readonly Id[];
+  /** Where the strand enters and leaves a subject copy (binds, bends), or where a branch starts (branches). */
+  readonly entry?: MesoQL;
+  readonly exit?: MesoQL;
+  /** Degrees: the turn a bend makes in the strand, or a branch's angle to its mother filament. */
+  readonly angle?: number;
+  /** One subject copy per this much strand (arc length). */
+  readonly spacing?: Length;
+  /**
+   * Residue pairs in contact (bead-and-spring engines): `a` and `b` are MesoQL residue addresses; a rigid-body engine
+   * may ignore them and say so.
+   */
+  readonly contacts?: readonly { readonly a: MesoQL; readonly b: MesoQL; readonly distance?: Length }[];
   readonly note?: string;
   readonly evidence?: readonly Id[];
 }

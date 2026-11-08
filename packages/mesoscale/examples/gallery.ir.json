@@ -123,12 +123,12 @@
           {
             "ref": "default:meso.pack/resolve",
             "kind": "resolve",
-            "origin": ["p.ribosomes", "p.proteasomes"],
+            "origin": ["p.ribosomes", "p.proteasomes", "p.arp23"],
             "params": {
               "model": "default:meso.pack",
               "resolver": "meso.pack",
               "version": "0.1.0",
-              "key": "default:meso.pack@03af84e1d1d92c24",
+              "key": "default:meso.pack@51c36aa55cb97dc8",
               "input": {
                 "items": [
                   {
@@ -147,6 +147,16 @@
                     "label": "proteasome",
                     "radius": 80,
                     "requested": 4,
+                    "location": "interior",
+                    "compartment": "c.cell",
+                    "inward": false
+                  },
+                  {
+                    "population": "p.arp23",
+                    "entity": "e.arp23",
+                    "label": "Arp2/3 complex",
+                    "radius": 60,
+                    "requested": 6,
                     "location": "interior",
                     "compartment": "c.cell",
                     "inward": false
@@ -215,14 +225,14 @@
               {
                 "ref": "default:meso.pack/placements/0",
                 "kind": "placements",
-                "origin": ["p.ribosomes", "p.proteasomes"],
+                "origin": ["p.ribosomes", "p.proteasomes", "p.arp23"],
                 "params": {
                   "set": {
-                    "key": "default:meso.pack@03af84e1d1d92c24#0",
+                    "key": "default:meso.pack@51c36aa55cb97dc8#0",
                     "model": "default:meso.pack",
                     "frame": "world",
-                    "count": 304,
-                    "bytes": 10944,
+                    "count": 310,
+                    "bytes": 11160,
                     "types": [
                       {
                         "index": 0,
@@ -239,6 +249,14 @@
                         "label": "proteasome",
                         "compartment": "c.cell",
                         "radius": 80
+                      },
+                      {
+                        "index": 2,
+                        "population": "p.arp23",
+                        "entity": "e.arp23",
+                        "label": "Arp2/3 complex",
+                        "compartment": "c.cell",
+                        "radius": 60
                       }
                     ],
                     "first": [-115.07, -293.5, 1238.29, -941.69, -280.66, 407.5]
@@ -381,10 +399,10 @@
             "params": {
               "model": "default:meso.fiber",
               "resolver": "meso.fiber",
-              "version": "0.1.0",
-              "key": "default:meso.fiber@678be210557880f5",
+              "version": "0.2.0",
+              "key": "default:meso.fiber@252ff73e5b2905c1",
               "input": {
-                "items": [
+                "strands": [
                   {
                     "population": "p.actin",
                     "entity": "e.actin",
@@ -418,6 +436,8 @@
                     }
                   }
                 ],
+                "binders": [],
+                "stray": [],
                 "compartments": {
                   "c.cell": {
                     "shape": {
@@ -482,7 +502,7 @@
                 "origin": ["p.actin", "p.microtubule"],
                 "params": {
                   "set": {
-                    "key": "default:meso.fiber@678be210557880f5#0",
+                    "key": "default:meso.fiber@252ff73e5b2905c1#0",
                     "model": "default:meso.fiber",
                     "frame": "world",
                     "count": 510,
@@ -639,13 +659,13 @@
         "visible": true
       },
       {
-        "set": "default:meso.fiber@678be210557880f5#0",
+        "set": "default:meso.fiber@252ff73e5b2905c1#0",
         "types": [0],
         "color": 5940570,
         "visible": true
       },
       {
-        "set": "default:meso.fiber@678be210557880f5#0",
+        "set": "default:meso.fiber@252ff73e5b2905c1#0",
         "types": [1],
         "color": 10181046,
         "visible": true
@@ -663,15 +683,21 @@
         "visible": true
       },
       {
-        "set": "default:meso.pack@03af84e1d1d92c24#0",
+        "set": "default:meso.pack@51c36aa55cb97dc8#0",
         "types": [0],
         "color": 8035526,
         "visible": true
       },
       {
-        "set": "default:meso.pack@03af84e1d1d92c24#0",
+        "set": "default:meso.pack@51c36aa55cb97dc8#0",
         "types": [1],
         "color": 6935452,
+        "visible": true
+      },
+      {
+        "set": "default:meso.pack@51c36aa55cb97dc8#0",
+        "types": [2],
+        "color": 6921427,
         "visible": true
       }
     ]
@@ -734,6 +760,14 @@
       "ids": ["p.vesicle-lipids"]
     },
     {
+      "code": "model.unrealized",
+      "severity": "info",
+      "phase": "static",
+      "message": "p.arp23 has no model: the default resolver for random arrangements places it",
+      "path": "/populations/7",
+      "ids": ["p.arp23"]
+    },
+    {
       "code": "constraint.unmet",
       "severity": "error",
       "phase": "resolve",
@@ -745,6 +779,13 @@
         "achieved": 69,
         "reason": "the membrane of mitochondrion holds 69 hexagonal sites 120 Å apart; 400 asked"
       }
+    },
+    {
+      "code": "relation.ignored",
+      "severity": "info",
+      "phase": "resolve",
+      "message": "relation rel.arp23-branches-actin (branches) is the document's statement; no resolver here honours it",
+      "ids": ["rel.arp23-branches-actin"]
     }
   ]
 }

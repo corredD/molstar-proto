@@ -30,6 +30,8 @@ import type {
   NormalizedArrangement,
   NormalizedCompartment,
   NormalizedPopulation,
+  MaterializedSite,
+  NormalizedRelation,
   Resolver,
   ResolveJob,
   ResolveOutput,
@@ -281,15 +283,54 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
   // ---- models: the document's, then the default ones for what no model realizes ----
   const models: Model[] = [...(doc.models ?? [])];
   const realized = new Set(models.flatMap((m) => m.populations));
+  // the subjects of a relation on a fiber (HU bending DNA) are placed by the fiber's resolver, on the strand
+  const fiberPops = new Set(doc.populations.filter((p) => p.arrangement?.kind === 'fiber').map((p) => p.id));
+  const onStrand = new Set(
+    (doc.relations ?? [])
+      .filter((x) => ['binds', 'bends'].includes(x.kind) && (x.objects ?? []).some((o) => fiberPops.has(o)))
+      .flatMap((x) => x.subjects),
+  );
   const byDefault = new Map<string, Id[]>();
   for (const p of doc.populations) {
     if (realized.has(p.id)) continue;
-    const r = DefaultResolverByArrangement[p.arrangement?.kind ?? 'random'];
+    const r = onStrand.has(p.id) ? 'meso.fiber' : DefaultResolverByArrangement[p.arrangement?.kind ?? 'random'];
     byDefault.set(r, [...(byDefault.get(r) ?? []), p.id]);
   }
   for (const [method, ps] of byDefault)
     models.push({ id: `default:${method}`, kind: 'procedural', method, populations: ps, seed: 1 });
   const t2 = now();
+
+  // ---- relations: sites materialized (design.md §3.11) ----
+  const siteOf = (q: string | undefined): { site?: MaterializedSite; why?: string } => {
+    if (!q) return {};
+    const p = parseMesoQL(q);
+    const e = p.expr;
+    if (!e || e.symbol.name !== 'site') return { why: `${q} is not a site address` };
+    const [entity, id] = e.args as [string, string];
+    const site = ents.get(entity)?.sites?.find((x) => x.id === id);
+    if (!site) return { why: `${entity} has no site ${id}` };
+    if (!site.position)
+      return {
+        why: `site ${entity}/${id} is given by residues (${site.at}); materializing it needs the structure loaded`,
+      };
+    const v = (x: readonly number[]) => [x[0], x[1], x[2]] as [number, number, number];
+    return { site: { position: v(site.position), axis: site.axis ? v(site.axis) : undefined } };
+  };
+  const relations: NormalizedRelation[] = (doc.relations ?? []).map((x) => {
+    const entry = siteOf(x.entry);
+    const exit = siteOf(x.exit);
+    return {
+      id: x.id,
+      kind: x.kind,
+      subjects: x.subjects,
+      objects: x.objects ?? [],
+      entry: entry.site,
+      exit: exit.site,
+      angle: x.angle !== undefined ? (x.angle * Math.PI) / 180 : undefined,
+      spacing: x.spacing !== undefined ? A(x.spacing) : undefined,
+      unresolved: entry.why ?? exit.why,
+    };
+  });
 
   // ---- resolve, in `avoid` order ----
   const cache = o.cache ?? new Map<string, ResolveOutput>();
@@ -359,6 +400,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
       inputs,
       obstacles: avoided.flatMap((a) => a!.out.sets),
       seed: m.seed ?? 1,
+      relations: relations.filter((x) => [...x.subjects, ...x.objects].some((id) => m.populations.includes(id))),
     };
     const tr = now();
     let input: unknown;

@@ -9,6 +9,7 @@ import { story } from '@molstar/prism-ui/testing/index';
 import { RealViewerStory } from '@molstar/prism-viewer/testing/real-viewer';
 import type { MesoViewSpecDoc, Population } from '@molstar/meso-spec/format/doc';
 import { galleryDoc } from '@molstar/meso-spec/examples/gallery';
+import { nucleoidDoc } from '@molstar/meso-spec/examples/nucleoid';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
 import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
@@ -151,5 +152,18 @@ export const Bilayer: StoryObj = {
       value: 1.5,
       apply: (d, v) =>
         setPop(d, 'p.vesicle-lipids', (p) => ({ ...p, abundance: { density: { value: v, unit: 'per_nm2' } } })),
+    }),
+};
+
+/** Relations as constraints with addresses: HU placed on DNA by its entry and exit sites, the strand bent at each one; IHF's residue-only site is reported as not reconciled. */
+export const RelationsHuBendsDna: StoryObj = {
+  render: () =>
+    mock(nucleoidDoc(), {
+      label: 'HU bend (degrees)',
+      min: 0,
+      max: 170,
+      step: 10,
+      value: 120,
+      apply: (_d, v) => nucleoidDoc(v),
     }),
 };

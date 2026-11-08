@@ -36,6 +36,7 @@ export function galleryDoc(): MesoViewSpecDoc {
       { id: 'e.actin', label: 'actin subunit', kind: 'protein', radius: 2.7 },
       { id: 'e.tubulin', label: 'tubulin dimer', kind: 'protein', radius: 4 },
       { id: 'e.lipid', label: 'phospholipid', kind: 'lipid', radius: { value: 4.5, unit: 'A' } },
+      { id: 'e.arp23', label: 'Arp2/3 complex', kind: 'complex', radius: 6 },
     ],
     compartments: [
       {
@@ -137,6 +138,26 @@ export function galleryDoc(): MesoViewSpecDoc {
         location: 'membrane',
         abundance: { density: { value: 1.5, unit: 'per_nm2' } },
         arrangement: { kind: 'bilayer' },
+      },
+      { id: 'p.arp23', entity: 'e.arp23', compartment: 'c.cell', location: 'interior', abundance: { count: 6 } },
+    ],
+    relations: [
+      {
+        id: 'rel.arp23-branches-actin',
+        kind: 'branches',
+        subjects: ['p.arp23'],
+        objects: ['p.actin'],
+        angle: 73,
+        note: 'a daughter filament from the side of a mother filament; no resolver here grows branches yet',
+        evidence: ['ev.arp23-angle'],
+      },
+    ],
+    evidence: [
+      {
+        id: 'ev.arp23-angle',
+        kind: 'literature',
+        statement: 'Arp2/3 branches start at 73° to the mother filament (as the yeast whole-cell model builds them)',
+        source: { citation: { text: 'zoidpuff/yeast_cell_viewer MODEL.md, actin patches' } },
       },
     ],
     views: [
