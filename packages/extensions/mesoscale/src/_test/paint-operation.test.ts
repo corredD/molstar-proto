@@ -180,6 +180,22 @@ describe('mesoscale.paint', () => {
     expect(painted(v).length).toBe(0);
   });
 
+  it('ends its paint mode with the viewer', async () => {
+    const v = await viewer();
+    const mode = v.api.mesoscale!.paintMode;
+    let stopped = 0;
+    const stop = mode.stop.bind(mode);
+    mode.stop = () => {
+      stopped++;
+      stop();
+    };
+    mode.brush.set({ particles: entry(v).cell.transform.ref, entity: 1, name: 'CA' });
+    await v.dispose();
+    viewers.splice(viewers.indexOf(v), 1);
+    expect(stopped).toBe(1);
+    expect(mode.brush.value).toBeUndefined();
+  });
+
   it('refuses no positions, unpaired normals, an unknown or missing entity', async () => {
     const v = await viewer();
     expect(await v.api.run('mesoscale.paint', { entity: 'CA', positions: [] })).toMatchObject({ ok: false });

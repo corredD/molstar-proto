@@ -171,6 +171,11 @@ export class MesoscaleApi extends ApiArea {
     return this._paintMode;
   }
 
+  /** The paint mode ends with the viewer: its layer, its keys and its subscription go (review should-fix 5) */
+  dispose() {
+    this._paintMode?.stop();
+  }
+
   /**
    * What the Entities view shows of a list (by state ref, the only one when empty), its groups by `groupBy` (the view's
    * switch; absent or undefined: the default grouping), following the state tree and the grouping while watched: a read
