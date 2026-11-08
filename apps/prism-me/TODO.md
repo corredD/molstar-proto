@@ -91,7 +91,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   overlap; the canvas turning while painting (the paint layer takes the pointer: a modifier or the wheel passed
   through); an eraser (a stroke removing copies) and a stroke's undo kept apart from the list's other edits; painting
   with a list's target (lists without entities) from its row; the preview as 3D discs (a transient shape kept out of the
-  pick) rather than the 2D layer; a pick normal test on Dawn (headless WebGPU picks did not answer reliably here).
+  pick) rather than the 2D layer; a pick normal test on Dawn (headless WebGPU picks did not answer reliably here); lists
+  whose targets come from a class (refused now); the review's nits: Esc while the mode is on also stops the page's other
+  Esc handlers once, the host names the brush by id as text (a name "3" would win), the principal axis read where
+  `targetMapping` is on the list (not a decorator's), a real 100 ms wait in paint-mode.test.ts.
 
 - **Automatic transfer-function preset** (Ludo, 2026-11-03; to decide): "a great preset automatically" for a direct
   volume, an Auto entry in the transfer editor's Presets. Pointer: Barthel, "Automatic Generation of Volumetric Transfer

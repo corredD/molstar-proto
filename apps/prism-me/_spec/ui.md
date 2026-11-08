@@ -221,10 +221,11 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   `particles.look`, the object drawn again if hidden.
 - **Paint with …** (lane `paint`, 2026-11-08), on a model's entity (a particle of it in the canvas): the canvas's paint
   mode with that entity as the brush; **Stop painting** while it is. A drag on the canvas is a stroke: the surface under
-  the pointer read once a frame (its point and normal from the picks around it; on a membrane particle, its frame: the
-  copy on the membrane's mid-plane, upright), a copy every spacing, each previewed as a disc lying on the surface (drawn
-  over the canvas, no state change); the release paints the stroke, one step (`mesoscale.paint`). Esc leaves the mode;
-  an undo while drawing cancels the stroke. While the mode is on the canvas does not turn (TODO.md).
+  the pointer read once a frame (its point and normal from the picks around it; a membrane protein's brush on a membrane
+  particle takes that particle's frame: the copy on the membrane's mid-plane, upright), a copy every spacing, each
+  previewed as a disc lying on the surface (drawn over the canvas, no state change); the release paints the stroke, one
+  step (`mesoscale.paint`). Esc leaves the mode; an undo while drawing cancels the stroke. While the mode is on the
+  canvas does not turn (TODO.md).
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit
