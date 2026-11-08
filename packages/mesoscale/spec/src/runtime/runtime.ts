@@ -344,9 +344,15 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
   let hits = 0;
   const counts: Record<Id, { requested?: number; achieved: number }> = {};
   const reports: Record<Id, Readonly<Record<string, unknown>> | undefined> = {};
+  // a refined model's result is replaced by its refiner's: its constraints are checked there (design.md §6.7)
+  const refinedBy = new Map(models.filter((m) => m.refines).map((m) => [m.refines!, m.id]));
+  const realizes = (m: Model): readonly Id[] =>
+    m.refines ? realizes(models.find((x) => x.id === m.refines) ?? m) : m.populations;
   for (const m of order) {
     const resolver = resolvers.get(m.method);
-    const popsOf = m.populations.map((id) => pops.get(id)!).filter(Boolean);
+    const popsOf = realizes(m)
+      .map((id) => pops.get(id)!)
+      .filter(Boolean);
     for (const p of popsOf) counts[p.id] = { requested: p.requested, achieved: 0 };
     if (!resolver) {
       issues.push(
@@ -380,14 +386,16 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
       if (lr) inputs.set(id, lr);
       else missing = true;
     }
-    const avoided = (m.avoid ?? []).map((a) => outputs.get(a));
-    if (missing || avoided.some((a) => !a)) {
+    const upstreamModel = m.refines ? models.find((x) => x.id === m.refines) : undefined;
+    const upstream = m.refines ? outputs.get(m.refines) : undefined;
+    const avoided = [...(m.avoid ?? []), ...(upstreamModel?.avoid ?? [])].map((a) => outputs.get(a));
+    if (missing || avoided.some((a) => !a) || (m.refines && !upstream)) {
       issues.push(
         issue(
           'resolver.failed',
           'error',
           'resolve',
-          `${m.id} not resolved: ${missing ? 'an input is unavailable' : 'a model it avoids failed'}`,
+          `${m.id} not resolved: ${missing ? 'an input is unavailable' : m.refines && !upstream ? `the model it refines (${m.refines}) failed` : 'a model it avoids failed'}`,
           { ids: [m.id, ...m.populations] },
         ),
       );
@@ -400,14 +408,15 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
       inputs,
       obstacles: avoided.flatMap((a) => a!.out.sets),
       seed: m.seed ?? 1,
-      relations: relations.filter((x) => [...x.subjects, ...x.objects].some((id) => m.populations.includes(id))),
+      relations: relations.filter((x) => [...x.subjects, ...x.objects].some((id) => realizes(m).includes(id))),
+      upstream: upstream?.out,
     };
     const tr = now();
     let input: unknown;
     let key: string;
     try {
       input = resolver.project(job);
-      key = `${m.id}@${contentHash({ resolver: resolver.id, version: resolver.version, input, avoid: avoided.map((a) => a!.key) })}`;
+      key = `${m.id}@${contentHash({ resolver: resolver.id, version: resolver.version, input, avoid: avoided.map((a) => a!.key), refines: upstream?.key })}`;
     } catch (e) {
       issues.push(
         issue(
@@ -443,6 +452,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     outputs.set(m.id, { key, out, cached, resolver, input });
     reports[m.id] = out.report;
     for (const i of out.issues ?? []) issues.push(i);
+    if (refinedBy.has(m.id)) continue;
     for (const p of job.populations) {
       const achieved = out.achieved[p.id] ?? 0;
       counts[p.id] = { requested: p.requested, achieved };
@@ -616,7 +626,8 @@ function transformMesh(m: MeshData, M?: readonly number[]): MeshData {
 
 function normalizeArrangement(a: Arrangement | undefined, A: (l: any) => number): NormalizedArrangement {
   if (!a || a.kind === 'random') return { kind: 'random' };
-  if (a.kind === 'lattice') return { kind: 'lattice', lattice: a.lattice, spacing: A(a.spacing) };
+  if (a.kind === 'lattice')
+    return { kind: 'lattice', lattice: a.lattice, spacing: A(a.spacing), vacancy: a.defects?.vacancy ?? 0 };
   if (a.kind === 'bilayer') return { kind: 'bilayer' };
   return {
     kind: 'fiber',
@@ -735,7 +746,7 @@ function topoOrder(models: readonly Model[]): Model[] {
   const visit = (m: Model, stack: Set<Id>) => {
     if (done.has(m.id) || stack.has(m.id)) return;
     stack.add(m.id);
-    for (const a of m.avoid ?? []) {
+    for (const a of [...(m.avoid ?? []), ...(m.refines ? [m.refines] : [])]) {
       const d = by.get(a);
       if (d) visit(d, stack);
     }
@@ -789,9 +800,12 @@ function assemble(
   };
   const tops = doc.compartments.filter((c) => !c.parent).map((c) => compNode(c.id));
   const resolves: IRNode[] = [];
+  const refiner = new Map(models.filter((m) => m.refines).map((m) => [m.refines!, m.id]));
   for (const m of models) {
     const o = outputs.get(m.id);
     if (!o) continue;
+    // a refined model keeps its resolve node (its key, its input) but not its sets: the refiner's replace them
+    const superseded = refiner.get(m.id);
     resolves.push({
       ref: `${m.id}/resolve`,
       kind: 'resolve',
@@ -803,8 +817,10 @@ function assemble(
         key: o.key,
         input: summarizeInput(o.input),
         cached: o.cached,
+        ...(m.refines ? { refines: m.refines } : {}),
+        ...(superseded ? { refinedBy: superseded } : {}),
       },
-      children: o.out.sets.map((set, i) => {
+      children: (superseded ? [] : o.out.sets).map((set, i) => {
         const instances: IRNode[] = set.typeTable.flatMap((t): IRNode[] => {
           const ss = ents.get(t.entity)?.superstructure;
           if (!ss) return [];

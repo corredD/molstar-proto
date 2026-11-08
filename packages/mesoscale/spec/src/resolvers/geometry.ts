@@ -265,3 +265,112 @@ function meshSampler(mesh: MeshData): ShapeSampler {
     },
   };
 }
+
+/**
+ * A signed distance grid of a shape (negative inside), sampled once: O(1) inside tests with a margin and a gradient to
+ * push a point back in. Built from the sampler's inside test at the nodes and its surface samples for the distance
+ * (design.md §11: the mesh's O(triangles) inside test is too slow per copy per iteration; mesobuild's
+ * engine/geometry.py keeps such grids too). Resolution `n` nodes a side; accuracy about one cell.
+ */
+export interface SdfGrid {
+  readonly min: readonly number[];
+  readonly cell: number;
+  readonly n: number;
+  /** Signed distance, Å, trilinear. */
+  distance(x: number, y: number, z: number): number;
+  /** The direction of increasing distance (outward), finite differences. */
+  gradient(out: number[], x: number, y: number, z: number): number[];
+}
+
+export function sdfGrid(s: ShapeSampler, rand: Random, n = 40, surfaceSamples = 4000): SdfGrid {
+  const pad = 0.05;
+  const ext = [0, 1, 2].map((k) => s.max[k] - s.min[k]);
+  const cell = (Math.max(...ext) * (1 + 2 * pad)) / (n - 1);
+  const min = [0, 1, 2].map((k) => (s.min[k] + s.max[k]) / 2 - (cell * (n - 1)) / 2);
+  const pts = new Float32Array(surfaceSamples * 3);
+  const p = [0, 0, 0],
+    nn = [0, 0, 0];
+  for (let i = 0; i < surfaceSamples; i++) {
+    s.sampleSurface(rand, p, nn);
+    pts[3 * i] = p[0];
+    pts[3 * i + 1] = p[1];
+    pts[3 * i + 2] = p[2];
+  }
+  // surface samples bucketed in the grid's cells, so a node looks at nearby samples first
+  const buckets = new Map<number, number[]>();
+  const bucketOf = (x: number, y: number, z: number) => {
+    const i = Math.floor((x - min[0]) / (cell * 4)),
+      j = Math.floor((y - min[1]) / (cell * 4)),
+      k = Math.floor((z - min[2]) / (cell * 4));
+    return (i * 1024 + j) * 1024 + k;
+  };
+  for (let i = 0; i < surfaceSamples; i++) {
+    const b = bucketOf(pts[3 * i], pts[3 * i + 1], pts[3 * i + 2]);
+    const l = buckets.get(b);
+    if (l) l.push(i);
+    else buckets.set(b, [i]);
+  }
+  const d = new Float32Array(n * n * n);
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++)
+      for (let k = 0; k < n; k++) {
+        const x = min[0] + i * cell,
+          y = min[1] + j * cell,
+          z = min[2] + k * cell;
+        let best = Infinity;
+        const bi = Math.floor((x - min[0]) / (cell * 4)),
+          bj = Math.floor((y - min[1]) / (cell * 4)),
+          bk = Math.floor((z - min[2]) / (cell * 4));
+        for (let r = 1; r <= 64 && best === Infinity; r *= 2)
+          for (let u = bi - r; u <= bi + r; u++)
+            for (let v = bj - r; v <= bj + r; v++)
+              for (let w = bk - r; w <= bk + r; w++) {
+                const l = buckets.get((u * 1024 + v) * 1024 + w);
+                if (!l) continue;
+                for (const q of l)
+                  best = Math.min(best, (pts[3 * q] - x) ** 2 + (pts[3 * q + 1] - y) ** 2 + (pts[3 * q + 2] - z) ** 2);
+              }
+        const dist = Math.sqrt(best);
+        d[(i * n + j) * n + k] = s.contains(x, y, z, 0) ? -dist : dist;
+      }
+  const at = (i: number, j: number, k: number) =>
+    d[(Math.min(n - 1, Math.max(0, i)) * n + Math.min(n - 1, Math.max(0, j))) * n + Math.min(n - 1, Math.max(0, k))];
+  const distance = (x: number, y: number, z: number) => {
+    const fx = (x - min[0]) / cell,
+      fy = (y - min[1]) / cell,
+      fz = (z - min[2]) / cell;
+    const i = Math.floor(fx),
+      j = Math.floor(fy),
+      k = Math.floor(fz);
+    const tx = fx - i,
+      ty = fy - j,
+      tz = fz - k;
+    let v = 0;
+    for (let a = 0; a < 2; a++)
+      for (let b = 0; b < 2; b++)
+        for (let c = 0; c < 2; c++)
+          v += at(i + a, j + b, k + c) * (a ? tx : 1 - tx) * (b ? ty : 1 - ty) * (c ? tz : 1 - tz);
+    // outside the grid: the distance to its box adds on
+    const ox = Math.max(min[0] - x, 0, x - (min[0] + cell * (n - 1)));
+    const oy = Math.max(min[1] - y, 0, y - (min[1] + cell * (n - 1)));
+    const oz = Math.max(min[2] - z, 0, z - (min[2] + cell * (n - 1)));
+    return v + Math.hypot(ox, oy, oz);
+  };
+  return {
+    min,
+    cell,
+    n,
+    distance,
+    gradient(out, x, y, z) {
+      const h = cell / 2;
+      out[0] = distance(x + h, y, z) - distance(x - h, y, z);
+      out[1] = distance(x, y + h, z) - distance(x, y - h, z);
+      out[2] = distance(x, y, z + h) - distance(x, y, z - h);
+      const l = Math.hypot(out[0], out[1], out[2]) || 1;
+      out[0] /= l;
+      out[1] /= l;
+      out[2] /= l;
+      return out;
+    },
+  };
+}

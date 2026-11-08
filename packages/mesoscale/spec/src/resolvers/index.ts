@@ -11,6 +11,7 @@ import { MesoFiberResolver } from './fiber.js';
 import { MesoLatticeResolver } from './lattice.js';
 import { MesoPackResolver } from './meso-pack.js';
 import { MesoPrecomputedResolver } from './precomputed.js';
+import { MesoRelaxResolver } from './relax.js';
 
 /** The prototype's resolvers; a new recipe kind is one more entry (design.md §6.4). */
 export const DefaultResolvers: readonly Resolver<any>[] = [
@@ -19,5 +20,6 @@ export const DefaultResolvers: readonly Resolver<any>[] = [
   MesoFiberResolver,
   MesoBilayerResolver,
   MesoPrecomputedResolver,
+  MesoRelaxResolver,
   CellpackGpuResolver,
 ];

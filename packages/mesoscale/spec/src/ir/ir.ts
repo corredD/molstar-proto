@@ -46,6 +46,9 @@ export type IRNode =
         /** The normalized input the key is the hash of (design.md §4.3); the construction details live here. */
         readonly input: unknown;
         readonly cached: boolean;
+        /** The model it refines (its result replaced by this one's), or the model that refines it. */
+        readonly refines?: string;
+        readonly refinedBy?: string;
       }
     >
   | IRNodeOf<'placements', { readonly set: PlacementSet }>

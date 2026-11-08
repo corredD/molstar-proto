@@ -274,6 +274,8 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     abundance(pop.abundance, `${p}/abundance`);
     const a = pop.arrangement;
     if (a?.kind === 'lattice') length(a.spacing, `${p}/arrangement/spacing`);
+    if (a?.kind === 'lattice' && a.defects?.vacancy !== undefined && !(a.defects.vacancy >= 0 && a.defects.vacancy < 1))
+      err('value.range', 'vacancy is in [0, 1)', `${p}/arrangement/defects/vacancy`);
     if (a?.kind === 'fiber') {
       length(a.rise, `${p}/arrangement/rise`);
       ref(a.path?.resource, 'resource', `${p}/arrangement/path/resource`);
@@ -351,10 +353,18 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     });
     (m.inputs ?? []).forEach((r, j) => ref(r, 'resource', `${p}/inputs/${j}`));
     (m.avoid ?? []).forEach((r, j) => ref(r, 'model', `${p}/avoid/${j}`));
+    ref(m.refines, 'model', `${p}/refines`);
+    if (m.refines && m.populations.length)
+      warn(
+        'value.range',
+        `${m.id} refines ${m.refines}: it realizes that model's populations; its own list is ignored`,
+        `${p}/populations`,
+        [m.id],
+      );
     ref(m.activity, 'activity', `${p}/activity`);
     evidence(m.evidence, `${p}/evidence`);
   });
-  const avoid = new Map(models.map((m) => [m.id, m.avoid ?? []]));
+  const avoid = new Map(models.map((m) => [m.id, [...(m.avoid ?? []), ...(m.refines ? [m.refines] : [])]]));
   const state = new Map<Id, 1 | 2>();
   const visit = (id: Id, trail: Id[]): boolean => {
     if (state.get(id) === 2) return false;

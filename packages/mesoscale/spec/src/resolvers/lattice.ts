@@ -6,6 +6,7 @@
 
 import type { Id } from '../format/doc.js';
 import { PlacementBuilder, type PlacementType, quatFromTo } from '../ir/placements.js';
+import { createRandom, subSeed } from '../runtime/random.js';
 import type { NormalizedArrangement, Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
 import { type PackCompartment, packCompartments } from './packing.js';
 
@@ -25,6 +26,7 @@ interface LatticeInput {
     readonly location: string;
     readonly spacing: number;
     readonly lattice: string;
+    readonly vacancy: number;
   }[];
   readonly compartments: Readonly<Record<Id, PackCompartment>>;
   readonly seed: number;
@@ -51,6 +53,7 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
           location: p.location,
           spacing: a.spacing,
           lattice: a.lattice,
+          vacancy: a.vacancy,
         };
       }),
       compartments: packCompartments(
@@ -90,7 +93,9 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
       const mean = Math.cbrt(R[0] * R[1] * R[2]);
       const cellArea = it.lattice === 'hexagonal' ? (Math.sqrt(3) / 2) * it.spacing ** 2 : it.spacing ** 2;
       const sites = Math.floor((4 * Math.PI * mean * mean) / cellArea);
-      const n = Math.min(sites, it.requested);
+      // with vacancies, a patch of `requested` copies spreads over more sites (seeded, the same holes every time)
+      const holes = createRandom(subSeed(input.seed, `${it.population}:vacancy`));
+      let n = 0;
       // the patch: the n sites nearest a seeded pole, so the spiral index runs from that pole
       const golden = Math.PI * (3 - Math.sqrt(5));
       const pole = (job.seed % 997) / 997;
@@ -99,7 +104,9 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
       const poleDir = [Math.sqrt(1 - pz * pz), 0, pz];
       const rot = quatFromTo([0, 0, 0, 1], 0, 0, 1, poleDir[0], poleDir[1], poleDir[2]);
       const v = [0, 0, 0];
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < sites && n < it.requested; i++) {
+        if (it.vacancy > 0 && holes.next() < it.vacancy) continue;
+        n++;
         const z = 1 - (2 * (i + 0.5)) / sites;
         const r = Math.sqrt(1 - z * z);
         const phi = i * golden;
@@ -119,7 +126,7 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
       achieved[it.population] = n;
       if (n < it.requested)
         shortfall[it.population] =
-          `the ${it.location} of ${c.label} holds ${sites} ${it.lattice} sites ${it.spacing.toFixed(0)} Å apart; ${it.requested} asked`;
+          `the ${it.location} of ${c.label} holds ${sites} ${it.lattice} sites ${it.spacing.toFixed(0)} Å apart${it.vacancy ? `, ${Math.round(it.vacancy * 100)}% vacant` : ''}; ${it.requested} asked`;
     });
     return { sets: [b.finish({ key: '', model: job.model.id, frame: 'world', typeTable })], achieved, shortfall };
   },

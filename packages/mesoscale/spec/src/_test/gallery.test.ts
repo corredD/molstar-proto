@@ -54,6 +54,30 @@ describe('the gallery', () => {
     expect(atp.constraint!.reason).toMatch(/holds \d+ hexagonal sites 120 Å apart; 400 asked/);
   });
 
+  it('a lattice with defects: the same copies over more sites, the same holes every run', async () => {
+    const d = galleryDoc();
+    const holey = {
+      ...d,
+      populations: d.populations.map((p) =>
+        p.id === 'p.pores'
+          ? {
+              ...p,
+              arrangement: {
+                kind: 'lattice' as const,
+                lattice: 'hexagonal' as const,
+                spacing: 22,
+                defects: { vacancy: 0.3 },
+              },
+            }
+          : p,
+      ),
+    };
+    const [a, b] = await Promise.all([run(holey), run(holey)]);
+    expect(a.counts['p.pores']).toEqual({ requested: 60, achieved: 60 });
+    const pores = (r: typeof a) => placementSets(r.ir!).find((s) => s.model === 'default:meso.lattice')!;
+    expect(Array.from(pores(a).positions)).toEqual(Array.from(pores(b).positions));
+  });
+
   it('fibers: a traced path, one copy per rise along its arc; grown filaments inside the cell', async () => {
     const r = await run();
     const s = placementSets(r.ir!).find((x) => x.model === 'default:meso.fiber')!;

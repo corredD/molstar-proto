@@ -164,6 +164,22 @@ function slice(steps?: Step) {
         },
         'Set concentration',
       ),
+      h('b', { style: 'margin-left:12px' }, 'Composition'),
+      h(
+        'button',
+        {
+          onclick: () => {
+            if (!session) return;
+            const relaxed = exosomeDoc({ relax: true });
+            void apply(
+              { ...session.doc, models: relaxed.models, activities: relaxed.activities },
+              'add a relax stage',
+              'm.relax',
+            );
+          },
+        },
+        'Add a relax stage',
+      ),
       status,
     );
     const tracer = traceBox(

@@ -252,6 +252,19 @@ export type Geometry =
 export interface Membrane {
   readonly thickness?: Length;
   readonly leaflets?: { readonly inner?: Id; readonly outer?: Id };
+  /**
+   * The lipid composition (design.md §3.10), by value (lipid entities and their shares, per leaflet) or by reference (a
+   * table or recipe resource). Metadata a resolver may honour: the prototype's bilayer draws one lipid kind.
+   */
+  readonly composition?:
+    | {
+        readonly lipids: readonly {
+          readonly entity: Id;
+          readonly fraction: number;
+          readonly leaflet?: 'inner' | 'outer' | 'both';
+        }[];
+      }
+    | { readonly resource: Id };
 }
 
 /** Where in a compartment a population is (design.md §3.2). */
@@ -287,7 +300,16 @@ export interface Population {
 export type Arrangement =
   | { readonly kind: 'random' }
   /** A 2D lattice in a membrane or on a surface (S-layers, capsid-like arrays, ATP synthase rows). */
-  | { readonly kind: 'lattice'; readonly lattice: 'hexagonal' | 'square'; readonly spacing: Length }
+  /**
+   * A 2D lattice in a membrane or on a surface (S-layers, capsid-like arrays, ATP synthase rows). `vacancy`: the share of
+   * sites left empty (a lattice with defects, as cryo-ET often shows one).
+   */
+  | {
+      readonly kind: 'lattice';
+      readonly lattice: 'hexagonal' | 'square';
+      readonly spacing: Length;
+      readonly defects?: { readonly vacancy?: number };
+    }
   /** A filament: copies along a path, `rise` apart, turning by `twist` degrees per copy. */
   | {
       readonly kind: 'fiber';
@@ -357,6 +379,12 @@ export interface Model {
   readonly inputs?: readonly Id[];
   /** Models whose copies this one must avoid (precomputed picks before the packing around them). */
   readonly avoid?: readonly Id[];
+  /**
+   * Application composition (design.md §6.7): this model refines another's result (a rigid-body placement fed to a
+   * relaxation, a simulation, a density fit). It realizes the same populations, reconciles the same constraints, and
+   * its result replaces the one it refines; `populations` stays empty.
+   */
+  readonly refines?: Id;
   readonly seed?: number;
   /** The resolver's own construction parameters (design.md §4.3): opaque to the language. */
   readonly params?: Readonly<Record<string, unknown>>;

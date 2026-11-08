@@ -33,7 +33,12 @@ export interface NormalizedPopulation {
 
 export type NormalizedArrangement =
   | { readonly kind: 'random' }
-  | { readonly kind: 'lattice'; readonly lattice: 'hexagonal' | 'square'; readonly spacing: number }
+  | {
+      readonly kind: 'lattice';
+      readonly lattice: 'hexagonal' | 'square';
+      readonly spacing: number;
+      readonly vacancy: number;
+    }
   | {
       readonly kind: 'fiber';
       readonly rise: number;
@@ -82,6 +87,8 @@ export interface ResolveJob {
   /** The placement sets of the models it avoids, world frame. */
   readonly obstacles: readonly PlacementSet[];
   readonly seed: number;
+  /** For a refining model: the result it refines (its sets, copies and achieved counts). */
+  readonly upstream?: ResolveOutput;
   /** The relations among its populations, their sites materialized (Å, the subject entity's frame). */
   readonly relations: readonly NormalizedRelation[];
 }
