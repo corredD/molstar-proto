@@ -148,7 +148,8 @@ export function buildMembrane(
   kinds: TileKinds,
 ): MembraneData | string {
   let base: TriMesh;
-  if (surface.mesh) {
+  // an explicit edge is the caller's: only the suited one refuses a mesh too small
+  if (surface.mesh && !(edge > 0)) {
     const size = boundsDiagonal(surface.mesh.positions);
     if (size < 4 * MinTileEdge) {
       return `The mesh is ${size.toFixed(1)} Å across, too small for lipids (tiles of ${MinTileEdge} Å or more): scale it first (a mesh in cm or nm wants ×100 or ×10).`;
