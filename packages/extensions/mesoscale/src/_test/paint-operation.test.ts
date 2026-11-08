@@ -12,7 +12,10 @@ import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
-import { ParticleListTransform } from '@molstar/plugin/state/transforms/particles/ops';
+import {
+  ParticleListTargetsFromAttribute,
+  ParticleListTransform,
+} from '@molstar/plugin/state/transforms/particles/ops';
 import { ParticleListPainted } from '../paint.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { setTestTargetStructure, TestTargetList } from './fixtures.js';
@@ -156,6 +159,25 @@ describe('mesoscale.paint', () => {
     await v.plugin.runTask(v.plugin.state.data.setSnapshot(snapshot));
     expect(drawn(v).count).toBe(9);
     expect(Array.from(drawn(v).coordinates.slice(21))).toEqual(painted);
+  });
+
+  it('paints a target of a list without entities; refuses one whose targets come from a class (not built yet)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const star =
+      'data_particles\n\nloop_\n_rlnCoordinateX #1\n_rlnCoordinateY #2\n_rlnCoordinateZ #3\n_rlnClassNumber #4\n10 0 0 1\n20 0 0 2\n';
+    expectOk(await v.api.load.files({ files: [new File([star], 'particles.star')] }));
+    const list = entry(v);
+    expectOk(await v.api.run('mesoscale.paint', { entity: '0', positions: [0, 0, 0], seed: 1 }));
+    expect(list.cell.obj!.data.count).toBe(2);
+    expectOk(await v.api.run('history.undo', {}));
+    await v.plugin.build().to(list.cell).apply(ParticleListTargetsFromAttribute, { attribute: 'class' }).commit();
+    const r = await v.api.run('mesoscale.paint', { entity: 'Class 1', positions: [0, 0, 0], seed: 1 });
+    expect(r).toMatchObject({ ok: false, code: 'invalid' });
+    expect(painted(v).length).toBe(0);
   });
 
   it('refuses no positions, unpaired normals, an unknown or missing entity', async () => {

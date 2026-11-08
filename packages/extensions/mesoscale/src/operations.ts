@@ -6,7 +6,10 @@
 
 import { Color } from '@molstar/core/util/color';
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
-import { ParticleListTransform } from '@molstar/plugin/state/transforms/particles/ops';
+import {
+  ParticleListTargetsFromAttribute,
+  ParticleListTransform,
+} from '@molstar/plugin/state/transforms/particles/ops';
 import { distinctColors } from '@molstar/core/util/color/distinct';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import type { VisualQuality } from '@molstar/graphics/geo/geometry/base';
@@ -639,6 +642,15 @@ export class MesoscaleApi extends ApiArea {
       if (isFailure(ids)) return ids;
       if (ids.length !== 1 || !entity.trim()) {
         return ApiResult.fail('invalid', 'Give one entity to paint with.', 'Read them with mesoscale.entities.');
+      }
+      // targets made by a decorator (cryoet's classes) are not the list's own: a copy painted under them would be given
+      // another (review should-fix 2); not built yet
+      if (decoratorUnder(ctx.plugin.state.data, l.cell.transform.ref, ParticleListTargetsFromAttribute)) {
+        return ApiResult.fail(
+          'invalid',
+          'Painting a list whose targets come from a class is not there yet.',
+          'Paint a model entity, or a list drawn by its own targets.',
+        );
       }
       const brush = brushOf(data, ids[0]);
       if (!brush) return ApiResult.fail('not-found', 'No particle of that entity to copy.');
