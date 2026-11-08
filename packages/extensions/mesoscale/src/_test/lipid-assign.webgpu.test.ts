@@ -24,9 +24,12 @@ const webgpu = await (async () => {
   }
 })();
 
+/** the instance held by the module: collected while work is in flight, Dawn's Node bindings crash (SIGSEGV) */
+const gpu = webgpu?.create([]);
+
 describe.skipIf(!webgpu)('lipid tile assignment on the GPU (Dawn)', () => {
   it('equals the TypeScript reference tile for tile: the variant and the affine of each slot', async () => {
-    const device = await requestWebGPUDevice('default', webgpu.create([]));
+    const device = await requestWebGPUDevice('default', gpu);
     if (!device) throw new Error('no WebGPU device');
     const graphics = createWebGPUContext(device, { width: 4, height: 4 });
     try {
