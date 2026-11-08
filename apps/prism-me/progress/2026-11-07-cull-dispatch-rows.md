@@ -41,3 +41,46 @@ Must-fix 0, should-fix 0, nits 3, all fixed in 2d05e8bfc:
 The reviewer could not run the quick lane in its sandbox; it was run here after the fixes: graphics quick lane 1743
 passed, the WebGPU culling and raster suites on Dawn 12 + 5 passed, tsc, lint, format clean. The skeptic pass was not
 run (no must- or should-fix to refute).
+
+## PR body (draft; not opened)
+
+`gh pr create -R corredD/molstar-proto --base prism-me --head me/cull-dispatch-rows --title "graphics: GPU culling dispatches its workgroups in rows past the device's limit" --body-file <this section>`
+
+### What
+
+Loading a 600 nm slab of a whole yeast cell (6.7M instances) on WebGPU threw at every frame:
+`kernel 'cell-cull': 104127 × 1 × 1 workgroups exceed 65535 per dimension`. The GPU culler of a merged object dispatched
+one workgroup of 64 per item along x only: 4.2M items at most.
+
+### Changes
+
+- `ComputeContext.maxWorkgroupsPerDimension` (WebGPU: the device's `maxComputeWorkgroupsPerDimension`).
+- `workgroupRows(n, size, max)` (`compute/cell-cull.ts`): the workgroups in rows past the limit.
+- The culler's three dispatches (both phases) and the sphere raster's chunk dispatch go through it.
+- The three culling kernels index `wid.x + wid.y * num_workgroups.x`; the instance copy's workgroup-segment read is
+  clamped for the idle workgroups past the last row's end.
+- `.v6/plans/gl/merged-render-objects.md` (GPU culling) says so; changelog `.v6/changelogs/cull-dispatch-rows.md`.
+
+### Notes for review
+
+- Public API: `ComputeContext` gains a readonly field (one implementation, WebGPU; test fakes cast).
+- A library fix made on a prism-me lane (the culler on prism-me is far past master's): master has the same 1D dispatch;
+  the port waits on Ludo.
+
+### Testing
+
+- `merged-culler.test.ts`: a fake compute context throwing past a limit of 4, as WebGPU does: red with the reported
+  error before the fix; every kernel's dispatch asserted within the limit.
+- `webgpu-gpu-culling.test.ts` (Dawn): the first case again at limits 1 and 2 (a fourth member: 3 workgroups in rows of
+  2, one idle): the GPU culls exactly the instances in view, the same image as the CPU culling; with the old kernels and
+  rows dispatched it lost instances (58 of 61).
+- `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `pnpm check:workspace` (after
+  `node scripts/workspace/assets.mjs`: a fresh worktree has no built skins), graphics quick lane (1743 passed), the
+  WebGPU culling and raster suites on Dawn.
+- In the app: the slab loaded and drew (Ludo, 2026-11-07: "works well").
+
+### Review
+
+Lane-reviewer (Opus): 0 must-fix, 0 should-fix, 3 nits, all fixed in 2d05e8bfc (above).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
