@@ -673,7 +673,7 @@
       "code": "model.unrealized",
       "severity": "info",
       "phase": "static",
-      "message": "p.lipids has no model: the default resolver for bilayer arrangements places it",
+      "message": "p.lipids has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
       "path": "/populations/14",
       "ids": ["p.lipids"]
     },

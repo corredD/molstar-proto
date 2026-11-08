@@ -707,7 +707,7 @@
       "code": "model.unrealized",
       "severity": "info",
       "phase": "static",
-      "message": "p.ribosomes has no model: the default resolver for random arrangements places it",
+      "message": "p.ribosomes has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
       "path": "/populations/0",
       "ids": ["p.ribosomes"]
     },
@@ -715,7 +715,7 @@
       "code": "model.unrealized",
       "severity": "info",
       "phase": "static",
-      "message": "p.proteasomes has no model: the default resolver for random arrangements places it",
+      "message": "p.proteasomes has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
       "path": "/populations/1",
       "ids": ["p.proteasomes"]
     },
@@ -723,7 +723,7 @@
       "code": "model.unrealized",
       "severity": "info",
       "phase": "static",
-      "message": "p.pores has no model: the default resolver for lattice arrangements places it",
+      "message": "p.pores has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
       "path": "/populations/2",
       "ids": ["p.pores"]
     },
@@ -731,7 +731,7 @@
       "code": "model.unrealized",
       "severity": "info",
       "phase": "static",
-      "message": "p.atpsynthase has no model: the default resolver for lattice arrangements places it",
+      "message": "p.atpsynthase has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
       "path": "/populations/3",
       "ids": ["p.atpsynthase"]
     },
@@ -739,7 +739,7 @@
       "code": "model.unrealized",
       "severity": "info",
       "phase": "static",
-      "message": "p.actin has no model: the default resolver for fiber arrangements places it",
+      "message": "p.actin has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
       "path": "/populations/4",
       "ids": ["p.actin"]
     },
@@ -747,7 +747,7 @@
       "code": "model.unrealized",
       "severity": "info",
       "phase": "static",
-      "message": "p.microtubule has no model: the default resolver for fiber arrangements places it",
+      "message": "p.microtubule has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
       "path": "/populations/5",
       "ids": ["p.microtubule"]
     },
@@ -755,7 +755,7 @@
       "code": "model.unrealized",
       "severity": "info",
       "phase": "static",
-      "message": "p.vesicle-lipids has no model: the default resolver for bilayer arrangements places it",
+      "message": "p.vesicle-lipids has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
       "path": "/populations/6",
       "ids": ["p.vesicle-lipids"]
     },
@@ -763,7 +763,7 @@
       "code": "model.unrealized",
       "severity": "info",
       "phase": "static",
-      "message": "p.arp23 has no model: the default resolver for random arrangements places it",
+      "message": "p.arp23 has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
       "path": "/populations/7",
       "ids": ["p.arp23"]
     },

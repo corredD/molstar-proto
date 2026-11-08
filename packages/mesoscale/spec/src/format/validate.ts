@@ -375,7 +375,7 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
           'model.unrealized',
           'info',
           'static',
-          `${pop.id} has no model: the default resolver for ${pop.arrangement?.kind ?? 'random'} arrangements places it`,
+          `${pop.id} has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)`,
           { path: `/populations/${i}`, ids: [pop.id] },
         ),
       );

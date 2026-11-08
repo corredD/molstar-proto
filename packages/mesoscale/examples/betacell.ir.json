@@ -368,7 +368,7 @@
       "code": "model.unrealized",
       "severity": "info",
       "phase": "static",
-      "message": "p.granules has no model: the default resolver for random arrangements places it",
+      "message": "p.granules has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
       "path": "/populations/0",
       "ids": ["p.granules"]
     },
@@ -376,7 +376,7 @@
       "code": "model.unrealized",
       "severity": "info",
       "phase": "static",
-      "message": "p.ribosomes has no model: the default resolver for random arrangements places it",
+      "message": "p.ribosomes has no model: a default resolver places it (by its arrangement; on a strand, the strand's resolver)",
       "path": "/populations/1",
       "ids": ["p.ribosomes"]
     }

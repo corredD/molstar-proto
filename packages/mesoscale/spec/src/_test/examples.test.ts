@@ -10,6 +10,7 @@ import { exosomeDoc, ExosomeResources } from '../examples/exosome.js';
 import { syntheticPicksStar, syntheticVesicleObj } from '../examples/fixtures/synthetic.js';
 import { galleryDoc } from '../examples/gallery.js';
 import { betaCellDoc, BetaCellResources } from '../examples/betacell.js';
+import { nucleoidDoc } from '../examples/nucleoid.js';
 import { yeastDoc } from '../examples/yeast.js';
 import { irToJson } from '../ir/ir.js';
 import { DefaultResolvers } from '../resolvers/index.js';
@@ -45,6 +46,7 @@ describe('paired examples', () => {
     ['gallery', galleryDoc()],
     ['yeast', yeastDoc()],
     ['betacell', betaCellDoc()],
+    ['nucleoid', nucleoidDoc()],
   ] as const) {
     it(`${name}: the document and its IR`, async () => {
       check(`${name}.mesoviewspec.json`, json(doc));
