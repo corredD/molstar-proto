@@ -4,6 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import type { Issue } from '../format/issues.js';
 import { type IR, type IRLook, placementSets } from '../ir/ir.js';
 import type { PlacementSet } from '../ir/placements.js';
 
@@ -23,6 +24,8 @@ export interface CommitReport {
   readonly kept: readonly string[];
   readonly looksWritten: number;
   readonly cameraSet: boolean;
+  /** What the adapter could not do as the IR asks (phase `render`): a representation hint it falls back from. */
+  readonly issues?: readonly Issue[];
   /** Wall time of the commit, and of its parts where the adapter can tell them apart. */
   readonly ms: { readonly total: number; readonly sets?: number; readonly looks?: number; readonly camera?: number };
 }

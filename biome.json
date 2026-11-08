@@ -957,6 +957,26 @@
     {
       "includes": ["packages/sequences/core/src/builder/**", "!packages/sequences/core/src/builder/svsx.ts"],
       "plugins": ["./packages/sequences/core/builder-imports.grit"]
+    },
+    {
+      "includes": ["packages/mesoscale/spec/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["molstar", "molstar/**", "@molstar/*", "@molstar/*/**"],
+                    "message": "MesoViewSpec's format, IR and runtime import nothing of Mol* (packages/mesoscale/_spec/design.md §12): adapters live in packages/mesoscale/molstar."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "javascript": {

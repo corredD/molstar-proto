@@ -339,6 +339,12 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
       selector(l.select, `/views/${i}/looks/${j}/select`);
       if (l.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(l.color))
         err('value.range', `color ${l.color} is #rrggbb`, `/views/${i}/looks/${j}/color`);
+      if (l.representation !== undefined && !['spheres', 'structure', 'surface'].includes(l.representation))
+        err(
+          'value.range',
+          `representation ${l.representation} is spheres, structure or surface`,
+          `/views/${i}/looks/${j}/representation`,
+        );
       if (l.transparency !== undefined && !(l.transparency >= 0 && l.transparency <= 1))
         err('value.range', 'transparency is in [0, 1]', `/views/${i}/looks/${j}/transparency`);
     });

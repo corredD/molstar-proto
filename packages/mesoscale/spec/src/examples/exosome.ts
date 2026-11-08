@@ -271,7 +271,7 @@ export function exosomeDoc(): MesoViewSpecDoc {
         looks: [
           { select: { compartments: ['medium'] }, visible: false },
           { select: { populations: ['p.lipids'] }, visible: false },
-          { select: { entities: ['e.catalase'] }, color: '#d0453a' },
+          { select: { entities: ['e.catalase'] }, color: '#d0453a', representation: 'structure' },
         ],
         selection: { populations: ['p.catalase.observed'] },
       },

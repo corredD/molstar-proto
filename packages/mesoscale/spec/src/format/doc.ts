@@ -341,7 +341,14 @@ export interface Look {
   readonly color?: string;
   readonly visible?: boolean;
   readonly transparency?: number;
+  /**
+   * How to draw it: a hint, never a requirement ("what, not how"). An adapter that cannot draw it falls back to spheres
+   * and says so (a `render` issue).
+   */
+  readonly representation?: RepresentationHint;
 }
+
+export type RepresentationHint = 'spheres' | 'structure' | 'surface';
 
 export interface Camera {
   /** In the view's frame (the world frame by default), the document's length unit. */

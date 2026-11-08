@@ -774,13 +774,22 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
       let color = defaultColor(t.population);
       let visible = true;
       let transparency: number | undefined;
+      let representation: IRLook['representation'];
       for (const l of view?.looks ?? []) {
         if (!matches(l.select, t.population, t.entity)) continue;
         if (l.color) color = parseInt(l.color.slice(1), 16);
         if (l.visible !== undefined) visible = l.visible;
         if (l.transparency !== undefined) transparency = l.transparency;
+        if (l.representation !== undefined) representation = l.representation;
       }
-      looks.push({ set: set.key, types: [t.index], color, visible, transparency });
+      looks.push({
+        set: set.key,
+        types: [t.index],
+        color,
+        visible,
+        transparency,
+        ...(representation ? { representation } : {}),
+      });
       const sel = view?.selection;
       if (sel) {
         if (matches(sel, t.population, t.entity)) selection.push({ set: set.key, type: t.index });

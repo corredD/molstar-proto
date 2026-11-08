@@ -17,14 +17,14 @@ from outside it.
 
 ## Priorities
 
-| #   | Finding                                                        | Layer                        | Status                             | Impact on mesoscale workflows                                           | Priority                  |
-| --- | -------------------------------------------------------------- | ---------------------------- | ---------------------------------- | ----------------------------------------------------------------------- | ------------------------- |
-| R1  | A per-type color or visibility edit costs O(copies)            | renderer (looks / overpaint) | confirmed                          | recoloring, hiding a population, look animation on 10⁶–10⁷ copies       | **P1**                    |
-| R3  | About 87 B a copy held by the representation beyond its inputs | renderer                     | observed; attribution a hypothesis | sets the ceiling on scene size (10⁷ copies ≈ 0.9 GB more)               | **P1** (measure first)    |
-| R4  | Sub-pixel copies alias into moiré                              | renderer (impostors, LOD)    | observed                           | whole-cell and membrane views, where most copies are under a pixel      | P2                        |
-| R2  | A radius and a key are required per copy                       | renderer / model API         | confirmed                          | 8 B a copy, an O(N) pass at load                                        | P2                        |
-| R5  | One list and representation per placement set                  | renderer / plugin            | hypothesis, untested               | tiled scenes (the yeast cell's 6,416 tiles) would be thousands of lists | P3                        |
-| R6  | In-memory data enter the state only through a side store       | plugin API                   | confirmed                          | sessions holding generated data cannot be saved or restored             | P2 (plugin, not renderer) |
+| #   | Finding                                                                                             | Layer                        | Status                      | Impact on mesoscale workflows                                           | Priority                  |
+| --- | --------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------------- | ----------------------------------------------------------------------- | ------------------------- |
+| R1  | A per-type color or visibility edit costs O(copies)                                                 | renderer (looks / overpaint) | confirmed                   | recoloring, hiding a population, look animation on 10⁶–10⁷ copies       | **P1**                    |
+| R3  | Memory per copy beyond the IR is not measured reliably (21–87 B a copy by the JS heap; GPU unknown) | renderer (measurement)       | observed; a measurement gap | sets the ceiling on scene size                                          | P2 (measure first)        |
+| R4  | Sub-pixel copies alias into moiré                                                                   | renderer (impostors, LOD)    | observed                    | whole-cell and membrane views, where most copies are under a pixel      | P2                        |
+| R2  | A radius and a key are required per copy                                                            | renderer / model API         | confirmed                   | 8 B a copy, an O(N) pass at load                                        | P2                        |
+| R5  | One list and representation per placement set                                                       | renderer / plugin            | hypothesis, untested        | tiled scenes (the yeast cell's 6,416 tiles) would be thousands of lists | P3                        |
+| R6  | In-memory data enter the state only through a side store                                            | plugin API                   | confirmed                   | sessions holding generated data cannot be saved or restored             | P2 (plugin, not renderer) |
 
 ## R1. A per-type look edit costs O(copies) — confirmed
 
@@ -40,14 +40,14 @@ These are view edits. The format guarantees they never touch placements, so the 
 
 - The adapter writes one layer per type: one `particles.look` call, 1 to 14 layers.
 - No list or representation object is replaced (checked by identity in the medium lane).
-- The time still grows with the number of copies:
+- The time still grows with the number of copies (the image column is headless `gl`'s draw, the same for any frame):
 
-  | Scene   | Copies    | Look commit (state) | To the next image / frame | Where       |
-  | ------- | --------- | ------------------- | ------------------------- | ----------- |
-  | pack    | 50,000    | 9.4 ms              | 292 ms (image)            | Node + `gl` |
-  | bilayer | 1,000,038 | 112 ms              | 1709 ms (image)           | Node + `gl` |
-  | pack    | 50,000    | —                   | 16 ms (frame)             | Chromium    |
-  | bilayer | 1,000,038 | —                   | **49 ms** (frame)         | Chromium    |
+  | Scene   | Copies    | Look commit (state) | To the next image / frame      | Where       |
+  | ------- | --------- | ------------------- | ------------------------------ | ----------- |
+  | pack    | 50,000    | 9.4 ms              | 292 ms (image)                 | Node + `gl` |
+  | bilayer | 1,000,038 | 112 ms              | 1709 ms (image)                | Node + `gl` |
+  | pack    | 50,000    | —                   | 16 ms (frame)                  | Chromium    |
+  | bilayer | 1,000,038 | —                   | **49–81 ms** (frame, two runs) | Chromium    |
 
 - In the same runs the runtime's own share of the edit is N-independent: `updateView` 0.1 ms and `planCommit` 0.1 ms at
   1M copies.
@@ -59,9 +59,19 @@ These are view edits. The format guarantees they never touch placements, so the 
 - Test: `packages/mesoscale/molstar/src/_test/perf.test.ts` (heavy lane).
 - Both use one sphere and one population of lipids, and change one look.
 
-**Hypothesis (untested).** A type's look is resolved into per-copy overpaint or transparency data, then uploaded: an
-O(N) pass plus an O(N) texture upload. The Node "image after color" (1.7 s, against 2.4 s for the first image) suggests
-much of the visual is rebuilt or re-uploaded, not just a lookup changed.
+**Where the time goes (confirmed by a CPU profile).** A `node:inspector` profile of the 1M color commit (107 ms; `look`
+107.2 ms of it) puts essentially all of it in Mol\* graphics, not in Prism or the state:
+
+| Where                                                                                                                               | Self time | What                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------------- | --------- | -------------------------------------------------------- |
+| `packages/graphics/src/repr/visual.ts:211` (`apply`)                                                                                | 29 ms     | the visual applying the layer's loci                     |
+| `packages/core/src/data/int/*` (`OrderedSet.forEach`, `Interval.ofSingleton`, `ofRange`)                                            | ~46 ms    | per-copy loci: one singleton interval per copy           |
+| `packages/graphics/src/repr/particles/representation/spacefill.ts:172`, `geo/geometry/overpaint-data.ts:22` (`applyOverpaintColor`) | ~14 ms    | the particle visual's loci and the per-element overpaint |
+| `packages/core/src/state`, Prism's `particles.look`, the adapter                                                                    | < 1.5 ms  |                                                          |
+
+So the per-type selector (`targets: [t]`) is expanded into one loci element per copy and painted copy by copy. The image
+that follows (1.5 s in Node) is headless `gl` drawing a frame (`gl/webgl/render-item.ts:543` `render`), the same as any
+frame; the color edit adds no GPU work worth measuring there.
 
 **Recommendation.** Look up a copy's look by its target (type) index on the GPU:
 
@@ -70,6 +80,11 @@ much of the visual is rebuilt or re-uploaded, not just a lookup changed.
 - per-copy overpaint stays for per-copy selections (a picked copy, a cut).
 
 A type's look change becomes an O(types) upload.
+
+**A cheaper first step.** Build a target selector's loci as intervals, not singletons. Copies of one target are often
+contiguous: every resolver in this prototype emits each type's copies in one run, and cellPACK and STAR lists are
+usually grouped too. That would make the loci and marker work O(runs); the overpaint write stays O(copies) but becomes a
+fill.
 
 **What it enables:**
 
@@ -102,33 +117,30 @@ shares the placement buffers; it adds a radius and a key a copy_ checks the 8 B.
 - zero-allocation hand-over of generated placements;
 - the same for tiles streamed from disk.
 
-## R3. Representation memory per copy — observed; attribution a hypothesis
+## R3. Memory per copy is not yet measured well — observed; a measurement gap
 
-**Use case:** M and L scenes (10⁶–2.5 × 10⁷ copies, design.md §8.1).
+**Use case:** M and L scenes (10⁶–2.5 × 10⁷ copies, design.md §8.1). Whether the 10⁷ range fits in a browser depends on
+how many bytes a copy costs beyond the 36 B of the IR.
 
-**Observed (Chromium, `performance.memory`, the probe's _bilayer 1,000,000_):**
+**Observed (Chromium, `performance.memory.usedJSHeapSize`, the probe's _bilayer 1,000,000_):**
 
-| Item                                                           | Size                           |
-| -------------------------------------------------------------- | ------------------------------ |
-| JS heap Δ for the scene                                        | 129.2 MB                       |
-| Placements                                                     | 34.3 MB                        |
-| Adapter additions                                              | 7.6 MB                         |
-| **Remainder, held by the plugin state and the representation** | **≈ 87 MB, about 87 B a copy** |
+| Run                                                        | JS heap Δ | Minus placements (34.3 MB) and adapter (7.6 MB) |
+| ---------------------------------------------------------- | --------- | ----------------------------------------------- |
+| without a GC before reading                                | 129.2 MB  | ≈ 87 MB, 87 B a copy                            |
+| with `gc()` before each reading (`--js-flags=--expose-gc`) | 62.8 MB   | ≈ 21 MB, 21 B a copy                            |
 
-GPU memory was not measured.
+The first figure was mostly uncollected garbage. The second is within the design's 64 B budget, but this method cannot
+attribute memory: `usedJSHeapSize` may not count ArrayBuffer backing stores, and GPU memory is not measured at all.
 
-**Hypothesis (untested).** Per-copy instance data are built on the CPU: a 4×4 Float32 transform per instance (64 B),
-plus ids or flags, plus the size and color theme arrays. That would account for most of the 87 B.
+**To do before any renderer change.** A heap snapshot of the probe's 1M scene broken down by owning array, plus the
+WebGL buffer and texture sizes the representation allocates.
 
-**To confirm.** A heap snapshot of the probe's 1M scene, broken down by owning array, taken before any change.
+**Hypothesis (untested), to check with that snapshot.** Per-copy instance data are built on the CPU (a 4×4 transform is
+64 B a copy) and uploaded. If so, building transforms on the GPU from position and quaternion (28 B, already in the
+list) would cut both CPU and GPU memory.
 
-**Recommendation, if confirmed.** Build instance transforms on the GPU from position and quaternion (28 B, already in
-the list) instead of materializing 4×4 matrices, and keep per-instance theme data per target where possible (R1, R2).
-
-**What it enables.** About 2.5× more copies in the same memory:
-
-- the 10⁷ range in a browser;
-- a realistic path to whole-cell scenes such as the yeast cell (21.6 M instances by its `MODEL.md`).
+**What it would enable.** A memory budget per copy that one can plan whole-cell scenes against: the yeast cell is 21.6 M
+instances by its `MODEL.md`.
 
 ## R4. Sub-pixel copies alias into moiré — observed
 

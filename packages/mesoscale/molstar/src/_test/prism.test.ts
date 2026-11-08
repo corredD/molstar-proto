@@ -104,4 +104,14 @@ describe('the Prism adapter (headless)', () => {
       else expect(obj).toBe(before.get(s.model));
     }
   });
+
+  it('a representation hint the adapter cannot draw falls back to spheres, said as a render issue', {
+    tags: ['medium'],
+  }, async () => {
+    const { adapter, result } = await session();
+    const lumen = { ...exosomeDoc(), session: { view: 'v.lumen' } };
+    const report = await adapter.commit(updateView(lumen, result.ir!));
+    expect(report.issues?.map((i) => [i.code, i.phase])).toEqual([['representation.fallback', 'render']]);
+    expect(report.issues?.[0].message).toMatch(/^2 types ask to be drawn as structure/);
+  });
 });

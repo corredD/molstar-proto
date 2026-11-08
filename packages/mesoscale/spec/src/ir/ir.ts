@@ -69,6 +69,8 @@ export interface IRLook {
   readonly color?: number;
   readonly visible?: boolean;
   readonly transparency?: number;
+  /** The view's hint (design.md §5); absent: spheres. */
+  readonly representation?: 'spheres' | 'structure' | 'surface';
 }
 
 export interface IRView {

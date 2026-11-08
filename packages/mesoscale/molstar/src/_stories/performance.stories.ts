@@ -26,7 +26,11 @@ export default meta;
 
 const frame = () =>
   new Promise<number>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(performance.now()))));
-const heap = () => (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize;
+// collected first when the browser exposes `gc` (Chromium with `--js-flags=--expose-gc`), so the delta is what is held
+const heap = () => {
+  (globalThis as { gc?: () => void }).gc?.();
+  return (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize;
+};
 const mb = (b?: number) => (b === undefined ? 'n/a' : `${(b / 2 ** 20).toFixed(1)} MB`);
 
 function probe() {

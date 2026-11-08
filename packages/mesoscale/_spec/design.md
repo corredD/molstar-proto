@@ -321,18 +321,26 @@ JSON, typed arrays hashed by content). The IR shows the input, so a reader can s
 
 **What the prototype restores:**
 
-- **Restored:**
+- **Restored, into the viewer** (the Prism adapter applies them):
   - the scene hierarchy (compartments, populations, models);
   - visibility, colors and transparency;
-  - the camera;
-  - the selection (by semantic id, or by copy id within one resolution);
-  - annotations (as data).
-- **Not restored:**
-  - **Representations.** The adapter draws spheres (`spacefill`) and nothing else. A view would need a `representation`
-    hint per selector: spheres, structure, surface. This is open decision 4. The hint must stay a hint in the document,
-    as SeqViewSpec's "what, not how" rule requires.
-  - **Clipping.**
-  - **Annotations drawn in the viewer.**
+  - the camera.
+- **Derived into the IR, not yet applied by the Prism adapter:**
+  - the selection (by semantic id, or by copy id within one resolution): `IRView.selection`;
+  - annotations: `IRView.annotations`.
+
+  A quick test checks that switching `session.view` derives them, the looks and the camera; drawing them is adapter
+  work.
+
+- **Representations, as hints.** A look can carry `representation: spheres | structure | surface`. It is a hint with a
+  fallback, in SeqViewSpec's "what, not how" sense:
+  - the IR carries it (`IRLook.representation`);
+  - the Prism adapter draws spheres and reports a `render`-phase issue (`representation.fallback`) for the others
+    (medium-lane test, the exosome's _Lumen only_ view).
+
+  Open decision 4 is which hints beyond spheres an adapter must honour.
+
+- **Not restored:** clipping, and annotations drawn in the viewer.
 - **Copy ids are only as stable as the resolution.** A copy id (`p.catalase#12`) is valid only for one resolution key: a
   model edit can renumber copies. Selections that must survive edits should use semantic selectors.
 
@@ -555,17 +563,17 @@ The stories show each case:
 
 **Memory per copy:**
 
-| Item                                      | Budget | Status           |
-| ----------------------------------------- | ------ | ---------------- |
-| Placements                                | 36 B   | met, exactly     |
-| Adapter additions                         | ≤ 8 B  | met              |
-| Renderer, everything else on the CPU side | ≤ 64 B | not met; see 8.2 |
+| Item                                      | Budget | Status                          |
+| ----------------------------------------- | ------ | ------------------------------- |
+| Placements                                | 36 B   | met, exactly                    |
+| Adapter additions                         | ≤ 8 B  | met                             |
+| Renderer, everything else on the CPU side | ≤ 64 B | not established; see 8.2 and R3 |
 
 **What that allows:**
 
 - S and M fit comfortably: 1M copies ≈ 108 MB.
-- **L does not fit as one scene:** 2.5 × 10⁷ × 108 B ≈ 2.7 GB. L needs tiles or streaming, which is how the yeast viewer
-  itself stores its model (200 nm tiles). This is open decision 5.
+- **L does not fit as one scene** at the budget's 108 B a copy: 2.5 × 10⁷ × 108 B ≈ 2.7 GB. L needs tiles or streaming,
+  which is how the yeast viewer itself stores its model (200 nm tiles). This is open decision 5.
 
 **Complexity per update type:**
 
@@ -604,12 +612,13 @@ The stories show each case:
 
 **Browser (Storybook _Performance › Probe_):**
 
-| Scene   | Copies    | Resolve ms | Commit ms | First frame ms | Color edit ms (to the frame) | Lists rebuilt by the color | Placements | Adapter adds | JS heap Δ |
-| ------- | --------- | ---------- | --------- | -------------- | ---------------------------- | -------------------------- | ---------- | ------------ | --------- |
-| pack    | 10,000    | 31         | 97        | 15             | 22                           | none                       | 0.3 MB     | 0.1 MB       | 2.0 MB    |
-| pack    | 50,000    | 137        | 12        | 8              | 16                           | none                       | 1.7 MB     | 0.4 MB       | 7.8 MB    |
-| bilayer | 100,037   | 14         | 19        | 5              | 13                           | none                       | 3.4 MB     | 0.8 MB       | 26.0 MB   |
-| bilayer | 1,000,038 | 113        | 104       | 29             | **49**                       | none                       | 34.3 MB    | 7.6 MB       | 129.2 MB  |
+| Scene                                                | Copies    | Resolve ms | Commit ms | First frame ms | Color edit ms (to the frame) | Lists rebuilt by the color | Placements | Adapter adds | JS heap Δ |
+| ---------------------------------------------------- | --------- | ---------- | --------- | -------------- | ---------------------------- | -------------------------- | ---------- | ------------ | --------- |
+| pack                                                 | 10,000    | 31         | 97        | 15             | 22                           | none                       | 0.3 MB     | 0.1 MB       | 2.0 MB    |
+| pack                                                 | 50,000    | 137        | 12        | 8              | 16                           | none                       | 1.7 MB     | 0.4 MB       | 7.8 MB    |
+| bilayer                                              | 100,037   | 14         | 19        | 5              | 13                           | none                       | 3.4 MB     | 0.8 MB       | 26.0 MB   |
+| bilayer                                              | 1,000,038 | 113        | 104       | 29             | **49**                       | none                       | 34.3 MB    | 7.6 MB       | 129.2 MB  |
+| bilayer, again, with `gc()` before each heap reading | 1,000,038 | 113        | 111       | 35             | **81**                       | none                       | 34.3 MB    | 7.6 MB       | 62.8 MB   |
 
 A second run of both Node lanes on the same machine gave the same picture: a 1M color commit of 109 ms, 8.6 ms at 50k,
 and packing at 3.2–3.9 µs a copy. Timings vary by about 15% from run to run; the byte counts do not.
@@ -624,10 +633,13 @@ Notes on the browser table:
 **What the numbers say:**
 
 1. **The runtime side holds.** No copies, linear resolution, and view edits independent of N.
-2. **A color edit is O(N) inside Mol\*/Prism.** 9.4 ms at 50k, 112 ms at 1M (Node); 49 ms to the frame at 1M in the
-   browser. That misses the 16 ms target at 1M. Renderer finding R1.
-3. **Mol\* holds about 87 B a copy beyond the IR and the adapter** at 1M copies (129 MB heap Δ − 34 MB − 8 MB), over the
-   64 B budget. Attribution is a hypothesis (R3).
+2. **A color edit is O(N) inside Mol\*'s graphics** (profiled: per-copy loci painted into overpaint; Prism and the state
+   take under 1.5 ms). 9.4 ms at 50k, 112 ms at 1M (Node); 49–81 ms to the frame at 1M (two runs) in the browser. That
+   misses the 16 ms target at 1M. Renderer finding R1.
+3. **Memory per copy beyond the IR is not established.** Without a GC before reading, the 1M scene's heap Δ was 129 MB
+   (87 B a copy beyond the placements and the adapter); with one, 63 MB (21 B a copy). The JS heap may not count
+   ArrayBuffer backing stores and GPU memory is unmeasured, so this needs a heap snapshot and the WebGL allocations
+   (R3).
 
 The GC-dependent heap numbers are approximate. The placement and adapter numbers are exact.
 
@@ -660,7 +672,7 @@ exposed the adapter's `excludeFibers` bug (§11).
 
 | Lane                                | Command                                                                                                                                                     | What it verifies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **quick** (default; 40 tests, ~6 s) | `pnpm test:unit packages/mesoscale`                                                                                                                         | **Validation:** every rule, on broken documents. **Units and imports:** counts from concentrations and densities; the cellPACKgpu import (both count rules, the surface unit). **Provenance:** traces. **Determinism:** the same placements from the same document. **Edits:** a color edit is 0 resolver runs with the same placement objects; a density edit is 1 run, the right one. **Scene:** an unmet constraint with its reason; procedural copies avoid the picks; frames carry the picks from voxels to world Å; membrane orientation; 36 B a copy. **Runtime:** dispatch by arrangement; nesting, lattices, fibers, bilayers; the yeast document's issues; a toy resolver plugged in. **Mol\* side:** the paired example files are current; the MVS export validates; STAR rotations match Mol\*'s; the particle list shares the IR's buffers |
+| **quick** (default; 41 tests, ~6 s) | `pnpm test:unit packages/mesoscale`                                                                                                                         | **Validation:** every rule, on broken documents. **Units and imports:** counts from concentrations and densities; the cellPACKgpu import (both count rules, the surface unit). **Provenance:** traces. **Determinism:** the same placements from the same document. **Edits:** a color edit is 0 resolver runs with the same placement objects; a density edit is 1 run, the right one. **Scene:** an unmet constraint with its reason; procedural copies avoid the picks; frames carry the picks from voxels to world Å; membrane orientation; 36 B a copy. **Runtime:** dispatch by arrangement; nesting, lattices, fibers, bilayers; the yeast document's issues; a toy resolver plugged in. **Mol\* side:** the paired example files are current; the MVS export validates; STAR rotations match Mol\*'s; the particle list shares the IR's buffers |
 | **integration** (medium)            | `pnpm test:medium packages/mesoscale`; with GL: `pnpm native:install` once, then `NODE_PATH=.cache/native/node_modules pnpm test:medium packages/mesoscale` | the real Prism viewer, headless, with prism-me's spec: lists hold the IR's buffers; a color edit replaces no list or representation object; a density edit replaces only the rerun model's list. With `gl`: the scene draws, and a color edit changes pixels without a new list. Without `gl`, the GL test is skipped, not failed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **performance** (heavy, opt-in)     | `pnpm test:heavy packages/mesoscale` (`MESO_PERF_OUT=<file>` writes the numbers as JSON)                                                                    | packing scales linearly (16× copies, under 3× the time per copy); 1M lipids are allocated once, exactly; on 1M copies, view edits, cached compiles and commit plans are N-independent; adapter commit, first image and color edit at 50k and 1M; MVS bytes a copy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
@@ -699,6 +711,8 @@ exposed the adapter's `excludeFibers` bug (§11).
 | Prism's particles feature is lazy                                           | adapter              | an in-memory list needs `extensions.load('particles')` first                                                  |
 | In-memory data enter `mol-state` only through a side store keyed by a param | plugin API           | renderer-recommendations R6                                                                                   |
 | `cached` is part of the IR                                                  | IR                   | it makes two IRs of the same document differ by history; it should move to the stats                          |
+| `View.frame` is declared but not applied                                    | runtime              | a view's camera is read in the world frame whatever its `frame`; `frameMatrices` should apply                 |
+| Selection and annotations are derived, not drawn                            | adapter              | `IRView.selection` and `.annotations` reach the adapter, which ignores them                                   |
 
 **Open decisions for David:**
 
@@ -708,8 +722,8 @@ exposed the adapter's `excludeFibers` bug (§11).
 2. **Catalogs.** Runtime expansion into populations, or a resolver input?
 3. **Derived results as resources.** Store a resolution as a `placements` resource with `derivedFrom: {model, key}`, so
    an expensive procedural result (cellPACKgpu on a GPU) can be shipped and replayed?
-4. **Representation hints in views.** Spheres, structure or surface per selector, as hints with fallbacks (SeqViewSpec's
-   fallback chains)?
+4. **Representation hints.** The hint exists (§5) and falls back to spheres. Which hints must an adapter honour, and
+   should a document be able to state a fallback chain (SeqViewSpec's)?
 5. **L scenes.** Tiles as a first-class IR concept (a set per tile, keyed), or a renderer-side streaming source?
 6. **Patches and history.** Patches over one tree for snapshots and undo (SeqViewSpec: `applyPatch`, `diff`, inverses),
    or whole documents with `classifyEdit`, as the prototype does?
@@ -739,8 +753,8 @@ exposed the adapter's `excludeFibers` bug (§11).
     `@molstar/mvs-meso`, `@molstar/mesoscale-spec`.
 - **Independence.** The format and runtime have no Mol\* imports. A Python or C++ reader (cellPACK, mesobuild) might
   want them in a repository of their own, as MolViewSpec keeps its Python builder in `molstar/mol-view-spec`.
-- **Enforcement.** "No Mol\* imports" is a convention here. It should become a Biome `noRestrictedImports` rule for
-  `packages/mesoscale/spec`, as the AI package has one.
+- **Enforcement.** "No Mol\* imports" is enforced: a Biome `noRestrictedImports` override for
+  `packages/mesoscale/spec/src/**` (`biome.json`), as the AI package has one.
 
 **Recommendation:**
 

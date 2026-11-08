@@ -247,3 +247,30 @@ describe('runtime', () => {
     expect(r.ir!.view.looks.some((l) => l.set === s.key)).toBe(true);
   });
 });
+
+describe('views', () => {
+  it('switching the session view derives its looks, selection and hints over the same IR', async () => {
+    const r = await compileExosome(exosomeDoc());
+    const lumen = { ...exosomeDoc(), session: { view: 'v.lumen' } };
+    expect(classifyEdit(exosomeDoc(), lumen)).toBe('view');
+    const ir = updateView(lumen, r.ir!);
+    expect(ir.root).toBe(r.ir!.root);
+    const sets = placementSets(ir);
+    const typeOf = (l: { set: string; types: readonly number[] }) =>
+      sets.find((s) => s.key === l.set)!.typeTable[l.types[0]];
+    const hidden = ir.view.looks
+      .filter((l) => l.visible === false)
+      .map((l) => typeOf(l).population)
+      .sort();
+    expect(hidden).toEqual(['p.ALB', 'p.TF', 'p.lipids']);
+    expect(ir.view.selection?.map((s) => sets.find((x) => x.key === s.set)!.typeTable[s.type].population)).toEqual([
+      'p.catalase.observed',
+    ]);
+    const hinted = ir.view.looks
+      .filter((l) => l.representation === 'structure')
+      .map((l) => typeOf(l).population)
+      .sort();
+    expect(hinted).toEqual(['p.catalase', 'p.catalase.observed']);
+    expect(ir.view.camera?.position).toEqual([0, 0, 1600]);
+  });
+});

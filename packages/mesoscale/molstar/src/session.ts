@@ -63,13 +63,14 @@ export class MesoSession {
     else if (kind === 'view' && this.ir) {
       this.ir = updateView(next, this.ir);
       const commit = await this.adapter?.commit(this.ir);
+      this.issues = [...this.issues.filter((i) => i.phase !== 'render'), ...(commit?.issues ?? [])];
       record = { label, kind, resolverRuns: 0, cacheHits: 0, commit, totalMs: performance.now() - t0 };
     } else {
       const r = await compile(next, { ...this.options, cache: this.cache });
-      this.issues = r.issues;
       this.counts = r.counts;
       if (r.ir) this.ir = r.ir;
       const commit = r.ir ? await this.adapter?.commit(r.ir) : undefined;
+      this.issues = [...r.issues, ...(commit?.issues ?? [])];
       record = {
         label,
         kind,

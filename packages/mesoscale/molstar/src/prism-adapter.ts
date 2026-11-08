@@ -7,6 +7,7 @@
 import { Vec3 } from '@molstar/core/math/linear-algebra';
 import { Color } from '@molstar/core/util/color';
 import type { IR } from '@molstar/meso-spec/ir/ir';
+import { type Issue, issue } from '@molstar/meso-spec/format/issues';
 import { type CommitReport, planCommit, type RendererAdapter } from '@molstar/meso-spec/runtime/adapter';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 // the `particles` API area's types (the feature is lazy: `extensions.load('particles')` before its first use)
@@ -123,6 +124,20 @@ export class PrismMesoAdapter implements RendererAdapter {
       cameraSet = true;
     }
     const t3 = now();
+    // representation hints: spheres drawn; structure and surface fall back to spheres here, said once per hint
+    const issues: Issue[] = [];
+    for (const hint of ['structure', 'surface'] as const) {
+      const n = ir.view.looks.filter((l) => l.representation === hint).length;
+      if (n)
+        issues.push(
+          issue(
+            'representation.fallback',
+            'info',
+            'render',
+            `${n} type${n === 1 ? '' : 's'} ask to be drawn as ${hint}; the Prism adapter draws spheres`,
+          ),
+        );
+    }
     this.prev = ir;
     return {
       added: plan.add.map((s) => s.key),
@@ -130,6 +145,7 @@ export class PrismMesoAdapter implements RendererAdapter {
       kept: plan.keep,
       looksWritten,
       cameraSet,
+      issues,
       ms: { total: t3 - t0, sets: t1 - t0, looks: t2 - t1, camera: t3 - t2 },
     };
   }
