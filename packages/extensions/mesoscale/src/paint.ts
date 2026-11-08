@@ -22,6 +22,7 @@ import {
   type ParticleTarget,
 } from '@molstar/model/model/particles/particle-list';
 import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/state/objects';
+import { isMembranePath } from './pick-surface.js';
 
 // Paint v1 (apps/prism-me/_spec/features.md, "Paint"; progress/2026-11-08-paint.md, Design 1): copies of an existing
 // target painted onto a surface. A decorator appends each stroke's particles to the list it takes, so a session keeps
@@ -246,7 +247,7 @@ export interface PaintBrush {
   readonly target: number;
   readonly entity: number;
   readonly compartment: number;
-  /** Whether that compartment is a surface (cellPACK's `….surface…`): a membrane protein, +z along the normal */
+  /** Whether that compartment is a membrane or its surface (`isMembranePath`): +z along the normal */
   readonly surface: boolean;
 }
 
@@ -269,7 +270,7 @@ export function brushOf(list: ParticleList, id: number): PaintBrush | undefined 
     target: list.targets[i],
     entity: list.entityInfo?.size ? Particle.entityOf(list, i) : -1,
     compartment,
-    surface: name.split('.').includes('surface'),
+    surface: isMembranePath(name),
   };
 }
 
