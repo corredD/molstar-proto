@@ -82,8 +82,14 @@ async function cellpackTypesShown() {
   await plugin.init();
   const data = await plugin.builders.data.rawData({ data: cellpackFibers, label: 'fibers.cif' });
   const parsed = await MmcifParticlesProvider.parse(plugin, data);
-  const list = plugin.state.data.select(parsed.list.ref)[0].obj!.data as { fibers?: { count: number } };
+  const list = plugin.state.data.select(parsed.list.ref)[0].obj!.data as {
+    fibers?: { count: number; indices: Int32Array };
+    targets: Int32Array;
+    targetMapping?: ReadonlyMap<number, unknown>;
+  };
   expect(list.fibers?.count).toBe(2);
+  // the case this guards: every fiber point has a target (its chain's atom)
+  for (const i of list.fibers!.indices) expect(list.targetMapping?.has(list.targets[i])).toBe(true);
   await MmcifParticlesProvider.visuals!(plugin, parsed);
   const types = Array.from(plugin.state.data.cells.values())
     .filter((c) => c.transform.transformer === ParticlesRepresentation3D)

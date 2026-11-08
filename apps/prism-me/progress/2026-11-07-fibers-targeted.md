@@ -25,3 +25,14 @@ linker DNA, pre-rRNA and FG strands as `<compartment>.fibers.<name>` entities, e
 
 `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`; quick lane of plugin/core,
 mesoscale, stage-tools (648 passed), apps/prism-me, cryoet, prism/viewer (1748 passed).
+
+## Review (2026-11-08, lane-reviewer, Opus)
+
+Must-fix 0, should-fix 2, nits 3 (one reported as fine: headers):
+
+1. Should-fix, a library fix on a prism-me lane: recorded in TODO.md "Library fixes ready for upstream" (master has the
+   same guard; port when Ludo says) — the PR body's Notes will say so.
+2. Should-fix, open items only in this file: "fibre points drawn twice" added to TODO.md Backlog (to decide).
+3. Nit, features.md had no line for fibres as tubes: added (Done).
+4. Nit, the test did not pin that the fibre points are targeted: it now asserts every fibre point's target is mapped.
+   Skeptic pass not run (the two should-fixes are bookkeeping, not behaviour).
