@@ -220,7 +220,10 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   `particles.look`, the object drawn again if hidden.
 - **Wrap with lipids** (Ludo, 2026-11-08; lane `lipid-tiles`): on a mesh, or on a compartment's group of a model grouped
   by compartment (a sphere fitted to its particles), a lipid bilayer of matched tiles made on the GPU around it
-  (`mesoscale.wrapMembrane`, one step; WebGPU only, the status line says so on WebGL2). It becomes a row of its own.
+  (`mesoscale.wrapMembrane`, one step; WebGPU only, the status line says so on WebGL2). It becomes a row of its own and
+  hides its mesh in the same step (cellPACKgpu shows no mesh under a membrane; its eye shows it again). The patch is
+  CHARMM-GUI's (14 species), a static file beside the page fetched on the first wrap; the tiles' edge suits the mesh (a
+  thirtieth of its size, 40–200 Å); a mesh under 160 Å across is refused with "scale it first".
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit

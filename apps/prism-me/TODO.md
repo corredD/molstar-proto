@@ -96,9 +96,15 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     variants a leaflet), 42 s with two vertex colours (128). The brief's worker is not built.
   - Corner discs are off: the transform makes one vertex colour (`vertexColors: 1`), the brief had two. To decide (two
     colours give eight times the variants and the bake).
-  - The patch: the right-click wraps with the synthetic one; a real patch only by command (`patchPdb`). Open a bilayer
-    PDB from + Open, and keep a named patch in a session (the registry is the module's: a session with one does not
+  - The patch: the right-click wraps with CHARMM-GUI's step4 patch (`src/lipid-patch-charmm-gui.dat`, 5 MB in git: Ludo
+    to say whether it moves out of the repo); another only by command (`patchPdb`, `patchUrl`). Open a bilayer PDB
+    from + Open, and keep a named patch in a session (the registry is the module's: a session with one does not
     restore).
+  - From Ludo's cow (2026-11-08): parts thinner than the 40 Å minimum edge (the legs below the knee) are lost in the
+    remesh; the bands are one strip an edge type, so the tile scale still repeats along edges (Durrant's random
+    per-triangle offset into the patch is the alternative, Ludo's call); heads and tails share their species' colour
+    (per-atom colour needs per-atom groups); a 3 Å seam slack trades the flat-seam guarantee for no vertex gaps; the
+    membrane does not follow a mesh scaled after the wrap.
   - Bytes a lipid: the spheres' markers are per group and instance (1 B a lipid, CPU and GPU), and the CPU keeps a
     zeroed 64 B transform a tile (twice, in the member and the merged arrays). Markers per instance would pick a tile,
     not a lipid.

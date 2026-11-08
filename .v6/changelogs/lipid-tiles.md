@@ -9,3 +9,8 @@
   transform straight into the renderer's GPU-culled instances: no transform crosses back to the CPU.
 - Graphics: a merged render object's member may carry `gpuInstances`, a writer that fills its instances' transforms on
   the GPU (the GPU culler calls it after its own writes).
+- Ludo's first try (a cow mesh ×100): the tiles' edge now suits the surface (it was a fixed 200 Å: a 1,000 Å cow became
+  20 chords inside its body), the right-click wraps with CHARMM-GUI's 14-species patch (a static file fetched on the
+  first wrap, not the synthetic lattice), up to 8 interior variants a tile, atoms at 2 Å, lipids 3 Å across a seam's
+  ends (no gaps at small tiles' vertices), the mesh hidden under its membrane, and a mesh too small is refused with
+  "scale it first".
