@@ -10,12 +10,11 @@ is not built is [../TODO.md](../TODO.md).
   report `NIGHT-2026-11-08.md`). Ludo looked at the exosome-in-plasma model: ok. Decided 2026-11-08: a recipe entry's
   count is a count of objects (its biological assembly, or what its file holds: a nuclear pore is one), never rescaled
   by mass.
-  - `cull-dispatch-rows`: **PR #60** (GPU culling past 65,535 workgroups). `fibers-targeted`: **PR #61** (cellPACK
-    fibres as tubes). Master ports built (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted` bb2dbced6, from
-    `origin/master`, local, not pushed); Ludo, 2026-11-08: the fixes go to prism-me (#60, #61), not upstream.
+  - **#60** (GPU culling past 65,535 workgroups) and **#61** (cellPACK fibres as tubes) merged by Ludo 2026-11-08; lanes
+    closed, worktrees removed (and `meso-showcase`'s). Master ports kept as local branches only
+    (`fix/cull-dispatch-rows` a3d8c396d, `fix/fibers-targeted` bb2dbced6); Ludo: the fixes go to prism-me, not upstream.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1).
-  - `meso-showcase`: prism-me with #60 and #61, for looking only; no PR.
 
 - **Fast particle drag** (Ludo, 2026-11-05, on the workstation: MG lags on a handle's drag, the release blocks): **PR
   #59 merged 2026-11-06** ([progress](2026-11-05-fast-particle-drag.md)). The handle previews by writing the moved
