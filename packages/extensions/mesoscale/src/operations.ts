@@ -29,6 +29,8 @@ import { isFailure, labelOf, pickNamed, pickOne } from '@molstar/prism-viewer/ap
 import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { cssColor, matchColors, parseColorFile } from './color-file.js';
+import { pluginPaintHost } from './paint-host.js';
+import { PaintMode } from './paint-mode.js';
 import {
   brushOf,
   decoratorUnder,
@@ -155,6 +157,16 @@ const SelectionGroupByParam = () =>
 
 export class MesoscaleApi extends ApiArea {
   readonly id = 'mesoscale';
+  private _paintMode?: PaintMode;
+
+  /**
+   * Paint mode (paint-mode.ts; apps/prism-me/_spec/ui.md §5, Paint with …): a mode of the canvas, not an operation; its
+   * strokes are `mesoscale.paint`, one step each
+   */
+  get paintMode(): PaintMode {
+    this._paintMode ??= new PaintMode(pluginPaintHost(this.ctx.plugin, (params) => this.paint(params as never)));
+    return this._paintMode;
+  }
 
   /**
    * What the Entities view shows of a list (by state ref, the only one when empty), its groups by `groupBy` (the view's
