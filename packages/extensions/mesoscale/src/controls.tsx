@@ -11,6 +11,7 @@ import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
 import type { GraphicsInfo, GraphicsMode, MesoscaleApi } from './operations.js';
+import type { PaintSettings } from './paint-mode.js';
 
 // The mesoscale controls, shown by the extension's Entities tab and by a host's panels (prism-me's properties): the
 // graphics mode (every object's, or one object's) and the motion, as the representations have them, and the color
@@ -195,5 +196,100 @@ export function ImportColors(props: { area: MesoscaleApi; particles?: string }) 
         Import colors…
       </Button>
     </>
+  );
+}
+
+const OrientChoices = [
+  { id: 'auto', label: 'Auto' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'axis', label: 'Axis' },
+  { id: 'view', label: 'View' },
+  { id: 'random', label: 'Random' },
+];
+
+const OrientTitles: Record<string, string> = {
+  auto: 'Upright on a membrane (its +z along the surface), anything else at random',
+  normal: "Each copy's +z along the surface's normal",
+  axis: "Each copy's principal axis along the surface's normal",
+  view: "Each copy's +z toward the viewer",
+  random: 'Each copy turned at random',
+};
+
+/**
+ * An entity's brush (apps/prism-me/_spec/ui.md §4, Paint): Paint with it (the canvas's paint mode: a stroke a step,
+ * `mesoscale.paint`) or Stop, and how it paints: the spacing (0: the copies touch), how each copy is turned, the side
+ * of the surface, its spin (random, or an angle). The settings are the mode's, not the state's (no step).
+ */
+export function PaintBrush(props: { area: MesoscaleApi; particles: string; entity: number; name: string }) {
+  const mode = props.area.paintMode;
+  const on = mapState(mode.brush.asReadonly, (b) => b?.particles === props.particles && b.entity === props.entity);
+  const settings = mode.settings.asReadonly;
+  return (
+    <div class={classes.tight}>
+      <div class={classes.line}>
+        <div class={classes.label}>
+          <Button
+            size="xs"
+            variant="ghost"
+            icon={<Icon name="paintbrush" />}
+            pressed={on}
+            title="Drag on a surface to paint copies; Esc stops"
+            onClick={() =>
+              on.value
+                ? mode.stop()
+                : void mode.start({ particles: props.particles, entity: props.entity, name: props.name })
+            }
+          >
+            {mapState(on, (o) => (o ? 'Stop' : 'Paint'))}
+          </Button>
+        </div>
+        <Slider
+          aria-label="Spacing between copies, 0: touching"
+          value={mapState(settings, (s) => s.spacing)}
+          min={0}
+          max={500}
+          step={1}
+          unit="Å"
+          onCommit={(v) => mode.set({ spacing: v })}
+        />
+      </div>
+      <Choices
+        label="Turn"
+        choices={OrientChoices.map((c) => ({ ...c, title: OrientTitles[c.id] }))}
+        active={mapState(settings, (s) => s.orient)}
+        onPick={(id) => mode.set({ orient: id as PaintSettings['orient'] })}
+      />
+      <Choices
+        label="Side"
+        choices={[
+          { id: 'out', label: 'Out', title: 'Along the normal (a membrane: outside)' },
+          { id: 'in', label: 'In', title: 'Against the normal (a membrane: inside)' },
+        ]}
+        active={mapState(settings, (s) => s.side)}
+        onPick={(id) => mode.set({ side: id as PaintSettings['side'] })}
+      />
+      <div class={classes.line}>
+        <div class={classes.label}>
+          <Button
+            size="xs"
+            variant="ghost"
+            pressed={mapState(settings, (s) => s.spin === undefined)}
+            title="Each copy spun at random about its axis, or all by the angle"
+            onClick={() => mode.set({ spin: settings.value.spin === undefined ? 0 : undefined })}
+          >
+            Random spin
+          </Button>
+        </div>
+        <Slider
+          aria-label="Spin about the copy's axis"
+          value={mapState(settings, (s) => s.spin)}
+          min={0}
+          max={360}
+          step={1}
+          unit="°"
+          onCommit={(v) => mode.set({ spin: v })}
+        />
+      </div>
+    </div>
   );
 }
