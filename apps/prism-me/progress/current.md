@@ -6,6 +6,17 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **Mesoscale building** (Ludo, 2026-11-07 night → 2026-11-08; engine `~/prism-me-lanes/mesobuild`, local git, its
+  report `NIGHT-2026-11-08.md`). Ludo looked at the exosome-in-plasma model: ok. Decided 2026-11-08: a recipe entry's
+  count is a count of objects (its biological assembly, or what its file holds: a nuclear pore is one), never rescaled
+  by mass.
+  - `cull-dispatch-rows`: **PR #60** (GPU culling past 65,535 workgroups). `fibers-targeted`: **PR #61** (cellPACK
+    fibres as tubes). Master ports: lanes `fix/cull-dispatch-rows`, `fix/fibers-targeted` from `origin/master` (Ludo:
+    master gets both), local; upstream on Ludo's word.
+  - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
+    mesoscale extension, random orientation, no collisions in v1).
+  - `meso-showcase`: prism-me with #60 and #61, for looking only; no PR.
+
 - **Fast particle drag** (Ludo, 2026-11-05, on the workstation: MG lags on a handle's drag, the release blocks): **PR
   #59 merged 2026-11-06** ([progress](2026-11-05-fast-particle-drag.md)). The handle previews by writing the moved
   instances; the merged object and the WebGPU culler write only what moved; a release keeps the unmoved targets (MG ~1.5
