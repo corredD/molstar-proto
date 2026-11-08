@@ -57,6 +57,9 @@ export const StoryPackages: StoryPackage[] = [
     group: 'prism-me',
     plugins: (root) => [cssModulesPlugin([cssPackage(root, 'me')])],
   },
+  // MesoViewSpec, the mesoscale scene format prototype (packages/mesoscale/_spec/design.md): its principles, paired
+  // documents and IR, the thin slice through the real viewer, the resolver mocks and the performance probes.
+  { dir: 'packages/mesoscale/molstar', group: 'MesoViewSpec' },
   // The MolViewSpec stories example's stories in the Prism viewer (Prism › Viewer › MVS stories).
   { dir: 'examples/mvs-stories', group: 'Prism' },
   {

@@ -110,9 +110,11 @@ export class PlacementBuilder {
     fibers?: PlacementSet['fibers'],
   ): PlacementSet {
     const n = this.count;
-    // one trim; when the capacity was exact the buffers are handed on as they are
+    // the buffers handed on as they are when the slack is small (a view, no copy; at most 1/8 unused), trimmed by one
+    // copy when it is not (a resolver that over-asked by much)
+    const small = this.types.length - n <= this.types.length / 8;
     const trim = <T extends Float32Array | Int32Array>(a: T, k: number): T =>
-      (a.length === n * k ? a : a.slice(0, n * k)) as T;
+      (a.length === n * k ? a : small ? a.subarray(0, n * k) : a.slice(0, n * k)) as T;
     return {
       ...meta,
       count: n,

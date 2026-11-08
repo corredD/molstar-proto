@@ -1,0 +1,46 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Docs/Principles" />
+
+# MesoViewSpec: principles
+
+A prototype of a declarative format for mesoscale scenes. The design is in
+`packages/mesoscale/_spec/design.md`; this page is its short form, the stories test it.
+
+**In short.** A document says **what** a scene is (entities, compartments, populations, how they relate), **why we
+believe it** (evidence, the data it came from and the processing that made it) and **how it is meant to be seen**
+(views). It never says how to build it or how to draw it. A **runtime** turns it into an **IR** concrete enough to
+draw, by dispatching each model to a **resolver**; a **renderer adapter** puts the IR into a viewer.
+
+## Four layers, four responsibilities
+
+| Layer | Owns | Never holds |
+| --- | --- | --- |
+| **MesoViewSpec** (the document) | biology (entities, compartments, populations, relations), evidence and provenance, frames and alignments, the resources it refers to in their own formats, persistent view state | placements, packing parameters, renderer settings, UI state |
+| **Resolvers** | turning a model's populations into placements: a recipe kind (cellPACKgpu), a packer, a lattice, a fiber grower, a reader of precomputed placements | anything a document edit can't see: a resolver's result depends only on its projection of the document |
+| **IR** | the scene made concrete: Å, world-frame matrices, counts, shapes, resolve nodes with their key, placement sets (struct of arrays) | biology it cannot evaluate, view looks (they are the view's) |
+| **Renderer adapters** | putting an IR into a viewer by keys: new sets in, gone sets out, looks written | the document; they never resolve |
+
+## Rules the stories check
+
+1. **A visual edit never resolves.** A color, a visibility, a camera or the active view is a *view* edit
+   (`classifyEdit`): the IR tree is reused as is; only looks are written. *Thin slice › Color edit* shows
+   `resolver runs 0` and `=3` sets kept.
+2. **A model edit reruns what it touches, and only that.** A model's result is keyed by the hash of its resolver's
+   projection of the document. *Thin slice › Density edit* reruns the recipe model; the picks and the bilayer are
+   cache hits and their lists stay in the viewer.
+3. **Unmet constraints are data.** A resolver says how many copies it placed and why it stopped; the runtime turns it
+   into an issue with *requested*, *achieved* and a *reason*. *Thin slice › Unmet constraint*.
+4. **Everything traces back.** Any population, compartment, model or resource traces to the evidence and the
+   processing behind it (*Provenance* panels).
+5. **One leaf for every resolver.** Procedural packing, lattices, fibers, bilayers and precomputed picks all end as
+   placement sets; adapters have one input. *Resolver mocks* exercise each.
+6. **No copies, no quadratic work.** Placement buffers are in the renderer's own layout and handed over as they are;
+   packing looks up overlaps in a hash grid. *Performance › Probe* measures it; the heavy test lane bounds it.
+
+## Where to look
+
+- *Docs › Paired examples*: the same scene as MesoViewSpec and as IR (exosome, gallery, yeast).
+- *Thin slice*: the end-to-end path into the real Prism viewer.
+- *Resolver mocks*: membrane lattices, compartment packing, fibers, bilayers.
+- *Performance › Probe*: resolution, commit, first frame and a color edit, measured apart.

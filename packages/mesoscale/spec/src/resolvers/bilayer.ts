@@ -59,19 +59,28 @@ export const MesoBilayerResolver: Resolver<BilayerInput> = {
   },
   resolve(input, job): ResolveOutput {
     const typeTable: PlacementType[] = input.items.map((it, index) => ({ index, population: it.population, entity: it.entity, label: it.label, compartment: it.compartment, radius: it.radius }));
-    const b = new PlacementBuilder(input.items.reduce((s, i) => s + i.requested + 16, 0));
+    // each leaflet's count first (its own area, a quarter thickness off the middle), so the buffers are allocated once,
+    // exactly (design.md §8: no growth, no trim)
+    const plans = input.items.map((it) => {
+      const c = input.compartments[it.compartment];
+      const sampler = c.shape.kind === 'sphere' ? undefined : shapeSampler(c.shape, job.compartments.get(it.compartment)?.mesh);
+      const leaflets = [1, -1].map((side) => {
+        const d = (side * c.thickness) / 4;
+        const area = c.shape.kind === 'sphere' ? 4 * Math.PI * (c.shape.radius + d) ** 2 : (sampler?.area ?? 0);
+        return { side, d, count: Math.round(it.density * area) };
+      });
+      return { it, c, sampler, leaflets };
+    });
+    const b = new PlacementBuilder(plans.reduce((s, p) => s + p.leaflets[0].count + p.leaflets[1].count, 0));
     const achieved: Record<Id, number> = {};
     const shortfall: Record<Id, string> = {};
     const q = [0, 0, 0, 1];
     const p = [0, 0, 0], n = [0, 0, 0];
-    input.items.forEach((it, t) => {
-      const c = input.compartments[it.compartment];
+    plans.forEach(({ it, c, sampler, leaflets }, t) => {
       const start = b.count;
-      for (const side of [1, -1]) {
-        const d = (side * c.thickness) / 4;
+      for (const { side, d, count } of leaflets) {
         if (c.shape.kind === 'sphere') {
           const R = c.shape.radius + d;
-          const count = Math.round(it.density * 4 * Math.PI * R * R);
           const golden = Math.PI * (3 - Math.sqrt(5));
           const [cx, cy, cz] = c.shape.center;
           for (let i = 0; i < count; i++) {
@@ -81,13 +90,10 @@ export const MesoBilayerResolver: Resolver<BilayerInput> = {
             quatFromTo(q, 0, 0, 1, side * nx, side * ny, side * z, i);
             b.push(t, cx + R * nx, cy + R * ny, cz + R * z, q);
           }
-        } else {
-          const s = shapeSampler(c.shape, job.compartments.get(it.compartment)?.mesh);
-          if (!s?.area) continue;
+        } else if (sampler) {
           const rand = createRandom(subSeed(input.seed, `${it.population}:${side}`));
-          const count = Math.round(it.density * s.area);
           for (let i = 0; i < count; i++) {
-            s.sampleSurface(rand, p, n);
+            sampler.sampleSurface(rand, p, n);
             quatFromTo(q, 0, 0, 1, side * n[0], side * n[1], side * n[2], rand.next() * 6.283);
             b.push(t, p[0] + n[0] * d, p[1] + n[1] * d, p[2] + n[2] * d, q);
           }

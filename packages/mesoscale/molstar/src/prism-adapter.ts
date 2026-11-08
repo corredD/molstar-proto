@@ -102,8 +102,18 @@ export class PrismMesoAdapter implements RendererAdapter {
     const canvas = v.plugin.canvas3d;
     if (canvas && (plan.cameraChanged || plan.add.length)) {
       if (cam) {
+        // the scene's radius too: the near and far planes follow it, and a radius left from a smaller scene clips the
+        // front of a larger one (renderer-recommendations.md, adapter findings A2)
+        const sphere = canvas.boundingSphereVisible;
+        const radius = Math.max(sphere.radius, 1);
         canvas.camera.setState(
-          { position: Vec3.create(cam.position[0], cam.position[1], cam.position[2]), target: Vec3.create(cam.target[0], cam.target[1], cam.target[2]), up: Vec3.create(cam.up[0], cam.up[1], cam.up[2]) },
+          {
+            position: Vec3.create(cam.position[0], cam.position[1], cam.position[2]),
+            target: Vec3.create(cam.target[0], cam.target[1], cam.target[2]),
+            up: Vec3.create(cam.up[0], cam.up[1], cam.up[2]),
+            radius,
+            radiusMax: radius,
+          },
           0,
         );
       } else canvas.requestCameraReset();
@@ -121,9 +131,19 @@ export class PrismMesoAdapter implements RendererAdapter {
     };
   }
 
-  async dispose() {
-    for (const key of this.placed.keys()) MesoPlacementStore.delete(key);
+  /** Removes every list this adapter made. */
+  async clear() {
+    const b = this.viewer.plugin.state.data.build();
+    for (const [key, p] of this.placed) {
+      b.delete(p.ref);
+      MesoPlacementStore.delete(key);
+    }
     this.placed.clear();
     this.prev = undefined;
+    await this.viewer.plugin.runTask(this.viewer.plugin.state.data.updateTree(b));
+  }
+
+  async dispose() {
+    await this.clear();
   }
 }

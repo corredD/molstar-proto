@@ -106,11 +106,11 @@ describe('runtime', () => {
     for (let i = 0; i < picks.count; i++) expect(Math.hypot(picks.positions[3 * i], picks.positions[3 * i + 1], picks.positions[3 * i + 2])).toBeLessThanOrEqual(300.5);
   });
 
-  it('placement sets are 36 bytes a copy, exactly sized', async () => {
+  it('placement sets are 36 bytes a copy, with at most 1/8 unused capacity behind them', async () => {
     const r = await compileExosome(exosomeDoc());
     for (const s of placementSets(r.ir!)) {
       expect(placementBytes(s) - (s.fibers ? s.fibers.offsets.byteLength + s.fibers.indices.byteLength : 0)).toBe(s.count * BytesPerPlacement);
-      expect(s.positions.buffer.byteLength).toBe(s.count * 12);
+      expect(s.positions.buffer.byteLength).toBeLessThanOrEqual(Math.ceil((s.count * 12 * 8) / 7) + 12 * 16);
     }
   });
 
