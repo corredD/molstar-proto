@@ -8,7 +8,7 @@ import type { Meta, StoryObj } from '@storybook/web-components-vite';
 import { story } from '@molstar/prism-ui/testing/index';
 import { RealViewerStory } from '@molstar/prism-viewer/testing/real-viewer';
 import type { MesoViewSpecDoc, Population } from '@molstar/meso-spec/format/doc';
-import { galleryDoc } from '@molstar/meso-spec/examples/gallery';
+import { gallerySubset } from '@molstar/meso-spec/examples/gallery';
 import { nucleoidDoc } from '@molstar/meso-spec/examples/nucleoid';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers/index';
 import { PrismMesoAdapter } from '../prism-adapter.js';
@@ -31,10 +31,7 @@ interface Knob {
   readonly apply: (doc: MesoViewSpecDoc, v: number) => MesoViewSpecDoc;
 }
 
-function only(ids: string[]): MesoViewSpecDoc {
-  const d = galleryDoc();
-  return { ...d, populations: d.populations.filter((p) => ids.includes(p.id)) };
-}
+const only = (ids: string[]) => gallerySubset(ids);
 
 const setPop = (doc: MesoViewSpecDoc, id: string, edit: (p: Population) => Population) => ({
   ...doc,

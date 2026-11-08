@@ -176,3 +176,12 @@ export function galleryDoc(): MesoViewSpecDoc {
     ],
   };
 }
+
+/** The gallery cut down to some populations (the resolver mocks), with only the relations among them: still valid. */
+export function gallerySubset(ids: readonly string[]): MesoViewSpecDoc {
+  const d = galleryDoc();
+  const relations = (d.relations ?? []).filter((r) =>
+    [...r.subjects, ...(r.objects ?? [])].every((x) => ids.includes(x)),
+  );
+  return { ...d, populations: d.populations.filter((p) => ids.includes(p.id)), relations };
+}

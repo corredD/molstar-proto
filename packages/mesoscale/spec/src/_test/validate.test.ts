@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { MesoViewSpecDoc } from '../format/doc.js';
 import { validate } from '../format/validate.js';
 import { exosomeDoc } from '../examples/exosome.js';
-import { galleryDoc } from '../examples/gallery.js';
+import { galleryDoc, gallerySubset } from '../examples/gallery.js';
 import { yeastDoc } from '../examples/yeast.js';
 
 // Static validation (design.md §7.4): the examples are valid; each broken document gives the issue a UI can point at.
@@ -21,6 +21,16 @@ describe('validate', () => {
     expect(errors(exosomeDoc())).toEqual([]);
     expect(errors(galleryDoc())).toEqual([]);
     expect(errors(yeastDoc())).toEqual([]);
+  });
+
+  it('every document a story shows validates (the resolver mocks are gallery subsets)', () => {
+    for (const ids of [
+      ['p.pores', 'p.atpsynthase'],
+      ['p.ribosomes', 'p.proteasomes'],
+      ['p.actin', 'p.microtubule'],
+      ['p.vesicle-lipids'],
+    ])
+      expect(errors(gallerySubset(ids))).toEqual([]);
   });
 
   it('the yeast document says what its source leaves out: frames without handedness', () => {
