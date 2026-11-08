@@ -394,6 +394,10 @@ describe('explorer', () => {
     const r = await v.api.run('mesoscale.wrapMembrane', { mesh: mesh.ref, edge: 100 });
     expectOk(r);
     expect(v.plugin.state.data.cells.size).toBe(before + 1);
+    // made from the OBJ's triangles: a membrane with lipids (review M1: OBJ's getter read props it was not given)
+    const made = v.plugin.state.data.cells.get(r.changed!.nodes![0])!;
+    expect(made.status).toBe('ok');
+    expect(made.obj!.description).toMatch(/[1-9][\d,]* lipids/);
     expectOk(await v.api.run('history.undo', {}));
     expect(v.plugin.state.data.cells.size).toBe(before);
     // a compartment's group, grouped by compartment: Wrap with lipids (a sphere fitted to it); by function: none

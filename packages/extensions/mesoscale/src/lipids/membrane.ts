@@ -344,7 +344,8 @@ async function shapeMesh(
   let obj = cell?.obj;
   if (obj && SO.Shape.Representation3D.is(obj)) obj = plugin.state.data.cells.get(cell!.transform.parent)?.obj;
   if (!obj || !SO.Shape.Provider.is(obj)) return undefined;
-  const shape = await obj.data.getShape(runtime, obj.data.data, {} as never);
+  // the getters read their props (OBJ's and PLY's coloring, grouping): the provider's defaults
+  const shape = await obj.data.getShape(runtime, obj.data.data, PD.getDefaultValues(obj.data.params) as never);
   const geometry = shape.geometry as {
     kind?: string;
     vertexBuffer?: ValueCell<Float32Array>;
