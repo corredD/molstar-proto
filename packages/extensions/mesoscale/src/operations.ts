@@ -226,7 +226,11 @@ export class MesoscaleApi extends ApiArea {
       ),
       patch: PD.Text('synthetic', { description: 'The lipid patch by name: synthetic, or the name of `patchPdb`' }),
       patchPdb: PD.Text('', { description: "A bilayer patch's PDB text (CHARMM-GUI's), registered under `patch`" }),
-      edge: PD.Numeric(200, { min: 40, max: 400, step: 10 }, { description: 'The tiles’ edge, Å' }),
+      edge: PD.Numeric(
+        0,
+        { min: 0, max: 400, step: 10 },
+        { description: 'The tiles’ edge, Å (0: suited to the surface, about a thirtieth of its size, 40–200 Å)' },
+      ),
       leaflets: PD.Select('both', [
         ['both', 'Both'],
         ['outer', 'Outer'],

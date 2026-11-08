@@ -50,6 +50,33 @@ describe('lipid membrane', () => {
     expect(lipids / ((2 * area) / outer.tileSet.areaPerLipid)).toBeLessThan(1.15);
   });
 
+  it('suits the tiles to the mesh by default: a long thin body keeps its shape (Ludo’s cow, 2026-11-08)', () => {
+    // a 1,000 × 120 × 120 Å box: at the old fixed 200 Å edge it remeshed to a few chords inside the body
+    const [X, Y] = [500, 60];
+    const positions = new Float32Array([
+      -X, -Y, -Y, X, -Y, -Y, X, Y, -Y, -X, Y, -Y, -X, -Y, Y, X, -Y, Y, X, Y, Y, -X, Y, Y,
+    ]);
+    const indices = new Uint32Array([
+      0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
+    ]);
+    const data = buildMembrane({ mesh: { positions, indices } }, 'test-patch', 0, 'outer', kinds);
+    if (typeof data === 'string') expect.fail(data);
+    expect(data.edge).toBeGreaterThanOrEqual(40);
+    expect(data.edge).toBeLessThanOrEqual(60);
+    // the outer leaflet's surface stays about the box's (8.6e4 Å² … ): area within 15 %
+    const m = data.leaflets[0].mesh;
+    let area = 0;
+    const p = m.positions;
+    for (let t = 0; t < m.indices.length; t += 3) {
+      const [a, b, c] = [3 * m.indices[t], 3 * m.indices[t + 1], 3 * m.indices[t + 2]];
+      const u = [p[b] - p[a], p[b + 1] - p[a + 1], p[b + 2] - p[a + 2]];
+      const v = [p[c] - p[a], p[c + 1] - p[a + 1], p[c + 2] - p[a + 2]];
+      area += Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]) / 2;
+    }
+    const box = 4 * (2 * X) * (2 * Y) + 2 * (2 * Y) * (2 * Y);
+    expect(area / box).toBeGreaterThan(0.85);
+  });
+
   it('says an unknown patch', () => {
     expect(buildMembrane({ radius: 400 }, 'nope', 80, 'both', kinds)).toMatch(/No lipid patch/);
   });

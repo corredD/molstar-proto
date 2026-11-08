@@ -136,6 +136,7 @@ export function buildMembrane(
   kinds: TileKinds,
 ): MembraneData | string {
   let base: TriMesh;
+  if (!(edge > 0)) edge = suitedEdge(surface);
   if (surface.mesh) base = isotropicRemesh(surface.mesh, edge);
   else {
     base = icosphere(surface.radius ?? 500, edge);
@@ -156,6 +157,31 @@ export function buildMembrane(
     out.push({ name, tileSet, mesh, slots: assignSlots(kinds, mesh.indices) });
   }
   return { leaflets: out, kinds, edge, sphere };
+}
+
+/** The smallest tile edge, Å: below it a tile holds a handful of lipids and its corners overlap (tiles.ts, r_v) */
+export const MinTileEdge = 40;
+
+/**
+ * A tile edge suited to a surface (Ludo's cow, 2026-11-08: a fixed 200 Å turned a 1,000 Å cow into 20 chords inside its
+ * body): about a thirtieth of its bounding box's diagonal, between `MinTileEdge` and 200 Å; a thin part (a 50 Å leg)
+ * keeps its shape only at the smallest
+ */
+export function suitedEdge(surface: { readonly mesh?: TriMesh; readonly radius?: number }) {
+  let diagonal = 2 * Math.sqrt(3) * (surface.radius ?? 500);
+  if (surface.mesh) {
+    const p = surface.mesh.positions;
+    const lo = [Infinity, Infinity, Infinity];
+    const hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < p.length; i += 3) {
+      for (let k = 0; k < 3; ++k) {
+        lo[k] = Math.min(lo[k], p[i + k]);
+        hi[k] = Math.max(hi[k], p[i + k]);
+      }
+    }
+    diagonal = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+  }
+  return Math.round(Math.min(200, Math.max(MinTileEdge, diagonal / 30)));
 }
 
 function boundingSphereOf(p: Float32Array, out: Sphere3D) {
@@ -321,7 +347,11 @@ export const LipidMembraneParams = {
   patch: PD.Text('synthetic', {
     description: 'The lipid patch by name (`registerLipidPatch`): a file opened, or synthetic',
   }),
-  edge: PD.Numeric(200, { min: 40, max: 400, step: 10 }, { description: 'The tiles’ edge, Å' }),
+  edge: PD.Numeric(
+    0,
+    { min: 0, max: 400, step: 10 },
+    { description: 'The tiles’ edge, Å (0: suited to the surface, `suitedEdge`)' },
+  ),
   leaflets: PD.Select('both', [
     ['both', 'Both'],
     ['outer', 'Outer'],
