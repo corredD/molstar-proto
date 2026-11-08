@@ -546,9 +546,12 @@ function wrapItems(
   if (!api.describe('mesoscale.wrapMembrane')) return [];
   const { node, kind } = picked;
   // CHARMM-GUI's patch (14 species), a static file beside the page (index.ts), fetched on the first wrap
-  const patch = { patch: 'charmm-gui', patchUrl: new URL(LipidPatchFile, document.baseURI).href };
   const wrap = (values: Record<string, unknown>) => () =>
-    void api.run('mesoscale.wrapMembrane', { ...patch, ...values });
+    void api.run('mesoscale.wrapMembrane', {
+      patch: 'charmm-gui',
+      patchUrl: new URL(LipidPatchFile, document.baseURI).href,
+      ...values,
+    });
   if (kind === 'mesh') {
     // a membrane is not wrapped again
     if (isMembrane(area, picked)) return [];
