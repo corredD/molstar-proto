@@ -472,7 +472,40 @@ mmCIF carrying the rule graph. Its constraint catalogue is in `~/Dev/mesocraft-r
 A MesoCraft rule graph could be a resolver (`mesocraft`) that takes it as a model's input, as cellPACKgpu's recipe is.
 The gaps above are where its vocabulary is richer than this format's.
 
-### 3.13 Not in the document
+### 3.13 Instances: copies stated one by one (v0.3, `Instance`)
+
+David's comment on v0.2: a population is not the top-level abstraction, it is how we state copies today because we
+cannot list every one. The document now has three ways to state copies, and populations are one of them:
+
+| Way           | The document says                                        | Example                                        |
+| ------------- | -------------------------------------------------------- | ---------------------------------------------- |
+| individually  | this copy, here, with this id (`instances`)              | a docked granule; a ribosome someone segmented |
+| statistically | how many, how arranged, where (`populations`)            | 2,000 ribosomes in the cytoplasm               |
+| structurally  | the copies a superstructure contains (`superstructures`) | the VAMP2 on every granule                     |
+
+```lisp
+(:instances
+  [(instance i.granule-docked
+      :label "a docked granule"
+      :entity e.granule  :compartment c.cell
+      :pose (:translation [0 -1300 0])
+      :evidence [ev.docked])])
+```
+
+**What an instance adds is identity.** `(copies p.granules 12)` is an ordinal: valid for one resolution, and a repack
+makes it another granule. `(instance i.granule-docked)` is the same copy after any edit that does not touch it. A quick
+test (`_test/instances.test.ts`) repacks the cell with another seed and with fewer ribosomes: the instance keeps its id,
+its pose and the camera framed on it, while granule 12 moves.
+
+**How it is realized.** The runtime turns each instance into a population of one copy under the instance's id, placed by
+`meso.precomputed` from an inline table in world Å (`withInstances`, `runtime/runtime.ts`). Given poses therefore have
+one code path, whether a file (picks) or the document holds them. Every procedural model avoids the instances, so a
+packer works around them. Superstructure expansion, looks, relations, MesoQL and the camera needed nothing new.
+
+**Limits.** Each instance is its own type: fine for tens or hundreds, not for 10⁵ copies, which belong in a resource
+read by `meso.precomputed` (§4.5). A pose is in the world frame, or in `frame`'s own coordinates (a tomogram's voxels).
+
+### 3.14 Not in the document
 
 - placements and other derived results;
 - renderer settings: representation types, LOD, quality;
@@ -609,7 +642,39 @@ JSON, typed arrays hashed by content). The IR shows the input, so a reader can s
 
 - **Not restored:** clipping, and annotations drawn in the viewer.
 - **Copy ids are only as stable as the resolution.** A copy id (`p.catalase#12`) is valid only for one resolution key: a
-  model edit can renumber copies. Selections that must survive edits should use semantic selectors.
+  model edit can renumber copies. Selections that must survive edits should use semantic selectors, or name the copy as
+  an instance (§3.13).
+
+### 5.1 The semantic camera (v0.3, `Camera`, `Tour`)
+
+David: "now we just need the semantic layer for it to control the camera". A camera can say what to look at instead of
+where to stand:
+
+```lisp
+(view v.docked
+  :camera (:focus (instance i.granule-docked)
+           :framing context        ; close | fit | context
+           :from outside           ; or a direction [x y z]
+           :transition 1500)       ; ms
+  :cutaway (within (population p.ribosomes) :of (instance i.granule-docked) :distance 250))
+
+(tour t.granule
+  :steps [(:view v.cell :duration 3000 :caption "A slice of a β-cell")
+          (:view v.docked :duration 4000 :caption "A granule named in the document")])
+```
+
+- **`focus`** is any MesoQL address. The runtime materializes it over the resolved copies (through superstructure
+  instances) into a bounding sphere (`lociSphere`, `ir/loci.ts`) and places the camera at radius / sin(fov / 2) × 0.6,
+  1.1 or 2.5 for `close`, `fit`, `context`. Because it is an address, the camera follows the scene when it is
+  re-resolved.
+- **`from outside`** looks in from beyond the scene's centre through the focus: the natural way into a cell.
+- **`cutaway`** is an address for the copies to hide so the focus shows. It is materialized into the IR; Prism clips by
+  planes, not by copies, so the adapter reports it (renderer R8).
+- **A numeric camera** (`position`, `target`) is read in its view's `frame`: a camera written in a tomogram's voxels
+  lands where the tomogram is.
+- **Tours** step through views with durations and captions; `session.tour` names one to play.
+
+The _Semantic camera_ story switches views (no resolver reruns; about 10 ms) and plays the tour.
 
 ## 6. Runtime contracts
 
@@ -993,6 +1058,9 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 - **(v0.2) Runs as the materialized address.** Every address the examples use is one run a population, which keeps view
   edits O(types) after one scan a set.
 
+- **(v0.3) Addresses carried the camera and identity.** The semantic camera is one more consumer of MesoLoci, and
+  instances are populations of one to everything after the runtime's first step.
+
 **Gaps the prototypes exposed:**
 
 | Gap                                                                         | Layer                | Note                                                                                                          |
@@ -1017,7 +1085,7 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 | Prism's particles feature is lazy                                           | adapter              | an in-memory list needs `extensions.load('particles')` first                                                  |
 | In-memory data enter `mol-state` only through a side store keyed by a param | plugin API           | renderer-recommendations R6                                                                                   |
 | `cached` is part of the IR                                                  | IR                   | it makes two IRs of the same document differ by history; it should move to the stats                          |
-| `View.frame` is declared but not applied                                    | runtime              | a view's camera is read in the world frame whatever its `frame`; `frameMatrices` should apply                 |
+| `View.frame` is declared but not applied                                    | runtime              | (v0.3) fixed: a numeric camera is placed by its view's frame matrix (§5.1)                                    |
 | Selection and annotations are derived, not drawn                            | adapter              | `IRView.selection` and `.annotations` reach the adapter, which ignores them                                   |
 
 **Open decisions for David:**
@@ -1044,6 +1112,14 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 11. **(v0.2) Authoring by agents and by hand.** Painting (cellPAINT-style strokes) and agent edits as `activities` with
     an `agent`, their result a precomputed model: is that enough to keep hand-made placements inspectable and
     replayable?
+12. **(v0.3) Organization at the top, populations as one way to state copies.** David: "a population is just how we do
+    things now because we can't represent every atom individually". v0.3 adds instances beside populations and
+    superstructures (§3.13) without moving anything. The larger change is to put the organization (the copies, however
+    stated) at the centre of the document and let each way of stating them be a source. A hypothesis that ties this to
+    streaming (decision 5): **level 0 is statistical** (a population: counts and arrangement, no poses), **level 1 is
+    copies** (poses, from a resolver, a file or instances), **level 2 is atoms** (the structures at those poses). A
+    viewer far away needs level 0, then streams level 1 where the camera looks, then level 2 close up. Restructure the
+    top level, or keep the sections and treat the levels as a runtime concept?
 
 ## 12. Packaging
 

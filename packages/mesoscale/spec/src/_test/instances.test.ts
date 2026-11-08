@@ -14,7 +14,7 @@ import { parseMesoQL } from '../format/mesoql.js';
 import { DefaultResolvers } from '../resolvers/index.js';
 import { compile, InstancesModel } from '../runtime/runtime.js';
 
-// Instances (design.md §3.14): copies stated one by one, with ids that survive re-resolution. David's point: a
+// Instances (design.md §3.13): copies stated one by one, with ids that survive re-resolution. David's point: a
 // population is how we state copies we cannot list; an index into it (`copies`) is not an identity, an instance is.
 
 const load = (id: string) => BetaCellResources[id]?.();

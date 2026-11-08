@@ -54,7 +54,7 @@ export interface MesoViewSpecDoc {
   readonly compartments: readonly Compartment[];
   readonly populations: readonly Population[];
   /**
-   * Copies stated one by one (design.md §3.14): each with an id that survives re-resolution, an entity, where it sits
+   * Copies stated one by one (design.md §3.13): each with an id that survives re-resolution, an entity, where it sits
    * and its pose. A population states copies statistically (how many, how arranged), an instance individually; both
    * end as placement sets, and the copies a population packs avoid the instances.
    */
@@ -304,7 +304,7 @@ export interface Population {
   readonly evidence?: readonly Id[];
 }
 
-/** One copy, stated individually (design.md §3.14): a granule someone segmented, a named organelle, a reference copy. */
+/** One copy, stated individually (design.md §3.13): a granule someone segmented, a named organelle, a reference copy. */
 export interface Instance {
   readonly id: Id;
   readonly label?: string;

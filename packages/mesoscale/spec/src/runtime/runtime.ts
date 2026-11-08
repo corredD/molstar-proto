@@ -721,7 +721,7 @@ export function transformMatrix(t: Transform, unit: LengthUnit): number[] {
 export const InstancesModel = 'default:meso.instances';
 
 /**
- * The document's instances (design.md §3.14) as what the runtime already resolves: each a population of one copy under
+ * The document's instances (design.md §3.13) as what the runtime already resolves: each a population of one copy under
  * its own id, all placed by one `meso.precomputed` model from an inline table in world Å; every procedural model avoids
  * them. Their ids are population ids from here on, so looks, relations, superstructure expansion and MesoQL need nothing new.
  */

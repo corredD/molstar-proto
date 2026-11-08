@@ -16,7 +16,7 @@ import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js
 // reader reads them: packages/model/src/formats/particles/star.ts `relionEulerToRotation`) and a small JSON one.
 //
 // `params.placements`: an inline table in the same JSON shape, already in world Å (the runtime writes the document's
-// instances, design.md §3.14, this way, so given poses have one code path whether a file or the document holds them).
+// instances, design.md §3.13, this way, so given poses have one code path whether a file or the document holds them).
 //
 // `params.populations`: which population each row is: one id for the whole file, or `{ column, values: { <value>: id } }`.
 

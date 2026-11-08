@@ -90,7 +90,7 @@ export function betaCellDoc(granules = 120, detail: 'parts' | 'entity' = 'parts'
         abundance: { count: 2000 },
       },
     ],
-    // two granules stated one by one (design.md §3.14): ids that survive repacking, poses someone measured
+    // two granules stated one by one (design.md §3.13): ids that survive repacking, poses someone measured
     instances: [
       {
         id: 'i.granule-docked',
