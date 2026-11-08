@@ -7,6 +7,7 @@
 import type {
   Arrangement,
   Compartment,
+  Entity,
   Id,
   LengthUnit,
   MesoViewSpecDoc,
@@ -16,7 +17,7 @@ import type {
 } from '../format/doc.js';
 import { hasErrors, issue, type Issue } from '../format/issues.js';
 import { abundanceToCount, LengthToAngstrom, toAngstrom } from '../format/units.js';
-import { validate } from '../format/validate.js';
+import { superstructureDoc, validate } from '../format/validate.js';
 import { contentHash } from '../ir/hash.js';
 import { type IR, type IRLook, type IRNode, type IRShape, type IRView, placementSets } from '../ir/ir.js';
 import { evaluateMesoQL, intersectRuns, lociCentroid, type MesoLoci, runsSize, typeRuns } from '../ir/loci.js';
@@ -86,9 +87,12 @@ export const DefaultResolverByArrangement: Readonly<Record<Arrangement['kind'], 
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<CompileResult> {
+/** How deep superstructures may nest (a virus of capsids of pentamers of proteins is 3). */
+export const MaxSuperstructureDepth = 8;
+
+export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0): Promise<CompileResult> {
   const t0 = now();
-  const issues: Issue[] = validate(doc);
+  const issues: Issue[] = validate(doc, depth > 0);
   const t1 = now();
   const empty = (ms: Partial<CompileStats['ms']> = {}): CompileResult => ({
     issues,
@@ -180,8 +184,51 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
     comps.set(id, { ...c, freeVolume: Math.max(0, free) });
   }
 
-  // ---- populations: counts and Å ----
+  // ---- superstructures (design.md §3.9): each resolved once, as a document of its own, with the session's cache ----
   const ents = new Map(doc.entities.map((e) => [e.id, e]));
+  const ssById = new Map((doc.superstructures ?? []).map((x) => [x.id, x]));
+  const templates = new Map<Id, { result: CompileResult; radius: number }>();
+  const envelope = new Map<Id, number>();
+  for (const ss of ssById.values()) {
+    const env = ss.compartments.find((c) => !c.parent);
+    const g = env?.geometry;
+    const r =
+      g?.kind === 'sphere'
+        ? A(g.radius)
+        : g?.kind === 'ellipsoid'
+          ? Math.max(...g.radii.map((x) => A(x)))
+          : g?.kind === 'box'
+            ? Math.hypot(...g.size.map((x) => A(x))) / 2
+            : undefined;
+    if (r !== undefined)
+      envelope.set(ss.id, r + (env?.membrane?.thickness !== undefined ? A(env.membrane.thickness) / 2 : 0));
+  }
+  const partsWanted = new Set<Id>();
+  for (const p of doc.populations) {
+    const ss = ents.get(p.entity)?.superstructure;
+    if (ss && (p.detail ?? 'parts') === 'parts') partsWanted.add(ss);
+  }
+  for (const id of partsWanted) {
+    const ss = ssById.get(id)!;
+    if (depth >= MaxSuperstructureDepth) {
+      issues.push(
+        issue(
+          'superstructure.depth',
+          'error',
+          'resolve',
+          `${id}: superstructures nest deeper than ${MaxSuperstructureDepth}`,
+          { ids: [id] },
+        ),
+      );
+      continue;
+    }
+    const result = await compile(superstructureDoc(doc, ss), o, depth + 1);
+    for (const i of result.issues)
+      if (i.phase !== 'static') issues.push({ ...i, message: `[${id}] ${i.message}`, ids: [id, ...(i.ids ?? [])] });
+    templates.set(id, { result, radius: envelope.get(id) ?? 0 });
+  }
+
+  // ---- populations: counts and Å ----
   const pops = new Map<Id, NormalizedPopulation>();
   doc.populations.forEach((p, i) => {
     const c = comps.get(p.compartment)!;
@@ -204,6 +251,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
         }),
       );
     const e = ents.get(p.entity)!;
+    const ssRadius = e.superstructure ? envelope.get(e.superstructure) : undefined;
     pops.set(p.id, {
       id: p.id,
       entity: e,
@@ -212,7 +260,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
       requested: count,
       countWhy: why,
       minFraction: p.constraints?.find((k) => k.kind === 'placed-fraction')?.min ?? 1,
-      radius: e.radius !== undefined ? A(e.radius) : undefined,
+      radius: e.radius !== undefined ? A(e.radius) : ssRadius,
       arrangement: normalizeArrangement(p.arrangement, A),
       minDistances: (p.constraints ?? []).flatMap((k) =>
         k.kind === 'min-distance' ? [{ to: k.to, distance: A(k.distance) }] : [],
@@ -403,8 +451,15 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions): Promise<
   }
   const t3 = now();
 
+  for (const [, t] of templates) for (const [k, v] of Object.entries(t.result.counts)) counts[k] = v;
+  for (const [, t] of templates) {
+    runs += t.result.stats.resolverRuns;
+    hits += t.result.stats.cacheHits;
+    statsModels.push(...t.result.stats.models);
+  }
+
   // ---- assemble ----
-  const root = assemble(doc, comps, frameToWorld, outputs, models);
+  const root = assemble(doc, comps, frameToWorld, outputs, models, templates, ents);
   const view = deriveView(doc, root);
   const t4 = now();
   return {
@@ -657,7 +712,20 @@ function assemble(
   frames: ReadonlyMap<Id, number[]>,
   outputs: ReadonlyMap<Id, { key: string; out: ResolveOutput; cached: boolean; resolver: Resolver; input: unknown }>,
   models: readonly Model[],
+  templates: ReadonlyMap<Id, { result: CompileResult; radius: number }>,
+  ents: ReadonlyMap<Id, Entity>,
 ): IRNode {
+  const detailOf = new Map(doc.populations.map((p) => [p.id, p.detail ?? 'parts']));
+  const templateSets = new Map<Id, string[]>();
+  for (const [id, t] of templates)
+    templateSets.set(
+      id,
+      t.result.ir
+        ? placementSets(t.result.ir)
+            .filter((s) => !isUnderSuperstructure(t.result.ir!, s.key))
+            .map((s) => s.key)
+        : [],
+    );
   const compNode = (id: Id): IRNode => {
     const c = comps.get(id)!;
     const kids: IRNode[] = [];
@@ -694,12 +762,37 @@ function assemble(
         input: summarizeInput(o.input),
         cached: o.cached,
       },
-      children: o.out.sets.map((set, i) => ({
-        ref: `${m.id}/placements/${i}`,
-        kind: 'placements',
-        params: { set },
-        origin: [...new Set(set.typeTable.map((t) => t.population))],
-      })),
+      children: o.out.sets.map((set, i) => {
+        const instances: IRNode[] = set.typeTable.flatMap((t): IRNode[] => {
+          const ss = ents.get(t.entity)?.superstructure;
+          if (!ss) return [];
+          const detail = (detailOf.get(t.population) ?? 'parts') as 'parts' | 'entity';
+          let n = 0;
+          for (let k = 0; k < set.count; k++) if (set.types[k] === t.index) n++;
+          return [
+            {
+              ref: `${m.id}/placements/${i}/instances/${t.index}`,
+              kind: 'instances',
+              origin: [t.population, ss],
+              params: {
+                type: t.index,
+                entity: t.entity,
+                superstructure: ss,
+                detail,
+                instances: n,
+                templates: detail === 'parts' ? (templateSets.get(ss) ?? []) : [],
+              },
+            },
+          ];
+        });
+        return {
+          ref: `${m.id}/placements/${i}`,
+          kind: 'placements',
+          params: { set },
+          origin: [...new Set(set.typeTable.map((t) => t.population))],
+          ...(instances.length ? { children: instances } : {}),
+        };
+      }),
     });
   }
   const frameNodes: IRNode[] = [...frames]
@@ -710,6 +803,20 @@ function assemble(
       params: { frame: id, matrix, via: (doc.alignments ?? []).find((a) => a.from === id || a.to === id)?.id },
       origin: [id],
     }));
+  // superstructures: their resolved trees, refs prefixed with their id (one tree per superstructure, however many copies)
+  const ssNodes: IRNode[] = [...templates].map(([id, t]) => {
+    const inner = t.result.ir?.root.children?.[0]?.children ?? [];
+    const prefix = (n: IRNode): IRNode =>
+      ({ ...n, ref: `${id}/${n.ref}`, ...(n.children ? { children: n.children.map(prefix) } : {}) }) as IRNode;
+    const copies = t.result.ir ? placementSets(t.result.ir).reduce((x, s) => x + s.count, 0) : 0;
+    return {
+      ref: `superstructure:${id}`,
+      kind: 'superstructure',
+      origin: [id],
+      params: { superstructure: id, radius: t.radius, copies },
+      children: inner.map(prefix),
+    };
+  });
   const world = (doc.frames ?? []).find((f) => f.kind === 'world')?.id ?? 'world';
   return {
     ref: 'scene',
@@ -721,10 +828,20 @@ function assemble(
         kind: 'frame',
         params: { frame: world, matrix: Identity },
         origin: [world],
-        children: [...tops, ...resolves, ...frameNodes],
+        children: [...tops, ...resolves, ...ssNodes, ...frameNodes],
       },
     ],
   };
+}
+
+/** Whether a set sits inside a superstructure node of the tree (a template, in its own frame). */
+export function isUnderSuperstructure(ir: IR, key: string): boolean {
+  const visit = (n: IRNode, inside: boolean): boolean => {
+    if (n.kind === 'placements' && n.params.set.key === key) return inside;
+    for (const c of n.children ?? []) if (visit(c, inside || n.kind === 'superstructure')) return true;
+    return false;
+  };
+  return visit(ir.root, false);
 }
 
 /** Typed arrays never go into the IR's input summaries: counts instead. */

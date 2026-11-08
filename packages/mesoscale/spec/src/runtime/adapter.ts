@@ -24,6 +24,8 @@ export interface CommitReport {
   readonly kept: readonly string[];
   readonly looksWritten: number;
   readonly cameraSet: boolean;
+  /** Copies the adapter materialized from superstructure instances, and what the IR holds for them. */
+  readonly expanded?: { readonly copies: number; readonly bytes: number; readonly instancedBytes: number };
   /** What the adapter could not do as the IR asks (phase `render`): a representation hint it falls back from. */
   readonly issues?: readonly Issue[];
   /** Wall time of the commit, and of its parts where the adapter can tell them apart. */

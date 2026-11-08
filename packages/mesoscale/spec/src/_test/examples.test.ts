@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { exosomeDoc, ExosomeResources } from '../examples/exosome.js';
 import { syntheticPicksStar, syntheticVesicleObj } from '../examples/fixtures/synthetic.js';
 import { galleryDoc } from '../examples/gallery.js';
+import { betaCellDoc, BetaCellResources } from '../examples/betacell.js';
 import { yeastDoc } from '../examples/yeast.js';
 import { irToJson } from '../ir/ir.js';
 import { DefaultResolvers } from '../resolvers/index.js';
@@ -36,13 +37,14 @@ function check(name: string, text: string) {
 }
 
 const json = (x: unknown) => `${JSON.stringify(x, null, 1)}\n`;
-const load = (id: string) => ExosomeResources[id]?.();
+const load = (id: string) => ExosomeResources[id]?.() ?? BetaCellResources[id]?.();
 
 describe('paired examples', () => {
   for (const [name, doc] of [
     ['exosome', exosomeDoc()],
     ['gallery', galleryDoc()],
     ['yeast', yeastDoc()],
+    ['betacell', betaCellDoc()],
   ] as const) {
     it(`${name}: the document and its IR`, async () => {
       check(`${name}.mesoviewspec.json`, json(doc));

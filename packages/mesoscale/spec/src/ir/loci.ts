@@ -211,17 +211,52 @@ export function evaluateMesoQL(e: QExpr, ctx: LociContext): { loci: MesoLoci; is
         const d = Number(x.keywords.distance ?? 0) * unit;
         return within(sets, ev(x.args[0] as QExpr), of, d);
       }
-      case 'part':
-        issues.push(
-          issue('mesoql.unsupported', 'warning', 'resolve', '(part …) needs superstructure instances in the IR'),
-        );
-        return EmptyLoci;
+      case 'part': {
+        // copies of an inner population in the instances picked: one virtual set per instance,
+        // `<instance set>@<copy index>><template set>`, its runs in the template (never materialized)
+        const inst = ev(x.args[0] as QExpr);
+        const inner = x.args[1] as string;
+        const out = new Map<string, number[]>();
+        for (const [k, runs] of inst) {
+          const set = sets.find((s) => s.key === k);
+          const nodes = instancesOf(ctx.ir, k);
+          if (!set || !nodes.length) continue;
+          for (let j = 0; j < runs.length; j += 2)
+            for (let i = runs[j]; i < runs[j + 1]; i++) {
+              const node = nodes.find((nd) => nd.type === set.types[i]);
+              if (!node) continue;
+              for (const tk of node.templates) {
+                const tpl = sets.find((s) => s.key === tk);
+                const ty = tpl?.typeTable.find((t) => t.population === inner);
+                if (tpl && ty) out.set(`${k}@${i}>${tk}`, [...typeRuns(tpl)[ty.index]]);
+              }
+            }
+        }
+        if (!out.size)
+          issues.push(
+            issue('mesoql.empty', 'warning', 'resolve', `(part …) finds no ${inner} in the instances picked`),
+          );
+        return out;
+      }
       default:
         issues.push(issue('mesoql.type', 'error', 'resolve', `(${x.symbol.name} …) is not a selection`));
         return EmptyLoci;
     }
   };
   return { loci: ev(e), issues };
+}
+
+/** The instances nodes under a set: which of its types stand for which template sets. */
+function instancesOf(ir: IR, key: string): { type: number; templates: readonly string[] }[] {
+  const out: { type: number; templates: readonly string[] }[] = [];
+  const visit = (n: IR['root']) => {
+    if (n.kind === 'placements' && n.params.set.key === key)
+      for (const c of n.children ?? [])
+        if (c.kind === 'instances') out.push({ type: c.params.type, templates: c.params.templates });
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(ir.root);
+  return out;
 }
 
 /** Copies of `a` whose centre is within `d` Å of a copy of `b`: a hash grid over `b`, O(|a| + |b|). */
@@ -280,12 +315,16 @@ function within(sets: readonly PlacementSet[], a: MesoLoci, b: MesoLoci, d: numb
 export function lociToIds(l: MesoLoci, ir: IR, limit = 50): string[] {
   const byKey = new Map(placementSets(ir).map((s) => [s.key, s]));
   const out: string[] = [];
+  const idOf = (s: PlacementSet, i: number) => `${s.typeTable[s.types[i]].population}#${s.ordinals[i]}`;
   for (const [k, r] of l) {
-    const s = byKey.get(k);
-    if (!s) continue;
+    // a virtual set of a part: `<instance set>@<index>><template set>` → `<instance id>/<copy id>`
+    const m = /^(.*)@(\d+)>(.*)$/.exec(k);
+    const s = byKey.get(m ? m[3] : k);
+    const outer = m ? byKey.get(m[1]) : undefined;
+    if (!s || (m && !outer)) continue;
+    const prefix = m && outer ? `${idOf(outer, Number(m[2]))}/` : '';
     for (let j = 0; j < r.length && out.length < limit; j += 2)
-      for (let i = r[j]; i < r[j + 1] && out.length < limit; i++)
-        out.push(`${s.typeTable[s.types[i]].population}#${s.ordinals[i]}`);
+      for (let i = r[j]; i < r[j + 1] && out.length < limit; i++) out.push(`${prefix}${idOf(s, i)}`);
   }
   return out;
 }

@@ -1,0 +1,154 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+import { describe, expect, it } from 'vitest';
+import { betaCellDoc, BetaCellResources } from '../examples/betacell.js';
+import type { MesoViewSpecDoc } from '../format/doc.js';
+import { parseMesoQL } from '../format/mesoql.js';
+import { indexDoc, validate } from '../format/validate.js';
+import { placementSets, walk } from '../ir/ir.js';
+import { evaluateMesoQL, lociSize, lociToIds } from '../ir/loci.js';
+import { planCommit } from '../runtime/adapter.js';
+import { flattenInstances } from '../runtime/instancing.js';
+import { compile, updateView } from '../runtime/runtime.js';
+import { countingResolvers } from './helpers.js';
+
+// Superstructures (design.md §3.9): reusable, nested, instanced. One description, resolved once, placed many times;
+// both levels of detail from the same document; addresses and copy ids through the nesting.
+
+const load = (id: string) => BetaCellResources[id]?.();
+const PerGranule = 548 + 940 + 454 + 287;
+
+describe('superstructures', () => {
+  it('the granule is resolved once, its 120 copies are poses', async () => {
+    const counting = countingResolvers();
+    const r = await compile(betaCellDoc(), { resolvers: counting.resolvers, load });
+    expect(r.issues.filter((i) => i.severity === 'error')).toEqual([]);
+    expect(counting.calls.get('cellpack-gpu')).toBe(1);
+    const nodes = [...walk(r.ir!.root)].map(([n]) => n);
+    const inst = nodes.find((n) => n.kind === 'instances')!;
+    expect(inst.params).toMatchObject({ superstructure: 's.isg', detail: 'parts', instances: 120 });
+    const ss = nodes.find((n) => n.kind === 'superstructure')!;
+    expect(ss.params).toMatchObject({ superstructure: 's.isg', copies: PerGranule });
+    expect(ss.children?.every((c) => c.ref.startsWith('s.isg/'))).toBe(true);
+  });
+
+  it('flattened for a renderer without nested instancing: 120 × the template, cached across view edits', async () => {
+    const r = await compile(betaCellDoc(), { resolvers: countingResolvers().resolvers, load });
+    const cache = new Map();
+    const a = flattenInstances(r.ir!, cache);
+    expect(a.expandedCopies).toBe(120 * PerGranule);
+    expect(a.expandedBytes / a.instancedBytes).toBeGreaterThan(100);
+    // the granules' own copies are hidden when drawn as parts; the template's looks follow its expansion
+    const vamp = a.ir.view.looks.filter((l) => l.set.includes('*') && l.color === 0xd0453a);
+    expect(vamp.length).toBe(1);
+    const recolored = {
+      ...betaCellDoc(),
+      views: [{ ...betaCellDoc().views![0], looks: [{ select: '(population p.Chga)', color: '#ffffff' }] }],
+    };
+    const b = flattenInstances(updateView(recolored, r.ir!), cache);
+    expect(planCommit(a.ir, b.ir)).toMatchObject({ add: [], remove: [] });
+  });
+
+  it('more granules: the template is a cache hit, only the cell packing reruns', async () => {
+    const counting = countingResolvers();
+    const cache = new Map();
+    await compile(betaCellDoc(120), { resolvers: counting.resolvers, load, cache });
+    const r = await compile(betaCellDoc(150), { resolvers: counting.resolvers, load, cache });
+    expect(counting.calls.get('cellpack-gpu')).toBe(1);
+    expect(counting.calls.get('meso.pack')).toBe(2);
+    expect(r.counts['p.granules'].achieved).toBe(150);
+  });
+
+  it('detail entity: the same document drawn as one body a granule; the granules keep their places', async () => {
+    const counting = countingResolvers();
+    const cache = new Map();
+    const parts = await compile(betaCellDoc(120, 'parts'), { resolvers: counting.resolvers, load, cache });
+    const bodies = await compile(betaCellDoc(120, 'entity'), { resolvers: counting.resolvers, load, cache });
+    expect(bodies.stats.resolverRuns).toBe(0);
+    const cellSet = (r: typeof parts) => placementSets(r.ir!).find((s) => s.model === 'default:meso.pack')!;
+    expect(cellSet(bodies)).toBe(cellSet(parts));
+    expect([...walk(bodies.ir!.root)].some(([n]) => n.kind === 'superstructure')).toBe(false);
+    expect(flattenInstances(bodies.ir!).expandedCopies).toBe(0);
+  });
+
+  it('addresses through the nesting: one granule, its Vamp2, ids that say which granule', async () => {
+    const r = await compile(betaCellDoc(), { resolvers: countingResolvers().resolvers, load });
+    const kinds = indexDoc(betaCellDoc()).kinds as ReadonlyMap<string, string>;
+    const p = parseMesoQL('(part (copies p.granules 12) p.Vamp2)', { kinds });
+    expect(p.issues).toEqual([]);
+    const { loci } = evaluateMesoQL(p.expr!, { doc: betaCellDoc(), ir: r.ir! });
+    expect(lociSize(loci)).toBe(548);
+    expect(lociToIds(loci, r.ir!, 2)).toEqual(['p.granules#12/p.Vamp2#0', 'p.granules#12/p.Vamp2#1']);
+    // (population p.Vamp2) is the template's: every granule's Vamp2 at once, 548 entries however many granules
+    const all = evaluateMesoQL(parseMesoQL('(population p.Vamp2)', { kinds }).expr!, { doc: betaCellDoc(), ir: r.ir! });
+    expect(lociSize(all.loci)).toBe(548);
+  });
+
+  it('nests: a superstructure of superstructures, flattened through both levels', async () => {
+    const doc: MesoViewSpecDoc = {
+      format: 'meso_view_spec',
+      version: '0.2.0',
+      metadata: { title: 'nested' },
+      units: { length: 'nm' },
+      entities: [
+        { id: 'e.x', label: 'x', kind: 'protein', radius: 2 },
+        { id: 'e.inner', label: 'inner body', kind: 'assembly', superstructure: 's.inner' },
+        { id: 'e.outer', label: 'outer body', kind: 'assembly', superstructure: 's.outer' },
+      ],
+      superstructures: [
+        {
+          id: 's.inner',
+          label: 'inner',
+          compartments: [{ id: 'c.in', label: 'in', kind: 'vesicle', geometry: { kind: 'sphere', radius: 12 } }],
+          populations: [
+            { id: 'p.x', entity: 'e.x', compartment: 'c.in', location: 'interior', abundance: { count: 5 } },
+          ],
+        },
+        {
+          id: 's.outer',
+          label: 'outer',
+          compartments: [{ id: 'c.out', label: 'out', kind: 'vesicle', geometry: { kind: 'sphere', radius: 80 } }],
+          populations: [
+            { id: 'p.inner', entity: 'e.inner', compartment: 'c.out', location: 'interior', abundance: { count: 4 } },
+          ],
+        },
+      ],
+      compartments: [{ id: 'c.top', label: 'top', kind: 'cell', geometry: { kind: 'sphere', radius: 400 } }],
+      populations: [
+        { id: 'p.outer', entity: 'e.outer', compartment: 'c.top', location: 'interior', abundance: { count: 3 } },
+      ],
+    };
+    expect(validate(doc).filter((i) => i.severity === 'error')).toEqual([]);
+    const r = await compile(doc, { resolvers: countingResolvers().resolvers });
+    const f = flattenInstances(r.ir!);
+    const drawn = placementSets(f.ir).filter((s) => s.typeTable.some((t) => t.population === 'p.x'));
+    expect(drawn.reduce((n, s) => n + s.count, 0)).toBe(3 * 4 * 5);
+  });
+
+  it('a superstructure that contains itself is refused', () => {
+    const d = betaCellDoc();
+    const looped = {
+      ...d,
+      superstructures: [
+        {
+          ...d.superstructures![0],
+          populations: [
+            ...d.superstructures![0].populations,
+            {
+              id: 'p.self',
+              entity: 'e.granule',
+              compartment: 'c.isg',
+              location: 'interior' as const,
+              abundance: { count: 1 },
+            },
+          ],
+        },
+      ],
+    };
+    expect(validate(looped).map((i) => i.code)).toContain('superstructure.cycle');
+  });
+});

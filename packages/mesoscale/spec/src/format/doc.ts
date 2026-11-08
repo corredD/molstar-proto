@@ -44,6 +44,13 @@ export interface MesoViewSpecDoc {
   /** Third-party data, referenced in its native format, never copied into the document. */
   readonly resources?: readonly Resource[];
   readonly entities: readonly Entity[];
+  /**
+   * Reusable, nested structures (design.md §3.9): an insulin granule, a nuclear pore, a virion. Each is a fragment of a
+   * document (compartments, populations, models, relations) in its own frame, centred on its envelope. An entity that
+   * names one is instanced like any entity; a population picks whether its copies are resolved into parts or drawn as
+   * one body (`detail`). Superstructures nest: a virus is superstructures of superstructures of molecules.
+   */
+  readonly superstructures?: readonly Superstructure[];
   readonly compartments: readonly Compartment[];
   readonly populations: readonly Population[];
   /** Tables of populations (a proteome's abundances): too many to list, each row a population (design.md §3.6). */
@@ -165,8 +172,27 @@ export interface Entity {
    * and an axis in the entity's own frame (Å) (design.md §3.9).
    */
   readonly sites?: readonly Site[];
+  /**
+   * Its parts, by value: a superstructure of this document (an insulin granule's membrane proteins and cargo). The
+   * entity is then a placeable body whose radius defaults to the superstructure's envelope.
+   */
+  readonly superstructure?: Id;
   /** Conformational states, by value or by reference (design.md §3.10); one is the default. */
   readonly states?: readonly EntityState[];
+  readonly evidence?: readonly Id[];
+}
+
+export interface Superstructure {
+  readonly id: Id;
+  readonly label: string;
+  readonly kind?: 'organelle' | 'vesicle' | 'virion' | 'complex' | 'assembly';
+  /** Its envelope first (no parent); everything in its own frame, centred on the envelope. */
+  readonly compartments: readonly Compartment[];
+  readonly populations: readonly Population[];
+  readonly models?: readonly Model[];
+  readonly relations?: readonly Relation[];
+  /** Entities only it uses; the document's are visible inside it too. */
+  readonly entities?: readonly Entity[];
   readonly evidence?: readonly Id[];
 }
 
@@ -249,6 +275,11 @@ export interface Population {
   readonly range?: readonly [number, number];
   readonly arrangement?: Arrangement;
   readonly constraints?: readonly Constraint[];
+  /**
+   * For an entity with a superstructure: `parts` (default) resolves each copy into the superstructure's contents,
+   * `entity` draws each copy as one body. One description, both levels (design.md §3.9).
+   */
+  readonly detail?: 'parts' | 'entity';
   readonly evidence?: readonly Id[];
 }
 

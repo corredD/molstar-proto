@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { exosomeDoc, ExosomeResources } from '../examples/exosome.js';
 import { galleryDoc } from '../examples/gallery.js';
 import { yeastDoc } from '../examples/yeast.js';
+import { betaCellDoc, BetaCellResources } from '../examples/betacell.js';
 import { DocumentCodec, IRCodec, printData, readData, readSexpr } from '../format/sexpr.js';
 import { irToJson } from '../ir/ir.js';
 import { DefaultResolvers } from '../resolvers/index.js';
@@ -16,7 +17,7 @@ import { compile } from '../runtime/runtime.js';
 // The S-expression spelling (design.md §3.7): a real second spelling of the same tree. read(print(json)) is the JSON;
 // print(read(text)) is the text (a fixed point).
 
-const docs = { exosome: exosomeDoc(), gallery: galleryDoc(), yeast: yeastDoc() };
+const docs = { exosome: exosomeDoc(), gallery: galleryDoc(), yeast: yeastDoc(), betacell: betaCellDoc() };
 
 describe('S-expression spelling', () => {
   for (const [name, doc] of Object.entries(docs)) {
@@ -28,7 +29,10 @@ describe('S-expression spelling', () => {
       expect(printData(back.value, DocumentCodec)).toBe(text);
     });
     it(`${name}: the IR summary round-trips`, async () => {
-      const r = await compile(doc, { resolvers: DefaultResolvers, load: (id) => ExosomeResources[id]?.() });
+      const r = await compile(doc, {
+        resolvers: DefaultResolvers,
+        load: (id) => ExosomeResources[id]?.() ?? BetaCellResources[id]?.(),
+      });
       const json = JSON.parse(
         JSON.stringify(
           irToJson(

@@ -48,7 +48,27 @@ export type IRNode =
         readonly cached: boolean;
       }
     >
-  | IRNodeOf<'placements', { readonly set: PlacementSet }>;
+  | IRNodeOf<'placements', { readonly set: PlacementSet }>
+  /**
+   * A superstructure resolved once, in its own frame (design.md §3.9): its compartments, resolve nodes and template
+   * placement sets, refs prefixed with its id. Never drawn where it stands: `instances` nodes place it.
+   */
+  | IRNodeOf<'superstructure', { readonly superstructure: string; readonly radius: number; readonly copies: number }>
+  /**
+   * Under a placement set: its copies of `type` are instances of a superstructure. `parts`: each copy stands for the
+   * template's copies, moved by the copy's pose (never materialized in the IR); `entity`: drawn as one body.
+   */
+  | IRNodeOf<
+      'instances',
+      {
+        readonly type: number;
+        readonly entity: string;
+        readonly superstructure: string;
+        readonly detail: 'parts' | 'entity';
+        readonly instances: number;
+        readonly templates: readonly string[];
+      }
+    >;
 
 export interface IRNodeOf<K extends string, P> {
   /** Stable: derived from document ids (`model:pack/placements`), never from content. */
@@ -110,6 +130,7 @@ export function* walk(n: IRNode, depth = 0): Generator<[IRNode, number]> {
   for (const c of n.children ?? []) yield* walk(c, depth + 1);
 }
 
+/** Every placement set, templates of superstructures included (in their own frame): what addresses materialize over. */
 export function placementSets(ir: IR): PlacementSet[] {
   const out: PlacementSet[] = [];
   for (const [n] of walk(ir.root)) if (n.kind === 'placements') out.push(n.params.set);

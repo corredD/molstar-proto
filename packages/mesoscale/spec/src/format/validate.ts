@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { type Id, IdPattern, type MesoViewSpecDoc, type Length, type Abundance } from './doc.js';
+import { type Id, IdPattern, type MesoViewSpecDoc, type Superstructure, type Length, type Abundance } from './doc.js';
 import { type Issue, type IssueCode, issue } from './issues.js';
 import { parseMesoQL } from './mesoql.js';
 import { ConcentrationToMolar, DensityToPerA2, isLengthUnit } from './units.js';
@@ -28,7 +28,8 @@ type Kind =
   | 'evidence'
   | 'activity'
   | 'view'
-  | 'annotation';
+  | 'annotation'
+  | 'superstructure';
 
 const Sections: readonly [keyof MesoViewSpecDoc, Kind][] = [
   ['frames', 'frame'],
@@ -43,7 +44,38 @@ const Sections: readonly [keyof MesoViewSpecDoc, Kind][] = [
   ['evidence', 'evidence'],
   ['activities', 'activity'],
   ['views', 'view'],
+  ['superstructures', 'superstructure'],
 ];
+
+const InnerSections: readonly [keyof Superstructure, Kind][] = [
+  ['entities', 'entity'],
+  ['compartments', 'compartment'],
+  ['populations', 'population'],
+  ['models', 'model'],
+  ['relations', 'relation'],
+];
+
+/**
+ * A superstructure as a document of its own (design.md §3.9): its contents, the document's entities (and its own),
+ * resources, evidence and activities, so its references resolve; no frames or views. The runtime resolves it with this.
+ */
+export function superstructureDoc(doc: MesoViewSpecDoc, ss: Superstructure): MesoViewSpecDoc {
+  return {
+    format: doc.format,
+    version: doc.version,
+    metadata: { title: ss.label },
+    units: doc.units,
+    resources: doc.resources,
+    entities: [...doc.entities, ...(ss.entities ?? [])],
+    superstructures: doc.superstructures,
+    compartments: ss.compartments,
+    populations: ss.populations,
+    models: ss.models,
+    relations: ss.relations,
+    evidence: doc.evidence,
+    activities: doc.activities,
+  };
+}
 
 export interface DocIndex {
   readonly kinds: ReadonlyMap<Id, Kind>;
@@ -62,6 +94,16 @@ export function indexDoc(doc: MesoViewSpecDoc): DocIndex {
       }
     });
   }
+  // a superstructure's contents share the document's id namespace (MesoQL addresses them by id)
+  (doc.superstructures ?? []).forEach((ss, i) => {
+    for (const [section, kind] of InnerSections)
+      ((ss[section] as readonly { id: Id }[] | undefined) ?? []).forEach((x, j) => {
+        if (!kinds.has(x.id)) {
+          kinds.set(x.id, kind);
+          paths.set(x.id, `/superstructures/${i}/${section}/${j}`);
+        }
+      });
+  });
   (doc.views ?? []).forEach((v, i) =>
     (v.annotations ?? []).forEach((a, j) => {
       if (!kinds.has(a.id)) {
@@ -73,7 +115,8 @@ export function indexDoc(doc: MesoViewSpecDoc): DocIndex {
   return { kinds, paths };
 }
 
-export function validate(doc: MesoViewSpecDoc): Issue[] {
+/** `nested`: a superstructure checked as a document of its own, whose superstructures the outer check covers. */
+export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
   const out: Issue[] = [];
   const err = (code: IssueCode, message: string, path: string, ids?: Id[]) =>
     out.push(issue(code, 'error', 'static', message, { path, ids }));
@@ -108,6 +151,16 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
       else seen.set(x.id, path);
     });
   }
+  if (!nested)
+    (doc.superstructures ?? []).forEach((ss, i) => {
+      for (const [section] of InnerSections)
+        ((ss[section] as readonly { id: Id }[] | undefined) ?? []).forEach((x, j) => {
+          const path = `/superstructures/${i}/${section}/${j}/id`;
+          const before = seen.get(x.id);
+          if (before) err('id.duplicate', `id ${x.id} is also at ${before}`, path, [x.id]);
+          else seen.set(x.id, path);
+        });
+    });
   const { kinds } = indexDoc(doc);
   const ref = (id: Id | undefined, want: Kind | readonly Kind[], path: string) => {
     if (id === undefined) return;
@@ -360,5 +413,46 @@ export function validate(doc: MesoViewSpecDoc): Issue[] {
     });
   });
   ref(doc.session?.view, 'view', '/session/view');
+
+  // superstructures: each checked as a document of its own (its sections' issues, under its path); no cycles
+  const ssById = new Map((doc.superstructures ?? []).map((x) => [x.id, x]));
+  const entSs = new Map<Id, Id>();
+  for (const e of [...doc.entities, ...(doc.superstructures ?? []).flatMap((x) => x.entities ?? [])])
+    if (e.superstructure) entSs.set(e.id, e.superstructure);
+  doc.entities.forEach((e, i) => ref(e.superstructure, 'superstructure', `/entities/${i}/superstructure`));
+  doc.populations.forEach((p, i) => {
+    if (p.detail && !entSs.has(p.entity))
+      warn('value.range', `${p.id} sets a detail but ${p.entity} has no superstructure`, `/populations/${i}/detail`, [
+        p.id,
+      ]);
+  });
+  if (nested) return out;
+  (doc.superstructures ?? []).forEach((ss, i) => {
+    if (!ss.compartments?.length)
+      err('ref.missing', `superstructure ${ss.id} has no envelope compartment`, `/superstructures/${i}/compartments`, [
+        ss.id,
+      ]);
+    const inner = validate(superstructureDoc(doc, ss), true);
+    for (const x of inner)
+      if (x.path && /^\/(compartments|populations|models|relations)\//.test(x.path))
+        out.push({ ...x, path: `/superstructures/${i}${x.path}` });
+  });
+  const contains = (id: Id, trail: Id[]): boolean => {
+    if (trail.includes(id)) {
+      err(
+        'superstructure.cycle',
+        `superstructures contain each other: ${[...trail, id].join(' > ')}`,
+        '/superstructures',
+        trail,
+      );
+      return true;
+    }
+    for (const p of ssById.get(id)?.populations ?? []) {
+      const inner = entSs.get(p.entity);
+      if (inner && contains(inner, [...trail, id])) return true;
+    }
+    return false;
+  };
+  for (const id of ssById.keys()) if (contains(id, [])) break;
   return out;
 }

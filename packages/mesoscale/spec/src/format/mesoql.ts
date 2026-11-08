@@ -152,7 +152,7 @@ export const MesoQLSymbols: readonly QSymbol[] = [
     description: 'copies of an inner population of a superstructure, in the instances the first selection picks',
     args: [
       { name: 'instances', kind: 'selection' },
-      { name: 'inner', kind: 'word' },
+      { name: 'inner', kind: 'id', ref: 'population' },
     ],
     example: '(part (copies p.granules 12) p.Vamp2)',
   },

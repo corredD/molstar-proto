@@ -9,6 +9,7 @@ import { Color } from '@molstar/core/util/color';
 import type { IR } from '@molstar/meso-spec/ir/ir';
 import { type Issue, issue } from '@molstar/meso-spec/format/issues';
 import { type CommitReport, planCommit, type RendererAdapter } from '@molstar/meso-spec/runtime/adapter';
+import { type ExpansionCache, flattenInstances } from '@molstar/meso-spec/runtime/instancing';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 // the `particles` API area's types (the feature is lazy: `extensions.load('particles')` before its first use)
 import type {} from '@molstar/prism-viewer/features/particles';
@@ -29,6 +30,8 @@ interface Placed {
 export class PrismMesoAdapter implements RendererAdapter {
   readonly id = 'prism';
   private prev: IR | undefined;
+  /** Expanded instance sets by key: kept across commits, so a view edit expands nothing again. */
+  private readonly expansions: ExpansionCache = new Map();
   private placed = new Map<string, Placed>();
   /** For tests and stories: the state objects of the lists, by set key. */
   listObject(key: string) {
@@ -44,7 +47,11 @@ export class PrismMesoAdapter implements RendererAdapter {
     readonly options: { readonly representation?: string; readonly sizeFactor?: number } = {},
   ) {}
 
-  async commit(ir: IR): Promise<CommitReport> {
+  async commit(source: IR): Promise<CommitReport> {
+    // superstructure instances expanded into world sets: Prism has no nested instancing (renderer-recommendations R7)
+    const flat = flattenInstances(source, this.expansions);
+    const ir = flat.ir;
+    for (const k of [...this.expansions.keys()]) if (!placementSetKeys(ir).has(k)) this.expansions.delete(k);
     const t0 = now();
     const plan = planCommit(this.prev, ir);
     const v = this.viewer;
@@ -149,6 +156,15 @@ export class PrismMesoAdapter implements RendererAdapter {
           ),
         );
     }
+    if (flat.expandedCopies)
+      issues.push(
+        issue(
+          'instances.expanded',
+          'info',
+          'render',
+          `${flat.expandedCopies.toLocaleString('en-US')} copies expanded from superstructure instances (${(flat.expandedBytes / 2 ** 20).toFixed(1)} MB; the IR holds ${(flat.instancedBytes / 2 ** 10).toFixed(0)} kB for them): Prism has no nested instancing`,
+        ),
+      );
     this.prev = ir;
     return {
       added: plan.add.map((s) => s.key),
@@ -156,6 +172,9 @@ export class PrismMesoAdapter implements RendererAdapter {
       kept: plan.keep,
       looksWritten,
       cameraSet,
+      ...(flat.expandedCopies
+        ? { expanded: { copies: flat.expandedCopies, bytes: flat.expandedBytes, instancedBytes: flat.instancedBytes } }
+        : {}),
       issues,
       ms: { total: t3 - t0, sets: t1 - t0, looks: t2 - t1, camera: t3 - t2 },
     };
@@ -176,4 +195,14 @@ export class PrismMesoAdapter implements RendererAdapter {
   async dispose() {
     await this.clear();
   }
+}
+
+function placementSetKeys(ir: IR): Set<string> {
+  const out = new Set<string>();
+  const visit = (n: IR['root']) => {
+    if (n.kind === 'placements') out.add(n.params.set.key);
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(ir.root);
+  return out;
 }
