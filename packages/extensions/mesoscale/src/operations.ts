@@ -250,15 +250,20 @@ export class MesoscaleApi extends ApiArea {
         return ApiResult.fail('not-found', `No mesh ${mesh} in the scene.`);
       }
       const b = ctx.plugin.state.data.build();
-      const node = b.toRoot().apply(LipidMembrane, {
-        ...PD.getDefaultValues(LipidMembraneParams),
-        mesh,
-        center,
-        radius: r,
-        patch,
-        edge,
-        leaflets,
-      });
+      const node = b.toRoot().apply(
+        LipidMembrane,
+        {
+          ...PD.getDefaultValues(LipidMembraneParams),
+          mesh,
+          center,
+          radius: r,
+          patch,
+          edge,
+          leaflets,
+        },
+        // removed with its mesh (moving the mesh does not move it yet: TODO.md)
+        mesh ? { dependsOn: [mesh] } : undefined,
+      );
       // a failed transform (an unknown patch, a ref that is not a mesh) leaves no cell and no step: reverted, its error
       // read as it happened
       let error: string | undefined;

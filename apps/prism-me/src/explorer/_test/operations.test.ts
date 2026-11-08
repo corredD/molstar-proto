@@ -412,6 +412,12 @@ describe('explorer', () => {
     expect(membraneIds).not.toContain('wrap-lipids');
     expectOk(await v.api.run('history.undo', {}));
     expect(v.plugin.state.data.cells.size).toBe(before);
+    // removed with its mesh (review S6): the mesh's row's Remove
+    const again = await v.api.run('mesoscale.wrapMembrane', { mesh: mesh.ref, edge: 100 });
+    expectOk(again);
+    expectOk(await removeObject(v.api, area, 'mesh', mesh.ref));
+    expect(v.plugin.state.data.cells.has(again.changed!.nodes![0])).toBe(false);
+    expectOk(await v.api.run('history.undo', {}));
     // a compartment's group, grouped by compartment: Wrap with lipids (a sphere fitted to it); by function: none
     const group = {
       key: 'g',
