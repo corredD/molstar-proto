@@ -63,7 +63,9 @@ export interface MesoViewSpecDoc {
   readonly activities?: readonly Activity[];
   /** Persistent view state: what a session restores. */
   readonly views?: readonly View[];
-  readonly session?: { readonly view?: Id };
+  readonly session?: { readonly view?: Id; readonly tour?: Id };
+  /** Guided walks through the views. */
+  readonly tours?: readonly Tour[];
   /** Extensions, by namespace (`{ "cellpack": {…} }`): a reader that does not know a namespace keeps and ignores it. */
   readonly custom?: Readonly<Record<string, unknown>>;
 }
@@ -455,12 +457,23 @@ export interface Look {
 
 export type RepresentationHint = 'spheres' | 'structure' | 'surface';
 
+/**
+ * A camera (design.md §5.1): numeric (`position`, `target`, in the view's frame and the document's length unit), or
+ * semantic: `focus` is a MesoQL address and the runtime frames the copies it picks (their bounding sphere), from a
+ * direction (`from`: a vector, or `outside`: from beyond the scene's centre through the focus), at a `framing`
+ * (`fit`: the focus fills the view; `close`: inside it; `context`: with its surroundings). A semantic camera follows
+ * the scene: re-resolve, and it frames the same copies wherever they now are.
+ */
 export interface Camera {
-  /** In the view's frame (the world frame by default), the document's length unit. */
-  readonly position: Vec3;
-  readonly target: Vec3;
+  readonly position?: Vec3;
+  readonly target?: Vec3;
   readonly up?: Vec3;
   readonly fov?: number;
+  readonly focus?: MesoQL;
+  readonly framing?: 'fit' | 'close' | 'context';
+  readonly from?: Vec3 | 'outside';
+  /** Milliseconds to move there from the previous view. */
+  readonly transition?: number;
 }
 
 export interface Annotation {
@@ -480,5 +493,17 @@ export interface View {
   readonly looks?: readonly Look[];
   readonly selection?: MesoQL;
   readonly annotations?: readonly Annotation[];
+  /**
+   * What to cut away so the focus shows (a MesoQL address: the copies hidden between the camera and the focus). A
+   * renderer that cannot clip by copies says so; the prototype's Prism adapter reports it.
+   */
+  readonly cutaway?: MesoQL;
   readonly description?: string;
+}
+
+/** An ordered walk through views (design.md §5.1), as MolViewSpec's snapshots: each step a view and how long it holds. */
+export interface Tour {
+  readonly id: Id;
+  readonly label?: string;
+  readonly steps: readonly { readonly view: Id; readonly duration?: number; readonly caption?: string }[];
 }

@@ -111,7 +111,13 @@ export interface IRView {
     readonly target: readonly number[];
     readonly up: readonly number[];
     readonly fov?: number;
+    /** Milliseconds to move there. */
+    readonly transition?: number;
+    /** For a semantic camera: the radius of the sphere it frames (Å). */
+    readonly focus?: { readonly radius: number };
   };
+  /** The copies to cut away so the focus shows (a renderer that cannot clip by copies reports it). */
+  readonly cutaway?: readonly { readonly set: string; readonly runs: readonly number[] }[];
   /** One per (set, type), every type of every set, then the partial looks (`runs`): what an adapter writes. */
   readonly looks: readonly IRLook[];
   /** The view's selection, materialized: runs of copy indices per set. */

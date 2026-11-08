@@ -279,11 +279,12 @@ export const DocumentCodec: DataCodec = {
     views: 'view',
     annotations: 'annotation',
     superstructures: 'superstructure',
+    tours: 'tour',
     sites: 'site',
     states: 'state',
   },
   root: 'format',
-  inline: ['select', 'selection', 'at', 'target', 'entry', 'exit'],
+  inline: ['select', 'selection', 'at', 'target', 'entry', 'exit', 'focus', 'cutaway'],
 };
 
 export const IRCodec: DataCodec = { sections: {}, positional: 'ref', inline: [] };

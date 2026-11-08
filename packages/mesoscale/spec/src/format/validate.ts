@@ -29,7 +29,8 @@ type Kind =
   | 'activity'
   | 'view'
   | 'annotation'
-  | 'superstructure';
+  | 'superstructure'
+  | 'tour';
 
 const Sections: readonly [keyof MesoViewSpecDoc, Kind][] = [
   ['frames', 'frame'],
@@ -45,6 +46,7 @@ const Sections: readonly [keyof MesoViewSpecDoc, Kind][] = [
   ['activities', 'activity'],
   ['views', 'view'],
   ['superstructures', 'superstructure'],
+  ['tours', 'tour'],
 ];
 
 const InnerSections: readonly [keyof Superstructure, Kind][] = [
@@ -417,6 +419,12 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
   );
   (doc.views ?? []).forEach((v, i) => {
     ref(v.frame, 'frame', `/views/${i}/frame`);
+    const cam = v.camera;
+    if (cam) {
+      if (!cam.focus && !(cam.position && cam.target)) err('value.range', 'a camera has a focus or a position and a target', `/views/${i}/camera`, [v.id]);
+      address(cam.focus, `/views/${i}/camera/focus`);
+    }
+    address(v.cutaway, `/views/${i}/cutaway`);
     (v.looks ?? []).forEach((l, j) => {
       address(l.select, `/views/${i}/looks/${j}/select`);
       if (l.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(l.color))
@@ -438,6 +446,8 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     });
   });
   ref(doc.session?.view, 'view', '/session/view');
+  ref(doc.session?.tour, 'tour', '/session/tour');
+  (doc.tours ?? []).forEach((t, i) => t.steps.forEach((st, j) => ref(st.view, 'view', `/tours/${i}/steps/${j}/view`)));
 
   // superstructures: each checked as a document of its own (its sections' issues, under its path); no cycles
   const ssById = new Map((doc.superstructures ?? []).map((x) => [x.id, x]));

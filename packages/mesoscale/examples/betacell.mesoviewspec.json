@@ -1,295 +1,439 @@
 {
-  "format": "meso_view_spec",
-  "version": "0.2.0",
-  "metadata": {
-    "title": "β-cell slice with insulin granules",
-    "description": "Insulin secretory granules (a superstructure from a cellPACKgpu recipe) instanced in a slice of a pancreatic β-cell.",
-    "organism": {
-      "name": "Mus musculus",
-      "taxon": 10090
-    }
+ "format": "meso_view_spec",
+ "version": "0.2.0",
+ "metadata": {
+  "title": "β-cell slice with insulin granules",
+  "description": "Insulin secretory granules (a superstructure from a cellPACKgpu recipe) instanced in a slice of a pancreatic β-cell.",
+  "organism": {
+   "name": "Mus musculus",
+   "taxon": 10090
+  }
+ },
+ "units": {
+  "length": "nm"
+ },
+ "frames": [
+  {
+   "id": "f.cell",
+   "kind": "world",
+   "units": "nm",
+   "handedness": "right"
+  }
+ ],
+ "resources": [
+  {
+   "id": "r.isg-recipe",
+   "kind": "recipe",
+   "format": "cellpack-gpu-serialized",
+   "label": "cellPACKgpu insulin granule recipe (trimmed)",
+   "uri": "examples/fixtures/isg.cellpack-gpu.json"
+  }
+ ],
+ "entities": [
+  {
+   "id": "e.Vamp2",
+   "label": "Vamp2 (VAMP-2)",
+   "kind": "protein",
+   "identifiers": {},
+   "radius": {
+    "value": 25,
+    "unit": "A"
+   }
   },
-  "units": {
-    "length": "nm"
+  {
+   "id": "e.Rab3a",
+   "label": "Rab3a (Ras-related protein Rab-3A)",
+   "kind": "protein",
+   "identifiers": {
+    "pdb": "3RAB"
+   },
+   "radius": {
+    "value": 25,
+    "unit": "A"
+   }
   },
-  "frames": [
+  {
+   "id": "e.Chga",
+   "label": "Chga (Chromogranin-A)",
+   "kind": "protein",
+   "identifiers": {},
+   "radius": {
+    "value": 25,
+    "unit": "A"
+   }
+  },
+  {
+   "id": "e.Scg2",
+   "label": "Scg2 (Secretogranin-2)",
+   "kind": "protein",
+   "identifiers": {},
+   "radius": {
+    "value": 25,
+    "unit": "A"
+   }
+  },
+  {
+   "id": "e.granule",
+   "label": "insulin secretory granule",
+   "kind": "assembly",
+   "superstructure": "s.isg",
+   "evidence": [
+    "ev.isg-recipe"
+   ]
+  },
+  {
+   "id": "e.ribosome",
+   "label": "ribosome",
+   "kind": "complex",
+   "radius": 13
+  }
+ ],
+ "superstructures": [
+  {
+   "id": "s.isg",
+   "label": "insulin secretory granule",
+   "kind": "vesicle",
+   "compartments": [
     {
-      "id": "f.cell",
-      "kind": "world",
-      "units": "nm",
-      "handedness": "right"
-    }
-  ],
-  "resources": [
-    {
-      "id": "r.isg-recipe",
-      "kind": "recipe",
-      "format": "cellpack-gpu-serialized",
-      "label": "cellPACKgpu insulin granule recipe (trimmed)",
-      "uri": "examples/fixtures/isg.cellpack-gpu.json"
-    }
-  ],
-  "entities": [
-    {
-      "id": "e.Vamp2",
-      "label": "Vamp2 (VAMP-2)",
-      "kind": "protein",
-      "identifiers": {},
+     "id": "c.isg",
+     "label": "isg",
+     "kind": "vesicle",
+     "geometry": {
+      "kind": "sphere",
       "radius": {
-        "value": 25,
-        "unit": "A"
-      }
-    },
-    {
-      "id": "e.Rab3a",
-      "label": "Rab3a (Ras-related protein Rab-3A)",
-      "kind": "protein",
-      "identifiers": {
-        "pdb": "3RAB"
+       "value": 1370,
+       "unit": "A"
       },
-      "radius": {
-        "value": 25,
-        "unit": "A"
-      }
-    },
-    {
-      "id": "e.Chga",
-      "label": "Chga (Chromogranin-A)",
-      "kind": "protein",
-      "identifiers": {},
-      "radius": {
-        "value": 25,
-        "unit": "A"
-      }
-    },
-    {
-      "id": "e.Scg2",
-      "label": "Scg2 (Secretogranin-2)",
-      "kind": "protein",
-      "identifiers": {},
-      "radius": {
-        "value": 25,
-        "unit": "A"
-      }
-    },
-    {
-      "id": "e.granule",
-      "label": "insulin secretory granule",
-      "kind": "assembly",
-      "superstructure": "s.isg",
-      "evidence": ["ev.isg-recipe"]
-    },
-    {
-      "id": "e.ribosome",
-      "label": "ribosome",
-      "kind": "complex",
-      "radius": 13
-    }
-  ],
-  "superstructures": [
-    {
-      "id": "s.isg",
-      "label": "insulin secretory granule",
-      "kind": "vesicle",
-      "compartments": [
-        {
-          "id": "c.isg",
-          "label": "isg",
-          "kind": "vesicle",
-          "geometry": {
-            "kind": "sphere",
-            "radius": {
-              "value": 1370,
-              "unit": "A"
-            },
-            "center": [0, 0, 0]
-          },
-          "membrane": {
-            "thickness": {
-              "value": 15,
-              "unit": "A"
-            }
-          },
-          "evidence": ["cellpack.thickness"]
-        }
-      ],
-      "populations": [
-        {
-          "id": "p.Vamp2",
-          "entity": "e.Vamp2",
-          "compartment": "c.isg",
-          "location": "membrane",
-          "abundance": {
-            "count": 548
-          },
-          "evidence": ["cellpack.count-rule"]
-        },
-        {
-          "id": "p.Rab3a",
-          "entity": "e.Rab3a",
-          "compartment": "c.isg",
-          "location": "membrane",
-          "abundance": {
-            "count": 940
-          },
-          "evidence": ["cellpack.count-rule"]
-        },
-        {
-          "id": "p.Chga",
-          "entity": "e.Chga",
-          "compartment": "c.isg",
-          "location": "interior",
-          "abundance": {
-            "count": 454
-          },
-          "evidence": ["cellpack.count-rule"]
-        },
-        {
-          "id": "p.Scg2",
-          "entity": "e.Scg2",
-          "compartment": "c.isg",
-          "location": "interior",
-          "abundance": {
-            "count": 287
-          },
-          "evidence": ["cellpack.count-rule"]
-        }
-      ],
-      "models": [
-        {
-          "id": "m.isg",
-          "label": "cellPACKgpu recipe, packed",
-          "kind": "procedural",
-          "method": "cellpack-gpu",
-          "populations": ["p.Vamp2", "p.Rab3a", "p.Chga", "p.Scg2"],
-          "inputs": ["r.isg-recipe"],
-          "seed": 3,
-          "params": {
-            "ingredients": {
-              "p.Vamp2": {
-                "path": "root.isg.surface.proteins.Vamp2"
-              },
-              "p.Rab3a": {
-                "path": "root.isg.surface.proteins.Rab3a"
-              },
-              "p.Chga": {
-                "path": "root.isg.interior.proteins.Chga"
-              },
-              "p.Scg2": {
-                "path": "root.isg.interior.proteins.Scg2"
-              }
-            }
-          }
-        }
-      ],
-      "evidence": ["ev.isg-recipe"]
-    }
-  ],
-  "compartments": [
-    {
-      "id": "c.cell",
-      "label": "β-cell (slice)",
-      "kind": "cell",
-      "geometry": {
-        "kind": "sphere",
-        "radius": 1500
-      },
-      "membrane": {
-        "thickness": 4
-      }
-    }
-  ],
-  "populations": [
-    {
-      "id": "p.granules",
-      "entity": "e.granule",
-      "compartment": "c.cell",
-      "location": "interior",
-      "abundance": {
-        "count": 120
-      },
-      "detail": "parts",
-      "evidence": ["ev.granule-count"]
-    },
-    {
-      "id": "p.ribosomes",
-      "entity": "e.ribosome",
-      "compartment": "c.cell",
-      "location": "interior",
-      "abundance": {
-        "count": 2000
-      }
-    }
-  ],
-  "evidence": [
-    {
-      "id": "cellpack.thickness",
-      "kind": "assumption",
-      "statement": "The recipe's compartment thickness (7.5) is read as half the membrane's thickness in Å; the recipe states no unit",
-      "source": {
-        "resource": "r.isg-recipe"
-      },
-      "confidence": "low"
-    },
-    {
-      "id": "cellpack.count-rule",
-      "kind": "assumption",
-      "statement": "Counts: a nonzero nbMol wins over molarity (cellPACKgpu UImanager.cs:9231)",
-      "source": {
-        "resource": "r.isg-recipe"
-      }
-    },
-    {
-      "id": "ev.isg-recipe",
-      "kind": "database",
-      "statement": "The granule's contents: cellPACKgpu insulin granule recipe (trimmed to Vamp2, Rab3a, Chga, Scg2)",
-      "source": {
-        "resource": "r.isg-recipe"
-      }
-    },
-    {
-      "id": "ev.granule-count",
-      "kind": "assumption",
-      "statement": "Illustrative granule count for a slice; a whole β-cell holds on the order of 10,000 granules",
-      "confidence": "low"
-    }
-  ],
-  "views": [
-    {
-      "id": "v.granules",
-      "label": "Granules",
-      "camera": {
-        "position": [0, 0, 4200],
-        "target": [0, 0, 0],
-        "up": [0, 1, 0]
-      },
-      "looks": [
-        {
-          "select": "(population p.ribosomes)",
-          "color": "#7a9cc6",
-          "transparency": 0.5
-        },
-        {
-          "select": "(population p.Vamp2)",
-          "color": "#d0453a"
-        },
-        {
-          "select": "(population p.Rab3a)",
-          "color": "#e0b04c"
-        },
-        {
-          "select": "(population p.Chga)",
-          "color": "#5aa55a"
-        },
-        {
-          "select": "(population p.Scg2)",
-          "color": "#9b59b6"
-        },
-        {
-          "select": "(population p.granules)",
-          "color": "#c8b8e0"
-        }
+      "center": [
+       0,
+       0,
+       0
       ]
+     },
+     "membrane": {
+      "thickness": {
+       "value": 15,
+       "unit": "A"
+      }
+     },
+     "evidence": [
+      "cellpack.thickness"
+     ]
     }
-  ]
+   ],
+   "populations": [
+    {
+     "id": "p.Vamp2",
+     "entity": "e.Vamp2",
+     "compartment": "c.isg",
+     "location": "membrane",
+     "abundance": {
+      "count": 548
+     },
+     "evidence": [
+      "cellpack.count-rule"
+     ]
+    },
+    {
+     "id": "p.Rab3a",
+     "entity": "e.Rab3a",
+     "compartment": "c.isg",
+     "location": "membrane",
+     "abundance": {
+      "count": 940
+     },
+     "evidence": [
+      "cellpack.count-rule"
+     ]
+    },
+    {
+     "id": "p.Chga",
+     "entity": "e.Chga",
+     "compartment": "c.isg",
+     "location": "interior",
+     "abundance": {
+      "count": 454
+     },
+     "evidence": [
+      "cellpack.count-rule"
+     ]
+    },
+    {
+     "id": "p.Scg2",
+     "entity": "e.Scg2",
+     "compartment": "c.isg",
+     "location": "interior",
+     "abundance": {
+      "count": 287
+     },
+     "evidence": [
+      "cellpack.count-rule"
+     ]
+    }
+   ],
+   "models": [
+    {
+     "id": "m.isg",
+     "label": "cellPACKgpu recipe, packed",
+     "kind": "procedural",
+     "method": "cellpack-gpu",
+     "populations": [
+      "p.Vamp2",
+      "p.Rab3a",
+      "p.Chga",
+      "p.Scg2"
+     ],
+     "inputs": [
+      "r.isg-recipe"
+     ],
+     "seed": 3,
+     "params": {
+      "ingredients": {
+       "p.Vamp2": {
+        "path": "root.isg.surface.proteins.Vamp2"
+       },
+       "p.Rab3a": {
+        "path": "root.isg.surface.proteins.Rab3a"
+       },
+       "p.Chga": {
+        "path": "root.isg.interior.proteins.Chga"
+       },
+       "p.Scg2": {
+        "path": "root.isg.interior.proteins.Scg2"
+       }
+      }
+     }
+    }
+   ],
+   "evidence": [
+    "ev.isg-recipe"
+   ]
+  }
+ ],
+ "compartments": [
+  {
+   "id": "c.cell",
+   "label": "β-cell (slice)",
+   "kind": "cell",
+   "geometry": {
+    "kind": "sphere",
+    "radius": 1500
+   },
+   "membrane": {
+    "thickness": 4
+   }
+  }
+ ],
+ "populations": [
+  {
+   "id": "p.granules",
+   "entity": "e.granule",
+   "compartment": "c.cell",
+   "location": "interior",
+   "abundance": {
+    "count": 120
+   },
+   "detail": "parts",
+   "evidence": [
+    "ev.granule-count"
+   ]
+  },
+  {
+   "id": "p.ribosomes",
+   "entity": "e.ribosome",
+   "compartment": "c.cell",
+   "location": "interior",
+   "abundance": {
+    "count": 2000
+   }
+  }
+ ],
+ "evidence": [
+  {
+   "id": "cellpack.thickness",
+   "kind": "assumption",
+   "statement": "The recipe's compartment thickness (7.5) is read as half the membrane's thickness in Å; the recipe states no unit",
+   "source": {
+    "resource": "r.isg-recipe"
+   },
+   "confidence": "low"
+  },
+  {
+   "id": "cellpack.count-rule",
+   "kind": "assumption",
+   "statement": "Counts: a nonzero nbMol wins over molarity (cellPACKgpu UImanager.cs:9231)",
+   "source": {
+    "resource": "r.isg-recipe"
+   }
+  },
+  {
+   "id": "ev.isg-recipe",
+   "kind": "database",
+   "statement": "The granule's contents: cellPACKgpu insulin granule recipe (trimmed to Vamp2, Rab3a, Chga, Scg2)",
+   "source": {
+    "resource": "r.isg-recipe"
+   }
+  },
+  {
+   "id": "ev.granule-count",
+   "kind": "assumption",
+   "statement": "Illustrative granule count for a slice; a whole β-cell holds on the order of 10,000 granules",
+   "confidence": "low"
+  }
+ ],
+ "views": [
+  {
+   "id": "v.granules",
+   "label": "Granules",
+   "camera": {
+    "position": [
+     0,
+     0,
+     4200
+    ],
+    "target": [
+     0,
+     0,
+     0
+    ],
+    "up": [
+     0,
+     1,
+     0
+    ]
+   },
+   "looks": [
+    {
+     "select": "(population p.ribosomes)",
+     "color": "#7a9cc6",
+     "transparency": 0.5
+    },
+    {
+     "select": "(population p.Vamp2)",
+     "color": "#d0453a"
+    },
+    {
+     "select": "(population p.Rab3a)",
+     "color": "#e0b04c"
+    },
+    {
+     "select": "(population p.Chga)",
+     "color": "#5aa55a"
+    },
+    {
+     "select": "(population p.Scg2)",
+     "color": "#9b59b6"
+    },
+    {
+     "select": "(population p.granules)",
+     "color": "#c8b8e0"
+    }
+   ]
+  },
+  {
+   "id": "v.cell",
+   "label": "The whole slice",
+   "camera": {
+    "focus": "(all)",
+    "framing": "fit",
+    "from": [
+     0,
+     0,
+     1
+    ],
+    "transition": 1200
+   },
+   "looks": [
+    {
+     "select": "(population p.ribosomes)",
+     "color": "#7a9cc6",
+     "transparency": 0.5
+    },
+    {
+     "select": "(population p.Vamp2)",
+     "color": "#d0453a"
+    },
+    {
+     "select": "(population p.Rab3a)",
+     "color": "#e0b04c"
+    },
+    {
+     "select": "(population p.Chga)",
+     "color": "#5aa55a"
+    },
+    {
+     "select": "(population p.Scg2)",
+     "color": "#9b59b6"
+    },
+    {
+     "select": "(population p.granules)",
+     "color": "#c8b8e0"
+    }
+   ]
+  },
+  {
+   "id": "v.granule-12",
+   "label": "Granule 12, from outside the cell",
+   "description": "Framed on granule 12 by its address; the ribosomes near it would be cut away",
+   "camera": {
+    "focus": "(part (copies p.granules 12) p.Vamp2)",
+    "framing": "context",
+    "from": "outside",
+    "transition": 1500
+   },
+   "cutaway": "(within (population p.ribosomes) :of (copies p.granules 12) :distance 250)",
+   "looks": [
+    {
+     "select": "(population p.ribosomes)",
+     "color": "#7a9cc6",
+     "transparency": 0.5
+    },
+    {
+     "select": "(population p.Vamp2)",
+     "color": "#d0453a"
+    },
+    {
+     "select": "(population p.Rab3a)",
+     "color": "#e0b04c"
+    },
+    {
+     "select": "(population p.Chga)",
+     "color": "#5aa55a"
+    },
+    {
+     "select": "(population p.Scg2)",
+     "color": "#9b59b6"
+    },
+    {
+     "select": "(population p.granules)",
+     "color": "#c8b8e0"
+    }
+   ],
+   "annotations": [
+    {
+     "id": "an.g12",
+     "target": "(part (copies p.granules 12) p.Vamp2)",
+     "text": "Granule 12: its VAMP2"
+    }
+   ]
+  }
+ ],
+ "tours": [
+  {
+   "id": "t.granule",
+   "label": "Into one granule",
+   "steps": [
+    {
+     "view": "v.cell",
+     "duration": 3000,
+     "caption": "A slice of a β-cell, 120 granules"
+    },
+    {
+     "view": "v.granule-12",
+     "duration": 4000,
+     "caption": "One granule, its membrane proteins and cargo"
+    }
+   ]
+  }
+ ]
 }

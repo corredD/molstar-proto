@@ -20,7 +20,7 @@ import { abundanceToCount, LengthToAngstrom, toAngstrom } from '../format/units.
 import { superstructureDoc, validate } from '../format/validate.js';
 import { contentHash } from '../ir/hash.js';
 import { type IR, type IRLook, type IRNode, type IRShape, type IRView, placementSets } from '../ir/ir.js';
-import { evaluateMesoQL, intersectRuns, lociCentroid, type MesoLoci, runsSize, typeRuns } from '../ir/loci.js';
+import { evaluateMesoQL, intersectRuns, lociSphere, type MesoLoci, runsSize, typeRuns } from '../ir/loci.js';
 import { parseMesoQL } from '../format/mesoql.js';
 import { meshArea } from '../resolvers/geometry.js';
 import { DefaultReaders, readerFor } from './readers.js';
@@ -997,25 +997,71 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
     ? [...materialize(view.selection)].map(([set, runs]) => ({ set, runs }))
     : undefined;
   const f = LengthToAngstrom[unit];
-  const cam = view?.camera;
+  const camera = deriveCamera(doc, view, ir, materialize);
   return {
     id: view?.id ?? 'default',
-    camera: cam
-      ? {
-          position: cam.position.map((x) => x * f),
-          target: cam.target.map((x) => x * f),
-          up: [...(cam.up ?? [0, 1, 0])],
-          fov: cam.fov,
-        }
-      : undefined,
+    camera,
     looks: [...looks, ...partial],
     selection: selection?.length ? selection : undefined,
     annotations: view?.annotations?.map((a) => ({
       id: a.id,
       text: a.text,
       position:
-        typeof a.target === 'string' ? lociCentroid(materialize(a.target), ir) : a.target.position.map((x) => x * f),
+        typeof a.target === 'string' ? lociSphere(materialize(a.target), ir)?.center : a.target.position.map((x) => x * f),
     })),
+    ...(view?.cutaway ? { cutaway: [...materialize(view.cutaway)].map(([set, runs]) => ({ set, runs })) } : {}),
     ...(issues.length ? { issues } : {}),
+  };
+}
+
+/**
+ * A view's camera in world Å (design.md §5.1). Numeric: its position and target moved by the view frame's matrix (a
+ * camera written in a tomogram's frame lands where the tomogram is). Semantic: the focus address materialized, its
+ * bounding sphere framed from the given direction at the framing's distance.
+ */
+function deriveCamera(doc: MesoViewSpecDoc, view: View | undefined, ir: IR, materialize: (q: string) => MesoLoci): IRView['camera'] {
+  const cam = view?.camera;
+  if (!cam) return undefined;
+  const unit = doc.units?.length ?? 'nm';
+  const f = LengthToAngstrom[unit];
+  const M = view?.frame ? frameMatrices(doc, unit).get(view.frame) : undefined;
+  // a frame matrix takes the frame's own units (or voxels) to world Å; without one, the document's unit
+  const place = (p: readonly number[]) =>
+    M ? [0, 1, 2].map((r) => M[r] * p[0] + M[4 + r] * p[1] + M[8 + r] * p[2] + M[12 + r]) : p.map((x) => x * f);
+  const fov = cam.fov ?? 45;
+  const up = [...(cam.up ?? [0, 1, 0])];
+  if (cam.focus) {
+    const sphere = lociSphere(materialize(cam.focus), ir);
+    if (sphere) {
+      let dir: number[];
+      if (cam.from === 'outside') {
+        // from beyond the scene's centre, through the focus
+        const all = lociSphere(new Map(placementSets(ir).filter((x) => !isUnderSuperstructure(ir, x.key)).map((x) => [x.key, [0, x.count]])), ir);
+        const c = all?.center ?? [0, 0, 0];
+        dir = sphere.center.map((v, k) => v - c[k]);
+        if (Math.hypot(dir[0], dir[1], dir[2]) < 1e-6) dir = [0, 0, 1];
+      } else if (Array.isArray(cam.from)) dir = [...cam.from];
+      else if (cam.position && cam.target) dir = cam.position.map((v, k) => v - cam.target![k]);
+      else dir = [0, 0, 1];
+      const l = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+      const scale = cam.framing === 'close' ? 0.6 : cam.framing === 'context' ? 2.5 : 1.1;
+      const d = (sphere.radius / Math.sin(((fov / 2) * Math.PI) / 180)) * scale;
+      return {
+        position: sphere.center.map((v, k) => v + (dir[k] / l) * d),
+        target: [...sphere.center],
+        up,
+        fov,
+        ...(cam.transition !== undefined ? { transition: cam.transition } : {}),
+        focus: { radius: sphere.radius },
+      };
+    }
+  }
+  if (!cam.position || !cam.target) return undefined;
+  return {
+    position: place(cam.position),
+    target: place(cam.target),
+    up,
+    fov: cam.fov,
+    ...(cam.transition !== undefined ? { transition: cam.transition } : {}),
   };
 }
