@@ -32,6 +32,7 @@ import {
   createEmptyHiZ,
   createHiZValues,
   setHiZValues,
+  workgroupRows,
 } from '../compute/cell-cull.js';
 import { IndirectRecordBytes, type MultiDrawBaseData } from '../render-item.js';
 import type { GraphicsResources } from '../context.js';
@@ -336,6 +337,8 @@ export function createMergedCuller(
   };
   let kernels: ComputeKernel[] | undefined;
   let preparing = false;
+  /** a kernel's workgroups over `n` items, in rows past the device's limit (`workgroupRows`) */
+  const groups = (n: number) => workgroupRows(n, CellCullKernel.workgroupSize[0], compute.maxWorkgroupsPerDimension);
   const getKernels = () => {
     if (kernels) return true;
     if (!compute.hasKernels(MergedCullKernels)) {
@@ -1103,12 +1106,11 @@ export function createMergedCuller(
       ValueCell.update(cellValues.uLodRange, Vec4.set(cellValues.uLodRange.ref.value, min, max, hasLod ? 1 : 0, 0));
 
       const records = (rasterRegions ? 2 : 1) * Math.max(1, levelCount) * segmentCount;
-      const groups = (n: number) => Math.ceil(n / CellCullKernel.workgroupSize[0]);
       counters.ref.value.clear(0, records * 4);
       compute.beginComputePass({ label: 'merged cell culling' });
-      kernels![0].dispatch(groups(cellCount));
-      kernels![1].dispatch(groups(instanceCount));
-      kernels![2].dispatch(groups(records));
+      kernels![0].dispatch(...groups(cellCount));
+      kernels![1].dispatch(...groups(instanceCount));
+      kernels![2].dispatch(...groups(records));
       compute.endComputePass();
       setDispatched(cameraPlane, frustum, min, max);
       // without a pyramid the first phase left out nothing occluded
@@ -1125,11 +1127,10 @@ export function createMergedCuller(
       setPyramid(pyramid);
       ValueCell.updateIfChanged(copyValues.uPhase, 1);
       const records = (rasterRegions ? 2 : 1) * Math.max(1, levelCount) * segmentCount;
-      const groups = (n: number) => Math.ceil(n / CellCullKernel.workgroupSize[0]);
       compute.beginComputePass({ label: 'merged cell culling, second phase' });
-      kernels[0].dispatch(groups(cellCount));
-      kernels[1].dispatch(groups(instanceCount));
-      kernels[2].dispatch(groups(records));
+      kernels[0].dispatch(...groups(cellCount));
+      kernels[1].dispatch(...groups(instanceCount));
+      kernels[2].dispatch(...groups(records));
       compute.endComputePass();
       ValueCell.updateIfChanged(copyValues.uPhase, 0);
       secondDispatched = true;
