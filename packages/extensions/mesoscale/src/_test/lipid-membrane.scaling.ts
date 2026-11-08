@@ -8,7 +8,7 @@ import { it } from 'vitest';
 import { checkLinear, quadraticControl, scaling } from '../../../../sequences/core/_test/model/scaling.js';
 import { assignReference, assignSlots } from '../lipids/assign.js';
 import { buildMembrane, registerLipidPatch } from '../lipids/membrane.js';
-import { icosphere } from '../lipids/remesh.js';
+import { icosphere, isotropicRemesh, type TriMesh } from '../lipids/remesh.js';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
 
 // The lipid membrane's bulk paths over n and 4n tiles (`test:scaling`; apps/prism-me/AGENTS.md, no accidental
@@ -38,6 +38,34 @@ it('the assignment of N triangles: variants, slots and the reference affines', (
   );
   checkLinear('lipid tile assignment, N triangles', s);
 });
+
+/** an ellipsoid 2:1:1 of `mesh` (not at the remesh's edge: every pass has work), its vertices unwelded */
+function stretchedUnwelded(mesh: TriMesh): TriMesh {
+  const n = mesh.indices.length;
+  const positions = new Float32Array(n * 3);
+  const indices = new Uint32Array(n);
+  for (let i = 0; i < n; ++i) {
+    const v = mesh.indices[i] * 3;
+    positions[i * 3] = mesh.positions[v] * 2;
+    positions[i * 3 + 1] = mesh.positions[v + 1];
+    positions[i * 3 + 2] = mesh.positions[v + 2];
+    indices[i] = i;
+  }
+  return { positions, indices };
+}
+
+it('the remesh of a surface of about N triangles at the edge (welded first; review S8)', () => {
+  const s = scaling(
+    {
+      setup: (n) => stretchedUnwelded(icosphere(radiusFor(n / 2) / Math.SQRT2, 150)),
+      run: (mesh) => {
+        isotropicRemesh(mesh, 100);
+      },
+    },
+    2000,
+  );
+  checkLinear('isotropic remesh, N triangles', s);
+}, 600_000);
 
 it('a membrane of N tiles built (a sphere, both leaflets)', () => {
   const s = scaling(
