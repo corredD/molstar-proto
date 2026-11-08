@@ -147,6 +147,22 @@ describe('isotropicRemesh (Botsch & Kobbelt 2004)', () => {
     });
   }
 
+  it('remeshes an unwelded mesh (three vertices a triangle, as OBJ duplicates them) as the welded one', () => {
+    // review M4: boundary edges were kept as they were, the tiles stretched and their edges unmatched
+    const welded = icosphere(500, 1e9);
+    const n = welded.indices.length;
+    const positions = new Float32Array(n * 3);
+    const indices = new Uint32Array(n);
+    for (let i = 0; i < n; ++i) {
+      positions.set(welded.positions.subarray(welded.indices[i] * 3, welded.indices[i] * 3 + 3), i * 3);
+      indices[i] = i;
+    }
+    const s = meshStats(isotropicRemesh({ positions, indices }, 100));
+    expect(s.boundaryEdges).toBe(0);
+    expect(s.eulerCharacteristic).toBe(2);
+    expect(Math.abs(s.edgeMean - 100) / 100).toBeLessThan(0.15);
+  });
+
   it('is deterministic', () => {
     const input = scaled(icosphere(300, 60), 2, 1, 1);
     const a = isotropicRemesh(input, 60);

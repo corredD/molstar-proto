@@ -4,6 +4,8 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { hash3 } from '@molstar/core/data/util/hash-functions';
+
 /** A triangle mesh: xyz per vertex, 3 indices per triangle, counter-clockwise = outward. */
 export interface TriMesh {
   readonly positions: Float32Array;
@@ -1061,13 +1063,69 @@ const N1 = [0, 0, 0],
   N3 = [0, 0, 0];
 
 /**
+ * The mesh with its vertices at the same position (within `tolerance`, Å) merged and the triangles this collapses
+ * dropped: OBJ and STL exports duplicate a vertex per normal or per face, which leaves every edge a boundary. One pass,
+ * a hash of the quantized position chained in typed arrays (no allocation a vertex).
+ */
+export function weldVertices(mesh: TriMesh, tolerance = 1e-3): TriMesh {
+  const { positions: p, indices: ix } = mesh;
+  const n = p.length / 3;
+  const heads = new Map<number, number>();
+  const next = new Int32Array(n).fill(-1);
+  const remap = new Uint32Array(n);
+  const kept = new Int32Array(n);
+  let count = 0;
+  const q = 1 / tolerance;
+  for (let v = 0; v < n; ++v) {
+    const x = p[3 * v],
+      y = p[3 * v + 1],
+      z = p[3 * v + 2];
+    const key = hash3(Math.round(x * q), Math.round(y * q), Math.round(z * q));
+    let w = heads.get(key) ?? -1;
+    while (w >= 0) {
+      const k = kept[w];
+      if (
+        Math.abs(p[3 * k] - x) <= tolerance &&
+        Math.abs(p[3 * k + 1] - y) <= tolerance &&
+        Math.abs(p[3 * k + 2] - z) <= tolerance
+      )
+        break;
+      w = next[w];
+    }
+    if (w < 0) {
+      w = count++;
+      kept[w] = v;
+      next[w] = heads.get(key) ?? -1;
+      heads.set(key, w);
+    }
+    remap[v] = w;
+  }
+  if (count === n) return mesh;
+  const positions = new Float32Array(count * 3);
+  for (let w = 0; w < count; ++w) positions.set(p.subarray(3 * kept[w], 3 * kept[w] + 3), 3 * w);
+  const out = new Uint32Array(ix.length);
+  let m = 0;
+  for (let t = 0; t < ix.length; t += 3) {
+    const a = remap[ix[t]],
+      b = remap[ix[t + 1]],
+      c = remap[ix[t + 2]];
+    if (a === b || b === c || c === a) continue;
+    out[m++] = a;
+    out[m++] = b;
+    out[m++] = c;
+  }
+  return { positions, indices: out.slice(0, m) };
+}
+
+/**
  * Isotropic remeshing toward edge length `targetEdge` (Botsch & Kobbelt 2004): per iteration, split edges over 4/3 L,
  * collapse edges under 4/5 L, flip edges toward valence 6, smooth tangentially (area-weighted), project back onto the
- * input surface. Boundary edges and vertices are kept fixed. Keeps the input's orientation; the output has no unused
- * vertices.
+ * input surface, its duplicate vertices welded first (`weldVertices`). Boundary edges and vertices are kept fixed.
+ * Keeps the input's orientation; the output has no unused vertices.
  */
-export function isotropicRemesh(mesh: TriMesh, targetEdge: number, options?: { iterations?: number }): TriMesh {
+export function isotropicRemesh(input: TriMesh, targetEdge: number, options?: { iterations?: number }): TriMesh {
   const iterations = options?.iterations ?? 5;
+  const mesh = weldVertices(input);
   const grid = surfaceGrid(mesh);
   const r = new Remesher(mesh, grid, targetEdge);
   for (let it = 0; it < iterations; it++) {
