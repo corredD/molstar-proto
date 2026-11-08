@@ -211,9 +211,13 @@ describe('the GPU culler of a merged object', () => {
     const s = scene(40, 4);
     const dispatched = s.culler.dispatch(Plane3D.create(Vec3.create(0, 0, -1), 0), Frustum3D(), LodView());
     expect(dispatched).toBe(true);
+    // every kernel's dispatch within the limit (the fake throws past it, as WebGPU does)
+    expect(new Set(s.fake.dispatches.map((d) => d.kernel))).toEqual(
+      new Set(['cell-cull', 'instance-copy', 'cull-args']),
+    );
+    for (const d of s.fake.dispatches) expect(Math.max(d.x, d.y, d.z)).toBeLessThanOrEqual(4);
     const copy = s.fake.dispatches.find((d) => d.kernel === 'instance-copy')!;
-    expect(copy.x).toBeLessThanOrEqual(4);
-    // every instance has a thread: the kernels index workgroups by \`wid.x + wid.y * num_workgroups.x\`
+    // every instance has a thread: the kernels index workgroups by `wid.x + wid.y * num_workgroups.x`
     expect(copy.x * copy.y * copy.z * 64).toBeGreaterThanOrEqual(320);
   });
 });

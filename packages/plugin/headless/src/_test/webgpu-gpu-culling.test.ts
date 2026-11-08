@@ -62,8 +62,9 @@ function createMember(offset: Vec3, color: number, params: Partial<PD.Values<Sph
 
 describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
   // limit 1: every kernel's workgroups in rows of one, as a cell of more instances than a dimension holds has them
-  // (\`workgroupRows\`: 65535 workgroups of 64, 4.2M instances; a yeast slab has 6.7M)
-  it.each([0, 1])(
+  // (`workgroupRows`: 65535 workgroups of 64, 4.2M instances; a yeast slab has 6.7M); limit 2 with a fourth
+  // member: 144 instances, 3 workgroups in rows of 2, the last row's second one idle (its segment read clamped)
+  it.each([0, 1, 2])(
     'draws the instances of the cells the CPU culling draws whose own sphere touches the view, from indirect lists (workgroups a dimension: %i, 0 the device limit)',
     async (limit) => {
       const plugin = await HeadlessPluginContext.create(
@@ -80,6 +81,7 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
           createMember(Vec3.create(0, 0, 0), ColorNames.orange),
           createMember(Vec3.create(2.5, 2.5, 1), ColorNames.green),
           createMember(Vec3.create(-2.5, 3, -1), ColorNames.blue),
+          ...(limit === 2 ? [createMember(Vec3.create(3, -3, 0.5), ColorNames.darkred)] : []),
         ];
         const cpu = createMergedRenderObject(members);
         const gpu = createMergedRenderObject(members, { gpuCulling: true });

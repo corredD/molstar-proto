@@ -4,7 +4,14 @@
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  */
 
-import { createEmptyHiZ, createHiZValues, HiZSchema, type OcclusionPyramid, setHiZValues } from './cell-cull.js';
+import {
+  createEmptyHiZ,
+  createHiZValues,
+  HiZSchema,
+  type OcclusionPyramid,
+  setHiZValues,
+  workgroupRows,
+} from './cell-cull.js';
 import type { GraphicsResources } from '../context.js';
 import { Clip } from '@molstar/core/util/clip';
 import {
@@ -677,8 +684,8 @@ export function createSphereRaster(compute: ComputeContext, resources: GraphicsR
 
       compute.beginComputePass({ label: 'sphere raster' });
       for (const { k, threads, index } of prepared) {
-        const groups = Math.ceil(threads / 64);
-        k.chunk.dispatch(Math.min(groups, 65535), Math.ceil(groups / 65535));
+        // rows of 65535 whatever the device's limit: the chunk kernel indexes `wid.x + wid.y * 65535u`
+        k.chunk.dispatch(...workgroupRows(threads, 64));
         k.args.dispatch(1);
         k.raster.dispatchIndirect(args!, index * 32);
         k.rasterSingles.dispatchIndirect(args!, index * 32 + 16);
@@ -701,8 +708,8 @@ export function createSphereRaster(compute: ComputeContext, resources: GraphicsR
           (k.chunkValues as Cells<typeof SphereRasterRegionsSchema>).records,
           culled.secondRecords,
         );
-        const groups = Math.ceil(threads / 64);
-        k.chunk.dispatch(Math.min(groups, 65535), Math.ceil(groups / 65535));
+        // rows of 65535 whatever the device's limit: the chunk kernel indexes `wid.x + wid.y * 65535u`
+        k.chunk.dispatch(...workgroupRows(threads, 64));
         k.args.dispatch(1);
         k.raster.dispatchIndirect(args!, index * 32);
         k.rasterSingles.dispatchIndirect(args!, index * 32 + 16);
