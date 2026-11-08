@@ -27,3 +27,16 @@ cellPACK BinaryCIF: 4.6M instances, 2.3M fibre points) in prism-me on WebGPU; ev
 
 `npx tsc -b`, `pnpm lint`, `pnpm format:check`, `pnpm test:unit packages/graphics packages/extensions/mesoscale` (1817
 passed), the WebGPU culling and raster suites on Dawn (25 passed). Not checked in the app yet (Ludo: the slab).
+
+## Review (2026-11-08, lane-reviewer, Opus)
+
+Must-fix 0, should-fix 0, nits 3, all fixed in 2d05e8bfc:
+1. The clamped segment read for idle workgroups never ran on a GPU (limit 1 gives rows of one) → the Dawn case runs
+   again at a limit of 2 with a fourth member (3 workgroups in rows of 2, one idle).
+2. sphere-raster.ts computed the same rows inline → it dispatches through `workgroupRows` (rows of 65535, which its
+   chunk kernel hard-codes).
+3. The unit test checked only the instance copy's dispatch → every kernel's dispatch is asserted within the limit.
+
+The reviewer could not run the quick lane in its sandbox; it was run here after the fixes: graphics quick lane 1743
+passed, the WebGPU culling and raster suites on Dawn 12 + 5 passed, tsc, lint, format clean. The skeptic pass was not
+run (no must- or should-fix to refute).
