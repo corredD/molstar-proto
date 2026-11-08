@@ -218,8 +218,10 @@ After the review's fixes: the same pass (quick lane 46 files, 300 tests; medium 
 ## Review (2026-11-08)
 
 An Opus reviewer read the diff against the brief and the specs (4 must-fix, 5 should-fix, 3 nits); a skeptic re-ran the
-probes (9 confirmed, 1 partly refuted, 1 refuted, 2 new). Each confirmed must-fix and should-fix got a test that failed
-first, then its fix:
+probes (9 confirmed, 1 partly refuted, 1 refuted, 2 new). M1–M4, S6 and S9 got a test that failed first (S9 by removing
+the call it guards), then their fix; S7, S8 and X1 are coverage added (a measured bound, a guard that passed as written,
+a test that held), not bugs fixed. After the review, the membrane's row got its own menu (focus, label, remove) and an
+eye that works (`9f871810b`; the mesh row's move, color and clip and `cryoet.mesh` do not apply to it).
 
 | Finding                                                                                        | Outcome                                                                      |
 | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -262,6 +264,9 @@ lipids covers it, a row of its own in the scene tree. WebGPU only.
 - Defaults: tile edge 200 Å, both leaflets, one edge type, two variants, **one vertex colour** (the brief had two: 8×
   the variants and the bake). The right-click uses the synthetic patch; a CHARMM-GUI patch only by command (`patchPdb`),
   not saved in sessions.
+- Not tried in a browser: the lane's checks are headless (jsdom and Dawn). M1 (every mesh wrap threw) is what a try in
+  the app would have caught; Ludo's check with the CHARMM-GUI patch cannot be done from the UI (the right-click uses the
+  synthetic patch).
 - Brief items not met (TODO.md): the bake's worker (main thread: about 5 s for CHARMM-GUI's patch), smooth when zoomed
   out on a 1 µm sphere (384 ms a frame headless), picking a lipid, color through Mol*'s themes, following a moved mesh,
   WebGL2.

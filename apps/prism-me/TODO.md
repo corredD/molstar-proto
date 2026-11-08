@@ -107,7 +107,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   - On WebGL2 the right-click still offers Wrap with lipids and the bake runs before the status line says nothing is
     drawn (review S5, X2). To decide: fail first (changes the brief's §6) or keep.
   - A membrane is removed with its mesh, but does not follow it when the mesh is moved (review S6): a mesh membrane
-    should read the mesh again on its dependency's update. A compartment's sphere is a snapshot.
+    should read the mesh again on its dependency's update. A compartment's sphere is a snapshot. Not probed: whether an
+    update of the mesh's cell (a recolor) re-applies the membrane and rebuilds its objects and kernels.
   - Seams on curved surfaces: 2–3% of lipids have an atom pair under 2 Å across a seam at R 300 Å (0 on a flat plane);
     bounded in `lipid-tiles.test.ts` (medium). Bending the bands to the surface would remove it.
   - Not built from the brief: picking a lipid (tile and group; `getLoci` is empty), color by residue name through Mol*'s
