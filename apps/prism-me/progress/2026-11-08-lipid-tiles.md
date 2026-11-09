@@ -558,3 +558,83 @@ past what was already committed and tested (the library's level scales, `4ac0c0d
 mesh gone (both eyes agree), no mesh seen through close, middle or far; the cutter from the right-click.
 
 **Size.** About 300 production lines. The review gate (lane-reviewer, lane-skeptic) on the diff since `93dbe21db`.
+
+## Round 3, 2026-11-08 (narrowed: items 1, 4, 6, 7, 8, 9)
+
+**Causes found.**
+
+- **The holes, both methods: the patch.** The app's CHARMM-GUI patch (`lipid-patch-charmm-gui.dat`) is a disc of radius
+  115 Å in a 232 Å square, read as periodic with the square's extent: its empty corners, a fifth of the box, were tiled
+  into every tile and cut. Measured on the patch itself in its box: 58 % of its area more than 10 Å (in plane) from any
+  atom before, 0 % as its filled square. The cutter's per-triangle random offsets had hidden it by scattering lipids
+  (and clashing them); coherent cuts showed it.
+- **The cutter's own holes: islands.** Each triangle its own offset made every lipid an island on triangles smaller than
+  a lipid (a flat plane of 43 Å² triangles: 912 atom pairs under 2 Å, the packing lost).
+- **The sparse dots at middle and far distances: the library.** `bde208175` (round 2) drew a GPU-written gridless member
+  at its levels' strides, but its per-level sphere scales (`tSegment`, the shader's `segmentLod`) stayed 1: a coarse
+  level drew 1 in 16 spheres at full size.
+- **The Look's eye and the tree's disagreeing: the Look** (`cryoet.meshesState`) followed only changes of the state
+  tree, not a visibility flag. **The mesh drawn after the wrap: not reproduced** headless (jsdom, and Dawn through the
+  Prism viewer in Ludo's path: the cell, the drawing, the tree and the Look agree; undo shows it). Open.
+- **The cutter losing the device at 27.7 M lipids: memory.** The culler holds a transform a level region and one more
+  (48 B each) per instance in one storage buffer: 37.7 M instances (with the patch fix) need about 7 GB, past the M1's 4
+  GB (Dawn) and Chrome's limits; no check came before the draw. After the fall back to WebGL2 the membrane's WebGPU
+  objects were uploaded there (no `setGraphics`).
+
+**Built (commits).**
+
+- Library (`packages/graphics`): `4ac0c0de8` a GPU-written gridless member's spheres scaled at its levels (one rule,
+  `drawnLodLevels`, for the culler's counts and the segment scales; the quick test failed first).
+- `c3a5c55e3` the cutter by regions (`cutterRegions`: a 200 Å cell × 96 normal directions; one plane, spin and offset a
+  region; each triangle keeps the lipids whose head projects in it, a shared edge owned once by its lower-to-higher
+  vertex evaluation; regions made on the CPU and read by the reference and the kernel alike). `a2285e896` a round patch
+  read as its filled square.
+- `b7aa70dbb` right-click › Wrap with lipids (cutter); `19019fd6f`, `95cef06c8` the console snippet run verbatim in a
+  test.
+- `b6b5dbcf4` the membrane's levels in its Look (`mesoscale.membraneDetail`, presets or custom levels by distance:
+  start, stride, bias; the levels as text to copy; never a new cut or bake).
+- `839cb16cc` the wrap as stages on its task (Prism's pill with Cancel), yielding past 30 ms; a cancel releases the GPU
+  objects and reverts the wrap.
+- `2394c04e3` the instance check against the device's buffers before the draw, and `setGraphics` (a new context drops
+  the membrane's objects and builds again where it can).
+- `6f86dd3d9` the Look's eye follows the visibility flag (test failing first), with a coverage test of Ludo's path.
+
+**Numbers (headless Dawn, M1).**
+
+| The cow ×100, the cutter, full detail                                                 | Before (round 2) | After             |
+| ------------------------------------------------------------------------------------- | ---------------- | ----------------- |
+| Lipids                                                                                | 27,803           | 36,454            |
+| Original area covered, atom ≤ 10 Å / ≤ 6 Å                                            | 99.1 % / 95.4 %  | 100.0 % / 100.0 % |
+| Atom pairs < 2 Å across triangles (within one)                                        | 422,606 (77,957) | 645,791 (90,679)  |
+| Wrap, first / second                                                                  | 135 / 39 ms      | 161 / 44 ms       |
+| Frame whole / flank / seam, levels (another lane's tests ran during the no-level run) | 38 / 36 / 134 ms | 85 / 154 / 171 ms |
+
+The pairs grew with the lipids (a third more: the patch's corners no longer empty) and come from region borders and the
+two leaflets' cut lost parts; not removed (cellPACKgpu removes none). The frame times are not comparable: more lipids,
+and the machine shared with another lane's runs. Tiles on the cow ×100 after: 35,179 lipids, frames 60 / 107 / 135 ms.
+Images (looked at): `compare-cutter-nolod-*` (before), `r3-after-cutter-nolod-<whole|flank|seam>` (after, full detail:
+no hole, no mesh), `r3-after-cutter-*` and `r3-after-tiles-*` (levels); `r3-before-<whole|middle|close>` (model ×100,
+tiles: the sparse dots of the level bug). No `r3-after` image of the model ×100: the coordinator stopped runs at 27.7 M
+(the Mac swapped while Ludo used it).
+
+- Coverage on CPU, CHARMM-GUI patch, both leaflets (rays along the normal hitting a 2 Å atom, holes over 10 Å in plane):
+  the cow ×100 cutter before (per-triangle) 0.40 % of its area in holes over 10 Å, after 0 %; a flat plane cut as one
+  region equals the patch.
+- Main-thread stretch during a wrap (Dawn, Ludo's path): the cow ×100 90 ms (tiles) / 58 ms (cutter); the model ×100, 35
+  M lipids, 549 / 374 ms (measured once before the stop; the patch's first read, the render objects' merge and upload do
+  not yield).
+- The cutter's limit: on the M1's Dawn (4 GB buffers, no sphere raster, three levels) about 22 M instances; the model
+  ×100 (37.7 M) now fails in 128 ms with its message.
+
+**Decided.** Two right-click entries rather than a method in the membrane's properties (a method is chosen before the
+membrane exists; ui.md §5; this session). Regions by cell and normal direction on the CPU, read by both GPU and
+reference (the advisor's point: no region decided twice in two precisions). Custom levels by distance from the camera,
+defaults 0 / 2,000 / 8,000 Å at strides 1 / 8 / 64 (for Ludo to tune). The farthest level: not built (parked, round 4).
+
+**Learned.** Check the patch before the method: a round patch read as periodic made holes that looked like each method's
+own. Random per-triangle offsets hide a patch's defects by scattering them. A level's stride without its scale reads as
+scattered dots. A Mol\* operation's history group reverts a cancelled transform cleanly.
+
+**Size.** About 890 production lines against the narrowed brief's ~300 + 60 + 60: the cutter's regions took 390 (the
+region builder, a new per-triangle cut with ownership, the WGSL), the membrane 220 (stages, the check, levels,
+`setGraphics`), the patch's crop 60, the levels' control and operation 140.
