@@ -19,7 +19,7 @@ import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
 import { h, onSpellingChange, panel, pre, showHistory, showIr, showIssues, showJson, Styles } from './ui.js';
 
-// Superstructures and MesoQL (design.md §3.8, §3.9). The β-cell holds insulin granules, a superstructure imported from
+// Superstructures and MesoQL (_spec/mesoql.md, _spec/format.md). The β-cell holds insulin granules, a superstructure imported from
 // a cellPACKgpu recipe and resolved once: the slider changes how many granules (only the cell packing reruns), the
 // switch draws them as parts or as one body each (nothing reruns), and the edit log shows what each cost. The address
 // story materializes any MesoQL address over a resolved scene and lists the copies it picks.

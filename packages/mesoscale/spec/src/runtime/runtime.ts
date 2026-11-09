@@ -42,8 +42,8 @@ import type {
   ResourceReader,
 } from './resolver.js';
 
-// The runtime (design.md §6.1): validate, normalize, dispatch each model to its resolver, assemble the IR, derive the
-// view. Results are keyed (design.md §7.2): a model whose projection is unchanged is not resolved again, and its
+// The runtime (_spec/runtime.md): validate, normalize, dispatch each model to its resolver, assemble the IR, derive the
+// view. Results are keyed (_spec/ir.md): a model whose projection is unchanged is not resolved again, and its
 // placement sets are the same objects as before, so an adapter can tell by identity that nothing moved.
 
 export interface RuntimeOptions {
@@ -193,7 +193,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     comps.set(id, { ...c, freeVolume: Math.max(0, free) });
   }
 
-  // ---- superstructures (design.md §3.9): each resolved once, as a document of its own, with the session's cache ----
+  // ---- superstructures (_spec/format.md): each resolved once, as a document of its own, with the session's cache ----
   const ents = new Map(doc.entities.map((e) => [e.id, e]));
   const ssById = new Map((doc.superstructures ?? []).map((x) => [x.id, x]));
   const templates = new Map<Id, { result: CompileResult; radius: number }>();
@@ -316,7 +316,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     });
   const t2 = now();
 
-  // ---- relations: sites materialized (design.md §3.11) ----
+  // ---- relations: sites materialized (_spec/format.md) ----
   const siteOf = (q: string | undefined): { site?: MaterializedSite; why?: string } => {
     if (!q) return {};
     const p = parseMesoQL(q);
@@ -350,7 +350,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
 
   // ---- resolve, in `avoid` order ----
   const cache = o.cache ?? new Map<string, ResolveOutput>();
-  // a refined model's result is replaced by its refiner's: its constraints are checked there (design.md §6.7)
+  // a refined model's result is replaced by its refiner's: its constraints are checked there (_spec/runtime.md)
   const refinedBy = new Map(models.filter((m) => m.refines).map((m) => [m.refines!, m.id]));
   // a stream model is no resolver's: its level 0 is built below, its tiles are the session's
   const order = topoOrder(models, refinedBy).filter((m) => !m.stream);
@@ -548,7 +548,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     statsModels.push(...t.result.stats.models);
   }
 
-  // ---- streams (design.md §6.8): level 0 from the manifest, no placement set ----
+  // ---- streams (_spec/streaming.md): level 0 from the manifest, no placement set ----
   const streams: IRNode[] = [];
   for (const m of models.filter((x) => x.stream)) {
     const failed = (why: string, severity: 'error' | 'warning' = 'error') =>
@@ -622,7 +622,7 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
   };
 }
 
-/** What an edit touches (design.md §7.2): `view` when only views, tours, session or metadata differ (no resolution). */
+/** What an edit touches (_spec/views.md): `view` when only views, tours, session or metadata differ (no resolution). */
 export function classifyEdit(prev: MesoViewSpecDoc, next: MesoViewSpecDoc): 'none' | 'view' | 'model' {
   const strip = ({ views: _v, tours: _t, session: _s, metadata: _m, ...rest }: MesoViewSpecDoc) => rest;
   if (contentHash(prev) === contentHash(next)) return 'none';
@@ -740,7 +740,7 @@ function normalizeArrangement(a: Arrangement | undefined, A: (l: any) => number)
   };
 }
 
-// ---- frames (design.md §3.4) ----
+// ---- frames (_spec/format.md) ----
 
 const Identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
@@ -812,7 +812,7 @@ export function transformMatrix(t: Transform, unit: LengthUnit): number[] {
 export const InstancesModel = 'default:meso.instances';
 
 /**
- * The document's instances (design.md §3.13) as what the runtime already resolves: each a population of one copy under
+ * The document's instances (_spec/format.md) as what the runtime already resolves: each a population of one copy under
  * its own id, all placed by one `meso.precomputed` model from an inline table in world Å; every procedural model avoids
  * them. Their ids are population ids from here on, so looks, relations, superstructure expansion and MesoQL need nothing new.
  */
@@ -892,7 +892,7 @@ export function frameMatrices(doc: MesoViewSpecDoc, unit: LengthUnit): Map<Id, n
 }
 
 /**
- * The model whose result stands for `id`'s: the last refine stage after it (design.md §6.7), stopping before `self`
+ * The model whose result stands for `id`'s: the last refine stage after it (_spec/runtime.md), stopping before `self`
  * (a stage never stands in for what it refines from its own point of view) and at the first stage `ok` refuses.
  */
 function resultOf(id: Id, refinedBy: ReadonlyMap<Id, Id>, self: Id, ok: (id: Id) => boolean = () => true): Id {
@@ -923,7 +923,7 @@ function topoOrder(models: readonly Model[], refinedBy: ReadonlyMap<Id, Id>): Mo
   return out;
 }
 
-// ---- assembly (design.md §4.1) ----
+// ---- assembly (_spec/ir.md) ----
 
 function assemble(
   doc: MesoViewSpecDoc,
@@ -1079,7 +1079,7 @@ function summarizeInput(x: unknown): unknown {
   return x;
 }
 
-// ---- views (design.md §5) ----
+// ---- views (_spec/views.md) ----
 
 /** A deterministic palette: the same population, the same color, in every session. */
 export function defaultColor(population: string): number {
@@ -1153,7 +1153,7 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
   const selection = view?.selection
     ? [...materialize(view.selection)].map(([set, runs]) => ({ set, runs }))
     : undefined;
-  // the camera reads level 0 of a stream, never the loaded tiles (design.md §6.8.5), through its own loci cache: the
+  // the camera reads level 0 of a stream, never the loaded tiles (_spec/streaming.md), through its own loci cache: the
   // addresses are the same strings, the loci are not (they name the proxy set)
   const l0 = level0IR(ir);
   const camera = deriveCamera(doc, view, l0, l0 === ir ? materialize : materializer(doc, l0, issues, false));
@@ -1208,7 +1208,7 @@ function viewFrame(doc: MesoViewSpecDoc, view: View | undefined) {
 }
 
 /**
- * A view's camera in world Å (design.md §5.1). Numeric: its position and target moved by the view frame's matrix (a
+ * A view's camera in world Å (_spec/views.md). Numeric: its position and target moved by the view frame's matrix (a
  * camera written in a tomogram's frame lands where the tomogram is), its up turned by it. Semantic: the focus address
  * materialized, its bounding sphere framed from the given direction (turned by the view frame) at the framing's
  * distance. Either way the up is made perpendicular to the view direction.

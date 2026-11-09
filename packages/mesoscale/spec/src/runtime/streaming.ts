@@ -9,7 +9,7 @@ import { type Issue, issue } from '../format/issues.js';
 import { type IR, type IRNode } from '../ir/ir.js';
 import type { PlacementSet, PlacementType } from '../ir/placements.js';
 
-// Streaming (design.md §6.8): the viewer shows every tile coarse (level 0, from the manifest) and loads copies (level 1)
+// Streaming (_spec/streaming.md): the viewer shows every tile coarse (level 0, from the manifest) and loads copies (level 1)
 // around the focus within a budget. Outside `compile`: the session splices loaded tiles into the stream node as
 // `placements` children, so `planCommit` and the adapters see ordinary sets. Imports nothing of Mol*.
 
@@ -27,7 +27,7 @@ export interface TileProvider {
   load(tile: string, level: 1, signal: AbortSignal): Promise<TilePayload>;
 }
 
-/** A tile's copies, in the placement set's layout (design.md §4.2), world Å; the streamer adds the rest. */
+/** A tile's copies, in the placement set's layout (_spec/ir.md), world Å; the streamer adds the rest. */
 export interface TilePayload {
   readonly count: number;
   /** x y z per copy. */

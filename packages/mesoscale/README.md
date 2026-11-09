@@ -3,7 +3,9 @@
 A declarative format for mesoscale scenes: biology, evidence and provenance, view state; with its IR, a runtime with
 pluggable resolvers, and a Mol\*/Prism renderer adapter. A prototype to test the design.
 
-- [`_spec/design.md`](_spec/design.md): the design (for review)
+- [`_spec/README.md`](_spec/README.md): the spec (what it is, the packages, principles, glossary, topic files, the
+  generated references; `pnpm -C spec spec` checks it)
+- [`_spec/design.md`](_spec/design.md): the design record (for review)
 - [`_spec/renderer-recommendations.md`](_spec/renderer-recommendations.md): what the prototypes showed about the Mol\*
   renderer
 - `examples/`: each example document as authored (`*.mesoviewspec.json`) and the IR made of it (`*.ir.json`)

@@ -15,7 +15,7 @@ import { irToJson } from '../ir/ir.js';
 import { DefaultResolvers } from '../resolvers/index.js';
 import { compile } from '../runtime/runtime.js';
 
-// The S-expression spelling (design.md §3.7): a real second spelling of the same tree. read(print(json)) is the JSON;
+// The S-expression spelling (_spec/format.md): a real second spelling of the same tree. read(print(json)) is the JSON;
 // print(read(text)) is the text (a fixed point).
 
 const docs = {

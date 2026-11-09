@@ -9,7 +9,7 @@ import type { Issue } from '../format/issues.js';
 import type { IRShape } from '../ir/ir.js';
 import type { PlacementSet } from '../ir/placements.js';
 
-// The resolver contract (design.md §6.2). A resolver realizes a model's populations as placement sets. It is two pure
+// The resolver contract (_spec/runtime.md). A resolver realizes a model's populations as placement sets. It is two pure
 // functions: `project` picks out of the job the inputs its result depends on (normalized, Å, counts), and `resolve`
 // turns that projection into placements. The runtime keys the result by the hash of (resolver id, version, projection,
 // the keys of the sets it avoids): a document edit that leaves the projection equal does no work. So what a resolver

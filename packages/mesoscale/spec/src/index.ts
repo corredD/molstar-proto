@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-// MesoViewSpec prototype (packages/mesoscale/_spec/design.md): the format, the IR, the runtime, the resolvers.
+// MesoViewSpec prototype (packages/mesoscale/_spec/README.md): the format, the IR, the runtime, the resolvers.
 
 export * from './format/doc.js';
 export * from './format/issues.js';

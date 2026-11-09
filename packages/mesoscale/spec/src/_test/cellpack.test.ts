@@ -9,7 +9,7 @@ import { importCellpackGpuRecipe, parseCellpackGpuRecipe } from '../resolvers/ce
 import { ExosomeRecipe } from '../examples/exosome.js';
 import isg from '../examples/fixtures/isg.cellpack-gpu.json' with { type: 'json' };
 
-// The cellPACKgpu adapter (design.md §6.4): the recipe read as cellPACKgpu reads it, its open choices made explicit.
+// The cellPACKgpu adapter (_spec/runtime.md): the recipe read as cellPACKgpu reads it, its open choices made explicit.
 
 describe('cellPACKgpu recipes', () => {
   it('flattens the tree: compartments with their sphere, ingredients with their side', () => {

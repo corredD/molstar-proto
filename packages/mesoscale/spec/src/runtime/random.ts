@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-// A seeded generator (mulberry32): the same seed, the same numbers, on every platform (design.md §7.3).
+// A seeded generator (mulberry32): the same seed, the same numbers, on every platform (_spec/runtime.md).
 
 export interface Random {
   /** In [0, 1). */

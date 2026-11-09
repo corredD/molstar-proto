@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-// The placement set (design.md §4.2): the one leaf every resolver produces and every adapter consumes. Struct of arrays,
+// The placement set (_spec/ir.md): the one leaf every resolver produces and every adapter consumes. Struct of arrays,
 // in ångström, in the layout Mol*'s particle lists use (`ParticleList.coordinates`, `.rotations` x y z w, `.targets`), so
 // an adapter hands the same buffers on without a copy. 36 bytes a copy (12 position, 16 rotation, 4 type, 4 key).
 

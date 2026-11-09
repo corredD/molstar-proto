@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-// Issues (design.md §7.4): every failure, unmet constraint and assumption the runtime reports, as data a UI can explain.
+// Issues (_spec/runtime.md): every failure, unmet constraint and assumption the runtime reports, as data a UI can explain.
 // Codes are stable and namespaced; `path` is a JSON pointer into the document; `phase` says which stage found it.
 
 export type IssueSeverity = 'error' | 'warning' | 'info';

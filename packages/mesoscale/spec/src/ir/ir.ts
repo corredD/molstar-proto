@@ -9,7 +9,7 @@ import type { Issue } from '../format/issues.js';
 import type { PlacementType } from './placements.js';
 import type { PlacementSet } from './placements.js';
 
-// The IR (design.md §4): the scene made concrete enough to evaluate and render, as a tree in the manner of mol-state
+// The IR (_spec/ir.md): the scene made concrete enough to evaluate and render, as a tree in the manner of mol-state
 // (packages/core/src/state: a node's ref, kind and params; children evaluated after their parent). Every length is in Å,
 // every frame a matrix, every abundance a count. Three node families:
 // - space: `scene`, `frame`, `compartment`, `membrane` (where things are);
@@ -45,7 +45,7 @@ export type IRNode =
         readonly resolver: string;
         readonly version: string;
         readonly key: string;
-        /** The normalized input the key is the hash of (design.md §4.3); the construction details live here. */
+        /** The normalized input the key is the hash of (_spec/ir.md); the construction details live here. */
         readonly input: unknown;
         readonly cached: boolean;
         /** The model it refines (its result replaced by this one's), or the model that refines it. */
@@ -55,7 +55,7 @@ export type IRNode =
     >
   | IRNodeOf<'placements', { readonly set: PlacementSet }>
   /**
-   * A streamed model (design.md §6.8): level 0 (the manifest's tiles, their counts and envelopes) and no placement set
+   * A streamed model (_spec/streaming.md): level 0 (the manifest's tiles, their counts and envelopes) and no placement set
    * at compile time. The session splices the loaded tiles in as `placements` children, one set per tile.
    */
   | IRNodeOf<
@@ -74,7 +74,7 @@ export type IRNode =
       }
     >
   /**
-   * A superstructure resolved once, in its own frame (design.md §3.9): its compartments, resolve nodes and template
+   * A superstructure resolved once, in its own frame (_spec/format.md): its compartments, resolve nodes and template
    * placement sets, refs prefixed with its id. Never drawn where it stands: `instances` nodes place it.
    */
   | IRNodeOf<'superstructure', { readonly superstructure: string; readonly radius: number; readonly copies: number }>
@@ -118,7 +118,7 @@ export interface IRLook {
    * `within`): applied after the whole-type looks.
    */
   readonly runs?: readonly number[];
-  /** The view's hint (design.md §5); absent: spheres. */
+  /** The view's hint (_spec/views.md); absent: spheres. */
   readonly representation?: 'spheres' | 'structure' | 'surface';
 }
 

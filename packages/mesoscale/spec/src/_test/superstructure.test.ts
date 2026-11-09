@@ -17,7 +17,7 @@ import { compile, updateView } from '../runtime/runtime.js';
 import { DefaultResolvers } from '../resolvers/index.js';
 import { countingResolvers } from './helpers.js';
 
-// Superstructures (design.md §3.9): reusable, nested, instanced. One description, resolved once, placed many times;
+// Superstructures (_spec/format.md): reusable, nested, instanced. One description, resolved once, placed many times;
 // both levels of detail from the same document; addresses and copy ids through the nesting.
 
 const load = (id: string) => BetaCellResources[id]?.();
@@ -326,7 +326,7 @@ describe('superstructures', () => {
   });
 });
 
-/** Two superstructures and a cell that places both: a superstructure's contents are its own (design.md §3.9). */
+/** Two superstructures and a cell that places both: a superstructure's contents are its own (_spec/format.md). */
 function twoSuperstructures(): MesoViewSpecDoc {
   return {
     format: 'meso_view_spec',

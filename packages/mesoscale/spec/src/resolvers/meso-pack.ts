@@ -7,7 +7,7 @@
 import type { Resolver, ResolveJob } from '../runtime/resolver.js';
 import { DefaultPackParams, pack, type PackInput, packCompartments } from './packing.js';
 
-// `meso.pack`: the document's own resolver for randomly arranged populations (design.md §6.3). Every number comes from
+// `meso.pack`: the document's own resolver for randomly arranged populations (_spec/runtime.md). Every number comes from
 // the document: the radius from the entity, the count from the abundance, the membrane side from the topology. Its
 // construction parameters (`attempts`, `giveUp`) are the model's `params`.
 

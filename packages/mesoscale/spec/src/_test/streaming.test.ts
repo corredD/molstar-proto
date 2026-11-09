@@ -26,7 +26,7 @@ import {
   withTiles,
 } from '../runtime/streaming.js';
 
-// Streaming (design.md §6.8), quick lane: the format's rules, the manifest's, the planner, the sets, the camera over
+// Streaming (_spec/streaming.md), quick lane: the format's rules, the manifest's, the planner, the sets, the camera over
 // level 0 and the streamer against the fixture's provider.
 
 const small = { grid: [3, 3, 1] as const, perTile: { 'p.a': 20, 'p.b': 10 } };

@@ -15,7 +15,7 @@ import { PrismMesoAdapter } from '../prism-adapter.js';
 import { MesoSession } from '../session.js';
 import { h, panel, pre, showHistory, showIssues, Styles } from './ui.js';
 
-// Streaming (design.md §6.8): the scene opens at level 0 (the manifest's counts and envelopes, no copies). A view steps
+// Streaming (_spec/streaming.md): the scene opens at level 0 (the manifest's counts and envelopes, no copies). A view steps
 // the semantic camera; the streamer plans the tiles around the focus within the copy budget, loads them (a delayed
 // provider, so it shows), evicts the ones left behind, and the panel follows every commit, loads settling included.
 

@@ -19,7 +19,7 @@ import type {
 import { shapeSampler } from './geometry.js';
 import { avoidedHash, type PackCompartment, packCompartments } from './packing.js';
 
-// `meso.fiber` (design.md §4.4, §3.11): filaments as copies `rise` apart along a path, each turned by `twist` about the
+// `meso.fiber` (_spec/runtime.md, _spec/format.md): filaments as copies `rise` apart along a path, each turned by `twist` about the
 // path's tangent. A path is given (traced from a tomogram, or inline) or grown: a persistent random walk inside the
 // compartment, its bend per step drawn so the tangent correlation decays over the persistence length, turned back
 // toward the middle when a step would leave. The copies of each filament are one CSR row of the set's `fibers`.

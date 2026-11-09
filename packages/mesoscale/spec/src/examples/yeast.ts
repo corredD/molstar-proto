@@ -6,7 +6,7 @@
 
 import type { MesoViewSpecDoc } from '../format/doc.js';
 
-// The whole yeast cell of zoidpuff's yeast_cell_viewer (design.md §10.3), described in MesoViewSpec. Conceptual: every
+// The whole yeast cell of zoidpuff's yeast_cell_viewer (design.md §10), described in MesoViewSpec. Conceptual: every
 // fact is cited to the model's own description (MODEL.md, by section) and nothing of its data is copied (the repository
 // states no license). It exercises what the exosome does not: a proteome too large to list (a catalog), a geometry
 // stitched from two FIB/SEM cells and procedural shapes, frames whose handedness the source does not state, counts with

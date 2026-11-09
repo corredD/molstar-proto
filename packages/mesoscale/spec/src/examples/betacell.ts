@@ -8,7 +8,7 @@ import type { MesoViewSpecDoc } from '../format/doc.js';
 import { importCellpackGpuRecipe, parseCellpackGpuRecipe } from '../resolvers/cellpack-gpu.js';
 import isgJson from './fixtures/isg.cellpack-gpu.json' with { type: 'json' };
 
-// A slice of a β-cell with insulin secretory granules (design.md §3.9, §10): the granule is a superstructure, imported
+// A slice of a β-cell with insulin secretory granules (_spec/format.md, design.md §10): the granule is a superstructure, imported
 // from Ludo's cellPACKgpu insulin granule recipe (root_serialized(68).json, trimmed to four ingredients), and the cell
 // holds many copies of it. The granule is resolved once; its copies are poses. The counts at the cell level are
 // illustrative (a slice, not a whole cell), labelled as an assumption.
@@ -90,7 +90,7 @@ export function betaCellDoc(granules = 120, detail: 'parts' | 'entity' = 'parts'
         abundance: { count: 2000 },
       },
     ],
-    // two granules stated one by one (design.md §3.13): ids that survive repacking, poses someone measured
+    // two granules stated one by one (_spec/format.md): ids that survive repacking, poses someone measured
     instances: [
       {
         id: 'i.granule-docked',

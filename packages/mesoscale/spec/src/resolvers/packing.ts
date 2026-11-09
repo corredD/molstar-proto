@@ -11,7 +11,7 @@ import { createRandom, type Random, subSeed } from '../runtime/random.js';
 import type { NormalizedCompartment, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
 import { type ShapeSampler, shapeSampler } from './geometry.js';
 
-// Seeded random sequential addition (design.md §4.4, §8): copies tried one at a time, a try kept when its sphere overlaps
+// Seeded random sequential addition (_spec/runtime.md, design.md §8): copies tried one at a time, a try kept when its sphere overlaps
 // nothing placed. Overlaps are looked up in a uniform hash grid (cell = the largest diameter), so a try costs O(1) and N
 // copies O(N · tries), never O(N²). The engine of `meso.pack` and of the cellPACK adapter, which differ only in how they
 // fill `PackItem` (orientation axis, membrane offset, order).

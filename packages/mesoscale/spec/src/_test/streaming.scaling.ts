@@ -12,7 +12,7 @@ import type { IR, IRNode } from '../ir/ir.js';
 import { DefaultResolvers } from '../resolvers/index.js';
 import { compile, updateView } from '../runtime/runtime.js';
 
-// A streamed view over N tiles (`test:scaling`, design.md §6.8.5): the camera reads level 0, one proxy copy per (tile,
+// A streamed view over N tiles (`test:scaling`, _spec/streaming.md): the camera reads level 0, one proxy copy per (tile,
 // population), and a selection over a population (`(population p.a)`) walks the runs of the types it matches. With the
 // proxy copies written tile by tile the two populations alternate and the selection holds N runs, each union copying
 // the last (×16 at 4× the tiles); written population by population they are one run. Each run builds level 0 and the

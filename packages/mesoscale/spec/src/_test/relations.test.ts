@@ -12,7 +12,7 @@ import { rotateVec } from '../ir/placements.js';
 import { DefaultResolvers } from '../resolvers/index.js';
 import { compile } from '../runtime/runtime.js';
 
-// Relations as constraints with addresses (design.md §3.11): HU placed on the DNA strand by its entry and exit sites,
+// Relations as constraints with addresses (_spec/format.md): HU placed on the DNA strand by its entry and exit sites,
 // the strand bent at each one; IHF's residue-only site reported, not guessed.
 
 const run = (bend = 120) => compile(nucleoidDoc(bend), { resolvers: DefaultResolvers });

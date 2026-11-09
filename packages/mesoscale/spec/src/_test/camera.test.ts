@@ -14,7 +14,7 @@ import { DefaultResolvers } from '../resolvers/index.js';
 import { compile, updateView } from '../runtime/runtime.js';
 import { compileExosome } from './helpers.js';
 
-// The semantic camera (design.md §5.1): a view framed by an address, materialized from the copies it picks; numeric
+// The semantic camera (_spec/views.md): a view framed by an address, materialized from the copies it picks; numeric
 // cameras placed by their view's frame.
 
 const load = (id: string) => BetaCellResources[id]?.();

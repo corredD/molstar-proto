@@ -11,7 +11,7 @@ import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js
 import { type SdfGrid, type ShapeSampler, sdfGrid, shapeSampler } from './geometry.js';
 import { type PackCompartment, packCompartments, randomQuat } from './packing.js';
 
-// `meso.relax` (design.md §6.7): a refine stage. It takes the result of the model it refines (a rigid-body placement
+// `meso.relax` (_spec/runtime.md): a refine stage. It takes the result of the model it refines (a rigid-body placement
 // that stopped short, as random sequential addition does near jamming), inserts the copies still missing where they
 // overlap, and relaxes overlaps by pushing pairs apart, keeping copies in their compartments with signed distance grids.
 // Membrane and surface copies and the copies of avoided models stay fixed. It reconciles the same constraints as the

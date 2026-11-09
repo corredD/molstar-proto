@@ -10,10 +10,10 @@ import { createRandom, subSeed } from '../runtime/random.js';
 import type { NormalizedArrangement, Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
 import { avoidedHash, type PackCompartment, packCompartments, SpatialHash } from './packing.js';
 
-// `meso.lattice` (design.md §4.4): a 2D lattice on a closed membrane. Sites follow a Fibonacci spiral, locally close to
+// `meso.lattice` (_spec/runtime.md): a 2D lattice on a closed membrane. Sites follow a Fibonacci spiral, locally close to
 // hexagonal, at the density the spacing gives; a population asking fewer copies than there are sites fills a contiguous
 // patch around a seeded direction (S-layer patches, ATP synthase rows), one asking more is short and says how many
-// sites the membrane holds. Spheres and ellipsoids only: a mesh lattice needs a surface parametrization (design.md §9).
+// sites the membrane holds. Spheres and ellipsoids only: a mesh lattice needs a surface parametrization (design.md §11).
 // Each population's patch is around its own pole (seeded by the model and the population), and skips the sites the
 // populations before it and the copies of the models it avoids took.
 

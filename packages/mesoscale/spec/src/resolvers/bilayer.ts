@@ -12,10 +12,10 @@ import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js
 import { shapeSampler } from './geometry.js';
 import { type PackCompartment, packCompartments } from './packing.js';
 
-// `meso.bilayer` (design.md §4.4): both leaflets of a curved membrane, each at the abundance's density (per leaflet), a
+// `meso.bilayer` (_spec/runtime.md): both leaflets of a curved membrane, each at the abundance's density (per leaflet), a
 // quarter of the thickness from the middle, heads outward. Spheres get Fibonacci sites (even, O(N)); ellipsoids and
 // meshes area-weighted random sites. No overlap test: lipids are drawn as the membrane, not packed against proteins
-// (the proteins' footprint is not taken out; design.md §9).
+// (the proteins' footprint is not taken out; design.md §11).
 
 interface BilayerInput {
   readonly items: readonly {
