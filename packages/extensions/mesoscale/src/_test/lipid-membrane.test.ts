@@ -68,6 +68,9 @@ describe('lipid membrane', () => {
     expect(tiles as string).toMatch(/wrap it with lipids \(the cutter\)/);
     const cut = buildMembrane({ radius: 60000 }, 'test-patch', 6000, 'both', kinds, 'cutter');
     expect(typeof cut).toBe('object');
+    // past 2^31 lipids too (review M1: an int32 estimate turned negative and let tiles build)
+    const huge = buildMembrane({ radius: 90000 }, 'test-patch', 400, 'both', kinds, 'tiles');
+    expect(typeof huge).toBe('string');
     // a small one still tiles
     expect(typeof buildMembrane({ radius: 300 }, 'test-patch', 100, 'both', kinds, 'tiles')).toBe('object');
   });
