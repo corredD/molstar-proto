@@ -98,10 +98,13 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     (`cutterRegions`) are round 4's unit.
   - Round 3, open: the mesh Ludo saw drawn after a wrap of `model_vertexcolor.obj` ×100 is not reproduced headless
     (jsdom, Dawn); the Look's eye lagging the tree's is fixed. A wrap's main-thread stretches: under 100 ms on the cow
-    ×100, up to 550 ms at 35 M lipids (the patch's first read, the render objects' merge and upload do not yield: a
-    worker for the bake and the parse, round 4). The cutter's buffers: past about 22 M instances on the M1 (4 GB) it
-    fails with a message, not a lost device; a split of the work is not built. `checkInstances` copies the culler's
-    largest allocation by hand; only a Dawn test pins it (review S4: a quick test against a fake compute).
+    ×100, up to 550 ms at 35 M lipids (a tile variant's bake does not yield: about 430 ms at 188 Å tiles; the patch's
+    first read about 80 ms; a worker for the bake and the parse, round 4). The cutter's buffers: past about 22 M
+    instances on the M1 (4 GB) it fails with a message, not a lost device; a split of the work is not built.
+    `checkInstances` copies the culler's largest allocation by hand; only a Dawn test pins it (review S4: a quick test
+    against a fake compute). A wrap whose apply is in flight across a context change hands its old-context objects to
+    the new canvas (review X2, plausible: `setGraphics` reaches only representations already added). Points exactly on a
+    shared vertex may be cut by none or several triangles (N1, measure zero). Real-timer waits in two quick tests (N6).
   - Round 2 (Holes, LOD and the cutter): pick the default method after Ludo compares (both in the right-click since
     round 3); the cutter's clashes at region borders (no removal, as cellPACKgpu); the cut lost parts meet the tiles
     near the remesh (about 400 k atom pairs under 2 Å on the cow); pinholes at the middle level of detail; the cutter's

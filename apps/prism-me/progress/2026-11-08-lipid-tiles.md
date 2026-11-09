@@ -626,9 +626,15 @@ tiles: the sparse dots of the level bug). No `r3-after` image of the model ×100
 - Coverage on CPU, CHARMM-GUI patch, both leaflets (rays along the normal hitting a 2 Å atom, holes over 10 Å in plane):
   the cow ×100 cutter before (per-triangle) 0.40 % of its area in holes over 10 Å, after 0 %; a flat plane cut as one
   region equals the patch.
-- Main-thread stretch during a wrap (Dawn, Ludo's path): the cow ×100 90 ms (tiles) / 58 ms (cutter); the model ×100, 35
-  M lipids, 549 / 374 ms (measured once before the stop; the patch's first read, the render objects' merge and upload do
-  not yield).
+- Main-thread stretch during a wrap (Dawn, Ludo's path, the stage before each gap over 30 ms logged): the cow ×100 116
+  ms (tiles: the first variant's bake with the patch's first read; every other gap 30–42 ms, the 30 ms yield interval
+  and a variant) / 55 ms (cutter: the OBJ's shape); `model_vertexcolor` ×20 (1.55 M lipids, 188 Å tiles) 535 ms (tiles:
+  each variant's bake 400–470 ms, it does not yield inside) / 60 ms (cutter). The 27.7 M case is an estimate, not run
+  again (the Mac swapped at that size): 200 Å tiles bake as the ×20's, about 0.5 s a variant, so about 550 ms; measured
+  once before the stop, 549 ms (tiles) and 374 ms (cutter). A yield inside a variant's bake, or a worker, is round 4.
+- `model_vertexcolor` ×20, tiles, levels (balanced): wrap 12.4 s (the bake: 32 variants at 188 Å), first image 658 ms,
+  frames whole / middle / close 219 / 161 / 281 ms, GPU storage 21 MB; images `r3-after-x20-<whole|middle|close>`
+  (looked at: an opaque sheet at every distance, no hole, no mesh; the before images are ×100, `r3-before-*`: dots).
 - The cutter's limit: on the M1's Dawn (4 GB buffers, no sphere raster, three levels) about 22 M instances; the model
   ×100 (37.7 M) now fails in 128 ms with its message.
 
@@ -670,4 +676,39 @@ back. The mesh Ludo saw drawn after a wrap is not reproduced headless; a tested 
 next try. A wrap's longest main-thread stretch is over the 50 ms aim on large meshes (the patch's first read, the merge
 and upload do not yield). Items 2, 3, 5 parked for round 4 (TODO.md).
 
-**Testing.** See Checks below; the review table below.
+**Testing.** Checks, round 3, below; headless Dawn on the M1 (the cow ×100, `model_vertexcolor` ×20; nothing at 27.7 M
+after the Mac swapped). Not tried in Chrome by this session.
+
+**Review.** Review, round 3, below. Ludo's reported state (the Look's eye hidden, the tree's open, the mesh drawn) is
+explained only in part: the Look's lag is fixed, the mesh drawn is not reproduced.
+
+### Review, round 3 (2026-11-08)
+
+An Opus reviewer read `93dbe21db..519418489` against the brief and the specs (1 must-fix, 7 should-fix, 6 nits); an Opus
+skeptic re-read each (10 confirmed, 1 plausible, 2 refuted; 2 new confirmed, 1 plausible, 3 nits). Each confirmed
+must-fix and should-fix that is code got a test that failed first, then its fix.
+
+| Finding                                                                                                 | Outcome                                                                          |
+| ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| M1 `membraneDetail` said ok when its redraw failed (the membrane gone, a step kept)                     | fixed `ad2d050c7` (failing first)                                                |
+| X1 (skeptic) a cancel during a redraw lost the membrane (the revert failed on the cancelled task)       | fixed `31bdaff7e` (Dawn, failing first): a redraw offers no cancel               |
+| S1 a new context during a build: two builds shared the cutters and render objects                       | fixed `e4feb6e1a` (Dawn, failing first): a stale build keeps nothing             |
+| S2 item 1 not met; the hide test reads unwatched states                                                 | confirmed: the test renamed as coverage (`96f88d872`); the drawn mesh open       |
+| S3 the progress test depended on the 30 ms clock                                                        | fixed `94a986437` (a moving clock), restored after it `9e393e2f1`                |
+| S4 `checkInstances` not pinned to the culler by a quick test                                            | open, TODO.md (a Dawn test pins it)                                              |
+| S5 the level sliders failed silently                                                                    | fixed `78c2aec4f`, `9e393e2f1` (starts between neighbours, every slider clamped) |
+| S6 test patches left registered                                                                         | fixed `94a986437`                                                                |
+| S7 `4ac0c0de8` not recorded as a library commit to move                                                 | fixed `96f88d872` (TODO.md)                                                      |
+| X2 (skeptic, plausible) an apply in flight across a context change                                      | open, TODO.md                                                                    |
+| N2 a first level not from 0 (NaN) passed                                                                | fixed `78c2aec4f` (failing first)                                                |
+| N3 the region key's range comment (± 3 mm: ± 0.33 mm)                                                   | refuted as a defect; comment fixed `9e393e2f1`                                   |
+| N4 a rectangular patch's cells aliased in `filledSquare`                                                | fixed `9e393e2f1`                                                                |
+| N1 vertex ties; N5 per-triangle allocations (refuted: tests only); N6 real-timer waits; X3 a stale TODO | N1, N6 open (TODO.md); X3 fixed `9e393e2f1`                                      |
+
+## Checks, round 3 (2026-11-08, after the review's fixes)
+
+`npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `pnpm check:workspace` pass. Quick
+lane: mesoscale, cryoet, prism-me, the merged culler (64 files, 459 tests). Medium: mesoscale (`lipid-tiles.test.ts`).
+Dawn (`NODE_PATH=.cache/native/node_modules`): mesoscale `_test`, `plugin/headless` `webgpu-gpu-instances` and
+`webgpu-gpu-culling` (18 files, 128 tests). Scaling: `lipid-membrane.scaling.ts` (6, after the regions). Heavy runs one
+at a time, load checked first; nothing at 27.7 M after the coordinator's stop.
