@@ -39,15 +39,63 @@
 
 ## Built
 
+- design.md §6.8 Streaming (v0.4): source, manifest (`meso-tiles`), provider, planner, budget, levels; decisions 5 and
+  12 narrowed (levels are a runtime concept, the top level is not restructured). R5 measured and concluded.
+- `format/doc.ts` (`StreamSource`, `TileManifest`), `validate.ts` (`validateManifest` + static rules), `ir/ir.ts`
+  (stream node), `runtime/streaming.ts` (`TileProvider`, `planStream`, `TileStreamer`, `tileSet`, `withTiles`,
+  `level0IR`), `runtime/runtime.ts` (compile builds the stream node; the camera reads level 0), `examples/streaming.ts`
+  (tiled fixture with a delayed provider), `molstar/src/session.ts` (stream step per edit and per settled load,
+  `setBudget`, `restore` on a failed commit), the story `mesoviewspec-streaming--tiled-scene`.
+- Tests: quick 232 (was 147 + 85 new incl. fixes), medium 11 (+1 skipped, no `gl`), heavy 10 (R5: 4 cases, in files of
+  their own), scaling 4 (a new guard for `updateView` on a stream document).
+- Browser check (Storybook 6008, Browser pane): the story opens at level 0 (0 copies, 0 / 3000); Play tour: tiles
+  requested 7, 13, 20, evicted 0, 6, 13, 7 resident, 2800 / 3000 copies at most, no console errors.
+
 ## Decided
+
+- Opus design agent: the budget is a session option, not a document field (renderer settings stay out of the document);
+  the manifest comes only from the provider; the camera always reads level 0 (otherwise it moves as tiles load); one
+  stream model per document in v0.4.
+- Me: the story opens with budget 0 (level 0 only), because the first run opened with 7 tiles loaded and the brief asks
+  for level 0 first; `setBudget` added for it.
+- Me: R5 cases in files of their own, because the 1,000-list case peaks near 6 GB and was SIGKILLed after other cases.
 
 ## Learned
 
+- R5: 1M copies in 1/10/100/1000 lists commit in 0.8/1.5/5.6/39 s (about 37 ms and 0.1 MB a list); a stream step is
+  cheap to 100 lists, 100-160 ms at 1,000 (looks rewritten on every list). Frame time is unmeasured (no GL here):
+  TODO.md.
+- A type table alternating between populations made `byTypes` quadratic (37 ms at 1.8k tiles, 605 ms at 7.2k): emitting
+  population-major fixed it without touching `loci.ts`.
+- Sonnet implemented the contract well but a reviewer found the edges: missing `counts`, hysteresis vs focus tile, a
+  foreign AbortError, a sync throw from a provider, stale issues.
+
 ## Size
 
-<measured> against ~600; what took the room.
+Production lines against the brief's ~600: about 1,260 (streaming.ts 554, fixture 171, story 160, session +127, runtime
++91, validate +84, doc +38, ir +31, others small), tests about 1,400, design.md +550. What took the room: the planner
+and `TileStreamer` (abort and arrival races, standing issues), the fixture and the story (not counted in the brief's
+600), and the session wiring. Over by about 2x; recorded, work kept going.
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+Reviewer (Opus, read-only) 13 findings (4 must-fix, 5 should-fix, 4 nits); skeptic confirmed 8, partly confirmed 1 (#4:
+changelog real, features.md refuted: it lists app features, no MesoViewSpec entry), refuted 0, 2 nits confirmed and 2
+plausible, and added 1 (X). All fixed; none left open except frame time (TODO.md).
+
+| Finding                                                   | Severity   | Verdict                                  | Commit / open                          |
+| --------------------------------------------------------- | ---------- | ---------------------------------------- | -------------------------------------- |
+| 1 tile without `counts` passes validation, compile throws | must-fix   | confirmed                                | 25e2a6962                              |
+| 2 hysteresis evicts a focus tile                          | must-fix   | confirmed                                | 250c3c652                              |
+| 3 level-0 camera path quadratic (types alternate)         | must-fix   | confirmed                                | b77451656 (+ scaling guard)            |
+| 4 no changelog / features.md                              | must-fix   | changelog confirmed; features.md refuted | e713bbb4a                              |
+| 5 foreign AbortError wedges a tile                        | should-fix | confirmed                                | cc7ddcc9b                              |
+| 6 sync throw from `provider.load` escapes `step`          | should-fix | confirmed                                | e9edbb27f                              |
+| 7 model edit drops stream warnings                        | should-fix | confirmed                                | ec21414f4                              |
+| 8 failed stream commit swallowed, streamer ahead          | should-fix | confirmed                                | f3b0aaadb                              |
+| 9 R5 frame time unmeasured                                | should-fix | confirmed                                | TODO.md 1e38906b4 (needs a GL machine) |
+| X `reset` keeps stale issues (skeptic)                    | should-fix | confirmed                                | 7eca0e414                              |
+| nit: remove looks not separately recorded                 | nit        | confirmed                                | 900aa00b9                              |
+| nit: level0 caches keyed on `ir.root`                     | nit        | plausible                                | 37b1f2af0                              |
+| nit: §6.8.7 names wrong test files                        | nit        | confirmed                                | 042b25a52                              |
+| nit: NaN focus centre                                     | nit        | plausible                                | eb006b074                              |
