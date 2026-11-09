@@ -289,6 +289,25 @@ function boundingSphereOf(p: Float32Array, out: Sphere3D) {
   return out;
 }
 
+/**
+ * A membrane's levels of detail: Mol*'s spheres levels by size on screen (`Spheres.LodPixelPresets`' pixel sizes), but
+ * a sheet's scale: n spheres drawn as n / stride of radius √stride keep its area (scale bias 2). The presets' bias of
+ * about 3 keeps a volume's, and a membrane seen face on read as scattered dots through which the scene showed (Dawn,
+ * the cow ×100 whole, 2026-11-08)
+ */
+function membraneLevels(detail: 'quality' | 'balanced' | 'performance') {
+  const lodPixelSize = Spheres.LodPixelPresets[detail].lodPixelSize;
+  // the distances are the pixel boundaries' (`getLodLevelsValue` with a pixel size), these unused
+  const lodLevels = [1, 8, 64, 512].map((stride, j) => ({
+    minDistance: j,
+    maxDistance: j + 1,
+    overlap: 0,
+    stride,
+    scaleBias: stride === 1 ? 1 : 2,
+  }));
+  return { lodLevels, lodPixelSize };
+}
+
 export const LipidMembraneReprParams = {
   colorBy: PD.Select('residue-name', [
     ['residue-name', 'Residue name'],
@@ -373,7 +392,7 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
     } as unknown as ColorTheme<any>;
     const theme = { color, size: UniformSizeTheme({}, { value: props.sizeFactor }) };
     // each lipid or tile at its own level by its size on screen (the culler's per-instance levels)
-    const lod = props.detail === 'off' ? { lodLevels: [], lodPixelSize: 0 } : Spheres.LodPixelPresets[props.detail];
+    const lod = props.detail === 'off' ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail);
     const p = { ...PD.getDefaultValues(Spheres.Params), ...lod, gpuCulling: true as const };
     const values = Spheres.Utils.createValues(spheres, transform, locationIterator, theme, p);
     ValueCell.update(values.boundingSphere, Sphere3D.clone(bounds));
