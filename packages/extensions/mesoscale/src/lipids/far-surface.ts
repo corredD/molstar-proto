@@ -132,9 +132,10 @@ function topGrid(
   side: 'outer' | 'inner',
   g: { grid: Int32Array; nx: number; ny: number; cell: number },
   top: SwitchSpheres,
+  height = new Float32Array(g.nx * g.ny),
 ) {
   const { grid, nx, ny, cell } = g;
-  const height = new Float32Array(nx * ny).fill(-Infinity);
+  height.fill(-Infinity);
   const f = side === 'outer' ? 1 : -1;
   for (let m = 0; m < table.members.length; ++m) {
     const species = table.members[m].species;
@@ -367,4 +368,98 @@ function tri(out: Uint32Array, o: number, a: number, b: number, c: number, side:
   out[o + 1] = side === 'inner' ? c : b;
   out[o + 2] = side === 'inner' ? b : c;
   return o + 3;
+}
+
+/**
+ * A leaflet's patch surface (round 5: the far look as a texture, `MeshSchema.dPatchTexture`): the mesh's own triangles,
+ * each with its own three vertices (its region their group: the shader maps the patch by it), lifted by `offset` along
+ * the mesh's vertex normals (no crack at a crease), facing `side`'s way. O(triangles), whatever the lipids
+ */
+export function patchSurface(mesh: TriMesh, regionOf: Uint32Array, side: 'outer' | 'inner', offset: number) {
+  const p = mesh.positions;
+  const ix = mesh.indices;
+  const T = ix.length / 3;
+  const vn = new Float32Array(p.length);
+  for (let t = 0; t < T; ++t) {
+    const a = ix[t * 3] * 3;
+    const b = ix[t * 3 + 1] * 3;
+    const c = ix[t * 3 + 2] * 3;
+    const ux = p[b] - p[a];
+    const uy = p[b + 1] - p[a + 1];
+    const uz = p[b + 2] - p[a + 2];
+    const vx = p[c] - p[a];
+    const vy = p[c + 1] - p[a + 1];
+    const vz = p[c + 2] - p[a + 2];
+    const nx = uy * vz - uz * vy;
+    const ny = uz * vx - ux * vz;
+    const nz = ux * vy - uy * vx;
+    for (const v of [a, b, c]) {
+      vn[v] += nx;
+      vn[v + 1] += ny;
+      vn[v + 2] += nz;
+    }
+  }
+  const positions = new Float32Array(T * 9);
+  const normals = new Float32Array(T * 9);
+  const groups = new Float32Array(T * 3);
+  const indices = new Uint32Array(T * 3);
+  for (let t = 0; t < T; ++t) {
+    for (let k = 0; k < 3; ++k) {
+      const v = ix[t * 3 + k] * 3;
+      const l = Math.hypot(vn[v], vn[v + 1], vn[v + 2]) || 1;
+      const o = (t * 3 + k) * 3;
+      for (let j = 0; j < 3; ++j) {
+        normals[o + j] = (vn[v + j] / l) * (side === 'outer' ? 1 : -1);
+        positions[o + j] = p[v + j] + (vn[v + j] / l) * offset;
+      }
+      groups[t * 3 + k] = regionOf[t];
+    }
+    indices[t * 3] = t * 3;
+    indices[t * 3 + 1] = side === 'outer' ? t * 3 + 1 : t * 3 + 2;
+    indices[t * 3 + 2] = side === 'outer' ? t * 3 + 2 : t * 3 + 1;
+  }
+  return { positions, normals, groups, indices };
+}
+
+/** A patch texture's texels a side: a lipid's spacing (~8 Å) about 13 texels on the CHARMM-GUI patch (154 Å) */
+export const PatchTexels = 256;
+
+/**
+ * The patch seen from its leaflet's side, a periodic RGBA texture (`PatchTexels` square over the box): each texel the
+ * species of the highest sphere of the switch's level over it (`topGrid`; its nearest head where none), its colour
+ * shaded by that sphere's height (the heads' bumps); a hidden species' texels the nearest shown head's. With the mean
+ * height of the tops (the surface's height)
+ */
+export function patchRaster(
+  table: CutterTable,
+  shown: (species: number) => boolean,
+  side: 'outer' | 'inner',
+  colorOf: (species: number) => number,
+  top: SwitchSpheres,
+) {
+  const n = PatchTexels;
+  const cell = (table.box[0] / n) * (1 + 1e-6);
+  const g = headGrid(table, shown, cell);
+  const heights = new Float32Array(g.nx * g.ny);
+  const mean = topGrid(table, shown, side, g, top, heights);
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const h of heights) {
+    if (h === -Infinity) continue;
+    lo = Math.min(lo, h);
+    hi = Math.max(hi, h);
+  }
+  const array = new Uint8Array(g.nx * g.ny * 4);
+  for (let k = 0; k < g.nx * g.ny; ++k) {
+    const sp = g.grid[k];
+    const c = sp < 0 ? 0x808080 : colorOf(sp);
+    const h = heights[k];
+    // lit from above: the tops bright, the gaps between spheres darker
+    const shade = h === -Infinity || !(hi > lo) ? 0.6 : 0.65 + 0.35 * ((h - lo) / (hi - lo));
+    array[k * 4] = Math.round(((c >> 16) & 255) * shade);
+    array[k * 4 + 1] = Math.round(((c >> 8) & 255) * shade);
+    array[k * 4 + 2] = Math.round((c & 255) * shade);
+    array[k * 4 + 3] = 255;
+  }
+  return { array, width: g.nx, height: g.ny, mean };
 }

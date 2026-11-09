@@ -38,9 +38,10 @@ import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/s
 import { assignSlots, type TileKinds, type TriangleSlots, variantCount } from './assign.js';
 import { createLipidTileAssigner, type LipidTileAssigner } from './assign-kernel.js';
 import { type LipidPatch, parsePatchPdb } from './patch.js';
-import { type CutterRegions, cutterRegions, type CutterTable, cutterTable, kindCounts } from './cutter.js';
+import { cellSide, type CutterRegions, cutterRegions, type CutterTable, cutterTable, kindCounts } from './cutter.js';
 import { createLipidCutter, type LipidCutter } from './cutter-kernel.js';
-import { type FarSurface, farSurface, headOffset, type SwitchSpheres } from './far-surface.js';
+import { headOffset, patchRaster, patchSurface, type SwitchSpheres } from './far-surface.js';
+import type { Texture } from '@molstar/graphics/gl/texture';
 import {
   createLipidSelection,
   enterPx,
@@ -660,46 +661,41 @@ function fadeSurface(
   ValueCell.update(values.uLod, Vec4.set(u, lod[0], lod[1], lod[2], 0));
 }
 
+/** The patch table texture's width (`MeshSchema.tPatchTable`: `patchTexel` reads row by row) */
+const PatchTableWidth = 1024;
+
 /**
- * A leaflet's far surface (lipid-procedural round 4b, `far-surface.ts`): at its heads, single-sided, each vertex a group
- * coloured as its species (the patch's head where the cutter maps it), Mol*'s material bump at a lipid's spacing
+ * A leaflet's patch surface (round 5, `patchSurface`): its mesh's triangles, the patch texture mapped by their regions
+ * and cells (`dPatchTexture`), single-sided; with colours by zoom the membrane's colour far, the texture from a lipid's
+ * entity edge (`ColorLevels.entity`, an atom's px a lipid's × its atom over its size)
  */
-function surfaceObject(
-  f: FarSurface,
-  colorOf: (species: number) => Color,
+function patchObject(
+  f: ReturnType<typeof patchSurface>,
+  textures: [Texture, Texture],
+  table: CutterTable,
+  regions: CutterRegions,
   size: number,
-  clip: Clip.Props,
-  fade: boolean,
   reprProps: LipidMembraneReprProps,
+  fade: boolean,
 ) {
   const n = f.positions.length / 3;
-  const groups = new Float32Array(n);
-  for (let v = 0; v < n; ++v) groups[v] = v;
-  const m = Mesh.create(f.positions, f.indices, f.normals, groups, n, f.indices.length / 3);
+  const m = Mesh.create(f.positions, f.indices, f.normals, f.groups, n, f.indices.length / 3);
   const defaults = PD.getDefaultValues(Mesh.Params);
   const props = {
     ...defaults,
     doubleSided: false,
-    bumpFrequency: 1.5 / size,
-    bumpAmplitude: 1,
-    material: { ...defaults.material, bumpiness: 1 },
-    clip,
+    clip: reprProps.clip,
     // a cut leaflet's surfaces fade by distance (`fadeSurface`, set where the size on screen changes): the define on
     // from the start, the values set at once from the last view seen (none yet: as orthographic, px unbounded)
     lod: fade ? Vec3.create(0, NoFade, 1) : defaults.lod,
   };
   const transform = createIdentityTransform();
-  const locationIterator = LocationIterator(
-    n,
-    1,
-    1,
-    (g: number) => ({ kind: 'vertex', species: f.species[g] }) as never,
-  );
+  const locationIterator = LocationIterator(Math.max(1, regions.count), 1, 1, () => ({ kind: 'membrane' }) as never);
   const color = {
-    granularity: 'group',
-    color: (l: { species: number }) => colorOf(l.species),
+    granularity: 'uniform',
+    color: () => reprProps.color,
     props: {},
-    description: 'Lipid species',
+    description: 'Membrane',
   } as unknown as ColorTheme<any>;
   const values = Mesh.Utils.createValues(
     m,
@@ -708,7 +704,18 @@ function surfaceObject(
     { color, size: UniformSizeTheme({}, { value: 1 }) },
     props,
   );
-  membraneColorLevels(values as unknown as ColorLevels.Data, reprProps, 1, n, (g) => colorOf(f.species[g]));
+  const levels = reprProps.colorLevels.name === 'on' && reprProps.colorBy !== 'uniform';
+  const entity = levels ? (reprProps.colorLevels.params as ColorLevels.Props).entity : 0;
+  const band = levels ? (reprProps.colorLevels.params as ColorLevels.Props).band : 1;
+  // a lipid's px where the species start: the levels' entity edge for an atom, a lipid `size / AtomSize` atoms across
+  const px = (entity * size) / ColorLevels.AtomSize;
+  Object.assign(values, {
+    dPatchTexture: ValueCell.create(true),
+    tPatch: ValueCell.create(textures[0]),
+    tPatchTable: ValueCell.create(textures[1]),
+    uPatch: ValueCell.create(Vec4.create(cellSide(table.box), table.box[0], table.box[1], regions.table.length / 4)),
+    uPatchLevels: ValueCell.create(Vec4.create(levels ? 1 : 0, px * 2 ** (-band / 2), px * 2 ** (band / 2), size)),
+  });
   const object = createRenderObject('mesh', values, Mesh.Utils.createRenderableState(props), -1);
   clipped.set(object.values as never, props);
   return object;
@@ -806,7 +813,33 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   /** the last view's size on screen: a new look's surfaces faded from their first frame (the hook comes after it) */
   const lastLod = { depthScale: 0, pixelSize: 0 };
 
+  /** the patch textures of the objects drawn, and of the build before (`buildSteps`) */
+  let patchTexturesInUse: Texture[] = [];
+  let retiredTextures: Texture[] = [];
+
+  /** a leaflet's patch texture (mipmapped) and its map's table (its regions' frames, then its cells' kinds) */
+  function patchTextures(
+    graphics: GraphicsContext,
+    raster: { array: Uint8Array; width: number; height: number },
+    regions: CutterRegions,
+  ): [Texture, Texture] {
+    const patch = graphics.resources.texture('image-uint8', 'rgba', 'ubyte', 'linear');
+    patch.load(raster);
+    patch.mipmap();
+    const texels = regions.table.length / 4 + regions.cells.length / 4;
+    const rows = Math.ceil(texels / PatchTableWidth);
+    const array = new Float32Array(PatchTableWidth * rows * 4);
+    array.set(regions.table);
+    array.set(regions.cells, regions.table.length);
+    const table = graphics.resources.texture('image-float32', 'rgba', 'float', 'nearest');
+    table.load({ array, width: PatchTableWidth, height: rows });
+    return [patch, table];
+  }
+
   function release() {
+    for (const t of retiredTextures) t.destroy();
+    retiredTextures = patchTexturesInUse;
+    patchTexturesInUse = [];
     for (const a of assigners) a.destroy();
     for (const c of cutters) c.destroy();
     assigners = [];
@@ -1146,6 +1179,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // (round 4b); a tiles leaflet's on its surface (at its mid-plane: the heads past it), coloured as the cutter cuts the
     // patch there (the species' proportions and grain, not each tile's lipids)
     const nextFading: typeof fading = [];
+    const nextTextures: Texture[] = [];
     if (props.far !== 'spheres') {
       const surfaces = [
         ...data.cut.map((l) => ({ ...l, offset: 0 })),
@@ -1162,19 +1196,18 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         // (the gaps between them, no gap at any distance), and where its spheres stop the one that takes over, coloured
         // as they show the patch, at their tops; a tiles leaflet's beneath its tiles, always
         const cut = leaflet.offset === 0 && data.method === 'cutter';
+        // round 5: the patch as a texture on the mesh's own triangles, mapped per fragment as the cutter maps it (its
+        // regions and cells), mipmapped: the spheres' look at the switch, their mean far away, at any scale
+        const raster = patchRaster(table, shown, leaflet.name, speciesColor, switchSpheres(table, props, enter));
+        const textures = patchTextures(graphics, raster, leaflet.regions);
+        made.push(...textures);
+        nextTextures.push(...textures);
+        const head = headOffset(table, leaflet.name) - leaflet.offset;
+        const top =
+          raster.mean === undefined ? head : (leaflet.name === 'outer' ? 1 : -1) * raster.mean - leaflet.offset;
         for (const fade of cut ? (['near', 'far'] as const) : ([undefined] as const)) {
-          const f = farSurface(
-            leaflet.mesh,
-            leaflet.regions,
-            table,
-            leaflet.name,
-            headOffset(table, leaflet.name) - leaflet.offset,
-            shown,
-            (fade === 'near' ? 4 : 2) * size,
-            undefined,
-            fade === 'far' ? switchSpheres(table, props, enter) : undefined,
-          );
-          const object = surfaceObject(f, speciesColor, size, props.clip, !!fade, props);
+          const f = patchSurface(leaflet.mesh, leaflet.regions.regionOf, leaflet.name, fade === 'far' ? top : head);
+          const object = patchObject(f, textures, table, leaflet.regions, size, props, !!fade);
           if (fade) {
             const values = object.values as BaseValues;
             nextFading.push({ values, size, near: fade === 'near' });
@@ -1185,6 +1218,10 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       }
     }
     fading = nextFading;
+    // the textures of two builds ago: the last build's objects may draw once more (a frame before the swap)
+    for (const t of retiredTextures) t.destroy();
+    retiredTextures = patchTexturesInUse;
+    patchTexturesInUse = nextTextures;
     renderObjects = out;
     members = building;
     // a clip given while this build ran (a handle's preview: outside the state) reached the old members only: all of
