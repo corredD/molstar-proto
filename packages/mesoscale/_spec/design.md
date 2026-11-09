@@ -341,8 +341,12 @@ JSON toggle.
 
 - **Codec:** a section item is `(section-singular id :key value …)`; an object with a `kind` word is `(kind …)`; a
   quantity is `(15 A)`; any other object is a record `(:key value …)`; arrays are `[…]`; camelCase keys are kebab-case
-  keywords, and a key that would not read back (an id used as a key) is quoted, `:"p.ALB"`. MesoQL values (`select`,
-  `selection`, `at`, `target`, `entry`, `exit`) are written as forms, not strings.
+  keywords, and a key that would not read back (an id used as a key) is quoted, `:"p.ALB"`. MesoQL values are written as
+  forms, not strings, at their slots only: a look's `select`, a view's `selection` and `cutaway`, a camera's `focus`, an
+  annotation's `target`, a site's `at`, a relation's `entry` and `exit` (matched by the key and its parent's, so
+  `params.target` stays data). A form is printed on one line, and only when the string is already its canonical text;
+  any other string (two spaces, a comment) stays a quoted string. So `read(print(json))` is the JSON for every string,
+  and reading hand-written text keeps an address's canonical text.
 - **Layout:** SeqQL's printer rules (positionals then keywords, one line when it fits 80 columns), Lisp indentation.
 - **Tested:** `read(print(json))` equals `json` and `print(read(text))` is a fixed point, on all five example documents
   and their IR summaries (`_test/sexpr.test.ts`).
