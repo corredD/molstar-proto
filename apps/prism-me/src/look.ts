@@ -62,7 +62,6 @@ export const MesoscaleCanvasLook: Partial<Canvas3DProps> = {
       },
     },
     shadow: { name: 'on', params: { maxDistance: 80, steps: 3, tolerance: 1.0 } },
-    // the ghosts of what clips cut in a gray of their own: black ones vanish on the dark theme (cellview.md §4.3)
     outline: {
       name: 'on',
       params: {
@@ -70,7 +69,6 @@ export const MesoscaleCanvasLook: Partial<Canvas3DProps> = {
         threshold: 0.15,
         color: Color(0x000000),
         includeTransparent: false,
-        transparentColor: Color(0x8a8a8a),
       },
     },
   } as Canvas3DProps['postprocessing'],

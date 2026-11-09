@@ -1651,7 +1651,8 @@ function Clips(props: { subject: Subject }) {
 /**
  * A clip's properties (Ludo, 2026-10-28): its editor (handles, numbers, remove, shape, invert: PR #14), then
  * What it cuts: every object or part it is given (each picks its row; × takes it off, one step; not the last one:
- * remove the clip instead), Cut also… (one step), its Ghosts (Outline what it cuts, one step: cellview.md §4.3)
+ * remove the clip instead), Cut also… (one step), Ghosts for all clips (a faint ghost of what they cut, one step:
+ * cellview.md §4.3)
  */
 function ClipProperties(props: { subject: Subject }) {
   const { api, area, picked, parts } = props.subject;
@@ -1710,7 +1711,7 @@ function ClipProperties(props: { subject: Subject }) {
           }}
         />
       </Line>
-      <ClipGhosts api={api} tag={tag} cut={cut} />
+      <ClipGhosts api={api} />
       {/* each model or list it cuts that draws objects: its Clip whole, the same as in its own Clips */}
       <For each={wholes} by={(o) => `${o.ref}:${o.label}`}>
         {(o) => <ClipWhole api={api} particles={o.ref} label={`Clip whole: ${o.label}`} />}
@@ -1720,19 +1721,23 @@ function ClipProperties(props: { subject: Subject }) {
 }
 
 /**
- * A clip's Ghosts: what it removes drawn again as outlines only (the canvas's outlines on; cellview.md §4.3), a switch
- * as Invert's, one `clipping.update` a change
+ * Ghosts, for every clip: what the cuts remove drawn again as a faint ghost, a tint and its edges (the canvas's
+ * `clipGhost`, through Prism's `clipping.settings` `ghost`; cellview.md §4.3), a switch in each clip's section, one step
+ * a change
  */
-function ClipGhosts(props: { api: ViewerApi; tag: string; cut: ReadonlyState<ClipCut | undefined> }) {
-  const { api, tag, cut } = props;
+function ClipGhosts(props: { api: ViewerApi }) {
+  const { api } = props;
   const form = new ParamsFormModel(
     {
-      ghost: PD.Boolean(false, { label: 'Ghosts', description: 'Outline what it cuts: what it removes, as outlines' }),
+      ghost: PD.Boolean(false, {
+        label: 'Ghosts (all clips)',
+        description: 'What every clip removes, drawn as a faint ghost: a tint and its edges',
+      }),
     },
     undefined,
-    { onChange: (values) => void api.run('clipping.update', { tag, ghost: values.ghost }) },
+    { onChange: (values) => void api.run('clipping.settings', { ghost: values.ghost }) },
   );
-  bind(cut, (c) => c && form.load({ ghost: !!c.object.ghost }));
+  bind(api.clipping.cutSettings, (c) => form.load({ ghost: c.ghost }));
   return <ParamsForm form={form} />;
 }
 
