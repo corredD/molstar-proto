@@ -51,6 +51,8 @@ export const tail = (id: Id) => id.slice(id.indexOf('.') + 1);
 export class IdRegistry {
   private readonly taken = new Set<Id>();
   private counter = 0;
+  /** The next suffix to try per base id: a base made n times costs n probes, not n². */
+  private readonly next = new Map<Id, number>();
 
   has(id: Id) {
     return this.taken.has(id);
@@ -64,7 +66,9 @@ export class IdRegistry {
   make(kind: NodeKind, text: string | undefined): Id {
     const base = IdPrefix[kind] + ((text && slug(text)) || String(++this.counter));
     let id = base;
-    for (let n = 2; this.taken.has(id); n++) id = `${base}-${n}`;
+    let n = this.next.get(base) ?? 2;
+    while (this.taken.has(id)) id = `${base}-${n++}`;
+    this.next.set(base, n);
     return this.reserve(id);
   }
 }

@@ -192,6 +192,19 @@ describe('builder: review fixes', () => {
     const b = createMesoDocument({ title: 'l' });
     expect(b.compartment({ label: '', kind: 'cell', geometry: { kind: 'sphere', radius: 1 } })).toBe('c.cell');
   });
+  it('makes unique ids without scanning from -2 each time', () => {
+    const b = createMesoDocument({ title: 'n' });
+    const ids = Array.from({ length: 50 }, () => b.entity({ label: 'same', kind: 'protein' }));
+    expect(ids.slice(0, 3)).toEqual(['e.same', 'e.same-2', 'e.same-3']);
+    expect(ids[49]).toBe('e.same-50');
+    const registry = new IdRegistry();
+    let probes = 0;
+    const taken = (registry as unknown as { taken: Set<string> }).taken;
+    const has = taken.has.bind(taken);
+    taken.has = (id) => (probes++, has(id));
+    for (let i = 0; i < 200; i++) registry.make('entity', 'same');
+    expect(probes).toBeLessThanOrEqual(2 * 200);
+  });
 });
 
 describe('builder: MesoQL helpers', () => {
