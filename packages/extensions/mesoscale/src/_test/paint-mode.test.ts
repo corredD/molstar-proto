@@ -34,6 +34,9 @@ function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolea
   let reads = pending;
   const refined: number[] = [];
   const camera = { held: 0, released: 0 };
+  /** The copy under the pointer: where it was last shown (undefined: hidden), its seed, disposed */
+  const copy = { at: undefined as number[] | undefined, seed: -1, disposed: false };
+  const seeds: number[] = [];
   const host: PaintHost = {
     canvas: () => canvas,
     holdCamera: () => {
@@ -61,8 +64,21 @@ function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolea
     upright: () => options.upright ?? true,
     project: (out, p) => Vec3.set(out, p[0], -p[1], 0),
     radius: () => 5,
-    paint: async (_b, _s, positions, normals) => {
+    cursor: () => ({
+      move: (p, _n, _s, seed) => {
+        copy.at = [p[0], p[1], p[2]];
+        copy.seed = seed;
+      },
+      hide: () => {
+        copy.at = undefined;
+      },
+      dispose: () => {
+        copy.disposed = true;
+      },
+    }),
+    paint: async (_b, _s, positions, normals, seed) => {
       strokes.push({ positions, normals });
+      seeds.push(seed);
       // the commit's own change of the state, a moment later (a large list's rebuild)
       if (options.changeOnPaint) {
         await Promise.resolve();
@@ -80,7 +96,18 @@ function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolea
   const change = () => {
     for (const fn of listeners) fn();
   };
-  return { mode, layer, strokes, change, listeners, refined, camera, removeList: () => (lists = false) };
+  return {
+    mode,
+    layer,
+    strokes,
+    change,
+    listeners,
+    refined,
+    camera,
+    copy,
+    seeds,
+    removeList: () => (lists = false),
+  };
 }
 
 const brush = { particles: 'list', entity: 1, name: 'CD9' };
@@ -255,6 +282,48 @@ describe('paint mode', () => {
       expect(refined.length, `${upright} ${place}`).toBe(upright && place === 'auto' ? 1 : 0);
       mode.stop();
     }
+  });
+
+  it('a copy follows the pointer where a click puts it; the click paints it with its seed; hidden off the canvas', async () => {
+    const { mode, layer, strokes, copy, seeds } = setup(0, { upright: false });
+    mode.start(brush);
+    const el = layer();
+    const frame = () => new Promise((resolve) => setTimeout(resolve, 40));
+    const over = (x: number, y: number) =>
+      el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y }));
+    // jsdom has no layout: the pointer's place over the layer is its offset
+    vi.spyOn(MouseEvent.prototype, 'offsetX', 'get').mockImplementation(function (this: MouseEvent) {
+      return this.clientX;
+    });
+    vi.spyOn(MouseEvent.prototype, 'offsetY', 'get').mockImplementation(function (this: MouseEvent) {
+      return this.clientY;
+    });
+    over(30, 20);
+    await frame();
+    // at the depth (the focus, 100 Å from z = 100) under the pointer
+    expect(copy.at).toEqual([30, -20, 0]);
+    const shown = copy.seed;
+    el.dispatchEvent(pointer('pointerdown', { x: 30, y: 20 }));
+    el.dispatchEvent(pointer('pointerup', { x: 30, y: 20 }));
+    // the copy painted is the one shown: same place, same seed
+    expect(strokes[0].positions).toEqual([30, -20, 0]);
+    expect(seeds[0]).toBe(shown);
+    await frame();
+    // the next copy shown is the next stroke's
+    expect(copy.seed).not.toBe(shown);
+    // Alt: the camera's, no copy
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', altKey: true }));
+    await frame();
+    expect(copy.at).toBeUndefined();
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt' }));
+    over(40, 20);
+    await frame();
+    expect(copy.at).toEqual([40, -20, 0]);
+    el.dispatchEvent(new PointerEvent('pointerleave'));
+    await frame();
+    expect(copy.at).toBeUndefined();
+    mode.stop();
+    expect(copy.disposed).toBe(true);
   });
 
   it('Esc leaves the mode: its layer, its listeners and its brush gone', () => {

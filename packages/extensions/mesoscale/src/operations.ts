@@ -167,7 +167,14 @@ export class MesoscaleApi extends ApiArea {
    * strokes are `mesoscale.paint`, one step each
    */
   get paintMode(): PaintMode {
-    this._paintMode ??= new PaintMode(pluginPaintHost(this.ctx.plugin, (params) => this.paint(params as never)));
+    this._paintMode ??= new PaintMode(
+      pluginPaintHost(
+        this.ctx.plugin,
+        (params) => this.paint(params as never),
+        // the copy under the pointer in the entity's color (its look's)
+        (l, entity) => readStyles(this.ctx, l).get(entity)?.color,
+      ),
+    );
     return this._paintMode;
   }
 

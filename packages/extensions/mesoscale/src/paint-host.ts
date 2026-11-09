@@ -16,8 +16,10 @@ import {
   Particle,
 } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
+import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hierarchy-state';
 import type { PaintBrushTarget, PaintHost, PaintSettings } from './paint-mode.js';
 import { brushOf } from './paint.js';
+import { pluginPaintCursor } from './paint-cursor.js';
 import { membraneFrame } from './pick-surface.js';
 
 // Paint mode's host on the viewer (paint-mode.ts): the plugin's canvas, its picks and camera, and the stroke run as
@@ -60,10 +62,14 @@ export function withAltCamera(bindings: TrackballBindings): TrackballBindings {
   return out as TrackballBindings;
 }
 
-/** The host of a paint mode on `plugin`; `paint` runs the operation */
+/**
+ * The host of a paint mode on `plugin`; `paint` runs the operation, `colorOf` reads an entity's color from its look
+ * (the copy under the pointer's)
+ */
 export function pluginPaintHost(
   plugin: PluginContext,
   paint: (params: Record<string, unknown>) => Promise<unknown>,
+  colorOf?: (list: ParticleListRef, entity: number) => number | undefined,
 ): PaintHost {
   const listOf = (ref: string) =>
     plugin.managers.particles.hierarchy.current.lists.find((l) => l.cell.transform.ref === ref);
@@ -120,12 +126,19 @@ export function pluginPaintHost(
         : getParticleEntityGroups(data).get(brush.entity);
       return (set && OrderedSet.size(set) && data.radii?.[OrderedSet.start(set)]) || 10;
     },
-    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals) {
+    cursor(brush) {
+      const list = listOf(brush.particles);
+      const data = list?.cell.obj?.data;
+      const color = list ? colorOf?.(list, brush.entity) : undefined;
+      return pluginPaintCursor(plugin, list, brush, color, !!data && !!brushOf(data, brush.entity)?.surface);
+    },
+    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed) {
       const r = (await paint({
         particles: brush.particles,
         entity: String(brush.entity),
         positions,
         normals,
+        seed,
         side: s.side,
         ...(s.orient !== 'auto' ? { orient: s.orient } : {}),
         ...(s.spin !== undefined ? { spin: s.spin } : {}),

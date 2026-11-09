@@ -197,6 +197,7 @@ const _n = Vec3();
 const _a = Vec3();
 const _q = Quat();
 const _spin = Quat();
+const _v = Vec3();
 
 /**
  * The orientation of each copy (x, y, z, w per copy) from the normals at its point (unit or not; `normal`, `axis`,
@@ -211,33 +212,48 @@ export function paintRotations(
 ): number[] {
   const k = Math.floor(normals.length / 3);
   const out: number[] = new Array(k * 4);
-  const from = orient === 'axis' && options.axis ? Vec3.normalize(_a, options.axis) : _z;
   for (let i = 0; i < k; ++i) {
-    if (orient === 'random') {
-      // Shoemake's uniform random rotation
-      const u1 = paintRandom(seed, i, 0);
-      const u2 = paintRandom(seed, i, 1) * 2 * Math.PI;
-      const u3 = paintRandom(seed, i, 2) * 2 * Math.PI;
-      const s1 = Math.sqrt(1 - u1);
-      const s2 = Math.sqrt(u1);
-      Quat.set(_q, s1 * Math.sin(u2), s1 * Math.cos(u2), s2 * Math.sin(u3), s2 * Math.cos(u3));
-    } else {
-      Vec3.set(_n, normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]);
-      if (Vec3.squaredMagnitude(_n) === 0) Vec3.copy(_n, from);
-      Vec3.normalize(_n, _n);
-      const angle = ((options.spin ?? paintRandom(seed, i, 3) * 360) * Math.PI) / 180;
-      // spun about its own axis first, then that axis turned onto the normal
-      Quat.setAxisAngle(_spin, from, angle);
-      Quat.rotationTo(_q, from, _n);
-      Quat.multiply(_q, _q, _spin);
-      Quat.normalize(_q, _q);
-    }
+    Vec3.set(_v, normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]);
+    paintRotation(_q, _v, orient, seed, i, options);
     out[i * 4] = _q[0];
     out[i * 4 + 1] = _q[1];
     out[i * 4 + 2] = _q[2];
     out[i * 4 + 3] = _q[3];
   }
   return out;
+}
+
+/**
+ * The orientation of copy `i` of a stroke (`paintRotations`, one copy, nothing allocated): the copy under the pointer
+ * is drawn with it before it is painted (Round 2), the same as the stroke's first copy of that seed
+ */
+export function paintRotation(
+  out: Quat,
+  normal: Vec3,
+  orient: PaintOrient,
+  seed: number,
+  i: number,
+  options: { readonly axis?: Vec3; readonly spin?: number } = {},
+): Quat {
+  if (orient === 'random') {
+    // Shoemake's uniform random rotation
+    const u1 = paintRandom(seed, i, 0);
+    const u2 = paintRandom(seed, i, 1) * 2 * Math.PI;
+    const u3 = paintRandom(seed, i, 2) * 2 * Math.PI;
+    const s1 = Math.sqrt(1 - u1);
+    const s2 = Math.sqrt(u1);
+    return Quat.set(out, s1 * Math.sin(u2), s1 * Math.cos(u2), s2 * Math.sin(u3), s2 * Math.cos(u3));
+  }
+  const from = orient === 'axis' && options.axis ? Vec3.normalize(_a, options.axis) : _z;
+  Vec3.copy(_n, normal);
+  if (Vec3.squaredMagnitude(_n) === 0) Vec3.copy(_n, from);
+  Vec3.normalize(_n, _n);
+  const angle = ((options.spin ?? paintRandom(seed, i, 3) * 360) * Math.PI) / 180;
+  // spun about its own axis first, then that axis turned onto the normal
+  Quat.setAxisAngle(_spin, from, angle);
+  Quat.rotationTo(out, from, _n);
+  Quat.multiply(out, out, _spin);
+  return Quat.normalize(out, out);
 }
 
 // --- The operation's helpers (`mesoscale.paint`) ---------------------------------------------------------------------

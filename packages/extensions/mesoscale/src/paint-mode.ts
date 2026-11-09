@@ -67,12 +67,28 @@ export interface PaintHost {
   project(out: Vec3, p: Vec3): Vec3;
   /** A copy's radius, Å (its spacing's default and the preview's disc) */
   radius(brush: PaintBrushTarget): number;
-  /** Paints a stroke: one operation (`mesoscale.paint`) */
-  paint(brush: PaintBrushTarget, settings: PaintSettings, positions: number[], normals: number[]): Promise<unknown>;
+  /** Paints a stroke: one operation (`mesoscale.paint`); `seed`, its random turns' (the copy under the pointer's) */
+  paint(
+    brush: PaintBrushTarget,
+    settings: PaintSettings,
+    positions: number[],
+    normals: number[],
+    seed: number,
+  ): Promise<unknown>;
+  /** The copy of the brush drawn under the pointer (Round 2), gone with `dispose` */
+  cursor(brush: PaintBrushTarget): PaintCursor;
   /** Whether the brush's list is still there */
   has(brush: PaintBrushTarget): boolean;
   /** Calls `fn` on every change of the state (an undo mid-stroke cancels it); returns its removal */
   changed(fn: () => void): () => void;
+}
+
+/** The copy under the pointer (progress/2026-11-08-paint.md, Round 2): moved once a frame, hidden off the canvas */
+export interface PaintCursor {
+  /** Shows it at `position`, turned as a stroke's first copy of `seed` with that normal would be */
+  move(position: Vec3, normal: Vec3, settings: PaintSettings, seed: number): void;
+  hide(): void;
+  dispose(): void;
 }
 
 /** Where a brush's copies go: the settings' place, else a membrane protein (`upright`) on the surface, else at a depth */
@@ -286,6 +302,43 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   // the hint written once a frame, however many wheel events
   const hintNext = frames(writeHint);
 
+  // the copy under the pointer (Round 2): where a click puts it, turned as it will be (the next stroke's seed), moved
+  // once a frame; hidden off the canvas and while Alt hands the pointer to the camera
+  const cursor = host.cursor(brush);
+  /** The next stroke's random turns: its first copy is the one under the pointer */
+  let seed = nextSeed();
+  /** The pointer over the layer, CSS pixels from its top left (the canvas's) */
+  let hoverX = 0;
+  let hoverY = 0;
+  let hovering = false;
+  const follow = frames(() => {
+    if (!hovering || passing) return cursor.hide();
+    if (where === 'depth') {
+      if (!atDepth(hoverX, hoverY)) return cursor.hide();
+    } else {
+      const r = surfaceAt(host.identify, hoverX, hoverY, NormalStep, host.eye(_eye), _point);
+      if (r === 'pending') return follow.request();
+      if (!r) return cursor.hide();
+      if (upright) host.refine(_point);
+    }
+    cursor.move(_point.position, _point.normal, mode.settings.value, seed);
+  });
+  on<PointerEvent>(
+    layer,
+    'pointermove',
+    (e) => {
+      hoverX = e.offsetX;
+      hoverY = e.offsetY;
+      hovering = true;
+      follow.request();
+    },
+    { passive: true },
+  );
+  on(layer, 'pointerleave', () => {
+    hovering = false;
+    follow.request();
+  });
+
   const gesture = drag<Stroke>(layer, {
     start(e) {
       if (e.button !== 0 || e.altKey) return undefined;
@@ -326,7 +379,10 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       clear();
       if (how === 'up' && s.positions.length) {
         committing++;
-        void host.paint(brush, mode.settings.value, s.positions, s.normals).finally(() => committing--);
+        void host.paint(brush, mode.settings.value, s.positions, s.normals, seed).finally(() => committing--);
+        // the next copy under the pointer: the next stroke's
+        seed = nextSeed();
+        follow.request();
       }
     },
   });
@@ -347,6 +403,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     if (alt === passing || (alt && stroke)) return;
     passing = alt;
     layer.style.pointerEvents = alt ? 'none' : '';
+    follow.request();
   };
   on<KeyboardEvent>(
     window,
@@ -387,19 +444,27 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       const delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
       depth = Math.max(radius, depth + (delta / 100) * 2 * radius);
       hintNext.request();
+      follow.request();
     },
     { passive: false },
   );
-  // the settings changed (Place in the properties): the hint says where copies go
+  // the settings changed (Place, Turn in the properties): the hint says where copies go, the copy turns
   effect(mode.settings.asReadonly, (s) => {
     if (stroke) return;
     where = placeOf(s, upright);
     hintNext.request();
+    follow.request();
   });
   on(window, 'blur', () => pass(false));
   onCleanup(() => {
     unchanged();
     releaseCamera();
+    cursor.dispose();
     layer.remove();
   });
+}
+
+/** A stroke's seed of random turns */
+function nextSeed() {
+  return Math.floor(Math.random() * 2 ** 31);
 }
