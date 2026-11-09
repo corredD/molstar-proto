@@ -273,6 +273,12 @@ over n and 4n triangles). Images and numbers: Numbers above. Not tried in Chrome
 
 **Review.** The table above.
 
+**Round 4c.** The switch from spheres to the far surface without a seam (the surface coloured as the coarse spheres show
+the patch from above, at their tops, dithered in over a px band; a coarser surface beneath close lipids), and a membrane
+coloured through a particle list's operations, Look and right-click › Color… (colours by zoom: far its colour, then its
+species'). Notes for review: the spheres themselves are not dithered (a graphics change, Ludo's call); a colour change
+rebuilds the surfaces (~1 s on model ×20). Review: "Round 4c, the gate".
+
 **Round 4b.** The far look as two welded surfaces at each leaflet's lowest head, in the species' colours where the
 cutter puts them; the cutter cuts each region by cells under the patch's box (no period on a large triangle: copies 30 %
 → 0.01 % on the teddy ×100); a tiles membrane has the cutter's Look but Texture; Add clip… on a membrane, both methods,
@@ -582,3 +588,62 @@ dithers in over them instead.
 
 **Colour speed.** A colour on all species redraws the membrane (S2 open: every surface rebuilt): cow ×100 60 ms, model
 ×20 0.95 s (four 1 M-vertex-capped surfaces). A colour-only update path is the next step if Ludo finds it slow.
+
+## Round 4c, the gate (2026-11-08)
+
+An Opus reviewer read `1859f56ea...1270d26c1` (1 must-fix, 2 should-fix, 7 nits); an Opus skeptic re-ran or re-read
+each: all confirmed, M1 lowered to should-fix (wrong only past about 3 px a lipid, the sliders' defaults pick the
+coarsest level rightly), S1 live at the defaults (CHARMM-GUI's species have 28 to 52 heavy atoms, under stride 64).
+
+| Finding                                                                                      | Outcome                                                                                         |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| M1 `switchSpheres` always the coarsest level (no radius: every pixel boundary 0)             | test `7cbb1507f` (failing), fix `6a0ce0938`; the switch test at a second size `d6a46537d`       |
+| S1 one radius for every member (the last one's)                                              | test `55ae49fb2`/`3dacc16d5` (failing), fix `8c0b6892c`                                         |
+| S2 By zoom's far colour never the one set (only `speciesColors` written)                     | test `bc54c3b63` (failing), fix `92808fe96`: one colour on all species is the membrane's colour |
+| N1 the first-frame comment                                                                   | fixed `9d05f62d9`                                                                               |
+| N2 a membrane by its ref only, not its label                                                 | open (the agent gets a clear failure)                                                           |
+| N3 a list's group ignored on a membrane; ref untrimmed                                       | fixed `053f63f8b`, in the S2 test                                                               |
+| N4 validation before the list's lookup (an unknown entity with nothing to change)            | open, nit                                                                                       |
+| N5 `tColorFar` at the pool's capacity (8 MB at 2 M); the near surface at the same vertex cap | open (TODO: colour-only updates)                                                                |
+| N6 `topGrid`'s seam off by under a cell                                                      | open, as `headGrid`                                                                             |
+| N7 TODO stale, ui.md wording, no test of visible and reset                                   | fixed `199c9a407`, `a99ef68ae`; the S2 test covers visible and reset                            |
+
+## Round 4c, checks (2026-11-08, after the gate's fixes)
+
+`npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `pnpm check:workspace`, mesoscale
+and prism-me `styles:check`, prism-me `typecheck:storybook` pass. Quick lane with Dawn (mesoscale, cryoet, stage-tools,
+prism-me): 80 files, 541 passed, 1 skipped.
+
+## Round 4c, images (headless Dawn, M1, 900×600, perspective, the app's look, CHARMM-GUI patch; looked at)
+
+`~/prism-me-lanes/lipid-tiles-shots/`: `r4c-<cow-x100|model-x20>-zoom0..4.png` (close to whole), `-byzoom-whole`,
+`-byzoom-close`; `r4c-diag-*` and `r4c-after-spx2-*` / `r4c-fade-spx2-*` (the switch mid-object at 2 px: before, colour
+fixed, faded); `r4c-switch-<2300|200>-<spheres|surface>.png` (the test's two sides). Seen: the surface now green as the
+spheres (DSM on top), no line along the triangles where the spheres stop, the dither band soft; the gaps between close
+lipids filled again. The cow ×100 is too small for a lipid to fall under 0.5 px at these zooms: its images show spheres
+only. Open: close up the finest level (atoms) reads darker and sparser than the next (a levels matter, not the switch).
+
+## Round 4c, end
+
+**Built.** Item 7: the far surface coloured as the switch's spheres show the patch, at their tops, dithered in by
+distance, a coarser one beneath close lipids. Item 8: a membrane coloured through a list's operations, its Look and
+Color…, colours by zoom on spheres and surfaces. The gate's fixes above.
+
+**Decided (this session, for Ludo to confirm).** The switch's cause was colour (the species standing highest cover their
+neighbours at the coarse levels), then the step (the outline and shadows drew it). The spheres themselves are not
+dithered (a graphics change: Ludo's call); the surface dithers over them. One colour on all of a membrane is its own
+colour, By zoom's far colour. A membrane takes no opacity or glow (its spheres merged by species).
+
+**Learned.** A surface beneath sub-pixel spheres must be coloured by what they show from above, not by their count: a
+tall species wins. An object fade (`lod`) works on Mol*'s meshes per fragment, and its distance follows the selection's
+switch exactly in perspective (`size / (depthScale · px)`), so it can be set per resize. Removing a surface that hid
+gaps uncovers what tests compared by pixel (the selection's hysteresis).
+
+**Size.** About 330 production lines (membrane ~150, far surface ~70, operations ~110, app ~60, less the moved lines)
+against the brief's ~300; the gate's fixes and the near surface took the room. A colour change on model ×20 still takes
+about 1 s (every surface rebuilt): the next step if Ludo finds colouring slow.
+
+**How Ludo checks it (1354, reload first).** Wrap a mesh with lipids (the cutter), zoom out slowly: no line or colour
+pop where lipids give way to the surface (Look › Lipids down to raises the switch to see it nearer: 2 px). Right-click
+the membrane › Color… › a swatch: every species that colour, spheres and far surface; Look › Generate colors, Reset, By
+zoom (far the membrane's colour, its species close).
