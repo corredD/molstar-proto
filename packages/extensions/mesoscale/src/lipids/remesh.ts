@@ -1137,3 +1137,28 @@ export function isotropicRemesh(input: TriMesh, targetEdge: number, options?: { 
   }
   return r.toMesh();
 }
+
+/**
+ * The triangles of `input` whose center lies farther than `distance` from `surface` (a remesh of it): the parts a remesh
+ * lost (a limb thinner than its edge), O(triangles) through a surface grid. Their indices, as a mesh of `input`'s
+ * positions
+ */
+export function farTriangles(input: TriMesh, surface: TriMesh, distance: number): TriMesh {
+  const grid = surfaceGrid(surface);
+  const p = input.positions;
+  const ix = input.indices;
+  const at = new Float64Array(3);
+  const kept: number[] = [];
+  const d2 = distance * distance;
+  for (let t = 0; t < ix.length; t += 3) {
+    const a = ix[t] * 3;
+    const b = ix[t + 1] * 3;
+    const c = ix[t + 2] * 3;
+    const x = (p[a] + p[b] + p[c]) / 3;
+    const y = (p[a + 1] + p[b + 1] + p[c + 1]) / 3;
+    const z = (p[a + 2] + p[b + 2] + p[c + 2]) / 3;
+    grid.closest(x, y, z, at);
+    if ((at[0] - x) ** 2 + (at[1] - y) ** 2 + (at[2] - z) ** 2 > d2) kept.push(ix[t], ix[t + 1], ix[t + 2]);
+  }
+  return { positions: p, indices: Uint32Array.from(kept) };
+}

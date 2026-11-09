@@ -29,7 +29,9 @@ import { PluginStateObject as SO, PluginStateTransform } from '@molstar/plugin/s
 import { assignSlots, type TileKinds, type TriangleSlots } from './assign.js';
 import { createLipidTileAssigner, type LipidTileAssigner } from './assign-kernel.js';
 import { type LipidPatch, parsePatchPdb } from './patch.js';
-import { icosphere, isotropicRemesh, offsetSurface, type TriMesh } from './remesh.js';
+import { type CutterTable, cutterTable } from './cutter.js';
+import { createLipidCutter, type LipidCutter } from './cutter-kernel.js';
+import { farTriangles, icosphere, isotropicRemesh, offsetSurface, type TriMesh } from './remesh.js';
 import { bakeTileSet, type TileSet } from './tiles.js';
 
 // A membrane of lipid tiles (progress/2026-11-08-lipid-tiles.md, Design): a mesh remeshed at the tiles' edge, a surface
@@ -43,6 +45,7 @@ const patches = new Map<string, LipidPatch | (() => LipidPatch)>();
 export function registerLipidPatch(name: string, pdb: string) {
   patches.set(name, () => parsePatchPdb(pdb));
   for (const k of tileSets.keys()) if (k.startsWith(`${name}|`)) tileSets.delete(k);
+  for (const k of cutterTables.keys()) if (k.startsWith(`${name}|`)) cutterTables.delete(k);
 }
 
 /** Whether a patch is known by `name` (registered, or `synthetic`) */
@@ -96,6 +99,24 @@ const tileSets = new Map<string, TileSet>();
  */
 const SeamSlack = 3;
 
+/** Cutter tables by patch and leaflet (`cutter.ts`) */
+const cutterTables = new Map<string, CutterTable>();
+
+/** Conformers a species in the cutter's members (`cutter.ts`: why not a member a patch lipid) */
+const CutterConformers = 4;
+
+function getCutterTable(patch: string, leaflet: 'outer' | 'inner') {
+  const key = `${patch}|${leaflet}`;
+  let table = cutterTables.get(key);
+  if (!table) {
+    const p = getPatch(patch);
+    if (!p) return undefined;
+    table = cutterTable(p[leaflet], CutterConformers);
+    cutterTables.set(key, table);
+  }
+  return table;
+}
+
 function getTileSet(patch: string, leaflet: 'outer' | 'inner', edge: number, kinds: TileKinds) {
   const key = `${patch}|${leaflet}|${edge}|${kinds.edgeTypes}|${kinds.vertexColors}|${kinds.variants}|${kinds.seed}`;
   let set = tileSets.get(key);
@@ -116,8 +137,23 @@ export interface MembraneLeaflet {
   readonly slots: TriangleSlots;
 }
 
+/**
+ * One leaflet cut by the cutter (`cutter.ts`) from triangles of a mesh: the whole mesh (`method: 'cutter'`), or the
+ * triangles a remesh lost (`tiles`: a limb thinner than the tiles' edge)
+ */
+export interface CutLeaflet {
+  readonly name: 'outer' | 'inner';
+  readonly table: CutterTable;
+  readonly mesh: TriMesh;
+}
+
+/** How a membrane is made: matched-edge tiles on a remesh, or cellPACKgpu's cutter on the mesh's own triangles */
+export type MembraneMethod = 'tiles' | 'cutter';
+
 export interface MembraneData {
+  readonly method: MembraneMethod;
   readonly leaflets: readonly MembraneLeaflet[];
+  readonly cut: readonly CutLeaflet[];
   readonly kinds: TileKinds;
   readonly edge: number;
   /** the surface's sphere, before the leaflets' offsets */
@@ -146,8 +182,23 @@ export function buildMembrane(
   edge: number,
   leaflets: 'both' | 'outer' | 'inner',
   kinds: TileKinds,
+  method: MembraneMethod = 'tiles',
 ): MembraneData | string {
   let base: TriMesh;
+  const names = leaflets === 'both' ? (['outer', 'inner'] as const) : [leaflets];
+  if (method === 'cutter') {
+    // the mesh's own triangles (a sphere: an icosphere at the suited edge)
+    const mesh =
+      surface.mesh ?? centered(icosphere(surface.radius ?? 500, edge > 0 ? edge : suitedEdge(surface)), surface.center);
+    const cut: CutLeaflet[] = [];
+    for (const name of names) {
+      const table = getCutterTable(patch, name);
+      if (!table) return `No lipid patch named ${patch}: open a patch (a PDB of a bilayer) first.`;
+      cut.push({ name, table, mesh });
+    }
+    const sphere = boundingSphereOf(mesh.positions, Sphere3D());
+    return { method, leaflets: [], cut, kinds, edge, sphere };
+  }
   // an explicit edge is the caller's: only the suited one refuses a mesh too small
   if (surface.mesh && !(edge > 0)) {
     const size = boundsDiagonal(surface.mesh.positions);
@@ -157,25 +208,38 @@ export function buildMembrane(
   }
   if (!(edge > 0)) edge = suitedEdge(surface);
   if (surface.mesh) base = isotropicRemesh(surface.mesh, edge);
-  else {
-    base = icosphere(surface.radius ?? 500, edge);
-    const c = surface.center ?? Vec3.zero();
-    const p = base.positions;
-    for (let i = 0; i < p.length; i += 3) {
-      p[i] += c[0];
-      p[i + 1] += c[1];
-      p[i + 2] += c[2];
-    }
-  }
+  else base = centered(icosphere(surface.radius ?? 500, edge), surface.center);
   const sphere = boundingSphereOf(base.positions, Sphere3D());
   const out: MembraneLeaflet[] = [];
-  for (const name of leaflets === 'both' ? (['outer', 'inner'] as const) : [leaflets]) {
+  // the parts the remesh lost (a cow's legs, thinner than the edge: Ludo's second try, 2026-11-08), cut on their own
+  // triangles
+  const lost = surface.mesh ? farTriangles(surface.mesh, base, LostDistance) : undefined;
+  const cut: CutLeaflet[] = [];
+  for (const name of names) {
     const tileSet = getTileSet(patch, name, edge, kinds);
     if (!tileSet) return `No lipid patch named ${patch}: open a patch (a PDB of a bilayer) first.`;
     const mesh = offsetSurface(base, tileSet.offset);
     out.push({ name, tileSet, mesh, slots: assignSlots(kinds, mesh.indices) });
+    if (lost && lost.indices.length > 0) cut.push({ name, table: getCutterTable(patch, name)!, mesh: lost });
   }
-  return { leaflets: out, kinds, edge, sphere };
+  return { method, leaflets: out, cut, kinds, edge, sphere };
+}
+
+/**
+ * How far, Å, a triangle of the input may lie from the remesh before the cutter covers it: a leaflet is about 20 Å
+ * thick, so the tiles cover what lies closer
+ */
+export const LostDistance = 10;
+
+function centered(mesh: TriMesh, center: Vec3 | undefined) {
+  const c = center ?? Vec3.zero();
+  const p = mesh.positions;
+  for (let i = 0; i < p.length; i += 3) {
+    p[i] += c[0];
+    p[i + 1] += c[1];
+    p[i + 2] += c[2];
+  }
+  return mesh;
 }
 
 /** The smallest tile edge, Å: below it a tile holds a handful of lipids and its corners overlap (tiles.ts, r_v) */
@@ -233,6 +297,13 @@ export const LipidMembraneReprParams = {
   color: PD.Color(Color(0xd9b99b)),
   // 2 Å: heavy atoms only, a united-atom radius (hydrogens folded in) that closes the gaps a carbon's 1.7 Å leaves
   sizeFactor: PD.Numeric(2, { min: 0.5, max: 3, step: 0.1 }, { description: 'The atoms’ radius, Å' }),
+  // Mol*'s spheres levels by size on screen (`Spheres.LodPixelPresets`), each lipid's or tile's at its own distance
+  detail: PD.Select('balanced', [
+    ['off', 'Atoms always'],
+    ['quality', 'Quality'],
+    ['balanced', 'Balanced'],
+    ['performance', 'Performance'],
+  ] as const),
 };
 export type LipidMembraneReprProps = PD.Values<typeof LipidMembraneReprParams>;
 
@@ -240,6 +311,7 @@ export type LipidMembraneReprProps = PD.Values<typeof LipidMembraneReprParams>;
 function speciesColors(data: MembraneData) {
   const names = new Map<string, number>();
   for (const l of data.leaflets) for (const s of l.tileSet.species) if (!names.has(s)) names.set(s, names.size);
+  for (const l of data.cut) for (const s of l.table.species) if (!names.has(s)) names.set(s, names.size);
   const palette = distinctColors(Math.max(2, names.size));
   return (name: string) => palette[names.get(name) ?? 0];
 }
@@ -254,13 +326,65 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
   let renderObjects: GraphicsRenderObject[] = [];
   let merged = new Map<string, MergedEntry<number>>();
   let assigners: LipidTileAssigner[] = [];
+  let cutters: LipidCutter[] = [];
+  let cutLipids = 0;
   let props = PD.getDefaultValues(LipidMembraneReprParams);
   const state = Representation.createState();
   let groupCount = 0;
 
-  function build(data: MembraneData) {
+  function release() {
     for (const a of assigners) a.destroy();
+    for (const c of cutters) c.destroy();
     assigners = [];
+    cutters = [];
+  }
+
+  /** a member's spheres values: its atoms (groups: lipids), `n` instances written by `writer`, colored by species */
+  function memberObject(
+    positions: Float32Array,
+    lipidAtomStart: ArrayLike<number> | undefined,
+    lipidSpecies: ArrayLike<number>,
+    names: readonly string[],
+    n: number,
+    bounds: Sphere3D,
+    writer: unknown,
+    colorOf: (name: string) => Color,
+  ) {
+    const atoms = positions.length / 3;
+    const lipids = lipidSpecies.length;
+    const groups = new Float32Array(atoms);
+    if (lipidAtomStart) for (let l = 0; l < lipids; ++l) groups.fill(l, lipidAtomStart[l], lipidAtomStart[l + 1]);
+    const spheres = Spheres.create(positions, groups, atoms);
+    // gridless (one cell, the membrane's sphere), the CPU's transforms a placeholder: the kernel writes them
+    const transform = createTransform(new Float32Array(n * 16), n, undefined, 0, 0);
+    const locationIterator = LocationIterator(
+      lipids,
+      n,
+      1,
+      (g: number) => ({ kind: 'lipid', species: lipidSpecies[g] }) as never,
+    );
+    const uniform = props.colorBy === 'uniform';
+    const color = {
+      granularity: uniform ? 'uniform' : 'group',
+      color: (location: { species?: number }) =>
+        uniform || location.species === undefined ? props.color : colorOf(names[location.species]),
+      props: {},
+      description: 'Lipid species',
+    } as unknown as ColorTheme<any>;
+    const theme = { color, size: UniformSizeTheme({}, { value: props.sizeFactor }) };
+    // each lipid or tile at its own level by its size on screen (the culler's per-instance levels)
+    const lod = props.detail === 'off' ? { lodLevels: [], lodPixelSize: 0 } : Spheres.LodPixelPresets[props.detail];
+    const p = { ...PD.getDefaultValues(Spheres.Params), ...lod, gpuCulling: true as const };
+    const values = Spheres.Utils.createValues(spheres, transform, locationIterator, theme, p);
+    ValueCell.update(values.boundingSphere, Sphere3D.clone(bounds));
+    Object.assign(values, { gpuInstances: ValueCell.create(writer) });
+    groupCount += lipids * n;
+    return createRenderObject('spheres', values, Spheres.Utils.createRenderableState(p), -1);
+  }
+
+  async function build(data: MembraneData) {
+    release();
+    cutLipids = 0;
     if (!graphics?.compute || !canCullOnGpu(graphics)) {
       renderObjects = [];
       return;
@@ -269,6 +393,42 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
     const entries: { visual: number; renderObject: GraphicsRenderObject }[] = [];
     const bounds = Sphere3D.clone(data.sphere);
     groupCount = 0;
+    let visual = 0;
+    for (const leaflet of data.cut) {
+      const { table, mesh } = leaflet;
+      const compute = graphics.compute;
+      const cutter = await createLipidCutter(
+        compute,
+        () => graphics.flush(),
+        table,
+        mesh.positions,
+        mesh.indices,
+        data.kinds.seed,
+      );
+      cutters.push(cutter);
+      // the lipids reach their length past the mesh along the normal: the sphere grown by a lipid's
+      const b = Sphere3D.clone(data.sphere);
+      b.radius += 40;
+      table.members.forEach((member, m) => {
+        const n = cutter.totals[m];
+        if (n === 0) return;
+        cutLipids += n;
+        const species = [member.species];
+        entries.push({
+          visual: visual++,
+          renderObject: memberObject(
+            member.positions,
+            undefined,
+            species,
+            table.species,
+            n,
+            b,
+            cutter.writer(m),
+            colorOf,
+          ),
+        });
+      });
+    }
     for (const leaflet of data.leaflets) {
       const { tileSet, mesh, slots } = leaflet;
       const assigner = createLipidTileAssigner(
@@ -283,40 +443,20 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
       bounds.radius = data.sphere.radius + Math.abs(tileSet.offset) + tileSet.sphere[3];
       tileSet.variants.forEach((tile, v) => {
         const n = slots.counts[v];
-        const lipids = tile.lipidSpecies.length;
-        if (n === 0 || lipids === 0) return;
-        const atoms = tile.positions.length / 3;
-        const groups = new Float32Array(atoms);
-        for (let l = 0; l < lipids; ++l) groups.fill(l, tile.lipidAtomStart[l], tile.lipidAtomStart[l + 1]);
-        const spheres = Spheres.create(tile.positions, groups, atoms);
-        // gridless (one cell, the membrane's sphere), the CPU's transforms a placeholder: the kernel writes them
-        const transform = createTransform(new Float32Array(n * 16), n, undefined, 0, 0);
-        const species = tile.lipidSpecies;
-        const names = tileSet.species;
-        const locationIterator = LocationIterator(
-          lipids,
-          n,
-          1,
-          (g: number) => ({ kind: 'lipid', species: species[g] }) as never,
-        );
-        const uniform = props.colorBy === 'uniform';
-        const color = {
-          granularity: uniform ? 'uniform' : 'group',
-          color: (location: { species?: number }) =>
-            uniform || location.species === undefined ? props.color : colorOf(names[location.species]),
-          props: {},
-          description: 'Lipid species',
-        } as unknown as ColorTheme<any>;
-        const theme = { color, size: UniformSizeTheme({}, { value: props.sizeFactor }) };
-        const p = { ...PD.getDefaultValues(Spheres.Params), gpuCulling: true as const };
-        const values = Spheres.Utils.createValues(spheres, transform, locationIterator, theme, p);
-        ValueCell.update(values.boundingSphere, Sphere3D.clone(bounds));
-        Object.assign(values, { gpuInstances: ValueCell.create(assigner.writer(v)) });
+        if (n === 0 || tile.lipidSpecies.length === 0) return;
         entries.push({
-          visual: v,
-          renderObject: createRenderObject('spheres', values, Spheres.Utils.createRenderableState(p), -1),
+          visual: visual++,
+          renderObject: memberObject(
+            tile.positions,
+            tile.lipidAtomStart,
+            tile.lipidSpecies,
+            tileSet.species,
+            n,
+            bounds,
+            assigner.writer(v),
+            colorOf,
+          ),
         });
-        groupCount += lipids * n;
       });
     }
     const out: GraphicsRenderObject[] = [];
@@ -345,7 +485,7 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
     createOrUpdate: (p, data) =>
       Task.create('Lipid membrane', async () => {
         props = { ...props, ...p };
-        if (data) build(data);
+        if (data) await build(data);
         version += 1;
         updated.next(version);
       }),
@@ -361,16 +501,28 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
     eachLocation: () => {},
     mark: () => false,
     destroy: () => {
-      for (const a of assigners) a.destroy();
-      assigners = [];
+      release();
       renderObjects = [];
       merged.clear();
     },
   };
-  return repr;
+  // the cutter's lipids, counted on the GPU (the tiles' are `membraneCounts`)
+  return Object.assign(repr, {
+    get cutLipids() {
+      return cutLipids;
+    },
+  });
 }
 
 export const LipidMembraneParams = {
+  method: PD.Select<MembraneMethod>(
+    'tiles',
+    [
+      ['tiles', 'Tiles (remeshed, matched edges)'],
+      ['cutter', 'Cutter (cellPACKgpu’s, on the mesh’s triangles)'],
+    ],
+    { description: 'How the lipids are made' },
+  ),
   mesh: PD.Text('', { description: 'A mesh (a shape) by state ref; empty: a sphere of `radius` at `center`' }),
   center: PD.Vec3(Vec3.zero()),
   radius: PD.Numeric(500, { min: 50, max: 100000, step: 10 }, { description: 'The sphere’s radius, Å' }),
@@ -454,7 +606,7 @@ export const LipidMembrane = PluginStateTransform.BuiltIn({
       const edge = params.edge > 0 ? params.edge : suitedEdge(surface);
       const variants = params.variants > 0 ? params.variants : suitedVariants(edge);
       const kinds = { edgeTypes: params.edgeTypes, vertexColors: 1, variants, seed: params.seed };
-      const data = buildMembrane(surface, params.patch, edge, params.leaflets, kinds);
+      const data = buildMembrane(surface, params.patch, edge, params.leaflets, kinds, params.method);
       if (typeof data === 'string') throw new Error(data);
       if (!canDrawLipidMembranes(plugin)) {
         plugin.log.warn('Lipid membranes are drawn with WebGPU only: switch the backend to WebGPU to see this one.');
@@ -462,9 +614,16 @@ export const LipidMembrane = PluginStateTransform.BuiltIn({
       const repr = LipidMembraneRepresentation(plugin.canvas3d?.graphics);
       await repr.createOrUpdate(params, data).runInContext(runtime);
       const { tiles, lipids } = membraneCounts(data);
+      const all = lipids + repr.cutLipids;
       return new SO.Shape.Representation3D(
         { repr: repr as never, sourceData: data },
-        { label: 'Lipid membrane', description: `${lipids.toLocaleString()} lipids, ${tiles.toLocaleString()} tiles` },
+        {
+          label: 'Lipid membrane',
+          description:
+            data.method === 'cutter'
+              ? `${all.toLocaleString()} lipids, cut`
+              : `${all.toLocaleString()} lipids, ${tiles.toLocaleString()} tiles`,
+        },
       );
     });
   },

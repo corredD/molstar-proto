@@ -21,7 +21,7 @@ import { type MesoGroup, mesoEntities, mesoGroups } from '../model.js';
 import { compartmentSphere } from '../operations.js';
 import { MesoscaleExtension } from '../prism-viewer.js';
 import { cellpackLike } from './fixtures.js';
-import { syntheticPatchPdb } from './lipid-fixtures.js';
+import { coveredFraction, placeCut, placeTiles, syntheticPatchPdb, thinLimbedBody } from './lipid-fixtures.js';
 
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
@@ -35,7 +35,42 @@ function expectOk<R>(r: ApiResult<R>): asserts r is Extract<ApiResult<R>, { ok: 
 const kinds = { edgeTypes: 1, vertexColors: 1, variants: 2, seed: 1 };
 registerLipidPatch('test-patch', syntheticPatchPdb().text);
 
+/** Every atom of a membrane on the CPU: its tiles and its cut lipids */
+function membraneAtoms(data: Exclude<ReturnType<typeof buildMembrane>, string>) {
+  const parts: Float32Array[] = [];
+  for (const l of data.leaflets) {
+    parts.push(placeTiles(data.kinds, data.edge, l.tileSet.variants, l.mesh, (t) => l.slots.variant[t]).atoms);
+  }
+  for (const l of data.cut) parts.push(placeCut(l.table, l.mesh, data.kinds.seed).atoms);
+  const out = new Float32Array(parts.reduce((a, p) => a + p.length, 0));
+  let o = 0;
+  for (const p of parts) {
+    out.set(p, o);
+    o += p.length;
+  }
+  return out;
+}
+
 describe('lipid membrane', () => {
+  it('covers thin parts the remesh loses (Ludo’s second try, 2026-11-08: a cow’s legs showed the mesh)', () => {
+    const body = thinLimbedBody();
+    const data = buildMembrane({ mesh: body }, 'test-patch', 42, 'both', kinds);
+    if (typeof data === 'string') expect.fail(data);
+    // the legs (radius 15 Å under a 42 Å edge) are cut on their own triangles, the body tiled
+    expect(data.cut.length).toBe(2);
+    expect(coveredFraction(body, membraneAtoms(data))).toBeGreaterThan(0.97);
+  });
+
+  it('cuts the mesh’s own triangles with the cutter: no remesh, every part covered', () => {
+    const body = thinLimbedBody();
+    const data = buildMembrane({ mesh: body }, 'test-patch', 0, 'both', kinds, 'cutter');
+    if (typeof data === 'string') expect.fail(data);
+    expect(data.leaflets.length).toBe(0);
+    expect(data.cut.map((l) => l.name)).toEqual(['outer', 'inner']);
+    expect(data.cut[0].mesh.indices).toBe(body.indices);
+    expect(coveredFraction(body, membraneAtoms(data))).toBeGreaterThan(0.97);
+  });
+
   it('builds both leaflets of a sphere, the outer leaflet larger, every triangle a tile', () => {
     const data = buildMembrane({ radius: 400 }, 'test-patch', 80, 'both', kinds);
     if (typeof data === 'string') expect.fail(data);
