@@ -6,7 +6,7 @@
 
 // The contract check, as Seq*'s scripts/exports.ts has it (contractGaps): every type a public signature names (an
 // exported interface's, type's or class's public members, a function's parameters and result) is exported by some
-// entry of the two packages, so a host can name it. Walked with the TypeScript checker, which takes a while: heavy.
+// entry of the two packages, so a host can name it. Walked with the TypeScript checker (about 3 s): quick.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -111,11 +111,11 @@ export function contractGaps(list: readonly Entry[]): string[] {
   return [...out];
 }
 
-describe("the packages' contract", { tags: ['heavy'] }, () => {
+describe("the packages' contract", () => {
   it('every type a public signature names is exported by some entry', () => {
     const list = entries();
     expect(list.length).toBeGreaterThan(6);
     expect(list.filter((e) => !existsSync(e.file))).toEqual([]);
     expect(contractGaps(list)).toEqual([]);
-  });
+  }, 30_000);
 });
