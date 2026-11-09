@@ -102,6 +102,15 @@ describe('lipid membrane', () => {
       { distance: 3000, stride: 16, bias: 2 },
       { distance: 9000, stride: 256, bias: 2.2 },
     ];
+    // a first level from anywhere but the camera, or not a number, is refused (review N2)
+    for (const first of [Number.NaN, 500, -1]) {
+      const bad = await v.api.run('mesoscale.membraneDetail', {
+        membrane: ref,
+        detail: 'custom',
+        levels: [{ ...levels[0], distance: first }, ...levels.slice(1)],
+      });
+      expect(bad.ok).toBe(false);
+    }
     expectOk(await v.api.run('mesoscale.membraneDetail', { membrane: ref, detail: 'custom', levels }));
     const cell = v.plugin.state.data.cells.get(ref)!;
     expect(cell.transform.params).toMatchObject({ detail: 'custom', levels });

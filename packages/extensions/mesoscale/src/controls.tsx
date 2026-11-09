@@ -225,10 +225,11 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
       <Slider
         aria-label={`Level ${j + 1} ${key === 'distance' ? 'from' : key}`}
         value={mapState(levels, (l) => l[j]?.[key] ?? 0)}
-        min={min}
-        max={max}
+        // a level starts between its neighbours' starts (the operation refuses others: review S5)
+        min={key === 'distance' ? mapState(levels, (l) => (l[j - 1]?.distance ?? 0) + 1) : min}
+        max={key === 'distance' ? mapState(levels, (l) => (l[j + 1]?.distance ?? max + 1) - 1) : max}
         scale={key === 'bias' ? undefined : 'log'}
-        clamp={false}
+        clamp={key === 'distance'}
         {...(unit ? { unit } : {})}
         onCommit={(v) => setLevel(j, key, v)}
       />

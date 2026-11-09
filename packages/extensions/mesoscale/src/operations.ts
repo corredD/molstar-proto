@@ -370,9 +370,13 @@ export class MesoscaleApi extends ApiArea {
         levels &&
         (levels.length < 1 ||
           levels.length > 4 ||
+          levels[0].distance !== 0 ||
           levels.some((l, j) => !(l.stride >= 1) || !(l.bias > 0) || (j > 0 && !(l.distance > levels[j - 1].distance))))
       ) {
-        return ApiResult.fail('invalid', 'levels: 1 to 4, each a stride ≥ 1 and a bias > 0, their distances rising.');
+        return ApiResult.fail(
+          'invalid',
+          'levels: 1 to 4, the first from 0 Å, each a stride ≥ 1 and a bias > 0, their distances rising.',
+        );
       }
       const old = cell.transform.params as LipidMembraneProps;
       const next = { ...old, ...(detail ? { detail } : {}), ...(levels ? { levels } : {}) };
