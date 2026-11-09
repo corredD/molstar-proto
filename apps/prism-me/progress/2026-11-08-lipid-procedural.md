@@ -344,11 +344,11 @@ Size now ~450 production lines; checkpoint if over ~600.
 
 ## Round 4b, status (2026-11-08; stopped for context, precise next steps below)
 
-**Built.** `ef6b46fea` design checkpoint; `c09e71076` (its failing test first) items 1 and 2: `lipids/far-surface.ts` (a surface a cut
-leaflet at its head plane, `headOffset`, single-sided out of its leaflet; the mesh subdivided to two lipid spacings,
-capped at 1 M vertices; each vertex the species of the patch's nearest shown head where the cutter maps it), its quick
-test, and the Dawn test failing first (one mean-brown surface → two coloured surfaces; the whole view's colours many).
-About 230 production lines.
+**Built.** `ef6b46fea` design checkpoint; `c09e71076` (its failing test first) items 1 and 2: `lipids/far-surface.ts` (a
+surface a cut leaflet at its head plane, `headOffset`, single-sided out of its leaflet; the mesh subdivided to two lipid
+spacings, capped at 1 M vertices; each vertex the species of the patch's nearest shown head where the cutter maps it),
+its quick test, and the Dawn test failing first (one mean-brown surface → two coloured surfaces; the whole view's
+colours many). About 230 production lines.
 
 **Item 3, diagnosed (images `lipid-tiles-shots/r4b-diag-*.png`, looked at).** Not the hysteresis and not the coarse
 levels poking through: the band is the bilayer's own edge where generation stops at a triangle border, seen at a slant
