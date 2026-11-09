@@ -101,7 +101,7 @@ export interface MesoBuilder extends ScopeBuilder<'doc'> {
   build(): { doc: MesoViewSpecDoc; issues: Issue[] };
 }
 
-export type MesoDocumentOptions = Metadata & { version?: string; units?: MesoViewSpecDoc['units'] };
+export type MesoDocumentOptions = Metadata & { version?: string; revision?: string; units?: MesoViewSpecDoc['units'] };
 
 const SectionOrder: readonly Section[] = [
   'frames',
@@ -224,6 +224,7 @@ class DocScope extends Scoped {
   view(p: ViewInput) {
     const id = this.make('view', 'views', p);
     const node = this.sections.views.at(-1) as Obj;
+    for (const l of p.looks ?? []) if (l.id !== undefined) this.ids.reserve(l.id);
     if (p.annotations)
       node.annotations = p.annotations.map((a) => {
         const aid = a.id !== undefined ? this.ids.reserve(a.id) : this.ids.make('annotation', tail(id));
@@ -247,8 +248,10 @@ class DocScope extends Scoped {
     this.extensions[namespace] = value;
   }
   build() {
-    const { version, units, ...metadata } = this.options;
-    const out: Obj = { format: 'meso_view_spec', version: version ?? '0.2.0', metadata };
+    const { version, revision, units, ...metadata } = this.options;
+    const out: Obj = { format: 'meso_view_spec', version: version ?? '0.2.0' };
+    if (revision !== undefined) out.revision = revision;
+    out.metadata = metadata;
     if (units) out.units = units;
     const required = new Set(['entities', 'compartments', 'populations']);
     for (const s of SectionOrder) {

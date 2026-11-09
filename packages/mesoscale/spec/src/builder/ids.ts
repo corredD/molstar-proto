@@ -27,6 +27,7 @@ export const IdPrefix: Readonly<Record<NodeKind, string>> = {
   activity: 'act.',
   view: 'v.',
   annotation: 'an.',
+  look: 'l.',
   tour: 't.',
 };
 

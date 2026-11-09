@@ -55,6 +55,7 @@ export type NodeKind =
   | 'activity'
   | 'view'
   | 'annotation'
+  | 'look'
   | 'tour';
 
 /**
@@ -85,6 +86,7 @@ export type EvidenceRef = Ref<'evidence'>;
 export type ActivityRef = Ref<'activity'>;
 export type ViewRef = Ref<'view'>;
 export type AnnotationRef = Ref<'annotation'>;
+export type LookRef = Ref<'look'>;
 export type TourRef = Ref<'tour'>;
 
 /** The scope a ref of this scope's slot accepts for an entity. */

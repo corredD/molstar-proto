@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createMesoDocument, q } from '../builder/index.js';
-import { slug } from '../builder/ids.js';
+import { IdRegistry, slug } from '../builder/ids.js';
 import { IdPattern } from '../format/doc.js';
 import { MesoQLSymbols, parseMesoQL, printMesoQL } from '../format/mesoql.js';
 
@@ -149,6 +149,20 @@ describe('builder: the document', () => {
     b.session({ view: v });
     b.custom('cellpack', { a: 1 });
     expect(b.build().doc).toMatchObject({ session: { view: 'v.v' }, custom: { cellpack: { a: 1 } } });
+  });
+});
+
+describe('builder: review fixes', () => {
+  it('revision comes after version; look ids are document ids (get(look) too)', () => {
+    const b = createMesoDocument({ title: 'r', revision: 'rev-1' });
+    b.view({ id: 'v.a', looks: [{ id: 'e.x', select: '(all)' }] });
+    const x = b.entity({ label: 'x', kind: 'protein' });
+    const { doc, issues } = b.build();
+    expect(Object.keys(doc).slice(0, 4)).toEqual(['format', 'version', 'revision', 'metadata']);
+    expect(doc.metadata).toStrictEqual({ title: 'r' });
+    expect(x).toBe('e.x-2');
+    expect(issues.some((i) => i.code === 'id.duplicate')).toBe(false);
+    expect(b.get('look', 'e.x')).toBe('e.x');
   });
 });
 
