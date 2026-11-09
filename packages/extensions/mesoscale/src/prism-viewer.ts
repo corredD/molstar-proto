@@ -81,7 +81,12 @@ export const MesoscaleSkill: ViewerSkill = {
       id: 'set_lipid_membrane_levels',
       operation: 'mesoscale.membraneDetail',
       description:
-        "Sets a lipid membrane's levels of detail: a preset, or custom levels by distance from the camera (each its start in Å, stride and scale bias).",
+        "Sets a lipid membrane's levels of detail: a preset, or custom levels by distance from the camera (each its start in Å, stride and scale bias); a cut membrane's far look (spheres, texture or both), the pixel sizes it switches at and its lipids at most.",
+    },
+    {
+      id: 'set_lipid_membrane_species',
+      operation: 'mesoscale.membraneSpecies',
+      description: "Shows, hides or colors one species of a lipid membrane (its entities, as a particle system's).",
     },
     {
       id: 'open_mesoscale_example',
@@ -165,7 +170,13 @@ export const MesoscaleExtension: ViewerExtension = {
       operationCommand(api, m.membraneDetail, {
         category,
         icon: 'layers',
-        alias: ['membrane levels', 'lipid lod', 'membrane detail', 'levels of detail'],
+        alias: ['membrane levels', 'lipid lod', 'membrane detail', 'levels of detail', 'far look'],
+        action: 'Apply',
+      }),
+      operationCommand(api, m.membraneSpecies, {
+        category,
+        icon: 'eye',
+        alias: ['lipid species', 'membrane species', 'hide lipids'],
         action: 'Apply',
       }),
     ];

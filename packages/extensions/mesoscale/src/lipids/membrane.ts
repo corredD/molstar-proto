@@ -489,8 +489,20 @@ export const LipidMembraneReprParams = {
     { description: 'Spheres: lipids down to this size, px' },
   ),
   budget: PD.Numeric(2_000_000, { min: 10_000, max: 8_000_000, step: 10_000 }, { description: 'Lipids at most' }),
+  // a membrane as a particle system (Ludo, 2026-11-08): its species as entities, each shown or not and its colour
+  // (`mesoscale.membraneSpecies`); a hidden species is not generated (the cutter's), the far surface without it
+  hiddenSpecies: PD.Value<readonly string[]>([], { isHidden: true }),
+  speciesColors: PD.Value<Readonly<Record<string, number>>>({}, { isHidden: true }),
 };
 export type LipidMembraneReprProps = PD.Values<typeof LipidMembraneReprParams>;
+
+/** A membrane's species (its entities), by name: those its cut leaflets have, both leaflets together */
+export function membraneSpecies(data: MembraneData) {
+  const names = new Set<string>();
+  for (const l of data.cut) for (const m of l.table.members) names.add(l.table.species[m.species]);
+  for (const l of data.leaflets) for (const s of l.tileSet.species) names.add(s);
+  return [...names];
+}
 
 /** A lipid's size in the patch, Å: the side of the area a lipid takes (the selection's size on screen) */
 function lipidSize(table: CutterTable) {
@@ -749,7 +761,12 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // this build's cutters and assigners: the kept ones when it reuses them
     const cuts = reuse ? cutters : [];
     const assigns = reuse ? assigners : [];
-    const colorOf = speciesColors(data);
+    const byDefault = speciesColors(data);
+    const colorOf = (name: string) => {
+      const c = props.speciesColors[name];
+      return c === undefined ? byDefault(name) : Color(c);
+    };
+    const hidden = new Set(props.hiddenSpecies);
     const entries: { visual: number; renderObject: GraphicsRenderObject }[] = [];
     const bounds = Sphere3D.clone(data.sphere);
     groupCount = 0;
@@ -788,6 +805,12 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         capacities[c],
       ),
     );
+    for (let c = 0; c < pools.length; ++c) {
+      const { table } = data.cut[c];
+      for (let m = 0; m < table.members.length; ++m) {
+        pools[c].shown[m] = hidden.has(table.species[table.members[m].species]) ? 0 : 1;
+      }
+    }
     let instances = 0;
     for (const c of capacities) for (const n of c) instances += n;
     for (const l of data.leaflets) instances += l.slots.variant.length;
@@ -876,7 +899,9 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       for (let c = 0; c < data.cut.length; ++c) {
         const { table } = data.cut[c];
         for (let m = 0; m < table.members.length; ++m) {
-          names.push(table.species[table.members[m].species]);
+          const name = table.species[table.members[m].species];
+          if (hidden.has(name)) continue;
+          names.push(name);
           counts.push(cuts[c].totals[m]);
         }
       }

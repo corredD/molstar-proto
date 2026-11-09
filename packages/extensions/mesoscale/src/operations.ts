@@ -36,8 +36,10 @@ import {
   LipidMembraneReprParams,
   hasLipidPatch,
   registerLipidPatch,
+  type MembraneData,
   type MembraneDetail,
   type MembraneLevel,
+  membraneSpecies,
 } from './lipids/membrane.js';
 import type { MembraneFar } from './lipids/procedural.js';
 import {
@@ -433,6 +435,75 @@ export class MesoscaleApi extends ApiArea {
       return ApiResult.ok(`Levels: ${next.detail}.`, { nodes: [membrane] });
     },
   });
+
+  /**
+   * A lipid membrane's species as a particle system's entities (Ludo, 2026-11-08): one shown or hidden, its colour. One
+   * step; drawn again, never cut again. The cutter's membranes generate no lipid of a hidden species
+   */
+  readonly membraneSpecies = this.operation({
+    id: 'mesoscale.membraneSpecies',
+    title: 'Show, hide or color a lipid membrane’s species',
+    params: {
+      membrane: PD.Text('', { description: 'The lipid membrane by state ref' }),
+      species: PD.Text('', { description: 'A species (residue name), as `mesoscale.membraneSpeciesState` lists them' }),
+      shown: OptionalParam(PD.Boolean(true)),
+      color: OptionalParam(PD.Color(Color(0xffffff))),
+    },
+    async run(values, ctx) {
+      const { membrane, species, shown, color } = values as {
+        membrane: string;
+        species: string;
+        shown?: boolean;
+        color?: Color;
+      };
+      const cell = ctx.plugin.state.data.cells.get(membrane);
+      if (cell?.transform.transformer !== LipidMembrane || !cell.obj) {
+        return ApiResult.fail('not-found', `No lipid membrane ${membrane} in the scene.`);
+      }
+      const names = membraneSpecies((cell.obj.data as { sourceData: MembraneData }).sourceData);
+      if (!names.includes(species)) {
+        return ApiResult.fail(
+          'not-found',
+          `The membrane has no species ${species}.`,
+          `Its species: ${names.join(', ')}.`,
+        );
+      }
+      const old = cell.transform.params as LipidMembraneProps;
+      const hidden = new Set(old.hiddenSpecies);
+      if (shown === true) hidden.delete(species);
+      if (shown === false) hidden.add(species);
+      const next = {
+        ...old,
+        hiddenSpecies: names.filter((n) => hidden.has(n)),
+        speciesColors: color === undefined ? old.speciesColors : { ...old.speciesColors, [species]: color },
+      };
+      if (JSON.stringify(next) === JSON.stringify(old)) return ApiResult.already(`${species} is already so.`);
+      await ctx.plugin.state.data.build().to(cell).update(next).commit({ revertOnError: true });
+      return ApiResult.ok(`${species}: ${hidden.has(species) ? 'hidden' : 'shown'}.`, { nodes: [membrane] });
+    },
+  });
+
+  /** A lipid membrane's species, each shown or not and its colour override, following the state while watched */
+  membraneSpeciesState(
+    membrane: string,
+  ): ReadonlyState<readonly { name: string; shown: boolean; color?: Color }[] | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => {
+        const cell = plugin.state.data.cells.get(membrane);
+        if (cell?.transform.transformer !== LipidMembrane || !cell.obj) return undefined;
+        const p = cell.transform.params as LipidMembraneProps;
+        const hidden = new Set(p.hiddenSpecies);
+        return membraneSpecies((cell.obj.data as { sourceData: MembraneData }).sourceData).map((name) => ({
+          name,
+          shown: !hidden.has(name),
+          ...(p.speciesColors[name] !== undefined ? { color: Color(p.speciesColors[name]) } : {}),
+        }));
+      },
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
 
   readonly entities = this.operation({
     id: 'mesoscale.entities',
@@ -838,6 +909,19 @@ export class MesoscaleApi extends ApiArea {
     },
     async run(values, ctx) {
       const { mode, object } = values as { mode: GraphicsMode; object?: string };
+      // a lipid membrane (a particle system, Ludo 2026-11-08): the mode its levels' preset
+      const membrane = object ? ctx.plugin.state.data.cells.get(object) : undefined;
+      if (membrane?.transform.transformer === LipidMembrane) {
+        const old = membrane.transform.params as LipidMembraneProps;
+        const detail: MembraneDetail = mode === 'ultra' ? 'off' : mode;
+        if (old.detail === detail) return ApiResult.already(`The membrane already draws at ${mode}.`);
+        await ctx.plugin.state.data
+          .build()
+          .to(membrane)
+          .update({ ...old, detail })
+          .commit({ revertOnError: true });
+        return ApiResult.ok(`Graphics: ${mode}.`, { nodes: [membrane.transform.ref] });
+      }
       const one = object?.trim() ? oneObject(ctx, object) : undefined;
       if (isFailure(one)) return one;
       if (one && !one.representations.length) {

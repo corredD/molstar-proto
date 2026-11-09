@@ -120,4 +120,34 @@ describe('a membrane’s levels in its properties', () => {
     expect([...tiles.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Texture')).toBe(false);
     forgetLipidPatch('ui-patch-far');
   });
+  it('shows, hides and colors a membrane’s species, and sets its graphics mode, one step each', async () => {
+    registerLipidPatch('ui-patch-species', syntheticPatchPdb().text);
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const area = v.api.as({ kind: 'person' }).mesoscale!;
+    const r = await area.wrapMembrane({ radius: 300, edge: 80, patch: 'ui-patch-species', method: 'cutter' } as never);
+    if (!r.ok) throw new Error(r.message);
+    const membrane = r.changed!.nodes![0];
+    const species = area.membraneSpeciesState(membrane);
+    const names = species.value!.map((s) => s.name);
+    expect(names.length).toBeGreaterThan(1);
+    expect((await area.membraneSpecies({ membrane, species: 'NOPE', shown: false } as never)).ok).toBe(false);
+    expect((await area.membraneSpecies({ membrane, species: names[0], shown: false } as never)).ok).toBe(true);
+    expect((await area.membraneSpecies({ membrane, species: names[1], color: 0xff0000 } as never)).ok).toBe(true);
+    const params = () => v.plugin.state.data.cells.get(membrane)!.transform.params;
+    expect(params()).toMatchObject({ hiddenSpecies: [names[0]], speciesColors: { [names[1]]: 0xff0000 } });
+    expect(area.membraneSpeciesState(membrane).value!.slice(0, 2)).toEqual([
+      { name: names[0], shown: false },
+      { name: names[1], shown: true, color: 0xff0000 },
+    ]);
+    expect((await v.api.history.undo({})).ok).toBe(true);
+    expect(params()).toMatchObject({ speciesColors: {} });
+    // Object graphics' quality: the levels' preset
+    expect((await area.graphics({ mode: 'performance', object: membrane } as never)).ok).toBe(true);
+    expect(params()).toMatchObject({ detail: 'performance' });
+    forgetLipidPatch('ui-patch-species');
+  });
 });

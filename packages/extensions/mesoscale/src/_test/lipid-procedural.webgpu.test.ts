@@ -11,7 +11,7 @@ import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
-import { LipidMembrane, LipidMembraneParams, registerLipidPatch } from '../lipids/membrane.js';
+import { LipidMembrane, LipidMembraneParams, membraneSpecies, registerLipidPatch } from '../lipids/membrane.js';
 import { syntheticPatchPdb, writePng } from './lipid-fixtures.js';
 
 // A membrane made per view on Dawn (lipid-procedural): a camera path whole → close → whole over a sphere cut by the
@@ -125,6 +125,69 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       expect(repr.pool.selects).toBe(rest.selects);
       expect(repr.pool.regenerations).toBe(rest.regenerations);
       expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      plugin.dispose();
+    }
+  });
+  it('draws what its particle-system properties say: a species hidden, its colour, the atoms’ size', async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      registerLipidPatch('dawn-procedural-props', syntheticPatchPdb().text);
+      const node = await plugin
+        .build()
+        .toRoot()
+        .apply(LipidMembrane, {
+          ...PD.getDefaultValues(LipidMembraneParams),
+          method: 'cutter',
+          radius: 600,
+          edge: 100,
+          patch: 'dawn-procedural-props',
+          center: Vec3.zero(),
+        })
+        .commit();
+      const cell = () => plugin.state.data.cells.get(node.ref)!;
+      const repr = () => cell().obj!.data.repr as unknown as { pool: { live: number } };
+      const species = membraneSpecies(cell().obj!.data.sourceData as never);
+      expect(species.length).toBeGreaterThan(1);
+      const camera = plugin.canvas3d!.camera;
+      plugin.canvas3d!.requestCameraReset({ durationMs: 0 });
+      await plugin.getImageRaw({ width: Size, height: Size });
+      camera.setState(
+        {
+          ...camera.getSnapshot(),
+          target: Vec3.create(0, 0, 600),
+          position: Vec3.create(0, 0, 850),
+          up: Vec3.create(0, 1, 0),
+        },
+        0,
+      );
+      const look = async (patch: Record<string, unknown>) => {
+        await plugin
+          .build()
+          .to(node.ref)
+          .update((p) => ({ ...p, ...patch }))
+          .commit();
+        const image = Array.from((await plugin.getImageRaw({ width: Size, height: Size })).data);
+        return { image, live: repr().pool.live };
+      };
+      const all = await look({});
+      const hidden = await look({ hiddenSpecies: [species[0]] });
+      expect(hidden.live).toBeLessThan(all.live);
+      expect(hidden.image).not.toEqual(all.image);
+      const shown = await look({ hiddenSpecies: [] });
+      expect(shown.live).toBe(all.live);
+      expect(shown.image).toEqual(all.image);
+      const colored = await look({ speciesColors: { [species[0]]: 0x000000 } });
+      expect(colored.image).not.toEqual(all.image);
+      const larger = await look({ speciesColors: {}, sizeFactor: 3 });
+      expect(larger.image).not.toEqual(all.image);
+      expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       plugin.dispose();
     }
