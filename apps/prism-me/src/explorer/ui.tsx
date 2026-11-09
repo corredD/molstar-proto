@@ -267,7 +267,13 @@ function sceneModel(area: ExplorerApi, stage: ViewerApi['stage'], api: ViewerApi
   const scrollTo = observableState<string | undefined>(undefined);
   const documentGrouping = observableState<DocumentGroupBy | undefined>(undefined);
   let docState: ReadonlyState<DocumentTree | undefined> | undefined;
-  const documentState = () => (docState ??= api.mesoviewspec?.treeState(documentGrouping.asReadonly));
+  // the lazy extension's stub stands for its area until the chunk loads (operations only): its reads come with it
+  const documentState = () => {
+    const area = api.mesoviewspec;
+    if (!docState && area && typeof area.treeState === 'function')
+      docState = area.treeState(documentGrouping.asReadonly);
+    return docState;
+  };
   return {
     open,
     documentGrouping,
