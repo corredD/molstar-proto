@@ -1085,7 +1085,10 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
     for (const [k, runs] of loci) {
       if (!/@\d+>/.test(k)) continue;
       const tpl = sets.find((x) => x.key === k.slice(k.lastIndexOf('>') + 1));
-      const types = tpl ? [...new Set(Array.from({ length: runs.length / 2 }, (_, j) => tpl.types[runs[2 * j]]))] : [];
+      // every type the runs cover (one run can span two populations written one after the other)
+      const types = tpl
+        ? tpl.typeTable.filter((t) => intersectRuns(typeRuns(tpl)[t.index], runs).length).map((t) => t.index)
+        : [];
       partial.push({ set: k, types, runs, ...props });
     }
   }

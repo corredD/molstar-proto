@@ -306,4 +306,20 @@ describe('superstructures', () => {
     expect(Math.hypot(...sphere.center.map((v, k) => v - c[k]))).toBeLessThan(1e-3);
     expect(ev('(within (population p.x) :of (all) :distance 10)').issues.map((i) => i.code)).toContain('mesoql.empty');
   });
+  it('a look on a part names every type its runs cover (two populations merged into one run)', async () => {
+    const doc = betaCellDoc();
+    const r = await compile(doc, { resolvers: DefaultResolvers, load });
+    const select = '(or (part (instance i.granule-docked) p.Vamp2) (part (instance i.granule-docked) p.Rab3a))';
+    const ir = updateView(
+      { ...doc, views: [{ id: 'v.o', looks: [{ select, color: '#00ff00' }] }], session: { view: 'v.o' } },
+      r.ir!,
+    );
+    const [look] = ir.view.looks.filter((l) => /@\d+>/.test(l.set));
+    const tpl = placementSets(r.ir!).find((s) => s.key === look.set.slice(look.set.lastIndexOf('>') + 1))!;
+    const covered = new Set<number>();
+    for (let j = 0; j < look.runs!.length; j += 2)
+      for (let i = look.runs![j]; i < look.runs![j + 1]; i++) covered.add(tpl.types[i]);
+    expect([...look.types].sort()).toEqual([...covered].sort());
+    expect(covered.size).toBe(2);
+  });
 });
