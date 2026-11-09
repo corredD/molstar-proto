@@ -27,10 +27,22 @@
     "!**/_test/**",
     "!**/*.tsbuildinfo"
   ],
+  "bin": {
+    "meso-validate": "./lib/cli/meso-validate.js",
+    "meso-compile": "./lib/cli/meso-compile.js",
+    "meso-print": "./lib/cli/meso-print.js",
+    "meso-trace": "./lib/cli/meso-trace.js",
+    "meso-query": "./lib/cli/meso-query.js"
+  },
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "test:scaling": "vitest run --config vitest.scaling.config.ts"
+    "test:scaling": "vitest run --config vitest.scaling.config.ts",
+    "meso-validate": "tsc -b && cd .. && node spec/lib/cli/meso-validate.js",
+    "meso-compile": "tsc -b && cd .. && node spec/lib/cli/meso-compile.js --base spec/src",
+    "meso-print": "tsc -b && cd .. && node spec/lib/cli/meso-print.js",
+    "meso-trace": "tsc -b && cd .. && node spec/lib/cli/meso-trace.js",
+    "meso-query": "tsc -b && cd .. && node spec/lib/cli/meso-query.js --base spec/src"
   },
   "dependencies": {
     "tslib": "catalog:"
