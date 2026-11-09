@@ -1116,8 +1116,9 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
 
 /**
  * A view's camera in world Å (design.md §5.1). Numeric: its position and target moved by the view frame's matrix (a
- * camera written in a tomogram's frame lands where the tomogram is). Semantic: the focus address materialized, its
- * bounding sphere framed from the given direction at the framing's distance.
+ * camera written in a tomogram's frame lands where the tomogram is), its up turned by it. Semantic: the focus address
+ * materialized, its bounding sphere framed from the given direction (turned by the view frame) at the framing's
+ * distance. Either way the up is made perpendicular to the view direction.
  */
 function deriveCamera(
   doc: MesoViewSpecDoc,
@@ -1133,8 +1134,11 @@ function deriveCamera(
   // a frame matrix takes the frame's own units (or voxels) to world Å; without one, the document's unit
   const place = (p: readonly number[]) =>
     M ? [0, 1, 2].map((r) => M[r] * p[0] + M[4 + r] * p[1] + M[8 + r] * p[2] + M[12 + r]) : p.map((x) => x * f);
+  // a direction in the view frame, turned into the world (the frame's scale does not matter once normalized)
+  const turn = (v: readonly number[]) =>
+    M ? [0, 1, 2].map((r) => M[r] * v[0] + M[4 + r] * v[1] + M[8 + r] * v[2]) : [...v];
   const fov = cam.fov ?? 45;
-  const up = [...(cam.up ?? [0, 1, 0])];
+  const upIn = cam.up ? turn(cam.up) : [0, 1, 0];
   if (cam.focus) {
     const sphere = lociSphere(materialize(cam.focus), ir);
     if (sphere) {
@@ -1152,16 +1156,18 @@ function deriveCamera(
         const c = all?.center ?? [0, 0, 0];
         dir = sphere.center.map((v, k) => v - c[k]);
         if (Math.hypot(dir[0], dir[1], dir[2]) < 1e-6) dir = [0, 0, 1];
-      } else if (Array.isArray(cam.from)) dir = [...cam.from];
-      else if (cam.position && cam.target) dir = cam.position.map((v, k) => v - cam.target![k]);
-      else dir = [0, 0, 1];
+      } else if (Array.isArray(cam.from)) dir = turn(cam.from);
+      else if (cam.position && cam.target) {
+        const [p, t] = [place(cam.position), place(cam.target)];
+        dir = p.map((v, k) => v - t[k]);
+      } else dir = [0, 0, 1];
       const l = Math.hypot(dir[0], dir[1], dir[2]) || 1;
       const scale = cam.framing === 'close' ? 0.6 : cam.framing === 'context' ? 2.5 : 1.1;
       const d = (sphere.radius / Math.sin(((fov / 2) * Math.PI) / 180)) * scale;
       return {
         position: sphere.center.map((v, k) => v + (dir[k] / l) * d),
         target: [...sphere.center],
-        up,
+        up: upAcross(upIn, dir),
         fov,
         ...(cam.transition !== undefined ? { transition: cam.transition } : {}),
         focus: { radius: sphere.radius },
@@ -1169,11 +1175,47 @@ function deriveCamera(
     }
   }
   if (!cam.position || !cam.target) return undefined;
+  const position = place(cam.position);
+  const target = place(cam.target);
   return {
-    position: place(cam.position),
-    target: place(cam.target),
-    up,
+    position,
+    target,
+    up: upAcross(
+      upIn,
+      position.map((v, k) => v - target[k]),
+    ),
     fov: cam.fov,
     ...(cam.transition !== undefined ? { transition: cam.transition } : {}),
   };
+}
+
+/**
+ * `up` made perpendicular to the view direction `dir` (unit length). When `up` is nearly along `dir` (a camera looking
+ * along its own up: no roll is defined), the world axis least along `dir` stands in for it.
+ */
+function upAcross(up: readonly number[], dir: readonly number[]): number[] {
+  const unit = (v: readonly number[]) => {
+    const l = Math.hypot(v[0], v[1], v[2]);
+    return l > 0 ? v.map((x) => x / l) : v.map(() => 0);
+  };
+  const d = unit(dir);
+  const across = (u: readonly number[]) => {
+    const n = unit(u);
+    const k = n[0] * d[0] + n[1] * d[1] + n[2] * d[2];
+    return n.map((x, i) => x - k * d[i]);
+  };
+  if (!d.some((x) => x)) return unit(up);
+  let u = across(up);
+  if (Math.hypot(u[0], u[1], u[2]) < 0.1) {
+    const axes = [
+      [0, 1, 0],
+      [0, 0, 1],
+      [1, 0, 0],
+    ];
+    const least = axes.reduce((a, b) =>
+      Math.abs(a[0] * d[0] + a[1] * d[1] + a[2] * d[2]) <= Math.abs(b[0] * d[0] + b[1] * d[1] + b[2] * d[2]) ? a : b,
+    );
+    u = across(least);
+  }
+  return unit(u);
 }
