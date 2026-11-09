@@ -29,11 +29,20 @@ import { type PaintOrient, paintRotation, principalAxisOf } from './paint.js';
 const _m = Mat4();
 const _q = Quat();
 const _dir = Vec3();
+/** The states the copy is set to, made once: nothing allocated a frame (review N3) */
+const Shown = { transform: _m, visible: true };
+const Hidden = { visible: false };
 
 /** One particle of `list`'s particle `i`: its target, entity and compartment at the origin, unturned */
 export function oneCopyOf(list: ParticleList, i: number): ParticleList {
+  const target = list.targets[i];
+  const object = list.targetMapping?.get(target);
   return {
     ...list,
+    // its own one-target map: the target visual caches its signatures by this map (the whole list's would be computed
+    // again at its next commit; review N1); no move of its own
+    targetMapping: object ? new Map([[target, object]]) : undefined,
+    movedFrom: undefined,
     count: 1,
     keys: Int32Array.of(0),
     targets: Int32Array.of(list.targets[i]),
@@ -82,6 +91,8 @@ export function pluginPaintCursor(
   const axis = principalAxisOf(data.targetMapping?.get(data.targets[i]));
   let repr: Representation<any, any, any> | undefined;
   let shown = false;
+  /** The copy's turn options, set in place each move */
+  const turn: { axis?: Vec3; spin?: number } = {};
   let gone = false;
   void set
     .fromProvider(provider, one, {
@@ -97,7 +108,7 @@ export function pluginPaintCursor(
       if (gone) return;
       repr = built;
       // where the pointer was while it was built
-      if (shown) set.setState(repr, { transform: _m, visible: true });
+      if (shown) set.setState(repr, Shown);
     })
     .catch((e) => plugin.log.warn(`The paint brush's copy could not be drawn: ${e}`));
 
@@ -109,16 +120,18 @@ export function pluginPaintCursor(
       const camera = plugin.canvas3d?.camera.state;
       if (how === 'view' && camera) Vec3.normalize(_dir, Vec3.sub(_dir, camera.position, camera.target));
       if (settings.side === 'in') Vec3.negate(_dir, _dir);
-      paintRotation(_q, _dir, how, seed, 0, { axis: how === 'axis' ? axis : undefined, spin: settings.spin });
+      turn.axis = how === 'axis' ? axis : undefined;
+      turn.spin = settings.spin;
+      paintRotation(_q, _dir, how, seed, 0, turn);
       Mat4.fromQuat(_m, _q);
       Mat4.setTranslation(_m, position);
       shown = true;
-      if (repr) set.setState(repr, { transform: _m, visible: true });
+      if (repr) set.setState(repr, Shown);
     },
     hide() {
       if (!shown) return;
       shown = false;
-      if (repr) set.setState(repr, { visible: false });
+      if (repr) set.setState(repr, Hidden);
     },
     dispose() {
       gone = true;
