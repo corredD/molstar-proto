@@ -6,6 +6,12 @@ is not built is [../TODO.md](../TODO.md).
 
 ## In flight
 
+- **MesoViewSpec** (Ludo, 2026-11-06 → ; worktree `~/prism-me-lanes/mesoviewspec`, branch `me/mesoviewspec`, local
+  only, [progress](2026-11-08-mesoviewspec.md) on its branch). A declarative format for mesoscale scenes, its IR and
+  runtime, Storybook stories, a design doc for David and renderer recommendations for Alex. v0.1-v0.3 built (the
+  semantic camera, instances). Ran as one session, not as lanes, until 2026-11-08: the review gate runs now, then
+  streaming as its own lane (`mesoviewspec-streaming`, from `me/mesoviewspec`). Not pushed: Ludo signs off first.
+
 - **Mesoscale building** (Ludo, 2026-11-07 night → 2026-11-08; engine `~/prism-me-lanes/mesobuild`, local git, its
   report `NIGHT-2026-11-08.md`). Ludo looked at the exosome-in-plasma model: ok. Decided 2026-11-08: a recipe entry's
   count is a count of objects (its biological assembly, or what its file holds: a nuclear pore is one), never rescaled
