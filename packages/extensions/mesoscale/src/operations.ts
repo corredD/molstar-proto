@@ -194,6 +194,12 @@ export class MesoscaleApi extends ApiArea {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => {
+        // a lipid membrane: its colours by zoom (round 4c item 8; its levels are `membraneDetailState`'s)
+        const membrane = object ? membraneCell({ plugin }, object) : undefined;
+        if (membrane) {
+          const levels = (membrane.transform.params as LipidMembraneProps).colorLevels;
+          return { colorLevels: levels.name === 'on' ? (levels.params as ColorLevels.Props) : null };
+        }
         const all = graphicsObjects({ plugin });
         const o = object
           ? all.find((x) => x.cell.transform.ref === object)
@@ -483,17 +489,14 @@ export class MesoscaleApi extends ApiArea {
           `Its species: ${names.join(', ')}.`,
         );
       }
-      const old = cell.transform.params as LipidMembraneProps;
-      const hidden = new Set(old.hiddenSpecies);
+      const hidden = new Set((cell.transform.params as LipidMembraneProps).hiddenSpecies);
       if (shown === true) hidden.delete(species);
       if (shown === false) hidden.add(species);
-      const next = {
-        ...old,
+      const changed = await updateMembrane(ctx, cell, (old) => ({
         hiddenSpecies: names.filter((n) => hidden.has(n)),
-        speciesColors: color === undefined ? old.speciesColors : { ...old.speciesColors, [species]: color },
-      };
-      if (JSON.stringify(next) === JSON.stringify(old)) return ApiResult.already(`${species} is already so.`);
-      await ctx.plugin.state.data.build().to(cell).update(next).commit({ revertOnError: true });
+        speciesColors: color === undefined ? old.speciesColors : withSpeciesColors(old, [species], () => color),
+      }));
+      if (!changed) return ApiResult.already(`${species} is already so.`);
       return ApiResult.ok(`${species}: ${hidden.has(species) ? 'hidden' : 'shown'}.`, { nodes: [membrane] });
     },
   });
@@ -622,10 +625,7 @@ export class MesoscaleApi extends ApiArea {
         transparency?: number;
         emissive?: number;
       };
-      const l = oneList(ctx, particles || undefined);
-      if (isFailure(l)) return l;
-      const ids = selectEntities(ctx, l, values.entities, values.group, groupBy);
-      if (isFailure(ids)) return ids;
+      const membrane = membraneCell(ctx, particles);
       const parsed = color ? cssColor(color) : undefined;
       if (color && parsed === undefined) {
         return ApiResult.fail(
@@ -643,6 +643,42 @@ export class MesoscaleApi extends ApiArea {
       if (!reset && Object.keys(patch).length === 0) {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give visible, color, transparency, emissive or reset.');
       }
+      if (membrane) {
+        // a membrane's species: shown or not, their colour (no opacity or glow: its spheres are merged by species)
+        if (transparency !== undefined || emissive !== undefined) {
+          return ApiResult.fail('invalid', 'A lipid membrane takes a color, visible or reset, not opacity or glow.');
+        }
+        const names = membraneSpecies((membrane.obj!.data as { sourceData: MembraneData }).sourceData);
+        const species = membraneEntities(names, values.entities);
+        if (isFailure(species)) return species;
+        const changed = await updateMembrane(ctx, membrane, (old) => {
+          const hidden = new Set(old.hiddenSpecies);
+          for (const s of species) {
+            if (reset || visible === true) hidden.delete(s);
+            else if (visible === false) hidden.add(s);
+          }
+          return {
+            hiddenSpecies: names.filter((n) => hidden.has(n)),
+            speciesColors: withSpeciesColors(old, species, (s) =>
+              reset
+                ? null
+                : parsed !== undefined
+                  ? parsed
+                  : old.speciesColors[s] !== undefined
+                    ? Color(old.speciesColors[s])
+                    : null,
+            ),
+          };
+        });
+        if (!changed) return ApiResult.already('They already look so.');
+        return ApiResult.ok(`${reset ? 'Reset' : 'Styled'} ${species.length} species of the membrane.`, {
+          nodes: [membrane.transform.ref],
+        });
+      }
+      const l = oneList(ctx, particles || undefined);
+      if (isFailure(l)) return l;
+      const ids = selectEntities(ctx, l, values.entities, values.group, groupBy);
+      if (isFailure(ids)) return ids;
       const change: LayerChange = reset ? { reset: true } : patch;
       const changed = await writeStyles(
         ctx,
@@ -674,10 +710,6 @@ export class MesoscaleApi extends ApiArea {
       particles: ListParam(),
     },
     async run({ scheme, groupBy, variability, shift, color, entities, group, particles }, ctx) {
-      const l = oneList(ctx, particles || undefined);
-      if (isFailure(l)) return l;
-      const ids = selectEntities(ctx, l, entities, group);
-      if (isFailure(ids)) return ids;
       const uniform = scheme === 'uniform' ? cssColor(color) : undefined;
       if (scheme === 'uniform' && uniform === undefined) {
         return ApiResult.fail(
@@ -686,6 +718,29 @@ export class MesoscaleApi extends ApiArea {
           'Give a color name (tomato), #rrggbb, rgb() or hsl().',
         );
       }
+      const membrane = membraneCell(ctx, particles);
+      if (membrane) {
+        // a membrane's species: one colour, generated around a hue (one group), or their default (the theme's)
+        const names = membraneSpecies((membrane.obj!.data as { sourceData: MembraneData }).sourceData);
+        const species = membraneEntities(names, entities);
+        if (isFailure(species)) return species;
+        const root = { path: '', label: '', groups: [], entities: species.map((_, i) => i) };
+        const generated = scheme === 'generate' ? generateColors(root, variability, shift) : undefined;
+        const index = new Map(species.map((s, i) => [s, i]));
+        const changed = await updateMembrane(ctx, membrane, (old) => ({
+          speciesColors: withSpeciesColors(old, species, (s) =>
+            scheme === 'theme' ? null : (uniform ?? generated!.get(index.get(s)!)!),
+          ),
+        }));
+        if (!changed) return ApiResult.already('They are already colored so.');
+        return ApiResult.ok(`Colored ${species.length} species of the membrane (${scheme}).`, {
+          nodes: [membrane.transform.ref],
+        });
+      }
+      const l = oneList(ctx, particles || undefined);
+      if (isFailure(l)) return l;
+      const ids = selectEntities(ctx, l, entities, group);
+      if (isFailure(ids)) return ids;
       const data = dataOf(l)!;
       const generated =
         scheme === 'generate'
@@ -862,6 +917,23 @@ export class MesoscaleApi extends ApiArea {
       const edges = Object.fromEntries(Object.entries(given).filter(([, x]) => x !== undefined));
       if (on === undefined && !Object.keys(edges).length) {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give on, or an edge (entity, chain, atom).');
+      }
+      const membrane = membraneCell(ctx, particles.trim());
+      if (membrane) {
+        // a membrane's: far its colour, then its species' (no chain or atom colours: a lipid is one group)
+        const old = (membrane.transform.params as LipidMembraneProps).colorLevels;
+        const was = old.name === 'on' ? (old.params as ColorLevels.Props) : ColorLevels.defaults;
+        const levels = { ...was, ...edges } as ColorLevels.Props;
+        if (levels.entity >= levels.chain || levels.chain >= levels.atom) {
+          return ApiResult.fail('invalid', 'The edges go entity < chain < atom.', 'Nothing was changed.');
+        }
+        const colorLevels =
+          on === false ? { name: 'off' as const, params: {} } : { name: 'on' as const, params: levels };
+        const changed = await updateMembrane(ctx, membrane, () => ({ colorLevels }));
+        if (!changed) return ApiResult.already('The colors already follow the zoom so.');
+        return ApiResult.ok(on === false ? 'Colors no longer follow the zoom.' : 'Colors follow the zoom.', {
+          nodes: [membrane.transform.ref],
+        });
       }
       const one = particles.trim() ? oneList(ctx, particles) : undefined;
       if (isFailure(one)) return one;
@@ -1618,6 +1690,61 @@ export function mesoscaleExamples(base = ExamplesBase): Promise<MesoscaleExample
 
 function lists(ctx: Pick<ApiContext, 'plugin'>): readonly ParticleListRef[] {
   return ctx.plugin.managers.particles.hierarchy.current.lists;
+}
+
+/**
+ * A lipid membrane given where a particle list is (`particles`; round 4c item 8): coloured as a list, its species its
+ * entities (prism-me AGENTS.md: particles for everything mesoscale)
+ */
+function membraneCell(ctx: Pick<ApiContext, 'plugin'>, ref: string) {
+  const cell = ref ? ctx.plugin.state.data.cells.get(ref) : undefined;
+  return cell?.transform.transformer === LipidMembrane && cell.obj ? cell : undefined;
+}
+
+/** A membrane's species named in `entities` (comma-separated; empty: every one), or a failure naming the unknown */
+function membraneEntities(names: readonly string[], entities: string): readonly string[] | ApiFailure {
+  const asked = entities
+    .split(',')
+    .map((e) => e.trim())
+    .filter((e) => e);
+  if (!asked.length) return names;
+  const known = new Set(names);
+  const unknown = asked.filter((e) => !known.has(e));
+  if (unknown.length) {
+    return ApiResult.fail(
+      'not-found',
+      `The membrane has no species ${unknown.join(', ')}.`,
+      `Its species: ${names.join(', ')}.`,
+    );
+  }
+  return asked;
+}
+
+/**
+ * A membrane's look patched in one step, every colour operation's and `membraneSpecies`' writer: drawn again, never cut
+ * again; whether it changed
+ */
+async function updateMembrane(
+  ctx: Pick<ApiContext, 'plugin'>,
+  cell: StateObjectCell,
+  patch: (old: LipidMembraneProps) => Partial<LipidMembraneProps>,
+) {
+  const old = cell.transform.params as LipidMembraneProps;
+  const next = { ...old, ...patch(old) };
+  if (JSON.stringify(next) === JSON.stringify(old)) return false;
+  await ctx.plugin.state.data.build().to(cell).update(next).commit({ revertOnError: true });
+  return true;
+}
+
+/** Species colours: those of `species` set to `color` (null: back to their default), the others kept */
+function withSpeciesColors(old: LipidMembraneProps, species: readonly string[], color: (s: string) => Color | null) {
+  const colors: Record<string, number> = { ...old.speciesColors };
+  for (const s of species) {
+    const c = color(s);
+    if (c === null) delete colors[s];
+    else colors[s] = c;
+  }
+  return colors;
 }
 
 function oneList(ctx: Pick<ApiContext, 'plugin'>, name: string | undefined): ParticleListRef | ApiFailure {

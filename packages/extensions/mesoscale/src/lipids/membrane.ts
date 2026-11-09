@@ -27,6 +27,7 @@ import { type MergedEntry, mergeRenderObjectsByType } from '@molstar/graphics/re
 import { Representation } from '@molstar/graphics/repr/representation';
 import { LocationIterator } from '@molstar/graphics/geo/util/location-iterator';
 import { orderLodLevels } from '@molstar/graphics/geo/geometry/lod-levels';
+import { ColorLevels } from '@molstar/graphics/geo/geometry/color-levels';
 import { PositionGroupStride } from '@molstar/graphics/geo/geometry/center-group';
 import { createDataArray } from '@molstar/graphics/gl/renderable/util';
 import type { ColorTheme } from '@molstar/graphics/theme/color';
@@ -510,6 +511,9 @@ export const LipidMembraneReprParams = {
   // (`mesoscale.membraneSpecies`); a hidden species is not generated (the cutter's), the far surface without it
   hiddenSpecies: PD.Value<readonly string[]>([], { isHidden: true }),
   speciesColors: PD.Value<Readonly<Record<string, number>>>({}, { isHidden: true }),
+  // colours by zoom, as a particle list's (round 4c item 8; `color-levels.md`): far the membrane's colour (`color`), then
+  // its species' (its entities'); a lipid is one group, so no chain or atom colours past them (`membraneColorLevels`)
+  colorLevels: PD.MappedStatic('off', { off: PD.EmptyGroup(), on: PD.Group(ColorLevels.Params, { isFlat: true }) }),
   // Prism's clipping (round 4b item 6): a cut on the spheres and the far surfaces alike, the culler dropping the
   // instances it cuts away; a cut alone changes the drawn objects' clip values, nothing built again
   clip: BaseGeometry.Params.clip,
@@ -621,6 +625,7 @@ function surfaceObject(
   size: number,
   clip: Clip.Props,
   fade: boolean,
+  reprProps: LipidMembraneReprProps,
 ) {
   const n = f.positions.length / 3;
   const groups = new Float32Array(n);
@@ -658,9 +663,37 @@ function surfaceObject(
     { color, size: UniformSizeTheme({}, { value: 1 }) },
     props,
   );
+  membraneColorLevels(values as unknown as ColorLevels.Data, reprProps, 1, n, (g) => colorOf(f.species[g]));
   const object = createRenderObject('mesh', values, Mesh.Utils.createRenderableState(props), -1);
   clipped.set(object.values as never, props);
   return object;
+}
+
+/**
+ * A membrane object's colours by zoom (round 4c item 8), as a particle list's (`setColorLevels` of its targets): far its
+ * colour (`props.color`) on each of its `instances`, then each of its `groups`' colour (the theme's: its species');
+ * the near data the species' too (a group a lipid or a surface's vertex: no element to go on to). Off for one colour, as
+ * a list's uniform theme
+ */
+function membraneColorLevels(
+  values: ColorLevels.Data,
+  props: LipidMembraneReprProps,
+  instances: number,
+  groups: number,
+  colorOf: (group: number) => Color,
+) {
+  const on = props.colorLevels.name === 'on' && props.colorBy !== 'uniform';
+  ColorLevels.setProps(values, on ? (props.colorLevels.params as ColorLevels.Props) : ColorLevels.defaults, on);
+  if (!on) return;
+  const near = new Uint8Array(Math.max(1, groups) * 4);
+  for (let g = 0; g < groups; ++g) {
+    Color.toArray(colorOf(g), near, g * 4);
+    near[g * 4 + 3] = ColorLevels.offsetByte(0);
+  }
+  ValueCell.update(values.tColorNear, { array: near, count: groups });
+  const far = new Uint8Array(Math.max(1, instances) * 4);
+  for (let i = 0; i < instances; ++i) Color.toArray(props.color, far, i * 4);
+  ValueCell.update(values.tColorFar, { array: far, count: instances });
 }
 
 /** Whether `b` differs from `a` by its clip alone */
@@ -774,6 +807,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       props.detail === 'off' ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail, props.levels);
     const p = { ...PD.getDefaultValues(Spheres.Params), ...lod, gpuCulling: true as const, clip: props.clip };
     const values = Spheres.Utils.createValues(spheres, transform, locationIterator, theme, p);
+    membraneColorLevels(values, props, n, lipids, (g) => colorOf(names[lipidSpecies[g]]));
     clipped.set(values, p);
     building.push(values);
     ValueCell.update(values.boundingSphere, Sphere3D.clone(bounds));
@@ -1076,7 +1110,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
         );
         const speciesColor = (sp: number) =>
           props.colorBy === 'uniform' || sp < 0 ? props.color : colorOf(table.species[sp]);
-        const object = surfaceObject(f, speciesColor, size, props.clip, cut);
+        const object = surfaceObject(f, speciesColor, size, props.clip, cut, props);
         if (cut) {
           nextFading.push({ values: object.values as BaseValues, size });
           const enter = enterPx(props.far, props.atomsPx, props.spheresPx);
