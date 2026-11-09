@@ -118,7 +118,11 @@ describe('a membrane’s levels in its properties', () => {
     );
     await until(() => !!tiles.querySelector('button'));
     expect([...tiles.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Texture')).toBe(false);
-    // and no export: tiles are built whole (review M4)
+    // no species to hide (review S6), and no export: tiles are built whole (review M4)
+    const tilesSpecies = area.membraneSpeciesState(t.changed!.nodes![0]).value?.[0]?.name ?? 'X';
+    expect(
+      (await area.membraneSpecies({ membrane: t.changed!.nodes![0], species: tilesSpecies, shown: false } as never)).ok,
+    ).toBe(false);
     expect((await area.exportMembrane({ membrane: t.changed!.nodes![0] } as never)).ok).toBe(false);
     forgetLipidPatch('ui-patch-far');
   });

@@ -694,7 +694,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     key[29] = view.lod.pixelSize;
     selectionStats.selects += 1;
     selectionParams.lipidSize = size;
-    selectionParams.enterPx = enterPx(props.far, props.atomsPx, props.spheresPx);
+    selectionParams.enterPx = builtFor?.method === 'cutter' ? enterPx(props.far, props.atomsPx, props.spheresPx) : 0;
     selection.select(view.cameraPlane, view.frustum, view.lod.depthScale, view.lod.pixelSize, selectionParams);
   }
   const selectionParams = { lipidSize: 8, enterPx: 2, keep: 0.8 };
@@ -797,9 +797,11 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       }
     }
     // a pool a member, its capacity a share of the budget (`poolCapacities`), a selection a leaflet
+    // tiles: their lost parts cut whole, no far look (the cutter's alone; review S6)
+    const cutter = data.method === 'cutter';
     const capacities = poolCapacities(
       cuts.map((c) => c.totals),
-      props.budget,
+      cutter ? props.budget : Infinity,
     );
     const pools = data.cut.map((leaflet, c) =>
       createLipidSelection(
@@ -814,7 +816,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     for (let c = 0; c < pools.length; ++c) {
       const { table } = data.cut[c];
       for (let m = 0; m < table.members.length; ++m) {
-        pools[c].shown[m] = hidden.has(table.species[table.members[m].species]) ? 0 : 1;
+        pools[c].shown[m] = cutter && hidden.has(table.species[table.members[m].species]) ? 0 : 1;
       }
     }
     let instances = 0;
@@ -899,7 +901,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     assigners = assigns;
     merged = mergeRenderObjectsByType(entries, true, new Map(), out, true, true, graphics);
     // the far look's surface beneath the lipids (`far`: texture, both), the mesh's first leaflet's
-    if (props.far !== 'spheres' && data.cut.length > 0) {
+    if (cutter && props.far !== 'spheres' && data.cut.length > 0) {
       const names: string[] = [];
       const counts: number[] = [];
       for (let c = 0; c < data.cut.length; ++c) {
