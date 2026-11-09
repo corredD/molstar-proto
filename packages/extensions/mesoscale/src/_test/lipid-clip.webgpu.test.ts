@@ -1,0 +1,78 @@
+/**
+ * Copyright (c) 2026 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author Ludovic Autin <autin@scripps.edu>
+ */
+
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
+import { HeadlessScreenshotHelper } from '@molstar/plugin-headless/screenshot';
+import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
+import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
+import { forgetLipidPatch, registerLipidPatch } from '../lipids/membrane.js';
+import { MesoscaleExtension } from '../prism-viewer.js';
+import { syntheticPatchPdb } from './lipid-fixtures.js';
+
+// Ludo, 2026-11-08 at 1354: "we still cant cut away". Prism's own clip (`clipping.add` on the membrane's node, as the
+// right-click's Add clip… runs it) on a membrane drawn with WebGPU: what it cuts goes, in both methods.
+
+const webgpu = await (async () => {
+  try {
+    const path = createRequire(import.meta.url).resolve('webgpu');
+    const module = await import(pathToFileURL(path).href);
+    return (await module.create([]).requestAdapter()) ? module : undefined;
+  } catch {
+    return undefined;
+  }
+})();
+
+const Size = 128;
+
+describe.skipIf(!webgpu)('a lipid membrane clipped by Prism (Dawn)', () => {
+  it('cuts away the near half with clipping.add on its node, both methods (round 4b item 6)', async () => {
+    const options = { backend: 'webgpu' as const };
+    const renderer = await HeadlessScreenshotHelper.create({ webgpu }, { width: Size, height: Size }, options);
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+      plugin: (spec) => new HeadlessPluginContext({ webgpu }, spec, { width: Size, height: Size }, options, renderer),
+    });
+    registerLipidPatch('dawn-clip', syntheticPatchPdb().text);
+    try {
+      const plugin = v.plugin as HeadlessPluginContext;
+      const image = async () => Array.from((await plugin.getImageRaw({ width: Size, height: Size })).data);
+      /** the fraction of the membrane's pixels (not background in `a`) that `b` draws otherwise */
+      const changed = (a: number[], b: number[]) => {
+        const background = a.slice(0, 3).join();
+        let drawn = 0;
+        let other = 0;
+        for (let o = 0; o < a.length; o += 4) {
+          if (a.slice(o, o + 3).join() === background) continue;
+          drawn += 1;
+          if (Math.abs(a[o] - b[o]) + Math.abs(a[o + 1] - b[o + 1]) + Math.abs(a[o + 2] - b[o + 2]) > 24) other += 1;
+        }
+        return { drawn: drawn / (a.length / 4), other: other / Math.max(1, drawn) };
+      };
+      for (const method of ['cutter', 'tiles'] as const) {
+        const r = await v.api.mesoscale!.wrapMembrane({ radius: 300, edge: 80, patch: 'dawn-clip', method } as never);
+        if (!r.ok) throw new Error(r.message);
+        const membrane = r.changed!.nodes![0];
+        plugin.canvas3d!.requestCameraReset({ durationMs: 0 });
+        const whole = await image();
+        const clip = await v.api.run('clipping.add', { shape: 'plane', node: `#${membrane}` });
+        expect(clip.ok, `${method}: ${clip.message}`).toBe(true);
+        // Prism's new plane faces the camera through the center: the near half cut away, the inside seen
+        const { drawn, other } = changed(whole, await image());
+        expect(drawn, `${method} drawn`).toBeGreaterThan(0.3);
+        expect(other, `${method} cut`).toBeGreaterThan(0.5);
+        expect((await v.api.run('state.remove', { node: membrane })).ok).toBe(true);
+      }
+      expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      forgetLipidPatch('dawn-clip');
+      v.dispose?.();
+    }
+  });
+});
