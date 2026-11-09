@@ -86,6 +86,29 @@ describe('the Mol* side, without a viewer', () => {
     expect(drawn).toBeGreaterThan(placementSets(r.ir!).reduce((n, s) => n + s.count, 0));
     expect(irToMolViewSpec(r.ir!, { maxCopies: drawn }).copies).toBe(expectedLooks(flattenInstances(r.ir!).ir).visible);
   });
+
+  // gate A3: partial looks (copy runs) come after the whole-type looks, so keyed by (set, type) they replaced them: a
+  // hidden type came back whole in the partial look's color, and the runs were never used
+  it('partial looks apply to their copy runs, after the whole-type looks', async () => {
+    const r = await compile(exosomeDoc(), { resolvers: DefaultResolvers, load: (id) => ExosomeResources[id]?.() });
+    const ir = updateView({ ...exosomeDoc(), session: { view: 'v.near-picks' } }, r.ir!);
+    expect(ir.view.looks.some((l) => l.runs)).toBe(true);
+    const expected = expectedLooks(ir);
+    const { data, copies } = irToMolViewSpec(ir);
+    expect(MVSData.validationIssues(data)).toBeUndefined();
+    expect(copies).toBe(expected.visible);
+    // every exported copy in its own color: count the copies of each color
+    const byColor = new Map<string, number>();
+    const visit = (n: { kind: string; params?: Record<string, unknown>; children?: unknown[] }) => {
+      if (n.kind === 'primitives') {
+        const c = String(n.params!.color);
+        byColor.set(c, (byColor.get(c) ?? 0) + (n.params!.instances as unknown[]).length);
+      }
+      for (const c of n.children ?? []) visit(c as typeof n);
+    };
+    visit(data.root as never);
+    expect(Object.fromEntries(byColor)).toEqual(Object.fromEntries(expected.byColor));
+  });
 });
 
 /** The oracle: per copy, the whole-type look, then each partial look over its runs (`[start, end)`), in order. */
