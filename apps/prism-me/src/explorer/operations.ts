@@ -818,14 +818,14 @@ function meshes(plugin: PluginContext): SceneObject[] {
     if (ofModel) continue;
     const data = cells.get(root)?.obj;
     if (!SO.Data.String.is(data) && !SO.Data.Binary.is(data) && !SO.Data.Response.is(data)) continue;
-    // a file of many meshes names each (the yeast cell's organelle meshes, a membrane each: lipid-procedural round 6);
-    // a shape with its default label is its file's
-    const own = cells.get(cell.transform.parent)?.obj?.label;
+    // a file of many meshes names each (the yeast cell's organelle meshes, a membrane each: lipid-procedural round 6) by
+    // its shape's own `label` param; a shape without one (OBJ, PLY, VTP opened) is its file's (review S4)
+    const own = (cells.get(cell.transform.parent)?.transform.params as { label?: string } | undefined)?.label;
     out.push({
       ref: cell.transform.ref,
       category: 'meshes',
       kind: 'mesh',
-      label: own && own !== 'Shape' && own !== 'Mesh' ? own : data.label,
+      label: own || data.label,
       visible: !cell.state.isHidden,
     });
   }
