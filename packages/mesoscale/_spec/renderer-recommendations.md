@@ -183,6 +183,10 @@ that thousands of tiles would expose.
 
 **To test.** A probe scene of 1M copies split into 1, 10, 100 and 1,000 sets.
 
+**Measurement pending (v0.4).** Streaming now commits one set per tile (design.md §6.8); its heavy lane measures
+commit time, frame time and memory for this split through the Prism adapter (§6.8.7). The conclusion comes with the
+numbers.
+
 **Recommendation (if confirmed).** A list that can grow by appending or swapping tiles, culled per tile on the GPU,
 instead of one representation per tile.
 
