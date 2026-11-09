@@ -202,4 +202,51 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
       plugin.dispose();
     }
   });
+
+  it('offers no cancel while it redraws a membrane already made (review X1: a cancel lost it)', async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      registerLipidPatch('dawn-patch', syntheticPatchPdb().text);
+      const params = {
+        ...PD.getDefaultValues(LipidMembraneParams),
+        method: 'cutter' as const,
+        radius: 300,
+        edge: 80,
+        patch: 'dawn-patch',
+        center: Vec3.zero(),
+      };
+      const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
+      // every stage past the yield interval; a cancel asked at the first upload of the redraw
+      let clock = 0;
+      vi.spyOn(performance, 'now').mockImplementation(() => (clock += 100));
+      const tasks = plugin.managers.task;
+      let asked = false;
+      const sub = tasks.events.progress.subscribe((e) => {
+        if (e.progress.root.progress.message.startsWith('Uploading')) {
+          asked = true;
+          tasks.requestAbort(e.progress);
+        }
+      });
+      await plugin
+        .build()
+        .to(node.ref)
+        .update({ ...params, detail: 'quality' })
+        .commit({ revertOnError: true })
+        .catch(() => {});
+      sub.unsubscribe();
+      expect(asked).toBe(true);
+      const cell = plugin.state.data.cells.get(node.ref)!;
+      expect(cell.status).toBe('ok');
+      expect(cell.obj?.data.repr.renderObjects.length).toBe(1);
+    } finally {
+      vi.restoreAllMocks();
+      plugin.dispose();
+    }
+  });
 });

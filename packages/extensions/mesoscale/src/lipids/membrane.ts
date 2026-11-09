@@ -188,12 +188,12 @@ export async function runSteps<T>(steps: Generator<MembraneProgress, T>, runtime
   }
 }
 
-/** A stage's end on `runtime`: a yield (and the stage said) when `YieldMs` passed since the last */
-function stepper(runtime: RuntimeContext) {
+/** A stage's end on `runtime`: a yield (and the stage said, cancellable or not) when `YieldMs` passed since the last */
+function stepper(runtime: RuntimeContext, canAbort = true) {
   let last = performance.now();
   return async (p: MembraneProgress) => {
     if (performance.now() - last <= YieldMs) return;
-    await runtime.update({ ...p, isIndeterminate: p.max === undefined, canAbort: true });
+    await runtime.update({ ...p, isIndeterminate: p.max === undefined, canAbort });
     last = performance.now();
   };
 }
@@ -560,8 +560,11 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   /** builds, or on a cancel (or any error) releases what it made on the GPU, nothing half-built kept */
   async function build(data: MembraneData, runtime: RuntimeContext) {
     const gen = ++generation;
+    // a redraw of a membrane already made (a new look) offers no cancel: a cancelled redraw left its cell in error, and
+    // the revert, a whole new build on the same cancelled task, failed too (review X1)
+    const canAbort = builtFor !== data;
     try {
-      await buildNow(data, stepper(runtime), gen);
+      await buildNow(data, stepper(runtime, canAbort), gen);
     } catch (e) {
       // a newer build (a new context, a new look) took over: it owns the state, this one leaves it
       if (e === Superseded) return;
