@@ -157,7 +157,9 @@ export function placeCut(table: CutterTable, mesh: { positions: Float32Array; in
       const o = i * 16;
       for (let a = 0; a < p.length; a += 3) {
         for (let k = 0; k < 3; ++k) {
-          atoms.push(affines[o + k] * p[a] + affines[o + 4 + k] * p[a + 1] + affines[o + 8 + k] * p[a + 2] + affines[o + 12 + k]);
+          atoms.push(
+            affines[o + k] * p[a] + affines[o + 4 + k] * p[a + 1] + affines[o + 8 + k] * p[a + 2] + affines[o + 12 + k],
+          );
         }
       }
     }
