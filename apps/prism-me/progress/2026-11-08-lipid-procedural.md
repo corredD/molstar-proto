@@ -426,3 +426,23 @@ does not rebuild 1 M-vertex surfaces a frame. The right-click offers Add clip…
 center removes one half of the image in all four looks (cutter spheres, cutter texture, tiles spheres, tiles both), the
 other half kept. Headless without WebGPU a membrane draws nothing, so `clipping.add` refuses it there ("draws nothing
 yet"); the app's test checks the menu item and that the cell is clippable.
+
+## Round 4c brief (Ludo, 2026-11-08, after trying 4b items 1–3; queued after 4b's gate)
+
+**Asked.** "the transition texture / spheres is not smooth yet, finally we still cant cut away, and color quickly (all
+residues / the object) it should follow same coloring as particles (by zoom, etc..)".
+
+7. **A smooth switch between spheres and surface.** Today the triangle set changes at `spheresPx` and the surface
+   colour (vertex colours) differs from the coarse sphere levels' look. Wanted: no visible line or pop. Options for
+   the checkpoint: a screen-door/dither fade over a px band (both drawn, each at its share), the surface's colours
+   matched to the spheres at the switch (the same species weights the coarse levels draw), the coarse levels' sizes
+   matched to the surface's head height. A test or an image metric: the mean colour and luminance across the switch
+   band within a bound.
+8. **Colouring as a particle list.** The quick colour actions on a membrane (the object's colour, all at once) and the
+   particle colour schemes (by entity = species, uniform, palettes, colours by zoom `ZoomColors`) apply to a membrane
+   through the same operations and controls as a particle list (prism-me AGENTS.md: particles for everything
+   mesoscale; ui.md the four places), spheres and far surfaces alike. A test per operation: applied to a membrane it
+   changes what is drawn in both looks.
+(Cut away = 4b item 6, Clip on a membrane: must land in 4b.)
+
+**Size and model.** ~300 production lines; Opus. Gate on the round's diff.
