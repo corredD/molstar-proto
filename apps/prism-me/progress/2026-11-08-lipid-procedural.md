@@ -652,19 +652,20 @@ zoom (far the membrane's colour, its species close).
 
 **Asked.** "model_vertexcolor.obj scale at 600, we want interactive viewing at that scale. find a way that it looks
 good, accurate as possible. color by zoom from compartment (the object color, down to chain/residue colors then atom
-colors). the texture does not appear on membrane per tiles. At 600 scale, its a lot of triangles, but it only matter
-at a certain distance. figure this out. /goal render procedurally at interactive rate lipids membrane for that big
-object with billions of lipids."
+colors). the texture does not appear on membrane per tiles. At 600 scale, its a lot of triangles, but it only matter at
+a certain distance. figure this out. /goal render procedurally at interactive rate lipids membrane for that big object
+with billions of lipids."
 
 **The numbers.** `~/Downloads/3D-Models/model_vertexcolor.obj`: 2,880 triangles. ×100 was 27.7 M lipids full; ×600 is
 36× the area, about 1.0 G lipids, about 5–6 M cells of ~108 Å. Nothing O(lipids) or O(cells) may be built or held at
 wrap or per view: only O(triangles) at wrap and O(budget) per view.
 
-**Goal.** Wrap at ×600 in about the time of ×20 (memory flat in the lipid count); fly whole → middle → close at
-≥ 30 fps on the M1 (≤ 33 ms frames, headless Dawn as the proxy, then Ludo in Chrome), no holes, no visible switch,
-nothing at rest; accurate: what is drawn near is exactly what export would give there (same lipids, same cells).
+**Goal.** Wrap at ×600 in about the time of ×20 (memory flat in the lipid count); fly whole → middle → close at ≥ 30 fps
+on the M1 (≤ 33 ms frames, headless Dawn as the proxy, then Ludo in Chrome), no holes, no visible switch, nothing at
+rest; accurate: what is drawn near is exactly what export would give there (same lipids, same cells).
 
 **Design to settle at a checkpoint (before code; stop and report if a library change is over ~600 lines).**
+
 1. **Hierarchical selection.** Today a triangle is taken whole. At ×600 one triangle holds ~350 k lipids, so select
    below the triangle: cells (the 4b cells, ~108 Å) enumerated on the fly inside the frustum and the px band, near
    first, into the fixed pool; a cell's contents generated on the GPU from (triangle, cell) alone (deterministic, as
@@ -673,35 +674,35 @@ nothing at rest; accurate: what is drawn near is exactly what export would give 
 2. **A scale-free far look.** Vertex colours (capped 1 M vertices, ~2 lipid spacings) cannot hold at ×600. The head
    pattern in the shader instead: per fragment, the point mapped by its cutter plane and cell (spin, offset) into the
    patch's top-view raster of 4c (colour = the species on top, normal = the head bump), as a texture, mipmapped so it
-   blurs to the true mean far away. Exactly the near look at the switch, any scale. This is the "texture" Ludo asked
-   for at the start (round 4 decision: bump texture of heads). Likely a `packages/graphics` change (a mesh material
-   reading a texture by a per-vertex plane frame): size it at the checkpoint.
+   blurs to the true mean far away. Exactly the near look at the switch, any scale. This is the "texture" Ludo asked for
+   at the start (round 4 decision: bump texture of heads). Likely a `packages/graphics` change (a mesh material reading
+   a texture by a per-vertex plane frame): size it at the checkpoint.
 3. **Colour by zoom, three levels.** Far: the compartment's colour (the object's / membrane's). Middle: per species
    (chain/residue = lipid species). Close: per atom (element colours of the lipid's atoms, as a particle list's last
    zoom level). Through `mesoscale.colorLevels` and the same Look controls as a particle list; spheres and far surface
    alike.
 4. **Tiles.** The tiles membrane shows no texture (4b: refused). Give tiles the far texture surface (Far: Texture and
-   Both) where cheap; tiles are built whole, so they are not for ×600: refuse tiles above a lipid count with a
-   message that names the cutter. Say so in the menu label or the error.
+   Both) where cheap; tiles are built whole, so they are not for ×600: refuse tiles above a lipid count with a message
+   that names the cutter. Say so in the menu label or the error.
 5. **Budget and LOD at scale.** The pool budget sized to the device (2 M default; measure 4 M), the sphere levels'
    distances in px not Å so they hold at any scale (state the defaults chosen and why), the switch px of 4c.
 
-**Tests.** Wrap-time and memory scaling guard at ×20, ×100, ×600 (flat in lipids, linear in triangles); the camera
-path at ×600 headless (frame ms, lipids in pool, cells selected, selection ms, 0 at rest); determinism (a cell's
-lipids the same from two views and from export of that cell); the far texture's colour equals the spheres' at the
-switch (4c's metric) at ×20 and ×600; colour by zoom three levels each changes what is drawn; tiles refused at ×600.
-Images r5-*.png (×600: whole, middle, close, and a zoom sequence; colour by zoom).
+**Tests.** Wrap-time and memory scaling guard at ×20, ×100, ×600 (flat in lipids, linear in triangles); the camera path
+at ×600 headless (frame ms, lipids in pool, cells selected, selection ms, 0 at rest); determinism (a cell's lipids the
+same from two views and from export of that cell); the far texture's colour equals the spheres' at the switch (4c's
+metric) at ×20 and ×600; colour by zoom three levels each changes what is drawn; tiles refused at ×600. Images r5-*.png
+(×600: whole, middle, close, and a zoom sequence; colour by zoom).
 
 **Machine care, changed for this round (Ludo asked for ×600).** The per-view cutter wrap may run at ×100 and ×600 (it
-builds no lipids); never export, tiles or any full build above ×20 in a test. Watch the process: abort a run whose
-node RSS passes 8 GB, run one heavy job at a time, wait while load > 12.
+builds no lipids); never export, tiles or any full build above ×20 in a test. Watch the process: abort a run whose node
+RSS passes 8 GB, run one heavy job at a time, wait while load > 12.
 
 **Ludo checks.** Chrome on 1354: open model_vertexcolor, Look › Scale 600, right-click › Wrap with lipids: done in a
 second or two. Zoom from whole to a few lipids: smooth (fans calm), no holes, no visible switch; colour by zoom: the
 object's colour, then species, then atoms. Tiles at 600: refused with a message.
 
-**Size and model.** ~900 production lines (selection 250, far texture + library material 350, colour levels 150,
-tiles and budget 150); Opus. Gate on the round's diff.
+**Size and model.** ~900 production lines (selection 250, far texture + library material 350, colour levels 150, tiles
+and budget 150); Opus. Gate on the round's diff.
 
 ## Round 5, measured before code (2026-11-09)
 
@@ -710,53 +711,53 @@ cutter, CHARMM-GUI patch, headless Dawn, M1, 900×600, default look, budget 2 M;
 vertex nearest the camera), close (400 Å above it); frame ms the four frames at each view (the first selects and
 writes), the machine at load 12–16 (another session's gates). Images `lipid-tiles-shots/r5-probe/`.
 
-| Scale | lipids (full) | wrap ms (repr) | RSS after wrap | empty frame | whole ms, live    | middle ms, live          | close ms, live, triangles taken / in view |
-| ----- | ------------- | -------------- | -------------- | ----------- | ----------------- | ------------------------ | ----------------------------------------- |
-| ×20   | 1.51 M        | 1,020          | 0.66 GB        | 10          | 400, 1.51 M       | 600, 0.40 M              | 500, 0.27 M, 1,166 / 1,166                |
-| ×20, budget 50 k | | 417 |       |             | 38, 43 k          | 95, 44 k                 | 104, 44 k                                 |
-| ×100  | 37.7 M        | 2,566          | 1.06 GB        | 10          | 62, 0             | 400 (first 811), 2.15 M  | 450 (first 891), 1.22 M, 186 / 186        |
-| ×600  | 1,357 M       | 7,676          | 1.42 GB        | 10          | 62, 0             | 62, 0                    | 89 (first **4,079**), 1.81 M, **4 / 76**  |
+| Scale            | lipids (full) | wrap ms (repr) | RSS after wrap | empty frame | whole ms, live | middle ms, live         | close ms, live, triangles taken / in view |
+| ---------------- | ------------- | -------------- | -------------- | ----------- | -------------- | ----------------------- | ----------------------------------------- |
+| ×20              | 1.51 M        | 1,020          | 0.66 GB        | 10          | 400, 1.51 M    | 600, 0.40 M             | 500, 0.27 M, 1,166 / 1,166                |
+| ×20, budget 50 k |               | 417            |                |             | 38, 43 k       | 95, 44 k                | 104, 44 k                                 |
+| ×100             | 37.7 M        | 2,566          | 1.06 GB        | 10          | 62, 0          | 400 (first 811), 2.15 M | 450 (first 891), 1.22 M, 186 / 186        |
+| ×600             | 1,357 M       | 7,676          | 1.42 GB        | 10          | 62, 0          | 62, 0                   | 89 (first **4,079**), 1.81 M, **4 / 76**  |
 
 What breaks at ×600, by cause:
 
-1. **The unit is the triangle.** A triangle holds ~470 k lipids: the close view's pool (2 M) holds 4 of the 76
-   triangles in view; the rest show the surface (`probe-x600-close.png`: a lipid triangle's corner on a smear). The
-   first frame takes 4.1 s: the write pass is a thread a (triangle, member), each writing ~10 k lipids in a row.
-2. **The wrap is O(lipids).** The count pass (a thread a triangle over its cells' patch lipids) is 7.7 s at ×600,
-   linear in the lipids (1.0 s at ×20); its counts are what the pool and selection read.
-3. **The far look is vertex colours capped at 1 M vertices.** At ×600 a vertex is ~10 lipid spacings: speckles at
-   middle (`probe-x600-middle.png`), a rainbow smear close, nothing of the head pattern; and the four 1 M-vertex
-   surfaces cost ~50 ms a frame (whole and middle: 62 ms with no lipid drawn, the empty scene 10 ms).
-4. **A frame costs what is drawn, ~1–2 µs a lipid in view at the fine levels** (×20 close: 0.27 M → 500 ms, 44 k →
-   104 ms; whole at the coarse levels 0.27 µs a lipid). The selection is not the cost (taken views are 0–1 ms of CPU
-   in the culler's hook; the frames at rest are as slow as the first). So ≤ 33 ms needs the pool to hold what is seen,
-   tens of thousands of lipids near, and the far look to take over at a few px a lipid, cheaply.
+1. **The unit is the triangle.** A triangle holds ~470 k lipids: the close view's pool (2 M) holds 4 of the 76 triangles
+   in view; the rest show the surface (`probe-x600-close.png`: a lipid triangle's corner on a smear). The first frame
+   takes 4.1 s: the write pass is a thread a (triangle, member), each writing ~10 k lipids in a row.
+2. **The wrap is O(lipids).** The count pass (a thread a triangle over its cells' patch lipids) is 7.7 s at ×600, linear
+   in the lipids (1.0 s at ×20); its counts are what the pool and selection read.
+3. **The far look is vertex colours capped at 1 M vertices.** At ×600 a vertex is ~10 lipid spacings: speckles at middle
+   (`probe-x600-middle.png`), a rainbow smear close, nothing of the head pattern; and the four 1 M-vertex surfaces cost
+   ~50 ms a frame (whole and middle: 62 ms with no lipid drawn, the empty scene 10 ms).
+4. **A frame costs what is drawn, ~1–2 µs a lipid in view at the fine levels** (×20 close: 0.27 M → 500 ms, 44 k → 104
+   ms; whole at the coarse levels 0.27 µs a lipid). The selection is not the cost (taken views are 0–1 ms of CPU in the
+   culler's hook; the frames at rest are as slow as the first). So ≤ 33 ms needs the pool to hold what is seen, tens of
+   thousands of lipids near, and the far look to take over at a few px a lipid, cheaply.
 
 ## Round 5, design (checkpoint, 2026-11-09, before code)
 
-**1. Cells, not triangles (selection below the triangle; extension only).** The 4b cells already make a cell's
-lipids a function of its kind: cell (cx, cy) of region r draws kind `cellEntry(r, cx, cy)` (4,096 kinds: offset,
-spin), its lipids those of the patch whose image falls in the cell square. So per kind and member the count is known
-from the patch alone (4,096 × the patch's lipids, once a patch, ~20 ms), and a triangle's cell holds at most that many:
-a cell on the triangle's edge writes the lipids the triangle does not own as dead slots (the culler skips them). The
-work unit is a (triangle, cell): per view the CPU tests triangles (frustum, px) as now, then the cells of each
-triangle it keeps, only those within the distance where a lipid is ≥ the enter px (the disc of the triangle's plane
-inside that ball), nearest first into the pool (its capacities: the budget shared by the members' mean count a cell).
-The bases are a prefix of the kinds' counts over the selected cells (CPU, O(selected cells × members), uploaded with
-the list on a new selection). The write pass: a thread a (selected cell, member), ~20 lipids × 4 images each. The
-count pass and its readback go: nothing O(lipids) at wrap; the label's count is the area's estimate (cells × the
-kinds' mean), exact only by export. Determinism: a cell's lipids are `eachHit`'s restricted to that cell (export's),
-whatever the view. Tiles' lost parts use the same path (enter 0, budget unbounded).
+**1. Cells, not triangles (selection below the triangle; extension only).** The 4b cells already make a cell's lipids a
+function of its kind: cell (cx, cy) of region r draws kind `cellEntry(r, cx, cy)` (4,096 kinds: offset, spin), its
+lipids those of the patch whose image falls in the cell square. So per kind and member the count is known from the patch
+alone (4,096 × the patch's lipids, once a patch, ~20 ms), and a triangle's cell holds at most that many: a cell on the
+triangle's edge writes the lipids the triangle does not own as dead slots (the culler skips them). The work unit is a
+(triangle, cell): per view the CPU tests triangles (frustum, px) as now, then the cells of each triangle it keeps, only
+those within the distance where a lipid is ≥ the enter px (the disc of the triangle's plane inside that ball), nearest
+first into the pool (its capacities: the budget shared by the members' mean count a cell). The bases are a prefix of the
+kinds' counts over the selected cells (CPU, O(selected cells × members), uploaded with the list on a new selection). The
+write pass: a thread a (selected cell, member), ~20 lipids × 4 images each. The count pass and its readback go: nothing
+O(lipids) at wrap; the label's count is the area's estimate (cells × the kinds' mean), exact only by export.
+Determinism: a cell's lipids are `eachHit`'s restricted to that cell (export's), whatever the view. Tiles' lost parts
+use the same path (enter 0, budget unbounded).
 
-**2. The far look: the patch's top view as a texture, mapped per fragment (library: `packages/graphics`, WGSL only).**
-A mesh option (`dPatchTexture`): per vertex its point in its region's plane and its region (flat); per fragment the
-cutter's own map (cell, kind by the same hash, offset and spin, the box's period) into a texture of the patch's top
-view (4c's `topGrid` raster at the switch's level: the species on top, shaded by its height), sampled with
-`textureGrad` by the rotated derivatives of the plane point (mipmapped, repeat): exactly the spheres' pattern at the
-switch, the true mean far away, any scale. The mesh is the triangles themselves (2,880 × 3 vertices a surface, not
-1 M), each vertex lifted along the smooth normal to the leaflet's head height. Colour by zoom folds in per fragment
-(far colour → texture by the lipid's px, the levels' edges). A colour change re-uploads the texture (a few hundred kB),
-not the surfaces. Size: WGSL ~120, TS plumbing (values, attribute, texture with mips, sampler) ~150: ~270, under 600.
+**2. The far look: the patch's top view as a texture, mapped per fragment (library: `packages/graphics`, WGSL only).** A
+mesh option (`dPatchTexture`): per vertex its point in its region's plane and its region (flat); per fragment the
+cutter's own map (cell, kind by the same hash, offset and spin, the box's period) into a texture of the patch's top view
+(4c's `topGrid` raster at the switch's level: the species on top, shaded by its height), sampled with `textureGrad` by
+the rotated derivatives of the plane point (mipmapped, repeat): exactly the spheres' pattern at the switch, the true
+mean far away, any scale. The mesh is the triangles themselves (2,880 × 3 vertices a surface, not 1 M), each vertex
+lifted along the smooth normal to the leaflet's head height. Colour by zoom folds in per fragment (far colour → texture
+by the lipid's px, the levels' edges). A colour change re-uploads the texture (a few hundred kB), not the surfaces.
+Size: WGSL ~120, TS plumbing (values, attribute, texture with mips, sampler) ~150: ~270, under 600.
 
 **3. Colour by zoom, three levels** with Mol*'s `ColorLevels` (far, entity, atom): far the membrane's colour
 (`tColorFar`), middle each species' (the theme), close each atom's element (`tColorNear` by group: a cutter member's
@@ -771,31 +772,99 @@ default goes from 0.5 (both) to where the texture now matches (measured: the fra
 smallest under 33 ms close and middle on the M1); budget 2 M stays the cap, what is selected is what is in view.
 
 **Tests (each failing first where it is a fix):** the cell selection's reference (a cell's lipids = export's in that
-cell; two views, the same cell, the same lipids); the camera path at ×600 on a synthetic mesh of the model's size
-(2,880 triangles, ~1 G lipids: an icosphere), frame ms, pool, cells, selection ms, 0 at rest, no hole close (the
-covered fraction); the wrap's scaling guard ×20/×100/×600 (time and memory flat in lipids); the far texture's colour
-equals the spheres' at the switch (4c's metric) at ×20 and ×600; colour by zoom's three levels each change the image;
-tiles refused at ×600.
+cell; two views, the same cell, the same lipids); the camera path at ×600 on a synthetic mesh of the model's size (2,880
+triangles, ~1 G lipids: an icosphere), frame ms, pool, cells, selection ms, 0 at rest, no hole close (the covered
+fraction); the wrap's scaling guard ×20/×100/×600 (time and memory flat in lipids); the far texture's colour equals the
+spheres' at the switch (4c's metric) at ×20 and ×600; colour by zoom's three levels each change the image; tiles refused
+at ×600.
 
 **Stop lines.** Library ~270 (< 600). If the per-fragment hash or `textureGrad` across cell seams shows seams or costs
 more than ~5 ms at 900×600, the fallback is the region map alone (no cells: the patch repeats at its period far away,
 exact only where lipids are drawn).
 
-## Round 5, built so far (2026-11-09, interim)
+## Round 5, built (2026-11-09)
 
 - `7f1fc2916` cells below the triangle (procedural.ts, cutter.ts `eachCellHit`/`kindCounts`, kernel's write pass by
   units, the count pass over small triangles only), the leaflet facing the camera (off under a clip).
 - `835dffca8` graphics: `dPatchTexture` (mesh WGSL, ~105 lines with the `sLinearMipmapRepeat` sampler).
 - `b657932c1` the far surfaces: the mesh's triangles with the patch texture (`patchSurface`, `patchRaster`).
 - `2d240dfa2` the near surface off the mid-plane (at the lowest head it stood over the coarser levels' lipids in bands:
-  `r5-probe/probe-x20-box-z200.png` before, `probe-x20-drop15-z200.png` after); a cell culled by its box; a no-hole test.
+  `r5-probe/probe-x20-box-z200.png` before, `probe-x20-drop15-z200.png` after); a cell culled by its box; a no-hole
+  test.
 - `90dc0062c` spheres down to 2 px by default.
 
 Numbers after (probe, x600, M1 Dawn, load 13-20): wrap 1.5 s (repr), RSS 0.8 GB; whole 10 ms, middle 11-14 ms; zoom
-z200/z400/z800 (Å from the surface): 205/169/142 ms with 41 k/120 k/393 k lipids (selection 2-9 ms both leaflets);
-z1600 and past: 11 ms (texture). Close frames are bound by drawing the visible lipids at atom detail, the same at x20
-(z200 236 ms): not the scale any more.
+z200/z400/z800 (Å from the surface): 205/169/142 ms with 41 k/120 k/393 k lipids (selection 2-9 ms both leaflets); z1600
+and past: 11 ms (texture). Close frames are bound by drawing the visible lipids at atom detail, the same at x20 (z200
+236 ms): not the scale any more.
 
-Next: colour by zoom three levels (atoms by element), tiles refused above a count and given the texture, the brief's
-tests (wrap scaling x20/x100/x600, camera path x600 synthetic, far-texture colour at x600, colour by zoom, tiles
-refused), then the gate.
+Later commits: `e1b427405` colours by zoom to atoms by element; tiles refused past 50 M (`MaxTileLipids`, menu "tiles,
+small objects"); tests: the wrap's scaling guard x20/x600 (flat), the x600 camera path (Dawn), the switch's colour at
+x600, the patch surface and texture, the three colour levels (failing without element colours). Specs, TODO, changelog.
+
+## Round 5, the gate (2026-11-09)
+
+An Opus reviewer read `8ad314736...HEAD`: 5 must-fix, 7 should-fix, 9 nits. The skeptic was not run (context); the
+must-fixes were fixed directly, each confirmed by reading.
+
+| Finding                                                                           | Outcome                                                                                                                                |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| M1 tiles estimate `\| 0` overflows past 2^31: refusal off                         | test `450e090d9` (90 000 Å sphere; not run against the bug: it would build billions), fix `d8ab52057`                                  |
+| M2 patch textures leaked on destroy and a new context                             | fixed `d8ab52057` (`releaseTextures`); no test (mock context: open)                                                                    |
+| M3 a non-reuse rebuild destroyed the textures still drawn                         | fixed `d8ab52057` (release no longer rotates); no test                                                                                 |
+| M4 a clip added with a still camera does not reselect (facing)                    | partly `d8ab52057`: selections reset where clips come or go; the reselect waits for the culler's next view hook (a still camera: open) |
+| M5 goals not met: close frames 130-240 ms, selection 2-9 ms (> 4), bands unpinned | stated here and in the PR body; Ludo's call                                                                                            |
+| S1 no test pins the WGSL map to the cutter's                                      | open (port the s-chain to TS against hitAffine heads)                                                                                  |
+| S2 texture slides near creases (lift along vertex normal, not rn)                 | open (~10 Å at a 30° crease)                                                                                                           |
+| S3 closures and subarrays per select / upload                                     | open (header claim to soften or hoist)                                                                                                 |
+| S4 x600 scaling guard has no positive control                                     | open                                                                                                                                   |
+| S5 slow Dawn tests untagged                                                       | open (as the earlier Dawn files)                                                                                                       |
+| S6 graphics change without its own test; upstream?                                | open (Ludo's call)                                                                                                                     |
+| S7 unitKey wrong at 2^21 triangles                                                | open (guard T)                                                                                                                         |
+| N1-N9                                                                             | open, nits (N4: `farSurface`, `cutterBases` now test-only)                                                                             |
+
+## Round 5, checks (2026-11-09, after the must-fixes)
+
+`npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm check:workspace`, mesoscale and prism-me
+`styles:check`, prism-me `typecheck:storybook` pass; `pnpm format:check` passes after this file's prettier. Quick lane
+with Dawn (mesoscale, cryoet, stage-tools, prism-me): 81 files, 549 passed, 1 skipped. Graphics quick lane with Dawn
+(after the library commit): 146 files, 1,745 passed.
+
+## Round 5, images (headless Dawn, M1, 900x600, perspective, the app's look; looked at)
+
+`~/prism-me-lanes/lipid-tiles-shots/r5/`: `r5-x600-{whole,middle,close}.png`, `r5-x600-zoom-z{200..12800}.png` and
+`r5-x600-zoom-sheet.png`, `r5-x600-byzoom-*.png` and `-sheet` (colours by zoom: the membrane's beige far, species,
+lipids close), `r5-x20-tiles-texture-whole.png`. Diagnostics in `r5-probe/` (before: `probe-x600-close.png` the
+half-drawn triangle, `probe-x600-middle.png` speckles; the bands `probe-x20-box-z200.png`, gone
+`probe-x20-drop15-z200.png`). Seen: whole and middle a smooth species-mean texture, no speckle; close covered, a dark
+seam line at region creases (the look's AO and outline); shadows draw dark wedges inside the knot's loop (also with
+tiles: the look's, not the texture).
+
+## Round 5, end
+
+**Measured before.** Whole triangles (~470 k lipids each at x600): the close view's pool held 4 of 76 triangles in view,
+a 4.1 s first frame; a 7.7 s O(lipids) count pass at wrap; four 1 M-vertex vertex-coloured surfaces (speckle, ~50 ms a
+frame).
+
+**Built.** Cells below the triangle (kinds' counts from the patch, dead slots on edge cells, the facing leaflet), the
+patch texture in the mesh shader (library, ~105 lines), the far surfaces as the mesh's triangles, colours by zoom to
+atoms, tiles refused past 50 M, the switch at 2 px.
+
+**Numbers after (x600, M1 Dawn, app look, load 3-9).** Wrap 1.4 s (repr; 0.95 s for the synthetic sphere), RSS 0.83 GB.
+Frames: whole 18 ms, middle 21 ms, close (400 Å) 137 ms with 93 k lipids; zoom z200/400/800/1600/3200/6400/12800:
+128/138/105/45/49/34/23 ms. Selection 2-6 ms for both leaflets. Without the look: whole 10, middle 11-14 ms.
+
+**Decided (this session, for Ludo).** Small triangles stay whole (`WholeCells` 8 cells); the near surface off the
+mid-plane; spheres to 2 px by default; tiles past 50 M refused.
+
+**Learned.** Past the texture the frame is what the lipids in view cost at their size (8-16 px lipids at atom detail,
+depth-writing impostors: ~130-240 ms on the M1 at x20 and x600 alike): the scale no longer matters, the close level
+does. A cell's lipids depend on its kind only, so slots are known from the patch alone.
+
+**Size.** About 1,000 production lines (selection ~420, kernel ~150, membrane ~200, far surface ~120, library ~105)
+against ~900; the selection's clipping and the texture plumbing took the room.
+
+**Next (precise).** 1. Run the lane-skeptic on the reviewer's findings above (diff `8ad314736...HEAD`). 2. M4 fully:
+have the culler call the pool's view hook once after a clip flip (or bump the LodView version). 3. S1 test (TS port of
+`patchColor`'s s-chain vs `hitAffine` heads), S7 guard, S4 control, S3 hoist. 4. A lighter close level for 8-16 px
+lipids (Ludo's call after Chrome on 1354).

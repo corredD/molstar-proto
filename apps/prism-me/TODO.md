@@ -91,8 +91,9 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 - **Lipid membranes made per view, left from lane `lipid-procedural`** (2026-11-08;
   progress/2026-11-08-lipid-procedural.md):
   - A row per species in the tree (eye and colour): the membrane's Look holds them this round.
-  - Picking a lipid: a pick's slot maps to (triangle, lipid) through the selection (its units and bases; `lipidAt` went with round 5's cells), but the
-    membrane's `getLoci` is still empty; per-lipid layers stay per species (a slot is not a lipid).
+  - Picking a lipid: a pick's slot maps to (triangle, lipid) through the selection (its units and bases; `lipidAt` went
+    with round 5's cells), but the membrane's `getLoci` is still empty; per-lipid layers stay per species (a slot is not
+    a lipid).
   - Ghosts, outlines, transparency and glow per species: not mapped onto the membrane yet (colours by zoom are, round
     4c: far its colour, then its species'; round 5: then its atoms by element). A colour change builds the membrane's
     objects again (the patch texture itself is a few hundred kB): a colour-only update path. A dither of the spheres
