@@ -307,3 +307,18 @@ levels `0 Å ×1 b1 · 4000 Å ×8 b2 · 8000 Å ×64 b2`.
 hardly visible; at a silhouette heads above and below, no stray layer between.
 
 **Size and model.** ~250 production lines; Opus (shader/texture design). Gate on the round's diff.
+
+## Round 4b design (as found, 2026-11-08, before code)
+
+1. **Colours like the spheres: vertex colours on a finer surface, from the patch itself.** A head-scale pattern per
+   fragment needs a shader change (Mol*'s grid colours are read per vertex, `varyings.wgsl.ts`; its bump is value
+   noise): a library change, over this round. Instead, the far surface is the mesh subdivided to about two lipid
+   spacings (capped at 1 M vertices a surface, the spacing growing past it), and each vertex coloured by the species of
+   the nearest head in the patch at the point the cutter maps it to (its triangle's region frame: the same plane, spin
+   and offset as the lipids): the far look is the near look blurred, in the species' proportions, deterministic. A
+   per-patch grid (≈2 Å cells, nearest shown head) makes each vertex O(1); hidden species leave the grid; colorBy
+   uniform keeps one colour. Built once a look (never per frame), extension only, ~200 lines. At rest: no work.
+2. **Two surfaces at the heads.** One per cut leaflet, offset along the mesh's vertex normals by that leaflet's head
+   plane (the mean over its conformers of their outermost atom's z: + outer, − inner), single-sided facing out of its
+   leaflet (the inner one's winding flipped).
+3. **The layer at the mesh: diagnosed before a change** (below, with images).
