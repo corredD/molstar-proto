@@ -1104,6 +1104,13 @@ Numbers after the gate (load 9-43): wrap 9.6 s, RSS 1.1 GB; enclosures on the ye
 PM); frames whole 32-37, middle 45-48, PM close 104 ms (73 k lipids), a mitochondrion inside 206 ms (145 k), the slice
 75 ms; selection 0.1-1.3 ms far, 8-20 ms close (load 43).
 
+## Round 6, checks (2026-11-09, after the gate)
+
+`npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `pnpm check:workspace`, mesoscale
+and prism-me `styles:check`, prism-me `typecheck:storybook` pass. Quick lane with Dawn (mesoscale, cryoet, stage-tools,
+prism-me): 83 files, 564 passed, 4 skipped. Medium Dawn (`lipid-procedural.webgpu.test.ts`): pass. Mesoscale `test:perf`
+and the round 6 scaling guards pass. Graphics untouched.
+
 ## Round 6, end
 
 **Measured before.** Nine membranes wrapped one by one: 15.5 s and nine 2.2 M pools; every triangle tested every view
