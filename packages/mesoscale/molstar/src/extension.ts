@@ -370,14 +370,29 @@ export function createMesoViewSpecExtension(o: MesoViewSpecOptions = {}): Viewer
           alias: ['mesoviewspec', 'meso view spec', 'document', 'open document'],
           action: 'Open',
         }),
-        operationCommand(api, m.close, { category, icon: 'x', alias: ['close document'], action: 'Close' }),
-        operationCommand(api, m.get, { category, icon: 'info', alias: ['document outline'], action: 'Show' }),
-        operationCommand(api, m.edit, { category, icon: 'pencil', alias: ['patch', 'edit document'], action: 'Apply' }),
+        operationCommand(api, m.close, {
+          category,
+          icon: 'x',
+          alias: ['mesoviewspec close', 'close document'],
+          action: 'Close',
+        }),
+        operationCommand(api, m.get, {
+          category,
+          icon: 'info',
+          alias: ['mesoviewspec get', 'document outline'],
+          action: 'Show',
+        }),
+        operationCommand(api, m.edit, {
+          category,
+          icon: 'pencil',
+          alias: ['mesoviewspec edit', 'mesoviewspec.edit', 'patch', 'edit document'],
+          action: 'Apply',
+        }),
         {
           ...operationCommand(api, m.save, {
             category,
             icon: 'save',
-            alias: ['save document', 'export document'],
+            alias: ['mesoviewspec save', 'save document', 'export document'],
             action: 'Save',
           }),
           async run(args) {
