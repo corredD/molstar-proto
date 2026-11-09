@@ -39,6 +39,7 @@ import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
 import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
+import { sheet, view } from './lipid-selection-cases.js';
 
 // The lipid membrane's bulk paths over n and 4n tiles (`test:scaling`; apps/prism-me/AGENTS.md, no accidental
 // quadratic): the CPU's half of the assignment (variants, counts, slots) and its reference, and a whole sphere built
@@ -46,6 +47,7 @@ import { syntheticPatchPdb } from './lipid-fixtures.js';
 // over N triangles (its CPU reference: the GPU's passes are per triangle too), and the lost triangles' search.
 
 const kinds = { edgeTypes: 2, vertexColors: 2, variants: 2, seed: 1 };
+const sheetBox = [154, 154] as const;
 registerLipidPatch('scaling-patch', syntheticPatchPdb().text);
 
 /** a sphere of about `n` triangles at edge 100 (20 k² triangles of edge ≈ 1.2 R / k) */
@@ -337,3 +339,42 @@ it('a cutter wrap is flat in its lipids: the model’s 2,880 triangles at x20 an
   expect(s.allocRatio, describeScaling(s)).toBeLessThan(3);
   expect(control.timeRatio, describeScaling(control)).toBeGreaterThan(3);
 }, 600_000);
+
+it('a close view over a mesh of N triangles costs what is in reach, not N (round 6: the yeast cell’s 1.08 M triangles)', () => {
+  // a sheet of n triangles of 200 Å seen from 400 Å above a corner: the same few hundred triangles in view and in reach
+  // whatever n (a whole cell's mesh around them); every triangle a whole unit, 3 lipids a member
+  const s = scaling(
+    {
+      setup: (n) => {
+        const k = Math.round(Math.sqrt(n / 2));
+        const { positions, indices } = sheet(k, 200);
+        const regions = cutterRegions(positions, indices, 7);
+        const { wholeOf, count } = wholeTriangles(positions, indices, regions, sheetBox);
+        const selection = createLipidSelection(
+          {
+            positions,
+            indices,
+            regions,
+            box: sheetBox,
+            members: 2,
+            kinds: new Uint32Array(2 * CellKinds).fill(3),
+            wholeOf,
+            wholeCounts: new Uint32Array(2 * count).fill(3),
+            side: 1,
+          },
+          Uint32Array.of(1_000_000, 1_000_000),
+        );
+        // two views to alternate (each select runs in full)
+        return { selection, views: [view(Vec3.create(600, 600, 400)), view(Vec3.create(620, 600, 400))], k: 0 };
+      },
+      run: (c) => {
+        c.k += 1;
+        const v = c.views[c.k % 2];
+        c.selection.select(v.plane, v.frustum, v.depthScale, 0, { lipidSize: 8, enterPx: 2, keep: 0.8, facing: 60 });
+      },
+    },
+    20000,
+  );
+  // a scan of every triangle a view reads about 4 here; what is in reach alone, about 1
+  expect(s.timeRatio, describeScaling(s)).toBeLessThan(2);
+});
