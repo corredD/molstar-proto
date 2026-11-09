@@ -286,22 +286,22 @@ over n and 4n triangles). Images and numbers: Numbers above. Not tried in Chrome
 
 **Asked.** "the bump should be colored like the spheres. And also, the spheres head are above and below the membrane, so
 the texture should be there as well. not below. And I am not sure what is this colored layer between the bump and the
-spheres at the level of the mesh". His settings then: Both, Lipids down to 3.6 px, Lipids at most 457,000, custom
-levels `0 Å ×1 b1 · 4000 Å ×8 b2 · 8000 Å ×64 b2`.
+spheres at the level of the mesh". His settings then: Both, Lipids down to 3.6 px, Lipids at most 457,000, custom levels
+`0 Å ×1 b1 · 4000 Å ×8 b2 · 8000 Å ×64 b2`.
 
 1. **The far surface coloured like the spheres.** Today one mean colour (`meanColor`, a brown). Wanted: a head-scale
    pattern in the species' own colours, in their proportions, following the species rows (colour, eye) and colorBy.
    Design at a checkpoint (e.g. the patch's heads, seen from above, baked into a tileable colour + bump texture mapped
    by each region's cutter plane, so the far look is the near look blurred; or per-vertex colours on a finer surface).
-   Must be invisible-cheap at rest and add no per-frame allocation. A test: the surface's colours are the species'
-   (not one), a hidden species leaves it.
-2. **Two surfaces, at the heads.** One per leaflet, offset along the normal to that leaflet's head plane (outer +,
-   inner −, from the cutter table's offsets), single-sided facing out of its leaflet, not one double-sided surface at
-   the mid-plane. A test: each surface's distance from the mesh equals its leaflet's head offset.
-3. **The coloured layer at the mesh.** Find what it is before changing it (an image close on a silhouette and the
-   draw's objects): the bilayer's tails seen edge-on between the heads and the mid-plane surface, the coarse sphere
-   levels (stride 8/64, grown) poking through, or the hysteresis band. Report the cause; fix if it is a defect
-   (with 2. the surfaces no longer cut through the tails).
+   Must be invisible-cheap at rest and add no per-frame allocation. A test: the surface's colours are the species' (not
+   one), a hidden species leaves it.
+2. **Two surfaces, at the heads.** One per leaflet, offset along the normal to that leaflet's head plane (outer +, inner
+   −, from the cutter table's offsets), single-sided facing out of its leaflet, not one double-sided surface at the
+   mid-plane. A test: each surface's distance from the mesh equals its leaflet's head offset.
+3. **The coloured layer at the mesh.** Find what it is before changing it (an image close on a silhouette and the draw's
+   objects): the bilayer's tails seen edge-on between the heads and the mid-plane surface, the coarse sphere levels
+   (stride 8/64, grown) poking through, or the hysteresis band. Report the cause; fix if it is a defect (with 2. the
+   surfaces no longer cut through the tails).
 
 **Ludo checks.** The teddy at 1354, Both: from far the surface reads as the same colours as the spheres, the switch
 hardly visible; at a silhouette heads above and below, no stray layer between.
@@ -323,21 +323,59 @@ hardly visible; at a silhouette heads above and below, no stray layer between.
    leaflet (the inner one's winding flipped).
 3. **The layer at the mesh: diagnosed before a change** (below, with images).
 
-**More from Ludo, same try (2026-11-08):** "membrane and membrane with tiling are different now. And the wrap with lipids
-(the first one) I assumed use the cookie cutter, but its highly regular. the one with tiles, doesnt have the color, and
-the texture approach. And cant use clip on it".
+**More from Ludo, same try (2026-11-08):** "membrane and membrane with tiling are different now. And the wrap with
+lipids (the first one) I assumed use the cookie cutter, but its highly regular. the one with tiles, doesnt have the
+color, and the texture approach. And cant use clip on it".
 
 4. **The cutter looks highly regular.** "Wrap with lipids" is the cutter (c692673e6). Find why it reads regular before
-   changing it: regions larger than the 232 Å patch repeat it at its period inside a region; only 4 conformers a
-   species (`cutterTable(…, conformers = 4)`, `i % k` in cutter.ts:74); the same offset or spin across neighbouring
-   regions. Measure (e.g. the autocorrelation of head positions in a big region, or the count of distinct
-   neighbourhoods) and fix so no period or tiling shows at any distance; compare with cellPACKgpu's per-triangle
-   random offset and spin. A test that fails on today's regularity.
-5. **One membrane, two generators.** Whatever the method, a membrane has the same properties and looks: the species
-   rows (eye, colour), colorBy, the far surface (1, 2), Levels. The tiles membrane gets them, or say at the checkpoint
-   what cannot hold for tiles and why.
+   changing it: regions larger than the 232 Å patch repeat it at its period inside a region; only 4 conformers a species
+   (`cutterTable(…, conformers = 4)`, `i % k` in cutter.ts:74); the same offset or spin across neighbouring regions.
+   Measure (e.g. the autocorrelation of head positions in a big region, or the count of distinct neighbourhoods) and fix
+   so no period or tiling shows at any distance; compare with cellPACKgpu's per-triangle random offset and spin. A test
+   that fails on today's regularity.
+5. **One membrane, two generators.** Whatever the method, a membrane has the same properties and looks: the species rows
+   (eye, colour), colorBy, the far surface (1, 2), Levels. The tiles membrane gets them, or say at the checkpoint what
+   cannot hold for tiles and why.
 6. **Clip on a membrane.** The right-click and properties offer the same clipping as on a particle list or mesh (menu.ts
    ~475 excludes a membrane from `moveItems`; clipping must not be excluded with it), for both methods, near spheres and
    far surface alike. A test: a clip applied to a membrane removes what it cuts in both looks.
 
 Size now ~450 production lines; checkpoint if over ~600.
+
+## Round 4b, status (2026-11-08; stopped for context, precise next steps below)
+
+**Built.** `ef6b46fea` design checkpoint; `c09e71076` (its failing test first) items 1 and 2: `lipids/far-surface.ts` (a surface a cut
+leaflet at its head plane, `headOffset`, single-sided out of its leaflet; the mesh subdivided to two lipid spacings,
+capped at 1 M vertices; each vertex the species of the patch's nearest shown head where the cutter maps it), its quick
+test, and the Dawn test failing first (one mean-brown surface → two coloured surfaces; the whole view's colours many).
+About 230 production lines.
+
+**Item 3, diagnosed (images `lipid-tiles-shots/r4b-diag-*.png`, looked at).** Not the hysteresis and not the coarse
+levels poking through: the band is the bilayer's own edge where generation stops at a triangle border, seen at a slant
+between the outer heads (≈20 Å above the mesh) and the old mid-plane surface (at the mesh): the tails and the inner
+leaflet's heads in cross-section. With the surfaces at each leaflet's heads (item 2) the outer surface is level with the
+heads, so the edge sits under it. Not reproduced at Ludo's exact view (the teddy is not here); headless the camera is
+orthographic by default (all triangles one size on screen: everything or nothing switches), so the probes set
+perspective.
+
+**Seen in the images (`r4b-model-x20-<close|middle|whole>-<both|spheres|surface>.png`).** The surface now speckles in
+the species' colours; it reads darker and more purple than the lipids, whose coarse levels draw a stride of each
+conformer's atoms (greens dominate). Matching the surface to what the levels draw is open.
+
+**Not done (next steps, in order).**
+
+1. Item 4, the cutter's regularity: measure first. (a) region size against the patch box: `RegionCell` 200 Å vs the
+   CHARMM box 232 Å, but a region is a cell × 96 normal bins, so a flat face's region can span many cells? check
+   `cutterRegions` (a region is per cell and bin: at most ~200 Å, so the patch should not repeat inside one); (b) 4
+   conformers a species (`cutterTable(leaflet, 4)`, `i % k` in `cutter.ts:74`): every lipid of a species drawn as one of
+   4 shapes, turned: likely the regularity; measure distinct shapes per 1000 lipids; fix by more conformers (each a
+   member: render objects and records grow) or a per-lipid spin about the normal from a hash; (c) neighbouring regions'
+   offsets/spins: `cutterRegions` hashes cell and bin, check correlation. Test failing first: a statistic over a flat
+   plane's lipids (e.g. the pair distribution's peak sharpness, or repeats of identical (conformer, azimuth) pairs).
+2. Item 5, tiles = cutter properties: species rows and hide (tiles' variants mix species: hide needs a per-lipid mask in
+   the assign kernel), colours, the far surface (`farSurface` takes a cut leaflet: a tiles leaflet's remeshed surface
+   and its tile set's heads would do), Levels (shared already). Say at a checkpoint which tiles cannot.
+3. Item 6, clip on a membrane: `apps/prism-me/src/explorer/menu.ts` ~475 skips `moveItems` for a membrane, which also
+   drops Clip; offer the clip items alone; the culler culls clipped instances (`syncClip`), the surfaces are meshes:
+   check both looks and both methods in Dawn.
+4. The gate on `541038d31...HEAD` (lane-reviewer, lane-skeptic), the checks, `r4b` images for the cow, the report.
