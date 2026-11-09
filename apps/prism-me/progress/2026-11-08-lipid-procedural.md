@@ -915,3 +915,57 @@ lipids (Ludo's call after Chrome on 1354).
 **Next (after the gate, 2026-11-09).** The gate is closed ("Round 5, the gate closed"): Ludo's calls are M5 (a lighter
 close level) and whether the graphics commits (pool, dead slots, patch texture) go to their own lane from master now;
 left in TODO: N4, X4, X5, N1-N9.
+
+## Round 6 brief (Ludo, 2026-11-09): the yeast cell's membranes
+
+**Asked.** "now that this is ready add the membrane to the yeast model." Ludo chose the whole cell of
+zoidpuff.github.io/yeast_cell_viewer, its compartment meshes only (download approved: ~9.2 MB, outside the repo, no
+licence file in that repo, so nothing of it is committed; MODEL.md cites EMPIAR-11416 (CC0) for the real shapes).
+
+**The data.** `~/prism-me-lanes/yeast-data/`: `organelle_meshes.bin.gz` (format: u32 count, then count × (membrane id,
+nV, nT) u32, then per mesh nV×3 f32 and nT×3 u32, as the viewer's `renderer.ts` `uploadOrganelleMeshes`),
+`geometry.json.gz`-in-name (gzip; `mem_names`), MODEL.md. Decoded by the coordinator to `yeast-data/obj/NN-<name>.obj`,
+units nm (the cell ~4.1 µm across: Scale 10 to Å):
+
+| mesh | triangles | area (nm²) |
+|---|---|---|
+| PM | 124,060 | 5.43e7 |
+| ER (cortical + perinuclear sheets) | 247,664 | 5.42e7 |
+| NE | 105,140 | 2.25e7 |
+| VAC | 63,930 | 2.92e7 |
+| MITO_OM | 54,940 | 1.17e7 |
+| MITO_IM | 318,466 | 2.78e7 |
+| GOLGI | 146,898 | 9.34e6 |
+| PEROX | 6,890 | 1.47e6 |
+| LD (a monolayer in life) | 14,146 | 3.02e6 |
+| total | 1.08 M | 2.1e8 nm² ≈ 6–7e8 lipids |
+
+**What is new against round 5.** Round 5 ran 2,880 triangles; here 1.08 M triangles in 9 membranes, a lipid count
+half of ×600's. So:
+1. **Selection over many triangles.** Per view the selection must not scan every triangle (at 318 k, one mesh): a
+   hierarchy (BVH or the culler's cells) over triangles, frustum and px band tested per node; measure first.
+2. **One budget across membranes.** Nine membranes share the device's pool budget, nearest first across them, not 2 M
+   each (18 M would not fit).
+3. **Load the cell.** A way to open the nine meshes at once in prism-me at the right scale (nm → Å), named by
+   membrane, then wrap all (one operation, one history step: "bulk operations are one change") with a progress pill.
+   Prefer reading the viewer's .bin.gz directly (a cryoet/mesoscale reader through + Open) over OBJ, if small; else the
+   OBJs. Never commit the data; a test uses a synthetic mesh of the same format.
+4. **Per-membrane composition (stated, not built unless cheap).** One CHARMM-GUI patch for all today; yeast PM,
+   mito IM (cardiolipin), LD (monolayer) differ. Record what a per-membrane patch would need.
+5. **Alignment with the slab.** The 600 nm slab Ludo loaded on 11-07 came from the same model: check whether its frame
+   matches these meshes (Å = nm × 10, same origin) on a few particles near the PM if the slab is found; else state it.
+
+**Tests.** The format reader on a synthetic two-mesh buffer; the selection's cost per view at 300 k triangles (a
+scaling guard n and 4n triangles: per-view time sublinear); one budget across membranes (sum of pools ≤ budget,
+nearest first); wrap all = one history step; camera path on a synthetic many-mesh cell (frame ms, 0 at rest). Images
+r6-*.png: the whole cell, a slice through it (clip), close on the PM, NE with the ER, mitochondria.
+
+**Ludo checks.** In Chrome on 1354: + Open the yeast cell's membranes (or the nine OBJs), Wrap all with lipids: a few
+seconds; fly whole → close: interactive, no holes, by zoom colours; clip through the cell to see the inner
+membranes.
+
+**Machine care.** The per-view wrap of the nine meshes may run (it builds no lipids); no full build or export above
+~2 M lipids; abort a run past 8 GB RSS; one heavy job at a time, wait while load > 12.
+
+**Size and model.** ~600 production lines (selection hierarchy 250, shared budget 120, reader and wrap-all 180, docs
+50); Opus. Gate on the round's diff.
