@@ -67,63 +67,70 @@ describe.skipIf(!webgpu)('the switch between a membrane’s spheres and its far 
       canvas.setProps({ camera: { ...canvas.props.camera, mode: 'perspective' } });
       // the rare species tallest: POPC's heads 7 Å above the others'
       registerLipidPatch('dawn-switch', syntheticPatchPdb(12, 14, { POPC: 27, CHL1: 17 }).text);
-      const params = {
-        ...PD.getDefaultValues(LipidMembraneParams),
-        method: 'cutter' as const,
-        radius: Radius,
-        edge: 100,
-        leaflets: 'outer' as const,
-        patch: 'dawn-switch',
-        center: Vec3.zero(),
-      };
-      const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
-      const camera = canvas.camera;
-      canvas.requestCameraReset({ durationMs: 0 });
-      await plugin.getImageRaw({ width: Size, height: Size });
-      // above the sphere's top, looking down: a lipid about 0.4 px there (the coarsest level), and about 5 px (stride 8:
-      // review M1, the switch's level was always the coarsest)
-      const top = Radius + 20;
-      for (const depth of [2300, 200]) {
-        camera.setState(
-          {
-            ...camera.getSnapshot(),
-            target: Vec3.create(0, 0, top),
-            position: Vec3.create(0, 0, top + depth),
-            up: Vec3.create(0, 1, 0),
-          },
-          0,
-        );
-        await plugin.getImageRaw({ width: Size, height: Size });
-        // a lipid's size on screen at the top (`procedural.ts`: the patch's spacing over the Å a pixel covers there)
-        const lipid = Math.sqrt((12 * 8 * (14 * 8 * 0.866)) / (12 * 14));
-        const px = lipid / ((2 * depth) / (camera.projection[5] * Size));
-        const at = async (name: string, spheresPx: number) => {
-          await plugin
-            .build()
-            .to(node.ref)
-            .update({ ...params, spheresPx })
-            .commit();
-          await plugin.getImageRaw({ width: Size, height: Size });
-          const image = (await plugin.getImageRaw({ width: Size, height: Size })).data;
-          if (process.env.LIPID_SHOTS)
-            await writePng(`${process.env.LIPID_SHOTS}/r4c-switch-${depth}-${name}.png`, Size, Size, image);
-          return image;
+      // round 4c's sphere, and one of the model's triangles at x600 (round 5: the patch texture at any scale)
+      for (const [radius, edge] of [
+        [Radius, 100],
+        [50000, 6000],
+      ]) {
+        const params = {
+          ...PD.getDefaultValues(LipidMembraneParams),
+          method: 'cutter' as const,
+          radius,
+          edge,
+          leaflets: 'outer' as const,
+          patch: 'dawn-switch',
+          center: Vec3.zero(),
         };
-        const repr = () =>
-          plugin.state.data.cells.get(node.ref)!.obj!.data.repr as unknown as { pool: { live: number } };
-        // just before the switch: the spheres; just past it: the surface, the camera where it was
-        const spheres = await at('spheres', px / 1.3);
-        expect(repr().pool.live).toBeGreaterThan(0);
-        const surface = await at('surface', px * 1.3);
-        expect(repr().pool.live).toBe(0);
-        const s = meanOklab(spheres);
-        const f = meanOklab(surface);
-        if (process.env.LIPID_NUMBERS) console.log(JSON.stringify({ px, s, f }));
-        expect(s.n).toBeGreaterThan(Size * Size * 0.1);
-        expect(f.n).toBeGreaterThan(Size * Size * 0.1);
-        // the pop: luminance and colour (Oklab's a, b) within a bound
-        expect(Math.abs(s.L - f.L)).toBeLessThan(0.04);
-        expect(Math.hypot(s.a - f.a, s.b - f.b)).toBeLessThan(0.02);
+        const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
+        const camera = canvas.camera;
+        canvas.requestCameraReset({ durationMs: 0 });
+        await plugin.getImageRaw({ width: Size, height: Size });
+        // above the sphere's top, looking down: a lipid about 0.4 px there (the coarsest level), and about 5 px (stride 8:
+        // review M1, the switch's level was always the coarsest)
+        const top = radius + 20;
+        for (const depth of [2300, 200]) {
+          camera.setState(
+            {
+              ...camera.getSnapshot(),
+              target: Vec3.create(0, 0, top),
+              position: Vec3.create(0, 0, top + depth),
+              up: Vec3.create(0, 1, 0),
+            },
+            0,
+          );
+          await plugin.getImageRaw({ width: Size, height: Size });
+          // a lipid's size on screen at the top (`procedural.ts`: the patch's spacing over the Å a pixel covers there)
+          const lipid = Math.sqrt((12 * 8 * (14 * 8 * 0.866)) / (12 * 14));
+          const px = lipid / ((2 * depth) / (camera.projection[5] * Size));
+          const at = async (name: string, spheresPx: number) => {
+            await plugin
+              .build()
+              .to(node.ref)
+              .update({ ...params, spheresPx })
+              .commit();
+            await plugin.getImageRaw({ width: Size, height: Size });
+            const image = (await plugin.getImageRaw({ width: Size, height: Size })).data;
+            if (process.env.LIPID_SHOTS)
+              await writePng(`${process.env.LIPID_SHOTS}/r4c-switch-${depth}-${name}.png`, Size, Size, image);
+            return image;
+          };
+          const repr = () =>
+            plugin.state.data.cells.get(node.ref)!.obj!.data.repr as unknown as { pool: { live: number } };
+          // just before the switch: the spheres; just past it: the surface, the camera where it was
+          const spheres = await at('spheres', px / 1.3);
+          expect(repr().pool.live).toBeGreaterThan(0);
+          const surface = await at('surface', px * 1.3);
+          expect(repr().pool.live).toBe(0);
+          const s = meanOklab(spheres);
+          const f = meanOklab(surface);
+          if (process.env.LIPID_NUMBERS) console.log(JSON.stringify({ radius, px, s, f }));
+          expect(s.n).toBeGreaterThan(Size * Size * 0.1);
+          expect(f.n).toBeGreaterThan(Size * Size * 0.1);
+          // the pop: luminance and colour (Oklab's a, b) within a bound
+          expect(Math.abs(s.L - f.L)).toBeLessThan(0.04);
+          expect(Math.hypot(s.a - f.a, s.b - f.b)).toBeLessThan(0.02);
+        }
+        await plugin.build().delete(node.ref).commit();
       }
       expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
