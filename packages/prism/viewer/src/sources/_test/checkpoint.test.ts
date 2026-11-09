@@ -209,8 +209,9 @@ describe('behavior-owned cells', () => {
       expect(isBehaviorOwned(t)).toBe(true);
     }
     expect(refsOf(before)).toContain(
-      [...v.plugin.state.data.cells.values()].find((c) => c.transform.transformer.id.endsWith('custom-model-properties'))!
-        .transform.ref,
+      [...v.plugin.state.data.cells.values()].find((c) =>
+        c.transform.transformer.id.endsWith('custom-model-properties'),
+      )!.transform.ref,
     );
   });
 });
@@ -222,7 +223,7 @@ describe('custom state in the size', () => {
     const doc = { version: 1, items: Array.from({ length: 200 }, (_, i) => ({ id: i, text: `item ${i}` })) };
     let current: unknown = doc;
     let gets = 0;
-    v.plugin.state.registerCustomState('test.document', { get: () => ((gets++, current)), set: () => {} });
+    v.plugin.state.registerCustomState('test.document', { get: () => (gets++, current), set: () => {} });
     const port = createCheckpointPort(v.plugin);
     let measured = 0;
     const real = JSON.stringify;
