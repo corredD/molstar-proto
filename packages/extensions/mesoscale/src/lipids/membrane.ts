@@ -36,7 +36,7 @@ import { type FarSurface, farSurface, headOffset } from './far-surface.js';
 import { createLipidSelection, enterPx, type LipidSelection, type MembraneFar, poolCapacities } from './procedural.js';
 import type { GpuInstanceView, GpuInstanceWriter } from '@molstar/graphics/gl/renderable/merged-culler';
 import { farTriangles, icosphere, isotropicRemeshSteps, offsetSurface, type TriMesh } from './remesh.js';
-import { bakeTileSetSteps, type TileSet } from './tiles.js';
+import { bakeTileSetSteps, type Tile, type TileSet } from './tiles.js';
 
 // A membrane of lipid tiles (progress/2026-11-08-lipid-tiles.md, Design): a mesh remeshed at the tiles' edge, a surface
 // per leaflet, each triangle a tile of its variant; one spheres object per variant (groups: lipids), merged and culled on
@@ -215,6 +215,9 @@ export interface MembraneLeaflet {
   readonly tileSet: TileSet;
   readonly mesh: TriMesh;
   readonly slots: TriangleSlots;
+  /** the cutter's view of it, its far surface's colours (round 4b item 5: the cutter's looks): the patch, its regions */
+  readonly table: CutterTable;
+  readonly regions: CutterRegions;
 }
 
 /**
@@ -327,7 +330,14 @@ export function* buildMembraneSteps(
     const tileSet = yield* getTileSet(patch, name, edge, kinds);
     if (!tileSet) return `No lipid patch named ${patch}: open a patch (a PDB of a bilayer) first.`;
     const mesh = offsetSurface(base, tileSet.offset);
-    out.push({ name, tileSet, mesh, slots: assignSlots(kinds, mesh.indices) });
+    out.push({
+      name,
+      tileSet,
+      mesh,
+      slots: assignSlots(kinds, mesh.indices),
+      table: getCutterTable(patch, name)!,
+      regions: cutterRegions(mesh.positions, mesh.indices, kinds.seed),
+    });
     if (lost && lostRegions) cut.push({ name, table: getCutterTable(patch, name)!, mesh: lost, regions: lostRegions });
   }
   return { method, leaflets: out, cut, kinds, edge, sphere };
@@ -502,6 +512,37 @@ export function membraneSpecies(data: MembraneData) {
   for (const l of data.cut) for (const m of l.table.members) names.add(l.table.species[m.species]);
   for (const l of data.leaflets) for (const s of l.tileSet.species) names.add(s);
   return [...names];
+}
+
+/** A tile without the lipids of `hidden` species (their atoms and groups out); the tile itself when none is hidden */
+export function shownLipids(tile: Tile, species: readonly string[], hidden: ReadonlySet<string>): Tile {
+  if (hidden.size === 0) return tile;
+  const n = tile.lipidSpecies.length;
+  let atoms = 0;
+  let lipids = 0;
+  for (let l = 0; l < n; ++l) {
+    if (hidden.has(species[tile.lipidSpecies[l]])) continue;
+    atoms += tile.lipidAtomStart[l + 1] - tile.lipidAtomStart[l];
+    lipids += 1;
+  }
+  if (lipids === n) return tile;
+  const positions = new Float32Array(atoms * 3);
+  const elements = new Uint8Array(atoms);
+  const lipidAtomStart = new Uint32Array(lipids + 1);
+  const lipidSpecies = new Uint16Array(lipids);
+  let a = 0;
+  let k = 0;
+  for (let l = 0; l < n; ++l) {
+    if (hidden.has(species[tile.lipidSpecies[l]])) continue;
+    const start = tile.lipidAtomStart[l];
+    const end = tile.lipidAtomStart[l + 1];
+    positions.set(tile.positions.subarray(start * 3, end * 3), a * 3);
+    elements.set(tile.elements.subarray(start, end), a);
+    lipidSpecies[k] = tile.lipidSpecies[l];
+    a += end - start;
+    lipidAtomStart[++k] = a;
+  }
+  return { ...tile, positions, elements, lipidAtomStart, lipidSpecies };
 }
 
 /** A lipid's size in the patch, Å: the side of the area a lipid takes (the selection's size on screen) */
@@ -811,7 +852,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     for (let c = 0; c < pools.length; ++c) {
       const { table } = data.cut[c];
       for (let m = 0; m < table.members.length; ++m) {
-        pools[c].shown[m] = cutter && hidden.has(table.species[table.members[m].species]) ? 0 : 1;
+        pools[c].shown[m] = hidden.has(table.species[table.members[m].species]) ? 0 : 1;
       }
     }
     let instances = 0;
@@ -867,7 +908,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       const assigner = assigns[k];
       bounds.radius = data.sphere.radius + Math.abs(tileSet.offset) + tileSet.sphere[3];
       for (let v = 0; v < tileSet.variants.length; ++v) {
-        const tile = tileSet.variants[v];
+        // a hidden species' lipids out of the tile (a tile mixes species: a per-lipid mask, on its atoms)
+        const tile = shownLipids(tileSet.variants[v], tileSet.species, hidden);
         const n = slots.counts[v];
         if (n === 0 || tile.lipidSpecies.length === 0) continue;
         const max = tileSet.variants.length;
@@ -895,9 +937,15 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     selections = pools;
     assigners = assigns;
     merged = mergeRenderObjectsByType(entries, true, new Map(), out, true, true, graphics);
-    // the far look's surfaces (`far`: texture, both): one a leaflet at its heads, in its species' colours (round 4b)
-    if (cutter && props.far !== 'spheres') {
-      for (const leaflet of data.cut) {
+    // the far look's surfaces (`far`: texture, both; tiles: both): one a leaflet at its heads, in its species' colours
+    // (round 4b); a tiles leaflet's on its surface (at its mid-plane: the heads past it), coloured as the cutter cuts the
+    // patch there (the species' proportions and grain, not each tile's lipids)
+    if (props.far !== 'spheres') {
+      const surfaces = [
+        ...data.cut.map((l) => ({ ...l, offset: 0 })),
+        ...data.leaflets.map((l) => ({ ...l, offset: l.tileSet.offset })),
+      ];
+      for (const leaflet of surfaces) {
         const { table } = leaflet;
         const size = lipidSize(table);
         const shown = (sp: number) => !hidden.has(table.species[sp]);
@@ -906,7 +954,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
           leaflet.regions,
           table,
           leaflet.name,
-          headOffset(table, leaflet.name),
+          headOffset(table, leaflet.name) - leaflet.offset,
           shown,
           2 * size,
         );

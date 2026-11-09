@@ -414,6 +414,13 @@ export class MesoscaleApi extends ApiArea {
           'levels: 1 to 4, the first from 0 Å, each a stride ≥ 1 and a bias > 0, their distances rising.',
         );
       }
+      // tiles are built whole: no lipid dropped by its size on screen, so no Texture (round 4b item 5)
+      if (
+        view.far === 'texture' &&
+        (cell.obj?.data as { sourceData?: MembraneData })?.sourceData?.method !== 'cutter'
+      ) {
+        return ApiResult.fail('invalid', 'Texture needs a membrane made per view (the cutter): tiles are built whole.');
+      }
       const old = cell.transform.params as LipidMembraneProps;
       const defined = Object.fromEntries(Object.entries(view).filter(([, v]) => v !== undefined));
       const next = { ...old, ...(detail ? { detail } : {}), ...(levels ? { levels } : {}), ...defined };
@@ -442,7 +449,8 @@ export class MesoscaleApi extends ApiArea {
 
   /**
    * A lipid membrane's species as a particle system's entities (Ludo, 2026-11-08): one shown or hidden, its colour. One
-   * step; drawn again, never cut again. The cutter's membranes generate no lipid of a hidden species
+   * step; drawn again, never cut again. The cutter's membranes generate no lipid of a hidden species, a tiles membrane
+   * draws its tiles without them
    */
   readonly membraneSpecies = this.operation({
     id: 'mesoscale.membraneSpecies',
@@ -465,10 +473,7 @@ export class MesoscaleApi extends ApiArea {
         return ApiResult.fail('not-found', `No lipid membrane ${membrane} in the scene.`);
       }
       const source = (cell.obj.data as { sourceData: MembraneData }).sourceData;
-      // the cutter's alone: tiles are built whole, their species fixed in the tiles (review S6)
-      if (source.method !== 'cutter') {
-        return ApiResult.fail('invalid', 'Only a membrane cut by the cutter shows or hides its species.');
-      }
+      // both methods (round 4b item 5): a tiles membrane hides a species' lipids out of its tiles
       const names = membraneSpecies(source);
       if (!names.includes(species)) {
         return ApiResult.fail(

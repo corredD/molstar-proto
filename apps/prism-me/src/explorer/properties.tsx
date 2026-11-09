@@ -247,9 +247,7 @@ export const Sections: readonly Section[] = [
           return (
             <div class={classes.stack}>
               <MembraneDetailControls area={api.mesoscale} membrane={ref} />
-              {api.mesoscale.membraneDetailState(ref).value?.method === 'cutter' ? (
-                <MembraneSpeciesControls area={api.mesoscale} membrane={ref} />
-              ) : null}
+              <MembraneSpeciesControls area={api.mesoscale} membrane={ref} />
             </div>
           );
         }

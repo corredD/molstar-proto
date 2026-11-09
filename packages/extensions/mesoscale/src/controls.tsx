@@ -249,6 +249,7 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
     </div>
   );
   const cutter = mapState(state, (s) => s?.method === 'cutter');
+  const tiles = mapState(state, (s) => !!s && s.method !== 'cutter');
   const far = mapState(state, (s) => s?.far ?? 'both');
   const setLevel = (j: number, key: keyof MembraneLevel, v: number) =>
     run({ levels: levels.value.map((l, k) => (k === j ? { ...l, [key]: key === 'stride' ? Math.round(v) : v } : l)) });
@@ -281,6 +282,17 @@ export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: st
             </Show>
             {viewRow('Lipids at most', 'budget', 10_000, 8_000_000)}
           </div>
+        )}
+      </Show>
+      {/* tiles: the far surfaces or not; built whole, no switch by size on screen (round 4b item 5) */}
+      <Show when={tiles}>
+        {() => (
+          <Choices
+            label="Far"
+            choices={FarChoices.filter((c) => c.id !== 'texture')}
+            active={far}
+            onPick={(id) => run({ far: id as MembraneFar })}
+          />
         )}
       </Show>
       <Choices

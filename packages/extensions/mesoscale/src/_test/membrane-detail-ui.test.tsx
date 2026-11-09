@@ -75,7 +75,7 @@ describe('a membrane’s levels in its properties', () => {
     expect(v.plugin.state.data.cells.get(membrane)!.transform.params).toMatchObject({ detail: 'balanced' });
     forgetLipidPatch('ui-patch');
   });
-  it('switches a cut membrane’s far look and its switches in one step each, no switch for tiles', async () => {
+  it('switches a membrane’s far look and its switches in one step each, tiles without Texture', async () => {
     registerLipidPatch('ui-patch-far', syntheticPatchPdb().text);
     const base = DefaultPrismViewerSpec();
     const v = await createPrismViewerHeadless({

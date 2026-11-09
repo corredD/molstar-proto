@@ -19,6 +19,7 @@ import {
   membraneCounts,
   membraneLevels,
   registerLipidPatch,
+  shownLipids,
   suitedVariants,
 } from '../lipids/membrane.js';
 import { type MesoGroup, mesoEntities, mesoGroups } from '../model.js';
@@ -221,6 +222,25 @@ describe('lipid membrane', () => {
     const area = 4 * Math.PI * 400 * 400;
     expect(lipids / ((2 * area) / outer.tileSet.areaPerLipid)).toBeGreaterThan(0.85);
     expect(lipids / ((2 * area) / outer.tileSet.areaPerLipid)).toBeLessThan(1.15);
+  });
+
+  it('hides a species out of a tile lipid by lipid, the others whole (round 4b item 5: a tile mixes species)', () => {
+    const data = buildMembrane({ radius: 400 }, 'test-patch', 80, 'outer', kinds);
+    if (typeof data === 'string') expect.fail(data);
+    const { tileSet } = data.leaflets[0];
+    const tile = tileSet.variants[0];
+    const hidden = tileSet.species[tile.lipidSpecies[0]];
+    const shown = shownLipids(tile, tileSet.species, new Set([hidden]));
+    expect(shownLipids(tile, tileSet.species, new Set())).toBe(tile);
+    const kept = [...tile.lipidSpecies].filter((s) => tileSet.species[s] !== hidden);
+    expect([...shown.lipidSpecies]).toEqual(kept);
+    expect(shown.lipidAtomStart.length).toBe(kept.length + 1);
+    expect(shown.positions.length).toBe(shown.lipidAtomStart[kept.length] * 3);
+    expect(shown.elements.length).toBe(shown.lipidAtomStart[kept.length]);
+    // a kept lipid's atoms as they were
+    const l = [...tile.lipidSpecies].findIndex((s) => tileSet.species[s] !== hidden);
+    const a = tile.lipidAtomStart[l];
+    expect(shown.positions.subarray(0, 3)).toEqual(tile.positions.subarray(a * 3, a * 3 + 3));
   });
 
   it('suits the tiles to the mesh by default: a long thin body keeps its shape (Ludo’s cow, 2026-11-08)', () => {
