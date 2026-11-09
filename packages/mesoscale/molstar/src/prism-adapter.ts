@@ -5,10 +5,18 @@
  */
 
 import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { StateSelection } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
-import type { IR } from '@molstar/meso-spec/ir/ir';
+import { type IR, placementSets } from '@molstar/meso-spec/ir/ir';
+import type { PlacementSet } from '@molstar/meso-spec/ir/placements';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { type Issue, issue } from '@molstar/meso-spec/format/issues';
-import { type CommitReport, planCommit, type RendererAdapter } from '@molstar/meso-spec/runtime/adapter';
+import {
+  type CommitPlan,
+  type CommitReport,
+  planCommit,
+  type RendererAdapter,
+} from '@molstar/meso-spec/runtime/adapter';
 import { type ExpansionCache, flattenInstances } from '@molstar/meso-spec/runtime/instancing';
 import type { PrismViewer } from '@molstar/prism-viewer/viewer';
 // the `particles` API area's types (the feature is lazy: `extensions.load('particles')` before its first use)
@@ -18,7 +26,9 @@ import { MesoPlacements, MesoPlacementStore, toParticleList } from './particle-l
 // The Prism adapter (design.md §6.5): the IR into a Prism viewer through its operations, as prism-me's rules ask (one
 // representation per list, looks as layers through `particles.look`, never a representation per type). Per commit, by
 // key (`planCommit`): new sets become lists with a spacefill representation, gone sets are deleted, kept sets are not
-// touched; looks are written when they changed, one `particles.look` per list.
+// touched; looks are written when they changed, one `particles.look` per list. Prism's undo journals the
+// representation and look calls but not the list create and delete, so an undo can strip a kept list's representation
+// (or the list): each commit checks the kept lists and draws again what is missing, and rewrites the looks then.
 
 const now = () => performance.now();
 
@@ -33,6 +43,8 @@ export class PrismMesoAdapter implements RendererAdapter {
   /** Expanded instance sets by key: kept across commits, so a view edit expands nothing again. */
   private readonly expansions: ExpansionCache = new Map();
   private placed = new Map<string, Placed>();
+  /** Bounds of the drawn sets by key: what the camera's radius is taken from. */
+  private readonly bounds = new Map<string, SetBounds>();
   /** For tests and stories: the state objects of the lists, by set key. */
   listObject(key: string) {
     const p = this.placed.get(key);
@@ -51,7 +63,9 @@ export class PrismMesoAdapter implements RendererAdapter {
     // superstructure instances expanded into world sets: Prism has no nested instancing (renderer-recommendations R7)
     const flat = flattenInstances(source, this.expansions);
     const ir = flat.ir;
-    for (const k of [...this.expansions.keys()]) if (!placementSetKeys(ir).has(k)) this.expansions.delete(k);
+    const keys = placementSetKeys(ir);
+    for (const k of [...this.expansions.keys()]) if (!keys.has(k)) this.expansions.delete(k);
+    for (const k of [...this.bounds.keys()]) if (!keys.has(k)) this.bounds.delete(k);
     const t0 = now();
     const plan = planCommit(this.prev, ir);
     const v = this.viewer;
@@ -69,26 +83,35 @@ export class PrismMesoAdapter implements RendererAdapter {
       }
       await v.plugin.runTask(v.plugin.state.data.updateTree(b));
     }
-    for (const set of plan.add) {
+    // kept lists that something outside the adapter (Prism's undo) stripped: drawn again, their looks rewritten
+    const byKey = new Map(placementSets(ir).map((x) => [x.key, x]));
+    const relist: PlacementSet[] = [];
+    const redraw: PlacementSet[] = [];
+    for (const key of plan.keep) {
+      const p = this.placed.get(key);
+      const set = byKey.get(key)!;
+      if (!p || !v.plugin.state.data.cells.get(p.ref)?.obj) {
+        this.placed.delete(key);
+        relist.push(set);
+      } else if (!this.hasRepresentation(p.ref)) redraw.push(set);
+    }
+    for (const set of [...plan.add, ...relist]) {
       const label = `${set.model} · ${set.count.toLocaleString('en-US')} copies`;
       MesoPlacementStore.set(set.key, toParticleList(set, label));
       const b = v.plugin.state.data.build().toRoot().apply(MesoPlacements, { key: set.key, label });
       await v.plugin.runTask(v.plugin.state.data.updateTree(b));
       this.placed.set(set.key, { ref: b.ref, label });
-      const r = await particles.representation({
-        type: this.options.representation ?? 'spacefill',
-        particles: b.ref,
-        // spacefill hides fiber particles by default (a Fibers representation draws them); here a filament's subunits
-        // are the copies to draw (renderer-recommendations.md A8)
-        params:
-          set.fibers && (this.options.representation ?? 'spacefill') === 'spacefill' ? { excludeFibers: false } : {},
-      } as Parameters<typeof particles.representation>[0]);
-      if (!r.ok) throw new Error(`Could not show ${label}: ${r.message}`);
+      await this.represent(set, b.ref, label);
     }
+    for (const set of redraw) {
+      const p = this.placed.get(set.key)!;
+      await this.represent(set, p.ref, p.label);
+    }
+    const repaired = relist.length + redraw.length;
     const t1 = now();
 
     let looksWritten = 0;
-    if (plan.looksChanged) {
+    if (plan.looksChanged || repaired) {
       const lists = [...this.placed].map(([key, p]) => ({
         particles: p.ref,
         layers: plan.looks
@@ -109,28 +132,10 @@ export class PrismMesoAdapter implements RendererAdapter {
     }
     const t2 = now();
 
-    let cameraSet = false;
-    const cam = ir.view.camera;
     const canvas = v.plugin.canvas3d;
-    if (canvas && (plan.cameraChanged || plan.add.length)) {
-      if (cam) {
-        // the scene's radius too: the near and far planes follow it, and a radius left from a smaller scene clips the
-        // front of a larger one (renderer-recommendations.md, adapter findings A2)
-        const sphere = canvas.boundingSphereVisible;
-        const radius = Math.max(sphere.radius, 1);
-        canvas.camera.setState(
-          {
-            position: Vec3.create(cam.position[0], cam.position[1], cam.position[2]),
-            target: Vec3.create(cam.target[0], cam.target[1], cam.target[2]),
-            up: Vec3.create(cam.up[0], cam.up[1], cam.up[2]),
-            radius,
-            radiusMax: radius,
-          },
-          cam.transition ?? 0,
-        );
-      } else canvas.requestCameraReset();
-      cameraSet = true;
-    }
+    const cameraSet = canvas
+      ? commitCamera(canvas, ir, plan, () => sceneRadius(placementSets(ir), this.bounds))
+      : false;
     const t3 = now();
     // representation hints: spheres drawn; structure and surface fall back to spheres here, said once per hint
     const issues: Issue[] = [];
@@ -165,6 +170,15 @@ export class PrismMesoAdapter implements RendererAdapter {
           ),
         );
     }
+    if (repaired)
+      issues.push(
+        issue(
+          'adapter.redrawn',
+          'info',
+          'render',
+          `${repaired} list${repaired === 1 ? '' : 's'} drawn again: ${repaired === 1 ? 'its representation was' : 'their representations were'} removed outside the adapter (an undo)`,
+        ),
+      );
     if (flat.expandedCopies)
       issues.push(
         issue(
@@ -189,6 +203,24 @@ export class PrismMesoAdapter implements RendererAdapter {
     };
   }
 
+  private async represent(set: PlacementSet, ref: string, label: string) {
+    const particles = this.viewer.api.particles!;
+    const type = this.options.representation ?? 'spacefill';
+    const r = await particles.representation({
+      type,
+      particles: ref,
+      // spacefill hides fiber particles by default (a Fibers representation draws them); here a filament's subunits are
+      // the copies to draw (renderer-recommendations.md A8)
+      params: set.fibers && type === 'spacefill' ? { excludeFibers: false } : {},
+    } as Parameters<typeof particles.representation>[0]);
+    if (!r.ok) throw new Error(`Could not show ${label}: ${r.message}`);
+  }
+
+  private hasRepresentation(ref: string) {
+    const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
+    return this.viewer.plugin.state.data.select(q).length > 0;
+  }
+
   /** Removes every list this adapter made. */
   async clear() {
     const b = this.viewer.plugin.state.data.build();
@@ -204,6 +236,79 @@ export class PrismMesoAdapter implements RendererAdapter {
   async dispose() {
     await this.clear();
   }
+}
+
+/** What the camera step needs of Mol*'s Canvas3D. */
+export type CameraCanvas = Pick<
+  NonNullable<PrismViewer['plugin']['canvas3d']>,
+  'camera' | 'commit' | 'requestCameraReset'
+>;
+
+/**
+ * The IR's camera into the canvas when it changed, or on a new scene (no set kept: a first commit); a view without one
+ * then resets the camera. A model edit that adds sets leaves the user's camera alone (Canvas3D raises `radiusMax` when
+ * the scene grows). Returns whether the camera was set.
+ */
+export function commitCamera(
+  canvas: CameraCanvas,
+  ir: IR,
+  plan: Pick<CommitPlan, 'cameraChanged' | 'keep'>,
+  sceneRadius: () => number,
+): boolean {
+  if (!plan.cameraChanged && plan.keep.length) return false;
+  const cam = ir.view.camera;
+  if (!cam) {
+    canvas.requestCameraReset();
+    return true;
+  }
+  // what was just drawn, committed first: Canvas3D resets the camera on its first representations, and that reset must
+  // happen before this camera, not replace it on a later frame
+  canvas.commit(true);
+  // the scene's radius too, from the IR (the canvas may not have committed it yet): the near and far planes follow it,
+  // and a radius left from a smaller scene clips the front of a larger one (renderer-recommendations.md, adapter A2)
+  const radius = Math.max(sceneRadius(), 1);
+  canvas.camera.setState(
+    {
+      position: Vec3.create(cam.position[0], cam.position[1], cam.position[2]),
+      target: Vec3.create(cam.target[0], cam.target[1], cam.target[2]),
+      up: Vec3.create(cam.up[0], cam.up[1], cam.up[2]),
+      radius,
+      radiusMax: radius,
+    },
+    cam.transition ?? 0,
+  );
+  return true;
+}
+
+/** A set's box (min, max) and its largest copy radius. */
+type SetBounds = readonly [number, number, number, number, number, number, number];
+
+/** The radius of the sphere around every copy of the sets (Å): their boxes merged, plus the largest copy radius. */
+export function sceneRadius(sets: readonly PlacementSet[], cache = new Map<string, SetBounds>()): number {
+  const b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity, 0];
+  for (const set of sets) {
+    let s = cache.get(set.key);
+    if (!s) {
+      const x = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity, 0];
+      const p = set.positions;
+      for (let i = 0; i < set.count; i++)
+        for (let k = 0; k < 3; k++) {
+          const v = p[3 * i + k];
+          if (v < x[k]) x[k] = v;
+          if (v > x[3 + k]) x[3 + k] = v;
+        }
+      for (const t of set.typeTable) x[6] = Math.max(x[6], t.radius);
+      cache.set(set.key, (s = x as unknown as SetBounds));
+    }
+    if (!set.count) continue;
+    for (let k = 0; k < 3; k++) {
+      b[k] = Math.min(b[k], s[k]);
+      b[3 + k] = Math.max(b[3 + k], s[3 + k]);
+    }
+    b[6] = Math.max(b[6], s[6]);
+  }
+  if (!(b[3] >= b[0])) return 0;
+  return Math.hypot(b[3] - b[0], b[4] - b[1], b[5] - b[2]) / 2 + b[6];
 }
 
 function placementSetKeys(ir: IR): Set<string> {

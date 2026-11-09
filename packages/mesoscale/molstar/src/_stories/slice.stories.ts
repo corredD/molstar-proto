@@ -23,10 +23,9 @@ import { h, onSpellingChange, panel, pre, showHistory, showIr, showIssues, showJ
 const meta: Meta = { title: 'Thin slice', parameters: { layout: 'fullscreen' } };
 export default meta;
 
-type Step = (
-  s: MesoSession,
-  apply: (doc: MesoViewSpecDoc, label: string, focus?: string) => Promise<void>,
-) => Promise<void>;
+/** An edit as a function of the current document: the session builds it when its turn comes, so two clicks compose. */
+type Edit = (doc: MesoViewSpecDoc) => MesoViewSpecDoc;
+type Step = (s: MesoSession, apply: (edit: Edit, label: string, focus?: string) => Promise<void>) => Promise<void>;
 
 function withLook(doc: MesoViewSpecDoc, population: string, color: string): MesoViewSpecDoc {
   return {
@@ -70,12 +69,16 @@ function slice(steps?: Step) {
       showHistory(history, session.history);
     };
     onSpellingChange(() => session && showIssues(issues, session.issues));
-    const apply = async (doc: MesoViewSpecDoc, label: string, f?: string) => {
+    const apply = async (edit: Edit, label: string, f?: string) => {
       if (!session) return;
       focus = f;
       status.textContent = `${label}…`;
-      const r = await session.edit(doc, label);
-      status.textContent = `${label}: a ${r.kind} edit, ${r.resolverRuns} resolver run${r.resolverRuns === 1 ? '' : 's'}`;
+      try {
+        const r = await session.edit(edit, label);
+        status.textContent = `${label}: a ${r.kind} edit, ${r.resolverRuns} resolver run${r.resolverRuns === 1 ? '' : 's'}`;
+      } catch (e) {
+        status.textContent = `${label}: failed, ${e instanceof Error ? e.message : String(e)}`;
+      }
       render();
       tracer.update();
     };
@@ -107,13 +110,11 @@ function slice(steps?: Step) {
       h(
         'button',
         {
-          onclick: () =>
-            session &&
-            apply(
-              withLook(session.doc, (popSelect as HTMLSelectElement).value, (color as HTMLInputElement).value),
-              `color ${(popSelect as HTMLSelectElement).value}`,
-              (popSelect as HTMLSelectElement).value,
-            ),
+          onclick: () => {
+            const pop = (popSelect as HTMLSelectElement).value;
+            const c = (color as HTMLInputElement).value;
+            return apply((d) => withLook(d, pop, c), `color ${pop}`, pop);
+          },
         },
         'Recolor',
       ),
@@ -121,12 +122,10 @@ function slice(steps?: Step) {
       h(
         'button',
         {
-          onclick: () =>
-            session &&
-            apply(
-              { ...session.doc, session: { view: (viewSelect as HTMLSelectElement).value } },
-              `view ${(viewSelect as HTMLSelectElement).value}`,
-            ),
+          onclick: () => {
+            const view = (viewSelect as HTMLSelectElement).value;
+            return apply((d) => ({ ...d, session: { view } }), `view ${view}`);
+          },
         },
         'Switch view',
       ),
@@ -137,13 +136,10 @@ function slice(steps?: Step) {
       h(
         'button',
         {
-          onclick: () =>
-            session &&
-            apply(
-              withAbundance(session.doc, 'p.catalase', { count: Number((count as HTMLInputElement).value) }),
-              `catalase ${(count as HTMLInputElement).value}`,
-              'p.catalase',
-            ),
+          onclick: () => {
+            const n = Number((count as HTMLInputElement).value);
+            return apply((d) => withAbundance(d, 'p.catalase', { count: n }), `catalase ${n}`, 'p.catalase');
+          },
         },
         'Set count',
       ),
@@ -152,15 +148,14 @@ function slice(steps?: Step) {
       h(
         'button',
         {
-          onclick: () =>
-            session &&
-            apply(
-              withAbundance(session.doc, 'p.miRNA', {
-                concentration: { value: Number((conc as HTMLInputElement).value), unit: 'M' },
-              }),
-              `miRNA ${(conc as HTMLInputElement).value} M`,
+          onclick: () => {
+            const value = Number((conc as HTMLInputElement).value);
+            return apply(
+              (d) => withAbundance(d, 'p.miRNA', { concentration: { value, unit: 'M' } }),
+              `miRNA ${value} M`,
               'p.miRNA',
-            ),
+            );
+          },
         },
         'Set concentration',
       ),
@@ -169,10 +164,9 @@ function slice(steps?: Step) {
         'button',
         {
           onclick: () => {
-            if (!session) return;
             const relaxed = exosomeDoc({ relax: true });
             void apply(
-              { ...session.doc, models: relaxed.models, activities: relaxed.activities },
+              (d) => ({ ...d, models: relaxed.models, activities: relaxed.activities }),
               'add a relax stage',
               'm.relax',
             );
@@ -227,22 +221,22 @@ export const EndToEnd: StoryObj = { render: () => slice() };
 
 /** A color edit: a view edit; no resolver runs, every placement set kept (`=3`), only looks written. */
 export const ColorEdit: StoryObj = {
-  render: () => slice(async (s, apply) => apply(withLook(s.doc, 'p.miRNA', '#22aa44'), 'color p.miRNA', 'p.miRNA')),
+  render: () => slice(async (_, apply) => apply((d) => withLook(d, 'p.miRNA', '#22aa44'), 'color p.miRNA', 'p.miRNA')),
 };
 
 /** A density edit: the miRNA concentration doubled; the recipe model reruns, the picks and the bilayer are kept. */
 export const DensityEdit: StoryObj = {
   render: () =>
-    slice(async (s, apply) =>
-      apply(withAbundance(s.doc, 'p.miRNA', { concentration: { value: 0.0008, unit: 'M' } }), 'miRNA ×2', 'p.miRNA'),
+    slice(async (_, apply) =>
+      apply((d) => withAbundance(d, 'p.miRNA', { concentration: { value: 0.0008, unit: 'M' } }), 'miRNA ×2', 'p.miRNA'),
     ),
 };
 
 /** The recipe's 506 catalase copies do not fit: the issue says how many did and why; asking for 150 meets it. */
 export const UnmetConstraint: StoryObj = {
   render: () =>
-    slice(async (s, apply) => {
+    slice(async (_, apply) => {
       await new Promise((r) => setTimeout(r, 1500));
-      await apply(withAbundance(s.doc, 'p.catalase', { count: 150 }), 'catalase 150', 'p.catalase');
+      await apply((d) => withAbundance(d, 'p.catalase', { count: 150 }), 'catalase 150', 'p.catalase');
     }),
 };
