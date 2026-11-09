@@ -538,10 +538,10 @@ stop (`lipid-tiles-shots/r4c-diag-*`, looked at).
 | the surface               | 0.524 | 0.043  | −0.008 |
 | the surface without bumps | 0.528 | 0.043  | −0.008 |
 
-**The cause: the surface weights each species by its lipids, the spheres show the species on top.** The surface's
-vertex is the species of the nearest head (by count: CHL1 26 %, maroon; DLPC and POPC purples). Near the switch the
-spheres are the coarsest level (balanced: stride 64, one atom a lipid, grown about 7×, a 14 Å sphere), and the species
-whose head sits highest covers its neighbours: DSM's top is at 26.8 Å, CHL1's at 17.7 Å. A top-view raster of the patch
+**The cause: the surface weights each species by its lipids, the spheres show the species on top.** The surface's vertex
+is the species of the nearest head (by count: CHL1 26 %, maroon; DLPC and POPC purples). Near the switch the spheres are
+the coarsest level (balanced: stride 64, one atom a lipid, grown about 7×, a 14 Å sphere), and the species whose head
+sits highest covers its neighbours: DSM's top is at 26.8 Å, CHL1's at 17.7 Å. A top-view raster of the patch
 (`zz-r4c-top`, the outer leaflet) gives DSM 17 % with atoms (2 Å), 34 % at stride 8, 73 % at stride 64 (green): what the
 image shows. The bumps are not it (ΔL 0.004). The hard cut along triangle borders shows because of this mismatch.
 
@@ -560,21 +560,21 @@ under and just over the lipids' size on screen), the mean Oklab of the membrane'
 `5309e53d6`: the far surface's points are the species on top in a top-view raster of the patch drawn as the switch's
 level draws it (`switchSpheres`: the level Mol*'s levels pick at the switch's size on screen, its atoms in
 `orderLodLevels`' order, its grown radius; `topGrid`), the nearest head where no sphere covers; after: 0.0025. Model ×20
-with the app's look: a, b across the switch (−0.064, 0.079) | (0.043, −0.008) before, (−0.040, 0.060) | (−0.031,
-0.052) after. (2) The step: with the app's look the 20 Å step from the sphere tops down to the surface drew a line along
-the triangles (outline, shadows). `01ed9b2c0` failing, `4b8189177`: the far surface at the switch level's mean top,
-dithered in by distance with Mol*'s object fade (`lod`, `fadeSurface`) from a lipid at twice the switch's px to the
-switch, not drawn nearer; set when the size on screen changes (a resize), not per move; orthographic: drawn or not. (3)
-That opened the gaps between close lipids to the background (`r4c-model-x20-zoom2`, first render): `0bb6814c8` a
-second, coarser surface a cut leaflet (four lipid spacings) at the lowest head, drawn to the selection's hysteresis.
+with the app's look: a, b across the switch (−0.064, 0.079) | (0.043, −0.008) before, (−0.040, 0.060) | (−0.031, 0.052)
+after. (2) The step: with the app's look the 20 Å step from the sphere tops down to the surface drew a line along the
+triangles (outline, shadows). `01ed9b2c0` failing, `4b8189177`: the far surface at the switch level's mean top, dithered
+in by distance with Mol*'s object fade (`lod`, `fadeSurface`) from a lipid at twice the switch's px to the switch, not
+drawn nearer; set when the size on screen changes (a resize), not per move; orthographic: drawn or not. (3) That opened
+the gaps between close lipids to the background (`r4c-model-x20-zoom2`, first render): `0bb6814c8` a second, coarser
+surface a cut leaflet (four lipid spacings) at the lowest head, drawn to the selection's hysteresis.
 
 **Item 8, colouring as a particle list.** `003b84626`: `mesoscale.style` (color, visible, reset), `mesoscale.colors`
 (generate, uniform, theme) and `mesoscale.colorLevels` take a membrane as `particles`, its species its entities, one
 writer (`updateMembrane`, `membraneSpecies` too), one step each; colours by zoom on the members and the surfaces (far:
 the membrane's colour; near: its species'; no chain or atom colours: a lipid is one group; off for one colour, as a
-list's). Dawn (`lipid-colors.webgpu.test.ts`): each operation changes the spheres close up and the cutter's far
-surface, both methods; the theme back draws as at first. `fff9bfb79`: right-click › Color… (swatches, Generate colors)
-and the Look (a colour for all, By zoom, Generate colors, Reset). Specs `0c89e7be8`, `50a27f267`; changelog `1656174b0`.
+list's). Dawn (`lipid-colors.webgpu.test.ts`): each operation changes the spheres close up and the cutter's far surface,
+both methods; the theme back draws as at first. `fff9bfb79`: right-click › Color… (swatches, Generate colors) and the
+Look (a colour for all, By zoom, Generate colors, Reset). Specs `0c89e7be8`, `50a27f267`; changelog `1656174b0`.
 
 **Not built (Ludo's call).** A dither of the spheres themselves: the object dither is off for objects with levels
 (`uLod.w`) and the pixel-mode levels' last range is open (`getLodLevelsValue`): a graphics library change. The surface
