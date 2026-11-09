@@ -28,35 +28,40 @@ design is what it is, what was measured and what is open is in [design.md](desig
 
 ## Packages
 
-Two packages. Each module is a subpath export (`./*`), so a host imports what it uses by path; tree shaking keeps the
-rest out of its bundle.
+Two packages. Each folder of `@molstar/meso-spec` is an entry (a subpath export); a host imports
+`@molstar/meso-spec/format`, `/builder`, `/ir`, `/runtime`, `/resolvers`, `/examples` or `/cli`, nothing deeper (`./*`
+and `.` are not exported), and tree shaking keeps what it does not import out of its bundle. An entry's `index.ts` names
+what it exports (no `export *`): the host's contract, and every type a public signature names is exported by some entry,
+so a host can name it. Internals (the unit tables but `LengthToAngstrom`, `canonicalJson`, the individual resolvers, the
+packer and the geometry samplers) are not exported; the package's tests reach them by path.
 
-**`@molstar/meso-spec`** (`packages/mesoscale/spec`): the format, the IR, the runtime and the resolvers. It imports
-nothing of Mol\* (a Biome `noRestrictedImports` override on `packages/mesoscale/spec/src/**`) and no Node built-in
-outside its tests. Its `.` entry (`src/index.ts`) re-exports the common API; the modules it leaves out are reached by
-path only: `/format/mesoql`, `/format/sexpr`, `/ir/loci`, `/runtime/instancing`, `/runtime/random` and every resolver
-but `/resolvers/index` and `/resolvers/cellpack-gpu`.
+**`@molstar/meso-spec`** (`packages/mesoscale/spec`): the format, the builder, the IR, the runtime and the resolvers. It
+imports nothing of Mol\* (a Biome `noRestrictedImports` override on `packages/mesoscale/spec/src/**`, which lets it
+import its own entries) and no Node built-in outside `/cli` and its tests.
 
-| Folder       | Holds                                                                                                                                           |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/format`    | the document's types (`doc.ts`), issue codes (`issues.ts`), MesoQL (`mesoql.ts`), the S-expression codec (`sexpr.ts`), units, validation, trace |
-| `/ir`        | the IR tree (`ir.ts`), the placement set (`placements.ts`), MesoLoci and their materialization (`loci.ts`), content hashes (`hash.ts`)          |
-| `/runtime`   | `compile` and `updateView` (`runtime.ts`), the resolver and adapter contracts, readers, instancing, streaming, the seeded generator             |
-| `/resolvers` | the built-in resolvers (`DefaultResolvers` in `index.ts`), the shared packer and geometry samplers, the cellPACKgpu import                      |
-| `/examples`  | the example documents as code (exosome, gallery, yeast, β-cell, nucleoid, scale scenes, the tiled fixture) and their fixtures                   |
+| Entry        | Holds                                                                                                                                       | Imports (of the package)                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `/format`    | the document's types, issue codes, units, validation, MesoQL and its skill, patches, the S-expression codecs, trace                         | nothing                                     |
+| `/builder`   | `createMesoDocument` and `q`: a typed builder for documents (branded refs, ids from labels)                                                 | `format`                                    |
+| `/ir`        | the IR tree, the placement set and its quaternion helpers, content hashes, MesoLoci and MesoQL evaluation over an IR                        | `format`                                    |
+| `/runtime`   | `compile` and `updateView`, the resolver and adapter contracts, readers (`meshArea` with them), instancing, streaming, the seeded generator | `format`, `ir`                              |
+| `/resolvers` | `DefaultResolvers`, the cellPACKgpu import, `relionQuat`                                                                                    | `format`, `ir`, `runtime`                   |
+| `/examples`  | the example documents as code (exosome, gallery, yeast, β-cell, nucleoid, scale scenes, the tiled fixture) and their fixtures               | `builder`, `format`, `runtime`, `resolvers` |
+| `/cli`       | the five commands' `run` and `CliIO` (the `meso-*` bins)                                                                                    | `format`, `ir`, `runtime`, `resolvers`      |
 
-Of the folders, `format` imports none and `ir` imports `format`; `runtime` and `resolvers` import each other and both of
-those; `examples` imports `format`, `runtime` and `resolvers`.
+A resolver implements `runtime`'s contract, so `resolvers` imports `runtime` and not the other way; the helpers
+`runtime` shares with the resolvers live below both (`mulQuat` and `rotationOf` in `ir`, `meshArea` in `runtime`'s
+readers).
 
-**`@molstar/meso-molstar`** (`packages/mesoscale/molstar`): what needs Mol\*. No `.` entry.
+**`@molstar/meso-molstar`** (`packages/mesoscale/molstar`): what needs Mol\*. One entry, `.`: `PrismMesoAdapter` (and
+the camera helpers), `MesoSession` (one document edited, with the runtime's cache, an adapter and the streamer; its
+`EditRecord`s), `irToMolViewSpec` (the IR compiled to MolViewSpec), `toParticleList` with the `MesoPlacements` transform
+and its store. `./_test/*` and `./_stories/*` are hidden; the stories (under _MesoViewSpec_, private) import the package
+by relative path and `meso-spec` through its entries.
 
-| Module           | Holds                                                                                                        |
-| ---------------- | ------------------------------------------------------------------------------------------------------------ |
-| `/prism-adapter` | `PrismMesoAdapter`, the renderer adapter into Prism                                                          |
-| `/particle-list` | a placement set as a Mol\* particle list (`toParticleList`), the `MesoPlacements` transform and its store    |
-| `/session`       | `MesoSession`: one document edited, with the runtime's cache, an adapter and the streamer; its `EditRecord`s |
-| `/mvs-export`    | `irToMolViewSpec`, the IR compiled to MolViewSpec                                                            |
-| `_stories/`      | the Storybook stories and docs pages, under _MesoViewSpec_ (private)                                         |
+**Enforcement.** Biome (no Mol\* in `spec/src`); `spec/src/_test/layers.test.ts` (the folder graph above, entries only
+across folders, no `export *`, the entries and nothing deeper); `spec/src/_test/exports.test.ts` (every type a public
+signature names is exported by some entry of the two packages).
 
 `packages/mesoscale/examples/` is not a package: the paired example files, each document as authored
 (`*.mesoviewspec.json`) and the IR the runtime makes of it (`*.ir.json`), kept current by a quick-lane test.

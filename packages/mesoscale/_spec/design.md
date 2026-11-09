@@ -707,7 +707,8 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
 - **Independence.** The format and runtime have no Mol\* imports. A Python or C++ reader (cellPACK, mesobuild) might
   want them in a repository of their own, as MolViewSpec keeps its Python builder in `molstar/mol-view-spec`.
 - **Enforcement.** "No Mol\* imports" is enforced: a Biome `noRestrictedImports` override for
-  `packages/mesoscale/spec/src/**` (`biome.json`), as the AI package has one; the entries and the folder graph, §12.2.
+  `packages/mesoscale/spec/src/**` (`biome.json`), as the AI package has one; the entries and the folder graph, §12.2
+  and [README.md](README.md#packages).
 
 **Recommendation:**
 
@@ -734,32 +735,7 @@ relative to it and `--base spec/src` (where the examples' recipe uris resolve) i
 
 ### 12.2 Entries
 
-As Seq\*'s packages (`packages/sequences/_spec/README.md`, Packages). Each folder of `spec/src/` is an entry (a subpath
-export); a host imports `@molstar/meso-spec/format`, `/ir`, `/runtime`, `/resolvers`, `/examples` or `/cli`, nothing
-deeper (`./*` and `.` are not exported). An entry's `index.ts` names what it exports, no `export *`: the host's
-contract, and every type a public signature names is exported by some entry, so a host can name it. Internals (the unit
-tables, `canonicalJson`, the individual resolvers, the packing and geometry code) are not exported; the package's tests
-reach them by path.
-
-| Entry        | Holds                                                                                                             | Imports                                |
-| ------------ | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `/format`    | the document types, issues, units, validation, MesoQL (and its skill), patches, S-expression codecs, provenance   | nothing                                |
-| `/ir`        | the IR, placement sets (and quaternion helpers), content hash, MesoQL evaluation over an IR (loci)                | `format`                               |
-| `/runtime`   | compile, edits, the resolver contract, readers, random, instancing, the renderer adapter contract, tile streaming | `format`, `ir`                         |
-| `/resolvers` | the default resolvers, the cellPACK GPU recipe import, `relionQuat`                                               | `format`, `ir`, `runtime`              |
-| `/examples`  | the example documents and their fixtures                                                                          | `format`, `runtime`, `resolvers`       |
-| `/cli`       | the five commands' `run`, `CliIO`; the `meso-*` bins                                                              | `format`, `ir`, `runtime`, `resolvers` |
-
-`@molstar/meso-molstar` has one entry (`.`): the session, the Prism adapter and camera helpers, the MolViewSpec export,
-the particle list. The package imports Mol\*'s packages and `@molstar/meso-spec`'s entries; `./_test/*` and
-`./_stories/*` are hidden. The graph has `runtime` below `resolvers` (a resolver implements runtime's contract); the
-three helpers runtime shares with them live below both: the quaternion arithmetic (`mulQuat`, `rotationOf`) in `ir`,
-`meshArea` in `runtime/readers`. Node's built-ins only in `cli`. No entry has the `builder` folder yet (`mvs-builder`).
-
-**Enforcement.** Biome's `noRestrictedImports` for `packages/mesoscale/spec/src/**`: no Mol\*, only the package's own
-entries (`biome.json`). `spec/src/_test/layers.test.ts`: the folder graph above, entries only across folders, no
-`export *`, the six entries and nothing deeper. `spec/src/_test/exports.test.ts` (heavy): every type a public signature
-names is exported by some entry of the two packages.
+The entries, the folder graph and what enforces them are in [README.md](README.md#packages).
 
 ## 13. References
 
