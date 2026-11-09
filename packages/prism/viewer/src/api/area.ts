@@ -154,6 +154,14 @@ export interface ExtensionNeed {
 /** What operations ask of the extensions (`extensions/host.ts`). */
 export interface ExtensionPort {
   ensureFor(need: ExtensionNeed): Promise<void>;
+  /**
+   * The operation a lazy stub's `owns.opens` claims this file for (by its extension, or its sniff), or none: the file
+   * is a document that operation opens, not data.
+   */
+  opener?(file: {
+    readonly name: string;
+    readonly content: () => Promise<string | Uint8Array>;
+  }): Promise<string | undefined>;
 }
 
 /** What an operation's run gets: the area context, bound to who runs it (api.md §4). */

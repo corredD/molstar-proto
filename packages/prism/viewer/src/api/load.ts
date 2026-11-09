@@ -88,7 +88,7 @@ export class LoadApi extends ApiArea {
       }
       // SeqViewSpec documents go to `load.svs` once the rest is open, so one may name a file dropped with it.
       const documents = list.filter((f) => SvsExtensions.includes(extensionOf(f.name)));
-      const data = list.filter((f) => !documents.includes(f));
+      const rest = list.filter((f) => !documents.includes(f));
       if (documents.length && !ctx.api.describe('load.svs')) {
         return ApiResult.fail(
           'unavailable',
@@ -96,15 +96,41 @@ export class LoadApi extends ApiArea {
           'Its loaders feature (load.svs) is not in the viewer.',
         );
       }
+      // A file is read once, for the opener's sniff and for the extension's.
+      const contents = new Map<File, Promise<Uint8Array>>();
+      const contentOf = (f: File) => {
+        if (!contents.has(f))
+          contents.set(
+            f,
+            f.arrayBuffer().then((b) => new Uint8Array(b)),
+          );
+        return contents.get(f)!;
+      };
+      const fileOf = (f: File) => ({ name: f.name, content: () => contentOf(f) });
+      // A lazy extension may claim a file as a document it opens (its `owns.opens`), not data (viewer-spec.md §3).
+      const claimed: { file: File; op: string }[] = [];
+      if (ctx.extensions.opener) {
+        for (const f of rest) {
+          const op = await ctx.extensions.opener(fileOf(f));
+          if (op) claimed.push({ file: f, op });
+        }
+      }
+      // The files dropped with a document are its resources, not data to open.
+      const claimedFiles = claimed.map((c) => c.file);
+      const resources = claimed.length ? rest.filter((f) => !claimedFiles.includes(f)) : [];
+      const data = claimed.length ? [] : rest;
       const before = structureTransforms(ctx);
       const opened: string[] = [];
       const warnings: string[] = [];
-      if (data.length) {
-        // A lazy extension that reads one of these formats loads first (viewer-spec.md §3).
+      // A lazy extension that reads one of these formats loads first (viewer-spec.md §3).
+      const needed = claimed.length ? claimedFiles : data;
+      if (needed.length) {
         await ctx.extensions.ensureFor({
-          fileExtensions: data.map((f) => extensionOf(f.name)),
-          files: data.map((f) => ({ name: f.name, content: async () => new Uint8Array(await f.arrayBuffer()) })),
+          fileExtensions: needed.map((f) => extensionOf(f.name)),
+          files: needed.map(fileOf),
         });
+      }
+      if (data.length) {
         // One data transaction for all of them: the viewer's sources (the scene, the structures' lists, the commands)
         // sync once at its end, not once a file over every structure loaded so far (files × structures).
         await ctx.plugin.dataTransaction(async () => {
@@ -126,17 +152,27 @@ export class LoadApi extends ApiArea {
         }
       }
       const names = opened.join(', ');
+      const done: string[] = [];
       for (const doc of documents) {
         const r = await ctx.api.run('load.svs', { file: doc });
         if (!r.ok) return r;
+      }
+      for (const { file, op } of claimed) {
+        const r = await ctx.api.run(op, { file, files: resources });
+        if (!r.ok) return r;
+        done.push(r.did.replace(/\.$/, ''));
+        if (r.warnings) warnings.push(...r.warnings);
       }
       // (new, or replaced under the same ref: a second MVS view reuses the first one's refs)
       const added = [...structureTransforms(ctx)].filter(([ref, t]) => before.get(ref) !== t).map(([ref]) => ref);
       const structures = added.length ? ` (${added.length} structure${added.length === 1 ? '' : 's'})` : '';
       const shown = documents.map((f) => f.name).join(', ');
-      const did = !names
-        ? `The sequence shows ${shown}.`
-        : `Opened ${names}${structures}${shown ? `; the sequence shows ${shown}` : ''}.`;
+      const segments = [
+        ...(names ? [`Opened ${names}${structures}`] : []),
+        ...(shown ? [`the sequence shows ${shown}`] : []),
+        ...done,
+      ];
+      const did = `${segments.join('; ').replace(/^./, (c) => c.toUpperCase())}.`;
       return ApiResult.ok(
         did,
         { nodes: added, ...(documents.length ? { sequence: true } : {}) },

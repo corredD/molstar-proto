@@ -570,6 +570,12 @@ export interface LazyViewerExtensionStub {
       readonly extensions: readonly string[];
       test(file: { readonly name: string; readonly ext: string }, content: string | Uint8Array): boolean;
     };
+    /**
+     * An operation of this extension that opens the files it claims (by `fileExtensions`, or `sniff` for files whose
+     * extension does not tell) as documents, not data: `load.files` runs it with `{ file, files }` (the drop's other
+     * files) instead of the format readers.
+     */
+    readonly opens?: string;
   };
 }
 

@@ -244,6 +244,20 @@ export class ExtensionHost {
     }
   }
 
+  /** The operation a stub's `owns.opens` claims the file for (loaded or not), by its extension, else its sniff. */
+  async opener(file: NonNullable<ExtensionNeed['files']>[number]): Promise<string | undefined> {
+    const ext = extensionOf(file.name);
+    let content: Promise<string | Uint8Array> | undefined;
+    const contentOf = () => (content ??= file.content());
+    for (const entry of this.#entries.values()) {
+      const owns = entry.lazy?.stub.owns;
+      if (!owns?.opens) continue;
+      if (owns.fileExtensions?.some((x) => x.toLowerCase().replace(/^\./, '') === ext)) return owns.opens;
+      if (owns.sniff && (await sniffs(owns.sniff, [file], contentOf))) return owns.opens;
+    }
+    return undefined;
+  }
+
   /** The page's shell: every extension's views now, and loaded ones' later. */
   attachUI(port: ExtensionUIPort): () => void {
     this.#port = port;
