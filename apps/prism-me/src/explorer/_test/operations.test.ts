@@ -392,6 +392,50 @@ describe('explorer', () => {
     expect((cell.obj!.data as { repr: { state: { visible: boolean } } }).repr.state.visible).toBe(false);
   });
 
+  it('hides a vertex-coloured mesh under its membrane: the tree, the Look and the drawing agree; undo shows it', async () => {
+    // Ludo's third try (2026-11-08): model_vertexcolor.obj, Look › Scale 100, Wrap with lipids; he saw the mesh drawn,
+    // the Look's eye crossed, the tree's open. Not reproduced headless (jsdom; Dawn): this holds what agrees here
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const coloured = obj.replace(/^v (.*)$/gm, 'v $1 1.0 0.0 0.0');
+    expectOk(await v.api.load.files({ files: [new File([coloured], 'coloured.obj')] }));
+    const mesh = area.objectsState().value.find((o) => o.kind === 'mesh' && o.label === 'coloured.obj')!;
+    expectOk(await v.api.run('cryoet.mesh', { mesh: mesh.ref, scale: 100 }));
+    expectOk(await v.api.run('mesoscale.wrapMembrane', { mesh: mesh.ref, edge: 100 }));
+    const shown = () => {
+      const cell = v.plugin.state.data.cells.get(mesh.ref)!;
+      const repr = (cell.obj!.data as { repr: { state: { visible: boolean } } }).repr;
+      return {
+        cell: !cell.state.isHidden,
+        drawn: repr.state.visible,
+        tree: area.objectsState().value.find((o) => o.ref === mesh.ref)!.visible,
+        look: v.api.cryoet!.meshesState().value.find((m) => m.ref === mesh.ref)!.visible,
+      };
+    };
+    expect(shown()).toEqual({ cell: false, drawn: false, tree: false, look: false });
+    expectOk(await v.api.run('history.undo', {}));
+    expect(shown()).toEqual({ cell: true, drawn: true, tree: true, look: true });
+  });
+
+  it('keeps a mesh’s Look eye with its tree eye while watched (Ludo’s third try: the two disagreed)', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const mesh = area.objectsState().value.find((o) => o.kind === 'mesh')!;
+    // watched, as the Look and the tree are while shown
+    const look = v.api.cryoet!.meshesState();
+    const tree = area.objectsState();
+    const subs = [look.subscribe(() => {}), tree.subscribe(() => {})];
+    try {
+      // the tree's eye: a visibility flag, no change of the state tree
+      expectOk(await v.api.run('state.visibility', { node: `#${mesh.ref}`, visible: false }));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(tree.value.find((o) => o.ref === mesh.ref)!.visible).toBe(false);
+      expect(look.value.find((m) => m.ref === mesh.ref)!.visible).toBe(false);
+    } finally {
+      for (const s of subs) s.unsubscribe();
+    }
+  });
+
   it('maps a pick on a mesh, in a group or whole, to its row; its menu: color, move, clip, label, remove', async () => {
     const v = await viewer();
     const area = v.api.explorer!;

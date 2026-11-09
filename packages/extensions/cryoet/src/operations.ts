@@ -227,7 +227,9 @@ export class CryoetApi extends ApiArea {
     const plugin = this.ctx.plugin;
     return watchedState(
       () => meshes({ plugin }),
-      () => plugin.state.data.events.changed,
+      // a visibility flag (the tree's eye, a wrap's hide) changes no state tree: the Look's eye followed the tree's only
+      // on the next change of it (Ludo's third try, 2026-11-08)
+      () => [plugin.state.data.events.changed, plugin.state.data.events.cell.stateUpdated],
       { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
     );
   }
