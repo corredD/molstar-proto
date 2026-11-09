@@ -239,8 +239,9 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   shows the patch from above there (the species standing highest cover their neighbours: CHARMM-GUI's DSM), the surface
   at that level's tops (no step for the outline and the shadows to draw as a line), dithered in by distance from a lipid
   at twice the switch's px to the switch and not drawn nearer, so close up it hides no lipid (orthographic: drawn or
-  not); a tiles membrane's at its heads, beneath its tiles. Colour by zoom and the dither are set per size on screen (a
-  resize), never per frame. The membrane's Look switches the far look live (**Far**: Both (default), Spheres, Texture;
+  not); beneath the close lipids a coarser one at the lowest head fills their gaps (no gap at any distance); a tiles
+  membrane's at its heads, beneath its tiles. Colour by zoom and the dither are set per size on screen (a resize), never
+  per frame. The membrane's Look switches the far look live (**Far**: Both (default), Spheres, Texture;
   `mesoscale.membraneDetail { far }`): Texture takes lipids from **Lipids from** px (2), Both and Spheres down to
   **Lipids down to** px (0.5), at their sphere levels, Both with the surface beneath, Spheres without it (past the
   budget, far parts empty); **Lipids at most** the budget; each a slider committed once, never a new cut. Its species
