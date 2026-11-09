@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import type { CutterRegions, CutterTable } from './cutter.js';
+import { type CutterRegions, type CutterTable, cellEntry, cellSide } from './cutter.js';
 import type { TriMesh } from './remesh.js';
 
 // A membrane's far look (lipid-procedural round 4b; Ludo, 2026-11-08: "the bump should be colored like the spheres
@@ -124,6 +124,8 @@ export function farSurface(
   const ind: number[] = [];
   const spe: number[] = [];
   const rg = regions.table;
+  const cells = regions.cells;
+  const cellC = cellSide(table.box);
   for (let t = 0; t < T; ++t) {
     const ia = ix[t * 3] * 3;
     const ib = ix[t * 3 + 1] * 3;
@@ -155,7 +157,8 @@ export function farSurface(
         pos.push(x + nx * offset, y + ny * offset, z + nz * offset);
         const f = side === 'outer' ? 1 : -1;
         nor.push(nx * f, ny * f, nz * f);
-        // where the cutter puts this point in the patch: the region's frame, turned and moved (`triangleCut`)
+        // where the cutter puts this point in the patch: the region's frame, turned and moved (`triangleCut`), then its
+        // cell's spin and offset (`eachHit`)
         const dx = x - rg[r];
         const dy = y - rg[r + 1];
         const dz = z - rg[r + 2];
@@ -163,8 +166,17 @@ export function farSurface(
         const qy = dx * rg[r + 8] + dy * rg[r + 9] + dz * rg[r + 10];
         const c = rg[r + 11];
         const sn = rg[r + 15];
-        const hx = (((c * qx - sn * qy + rg[r + 3] * bx) % bx) + bx) % bx;
-        const hy = (((sn * qx + c * qy + rg[r + 7] * by) % by) + by) % by;
+        const px = c * qx - sn * qy + rg[r + 3] * bx;
+        const py = sn * qx + c * qy + rg[r + 7] * by;
+        const cx = Math.floor(px / cellC);
+        const cy = Math.floor(py / cellC);
+        const e = cellEntry(regions.regionOf[t], cx, cy) * 4;
+        const rx = px - (cx + 0.5) * cellC;
+        const ry = py - (cy + 0.5) * cellC;
+        const ec = cells[e + 2];
+        const es = cells[e + 3];
+        const hx = (((cells[e] * bx + ec * rx - es * ry) % bx) + bx) % bx;
+        const hy = (((cells[e + 1] * by + es * rx + ec * ry) % by) + by) % by;
         const ci = Math.min(g.nx - 1, Math.floor(hx / g.cell));
         const cj = Math.min(g.ny - 1, Math.floor(hy / g.cell));
         spe.push(g.grid[cj * g.nx + ci]);
