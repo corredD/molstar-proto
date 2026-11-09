@@ -91,6 +91,8 @@ const DocOrder = [
   'tours',
   'custom',
 ];
+/** The order a view keeps its fields in (doc.ts). */
+const ViewOrder = ['id', 'label', 'frame', 'camera', 'looks', 'selection', 'annotations', 'cutaway', 'description'];
 /** The sections a view edit leaves alone (`classifyEdit`'s strip). */
 const ViewSections: readonly string[] = ['views', 'tours'];
 
@@ -112,12 +114,11 @@ function withList(doc: MesoViewSpecDoc, w: Where, list: readonly PatchNode[]): M
   const keep = list.length > 0 || ('section' in w && Required.includes(w.section));
   // the key keeps its place: a patch and its inverse give the same bytes
   const put = (o: object, k: string): Obj => {
-    if (!(k in o)) return keep ? { ...o, [k]: list } : (o as Obj);
-    const out: Obj = {};
-    for (const [f, v] of Object.entries(o))
-      if (f !== k) out[f] = v;
-      else if (keep) out[f] = list;
-    return out;
+    if (k in o) return keep ? { ...o, [k]: list } : merge(o as Obj, { [k]: null });
+    if (!keep) return o as Obj;
+    const out = Object.entries(o);
+    putField(out, k, list, 'section' in w ? DocOrder : ViewOrder);
+    return Object.fromEntries(out);
   };
   if ('section' in w) return put(doc, w.section) as unknown as MesoViewSpecDoc;
   return { ...doc, views: doc.views?.map((v) => (v.id === w.view ? (put(v, w.list) as unknown as typeof v) : v)) };
@@ -179,18 +180,22 @@ function whereOf(doc: MesoViewSpecDoc, parent: unknown, list: unknown): Where | 
     : `${String(parent)} is no section (a view's looks and annotations take a list)`;
 }
 
-/** A shallow merge: each field replaces, `null` removes; a new field goes last (on the document: where `DocOrder` has it). */
-function merge(cur: Obj, fields: Obj, document = false): Obj {
+/** A new field goes before the first field `order` puts after it, else last. */
+function putField(entries: [string, unknown][], f: string, v: unknown, order: readonly string[]) {
+  const at = order.indexOf(f);
+  const i = at < 0 ? -1 : entries.findIndex(([g]) => order.indexOf(g) > at);
+  entries.splice(i < 0 ? entries.length : i, 0, [f, v]);
+}
+
+/** A shallow merge: each field replaces, `null` removes; a new field goes where `order` has it (else last). */
+function merge(cur: Obj, fields: Obj, order: readonly string[] = []): Obj {
   const out: [string, unknown][] = Object.entries(cur);
   for (const [f, v] of Object.entries(fields)) {
     const k = out.findIndex(([g]) => g === f);
     if (v === null) {
       if (k >= 0) out.splice(k, 1);
     } else if (k >= 0) out[k] = [f, v];
-    else {
-      const after = document ? out.findIndex(([g]) => DocOrder.indexOf(g) > DocOrder.indexOf(f)) : -1;
-      out.splice(after < 0 ? out.length : after, 0, [f, v]);
-    }
+    else putField(out, f, v, order);
   }
   return Object.fromEntries(out);
 }
@@ -236,7 +241,7 @@ function step(doc: MesoViewSpecDoc, raw: unknown, k: number): { doc: MesoViewSpe
       if (f) return shape(`set on ${DocumentId} takes ${TopFields.join(', ')}, not ${f}`);
       const cur = doc as unknown as Obj;
       return {
-        doc: merge(cur, fields, true) as unknown as MesoViewSpecDoc,
+        doc: merge(cur, fields, DocOrder) as unknown as MesoViewSpecDoc,
         inverse: [
           {
             op: 'set',
@@ -275,11 +280,13 @@ function step(doc: MesoViewSpecDoc, raw: unknown, k: number): { doc: MesoViewSpe
   const to = op.parent === undefined ? at.w : whereOf(doc, op.parent, op.list);
   if (typeof to === 'string') return bad(to);
   if (typeOf(to) !== typeOf(at.w)) return bad(`${op.id} is in ${typeOf(at.w)}, not ${typeOf(to)}`);
-  const dest = listOf(out, to);
+  // within its own list the move is one change of that list (an emptied list is never in between)
+  const sameList = JSON.stringify(to) === JSON.stringify(at.w);
+  const dest = sameList ? splice(list, at.i, 1) : listOf(out, to);
   const i = slot(dest, op.after);
   if (i < 0) return bad(`after ${String(op.after)} names no sibling`);
   return {
-    doc: withList(out, to, splice(dest, i, 0, node)),
+    doc: withList(sameList ? doc : out, to, splice(dest, i, 0, node)),
     inverse: [{ op: 'move', id: op.id, ...back }],
     touched: [op.id],
   };

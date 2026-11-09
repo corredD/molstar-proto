@@ -418,3 +418,28 @@ describe("review: nested ids are the document's ids", () => {
     expect(r.issues[0]).toMatchObject({ code: 'patch.target' });
   });
 });
+
+describe('review: a list that empties and comes back is where it was', () => {
+  it('the looks of a view removed one by one, then the inverse: the same bytes', () => {
+    const doc = exosomeDoc();
+    undone(doc, patch(...doc.views![0].looks!.map((l) => ({ op: 'remove', id: l.id! }) as Op)));
+  });
+  it('a no-op move, and a set dropping a field, on the only item of an optional section', () => {
+    for (const make of Object.values(docs)) {
+      const doc = make();
+      for (const s of ['alignments', 'relations', 'catalogs', 'instances', 'superstructures', 'tours'] as const) {
+        const items = (doc[s] ?? []) as { id?: string }[];
+        if (items.length !== 1) continue;
+        const [item] = items;
+        const field = ['method', 'note', 'label', 'evidence', 'activity'].find((k) => k in item);
+        expect(bytes(undone(doc, patch({ op: 'move', id: item.id!, after: 'first' })))).toBe(bytes(doc));
+        if (field) undone(doc, patch({ op: 'set', id: item.id!, fields: { [field]: null } }));
+      }
+    }
+  });
+  it('the only look of a view moved to another view, then undone', () => {
+    const doc = exosomeDoc();
+    const a = applyPatch(doc, patch({ op: 'insert', parent: 'views', node: tmp })).doc;
+    undone(a, patch({ op: 'move', id: 'l.tmp', parent: 'v.overview', list: 'looks' }));
+  });
+});
