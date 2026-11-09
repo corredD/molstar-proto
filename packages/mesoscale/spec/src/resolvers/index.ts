@@ -23,3 +23,15 @@ export const DefaultResolvers: readonly Resolver<any>[] = [
   MesoRelaxResolver,
   CellpackGpuResolver,
 ];
+
+export {
+  type CellpackGpuCompartment,
+  type CellpackGpuIngredient,
+  type CellpackGpuRecipe,
+  type CellpackImport,
+  type CellpackImportOptions,
+  cellpackRecipeResource,
+  importCellpackGpuRecipe,
+  parseCellpackGpuRecipe,
+} from './cellpack-gpu.js';
+export { relionQuat } from './precomputed.js';

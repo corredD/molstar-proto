@@ -9,6 +9,36 @@
     "node": ">=22.13.0"
   },
   "exports": {
+    "./format": {
+      "molstar-src": "./src/format/index.ts",
+      "types": "./lib/format/index.d.ts",
+      "import": "./lib/format/index.js"
+    },
+    "./ir": {
+      "molstar-src": "./src/ir/index.ts",
+      "types": "./lib/ir/index.d.ts",
+      "import": "./lib/ir/index.js"
+    },
+    "./runtime": {
+      "molstar-src": "./src/runtime/index.ts",
+      "types": "./lib/runtime/index.d.ts",
+      "import": "./lib/runtime/index.js"
+    },
+    "./resolvers": {
+      "molstar-src": "./src/resolvers/index.ts",
+      "types": "./lib/resolvers/index.d.ts",
+      "import": "./lib/resolvers/index.js"
+    },
+    "./examples": {
+      "molstar-src": "./src/examples/index.ts",
+      "types": "./lib/examples/index.d.ts",
+      "import": "./lib/examples/index.js"
+    },
+    "./cli": {
+      "molstar-src": "./src/cli/index.ts",
+      "types": "./lib/cli/index.d.ts",
+      "import": "./lib/cli/index.js"
+    },
     "./*": {
       "molstar-src": "./src/*.ts",
       "types": "./lib/*.d.ts",
