@@ -18,5 +18,6 @@ export * from './runtime/adapter.js';
 export * from './runtime/readers.js';
 export * from './runtime/resolver.js';
 export * from './runtime/runtime.js';
+export * from './runtime/streaming.js';
 export * from './resolvers/index.js';
 export * from './resolvers/cellpack-gpu.js';
