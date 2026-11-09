@@ -553,10 +553,14 @@ Streaming is the `mesoviewspec-streaming` lane's (design.md §6.8, written there
     `prism-me`;
   - `prism-me`'s own lanes and the weekly master merge must be merged into the stack too, each a merge commit of its
     own, or the stack drifts;
-  - lanes 3-5 can run in parallel only as branches of lane 2, merged in order.
+  - two lanes run at once only where §12.2 says so, each a branch of the lane before them, merged in the order given.
 - **Now** (Ludo, 2026-11-08: "library lanes only for now"): only `mvs-patch` (a library lane inside
   `packages/mesoscale/spec`) starts before the base is decided, from `me/mesoviewspec`; under the PR option it is
   rebased on `prism-me` after the merge.
+- **The streaming lane comes first where files meet.** `mesoviewspec-streaming` edits `format/doc.ts`, `validate.ts` and
+  `molstar/src/session.ts`; `mvs-patch` edits the first two and `mvs-open` the third. Each merges into `me/mesoviewspec`
+  (or `prism-me`) after the streaming lane, or rebases on it before its gate. Both lanes also add a line to design.md
+  §11 decision 12: the streaming lane's answer stands, this lane's pointer follows it.
 
 ### 12.2 The briefs, in build order
 
@@ -572,13 +576,13 @@ Each in the shape of the briefs in `apps/prism-me/progress/`.
   sections shared (`===`); a patch touching only views classified `view`; Look `id` and `emissive` validated; the
   S-expression round trip of a patch.
 - **Touches:** `packages/mesoscale/spec/src/format/patch.ts` (new), `doc.ts` (Look `id`, `emissive`), `validate.ts`,
-  `sexpr.ts` (the patch codec), `runtime/runtime.ts` (a look's `emissive` into `IRLook`), the adapter (emissive in its
-  layers), a story.
+  `sexpr.ts` (the patch codec), `ir/ir.ts` (`IRLook.emissive`), `runtime/runtime.ts` (a look's `emissive` into
+  `IRLook`), the adapter (emissive in its layers), a story.
 - **Size:** ~350 production lines.
 - **Lane model:** Sonnet; the contract is §2.
 - **Steps:** 1. types and `applyPatch` with quick tests (Sonnet) 2. `diff` and the codec (Sonnet) 3. emissive through IR
   and adapter (Sonnet) 4. the story, checked in Storybook (Sonnet) 5. checks, the gate (Opus).
-- **Base:** starts now from `me/mesoviewspec`.
+- **Base:** starts now from `me/mesoviewspec`; rebased on the streaming lane before its gate (§12.1).
 
 #### 2. `mvs-open`: a document opened in prism-me
 
@@ -588,18 +592,22 @@ Each in the shape of the briefs in `apps/prism-me/progress/`.
 - **Spec:** prism.md §1.1, §2.3, §3, §5.3 (open, close, get, save, edit), §7.
 - **Tests:** unit (headless viewer): open by URL, file and data; a relative resource resolved against the URL; an
   unknown host asks the agent's policy; the stub loads nothing at start (the boundary test); the custom state saved and
-  restored through a `.molj`; the §7.3 contract: Undo after a re-pack does not throw and draws the old set, a clip and a
-  motion on a document list undo, `MesoPlacements` with a missing key gives an empty list and an issue; the adapter's
-  calls are inside the step (no "outside change").
-- **Touches:** `packages/mesoscale/molstar/src/` (`document-model.ts`, `prism-viewer.ts` stub and extension,
-  `prism-adapter.ts` under `ctx.api` and keeping params across a re-pack, `particle-list.ts`, `session.ts` cache bound),
+  restored through a `.molj`, also on a fresh page (the stub's transformer loads the chunk); every test §7.3 lists
+  (Undo, Redo, Undo after a re-pack with the History's length and the lists counted; a failed model edit's rollback;
+  Undo of Close); `MesoPlacements` with a missing key gives an empty list and an issue; the adapter's calls are inside
+  the step (no "outside change"); nothing goes through the API during a restore.
+- **Touches:** `packages/mesoscale/molstar/src/` (`document-model.ts`, `prism-viewer.ts` stub with its transformer and
+  the extension, `prism-adapter.ts` under `ctx.api`, rebuilt from the tree, no store deletes, params kept across a
+  re-pack, `particle-list.ts` no-throw apply, `session.ts` cache bound),
+  `packages/prism/viewer/src/sources/checkpoint.ts` (the custom state's size by revision),
   `apps/prism-me/src/extensions.ts`, `url.ts`, the drop sniff; features.md (a new row).
-- **Size:** ~550 production lines.
+- **Size:** ~600 production lines.
 - **Lane model:** Opus for the owner and the undo contract (the state's hot path); Sonnet for tests and checks.
 - **Steps:** 1. the owner and the custom state (Opus) 2. the stub, open, close, save, URL, sniff (Sonnet) 3. the adapter
   under `ctx.api`, the store bound, no-throw apply (Opus) 4. the undo tests (Sonnet) 5. checked in the app (Sonnet:
   drop, reload, undo; no console errors) 6. the gate (Opus).
-- **Base:** PR option: from `prism-me` after the merge. Stacking: from `me/mesoviewspec` with lane 1 merged.
+- **Base:** PR option: from `prism-me` after the merge. Stacking: from `me/mesoviewspec` with lane 1 and the streaming
+  lane merged.
 
 #### 3. `mvs-tree`: the document in the Scene tree
 
@@ -612,7 +620,9 @@ Each in the shape of the briefs in `apps/prism-me/progress/`.
   instance); a row's highlight is one `Particle.Loci` a list from its runs; focus frames `lociSphere`; the Evidence and
   Issues sections; the scaling guard (`test:scaling`): a view edit rebuilds no row.
 - **Touches:** `apps/prism-me/src/explorer/` (a document source beside the lists', `ui.tsx`, `rows.ts`,
-  `properties.tsx`), `packages/mesoscale/molstar/src/` (the owner's rows and focus); ui.md §3-§4, features.md.
+  `properties.tsx`, `operations.ts`: a row's highlight over several lists), `packages/mesoscale/molstar/src/` (the
+  owner's rows and focus, the label provider, the adapter's instance and template per expanded list); ui.md §3-§4,
+  features.md.
 - **Size:** ~550 production lines.
 - **Lane model:** Opus for the tree source (incremental, hot path); Sonnet for sections and tests.
 - **Steps:** 1. the rows and their addresses (Opus) 2. counts, Group by (Sonnet) 3. hover, pick, highlight, focus
@@ -634,7 +644,8 @@ Each in the shape of the briefs in `apps/prism-me/progress/`.
 - **Lane model:** Opus (the port crosses three packages); Sonnet for the per-row tests.
 - **Steps:** 1. the port and `mesoscale.style` (Opus) 2. the other rows of §5.1 (Sonnet) 3. §5.2's calls (Sonnet) 4.
   checked in the app (Sonnet) 5. the gate (Opus).
-- **Base:** after lanes 1 and 2; parallel with lane 3 (they touch different explorer files; merge order 3 then 4).
+- **Base:** after lane 3 (both edit the eyes in `explorer/rows.ts`). Its shown view is the runtime's own
+  (`session.view ?? views[0]`) until lane 5 adds the view argument; `v.prism`, inserted first, is that view.
 
 #### 5. `mvs-views`: views, tours, labels
 
@@ -645,13 +656,14 @@ Each in the shape of the briefs in `apps/prism-me/progress/`.
 - **Tests:** unit: `mesoviewspec.view` is no step and Undo restores the view shown with its checkpoint; look edits go to
   the shown view; tour play records nothing; New view and Update camera are patches; annotations drawn as labels and
   removed with their view.
-- **Touches:** `packages/mesoscale/molstar/src/` (the adapter draws `IRView.annotations`; the owner's shown view),
-  `apps/prism-me/src/explorer/` (the Views row, its menus); ui.md.
+- **Touches:** `packages/mesoscale/spec/src/runtime/runtime.ts` (`updateView` with a view),
+  `packages/mesoscale/molstar/src/` (the adapter draws `IRView.annotations`; the owner's shown view; a tour's steps as
+  the person's view shows), `apps/prism-me/src/explorer/` (the Views row, its menus); ui.md.
 - **Size:** ~400 production lines.
 - **Lane model:** Sonnet; Opus for the history rule (step 1).
 - **Steps:** 1. show a view as `undoable: false` with the checkpoint note (Opus) 2. the Views row and tours (Sonnet) 3.
   new view, camera, open with (Sonnet) 4. annotations (Sonnet) 5. checked in the app (Sonnet) 6. the gate (Opus).
-- **Base:** after lane 3.
+- **Base:** after lane 4; parallel with lane 6 (merge order 5 then 6).
 
 #### 6. `mvs-model-edits`: change the biology from the properties
 
@@ -662,12 +674,13 @@ Each in the shape of the briefs in `apps/prism-me/progress/`.
   `meso.relax` as a refining model; a cancelled resolution restores the checkpoint; a refused patch (a count below 0)
   changes nothing.
 - **Touches:** `apps/prism-me/src/explorer/properties.tsx` (Built by's controls), `packages/mesoscale/molstar/src/`
-  (cancel through a Mol\* task).
-- **Size:** ~350 production lines.
+  (cancel through a Mol\* task), `packages/mesoscale/spec/src/runtime/` (a signal through `RuntimeOptions` to the
+  resolvers, checked between models and in the packers' loops).
+- **Size:** ~400 production lines.
 - **Lane model:** Sonnet.
 - **Steps:** 1. the controls as patches (Sonnet) 2. progress and Cancel (Sonnet) 3. checked in the app (Sonnet) 4. the
   gate (Opus).
-- **Base:** after lane 3; parallel with lane 5.
+- **Base:** after lane 4; parallel with lane 5.
 
 #### 7. `mvs-agent`: the agent edits the document
 
@@ -690,11 +703,12 @@ Each in the shape of the briefs in `apps/prism-me/progress/`.
 - **Spec:** prism.md §9; design.md §6.8 (the streaming lane's).
 - **Tests:** unit: tiles requested from the canvas camera; tile lists are no step and no outside change; a checkpoint
   leaves them out; the budget setting.
-- **Touches:** `packages/mesoscale/molstar/src/document-model.ts`, Settings.
-- **Size:** ~250 production lines.
+- **Touches:** `packages/mesoscale/molstar/src/document-model.ts`, `packages/prism/viewer/src/sources/checkpoint.ts`
+  (the tile cells' transformer among the behaviors' cells; the checkpoint port leaves them out), Settings.
+- **Size:** ~300 production lines.
 - **Lane model:** Sonnet.
 - **Steps:** 1. the camera feed and the budget (Sonnet) 2. the history rule (Opus) 3. checked in the app (Sonnet) 4. the
   gate (Opus).
 - **Base:** after lane 2 and the streaming lane merged.
 
-**In all:** ~3,250 production lines in eight lanes; lanes 3 and 4, then 5 and 6, can run two at a time.
+**In all:** ~3,400 production lines in eight lanes, in order 1 to 8; only lanes 5 and 6 run at the same time.
