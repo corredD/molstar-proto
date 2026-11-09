@@ -8,6 +8,7 @@
 
 import { StateTransform, StateTree } from '@molstar/core/state';
 import { StructureFocusRepresentationTags } from '@molstar/plugin/behavior/dynamic/selection/structure-focus-representation';
+import { PluginStateObject, PluginStateTransform } from '@molstar/plugin/state/objects';
 import { CreateGroup } from '@molstar/plugin/state/transforms/misc/group';
 import { describe, expect, it } from 'vitest';
 import { cbs, crambin, expectOk, headlessViewer } from '../../_test/harness.js';
@@ -107,6 +108,10 @@ describe('checkpoints', () => {
 });
 
 // Cells a behavior owns (sequence.md §7.2, §7.3): a group stands for a transformer of a lazy extension's behavior.
+const Tile = PluginStateTransform.BuiltIn({ name: 'test-tile', from: [], to: PluginStateObject.Group, params: {} })({
+  apply: () => new PluginStateObject.Group({}, { label: 'tile' }),
+});
+
 describe('behavior-owned cells', () => {
   type Viewer = Awaited<ReturnType<typeof headlessViewer>>;
   const unsafe = (v: Viewer) => v.managers.history.steps.value[0].unsafe;
@@ -213,6 +218,47 @@ describe('behavior-owned cells', () => {
         c.transform.transformer.id.endsWith('custom-model-properties'),
       )!.transform.ref,
     );
+  });
+
+  it('hide nothing under the fixed list: the structures are under custom properties and changes there are outside', async () => {
+    const v = await headlessViewer({ files: [crambin()] });
+    expect(unsafe(v)).toBeUndefined();
+    const rep = [...v.plugin.state.data.cells.values()].find((c) =>
+      c.transform.transformer.id.endsWith('structure-representation-3d'),
+    )!;
+    await v.plugin.state.data.build().delete(rep.transform.ref).commit();
+    expect(unsafe(v)).toMatch(/outside/);
+  });
+
+  it('are no outside change when a commit removes a tile with a child and makes another, among many', async () => {
+    const v = await headlessViewer({ files: [crambin()] });
+    registerBehaviorOwned(v.plugin, [Tile]);
+    const b = v.plugin.state.data.build();
+    for (let i = 0; i < 140; i++) {
+      b.toRoot()
+        .apply(Tile, {}, { ref: `t${i}` })
+        .apply(CreateGroup, { label: 'rep' }, { ref: `t${i}-c` });
+    }
+    await b.commit();
+    const next = v.plugin.state.data.build();
+    next.delete('t0');
+    next.toRoot().apply(Tile, {}, { ref: 'new' });
+    await next.commit();
+    expect(unsafe(v)).toBeUndefined();
+  });
+
+  it('are no outside change when registered after they exist', async () => {
+    const v = await headlessViewer({ files: [crambin()] });
+    registerBehaviorOwned(v.plugin, [Tile])();
+    const b = v.plugin.state.data.build();
+    b.toRoot().apply(Tile, {}, { ref: 't' }).apply(CreateGroup, { label: 'rep' }, { ref: 't-c' });
+    await b.commit();
+    // The creation above was outside; a step after it is the one watched.
+    expectOk(await v.api.representation.color({ target: 'polymer', theme: 'hydrophobicity' }));
+    expect(unsafe(v)).toBeUndefined();
+    registerBehaviorOwned(v.plugin, [Tile]);
+    await v.plugin.state.data.build().delete('t').commit();
+    expect(unsafe(v)).toBeUndefined();
   });
 });
 

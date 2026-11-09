@@ -220,7 +220,7 @@ const BehaviorTransformers = ['volume-streaming', 'custom-model-properties', 'cu
 const Registered = new WeakMap<PluginContext, Map<string, number>>();
 
 /**
- * Registers transformers whose cells a behavior of the caller owns (sequence.md §7.3): a cell of one (a streamed
+ * Registers transformers whose cells a behavior of the caller owns (sequence.md §7.2): a cell of one (a streamed
  * tile) is no change outside the API, whoever makes or updates it, and a checkpoint leaves it out with everything
  * under it; a restore keeps it where its parent is still in the tree (the behavior follows the camera, not the
  * history). A transformer is its object or its id, matched whole (the fixed list below matches by part). Per plugin;
@@ -296,21 +296,19 @@ function keepOwnedCells(plugin: PluginContext, snapshot: PluginState.Snapshot): 
  */
 export function watchOutsideChanges(plugin: PluginContext, history: HistoryManager<ViewerCheckpoint>): () => void {
   const state = plugin.state.data;
-  // The cells registered as a behavior's and what hangs from them (a checkpoint leaves both out), and the cells of the
-  // fixed list. Asked of the tree as it is; the refs seen owned are kept for a removed cell, which is gone from the
-  // tree by the time its event comes.
-  const owned = new Set<string>();
+  const removedTransforms = new Map<string, StateTransform>();
+  // A cell is owned when it is the fixed list's, or registered, or under a registered one (a checkpoint leaves those
+  // out). The fixed list's own cells do not own what hangs from them: custom properties sit above the structures.
+  // A removed cell is gone from the tree by the time its event comes, and so is its parent: a removal's events come
+  // leaves first, so the parent's transform is still in `removedTransforms` (kept until its own event is checked).
   const isOwned = (transform: StateTransform) => {
     if (isBehaviorOwned(transform, plugin)) return true;
     let t: StateTransform | undefined = transform;
     while (t) {
-      if (owned.has(t.ref) || isRegisteredOwned(t, plugin)) return true;
-      t = t.parent === t.ref ? undefined : state.tree.transforms.get(t.parent);
+      if (isRegisteredOwned(t, plugin)) return true;
+      t = t.parent === t.ref ? undefined : (state.tree.transforms.get(t.parent) ?? removedTransforms.get(t.parent));
     }
     return false;
-  };
-  const remember = (transform: StateTransform) => {
-    if (isOwned(transform)) owned.add(transform.ref);
   };
   const check = (transform: StateTransform | undefined) => {
     if (history.applying || !transform || isOwned(transform)) return;
@@ -322,14 +320,7 @@ export function watchOutsideChanges(plugin: PluginContext, history: HistoryManag
   };
   const transformOf = (ref: string): StateTransform | undefined =>
     (state.cells.get(ref) as StateObjectCell | undefined)?.transform ?? state.tree.transforms.get(ref);
-  const removedTransforms = new Map<string, StateTransform>();
-  // First, so the ownership is known when the same event is checked.
-  const created = state.events.cell.created.subscribe((e) => {
-    // A removal's events (a parent before its children) are over by the next creation: let go of the gone.
-    if (owned.size > 256) for (const ref of owned) if (!state.tree.transforms.has(ref)) owned.delete(ref);
-    removedTransforms.set(e.ref, e.cell.transform);
-    remember(e.cell.transform);
-  });
+  const created = state.events.cell.created.subscribe((e) => removedTransforms.set(e.ref, e.cell.transform));
   const sub = merge(state.events.cell.created.pipe(), state.events.object.updated.pipe()).subscribe((e) =>
     check(transformOf(e.ref)),
   );
@@ -337,7 +328,6 @@ export function watchOutsideChanges(plugin: PluginContext, history: HistoryManag
     check(removedTransforms.get(e.ref));
     removedTransforms.delete(e.ref);
   });
-  StateTree.doPreOrder(state.tree, state.tree.root, undefined, (t) => void remember(t));
   for (const [ref, cell] of state.cells) removedTransforms.set(ref, cell.transform);
   return () => {
     sub.unsubscribe();
