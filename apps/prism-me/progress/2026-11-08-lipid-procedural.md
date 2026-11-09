@@ -274,3 +274,10 @@ over n and 4n triangles). Images and numbers: Numbers above. Not tried in Chrome
 **Review.** The table above.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+## Checks (2026-11-08, after the review's fixes)
+
+`npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `pnpm check:workspace`, mesoscale
+`styles:check` pass. Quick lane with Dawn (mesoscale, cryoet, stage-tools, prism-me, the culler, `webgpu-gpu-instances`,
+`webgpu-gpu-culling`): 78 files, 543 passed. Medium (mesoscale) passes. Scaling: the selection guard passes.
+`typecheck:storybook` (prism-viewer) fails on `src/api/styles.ts:114`, a file this lane does not touch (a base error).
