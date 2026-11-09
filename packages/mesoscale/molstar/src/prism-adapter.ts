@@ -5,8 +5,11 @@
  */
 
 import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { StateSelection } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
-import type { IR } from '@molstar/meso-spec/ir/ir';
+import { type IR, placementSets } from '@molstar/meso-spec/ir/ir';
+import type { PlacementSet } from '@molstar/meso-spec/ir/placements';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { type Issue, issue } from '@molstar/meso-spec/format/issues';
 import { type CommitReport, planCommit, type RendererAdapter } from '@molstar/meso-spec/runtime/adapter';
 import { type ExpansionCache, flattenInstances } from '@molstar/meso-spec/runtime/instancing';
@@ -18,7 +21,9 @@ import { MesoPlacements, MesoPlacementStore, toParticleList } from './particle-l
 // The Prism adapter (design.md §6.5): the IR into a Prism viewer through its operations, as prism-me's rules ask (one
 // representation per list, looks as layers through `particles.look`, never a representation per type). Per commit, by
 // key (`planCommit`): new sets become lists with a spacefill representation, gone sets are deleted, kept sets are not
-// touched; looks are written when they changed, one `particles.look` per list.
+// touched; looks are written when they changed, one `particles.look` per list. Prism's undo journals the
+// representation and look calls but not the list create and delete, so an undo can strip a kept list's representation
+// (or the list): each commit checks the kept lists and draws again what is missing, and rewrites the looks then.
 
 const now = () => performance.now();
 
@@ -69,26 +74,35 @@ export class PrismMesoAdapter implements RendererAdapter {
       }
       await v.plugin.runTask(v.plugin.state.data.updateTree(b));
     }
-    for (const set of plan.add) {
+    // kept lists that something outside the adapter (Prism's undo) stripped: drawn again, their looks rewritten
+    const byKey = new Map(placementSets(ir).map((x) => [x.key, x]));
+    const relist: PlacementSet[] = [];
+    const redraw: PlacementSet[] = [];
+    for (const key of plan.keep) {
+      const p = this.placed.get(key);
+      const set = byKey.get(key)!;
+      if (!p || !v.plugin.state.data.cells.get(p.ref)?.obj) {
+        this.placed.delete(key);
+        relist.push(set);
+      } else if (!this.hasRepresentation(p.ref)) redraw.push(set);
+    }
+    for (const set of [...plan.add, ...relist]) {
       const label = `${set.model} · ${set.count.toLocaleString('en-US')} copies`;
       MesoPlacementStore.set(set.key, toParticleList(set, label));
       const b = v.plugin.state.data.build().toRoot().apply(MesoPlacements, { key: set.key, label });
       await v.plugin.runTask(v.plugin.state.data.updateTree(b));
       this.placed.set(set.key, { ref: b.ref, label });
-      const r = await particles.representation({
-        type: this.options.representation ?? 'spacefill',
-        particles: b.ref,
-        // spacefill hides fiber particles by default (a Fibers representation draws them); here a filament's subunits
-        // are the copies to draw (renderer-recommendations.md A8)
-        params:
-          set.fibers && (this.options.representation ?? 'spacefill') === 'spacefill' ? { excludeFibers: false } : {},
-      } as Parameters<typeof particles.representation>[0]);
-      if (!r.ok) throw new Error(`Could not show ${label}: ${r.message}`);
+      await this.represent(set, b.ref, label);
     }
+    for (const set of redraw) {
+      const p = this.placed.get(set.key)!;
+      await this.represent(set, p.ref, p.label);
+    }
+    const repaired = relist.length + redraw.length;
     const t1 = now();
 
     let looksWritten = 0;
-    if (plan.looksChanged) {
+    if (plan.looksChanged || repaired) {
       const lists = [...this.placed].map(([key, p]) => ({
         particles: p.ref,
         layers: plan.looks
@@ -165,6 +179,15 @@ export class PrismMesoAdapter implements RendererAdapter {
           ),
         );
     }
+    if (repaired)
+      issues.push(
+        issue(
+          'adapter.redrawn',
+          'info',
+          'render',
+          `${repaired} list${repaired === 1 ? '' : 's'} drawn again: ${repaired === 1 ? 'its representation was' : 'their representations were'} removed outside the adapter (an undo)`,
+        ),
+      );
     if (flat.expandedCopies)
       issues.push(
         issue(
@@ -187,6 +210,24 @@ export class PrismMesoAdapter implements RendererAdapter {
       issues,
       ms: { total: t3 - t0, sets: t1 - t0, looks: t2 - t1, camera: t3 - t2 },
     };
+  }
+
+  private async represent(set: PlacementSet, ref: string, label: string) {
+    const particles = this.viewer.api.particles!;
+    const type = this.options.representation ?? 'spacefill';
+    const r = await particles.representation({
+      type,
+      particles: ref,
+      // spacefill hides fiber particles by default (a Fibers representation draws them); here a filament's subunits are
+      // the copies to draw (renderer-recommendations.md A8)
+      params: set.fibers && type === 'spacefill' ? { excludeFibers: false } : {},
+    } as Parameters<typeof particles.representation>[0]);
+    if (!r.ok) throw new Error(`Could not show ${label}: ${r.message}`);
+  }
+
+  private hasRepresentation(ref: string) {
+    const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
+    return this.viewer.plugin.state.data.select(q).length > 0;
   }
 
   /** Removes every list this adapter made. */

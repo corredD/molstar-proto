@@ -165,4 +165,27 @@ describe('a session over the Prism adapter (headless)', () => {
     expect(pops.get('p.miRNA')).toEqual(conc(0.0008));
     expect(listCount(v)).toBe(3);
   });
+
+  // gate AN1: Prism's undo records the adapter's representation calls but not its list create and delete, so undo
+  // stripped a kept list's representation; the adapter still counted it kept and the next view edit threw
+  it('after an undo strips a representation, the next edit draws the list again', { tags: ['medium'] }, async () => {
+    const { v, s } = await open();
+    await s.edit((d) => withAbundance(d, 'p.miRNA', conc(0.0008)), 'miRNA');
+    for (let i = 0; i < 2; i++) await v.managers.history.undo();
+    const reprs = () => v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.representations.length);
+    expect(reprs()).toContain(0);
+    const record = await s.edit((d) => ({ ...d, session: { view: 'v.lumen' } }), 'view');
+    expect(record.kind).toBe('view');
+    expect(reprs()).toEqual([1, 1, 1]);
+    expect(s.issues.map((i) => i.code)).toContain('adapter.redrawn');
+  });
+
+  it('a kept list deleted outside the adapter is made again on the next edit', { tags: ['medium'] }, async () => {
+    const { v, s } = await open();
+    const ref = v.plugin.managers.particles.hierarchy.current.lists[0].cell.transform.ref;
+    await v.plugin.runTask(v.plugin.state.data.updateTree(v.plugin.state.data.build().delete(ref)));
+    expect(listCount(v)).toBe(2);
+    await s.edit((d) => ({ ...d, session: { view: 'v.lumen' } }), 'view');
+    expect(v.plugin.managers.particles.hierarchy.current.lists.map((l) => l.representations.length)).toEqual([1, 1, 1]);
+  });
 });
