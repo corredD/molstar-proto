@@ -92,4 +92,9 @@ describe('S-expression spelling', () => {
     expect(readSexpr('(a "x').error?.message).toMatch(/unterminated/);
     expect(readData('(a :Bad 1)').error?.message).toMatch(/bad keyword/);
   });
+
+  it('a quoted keyword with a bad escape is a read error, not a throw', () => {
+    expect(readSexpr(':"\\q"').error?.message).toMatch(/bad keyword/);
+    expect(readData('(a :"\\q" 1)').error?.message).toMatch(/bad keyword/);
+  });
 });

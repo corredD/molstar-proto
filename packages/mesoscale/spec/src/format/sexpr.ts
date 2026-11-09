@@ -110,7 +110,13 @@ export function readSexpr(text: string): { nodes: SNode[]; error?: SReadError } 
         while (i < n && text[i] !== '"') i += text[i] === '\\' ? 2 : 1;
         if (i >= n) return fail('unterminated keyword', start);
         i++;
-        push({ kind: 'keyword', name: JSON.parse(text.slice(s, i)) as string, quoted: true, start, end: i });
+        let name: string;
+        try {
+          name = JSON.parse(text.slice(s, i)) as string;
+        } catch {
+          return fail(`bad keyword ${text.slice(start, i)}`, start);
+        }
+        push({ kind: 'keyword', name, quoted: true, start, end: i });
         continue;
       }
       i++;
