@@ -16,6 +16,10 @@ is not built is [../TODO.md](../TODO.md).
     `~/prism-me-lanes/mesoviewspec-streaming`, Storybook port 6008, [brief](2026-11-08-mesoviewspec-streaming.md) on its
     branch): David's "streaming concepts": manifest of tiles and levels, provider, budget, camera-driven coarse-first;
     R5 measured. Sonnet lane, design step on Opus.
+  - `mvs-prism-design` (`me/mvs-prism-design` from `me/mesoviewspec`, [brief](2026-11-08-mvs-prism-design.md) on its
+    branch): Prism over MesoViewSpec, the design (`packages/mesoscale/_spec/prism.md`) and the app lanes' briefs. Opus.
+  - `mvs-skill-cli` (`me/mvs-skill-cli` from `me/mesoviewspec`, [brief](2026-11-08-mvs-skill-cli.md) on its branch): the
+    MesoQL skill (generated) and the `meso-*` CLIs. Sonnet, the CLI surface on Opus.
 
 - **Mesoscale building** (Ludo, 2026-11-07 night → 2026-11-08; engine `~/prism-me-lanes/mesobuild`, local git, its
   report `NIGHT-2026-11-08.md`). Ludo looked at the exosome-in-plasma model: ok. Decided 2026-11-08: a recipe entry's

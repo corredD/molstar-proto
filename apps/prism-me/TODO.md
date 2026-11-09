@@ -10,6 +10,15 @@ the app, in his words; the lane turns it into spec and tests.
 
 <!-- - **Title**: what I want to see. Check: what I do in the app and what I expect. -->
 
+- **MesoViewSpec usable like Seq\*** (Ludo, 2026-11-08: "both, app first"; "library lanes only for now"). Running:
+  `mvs-prism-design`, `mvs-skill-cli` (and `mesoviewspec-streaming`). Queued, in order:
+  - `mvs-spec-reference`: a Seq\*-style `packages/mesoscale/_spec/` (README, principles, glossary), reference tables
+    generated from the code, a spec check. After streaming merges (design.md).
+  - `mvs-builder`: a typed builder for documents, in a new folder. When a slot frees.
+  - `mvs-entries`: per-folder package entries and a layer test. After streaming merges.
+  - The app lanes, from `mvs-prism-design`'s briefs, once Ludo decides their base (a PR of `me/mesoviewspec` to prism-me
+    first, or stacking on it).
+
 In this order (Ludo, 2026-10-25), one at a time; the looks' owner (PR #8), the measure hint (PR #7) and the app as a
 spec (lane `app-spec`) are built. From the architecture's decisions ([_spec/architecture.md](_spec/architecture.md) §7:
 refactor in place) and the review of the distances (PR #5):
