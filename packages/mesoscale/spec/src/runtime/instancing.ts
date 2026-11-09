@@ -40,6 +40,9 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
   // expansion) those of the template it expands, so a look reaches every level of nesting
   const looksOf = new Map<string, IRLook[]>();
   for (const l of ir.view.looks) looksOf.set(l.set, [...(looksOf.get(l.set) ?? []), l]);
+  // the view's own looks of each set, before any hidden instanced type is added: what an instance type says of its
+  // parts (an eye on the granules hides or shows the granules' contents)
+  const authored = new Map(looksOf);
   const hiddenSet = new Set<string>();
 
   let expandedCopies = 0;
@@ -55,21 +58,21 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
         (c): c is Extract<IRNode, { kind: 'instances' }> => c.kind === 'instances' && c.params.detail === 'parts',
       );
       out.push(set);
-      // the set's own looks before its instanced types are hidden below: an instance type a look hides is hidden in
-      // its parts too (an eye on the granules hides the granules' contents; later looks win, so the last one says)
-      const own = looksOf.get(set.key) ?? [];
-      const hiddenType = (type: number) => {
-        let visible: boolean | undefined;
-        for (const l of own) if (!l.runs && l.visible !== undefined && l.types.includes(type)) visible = l.visible;
-        return visible === false;
+      /** The view's look deciding an instanced type's visibility, if one does (later looks win: its `visibleAt`). */
+      const ownVisibility = (type: number) => {
+        let last: IRLook | undefined;
+        for (const l of authored.get(set.key) ?? [])
+          if (!l.runs && l.visible !== undefined && l.types.includes(type)) last = l;
+        return last;
       };
       for (const i of inst) {
-        const hidden = hiddenType(i.params.type);
+        const decides = ownVisibility(i.params.type);
         if (!hiddenSet.has(`${set.key}|${i.params.type}`)) {
           hiddenSet.add(`${set.key}|${i.params.type}`);
           looksOf.set(set.key, [
             ...(looksOf.get(set.key) ?? []),
-            { set: set.key, types: [i.params.type], visible: false },
+            // drawn as its parts: its own bodies hidden, whatever a look says (after every look)
+            { set: set.key, types: [i.params.type], visible: false, visibleAt: Number.MAX_SAFE_INTEGER },
           ]);
         }
         const tplNode = ssNodes.get(i.params.superstructure);
@@ -87,7 +90,16 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
           expandedCopies += e.count;
           expandedBytes += e.count * 36;
           const looks: IRLook[] = [];
-          for (const l of looksOf.get(t.key) ?? []) if (!l.runs) looks.push({ ...l, set: key });
+          // the template's looks; where the instance type's visibility was decided by a later look, that one says
+          const at = decides?.visibleAt ?? -1;
+          for (const l of looksOf.get(t.key) ?? []) {
+            if (l.runs) continue;
+            looks.push(
+              decides && at > (l.visibleAt ?? -1)
+                ? { ...l, set: key, visible: decides.visible, visibleAt: at }
+                : { ...l, set: key },
+            );
+          }
           // looks on copies inside one instance (`part`): the instance's block of the expansion, in pose order
           for (const l of ir.view.looks) {
             const m = /^(.*)@(\d+)>(.*)$/.exec(l.set);
@@ -98,7 +110,6 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
             for (let q = 0; q < at; q++) if (set.types[q] === i.params.type) rank++;
             looks.push({ ...l, set: key, runs: l.runs.map((v) => v + rank * t.count) });
           }
-          if (hidden) looks.push({ set: key, types: e.typeTable.map((t) => t.index), visible: false });
           looksOf.set(key, looks);
           out.push(e);
         }
