@@ -9,7 +9,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { MesoViewSpecDoc } from '../format/doc.js';
 import type { Issue } from '../format/issues.js';
-import { type DataCodec, DocumentCodec, printData, readData } from '../format/sexpr.js';
+import { type DataCodec, DocumentCodec, IRCodec, printData, readData } from '../format/sexpr.js';
 
 // The meso-* commands' shared parts (design.md §12.1): argument parsing, reading JSON or S-expression text, writing a
 // product to stdout or a file, issues to stderr, and resources from files. Each command is `run(argv, io)`, so tests
@@ -105,9 +105,10 @@ export function readValue(io: CliIO, path: string): { value: unknown; head?: str
   try {
     return { value: JSON.parse(text) };
   } catch {
-    const r = readData(text, DocumentCodec);
+    const head = /^\s*\(\s*([^\s()]+)/.exec(text)?.[1];
+    const r = readData(text, head === 'meso_view_spec' ? DocumentCodec : IRCodec);
     if (r.error) throw new CliError(2, `${path}: neither JSON nor an S-expression (${r.error.message})`);
-    return { value: r.value, head: /^\s*\(\s*([^\s()]+)/.exec(text)?.[1] };
+    return { value: r.value, head };
   }
 }
 

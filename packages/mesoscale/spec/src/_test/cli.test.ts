@@ -74,6 +74,20 @@ describe('meso-print', () => {
     expect(JSON.parse(back.o.out)).toEqual(json);
   });
 
+  it('IR, compile and trace output read back too (the IR codec)', async () => {
+    const ir = readFileSync(`${root}examples/betacell.ir.json`, 'utf8');
+    const s = memory({ 'ir.json': ir });
+    expect(await printCmd(['ir.json'], s.io)).toBe(0);
+    const back = memory({ 'ir.sexpr': s.o.out });
+    expect(await printCmd(['ir.sexpr', '--json'], back.io)).toBe(0);
+    expect(JSON.parse(back.o.out)).toEqual(JSON.parse(ir));
+    const t = memory();
+    await traceCmd([BETA, 'p.granules'], t.io);
+    const tb = memory({ 'tr.sexpr': t.o.out });
+    expect(await printCmd(['tr.sexpr', '--json'], tb.io)).toBe(0);
+    expect(JSON.parse(tb.o.out)).toEqual(readData(t.o.out, IRCodec).value);
+  });
+
   it('writes to -o instead of stdout', async () => {
     const { io, o, files } = memory();
     expect(await printCmd([BETA, '-o', 'out.sexpr'], io)).toBe(0);
