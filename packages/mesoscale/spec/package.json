@@ -8,6 +8,7 @@
   "engines": {
     "node": ">=22.13.0"
   },
+  "sideEffects": false,
   "exports": {
     "./format": {
       "molstar-src": "./src/format/index.ts",
@@ -38,16 +39,6 @@
       "molstar-src": "./src/cli/index.ts",
       "types": "./lib/cli/index.d.ts",
       "import": "./lib/cli/index.js"
-    },
-    "./*": {
-      "molstar-src": "./src/*.ts",
-      "types": "./lib/*.d.ts",
-      "import": "./lib/*.js"
-    },
-    ".": {
-      "molstar-src": "./src/index.ts",
-      "types": "./lib/index.d.ts",
-      "import": "./lib/index.js"
     },
     "./_test/*": null
   },
