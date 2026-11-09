@@ -281,8 +281,9 @@ function keepOwnedCells(plugin: PluginContext, snapshot: PluginState.Snapshot): 
   const refs = new Set(data.tree.transforms.map((t) => t.ref));
   const kept: StateTransform.Serialized[] = [];
   for (const t of owned) {
-    // Pre-order: a parent is decided before its children.
-    if (!refs.has(t.parent)) continue;
+    // Pre-order: a parent is decided before its children. One the checkpoint holds (it was taken before the
+    // registration) stays as it was; one whose parent or dependency the restore removes goes with it.
+    if (refs.has(t.ref) || !refs.has(t.parent) || !(t.dependsOn ?? []).every((d) => refs.has(d))) continue;
     refs.add(t.ref);
     kept.push(StateTransform.toJSON(t));
   }

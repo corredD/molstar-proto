@@ -235,9 +235,7 @@ describe('behavior-owned cells', () => {
     registerBehaviorOwned(v.plugin, [Tile]);
     const b = v.plugin.state.data.build();
     for (let i = 0; i < 140; i++) {
-      b.toRoot()
-        .apply(Tile, {}, { ref: `t${i}` })
-        .apply(CreateGroup, { label: 'rep' }, { ref: `t${i}-c` });
+      b.toRoot().apply(Tile, {}, { ref: `t${i}` }).apply(CreateGroup, { label: 'rep' }, { ref: `t${i}-c` });
     }
     await b.commit();
     const next = v.plugin.state.data.build();
@@ -259,6 +257,20 @@ describe('behavior-owned cells', () => {
     registerBehaviorOwned(v.plugin, [Tile]);
     await v.plugin.state.data.build().delete('t').commit();
     expect(unsafe(v)).toBeUndefined();
+  });
+
+  it('go with a dependency a restore removes', async () => {
+    const v = await headlessViewer({});
+    registerBehaviorOwned(v.plugin, [Tile]);
+    const port = createCheckpointPort(v.plugin);
+    const empty = port.checkpoint();
+    expectOk(await v.api.load.files({ files: [crambin()] }));
+    const structure = [...v.plugin.state.data.cells.values()].find((c) =>
+      c.transform.transformer.id.endsWith('structure-from-model'),
+    )!.transform.ref;
+    await v.plugin.state.data.build().toRoot().apply(Tile, {}, { ref: 'dep', dependsOn: [structure] }).commit();
+    await port.restore(empty);
+    expect(v.plugin.state.data.cells.has('dep')).toBe(false);
   });
 });
 
