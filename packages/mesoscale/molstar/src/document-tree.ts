@@ -220,12 +220,21 @@ function makeOutline({ doc, ir, counts, groupBy }: Inputs): DocumentOutline {
     ...(doc.instances ?? []).map((i) => [i.id, i.compartment] as const),
   ]);
   // the copies a part row counts, and the document: a superstructure's parts once per instance
-  const partCopies = (row: Mutable): number => {
-    const ss = superstructures.get(entities.get(row.entity ?? '')?.superstructure ?? '');
-    if (!ss || !row.parts) return 0;
+  const partCopies = (row: Mutable): number =>
+    row.parts ? row.achieved * superstructureCopies(entities.get(row.entity ?? '')?.superstructure, new Set()) : 0;
+  /** The copies one instance of a superstructure holds, its own superstructures' through every instance of them. */
+  const superstructureCopies = (id: Id | undefined, seen: Set<Id>): number => {
+    const ss = superstructures.get(id ?? '');
+    if (!ss || seen.has(ss.id)) return 0;
+    seen.add(ss.id);
     let n = 0;
-    for (const p of ss.populations) n += achieved(p.id);
-    return n * row.achieved;
+    for (const p of ss.populations) {
+      const k = achieved(p.id);
+      const inner = entities.get(p.entity)?.superstructure;
+      n += k + (inner && p.detail !== 'entity' ? k * superstructureCopies(inner, seen) : 0);
+    }
+    seen.delete(ss.id);
+    return n;
   };
 
   const add = (row: Mutable, parent: Mutable | undefined) => {
