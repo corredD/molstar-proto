@@ -166,6 +166,17 @@ export const MesoQLSymbols: readonly QSymbol[] = [
   },
 ];
 
+/** A keyword's value against its type: a number, a bool, a word; a label range is a word or a number (`53-63`, `15`). */
+function keywordFits(
+  kt: Exclude<NonNullable<QSymbol['keywords']>[string], 'selection'>,
+  v: string | number | boolean | null,
+): v is string | number | boolean {
+  if (kt === 'number' || kt === 'length') return typeof v === 'number';
+  if (kt === 'bool') return typeof v === 'boolean';
+  if (kt === 'word') return typeof v === 'string';
+  return typeof v === 'string' || typeof v === 'number';
+}
+
 /** `a population`, `an instance`. */
 const an = (w: string) => `${/^[aeiou]/.test(w) ? 'an' : 'a'} ${w}`;
 
@@ -247,11 +258,7 @@ export function parseMesoQL(
         if (kt === 'selection') {
           const e = check(v, 'selection');
           if (e) keywords[it.name] = e;
-        } else if (
-          v.kind === 'atom' &&
-          v.value !== null &&
-          (kt !== 'number' && kt !== 'length' ? true : typeof v.value === 'number')
-        ) {
+        } else if (v.kind === 'atom' && keywordFits(kt, v.value)) {
           if (kt === 'range' && !/^-?\d+-?-?\d+$/.test(String(v.value)))
             err('range', `:${it.name} ${v.raw} is a label range like 53-63`);
           keywords[it.name] = v.value;

@@ -134,4 +134,13 @@ describe('MesoQL', () => {
     expect(at(withEntry('(population p.hu)'))).toEqual([['mesoql.type', '/relations/0/entry']]);
     expect(at(withEntry('(site e.hu dna-exit)'))).toEqual([]);
   });
+
+  it('a keyword value has its type: :nested a bool, :location and :chain words (F6)', () => {
+    const codes = (t: string) => parseMesoQL(t, { kinds }).issues.map((i) => i.code);
+    expect(codes('(in c.exosome :nested maybe)')).toEqual(['mesoql.keyword']);
+    expect(codes('(in c.exosome :nested 3)')).toEqual(['mesoql.keyword']);
+    expect(codes('(in c.exosome :location 3)')).toEqual(['mesoql.keyword']);
+    expect(codes('(residues e.catalase :chain true)')).toEqual(['mesoql.keyword']);
+    expect(codes('(in c.exosome :nested false :location membrane)')).toEqual([]);
+  });
 });
