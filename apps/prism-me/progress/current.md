@@ -64,7 +64,9 @@ is not built is [../TODO.md](../TODO.md).
     18 ms, middle 21 ms; close 130–240 ms open, M5, Ludo’s call). Waits on Ludo’s try on 1354. Round 6 started 2026-11-09 (brief dbd4ac8bb): the yeast
     cell’s nine membranes (yeast_cell_viewer meshes, 1.08 M triangles, data outside the repo). Built and gated at
     eeb50bc65: one membrane over all meshes, a sphere tree per part, enclosed parts skipped, the .bin reader; wrap
-    9.6 s, whole 35 ms, close 104–224 ms (M5). Waits on Ludo’s try on 1354.
+    9.6 s, whole 35 ms, close 104–224 ms (M5). Waits on Ludo’s try on 1354. Round 7 started 2026-11-09
+    (brief da59ff832): bilayer far look (mesh per leaflet), colour, hide and lipid mix per membrane, the slab’s frame, the
+    perf baseline back. Ludo: no lighter close level.
   - `merge-master` (`me/merge-master` from `origin/prism-me`, port 1355, [brief](2026-11-09-merge-master.md) on its
     branch): started 2026-11-09 (Ludo: merge master, conflicts favoring master). origin/master dabbf29f9, 59 commits,
     474 files, mostly graphics. Merged at 46aa8cae3 (63 files conflicted, master favoured, prism-me
