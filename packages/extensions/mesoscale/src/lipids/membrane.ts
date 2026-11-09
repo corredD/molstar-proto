@@ -593,7 +593,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     assigners = [];
     cutters = [];
     selections = [];
-    selectedViews.clear();
+    selectedViews = new WeakMap();
   }
 
   /** a member's spheres values: its atoms (groups: lipids), `n` instances written by `writer`, colored by species */
@@ -663,7 +663,8 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
   }
 
   /** the view each selection selected for last: its planes and scales (32 numbers) */
-  const selectedViews = new Map<LipidSelection, Float64Array>();
+  // weak: a new look's build makes new selections, the old ones let go with their writers (review M2)
+  let selectedViews = new WeakMap<LipidSelection, Float64Array>();
   /** `selection` for `view`, once a view (its members' hooks share it) */
   function selectFor(selection: LipidSelection, view: GpuInstanceView, size: number) {
     let key = selectedViews.get(selection);
