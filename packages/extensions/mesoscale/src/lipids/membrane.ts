@@ -571,10 +571,12 @@ function lipidSize(table: CutterTable) {
  * the sphere's radius grown as the level grows it. Once a look, on the leaflet's few members
  */
 export function switchSpheres(table: CutterTable, props: LipidMembraneReprProps, enter: number): SwitchSpheres {
-  if (props.detail === 'off') return { atoms: table.members.map((m) => m.positions), radius: props.sizeFactor };
+  if (props.detail === 'off') {
+    return { atoms: table.members.map((m) => m.positions), radii: table.members.map(() => props.sizeFactor) };
+  }
   const { lodLevels, lodPixelSize } = membraneLevels(props.detail, props.levels);
   const perPixel = lipidSize(table) / Math.max(enter, 1e-3);
-  let radius = props.sizeFactor;
+  const radii: number[] = [];
   const atoms = table.members.map((member) => {
     const count = member.positions.length / 3;
     const array = new Float32Array(count * PositionGroupStride);
@@ -586,12 +588,12 @@ export function switchSpheres(table: CutterTable, props: LipidMembraneReprProps,
     let j = levels.length - 1;
     if (lodPixelSize > 0) while (j > 0 && perPixel < levels[j][0]) j -= 1;
     const n = Math.max(1, Math.min(count, Math.round(levels[j][3] / 6)));
-    radius = props.sizeFactor * levels[j][4];
+    radii.push(props.sizeFactor * levels[j][4]);
     const out = new Float32Array(n * 3);
     for (let i = 0; i < n; ++i) out.set(array.subarray(i * PositionGroupStride, i * PositionGroupStride + 3), i * 3);
     return out;
   });
-  return { atoms, radius };
+  return { atoms, radii };
 }
 
 /** The selection's hysteresis: a triangle taken keeps its lipids down to this share of the switch's px */

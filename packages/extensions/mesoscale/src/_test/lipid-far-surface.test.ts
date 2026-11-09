@@ -160,7 +160,7 @@ describe('a membrane’s far surfaces', () => {
   it('meets the spheres it takes over from at their tops: no step at the switch (round 4c item 7)', () => {
     // the coarse level: one sphere a lipid, its first atom (the head), grown to 9 Å
     const table = cutterTable(patch.outer, 2);
-    const top = { atoms: table.members.map((m) => m.positions.slice(0, 3)), radius: 9 };
+    const top = { atoms: table.members.map((m) => m.positions.slice(0, 3)), radii: table.members.map(() => 9) };
     const mesh = flatMesh(200, 4);
     const regions = cutterRegions(mesh.positions, mesh.indices, 1);
     const s = farSurface(mesh, regions, table, 'outer', headOffset(table, 'outer'), () => true, 20, undefined, top);
