@@ -288,7 +288,9 @@ describe('superstructures', () => {
     const e = cam(every);
     // the same points, summed in another order
     expect(Math.hypot(...c.target.map((v, k) => v - e.target[k]))).toBeLessThan(1e-6);
-    expect(c.focus!.radius).toBeCloseTo(e.focus!.radius, 6);
+    // the radius an upper bound (each instance's ball moved, not each copy), within a few per cent
+    expect(c.focus!.radius).toBeGreaterThanOrEqual(e.focus!.radius - 1e-6);
+    expect(c.focus!.radius).toBeLessThan(e.focus!.radius * 1.05);
     expect(c.focus!.radius).toBeGreaterThan(3000);
   });
   it('two superstructures deep: the camera frames every copy; within says what it leaves out', async () => {

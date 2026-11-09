@@ -486,25 +486,46 @@ export function lociToIds(l: MesoLoci, ir: IR, limit = 50): string[] {
  * The bounding sphere of the selected copies (Å, world frame): centre and radius including the copies' own radii.
  * Copies inside superstructures are where they are in the world: a template set's in every instance, a virtual set's
  * (`<instance set>@<i>><template>`) in its one instance. What a semantic camera frames (design.md §5.1).
+ *
+ * A template set's copies are bounded once in the template's frame, and that ball is moved by each instance's pose:
+ * the centre stays exact (every instance holds the same copies), the radius is an upper bound, and the cost is
+ * O(instances + template) instead of O(instances × template).
  */
 export function lociSphere(l: MesoLoci, ir: IR): { center: [number, number, number]; radius: number } | undefined {
   const world = worldOfIR(ir);
-  const pts: number[] = [];
-  const rs: number[] = [];
+  // balls: centre, radius, weight (copies)
+  const balls: number[] = [];
+  const v = [0, 0, 0];
   for (const [k, r] of l) {
     const w = worldOf(world, k);
     if (!w) continue;
-    forEachInWorld(w, r, (i, x, y, z) => {
-      pts.push(x, y, z);
-      rs.push(w.set.typeTable[w.set.types[i]].radius);
-    });
+    const radiusOf = (i: number) => w.set.typeTable[w.set.types[i]].radius;
+    if (w.poses.length === 1) {
+      forEachInWorld(w, r, (i, x, y, z) => balls.push(x, y, z, radiusOf(i), 1));
+      continue;
+    }
+    const local: number[] = [];
+    forEachInWorld({ set: w.set, poses: [IdentityPose] }, r, (i, x, y, z) => local.push(x, y, z, radiusOf(i), 1));
+    const b = enclose(local);
+    if (!b) continue;
+    for (const pose of w.poses) {
+      apply(pose, b[0], b[1], b[2], v);
+      balls.push(v[0], v[1], v[2], b[3], b[4]);
+    }
   }
-  const n = rs.length;
+  const e = enclose(balls);
+  return e && { center: [e[0], e[1], e[2]], radius: e[3] };
+}
+
+/** Balls `[x, y, z, r, w]…` → their weighted centre, the radius that holds them all, and the total weight. */
+function enclose(b: readonly number[]): [number, number, number, number, number] | undefined {
+  let n = 0;
+  for (let i = 4; i < b.length; i += 5) n += b[i];
   if (!n) return undefined;
-  const c: [number, number, number] = [0, 0, 0];
-  for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) c[k] += pts[3 * i + k] / n;
+  const c = [0, 0, 0];
+  for (let i = 0; i < b.length; i += 5) for (let k = 0; k < 3; k++) c[k] += (b[i + k] * b[i + 4]) / n;
   let radius = 0;
-  for (let i = 0; i < n; i++)
-    radius = Math.max(radius, Math.hypot(pts[3 * i] - c[0], pts[3 * i + 1] - c[1], pts[3 * i + 2] - c[2]) + rs[i]);
-  return { center: c, radius };
+  for (let i = 0; i < b.length; i += 5)
+    radius = Math.max(radius, Math.hypot(b[i] - c[0], b[i + 1] - c[1], b[i + 2] - c[2]) + b[i + 3]);
+  return [c[0], c[1], c[2], radius, n];
 }
