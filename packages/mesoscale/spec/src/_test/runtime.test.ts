@@ -282,4 +282,21 @@ describe('views', () => {
     expect(hinted).toEqual(['p.catalase', 'p.catalase.observed']);
     expect(ir.view.camera?.position).toEqual([0, 0, 1600]);
   });
+  // review gate R12: tours and metadata are session state, not scene
+  it('a tour or title edit is a view edit, and updateView carries the new title', async () => {
+    const doc = exosomeDoc();
+    const r = await compileExosome(doc);
+    const toured = { ...doc, tours: [{ id: 't', steps: [{ view: doc.views![0].id, duration: 1000 }] }] };
+    expect(classifyEdit(doc, toured)).toBe('view');
+    const renamed = { ...doc, metadata: { ...doc.metadata, title: 'renamed' } };
+    expect(classifyEdit(doc, renamed)).toBe('view');
+    const ir = updateView(renamed, r.ir!);
+    expect((ir.root.params as { title: string }).title).toBe('renamed');
+    expect(placementSets(ir)).toEqual(placementSets(r.ir!));
+  });
+  it('content hashes see into maps and sets', () => {
+    expect(contentHash(new Map([['a', 1]]))).not.toBe(contentHash(new Map([['a', 2]])));
+    expect(contentHash(new Set([1]))).not.toBe(contentHash(new Set([2])));
+    expect(contentHash(new Set([1, 2]))).toBe(contentHash(new Set([2, 1])));
+  });
 });

@@ -23,6 +23,11 @@ function write(v: unknown, out: string[]) {
     const bytes = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
     return void out.push(`"#${v.constructor.name}:${v.byteLength}:${hashBytes(bytes)}"`);
   }
+  // a Map by its entries and a Set by its elements, each sorted by canonical form (insertion order is not content)
+  if (v instanceof Map || v instanceof Set) {
+    const items = (v instanceof Map ? [...v.entries()] : [...v]).map(canonicalJson).sort();
+    return void out.push(`{${v instanceof Map ? '"#Map"' : '"#Set"'}:[${items.join(',')}]}`);
+  }
   if (Array.isArray(v)) {
     out.push('[');
     for (let i = 0; i < v.length; i++) {

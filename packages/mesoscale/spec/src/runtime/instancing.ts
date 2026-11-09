@@ -24,6 +24,10 @@ export interface Flattened {
   readonly instancedBytes: number;
 }
 
+/**
+ * Expansions by key (`<instance set>|<type>*<template set>`), kept by the caller across commits. Nothing here evicts:
+ * the caller drops the keys it no longer draws (the Prism adapter does after each commit).
+ */
 export type ExpansionCache = Map<string, PlacementSet>;
 
 export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Flattened {
@@ -34,14 +38,15 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
   };
   collect(ir.root);
 
-  const looksBySet = new Map<string, IRLook[]>();
-  for (const l of ir.view.looks) looksBySet.set(l.set, [...(looksBySet.get(l.set) ?? []), l]);
+  // the looks of every set met, drawn or not: the view's, then (an instance set) its instanced types hidden, then (an
+  // expansion) those of the template it expands, so a look reaches every level of nesting
+  const looksOf = new Map<string, IRLook[]>();
+  for (const l of ir.view.looks) looksOf.set(l.set, [...(looksOf.get(l.set) ?? []), l]);
+  const hiddenSet = new Set<string>();
 
   let expandedCopies = 0;
   let expandedBytes = 0;
   let instancedBytes = 0;
-  const hidden: IRLook[] = [];
-  const remapped: IRLook[] = [];
 
   /** The drawable sets of a subtree (not inside a nested superstructure), instances expanded (recursively). */
   const drawable = (n: IRNode, out: PlacementSet[]) => {
@@ -53,7 +58,13 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
       );
       out.push(set);
       for (const i of inst) {
-        hidden.push({ set: set.key, types: [i.params.type], visible: false });
+        if (!hiddenSet.has(`${set.key}|${i.params.type}`)) {
+          hiddenSet.add(`${set.key}|${i.params.type}`);
+          looksOf.set(set.key, [
+            ...(looksOf.get(set.key) ?? []),
+            { set: set.key, types: [i.params.type], visible: false },
+          ]);
+        }
         const tplNode = ssNodes.get(i.params.superstructure);
         if (!tplNode) continue;
         const tpl: PlacementSet[] = [];
@@ -68,7 +79,8 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
           }
           expandedCopies += e.count;
           expandedBytes += e.count * 36;
-          for (const l of looksBySet.get(t.key) ?? []) if (!l.runs) remapped.push({ ...l, set: key });
+          const looks: IRLook[] = [];
+          for (const l of looksOf.get(t.key) ?? []) if (!l.runs) looks.push({ ...l, set: key });
           // looks on copies inside one instance (`part`): the instance's block of the expansion, in pose order
           for (const l of ir.view.looks) {
             const m = /^(.*)@(\d+)>(.*)$/.exec(l.set);
@@ -77,8 +89,9 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
             if (set.types[at] !== i.params.type) continue;
             let rank = 0;
             for (let q = 0; q < at; q++) if (set.types[q] === i.params.type) rank++;
-            remapped.push({ ...l, set: key, runs: l.runs.map((v) => v + rank * t.count) });
+            looks.push({ ...l, set: key, runs: l.runs.map((v) => v + rank * t.count) });
           }
+          looksOf.set(key, looks);
           out.push(e);
         }
       }
@@ -93,8 +106,7 @@ export function flattenInstances(ir: IR, cache: ExpansionCache = new Map()): Fla
     for (const c of n.children ?? []) drawable(c, tpl);
     for (const t of tpl) instancedBytes += t.count * 36;
   }
-  const keys = new Set(sets.map((s) => s.key));
-  const looks = [...ir.view.looks.filter((l) => keys.has(l.set)), ...remapped, ...hidden];
+  const looks = sets.flatMap((s) => looksOf.get(s.key) ?? []);
   const root: IRNode = {
     ref: 'flattened',
     kind: 'scene',

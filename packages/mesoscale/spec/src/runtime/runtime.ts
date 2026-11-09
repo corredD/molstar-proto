@@ -345,7 +345,9 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
 
   // ---- resolve, in `avoid` order ----
   const cache = o.cache ?? new Map<string, ResolveOutput>();
-  const order = topoOrder(models);
+  // a refined model's result is replaced by its refiner's: its constraints are checked there (design.md §6.7)
+  const refinedBy = new Map(models.filter((m) => m.refines).map((m) => [m.refines!, m.id]));
+  const order = topoOrder(models, refinedBy);
   const outputs = new Map<
     Id,
     { key: string; out: ResolveOutput; cached: boolean; resolver: Resolver; input: unknown }
@@ -355,10 +357,18 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
   let hits = 0;
   const counts: Record<Id, { requested?: number; achieved: number }> = {};
   const reports: Record<Id, Readonly<Record<string, unknown>> | undefined> = {};
-  // a refined model's result is replaced by its refiner's: its constraints are checked there (design.md §6.7)
-  const refinedBy = new Map(models.filter((m) => m.refines).map((m) => [m.refines!, m.id]));
-  const realizes = (m: Model): readonly Id[] =>
-    m.refines ? realizes(models.find((x) => x.id === m.refines) ?? m) : m.populations;
+  const placed = new Map<Id, readonly NormalizedPopulation[]>();
+  /** A model and the models it refines, up to the head of its chain. */
+  const chainOf = (m: Model): Model[] => {
+    const out = [m];
+    for (let x = m; x.refines; ) {
+      const up = models.find((y) => y.id === x.refines);
+      if (!up || out.includes(up)) break;
+      out.push((x = up));
+    }
+    return out;
+  };
+  const realizes = (m: Model): readonly Id[] => chainOf(m).at(-1)!.populations;
   for (const m of order) {
     const resolver = resolvers.get(m.method);
     const popsOf = realizes(m)
@@ -397,9 +407,12 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
       if (lr) inputs.set(id, lr);
       else missing = true;
     }
-    const upstreamModel = m.refines ? models.find((x) => x.id === m.refines) : undefined;
     const upstream = m.refines ? outputs.get(m.refines) : undefined;
-    const avoided = [...(m.avoid ?? []), ...(upstreamModel?.avoid ?? [])].map((a) => outputs.get(a));
+    // a refine stage avoids what every model up its chain avoids
+    const avoids = new Set<Id>();
+    for (const x of chainOf(m)) for (const a of x.avoid ?? []) avoids.add(a);
+    // a refined model is avoided through the result that replaces it (its last refine stage that resolved)
+    const avoided = [...avoids].map((a) => outputs.get(resultOf(a, refinedBy, m.id, (x) => outputs.has(x))));
     if (missing || avoided.some((a) => !a) || (m.refines && !upstream)) {
       issues.push(
         issue(
@@ -463,8 +476,16 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     outputs.set(m.id, { key, out, cached, resolver, input });
     reports[m.id] = out.report;
     for (const i of out.issues ?? []) issues.push(i);
-    if (refinedBy.has(m.id)) continue;
-    for (const p of job.populations) {
+    placed.set(m.id, job.populations);
+  }
+  // counts and constraints on the result that stands: a refined model's are checked at its refiner, unless the
+  // refiner failed and the refined result is what is drawn
+  for (const m of order) {
+    const pops = placed.get(m.id);
+    const out = outputs.get(m.id)?.out;
+    const by = refinedBy.get(m.id);
+    if (!pops || !out || (by && outputs.has(by))) continue;
+    for (const p of pops) {
       const achieved = out.achieved[p.id] ?? 0;
       counts[p.id] = { requested: p.requested, achieved };
       const need = Math.ceil((p.requested ?? 0) * p.minFraction);
@@ -539,16 +560,22 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
   };
 }
 
-/** What an edit touches (design.md §7.2): `view` when only views, session or metadata differ (no resolution needed). */
+/** What an edit touches (design.md §7.2): `view` when only views, tours, session or metadata differ (no resolution). */
 export function classifyEdit(prev: MesoViewSpecDoc, next: MesoViewSpecDoc): 'none' | 'view' | 'model' {
-  const strip = ({ views: _v, session: _s, metadata: _m, ...rest }: MesoViewSpecDoc) => rest;
+  const strip = ({ views: _v, tours: _t, session: _s, metadata: _m, ...rest }: MesoViewSpecDoc) => rest;
   if (contentHash(prev) === contentHash(next)) return 'none';
   return contentHash(strip(prev)) === contentHash(strip(next)) ? 'view' : 'model';
 }
 
 /** A view-only edit: the same IR tree, a new view (O(types), no resolver, no placement touched). */
 export function updateView(doc: MesoViewSpecDoc, ir: IR): IR {
-  return { root: ir.root, view: deriveView(doc, ir.root) };
+  // the title is the document's metadata: a new root object only when it changed (the tree below is the same)
+  const p = ir.root.params as { title?: string };
+  const root =
+    ir.root.kind === 'scene' && p.title !== doc.metadata.title
+      ? ({ ...ir.root, params: { ...p, title: doc.metadata.title } } as IRNode)
+      : ir.root;
+  return { root, view: deriveView(doc, root) };
 }
 
 // ---- normalization ----
@@ -802,14 +829,28 @@ export function frameMatrices(doc: MesoViewSpecDoc, unit: LengthUnit): Map<Id, n
   return out;
 }
 
-function topoOrder(models: readonly Model[]): Model[] {
+/**
+ * The model whose result stands for `id`'s: the last refine stage after it (design.md §6.7), stopping before `self`
+ * (a stage never stands in for what it refines from its own point of view) and at the first stage `ok` refuses.
+ */
+function resultOf(id: Id, refinedBy: ReadonlyMap<Id, Id>, self: Id, ok: (id: Id) => boolean = () => true): Id {
+  const seen = new Set([id]);
+  for (let next = refinedBy.get(id); next && next !== self && !seen.has(next) && ok(next); next = refinedBy.get(id)) {
+    id = next;
+    seen.add(id);
+  }
+  return id;
+}
+
+/** Models after what they avoid (through its refine stages) and what they refine. */
+function topoOrder(models: readonly Model[], refinedBy: ReadonlyMap<Id, Id>): Model[] {
   const by = new Map(models.map((m) => [m.id, m]));
   const out: Model[] = [];
   const done = new Set<Id>();
   const visit = (m: Model, stack: Set<Id>) => {
     if (done.has(m.id) || stack.has(m.id)) return;
     stack.add(m.id);
-    for (const a of [...(m.avoid ?? []), ...(m.refines ? [m.refines] : [])]) {
+    for (const a of [...(m.avoid ?? []).map((x) => resultOf(x, refinedBy, m.id)), ...(m.refines ? [m.refines] : [])]) {
       const d = by.get(a);
       if (d) visit(d, stack);
     }
@@ -867,8 +908,10 @@ function assemble(
   for (const m of models) {
     const o = outputs.get(m.id);
     if (!o) continue;
-    // a refined model keeps its resolve node (its key, its input) but not its sets: the refiner's replace them
-    const superseded = refiner.get(m.id);
+    // a refined model keeps its resolve node (its key, its input) but not its sets: the refiner's replace them (when
+    // the refiner resolved; a failed refiner leaves the refined result drawn)
+    const by = refiner.get(m.id);
+    const superseded = by && outputs.has(by) ? by : undefined;
     resolves.push({
       ref: `${m.id}/resolve`,
       kind: 'resolve',
@@ -995,7 +1038,6 @@ function hsl(h: number, s: number, l: number) {
 
 export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
   const view: View | undefined = (doc.views ?? []).find((v) => v.id === doc.session?.view) ?? doc.views?.[0];
-  const unit = doc.units?.length ?? 'nm';
   const ir = { root, view: { id: '', looks: [] } } as IR;
   const issues: Issue[] = [];
   const parsed = new Map<string, MesoLoci>();
@@ -1051,7 +1093,10 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
     for (const [k, runs] of loci) {
       if (!/@\d+>/.test(k)) continue;
       const tpl = sets.find((x) => x.key === k.slice(k.lastIndexOf('>') + 1));
-      const types = tpl ? [...new Set(Array.from({ length: runs.length / 2 }, (_, j) => tpl.types[runs[2 * j]]))] : [];
+      // every type the runs cover (one run can span two populations written one after the other)
+      const types = tpl
+        ? tpl.typeTable.filter((t) => intersectRuns(typeRuns(tpl)[t.index], runs).length).map((t) => t.index)
+        : [];
       partial.push({ set: k, types, runs, ...props });
     }
   }
@@ -1059,8 +1104,8 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
   const selection = view?.selection
     ? [...materialize(view.selection)].map(([set, runs]) => ({ set, runs }))
     : undefined;
-  const f = LengthToAngstrom[unit];
   const camera = deriveCamera(doc, view, ir, materialize);
+  const place = viewFrame(doc, view).place;
   return {
     id: view?.id ?? 'default',
     camera,
@@ -1069,20 +1114,33 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
     annotations: view?.annotations?.map((a) => ({
       id: a.id,
       text: a.text,
-      position:
-        typeof a.target === 'string'
-          ? lociSphere(materialize(a.target), ir)?.center
-          : a.target.position.map((x) => x * f),
+      position: typeof a.target === 'string' ? lociSphere(materialize(a.target), ir)?.center : place(a.target.position),
     })),
     ...(view?.cutaway ? { cutaway: [...materialize(view.cutaway)].map(([set, runs]) => ({ set, runs })) } : {}),
     ...(issues.length ? { issues } : {}),
   };
 }
 
+/** Points (`place`) and directions (`turn`) of a view, from its frame to world Å. */
+function viewFrame(doc: MesoViewSpecDoc, view: View | undefined) {
+  const unit = doc.units?.length ?? 'nm';
+  const f = LengthToAngstrom[unit];
+  const M = view?.frame ? frameMatrices(doc, unit).get(view.frame) : undefined;
+  return {
+    // a frame matrix takes the frame's own units (or voxels) to world Å; without one, the document's unit
+    place: (p: readonly number[]) =>
+      M ? [0, 1, 2].map((r) => M[r] * p[0] + M[4 + r] * p[1] + M[8 + r] * p[2] + M[12 + r]) : p.map((x) => x * f),
+    // a direction, turned into the world (the frame's scale does not matter once normalized)
+    turn: (v: readonly number[]) =>
+      M ? [0, 1, 2].map((r) => M[r] * v[0] + M[4 + r] * v[1] + M[8 + r] * v[2]) : [...v],
+  };
+}
+
 /**
  * A view's camera in world Å (design.md §5.1). Numeric: its position and target moved by the view frame's matrix (a
- * camera written in a tomogram's frame lands where the tomogram is). Semantic: the focus address materialized, its
- * bounding sphere framed from the given direction at the framing's distance.
+ * camera written in a tomogram's frame lands where the tomogram is), its up turned by it. Semantic: the focus address
+ * materialized, its bounding sphere framed from the given direction (turned by the view frame) at the framing's
+ * distance. Either way the up is made perpendicular to the view direction.
  */
 function deriveCamera(
   doc: MesoViewSpecDoc,
@@ -1092,14 +1150,9 @@ function deriveCamera(
 ): IRView['camera'] {
   const cam = view?.camera;
   if (!cam) return undefined;
-  const unit = doc.units?.length ?? 'nm';
-  const f = LengthToAngstrom[unit];
-  const M = view?.frame ? frameMatrices(doc, unit).get(view.frame) : undefined;
-  // a frame matrix takes the frame's own units (or voxels) to world Å; without one, the document's unit
-  const place = (p: readonly number[]) =>
-    M ? [0, 1, 2].map((r) => M[r] * p[0] + M[4 + r] * p[1] + M[8 + r] * p[2] + M[12 + r]) : p.map((x) => x * f);
+  const { place, turn } = viewFrame(doc, view);
   const fov = cam.fov ?? 45;
-  const up = [...(cam.up ?? [0, 1, 0])];
+  const upIn = cam.up ? turn(cam.up) : [0, 1, 0];
   if (cam.focus) {
     const sphere = lociSphere(materialize(cam.focus), ir);
     if (sphere) {
@@ -1117,16 +1170,18 @@ function deriveCamera(
         const c = all?.center ?? [0, 0, 0];
         dir = sphere.center.map((v, k) => v - c[k]);
         if (Math.hypot(dir[0], dir[1], dir[2]) < 1e-6) dir = [0, 0, 1];
-      } else if (Array.isArray(cam.from)) dir = [...cam.from];
-      else if (cam.position && cam.target) dir = cam.position.map((v, k) => v - cam.target![k]);
-      else dir = [0, 0, 1];
+      } else if (Array.isArray(cam.from)) dir = turn(cam.from);
+      else if (cam.position && cam.target) {
+        const [p, t] = [place(cam.position), place(cam.target)];
+        dir = p.map((v, k) => v - t[k]);
+      } else dir = [0, 0, 1];
       const l = Math.hypot(dir[0], dir[1], dir[2]) || 1;
       const scale = cam.framing === 'close' ? 0.6 : cam.framing === 'context' ? 2.5 : 1.1;
       const d = (sphere.radius / Math.sin(((fov / 2) * Math.PI) / 180)) * scale;
       return {
         position: sphere.center.map((v, k) => v + (dir[k] / l) * d),
         target: [...sphere.center],
-        up,
+        up: upAcross(upIn, dir),
         fov,
         ...(cam.transition !== undefined ? { transition: cam.transition } : {}),
         focus: { radius: sphere.radius },
@@ -1134,11 +1189,47 @@ function deriveCamera(
     }
   }
   if (!cam.position || !cam.target) return undefined;
+  const position = place(cam.position);
+  const target = place(cam.target);
   return {
-    position: place(cam.position),
-    target: place(cam.target),
-    up,
+    position,
+    target,
+    up: upAcross(
+      upIn,
+      position.map((v, k) => v - target[k]),
+    ),
     fov: cam.fov,
     ...(cam.transition !== undefined ? { transition: cam.transition } : {}),
   };
+}
+
+/**
+ * `up` made perpendicular to the view direction `dir` (unit length). When `up` is nearly along `dir` (a camera looking
+ * along its own up: no roll is defined), the world axis least along `dir` stands in for it.
+ */
+function upAcross(up: readonly number[], dir: readonly number[]): number[] {
+  const unit = (v: readonly number[]) => {
+    const l = Math.hypot(v[0], v[1], v[2]);
+    return l > 0 ? v.map((x) => x / l) : v.map(() => 0);
+  };
+  const d = unit(dir);
+  const across = (u: readonly number[]) => {
+    const n = unit(u);
+    const k = n[0] * d[0] + n[1] * d[1] + n[2] * d[2];
+    return n.map((x, i) => x - k * d[i]);
+  };
+  if (!d.some((x) => x)) return unit(up);
+  let u = across(up);
+  if (Math.hypot(u[0], u[1], u[2]) < 0.1) {
+    const axes = [
+      [0, 1, 0],
+      [0, 0, 1],
+      [1, 0, 0],
+    ];
+    const least = axes.reduce((a, b) =>
+      Math.abs(a[0] * d[0] + a[1] * d[1] + a[2] * d[2]) <= Math.abs(b[0] * d[0] + b[1] * d[1] + b[2] * d[2]) ? a : b,
+    );
+    u = across(least);
+  }
+  return unit(u);
 }

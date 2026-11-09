@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { betaCellDoc, BetaCellResources } from '../examples/betacell.js';
 import { exosomeDoc } from '../examples/exosome.js';
+import type { MesoViewSpecDoc } from '../format/doc.js';
 import { validate } from '../format/validate.js';
 import { type IR, placementSets } from '../ir/ir.js';
 import { DefaultResolvers } from '../resolvers/index.js';
@@ -94,5 +95,85 @@ describe('semantic camera', () => {
     expect(codes).toContain('value.range');
     expect(codes).toContain('ref.missing');
     expect(validate(betaCellDoc()).filter((i) => i.severity === 'error')).toEqual([]);
+  });
+  // review gate R4 + RN1: a view frame turns the camera's directions (up, from, position − target), not only its points;
+  // and the up the IR states is perpendicular to the view direction
+  const unit = (v: readonly number[]) => v.map((x) => x / Math.hypot(v[0], v[1], v[2]));
+  const cos = (a: readonly number[], b: readonly number[]) => unit(a).reduce((x, v, k) => x + v * unit(b)[k], 0);
+  const turned = (camera: Record<string, unknown>) => {
+    const d = exosomeDoc();
+    const s = Math.SQRT1_2;
+    // the tomogram frame turned a quarter about x: its y is the world's z
+    return {
+      ...d,
+      alignments: [{ ...d.alignments![0], transform: { translation: [0, 0, 0], rotation: [s, 0, 0, s] } }],
+      views: [{ id: 'v.tomo', frame: 'f.tomo', camera }],
+      session: { view: 'v.tomo' },
+    } as MesoViewSpecDoc;
+  };
+
+  it('a numeric camera in a turned frame: its up turns with the frame', async () => {
+    const r = await compileExosome(turned({ position: [0, 0, 300], target: [0, 0, 0], up: [0, 1, 0] }));
+    const c = r.ir!.view.camera!;
+    const dir = c.target.map((v, k) => v - c.position[k]);
+    expect(dist(c.position, [0, -3000, 0])).toBeLessThan(1e-6);
+    expect(dist(c.up, [0, 0, 1])).toBeLessThan(1e-6);
+    expect(Math.abs(cos(dir, c.up))).toBeLessThan(1e-6);
+  });
+
+  it('a semantic camera in a turned frame: its `from` direction turns with the frame', async () => {
+    const r = await compileExosome(turned({ focus: '(all)', framing: 'fit', from: [0, 0, 1] }));
+    const c = r.ir!.view.camera!;
+    // from +z in the frame is from -y in the world
+    expect(
+      cos(
+        c.position.map((v, k) => v - c.target[k]),
+        [0, -1, 0],
+      ),
+    ).toBeGreaterThan(1 - 1e-6);
+    expect(
+      Math.abs(
+        cos(
+          c.position.map((v, k) => v - c.target[k]),
+          c.up,
+        ),
+      ),
+    ).toBeLessThan(1e-6);
+  });
+
+  it("every shipped view's up is perpendicular to its view direction (v.docked looks along y)", async () => {
+    const r = await compile(betaCellDoc(), { resolvers: DefaultResolvers, load });
+    for (const v of betaCellDoc().views ?? []) {
+      const c = updateView({ ...betaCellDoc(), session: { view: v.id } }, r.ir!).view.camera;
+      if (!c) continue;
+      expect(
+        Math.abs(
+          cos(
+            c.target.map((x, k) => x - c.position[k]),
+            c.up,
+          ),
+        ),
+        v.id,
+      ).toBeLessThan(0.9);
+      expect(
+        Math.abs(
+          cos(
+            c.target.map((x, k) => x - c.position[k]),
+            c.up,
+          ),
+        ),
+        v.id,
+      ).toBeLessThan(1e-6);
+      expect(Math.hypot(...c.up), v.id).toBeCloseTo(1, 9);
+    }
+  });
+  it("a numeric annotation is a point in the view's frame, placed as the camera is", async () => {
+    const doc = turned({ position: [0, 0, 300], target: [0, 0, 0] });
+    const d = {
+      ...doc,
+      views: [{ ...doc.views![0], annotations: [{ id: 'a', text: 'a', target: { position: [0, 0, 300] } }] }],
+    };
+    const r = await compileExosome(d as MesoViewSpecDoc);
+    expect(dist(r.ir!.view.annotations![0].position!, r.ir!.view.camera!.position)).toBeLessThan(1e-6);
   });
 });

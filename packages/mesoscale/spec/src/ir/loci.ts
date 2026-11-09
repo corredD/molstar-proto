@@ -212,7 +212,8 @@ export function evaluateMesoQL(e: QExpr, ctx: LociContext): { loci: MesoLoci; is
       case 'within': {
         const of = x.keywords.of ? ev(x.keywords.of as QExpr) : EmptyLoci;
         const d = Number(x.keywords.distance ?? 0) * unit;
-        return within(sets, ev(x.args[0] as QExpr), of, d);
+        const w = worldOfIR(ctx.ir);
+        return within(w, perInstance(w, ev(x.args[0] as QExpr), issues), of, d);
       }
       case 'part': {
         // copies of an inner population in the instances picked: one virtual set per instance,
@@ -262,53 +263,202 @@ function instancesOf(ir: IR, key: string): { type: number; templates: readonly s
   return out;
 }
 
-/** Copies of `a` whose centre is within `d` Å of a copy of `b`: a hash grid over `b`, O(|a| + |b|). */
-function within(sets: readonly PlacementSet[], a: MesoLoci, b: MesoLoci, d: number): MesoLoci {
-  const byKey = new Map(sets.map((s) => [s.key, s]));
+// ---- copies in the world ----
+
+/** A rigid pose: rotation quaternion `q` (x, y, z, w), then translation `t`. */
+interface Pose {
+  readonly q: readonly [number, number, number, number];
+  readonly t: readonly [number, number, number];
+}
+
+const IdentityPose: Pose = { q: [0, 0, 0, 1], t: [0, 0, 0] };
+
+const VirtualKey = /^(.*)@(\d+)>(.*)$/;
+
+function poseOf(set: PlacementSet, i: number): Pose {
+  const r = set.rotations;
+  const p = set.positions;
+  return { q: [r[4 * i], r[4 * i + 1], r[4 * i + 2], r[4 * i + 3]], t: [p[3 * i], p[3 * i + 1], p[3 * i + 2]] };
+}
+
+/** `p` moved by `a` (p' = q·p·q⁻¹ + t), into `out`. */
+function apply(a: Pose, x: number, y: number, z: number, out: number[]) {
+  const [qx, qy, qz, qw] = a.q;
+  const tx = 2 * (qy * z - qz * y),
+    ty = 2 * (qz * x - qx * z),
+    tz = 2 * (qx * y - qy * x);
+  out[0] = x + qw * tx + (qy * tz - qz * ty) + a.t[0];
+  out[1] = y + qw * ty + (qz * tx - qx * tz) + a.t[1];
+  out[2] = z + qw * tz + (qx * ty - qy * tx) + a.t[2];
+}
+
+function compose(a: Pose, b: Pose): Pose {
+  const [ax, ay, az, aw] = a.q;
+  const [bx, by, bz, bw] = b.q;
+  const t = [0, 0, 0];
+  apply(a, b.t[0], b.t[1], b.t[2], t);
+  return {
+    q: [
+      aw * bx + ax * bw + ay * bz - az * by,
+      aw * by - ax * bz + ay * bw + az * bx,
+      aw * bz + ax * by - ay * bx + az * bw,
+      aw * bw - ax * bx - ay * by - az * bz,
+    ],
+    t: [t[0], t[1], t[2]],
+  };
+}
+
+/** The sets of an IR by key, and for each template set (inside a superstructure) the instance sets and types standing for it. */
+interface World {
+  readonly byKey: ReadonlyMap<string, PlacementSet>;
+  readonly templates: ReadonlyMap<string, readonly { readonly set: string; readonly type: number }[]>;
+  readonly under: ReadonlySet<string>;
+}
+
+const worlds = new WeakMap<IR['root'], World>();
+
+function worldOfIR(ir: IR): World {
+  let w = worlds.get(ir.root);
+  if (w) return w;
+  const templates = new Map<string, { set: string; type: number }[]>();
+  const under = new Set<string>();
+  const visit = (n: IR['root'], inside: boolean) => {
+    if (n.kind === 'placements') {
+      if (inside) under.add(n.params.set.key);
+      for (const c of n.children ?? [])
+        if (c.kind === 'instances')
+          for (const t of c.params.templates)
+            templates.set(t, [...(templates.get(t) ?? []), { set: n.params.set.key, type: c.params.type }]);
+    }
+    for (const c of n.children ?? []) visit(c, inside || n.kind === 'superstructure');
+  };
+  visit(ir.root, false);
+  w = { byKey: new Map(placementSets(ir).map((s) => [s.key, s])), templates, under };
+  worlds.set(ir.root, w);
+  return w;
+}
+
+/** The poses that take a set's own frame to the world: one for a world set, one per instance (recursively) for a template. */
+function posesOf(w: World, key: string, depth = 0): Pose[] {
+  if (!w.under.has(key)) return [IdentityPose];
+  const out: Pose[] = [];
+  if (depth > 16) return out;
+  for (const u of w.templates.get(key) ?? []) {
+    const s = w.byKey.get(u.set);
+    if (!s) continue;
+    const up = posesOf(w, u.set, depth + 1);
+    for (let i = 0; i < s.count; i++) if (s.types[i] === u.type) for (const p of up) out.push(compose(p, poseOf(s, i)));
+  }
+  return out;
+}
+
+/**
+ * Where the copies of a loci entry are in the world: the set holding them and the poses that move them there. A world
+ * set is as it is; a template set is moved by every instance of its superstructure; a virtual set
+ * `<instance set>@<i>><template>` (a `part`) by that one instance's pose.
+ */
+function worldOf(w: World, key: string): { set: PlacementSet; poses: Pose[] } | undefined {
+  const m = VirtualKey.exec(key);
+  if (!m) {
+    const set = w.byKey.get(key);
+    return set && { set, poses: posesOf(w, key) };
+  }
+  const set = w.byKey.get(m[3]);
+  const outer = w.byKey.get(m[1]);
+  if (!set || !outer) return undefined;
+  const pose = poseOf(outer, Number(m[2]));
+  return { set, poses: posesOf(w, m[1]).map((p) => compose(p, pose)) };
+}
+
+/**
+ * Template sets of a selection spelled per instance: `<instance set>@<i>><template>` (what `part` makes), so what a
+ * spatial operation picks inside one instance is not given to all of them. Only for instances in the world: deeper
+ * nesting is left out, with an issue.
+ */
+function perInstance(w: World, l: MesoLoci, issues: Issue[]): MesoLoci {
+  const out = new Map<string, number[]>();
+  for (const [k, r] of l) {
+    if (!w.under.has(k)) {
+      out.set(k, [...r]);
+      continue;
+    }
+    for (const u of w.templates.get(k) ?? []) {
+      const s = w.byKey.get(u.set);
+      if (!s) continue;
+      if (w.under.has(u.set)) {
+        issues.push(
+          issue(
+            'mesoql.empty',
+            'warning',
+            'resolve',
+            '(within …): copies of a superstructure nested in another are left out (not materialized in this prototype)',
+          ),
+        );
+        continue;
+      }
+      for (let i = 0; i < s.count; i++) if (s.types[i] === u.type) out.set(`${u.set}@${i}>${k}`, [...r]);
+    }
+  }
+  return out;
+}
+
+/** Each copy of a loci entry in the world: `(index, x, y, z)`, once per pose. */
+function forEachInWorld(
+  w: { set: PlacementSet; poses: readonly Pose[] },
+  runs: readonly number[],
+  f: (i: number, x: number, y: number, z: number) => void,
+) {
+  const v = [0, 0, 0];
+  const p = w.set.positions;
+  for (const pose of w.poses)
+    for (let j = 0; j < runs.length; j += 2)
+      for (let i = runs[j]; i < runs[j + 1]; i++) {
+        apply(pose, p[3 * i], p[3 * i + 1], p[3 * i + 2], v);
+        f(i, v[0], v[1], v[2]);
+      }
+}
+
+/** Copies of `a` whose centre is within `d` Å of a copy of `b`, both in the world: a hash grid over `b`, O(|a| + |b|). */
+function within(world: World, a: MesoLoci, b: MesoLoci, d: number): MesoLoci {
   const cell = Math.max(d, 1);
   const grid = new Map<string, number[]>();
   for (const [k, r] of b) {
-    const s = byKey.get(k)!;
-    for (let j = 0; j < r.length; j += 2)
-      for (let i = r[j]; i < r[j + 1]; i++) {
-        const x = s.positions[3 * i],
-          y = s.positions[3 * i + 1],
-          z = s.positions[3 * i + 2];
-        const g = `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
-        const l = grid.get(g);
-        if (l) l.push(x, y, z);
-        else grid.set(g, [x, y, z]);
-      }
+    const w = worldOf(world, k);
+    if (!w) continue;
+    forEachInWorld(w, r, (_, x, y, z) => {
+      const g = `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+      const l = grid.get(g);
+      if (l) l.push(x, y, z);
+      else grid.set(g, [x, y, z]);
+    });
   }
+  const near = (x: number, y: number, z: number) => {
+    const cx = Math.floor(x / cell),
+      cy = Math.floor(y / cell),
+      cz = Math.floor(z / cell);
+    for (let u = -1; u <= 1; u++)
+      for (let v = -1; v <= 1; v++)
+        for (let w = -1; w <= 1; w++) {
+          const l = grid.get(`${cx + u},${cy + v},${cz + w}`);
+          if (!l) continue;
+          for (let q = 0; q < l.length; q += 3)
+            if ((l[q] - x) ** 2 + (l[q + 1] - y) ** 2 + (l[q + 2] - z) ** 2 <= d * d) return true;
+        }
+    return false;
+  };
   const out = new Map<string, number[]>();
   for (const [k, r] of a) {
-    const s = byKey.get(k)!;
+    const w = worldOf(world, k);
+    if (!w) continue;
+    const hit = new Set<number>();
+    forEachInWorld(w, r, (i, x, y, z) => {
+      if (!hit.has(i) && near(x, y, z)) hit.add(i);
+    });
     const res: number[] = [];
-    for (let j = 0; j < r.length; j += 2)
-      for (let i = r[j]; i < r[j + 1]; i++) {
-        const x = s.positions[3 * i],
-          y = s.positions[3 * i + 1],
-          z = s.positions[3 * i + 2];
-        const cx = Math.floor(x / cell),
-          cy = Math.floor(y / cell),
-          cz = Math.floor(z / cell);
-        let hit = false;
-        for (let u = -1; u <= 1 && !hit; u++)
-          for (let v = -1; v <= 1 && !hit; v++)
-            for (let w = -1; w <= 1 && !hit; w++) {
-              const l = grid.get(`${cx + u},${cy + v},${cz + w}`);
-              if (!l) continue;
-              for (let q = 0; q < l.length; q += 3)
-                if ((l[q] - x) ** 2 + (l[q + 1] - y) ** 2 + (l[q + 2] - z) ** 2 <= d * d) {
-                  hit = true;
-                  break;
-                }
-            }
-        if (hit) {
-          if (res.length && res[res.length - 1] === i) res[res.length - 1] = i + 1;
-          else res.push(i, i + 1);
-        }
-      }
+    for (const i of [...hit].sort((x, y) => x - y)) {
+      if (res.length && res[res.length - 1] === i) res[res.length - 1] = i + 1;
+      else res.push(i, i + 1);
+    }
     if (res.length) out.set(k, res);
   }
   return out;
@@ -332,67 +482,50 @@ export function lociToIds(l: MesoLoci, ir: IR, limit = 50): string[] {
   return out;
 }
 
-/** The centroid of the selected copies (Å), for an annotation anchored on a selection. */
-export function lociCentroid(l: MesoLoci, ir: IR): [number, number, number] | undefined {
-  const byKey = new Map(placementSets(ir).map((s) => [s.key, s]));
-  let n = 0;
-  const c = [0, 0, 0];
-  for (const [k, r] of l) {
-    const s = byKey.get(k);
-    if (!s) continue;
-    for (let j = 0; j < r.length; j += 2)
-      for (let i = r[j]; i < r[j + 1]; i++) {
-        c[0] += s.positions[3 * i];
-        c[1] += s.positions[3 * i + 1];
-        c[2] += s.positions[3 * i + 2];
-        n++;
-      }
-  }
-  return n ? [c[0] / n, c[1] / n, c[2] / n] : undefined;
-}
-
 /**
  * The bounding sphere of the selected copies (Å, world frame): centre and radius including the copies' own radii.
- * Copies inside superstructure instances (virtual sets `<instance set>@<i>><template>`) are moved by their instance's
- * pose. What a semantic camera frames (design.md §5.1).
+ * Copies inside superstructures are where they are in the world: a template set's in every instance, a virtual set's
+ * (`<instance set>@<i>><template>`) in its one instance. What a semantic camera frames (design.md §5.1).
+ *
+ * A template set's copies are bounded once in the template's frame, and that ball is moved by each instance's pose:
+ * the centre stays exact (every instance holds the same copies), the radius is an upper bound, and the cost is
+ * O(instances + template) instead of O(instances × template).
  */
 export function lociSphere(l: MesoLoci, ir: IR): { center: [number, number, number]; radius: number } | undefined {
-  const byKey = new Map(placementSets(ir).map((s) => [s.key, s]));
-  const pts: number[] = [];
-  const rs: number[] = [];
+  const world = worldOfIR(ir);
+  // balls: centre, radius, weight (copies)
+  const balls: number[] = [];
   const v = [0, 0, 0];
   for (const [k, r] of l) {
-    const m = /^(.*)@(\d+)>(.*)$/.exec(k);
-    const s = byKey.get(m ? m[3] : k);
-    const outer = m ? byKey.get(m[1]) : undefined;
-    if (!s || (m && !outer)) continue;
-    const i0 = m ? Number(m[2]) : -1;
-    for (let j = 0; j < r.length; j += 2)
-      for (let i = r[j]; i < r[j + 1]; i++) {
-        let x = s.positions[3 * i],
-          y = s.positions[3 * i + 1],
-          z = s.positions[3 * i + 2];
-        if (outer) {
-          const q = outer.rotations.subarray(4 * i0, 4 * i0 + 4);
-          const [qx, qy, qz, qw] = [q[0], q[1], q[2], q[3]];
-          const tx = 2 * (qy * z - qz * y),
-            ty = 2 * (qz * x - qx * z),
-            tz = 2 * (qx * y - qy * x);
-          v[0] = x + qw * tx + (qy * tz - qz * ty) + outer.positions[3 * i0];
-          v[1] = y + qw * ty + (qz * tx - qx * tz) + outer.positions[3 * i0 + 1];
-          v[2] = z + qw * tz + (qx * ty - qy * tx) + outer.positions[3 * i0 + 2];
-          [x, y, z] = v;
-        }
-        pts.push(x, y, z);
-        rs.push(s.typeTable[s.types[i]].radius);
-      }
+    const w = worldOf(world, k);
+    if (!w) continue;
+    const radiusOf = (i: number) => w.set.typeTable[w.set.types[i]].radius;
+    if (w.poses.length === 1) {
+      forEachInWorld(w, r, (i, x, y, z) => balls.push(x, y, z, radiusOf(i), 1));
+      continue;
+    }
+    const local: number[] = [];
+    forEachInWorld({ set: w.set, poses: [IdentityPose] }, r, (i, x, y, z) => local.push(x, y, z, radiusOf(i), 1));
+    const b = enclose(local);
+    if (!b) continue;
+    for (const pose of w.poses) {
+      apply(pose, b[0], b[1], b[2], v);
+      balls.push(v[0], v[1], v[2], b[3], b[4]);
+    }
   }
-  const n = rs.length;
+  const e = enclose(balls);
+  return e && { center: [e[0], e[1], e[2]], radius: e[3] };
+}
+
+/** Balls `[x, y, z, r, w]…` → their weighted centre, the radius that holds them all, and the total weight. */
+function enclose(b: readonly number[]): [number, number, number, number, number] | undefined {
+  let n = 0;
+  for (let i = 4; i < b.length; i += 5) n += b[i];
   if (!n) return undefined;
-  const c: [number, number, number] = [0, 0, 0];
-  for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) c[k] += pts[3 * i + k] / n;
+  const c = [0, 0, 0];
+  for (let i = 0; i < b.length; i += 5) for (let k = 0; k < 3; k++) c[k] += (b[i + k] * b[i + 4]) / n;
   let radius = 0;
-  for (let i = 0; i < n; i++)
-    radius = Math.max(radius, Math.hypot(pts[3 * i] - c[0], pts[3 * i + 1] - c[1], pts[3 * i + 2] - c[2]) + rs[i]);
-  return { center: c, radius };
+  for (let i = 0; i < b.length; i += 5)
+    radius = Math.max(radius, Math.hypot(b[i] - c[0], b[i + 1] - c[1], b[i + 2] - c[2]) + b[i + 3]);
+  return [c[0], c[1], c[2], radius, n];
 }
