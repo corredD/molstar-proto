@@ -1188,13 +1188,13 @@ Five commands, as Seq\*'s `svs-*`, each `run(argv, io)` (tests call it in-proces
 text (a path, or `-`); the product goes to stdout (S-expression, `--json` for JSON, `-o file`), issues to stderr one per
 line (`file#path: severity code: message`). Exit 0: no errors; 1: errors; 2: usage or unreadable input.
 
-| Command                                   | Product                                                                     |
-| ----------------------------------------- | --------------------------------------------------------------------------- |
-| `meso-validate <doc>`                     | the static issues                                                           |
-| `meso-compile <doc> [--base dir]...`      | the IR summary (`examples/*.ir.json`); resources read from files            |
-| `meso-print <file>`                       | the same tree in the other spelling (document codec, else IR codec)         |
-| `meso-trace <doc> <id>`                   | the provenance tree (§3.5)                                                  |
-| `meso-query <doc> <address\|-> [--limit]` | the address checked, then its copies: count, per population, first copy ids |
+| Command                                   | Product                                                                                 |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| `meso-validate <doc>`                     | the static issues                                                                       |
+| `meso-compile <doc> [--base dir]...`      | the IR summary (`examples/*.ir.json`); resources read from files                        |
+| `meso-print <file>`                       | the same tree as an S-expression, or JSON with `--json` (document codec, else IR codec) |
+| `meso-trace <doc> <id>`                   | the provenance tree (§3.5)                                                              |
+| `meso-query <doc> <address\|-> [--limit]` | the address checked, then its copies: count, per population, first copy ids             |
 
 `pnpm -C packages/mesoscale/spec meso-<cmd>` builds first and runs from `packages/mesoscale`, so example paths are
 relative to it and `--base spec/src` (where the examples' recipe uris resolve) is passed for compile and query.
