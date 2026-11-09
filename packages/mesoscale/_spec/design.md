@@ -1126,7 +1126,10 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
    should a document be able to state a fallback chain (SeqViewSpec's)?
 5. **L scenes.** Tiles as a first-class IR concept (a set per tile, keyed), or a renderer-side streaming source?
 6. **Patches and history.** Patches over one tree for snapshots and undo (SeqViewSpec: `applyPatch`, `diff`, inverses),
-   or whole documents with `classifyEdit`, as the prototype does?
+   or whole documents with `classifyEdit`, as the prototype does? **Proposed** ([prism.md](prism.md) §2): Seq\*'s
+   patches, ops by id (`set`, `remove`, `insert`, `move`), all or nothing, an inverse returned; a viewer proposes, the
+   document's owner commits. Looks need an `id` and `emissive` for it. Undo stays Prism's checkpoints, which hold the
+   document; inverses are for the record. `classifyEdit` stays for whole documents (an open, an undo).
 7. **Schema.** JSON Schema or OpenAPI published (as MolViewSpec), or reference tables generated from the types (as
    SeqViewSpec)?
 8. **(v0.2) Detail per view.** Is `parts` vs `entity` a population's property (now) or a view's (David's "depending on
@@ -1145,7 +1148,8 @@ Fibers mock exposed the adapter's `excludeFibers` bug (§11).
     streaming (decision 5): **level 0 is statistical** (a population: counts and arrangement, no poses), **level 1 is
     copies** (poses, from a resolver, a file or instances), **level 2 is atoms** (the structures at those poses). A
     viewer far away needs level 0, then streams level 1 where the camera looks, then level 2 close up. Restructure the
-    top level, or keep the sections and treat the levels as a runtime concept?
+    top level, or keep the sections and treat the levels as a runtime concept? In prism-me the tree is the document's
+    compartments, populations and instances ([prism.md](prism.md) §4.1); a new top level changes those rows only.
 
 ## 12. Packaging
 
