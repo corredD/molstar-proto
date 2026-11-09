@@ -299,6 +299,10 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
   instance, a `part` to its instance's block); `mesoviewspec.highlight` is the same for ⌘K and the agent. The hover
   label is Mol*'s one label, from the lists: the copy's id (`getParticleLabel`), then its type's description (entity ·
   compartment); no second provider. A copy of an expanded instance picks its part row.
+- **Open (`mvs-tree`):** `framing` (Focus frames `fit` only); the shown view's `selection` as a lasting highlight and
+  **Keep as the view's selection** (lane `mvs-views`); a distance on a document's copies (selection mode refuses it: a
+  document copy has no object row to hang a distance under). An instance type's look reaches its parts by the view's
+  order of looks (`IRLook.visibleAt`, `runtime/instancing.ts`), so Show only a population drawn as parts shows them.
 
 ## 5. Operations → patches
 
