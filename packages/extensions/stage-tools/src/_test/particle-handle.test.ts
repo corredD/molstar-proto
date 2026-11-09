@@ -26,6 +26,7 @@ import {
   particleFrame,
   solveEdit,
 } from '../particle-handle.js';
+import { particleRadius, targetSphere } from '../distance.js';
 import { StageToolsExtension } from '../prism-viewer.js';
 
 // A particle's local handle: the offset that puts the particle's frame where the handle took it, whichever offset it
@@ -90,6 +91,29 @@ describe('the particle handle', () => {
     // nothing drawn on it: the particle's sphere, a quarter past it; never under 20 Å
     expect(handleSize(undefined, 40)).toBeCloseTo(50, 6);
     expect(handleSize(undefined, 2)).toBe(20);
+  });
+
+  it('reaches past sites drawn on the particle (a target of typed spheres, no structure), and sizes the particle', () => {
+    // two sites 10 Å apart on x, centered at (21, 0, 0), each 2 Å in radius: a sphere of about 7 Å, 28 Å out at least
+    const sites = {
+      count: 2,
+      positions: Float32Array.of(16, 0, 0, 26, 0, 0),
+      radii: Float32Array.of(2, 2),
+    };
+    const target = { kind: 'sites', sites } as const;
+    // a bounding sphere (Mol*'s boundary helper: about the smallest), each site in it with its radius
+    const sphere = targetSphere(target)!;
+    for (const x of [16, 26]) {
+      expect(Vec3.distance(sphere.center, Vec3.create(x, 0, 0)) + 2).toBeLessThanOrEqual(sphere.radius + 1e-4);
+    }
+    expect(sphere.radius).toBeLessThan(8);
+    // once a sites: the same sphere again
+    expect(targetSphere(target)).toBe(sphere);
+    expect(handleSize(target, 3)).toBeCloseTo(1.25 * (Vec3.magnitude(sphere.center) + sphere.radius), 4);
+    expect(handleSize(target, 3)).toBeGreaterThanOrEqual(1.25 * 28 - 1e-4);
+    // a particle without a radius of its own: its decoration's
+    const one = { radii: undefined, targets: Int32Array.of(0), targetMapping: new Map([[0, target]]) };
+    expect(particleRadius(one as unknown as ParticleList, 0)).toBe(sphere.radius);
   });
 
   it("draws the particle moved while it is dragged: the canvas given the list's representations", async () => {

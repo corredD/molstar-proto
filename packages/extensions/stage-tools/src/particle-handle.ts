@@ -17,7 +17,6 @@ import {
 import { OrderedSet } from '@molstar/core/data/int';
 import { fillSerial } from '@molstar/core/util/array';
 import { canSetParticleFrames } from '@molstar/graphics/repr/particles/representation/target/representation';
-import { Grid } from '@molstar/model/model/volume';
 import type { PluginContext } from '@molstar/plugin/context';
 import {
   offsetParticles,
@@ -29,6 +28,7 @@ import { observableState } from '@molstar/prism-ui/reactive/observable-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
 import { type FrameValue, frameHandles, GizmoHandles } from '@molstar/prism-viewer/sources/gizmos';
+import { targetSphere } from './distance.js';
 import { placementWith, poseOf } from './move.js';
 
 // A particle's local handle (apps/prism-me/_spec/ui.md, step 4): Prism's handles (`GizmoHandles`, on a frame:
@@ -257,12 +257,9 @@ const MinHandleSize = 20;
 
 /** How far what is drawn on a particle (its decoration) reaches from the particle's origin, 0 for none */
 function objectReach(target: ParticleTarget | undefined): number {
-  if (!target) return 0;
   // a decoration is placed at the particle by its own coordinates: a cellPACK protein's sit off its origin
-  const reach = (s: { center: Vec3; radius: number } | undefined) => (s ? Vec3.magnitude(s.center) + s.radius : 0);
-  if (target.kind === 'structure') return reach(target.structure.boundary.sphere);
-  if (target.kind === 'volume') return reach(Grid.getBoundingSphere(target.volume.grid));
-  return reach((target.shape.geometry as { boundingSphere?: { center: Vec3; radius: number } }).boundingSphere);
+  const s = targetSphere(target);
+  return s ? Vec3.magnitude(s.center) + s.radius : 0;
 }
 
 /** How far past what it moves a particle's handle reaches */
