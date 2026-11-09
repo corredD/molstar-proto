@@ -617,7 +617,6 @@ export function createWebGPUComputeContext(env: WebGPUComputeEnv): ComputeContex
   const ownBuffers = new WeakSet<StorageBuffer>();
   return {
     maxStorageBufferSize: Math.min(limits.maxStorageBufferBindingSize, limits.maxBufferSize),
-    maxWorkgroupsPerDimension: limits.maxComputeWorkgroupsPerDimension,
     getStorageBufferByteCount: () => env.storageBufferBytes,
     isKernelSupported: (code, schema) =>
       getKernelSource(code) !== undefined &&

@@ -68,11 +68,12 @@ function createMember(offset: Vec3, color: number, params: Partial<PD.Values<Sph
 
 describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
   // limit 1: every kernel's workgroups in rows of one, as a cell of more instances than a dimension holds has them
-  // (`workgroupRows`: 65535 workgroups of 64, 4.2M instances; a yeast slab has 6.7M); limit 2 with a fourth
+  // (`MergedCullerLimits`: 65535 workgroups of 64, 4.2M instances; a yeast slab has 6.7M); limit 2 with a fourth
   // member: 144 instances, 3 workgroups in rows of 2, the last row's second one idle (its segment read clamped)
   it.each([0, 1, 2])(
-    'draws the instances of the cells the CPU culling draws whose own sphere touches the view, from indirect lists (workgroups a dimension: %i, 0 the device limit)',
+    'draws the instances of the cells the CPU culling draws whose own sphere touches the view, from indirect lists (workgroups a dimension: %i, 0 the default)',
     async (limit) => {
+      const { maxWorkgroupsPerDimension } = MergedCullerLimits;
       const plugin = await HeadlessPluginContext.create(
         { webgpu: WebGPU.module! },
         DefaultPluginSpec(),
@@ -82,7 +83,7 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
       try {
         await plugin.init();
         const graphics = plugin.canvas3d!.graphics;
-        if (limit) (graphics.compute as { maxWorkgroupsPerDimension: number }).maxWorkgroupsPerDimension = limit;
+        if (limit) MergedCullerLimits.maxWorkgroupsPerDimension = limit;
         const members = [
           createMember(Vec3.create(0, 0, 0), ColorNames.orange),
           createMember(Vec3.create(2.5, 2.5, 1), ColorNames.green),
@@ -233,6 +234,7 @@ describe.skipIf(!WebGPU.module)('GPU culling of merged render objects', () => {
         expect(prepared).toBe(1);
       } finally {
         plugin.dispose();
+        MergedCullerLimits.maxWorkgroupsPerDimension = maxWorkgroupsPerDimension;
       }
     },
     60_000,

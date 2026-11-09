@@ -27,17 +27,6 @@ export const CellCullKernel = KernelCode('cell-cull', [64]);
 export const InstanceCopyKernel = KernelCode('instance-copy', [64]);
 export const CullArgsKernel = KernelCode('cull-args', [64]);
 
-/**
- * The workgroups of `size` threads over `n` items, in rows of at most `max` (a dispatch's limit per dimension: 65535
- * workgroups of 64 hold 4.2M items, a cellPACK cell has more instances): `[x, y]`, the kernels' workgroup
- * `wid.x + wid.y * num_workgroups.x`, those past `n` in the last row idle
- */
-export function workgroupRows(n: number, size: number, max = 65535): [x: number, y: number] {
-  const groups = Math.ceil(n / size);
-  if (groups <= max) return [groups, 1];
-  return [max, Math.ceil(groups / max)];
-}
-
 /** Levels the kernels handle, as the segments' level scales (4 components, `tSegment`) */
 export const MaxCullLevels = 4;
 
