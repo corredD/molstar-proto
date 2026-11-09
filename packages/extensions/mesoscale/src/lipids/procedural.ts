@@ -275,6 +275,44 @@ function apex(frustum: Frustum3D, out: Float64Array) {
 }
 
 /**
+ * The center of a frustum's near plane in `out` (the near plane, and the planes halfway between its side pairs), for a
+ * perspective or an orthographic camera; false where degenerate
+ */
+function nearCenter(frustum: Frustum3D, out: Float64Array) {
+  const r = frustum[0];
+  const l = frustum[1];
+  const b = frustum[2];
+  const t = frustum[3];
+  const n = frustum[5];
+  // n·x = −cn; (r − l)·x = cl − cr; (b − t)·x = ct − cb
+  const a = n.normal;
+  const bx = r.normal[0] - l.normal[0];
+  const by = r.normal[1] - l.normal[1];
+  const bz = r.normal[2] - l.normal[2];
+  const cx = b.normal[0] - t.normal[0];
+  const cy = b.normal[1] - t.normal[1];
+  const cz = b.normal[2] - t.normal[2];
+  const da = -n.constant;
+  const db = l.constant - r.constant;
+  const dc = t.constant - b.constant;
+  const bcx = by * cz - bz * cy;
+  const bcy = bz * cx - bx * cz;
+  const bcz = bx * cy - by * cx;
+  const det = a[0] * bcx + a[1] * bcy + a[2] * bcz;
+  if (Math.abs(det) < 1e-12) return false;
+  const cax = cy * a[2] - cz * a[1];
+  const cay = cz * a[0] - cx * a[2];
+  const caz = cx * a[1] - cy * a[0];
+  const abx = a[1] * bz - a[2] * by;
+  const aby = a[2] * bx - a[0] * bz;
+  const abz = a[0] * by - a[1] * bx;
+  out[0] = (da * bcx + db * cax + dc * abx) / det;
+  out[1] = (da * bcy + db * cay + dc * aby) / det;
+  out[2] = (da * bcz + db * caz + dc * abz) / det;
+  return true;
+}
+
+/**
  * The selection of a leaflet's cut (`input`) within each member's `capacity`: per view the triangles in view, nearest
  * first; a whole one a unit, a large one's cells within the frustum and the distance where a lipid is large enough on
  * screen (its plane clipped by them, then its cells' spheres tested), each a unit. CPU time O(units in view)
@@ -364,6 +402,7 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
   const enclosedBy = input.enclosedBy;
   const partShown = new Uint8Array(P).fill(1);
   const eyeInside = new Uint8Array(P);
+  const near = new Float64Array(3);
   const stack = new Int32Array(256);
 
   // the state of a selection, preallocated: candidates (key, depth, kind), their order, the units taken
@@ -419,10 +458,11 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     const facing = p.facing ?? 0;
     const perspective = facing > 0 && apex(frustum, eye);
     const reach = depthScale > 0 ? keepDepth : Infinity;
-    // the parts shown: an enclosed one only with the eye inside each of its enclosers (no clip: `facing`; orthographic,
-    // no eye: outside)
+    // the parts shown: an enclosed one only with the viewer inside each of its enclosers (no clip: `facing`); the viewer
+    // the near plane's center (an orthographic camera has no apex)
     partShown.fill(1);
     if (enclosedBy && facing > 0) {
+      const viewer = nearCenter(frustum, near);
       eyeInside.fill(2);
       for (let q = 0; q < P; ++q) {
         const e: Int32Array = enclosedBy[q];
@@ -430,7 +470,7 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
           const outer = e[i];
           if (eyeInside[outer] === 2) {
             eyeInside[outer] =
-              perspective && insidePart(tree, positions, indices, outer, eye[0], eye[1], eye[2], stack) ? 1 : 0;
+              viewer && insidePart(tree, positions, indices, outer, near[0], near[1], near[2], stack) ? 1 : 0;
           }
           if (eyeInside[outer] === 0) partShown[q] = 0;
         }
