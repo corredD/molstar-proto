@@ -24,8 +24,6 @@ export interface GizmoCanvas {
   readonly holds: number;
   /** The gizmos' representations shown, the claimed ones (handles and bodies) */
   shown(): readonly Representation.Any[];
-  /** The representations drawn on top of the scene (`Canvas3D.setOnTop`) */
-  readonly onTop: ReadonlySet<Representation.Any>;
   /**
    * The pointer over group `g` of the handles shown (0: a transform gizmo's move handle), once they are drawn; false:
    * none shown
@@ -46,7 +44,6 @@ const settle = async () => {
 
 export function mountGizmoCanvas(plugin: PluginContext): GizmoCanvas {
   const added = new Set<Representation.Any>();
-  const onTop = new Set<Representation.Any>();
   const attribs = {
     trackball: { bindings: { dragRotate: Binding([]), dragPan: Binding([]) } as Record<string, Binding> },
   };
@@ -65,11 +62,7 @@ export function mountGizmoCanvas(plugin: PluginContext): GizmoCanvas {
   const canvas = {
     graphics: { capabilities: { flatInterpolation: true } },
     add: (r: Representation.Any) => void added.add(r),
-    remove: (r: Representation.Any) => {
-      added.delete(r);
-      onTop.delete(r);
-    },
-    setOnTop: (r: Representation.Any, on: boolean) => void (on ? onTop.add(r) : onTop.delete(r)),
+    remove: (r: Representation.Any) => void added.delete(r),
     update: () => {},
     commit: () => {},
     syncVisibility: () => {},
@@ -119,7 +112,6 @@ export function mountGizmoCanvas(plugin: PluginContext): GizmoCanvas {
       return holds;
     },
     shown: () => owned(),
-    onTop,
     async hover(g = 0) {
       await settle();
       // the handles' representation (a body, when there is one, takes no hover)

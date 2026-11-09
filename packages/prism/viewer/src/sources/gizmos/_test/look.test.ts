@@ -5,7 +5,8 @@
  */
 
 import { Mat4, Vec3 } from '@molstar/core/math/linear-algebra';
-import type { GizmoItem } from '@molstar/graphics/util/gizmo/controller';
+import { GizmoAppearance, type GizmoItem } from '@molstar/graphics/util/gizmo/controller';
+import type { Canvas3D } from '@molstar/graphics/canvas3d/canvas3d';
 import { transformHandles } from '@molstar/graphics/util/gizmo/transform';
 import { describe, expect, it } from 'vitest';
 import { cbs, expectOk, headlessViewer } from '../../../_test/harness.js';
@@ -13,8 +14,8 @@ import { mountGizmoCanvas } from '../../../testing/gizmo-canvas.js';
 import type { PrismViewer } from '../../../viewer.js';
 import { GizmoHandles } from '../handles.js';
 
-// Handles on top (gizmos.md): `canvas.handles` sets every host's handles at once, Prism's own and any other, as a view
-// setting (no history step); a drag is one step, undone at once, whether they are on top or not.
+// The handles' look (gizmos.md): `canvas.handles` sets every host's handles at once, Prism's own and any other, as a view
+// setting (no history step); a drag is one step, undone at once, whatever their size.
 
 /** A second host (an extension's): a structure's transform handles, committing nothing */
 function otherHost(v: PrismViewer) {
@@ -38,8 +39,8 @@ const settle = async () => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
-describe('handles on top', () => {
-  it("sets every host's handles, the bodies too, and is no history step", async () => {
+describe("the handles' look", () => {
+  it("sets every host's handles and is no history step", async () => {
     const v = await headlessViewer({ files: [cbs()] });
     const clipping = v.api.clipping;
     expectOk(await clipping.add({ shape: 'plane', target: 'polymer' }));
@@ -52,27 +53,24 @@ describe('handles on top', () => {
     const shown = canvas.shown();
     // the cut's handles and its plane, the other host's handles
     expect(shown.length).toBeGreaterThanOrEqual(3);
-    expect(canvas.onTop.size).toBe(0);
     const steps = v.managers.history.steps.value.length;
 
-    expectOk(await v.api.run('canvas.handles', { onTop: true }));
-    expect(shown.every((r) => canvas.onTop.has(r))).toBe(true);
-    expect(v.api.canvas.handleLook.onTop).toBe(true);
+    expectOk(await v.api.run('canvas.handles', { scale: 2 }));
+    // one look a canvas, which every controller on it follows
+    expect(GizmoAppearance.of(v.plugin.canvas3d as unknown as Canvas3D).scale).toBe(2);
+    expect(v.api.canvas.handleLook.scale).toBe(2);
     expect(v.managers.history.steps.value.length).toBe(steps);
-    expect(await v.api.run('canvas.handles', { onTop: true })).toMatchObject({ ok: true, unchanged: true });
-
-    // the command flips it
-    const command = v.managers.commands.get('canvas.handles')!;
-    await command.run({}, undefined as never, new AbortController().signal);
-    expect(canvas.onTop.size).toBe(0);
-    expect(v.managers.history.steps.value.length).toBe(steps);
+    expect(await v.api.run('canvas.handles', { scale: 2 })).toMatchObject({ ok: true, unchanged: true });
+    expect(await v.api.run('canvas.handles', {})).toMatchObject({ ok: false, code: 'invalid' });
+    // a command for the operation
+    expect(v.managers.commands.get('canvas.handles')).toBeDefined();
 
     other.hide();
     clipping.gizmos.hide();
     canvas.remove();
   });
 
-  it('a drag is one step, undone at once, on top or not', async () => {
+  it('a drag is one step, undone at once, whatever their size', async () => {
     const v = await headlessViewer({ files: [cbs()] });
     const clipping = v.api.clipping;
     expectOk(await clipping.add({ shape: 'sphere', target: 'polymer' }));
@@ -81,10 +79,9 @@ describe('handles on top', () => {
     const canvas = mountGizmoCanvas(v.plugin);
     clipping.gizmos.handleOnly(1);
     expect(clipping.showGizmos(v.api)).toBe(true);
-    for (const onTop of [true, false]) {
-      expectOk(await v.api.run('canvas.handles', { onTop }));
+    for (const scale of [2, 1]) {
+      expectOk(await v.api.run('canvas.handles', { scale }));
       await settle();
-      expect(canvas.shown().every((r) => canvas.onTop.has(r) === onTop)).toBe(true);
       const before = position();
       const n = steps();
       expect(await canvas.hover()).toBe(true);
