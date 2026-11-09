@@ -148,4 +148,12 @@ describe('MesoQL', () => {
     const codes = (t: string) => parseMesoQL(t, { kinds }).issues.map((i) => i.code);
     expect(codes('(in c.exosome :nested true :nested false)')).toEqual(['mesoql.keyword']);
   });
+
+  it('ordinals, counts and distances are not negative (F11)', () => {
+    const codes = (t: string) => parseMesoQL(t, { kinds }).issues.map((i) => i.code);
+    expect(codes('(copies p.catalase -1)')).toEqual(['mesoql.argument']);
+    expect(codes('(copies p.catalase 0 -3)')).toEqual(['mesoql.argument']);
+    expect(codes('(within (all) :of (all) :distance -5)')).toEqual(['mesoql.keyword']);
+    expect(codes('(copies p.catalase 0 3)')).toEqual([]);
+  });
 });

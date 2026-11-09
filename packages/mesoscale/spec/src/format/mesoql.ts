@@ -24,6 +24,7 @@ export interface QSymbol {
   /** Positional arguments: ids of a kind, or sub-expressions of a type. `rest` takes the remaining positionals. */
   readonly args: readonly {
     readonly name: string;
+    /** `int`: a non-negative integer (an ordinal, a count). */
     readonly kind: 'id' | 'int' | 'word' | QType;
     readonly ref?: 'population' | 'instance' | 'entity' | 'compartment' | 'model' | 'superstructure';
     readonly rest?: boolean;
@@ -166,12 +167,16 @@ export const MesoQLSymbols: readonly QSymbol[] = [
   },
 ];
 
-/** A keyword's value against its type: a number, a bool, a word; a label range is a word or a number (`53-63`, `15`). */
+/**
+ * A keyword's value against its type: a number, a length (not negative), a bool, a word; a label range is a word or a
+ * number (`53-63`, `15`).
+ */
 function keywordFits(
   kt: Exclude<NonNullable<QSymbol['keywords']>[string], 'selection'>,
   v: string | number | boolean | null,
 ): v is string | number | boolean {
-  if (kt === 'number' || kt === 'length') return typeof v === 'number';
+  if (kt === 'number') return typeof v === 'number';
+  if (kt === 'length') return typeof v === 'number' && v >= 0;
   if (kt === 'bool') return typeof v === 'boolean';
   if (kt === 'word') return typeof v === 'string';
   return typeof v === 'string' || typeof v === 'number';
@@ -278,7 +283,8 @@ export function parseMesoQL(
       if (def.kind === 'selection' || def.kind === 'site' || def.kind === 'residues') {
         const e = check(it, def.kind);
         if (e) args.push(e);
-      } else if (it.kind === 'atom' && def.kind === 'int' && Number.isInteger(it.value)) args.push(it.value as number);
+      } else if (it.kind === 'atom' && def.kind === 'int' && Number.isInteger(it.value) && (it.value as number) >= 0)
+        args.push(it.value as number);
       else if (it.kind === 'atom' && typeof it.value === 'string' && (def.kind === 'id' || def.kind === 'word')) {
         if (def.kind === 'id' && def.ref && ctx.kinds) {
           const k = ctx.kinds.get(it.value);
