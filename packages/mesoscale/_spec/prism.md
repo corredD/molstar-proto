@@ -226,13 +226,15 @@ For a document row, the sections of ui.md §4 that apply, and three of its own:
 - **New view from here** (the Views row's ⋯) inserts a view with the current camera (numeric, `position`, `target`,
   `up`, in Å, the world frame) and the shown view's looks copied with new ids. **Update camera** sets the shown view's
   `camera` to the current one. Both are patches, one step each.
-- **A tour plays** (`mesoviewspec.tour.play`, `history: false`, as `snapshot.play`): it runs each step as the person's
-  `mesoviewspec.view` (`undoable: false`: in order, with a history context, no checkpoint), so the adapter's look writes
-  are inside that run, never steps of their own and never changes outside the API; the caption in the canvas's caption
-  line. Stopping leaves the last view shown. The alternative, writing each step from a `history: false` run, fails in
-  the code: such a run has no history context (`api/run.ts`), so each `particles.look` would be a recorded step, and
-  direct tree writes would mark every checkpoint unsafe (`watchOutsideChanges` excepts only snapshots playing,
-  animations and the cells behaviors own).
+- **A tour plays** (`mesoviewspec.tour.play`, `history: false`, as `snapshot.play`): it runs each step as a
+  `mesoviewspec.view` with the caller's origin (the person's or the agent's; `undoable: false`: in order, with a history
+  context, no checkpoint), so the adapter's look writes are inside that run, never steps of their own and never changes
+  outside the API; the caption in the canvas's caption line. Stopping leaves the last view shown. The alternative,
+  writing each step from a `history: false` run, fails in the code: such a run has no history context (`api/run.ts`), so
+  each `particles.look` would be a recorded step, and direct tree writes would mark every checkpoint unsafe
+  (`watchOutsideChanges` excepts only snapshots playing, animations and the cells behaviors own). For the agent,
+  `tour.play` declares its own approval (agent.md §4, operations that run others): it asks once for the whole tour, as
+  `show_meso_view` asks once, and its steps are not asked again.
 
 ### 4.5 Focus and the semantic camera
 
@@ -523,18 +525,21 @@ Streaming is the `mesoviewspec-streaming` lane's (design.md §6.8, written there
 
 ## 11. Open: who decides
 
-| #   | Question                                                                         | Proposed                        | Who   |
-| --- | -------------------------------------------------------------------------------- | ------------------------------- | ----- |
-| 1   | The base: a PR of `me/mesoviewspec` to `prism-me`, or stacking (§12.1)           | the PR                          | Ludo  |
-| 2   | One document at a time (§1.1)                                                    | yes                             | Ludo  |
-| 3   | A document's eye and Show only saved in the document, not viewer-only (§5.2)     | saved                           | Ludo  |
-| 4   | Group by: Compartment, Model, Kind; Kind in place of Function (§4.2)             | yes                             | Ludo  |
-| 5   | Move and turn not offered on a document (§5.2)                                   | not offered                     | Ludo  |
-| 6   | Patches as Seq\*'s, ops by id (§2.1); decision 6                                 | yes                             | David |
-| 7   | Looks get `id` and `emissive` (§2.2)                                             | yes, 0.4                        | David |
-| 8   | Showing a view is no step; `session.view` set only by Open with this view (§4.4) | yes (the `snapshot.apply` rule) | David |
-| 9   | Annotations as Prism labels; Add label writes an annotation (§5.2)               | yes                             | David |
-| 10  | The undo contract for lists (§7.3)                                               | as written                      | ours  |
+| #   | Question                                                                                                      | Proposed                        | Who   |
+| --- | ------------------------------------------------------------------------------------------------------------- | ------------------------------- | ----- |
+| 1   | The base: a PR of `me/mesoviewspec` to `prism-me`, or stacking (§12.1)                                        | the PR                          | Ludo  |
+| 2   | One document at a time (§1.1)                                                                                 | yes                             | Ludo  |
+| 3   | A document's eye and Show only saved in the document, not viewer-only (§5.2)                                  | saved                           | Ludo  |
+| 4   | Group by: Compartment, Model, Kind; Kind in place of Function (§4.2)                                          | yes                             | Ludo  |
+| 5   | Move and turn not offered on a document (§5.2)                                                                | not offered                     | Ludo  |
+| 6   | Patches as Seq\*'s, ops by id (§2.1); decision 6                                                              | yes                             | David |
+| 7   | Looks get `id` and `emissive` (§2.2)                                                                          | yes, 0.4                        | David |
+| 8   | Showing a view is no step; `session.view` set only by Open with this view (§4.4)                              | yes (the `snapshot.apply` rule) | David |
+| 9   | Annotations as Prism labels; Add label writes an annotation (§5.2)                                            | yes                             | David |
+| 10  | The undo contract for lists (§7.3)                                                                            | as written                      | ours  |
+| 11  | `show_meso_view` asks the agent every time (`undoable: false`, §8); or a policy that lets showing a view pass | ask, as `snapshot.apply`        | Ludo  |
+| 12  | Part rows read-only in 3D until Prism layers select copy runs (§4.1); lane 3's β-cell check depends on it     | yes                             | Ludo  |
+| 13  | Look ids carry the edit's kind (`l.style.<n>`, `l.eye.<n>`, `l.only.<n>`, §5.3): a document convention        | yes                             | David |
 
 ## 12. The app lanes
 
@@ -557,6 +562,12 @@ Streaming is the `mesoviewspec-streaming` lane's (design.md §6.8, written there
 - **Now** (Ludo, 2026-11-08: "library lanes only for now"): only `mvs-patch` (a library lane inside
   `packages/mesoscale/spec`) starts before the base is decided, from `me/mesoviewspec`; under the PR option it is
   rebased on `prism-me` after the merge.
+- **The checkpoint changes are a library lane.** Lanes 2 and 8 need two changes to Prism's checkpoint port
+  (`packages/prism/viewer/src/sources/checkpoint.ts`): behavior-owned cells registered by transformer instead of the
+  fixed `isBehaviorOwned` list, with the port leaving them out; and a custom state's size measured once per value (a
+  key's own version), not stringified at each step. Both are generic, so they are lane 0, `checkpoint-owned-cells`, from
+  `origin/master` with a failing test first (How we work, "a library fix"); `prism-me` gets it by a cherry-pick when
+  lane 2 starts.
 - **The streaming lane comes first where files meet.** `mesoviewspec-streaming` edits `format/doc.ts`, `validate.ts` and
   `molstar/src/session.ts`; `mvs-patch` edits the first two and `mvs-open` the third. Each merges into `me/mesoviewspec`
   (or `prism-me`) after the streaming lane, or rebases on it before its gate. Both lanes also add a line to design.md
@@ -565,6 +576,22 @@ Streaming is the `mesoviewspec-streaming` lane's (design.md §6.8, written there
 ### 12.2 The briefs, in build order
 
 Each in the shape of the briefs in `apps/prism-me/progress/`.
+
+#### 0. `checkpoint-owned-cells`: behavior-owned cells and custom-state size in Prism's checkpoints (library)
+
+- **Check (Ludo):** none in the app; in prism-me after the cherry-pick, the volume streaming and focus cells behave as
+  before (History unchanged while streaming).
+- **Spec:** `packages/prism/viewer/_spec/sequence.md` §7.2-§7.4 (the behaviors' cells, the size pass); prism.md §7.1,
+  §9.
+- **Tests:** unit, failing first: a cell of a transformer registered as behavior-owned is no outside change and is left
+  out of a checkpoint, and a restore keeps it; the existing fixed list still holds; a custom state whose value is the
+  same object is measured once across checkpoints.
+- **Touches:** `packages/prism/viewer/src/sources/checkpoint.ts`, its tests, `CHANGELOG.md` if it applies to 5.x.
+- **Size:** ~120 production lines.
+- **Lane model:** Sonnet; Opus gate.
+- **Steps:** 1. the failing tests (Sonnet) 2. the registry and the filter (Sonnet) 3. the size per value (Sonnet) 4.
+  checks, the gate (Opus).
+- **Base:** `origin/master` (a library lane); cherry-picked into `prism-me` (or the stack) when lane 2 starts.
 
 #### 1. `mvs-patch`: patches over a MesoViewSpec document
 
@@ -598,16 +625,15 @@ Each in the shape of the briefs in `apps/prism-me/progress/`.
   the step (no "outside change"); nothing goes through the API during a restore.
 - **Touches:** `packages/mesoscale/molstar/src/` (`document-model.ts`, `prism-viewer.ts` stub with its transformer and
   the extension, `prism-adapter.ts` under `ctx.api`, rebuilt from the tree, no store deletes, params kept across a
-  re-pack, `particle-list.ts` no-throw apply, `session.ts` cache bound),
-  `packages/prism/viewer/src/sources/checkpoint.ts` (the custom state's size by revision),
-  `apps/prism-me/src/extensions.ts`, `url.ts`, the drop sniff; features.md (a new row).
+  re-pack, `particle-list.ts` no-throw apply, `session.ts` cache bound), lane 0's size by value (used, not changed
+  here), `apps/prism-me/src/extensions.ts`, `url.ts`, the drop sniff; features.md (a new row).
 - **Size:** ~600 production lines.
 - **Lane model:** Opus for the owner and the undo contract (the state's hot path); Sonnet for tests and checks.
 - **Steps:** 1. the owner and the custom state (Opus) 2. the stub, open, close, save, URL, sniff (Sonnet) 3. the adapter
   under `ctx.api`, the store bound, no-throw apply (Opus) 4. the undo tests (Sonnet) 5. checked in the app (Sonnet:
   drop, reload, undo; no console errors) 6. the gate (Opus).
-- **Base:** PR option: from `prism-me` after the merge. Stacking: from `me/mesoviewspec` with lane 1 and the streaming
-  lane merged.
+- **Base:** after lane 0. PR option: from `prism-me` after the merge. Stacking: from `me/mesoviewspec` with lane 1 and
+  the streaming lane merged.
 
 #### 3. `mvs-tree`: the document in the Scene tree
 
@@ -703,12 +729,13 @@ Each in the shape of the briefs in `apps/prism-me/progress/`.
 - **Spec:** prism.md §9; design.md §6.8 (the streaming lane's).
 - **Tests:** unit: tiles requested from the canvas camera; tile lists are no step and no outside change; a checkpoint
   leaves them out; the budget setting.
-- **Touches:** `packages/mesoscale/molstar/src/document-model.ts`, `packages/prism/viewer/src/sources/checkpoint.ts`
-  (the tile cells' transformer among the behaviors' cells; the checkpoint port leaves them out), Settings.
+- **Touches:** `packages/mesoscale/molstar/src/document-model.ts`, the tile cells' transformer registered as
+  behavior-owned (lane 0's registry), Settings.
 - **Size:** ~300 production lines.
 - **Lane model:** Sonnet.
 - **Steps:** 1. the camera feed and the budget (Sonnet) 2. the history rule (Opus) 3. checked in the app (Sonnet) 4. the
   gate (Opus).
-- **Base:** after lane 2 and the streaming lane merged.
+- **Base:** after lanes 0 and 2 and the streaming lane merged.
 
-**In all:** ~3,400 production lines in eight lanes, in order 1 to 8; only lanes 5 and 6 run at the same time.
+**In all:** ~3,520 production lines in nine lanes: lane 0 (library, from master) beside lane 1, then 2 to 8 in order;
+only lanes 5 and 6 run at the same time.
