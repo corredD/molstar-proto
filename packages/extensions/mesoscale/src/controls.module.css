@@ -37,3 +37,12 @@
   flex: none;
   width: var(--msp-label-width);
 }
+
+/* a membrane's levels as text, selectable for Ludo to copy (MembraneDetailControls) */
+.copy {
+  font-family: var(--msp-font-mono);
+  font-size: var(--msp-font-size-sm);
+  color: var(--msp-color-text-muted);
+  user-select: text;
+  overflow-wrap: anywhere;
+}

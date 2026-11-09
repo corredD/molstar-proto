@@ -6,10 +6,11 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { Button, Choices, Icon, Show, Slider } from '@molstar/prism-ui';
+import { Button, Choices, For, Icon, Show, Slider } from '@molstar/prism-ui';
 import { mapState } from '@molstar/prism-ui/reactive/map-state';
 import type { ReadonlyState } from '@molstar/prism-ui/reactive/readonly-state';
 import { classes } from './_generated/controls.module.css.js';
+import { DefaultCustomLevels, type MembraneDetail, type MembraneLevel } from './lipids/membrane.js';
 import type { GraphicsInfo, GraphicsMode, MesoscaleApi } from './operations.js';
 
 // The mesoscale controls, shown by the extension's Entities tab and by a host's panels (prism-me's properties): the
@@ -195,5 +196,70 @@ export function ImportColors(props: { area: MesoscaleApi; particles?: string }) 
         Import colors…
       </Button>
     </>
+  );
+}
+
+const DetailChoices: { id: MembraneDetail; label: string }[] = [
+  { id: 'off', label: 'Atoms' },
+  { id: 'quality', label: 'Quality' },
+  { id: 'balanced', label: 'Balanced' },
+  { id: 'performance', label: 'Fast' },
+  { id: 'custom', label: 'Custom' },
+];
+
+/**
+ * A lipid membrane's levels of detail (Ludo, 2026-11-08: he tunes them to set the defaults; apps/prism-me/_spec/ui.md
+ * §4): a preset, or custom levels, each where it starts (Å from the camera), its stride and its bias, a slider once
+ * released (one step, never a new cut); the levels as text to copy
+ */
+export function MembraneDetailControls(props: { area: MesoscaleApi; membrane: string }) {
+  const state = props.area.membraneDetailState(props.membrane);
+  const levels = mapState(state, (s) => s?.levels ?? DefaultCustomLevels);
+  const run = (patch: { detail?: MembraneDetail; levels?: readonly MembraneLevel[] }) =>
+    void props.area.membraneDetail({ membrane: props.membrane, ...patch } as never);
+  const setLevel = (j: number, key: keyof MembraneLevel, v: number) =>
+    run({ levels: levels.value.map((l, k) => (k === j ? { ...l, [key]: key === 'stride' ? Math.round(v) : v } : l)) });
+  const row = (j: number, label: string, key: keyof MembraneLevel, min: number, max: number, unit?: string) => (
+    <div class={classes.line}>
+      <div class={classes.label}>{label}</div>
+      <Slider
+        aria-label={`Level ${j + 1} ${key === 'distance' ? 'from' : key}`}
+        value={mapState(levels, (l) => l[j]?.[key] ?? 0)}
+        min={min}
+        max={max}
+        scale={key === 'bias' ? undefined : 'log'}
+        clamp={false}
+        {...(unit ? { unit } : {})}
+        onCommit={(v) => setLevel(j, key, v)}
+      />
+    </div>
+  );
+  return (
+    <div class={classes.tight}>
+      <Choices
+        label="Levels"
+        choices={DetailChoices}
+        active={mapState(state, (s) => s?.detail ?? '')}
+        onPick={(id) => run({ detail: id as MembraneDetail })}
+      />
+      <Show when={mapState(state, (s) => s?.detail === 'custom')}>
+        {() => (
+          <div class={classes.tight}>
+            <For each={mapState(levels, (l) => l.map((_, j) => j))}>
+              {(j) => (
+                <div class={classes.tight}>
+                  {j > 0 ? row(j, `Level ${j + 1} from`, 'distance', 10, 100000, 'Å') : null}
+                  {j > 0 ? row(j, 'Stride', 'stride', 1, 4096) : null}
+                  {j > 0 ? row(j, 'Bias', 'bias', 1, 3) : null}
+                </div>
+              )}
+            </For>
+            <code class={classes.copy}>
+              {mapState(levels, (l) => l.map((x) => `${Math.round(x.distance)} Å ×${x.stride} b${x.bias}`).join(' · '))}
+            </code>
+          </div>
+        )}
+      </Show>
+    </div>
   );
 }

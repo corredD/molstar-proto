@@ -64,6 +64,27 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
       }
       // at its levels of detail (the default, balanced): a 512 stride level drew half of this (2026-11-08)
       expect(covered / (Size * Size * 0.25)).toBeGreaterThan(0.8);
+      // custom levels by distance, the camera past the last’s start: 1 atom in 512, scaled, still a sheet
+      const node = [...plugin.state.data.cells.values()].find((c) => c.transform.transformer === LipidMembrane)!;
+      const levels = [
+        { distance: 0, stride: 1, bias: 1 },
+        { distance: 10, stride: 8, bias: 2 },
+        { distance: 20, stride: 512, bias: 2 },
+      ];
+      await plugin
+        .build()
+        .to(node.transform.ref)
+        .update((p) => ({ ...p, detail: 'custom', levels }))
+        .commit();
+      const coarse = await plugin.getImageRaw({ width: Size, height: Size });
+      let coarseCovered = 0;
+      for (let y = Size / 4; y < (3 * Size) / 4; ++y) {
+        for (let x = Size / 4; x < (3 * Size) / 4; ++x) {
+          const o = (y * Size + x) * 4;
+          if (Array.from(coarse.data.subarray(o, o + 3)).join() !== background.join()) coarseCovered += 1;
+        }
+      }
+      expect(coarseCovered / (Size * Size * 0.25)).toBeGreaterThan(0.8);
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       plugin.dispose();
@@ -97,6 +118,20 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
         .build()
         .to(node.ref)
         .update({ ...params, detail: 'quality' })
+        .commit();
+      expect(counts()).toBe(2);
+      // nor custom levels (Ludo tunes them in the properties, 2026-11-08)
+      await plugin
+        .build()
+        .to(node.ref)
+        .update({
+          ...params,
+          detail: 'custom',
+          levels: [
+            { distance: 0, stride: 1, bias: 1 },
+            { distance: 500, stride: 16, bias: 2 },
+          ],
+        })
         .commit();
       expect(counts()).toBe(2);
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);

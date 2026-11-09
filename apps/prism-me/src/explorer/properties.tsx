@@ -13,7 +13,12 @@ import { type ObjectPose, placementWith, poseOf } from '@molstar/stage-tools-ext
 import type { LabelInfo, StageApi } from '@molstar/stage-tools-extension/operations';
 import { Decorations, MeshControls, ObliqueSlice, Slice, VolumeData } from '@molstar/cryoet-extension/controls';
 import type { CryoetApi, DecorationsInfo, TargetDecoration } from '@molstar/cryoet-extension/operations';
-import { ImportColors, ObjectGraphics, ZoomColors } from '@molstar/mesoscale-extension/controls';
+import {
+  ImportColors,
+  MembraneDetailControls,
+  ObjectGraphics,
+  ZoomColors,
+} from '@molstar/mesoscale-extension/controls';
 import type { MesoGroupBy } from '@molstar/mesoscale-extension/model';
 import type { MesoscaleInfo } from '@molstar/mesoscale-extension/operations';
 import {
@@ -233,7 +238,14 @@ export const Sections: readonly Section[] = [
     render: (s) => {
       const { api, area, picked } = s;
       if (picked.kind === 'category') return <CategoryLook subject={s} />;
-      if (picked.kind === 'mesh') return <MeshLook api={api} node={picked.node!} />;
+      if (picked.kind === 'mesh') {
+        // a lipid membrane: its levels of detail (Ludo tunes them, 2026-11-08; ui.md §4)
+        const ref = picked.node!.ref;
+        if (api.mesoscale?.membraneDetailState(ref).value) {
+          return <MembraneDetailControls area={api.mesoscale} membrane={ref} />;
+        }
+        return <MeshLook api={api} node={picked.node!} />;
+      }
       if (picked.kind === 'target') return <Shown api={api} area={area} node={picked.node!} />;
       if (particled(s)) return <ParticleLook api={api} area={area} node={picked.node!} parts={s.parts} />;
       return <StructureLook api={api} area={area} node={picked.node!} whole={picked.kind === 'structure'} />;

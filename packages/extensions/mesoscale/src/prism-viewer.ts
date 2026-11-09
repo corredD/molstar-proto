@@ -78,6 +78,12 @@ export const MesoscaleSkill: ViewerSkill = {
         'Wraps a mesh, a compartment (a sphere fitted to its particles) or a sphere with a lipid bilayer of matched tiles (WebGPU).',
     },
     {
+      id: 'set_lipid_membrane_levels',
+      operation: 'mesoscale.membraneDetail',
+      description:
+        "Sets a lipid membrane's levels of detail: a preset, or custom levels by distance from the camera (each its start in Å, stride and scale bias).",
+    },
+    {
       id: 'open_mesoscale_example',
       operation: 'mesoscale.example',
       description: "Opens one of the Mesoscale Explorer's examples by id.",
@@ -155,6 +161,12 @@ export const MesoscaleExtension: ViewerExtension = {
         icon: 'layers',
         alias: ['lipids', 'membrane', 'wrap with lipids', 'bilayer', 'lipid wrapper'],
         action: 'Wrap',
+      }),
+      operationCommand(api, m.membraneDetail, {
+        category,
+        icon: 'layers',
+        alias: ['membrane levels', 'lipid lod', 'membrane detail', 'levels of detail'],
+        action: 'Apply',
       }),
     ];
   },

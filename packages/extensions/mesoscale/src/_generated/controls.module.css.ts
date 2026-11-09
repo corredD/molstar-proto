@@ -11,6 +11,7 @@
 import { defineStyles } from '@molstar/prism-ui/styles/registry';
 
 export const classes = {
+  'copy': 'msp-mesoscale-controls-copy',
   'label': 'msp-mesoscale-controls-label',
   'line': 'msp-mesoscale-controls-line',
   'stack': 'msp-mesoscale-controls-stack',
@@ -45,6 +46,14 @@ defineStyles('mesoscale/controls.module.css', `@layer msp.components {
 .msp-mesoscale-controls-label {
   width: var(--msp-label-width);
   flex: none;
+}
+
+.msp-mesoscale-controls-copy {
+  font-family: var(--msp-font-mono);
+  font-size: var(--msp-font-size-sm);
+  color: var(--msp-color-text-muted);
+  user-select: text;
+  overflow-wrap: anywhere;
 }
 }
 `);

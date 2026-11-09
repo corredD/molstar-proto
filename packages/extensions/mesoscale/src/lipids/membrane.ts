@@ -310,8 +310,20 @@ function boundingSphereOf(p: Float32Array, out: Sphere3D) {
  * about 3 keeps a volume's, and a membrane seen face on read as scattered dots through which the scene showed (Dawn,
  * the cow ×100 whole, 2026-11-08)
  */
-export function membraneLevels(detail: 'quality' | 'balanced' | 'performance') {
-  const lodPixelSize = Spheres.LodPixelPresets[detail].lodPixelSize;
+export function membraneLevels(detail: MembraneDetail, custom: readonly MembraneLevel[] = DefaultCustomLevels) {
+  // custom (Ludo tunes them in the membrane's properties, 2026-11-08): by distance from the camera, each level from its
+  // start to the next's
+  if (detail === 'custom') {
+    const lodLevels = custom.map((l, j) => ({
+      minDistance: l.distance,
+      maxDistance: custom[j + 1]?.distance ?? 1e7,
+      overlap: 0,
+      stride: Math.max(1, Math.round(l.stride)),
+      scaleBias: l.bias,
+    }));
+    return { lodLevels, lodPixelSize: 0 };
+  }
+  const lodPixelSize = Spheres.LodPixelPresets[detail === 'off' ? 'balanced' : detail].lodPixelSize;
   // the distances are the pixel boundaries' (`getLodLevelsValue` with a pixel size), these unused; no 512 stride: at
   // it a wrapped sphere 96 px across drew half its pixels (Dawn), a sphere of radius 45 Å a tile
   const lodLevels = [1, 8, 64].map((stride, j) => ({
@@ -324,6 +336,23 @@ export function membraneLevels(detail: 'quality' | 'balanced' | 'performance') {
   return { lodLevels, lodPixelSize };
 }
 
+/** How a membrane's levels are chosen: off, a preset (by size on screen), or custom levels by distance */
+export type MembraneDetail = 'off' | 'quality' | 'balanced' | 'performance' | 'custom';
+
+/** A custom level: where it starts (Å from the camera), its stride (1 in n atoms drawn), its scale bias (2: a sheet's) */
+export interface MembraneLevel {
+  readonly distance: number;
+  readonly stride: number;
+  readonly bias: number;
+}
+
+/** The custom levels a membrane starts with: the presets' strides at round distances, for Ludo to tune (at most 4) */
+export const DefaultCustomLevels: readonly MembraneLevel[] = [
+  { distance: 0, stride: 1, bias: 1 },
+  { distance: 2000, stride: 8, bias: 2 },
+  { distance: 8000, stride: 64, bias: 2 },
+];
+
 export const LipidMembraneReprParams = {
   colorBy: PD.Select('residue-name', [
     ['residue-name', 'Residue name'],
@@ -333,12 +362,15 @@ export const LipidMembraneReprParams = {
   // 2 Å: heavy atoms only, a united-atom radius (hydrogens folded in) that closes the gaps a carbon's 1.7 Å leaves
   sizeFactor: PD.Numeric(2, { min: 0.5, max: 3, step: 0.1 }, { description: 'The atoms’ radius, Å' }),
   // Mol*'s spheres levels by size on screen (`Spheres.LodPixelPresets`), each lipid's or tile's at its own distance
-  detail: PD.Select('balanced', [
+  detail: PD.Select<MembraneDetail>('balanced', [
     ['off', 'Atoms always'],
     ['quality', 'Quality'],
     ['balanced', 'Balanced'],
     ['performance', 'Performance'],
-  ] as const),
+    ['custom', 'Custom levels'],
+  ]),
+  // with `detail: custom` (`membraneLevels`)
+  levels: PD.Value<readonly MembraneLevel[]>(DefaultCustomLevels, { isHidden: true }),
 };
 export type LipidMembraneReprProps = PD.Values<typeof LipidMembraneReprParams>;
 
@@ -408,7 +440,8 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
     } as unknown as ColorTheme<any>;
     const theme = { color, size: UniformSizeTheme({}, { value: props.sizeFactor }) };
     // each lipid or tile at its own level by its size on screen (the culler's per-instance levels)
-    const lod = props.detail === 'off' ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail);
+    const lod =
+      props.detail === 'off' ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail, props.levels);
     const p = { ...PD.getDefaultValues(Spheres.Params), ...lod, gpuCulling: true as const };
     const values = Spheres.Utils.createValues(spheres, transform, locationIterator, theme, p);
     ValueCell.update(values.boundingSphere, Sphere3D.clone(bounds));

@@ -82,6 +82,41 @@ describe('lipid membrane', () => {
     }
   });
 
+  it('takes custom levels from its properties in one step, without building again (Ludo, 2026-11-08)', async () => {
+    // Ludo tunes the levels in the app to set their defaults: where each starts (Å from the camera), its stride, its bias
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const r = await v.api.mesoscale!.wrapMembrane({ radius: 400, edge: 80, patch: 'test-patch' });
+    expectOk(r);
+    const ref = r.changed!.nodes![0];
+    const data = v.plugin.state.data.cells.get(ref)!.obj!.data.sourceData;
+    const levels = [
+      { distance: 0, stride: 1, bias: 1 },
+      { distance: 3000, stride: 16, bias: 2 },
+      { distance: 9000, stride: 256, bias: 2.2 },
+    ];
+    expectOk(await v.api.run('mesoscale.membraneDetail', { membrane: ref, detail: 'custom', levels }));
+    const cell = v.plugin.state.data.cells.get(ref)!;
+    expect(cell.transform.params).toMatchObject({ detail: 'custom', levels });
+    // the same membrane data: not cut, baked or remeshed again (as round 2's S5 for a detail)
+    expect(cell.obj!.data.sourceData).toBe(data);
+    // drawn by distance: each level from its start to the next's
+    const { lodLevels, lodPixelSize } = membraneLevels('custom', levels);
+    expect(lodPixelSize).toBe(0);
+    expect(lodLevels.map((l) => [l.minDistance, l.maxDistance, l.stride, l.scaleBias])).toEqual([
+      [0, 3000, 1, 1],
+      [3000, 9000, 16, 2],
+      [9000, 1e7, 256, 2.2],
+    ]);
+    // read back for the properties (the values Ludo sends us)
+    expect(v.api.mesoscale!.membraneDetailState(ref).value).toEqual({ detail: 'custom', levels });
+    expectOk(await v.api.history.undo({}));
+    expect(v.plugin.state.data.cells.get(ref)!.transform.params).toMatchObject({ detail: 'balanced' });
+  });
+
   it('cuts the mesh’s own triangles with the cutter: no remesh, every part covered', () => {
     const body = thinLimbedBody();
     const data = buildMembrane({ mesh: body }, 'test-patch', 0, 'both', kinds, 'cutter');

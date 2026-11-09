@@ -32,8 +32,12 @@ import {
   canDrawLipidMembranes,
   LipidMembrane,
   LipidMembraneParams,
+  type LipidMembraneProps,
+  LipidMembraneReprParams,
   hasLipidPatch,
   registerLipidPatch,
+  type MembraneDetail,
+  type MembraneLevel,
 } from './lipids/membrane.js';
 import {
   findGroup,
@@ -315,6 +319,66 @@ export class MesoscaleApi extends ApiArea {
         `Wrapped ${mesh ? 'the mesh' : compartment || `a sphere of ${Math.round(r)} Å`} with lipids${drawn ? '' : ' (not drawn: WebGPU only)'}.`,
         { nodes: [node.ref] },
       );
+    },
+  });
+
+  /** A lipid membrane's levels (`detail`, and with `custom` its `levels`), following the state while watched: a read for views */
+  membraneDetailState(
+    membrane: string,
+  ): ReadonlyState<{ detail: MembraneDetail; levels: readonly MembraneLevel[] } | undefined> {
+    const plugin = this.ctx.plugin;
+    return watchedState(
+      () => {
+        const cell = plugin.state.data.cells.get(membrane);
+        if (cell?.transform.transformer !== LipidMembrane) return undefined;
+        const { detail, levels } = cell.transform.params as LipidMembraneProps;
+        return { detail, levels };
+      },
+      () => plugin.state.data.events.changed,
+      { compare: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+    );
+  }
+
+  /**
+   * A lipid membrane's levels of detail (Ludo, 2026-11-08: he tunes them to set the defaults): a preset by size on
+   * screen, or custom levels by distance (each its start, stride and bias, `membraneLevels`). One step; the membrane is
+   * drawn again, never cut, baked or remeshed again.
+   */
+  readonly membraneDetail = this.operation({
+    id: 'mesoscale.membraneDetail',
+    title: 'Set a lipid membrane’s levels of detail',
+    params: {
+      membrane: PD.Text('', { description: 'The lipid membrane by state ref' }),
+      detail: OptionalParam(PD.Select<MembraneDetail>('balanced', LipidMembraneReprParams.detail.options)),
+      levels: OptionalParam(
+        PD.Value<readonly MembraneLevel[]>([], {
+          description: 'Custom levels (detail: custom), at most 4: { distance (Å from the camera), stride, bias }',
+        }),
+      ),
+    },
+    async run(values, ctx) {
+      const { membrane, detail, levels } = values as {
+        membrane: string;
+        detail?: MembraneDetail;
+        levels?: readonly MembraneLevel[];
+      };
+      const cell = ctx.plugin.state.data.cells.get(membrane);
+      if (cell?.transform.transformer !== LipidMembrane) {
+        return ApiResult.fail('not-found', `No lipid membrane ${membrane} in the scene.`);
+      }
+      if (
+        levels &&
+        (levels.length < 1 ||
+          levels.length > 4 ||
+          levels.some((l, j) => !(l.stride >= 1) || !(l.bias > 0) || (j > 0 && !(l.distance > levels[j - 1].distance))))
+      ) {
+        return ApiResult.fail('invalid', 'levels: 1 to 4, each a stride ≥ 1 and a bias > 0, their distances rising.');
+      }
+      const old = cell.transform.params as LipidMembraneProps;
+      const next = { ...old, ...(detail ? { detail } : {}), ...(levels ? { levels } : {}) };
+      if (JSON.stringify(next) === JSON.stringify(old)) return ApiResult.already('The membrane already draws so.');
+      await ctx.plugin.state.data.build().to(cell).update(next).commit();
+      return ApiResult.ok(`Levels: ${next.detail}.`, { nodes: [membrane] });
     },
   });
 
