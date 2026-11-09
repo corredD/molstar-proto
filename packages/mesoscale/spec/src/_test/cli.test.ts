@@ -143,6 +143,12 @@ describe('meso-query', () => {
     expect(o.err).toContain('resource.unavailable');
   });
 
+  it('an address that picks nothing warns with mesoql.empty, whichever symbol emptied it', async () => {
+    const { io, o } = memory();
+    expect(await queryCmd([BETA, '(and (population p.ribosomes) (population p.granules))', ...BASE], io)).toBe(0);
+    expect(o.err).toMatch(/query#: warning mesoql\.empty/);
+  });
+
   it('an address with errors exits 1 and says where; --check stops there', async () => {
     const bad = memory();
     expect(await queryCmd([BETA, '(population p.nope)'], bad.io)).toBe(1);

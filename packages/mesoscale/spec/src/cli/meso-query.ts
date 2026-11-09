@@ -7,6 +7,7 @@
 
 import { indexDoc } from '../format/validate.js';
 import { type QType, parseMesoQL, printMesoQL } from '../format/mesoql.js';
+import { issue } from '../format/issues.js';
 import { IRCodec } from '../format/sexpr.js';
 import { placementSets } from '../ir/ir.js';
 import { evaluateMesoQL, lociSize, lociToIds } from '../ir/loci.js';
@@ -76,7 +77,11 @@ export const run = (argv: readonly string[], io: CliIO = nodeIO) =>
             populations[p] = (populations[p] ?? 0) + 1;
           }
       }
-      emit(io, a, { address, type, copies: lociSize(loci), populations, ids: lociToIds(loci, r.ir, limit) }, IRCodec);
+      const copies = lociSize(loci);
+      // only some symbols say so when they empty a result: the others get it here
+      if (!copies && !found.some((i) => i.code === 'mesoql.empty'))
+        found.push(issue('mesoql.empty', 'warning', 'resolve', `${address} picks nothing in this resolution`));
+      emit(io, a, { address, type, copies, populations, ids: lociToIds(loci, r.ir, limit) }, IRCodec);
       return reportIssues(io, 'query', [...issues, ...r.issues, ...found]);
     },
   );
