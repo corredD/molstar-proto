@@ -443,7 +443,7 @@ export class TileStreamer {
     this.reset(undefined);
   }
 
-  /** A changed stream key: everything in flight aborted, every tile dropped, the counters from zero. */
+  /** A changed stream key: everything in flight aborted, every tile dropped, the issues and counters from zero. */
   private reset(key: string | undefined) {
     for (const c of this.pending.values()) c.abort();
     this.pending.clear();
@@ -451,6 +451,7 @@ export class TileStreamer {
     this.arrived.clear();
     this.failed.clear();
     this.told.clear();
+    this.issues.length = 0;
     this.count = { requested: 0, loaded: 0, evicted: 0, cancelled: 0, failed: 0 };
     this.key = key;
     this.gen++;

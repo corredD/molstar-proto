@@ -613,7 +613,7 @@ async function streamer(d: MesoViewSpecDoc, p: TileProvider, budget = 60, maxInF
     placementSets(state.last!)
       .filter((x) => x.model === 'm.tiles')
       .map((x) => x.key.split('#')[1]);
-  return { s, step, drain, issues, resident, settled: () => settled };
+  return { s, step, drain, issues, resident, settled: () => settled, state };
 }
 
 describe('TileStreamer', () => {
@@ -776,6 +776,22 @@ describe('TileStreamer', () => {
     expect(issues[0].message).toMatch(/t\.0\.0\.0.*no connection/);
     expect(s.stats()).toMatchObject({ failed: 1, inFlight: 0, resident: 2 });
     expect(resident()).not.toContain('t.0.0.0');
+  });
+
+  it("a stream key change drops the old key's issues: none is reported under the new key", async () => {
+    const f = tiledFixture({ ...small, fail: ['t.0.0.0'] });
+    const { s, step, issues, state } = await streamer(doc, f.provider, 60);
+    step('v.corner');
+    await sleep(10);
+    // the failure is recorded, not yet reported (the next step does)
+    expect(s.stats().failed).toBe(1);
+    // a new key: the same document with another entity radius
+    const fat = { ...doc, entities: doc.entities.map((e) => (e.id === 'e.a' ? { ...e, radius: 50 } : e)) };
+    state.ir = (await open(fat, f.provider)).ir!;
+    const out = s.step(updateView(withView(fat, 'v.corner'), state.ir));
+    expect(out.issues.filter((i) => i.code === 'stream.tile')).toEqual([]);
+    expect(issues.filter((i) => i.code === 'stream.tile')).toEqual([]);
+    expect(s.stats()).toMatchObject({ failed: 0, requested: 2 });
   });
 
   it('a payload whose counts disagree with the manifest is rejected', async () => {
