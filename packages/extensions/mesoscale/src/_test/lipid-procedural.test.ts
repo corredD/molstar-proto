@@ -280,6 +280,19 @@ describe('a membrane made per view: the pool and the selection', () => {
     }
   });
 
+  it('holds nothing after a reset: no live slots, a new version (review X1: a write before the next view drew the old)', () => {
+    const i = input(16, 50);
+    const selection = createLipidSelection(i, full(i));
+    const v = view(Vec3.create(200, 200, 300));
+    selection.select(v.plane, v.frustum, v.depthScale, 0, Params);
+    expect(selection.live.some((n) => n > 0)).toBe(true);
+    const version = selection.version;
+    selection.reset();
+    expect(selection.count).toBe(0);
+    expect(selection.live.every((n) => n === 0)).toBe(true);
+    expect(selection.version).toBeGreaterThan(version);
+  });
+
   it('generates nothing of a hidden member', () => {
     const i = input(16, 50);
     const selection = createLipidSelection(i, full(i));
