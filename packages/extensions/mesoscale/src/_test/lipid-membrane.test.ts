@@ -15,6 +15,7 @@ import {
   cutBounds,
   LipidMembrane,
   membraneCounts,
+  membraneLevels,
   registerLipidPatch,
   suitedVariants,
 } from '../lipids/membrane.js';
@@ -68,6 +69,16 @@ describe('lipid membrane', () => {
         const d = Math.hypot(p[v * 3] - b.center[0], p[v * 3 + 1] - b.center[1], p[v * 3 + 2] - b.center[2]);
         expect(d).toBeLessThanOrEqual(b.radius);
       }
+    }
+  });
+
+  it('draws at a sheet’s levels: strides 1, 8, 64, the coarser spheres keeping its area (review S7)', () => {
+    for (const detail of ['quality', 'balanced', 'performance'] as const) {
+      const { lodLevels, lodPixelSize } = membraneLevels(detail);
+      expect(lodLevels.map((l) => l.stride)).toEqual([1, 8, 64]);
+      // n / stride spheres of radius √stride cover the area of n (a volume's bias, ~3, thinned it into dots)
+      expect(lodLevels.map((l) => l.scaleBias)).toEqual([1, 2, 2]);
+      expect(lodPixelSize).toBeGreaterThan(0);
     }
   });
 

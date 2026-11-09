@@ -305,7 +305,7 @@ function boundingSphereOf(p: Float32Array, out: Sphere3D) {
  * about 3 keeps a volume's, and a membrane seen face on read as scattered dots through which the scene showed (Dawn,
  * the cow ×100 whole, 2026-11-08)
  */
-function membraneLevels(detail: 'quality' | 'balanced' | 'performance') {
+export function membraneLevels(detail: 'quality' | 'balanced' | 'performance') {
   const lodPixelSize = Spheres.LodPixelPresets[detail].lodPixelSize;
   // the distances are the pixel boundaries' (`getLodLevelsValue` with a pixel size), these unused; no 512 stride: at
   // it a wrapped sphere 96 px across drew half its pixels (Dawn), a sphere of radius 45 Å a tile
