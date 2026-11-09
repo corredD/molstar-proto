@@ -30,6 +30,16 @@ describe("the skill's compositions", () => {
   });
 });
 
+describe(':location on a superstructure compartment', () => {
+  it('splits the granule compartment into its membrane and interior proteins', () => {
+    const size = (q: string) => lociSize(evalLoci(q, scene)!);
+    const all = size('(in c.isg)');
+    expect(size('(in c.isg :location membrane)')).toBeGreaterThan(0);
+    expect(size('(in c.isg :location interior)')).toBeGreaterThan(0);
+    expect(size('(in c.isg :location membrane)') + size('(in c.isg :location interior)')).toBe(all);
+  });
+});
+
 describe('the MesoQL eval questions', () => {
   it('are ten, with distinct addresses', () => {
     expect(MesoQLEvalQuestions).toHaveLength(10);

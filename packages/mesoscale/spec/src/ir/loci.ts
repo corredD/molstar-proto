@@ -137,6 +137,8 @@ export function evaluateMesoQL(e: QExpr, ctx: LociContext): { loci: MesoLoci; is
   const unit = LengthToAngstrom[ctx.doc.units?.length ?? 'nm'];
   const pops = new Map<string, { readonly location?: string }>(ctx.doc.populations.map((p) => [p.id, p]));
   for (const x of ctx.doc.instances ?? []) pops.set(x.id, { location: x.location ?? 'interior' });
+  // a superstructure's populations are addressed by id too (`(part Q p.inner)`), and carry their own location
+  for (const ss of ctx.doc.superstructures ?? []) for (const p of ss.populations ?? []) pops.set(p.id, p);
   const children = new Map<string, string[]>();
   for (const c of ctx.doc.compartments) if (c.parent) children.set(c.parent, [...(children.get(c.parent) ?? []), c.id]);
   const byTypes = (test: (t: PlacementSet['typeTable'][number]) => boolean): MesoLoci => {
