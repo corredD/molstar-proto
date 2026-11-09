@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { PlacementSet } from '../ir/placements.js';
+import { MesoBilayerResolver } from '../resolvers/bilayer.js';
 import { MesoFiberResolver } from '../resolvers/fiber.js';
 import { sdfGrid, shapeSampler } from '../resolvers/geometry.js';
 import { MesoLatticeResolver } from '../resolvers/lattice.js';
@@ -463,5 +464,60 @@ describe('meso.precomputed, RELION STAR', () => {
       }),
     );
     expect(out.issues?.some((i) => i.severity === 'error' && /rlnClass/.test(i.message))).toBe(true);
+  });
+});
+
+describe('small things', () => {
+  it('a strand with no shape to grow in: its binders are counted and told why', () => {
+    const grown = {
+      ...strand('f', 100, []),
+      arrangement: { kind: 'fiber', rise: 10, twist: 0, growth: { persistence: 300, length: 1000, count: 1 } },
+    };
+    const binder = {
+      id: 'b',
+      compartment: 'c',
+      location: 'interior',
+      requested: 5,
+      radius: 5,
+      arrangement: { kind: 'random' },
+    };
+    const rel = {
+      id: 'r',
+      kind: 'binds',
+      subjects: ['b'],
+      objects: ['f'],
+      entry: { position: [0, 0, 0] },
+      spacing: 50,
+    };
+    const out = run(MesoFiberResolver, job([grown, binder], { c: { shape: { kind: 'mesh' } } }, { relations: [rel] }));
+    expect(out.achieved).toEqual({ f: 0, b: 0 });
+    expect(out.shortfall?.b).toMatch(/f/);
+  });
+
+  it('a bilayer that places more lipids than asked says why', () => {
+    const out = run(
+      MesoBilayerResolver,
+      job(
+        [
+          {
+            id: 'l',
+            compartment: 'c',
+            location: 'membrane',
+            requested: 20000,
+            radius: 4.5,
+            arrangement: { kind: 'bilayer' },
+          },
+        ],
+        {
+          c: {
+            shape: { kind: 'sphere', center: [0, 0, 0], radius: 200 },
+            membrane: { thickness: 40 },
+            area: 4 * Math.PI * 200 * 200,
+          },
+        },
+      ),
+    );
+    expect(out.achieved.l).toBeGreaterThan(20000);
+    expect(out.issues?.some((i) => i.severity === 'info' && i.ids?.includes('l'))).toBe(true);
   });
 });

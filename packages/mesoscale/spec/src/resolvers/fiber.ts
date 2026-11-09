@@ -68,7 +68,7 @@ const OnStrand = ['binds', 'bends'] as const;
 
 export const MesoFiberResolver: Resolver<FiberInput> = {
   id: 'meso.fiber',
-  version: '0.3.0',
+  version: '0.3.1',
   description:
     'Filaments along a given path or grown as a persistent random walk; binders and benders placed on them by their sites',
   arrangements: ['fiber', 'random'],
@@ -284,6 +284,10 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
         if (!s) {
           achieved[it.population] = 0;
           shortfall[it.population] = `${it.compartment} has no shape to grow filaments in`;
+          for (const x of on) {
+            achieved[x.bd.population] ??= 0;
+            shortfall[x.bd.population] ??= `the strand ${it.population} was not grown: ${shortfall[it.population]}`;
+          }
           return;
         }
         const perFiber = Math.max(1, Math.round(a.growth.length / a.rise));

@@ -148,7 +148,6 @@ export const MesoRelaxResolver: Resolver<RelaxInput> = {
           ),
         );
     });
-    const firstMovable = bodies.length;
     for (const o of job.obstacles)
       for (let i = 0; i < o.count; i++)
         bodies.push({
@@ -195,9 +194,6 @@ export const MesoRelaxResolver: Resolver<RelaxInput> = {
           inserted++;
         }
       }
-    // obstacles were pushed before the inserted copies: keep them where `fixed` says, wherever they sit in the list
-    void firstMovable;
-
     // the overlap grid: its cell sized by the copies it relaxes (upstream and inserted), not by the avoided ones, so one
     // large avoided copy does not put every copy in one cell. The avoided copies larger than that (fixed: they never
     // move) sit in grids of their own by size class, class c in cells of 2·maxR·2^c, each found in 27 cells.

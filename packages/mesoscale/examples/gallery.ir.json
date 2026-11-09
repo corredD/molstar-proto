@@ -402,8 +402,8 @@
             "params": {
               "model": "default:meso.fiber",
               "resolver": "meso.fiber",
-              "version": "0.3.0",
-              "key": "default:meso.fiber@3b463959889adb04",
+              "version": "0.3.1",
+              "key": "default:meso.fiber@a822a7b2fab449f1",
               "input": {
                 "strands": [
                   {
@@ -505,7 +505,7 @@
                 "origin": ["p.actin", "p.microtubule"],
                 "params": {
                   "set": {
-                    "key": "default:meso.fiber@3b463959889adb04#0",
+                    "key": "default:meso.fiber@a822a7b2fab449f1#0",
                     "model": "default:meso.fiber",
                     "frame": "world",
                     "count": 510,
@@ -544,8 +544,8 @@
             "params": {
               "model": "default:meso.bilayer",
               "resolver": "meso.bilayer",
-              "version": "0.1.0",
-              "key": "default:meso.bilayer@52bb1c25fbbf6dc8",
+              "version": "0.1.1",
+              "key": "default:meso.bilayer@bef826bea3213935",
               "input": {
                 "items": [
                   {
@@ -622,7 +622,7 @@
                 "origin": ["p.vesicle-lipids"],
                 "params": {
                   "set": {
-                    "key": "default:meso.bilayer@52bb1c25fbbf6dc8#0",
+                    "key": "default:meso.bilayer@bef826bea3213935#0",
                     "model": "default:meso.bilayer",
                     "frame": "world",
                     "count": 23599,
@@ -656,19 +656,19 @@
     },
     "looks": [
       {
-        "set": "default:meso.bilayer@52bb1c25fbbf6dc8#0",
+        "set": "default:meso.bilayer@bef826bea3213935#0",
         "types": [0],
         "color": 15259824,
         "visible": true
       },
       {
-        "set": "default:meso.fiber@3b463959889adb04#0",
+        "set": "default:meso.fiber@a822a7b2fab449f1#0",
         "types": [0],
         "color": 5940570,
         "visible": true
       },
       {
-        "set": "default:meso.fiber@3b463959889adb04#0",
+        "set": "default:meso.fiber@a822a7b2fab449f1#0",
         "types": [1],
         "color": 10181046,
         "visible": true
@@ -782,6 +782,13 @@
         "achieved": 69,
         "reason": "the membrane of mitochondrion holds 69 hexagonal sites 120 Å apart; 400 asked"
       }
+    },
+    {
+      "code": "constraint.unmet",
+      "severity": "info",
+      "phase": "resolve",
+      "message": "p.vesicle-lipids: 23599 lipids for 23562 asked: each leaflet is filled at the density over its own area (12742 and 10857)",
+      "ids": ["p.vesicle-lipids"]
     },
     {
       "code": "relation.ignored",

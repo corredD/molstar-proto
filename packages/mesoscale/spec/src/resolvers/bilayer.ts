@@ -5,6 +5,7 @@
  */
 
 import type { Id } from '../format/doc.js';
+import { issue, type Issue } from '../format/issues.js';
 import { PlacementBuilder, type PlacementType, quatFromTo } from '../ir/placements.js';
 import { createRandom, subSeed } from '../runtime/random.js';
 import type { Resolver, ResolveJob, ResolveOutput } from '../runtime/resolver.js';
@@ -33,7 +34,7 @@ interface BilayerInput {
 
 export const MesoBilayerResolver: Resolver<BilayerInput> = {
   id: 'meso.bilayer',
-  version: '0.1.0',
+  version: '0.1.1',
   description: 'Lipid bilayers on curved membranes: both leaflets at a density, heads outward',
   arrangements: ['bilayer'],
   locations: ['membrane'],
@@ -85,6 +86,7 @@ export const MesoBilayerResolver: Resolver<BilayerInput> = {
     const b = new PlacementBuilder(plans.reduce((s, p) => s + p.leaflets[0].count + p.leaflets[1].count, 0));
     const achieved: Record<Id, number> = {};
     const shortfall: Record<Id, string> = {};
+    const issues: Issue[] = [];
     const q = [0, 0, 0, 1];
     const p = [0, 0, 0],
       n = [0, 0, 0];
@@ -113,8 +115,23 @@ export const MesoBilayerResolver: Resolver<BilayerInput> = {
         }
       }
       achieved[it.population] = b.count - start;
+      if (b.count - start > it.requested)
+        issues.push(
+          issue(
+            'constraint.unmet',
+            'info',
+            'resolve',
+            `${it.population}: ${b.count - start} lipids for ${it.requested} asked: each leaflet is filled at the density over its own area (${leaflets.map((l) => l.count).join(' and ')})`,
+            { ids: [it.population] },
+          ),
+        );
       if (b.count === start) shortfall[it.population] = `${c?.label ?? it.compartment} has no surface area known`;
     });
-    return { sets: [b.finish({ key: '', model: job.model.id, frame: 'world', typeTable })], achieved, shortfall };
+    return {
+      sets: [b.finish({ key: '', model: job.model.id, frame: 'world', typeTable })],
+      achieved,
+      shortfall,
+      issues,
+    };
   },
 };

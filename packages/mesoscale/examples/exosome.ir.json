@@ -471,8 +471,8 @@
             "params": {
               "model": "default:meso.bilayer",
               "resolver": "meso.bilayer",
-              "version": "0.1.0",
-              "key": "default:meso.bilayer@53ae1b406706a313",
+              "version": "0.1.1",
+              "key": "default:meso.bilayer@e61ec16ff4ed3426",
               "input": {
                 "items": [
                   {
@@ -525,7 +525,7 @@
                 "origin": ["p.lipids"],
                 "params": {
                   "set": {
-                    "key": "default:meso.bilayer@53ae1b406706a313#0",
+                    "key": "default:meso.bilayer@e61ec16ff4ed3426#0",
                     "model": "default:meso.bilayer",
                     "frame": "world",
                     "count": 88666,
@@ -569,7 +569,7 @@
     },
     "looks": [
       {
-        "set": "default:meso.bilayer@53ae1b406706a313#0",
+        "set": "default:meso.bilayer@e61ec16ff4ed3426#0",
         "types": [0],
         "color": 15259824,
         "visible": true,
