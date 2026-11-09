@@ -132,6 +132,25 @@ export class PrismMesoAdapter implements RendererAdapter {
     } = {},
   ) {}
 
+  /**
+   * Lets go of the expansions and bounds of sets not drawn; an expansion a drawn one repeats (two levels of
+   * superstructures: `W|0*K_out|0*K_in` repeats `K_out|0*K_in`) stays, so its copies are still named and lit.
+   */
+  private evict(drawn: ReadonlySet<string>) {
+    const keep = new Set(drawn);
+    for (const k of drawn) {
+      for (let r = k; ; ) {
+        const bar = r.indexOf('|');
+        const star = bar < 0 ? -1 : r.indexOf('*', bar);
+        if (star < 0) break;
+        r = r.slice(star + 1);
+        keep.add(r);
+      }
+    }
+    for (const k of [...this.expansions.keys()]) if (!keep.has(k)) this.expansions.delete(k);
+    for (const k of [...this.bounds.keys()]) if (!drawn.has(k)) this.bounds.delete(k);
+  }
+
   /** The sets by key: the source's (templates included) and the expansions drawn. */
   private sets = new Map<string, PlacementSet>();
   private readonly expansionInfo = new Map<string, Expansion | null>();
@@ -258,8 +277,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     const flat = flattenInstances(source, this.expansions);
     const ir = flat.ir;
     const keys = placementSetKeys(ir);
-    for (const k of [...this.expansions.keys()]) if (!keys.has(k)) this.expansions.delete(k);
-    for (const k of [...this.bounds.keys()]) if (!keys.has(k)) this.bounds.delete(k);
+    this.evict(keys);
     const t0 = now();
     const plan = planCommit(this.prev, ir);
     const v = this.viewer;
@@ -441,8 +459,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     const flat = flattenInstances(source, this.expansions);
     const ir = flat.ir;
     const keys = placementSetKeys(ir);
-    for (const k of [...this.expansions.keys()]) if (!keys.has(k)) this.expansions.delete(k);
-    for (const k of [...this.bounds.keys()]) if (!keys.has(k)) this.bounds.delete(k);
+    this.evict(keys);
     const state = this.viewer.plugin.state.data;
     const store = this.store;
     const cells = new Map<string, { ref: string; label: string; list: ParticleList | undefined }>();
