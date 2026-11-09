@@ -581,10 +581,11 @@ function wrapItems(
     // lipid-procedural: the default), or tiles on a remesh
     // every mesh not wrapped yet as one membrane (lipid-procedural round 6: a cell's membranes, one budget, the inner
     // ones hidden while the eye is outside): one step
-    const all = area
-      .objectsState()
-      .value.filter((o) => o.kind === 'mesh' && !o.membrane)
-      .map((o) => o.ref);
+    const objects = area.objectsState().value;
+    // a mesh some membrane wraps already is left out (review M1): its refs indexed once
+    const wrapped = new Set<string>();
+    for (const o of objects) for (const ref of o.wraps ?? []) wrapped.add(ref);
+    const all = objects.filter((o) => o.kind === 'mesh' && !o.membrane && !wrapped.has(o.ref)).map((o) => o.ref);
     const wrapAll: ContextMenuItem[] =
       all.length > 1
         ? [

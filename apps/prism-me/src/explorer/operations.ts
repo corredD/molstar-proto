@@ -58,6 +58,8 @@ export interface SceneObject {
   readonly count?: string;
   /** a lipid membrane (`mesoscale.wrapMembrane`): a mesh row, not wrapped again */
   readonly membrane?: true;
+  /** a lipid membrane's meshes (their rows' refs): not wrapped again by Wrap all */
+  readonly wraps?: readonly string[];
   readonly visible: boolean;
   /** A structure's entities, with their chains */
   readonly entities?: readonly StructureEntity[];
@@ -772,6 +774,12 @@ function fileLabel(plugin: PluginContext, ref: string): string | undefined {
 /** The lipid membrane's transformer by name (`mesoscale/lipids/membrane.ts`; not imported: the baker stays out of here) */
 const LipidMembraneTransformer = 'mesoscale-lipid-membrane';
 
+/** The meshes a lipid membrane wraps (its `mesh` or its `meshes`), by their rows' refs */
+function wrappedMeshes(params: { mesh?: string; meshes?: readonly string[] } | undefined): string[] {
+  if (params?.meshes?.length) return [...params.meshes];
+  return params?.mesh ? [params.mesh] : [];
+}
+
 /**
  * The shape representations of meshes loaded from files (not the shapes the viewer makes itself), and the lipid
  * membranes
@@ -791,6 +799,7 @@ function meshes(plugin: PluginContext): SceneObject[] {
         ...(cell.obj.description ? { count: cell.obj.description } : {}),
         visible: !cell.state.isHidden,
         membrane: true,
+        wraps: wrappedMeshes(cell.transform.params as { mesh?: string; meshes?: readonly string[] }),
       });
       continue;
     }
