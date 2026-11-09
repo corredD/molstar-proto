@@ -17,7 +17,7 @@ import type {
   ResolveOutput,
 } from '../runtime/resolver.js';
 import { shapeSampler } from './geometry.js';
-import { type PackCompartment, packCompartments } from './packing.js';
+import { type PackCompartment, packCompartments, SpatialHash } from './packing.js';
 
 // `meso.fiber` (design.md §4.4, §3.11): filaments as copies `rise` apart along a path, each turned by `twist` about the
 // path's tangent. A path is given (traced from a tomogram, or inline) or grown: a persistent random walk inside the
@@ -28,6 +28,10 @@ import { type PackCompartment, packCompartments } from './packing.js';
 // copy is placed with its entry site on the strand and its entry→exit axis along the strand (the attachment-point rule
 // of MesoCraft, x = q − R·p, Jia et al. 2026 eq. 1); the strand resumes at the exit site, turned by the relation's
 // angle for `bends`. A traced path is an observation: binders are placed on it, but it is not bent (an info issue).
+//
+// The copies of the models it avoids: a grown filament steps around them (a step that would overlap one turns; a
+// filament with no free step ends there); a traced path is kept where it is, its overlaps reported (a warning). The
+// binders' poses are not checked against them.
 
 type Fiber = Extract<NormalizedArrangement, { kind: 'fiber' }>;
 
@@ -64,7 +68,7 @@ const OnStrand = ['binds', 'bends'] as const;
 
 export const MesoFiberResolver: Resolver<FiberInput> = {
   id: 'meso.fiber',
-  version: '0.2.2',
+  version: '0.3.0',
   description:
     'Filaments along a given path or grown as a persistent random walk; binders and benders placed on them by their sites',
   arrangements: ['fiber', 'random'],
@@ -135,6 +139,18 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
     const issues: Issue[] = [];
     const q = [0, 0, 0, 1];
     const tmp = [0, 0, 0];
+    // the copies of the models it avoids
+    let maxR = 1;
+    for (const it of items) maxR = Math.max(maxR, it.radius);
+    const avoided = new SpatialHash(2 * maxR);
+    for (const o of job.obstacles)
+      for (let i = 0; i < o.count; i++)
+        avoided.insert(
+          o.positions[3 * i],
+          o.positions[3 * i + 1],
+          o.positions[3 * i + 2],
+          o.typeTable[o.types[i]].radius,
+        );
     for (const id of input.stray) {
       achieved[id] = 0;
       shortfall[id] = 'meso.fiber places strands and what binds or bends them; this population is neither';
@@ -142,6 +158,7 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
 
     input.strands.forEach((it, t) => {
       const a = it.arrangement;
+      const blocked = (x: number, y: number, z: number) => avoided.size > 0 && avoided.overlaps(x, y, z, it.radius);
       const twist = (a.twist * Math.PI) / 180;
       // the binders on this strand, with what is left of their counts
       const on = input.binders
@@ -211,6 +228,7 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
         let k = 0;
         let carry = 0;
         let bendWarned = false;
+        let overlapping = 0;
         const rand = createRandom(subSeed(input.seed, it.population));
         for (let s = 0; s + 1 < a.path.length && b.count - start < it.requested; s++) {
           const [x0, y0, z0] = a.path[s];
@@ -245,10 +263,21 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
             }
             quatFromTo(q, 0, 0, 1, tx, ty, tz, twist * k++);
             strandIdx.push(b.push(t, x0 + tx * u, y0 + ty * u, z0 + tz * u, q));
+            if (blocked(x0 + tx * u, y0 + ty * u, z0 + tz * u)) overlapping++;
           }
           carry = u - len;
         }
         offsets.push(strandIdx.length);
+        if (overlapping)
+          issues.push(
+            issue(
+              'resolver.unsupported',
+              'warning',
+              'resolve',
+              `${it.population} follows a traced path: ${overlapping} copies overlap the copies of the models ${job.model.id} avoids (kept: the path is the observation)`,
+              { ids: [it.population] },
+            ),
+          );
       } else if (a.growth) {
         const c = input.compartments[it.compartment];
         const s = c && shapeSampler(c.shape, job.compartments.get(it.compartment)?.mesh);
@@ -272,10 +301,13 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
             cur[0] = rand.range(s.min[0], s.max[0]);
             cur[1] = rand.range(s.min[1], s.max[1]);
             cur[2] = rand.range(s.min[2], s.max[2]);
-            if (s.contains(cur[0], cur[1], cur[2], margin)) break;
+            if (s.contains(cur[0], cur[1], cur[2], margin) && !blocked(cur[0], cur[1], cur[2])) break;
           }
           rand.onSphere(dir);
+          const first = strandIdx.length;
           for (let k = 0; k < perFiber && b.count - start < it.requested; k++) {
+            // no free start, or a binder's exit site on an avoided copy: the filament ends here
+            if (blocked(cur[0], cur[1], cur[2])) break;
             quatFromTo(q, 0, 0, 1, dir[0], dir[1], dir[2], twist * k);
             strandIdx.push(b.push(t, cur[0], cur[1], cur[2], q));
             sinceBinder += a.rise;
@@ -307,11 +339,23 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
               ny = cur[1] + dir[1] * a.rise;
               nz = cur[2] + dir[2] * a.rise;
             }
+            // onto an avoided copy: a few other headings; none free, the filament ends
+            if (blocked(nx, ny, nz)) {
+              let free = false;
+              for (let turn = 0; turn < 12 && !free; turn++) {
+                rand.onSphere(dir);
+                nx = cur[0] + dir[0] * a.rise;
+                ny = cur[1] + dir[1] * a.rise;
+                nz = cur[2] + dir[2] * a.rise;
+                free = s.contains(nx, ny, nz, margin) && !blocked(nx, ny, nz);
+              }
+              if (!free) break;
+            }
             cur[0] = nx;
             cur[1] = ny;
             cur[2] = nz;
           }
-          offsets.push(strandIdx.length);
+          if (strandIdx.length > first) offsets.push(strandIdx.length);
         }
       }
       const placed = b.count - start;

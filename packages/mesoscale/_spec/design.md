@@ -735,7 +735,10 @@ A `ResolveJob` holds:
 | `cellpack-gpu`     | cellPACKgpu serialized recipes                                                            | O(N · tries)      |
 | `meso.relax`       | (v0.2) refine stage: inserts missing copies, relaxes overlaps (§6.7)                      | O(N · iterations) |
 
-All of them are in `resolvers/index.ts`, `DefaultResolvers`.
+All of them are in `resolvers/index.ts`, `DefaultResolvers`. The copies of the models a model avoids: the packers place
+nothing on them, `meso.relax` holds them fixed, `meso.lattice` skips the sites they take, `meso.fiber` grows around them
+(a traced path is kept where it is and its overlaps reported); `meso.bilayer` and `meso.precomputed` do not look at them
+(lipids are drawn without footprints, §11; given poses are given).
 
 ### 6.4 Plugging in a recipe kind: cellPACKgpu
 

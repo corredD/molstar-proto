@@ -361,4 +361,47 @@ describe('meso.lattice', () => {
       );
     expect(first('m.one')).not.toEqual(first('m.two'));
   });
+
+  it('skips the sites an obstacle takes', () => {
+    const plain = run(MesoLatticeResolver, job([latticePop('p', 30)], membrane)).sets[0];
+    const s0 = [plain.positions[0], plain.positions[1], plain.positions[2]] as [number, number, number];
+    const obstacle = setOf(1, () => s0, { population: 'x', compartment: 'c', radius: 30 }, 'm.x');
+    const out = run(MesoLatticeResolver, job([latticePop('p', 30)], membrane, { obstacles: [obstacle] }));
+    expect(out.achieved.p).toBe(30);
+    expect(minGap(out.sets[0], obstacle)).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('meso.fiber and obstacles', () => {
+  it('a grown filament steps around the copies of the models it avoids', () => {
+    // a wall of obstacles across the middle of a box the filaments grow in
+    const wall: [number, number, number][] = [];
+    for (let y = -380; y <= 380; y += 40) for (let z = -380; z <= 380; z += 40) wall.push([0, y, z]);
+    const obstacles = setOf(wall.length, (i) => wall[i], { population: 'x', compartment: 'c', radius: 25 }, 'm.x');
+    const grown = {
+      ...strand('f', 4000, []),
+      arrangement: { kind: 'fiber', rise: 10, twist: 0, growth: { persistence: 300, length: 1000, count: 40 } },
+    };
+    const out = run(
+      MesoFiberResolver,
+      job(
+        [grown],
+        { c: { shape: { kind: 'box', center: [0, 0, 0], size: [800, 800, 800] } } },
+        { obstacles: [obstacles] },
+      ),
+    );
+    expect(out.achieved.f).toBeGreaterThan(0);
+    expect(minGap(out.sets[0], obstacles)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a traced path through an obstacle is kept (the observation) and the overlap reported', () => {
+    const obstacles = setOf(1, () => [100, 0, 0], { population: 'x', compartment: 'c', radius: 20 }, 'm.x');
+    const out = run(MesoFiberResolver, job([strand('f', 21, line(10, 20))], bigSphere, { obstacles: [obstacles] }));
+    expect(out.achieved.f).toBe(21);
+    expect(
+      out.issues?.some(
+        (i) => i.severity === 'warning' && /f follows a traced path: \d+ copies overlap/.test(i.message),
+      ),
+    ).toBe(true);
+  });
 });

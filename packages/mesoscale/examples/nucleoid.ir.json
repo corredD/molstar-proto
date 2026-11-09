@@ -38,8 +38,8 @@
             "params": {
               "model": "default:meso.fiber",
               "resolver": "meso.fiber",
-              "version": "0.2.2",
-              "key": "default:meso.fiber@6af270abf9a5a116",
+              "version": "0.3.0",
+              "key": "default:meso.fiber@976f16ced894a3a9",
               "input": {
                 "strands": [
                   {
@@ -130,7 +130,7 @@
                 "origin": ["p.dna", "p.hu", "p.ihf"],
                 "params": {
                   "set": {
-                    "key": "default:meso.fiber@6af270abf9a5a116#0",
+                    "key": "default:meso.fiber@976f16ced894a3a9#0",
                     "model": "default:meso.fiber",
                     "frame": "world",
                     "count": 480,
@@ -183,19 +183,19 @@
     },
     "looks": [
       {
-        "set": "default:meso.fiber@6af270abf9a5a116#0",
+        "set": "default:meso.fiber@976f16ced894a3a9#0",
         "types": [0],
         "color": 8035526,
         "visible": true
       },
       {
-        "set": "default:meso.fiber@6af270abf9a5a116#0",
+        "set": "default:meso.fiber@976f16ced894a3a9#0",
         "types": [1],
         "color": 13649210,
         "visible": true
       },
       {
-        "set": "default:meso.fiber@6af270abf9a5a116#0",
+        "set": "default:meso.fiber@976f16ced894a3a9#0",
         "types": [2],
         "color": 13855159,
         "visible": true

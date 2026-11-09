@@ -15,7 +15,7 @@ import { type PackCompartment, packCompartments, SpatialHash } from './packing.j
 // patch around a seeded direction (S-layer patches, ATP synthase rows), one asking more is short and says how many
 // sites the membrane holds. Spheres and ellipsoids only: a mesh lattice needs a surface parametrization (design.md §9).
 // Each population's patch is around its own pole (seeded by the model and the population), and skips the sites the
-// populations before it took.
+// populations before it and the copies of the models it avoids took.
 
 interface LatticeInput {
   readonly items: readonly {
@@ -38,7 +38,7 @@ interface LatticeInput {
 
 export const MesoLatticeResolver: Resolver<LatticeInput> = {
   id: 'meso.lattice',
-  version: '0.2.0',
+  version: '0.2.1',
   description:
     'Lattices on spherical and ellipsoidal membranes: Fibonacci sites at the lattice density, patches by count',
   arrangements: ['lattice'],
@@ -81,11 +81,19 @@ export const MesoLatticeResolver: Resolver<LatticeInput> = {
     const achieved: Record<Id, number> = {};
     const shortfall: Record<Id, string> = {};
     const q = [0, 0, 0, 1];
-    // the sites taken: the populations' placed before this one (its own copies go in after it: Fibonacci neighbours
-    // sit a little under the spacing apart, by design)
+    // the sites taken: the copies of the models it avoids, and the populations' placed before this one (its own
+    // copies go in after it: Fibonacci neighbours sit a little under the spacing apart, by design)
     let maxR = 1;
     for (const it of input.items) maxR = Math.max(maxR, it.radius);
     const taken = new SpatialHash(2 * maxR);
+    for (const o of job.obstacles)
+      for (let i = 0; i < o.count; i++)
+        taken.insert(
+          o.positions[3 * i],
+          o.positions[3 * i + 1],
+          o.positions[3 * i + 2],
+          o.typeTable[o.types[i]].radius,
+        );
     input.items.forEach((it, t) => {
       const c = input.compartments[it.compartment];
       const shape = c?.shape;
