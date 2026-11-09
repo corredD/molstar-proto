@@ -7,6 +7,7 @@
 import type { MesoViewSpecDoc } from '@molstar/meso-spec/format/doc';
 import type { Issue } from '@molstar/meso-spec/format/issues';
 import { irToJson, type IR } from '@molstar/meso-spec/ir/ir';
+import { type Patch, printPatch } from '@molstar/meso-spec/format/patch';
 import { type DataCodec, DocumentCodec, IRCodec, printData } from '@molstar/meso-spec/format/sexpr';
 import { trace, traceToSexprData, traceToText } from '@molstar/meso-spec/format/trace';
 import type { EditRecord } from '../session.js';
@@ -87,8 +88,18 @@ export function spellingToggle() {
   return b;
 }
 
+/** A panel whose value prints through its own S-expression printer (a patch). */
+const printers = new Map<HTMLElement, (value: unknown) => string>();
+
+/** A patch (format/patch.ts) in the current spelling: `(patch :ops [...])`, or its JSON. */
+export function showPatch(el: HTMLElement, patch: unknown) {
+  printers.set(el, (p) => printPatch(p as Patch));
+  showData(el, patch);
+}
+
 function render(el: HTMLElement, value: unknown, codec: DataCodec, focus: string | undefined, scroll: boolean) {
-  const text = spelling === 'sexpr' ? printData(value, codec) : JSON.stringify(value, null, 1);
+  const print = printers.get(el);
+  const text = spelling === 'sexpr' ? (print ? print(value) : printData(value, codec)) : JSON.stringify(value, null, 1);
   el.textContent = '';
   let first: HTMLElement | undefined;
   const needle = focus

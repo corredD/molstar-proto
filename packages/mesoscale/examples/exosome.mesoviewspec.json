@@ -806,15 +806,18 @@
       },
       "looks": [
         {
+          "id": "l.lipids",
           "select": "(population p.lipids)",
           "color": "#e8d8b0",
           "transparency": 0.6
         },
         {
+          "id": "l.catalase",
           "select": "(entity e.catalase)",
           "color": "#d0453a"
         },
         {
+          "id": "l.picks",
           "select": "(population p.catalase.observed)",
           "color": "#ffb000"
         }
