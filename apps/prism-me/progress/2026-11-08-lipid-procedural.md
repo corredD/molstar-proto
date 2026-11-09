@@ -1129,9 +1129,9 @@ time (no whole-then-slice copy); a `test:perf` case with parts and enclosures; S
 ## Round 7 brief (Ludo, 2026-11-09, after round 6)
 
 **Decided (Ludo, 2026-11-09).** No lighter close level (round 5's M5: close frames stay as they are). Yes to a colour
-and a hide per membrane; yes to a lipid mix per membrane. The 11-07 slab is `~/Downloads/yeast_slab_z600nm.bcif`
-(409 MB; the whole cell `~/Downloads/yeast_cell_atoms.bcif`, 1.17 GB). The raised `test:perf` baseline (79.6 → 95.6 B
-a view, round 6) goes back: find the allocation and remove it (the repo's rule: never raise a budget to quiet a run).
+and a hide per membrane; yes to a lipid mix per membrane. The 11-07 slab is `~/Downloads/yeast_slab_z600nm.bcif` (409
+MB; the whole cell `~/Downloads/yeast_cell_atoms.bcif`, 1.17 GB). The raised `test:perf` baseline (79.6 → 95.6 B a view,
+round 6) goes back: find the allocation and remove it (the repo's rule: never raise a budget to quiet a run).
 
 **Asked.** "we need a smoother transition between texture and sphere. the mesh should be duplicated to reproduce the
 bilayer, so that its texture inside and outside, and the transition will be smooth and almost not visible."
@@ -1141,32 +1141,32 @@ bilayer, so that its texture inside and outside, and the transition will be smoo
    inner one seen from below), so from outside one sees the outer heads, from inside (a clip, or flying inside a
    compartment) the inner heads; at the switch each copy sits where its spheres' heads are, so the spheres appear on
    their own surface. Check what round 5/6 draw today (round 4b had two surfaces; round 5 moved the texture onto the
-   mesh's own triangles) and say what changes. Smoothness: measure across the switch from outside and from inside
-   (4c's Oklab metric and an image diff of a zoom sequence; no line, no pop, no step), both on the cow ×100 and the
-   yeast PM; a test that fails on today's code.
-2. **A colour and a hide per membrane** of a wrapped cell (round 6's one membrane over parts): each part as a row
-   under the membrane in the tree (eye, colour), its lipids and its surfaces following, through the operations a
-   particle list uses (`mesoscale.style`, `mesoscale.colors`; one history step each). By zoom keeps working per part.
+   mesh's own triangles) and say what changes. Smoothness: measure across the switch from outside and from inside (4c's
+   Oklab metric and an image diff of a zoom sequence; no line, no pop, no step), both on the cow ×100 and the yeast PM;
+   a test that fails on today's code.
+2. **A colour and a hide per membrane** of a wrapped cell (round 6's one membrane over parts): each part as a row under
+   the membrane in the tree (eye, colour), its lipids and its surfaces following, through the operations a particle list
+   uses (`mesoscale.style`, `mesoscale.colors`; one history step each). By zoom keeps working per part.
 3. **A lipid mix per membrane.** Per part a composition: at least PM (ergosterol-rich, PS/PE inner), mito IM
-   (cardiolipin), mito OM, ER/NE, vacuole, LD (a monolayer: one leaflet only). Built from the CHARMM-GUI patch's
-   species where it has them (state what is missing; no new download without Ludo's OK), recorded with a source per
-   number (Delphine may be asked for the yeast compositions with citations). The patch per part feeds the cutter and
-   the top-view texture.
+   (cardiolipin), mito OM, ER/NE, vacuole, LD (a monolayer: one leaflet only). Built from the CHARMM-GUI patch's species
+   where it has them (state what is missing; no new download without Ludo's OK), recorded with a source per number
+   (Delphine may be asked for the yeast compositions with citations). The patch per part feeds the cutter and the
+   top-view texture.
 4. **The slab in the same frame.** Open `yeast_slab_z600nm.bcif` with the nine meshes (+ Open both): check whether the
    slab's particles sit on the meshes (Å = nm × 10, same origin?), measure an offset or scale if not, and fix the
-   reader's transform or record what the user must do. Memory: the slab is 409 MB, 4.6 M instances: open it at most
-   once per run, never the 1.17 GB whole cell in a test.
+   reader's transform or record what the user must do. Memory: the slab is 409 MB, 4.6 M instances: open it at most once
+   per run, never the 1.17 GB whole cell in a test.
 5. **The baseline back to 79.6 B.**
 
-**Ludo checks.** 1354: + Open the yeast meshes and the slab; wrap all; the slab sits on the membranes; zoom onto the
-PM from outside and from inside: the switch nearly invisible; each membrane its row, its colour, its eye; the mito IM
-shows cardiolipin, the LD one leaflet.
+**Ludo checks.** 1354: + Open the yeast meshes and the slab; wrap all; the slab sits on the membranes; zoom onto the PM
+from outside and from inside: the switch nearly invisible; each membrane its row, its colour, its eye; the mito IM shows
+cardiolipin, the LD one leaflet.
 
-**Machine care.** The slab at most once per run (≤ 8 GB RSS, abort past it); never the whole-cell bcif; per-view
-wraps as before; one heavy job at a time, wait while load > 12.
+**Machine care.** The slab at most once per run (≤ 8 GB RSS, abort past it); never the whole-cell bcif; per-view wraps
+as before; one heavy job at a time, wait while load > 12.
 
-**Size and model.** ~650 production lines (bilayer surfaces 200, parts as rows 200, mixes 150, slab frame 50, perf
-50); Opus. Gate on the round's diff.
+**Size and model.** ~650 production lines (bilayer surfaces 200, parts as rows 200, mixes 150, slab frame 50, perf 50);
+Opus. Gate on the round's diff.
 
 ## Round 7, item 1: measured before code (2026-11-09)
 
@@ -1184,27 +1184,27 @@ switch (the same camera, `spheresPx` ×1/1.3 and ×1.3). Load 3–8. Images `r7/
 dithered in from d/2 to d (the probe reads their `uLod`: four meshes). From inside the PM the inner copy is what shows
 (L 0.62 inside against 0.57 outside). Duplicating the mesh per leaflet, as the brief asks, is what rounds 4b–5 built.
 
-| sequence (largest step `dE`; the bound to aim at ~0.03)   | outside                         | inside                          | 4c metric at the switch, out / in (dL, dab) |
-| --------------------------------------------------------- | ------------------------------- | ------------------------------- | ------------------------------------------- |
-| PM, today (`both`, 2 px)                                   | **0.120 at 3.16 px**; 2 px 0.002 | **0.129 at 3.16 px**; 2 px 0.000 | 0.012, 0.002 / 0.028, 0.003                 |
-| PM, spheres only (no surface)                              | 0.122 at 3.16 px (then gaps)    | 0.118 at 3.16 px                | (no surface)                                |
-| PM, switch at 3.5 px                                       | 0.051 at 3.24 px                | 0.080 at 3.24 px                | 0.154, 0.010 / 0.098, 0.025                 |
-| cow ×100, today                                            | 0.042 at 3.16 px                | (never under 6 px inside: see below) | −0.006, 0.001                          |
-| cow ×100, switch at 3.5 px                                 | 0.036 at 8 px                   |                                 | 0.059, 0.031                                |
+| sequence (largest step `dE`; the bound to aim at ~0.03) | outside                          | inside                               | 4c metric at the switch, out / in (dL, dab) |
+| ------------------------------------------------------- | -------------------------------- | ------------------------------------ | ------------------------------------------- |
+| PM, today (`both`, 2 px)                                | **0.120 at 3.16 px**; 2 px 0.002 | **0.129 at 3.16 px**; 2 px 0.000     | 0.012, 0.002 / 0.028, 0.003                 |
+| PM, spheres only (no surface)                           | 0.122 at 3.16 px (then gaps)     | 0.118 at 3.16 px                     | (no surface)                                |
+| PM, switch at 3.5 px                                    | 0.051 at 3.24 px                 | 0.080 at 3.24 px                     | 0.154, 0.010 / 0.098, 0.025                 |
+| cow ×100, today                                         | 0.042 at 3.16 px                 | (never under 6 px inside: see below) | −0.006, 0.001                               |
+| cow ×100, switch at 3.5 px                              | 0.036 at 8 px                    |                                      | 0.059, 0.031                                |
 
-**The cause, measured.** (1) **The pop is not the texture switch but the spheres' level change** at about 3.2 px a
-lipid (balanced: stride 8 → stride 64, grown ×8 with scale bias 2): the mean luminance jumps 0.46 → 0.57 in one 8 % zoom
-step, outside and inside, with or without the far surface (`sheet-pm.png`: mixed small heads, then large green DSM and
-orange spheres; 4c's cause, the species standing highest covering their neighbours, now between two sphere levels). The
-switch to the texture at 2 px is smooth by colour (step dE ≤ 0.002; 4c's metric inside its bounds). Moving the switch
-above the level (3.5 px) halves the pop but does not remove it: the selection keeps lipids down to 0.8 × the switch
-(2.8 px), so the coarse level still draws from 3.2 to 2.8 px, and the texture then matches less well (dL 0.15). (2) **On
-the cow the far surfaces crumple on thin parts** (`zoom-cow-head.png`, `cow-both-vs-spheres-k14.png`): past the switch,
-black strokes along the face, ears, eyes and legs, absent with spheres only. The far copies are lifted ~20 Å along the
-vertex normals; on features thinner than twice that (legs 20–35 Å across) the inner copy crosses the axis and comes out
-facing out, and the outline draws the folds. (3) The cow ×100 is too small to reach the switch from inside (inside it a
-lipid stays over 6 px at 900×600); its inside steps past k21 are the camera leaving the body. (4) Motion's pixel scale
-does not move the level or the switch (`LodView` is in CSS pixels).
+**The cause, measured.** (1) **The pop is not the texture switch but the spheres' level change** at about 3.2 px a lipid
+(balanced: stride 8 → stride 64, grown ×8 with scale bias 2): the mean luminance jumps 0.46 → 0.57 in one 8 % zoom step,
+outside and inside, with or without the far surface (`sheet-pm.png`: mixed small heads, then large green DSM and orange
+spheres; 4c's cause, the species standing highest covering their neighbours, now between two sphere levels). The switch
+to the texture at 2 px is smooth by colour (step dE ≤ 0.002; 4c's metric inside its bounds). Moving the switch above the
+level (3.5 px) halves the pop but does not remove it: the selection keeps lipids down to 0.8 × the switch (2.8 px), so
+the coarse level still draws from 3.2 to 2.8 px, and the texture then matches less well (dL 0.15). (2) **On the cow the
+far surfaces crumple on thin parts** (`zoom-cow-head.png`, `cow-both-vs-spheres-k14.png`): past the switch, black
+strokes along the face, ears, eyes and legs, absent with spheres only. The far copies are lifted ~20 Å along the vertex
+normals; on features thinner than twice that (legs 20–35 Å across) the inner copy crosses the axis and comes out facing
+out, and the outline draws the folds. (3) The cow ×100 is too small to reach the switch from inside (inside it a lipid
+stays over 6 px at 900×600); its inside steps past k21 are the camera leaving the body. (4) Motion's pixel scale does
+not move the level or the switch (`LodView` is in CSS pixels).
 
 ## Round 7, item 1: design checkpoint (2026-11-09; stopped: the design differs from the brief)
 
@@ -1216,8 +1216,8 @@ in at ~3.2 px, and on thin shapes the far copies folding. Options, Ludo's call:
   texture rastered from the stride-8 level. One default, no graphics. Measured at 3.5 px: the pop halves (0.051/0.080)
   and the texture matches less well (dL 0.15): needs (A) at ~4 px with the raster's shade matched; fewer lipids drawn.
 - **(B) The coarse level made to look as the finer one**: stride 64's spheres chosen or sized so its top view's species
-  shares and luminance match stride 8's (4c's fix, between levels: e.g. a smaller grow, or the members' atoms ordered
-  so the head atoms are kept). Extension only, ~100 lines.
+  shares and luminance match stride 8's (4c's fix, between levels: e.g. a smaller grow, or the members' atoms ordered so
+  the head atoms are kept). Extension only, ~100 lines.
 - **(C) A dithered cross-fade between levels** over a px band: a graphics change (the levels' ranges have no overlap
   with pixel presets; 4c already flagged the object dither off for objects with levels). Ludo's call, sized at a later
   checkpoint.
@@ -1226,3 +1226,72 @@ in at ~3.2 px, and on thin shapes the far copies folding. Options, Ludo's call:
 
 Proposed test (fails today): the PM zoom sequence's largest step dE under 0.03 outside and inside; and for (D) the cow's
 far surfaces with no triangle whose inner copy faces out (a pure test on `patchSurface` over the thin-limbed fixture).
+
+## Round 7, item 3: groundwork (2026-11-09; Delphine, not built)
+
+The compositions for a mix per membrane, from Delphine. The tables were read in the full text unless a source is marked
+"abstract"; her source notes are in Ludo's vault, `Library/Mesoscale-Modeling/`. **The brief's premise is partly
+wrong:** about 80 % of the PM's ergosterol sits in the inner (cytoplasmic) leaflet, where sterol reaches about 45 % of
+the lipids (Solanko 2018, abstract). That the sphingolipids sit in the outer leaflet is assumed by analogy with
+mammalian cells, not measured in yeast.
+
+Recommended mixes (mol %, summing to 100; ERG ergosterol, SL the inositol sphingolipids):
+
+| membrane  | ERG  | PC   | PE   | PI   | PS   | PA  | CL  | SL   |
+| --------- | ---- | ---- | ---- | ---- | ---- | --- | --- | ---- |
+| PM, inner | 47.3 | 0    | 14.2 | 10.5 | 25.7 | 2.3 |     | 0    |
+| PM, outer | 13.5 | 28.9 | 4.6  | 3.4  | 5.2  | 0.5 |     | 44.0 |
+| mito IM   | 11.4 | 43.1 | 21.5 | 12.2 | 3.2  | 2.4 | 6.2 |      |
+| mito OM   | 3.0  | 43.8 | 33.8 | 13.9 | 1.5  | 1.5 | 2.5 |      |
+| ER / NE   | 9.7  | 47.2 | 23.6 | 13.4 | 3.5  | 2.6 |     |      |
+| vacuole   | 11.7 | 47.5 | 23.7 | 13.5 | 3.5  | 0   |     |      |
+| LD (mono) | 19.4 | 46.6 | 13.5 | 17.4 | 1.7  | 1.5 |     |      |
+
+The measured numbers and their sources:
+
+- **Schneiter 1999** (J Cell Biol 146:741, doi:10.1083/jcb.146.4.741): ergosterol/PL by membrane (T3): PM 0.46, IM 0.12,
+  OM 0.02, microsomes 0.18, vacuole 0.07, LD 0.24. Thickness (T2): PM 9.2 nm, LD monolayer 4.5 nm.
+- **Zinser 1991** (J Bacteriol 173:2026), as Schneiter quotes it: PM PS 33.6 and PE 20.3 % of glycerophospholipids.
+- **Patton & Lester 1991** (abstract): PM sphingolipids about 30 % of the phospholipid phosphorus.
+- **Cerbón & Calderón 1991** (abstract): PS, PI and PE mostly in the PM's inner leaflet.
+- **Sperka-Gottlieb 1988** (abstract): IM cardiolipin 13 % of the PL; OM PC 44, PE 34, PI 14, CL 5 %.
+- **Reinhard 2024** (EMBO J 43:1653): ergosterol in the ER 9.7 % and in the vacuole 11.7 %.
+- **Grillitsch 2011** (BBA 1811:1165, T4): the LD's PC 57.5, PI 21.5, PE 16.6 %.
+- **van 't Klooster 2020**: PM ergosterol 25–30 %.
+- **Surma 2011**, as Reinhard quotes it: PM ergosterol over 44 %.
+
+Assumptions:
+
+- **Whole-cell proxies:** the PC/PE/PI/PS/PA splits of the ER, the vacuole and the IM, and the PM's PI and PA, are
+  whole-cell values from Grillitsch's homogenate.
+- **Ergosterol:** a ratio r becomes r/(1+r) mol %.
+- **Cardiolipin:** its PL % is halved, since CL carries 2 P.
+- **PM leaflets:** the split follows Cerbón's and Solanko's fractions. All PC is put outer to balance the leaflets, with
+  no data behind it.
+
+Conflicts left open:
+
+- PM sterol: 31.5, 25–30 or over 44 %.
+- ER sterol: 15.3 or 9.7 %.
+- Vacuole sterol: 6.5 or 11.7 %.
+- LD PC: 57.5 or 36.4 % (Leber 1994).
+
+The per-organelle class tables of Zinser 1991 are only page scans; reading them would replace the whole-cell proxies
+(Ludo's OK needed).
+
+**Stand-ins from the CHARMM-GUI patch's species:**
+
+| class        | stand-in                         | what is lost                                           |
+| ------------ | -------------------------------- | ------------------------------------------------------ |
+| ergosterol   | CHL1                             |                                                        |
+| CL           | 2 × DOPA a CL, then renormalized | otherwise the IM's CL doubles to about 12 %            |
+| IPC and MIPC | SSM                              | the inositol-phosphate charge (POPI if charge matters) |
+| PC           | DOPC, POPC in the PM             |                                                        |
+| PE           | POPE in the PM, PLPE elsewhere   |                                                        |
+| PS           | POPS                             |                                                        |
+| PI           | POPI                             |                                                        |
+| PA           | DOPA                             |                                                        |
+
+CHARMM-GUI's archive has ergosterol (ERG) and cardiolipins (TOCL, TLCL): using the real species needs a new patch, which
+is a download and Ludo's OK. Building item 3 needs, as round 6 said, a cutter (table) a part and leaflet and its own
+members; round 7 stopped before it.
