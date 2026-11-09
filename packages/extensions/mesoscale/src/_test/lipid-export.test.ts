@@ -33,6 +33,10 @@ describe('a membrane’s full build at export', () => {
       [Vec3.create(1, 2, 3), 0.7],
       [Vec3.create(0, 0, 1), 1.2],
       [Vec3.create(1, 0, 0), Math.PI / 2],
+      // tilt 0 and 180 (review M5: a lipid whose normal is -z read back flipped)
+      [Vec3.create(0, 0, 1), 0.3],
+      [Vec3.create(1, 0, 0), Math.PI],
+      [Vec3.create(1, 1, 0), Math.PI],
     ] as const) {
       const m = Mat4.fromRotation(Mat4(), angle, Vec3.normalize(Vec3(), ax));
       const a = relionAngles(m, 0, { rot: 0, tilt: 0, psi: 0 });
