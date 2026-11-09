@@ -199,7 +199,9 @@ export const MesoRelaxResolver: Resolver<RelaxInput> = {
     void firstMovable;
 
     // relax: pairs pushed apart (a fixed body does not move), then each movable body kept in its volume
-    const maxR = Math.max(1, ...bodies.map((b) => b.r));
+    // a loop, not Math.max(...bodies): an argument spread overflows the stack past ~100 000 bodies
+    let maxR = 1;
+    for (const b of bodies) if (b.r > maxR) maxR = b.r;
     const cell = 2 * maxR;
     const key = (i: number, j: number, k: number) => ((i + 4096) * 8192 + (j + 4096)) * 8192 + (k + 4096);
     let largest = 0;
