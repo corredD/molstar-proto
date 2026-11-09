@@ -780,3 +780,22 @@ tiles refused at ×600.
 **Stop lines.** Library ~270 (< 600). If the per-fragment hash or `textureGrad` across cell seams shows seams or costs
 more than ~5 ms at 900×600, the fallback is the region map alone (no cells: the patch repeats at its period far away,
 exact only where lipids are drawn).
+
+## Round 5, built so far (2026-11-09, interim)
+
+- `7f1fc2916` cells below the triangle (procedural.ts, cutter.ts `eachCellHit`/`kindCounts`, kernel's write pass by
+  units, the count pass over small triangles only), the leaflet facing the camera (off under a clip).
+- `835dffca8` graphics: `dPatchTexture` (mesh WGSL, ~105 lines with the `sLinearMipmapRepeat` sampler).
+- `b657932c1` the far surfaces: the mesh's triangles with the patch texture (`patchSurface`, `patchRaster`).
+- `2d240dfa2` the near surface off the mid-plane (at the lowest head it stood over the coarser levels' lipids in bands:
+  `r5-probe/probe-x20-box-z200.png` before, `probe-x20-drop15-z200.png` after); a cell culled by its box; a no-hole test.
+- `90dc0062c` spheres down to 2 px by default.
+
+Numbers after (probe, x600, M1 Dawn, load 13-20): wrap 1.5 s (repr), RSS 0.8 GB; whole 10 ms, middle 11-14 ms; zoom
+z200/z400/z800 (Å from the surface): 205/169/142 ms with 41 k/120 k/393 k lipids (selection 2-9 ms both leaflets);
+z1600 and past: 11 ms (texture). Close frames are bound by drawing the visible lipids at atom detail, the same at x20
+(z200 236 ms): not the scale any more.
+
+Next: colour by zoom three levels (atoms by element), tiles refused above a count and given the texture, the brief's
+tests (wrap scaling x20/x100/x600, camera path x600 synthetic, far-texture colour at x600, colour by zoom, tiles
+refused), then the gate.
