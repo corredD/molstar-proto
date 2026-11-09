@@ -40,6 +40,8 @@ import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
 import { sheet, view } from './lipid-selection-cases.js';
+import { organelleMeshAt } from '../organelle-meshes.js';
+import { organelleBuffer, tetra } from './organelle-fixtures.js';
 
 // The lipid membrane's bulk paths over n and 4n tiles (`test:scaling`; apps/prism-me/AGENTS.md, no accidental
 // quadratic): the CPU's half of the assignment (variants, counts, slots) and its reference, and a whole sphere built
@@ -377,4 +379,22 @@ it('a close view over a mesh of N triangles costs what is in reach, not N (round
   );
   // a scan of every triangle a view reads about 4 here; what is in reach alone, about 1
   expect(s.timeRatio, describeScaling(s)).toBeLessThan(2);
+});
+
+it('the organelle meshes opened, a transform a mesh: each reads its own mesh, not the file (round 6, review M2)', () => {
+  // a file of n tetrahedra; every mesh read as + Open's transforms read them (one each)
+  const s = scaling(
+    {
+      setup: (n) =>
+        organelleBuffer(
+          Array.from({ length: Math.round(n) }, (_, i) => ({ membrane: i % 9, ...tetra([i * 10, 0, 0], 2) })),
+        ),
+      run: (bytes) => {
+        const n = new DataView(bytes.buffer).getUint32(0, true);
+        for (let i = 0; i < n; ++i) organelleMeshAt(bytes, i);
+      },
+    },
+    200,
+  );
+  checkLinear('organelle meshes opened, N meshes', s);
 });

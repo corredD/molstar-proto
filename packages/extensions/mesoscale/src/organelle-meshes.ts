@@ -75,6 +75,13 @@ export function parseOrganelleMeshes(bytes: Uint8Array, scale = OrganelleScale):
   return out;
 }
 
+/** Mesh `index` of an `organelle_meshes.bin` (what one opened mesh's transform reads), or what is wrong */
+export function organelleMeshAt(bytes: Uint8Array, index: number, scale = OrganelleScale): OrganelleMesh | string {
+  const meshes = parseOrganelleMeshes(bytes, scale);
+  if (typeof meshes === 'string') return meshes;
+  return meshes[index] ?? `No mesh ${index} (${meshes.length} in the file).`;
+}
+
 /** A mesh as an OBJ's (`ShapeFromObj` makes its shape, as an opened OBJ's) */
 function objFile({ positions, indices }: OrganelleMesh): ObjFile {
   const T = indices.length / 3;
@@ -102,10 +109,8 @@ export const OrganelleMeshFromBinary = PluginStateTransform.BuiltIn({
 })({
   apply({ a, params }) {
     return Task.create('Organelle mesh', async () => {
-      const meshes = parseOrganelleMeshes(SO.Data.readBytes(a));
-      if (typeof meshes === 'string') throw new Error(meshes);
-      const mesh = meshes[params.index];
-      if (!mesh) throw new Error(`No mesh ${params.index} (${meshes.length} in the file).`);
+      const mesh = organelleMeshAt(SO.Data.readBytes(a), params.index);
+      if (typeof mesh === 'string') throw new Error(mesh);
       return new SO.Format.Obj(objFile(mesh), { label: mesh.name });
     });
   },
