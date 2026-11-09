@@ -206,3 +206,23 @@ describe('the commands against the library', () => {
     expect(await queryCmd([BETA, '(all)', '--limit', 'x'], memory().io)).toBe(2);
   });
 });
+
+describe('runMain', () => {
+  it('does nothing, and does not throw, when argv[1] is not a path (a host importing @molstar/meso-spec/cli under `node -e`)', async () => {
+    const { runMain } = await import('../cli/io.js');
+    const before = process.argv[1];
+    let ran = false;
+    process.argv[1] = '/no/such/path/some-arg';
+    try {
+      expect(() =>
+        runMain(import.meta.url, async () => {
+          ran = true;
+          return 0;
+        }),
+      ).not.toThrow();
+    } finally {
+      process.argv[1] = before;
+    }
+    expect(ran).toBe(false);
+  });
+});
