@@ -45,13 +45,30 @@ Tests at 185107024: quick 85, medium 4 (+1 skipped), heavy 6.
 - An ordinal (`(copies p.granules 12)`) is not an identity: a repack makes it another copy. Instances are.
 - Relax overclaimed until the final exact-mesh check (advisor): 0.77 Å, 0 outside.
 
-## Review gate (2026-11-08, on `origin/prism-me...me/mesoviewspec`)
+## Review gate (2026-11-08, on `origin/prism-me...me/mesoviewspec` at e7aaade87)
 
-Pending: reviewers by area (format; IR + runtime; resolvers; Mol\* adapter + stories), then skeptics.
+Four Opus reviewers by area (format; IR + runtime; resolvers; Mol\* adapter + stories), then a skeptic per area that
+re-ran every probe. Each confirmed must-fix and should-fix was fixed in a branch of its own (`me/mvs-gate-<area>`, one
+Opus fixer each, a test failing first, one commit a cause), merged back with `--no-ff`. 0 findings refuted outright; one
+refuted in part (R9: the adapter does evict).
+
+| Area              | Must-fix                                                                                            | Should-fix                                                                           | Nits                 | Fixed in                                             | Left open                                                                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| format            | 5 (F1, F3, F4, FN1, FN6)                                                                            | 7 (F2, F5, F6, F8, F9, FN3, FN4)                                                     | F7, F10, F11, FN7    | merge 0874232cb (19 commits)                         | `:range` syntax; `(entity nil)`                                                                                                  |
+| IR + runtime      | 2 (R1 `within` on parts throws, R2 nested looks)                                                    | 6 (R3 two refiners, R4 + RN1 frames and up, R5, R6 refine chains, R10 template sets) | R7, R8, R9, R12      | merge 4bdd76306 (14 commits); R3 in the format merge | RN2 (depth-2 expansions recomputed), R11, the view path skips validation, nested `part`                                          |
+| resolvers         | 6 (S1 fiber carry, S3 mesh margin, S4 relax children, S5 150k throw, S6 + S7 lattice pole and seed) | 6 (S2, S8 obstacles, S9 persistence, S10 STAR origins, S11 scaling, SN1, SN2)        | S12                  | merge d7b79dbf0 (13 commits)                         | binder poses vs obstacles; a traced fiber through an obstacle is reported, not moved                                             |
+| adapter + stories | 1 (A1 overlapping edits orphan a list)                                                              | 4 (AN1 Prism undo, A2 + A3 MVS export, A4 first camera)                              | A5, A7, A9, A10, AN2 | merge 7e8df92a3 (11 commits)                         | A6 story dispose, A8 fov, AN3 shared store; `typecheck:storybook` fails at prism/viewer styles.ts:114 (pre-existing on prism-me) |
+
+Notable: the shipped exosome had 35 ALB copies inside the vesicle's membrane margin (S3) and relax reported them as
+inside (S4); the β-cell `v.docked` camera looked along its own up (RN1); `within` on a `part` crashed `compile` (R1).
+Spec changes from the fixes are in design.md §3.7-3.9, §4.5, §5.1, §6.1, §6.3, §6.7 (relax 0.77 → 0.78 Å).
+
+After the merges: quick 147, medium 8 (+1 skipped: no `gl`), heavy 6, `test:scaling` 2 (relax n vs 4n: ×2.9 time, ×4.0
+allocation; was ×13.3); `tsc -b`, the app's tsc, lint, format:check, check:workspace pass. Findings and verdicts in
+full: the reviewers' and skeptics' reports (session scratchpad `gate/*.md`).
 
 ## Next
 
-- The gate's fixes.
 - Streaming as its own lane (`mesoviewspec-streaming`, from `me/mesoviewspec`): manifest of tiles and levels (level 0
   statistical, 1 copies, 2 atoms), provider, budget, camera-driven coarse-first; heavy-lane R5 measurement.
 - The Claude doc from rev 38; the memory note.
