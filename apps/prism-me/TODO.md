@@ -100,13 +100,14 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
     (jsdom, Dawn); the Look's eye lagging the tree's is fixed. A wrap's main-thread stretches: under 100 ms on the cow
     ×100, up to 550 ms at 35 M lipids (the patch's first read, the render objects' merge and upload do not yield: a
     worker for the bake and the parse, round 4). The cutter's buffers: past about 22 M instances on the M1 (4 GB) it
-    fails with a message, not a lost device; a split of the work is not built.
+    fails with a message, not a lost device; a split of the work is not built. `checkInstances` copies the culler's
+    largest allocation by hand; only a Dawn test pins it (review S4: a quick test against a fake compute).
   - Round 2 (Holes, LOD and the cutter): pick the default method after Ludo compares (both in the right-click since
     round 3); the cutter's clashes at region borders (no removal, as cellPACKgpu); the cut lost parts meet the tiles
     near the remesh (about 400 k atom pairs under 2 Å on the cow); pinholes at the middle level of detail; the cutter's
     4 B a member and triangle. From the review: the cutter's write guards only its member's end (a float difference
     between its two passes could spill a hit into the next triangle's slots); on WebGL2 the description counts no cut
-    lipids; the library commit `bde208175` to its own lane from `origin/master`.
+    lipids; the library commits `bde208175` and `4ac0c0de8` (round 3, review S7) to their own lane from `origin/master`.
   - Not smooth zoomed out: a 1 µm sphere (7.9 M lipids, both leaflets) draws in about 380 ms a frame (Dawn, headless,
     M1, 512²); every atom of every tile is drawn. The spheres' levels of detail do not reach the membrane (the balanced
     preset changed nothing); a far level is needed (a tile as a few coarse spheres, or a textured triangle).

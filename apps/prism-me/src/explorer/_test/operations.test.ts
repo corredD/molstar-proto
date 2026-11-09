@@ -393,7 +393,7 @@ describe('explorer', () => {
     expect((cell.obj!.data as { repr: { state: { visible: boolean } } }).repr.state.visible).toBe(false);
   });
 
-  it('hides a vertex-coloured mesh under its membrane: the tree, the Look and the drawing agree; undo shows it', async () => {
+  it('hides a vertex-coloured mesh under its membrane, its state read fresh (coverage, review S2): agrees; undo shows it', async () => {
     // Ludo's third try (2026-11-08): model_vertexcolor.obj, Look › Scale 100, Wrap with lipids; he saw the mesh drawn,
     // the Look's eye crossed, the tree's open. Not reproduced headless (jsdom; Dawn): this holds what agrees here
     const v = await viewer();
