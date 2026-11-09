@@ -157,7 +157,12 @@ export function resourceLoader(io: CliIO, docPath: string, doc: MesoViewSpecDoc,
       } catch {
         continue;
       }
-      return file.endsWith('.json') ? JSON.parse(text) : text;
+      if (!file.endsWith('.json')) return text;
+      try {
+        return JSON.parse(text);
+      } catch {
+        return undefined; // the runtime reports it as resource.unavailable, naming the resource
+      }
     }
     return undefined;
   };

@@ -34,11 +34,13 @@ export const run = (argv: readonly string[], io: CliIO = nodeIO) =>
       options: ['--base', '--limit', '--want'],
     },
     async (a) => {
+      if (a.pos[0] === '-' && a.pos[1] === '-')
+        throw new CliError(2, 'the document and the address cannot both come from stdin');
       const doc = readDoc(io, a.pos[0]);
       const text = (a.pos[1] === '-' ? io.read('-') : a.pos[1]).trim();
       const want = a.opt('--want');
       if (want && !Types.includes(want)) throw new CliError(2, `--want is one of ${Types.join(', ')}`);
-      const limit = Number(a.opt('--limit') ?? 20);
+      const limit = a.opt('--limit') === '' ? Number.NaN : Number(a.opt('--limit') ?? 20);
       if (!Number.isInteger(limit) || limit < 0) throw new CliError(2, '--limit is a non-negative integer');
       const sites = new Map<string, readonly string[]>();
       for (const e of [...(doc.entities ?? []), ...(doc.superstructures ?? []).flatMap((s) => s.entities ?? [])])

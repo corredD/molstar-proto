@@ -13,7 +13,12 @@ import { run as queryCmd } from '../cli/meso-query.js';
 import { run as traceCmd } from '../cli/meso-trace.js';
 import { run as validateCmd } from '../cli/meso-validate.js';
 import type { CliIO } from '../cli/io.js';
-import { readData, DocumentCodec, IRCodec } from '../format/sexpr.js';
+import { readData, DocumentCodec, IRCodec, printData } from '../format/sexpr.js';
+import { evaluateMesoQL, lociToIds } from '../ir/loci.js';
+import { compile } from '../runtime/runtime.js';
+import { DefaultResolvers } from '../resolvers/index.js';
+import { BetaCellResources } from '../examples/betacell.js';
+import { parseMesoQL } from '../format/mesoql.js';
 
 // The meso-* commands (design.md §12.1), in-process: each `run(argv, io)` on the β-cell with captured output.
 
@@ -164,5 +169,40 @@ describe('meso-query', () => {
     const code = await queryCmd([BETA, '(site e.Vamp2 nope)', '--json'], io);
     expect(code).toBe(1);
     expect(o.err).toContain('mesoql.site');
+  });
+});
+
+describe('the commands against the library', () => {
+  it('meso-query (part ...) is evaluateMesoQL and lociToIds', async () => {
+    const q = '(part (copies p.granules 12) p.Vamp2)';
+    const { io, o } = memory();
+    await queryCmd([BETA, q, ...BASE, '--json', '--limit', '5'], io);
+    const doc = JSON.parse(readFileSync(`${root}${BETA}`, 'utf8'));
+    const r = await compile(doc, { resolvers: DefaultResolvers, load: (id) => BetaCellResources[id]?.() });
+    const expr = parseMesoQL(q).expr!;
+    const { loci } = evaluateMesoQL(expr, { doc, ir: r.ir! });
+    expect(JSON.parse(o.out).ids).toEqual(lociToIds(loci, r.ir!, 5));
+  });
+
+  it('a site or residues address exits 0 with its canonical form and type', async () => {
+    const { io, o } = memory();
+    expect(await queryCmd([BETA, '(residues e.Vamp2 :chain A :range 1-10)', '--json'], io)).toBe(0);
+    expect(JSON.parse(o.out)).toEqual({ address: '(residues e.Vamp2 :chain A :range 1-10)', type: 'residues' });
+  });
+
+  it('an empty issue list prints as [] and reads back', () => {
+    expect(readData(printData([], IRCodec), IRCodec).value).toEqual([]);
+  });
+
+  it('a malformed JSON resource is resource.unavailable, exit 1, not a bare parse error', async () => {
+    const { io, o } = memory({ [`${root}spec/src/examples/fixtures/isg.cellpack-gpu.json`]: '{' });
+    expect(await compileCmd([BETA, ...BASE], io)).toBe(1);
+    expect(o.err).toContain('resource.unavailable');
+  });
+
+  it('usage: - for both the document and the address, and a non-numeric or empty --limit, exit 2', async () => {
+    expect(await queryCmd(['-', '-'], memory({}, '{}').io)).toBe(2);
+    expect(await queryCmd([BETA, '(all)', '--limit', ''], memory().io)).toBe(2);
+    expect(await queryCmd([BETA, '(all)', '--limit', 'x'], memory().io)).toBe(2);
   });
 });
