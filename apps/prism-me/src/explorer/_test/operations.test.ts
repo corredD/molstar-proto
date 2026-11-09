@@ -535,9 +535,18 @@ await api.run('mesoscale.wrapMembrane', { mesh, method: 'cutter', patch: 'charmm
       kind: 'mesh',
       node: { ref: membrane!.ref },
     };
-    const membraneIds = nodeMenuItems(v.api, area, membraneRow as never, { open: () => {} }).map((i) => i.id);
-    // a tiles membrane: no export (the cutter's only, review M4)
-    expect(membraneIds).toEqual(['focus', 'label', 'remove']);
+    let opened: { id: string; run(): void }[] = [];
+    const membraneItems = nodeMenuItems(v.api, area, membraneRow as never, { open: (items) => (opened = items) });
+    // a tiles membrane: no export (the cutter's only, review M4); clipped as any object (round 4b item 6)
+    expect(membraneItems.map((i) => i.id)).toEqual(['focus', 'label', 'clip', 'remove']);
+    membraneItems.find((i) => i.id === 'clip')!.run();
+    opened.find((i) => i.id === 'clip-plane')!.run();
+    const clip = () =>
+      (v.plugin.state.data.cells.get(membrane!.ref)!.transform.params as { clip?: { objects: unknown[] } }).clip;
+    for (let k = 0; k < 100 && (clip()?.objects.length ?? 0) !== 1; ++k) await new Promise((r) => setTimeout(r, 20));
+    expect(clip()?.objects.length).toBe(1);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(clip()?.objects.length).toBe(0);
     // its eye hides it; its Remove removes it in one step
     await setEyes(v.api, area, [membraneRow as never], false);
     expect(v.plugin.state.data.cells.get(membrane!.ref)!.state.isHidden).toBe(true);

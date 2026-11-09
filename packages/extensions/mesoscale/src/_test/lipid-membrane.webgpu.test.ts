@@ -7,6 +7,7 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
@@ -134,6 +135,81 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
       const without = repr().groupCount;
       expect(without).toBeLessThan(all * 0.9);
       expect(without).toBeGreaterThan(0);
+      expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
+    } finally {
+      plugin.dispose();
+    }
+  });
+
+  it('is cut by a clip in both looks and both methods: spheres and far surfaces (round 4b item 6)', async () => {
+    const plugin = await HeadlessPluginContext.create(
+      { webgpu },
+      DefaultPluginSpec(),
+      { width: Size, height: Size },
+      { backend: 'webgpu' },
+    );
+    try {
+      await plugin.init();
+      registerLipidPatch('dawn-patch', syntheticPatchPdb().text);
+      // a plane through the center, its normal y: one half of the image cut away
+      const plane = {
+        variant: 'pixel' as const,
+        objects: [
+          {
+            type: 'plane' as const,
+            invert: false,
+            position: Vec3.zero(),
+            rotation: { axis: Vec3.create(1, 0, 0), angle: 0 },
+            scale: Vec3.create(1, 1, 1),
+            transform: Mat4.identity(),
+          },
+        ],
+      };
+      /** the covered fraction of the image's top and bottom halves */
+      const halves = async () => {
+        const image = (await plugin.getImageRaw({ width: Size, height: Size })).data;
+        const background = Array.from(image.subarray(0, 3)).join();
+        const out = [0, 0];
+        for (let y = 0; y < Size; ++y) {
+          for (let x = 0; x < Size; ++x) {
+            const o = (y * Size + x) * 4;
+            if (Array.from(image.subarray(o, o + 3)).join() !== background) out[y < Size / 2 ? 0 : 1] += 1;
+          }
+        }
+        return out.map((n) => n / ((Size * Size) / 2));
+      };
+      for (const [method, far, extra] of [
+        ['cutter', 'spheres', {}],
+        // the surfaces alone: no lipid is 16 px on screen whole
+        ['cutter', 'texture', { atomsPx: 16 }],
+        ['tiles', 'spheres', {}],
+        ['tiles', 'both', {}],
+      ] as const) {
+        const params = {
+          ...PD.getDefaultValues(LipidMembraneParams),
+          method,
+          far,
+          ...extra,
+          radius: 300,
+          edge: 80,
+          patch: 'dawn-patch',
+          center: Vec3.zero(),
+        };
+        const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
+        plugin.canvas3d!.requestCameraReset({ durationMs: 0 });
+        const whole = await halves();
+        expect(Math.min(...whole), `${method} ${far} drawn`).toBeGreaterThan(0.2);
+        await plugin
+          .build()
+          .to(node.ref)
+          .update({ ...params, clip: plane })
+          .commit();
+        const cut = await halves();
+        // one half gone, the other as it was
+        expect(Math.min(...cut), `${method} ${far} cut`).toBeLessThan(0.02);
+        expect(Math.max(...cut), `${method} ${far} kept`).toBeGreaterThan(0.2);
+        await plugin.build().delete(node.ref).commit();
+      }
       expect(plugin.canvas3d!.graphics.takeErrors?.() ?? []).toEqual([]);
     } finally {
       plugin.dispose();
