@@ -9,7 +9,8 @@ import { checkLinear, quadraticControl, scaling } from '../../../../sequences/co
 import { assignReference, assignSlots } from '../lipids/assign.js';
 import { cutterBases, cutterCounts, cutterRegions, cutterTable } from '../lipids/cutter.js';
 import { parsePatchPdb } from '../lipids/patch.js';
-import { buildMembrane, registerLipidPatch } from '../lipids/membrane.js';
+import { buildMembrane, registerLipidPatch, shownLipids } from '../lipids/membrane.js';
+import { farSurface } from '../lipids/far-surface.js';
 import { farTriangles, icosphere, isotropicRemesh, type TriMesh } from '../lipids/remesh.js';
 import { createLipidSelection } from '../lipids/procedural.js';
 import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
@@ -165,4 +166,63 @@ it('a view selected over a mesh of N triangles, at a fixed pool (lipid-procedura
     20000,
   );
   checkLinear('lipid selection, N triangles', s);
+});
+
+it('a far surface over a mesh of N triangles (review S3)', () => {
+  const { text, box } = syntheticPatchPdb();
+  const table = cutterTable(parsePatchPdb(text, { box }).outer, 2);
+  const s = scaling(
+    {
+      setup: (n) => {
+        const mesh = icosphere(radiusFor(n), 100);
+        return { mesh, regions: cutterRegions(mesh.positions, mesh.indices, 1) };
+      },
+      run: ({ mesh, regions }) => {
+        farSurface(mesh, regions, table, 'outer', 20, () => true, 50);
+      },
+    },
+    4000,
+  );
+  checkLinear('far surface, N triangles', s);
+}, 600_000);
+
+it('a far surface over a patch of N lipids: its heads found by buckets, not a scan per cell (review N1)', () => {
+  const mesh = icosphere(400, 200);
+  const regions = cutterRegions(mesh.positions, mesh.indices, 1);
+  const s = scaling(
+    {
+      // a patch of about n lipids a leaflet (12 × 14 a unit)
+      setup: (n) => {
+        const k = Math.max(1, Math.round(Math.sqrt(n / 168)));
+        const { text, box } = syntheticPatchPdb(12 * k, 14 * k);
+        return cutterTable(parsePatchPdb(text, { box }).outer, 2);
+      },
+      run: (table) => {
+        farSurface(mesh, regions, table, 'outer', 20, () => true, 50);
+      },
+    },
+    2000,
+  );
+  checkLinear('far surface, N patch lipids', s);
+}, 600_000);
+
+it('a tile without a species, N lipids (review S3)', () => {
+  const s = scaling(
+    {
+      // a tile of n lipids of 3 species, 10 atoms each
+      setup: (n) => ({
+        lipidSpecies: Uint16Array.from({ length: n }, (_, l) => l % 3),
+        lipidAtomStart: Uint32Array.from({ length: n + 1 }, (_, l) => l * 10),
+        positions: new Float32Array(n * 30),
+        elements: new Uint8Array(n * 10),
+        removed: 0,
+        filled: 0,
+      }),
+      run: (tile) => {
+        shownLipids(tile, ['A', 'B', 'C'], new Set(['B']));
+      },
+    },
+    20000,
+  );
+  checkLinear('a tile without a species, N lipids', s);
 });

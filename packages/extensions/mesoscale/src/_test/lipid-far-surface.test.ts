@@ -9,6 +9,7 @@ import { cutterRegions, cutterTable, eachHit, emptyCut, hitAffine, triangleCut }
 import { farSurface, headOffset } from '../lipids/far-surface.js';
 import { random01 } from '../lipids/assign.js';
 import { parsePatchPdb } from '../lipids/patch.js';
+import { icosphere } from '../lipids/remesh.js';
 import { flatMesh, syntheticPatchPdb } from './lipid-fixtures.js';
 
 // A membrane's far surfaces (lipid-procedural round 4b; Ludo, 2026-11-08 on the teddy): one a leaflet at its heads, not
@@ -126,5 +127,32 @@ describe('a membrane’s far surfaces', () => {
     }
     expect(n).toBeGreaterThan(200);
     expect(same / n).toBeGreaterThan(0.9);
+  });
+
+  it('is closed where its mesh is and holds its vertex cap (review S1, S6: cracks at T-junctions, 3 vertices a triangle)', () => {
+    const table = cutterTable(patch.outer, 2);
+    // a bumpy sphere: triangles of different sizes, creases
+    const mesh = icosphere(300, 40);
+    for (let i = 0; i < mesh.positions.length; i += 3) {
+      const f = 1 + 0.25 * Math.sin(mesh.positions[i] / 37) * Math.cos(mesh.positions[i + 1] / 53);
+      for (let k = 0; k < 3; ++k) mesh.positions[i + k] *= f;
+    }
+    const regions = cutterRegions(mesh.positions, mesh.indices, 1);
+    const s = farSurface(mesh, regions, table, 'outer', 20, () => true, 8);
+    // every edge of the surface in two triangles, its vertices welded
+    const edges = new Map<string, number>();
+    for (let t = 0; t < s.indices.length; t += 3) {
+      for (let k = 0; k < 3; ++k) {
+        const a = s.indices[t + k];
+        const b = s.indices[t + ((k + 1) % 3)];
+        const key = a < b ? `${a} ${b}` : `${b} ${a}`;
+        edges.set(key, (edges.get(key) ?? 0) + 1);
+      }
+    }
+    expect([...edges.values()].filter((n) => n !== 2).length).toBe(0);
+    // its cap: never past it (the mesh's own vertices at least)
+    const capped = farSurface(mesh, regions, table, 'outer', 20, () => true, 1, 3000);
+    expect(capped.positions.length / 3).toBeLessThanOrEqual(3000);
+    expect(capped.positions.length / 3).toBeGreaterThanOrEqual(mesh.positions.length / 3);
   });
 });
