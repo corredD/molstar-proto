@@ -224,6 +224,44 @@ describe('mesoviewspec.edit, save, close', () => {
   });
 });
 
+describe('the files dropped with a document (gate M1, N1, S1)', () => {
+  const repack = '(patch :ops [(set p.catalase :fields (:abundance (:count 300)))])';
+  const catalase = (api: MesoViewSpecApi) => api.model.session?.counts['p.catalase']?.achieved;
+
+  it('an Undo back to a dropped document brings its files back: a re-pack still reads them', {
+    tags: ['medium'],
+  }, async () => {
+    const { v, api, run } = await open();
+    const file = new File([JSON.stringify(exosomeDoc())], 'exosome.mesoviewspec.json');
+    expect((await run('mesoviewspec.open', { file, files: resourceFiles() })).ok).toBe(true);
+    expect(
+      (await run('mesoviewspec.open', { data: JSON.stringify({ ...exosomeDoc(), metadata: { title: 'B' } }) })).ok,
+    ).toBe(true);
+    await v.managers.history.undo();
+    expect(api.model.doc?.metadata?.title).toBe('Exosome in plasma');
+    expect((await run('mesoviewspec.edit', { patch: repack })).ok).toBe(true);
+    expect(catalase(api)).toBe(300);
+  });
+
+  it('an edit that loses copies to a missing resource says so', { tags: ['medium'] }, async () => {
+    const { run } = await open();
+    expect((await run('mesoviewspec.open', { data: JSON.stringify(exosomeDoc()) })).ok).toBe(true);
+    const r = await run('mesoviewspec.edit', { patch: repack });
+    expect(r.ok && r.warnings?.join('\n')).toMatch(/resource|could not/i);
+  });
+
+  it('a file dropped with a document that names no such resource is said, not silently taken', {
+    tags: ['medium'],
+  }, async () => {
+    const { run } = await open();
+    const r = await run('mesoviewspec.open', {
+      data: JSON.stringify(exosomeDoc()),
+      files: [...resourceFiles(), new File(['x'], '1crn.pdb')],
+    });
+    expect(r.ok && r.warnings?.join('\n')).toMatch(/1crn\.pdb/);
+  });
+});
+
 describe('the stub', () => {
   it('asks the agent before an open from a host it does not know, and is loaded only when used', {
     tags: ['medium'],
@@ -236,6 +274,13 @@ describe('the stub', () => {
     expect(policy.approves(def, { url: 'https://files.rcsb.org/x.mesoviewspec.json' })).toBe(true);
     expect(policy.approves(def, { url: 'http://files.rcsb.org/x.mesoviewspec.json' })).toBe(false);
     expect(policy.approves(def, { data: '{}' })).toBe(true);
+    // gate M2: a document given as data names its resources' hosts itself, and those are judged before any fetch
+    const remote = JSON.stringify({
+      ...exosomeDoc(),
+      resources: [{ id: 'r.x', kind: 'recipe', format: 'obj', uri: 'https://unknown.example/x.obj' }],
+    });
+    expect(policy.approves(def, { data: remote })).toBe(false);
+    expect(policy.blockedHosts(def, { data: remote })).toEqual(['unknown.example']);
     expect(MesoViewSpecLazyExtension.stub.owns?.transformers).toEqual([MesoPlacements.id]);
   });
 
