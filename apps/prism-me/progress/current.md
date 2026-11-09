@@ -62,7 +62,9 @@ is not built is [../TODO.md](../TODO.md).
     Round 5 started 2026-11-09 (brief 8ad314736): model_vertexcolor ×600 (~1 G lipids) at interactive rate, scale-free
     far texture, colour by zoom object → species → atoms, tiles texture. Built and gated at 3b71b9e84 (×600: wrap 1.4 s, whole
     18 ms, middle 21 ms; close 130–240 ms open, M5, Ludo’s call). Waits on Ludo’s try on 1354. Round 6 started 2026-11-09 (brief dbd4ac8bb): the yeast
-    cell’s nine membranes (yeast_cell_viewer meshes, 1.08 M triangles, data outside the repo).
+    cell’s nine membranes (yeast_cell_viewer meshes, 1.08 M triangles, data outside the repo). Built and gated at
+    eeb50bc65: one membrane over all meshes, a sphere tree per part, enclosed parts skipped, the .bin reader; wrap
+    9.6 s, whole 35 ms, close 104–224 ms (M5). Waits on Ludo’s try on 1354.
   - `merge-master` (`me/merge-master` from `origin/prism-me`, port 1355, [brief](2026-11-09-merge-master.md) on its
     branch): started 2026-11-09 (Ludo: merge master, conflicts favoring master). origin/master dabbf29f9, 59 commits,
     474 files, mostly graphics.
