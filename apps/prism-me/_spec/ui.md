@@ -225,11 +225,23 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   CHARMM-GUI's (14 species), a static file beside the page fetched on the first wrap; the tiles' edge suits the mesh (a
   thirtieth of its size, 40–200 Å); a mesh under 160 Å across is refused with "scale it first", and the parts its remesh
   loses (a limb thinner than the edge) are cut on their own triangles. A mesh's right-click has both methods, an entry
-  each (Ludo, 2026-11-08: the cutter must be reachable from the UI): **Wrap with lipids** (tiles) and **Wrap with lipids
-  (cutter)** (cellPACKgpu's cutter, on the mesh's own triangles by regions of the surface: `method: 'cutter'`); two
-  entries rather than a method in the membrane's properties, because a method is chosen before the membrane exists and
-  changing it remakes it. A compartment's group offers the tiles only. A wrap is a task on the status line (Ludo,
-  2026-11-08: its stage, as Remeshing at 42 Å 2/5, Baking lipid tiles (outer) 12/16, Cutting triangles, Uploading
+  each (Ludo, 2026-11-08: the cutter must be reachable from the UI): **Wrap with lipids** (cellPACKgpu's cutter, on the
+  mesh's own triangles by regions of the surface, made per view: the default since lane `lipid-procedural`) and **Wrap
+  with lipids (tiles)**; two entries rather than a method in the membrane's properties, because a method is chosen
+  before the membrane exists and changing it remakes it. A compartment's group offers the cutter.
+- **A membrane made per view** (Ludo, 2026-11-08; lane `lipid-procedural`): the cutter's lipids only on the triangles in
+  view whose lipids are large enough on screen, nearest first within a pool (`budget`, 2 M lipids by default), made
+  again in the renderer's frame where the view changed and never at rest; far away the mesh itself with a bump of about
+  a lipid's spacing in the shown species' mean colour, drawn beneath (no gap at any distance). The membrane's Look
+  switches the far look live (**Far**: Both (default), Spheres, Texture; `mesoscale.membraneDetail { far }`): Texture
+  takes lipids from **Lipids from** px (2), Both and Spheres down to **Lipids down to** px (0.5), at their sphere
+  levels, Both with the surface beneath, Spheres without it (past the budget, far parts empty); **Lipids at most** the
+  budget; each a slider committed once, never a new cut. Its species are a particle system's entities: in its Look an
+  eye and a colour a species (`mesoscale.membraneSpecies`; a hidden species is not generated, the surface's colour
+  without it), its Object graphics' Quality the levels' preset (no Motion). Its right-click: **Export lipids (full
+  build)** (`mesoscale.exportMembrane`: every lipid of every triangle, a RELION STAR particle list, built only then).
+  Not yet: a row per species in the tree (the Look holds them), picking a lipid. A wrap is a task on the status line
+  (Ludo, 2026-11-08: its stage, as Remeshing at 42 Å 2/5, Baking lipid tiles (outer) 12/16, Cutting triangles, Uploading
   lipids, its percentage and Cancel; a cancel leaves no membrane and no step); it yields to the page between stages, but
   a single stage (the patch's first read, the GPU count pass's readback, the render objects' merge) runs whole. Both
   draw with levels of detail (the membrane's `detail`, balanced by default).
