@@ -241,7 +241,7 @@ function step(doc: MesoViewSpecDoc, raw: unknown, k: number): { doc: MesoViewSpe
   if (op.op === 'set') {
     const { fields } = op;
     if (!isObj(fields)) return shape('set takes fields, {name: value}, null removes a field');
-    if ('id' in fields) return shape('set never changes an id');
+    if ('id' in fields || 'kind' in fields) return shape('set never changes an id or a kind (replace the node)');
     const dup = clash(doc, nestedIds(fields), op.id);
     if (dup) return bad(dup);
     if (op.id === DocumentId) {
@@ -393,9 +393,12 @@ const addressable = (xs: readonly PatchNode[] | undefined) =>
 
 /** The ops that turn one list into another, nodes matched by id: removes, then inserts and moves, then sets. */
 function diffList(w: Where, a: readonly PatchNode[], b: readonly PatchNode[], ops: Op[]) {
-  const ids = new Set(b.map((x) => x.id));
+  // a node whose kind changed is a replacement: removed, and inserted again
+  const next = new Map(b.map((y) => [y.id, y]));
+  const kept = a.filter((x) => next.has(x.id) && equal(x.kind, next.get(x.id)?.kind));
+  const ids = new Set(kept.map((x) => x.id));
   for (const x of a) if (!ids.has(x.id)) ops.push({ op: 'remove', id: x.id });
-  const work = a.map((x) => x.id).filter((id) => ids.has(id));
+  const work = kept.map((x) => x.id);
   b.forEach((y, i) => {
     if (work[i] === y.id) return;
     const after = i === 0 ? 'first' : b[i - 1].id;
@@ -405,7 +408,7 @@ function diffList(w: Where, a: readonly PatchNode[], b: readonly PatchNode[], op
     } else ops.push({ op: 'insert', node: y, ...place(w), after });
     work.splice(i, 0, y.id);
   });
-  const before = new Map(a.map((x) => [x.id, x]));
+  const before = new Map(kept.map((x) => [x.id, x]));
   for (const y of b) {
     const x = before.get(y.id) as Obj | undefined;
     if (!x || x === y) continue;

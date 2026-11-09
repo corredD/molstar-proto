@@ -470,3 +470,36 @@ describe('review: a look after one with no id is put back where it was', () => {
     undone(other, patch({ op: 'move', id: 'l.a', parent: 'v.x', list: 'looks', after: 'last' }));
   });
 });
+
+describe('review: set never changes a kind', () => {
+  it('a field `kind` is refused to set or remove; the node is replaced instead', () => {
+    const doc = exosomeDoc();
+    for (const kind of ['lipid', null]) {
+      const r = applyPatch(doc, patch({ op: 'set', id: 'e.catalase', fields: { kind } }));
+      expect(r.doc).toBe(doc);
+      expect(r.issues[0]).toMatchObject({ code: 'patch.shape', path: '/ops/0' });
+    }
+    const e = doc.entities.find((x) => x.id === 'e.catalase')!;
+    const at = doc.entities.indexOf(e);
+    const after = at === 0 ? 'first' : doc.entities[at - 1].id;
+    const r = applyPatch(
+      doc,
+      patch(
+        { op: 'remove', id: 'e.catalase' },
+        { op: 'insert', parent: 'entities', after, node: { ...e, kind: 'complex' } },
+      ),
+    );
+    expect(r.issues.filter((i) => i.code !== 'patch.shape' && i.severity === 'error')).toEqual([]);
+  });
+  it('diff states a kind change as a replacement, and it applies', () => {
+    const a = exosomeDoc();
+    const b = {
+      ...a,
+      entities: a.entities.map((e) => (e.id === 'e.catalase' ? { ...e, kind: 'complex' as const } : e)),
+    };
+    const p = diff(a, b)!;
+    expect(p).not.toBeNull();
+    expect(p.ops.map((o) => o.op)).toEqual(['remove', 'insert']);
+    expect(applyPatch(a, p).doc).toEqual(b);
+  });
+});
