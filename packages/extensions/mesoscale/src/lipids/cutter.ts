@@ -55,6 +55,70 @@ function azimuth(leaflet: Leaflet, l: number) {
   return Math.atan2(y, x);
 }
 
+/** The membrane levels' strides (`membraneLevels`): 1, then the finer and the coarse level */
+export const LevelStrides = [8, 64] as const;
+
+/**
+ * The members' atoms ordered for the sphere levels (lipid-procedural round 7 item 1; Ludo, 2026-11-09, option B: the
+ * coarse level shows the finer one's top view). Mol*'s levels keep every `stride`-th atom (`orderPositionGroup`), so a
+ * level drew whichever atoms its slots held, grown, and where those were heads the species standing tallest covered
+ * their neighbours, more so the coarser the level (the yeast PM: a step of 0.12 in Oklab where stride 8 gives way to
+ * 64). Each slot of the finer level (every 8th atom) takes its block's atom nearest a height common to the leaflet (the
+ * lowest of the members' tops), then each coarse slot (every 64th) the same among the finer slots: every level stands
+ * level and shows the species in their shares, as the far texture rastered from them does. Atoms are swapped, never
+ * dropped: the full level draws them all. In place, with the elements; O(atoms)
+ */
+export function coarseLevelOrder(members: readonly { positions: Float32Array; elements: Uint8Array }[]) {
+  const [fine, coarse] = LevelStrides;
+  let mean = 0;
+  let count = 0;
+  for (const m of members) {
+    for (let i = 2; i < m.positions.length; i += 3) mean += m.positions[i];
+    count += m.positions.length / 3;
+  }
+  // the leaflet's side: + outer, − inner (z from the bilayer's centre)
+  const f = mean >= 0 ? 1 : -1;
+  let common = Infinity;
+  for (const m of members) {
+    const n = m.positions.length / 3;
+    let top = -Infinity;
+    for (let i = 0; i < n; ++i) top = Math.max(top, f * m.positions[i * 3 + 2]);
+    if (n > 0) common = Math.min(common, top);
+  }
+  if (!count || !Number.isFinite(common)) return;
+  // the finer level's slots (every 8th atom) first, then the coarse ones (every 64th) among them: a coarse slot is a
+  // finer one, so both levels keep atoms near the common height
+  for (const m of members) {
+    level(m.positions, m.elements, fine, 1, common, f);
+    level(m.positions, m.elements, coarse, fine, common, f);
+  }
+}
+
+/** Each `stride` slot of a member's atoms takes, of its block's atoms every `step`, the one nearest `common` (× `f`) */
+function level(p: Float32Array, e: Uint8Array, stride: number, step: number, common: number, f: number) {
+  const n = p.length / 3;
+  for (let slot = 0; slot < n; slot += stride) {
+    let best = slot;
+    let gap = Infinity;
+    for (let i = slot; i < Math.min(n, slot + stride); i += step) {
+      const g = Math.abs(f * p[i * 3 + 2] - common);
+      if (g < gap) {
+        gap = g;
+        best = i;
+      }
+    }
+    if (best === slot) continue;
+    for (let k = 0; k < 3; ++k) {
+      const t = p[slot * 3 + k];
+      p[slot * 3 + k] = p[best * 3 + k];
+      p[best * 3 + k] = t;
+    }
+    const t = e[slot];
+    e[slot] = e[best];
+    e[best] = t;
+  }
+}
+
 /** The cutter's table of a leaflet: `conformers` members a species at most, O(lipids) */
 export function cutterTable(leaflet: Leaflet, conformers = 4): CutterTable {
   const n = leaflet.lipidSpecies.length;
@@ -82,6 +146,7 @@ export function cutterTable(leaflet: Leaflet, conformers = 4): CutterTable {
     }
     for (let i = 0; i < list.length; ++i) memberOf[list[i]] = members.length - k + (i % k);
   }
+  coarseLevelOrder(members);
   const memberStart = new Uint32Array(members.length + 1);
   for (let l = 0; l < n; ++l) memberStart[memberOf[l] + 1] += 1;
   for (let m = 0; m < members.length; ++m) memberStart[m + 1] += memberStart[m];
