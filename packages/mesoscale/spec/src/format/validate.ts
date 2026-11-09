@@ -86,7 +86,12 @@ export interface DocIndex {
   readonly paths: ReadonlyMap<Id, string>;
 }
 
-export function indexDoc(doc: MesoViewSpecDoc): DocIndex {
+/**
+ * Every id of the document, by kind. `inner` (default) adds the superstructures' contents: MesoQL addresses them
+ * (`(part Q p.inner)`); a structural reference (a population's compartment, a model's populations) sees only the
+ * document's own sections (`inner` false), so a superstructure's contents stay its own (design.md §3.9).
+ */
+export function indexDoc(doc: MesoViewSpecDoc, inner = true): DocIndex {
   const kinds = new Map<Id, Kind>();
   const paths = new Map<Id, string>();
   for (const [section, kind] of Sections) {
@@ -99,15 +104,16 @@ export function indexDoc(doc: MesoViewSpecDoc): DocIndex {
     });
   }
   // a superstructure's contents share the document's id namespace (MesoQL addresses them by id)
-  (doc.superstructures ?? []).forEach((ss, i) => {
-    for (const [section, kind] of InnerSections)
-      ((ss[section] as readonly { id: Id }[] | undefined) ?? []).forEach((x, j) => {
-        if (!kinds.has(x.id)) {
-          kinds.set(x.id, kind);
-          paths.set(x.id, `/superstructures/${i}/${section}/${j}`);
-        }
-      });
-  });
+  if (inner)
+    (doc.superstructures ?? []).forEach((ss, i) => {
+      for (const [section, kind] of InnerSections)
+        ((ss[section] as readonly { id: Id }[] | undefined) ?? []).forEach((x, j) => {
+          if (!kinds.has(x.id)) {
+            kinds.set(x.id, kind);
+            paths.set(x.id, `/superstructures/${i}/${section}/${j}`);
+          }
+        });
+    });
   (doc.views ?? []).forEach((v, i) =>
     (v.annotations ?? []).forEach((a, j) => {
       if (!kinds.has(a.id)) {
@@ -165,10 +171,12 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
           else seen.set(x.id, path);
         });
     });
+  // MesoQL sees the superstructures' contents; a structural reference only the document's own sections
   const { kinds } = indexDoc(doc);
+  const own = indexDoc(doc, false).kinds;
   const ref = (id: Id | undefined, want: Kind | readonly Kind[], path: string) => {
     if (id === undefined) return;
-    const k = kinds.get(id);
+    const k = own.get(id);
     const wants = typeof want === 'string' ? [want] : want;
     if (!k) err('ref.missing', `${id} names nothing`, path, [id]);
     else if (!wants.includes(k))

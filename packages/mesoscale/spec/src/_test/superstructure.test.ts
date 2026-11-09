@@ -171,3 +171,111 @@ describe('superstructures', () => {
     expect(validate(looped).map((i) => i.code)).toContain('superstructure.cycle');
   });
 });
+
+/** Two superstructures and a cell that places both: a superstructure's contents are its own (design.md §3.9). */
+function twoSuperstructures(): MesoViewSpecDoc {
+  return {
+    format: 'meso_view_spec',
+    version: '0.3.0',
+    metadata: { title: 'two superstructures' },
+    units: { length: 'nm' },
+    entities: [
+      { id: 'e.body-a', label: 'a', kind: 'assembly', superstructure: 's.a' },
+      { id: 'e.body-b', label: 'b', kind: 'assembly', superstructure: 's.b' },
+    ],
+    superstructures: [
+      {
+        id: 's.a',
+        label: 'a',
+        entities: [{ id: 'e.only-a', label: 'only in a', kind: 'protein', radius: 2 }],
+        compartments: [{ id: 'c.a', label: 'a', kind: 'vesicle', geometry: { kind: 'sphere', radius: 20 } }],
+        populations: [
+          { id: 'p.a', entity: 'e.only-a', compartment: 'c.a', location: 'interior', abundance: { count: 3 } },
+        ],
+      },
+      {
+        id: 's.b',
+        label: 'b',
+        compartments: [{ id: 'c.b', label: 'b', kind: 'vesicle', geometry: { kind: 'sphere', radius: 20 } }],
+        populations: [],
+      },
+    ],
+    compartments: [{ id: 'c.top', label: 'top', kind: 'cell', geometry: { kind: 'sphere', radius: 400 } }],
+    populations: [
+      { id: 'p.as', entity: 'e.body-a', compartment: 'c.top', location: 'interior', abundance: { count: 2 } },
+      { id: 'p.bs', entity: 'e.body-b', compartment: 'c.top', location: 'interior', abundance: { count: 2 } },
+    ],
+  };
+}
+
+describe('a superstructure keeps its contents to itself', () => {
+  const errs = (d: MesoViewSpecDoc) =>
+    validate(d)
+      .filter((i) => i.severity === 'error')
+      .map((i) => [i.code, i.path]);
+
+  it('the document is valid, and MesoQL still addresses inner populations', () => {
+    const d = twoSuperstructures();
+    expect(errs(d)).toEqual([]);
+    expect(errs({ ...d, views: [{ id: 'v', looks: [{ select: '(part (population p.as) p.a)' }] }] })).toEqual([]);
+  });
+
+  it('the document refers to no compartment, entity or population inside a superstructure (F1)', async () => {
+    const d = twoSuperstructures();
+    const p0 = d.populations[0];
+    const cases: [MesoViewSpecDoc, string][] = [
+      [{ ...d, populations: [{ ...p0, compartment: 'c.a' }, d.populations[1]] }, '/populations/0/compartment'],
+      [
+        { ...d, populations: [...d.populations, { ...p0, id: 'p.loose', entity: 'e.only-a' }] },
+        '/populations/2/entity',
+      ],
+      [
+        {
+          ...d,
+          instances: [{ id: 'i.x', entity: 'e.body-a', compartment: 'c.a', pose: { translation: [0, 0, 0] } }],
+        },
+        '/instances/0/compartment',
+      ],
+      [
+        { ...d, models: [{ id: 'm.top', kind: 'procedural', method: 'meso.pack', populations: ['p.a'] }] },
+        '/models/0/populations/0',
+      ],
+      [{ ...d, relations: [{ id: 'r.x', kind: 'binds', subjects: ['p.a'] }] }, '/relations/0/subjects/0'],
+    ];
+    for (const [doc, path] of cases) {
+      expect(errs(doc)).toContainEqual(['ref.missing', path]);
+      // refused before the runtime, which would throw or ignore it
+      const r = await compile(doc, { resolvers: countingResolvers().resolvers });
+      expect(r.issues.some((i) => i.severity === 'error' && i.path === path)).toBe(true);
+    }
+  });
+
+  it("a superstructure does not see a sibling superstructure's contents (FN1)", () => {
+    const d = twoSuperstructures();
+    const [a, b] = d.superstructures!;
+    const bad = {
+      ...d,
+      superstructures: [
+        a,
+        {
+          ...b,
+          populations: [
+            {
+              id: 'p.b',
+              entity: 'e.only-a',
+              compartment: 'c.a',
+              location: 'interior' as const,
+              abundance: { count: 1 },
+            },
+          ],
+        },
+      ],
+    };
+    expect(errs(bad)).toEqual(
+      expect.arrayContaining([
+        ['ref.missing', '/superstructures/1/populations/0/entity'],
+        ['ref.missing', '/superstructures/1/populations/0/compartment'],
+      ]),
+    );
+  });
+});
