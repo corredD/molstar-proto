@@ -503,3 +503,20 @@ describe('review: set never changes a kind', () => {
     expect(applyPatch(a, p).doc).toEqual(b);
   });
 });
+
+describe('review: the document keeps its metadata and its field order', () => {
+  it('metadata is not removed', () => {
+    const doc = exosomeDoc();
+    const r = applyPatch(doc, patch({ op: 'set', id: 'document', fields: { metadata: null } }));
+    expect(r.doc).toBe(doc);
+    expect(r.issues[0]).toMatchObject({ code: 'patch.shape', path: '/ops/0' });
+  });
+  it('a revision first given or dropped is undone byte for byte', () => {
+    const set = patch({ op: 'set', id: 'document', fields: { units: { length: 'nm' } } });
+    const given = applyPatch(exosomeDoc(), { ...set, revision: 'r1' });
+    expect(Object.keys(given.doc).indexOf('revision')).toBe(2);
+    const dropped = applyPatch(given.doc, set);
+    expect(dropped.doc.revision).toBeUndefined();
+    expect(bytes(applyPatch(dropped.doc, dropped.inverse!).doc)).toBe(bytes(given.doc));
+  });
+});

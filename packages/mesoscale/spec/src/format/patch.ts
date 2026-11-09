@@ -247,6 +247,7 @@ function step(doc: MesoViewSpecDoc, raw: unknown, k: number): { doc: MesoViewSpe
     if (op.id === DocumentId) {
       const f = Object.keys(fields).find((x) => !(TopFields as readonly string[]).includes(x));
       if (f) return shape(`set on ${DocumentId} takes ${TopFields.join(', ')}, not ${f}`);
+      if (fields.metadata === null) return shape('a document has its metadata (a title)');
       const cur = doc as unknown as Obj;
       return {
         doc: merge(cur, fields, DocOrder) as unknown as MesoViewSpecDoc,
@@ -355,8 +356,7 @@ export function applyPatch(doc: MesoViewSpecDoc, patch: Patch): PatchResult {
       issue((e as unknown as { code: 'patch.shape' }).code, 'error', 'static', e.message, { path: `/ops/${k}` }),
     ]);
   }
-  const { revision: _, ...bare } = next;
-  next = patch.revision === undefined ? (bare as MesoViewSpecDoc) : { ...next, revision: patch.revision };
+  next = merge(next as unknown as Obj, { revision: patch.revision ?? null }, DocOrder) as unknown as MesoViewSpecDoc;
   const errors = validate(next).filter((i) => i.severity === 'error');
   if (errors.length)
     return fail(
