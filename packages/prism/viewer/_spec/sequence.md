@@ -205,6 +205,19 @@ The code is the truth for how.
   Snapshots list, open panels.
 - **Headless**: `camera: false` keeps the checkpoint from reading the canvas.
 - **A lazy extension's load** stays across a restore to before it (its registrations stay; its cells go).
+- **Behavior-owned cells are left out** (`registerBehaviorOwned`, `sources/checkpoint.ts`): an extension whose behavior
+  makes and removes cells on its own (streamed tiles) registers their transformers once per plugin (import
+  `@molstar/prism-viewer/sources/checkpoint`): `registerBehaviorOwned(plugin, [transformer | id, …])` returns the
+  function that takes the registration back (two registrations of one id count twice). A transformer is matched by its
+  whole id. For a registered cell:
+  - **no change outside the API** (§7.3), made, updated or removed by anyone, and so is every cell under it;
+  - **a checkpoint leaves it out with everything under it** (the data tree only; the behaviors' tree is whole), so the
+    history holds neither its size nor its params;
+  - **a restore keeps it**: the cell and what hangs from it stay as the same cells (no update, no new object) wherever
+    its parent is in the restored tree, and go with a parent the restore removes. Cells made after the checkpoint stay
+    too: the behavior follows the camera, not the history, and asks its source again by itself. The fixed list (the
+    focus representation's tags, volume streaming and custom properties) is no change outside the API and is _not_ left
+    out: custom properties are the structures' parents, so the scene is under them.
 
 ### 7.3 One history manager
 
@@ -229,7 +242,8 @@ The code is the truth for how.
   it.
 - **Changes outside the API** (`watchOutsideChanges`) make every earlier checkpoint unsafe, and History says so. Not
   outside: runs, the history's own restores, cells behaviors own (the focus representation, volume streaming, custom
-  properties), snapshots shown or playing and frames or animations viewed.
+  properties, and the transformers registered by `registerBehaviorOwned`, §7.2), snapshots shown or playing and frames
+  or animations viewed.
 - **Showing a snapshot is no step** (David, 2026-10-20): `snapshot.apply`, `.next` and `.previous` (an MVS story's
   steps) are `undoable: false`, so stepping through a story fills no history and takes no checkpoint, the steps before
   it stay undoable, and it runs in order with the steps (Undo is refused while one is applied; a step never sees a
@@ -260,6 +274,10 @@ The code is the truth for how.
   serialized and measured once per transform object (a new version is a new object) and shared by every checkpoint that
   holds it, its state flags compared on each read (the state's transient tree changes them in place). At 1401 cells: the
   size pass 16 → 0.2 ms a step, 100 checkpoints 14.8 → 1.6 MB. Shared parts are read-only.
+- **A custom state is measured once per value** (`registerCustomState`'s `get()`): while it returns the same object, its
+  JSON size is measured once and shared by every checkpoint that holds it (a document of hundreds of KB is no longer
+  stringified at each step). The contract: an object a key returns is not changed in place afterwards (a change is a new
+  object, as for a transform); a value that is not an object is measured each time.
 - **Over the hard limit, no checkpoint is even taken for 30 s** (or until a clear): each try is a full snapshot thrown
   away, and an agent's turn tried on every call.
 - **Per-step checkpoints turn off** for the scene when one is over the size budget, or three in a row over the time

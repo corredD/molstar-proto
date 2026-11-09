@@ -109,6 +109,11 @@
       "types": "./lib/sources/gizmos/index.d.ts",
       "import": "./lib/sources/gizmos/index.js"
     },
+    "./sources/checkpoint": {
+      "molstar-src": "./src/sources/checkpoint.ts",
+      "types": "./lib/sources/checkpoint.d.ts",
+      "import": "./lib/sources/checkpoint.js"
+    },
     "./sources/watched": {
       "molstar-src": "./src/sources/watched.ts",
       "types": "./lib/sources/watched.d.ts",
