@@ -343,7 +343,9 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
 
   // ---- resolve, in `avoid` order ----
   const cache = o.cache ?? new Map<string, ResolveOutput>();
-  const order = topoOrder(models);
+  // a refined model's result is replaced by its refiner's: its constraints are checked there (design.md §6.7)
+  const refinedBy = new Map(models.filter((m) => m.refines).map((m) => [m.refines!, m.id]));
+  const order = topoOrder(models, refinedBy);
   const outputs = new Map<
     Id,
     { key: string; out: ResolveOutput; cached: boolean; resolver: Resolver; input: unknown }
@@ -353,8 +355,6 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
   let hits = 0;
   const counts: Record<Id, { requested?: number; achieved: number }> = {};
   const reports: Record<Id, Readonly<Record<string, unknown>> | undefined> = {};
-  // a refined model's result is replaced by its refiner's: its constraints are checked there (design.md §6.7)
-  const refinedBy = new Map(models.filter((m) => m.refines).map((m) => [m.refines!, m.id]));
   /** A model and the models it refines, up to the head of its chain. */
   const chainOf = (m: Model): Model[] => {
     const out = [m];
@@ -408,7 +408,8 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     // a refine stage avoids what every model up its chain avoids
     const avoids = new Set<Id>();
     for (const x of chainOf(m)) for (const a of x.avoid ?? []) avoids.add(a);
-    const avoided = [...avoids].map((a) => outputs.get(a));
+    // a refined model is avoided through the result that replaces it (its last refine stage that resolved)
+    const avoided = [...avoids].map((a) => outputs.get(resultOf(a, refinedBy, m.id, (x) => outputs.has(x))));
     if (missing || avoided.some((a) => !a) || (m.refines && !upstream)) {
       issues.push(
         issue(
@@ -811,14 +812,28 @@ export function frameMatrices(doc: MesoViewSpecDoc, unit: LengthUnit): Map<Id, n
   return out;
 }
 
-function topoOrder(models: readonly Model[]): Model[] {
+/**
+ * The model whose result stands for `id`'s: the last refine stage after it (design.md §6.7), stopping before `self`
+ * (a stage never stands in for what it refines from its own point of view) and at the first stage `ok` refuses.
+ */
+function resultOf(id: Id, refinedBy: ReadonlyMap<Id, Id>, self: Id, ok: (id: Id) => boolean = () => true): Id {
+  const seen = new Set([id]);
+  for (let next = refinedBy.get(id); next && next !== self && !seen.has(next) && ok(next); next = refinedBy.get(id)) {
+    id = next;
+    seen.add(id);
+  }
+  return id;
+}
+
+/** Models after what they avoid (through its refine stages) and what they refine. */
+function topoOrder(models: readonly Model[], refinedBy: ReadonlyMap<Id, Id>): Model[] {
   const by = new Map(models.map((m) => [m.id, m]));
   const out: Model[] = [];
   const done = new Set<Id>();
   const visit = (m: Model, stack: Set<Id>) => {
     if (done.has(m.id) || stack.has(m.id)) return;
     stack.add(m.id);
-    for (const a of [...(m.avoid ?? []), ...(m.refines ? [m.refines] : [])]) {
+    for (const a of [...(m.avoid ?? []).map((x) => resultOf(x, refinedBy, m.id)), ...(m.refines ? [m.refines] : [])]) {
       const d = by.get(a);
       if (d) visit(d, stack);
     }

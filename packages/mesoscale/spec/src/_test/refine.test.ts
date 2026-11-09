@@ -103,7 +103,7 @@ describe('refine chains', () => {
     description: id,
     arrangements: ['random'],
     locations: ['interior'],
-    project: (job) => ({ m: job.model.id, obstacles: job.obstacles.map((s) => s.key) }),
+    project: (job) => ({ m: job.model.id, obstacles: job.obstacles.map((s) => s.key), shift: o.shift }),
     resolve: (_i, job) => {
       seen.set(
         job.model.id,
@@ -152,5 +152,36 @@ describe('refine chains', () => {
     expect(r.issues.filter((i) => i.severity === 'error')).toEqual([]);
     expect(seen.get('m.r1')!.length).toBe(1);
     expect(seen.get('m.r2')!.length).toBe(1);
+  });
+  it('a model that avoids a refined model avoids the refined result, and its key follows the refiner', async () => {
+    const run = async (shift: number, cache: Map<string, any>) => {
+      const seen = new Map<string, number[]>();
+      const doc = base([
+        { id: 'm.pack', kind: 'procedural', method: 'gate.pack', populations: ['p.a'] },
+        { id: 'm.b', kind: 'procedural', method: 'gate.b', populations: ['p.b'], avoid: ['m.pack'] },
+        { id: 'm.r1', kind: 'procedural', method: 'gate.r1', refines: 'm.pack', populations: [] },
+      ]);
+      const r = await compile(doc, {
+        resolvers: [
+          ...DefaultResolvers,
+          stage('gate.pack', seen),
+          stage('gate.b', seen),
+          stage('gate.r1', seen, { shift }),
+        ],
+        cache,
+      });
+      return { r, seen };
+    };
+    const cache = new Map();
+    const { r, seen } = await run(500, cache);
+    expect(r.issues.filter((i) => i.severity === 'error')).toEqual([]);
+    const drawn = placementSets(r.ir!).find((s) => s.model === 'm.r1')!;
+    expect(drawn.positions[0]).toBe(500);
+    // the instance (x 0) and the 20 refined copies (x 500), never the superseded packing (x 0)
+    expect(seen.get('m.b')!.sort((a, b) => a - b)).toEqual([0, ...new Array(20).fill(500)]);
+    const key = (x: typeof r) => x.stats.models.find((m) => m.model === 'm.b')!.key;
+    const again = await run(600, cache);
+    expect(key(again.r)).not.toBe(key(r));
+    expect(again.seen.get('m.b')!.filter((x) => x === 600).length).toBe(20);
   });
 });
