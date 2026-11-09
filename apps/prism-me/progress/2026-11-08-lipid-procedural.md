@@ -73,3 +73,95 @@ the atoms and the far surface follow.
 **Size and model.** ~950 production lines (pool + selection 250, library culler change 150, far surface 200, the
 membrane as a particle system: kinds, species rows, operations 250, wiring and export 100). Opus (renderer and WGSL hot
 paths); mechanical steps to Sonnet. Gate before the PR draft.
+
+## Design (as found, 2026-11-08, before code)
+
+**The crux dissolves into a smaller one.** The counts the merged layout needs are *capacities*: the culler already
+writes each record's drawn count on the GPU (`instance-copy` counts what it copies, `cull-args` writes the indirect
+records), so the CPU only sizes each segment's regions. And the cutter's counts per (member, triangle) do not depend on
+the view: the count pass already runs once at the wrap and is read back (round 2). So a view changes only *which
+triangles* are generated, and the CPU knows each member's live count exactly (a prefix sum over the selected
+triangles): no per-view readback at all.
+
+- **Option A (chosen): a fixed-capacity pool, live counts per segment.** Each member's instance count is its capacity (a
+  share of the budget), never its full total. Library (`packages/graphics`): (1) the segment row's free word 6 holds
+  the member's live count; `instance-copy` skips a local index at or past it (~6 WGSL lines); (2) a writer may carry a
+  `view` hook the culler calls in `dispatch` before the culling pass, once per frame for the frame's first view (as
+  `prepareCull`), only where the view changed; it returns the member's new live count (or nothing: unchanged), the
+  culler writes that row word (16 B) and advances `dataVersion`; no layout, no CPU instance write. (3) the writer's
+  plain call may return the live count too. About 60 production lines, against the brief's 150 and the 600 stop line.
+  The culler's invariants hold: the CPU knows each segment's capacity, the cells (one, gridless) and records are the
+  CPU's, the kernels' structure unchanged. A new invariant: an instance below the capacity may be dead (past the live
+  count). Dead slots are zeroed by the writer for the identity region (views not culled on the GPU draw zero-scale
+  spheres: nothing; checked for NaN).
+- **Option B (rejected): counts as instance counts, regenerated at rest.** Nothing to read back (counts are known), but
+  every new selection changes `instanceCounts`: a full `syncLayout` and `syncInstances` and the merged object's re-merge,
+  O(capacity) arrays allocated and uploaded each time (about 200 B a lipid: 400 MB at 2 M), so only at rest, with a
+  visible lag and pops. 0 library lines, ~40 extension lines more than A, and it breaks "nothing allocated per frame".
+
+**Pool and selection (extension, `lipids/procedural.ts`, pure TS).** Capacity: a budget split across members by their
+share of the full totals (+10 %), each member's capacity at most its full total (the cow fits whole); `checkInstances`
+on the capacity. Default budget 2 M lipids: a 1920×1080 view at 2 px a lipid shows ~0.5 M a leaflet, ×2 leaflets, ×2
+depths (front and back of a closed body); at about 270 B an instance in the culler (3 levels) 0.55 GB, under the M1's
+buffers; capped by the device's largest buffer. Selection per view: a triangle's sphere (precomputed) against the
+frustum, its nearest view depth `d`, a lipid's size on screen `D / (depthScale · d)` (`LodView`; orthographic: `D /
+pixelSize`), D = √(area a lipid) from the patch (~8 Å). Taken where its size is at least the far mode's threshold
+(enter) and kept down to 0.8× (hysteresis); nearest first while every member's live count fits its capacity
+(candidates sorted by `d` in a preallocated index array). Regions first, triangles of the regions in view next, so the
+cost follows what is visible (the scaling guard on mesh size). Preallocated: nothing allocated per view. The view key is
+the planes and `LodView` (and the props' version): a dispatch of the same view (pyramid rounds) selects nothing again.
+
+**Generation (WGSL, `cutter-kernel.ts`).** The write pass over the selected list (`selected[i]` triangle ids, `bases[m ·
+S + i]`, uploaded per new selection: 4 B a selected triangle and member); dead slots `[live, previous live)` zeroed. A
+triangle's hits are the same function as now (determinism: a triangle, its region and the patch give the same lipids;
+only slots move). Thinning for the far levels: a triangle in a band with `thin = k` keeps every k-th hit of each member
+(count `ceil(n / k)`, exact on the CPU), its level's sphere scale √(stride · k) (bias 2): the bands are the levels'
+distances, the triangle's nearest point picks its band (denser where it straddles: overlap, never a hole).
+
+**Far looks (`far: 'spheres' | 'texture' | 'both'`, default both; one source for the thresholds).**
+
+- texture: lipids where a lipid is ≥ `atomsPx` (default 2 px); the textured surface everywhere beneath.
+- both: lipids (at their levels, thinned) down to `spheresPx` (default 0.5 px); the surface beneath.
+- spheres: as both, no surface; budget-clamped: past the budget the far parts stay empty (said in the Look).
+- The surface: the mesh itself (both leaflets' midplane, double-sided), its own render object in the membrane's
+  representation (one eye), Mol\*'s material bump (`bumpFrequency`, `bumpAmplitude`, `bumpiness`: value noise, standing
+  in for a head pattern, at the lipid spacing), coloured by the shown species' colours weighted by their fractions. Drawn
+  always beneath: the outer leaflet's atoms (20 Å above) hide it where generated, so there is no gap at any distance by
+  construction (a quick test per mode); no fade needed; popping is atoms appearing on a surface of their own colour.
+  Risk: the bump aliases where heads are under a pixel (Mol\*'s bump has no distance fade; a fade would be a shader
+  change): checked in the images.
+
+**The membrane as a particle-system kind (not a `ParticleList`: its keys and targets at full count are the full build).**
+A `membrane` kind in the explorer, its sections the particle list's, each mapped onto the membrane's representation
+props, through the same operations (`mesoscale.graphics`, `mesoscale.style`, `mesoscale.colors`, `mesoscale.entities`)
+which branch on a membrane ref:
+
+| Section                                    | For a membrane                                                                    |
+| ------------------------------------------ | --------------------------------------------------------------------------------- |
+| Object graphics: Quality                   | the levels' preset (quality / balanced / performance = round 3's `detail`)        |
+| Object graphics: Motion (wiggle, tumble)   | not held: no motion of lipids (section without its motion rows, as a volume's)    |
+| Look: colours by species, uniform, palette | held (a species = an entity; the far surface follows)                             |
+| Look: colours by zoom (`ZoomColors`)       | not held this round (color levels are the particle repr's)                        |
+| Style: size                                | held (`sizeFactor`)                                                               |
+| Style: hide/show per species               | held (a hidden species' live count 0: nothing generated; the surface's mean too)  |
+| Style: ghosts, outlines, transparency      | per species at most (per member); not per lipid: a slot is not a lipid            |
+| Clipping                                   | held (the merged object's clip objects, culled on the GPU)                        |
+| Picks and labels                           | a pick's slot mapped to (triangle, lipid) by the selection's bases: stable labels |
+| Per-lipid layers                           | not held: layers key on species only (a pool slot changes with the view)          |
+| Tree                                       | one row per species (eye, colour) under the membrane                              |
+
+**Export.** An explicit action (`mesoscale.exportMembrane`): the TypeScript reference over every triangle, streamed a
+chunk of triangles at a time into a RELION STAR particle list (Mol\* reads STAR: species, conformer, position, ZYZ
+angles, triangle, lipid): never the whole build in memory. A file of ~100 B a lipid (27.7 M: ~2.8 GB, streamed).
+
+**Wiring.** Right-click › Wrap with lipids becomes the procedural cutter; the tiles stay as Wrap with lipids (tiles).
+Regeneration only in the renderer's frame (the culler's dispatch), nothing at rest, no frame of its own.
+
+**Determinism test.** The same path from the same start gives the same (triangle, lipid, affine) sets; slot buffers are
+not compared; a view reached by different paths may differ inside the hysteresis band.
+
+**Noted while in the culler (not blocking).** `segmentScale` reads the CPU placeholder's zeros for GPU-written members:
+with the raster on, `predictRecords` sends every level to the raster (the M1 has none: unseen here). Recorded, TODO.
+
+**Size.** Library ~60; pool and selection ~250; kernel's selected list and thinning ~80; far surface and switch ~150;
+the membrane kind ~300 (likeliest to overrun); export ~100. About 950, the brief's.
