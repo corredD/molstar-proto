@@ -8,6 +8,7 @@ import type { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d
 import type { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { sortArrayRange } from '@molstar/core/data/util/sort';
 import { cellEntry, cellSide, type CutterRegions, emptyCut, triangleCut } from './cutter.js';
+import { insidePart, type TrianglePart, triangleTree } from './triangle-tree.js';
 
 // A membrane made per view (lipid-procedural, its progress file's design; round 5: below the triangle): the cutter's
 // lipids only on the units in view whose lipids are large enough on screen, nearest first within a pool of fixed capacity
@@ -102,6 +103,10 @@ export interface SelectionInput {
   readonly wholeCounts: Uint32Array;
   /** the leaflet's side of its triangles: outer +1 (along their normal), inner -1 */
   readonly side: number;
+  /** the mesh's parts (a cell's membranes, round 6), the whole mesh one part where none */
+  readonly parts?: readonly TrianglePart[];
+  /** per part the parts enclosing it (`enclosures`): hidden while the eye is outside one of them and nothing clips */
+  readonly enclosedBy?: readonly Int32Array[];
 }
 
 /** A leaflet's selection: its units in view, nearest first within each member's capacity */
@@ -119,6 +124,8 @@ export interface LipidSelection {
   readonly live: Uint32Array;
   /** per member whether it is shown (hidden: none generated) */
   readonly shown: Uint8Array;
+  /** per part whether the last view shows it (an enclosed part with the eye outside its encloser: 0) */
+  readonly partShown: Uint8Array;
   /** advances where the selection changed */
   readonly version: number;
   /** selects for a view; whether the selection changed */
@@ -351,6 +358,13 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
   const side = input.side;
   // the camera's position (the apex of a perspective frustum's side planes), or none (orthographic: its direction)
   const eye = new Float64Array(3);
+  // round 6: the triangles by a sphere tree a part, a view descending it (what is out of view or reach pruned whole)
+  const tree = triangleTree(positions, indices, input.parts);
+  const P = tree.parts.length;
+  const enclosedBy = input.enclosedBy;
+  const partShown = new Uint8Array(P).fill(1);
+  const eyeInside = new Uint8Array(P);
+  const stack = new Int32Array(256);
 
   // the state of a selection, preallocated: candidates (key, depth, kind), their order, the units taken
   const candKey = new Float64Array(maxCandidates);
@@ -405,38 +419,75 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     const facing = p.facing ?? 0;
     const perspective = facing > 0 && apex(frustum, eye);
     const reach = depthScale > 0 ? keepDepth : Infinity;
-    // the triangles in view, nearest first
+    // the parts shown: an enclosed one only with the eye inside each of its enclosers (no clip: `facing`; orthographic,
+    // no eye: outside)
+    partShown.fill(1);
+    if (enclosedBy && facing > 0) {
+      eyeInside.fill(2);
+      for (let q = 0; q < P; ++q) {
+        const e = enclosedBy[q];
+        for (let i = 0; i < e.length && partShown[q]; ++i) {
+          const p = e[i];
+          if (eyeInside[p] === 2) {
+            eyeInside[p] =
+              perspective && insidePart(tree, positions, indices, p, eye[0], eye[1], eye[2], stack) ? 1 : 0;
+          }
+          if (eyeInside[p] === 0) partShown[q] = 0;
+        }
+      }
+    }
+    // the triangles in view, nearest first: each shown part's tree descended, a node out of view or reach pruned
     let nt = 0;
     let far = 1;
-    for (let t = 0; t < T; ++t) {
-      const o = t * Stride;
-      if (tri[o] === 0) continue;
-      const x = tri[o + 23];
-      const y = tri[o + 24];
-      const z = tri[o + 25];
-      // a large triangle's cells reach past it by a cell's disc; a whole one's sphere is its own
-      const r = tri[o + 26] + (wholeOf[t] >= 0 ? 0 : cellR);
-      if (outside(frustum, x, y, z, r)) continue;
-      const d = Math.max(cn[0] * x + cn[1] * y + cn[2] * z + cc - r, 1e-3);
-      if (d > keepDepth) continue;
-      if (facing > 0) {
-        // all three corners turned away: the plane is linear in them
-        let most = -Infinity;
-        const nx = tri[o + 27];
-        const ny = tri[o + 28];
-        const nz = tri[o + 29];
-        for (let c = 0; c < 3; ++c) {
-          const v = indices[t * 3 + c] * 3;
-          const to = perspective
-            ? nx * (eye[0] - positions[v]) + ny * (eye[1] - positions[v + 1]) + nz * (eye[2] - positions[v + 2])
-            : -(nx * cn[0] + ny * cn[1] + nz * cn[2]) * 1e6;
-          most = Math.max(most, side * to);
+    const { spheres, a: childA, b: childB, leaf, order: treeOrder } = tree;
+    for (let part = 0; part < P; ++part) {
+      if (!partShown[part] || tree.roots[part] < 0) continue;
+      let top = 0;
+      stack[top++] = tree.roots[part];
+      while (top > 0) {
+        const node = stack[--top];
+        const no = node * 4;
+        const nr = spheres[no + 3] + cellR;
+        if (outside(frustum, spheres[no], spheres[no + 1], spheres[no + 2], nr)) continue;
+        if (cn[0] * spheres[no] + cn[1] * spheres[no + 1] + cn[2] * spheres[no + 2] + cc - nr > keepDepth) continue;
+        if (!leaf[node]) {
+          if (top + 2 > stack.length) continue;
+          stack[top++] = childA[node];
+          stack[top++] = childB[node];
+          continue;
         }
-        if (most < -facing) continue;
+        for (let li = childA[node]; li < childB[node]; ++li) {
+          const t = treeOrder[li];
+          const o = t * Stride;
+          if (tri[o] === 0) continue;
+          const x = tri[o + 23];
+          const y = tri[o + 24];
+          const z = tri[o + 25];
+          // a large triangle's cells reach past it by a cell's disc; a whole one's sphere is its own
+          const r = tri[o + 26] + (wholeOf[t] >= 0 ? 0 : cellR);
+          if (outside(frustum, x, y, z, r)) continue;
+          const d = Math.max(cn[0] * x + cn[1] * y + cn[2] * z + cc - r, 1e-3);
+          if (d > keepDepth) continue;
+          if (facing > 0) {
+            // all three corners turned away: the plane is linear in them
+            let most = -Infinity;
+            const nx = tri[o + 27];
+            const ny = tri[o + 28];
+            const nz = tri[o + 29];
+            for (let c = 0; c < 3; ++c) {
+              const v = indices[t * 3 + c] * 3;
+              const to = perspective
+                ? nx * (eye[0] - positions[v]) + ny * (eye[1] - positions[v + 1]) + nz * (eye[2] - positions[v + 2])
+                : -(nx * cn[0] + ny * cn[1] + nz * cn[2]) * 1e6;
+              most = Math.max(most, side * to);
+            }
+            if (most < -facing) continue;
+          }
+          triList[nt++] = t;
+          triDepth[t] = d;
+          if (d > far) far = d;
+        }
       }
-      triList[nt++] = t;
-      triDepth[t] = d;
-      if (d > far) far = d;
     }
     let scale = (Buckets - 1) / Math.log2(far + 1);
     bucketStart.fill(0);
@@ -725,6 +776,7 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     bases,
     live,
     shown,
+    partShown,
     get version() {
       return version;
     },
