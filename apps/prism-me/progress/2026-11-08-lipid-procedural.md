@@ -242,48 +242,48 @@ each (9 confirmed, 3 by a run; 2 plausible; 0 refuted; S3 down to a nit; N1 plau
 | N1 solid-interior caps draw the pool's full capacity                                                                                                         | covered by M1's fix (dead slots past any far plane)                    |
 | Nits: capacities 1.1 × budget, grey surface with all hidden, `find` per species row, reset's version, `lipidAt` unused, export's row count, camera test gaps | reset fixed `230359421`; the rest open (TODO or here)                  |
 
-## PR body (draft)
+## PR body (draft; rounds 4 to 5, the lane's PR)
 
-**What.** Round 4 of the lipid membranes (Ludo, 2026-11-08: "completely procedural ... camera distance dependant, and
-size on screen ... only do the full build at export time"). Wrap with lipids (the cutter, now the default) generates its
-lipids per view: only on the triangles in view whose lipids are large enough on screen, nearest first within a pool (2 M
-by default), regenerated in the renderer's frame when the view changes and never at rest. Far away the membrane is its
-mesh with a bump in the species' colours. The far look is switchable live (both, spheres, texture) with its switches; a
-membrane's species are a particle system's entities (shown, coloured); the full build is only at export (STAR).
+**What.** Lipid membranes made per view, rounds 4 to 5 (Ludo, 2026-11-08: "completely procedural ... camera distance
+dependant, and size on screen ... only do the full build at export time"; 2026-11-09: a billion lipids at interactive
+rate). Wrap with lipids (the cutter, now the default) makes its lipids only where they are in view and large enough on
+screen, nearest first within a pool (2 M by default), again in the renderer's frame when the view changes and never at
+rest; a large triangle is cut by cells made in view only, nothing O(lipids) at the wrap (model_vertexcolor at x600, 1.4
+G lipids: wrap 1.4 s, 0.8 GB). Far away each leaflet is the mesh's own triangles with the patch's top view as a
+mipmapped texture mapped as the cutter maps the lipids, taking over from the spheres without a seam. Colours by zoom go
+from the membrane's colour to species to atoms by element. The membrane is coloured and styled as a particle list, takes
+Prism's clips, and is fully built only at export (STAR). Tiles stay whole, refused past 50 M lipids.
 
 **Changes.**
 
-- Library (`packages/graphics`, to move to their own lane from `origin/master`): `f99c9e0b1` (+ `a6d265ce8`) a pool of
-  GPU-written instances (live counts per segment, a writer's view hook in the culler's dispatch); `2f9cbf270` dead slots
-  past any far plane (`DeadInstanceTranslation`; its failing test `1ed7faf2c`). Plan: `ae2ca9321`.
-- `packages/extensions/mesoscale`: `lipids/procedural.ts` (selection), `cutter-kernel.ts` (write pass over a view's
-  triangles, dead-slot kernel), `membrane.ts` (pool, far surface, species), `export.ts`, operations (`membraneDetail`
-  far params, `membraneSpecies`, `exportMembrane`, `graphics` on a membrane), controls (Far, species).
-- `apps/prism-me`: Wrap with lipids = the cutter, the tiles second; Export lipids; the membrane's Look and Object
-  graphics; ui.md, features.md, TODO, the changelog.
+- Library (`packages/graphics`; to their own lane from `origin/master` on Ludo's word): a pool of GPU-written instances
+  (live counts per segment, a writer's view hook in the culler's dispatch: `f99c9e0b1`, `a6d265ce8`); dead slots past
+  any far plane (`2f9cbf270`, its test `1ed7faf2c`); a mesh's patch texture (`dPatchTexture`: planes, cells, a shift a
+  vertex, colour variants only; `sLinearMipmapRepeat`: `835dffca8`, `9ad038804`, `d55a15ff2`; its Dawn test in
+  plugin-headless, `f9526c7c6`).
+- `packages/extensions/mesoscale`: `lipids/procedural.ts` (the selection: whole triangles and cells, the facing leaflet,
+  a pool a member), `cutter.ts` (cells, kinds' counts), `cutter-kernel.ts` (write pass by units, dead slots),
+  `far-surface.ts` (the patch surface and raster), `membrane.ts` (pool, surfaces, textures' lifetime, colours by zoom,
+  clips), `export.ts`; operations `membraneDetail`, `membraneSpecies`, `exportMembrane`, `graphics`, and the particle
+  list's `style`, `colors`, `colorLevels` on a membrane; a `test:perf` tier (`lipid-selection.quick.ts`).
+- `apps/prism-me`: Wrap with lipids = the cutter (tiles: small objects); Export lipids; the membrane's Look; ui.md,
+  features.md, TODO, the changelog `.v6/changelogs/lipid-procedural.md`.
 
-**Notes for review.** Defaults for Ludo to tune: far both, lipids from 2 px (texture), down to 0.5 px (spheres), budget
-2 M. Spheres is budget-clamped (thinning needs per-instance sphere sizes: a shader change). The surface's mean colour is
-muddier than the lipids. Species live in the Look (no tree rows yet); no lipid picking yet. The STAR export is held as
-Blob chunks by the browser.
+**Notes for review.** Defaults for Ludo to tune: far both, lipids from 2 px, budget 2 M. Close frames are bound by the
+lipids drawn at atom detail (8-16 px): about 130-240 ms on the M1 under Dawn at x20 and x600 alike (M5: a lighter close
+level is the next lever, Ludo's call after Chrome on 1354). The cutter refuses meshes past 2^21 triangles. A view's
+selection allocates 80 B (core's sort). Species live in the Look (no tree rows); no lipid picking; spheres are
+budget-clamped; the spheres themselves are not dithered at the switch (a graphics change). Public API: the graphics
+additions above (`MeshSchema.dPatchTexture` and its values, `GpuInstanceWriter.view`, live counts).
 
-**Testing.** Quick (selection, export, UI, sections compared), Dawn (pool live counts and dead slots, camera path whole
-→ close → whole with determinism and nothing at rest, properties drawn, the far surface's coverage), scaling (selection
-over n and 4n triangles). Images and numbers: Numbers above. Not tried in Chrome by this session.
+**Testing.** Quick (selection and cells, the patch surface's map to each lipid, the shader's map pinned to the cutter's,
+export, UI), Dawn quick (camera paths whole → close → whole, nothing at rest, determinism; properties drawn; clips; a
+clip with a still camera; the patch textures' lifetime; the patch texture's pixels and shifts), Dawn medium (a billion
+lipids' camera path, the switch's colour at x600), `test:perf` (a view's selection), scaling (selection over n and 4n
+triangles; the wrap flat at x20 and x80 with an O(lipids) control). Images and numbers: the rounds' sections above.
 
-**Review.** The table above.
-
-**Round 4c.** The switch from spheres to the far surface without a seam (the surface coloured as the coarse spheres show
-the patch from above, at their tops, dithered in over a px band; a coarser surface beneath close lipids), and a membrane
-coloured through a particle list's operations, Look and right-click › Color… (colours by zoom: far its colour, then its
-species'). Notes for review: the spheres themselves are not dithered (a graphics change, Ludo's call); a colour change
-rebuilds the surfaces (~1 s on model ×20). Review: "Round 4c, the gate".
-
-**Round 4b.** The far look as two welded surfaces at each leaflet's lowest head, in the species' colours where the
-cutter puts them; the cutter cuts each region by cells under the patch's box (no period on a large triangle: copies 30 %
-→ 0.01 % on the teddy ×100); a tiles membrane has the cutter's Look but Texture; Add clip… on a membrane, both methods,
-spheres and surfaces cut alike. Notes for review: seams now at the cells' borders too (M2, Ludo's call); a membrane
-wrapped before the clip change must be wrapped again. Review: "Round 4b, the gate" above.
+**Review.** Rounds 4, 4b, 4c: their gates above. Round 5: an Opus reviewer (5 must-fix, 7 should-fix, 9 nits), the
+skeptic, then a failing test and a fix each: "Round 5, the gate closed". Open: M5 (Ludo), N4, X4, X5, N1-N9 (TODO).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
@@ -823,6 +823,45 @@ must-fixes were fixed directly, each confirmed by reading.
 | S7 unitKey wrong at 2^21 triangles                                                | open (guard T)                                                                                                                         |
 | N1-N9                                                                             | open, nits (N4: `farSurface`, `cutterBases` now test-only)                                                                             |
 
+### Round 5, the gate closed (2026-11-09, second session)
+
+The lane-skeptic ran on the reviewer's findings (`8ad314736...b2e0db7b0`); each confirmed or plausible must-fix and
+should-fix got a test that fails on the code before its fix (or, where the fix was in, with the fix reverted locally,
+not committed), then its fix.
+
+| Finding                                         | Skeptic                       | Test                                                                                                   | Fix                                                                                                                      |
+| ----------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| M1 tiles estimate wraps past 2^31               | confirmed (should-fix)        | `a4f462718`: the first step's answer (`.next()`); int32 restored: not done                             | `d8ab52057`                                                                                                              |
+| M2 patch textures leaked on destroy             | confirmed                     | `d062cb902` (Dawn): destroy without `releaseTextures`: B's and C's left                                | `d8ab52057`                                                                                                              |
+| M3 a rebuild destroyed the textures still drawn | confirmed                     | `d062cb902` (Dawn): `release()` rotating again: A's gone at B's end                                    | `d8ab52057`                                                                                                              |
+| M4 a clip with a still camera                   | partial: refuted, fix whole   | `cf3a0c92d` (Dawn): the reset reverted: selects 4 → 4                                                  | `d8ab52057` (the culler's `syncClip` bumps its data version: the view hook runs on a clip change; the TODO comment went) |
+| M5 goals not met close                          | Ludo's call                   |                                                                                                        | open (TODO; the lighter close level)                                                                                     |
+| S1 shader map vs the cutter's                   | refuted as a defect           | `2786a07a3`: drift guard, the WGSL chain ported in f32 (constants asserted): within 0.05 Å at x600     | none needed                                                                                                              |
+| S2 the texture slides                           | confirmed                     | `9ad038804`: a head followed up its normal reads its own point: median 1.92 Å before                   | `9ad038804` (a shift a vertex, −h P(n), in the table after the cells; < 0.05 Å)                                          |
+| S3 allocation per select and upload             | confirmed                     | `0feb66e1f` (`test:perf`, new for mesoscale): 10,472 B a view                                          | `e6ff07e11`: 79.6 B (core's `sortArrayRange` pair; the upload's subarrays: TODO)                                         |
+| S4 the scaling guard is no wrap, no control     | confirmed                     | `595de5175`: the wrap's CPU half at x20 and x80, 381 → 56 ms; the old count pass caught (×10.4)        | the guard itself                                                                                                         |
+| S5 slow Dawn tests untagged                     | confirmed                     | `e038a3540`: medium (the switch split, its sphere quick)                                               |                                                                                                                          |
+| S6 graphics change without its test             | confirmed                     | `f9526c7c6` (plugin-headless, Dawn): quadrants and shifts drawn; fails with the shader's shift dropped | upstream lane: Ludo's call                                                                                               |
+| S7 unit key wrong past 2^21 triangles           | plausible                     | `68f2213bb`: the wrap goes on                                                                          | `2977cf6b4` (`MaxCutterTriangles`, refused at the first step)                                                            |
+| X1 reset keeps live[] and version               | plausible (latent should-fix) | `5766b1881`                                                                                            | `306323c3f`                                                                                                              |
+| X2 patchColor in depth, pick, marking           | nit                           | `d55a15ff2` (WGSL preprocessed: HEAD's read it in all)                                                 | `d55a15ff2`                                                                                                              |
+| X3 textures kept without compute                | nit                           | none (no compute-less context in the quick lane)                                                       | `790360bde`                                                                                                              |
+| N4 `farSurface`, `cutterBases` test-only        | nit                           |                                                                                                        | open (not trivial: their tests and guards go with them; TODO)                                                            |
+| X4, X5, N1–N3, N5–N9                            | nits                          |                                                                                                        | open (TODO)                                                                                                              |
+
+Decided this session: the S2 shift lives in each surface's table (two tables a leaflet, one patch texture); the S6 test
+in plugin-headless (graphics has no Dawn context of its own); S4 at x20/x80, not x600 (the control there would count
+billions); the cutter's cap 2^21 triangles. Learned: a closure that is passed or writes doubles allocates a heap number
+each (the selection's 10 kB a view were that, not its arrays); `performance.now()` too.
+
+## Round 5, checks (2026-11-09, after the gate closed)
+
+`npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm format:check`, `pnpm check:workspace`, mesoscale
+and prism-me `styles:check`, prism-me `typecheck:storybook` pass. Quick lane with Dawn (mesoscale, cryoet, stage-tools,
+prism-me): 81 files, 554 passed, 3 skipped (the medium x600 ones). Medium with Dawn (the two x600 tests): pass, 2.0 GB
+RSS. Graphics quick lane with Dawn plus the new plugin-headless test: 148 files, 1,754 passed. Mesoscale `test:perf`
+(new) and the scaling guards touched (selection, wrap, control) pass.
+
 ## Round 5, checks (2026-11-09, after the must-fixes)
 
 `npx tsc -b`, `npx tsc --noEmit -p apps/prism-me`, `pnpm lint`, `pnpm check:workspace`, mesoscale and prism-me
@@ -868,3 +907,7 @@ against ~900; the selection's clipping and the texture plumbing took the room.
 have the culler call the pool's view hook once after a clip flip (or bump the LodView version). 3. S1 test (TS port of
 `patchColor`'s s-chain vs `hitAffine` heads), S7 guard, S4 control, S3 hoist. 4. A lighter close level for 8-16 px
 lipids (Ludo's call after Chrome on 1354).
+
+**Next (after the gate, 2026-11-09).** The gate is closed ("Round 5, the gate closed"): Ludo's calls are M5 (a lighter
+close level) and whether the graphics commits (pool, dead slots, patch texture) go to their own lane from master now;
+left in TODO: N4, X4, X5, N1-N9.
