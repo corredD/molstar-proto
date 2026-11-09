@@ -26,8 +26,15 @@ import type { Leaflet } from './patch.js';
 export interface CutterTable {
   /** the leaflet's species names, a member's species its index here */
   readonly species: readonly string[];
-  /** per member: its species, and its atoms relative to its headgroup (z from the bilayer's center) */
-  readonly members: readonly { readonly species: number; readonly positions: Float32Array }[];
+  /**
+   * per member: its species, its atoms relative to its headgroup (z from the bilayer's center) and their elements (the
+   * first letter's char code: colours by zoom's atoms, round 5)
+   */
+  readonly members: readonly {
+    readonly species: number;
+    readonly positions: Float32Array;
+    readonly elements: Uint8Array;
+  }[];
   /** the patch's lipids by member: member m's are `memberStart[m]` to `memberStart[m + 1]` */
   readonly memberStart: Uint32Array;
   /** per lipid (by member): its headgroup's x and y in the box, cos and sin of its turn from its conformer */
@@ -53,7 +60,7 @@ export function cutterTable(leaflet: Leaflet, conformers = 4): CutterTable {
   const n = leaflet.lipidSpecies.length;
   const bySpecies: number[][] = leaflet.species.map(() => []);
   for (let l = 0; l < n; ++l) bySpecies[leaflet.lipidSpecies[l]].push(l);
-  const members: { species: number; positions: Float32Array }[] = [];
+  const members: { species: number; positions: Float32Array; elements: Uint8Array }[] = [];
   const memberOf = new Uint32Array(n);
   const templateAzimuth: number[] = [];
   for (let s = 0; s < bySpecies.length; ++s) {
@@ -71,7 +78,7 @@ export function cutterTable(leaflet: Leaflet, conformers = 4): CutterTable {
         positions[(a - start) * 3 + 2] = leaflet.positions[a * 3 + 2] + leaflet.offset;
       }
       templateAzimuth.push(azimuth(leaflet, t));
-      members.push({ species: s, positions });
+      members.push({ species: s, positions, elements: leaflet.elements.slice(start, end) });
     }
     for (let i = 0; i < list.length; ++i) memberOf[list[i]] = members.length - k + (i % k);
   }

@@ -40,6 +40,8 @@ import { createLipidTileAssigner, type LipidTileAssigner } from './assign-kernel
 import { type LipidPatch, parsePatchPdb } from './patch.js';
 import { cellSide, type CutterRegions, cutterRegions, type CutterTable, cutterTable, kindCounts } from './cutter.js';
 import { createLipidCutter, type LipidCutter } from './cutter-kernel.js';
+import { ElementSymbolColors, elementSymbolColor } from '@molstar/graphics/theme/color/element-symbol';
+import type { ElementSymbol } from '@molstar/model/model/structure/model/types';
 import { headOffset, patchRaster, patchSurface, type SwitchSpheres } from './far-surface.js';
 import type { Texture } from '@molstar/graphics/gl/texture';
 import {
@@ -526,11 +528,7 @@ export const LipidMembraneReprParams = {
   atomsPx: PD.Numeric(2, { min: 0.25, max: 16, step: 0.25 }, { description: 'Texture: lipids from this size, px' }),
   // round 5: 2 px, where the patch texture takes over as the spheres look (the switch's colour, `lipid-switch`); under
   // it a frame draws lipids by the hundred thousand for a few px each (x600, M1, Dawn: 140-240 ms at 0.5, 11 at 2)
-  spheresPx: PD.Numeric(
-    2,
-    { min: 0.05, max: 8, step: 0.05 },
-    { description: 'Spheres: lipids down to this size, px' },
-  ),
+  spheresPx: PD.Numeric(2, { min: 0.05, max: 8, step: 0.05 }, { description: 'Spheres: lipids down to this size, px' }),
   budget: PD.Numeric(2_000_000, { min: 10_000, max: 8_000_000, step: 10_000 }, { description: 'Lipids at most' }),
   // a membrane as a particle system (Ludo, 2026-11-08): its species as entities, each shown or not and its colour
   // (`mesoscale.membraneSpecies`); a hidden species is not generated (the cutter's), the far surface without it
@@ -726,10 +724,16 @@ function patchObject(
   return object;
 }
 
+/** An atom's colour by its element (the first letter's char code), Mol*'s element colours */
+function elementColor(code: number) {
+  return elementSymbolColor(ElementSymbolColors, String.fromCharCode(code) as ElementSymbol);
+}
+
 /**
  * A membrane object's colours by zoom (round 4c item 8), as a particle list's (`setColorLevels` of its targets): far its
  * colour (`props.color`) on each of its `instances`, then each of its `groups`' colour (the theme's: its species');
- * the near data the species' too (a group a lipid or a surface's vertex: no element to go on to). Off for one colour, as
+ * the near data each group's (a cut member's atoms by element, round 5: far the membrane, then species, then atoms; a
+ * tile's lipids by species). Off for one colour, as
  * a list's uniform theme
  */
 function membraneColorLevels(
@@ -864,11 +868,16 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     bounds: Sphere3D,
     writer: unknown,
     colorOf: (name: string) => Color,
+    elements?: Uint8Array,
   ) {
     const atoms = positions.length / 3;
-    const lipids = lipidSpecies.length;
+    // a cut member (one lipid, `elements` given): its atoms its groups, each coloured close up by its element (colours
+    // by zoom's atoms, round 5); a tile's: its lipids
+    const byAtom = !!elements;
+    const lipids = byAtom ? atoms : lipidSpecies.length;
     const groups = new Float32Array(atoms);
-    if (lipidAtomStart) for (let l = 0; l < lipids; ++l) groups.fill(l, lipidAtomStart[l], lipidAtomStart[l + 1]);
+    if (byAtom) for (let a = 0; a < atoms; ++a) groups[a] = a;
+    else if (lipidAtomStart) for (let l = 0; l < lipids; ++l) groups.fill(l, lipidAtomStart[l], lipidAtomStart[l + 1]);
     const spheres = Spheres.create(positions, groups, atoms);
     // gridless (one cell, the membrane's sphere), the CPU's transforms a placeholder: the kernel writes them
     const transform = createTransform(new Float32Array(n * 16), n, undefined, 0, 0);
@@ -876,7 +885,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
       lipids,
       n,
       1,
-      (g: number) => ({ kind: 'lipid', species: lipidSpecies[g] }) as never,
+      (g: number) => ({ kind: 'lipid', species: lipidSpecies[byAtom ? 0 : g] }) as never,
     );
     const uniform = props.colorBy === 'uniform';
     const color = {
@@ -890,9 +899,18 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     // each lipid or tile at its own level by its size on screen (the culler's per-instance levels)
     const lod =
       props.detail === 'off' ? { lodLevels: [], lodPixelSize: 0 } : membraneLevels(props.detail, props.levels);
-    const p = { ...PD.getDefaultValues(Spheres.Params), ...lod, gpuCulling: true as const, clip: props.clip };
+    // markers by lipid (a cut member's groups are its atoms: by group and instance, 40 a lipid past a texture's size)
+    const p = {
+      ...PD.getDefaultValues(Spheres.Params),
+      ...lod,
+      gpuCulling: true as const,
+      clip: props.clip,
+      instanceGranularity: byAtom,
+    };
     const values = Spheres.Utils.createValues(spheres, transform, locationIterator, theme, p);
-    membraneColorLevels(values, props, n, lipids, (g) => colorOf(names[lipidSpecies[g]]));
+    membraneColorLevels(values, props, n, lipids, (g) =>
+      byAtom ? elementColor(elements![g]) : colorOf(names[lipidSpecies[g]]),
+    );
     clipped.set(values, p);
     building.push(values);
     ValueCell.update(values.boundingSphere, Sphere3D.clone(bounds));
@@ -1130,6 +1148,7 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
             b,
             poolWriter(cutter, m, pools[c], lipidSize(table)),
             colorOf,
+            member.elements,
           ),
         });
       }
