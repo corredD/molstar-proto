@@ -301,6 +301,30 @@ const copies = (t: Tile) => Object.values(t.counts).reduce((a, b) => a + b, 0);
 const at = (x: number, y = 1000, z = 1000) => ({ center: [x, y, z] as [number, number, number], radius: 0 });
 
 describe('planStream', () => {
+  it('a resident tile near the focus never evicts a tile the focus touches', () => {
+    const tile = (id: string, x: number): Tile => ({
+      id,
+      box: { min: [x, 0, 0], max: [x + 10, 10, 10] },
+      counts: { 'p.a': 10 },
+    });
+    const m: TileManifest = {
+      format: 'meso-tiles',
+      levels: [0, 1],
+      bounds: { min: [0, 0, 0], max: [100, 10, 10] },
+      populations: ['p.a'],
+      // the focus is inside b; a is resident and 10 Å away, which hysteresis 20 turns into 0, a tie that ids settle
+      tiles: [tile('a', 20), tile('b', 0)],
+    };
+    const state = { ...none, loaded: new Map([['a', 10]]) };
+    const focus = { center: [5, 5, 5] as [number, number, number], radius: 0 };
+    expect(planStream(m, focus, state, { copies: 10, hysteresis: 20 })).toMatchObject({
+      focus: ['b'],
+      want: ['b'],
+      evict: ['a'],
+      request: ['b'],
+    });
+  });
+
   it('a budget of 0 requests nothing', async () => {
     const plan = planStream(await manifest(), at(100), none, { copies: 0 });
     expect([plan.want, plan.request, plan.evict, plan.overBudget]).toEqual([[], [], [], undefined]);
@@ -343,6 +367,10 @@ describe('planStream', () => {
         budget.copies,
       );
       for (const id of plan.request) expect(failed.has(id) || loaded.has(id) || pending.has(id)).toBe(false);
+      // a tile the focus touches is wanted whenever all of them fit, whatever the hysteresis keeps resident
+      const touched = plan.focus.filter((id) => !failed.has(id));
+      if (touched.reduce((a, id) => a + copies(m.tiles.find((t) => t.id === id)!), 0) <= budget.copies)
+        for (const id of touched) expect(plan.want).toContain(id);
     }
   });
 

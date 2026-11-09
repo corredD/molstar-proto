@@ -109,9 +109,11 @@ export function planStream(
     const d = boxDistance(focus.center, t.box);
     tiles.set(t.id, { t, d, dr: state.loaded.has(t.id) ? Math.max(0, d - hysteresis) : d });
   }
+  // the tiles the focus touches come first, so hysteresis never lets a resident tile push one out
+  const touched = (x: { d: number }) => (x.d <= focus.radius ? 0 : 1);
   const order = [...tiles.values()]
     .filter((x) => !state.failed.has(x.t.id))
-    .sort((a, b) => a.dr - b.dr || byId(a.t.id, b.t.id));
+    .sort((a, b) => touched(a) - touched(b) || a.dr - b.dr || byId(a.t.id, b.t.id));
   const want: string[] = [];
   let copies = 0;
   let overBudget: string | undefined;
