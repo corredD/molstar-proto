@@ -430,6 +430,8 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
 
   // models: each population realized by at most one; avoid without cycles
   const realizedBy = new Map<Id, Id>();
+  // a refiner replaces the result it refines: two refiners of one model would both draw its populations
+  const refinedBy = new Map<Id, Id>();
   const models = doc.models ?? [];
   models.forEach((m, i) => {
     const p = `/models/${i}`;
@@ -445,6 +447,15 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
     (m.inputs ?? []).forEach((r, j) => ref(r, 'resource', `${p}/inputs/${j}`));
     (m.avoid ?? []).forEach((r, j) => ref(r, 'model', `${p}/avoid/${j}`));
     ref(m.refines, 'model', `${p}/refines`);
+    if (m.refines) {
+      const by = refinedBy.get(m.refines);
+      if (by)
+        err('model.overlap', `${m.refines} is refined by ${by} and ${m.id}; one refiner a model`, `${p}/refines`, [
+          by,
+          m.id,
+        ]);
+      else refinedBy.set(m.refines, m.id);
+    }
     if (m.refines && m.populations?.length)
       warn(
         'value.range',

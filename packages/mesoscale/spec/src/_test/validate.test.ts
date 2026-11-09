@@ -215,4 +215,25 @@ describe('validate', () => {
       ['location.membrane', '/instances/0/location'],
     ]);
   });
+
+  it('two models refining one model is an overlap, naming both refiners (R3)', () => {
+    const d = exosomeDoc();
+    const refiner = (id: string) => ({
+      id,
+      kind: 'procedural' as const,
+      method: 'meso.relax',
+      populations: [],
+      refines: 'm.recipe',
+    });
+    const one = { ...d, models: [...d.models!, refiner('m.r1')] };
+    expect(errors(one)).toEqual([]);
+    const two = { ...d, models: [...d.models!, refiner('m.r1'), refiner('m.r2')] };
+    const e = errors(two);
+    expect(e.map((i) => [i.code, i.path])).toEqual([['model.overlap', `/models/${d.models!.length + 1}/refines`]]);
+    expect(e[0].ids).toEqual(['m.r1', 'm.r2']);
+    // a chain (r2 refines r1 refines the recipe) is not an overlap
+    expect(errors({ ...d, models: [...d.models!, refiner('m.r1'), { ...refiner('m.r2'), refines: 'm.r1' }] })).toEqual(
+      [],
+    );
+  });
 });
