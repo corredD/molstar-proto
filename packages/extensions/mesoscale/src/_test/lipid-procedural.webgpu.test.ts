@@ -110,6 +110,13 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
         return n / all;
       };
       expect(covered(a.image)).toBeGreaterThan(0.95);
+      // two surfaces, one a leaflet at its heads, in the species' colours, not one mean brown (round 4b, Ludo)
+      const surfaces = (plugin.state.data.cells.get(node.ref)!.obj!.data.repr as { renderObjects: { type: string }[] })
+        .renderObjects.filter((o) => o.type === 'mesh');
+      expect(surfaces.length).toBe(2);
+      const colors = new Set<string>();
+      for (let o = 0; o < a.image.length; o += 4 * 97) colors.add(`${a.image[o]},${a.image[o + 1]},${a.image[o + 2]}`);
+      expect(colors.size).toBeGreaterThan(20);
       // close: the triangles in view
       expect(b.pool.live).toBeGreaterThan(0);
       expect(b.pool.live).toBeLessThan(repr.cutLipids);
