@@ -404,6 +404,7 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
   const eyeInside = new Uint8Array(P);
   const near = new Float64Array(3);
   const stack = new Int32Array(256);
+  const { spheres, a: childA, b: childB, leaf, order: treeOrder, roots } = tree;
 
   // the state of a selection, preallocated: candidates (key, depth, kind), their order, the units taken
   const candKey = new Float64Array(maxCandidates);
@@ -479,16 +480,21 @@ export function createLipidSelection(input: SelectionInput, capacity: Uint32Arra
     // the triangles in view, nearest first: each shown part's tree descended, a node out of view or reach pruned
     let nt = 0;
     let far = 1;
-    const { spheres, a: childA, b: childB, leaf, order: treeOrder } = tree;
     for (let part = 0; part < P; ++part) {
-      if (!partShown[part] || tree.roots[part] < 0) continue;
+      if (!partShown[part] || roots[part] < 0) continue;
       let top = 0;
-      stack[top++] = tree.roots[part];
+      stack[top++] = roots[part];
       while (top > 0) {
         const node = stack[--top];
         const no = node * 4;
         const nr = spheres[no + 3] + cellR;
-        if (outside(frustum, spheres[no], spheres[no + 1], spheres[no + 2], nr)) continue;
+        // out of view (inline: a closure's double arguments are boxed, review S3)
+        let culled = false;
+        for (let f = 0; f < 6 && !culled; ++f) {
+          const { normal: fn, constant } = frustum[f as 0];
+          culled = fn[0] * spheres[no] + fn[1] * spheres[no + 1] + fn[2] * spheres[no + 2] + constant < -nr;
+        }
+        if (culled) continue;
         if (cn[0] * spheres[no] + cn[1] * spheres[no + 1] + cn[2] * spheres[no + 2] + cc - nr > keepDepth) continue;
         if (!leaf[node]) {
           if (top + 2 > stack.length) continue;
