@@ -555,7 +555,16 @@ function wrapItems(
   if (kind === 'mesh') {
     // a membrane is not wrapped again
     if (isMembrane(area, picked)) return [];
-    return [{ id: 'wrap-lipids', label: 'Wrap with lipids', icon: 'layers', run: wrap({ mesh: node.ref }) }];
+    // both methods, one entry each (ui.md §5): tiles on a remesh, or cellPACKgpu's cutter on the mesh's own triangles
+    return [
+      { id: 'wrap-lipids', label: 'Wrap with lipids', icon: 'layers', run: wrap({ mesh: node.ref, method: 'tiles' }) },
+      {
+        id: 'wrap-lipids-cutter',
+        label: 'Wrap with lipids (cutter)',
+        icon: 'layers',
+        run: wrap({ mesh: node.ref, method: 'cutter' }),
+      },
+    ];
   }
   const path = 'path' in node ? node.path : undefined;
   if (kind !== 'group' || !path || (groupBy?.(node.ref) ?? 'compartment') !== 'compartment') return [];

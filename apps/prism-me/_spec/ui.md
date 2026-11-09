@@ -224,10 +224,12 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   hides its mesh in the same step (cellPACKgpu shows no mesh under a membrane; its eye shows it again). The patch is
   CHARMM-GUI's (14 species), a static file beside the page fetched on the first wrap; the tiles' edge suits the mesh (a
   thirtieth of its size, 40–200 Å); a mesh under 160 Å across is refused with "scale it first", and the parts its remesh
-  loses (a limb thinner than the edge) are cut on their own triangles. One entry, whatever the method: the right-click
-  wraps with tiles; cellPACKgpu's cutter (on the mesh's own triangles) is the operation's `method: 'cutter'`, by
-  command, until Ludo picks a default from the comparison (progress/2026-11-08-lipid-tiles.md). Both draw with levels of
-  detail (the membrane's `detail`, balanced by default).
+  loses (a limb thinner than the edge) are cut on their own triangles. A mesh's right-click has both methods, an entry
+  each (Ludo, 2026-11-08: the cutter must be reachable from the UI): **Wrap with lipids** (tiles) and **Wrap with lipids
+  (cutter)** (cellPACKgpu's cutter, on the mesh's own triangles by regions of the surface: `method: 'cutter'`); two
+  entries rather than a method in the membrane's properties, because a method is chosen before the membrane exists and
+  changing it remakes it. A compartment's group offers the tiles only. Both draw with levels of detail (the membrane's
+  `detail`, balanced by default).
 - **Remove** (an object: with its file and labels).
 
 On a clip or a label (its guide in 3D, or its row): **Move**, **Rotate**, (a clip: **Size**, **Flip**; a label: **Edit
