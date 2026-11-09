@@ -1336,7 +1336,9 @@ export function tiledFixture(o?: TiledFixtureOptions): {
 
 #### 6.8.7 Tests and the R5 measurement
 
-**quick** (`spec/src/_test/streaming.test.ts`, plus cases in `validate.test.ts` and `sexpr.test.ts`):
+**quick** (`spec/src/_test/streaming.test.ts`, plus cases in `validate.test.ts` and `sexpr.test.ts`; the session's
+streaming cases without a viewer are in `molstar/src/_test/session.test.ts`; the scaling guard, run by `test:scaling`,
+is `spec/src/_test/streaming.scaling.ts`):
 
 - **Static validation:** each `stream.*` rule above, on broken documents; a stream document round-trips through the
   S-expression.
@@ -1362,9 +1364,12 @@ export function tiledFixture(o?: TiledFixtureOptions): {
 - **Streamer**, with the fixture's `delayMs` and `fail`:
   - a tile evicted while in flight is aborted, and its late result is dropped;
   - a failed tile is reported once and not asked for again;
-  - a payload whose counts disagree with the manifest is rejected.
+  - a payload whose counts disagree with the manifest is rejected;
+  - a provider's own `AbortError` and a synchronous throw from `load` fail the tile, once, without a retry;
+  - a stream key change clears the old key's issues; `issues()` keeps the standing ones across steps.
 
-**integration (medium)** (`molstar/src/_test/streaming.test.ts`, headless Prism): `MesoSession` with the fixture
+**integration (medium)** (`molstar/src/_test/streaming.test.ts`, headless Prism; the quick lane's session cases are in
+`molstar/src/_test/session.test.ts`): `MesoSession` with the fixture
 provider and the Prism adapter plays `t.stream`, then waits for the in-flight loads to settle.
 
 - Every commit's `added` and `removed` are exactly the step's arrivals and evictions.
@@ -1373,7 +1378,8 @@ provider and the Prism adapter plays `t.stream`, then waits for the in-flight lo
 - A model edit that leaves the stream alone (an added instance) keeps every tile list: `removed` holds no tile key.
 - A view edit (a color) adds and removes no tile.
 
-**performance (heavy)** (`molstar/src/_test/perf.test.ts`, and the story's probe in the browser) is R5. 1M copies are
+**performance (heavy)** (`molstar/src/_test/r5.perf.test.ts` for 1, 10 and 100 sets, `r5-1000.perf.test.ts` for 1,000, both
+running the cases of `r5-cases.ts`; and the story's probe in the browser) is R5. 1M copies are
 split into 1, 10, 100 and 1,000 placement sets by the fixture (one population, tile counts equal). For each split,
 through the Prism adapter:
 
