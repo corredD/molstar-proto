@@ -200,16 +200,18 @@ export function validate(doc: MesoViewSpecDoc, nested = false): Issue[] {
 
   // ids: pattern, unique across every section
   const seen = new Map<Id, string>();
-  for (const [section] of Sections) {
-    ((doc[section] as readonly { id: Id }[] | undefined) ?? []).forEach((x, i) => {
-      const path = `/${section}/${i}/id`;
-      if (typeof x.id !== 'string' || !IdPattern.test(x.id))
-        return err('id.invalid', `id ${JSON.stringify(x.id)}`, path);
-      const before = seen.get(x.id);
-      if (before) err('id.duplicate', `id ${x.id} is also at ${before}`, path, [x.id]);
-      else seen.set(x.id, path);
-    });
-  }
+  const id = (x: { id: Id }, path: string) => {
+    if (typeof x.id !== 'string' || !IdPattern.test(x.id)) return err('id.invalid', `id ${JSON.stringify(x.id)}`, path);
+    const before = seen.get(x.id);
+    if (before) err('id.duplicate', `id ${x.id} is also at ${before}`, path, [x.id]);
+    else seen.set(x.id, path);
+  };
+  for (const [section] of Sections)
+    ((doc[section] as readonly { id: Id }[] | undefined) ?? []).forEach((x, i) => id(x, `/${section}/${i}/id`));
+  // annotations are nodes too (indexDoc names them)
+  (doc.views ?? []).forEach((v, i) =>
+    (v.annotations ?? []).forEach((a, j) => id(a, `/views/${i}/annotations/${j}/id`)),
+  );
   if (!nested)
     (doc.superstructures ?? []).forEach((ss, i) => {
       for (const [section] of InnerSections)

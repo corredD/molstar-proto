@@ -236,4 +236,19 @@ describe('validate', () => {
       [],
     );
   });
+
+  it('annotation ids are ids: the pattern, and unique across the document (F7)', () => {
+    const d = exosomeDoc();
+    const k = d.views!.length;
+    const withAnnotation = (id: string) => ({
+      ...d,
+      views: [...d.views!, { id: 'v.x', annotations: [{ id, target: '(all)', text: 't' }] }],
+    });
+    expect(errors(withAnnotation('bad id')).map((i) => [i.code, i.path])).toEqual([
+      ['id.invalid', `/views/${k}/annotations/0/id`],
+    ]);
+    expect(errors(withAnnotation(d.entities[0].id)).map((i) => [i.code, i.path])).toEqual([
+      ['id.duplicate', `/views/${k}/annotations/0/id`],
+    ]);
+  });
 });
