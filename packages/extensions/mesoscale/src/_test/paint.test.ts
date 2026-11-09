@@ -182,6 +182,24 @@ describe('fibres (Round 2, Decided 4)', () => {
     const first = paintParticles(cellpackLike(), [stroke({ fiber: true })]);
     expect(Array.from(first.fibers!.offsets)).toEqual([0, 2]);
     expect(Array.from(first.fibers!.indices)).toEqual([7, 8]);
+    // a click (one point) is a copy, not a fibre: no polyline of one point (review S4)
+    const click = paintParticles(cellpackLike(), [stroke({ fiber: true, positions: [0, 0, 0], rotations: [] })]);
+    expect(click.count).toBe(8);
+    expect(click.fibers).toBeUndefined();
+  });
+
+  it('reads the twist whatever the sign of the stored turns, with a bend (review S5)', () => {
+    const list = withFiber();
+    const r = list.rotations;
+    // the second point's turn stored with the opposite sign (the same turn), and the third point off the line
+    for (let c = 0; c < 4; ++c) r[4 * 4 + c] = -r[4 * 4 + c];
+    list.coordinates[5 * 3 + 1] = 2;
+    expect(fiberConventionOf(list, 2)!.twist).toBeCloseTo(30, 3);
+    // a bent first segment: the twist part of a turn about an axis off the fibre stays small, not near ±180
+    const bent = withFiber();
+    bent.coordinates[4 * 3 + 1] = 3;
+    const t = fiberConventionOf(bent, 2)!.twist;
+    expect(Math.abs(t)).toBeLessThan(31);
   });
 
   it("reads a brush's fibres: the axis along them, the twist a point, the step; none for a brush without", () => {

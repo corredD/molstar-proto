@@ -694,8 +694,10 @@ export class MesoscaleApi extends ApiArea {
       if (dirs && side === 'in') for (let i = 0; i < dirs.length; ++i) dirs[i] = -dirs[i];
       toListFrame(moved?.transform.params as { transform: Mat4; scale?: number } | undefined, local, dirs);
       // a fibre's points turned along it as the entity's own fibres are; without one, its principal axis along it
-      // (progress/2026-11-08-paint.md, Round 2, Decided 4)
-      const rotations = fiber
+      // (progress/2026-11-08-paint.md, Round 2, Decided 4); a click (one point) is a copy, turned as the one shown under
+      // the pointer (review S4)
+      const asFiber = !!fiber && k >= 2;
+      const rotations = asFiber
         ? fiberRotations(
             local,
             fiberConventionOf(data, ids[0]) ?? {
@@ -713,7 +715,7 @@ export class MesoscaleApi extends ApiArea {
         compartment: brush.compartment,
         positions: local,
         rotations,
-        ...(fiber ? { fiber: true } : {}),
+        ...(asFiber ? { fiber: true } : {}),
       };
       const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
       const b = state.build();
@@ -728,11 +730,11 @@ export class MesoscaleApi extends ApiArea {
       await b.commit();
       const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
       return ApiResult.ok(
-        fiber
-          ? `Painted a fibre of ${k} ${name} ${k === 1 ? 'point' : 'points'}.`
+        asFiber
+          ? `Painted a fibre of ${k} ${name} points.`
           : `Painted ${k} ${k === 1 ? 'copy' : 'copies'} of ${name} (${how}).`,
         { nodes: [l.cell.transform.ref] },
-        { value: { count: k, orient: fiber ? 'fiber' : how } },
+        { value: { count: k, orient: asFiber ? 'fiber' : how } },
       );
     },
   });

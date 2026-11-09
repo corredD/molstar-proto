@@ -77,7 +77,8 @@ export function paintParticles(list: ParticleList, strokes: readonly PaintStroke
   const newFibers: number[] = [];
   for (const s of strokes) {
     const k = Math.floor(s.positions.length / 3);
-    if (s.fiber && k) newFibers.push(at, k);
+    // a fibre of two points or more: a click (one) is a copy (review S4)
+    if (s.fiber && k >= 2) newFibers.push(at, k);
     const set = groups?.sets[groups.groupOfTarget.get(s.target) ?? -1];
     const radius = set && OrderedSet.size(set) ? list.radii![OrderedSet.start(set)] : 0;
     for (let j = 0; j < k; ++j, ++at) {
@@ -348,6 +349,8 @@ export function fiberConventionOf(list: ParticleList, id: number): FiberConventi
   const axis = Vec3.normalize(Vec3(), Vec3.transformQuat(Vec3(), _ax, _q0));
   // the turn from the first point to the second, in the first's frame, about that axis
   Quat.multiply(_r, _q0, quatOf(_q1, list, i1));
+  // the shorter way (q and -q are one turn: `getAxisAngle` reads 2·acos(w), past π for w < 0; review S5)
+  if (_r[3] < 0) Quat.set(_r, -_r[0], -_r[1], -_r[2], -_r[3]);
   const angle = Quat.getAxisAngle(_ax, _r);
   // its part about the axis (a fibre point turns about the fibre)
   const twist = (angle * Vec3.dot(_ax, axis) * 180) / Math.PI;
