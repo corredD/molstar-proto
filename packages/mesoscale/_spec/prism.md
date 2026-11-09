@@ -364,11 +364,25 @@ Prism's one history (sequence.md §7.3) holds every step; the document is part o
 
 - **Saved as `prism-viewer.mesoviewspec`**: `{ version: 1, doc, revision, url?, shown? }` through
   `PluginState.registerCustomState` (sequence.md §7.1): the document itself (with every patch committed), the address it
-  came from (to resolve relative resources again) and the view shown. Content, so Undo keeps it. Snapshots, their
-  playback and `.molx` / `.molj` sessions carry it with no other hook. Another version or none: no document.
-- **The checkpoint is cheap**: a patch shares every untouched part of the document (§2.1), and the checkpoint's
-  per-transform sharing (sequence.md §7.4, `SerializedTrees`) keeps a document checkpoint to what changed. A model edit
-  costs the patched population, not the copies: placements are derived (design.md §5) and never in the state.
+  came from (to resolve relative resources again) and the view shown. Content, so Undo keeps it. Another version or
+  none: no document.
+- **Sessions need the stub to own the transformer.** `setSnapshot` refuses a snapshot whose transformers are not
+  registered (`validateSnapshotTransformers`), and a lazy extension loads for a session only for the transformers its
+  stub declares (`ensureFor`, `api/state-open.ts`). So the `mesoviewspec` stub declares
+  `transformers: ['ms-plugin.meso-view-spec-placements']`; opening a `.molx` / `.molj` with a document loads the chunk,
+  which registers the custom-state key, before the state is set. Without it the session is refused, or the document
+  dropped silently (`setCustomState` reads only registered keys).
+- **A session opened on a fresh page has no placements** (the store is empty): its lists apply empty (§7.3, point 4) and
+  the owner's restore resolves the document cold (§7.3, point 5): an open costs a resolution unless its models are
+  precomputed.
+- **A dropped document's files** are registered as Mol\* assets by the owner, so a `.molx` holds them as it holds files
+  `load.files` read; a `.molj` cannot, and its open names the resources it lacks (models unavailable, design.md §6.1).
+- **What a checkpoint costs.** The custom state is kept by reference (`getSnapshot`), so untouched parts of the document
+  are shared in memory (§2.1). The checkpoint's size pass stringifies the custom state whole at each step
+  (`sources/checkpoint.ts`, `size`), unlike the trees (`SerializedTrees`): a large document counts against the time and
+  size budgets at every step. The size pass keeps the document's measured size by `revision` (proposed, lane
+  `mvs-open`). A model edit costs the patched population, not the copies: placements are derived (design.md §5) and
+  never in the state.
 
 ### 7.2 What a step is
 
@@ -383,25 +397,35 @@ Prism's one history (sequence.md §7.3) holds every step; the document is part o
 
 The adapter makes a list with a state transform whose only param is the set's key (`MesoPlacements`), over a side store
 (`MesoPlacementStore`); `apply` throws when the key is not in the store, and the adapter deletes the key when the set
-goes. A checkpoint restores the data tree first and the custom state after it. So an Undo past a re-pack would apply a
-transform whose key is gone. The contract **(proposed)**:
+goes. A restore (Undo, Redo, the rollback of a failed or cancelled step, a session opened) restores the data tree first
+and the custom state after it, and Undo and the rollback hold the history's lock while they do
+(`ui/src/managers/history.ts`: `undo` and `run` take it around `#restore`). So an Undo past a re-pack applies a
+transform whose key is gone, and anything the owner does then through `viewer.api` waits on that lock (a deadlock) or,
+deferred, records a new step (and empties Redo). The contract **(proposed)**:
 
-1. **Document lists stay in the data tree and in checkpoints**, with their representations and layers. So clips, motion,
-   graphics and colorLevels on them undo as on any list.
-2. **The adapter runs under the operation's `ctx.api`** (§2.3): making and deleting lists is inside the step.
-3. **A set's list stays in the store while Undo can reach it**: the session keeps each model's last
-   `options.ui.undoSteps` (10) resolutions in its cache and the store keeps a list while its key is in the cache. Older
-   checkpoints are "Too old to undo" (sequence.md §7.4), so none names a key the store has let go.
+1. **Document lists stay in the data tree and in checkpoints**, with their representations and layers. So clips, motion
+   and graphics on them undo as on any list.
+2. **In a step, the adapter runs under the operation's `ctx.api`** (§2.3): making and deleting lists is inside the step.
+3. **The owner, not the adapter, lets placements go.** The adapter stops deleting store entries (on remove and on
+   `clear`). The owner keeps the set keys (expanded instance keys included) named by the IRs of the last
+   `options.ui.undoSteps` (10) steps and the current one; the store and the session's cache keep those, and let the
+   others go. Older checkpoints are "Too old to undo" (sequence.md §7.4). A closed document's keys go the same way, so
+   Undo of `mesoviewspec.close` finds them.
 4. **`MesoPlacements.apply` never throws on a missing key**: it gives an empty list and a `render` issue
-   (`placements.missing`), so a restore never fails; the owner's commit (5) draws it again.
-5. **After a restore** the custom state's `set` gives the owner the checkpoint's document: it compiles it with the
-   session's cache (every model a hit: no resolver runs), finds its lists in the tree by key, and commits only if they
-   differ (the adapter's repair, AN1 in the parent lane's gate).
-6. **Redo** is the same restore.
+   (`placements.missing`), so a restore (and a session opened on a fresh page, §7.1) never fails.
+5. **During a restore the owner writes nothing through the API.** The custom state's `set` gives it the checkpoint's
+   document. It compiles it with the session's cache (from a checkpoint Undo can reach, every model a hit; from a
+   session, cold), sets the adapter's `prev` to that IR and rebuilds its maps (`placed`, `expansions`, `bounds`) from
+   the restored tree, finding each list by its `MesoPlacements` key. A list whose key the store lacked is filled and its
+   cell updated through `plugin.state.data` directly, while `history.applying` is set (the outside-change watcher
+   ignores the restore's own writes). No `particles.*` call, no step.
+6. **Redo** is the same restore. The adapter's own repair of lists stripped by an undo (AN1 in the parent lane's gate)
+   stays what it is: a check at the next edit, inside that edit's step.
 
-Tests that pin it (lane `mvs-open`, then `mvs-drive`): Undo after a re-pack that removed a set does not throw and draws
-the old set; a clip, a motion and a graphics mode on a document list undo; the canvas props of `mesoscale.graphics` do
-not (ui.md §4).
+Tests that pin it (lane `mvs-open`, then `mvs-drive`): Undo after a re-pack, then Redo, then Undo again: no error, no
+wait, the History's length and the number of lists asserted at each; a failed model edit rolls back the same way; a
+`.molj` with a document opened on a fresh page; Undo of Close; a clip, a motion and a graphics mode on a document list
+undo; the canvas props of `mesoscale.graphics` do not (ui.md §4).
 
 ### 7.4 The shown view
 
@@ -411,8 +435,8 @@ rule). A view removed by the undone document falls back as §4.4 says.
 ### 7.5 Large scenes
 
 A document's checkpoint holds no copies, so the history's budgets (sequence.md §7.4) are met by the lists' cells, as for
-any particle list. The session's cache (7.3, point 3) is the memory Undo costs: up to 10 resolutions a model. The status
-says so once when it passes the history's size budget (proposed: the same 50 MB).
+any particle list. The placements the owner keeps (§7.3, point 3) are the memory Undo costs: those of the last 10 steps.
+The status says so once when it passes the history's size budget (proposed: the same 50 MB).
 
 ## 8. The agent (decision 5)
 
