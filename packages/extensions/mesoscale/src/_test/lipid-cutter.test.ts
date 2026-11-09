@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ComputeContext } from '@molstar/graphics/gl/compute';
-import { cutterRegions, cutterTable } from '../lipids/cutter.js';
+import { cutterRegions, cutterTable, eachHit, emptyCut, hitAffine, triangleCut } from '../lipids/cutter.js';
 import { createLipidCutter } from '../lipids/cutter-kernel.js';
 import { parsePatchPdb } from '../lipids/patch.js';
 import { icosphere } from '../lipids/remesh.js';
@@ -64,6 +64,35 @@ describe('the lipid cutter', () => {
     }
     // 86 % read whole; 98 % as its square (a lattice's rows meet out of step at the square's period, a real patch's do not)
     expect(coveredFraction(inner, atoms, 6, 4000)).toBeGreaterThanOrEqual(0.97);
+  });
+
+  it('repeats no part of the patch by translation on triangles larger than its box (Ludo, 2026-11-08: "highly regular")', () => {
+    // the teddy ×100's triangles are 168 Å across at the median, the CHARMM-GUI box 154 Å: 30 % of the cut lipids were
+    // the patch again at its period inside their region. A copy: a hit of the same patch lipid turned the same way
+    const { text, box } = syntheticPatchPdb();
+    const table = cutterTable(parsePatchPdb(text, { box }).outer, 2);
+    // triangles of 400 Å, the box about 96 Å
+    const mesh = flatMesh(400, 3);
+    const regions = cutterRegions(mesh.positions, mesh.indices, 1);
+    const cut = emptyCut();
+    const affine = new Float32Array(16);
+    const seen = new Set<string>();
+    let hits = 0;
+    let copies = 0;
+    for (let t = 0; t < mesh.indices.length / 3; ++t) {
+      if (!triangleCut(mesh.positions, mesh.indices, t, regions, table.box, cut)) continue;
+      for (let m = 0; m < table.members.length; ++m) {
+        eachHit(table, cut, m, (l, x, y) => {
+          hitAffine(table, cut, l, x, y, affine, 0);
+          const key = `${l} ${affine[0].toFixed(4)} ${affine[1].toFixed(4)}`;
+          hits += 1;
+          if (seen.has(key)) copies += 1;
+          else seen.add(key);
+        });
+      }
+    }
+    expect(hits).toBeGreaterThan(5000);
+    expect(copies / hits).toBeLessThan(0.01);
   });
 
   it('says a mesh is too large for one count pass, not a WebGPU error (review S4)', async () => {
