@@ -676,12 +676,18 @@ where to stand:
 - **`focus`** is any MesoQL address. The runtime materializes it over the resolved copies (through superstructure
   instances) into a bounding sphere (`lociSphere`, `ir/loci.ts`) and places the camera at radius / sin(fov / 2) × 0.6,
   1.1 or 2.5 for `close`, `fit`, `context`. Because it is an address, the camera follows the scene when it is
-  re-resolved.
+  re-resolved. An address that picks a superstructure's contents (`(population p.Vamp2)`) is read where those copies sit
+  in the world, through every instance: the template is bounded once and its ball moved by each instance pose, so the
+  centre is exact and the radius an upper bound (within 5 % on the β-cell); `within` reads them the same way.
 - **`from outside`** looks in from beyond the scene's centre through the focus: the natural way into a cell.
 - **`cutaway`** is an address for the copies to hide so the focus shows. It is materialized into the IR; Prism clips by
   planes, not by copies, so the adapter reports it (renderer R8).
 - **A numeric camera** (`position`, `target`) is read in its view's `frame`: a camera written in a tomogram's voxels
-  lands where the tomogram is.
+  lands where the tomogram is. Directions turn with the frame too (`up`, a `from` vector); a numeric annotation is a
+  point in the view's frame.
+- **`up`** written in the view turns with its frame; unstated, it is the world's y. Either way the runtime makes it
+  perpendicular to the view direction, so a camera looking along y (a granule docked below the cell's centre) still has
+  a defined roll.
 - **Tours** step through views with durations and captions; `session.tour` names one to play.
 
 The _Semantic camera_ story switches views (no resolver reruns; about 10 ms) and plays the tour.
@@ -707,7 +713,10 @@ The _Semantic camera_ story switches views (no resolver reruns; about 10 ms) and
      only on a miss is `resolve` called.
    - Each failure is reported where it happens:
      - an unknown resolver, an arrangement or location it cannot place, an unavailable input;
-     - a model that avoids a failed model also fails (as SeqViewSpec's "unavailable with a cause").
+     - a model that avoids a failed model also fails (as SeqViewSpec's "unavailable with a cause"); when only the
+       refiner of an avoided model fails, the avoiding model avoids the unrefined result instead (§6.7).
+   - A model that avoids a refined model avoids what is drawn: it runs after the refiner and its key follows the
+     refiner's. A refiner keeps the `avoid` of every model up its chain, instances included.
    - Constraints are checked against `achieved`, and each shortfall becomes an issue with the resolver's reason.
 5. **Assemble** the IR, then **derive the view** from the active view.
 
@@ -846,7 +855,8 @@ same high-level constraints"; "Ivan's rigid body could feed into a simulation pr
   realizes the same populations and is checked against the same constraints.
 - **In the runtime:** refine stages run after what they refine (`topoOrder`); their key includes the upstream key, so
   re-resolving the upstream reruns them and nothing else; the refined model keeps its `resolve` node (key, input,
-  `refinedBy`) but its sets leave the IR.
+  `refinedBy`) but its sets leave the IR, only once the refiner has resolved: a refiner that fails leaves the upstream
+  drawn and counted, with the failure reported. A model has at most one refiner (validation refuses two).
 - **`meso.relax`** (`resolvers/relax.ts`): inserts the copies still missing, relaxes overlaps by pushing pairs apart
   (hash grid, O(N) an iteration), and keeps copies in their compartments with signed distance grids, then a last phase
   with the exact inside test (`sdfGrid` in `resolvers/geometry.ts`, which also answers the O(triangles) mesh gap).
