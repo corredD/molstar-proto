@@ -68,7 +68,7 @@ export interface DocumentTree {
 }
 
 /** A state a view reads (Prism's `ReadonlyState`, as `watchedState` gives it). */
-type ReadonlyState<T> = ReturnType<typeof watchedState<T>>;
+export type ReadonlyState<T> = ReturnType<typeof watchedState<T>>;
 
 const MaxIssuesListed = 5;
 

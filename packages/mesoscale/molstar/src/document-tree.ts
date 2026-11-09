@@ -66,7 +66,8 @@ export interface DocumentOutline {
   ancestors(id: string): string[] | undefined;
 }
 
-type Counts = CompileResult['counts'];
+/** The session's counts by population: placed, and what was asked. */
+export type Counts = CompileResult['counts'];
 
 interface Inputs {
   readonly doc: MesoViewSpecDoc;
