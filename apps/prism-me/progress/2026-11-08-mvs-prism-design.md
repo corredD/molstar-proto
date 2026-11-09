@@ -47,13 +47,75 @@
 
 ## Built
 
+- `packages/mesoscale/_spec/prism.md` (new, 714 lines): Prism over MesoViewSpec, modelled on
+  `packages/prism/viewer/_spec/sequence.md`. Decisions with alternatives (§1-§4, §8-§10), the operation → patch tables
+  (§5), every features.md mesoscale row and ui.md gesture (§6), snapshots and undo (§7), open questions by who decides
+  (§11), the eight app lanes' briefs and the base decision (§12).
+- design.md §11: decision 6 gets the proposed answer; decision 12 a pointer to the tree (one sentence appended).
+- Commits: 320d56288 (prism.md), 208fe2d1e (design.md), then the gate's fixes 87f3db271, 85730a744, ed77184fb,
+  18630070f.
+
 ## Decided
+
+Each tagged in prism.md; (L) needs Ludo's word, (D) David's, (C) proposed by Claude from the code.
+
+1. Drive, not beside: a document's lists are edited only through patches; other lists as today (C). The spike question
+   is answered from the code: the adapter's lists carry the extension's entities, not its groups (`toParticleList`).
+2. Patches: Seq\*'s shape, ops by id; looks get `id` and `emissive` (D). Undo stays Prism's checkpoints holding the
+   document (custom state `prism-viewer.mesoviewspec`); inverses for the record (C).
+3. Loading: `mesoviewspec.open` in a lazy extension whose stub owns the placements transformer; resources through
+   Mol\*'s asset manager; one document at a time (L).
+4. The tree: compartments, populations, instances, parts from the document; Group by Compartment, Model, Kind (L);
+   showing a view is no step, as `snapshot.apply` (D); focus by address, highlight as MesoLoci; Prism's selection not
+   used for copies (it takes no particle loci) (C). Move and turn not offered on a document (L). The eye and Show only
+   saved in the document (L). Annotations as Prism labels (D).
+5. Agent: a `mesoviewspec` skill with nine tools; the mesoscale tools reach documents through the owner port (C).
+6. Streaming: the streaming lane's provider and session requests; tile cells behavior-owned and out of checkpoints (C).
+7. No `MesoViewerContext`: Prism's state plus a DOM-free `MesoDocumentModel` (C).
+8. The base: a PR of `me/mesoviewspec` to `prism-me` first, recommended (L).
 
 ## Learned
 
+- The undo contract was the hard part: Undo and a step's rollback hold the history lock while the custom state is set,
+  so the owner must not call the API during a restore (a deadlock) and must rebuild the adapter from the tree.
+- A tour or tile write from a `history: false` run has no history context: each nested call becomes a step. Runs that
+  write the tree must be `undoable: false` person runs, or behavior-owned cells.
+- `deriveView` lets later looks win, so an edit must move its look last; looks need ids per edit kind.
+- `colorLevels` and zoom colors need lists drawn by targets; the adapter draws spacefill.
+
 ## Size
+
+714 lines of spec against ~400-600: the operation and gesture tables (§5, §6) and the undo contract (§7.3, rewritten
+after the gate) took the room. No production code.
 
 ## Review
 
-| Finding | Severity | Verdict | Commit / open |
-| ------- | -------- | ------- | ------------- |
+Gate on `me/mesoviewspec...HEAD` at 208fe2d1e: an Opus `lane-reviewer` (5 must-fix, 13 should-fix, 4 nits), then an Opus
+`lane-skeptic` (2 new findings; M5 lowered to should-fix, S10 to a nit, none refuted whole). A design: each fix is a
+spec change, no tests.
+
+| Finding                                                                     | Severity   | Verdict                  | Commit / open        |
+| --------------------------------------------------------------------------- | ---------- | ------------------------ | -------------------- |
+| M1 owner commits through the API during Undo: deadlock or lost Redo         | must-fix   | confirmed                | 87f3db271            |
+| N1 the same on a failed step's rollback                                     | must-fix   | confirmed (skeptic)      | 87f3db271            |
+| M2 a look `set` in place loses to later looks                               | must-fix   | confirmed                | 85730a744            |
+| M3 tour and tile writes from `history: false` runs become steps             | must-fix   | confirmed                | ed77184fb            |
+| M4 sessions need the stub to own the placements transformer                 | must-fix   | confirmed (id corrected) | 87f3db271            |
+| N2 a session on a fresh page needs the no-throw apply                       | should-fix | confirmed (skeptic)      | 87f3db271            |
+| M5 Move and turn is `stage.move`, `stage.pose`, `stage.scale`               | should-fix | confirmed, lowered       | 85730a744            |
+| S1 the tree's other calls (`state.visibility`, `state.remove`, …)           | should-fix | confirmed                | 85730a744            |
+| S2 the eye and Show only merge their `(all)` looks                          | should-fix | confirmed                | 85730a744            |
+| S3 the divergence mechanism was backwards                                   | should-fix | confirmed                | 85730a744            |
+| S4 colorLevels and zoom refused on spacefill lists                          | should-fix | confirmed                | 85730a744            |
+| S5 part looks are partial (not drawn); expanded labels repeat               | should-fix | confirmed                | ed77184fb            |
+| S6 `deriveView` cannot show a view other than `session.view`                | should-fix | confirmed                | ed77184fb            |
+| S7 a drag of eyes gives N proposals                                         | should-fix | confirmed                | 85730a744            |
+| S8 store retention misses expanded keys and Close                           | should-fix | confirmed                | 87f3db271            |
+| S9 "destructive if open" cannot be declared                                 | should-fix | confirmed                | 85730a744            |
+| S10 the custom state is stringified whole per checkpoint                    | nit        | partly refuted           | 87f3db271            |
+| S11 Cancel has no signal in the runtime                                     | should-fix | plausible                | ed77184fb            |
+| S12 `show_meso_view` asks every time                                        | should-fix | confirmed                | 85730a744            |
+| S13 lane order, files shared with the streaming lane and between lanes 3, 4 | should-fix | partly confirmed         | 18630070f            |
+| Nits: instance label, `area.highlight`, `IRLook` file, missing alternatives | nit        | confirmed where checked  | ed77184fb, 18630070f |
+
+Left open: none of the findings; the questions of prism.md §11 wait for Ludo and David.
