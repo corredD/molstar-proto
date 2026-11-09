@@ -11,6 +11,10 @@ import { cutterBases, cutterCounts, cutterRegions, cutterTable } from '../lipids
 import { parsePatchPdb } from '../lipids/patch.js';
 import { buildMembrane, registerLipidPatch } from '../lipids/membrane.js';
 import { farTriangles, icosphere, isotropicRemesh, type TriMesh } from '../lipids/remesh.js';
+import { createLipidSelection } from '../lipids/procedural.js';
+import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
+import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
+import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { syntheticPatchPdb } from './lipid-fixtures.js';
 
 // The lipid membrane's bulk paths over n and 4n tiles (`test:scaling`; apps/prism-me/AGENTS.md, no accidental
@@ -115,3 +119,50 @@ it('the triangles a remesh lost, over N triangles (a surface grid, not a scan pe
   );
   checkLinear('lost triangles, N triangles', s);
 }, 600_000);
+
+it('a view selected over a mesh of N triangles, at a fixed pool (lipid-procedural: the selection follows the mesh, not its lipids)', () => {
+  // the whole sphere in view, every triangle large enough on screen; a pool of 20 000 lipids whatever the mesh
+  const s = scaling(
+    {
+      setup: (n) => {
+        const mesh = icosphere(radiusFor(n), 100);
+        const T = mesh.indices.length / 3;
+        const regions = cutterRegions(mesh.positions, mesh.indices, 1);
+        const counts = new Uint32Array(2 * T).fill(3);
+        const selection = createLipidSelection(
+          mesh.positions,
+          mesh.indices,
+          regions.regionOf,
+          regions.count,
+          counts,
+          Uint32Array.of(10000, 10000),
+        );
+        const r = radiusFor(n);
+        const frustum = Frustum3D();
+        // a box of planes around the sphere: all in view
+        const planes: [number, number, number][] = [
+          [1, 0, 0],
+          [-1, 0, 0],
+          [0, 1, 0],
+          [0, -1, 0],
+          [0, 0, 1],
+          [0, 0, -1],
+        ];
+        planes.forEach(([x, y, z], i) => {
+          (frustum as Plane3D[])[i] = Plane3D.create(Vec3.create(x, y, z), 2 * r);
+        });
+        // the eye beyond the sphere on -z, two views to alternate (each select runs in full)
+        const near = Plane3D.create(Vec3.create(0, 0, 1), 3 * r);
+        const far = Plane3D.create(Vec3.create(0, 0, 1), 3.5 * r);
+        return { selection, frustum, views: [near, far], k: 0 };
+      },
+      run: (c) => {
+        c.k += 1;
+        c.selection.reset();
+        c.selection.select(c.views[c.k % 2], c.frustum, 1e-6, 0, { lipidSize: 8, enterPx: 0.5, keep: 0.8 });
+      },
+    },
+    20000,
+  );
+  checkLinear('lipid selection, N triangles', s);
+});
