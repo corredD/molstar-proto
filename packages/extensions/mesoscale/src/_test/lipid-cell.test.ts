@@ -75,6 +75,20 @@ describe('a cell’s membranes as one (round 6)', () => {
     expect(enclosures(tree, mesh.positions, mesh.indices).map((e) => Array.from(e))).toEqual([[], [0], [0]]);
   });
 
+  it('calls a part of many components enclosed only when each of them is inside (review S2: a small one outside)', () => {
+    // 16 small spheres inside the cell, then a 17th outside it: the last triangles of the part
+    const inside = Array.from({ length: 16 }, (_, i) => shifted(icosphere(80, 40), -1200 + i * 150));
+    const outside = shifted(icosphere(80, 40), 5000);
+    const many: TriMesh[] = [...inside, outside];
+    const { mesh: comps } = concatMeshes(
+      many,
+      many.map(() => ''),
+    );
+    const { mesh, parts } = concatMeshes([icosphere(2000, 200), comps], ['cell', 'vesicles']);
+    const tree = triangleTree(mesh.positions, mesh.indices, parts);
+    expect(enclosures(tree, mesh.positions, mesh.indices).map((e) => Array.from(e))).toEqual([[], []]);
+  });
+
   it('hides an enclosed part while the eye is outside its encloser, shows it inside and under a clip', () => {
     const c = cell([icosphere(2000, 200), icosphere(1600, 200)], 1e7);
     // outside, close over the outer one: only it
