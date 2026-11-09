@@ -25,6 +25,7 @@ import { isMissingList, MesoPlacements, placementStore } from '../particle-list.
 const viewers: PrismViewer[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   for (const v of viewers.splice(0)) await v.dispose();
 });
 
