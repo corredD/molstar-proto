@@ -64,7 +64,7 @@ const OnStrand = ['binds', 'bends'] as const;
 
 export const MesoFiberResolver: Resolver<FiberInput> = {
   id: 'meso.fiber',
-  version: '0.2.1',
+  version: '0.2.2',
   description:
     'Filaments along a given path or grown as a persistent random walk; binders and benders placed on them by their sites',
   arrangements: ['fiber', 'random'],
@@ -260,8 +260,9 @@ export const MesoFiberResolver: Resolver<FiberInput> = {
         const perFiber = Math.max(1, Math.round(a.growth.length / a.rise));
         const fibers = a.growth.count ?? Math.ceil(it.requested / perFiber);
         const rand = createRandom(subSeed(input.seed, it.population));
-        // tangent correlation exp(-s/P): per step a bend of variance 2·rise/P (worm-like chain)
-        const sigma = Math.sqrt((2 * a.rise) / a.growth.persistence);
+        // tangent correlation exp(-s/P): per step a bend of variance 2·rise/P across the tangent (worm-like chain); a
+        // kick along a unit-sphere direction puts 2/3 of its variance across, so σ² = 3·rise/P (2·rise/P gave 1.5·P)
+        const sigma = Math.sqrt((3 * a.rise) / a.growth.persistence);
         const dir = [0, 0, 1];
         const margin = it.radius + c.thickness / 2;
         let afterBinder = false;

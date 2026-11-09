@@ -87,6 +87,42 @@ const strand = (id: string, requested: number, path: readonly (readonly number[]
 });
 
 describe('meso.fiber', () => {
+  it('a grown filament has the persistence length asked: tangent correlation exp(-s/P)', () => {
+    const P = 500;
+    const grown = {
+      ...strand('f', 20_000, []),
+      radius: 1,
+      arrangement: { kind: 'fiber', rise: 10, twist: 0, growth: { persistence: P, length: 2000, count: 100 } },
+    };
+    const out = run(
+      MesoFiberResolver,
+      job([grown], { c: { shape: { kind: 'sphere', center: [0, 0, 0], radius: 1e7 } } }),
+    );
+    const s = out.sets[0];
+    const { offsets, indices } = s.fibers!;
+    const tan = (k: number) => {
+      const i = 3 * indices[k],
+        j = 3 * indices[k + 1];
+      const d = [0, 1, 2].map((c) => s.positions[j + c] - s.positions[i + c]);
+      const l = Math.hypot(d[0], d[1], d[2]);
+      return d.map((x) => x / l);
+    };
+    for (const lag of [1, 5, 10]) {
+      let sum = 0,
+        n = 0;
+      for (let f = 0; f < s.fibers!.count; f++)
+        for (let k = offsets[f]; k + lag + 1 < offsets[f + 1]; k++) {
+          const a = tan(k),
+            b = tan(k + lag);
+          sum += a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+          n++;
+        }
+      const effective = (-lag * 10) / Math.log(sum / n);
+      expect(effective / P).toBeGreaterThan(0.85);
+      expect(effective / P).toBeLessThan(1.15);
+    }
+  });
+
   it('a traced path keeps copies one rise apart whatever its point spacing (the carry crosses short segments)', () => {
     for (const step of [2, 7, 25]) {
       const len = 200 - (200 % step);
