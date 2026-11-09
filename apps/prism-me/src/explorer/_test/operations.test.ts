@@ -437,6 +437,33 @@ describe('explorer', () => {
     }
   });
 
+  it('runs the visibility dump given to Ludo (the mesh drawn after his wrap, not reproduced headless)', async () => {
+    const v = await viewer();
+    const area = v.api.explorer!;
+    const mesh = area.objectsState().value.find((o) => o.kind === 'mesh')!;
+    expectOk(await v.api.run('cryoet.mesh', { mesh: mesh.ref, scale: 100 }));
+    expectOk(await v.api.run('mesoscale.wrapMembrane', { mesh: mesh.ref, edge: 100 }));
+    // the snippet as given, verbatim: per drawn cell its flag, its representation, its objects, the tree's and Look's eyes
+    const snippet = `const { viewer, api } = window.molstar;
+console.table([...viewer.plugin.state.data.cells.values()].filter((c) => c.obj?.data?.repr).map((c) => ({ ref: c.transform.ref, label: c.obj.label, hidden: !!c.state.isHidden, repr: c.obj.data.repr.state.visible, objects: c.obj.data.repr.renderObjects.map((o) => o.state.visible).join(','), tree: api.explorer.objectsState().value.find((o) => o.ref === c.transform.ref)?.visible, look: api.cryoet.meshesState().value.find((m) => m.ref === c.transform.ref)?.visible })));`;
+    let rows: Record<string, unknown>[] = [];
+    vi.stubGlobal('window', { molstar: { viewer: v, api: v.api } });
+    vi.stubGlobal('console', { ...console, table: (r: Record<string, unknown>[]) => (rows = r) });
+    try {
+      // biome-ignore lint/nursery/noImpliedEval: the snippet given to Ludo, run as he pastes it in the console
+      new Function(snippet)();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(rows.find((r) => r.ref === mesh.ref)).toMatchObject({
+      hidden: true,
+      repr: false,
+      objects: 'false,false',
+      tree: false,
+      look: false,
+    });
+  });
+
   it('runs the console snippet given to Ludo for the cutter (his third try, 2026-11-08: prose was not JavaScript)', async () => {
     const v = await viewer();
     // the snippet as given, verbatim
