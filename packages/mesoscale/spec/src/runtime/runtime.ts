@@ -12,19 +12,22 @@ import type {
   LengthUnit,
   MesoViewSpecDoc,
   Model,
+  TileManifest,
   Transform,
   View,
 } from '../format/doc.js';
 import { hasErrors, issue, type Issue } from '../format/issues.js';
 import { abundanceToCount, LengthToAngstrom, toAngstrom } from '../format/units.js';
-import { superstructureDoc, validate } from '../format/validate.js';
+import { superstructureDoc, validate, validateManifest } from '../format/validate.js';
 import { contentHash } from '../ir/hash.js';
 import { type IR, type IRLook, type IRNode, type IRShape, type IRView, placementSets } from '../ir/ir.js';
+import type { PlacementType } from '../ir/placements.js';
 import { evaluateMesoQL, intersectRuns, lociSphere, type MesoLoci, runsSize, typeRuns } from '../ir/loci.js';
 import { parseMesoQL } from '../format/mesoql.js';
 import { meshArea } from '../resolvers/geometry.js';
 import { rotationOf } from '../resolvers/precomputed.js';
 import { DefaultReaders, readerFor } from './readers.js';
+import { level0IR, type TileProvider } from './streaming.js';
 import type {
   LoadedResource,
   MeshData,
@@ -48,6 +51,8 @@ export interface RuntimeOptions {
   readonly readers?: readonly ResourceReader[];
   /** Raw content of a resource (text, JSON, bytes); undefined when unavailable. Never the network in tests. */
   readonly load?: (resourceId: Id) => unknown | Promise<unknown>;
+  /** The provider of a `meso-tiles` resource, by resource id; undefined: `stream.manifest` (unavailable). */
+  readonly tiles?: (resource: Id) => TileProvider | undefined;
   /** Kept across compiles by the caller: the session's results by key. */
   readonly cache?: Map<string, ResolveOutput>;
 }
@@ -347,7 +352,8 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
   const cache = o.cache ?? new Map<string, ResolveOutput>();
   // a refined model's result is replaced by its refiner's: its constraints are checked there (design.md §6.7)
   const refinedBy = new Map(models.filter((m) => m.refines).map((m) => [m.refines!, m.id]));
-  const order = topoOrder(models, refinedBy);
+  // a stream model is no resolver's: its level 0 is built below, its tiles are the session's
+  const order = topoOrder(models, refinedBy).filter((m) => !m.stream);
   const outputs = new Map<
     Id,
     { key: string; out: ResolveOutput; cached: boolean; resolver: Resolver; input: unknown }
@@ -542,8 +548,64 @@ export async function compile(doc: MesoViewSpecDoc, o: RuntimeOptions, depth = 0
     statsModels.push(...t.result.stats.models);
   }
 
+  // ---- streams (design.md §6.8): level 0 from the manifest, no placement set ----
+  const streams: IRNode[] = [];
+  for (const m of models.filter((x) => x.stream)) {
+    const failed = (why: string, severity: 'error' | 'warning' = 'error') =>
+      issues.push(issue('stream.manifest', severity, 'load', `${m.id}: ${why}`, { ids: [m.id] }));
+    const zero = (id: Id) => (counts[id] = { requested: pops.get(id)?.requested, achieved: 0 });
+    const provider = o.tiles?.(m.stream!.resource);
+    let manifest: TileManifest | undefined;
+    try {
+      manifest = await provider?.manifest();
+    } catch (e) {
+      failed(`manifest ${m.stream!.resource} could not be read (${(e as Error).message})`);
+    }
+    if (!manifest) {
+      if (!provider) failed(`no provider for ${m.stream!.resource}: the manifest is unavailable`);
+      m.populations.forEach(zero);
+      continue;
+    }
+    const bad = validateManifest(manifest, m, doc);
+    issues.push(...bad);
+    if (hasErrors(bad)) {
+      m.populations.forEach(zero);
+      continue;
+    }
+    const types: PlacementType[] = manifest.populations.map((id, index) => {
+      const p = pops.get(id)!;
+      return {
+        index,
+        population: id,
+        entity: p.entity.id,
+        label: p.entity.label,
+        compartment: p.compartment,
+        radius: p.radius ?? 10,
+      };
+    });
+    for (const t of types)
+      counts[t.population] = {
+        requested: pops.get(t.population)?.requested,
+        achieved: manifest.tiles.reduce((a, x) => a + (x.counts[t.population] ?? 0), 0),
+      };
+    streams.push({
+      ref: `${m.id}/stream`,
+      kind: 'stream',
+      origin: [m.id, ...m.populations],
+      params: {
+        model: m.id,
+        resource: m.stream!.resource,
+        key: `${m.id}@${contentHash({ manifest, types })}`,
+        levels: manifest.levels,
+        bounds: manifest.bounds,
+        types,
+        tiles: manifest.tiles,
+      },
+    });
+  }
+
   // ---- assemble ----
-  const root = assemble(doc, comps, frameToWorld, outputs, models, templates, ents);
+  const root = assemble(doc, comps, frameToWorld, outputs, models, templates, ents, streams);
   const view = deriveView(doc, root);
   const t4 = now();
   return {
@@ -871,6 +933,7 @@ function assemble(
   models: readonly Model[],
   templates: ReadonlyMap<Id, { result: CompileResult; radius: number }>,
   ents: ReadonlyMap<Id, Entity>,
+  streams: readonly IRNode[],
 ): IRNode {
   const detailOf = new Map(doc.populations.map((p) => [p.id, p.detail ?? 'parts']));
   const templateSets = new Map<Id, string[]>();
@@ -992,7 +1055,7 @@ function assemble(
         kind: 'frame',
         params: { frame: world, matrix: Identity },
         origin: [world],
-        children: [...tops, ...resolves, ...ssNodes, ...frameNodes],
+        children: [...tops, ...resolves, ...streams, ...ssNodes, ...frameNodes],
       },
     ],
   };
@@ -1040,21 +1103,7 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
   const view: View | undefined = (doc.views ?? []).find((v) => v.id === doc.session?.view) ?? doc.views?.[0];
   const ir = { root, view: { id: '', looks: [] } } as IR;
   const issues: Issue[] = [];
-  const parsed = new Map<string, MesoLoci>();
-  const materialize = (q: string): MesoLoci => {
-    let l = parsed.get(q);
-    if (l) return l;
-    const p = parseMesoQL(q);
-    issues.push(...p.issues);
-    if (!p.expr) l = new Map();
-    else {
-      const e = evaluateMesoQL(p.expr, { doc, ir });
-      issues.push(...e.issues);
-      l = e.loci;
-    }
-    parsed.set(q, l);
-    return l;
-  };
+  const materialize = materializer(doc, ir, issues);
   const sets = placementSets(ir);
   // whole-type looks: one per (set, type), the defaults overridden by every look that covers the whole type, in order;
   // a look that covers part of a type (a few copies) becomes a partial look with its runs, applied after
@@ -1104,7 +1153,10 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
   const selection = view?.selection
     ? [...materialize(view.selection)].map(([set, runs]) => ({ set, runs }))
     : undefined;
-  const camera = deriveCamera(doc, view, ir, materialize);
+  // the camera reads level 0 of a stream, never the loaded tiles (design.md §6.8.5), through its own loci cache: the
+  // addresses are the same strings, the loci are not (they name the proxy set)
+  const l0 = level0IR(ir);
+  const camera = deriveCamera(doc, view, l0, l0 === ir ? materialize : materializer(doc, l0, issues, false));
   const place = viewFrame(doc, view).place;
   return {
     id: view?.id ?? 'default',
@@ -1118,6 +1170,25 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
     })),
     ...(view?.cutaway ? { cutaway: [...materialize(view.cutaway)].map(([set, runs]) => ({ set, runs })) } : {}),
     ...(issues.length ? { issues } : {}),
+  };
+}
+
+/** MesoQL addresses materialized over `ir`, cached by address string; `issues` collects what they report. */
+function materializer(doc: MesoViewSpecDoc, ir: IR, issues: Issue[], parseIssues = true) {
+  const parsed = new Map<string, MesoLoci>();
+  return (q: string): MesoLoci => {
+    let l = parsed.get(q);
+    if (l) return l;
+    const p = parseMesoQL(q);
+    if (parseIssues) issues.push(...p.issues);
+    if (!p.expr) l = new Map();
+    else {
+      const e = evaluateMesoQL(p.expr, { doc, ir });
+      issues.push(...e.issues);
+      l = e.loci;
+    }
+    parsed.set(q, l);
+    return l;
   };
 }
 
