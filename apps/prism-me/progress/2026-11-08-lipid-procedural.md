@@ -927,45 +927,45 @@ nV, nT) u32, then per mesh nV×3 f32 and nT×3 u32, as the viewer's `renderer.ts
 `geometry.json.gz`-in-name (gzip; `mem_names`), MODEL.md. Decoded by the coordinator to `yeast-data/obj/NN-<name>.obj`,
 units nm (the cell ~4.1 µm across: Scale 10 to Å):
 
-| mesh | triangles | area (nm²) |
-|---|---|---|
-| PM | 124,060 | 5.43e7 |
-| ER (cortical + perinuclear sheets) | 247,664 | 5.42e7 |
-| NE | 105,140 | 2.25e7 |
-| VAC | 63,930 | 2.92e7 |
-| MITO_OM | 54,940 | 1.17e7 |
-| MITO_IM | 318,466 | 2.78e7 |
-| GOLGI | 146,898 | 9.34e6 |
-| PEROX | 6,890 | 1.47e6 |
-| LD (a monolayer in life) | 14,146 | 3.02e6 |
-| total | 1.08 M | 2.1e8 nm² ≈ 6–7e8 lipids |
+| mesh                               | triangles | area (nm²)               |
+| ---------------------------------- | --------- | ------------------------ |
+| PM                                 | 124,060   | 5.43e7                   |
+| ER (cortical + perinuclear sheets) | 247,664   | 5.42e7                   |
+| NE                                 | 105,140   | 2.25e7                   |
+| VAC                                | 63,930    | 2.92e7                   |
+| MITO_OM                            | 54,940    | 1.17e7                   |
+| MITO_IM                            | 318,466   | 2.78e7                   |
+| GOLGI                              | 146,898   | 9.34e6                   |
+| PEROX                              | 6,890     | 1.47e6                   |
+| LD (a monolayer in life)           | 14,146    | 3.02e6                   |
+| total                              | 1.08 M    | 2.1e8 nm² ≈ 6–7e8 lipids |
 
-**What is new against round 5.** Round 5 ran 2,880 triangles; here 1.08 M triangles in 9 membranes, a lipid count
-half of ×600's. So:
+**What is new against round 5.** Round 5 ran 2,880 triangles; here 1.08 M triangles in 9 membranes, a lipid count half
+of ×600's. So:
+
 1. **Selection over many triangles.** Per view the selection must not scan every triangle (at 318 k, one mesh): a
    hierarchy (BVH or the culler's cells) over triangles, frustum and px band tested per node; measure first.
 2. **One budget across membranes.** Nine membranes share the device's pool budget, nearest first across them, not 2 M
    each (18 M would not fit).
-3. **Load the cell.** A way to open the nine meshes at once in prism-me at the right scale (nm → Å), named by
-   membrane, then wrap all (one operation, one history step: "bulk operations are one change") with a progress pill.
-   Prefer reading the viewer's .bin.gz directly (a cryoet/mesoscale reader through + Open) over OBJ, if small; else the
-   OBJs. Never commit the data; a test uses a synthetic mesh of the same format.
-4. **Per-membrane composition (stated, not built unless cheap).** One CHARMM-GUI patch for all today; yeast PM,
-   mito IM (cardiolipin), LD (monolayer) differ. Record what a per-membrane patch would need.
+3. **Load the cell.** A way to open the nine meshes at once in prism-me at the right scale (nm → Å), named by membrane,
+   then wrap all (one operation, one history step: "bulk operations are one change") with a progress pill. Prefer
+   reading the viewer's .bin.gz directly (a cryoet/mesoscale reader through + Open) over OBJ, if small; else the OBJs.
+   Never commit the data; a test uses a synthetic mesh of the same format.
+4. **Per-membrane composition (stated, not built unless cheap).** One CHARMM-GUI patch for all today; yeast PM, mito IM
+   (cardiolipin), LD (monolayer) differ. Record what a per-membrane patch would need.
 5. **Alignment with the slab.** The 600 nm slab Ludo loaded on 11-07 came from the same model: check whether its frame
    matches these meshes (Å = nm × 10, same origin) on a few particles near the PM if the slab is found; else state it.
 
-**Tests.** The format reader on a synthetic two-mesh buffer; the selection's cost per view at 300 k triangles (a
-scaling guard n and 4n triangles: per-view time sublinear); one budget across membranes (sum of pools ≤ budget,
-nearest first); wrap all = one history step; camera path on a synthetic many-mesh cell (frame ms, 0 at rest). Images
-r6-*.png: the whole cell, a slice through it (clip), close on the PM, NE with the ER, mitochondria.
+**Tests.** The format reader on a synthetic two-mesh buffer; the selection's cost per view at 300 k triangles (a scaling
+guard n and 4n triangles: per-view time sublinear); one budget across membranes (sum of pools ≤ budget, nearest first);
+wrap all = one history step; camera path on a synthetic many-mesh cell (frame ms, 0 at rest). Images r6-*.png: the whole
+cell, a slice through it (clip), close on the PM, NE with the ER, mitochondria.
 
 **Ludo checks.** In Chrome on 1354: + Open the yeast cell's membranes (or the nine OBJs), Wrap all with lipids: a few
-seconds; fly whole → close: interactive, no holes, by zoom colours; clip through the cell to see the inner
-membranes.
+seconds; fly whole → close: interactive, no holes, by zoom colours; clip through the cell to see the inner membranes.
 
-**Machine care.** The per-view wrap of the nine meshes may run (it builds no lipids); no full build or export above
-~2 M lipids; abort a run past 8 GB RSS; one heavy job at a time, wait while load > 12.
+**Machine care.** The per-view wrap of the nine meshes may run (it builds no lipids); no full build or export above ~2 M
+lipids; abort a run past 8 GB RSS; one heavy job at a time, wait while load > 12.
 
 **Size and model.** ~600 production lines (selection hierarchy 250, shared budget 120, reader and wrap-all 180, docs
 50); Opus. Gate on the round's diff.
@@ -973,17 +973,17 @@ membranes.
 ## Round 6, measured before code (2026-11-09)
 
 Probe (not committed; `lipid-yeast-probe.webgpu.test.ts`, kept outside the tree): the nine OBJs of `yeast-data/obj` at
-×10 (nm → Å), each wrapped by the cutter as its own `LipidMembrane` (what Wrap with lipids makes, nine times), CHARMM-GUI
-patch, budget 2 M, headless Dawn, M1, 900×600, perspective; whole (reset), middle (0.3 R above the PM's vertex nearest the
-camera), close (400 Å above it); frame ms the four frames at each view. Load 4–5.
+×10 (nm → Å), each wrapped by the cutter as its own `LipidMembrane` (what Wrap with lipids makes, nine times),
+CHARMM-GUI patch, budget 2 M, headless Dawn, M1, 900×600, perspective; whole (reset), middle (0.3 R above the PM's
+vertex nearest the camera), close (400 Å above it); frame ms the four frames at each view. Load 4–5.
 
-| what                                     | measured                                                                                                                              |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| wrap, nine membranes one by one          | 15.5 s (repr 1.1–2.6 s each: 6,890-triangle PEROX 1.1 s, of it 0.76 s its ~100 members' sphere objects); RSS 3.0 GB; first frame 5.1 s |
-| selection a view, all 18 leaflets        | 87–600 ms (whole, nothing taken: 87–360 ms; ER alone 26–136 ms): every triangle tested every view                                    |
-| whole / middle frame, nothing live       | 50–65 ms; 10 ms with `far: spheres`: the 36 patch surfaces (4 a membrane, 1.08 M triangles each set) cost ~45 ms                     |
-| close frame (PM 400 Å)                   | 500 ms (650 ms with the app's look, Hi-Z on or off); PM alone 49 ms. Of 502 k live lipids 447 k are VAC's, behind the opaque PM      |
-| pools                                    | nine pools of 2.2 M slots (2 M budget each): ~20 M slots, ~4 GB of culler buffers at four levels                                      |
+| what                               | measured                                                                                                                               |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| wrap, nine membranes one by one    | 15.5 s (repr 1.1–2.6 s each: 6,890-triangle PEROX 1.1 s, of it 0.76 s its ~100 members' sphere objects); RSS 3.0 GB; first frame 5.1 s |
+| selection a view, all 18 leaflets  | 87–600 ms (whole, nothing taken: 87–360 ms; ER alone 26–136 ms): every triangle tested every view                                      |
+| whole / middle frame, nothing live | 50–65 ms; 10 ms with `far: spheres`: the 36 patch surfaces (4 a membrane, 1.08 M triangles each set) cost ~45 ms                       |
+| close frame (PM 400 Å)             | 500 ms (650 ms with the app's look, Hi-Z on or off); PM alone 49 ms. Of 502 k live lipids 447 k are VAC's, behind the opaque PM        |
+| pools                              | nine pools of 2.2 M slots (2 M budget each): ~20 M slots, ~4 GB of culler buffers at four levels                                       |
 
 All nine meshes are closed (no border edge; MITO_IM 20 non-manifold edges); VAC, MITO, GOLGI, PEROX and LD are many
 components each. The 11-07 slab's file was not found (not in `~/Downloads` or the lanes): its alignment is not checked.
@@ -991,8 +991,8 @@ components each. The 11-07 slab's file was not found (not in `~/Downloads` or th
 ## Round 6, design (checkpoint, 2026-11-09, before code)
 
 1. **One membrane over many meshes** (answers the per-representation floor, the nine pools, and "one budget"). Wrap all
-   makes one `LipidMembrane` whose surface is the meshes concatenated (`parts`: each mesh's triangle range and name): one
-   cutter a leaflet, one selection a leaflet, one pool a member, so the budget is one (`poolCapacities` over the two
+   makes one `LipidMembrane` whose surface is the meshes concatenated (`parts`: each mesh's triangle range and name):
+   one cutter a leaflet, one selection a leaflet, one pool a member, so the budget is one (`poolCapacities` over the two
    leaflets, as now) and the fill is nearest first across every membrane (one candidate list). The member objects are
    made once, not nine times. Costs: one far colour and one Look for the whole cell; a membrane's lipids are not hidden
    alone (the meshes stay as nodes; Ludo clips through the cell). Rejected: nine cells and a coordinator (nine floors,
@@ -1009,10 +1009,57 @@ components each. The 11-07 slab's file was not found (not in `~/Downloads` or th
 4. **The far surfaces a part** (answers ~45 ms whole): each part's surfaces their own objects, so an enclosed part's are
    hidden with its lipids. Outside the cell only the PM's draw. Under a clip all show (~45 ms: stated, open).
 5. **The reader** (`mesoscale`): + Open of the yeast viewer's `organelle_meshes.bin` (and `.bin.gz`, inflated by Mol*'s
-   open): u32 count, count × (membrane id, nV, nT) u32, then per mesh nV×3 f32 and nT×3 u32; each mesh an OBJ-like
-   shape (the existing `ShapeFromObj`) named by membrane (`mem_names` of the viewer's `geometry.json`), ×10 (nm → Å).
-   Wrap all with lipids: the right-click of the file's row (or any meshes), one operation, one commit.
+   open): u32 count, count × (membrane id, nV, nT) u32, then per mesh nV×3 f32 and nT×3 u32; each mesh an OBJ-like shape
+   (the existing `ShapeFromObj`) named by membrane (`mem_names` of the viewer's `geometry.json`), ×10 (nm → Å). Wrap all
+   with lipids: the right-click of the file's row (or any meshes), one operation, one commit.
 6. **Per-membrane composition** (stated, not built): a part's own patch would need a cutter (table) a part and leaflet,
    its pools its own members: the floor again per composition, not per mesh.
 
 Size: selection tree and enclosure ~250, parts through the membrane ~120, reader and wrap all ~180, docs ~50: ~600.
+
+## Round 6, built (2026-11-09)
+
+- `ecb170f4c` the close view's selection scaling guard at n and 4n triangles (failed: ×4.3); `79889da78` a sphere tree
+  over the triangles a part (`triangle-tree.ts`: median split, leaves of 8, cached by the mesh's indices), a view
+  descending it, a node out of view or past the reach pruned whole (×1 after); `e09acb72e` its frustum test inline.
+- Enclosure: at the wrap a part is enclosed by another when 16 of its vertices are inside it (a ray's crossings, odd);
+  per view a part whose encloser does not hold the viewer takes no cell and its surfaces are hidden; off under a clip.
+  `24163e7c5` (Dawn, failing: the headless camera's frustum had no apex, the eye read outside) and `a133f1960` the
+  viewer is the near plane's center (perspective and orthographic).
+- `fc31b8f40`, `9461992ca` + Open of the yeast viewer's `organelle_meshes.bin(.gz)`: a mesh a membrane, named, ×10.
+- `d6476d770` Wrap all: `mesoscale.wrapMembrane { meshes }`, one `LipidMembrane` over the meshes concatenated
+  (`concatMeshes`, a part each), one step; far surfaces a part (`partOfSurface`), shown with their part (`showParts`).
+  `b668439cb` prism-me: rows named by their mesh, right-click › Wrap all N meshes with lipids (one membrane).
+- Tests: `organelle-meshes.test.ts` (reader, errors, open, wrap all one step with the enclosures), `lipid-cell.test.ts`
+  (enclosures, hidden/inside/clipped, one budget nearest first across parts), the Dawn nested cell (medium), prism-me's
+  open-and-menu test. `044282d1e` the selection's perf baseline 79.6 → 95.6 B a view (one boxed number a select).
+
+**Decided.** One membrane over the nine meshes (not nine and a coordinator): one pool, one budget, one member set; the
+cost is one Look for the cell (Ludo's call whether a per-part colour or hide is wanted). Enclosure needs all 16 samples
+inside (a stray vertex of the cortical ER near the NE does not make the ER enclosed by it). Wrap all takes every mesh
+not wrapped yet in the scene.
+
+## Round 6, numbers (the app's path: + Open of the .bin.gz, Wrap all, the app's look, perspective; Dawn, M1, 900×600)
+
+| what                   | before (nine membranes)                | after (one over nine)                                                 |
+| ---------------------- | -------------------------------------- | --------------------------------------------------------------------- |
+| open                   | (OBJs by hand)                         | 0.5 s                                                                 |
+| wrap                   | 15.5 s, RSS 3.0 GB                     | 9.2–9.4 s (load 9–15), RSS 1.1–2.3 GB                                 |
+| pools                  | 9 × 2.2 M slots                        | 2.2 M slots                                                           |
+| selection a view       | 87–600 ms                              | 0.1–1.6 ms far, 5 ms close on the PM, 13 ms on a mitochondrion inside |
+| frame whole / middle   | 55–65 / 50–72 ms                       | 33–37 / 42–49 ms                                                      |
+| frame close (PM 400 Å) | 500–650 ms (VAC's 447 k hidden lipids) | 106–114 ms, 73 k lipids, the PM's alone                               |
+| frame inside, a mito   |                                        | 198–224 ms, 145 k lipids                                              |
+| clipped slice, whole   |                                        | 75–84 ms                                                              |
+
+Images `lipid-tiles-shots/r6/`: `r6-whole.png` (the PM's texture), `r6-slice.png` (Prism's clip through the cell: NE
+with its pores, VAC, mitochondria, ER), `r6-pm-close.png` (lipids by species), `r6-ne-er.png` (through the clip, closer:
+the NE's pores, the ER sheets), `r6-mito.png` (inside the cell: a mitochondrion's lipids, the others' textures),
+`r6-middle.png`. Looked at: no hole close, the inner membranes only through the clip or from inside.
+
+**Learned.** The cost was not the triangles but what the selection could not see: every triangle tested every view, and
+every hidden membrane drawn. Close frames are what the lipids in view cost (round 5's M5): 73 k at atom detail ~110 ms.
+The headless camera's frustum is orthographic-like (parallel side planes): an eye from the apex fails there.
+
+**Size.** About 700 production lines against ~600 (tree and enclosure 290, selection 80, membrane parts 120, reader 170,
+operation and menu 60); the reader's response handling and the near-plane viewer took the room.
