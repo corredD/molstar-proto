@@ -625,7 +625,10 @@ export class MesoscaleApi extends ApiArea {
         transparency?: number;
         emissive?: number;
       };
-      const membrane = membraneCell(ctx, particles);
+      const membrane = membraneCell(ctx, particles.trim());
+      // a list's groups: a membrane has none (review N3: ignored, all its species were styled)
+      if (membrane && values.group)
+        return ApiResult.fail('invalid', 'A lipid membrane has no groups: name its species.');
       const parsed = color ? cssColor(color) : undefined;
       if (color && parsed === undefined) {
         return ApiResult.fail(
@@ -719,7 +722,8 @@ export class MesoscaleApi extends ApiArea {
           'Give a color name (tomato), #rrggbb, rgb() or hsl().',
         );
       }
-      const membrane = membraneCell(ctx, particles);
+      const membrane = membraneCell(ctx, particles.trim());
+      if (membrane && group) return ApiResult.fail('invalid', 'A lipid membrane has no groups: name its species.');
       if (membrane) {
         // a membrane's species: one colour, generated around a hue (one group), or their default (the theme's)
         const names = membraneSpecies((membrane.obj!.data as { sourceData: MembraneData }).sourceData);
@@ -920,7 +924,7 @@ export class MesoscaleApi extends ApiArea {
       if (on === undefined && !Object.keys(edges).length) {
         return ApiResult.fail('invalid', 'Nothing to change.', 'Give on, or an edge (entity, chain, atom).');
       }
-      const membrane = membraneCell(ctx, particles);
+      const membrane = membraneCell(ctx, particles.trim());
       if (membrane) {
         // a membrane's: far its colour, then its species' (no chain or atom colours: a lipid is one group)
         const old = (membrane.transform.params as LipidMembraneProps).colorLevels;
