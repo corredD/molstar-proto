@@ -583,7 +583,7 @@ function wrapItems(
       { id: 'wrap-lipids', label: 'Wrap with lipids', icon: 'layers', run: wrap({ mesh: node.ref, method: 'cutter' }) },
       {
         id: 'wrap-lipids-tiles',
-        label: 'Wrap with lipids (tiles)',
+        label: 'Wrap with lipids (tiles, small objects)',
         icon: 'layers',
         run: wrap({ mesh: node.ref, method: 'tiles' }),
       },

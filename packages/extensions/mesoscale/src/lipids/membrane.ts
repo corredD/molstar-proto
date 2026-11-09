@@ -331,6 +331,15 @@ export function* buildMembraneSteps(
     const sphere = boundingSphereOf(mesh.positions, Sphere3D());
     return { method, leaflets: [], cut, kinds, edge, sphere };
   }
+  // tiles build every lipid at once: refused past `MaxTileLipids` (round 5: a billion at x600), the cutter named
+  const table = getCutterTable(patch, names[0]);
+  if (table) {
+    const area = surface.mesh ? meshArea(surface.mesh) : 4 * Math.PI * (surface.radius ?? 500) ** 2;
+    const lipids = (area * names.length * (table.memberStart[table.members.length] / (table.box[0] * table.box[1]))) | 0;
+    if (lipids > MaxTileLipids) {
+      return `Tiles build every lipid at once, and this surface takes about ${(lipids / 1e6).toFixed(0)} M (over ${MaxTileLipids / 1e6} M): wrap it with lipids (the cutter), which makes them where they are seen.`;
+    }
+  }
   // an explicit edge is the caller's: only the suited one refuses a mesh too small
   if (surface.mesh && !(edge > 0)) {
     const size = boundsDiagonal(surface.mesh.positions);
@@ -374,6 +383,29 @@ export function* buildMembraneSteps(
     if (lost && lostRegions) cut.push({ name, table: getCutterTable(patch, name)!, mesh: lost, regions: lostRegions });
   }
   return { method, leaflets: out, cut, kinds, edge, sphere };
+}
+
+/** The lipids tiles may build (all at once: memory and a wait), about the cutter's budget × 25 */
+export const MaxTileLipids = 50_000_000;
+
+/** A mesh's area, Å² */
+function meshArea(mesh: TriMesh) {
+  const p = mesh.positions;
+  const ix = mesh.indices;
+  let sum = 0;
+  for (let t = 0; t < ix.length; t += 3) {
+    const a = ix[t] * 3;
+    const b = ix[t + 1] * 3;
+    const c = ix[t + 2] * 3;
+    const ux = p[b] - p[a];
+    const uy = p[b + 1] - p[a + 1];
+    const uz = p[b + 2] - p[a + 2];
+    const vx = p[c] - p[a];
+    const vy = p[c + 1] - p[a + 1];
+    const vz = p[c + 2] - p[a + 2];
+    sum += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
+  }
+  return sum;
 }
 
 /**

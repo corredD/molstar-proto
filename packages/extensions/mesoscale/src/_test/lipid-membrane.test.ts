@@ -60,6 +60,18 @@ function membraneAtoms(data: Exclude<ReturnType<typeof buildMembrane>, string>) 
 }
 
 describe('lipid membrane', () => {
+  it('refuses tiles past MaxTileLipids, naming the cutter (round 5: a billion lipids at x600); the cutter takes it', () => {
+    const kinds = { edgeTypes: 1, vertexColors: 1, variants: 1, seed: 1 };
+    // a sphere of 60 000 Å: about 4.5e10 Å² a leaflet, hundreds of millions of lipids
+    const tiles = buildMembrane({ radius: 60000 }, 'test-patch', 400, 'both', kinds, 'tiles');
+    expect(typeof tiles).toBe('string');
+    expect(tiles as string).toMatch(/wrap it with lipids \(the cutter\)/);
+    const cut = buildMembrane({ radius: 60000 }, 'test-patch', 6000, 'both', kinds, 'cutter');
+    expect(typeof cut).toBe('object');
+    // a small one still tiles
+    expect(typeof buildMembrane({ radius: 300 }, 'test-patch', 100, 'both', kinds, 'tiles')).toBe('object');
+  });
+
   it('covers thin parts the remesh loses (Ludo’s second try, 2026-11-08: a cow’s legs showed the mesh)', () => {
     const body = thinLimbedBody();
     const data = buildMembrane({ mesh: body }, 'test-patch', 42, 'both', kinds);
