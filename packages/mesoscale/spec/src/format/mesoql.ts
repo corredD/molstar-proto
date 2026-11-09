@@ -255,6 +255,10 @@ export function parseMesoQL(
           err('keyword', `:${it.name} has no value`);
           continue;
         }
+        if (Object.prototype.hasOwnProperty.call(keywords, it.name)) {
+          err('keyword', `:${it.name} is given twice`);
+          continue;
+        }
         if (kt === 'selection') {
           const e = check(v, 'selection');
           if (e) keywords[it.name] = e;

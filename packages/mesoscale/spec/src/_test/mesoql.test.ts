@@ -143,4 +143,9 @@ describe('MesoQL', () => {
     expect(codes('(residues e.catalase :chain true)')).toEqual(['mesoql.keyword']);
     expect(codes('(in c.exosome :nested false :location membrane)')).toEqual([]);
   });
+
+  it('a keyword is given once (F11)', () => {
+    const codes = (t: string) => parseMesoQL(t, { kinds }).issues.map((i) => i.code);
+    expect(codes('(in c.exosome :nested true :nested false)')).toEqual(['mesoql.keyword']);
+  });
 });
