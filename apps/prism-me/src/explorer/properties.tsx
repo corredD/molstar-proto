@@ -1356,7 +1356,6 @@ function Position(props: { api: ViewerApi; area: ExplorerApi; kind: string; node
               onClick={() => exact.set(!exact.value)}
             />
           ) : null}
-          <OnTop api={api} area={props.area} />
         </div>
       </Line>
       {api.stage ? (
@@ -1518,26 +1517,6 @@ function LocalHandle(props: { api: ViewerApi; stage: StageApi; list: string }) {
   );
 }
 
-/**
- * Every handle on the canvas drawn on top of the scene, or in it (the move's and the clips' alike, one setting:
- * `canvas.handles`, no history step); the same button in Position and in each clip's line
- */
-function OnTop(props: { api: ViewerApi; area: ExplorerApi }) {
-  const on = mapState(props.area.handleLookState(), (l) => l.onTop);
-  return (
-    <Button
-      size="xs"
-      variant="ghost"
-      title="Handles on top: drawn over everything, seen and grabbed through what is in front of them"
-      pressed={on}
-      icon={<Icon name="layers" />}
-      onClick={() => void props.api.run('canvas.handles', { onTop: !on.value })}
-    >
-      On top
-    </Button>
-  );
-}
-
 /** How every handle on the canvas is drawn (the move's and the clips' alike): its size */
 function HandleLook(props: { area: ExplorerApi }) {
   const look = props.area.handleLookState();
@@ -1670,7 +1649,7 @@ function Clips(props: { subject: Subject }) {
 }
 
 /**
- * A clip's properties (Ludo, 2026-10-28): its editor (handles, numbers, On top, remove, shape, invert: PR #14), then
+ * A clip's properties (Ludo, 2026-10-28): its editor (handles, numbers, remove, shape, invert: PR #14), then
  * What it cuts: every object or part it is given (each picks its row; × takes it off, one step; not the last one:
  * remove the clip instead), Cut also… (one step), its Ghosts (Outline what it cuts, one step: cellview.md §4.3)
  */
@@ -1704,7 +1683,7 @@ function ClipProperties(props: { subject: Subject }) {
   );
   return (
     <div class={classes.stack}>
-      <ClipEditor api={api} area={area} tag={tag} />
+      <ClipEditor api={api} tag={tag} />
       <div class={classes.title}>
         <strong>What it cuts</strong>
       </div>
@@ -1909,12 +1888,12 @@ function AddSelect(props: {
 const ShapeOptions = Object.entries(ClipShapes) as [string, string][];
 
 /**
- * A clip (Prism's cut, by its tag): its line (its handles shown or hidden, its numbers' toggle, On top, remove), its
+ * A clip (Prism's cut, by its tag): its line (its handles shown or hidden, its numbers' toggle, remove), its
  * shape and invert (Prism's `clipping.update`, one step each; ui.md §4, Ludo 2026-10-25), and its place, turn and size
  * by numbers on demand: the head of a clip row's own section
  */
-function ClipEditor(props: { api: ViewerApi; area: ExplorerApi; tag: string }) {
-  const { api, area, tag } = props;
+function ClipEditor(props: { api: ViewerApi; tag: string }) {
+  const { api, tag } = props;
   const clipping = api.clipping;
   const cut = mapState(clipping.cuts, (all) => all.find((c) => c.object.tag === tag));
   const handled = derive([clipping.gizmos.shown, clipping.gizmos.handled], (shown, h) => (shown ? h : []));
@@ -1954,7 +1933,6 @@ function ClipEditor(props: { api: ViewerApi; area: ExplorerApi; tag: string }) {
           icon={<Icon name="sliders-horizontal" />}
           onClick={() => exact.set(!exact.value)}
         />
-        <OnTop api={api} area={area} />
         <Button
           size="xs"
           variant="ghost"

@@ -6,9 +6,7 @@
 
 import { Color } from '@molstar/core/util/color';
 import type { Canvas3DProps } from '@molstar/graphics/canvas3d/canvas3d';
-import type { GizmoLook } from '@molstar/graphics/util/gizmo/controller';
 import type { PluginSpec } from '@molstar/plugin/spec';
-import type { ViewerApi } from '@molstar/prism-viewer/api';
 
 // The Mesoscale Explorer's look (v5 `apps/mesoscale-explorer/src/ui/states.tsx`, `adjustPluginProps`): the canvas a
 // mesoscale model is shown in by default: multiscale ambient occlusion, soft shadows, outlines, edges for the hovered
@@ -103,16 +101,4 @@ export function withMesoscaleLook(spec: PluginSpec): PluginSpec {
       } as Canvas3DProps['illumination'],
     },
   };
-}
-
-/**
- * The handles' look the explorer starts with (Ludo, 2026-11-04): on top, every handle seen and grabbed through what is
- * in front of it (Prism's default is in the scene). A view setting (`canvas.handles`, no history step); On top still
- * turns it off.
- */
-export const MesoscaleHandleLook: Pick<GizmoLook, 'onTop'> = { onTop: true };
-
-/** The explorer's handle look set on the viewer's canvas, once it is created */
-export function applyMesoscaleHandleLook(api: ViewerApi) {
-  return api.run('canvas.handles', MesoscaleHandleLook);
 }
