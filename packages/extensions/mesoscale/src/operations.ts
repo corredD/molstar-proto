@@ -377,7 +377,24 @@ export class MesoscaleApi extends ApiArea {
       const old = cell.transform.params as LipidMembraneProps;
       const next = { ...old, ...(detail ? { detail } : {}), ...(levels ? { levels } : {}) };
       if (JSON.stringify(next) === JSON.stringify(old)) return ApiResult.already('The membrane already draws so.');
-      await ctx.plugin.state.data.build().to(cell).update(next).commit();
+      // a redraw that fails (past the device's buffers with more levels, a cancel) leaves the membrane as it was, no
+      // step: reverted, its error read as it happened (as `wrapMembrane`; review M1)
+      let error: string | undefined;
+      const sub = ctx.plugin.state.data.events.cell.stateUpdated.subscribe((e) => {
+        if (e.ref === membrane && e.cell.status === 'error') error = e.cell.errorText;
+      });
+      try {
+        await ctx.plugin.state.data.build().to(cell).update(next).commit({ revertOnError: true });
+      } finally {
+        sub.unsubscribe();
+      }
+      const after = ctx.plugin.state.data.cells.get(membrane);
+      if (error !== undefined || after?.status !== 'ok') {
+        return ApiResult.fail(
+          'failed',
+          `The levels were not changed: ${error ?? after?.errorText ?? 'the membrane was not drawn'}`,
+        );
+      }
       return ApiResult.ok(`Levels: ${next.detail}.`, { nodes: [membrane] });
     },
   });

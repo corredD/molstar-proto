@@ -5,6 +5,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Task } from '@molstar/core/task';
 import type { ApiResult } from '@molstar/prism-viewer/api/area';
 import { DefaultPrismViewerSpec } from '@molstar/prism-viewer/default-spec';
 import { createPrismViewerHeadless } from '@molstar/prism-viewer/headless';
@@ -115,6 +116,32 @@ describe('lipid membrane', () => {
     expect(v.api.mesoscale!.membraneDetailState(ref).value).toEqual({ detail: 'custom', levels });
     expectOk(await v.api.history.undo({}));
     expect(v.plugin.state.data.cells.get(ref)!.transform.params).toMatchObject({ detail: 'balanced' });
+  });
+
+  it('fails its levels change cleanly when the redraw fails: the membrane kept, no step (review M1)', async () => {
+    const base = DefaultPrismViewerSpec();
+    const v = await createPrismViewerHeadless({
+      spec: { ...base, extensions: [...(base.extensions ?? []), MesoscaleExtension] },
+    });
+    viewers.push(v);
+    const r = await v.api.mesoscale!.wrapMembrane({ radius: 400, edge: 80, patch: 'test-patch' });
+    expectOk(r);
+    const ref = r.changed!.nodes![0];
+    // the redraw throws, as past the device's buffers with more levels, or cancelled
+    const repr = v.plugin.state.data.cells.get(ref)!.obj!.data.repr;
+    vi.spyOn(repr, 'createOrUpdate').mockReturnValue(
+      Task.create('fails', async () => {
+        throw new Error('past this GPU’s buffers');
+      }) as never,
+    );
+    const res = await v.api.run('mesoscale.membraneDetail', { membrane: ref, detail: 'quality' });
+    expect(res.ok).toBe(false);
+    const cell = v.plugin.state.data.cells.get(ref)!;
+    expect(cell.status).toBe('ok');
+    expect(cell.transform.params).toMatchObject({ detail: 'balanced' });
+    // the history's last step is still the wrap
+    expectOk(await v.api.history.undo({}));
+    expect(v.plugin.state.data.cells.has(ref)).toBe(false);
   });
 
   it('says its stages while it wraps, and a cancel leaves the scene as it was (Ludo, 2026-11-08)', async () => {
