@@ -531,6 +531,43 @@ read by `meso.precomputed` (§4.5). A pose is in the world frame, or in `frame`'
 
 See §5.
 
+### 3.15 Builder (`builder/`)
+
+A document written in TypeScript, as Seq\*'s builder (`@molstar/seq-core/builder`). A builder is not part of the format:
+a document from it means what the literal means. Nothing is added, empty optional sections are left out, sections come
+in the order of `MesoViewSpecDoc`, the nodes of a section in the order they were made, the keys of a node in the order
+the caller wrote them (the S-expression print follows it).
+
+```ts
+const b = createMesoDocument({ title: 'β-cell slice', organism: { name: 'Mus musculus', taxon: 10090 }, units: { length: 'nm' } });
+const granule = b.entity({ id: 'e.granule', label: 'insulin secretory granule', kind: 'assembly', superstructure: ss.ref });
+const cell = b.compartment({ id: 'c.cell', label: 'β-cell', kind: 'cell', geometry: { kind: 'sphere', radius: 1500 } });
+const granules = b.population({ id: 'p.granules', entity: granule, compartment: cell, location: 'interior', abundance: { count: 120 } });
+b.view({ id: 'v.g12', camera: { focus: q.part(q.copies(granules, 12), vamp2), framing: 'context' }, looks });
+const { doc, issues } = b.build();
+```
+
+- **Refs.** A node call returns the node's ref: its id, branded by the kind of node and by its scope (`doc`, or `inner`
+  inside a superstructure, as `validate`'s two indexes, §3.9). A slot that holds an id takes a ref of its kind and
+  scope, never a plain string: a population where a compartment is wanted, or a compartment of the document inside a
+  superstructure, is a TypeScript error (`_test/builder.types.test.ts`, run by `tsc -p spec/tsconfig.test.json`). A ref
+  is a string at run time. An entity's ref carries the names of its declared `sites`, so `q.site(e, 'name')` is checked.
+- **Where a string becomes a ref.** `get(kind, id)`: a node added elsewhere or made later (a cycle between an activity
+  and what it generated); `add(section, nodes)`: nodes made elsewhere (an importer's), copied as they are, their ids
+  registered. The MesoQL slots (`select`, `focus`, `cutaway`, `target`, `entry`) stay `MesoQL` strings. `validate`
+  checks all three (`ref.missing`, `ref.kind`, `mesoql.*`). A ref of another builder is not a TypeScript error.
+- **Ids.** An id nobody gave is made from the label (`insulin granule` → `e.insulin-granule`), else from what the node
+  refers to (a population `p.<entity>`, a relation `rel.<subjects>-<kind>-<objects>`, an alignment, a resource by its
+  accession or format), else counted. Prefixes: `f. al. r. e. s. c. p. i. cat. rel. m. ev. act. v. an. t.`. A slug is
+  lowercase ASCII words joined by `-`, at most 40 characters, cut on a word. A taken id takes `-2`, `-3`. An id depends
+  on the calls and their order only, one registry per builder. An explicit id is kept as given (a duplicate is
+  `id.duplicate` at build). Site and state ids are not document ids.
+- **Superstructures.** `superstructure()` returns a builder for its compartments, populations, models, relations and
+  entities, whose refs are `inner`. Nesting is an entity whose `superstructure` is its `ref`.
+- **MesoQL.** `q` has one helper per symbol of `MesoQLSymbols`, typed by the refs the symbol takes, printing the text
+  `printMesoQL` prints; a test checks that every symbol has a helper and that the output parses and prints back.
+- **`build()`** returns `{ doc, issues }`: `validate`'s issues, never thrown, callable again.
+
 ## 4. The IR (`ir/ir.ts`, `ir/placements.ts`)
 
 ### 4.1 A tree in the manner of `mol-state`
