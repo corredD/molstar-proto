@@ -124,7 +124,7 @@
                       "superstructure": "s.isg",
                       "detail": "parts",
                       "instances": 1,
-                      "templates": ["m.isg@ae395e1e7b6269f3#0"]
+                      "templates": ["m.isg@40bd8c05d4009e86#0"]
                     }
                   },
                   {
@@ -137,7 +137,7 @@
                       "superstructure": "s.isg",
                       "detail": "parts",
                       "instances": 1,
-                      "templates": ["m.isg@ae395e1e7b6269f3#0"]
+                      "templates": ["m.isg@40bd8c05d4009e86#0"]
                     }
                   }
                 ]
@@ -151,8 +151,8 @@
             "params": {
               "model": "default:meso.pack",
               "resolver": "meso.pack",
-              "version": "0.1.0",
-              "key": "default:meso.pack@591515e48b91cffd",
+              "version": "0.1.1",
+              "key": "default:meso.pack@eb85bc1315df6850",
               "input": {
                 "items": [
                   {
@@ -203,7 +203,7 @@
                 "origin": ["p.granules", "p.ribosomes"],
                 "params": {
                   "set": {
-                    "key": "default:meso.pack@591515e48b91cffd#0",
+                    "key": "default:meso.pack@eb85bc1315df6850#0",
                     "model": "default:meso.pack",
                     "frame": "world",
                     "count": 2120,
@@ -240,7 +240,7 @@
                       "superstructure": "s.isg",
                       "detail": "parts",
                       "instances": 120,
-                      "templates": ["m.isg@ae395e1e7b6269f3#0"]
+                      "templates": ["m.isg@40bd8c05d4009e86#0"]
                     }
                   }
                 ]
@@ -290,8 +290,8 @@
                 "params": {
                   "model": "m.isg",
                   "resolver": "cellpack-gpu",
-                  "version": "0.1.0",
-                  "key": "m.isg@ae395e1e7b6269f3",
+                  "version": "0.1.1",
+                  "key": "m.isg@40bd8c05d4009e86",
                   "input": {
                     "recipe": "e08c3107d1a36a1c",
                     "items": [
@@ -367,7 +367,7 @@
                     "origin": ["p.Vamp2", "p.Rab3a", "p.Chga", "p.Scg2"],
                     "params": {
                       "set": {
-                        "key": "m.isg@ae395e1e7b6269f3#0",
+                        "key": "m.isg@40bd8c05d4009e86#0",
                         "model": "m.isg",
                         "frame": "world",
                         "count": 2229,
@@ -439,38 +439,38 @@
         "visible": true
       },
       {
-        "set": "default:meso.pack@591515e48b91cffd#0",
+        "set": "default:meso.pack@eb85bc1315df6850#0",
         "types": [0],
         "color": 13154528,
         "visible": true
       },
       {
-        "set": "default:meso.pack@591515e48b91cffd#0",
+        "set": "default:meso.pack@eb85bc1315df6850#0",
         "types": [1],
         "color": 8035526,
         "visible": true,
         "transparency": 0.5
       },
       {
-        "set": "m.isg@ae395e1e7b6269f3#0",
+        "set": "m.isg@40bd8c05d4009e86#0",
         "types": [0],
         "color": 13649210,
         "visible": true
       },
       {
-        "set": "m.isg@ae395e1e7b6269f3#0",
+        "set": "m.isg@40bd8c05d4009e86#0",
         "types": [1],
         "color": 14725196,
         "visible": true
       },
       {
-        "set": "m.isg@ae395e1e7b6269f3#0",
+        "set": "m.isg@40bd8c05d4009e86#0",
         "types": [2],
         "color": 5940570,
         "visible": true
       },
       {
-        "set": "m.isg@ae395e1e7b6269f3#0",
+        "set": "m.isg@40bd8c05d4009e86#0",
         "types": [3],
         "color": 10181046,
         "visible": true

@@ -127,8 +127,8 @@
             "params": {
               "model": "default:meso.pack",
               "resolver": "meso.pack",
-              "version": "0.1.0",
-              "key": "default:meso.pack@51c36aa55cb97dc8",
+              "version": "0.1.1",
+              "key": "default:meso.pack@be00753e041b4935",
               "input": {
                 "items": [
                   {
@@ -228,7 +228,7 @@
                 "origin": ["p.ribosomes", "p.proteasomes", "p.arp23"],
                 "params": {
                   "set": {
-                    "key": "default:meso.pack@51c36aa55cb97dc8#0",
+                    "key": "default:meso.pack@be00753e041b4935#0",
                     "model": "default:meso.pack",
                     "frame": "world",
                     "count": 310,
@@ -685,19 +685,19 @@
         "visible": true
       },
       {
-        "set": "default:meso.pack@51c36aa55cb97dc8#0",
+        "set": "default:meso.pack@be00753e041b4935#0",
         "types": [0],
         "color": 8035526,
         "visible": true
       },
       {
-        "set": "default:meso.pack@51c36aa55cb97dc8#0",
+        "set": "default:meso.pack@be00753e041b4935#0",
         "types": [1],
         "color": 6935452,
         "visible": true
       },
       {
-        "set": "default:meso.pack@51c36aa55cb97dc8#0",
+        "set": "default:meso.pack@be00753e041b4935#0",
         "types": [2],
         "color": 6921427,
         "visible": true

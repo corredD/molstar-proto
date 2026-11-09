@@ -18,7 +18,7 @@ export interface ShapeSampler {
   readonly area?: number;
   readonly min: readonly number[];
   readonly max: readonly number[];
-  /** Inside, at least `margin` Å from the boundary (approximate for ellipsoids and meshes). */
+  /** Inside, at least `margin` Å from the boundary; a negative margin: within -margin Å of the shape (approximate for ellipsoids and for meshes with a positive margin). */
   contains(x: number, y: number, z: number, margin: number): boolean;
   /** A point on the boundary (`p`) and its outward normal (`n`), uniform by area (approximate for ellipsoids). */
   sampleSurface(r: Random, p: number[], n: number[]): void;
@@ -231,7 +231,15 @@ function meshSampler(mesh: MeshData): ShapeSampler {
     min,
     max,
     contains(x, y, z, m) {
-      if (!inside(x, y, z)) return false;
+      if (!inside(x, y, z)) {
+        // a negative margin grows the shape: a point outside it counts when the surface is within |m| (exact, the
+        // nearest point of the triangles; the margin's sign must not be dropped, design.md §4.4)
+        if (m >= 0) return false;
+        const m2 = m * m;
+        for (let i = 0; i < I.length; i += 3)
+          if (pointTriangleDistance2(P, 3 * I[i], 3 * I[i + 1], 3 * I[i + 2], x, y, z) <= m2) return true;
+        return false;
+      }
       if (m <= 0) return true;
       // the margin, checked along the six axis directions (approximate, design.md §9)
       return (
@@ -274,6 +282,62 @@ function meshSampler(mesh: MeshData): ShapeSampler {
       n[2] = nz / l;
     },
   };
+}
+
+/** Squared distance from (x, y, z) to the triangle at offsets a, b, c of P (Ericson, Real-Time Collision Detection 5.1.5). */
+function pointTriangleDistance2(
+  P: ArrayLike<number>,
+  a: number,
+  b: number,
+  c: number,
+  x: number,
+  y: number,
+  z: number,
+) {
+  const abx = P[b] - P[a],
+    aby = P[b + 1] - P[a + 1],
+    abz = P[b + 2] - P[a + 2];
+  const acx = P[c] - P[a],
+    acy = P[c + 1] - P[a + 1],
+    acz = P[c + 2] - P[a + 2];
+  const apx = x - P[a],
+    apy = y - P[a + 1],
+    apz = z - P[a + 2];
+  const d1 = abx * apx + aby * apy + abz * apz,
+    d2 = acx * apx + acy * apy + acz * apz;
+  // the nearest point as a + v·ab + w·ac
+  let v: number, w: number;
+  if (d1 <= 0 && d2 <= 0) [v, w] = [0, 0];
+  else {
+    const bpx = x - P[b],
+      bpy = y - P[b + 1],
+      bpz = z - P[b + 2];
+    const d3 = abx * bpx + aby * bpy + abz * bpz,
+      d4 = acx * bpx + acy * bpy + acz * bpz;
+    const cpx = x - P[c],
+      cpy = y - P[c + 1],
+      cpz = z - P[c + 2];
+    const d5 = abx * cpx + aby * cpy + abz * cpz,
+      d6 = acx * cpx + acy * cpy + acz * cpz;
+    const vc = d1 * d4 - d3 * d2,
+      vb = d5 * d2 - d1 * d6,
+      va = d3 * d6 - d5 * d4;
+    if (d3 >= 0 && d4 <= d3) [v, w] = [1, 0];
+    else if (d6 >= 0 && d5 <= d6) [v, w] = [0, 1];
+    else if (vc <= 0 && d1 >= 0 && d3 <= 0) [v, w] = [d1 / (d1 - d3), 0];
+    else if (vb <= 0 && d2 >= 0 && d6 <= 0) [v, w] = [0, d2 / (d2 - d6)];
+    else if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+      const t = (d4 - d3) / (d4 - d3 + (d5 - d6));
+      [v, w] = [1 - t, t];
+    } else {
+      const den = 1 / (va + vb + vc);
+      [v, w] = [vb * den, vc * den];
+    }
+  }
+  const ex = apx - v * abx - w * acx,
+    ey = apy - v * aby - w * acy,
+    ez = apz - v * abz - w * acz;
+  return ex * ex + ey * ey + ez * ez;
 }
 
 /**

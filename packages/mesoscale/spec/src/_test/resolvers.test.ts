@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { PlacementBuilder, type PlacementSet } from '../ir/placements.js';
 import { MesoFiberResolver } from '../resolvers/fiber.js';
 import { sdfGrid, shapeSampler } from '../resolvers/geometry.js';
+import { MesoPackResolver } from '../resolvers/meso-pack.js';
 import { MesoRelaxResolver } from '../resolvers/relax.js';
 import { createRandom } from '../runtime/random.js';
 import type { ResolveJob, ResolveOutput } from '../runtime/resolver.js';
@@ -189,7 +190,53 @@ export function cubeMesh(h: number) {
   return { positions: new Float32Array(v.flat()), indices: new Uint32Array(f.flat()) };
 }
 
+/** Distance from a point outside an axis-aligned box of half-side `h` (0 inside). */
+const boxDistance = (x: number, y: number, z: number, h: number) =>
+  Math.hypot(Math.max(Math.abs(x) - h, 0), Math.max(Math.abs(y) - h, 0), Math.max(Math.abs(z) - h, 0));
+
 describe('mesh compartments', () => {
+  it('a copy around a mesh child keeps its radius and half the membrane from it (a negative margin)', () => {
+    const s = shapeSampler({ kind: 'mesh' } as never, cubeMesh(200))!;
+    // off-axis: the six axis probes miss the edge 28 Å away
+    expect(s.contains(220, 220, 0, -40)).toBe(true);
+    expect(s.contains(240, 0, 0, -39)).toBe(false);
+    const out = run(
+      MesoPackResolver,
+      job(
+        [
+          {
+            id: 'p',
+            compartment: 'outer',
+            location: 'interior',
+            requested: 3000,
+            radius: 20,
+            arrangement: { kind: 'random' },
+          },
+        ],
+        {
+          outer: {
+            shape: { kind: 'sphere', center: [0, 0, 0], radius: 700 },
+            children: ['child'],
+            membrane: { thickness: 40 },
+          },
+          child: {
+            shape: { kind: 'mesh' },
+            mesh: cubeMesh(200),
+            meshKey: 'k',
+            parent: 'outer',
+            membrane: { thickness: 40 },
+          },
+        },
+      ),
+    );
+    const set = out.sets[0];
+    expect(set.count).toBeGreaterThan(1000);
+    let bad = 0;
+    for (let i = 0; i < set.count; i++)
+      if (boxDistance(set.positions[3 * i], set.positions[3 * i + 1], set.positions[3 * i + 2], 200) < 40 - 1e-3) bad++;
+    expect(bad).toBe(0);
+  });
+
   it('the inside test does not count a ray through a shared edge twice', () => {
     const s = shapeSampler({ kind: 'mesh' } as never, cubeMesh(100))!;
     for (const p of [
