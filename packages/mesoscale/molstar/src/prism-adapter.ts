@@ -63,8 +63,9 @@ export class PrismMesoAdapter implements RendererAdapter {
     // superstructure instances expanded into world sets: Prism has no nested instancing (renderer-recommendations R7)
     const flat = flattenInstances(source, this.expansions);
     const ir = flat.ir;
-    for (const k of [...this.expansions.keys()]) if (!placementSetKeys(ir).has(k)) this.expansions.delete(k);
-    for (const k of [...this.bounds.keys()]) if (!placementSetKeys(ir).has(k)) this.bounds.delete(k);
+    const keys = placementSetKeys(ir);
+    for (const k of [...this.expansions.keys()]) if (!keys.has(k)) this.expansions.delete(k);
+    for (const k of [...this.bounds.keys()]) if (!keys.has(k)) this.bounds.delete(k);
     const t0 = now();
     const plan = planCommit(this.prev, ir);
     const v = this.viewer;
