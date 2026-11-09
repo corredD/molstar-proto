@@ -4,7 +4,7 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { run as compileCmd } from '../cli/meso-compile.js';
@@ -12,7 +12,7 @@ import { run as printCmd } from '../cli/meso-print.js';
 import { run as queryCmd } from '../cli/meso-query.js';
 import { run as traceCmd } from '../cli/meso-trace.js';
 import { run as validateCmd } from '../cli/meso-validate.js';
-import type { CliIO } from '../cli/io.js';
+import { type CliIO, resourceLoader } from '../cli/io.js';
 import { readData, DocumentCodec, IRCodec, printData } from '../format/sexpr.js';
 import { evaluateMesoQL, lociToIds } from '../ir/loci.js';
 import { compile } from '../runtime/runtime.js';
@@ -146,15 +146,36 @@ describe('meso-query', () => {
     expect(await queryCmd(['bad.json', '(all)', '--json'], io)).toBe(1);
     expect(o.err).toContain('resource.unavailable');
     const base = memory({ 'bad.json': JSON.stringify(doc) });
-    expect(await queryCmd(['bad.json', '(all)', '--json', '--base', 'spec/src'], base.io)).toBe(0); // --base overrides
+    expect(await queryCmd(['bad.json', '(all)', '--json', '--base', 'spec/src'], base.io)).toBe(0); // a --base is tried
   });
 
   it('every committed example compiles with no --base and no resource.unavailable', async () => {
-    for (const f of ['exosome', 'betacell', 'nucleoid', 'gallery']) {
+    const names = readdirSync(`${root}examples`).filter((f) => f.endsWith('.mesoviewspec.json'));
+    expect(names.length).toBeGreaterThanOrEqual(5);
+    for (const f of names) {
       const { io, o } = memory();
-      await compileCmd([`examples/${f}.mesoviewspec.json`, '--json'], io); // nucleoid's own unmet constraint exits 1
+      await compileCmd([`examples/${f}`, '--json'], io); // some exit 1 for their own reasons (constraints, resolvers)
       expect(o.err, f).not.toContain('resource.unavailable');
+      if (f.startsWith('exosome')) expect(o.err).toMatch(/90736 copies/);
     }
+  });
+
+  it('resources: the document folder, a --base before it as an override, never the cwd', () => {
+    const doc = { resources: [{ id: 'r', uri: 'x/r.json' }] } as never;
+    const files: Record<string, string> = { '/w/d/x/r.json': '{"w":"doc"}', '/w/b/x/r.json': '{"w":"base"}' };
+    const io = {
+      cwd: '/w/c',
+      read: (p: string) =>
+        files[p] ??
+        (() => {
+          throw new Error('no');
+        })(),
+    } as never;
+    expect(resourceLoader(io, '../d/doc.json', doc, [])('r')).toEqual({ w: 'doc' });
+    expect(resourceLoader(io, '../d/doc.json', doc, ['../b'])('r')).toEqual({ w: 'base' });
+    files['/w/c/x/r.json'] = '{"w":"cwd"}';
+    delete files['/w/d/x/r.json'];
+    expect(resourceLoader(io, '../d/doc.json', doc, [])('r')).toBeUndefined();
   });
 
   it('an address that picks nothing warns with mesoql.empty, whichever symbol emptied it', async () => {
