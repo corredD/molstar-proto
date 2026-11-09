@@ -12,17 +12,20 @@ import type { TriMesh } from './remesh.js';
 // to about two lipid spacings, each vertex the species of the patch's nearest head where the cutter maps it (its
 // triangle's region: plane, spin and offset), so the far look is the near look blurred. Built once a look, pure.
 
-/** A leaflet's head plane: the mean over its conformers of their outermost atom's z (+ outer, − inner), Å */
+/**
+ * A leaflet's head plane: the lowest of its conformers' outermost atoms' z (+ outer, − inner), Å. Every lipid's head at
+ * or above it: drawn beneath the lipids (Both), it hides none close up (the gate, 2026-11-08: at the tops' mean it hid
+ * 23 of the CHARMM-GUI patch's 40 outer conformers); 5.6 Å under that mean there, still at the heads
+ */
 export function headOffset(table: CutterTable, side: 'outer' | 'inner') {
-  let sum = 0;
+  const f = side === 'outer' ? 1 : -1;
+  let floor = Infinity;
   for (const m of table.members) {
-    let z = side === 'outer' ? -Infinity : Infinity;
-    for (let i = 2; i < m.positions.length; i += 3) {
-      z = side === 'outer' ? Math.max(z, m.positions[i]) : Math.min(z, m.positions[i]);
-    }
-    sum += z;
+    let top = -Infinity;
+    for (let i = 2; i < m.positions.length; i += 3) top = Math.max(top, f * m.positions[i]);
+    floor = Math.min(floor, top);
   }
-  return sum / Math.max(1, table.members.length);
+  return table.members.length ? f * floor : 0;
 }
 
 /** The patch's nearest shown head on a grid (`cell` Å), a species index a cell (-1: none shown) */
