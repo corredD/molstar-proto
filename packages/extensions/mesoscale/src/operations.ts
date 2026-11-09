@@ -239,7 +239,7 @@ export class MesoscaleApi extends ApiArea {
       mesh: PD.Text('', { description: 'A mesh by state ref (a shape opened from OBJ, PLY, VTP)' }),
       meshes: PD.Text('', {
         description:
-          'Meshes by state ref, comma-separated, wrapped as one membrane (a cell’s membranes: one budget, inner ones hidden while the eye is outside): over `mesh`',
+          'Meshes by state ref, comma-separated, wrapped as one membrane by the cutter (a cell’s membranes: one budget, inner ones hidden while the eye is outside): over `mesh` and `method`',
       }),
       compartment: PD.Text('', {
         description:
