@@ -185,7 +185,8 @@ describe.skipIf(!webgpu)('lipid membrane on WebGPU (Dawn)', () => {
       await plugin.build().delete(cell!.transform.ref).commit();
       const node = await plugin.build().toRoot().apply(LipidMembrane, params).commit();
       const repr = plugin.state.data.cells.get(node.ref)!.obj!.data.repr;
-      expect(repr.renderObjects.length).toBe(1);
+      // the cutter's lipids merged, and the far look's surface
+      expect(repr.renderObjects.length).toBe(2);
       repr.setGraphics!({ ...graphics, compute: undefined } as never);
       await repr.createOrUpdate().run();
       expect(repr.renderObjects.length).toBe(0);

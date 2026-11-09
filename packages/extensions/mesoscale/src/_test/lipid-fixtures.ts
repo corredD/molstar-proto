@@ -307,3 +307,44 @@ export function thinLimbedBody() {
   void fan;
   return { positions: Float32Array.from(positions), indices: Uint32Array.from(indices) };
 }
+
+/** An RGBA image as a PNG file at `path` (to look at a test's images; no dependency: zlib and a CRC) */
+export async function writePng(path: string, width: number, height: number, rgba: ArrayLike<number>) {
+  const { deflateSync } = await import('node:zlib');
+  const { writeFileSync } = await import('node:fs');
+  const crcTable = new Uint32Array(256).map((_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; ++k) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (bytes: Uint8Array) => {
+    let c = 0xffffffff;
+    for (const b of bytes) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Uint8Array) => {
+    const out = new Uint8Array(12 + data.length);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, data.length);
+    for (let i = 0; i < 4; ++i) out[4 + i] = type.charCodeAt(i);
+    out.set(data, 8);
+    view.setUint32(8 + data.length, crc(out.subarray(4, 8 + data.length)));
+    return out;
+  };
+  const header = new Uint8Array(13);
+  const hv = new DataView(header.buffer);
+  hv.setUint32(0, width);
+  hv.setUint32(4, height);
+  header.set([8, 6, 0, 0, 0], 8);
+  const raw = new Uint8Array((width * 4 + 1) * height);
+  for (let y = 0; y < height; ++y) {
+    for (let i = 0; i < width * 4; ++i) raw[y * (width * 4 + 1) + 1 + i] = rgba[y * width * 4 + i];
+  }
+  const parts = [
+    Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', new Uint8Array(0)),
+  ];
+  writeFileSync(path, Buffer.concat(parts));
+}

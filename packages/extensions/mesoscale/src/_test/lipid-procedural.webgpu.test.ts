@@ -12,7 +12,7 @@ import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
 import { HeadlessPluginContext } from '@molstar/plugin-headless/context';
 import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
 import { LipidMembrane, LipidMembraneParams, registerLipidPatch } from '../lipids/membrane.js';
-import { syntheticPatchPdb } from './lipid-fixtures.js';
+import { syntheticPatchPdb, writePng } from './lipid-fixtures.js';
 
 // A membrane made per view on Dawn (lipid-procedural): a camera path whole → close → whole over a sphere cut by the
 // cutter. What it generates follows the view (few triangles whole, the ones in view close), nothing is selected or
@@ -60,8 +60,15 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       const canvas = plugin.canvas3d!;
       const camera = canvas.camera;
       canvas.requestCameraReset({ durationMs: 0 });
+      await plugin.getImageRaw({ width: Size, height: Size });
       const whole = camera.getSnapshot();
-      const close = camera.getFocus(Vec3.create(0, 0, 600), 120);
+      // close: 250 Å above the sphere's top, looking at it (the clipping radius the whole view's, as a zoom keeps it)
+      const close = {
+        ...whole,
+        target: Vec3.create(0, 0, 600),
+        position: Vec3.create(0, 0, 850),
+        up: Vec3.create(0, 1, 0),
+      };
       const numbers: Record<string, unknown>[] = [];
       const at = async (name: string, snapshot: typeof whole) => {
         camera.setState(snapshot, 0);
@@ -69,6 +76,9 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
         const image = await plugin.getImageRaw({ width: Size, height: Size });
         const ms = performance.now() - t0;
         const pool = { ...repr.pool };
+        if (process.env.LIPID_SHOTS) {
+          await writePng(`${process.env.LIPID_SHOTS}/${name.replace(/ /g, '-')}.png`, Size, Size, image.data);
+        }
         numbers.push({ name, ms: Math.round(ms), ...pool });
         return { image: image.data, pool };
       };
@@ -76,14 +86,28 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       await plugin
         .build()
         .to(node.ref)
-        .update((p) => ({ ...p, far: 'texture' }))
+        .update((p) => ({ ...p, far: (process.env.LIPID_FAR as never) ?? 'texture' }))
         .commit();
       const a = await at('whole', whole);
       const b = await at('close', close);
       const c = await at('whole again', whole);
       const d = await at('close again', close);
+      if (process.env.LIPID_NUMBERS) console.log(JSON.stringify({ full: repr.cutLipids, numbers }));
       expect(repr.cutLipids).toBeGreaterThan(0);
       expect(a.pool.live).toBe(0);
+      // no lipids whole, but the textured surface: the sphere's middle covered (no gap at any distance)
+      const covered = (image: Uint8Array | Uint8ClampedArray) => {
+        const bg = Array.from(image.subarray(0, 3)).join();
+        let n = 0;
+        for (let y = Size / 3; y < (2 * Size) / 3; ++y) {
+          for (let x = Size / 3; x < (2 * Size) / 3; ++x) {
+            const o = (y * Size + x) * 4;
+            if (Array.from(image.subarray(o, o + 3)).join() !== bg) n += 1;
+          }
+        }
+        return n / (Size / 3) ** 2;
+      };
+      if (!process.env.LIPID_NUMBERS) expect(covered(a.image)).toBeGreaterThan(0.95);
       // close: the triangles in view
       expect(b.pool.live).toBeGreaterThan(0);
       expect(b.pool.live).toBeLessThan(repr.cutLipids);
@@ -99,7 +123,6 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
       expect(repr.pool.selects).toBe(rest.selects);
       expect(repr.pool.regenerations).toBe(rest.regenerations);
       expect(canvas.graphics.takeErrors?.() ?? []).toEqual([]);
-      if (process.env.LIPID_NUMBERS) console.log(JSON.stringify({ full: repr.cutLipids, numbers }, null, 1));
     } finally {
       plugin.dispose();
     }

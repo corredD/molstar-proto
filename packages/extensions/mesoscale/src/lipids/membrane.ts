@@ -14,7 +14,9 @@ import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
 import { StateTransformer } from '@molstar/core/state';
 import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
-import { createTransform } from '@molstar/graphics/geo/geometry/transform-data';
+import { createIdentityTransform, createTransform } from '@molstar/graphics/geo/geometry/transform-data';
+import { Mesh } from '@molstar/graphics/geo/geometry/mesh/mesh';
+import { BaseGeometry } from '@molstar/graphics/geo/geometry/base';
 import type { GraphicsContext } from '@molstar/graphics/gl/context';
 import { createRenderObject, type GraphicsRenderObject } from '@molstar/graphics/gl/render-object';
 import { canCullOnGpu } from '@molstar/graphics/gl/renderable/merged';
@@ -495,6 +497,51 @@ function lipidSize(table: CutterTable) {
   return Math.sqrt((table.box[0] * table.box[1]) / Math.max(1, table.lipids.length / 4));
 }
 
+/**
+ * The far look's surface (lipid-procedural): the mesh itself, double-sided, in `color`, with Mol*'s material bump
+ * (value noise at about a lipid's spacing, standing in for a pattern of heads). Drawn always: where lipids are made the
+ * outer leaflet's atoms (about 20 Å above) hide it, so no distance leaves a gap
+ */
+function surfaceObject(mesh: TriMesh, color: Color, size: number) {
+  const n = mesh.positions.length / 3;
+  const m = Mesh.create(
+    new Float32Array(mesh.positions),
+    new Uint32Array(mesh.indices),
+    new Float32Array(n * 3),
+    new Float32Array(n),
+    n,
+    mesh.indices.length / 3,
+  );
+  Mesh.computeNormals(m);
+  const defaults = PD.getDefaultValues(Mesh.Params);
+  const props = {
+    ...defaults,
+    doubleSided: true,
+    bumpFrequency: 1.5 / size,
+    bumpAmplitude: 1,
+    material: { ...defaults.material, bumpiness: 1 },
+  };
+  const simple = BaseGeometry.createSimple(color, 1, createIdentityTransform());
+  const values = Mesh.Utils.createValues(m, simple.transform, simple.locationIterator, simple.theme, props);
+  return createRenderObject('mesh', values, Mesh.Utils.createRenderableState(props), -1);
+}
+
+/** The color of `names`' lipids together: their colors weighted by their counts */
+function meanColor(names: readonly string[], counts: readonly number[], colorOf: (name: string) => Color) {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let sum = 0;
+  for (let i = 0; i < names.length; ++i) {
+    const [cr, cg, cb] = Color.toRgb(colorOf(names[i]));
+    r += cr * counts[i];
+    g += cg * counts[i];
+    b += cb * counts[i];
+    sum += counts[i];
+  }
+  return sum > 0 ? Color.fromRgb(Math.round(r / sum), Math.round(g / sum), Math.round(b / sum)) : Color(0x888888);
+}
+
 /** A species' color: distinct colors by species index across both leaflets (residue names as the tile sets have them) */
 function speciesColors(data: MembraneData) {
   const names = new Map<string, number>();
@@ -822,6 +869,20 @@ export function LipidMembraneRepresentation(initialGraphics: GraphicsContext | u
     selections = pools;
     assigners = assigns;
     merged = mergeRenderObjectsByType(entries, true, new Map(), out, true, true, graphics);
+    // the far look's surface beneath the lipids (`far`: texture, both), the mesh's first leaflet's
+    if (props.far !== 'spheres' && data.cut.length > 0) {
+      const names: string[] = [];
+      const counts: number[] = [];
+      for (let c = 0; c < data.cut.length; ++c) {
+        const { table } = data.cut[c];
+        for (let m = 0; m < table.members.length; ++m) {
+          names.push(table.species[table.members[m].species]);
+          counts.push(cuts[c].totals[m]);
+        }
+      }
+      const color = props.colorBy === 'uniform' ? props.color : meanColor(names, counts, colorOf);
+      out.push(surfaceObject(data.cut[0].mesh, color, lipidSize(data.cut[0].table)));
+    }
     renderObjects = out;
   }
 
