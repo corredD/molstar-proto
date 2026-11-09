@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { PlacementBuilder, type PlacementSet } from '../ir/placements.js';
 import { MesoFiberResolver } from '../resolvers/fiber.js';
+import { sdfGrid, shapeSampler } from '../resolvers/geometry.js';
 import { MesoRelaxResolver } from '../resolvers/relax.js';
 import { createRandom } from '../runtime/random.js';
 import type { ResolveJob, ResolveOutput } from '../runtime/resolver.js';
@@ -156,5 +157,58 @@ describe('meso.fiber', () => {
       job([strand('f', 101, line(10, 100)), strand('g', 21, line(10, 20)), binder], bigSphere, { relations: [rel] }),
     );
     expect(out.shortfall?.b).toMatch(/the strand g is 200 Å long/);
+  });
+});
+
+/** A cube of half-side `h` as a triangle mesh (outward winding): its face diagonals are shared edges. */
+export function cubeMesh(h: number) {
+  const v = [
+    [-h, -h, -h],
+    [h, -h, -h],
+    [h, h, -h],
+    [-h, h, -h],
+    [-h, -h, h],
+    [h, -h, h],
+    [h, h, h],
+    [-h, h, h],
+  ];
+  const f = [
+    [0, 2, 1],
+    [0, 3, 2],
+    [4, 5, 6],
+    [4, 6, 7],
+    [0, 1, 5],
+    [0, 5, 4],
+    [2, 3, 7],
+    [2, 7, 6],
+    [1, 2, 6],
+    [1, 6, 5],
+    [0, 4, 7],
+    [0, 7, 3],
+  ];
+  return { positions: new Float32Array(v.flat()), indices: new Uint32Array(f.flat()) };
+}
+
+describe('mesh compartments', () => {
+  it('the inside test does not count a ray through a shared edge twice', () => {
+    const s = shapeSampler({ kind: 'mesh' } as never, cubeMesh(100))!;
+    for (const p of [
+      [0, 0, 0],
+      [0, 10, 10],
+      [0, -30, -30],
+      [50, 50, 50],
+    ])
+      expect(s.contains(p[0], p[1], p[2], 0)).toBe(true);
+    const g = sdfGrid(s, createRandom(3), 41);
+    let wrong = 0;
+    for (let i = 0; i < g.n; i++)
+      for (let j = 0; j < g.n; j++)
+        for (let k = 0; k < g.n; k++) {
+          const x = g.min[0] + i * g.cell,
+            y = g.min[1] + j * g.cell,
+            z = g.min[2] + k * g.cell;
+          if (Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) < 90 && g.distance(x, y, z) > 0) wrong++;
+        }
+    expect(wrong).toBe(0);
   });
 });

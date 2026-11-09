@@ -158,6 +158,13 @@ export function meshArea(mesh: MeshData): { area: number; volume: number; cumula
   return { area, volume: Math.abs(volume), cumulative };
 }
 
+/** The inside test's ray: off every axis and every rational direction a mesh's grid-aligned edges would hold. */
+const RayDirection = (() => {
+  const d = [1, 0.0017 * Math.PI, 0.0013 * Math.E];
+  const l = Math.hypot(d[0], d[1], d[2]);
+  return [d[0] / l, d[1] / l, d[2] / l] as const;
+})();
+
 function meshSampler(mesh: MeshData): ShapeSampler {
   const { positions: P, indices: I } = mesh;
   const { area, volume, cumulative } = meshArea(mesh);
@@ -180,35 +187,38 @@ function meshSampler(mesh: MeshData): ShapeSampler {
       P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c]);
   }
   const flip = signed < 0 ? -1 : 1;
+  const [dx, dy, dz] = RayDirection;
   const inside = (x: number, y: number, z: number) => {
-    // a ray along +x, Möller–Trumbore, odd crossings: inside
+    // a ray along a skewed direction, Möller–Trumbore, odd crossings: inside. Not an axis: a ray along +x from a
+    // grid-aligned point runs through the shared diagonal of a box face and counts it twice
     let n = 0;
     for (let i = 0; i < I.length; i += 3) {
       const a = 3 * I[i],
         b = 3 * I[i + 1],
         c = 3 * I[i + 2];
-      const e1y = P[b + 1] - P[a + 1],
-        e1z = P[b + 2] - P[a + 2],
-        e1x = P[b] - P[a];
-      const e2y = P[c + 1] - P[a + 1],
-        e2z = P[c + 2] - P[a + 2],
-        e2x = P[c] - P[a];
-      // d = (1,0,0); h = d × e2 = (0, -e2z, e2y)
-      const hy = -e2z,
-        hz = e2y;
-      const det = e1y * hy + e1z * hz;
+      const e1x = P[b] - P[a],
+        e1y = P[b + 1] - P[a + 1],
+        e1z = P[b + 2] - P[a + 2];
+      const e2x = P[c] - P[a],
+        e2y = P[c + 1] - P[a + 1],
+        e2z = P[c + 2] - P[a + 2];
+      // h = d × e2
+      const hx = dy * e2z - dz * e2y,
+        hy = dz * e2x - dx * e2z,
+        hz = dx * e2y - dy * e2x;
+      const det = e1x * hx + e1y * hy + e1z * hz;
       if (Math.abs(det) < 1e-12) continue;
       const f = 1 / det;
       const sx = x - P[a],
         sy = y - P[a + 1],
         sz = z - P[a + 2];
-      const u = f * (sy * hy + sz * hz);
+      const u = f * (sx * hx + sy * hy + sz * hz);
       if (u < 0 || u > 1) continue;
       // q = s × e1
       const qx = sy * e1z - sz * e1y,
         qy = sz * e1x - sx * e1z,
         qz = sx * e1y - sy * e1x;
-      const v = f * qx;
+      const v = f * (dx * qx + dy * qy + dz * qz);
       if (v < 0 || u + v > 1) continue;
       const t = f * (e2x * qx + e2y * qy + e2z * qz);
       if (t > 0) n++;
