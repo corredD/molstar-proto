@@ -410,11 +410,49 @@ export interface Model {
    * its result replaces the one it refines; `populations` stays empty.
    */
   readonly refines?: Id;
+  /** Streamed copies (design.md §6.8): the tiles of a `meso-tiles` resource, loaded by the host's provider. */
+  readonly stream?: StreamSource;
   readonly seed?: number;
   /** The resolver's own construction parameters (design.md §4.3): opaque to the language. */
   readonly params?: Readonly<Record<string, unknown>>;
   readonly activity?: Id;
   readonly evidence?: readonly Id[];
+}
+
+export interface StreamSource {
+  /** A resource of kind `placements`, format `meso-tiles`; its frame is the world frame (or none). */
+  readonly resource: Id;
+}
+
+/** An axis-aligned box, Å, world frame; `min[k] < max[k]` on every axis. */
+export interface Box {
+  readonly min: readonly [number, number, number];
+  readonly max: readonly [number, number, number];
+}
+
+export type StreamLevel = 0 | 1 | 2;
+
+/** The `meso-tiles` format (design.md §6.8.2): what a stream knows of its tiles before loading any. */
+export interface TileManifest {
+  readonly format: 'meso-tiles';
+  /** Must hold 0 and 1, ascending, no repeats; 2 is declared only (an `info` issue: not loaded in v0.4). */
+  readonly levels: readonly StreamLevel[];
+  /** The box every tile lies in. */
+  readonly bounds: Box;
+  /** The populations the tiles hold, by document id: exactly the stream model's `populations`, in type order. */
+  readonly populations: readonly Id[];
+  /** In a fixed order: global copy ordinals follow it. */
+  readonly tiles: readonly TileEntry[];
+}
+
+export interface TileEntry {
+  /** Unique in the manifest; matches `IdPattern` (`t.3.0.7`). */
+  readonly id: string;
+  readonly box: Box;
+  /** Level 0: copies per population (non-negative integers); a population absent from the record has none here. */
+  readonly counts: Readonly<Record<Id, number>>;
+  /** Level 0: where a population's copies are in the tile; default the tile's box. Inside `box`. */
+  readonly envelopes?: Readonly<Record<Id, Box>>;
 }
 
 export type EvidenceKind = 'observation' | 'measurement' | 'literature' | 'database' | 'prediction' | 'assumption';

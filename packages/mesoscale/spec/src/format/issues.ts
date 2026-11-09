@@ -53,6 +53,10 @@ export const IssueCodes = {
   'constraint.unmet': 'A constraint was not met',
   'relation.ignored': "A relation no resolver of the scene honours (it stays the document's statement)",
   'catalog.unexpanded': 'A catalog was not expanded into populations',
+  'stream.unsupported': 'A stream the runtime does not support (a rotated frame, avoid or refines, a superstructure)',
+  'stream.manifest': 'A stream manifest is unavailable or invalid',
+  'stream.tile': 'A tile failed to load or disagreed with its manifest',
+  'stream.budget': 'One tile alone exceeds the stream budget',
   assumption: 'The resolver made a choice the document did not make',
 } as const;
 
