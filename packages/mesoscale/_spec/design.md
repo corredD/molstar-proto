@@ -540,8 +540,9 @@ See §5.
 
 A document written in TypeScript, as Seq\*'s builder (`@molstar/seq-core/builder`). A builder is not part of the format:
 a document from it means what the literal means. Nothing is added, empty optional sections are left out, sections come
-in the order of `MesoViewSpecDoc`, the nodes of a section in the order they were made, the keys of a node in the order
-the caller wrote them (the S-expression print follows it).
+in the order of `MesoViewSpecDoc`, the nodes of a section in the order they were made, a node's keys `id` first and then
+in the order the caller wrote them, a superstructure's in `Superstructure`'s order (the S-expression print follows the
+order).
 
 ```ts
 const b = createMesoDocument({ title: 'β-cell slice', organism: { name: 'Mus musculus', taxon: 10090 }, units: { length: 'nm' } });
@@ -559,7 +560,8 @@ const { doc, issues } = b.build();
   is a string at run time. An entity's ref carries the names of its declared `sites`, so `q.site(e, 'name')` is checked.
 - **Where a string becomes a ref.** `get(kind, id)`: a node added elsewhere or made later (a cycle between an activity
   and what it generated); `add(section, nodes)`: nodes made elsewhere (an importer's), copied as they are, their ids
-  registered. The MesoQL slots (`select`, `focus`, `cutaway`, `target`, `entry`) stay `MesoQL` strings. `validate`
+  registered; the node `get` names is made with that id given explicitly (a label's generated id would skip it, the id
+  being reserved). The MesoQL slots (`select`, `focus`, `cutaway`, `target`, `entry`) stay `MesoQL` strings. `validate`
   checks all three (`ref.missing`, `ref.kind`, `mesoql.*`). A ref of another builder is not a TypeScript error.
 - **Ids.** An id nobody gave is made from the label (`insulin granule` → `e.insulin-granule`), else from what the node
   refers to (a population `p.<entity>`, a relation `rel.<subjects>-<kind>-<objects>`, an alignment, a resource by its

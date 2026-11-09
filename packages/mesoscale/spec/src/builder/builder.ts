@@ -127,7 +127,7 @@ class Scoped {
   readonly sections: Record<string, Obj[]> = {};
   constructor(protected readonly ids: IdRegistry) {}
 
-  /** `{ id, ...input }`: the given id or a generated one, undefined-valued keys left out, the caller's key order kept. */
+  /** `{ id, ...input }`: the given id or a generated one, undefined-valued keys left out, then the caller's keys in their order. */
   protected make(kind: NodeKind, section: string, input: object & { id?: Id; label?: string }, fallback?: string) {
     const id = input.id !== undefined ? this.ids.reserve(input.id) : this.ids.make(kind, input.label || fallback);
     const node = { id, ...strip(input) };
