@@ -346,7 +346,7 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
     if (state) documentSub = state.subscribe((t) => document.set(t));
   };
   followDocument();
-  const documentFollow = objects.subscribe(() => followDocument());
+  const documentFollow = area.documentListsState().subscribe(() => followDocument());
   onCleanup(() => {
     objectsSub.unsubscribe();
     documentFollow.unsubscribe();
@@ -581,7 +581,10 @@ function ScenePanel(props: { ctx: ViewerUIContext; area: ExplorerApi; model: Sce
           onInput={(v) => filter.set(v)}
         />
       </div>
-      <Show when={mapState(objects, (o) => o.length > 0)} fallback={() => <p class={classes.empty}>{EmptyTreeLine}</p>}>
+      <Show
+        when={derive([objects, document.asReadonly], (o, d) => o.length > 0 || !!d)}
+        fallback={() => <p class={classes.empty}>{EmptyTreeLine}</p>}
+      >
         {() => (
           <TreeView
             rows={rows}

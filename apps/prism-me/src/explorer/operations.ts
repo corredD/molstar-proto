@@ -243,6 +243,23 @@ export class ExplorerApi extends ApiArea {
     );
   }
 
+  /**
+   * How many lists a MesoViewSpec document drew, following the state tree while watched: the objects leave them out,
+   * so the tree follows this to find the document (its extension loads with it)
+   */
+  documentListsState(): ReadonlyState<number> {
+    const plugin = this.ctx.plugin;
+    return (this.documentLists ??= watchedState(
+      () => {
+        let n = 0;
+        for (const l of plugin.managers.particles.hierarchy.current.lists) if (isDocumentList(l.cell.obj?.data)) n++;
+        return n;
+      },
+      () => plugin.state.data.events.changed,
+    ));
+  }
+  private documentLists?: ReadonlyState<number>;
+
   /** What a node stands for in 3D (empty when nothing) */
   loci(node: NodeRef): Loci {
     return lociOf(this.ctx.plugin, node);
