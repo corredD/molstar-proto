@@ -752,6 +752,32 @@ describe('TileStreamer', () => {
     expect(resident()).not.toContain('t.0.0.0');
   });
 
+  it('a provider that throws synchronously fails the tile; step does not throw and pending stays consistent', async () => {
+    const loads: string[] = [];
+    const sync: TileProvider = {
+      manifest: () => provider.manifest(),
+      load: (id, level, signal) => {
+        loads.push(id);
+        if (id === 't.0.0.0') throw new Error('no connection');
+        return provider.load(id, level, signal);
+      },
+    };
+    const { s, step, drain, issues, resident } = await streamer(doc, sync, 60);
+    expect(() => step('v.corner')).not.toThrow();
+    // the throwing tile is in flight until its rejection settles, like any other load
+    expect(s.stats().inFlight).toBe(2);
+    await drain('v.corner');
+    for (let i = 0; i < 3; i++) {
+      step('v.corner');
+      await sleep(2);
+    }
+    expect(loads.filter((id) => id === 't.0.0.0').length).toBe(1);
+    expect(issues.filter((i) => i.code === 'stream.tile').length).toBe(1);
+    expect(issues[0].message).toMatch(/t\.0\.0\.0.*no connection/);
+    expect(s.stats()).toMatchObject({ failed: 1, inFlight: 0, resident: 2 });
+    expect(resident()).not.toContain('t.0.0.0');
+  });
+
   it('a payload whose counts disagree with the manifest is rejected', async () => {
     const wrong = spy(provider, (id, p) => {
       if (id !== 't.0.0.0') return p;

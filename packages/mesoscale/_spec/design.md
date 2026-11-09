@@ -1017,8 +1017,8 @@ export interface TileProvider {
   /**
    * A tile's copies at `level` (1 in v0.4). Rejects with an `AbortError` once `signal` aborts; a result that arrives
    * after the abort is ignored anyway. Any other rejection, an `AbortError` of the provider's own included (the
-   * signal not aborted): `stream.tile`, and the tile is not asked for again until
-   * the stream key changes.
+   * signal not aborted), and a throw before it returns a promise: `stream.tile`, and the tile is not asked for again
+   * until the stream key changes.
    */
   load(tile: string, level: 1, signal: AbortSignal): Promise<TilePayload>;
 }

@@ -21,7 +21,7 @@ export interface TileProvider {
   /**
    * A tile's copies at `level` (1 in v0.4). Rejects with an `AbortError` once `signal` aborts; a result that arrives
    * after the abort is ignored anyway. Any other rejection, an `AbortError` of the provider's own included (the
-   * signal not aborted): `stream.tile`, and the tile is not asked for again until the stream
+   * signal not aborted), and a throw before it returns a promise: `stream.tile`, and the tile is not asked for again until the stream
    * key changes.
    */
   load(tile: string, level: 1, signal: AbortSignal): Promise<TilePayload>;
@@ -471,9 +471,15 @@ export class TileStreamer {
         }),
       );
     };
+    // a provider that throws before it returns a promise fails the tile like one that rejects
+    let loading: Promise<TilePayload>;
+    try {
+      loading = Promise.resolve(provider.load(tile.id, 1, ctl.signal));
+    } catch (e) {
+      loading = Promise.reject(e);
+    }
     // a result of another key or generation, or of a load the plan cancelled, is dropped and tells no one
-    provider
-      .load(tile.id, 1, ctl.signal)
+    loading
       .then(
         (p) => {
           if (stale()) return false;
