@@ -331,7 +331,7 @@ export class TileStreamer {
   private readonly told = new Set<string>();
   private issues: Issue[] = [];
   private count = { requested: 0, loaded: 0, evicted: 0, cancelled: 0, failed: 0 };
-  private budget = 0;
+  private budget: StreamBudget;
   private disposed = false;
 
   constructor(
@@ -340,7 +340,12 @@ export class TileStreamer {
     /** Called when a load settles; the session queues one stream step (coalesced). */
     private readonly onSettled: () => void,
   ) {
-    this.budget = options.budget.copies;
+    this.budget = options.budget;
+  }
+
+  /** The copy budget of the next steps (a viewer's slider); resident tiles beyond it leave on the next step. */
+  setBudget(copies: number) {
+    this.budget = { ...this.budget, copies };
   }
 
   /**
@@ -378,7 +383,7 @@ export class TileStreamer {
         pending: new Set(this.pending.keys()),
         failed: this.failed,
       },
-      this.options.budget,
+      this.budget,
     );
     for (const id of plan.cancel) {
       this.pending.get(id)?.abort();
@@ -401,7 +406,7 @@ export class TileStreamer {
           'stream.budget',
           'warning',
           'load',
-          `${node.params.model}: tile ${plan.overBudget} alone has more copies than the budget (${this.budget}); it stays at level 0`,
+          `${node.params.model}: tile ${plan.overBudget} alone has more copies than the budget (${this.budget.copies}); it stays at level 0`,
           { ids: [node.params.model] },
         ),
       );
@@ -424,7 +429,7 @@ export class TileStreamer {
       inFlight: this.pending.size,
       ...this.count,
       copies,
-      budget: this.budget,
+      budget: this.budget.copies,
       level0Copies: this.level0,
     };
   }

@@ -79,6 +79,12 @@ export class MesoSession {
     this.streamer?.dispose();
   }
 
+  /** A new copy budget, applied by a stream step now (0 holds level 0 only; resident tiles beyond it are evicted). */
+  setBudget(copies: number): Promise<EditRecord | undefined> {
+    this.streamer?.setBudget(copies);
+    return this.queue(() => this.runStream());
+  }
+
   start(): Promise<EditRecord> {
     return this.queue(() => this.run('initial', this.doc, 'open'));
   }

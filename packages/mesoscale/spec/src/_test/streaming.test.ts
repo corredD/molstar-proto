@@ -744,6 +744,15 @@ describe('TileStreamer', () => {
     expect(out.plan!.request).toEqual([]);
   });
 
+  it('setBudget changes what the next step plans: 0 holds level 0 only, a budget then loads tiles', async () => {
+    const { s, step } = await streamer(doc, provider, 0);
+    expect(step('v.corner').plan!.request).toEqual([]);
+    expect(s.stats()).toMatchObject({ copies: 0, budget: 0 });
+    s.setBudget(60);
+    expect(step('v.corner').plan!.request.length).toBeGreaterThan(0);
+    expect(s.stats().budget).toBe(60);
+  });
+
   it('with no stream node it does nothing', () => {
     const s = new TileStreamer(
       () => undefined,

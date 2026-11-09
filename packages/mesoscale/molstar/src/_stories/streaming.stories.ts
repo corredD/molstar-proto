@@ -56,18 +56,36 @@ export const TiledScene: StoryObj = {
         const b = h('button', { onclick: () => void show(v.id) }, v.label ?? v.id) as HTMLButtonElement;
         return b;
       });
+      // the scene opens at level 0 (budget 0): the first view or tour switches the budget on
+      let streaming = false;
+      const startStreaming = async () => {
+        streaming = true;
+        await session?.setBudget(Budget);
+      };
       const show = async (view: string) => {
         if (!session) return;
+        if (!streaming) await startStreaming();
         await session.edit((d: MesoViewSpecDoc) => ({ ...d, session: { ...d.session, view } }), `view ${view}`);
         render();
       };
+      const level0Only = h(
+        'button',
+        {
+          onclick: async () => {
+            streaming = false;
+            await session?.setBudget(0);
+            render();
+          },
+        },
+        'Back to level 0',
+      ) as HTMLButtonElement;
       const play = h('button', {}, 'Play tour') as HTMLButtonElement;
       play.addEventListener('click', async () => {
         const tour = doc.tours?.[0];
         if (!tour || playing) return;
         playing = true;
         // the view buttons wait for the tour; the tour stops when the story is gone (unmounted)
-        for (const b of [...buttons, play]) b.disabled = true;
+        for (const b of [...buttons, play, level0Only]) b.disabled = true;
         try {
           for (const step of tour.steps) {
             if (!root.isConnected) return;
@@ -78,7 +96,7 @@ export const TiledScene: StoryObj = {
           }
           caption.textContent = 'tour done';
         } finally {
-          for (const b of [...buttons, play]) b.disabled = false;
+          for (const b of [...buttons, play, level0Only]) b.disabled = false;
           playing = false;
         }
       });
@@ -100,7 +118,7 @@ export const TiledScene: StoryObj = {
           };
           session = new MesoSession(
             doc,
-            { resolvers: DefaultResolvers, tiles: () => provider, stream: { budget: { copies: Budget } } },
+            { resolvers: DefaultResolvers, tiles: () => provider, stream: { budget: { copies: 0 } } },
             adapter,
           );
           await session.start();
@@ -115,7 +133,7 @@ export const TiledScene: StoryObj = {
           { style: 'grid-column:1 / 3' },
           panel(
             'Tiled fixture: level 0 first, copies stream in around the camera',
-            h('div', {}, h('div', { style: Styles.bar }, ...buttons, play), caption),
+            h('div', {}, h('div', { style: Styles.bar }, ...buttons, play, level0Only), caption),
           ),
         ),
         h(
