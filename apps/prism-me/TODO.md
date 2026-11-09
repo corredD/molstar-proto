@@ -88,15 +88,17 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
-- **Paint v2 and what v1 left** (lane `paint`, 2026-11-08; progress/2026-11-08-paint.md): fibres (a stroke as a new
-  fibre of the list's `fibers`, edited and wrapped on a surface); collision checks (mesobuild's) so copies do not
-  overlap; the canvas turning while painting (the paint layer takes the pointer: a modifier or the wheel passed
-  through); an eraser (a stroke removing copies) and a stroke's undo kept apart from the list's other edits; painting
-  with a list's target (lists without entities) from its row; the preview as 3D discs (a transient shape kept out of the
-  pick) rather than the 2D layer; a pick normal test on Dawn (headless WebGPU picks did not answer reliably here); lists
-  whose targets come from a class (refused now); the review's nits: Esc while the mode is on also stops the page's other
-  Esc handlers once, the host names the brush by id as text (a name "3" would win), the principal axis read where
-  `targetMapping` is on the list (not a decorator's), a real 100 ms wait in paint-mode.test.ts.
+- **Paint, what rounds 1 and 2 left** (lane `paint`, 2026-11-08/09; progress/2026-11-08-paint.md): a fibre edited and
+  wrapped on a surface after it is painted (round 2 paints a new one); collision checks (mesobuild's) so copies do not
+  overlap; an eraser (a stroke removing copies) and a stroke's undo kept apart from the list's other edits; painting
+  with a list's target (lists without entities) from its row; the copy under the pointer's cost on a surface brush (each
+  move redraws, so the next pick redraws the pick pass: measure on MG in the browser; if it shows, a draw whose only
+  change is a non-picked object keeps the pick, a graphics change of its own); the copy under the pointer with a list
+  moved or scaled (drawn at the scene's point, its turn not the list frame's); a pick normal test on Dawn (headless
+  WebGPU picks did not answer reliably here); lists whose targets come from a class (refused now); the review's nits:
+  Esc while the mode is on also stops the page's other Esc handlers once, the host names the brush by id as text (a name
+  "3" would win), the principal axis read where `targetMapping` is on the list (not a decorator's), a real 100 ms wait
+  in paint-mode.test.ts.
 
 - **Fibre points drawn twice** (lane `fibers-targeted`, 2026-11-08; to decide): a cellPACK fibre's points keep their
   one-atom target under the new tubes (the yeast slab: 2.3M extra instances). Leave fibre points untargeted in the
