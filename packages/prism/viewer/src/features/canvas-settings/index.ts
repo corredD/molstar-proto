@@ -72,13 +72,11 @@ export const CanvasSettingsFeature: ViewerExtension = {
         alias: ['perspective', 'orthographic', 'field of view'],
       }),
       operationCommand(api, canvas.clipping, { category: 'Canvas', icon: 'scan', alias: ['clip', 'slab'] }),
-      // Handles on top or in the scene (gizmos.md): the command flips it, the operation takes the state wanted.
+      // The handles' size (gizmos.md): every handle on the canvas, Prism's and the extensions'.
       operationCommand(api, canvas.handles, {
         category: 'Canvas',
         icon: 'move-3d',
-        title: 'Handles on top',
-        alias: ['handles on top', 'handles through', 'gizmo on top'],
-        toggle: { key: 'onTop', current: () => api.canvas.handleLook.onTop },
+        alias: ['handle size', 'gizmo size', 'handles'],
       }),
       // Offered only where WebXR is (the operation's `when`).
       ...(canvas.xr

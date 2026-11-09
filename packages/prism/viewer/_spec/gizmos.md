@@ -1,9 +1,9 @@
 # Handles that move things
 
-`GizmoHandles` (`src/sources/gizmos/handles.ts`, exported as `@molstar/prism-viewer/sources/gizmos`): the one host of
-the gizmo library's controller (`@molstar/graphics/util/gizmo/controller`) for anything Prism or an extension moves by
-hand: a structure ([structure-move.md](structure-move.md)), a cut ([clipping.md §4](clipping.md)), an extension's
-object.
+`GizmoHandles` (`src/sources/gizmos/handles.ts`, exported as `@molstar/prism-viewer/sources/gizmos`): a host of the
+gizmo library's controller (`@molstar/graphics/util/gizmo/controller`) for what an extension moves by hand: a particle,
+a slice's plane, a stage object. Prism's own move ([move.md](move.md)) and cuts ([clipping.md §4](clipping.md)) run the
+controller themselves.
 
 - **A host gives a binding, the class does the rest.** The binding is the library's (`layout`, `apply`, `preview`,
   `commit`, `cancel`, …) with its items read from the state (`items()`), not a stream: the class reads them again at
@@ -21,20 +21,22 @@ object.
 - **What a drag starts from changing cancels it** (an undo, another edit): the cells the binding names for the item
   (`cells(key)`, default its key) and every cell under them, compared by their params as at the press; a cell above is
   named when it places the item (a mesh's shape provider). Not every cell above: a trajectory playing its frames would
-  cancel every drag. Its release then commits nothing. A drag's cancel the controller runs late (after a preview in
-  flight) is run at the next press instead, before that drag begins.
+  cancel every drag. Its release then commits nothing. While a cancel waits for a preview in flight, no drag starts (the
+  controller's: it would start from the preview the cancel reverts).
 - **A placement comes ready** (`PlacementHandles`: `layout`, `sameGeometry`, `equal`, `apply`): a transform on top of
   where a thing was loaded and its center (a structure, an extension's object), its scale kept under the turn.
 - **A frame comes ready** (`frameHandles(options)`, the same): a rigid frame and a size (a slice's plane, a particle),
   the rings those asked for.
-- **On top, one setting for every handle** (`canvas.handles`: `onTop`, `scale`; ⌘K "Handles on top" flips it): the gizmo
-  library's look of the canvas (`GizmoAppearance`), which every controller follows, Prism's hosts and an extension's
-  alike; no option per host. On top, every part of a gizmo (its handles and its body: a cut's plane, a slice's frame) is
-  drawn over the scene (Canvas3D's on-top layer, `setOnTop`), because a handle one cannot see cannot be grabbed (Ludo,
-  2026-10-26); the handles are picked through the scene, a body stays not pickable. A view setting (no history step),
-  kept with the canvas: not in the light restore (journal.md §6), which brings the canvas's props back where a host
-  keeps one (`persist.restore`); off by default.
-- **A hovered handle turns yellow** (the gizmo library's controller, on top or not; Ludo, 2026-10-27: a strong color, no
-  grow), and stays so while dragged: on top neither the marking's outline nor the glow is drawn.
+- **Over the scene, always** (the gizmo library's overlay layer): every gizmo is drawn above the scene, its handles on
+  top and its body (a cut's plane, a slice's frame) x-ray (`GizmoLayout.occludedAlpha`, `DefaultOccludedAlpha`), because
+  a handle one cannot see cannot be grabbed (Ludo, 2026-10-26); the handles are picked through the scene, a body stays
+  not pickable. No setting: a host that wants other depth gives its layout's `occludedAlpha`.
+- **The size, one setting for every handle** (`canvas.handles`: `scale`): the gizmo library's look of the canvas
+  (`GizmoAppearance`), which every controller follows, Prism's hosts and an extension's alike; no option per host. The
+  handles are drawn at their frame times the scale, a body as it is (it is what is edited). A view setting (no history
+  step), kept with the canvas: not in the light restore (journal.md §6), which brings the canvas's props back where a
+  host keeps one (`persist.restore`); 1 by default.
+- **A hovered handle is marked** (the gizmo library's controller): Mol*'s highlight and the handles' glow, and the parts
+  shown on hover (`when.hover`: a trackball's fill).
 - **Tests** drive a fake canvas on a headless viewer's plugin (`src/testing/gizmo-canvas.ts`: hover a handle, drag,
-  release, Esc; what is on top); a release outside the window is the canvas's own (`interactionEnd`) and is not faked.
+  release, Esc); a release outside the window is the canvas's own (`interactionEnd`) and is not faked.

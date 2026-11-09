@@ -57,6 +57,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 `v5` branch).
 
 - Periodic volume slices drawn half a box away (`5affa6d17`).
+- cellPACK fibres drawn as tubes when their points have a target (lane `fibers-targeted`, made on a prism-me lane:
+  master has the same `hasUntargeted` guard in `complexVisuals`; port when Ludo says).
 - Plane slice sized in voxels used as Å (`ea7dc5d3e`).
 - Gizmo: `rotate` axes option, `poseOfFrame`/`frameOfPose` (`ded144e8d`).
 - Grid slice image 3× faster, pixels identical (`me/fast-slice` from master: `3c92cb7ff`..`ad8665a13`; in prism-me by
@@ -95,6 +97,10 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   whose targets come from a class (refused now); the review's nits: Esc while the mode is on also stops the page's other
   Esc handlers once, the host names the brush by id as text (a name "3" would win), the principal axis read where
   `targetMapping` is on the list (not a decorator's), a real 100 ms wait in paint-mode.test.ts.
+
+- **Fibre points drawn twice** (lane `fibers-targeted`, 2026-11-08; to decide): a cellPACK fibre's points keep their
+  one-atom target under the new tubes (the yeast slab: 2.3M extra instances). Leave fibre points untargeted in the
+  reader (lighter, tubes only), or keep both (a cellPACK fibre whose points carry an ingredient)?
 
 - **Automatic transfer-function preset** (Ludo, 2026-11-03; to decide): "a great preset automatically" for a direct
   volume, an Auto entry in the transfer editor's Presets. Pointer: Barthel, "Automatic Generation of Volumetric Transfer
@@ -188,8 +194,8 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   its own (`common` cannot tell none from mixed); the Labels section lists the labels made at the row's key, not the
   tree's fallbacks (a label under its object's row when its own row is gone); each clip editor finds its cut among all
   (a Map by tag would do; a few at a node, at most 16 cuts a representation); icons beside words carried over (Remove
-  the label, Add a clip, On top: styling.md §4); a viewer test waits on the real clock (300 ms) to show a run of picks
-  makes one step; the extensions' `styles:check` is not in CI (`.github/workflows/node.yml` runs Prism's).
+  the label, Add a clip: styling.md §4); a viewer test waits on the real clock (300 ms) to show a run of picks makes one
+  step; the extensions' `styles:check` is not in CI (`.github/workflows/node.yml` runs Prism's).
 
 - The production build is over its size budget (`node scripts/esbuild/app.mjs apps/prism-me --prd`: index.js 5.78 MB
   against 3.40 MB), on prism-me before PR #9 too.
@@ -283,3 +289,13 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
   `model`), so the points' hover needs a loci label provider in the cryoet extension or a label on the ndjson transform
   (Ludo's call); the classic Mesoscale Explorer shows MG's and HIV's compartment path as the description (its
   `model.ts`), not fixed there.
+- From the master merge (lane `merge-master`, 2026-11-09):
+  - `VisualSet.update` settling when its representation is removed meanwhile (6ffbdee19) is a library fix: its own lane
+    from `origin/master`, upstream on Ludo's word (master's `GizmoController#front` does not await its update).
+  - `webgpu-device-listener.test.ts` (master's) crashes Dawn (SIGSEGV) on prism-me, passes on master; master's test
+    copied onto pre-merge prism-me crashes too: some prism-me GPU work still pending when an owned device is destroyed.
+  - A size-only change of a non-element target (volume dots' `sizeFactor`) does not refresh its bounds (the merge took
+    master's `updateTransform`; e91553839 did it under `updateSize` too): small, as master's `Spheres`.
+  - `ghostSphere` (cell-cull.wgsl) is tested without the wiggle allowance; `moveLayout` leaves `splitGridVersions` stale
+    (one re-split of the moved members at the next member's drag).
+  - The Ghosts switch is canvas-wide but shown in every clip's section: once, in the Clips category, if Ludo prefers.

@@ -17,9 +17,19 @@ here.
 - Volume grid slices build about 3x faster (a 928×928 slice of a tomogram, volume-value color: 273 → 87 ms a step): the
   pixel-to-cell index used for marking is computed or made on first use instead of a Map filled with every image, a
   uniform color theme is called once, and a pixel's position no longer goes through `Vec3.transformMat4`
+- Fix the loci of a pick of a whole unit (elements, polymers, intra-unit bonds) holding one index past the unit's
+  elements
+- Fix the surfaces of a whole structure (Gaussian surface and density, molecular surface, blob surface) taking one
+  position past the structure's elements: an undefined point in their density and the blobs' clustering
 - Marking: fill and dim account for transparent layers (shading, see-through, dim of unmarked transparent objects)
 - Allow negative values for the label text offsets X, Y and Z (domain [-10, 10] instead of [0, 10]) (#1899)
+- Fix multi-sampling with `reuseOcclusion` (the default) reading the SSAO of the first sample shifted the wrong way
+  vertically in the others
 - Fix `Euler.set` (and `Euler.fromVec3`, which uses it) writing all three angles into the first component
+- Fix `VdwRadius` returning `undefined` for the elements without a radius in its table (110 to 118, Ds to Og): the
+  default radius, as for an unknown element
+- Fix sphere impostors far from the camera (mesoscale structures zoomed out) losing pixels and shading with wrong
+  normals in rings around the view's center: the ray-sphere test no longer loses the radius to rounding
 - [Breaking] Component options keep overrides: `StructureComponentManager.setOptions` changes only the representations
   that had the previous value of a changed option (a representation given its own material, quality, … keeps it);
   `reset` writes options to every representation. Representation presets give their representations the material, clip
@@ -267,6 +277,8 @@ here.
 - Geometry export: spheres of a representation with several instances (symmetry copies) export each copy's spheres, not
   the first copy's followed by invalid ones
 - Strips of lines (streamlines, fibers) get the bounding sphere of their points: it read past their buffers
+- Fix 'volume too large for gpu isosurface extraction' on periodic volumes: the GPU fallback check sizes the texture of
+  the wrapped grid
 
 ## [v5.13.1] - 2026-10-08
 

@@ -12,7 +12,7 @@ import type { Handle } from '@molstar/graphics/util/gizmo/handle';
 import { transformHandles } from '@molstar/graphics/util/gizmo/transform';
 import type { HandlesBinding } from './handles.js';
 
-// A thing placed in the scene and moved by hand (gizmos.md, structure-move.md): its transform on top of where it was
+// A thing placed in the scene and moved by hand (gizmos.md, move.md): its transform on top of where it was
 // loaded and its center there. A rigid move is a turn about the center then a move, `T(position) R T(−center)`: the
 // handles' frame is the center as placed now, turned as now; what the transform has beyond a rigid move (a scale, a
 // shear) is kept under the new pose.

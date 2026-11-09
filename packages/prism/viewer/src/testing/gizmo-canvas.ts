@@ -7,6 +7,8 @@
 import { OrderedSet } from '@molstar/core/data/int';
 import { Vec3, type Vec4 } from '@molstar/core/math/linear-algebra';
 import { Binding } from '@molstar/core/util/binding';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { Canvas3DParams, type Canvas3DProps } from '@molstar/graphics/canvas3d/canvas3d';
 import type { Representation } from '@molstar/graphics/repr/representation';
 import { Shape, ShapeGroup } from '@molstar/model/model/shape';
 import type { PluginContext } from '@molstar/plugin/context';
@@ -22,8 +24,6 @@ export interface GizmoCanvas {
   readonly holds: number;
   /** The gizmos' representations shown, the claimed ones (handles and bodies) */
   shown(): readonly Representation.Any[];
-  /** The representations drawn on top of the scene (`Canvas3D.setOnTop`) */
-  readonly onTop: ReadonlySet<Representation.Any>;
   /**
    * The pointer over group `g` of the handles shown (0: a transform gizmo's move handle), once they are drawn; false:
    * none shown
@@ -44,12 +44,14 @@ const settle = async () => {
 
 export function mountGizmoCanvas(plugin: PluginContext): GizmoCanvas {
   const added = new Set<Representation.Any>();
-  const onTop = new Set<Representation.Any>();
   const attribs = {
     trackball: { bindings: { dragRotate: Binding([]), dragPan: Binding([]) } as Record<string, Binding> },
   };
   const input = {
     pixelRatio: 1,
+    // the element's size: the viewport's (what a drag's moves are fractions of)
+    width: 100,
+    height: 100,
     drag: new Subject<{ isStart: boolean; x: number; y: number; dx: number; dy: number }>(),
     interactionEnd: new Subject<void>(),
     keyDown: new Subject<{ key: string }>(),
@@ -60,11 +62,7 @@ export function mountGizmoCanvas(plugin: PluginContext): GizmoCanvas {
   const canvas = {
     graphics: { capabilities: { flatInterpolation: true } },
     add: (r: Representation.Any) => void added.add(r),
-    remove: (r: Representation.Any) => {
-      added.delete(r);
-      onTop.delete(r);
-    },
-    setOnTop: (r: Representation.Any, on: boolean) => void (on ? onTop.add(r) : onTop.delete(r)),
+    remove: (r: Representation.Any) => void added.delete(r),
     update: () => {},
     commit: () => {},
     syncVisibility: () => {},
@@ -75,6 +73,12 @@ export function mountGizmoCanvas(plugin: PluginContext): GizmoCanvas {
       held = until.catch(() => {});
     },
     attribs,
+    // a canvas's default props (the trackball's speed: a turn's rate, `trackballTurnRate`; what the views read)
+    props: PD.getDefaultValues(Canvas3DParams) as Canvas3DProps,
+    // a checkpoint's restore (an undo) sets back the props it read
+    setProps(p: Partial<Canvas3DProps>) {
+      canvas.props = { ...canvas.props, ...p };
+    },
     setAttribs: (a: { trackball: { bindings: Record<string, Binding> } }) => {
       attribs.trackball.bindings = a.trackball.bindings;
     },
@@ -108,7 +112,6 @@ export function mountGizmoCanvas(plugin: PluginContext): GizmoCanvas {
       return holds;
     },
     shown: () => owned(),
-    onTop,
     async hover(g = 0) {
       await settle();
       // the handles' representation (a body, when there is one, takes no hover)

@@ -6,6 +6,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { Sphere3D } from '@molstar/core/math/geometry/primitives/sphere3d';
+import { Frustum3D } from '@molstar/core/math/geometry/primitives/frustum3d';
+import { Plane3D } from '@molstar/core/math/geometry/primitives/plane3d';
 import { Mat4 } from '@molstar/core/math/linear-algebra/3d/mat4';
 import { Vec3 } from '@molstar/core/math/linear-algebra/3d/vec3';
 import { ColorNames } from '@molstar/core/util/color/names';
@@ -14,11 +16,14 @@ import { Spheres } from '@molstar/graphics/geo/geometry/spheres/spheres';
 import { SpheresBuilder } from '@molstar/graphics/geo/geometry/spheres/spheres-builder';
 import { createTransform, type TransformData } from '@molstar/graphics/geo/geometry/transform-data';
 import { packAffineRows } from '../affine-rows.js';
-import type { ComputeContext, StorageBuffer } from '../compute.js';
+import type { ComputeContext, KernelCode, StorageBuffer } from '../compute.js';
 import type { GraphicsResources } from '../context.js';
+import { LodView } from '../renderable.js';
 import { createMergedRenderObject, createRenderObject, type GraphicsRenderObject } from '../render-object.js';
-import { createMergedCuller } from '../renderable/merged-culler.js';
-import { InstanceDataVec4s, type MergeableValues, packInstanceData } from '../renderable/merged.js';
+import { createMergedCuller, MergedCullerLimits } from '../renderable/merged-culler.js';
+import type { MergeableValues } from '../renderable/merged.js';
+import { CulledData } from '../culled-data.js';
+import { SegmentedArray } from '../segmented-array.js';
 
 // The GPU culler of a merged object (merged-culler.ts) on a fake compute context: what it writes to its buffers, read
 // back from memory. A drag's preview moves the instances of one member of thousands each pointer event (Ludo,
@@ -31,8 +36,10 @@ interface FakeBuffer extends StorageBuffer {
   readonly bytes: Uint8Array;
 }
 
-function fakeCompute() {
+/** `limit`: the kernels ready, a dispatch over more workgroups than it in a dimension throwing as WebGPU's does */
+function fakeCompute(limit?: number) {
   let written = 0;
+  const dispatches: { kernel: string; x: number; y: number; z: number }[] = [];
   let nextId = 0;
   const latest = new Map<string, FakeBuffer>();
   const createBuffer = (byteLength: number, label = '') => {
@@ -61,10 +68,17 @@ function fakeCompute() {
     maxStorageBufferSize: 2 ** 31,
     getStorageBufferByteCount: () => 0,
     isKernelSupported: () => true,
-    createKernel: () => ({}),
-    // never ready: the culler culls on the CPU meanwhile, its buffers written all the same
+    createKernel: (code: KernelCode) => ({
+      dispatch: (x: number, y = 1, z = 1) => {
+        if (limit !== undefined && (x > limit || y > limit || z > limit)) {
+          throw new Error(`kernel '${code.name}': ${x} × ${y} × ${z} workgroups exceed ${limit} per dimension`);
+        }
+        dispatches.push({ kernel: code.name, x, y, z });
+      },
+    }),
+    // without a limit never ready: the culler culls on the CPU meanwhile, its buffers written all the same
     prepareKernels: () => new Promise<void>(() => {}),
-    hasKernels: () => false,
+    hasKernels: () => limit !== undefined,
     createBuffer,
     tryCreateBuffer: async (n: number, label?: string) => createBuffer(n, label),
     ownsBuffer: () => true,
@@ -75,6 +89,7 @@ function fakeCompute() {
   return {
     compute,
     resources,
+    dispatches,
     get written() {
       return written;
     },
@@ -96,7 +111,7 @@ const Invariant = Sphere3D.create(Vec3(), 2);
 const PerMember = 8;
 
 /** `count` spheres objects of `PerMember` instances each, in a row along y, gridded (cells of 20 Å) */
-function scene(count: number) {
+function scene(count: number, limit?: number) {
   const builder = SpheresBuilder.create(2, 1);
   builder.add(0, 0, 0, 0);
   builder.add(1, 0, 0, 1);
@@ -114,7 +129,7 @@ function scene(count: number) {
   }
   const ro = createMergedRenderObject(objects, { gpuCulling: true });
   ro.merged.sync();
-  const fake = fakeCompute();
+  const fake = fakeCompute(limit);
   const members = objects.map((o) => o.values as MergeableValues);
   const culler = createMergedCuller(fake.compute, fake.resources, ro.merged, members, false);
 
@@ -141,7 +156,8 @@ function scene(count: number) {
 function expectCurrent({ ro, fake, culler }: ReturnType<typeof scene>) {
   const values = ro.merged.values;
   const count: number = values.instanceCount.ref.value;
-  const transforms = values.aTransform.ref.value as Float32Array;
+  const aTransform = values.aTransform.ref.value as Float32Array | SegmentedArray<Float32Array>;
+  const transforms = SegmentedArray.is(aTransform) ? SegmentedArray.flatten(aTransform) : aTransform;
   const cells = fake.uints('culled instance cells');
   const spheres = fake.floats('culled cell spheres');
   const center = Vec3();
@@ -153,13 +169,17 @@ function expectCurrent({ ro, fake, culler }: ReturnType<typeof scene>) {
     const d = Vec3.distance(center, Vec3.create(spheres[c * 4], spheres[c * 4 + 1], spheres[c * 4 + 2]));
     expect(d + Invariant.radius).toBeLessThanOrEqual(spheres[c * 4 + 3] + 1e-3);
   }
-  const data = new Float32Array(count * InstanceDataVec4s * 4);
-  packInstanceData(values, data);
-  expect(Array.from(fake.floats('culled instance data').subarray(0, data.length))).toEqual(Array.from(data));
-  // the identity region: all instances in their own order, as views not culled on the GPU draw them
+  // the instances' data (`CulledData`): the transforms' rows, then `aInstance`
+  const data = fake.floats('culled instance data');
   const rows = packAffineRows(transforms, count, new Float32Array(count * 12));
-  const drawn = fake.floats('culled transforms').subarray(culler.identityBase * 12, (culler.identityBase + count) * 12);
-  expect(Array.from(drawn)).toEqual(Array.from(rows));
+  expect(Array.from(data.subarray(0, count * 12))).toEqual(Array.from(rows));
+  const instanceBase = CulledData.instanceBase(count) * 4;
+  expect(Array.from(data.subarray(instanceBase, instanceBase + count))).toEqual(
+    Array.from((values.aInstance.ref.value as Float32Array).subarray(0, count)),
+  );
+  // the identity region: all instances in their own order, as views not culled on the GPU draw them
+  const identity = fake.uints('culled instance indices').subarray(culler.identityBase, culler.identityBase + count);
+  expect(Array.from(identity)).toEqual(Array.from({ length: count }, (_, i) => i));
 }
 
 describe('the GPU culler of a merged object', () => {
@@ -190,5 +210,27 @@ describe('the GPU culler of a merged object', () => {
     const large = written(200);
     // the control: a full layout writes about 4x at 4x the members
     expect(large).toBeLessThan(small * 1.5);
+  });
+
+  it('dispatches more workgroups than a dimension holds in rows (a yeast slab: 6.7M instances, 104k groups)', () => {
+    // 40 members of 8: 320 instances, 5 workgroups of 64, over a limit of 4 a dimension (`MergedCullerLimits`)
+    const s = scene(40, 4);
+    const { maxWorkgroupsPerDimension } = MergedCullerLimits;
+    MergedCullerLimits.maxWorkgroupsPerDimension = 4;
+    let dispatched: boolean;
+    try {
+      dispatched = s.culler.dispatch(Plane3D.create(Vec3.create(0, 0, -1), 0), Frustum3D(), LodView());
+    } finally {
+      MergedCullerLimits.maxWorkgroupsPerDimension = maxWorkgroupsPerDimension;
+    }
+    expect(dispatched).toBe(true);
+    // every kernel's dispatch within the limit (the fake throws past it, as WebGPU does)
+    expect(new Set(s.fake.dispatches.map((d) => d.kernel))).toEqual(
+      new Set(['cell-cull', 'instance-copy', 'cull-args']),
+    );
+    for (const d of s.fake.dispatches) expect(Math.max(d.x, d.y, d.z)).toBeLessThanOrEqual(4);
+    const copy = s.fake.dispatches.find((d) => d.kernel === 'instance-copy')!;
+    // every instance has a thread: the kernels index workgroups by `wid.x + wid.y * num_workgroups.x`
+    expect(copy.x * copy.y * copy.z * 64).toBeGreaterThanOrEqual(320);
   });
 });

@@ -81,14 +81,16 @@ export function complexVisuals(
       colorTheme: targetProps?.colorTheme ?? { name: colorTheme, params: {} },
       ...(targetProps?.sizeTheme && { sizeTheme: targetProps.sizeTheme }),
     });
+  }
 
-    if (particleList?.fibers && particleList.fibers.count > 0) {
-      builder.to(data.list).apply(ParticlesRepresentation3D, {
-        type: { name: FibersRepresentationProvider.name, params: {} },
-        colorTheme: targetProps?.colorTheme ?? { name: colorTheme, params: {} },
-        ...(targetProps?.sizeTheme && { sizeTheme: targetProps.sizeTheme }),
-      });
-    }
+  // a list's fibers, their points targeted or not: a cellPACK fiber's chain has an atom (it makes the chain the fiber
+  // entity's), so its points always have a target
+  if (particleList?.fibers && particleList.fibers.count > 0) {
+    builder.to(data.list).apply(ParticlesRepresentation3D, {
+      type: { name: FibersRepresentationProvider.name, params: {} },
+      colorTheme: targetProps?.colorTheme ?? { name: colorTheme, params: {} },
+      ...(targetProps?.sizeTheme && { sizeTheme: targetProps.sizeTheme }),
+    });
   }
 
   builder.to(data.list).apply(ParticleListUnitcell3D, { attachment: 'center' });

@@ -6,7 +6,6 @@
  * @author Sebastian Bittrich <sebastian.bittrich@rcsb.org>
  * @author Ke Ma <mark.ma@rcsb.org>
  * @author Adam Midlik <midlik@gmail.com>
- * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import fs from 'fs';
@@ -413,6 +412,7 @@ export function defaultImagePassParams(): Partial<ImageProps> {
   return {
     cameraHelper: {
       axes: { name: 'off', params: {} },
+      scale: { name: 'off', params: {} },
     },
     multiSample: {
       ...DefaultCanvas3DParams.multiSample,
@@ -445,7 +445,6 @@ export const STYLIZED_POSTPROCESSING: Partial<PostprocessingProps> = {
       threshold: 0.95,
       color: ColorNames.black,
       includeTransparent: true,
-      transparentColor: null,
     },
   },
 };
