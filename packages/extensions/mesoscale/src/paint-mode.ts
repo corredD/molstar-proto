@@ -39,11 +39,22 @@ export interface PaintSettings {
    * along the pointer's ray (the wheel moves it); `auto`: a membrane protein on the surface, anything else at the depth
    */
   readonly place: 'auto' | PaintPlace;
+  /**
+   * Whether a stroke is a new fibre (Round 2, Decided 4): its copies the fibre's points, a step apart, turned along it;
+   * `auto`: when the entity has fibres in its list
+   */
+  readonly fiber: 'auto' | 'on' | 'off';
 }
 
 export type PaintPlace = 'surface' | 'depth';
 
-export const DefaultPaintSettings: PaintSettings = { spacing: 0, orient: 'auto', side: 'out', place: 'auto' };
+export const DefaultPaintSettings: PaintSettings = {
+  spacing: 0,
+  orient: 'auto',
+  side: 'out',
+  place: 'auto',
+  fiber: 'auto',
+};
 
 /** What painting needs of the viewer: the plugin's canvas and the operation (a fake in tests) */
 export interface PaintHost {
@@ -67,13 +78,19 @@ export interface PaintHost {
   project(out: Vec3, p: Vec3): Vec3;
   /** A copy's radius, Å (its spacing's default and the preview's disc) */
   radius(brush: PaintBrushTarget): number;
-  /** Paints a stroke: one operation (`mesoscale.paint`); `seed`, its random turns' (the copy under the pointer's) */
+  /** The brush's fibres' step, Å, when it has fibres in its list (`fiberConventionOf`) */
+  fiberStep(brush: PaintBrushTarget): number | undefined;
+  /**
+   * Paints a stroke: one operation (`mesoscale.paint`); `seed`, its random turns' (the copy under the pointer's);
+   * `fiber`, the stroke a new fibre
+   */
   paint(
     brush: PaintBrushTarget,
     settings: PaintSettings,
     positions: number[],
     normals: number[],
     seed: number,
+    fiber: boolean,
   ): Promise<unknown>;
   /** The copy of the brush drawn under the pointer (Round 2), gone with `dispose` */
   cursor(brush: PaintBrushTarget): PaintCursor;
@@ -201,13 +218,19 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   let where: PaintPlace = placeOf(mode.settings.value, upright);
   /** How far along the pointer's ray a copy at a depth goes, Å (Round 2, Decided 2): the camera's focus at the start */
   let depth = Math.max(host.focus(), radius);
+  /** The brush's fibres' step (Round 2, Decided 4): undefined when it has none */
+  const fiberStep = host.fiberStep(brush);
+  /** Whether the stroke is a new fibre (the settings' Fibre, or the brush's own: `auto`, when it has fibres) */
+  const fiberOf = (s: PaintSettings) => s.fiber === 'on' || (s.fiber === 'auto' && fiberStep !== undefined);
+  let fiber = fiberOf(mode.settings.value);
   /** Strokes painted and not committed yet: their own change of the state is not an undo */
   let committing = 0;
   const clear = () => ctx?.clearRect(0, 0, preview.width, preview.height);
 
   const writeHint = () => {
     const how = where === 'depth' ? `click or drag · wheel: depth ${Math.round(depth)} Å` : 'drag on a surface';
-    hint.textContent = `Painting with ${brush.name} · ${how} · Alt to move the camera · Esc to stop`;
+    const what = fiber ? `a fibre of ${brush.name}` : brush.name;
+    hint.textContent = `Painting with ${what} · ${how} · Alt to move the camera · Esc to stop`;
   };
   writeHint();
 
@@ -237,6 +260,8 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     }
     const p = _point.position;
     const n = _point.normal;
+    // a fibre's way: a line from its last point
+    if (fiber && k) drawLink(_a, p);
     s.positions.push(p[0], p[1], p[2]);
     s.normals.push(n[0], n[1], n[2]);
     drawDisc(p, n);
@@ -260,6 +285,21 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
     }
     s.pending = false;
     return true;
+  };
+
+  /** A fibre's segment between two points, projected */
+  const drawLink = (a: Vec3, b: Vec3) => {
+    if (!ctx) return;
+    host.project(_sa, a);
+    host.project(_sb, b);
+    ctx.beginPath();
+    ctx.moveTo(_sa[0], _sa[1]);
+    ctx.lineTo(_sb[0], _sb[1]);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.9;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   };
 
   /** A copy's disc, oriented on the surface: the circle of `radius` about `n`, projected (two tangents' images) */
@@ -347,7 +387,9 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       radius = Math.max(host.radius(brush), 1e-3);
       upright = host.upright(brush);
       where = placeOf(settings, upright);
-      spacing = settings.spacing > 0 ? settings.spacing : 2 * radius;
+      fiber = fiberOf(settings);
+      // a fibre's points its own step apart (the entity's fibres'), else copies that touch
+      spacing = settings.spacing > 0 ? settings.spacing : fiber && fiberStep ? fiberStep : 2 * radius;
       clear();
       const s: Stroke = {
         positions: [],
@@ -379,7 +421,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
       clear();
       if (how === 'up' && s.positions.length) {
         committing++;
-        void host.paint(brush, mode.settings.value, s.positions, s.normals, seed).finally(() => committing--);
+        void host.paint(brush, mode.settings.value, s.positions, s.normals, seed, fiber).finally(() => committing--);
         // the next copy under the pointer: the next stroke's
         seed = nextSeed();
         follow.request();
@@ -452,6 +494,7 @@ function paintLayer(mode: PaintMode, host: PaintHost, canvas: HTMLElement, brush
   effect(mode.settings.asReadonly, (s) => {
     if (stroke) return;
     where = placeOf(s, upright);
+    fiber = fiberOf(s);
     hintNext.request();
     follow.request();
   });

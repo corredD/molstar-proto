@@ -37,6 +37,8 @@ export interface PaintStroke {
   readonly compartment: number;
   readonly positions: readonly number[];
   readonly rotations: readonly number[];
+  /** The copies are the points of a new fibre, in order (Round 2, Decided 4): one polyline added to the list's `fibers` */
+  readonly fiber?: boolean;
 }
 
 /**
@@ -71,8 +73,11 @@ export function paintParticles(list: ParticleList, strokes: readonly PaintStroke
   const groups = radii ? getParticleTargetGroups(list) : undefined;
 
   let at = n;
+  /** The fibre strokes' first copy and count, in order */
+  const newFibers: number[] = [];
   for (const s of strokes) {
     const k = Math.floor(s.positions.length / 3);
+    if (s.fiber && k) newFibers.push(at, k);
     const set = groups?.sets[groups.groupOfTarget.get(s.target) ?? -1];
     const radius = set && OrderedSet.size(set) ? list.radii![OrderedSet.start(set)] : 0;
     for (let j = 0; j < k; ++j, ++at) {
@@ -104,10 +109,30 @@ export function paintParticles(list: ParticleList, strokes: readonly PaintStroke
     ...(compartments ? { compartments } : {}),
     ...(radii ? { radii } : {}),
     ...(list.attributes ? { attributes: extendAttributes(list.attributes, n, count) } : {}),
+    ...(newFibers.length ? { fibers: withFibers(list.fibers, newFibers) } : {}),
     getParticleLabel: (i) => (i < n ? label(i) : `${name(i)} · painted ${i - n + 1}`),
     customProperties: new CustomProperties(),
     _propertyData: Object.create(null),
   };
+}
+
+/** `fibers` (or none) with a polyline per (first, count) pair of `added` after them: its particles in order */
+function withFibers(fibers: ParticleList['fibers'], added: readonly number[]): NonNullable<ParticleList['fibers']> {
+  const old = fibers?.count ?? 0;
+  const oldIndices = fibers?.indices.length ?? 0;
+  let total = oldIndices;
+  for (let f = 1; f < added.length; f += 2) total += added[f];
+  const count = old + added.length / 2;
+  const offsets = new Int32Array(count + 1);
+  if (fibers) offsets.set(fibers.offsets.subarray(0, old + 1));
+  const indices = new Int32Array(total);
+  if (fibers) indices.set(fibers.indices);
+  let at = oldIndices;
+  for (let f = 0; f < added.length; f += 2) {
+    for (let j = 0; j < added[f + 1]; ++j) indices[at++] = added[f] + j;
+    offsets[old + f / 2 + 1] = at;
+  }
+  return { count, offsets, indices };
 }
 
 /** The attributes over `count` particles: the first `n` as they were, the rest not present */
@@ -254,6 +279,110 @@ export function paintRotation(
   Quat.rotationTo(out, from, _n);
   Quat.multiply(out, out, _spin);
   return Quat.normalize(out, out);
+}
+
+// --- Fibres (Round 2, Decided 4) --------------------------------------------------------------------------------------
+
+/**
+ * How a brush's fibres are built, read from one of the list's fibres of it: the target's own axis that follows the
+ * fibre (its first segment's direction in the first point's frame), the turn about it from one point to the next (°;
+ * a helix's twist), and the mean step between points (Å)
+ */
+export interface FiberConvention {
+  readonly axis: Vec3;
+  readonly twist: number;
+  readonly step: number;
+}
+
+const _r = Quat();
+const _q0 = Quat();
+const _q1 = Quat();
+const _ax = Vec3();
+const _p0 = Vec3();
+const _p1 = Vec3();
+
+function quatOf(out: Quat, list: ParticleList, i: number) {
+  const r = list.rotations;
+  return r ? Quat.set(out, r[i * 4], r[i * 4 + 1], r[i * 4 + 2], r[i * 4 + 3]) : Quat.set(out, 0, 0, 0, 1);
+}
+
+function pointOf(out: Vec3, list: ParticleList, i: number) {
+  return Vec3.set(out, list.coordinates[i * 3], list.coordinates[i * 3 + 1], list.coordinates[i * 3 + 2]);
+}
+
+/** The first fibre of the brush `id` (an entity, or a target on a list without entities) with two points or more */
+function fiberOfBrush(list: ParticleList, id: number): [number, number] | undefined {
+  const f = list.fibers;
+  if (!f) return undefined;
+  const byEntity = !!list.entityInfo?.size;
+  for (let k = 0; k < f.count; ++k) {
+    const s = f.offsets[k];
+    const e = f.offsets[k + 1];
+    if (e - s < 2) continue;
+    const i = f.indices[s];
+    if (byEntity ? Particle.entityOf(list, i) === id : list.targets[i] === id) return [s, e];
+  }
+  return undefined;
+}
+
+/** Whether the brush `id` makes fibres: one of its particles is a point of a fibre of the list */
+export function isFiberBrush(list: ParticleList, id: number): boolean {
+  return !!fiberOfBrush(list, id);
+}
+
+/** The convention of the brush's fibres (`FiberConvention`); undefined when it has none */
+export function fiberConventionOf(list: ParticleList, id: number): FiberConvention | undefined {
+  const range = fiberOfBrush(list, id);
+  if (!range) return undefined;
+  const [s, e] = range;
+  const { indices } = list.fibers!;
+  let sum = 0;
+  for (let j = s + 1; j < e; ++j) {
+    sum += Vec3.distance(pointOf(_p0, list, indices[j - 1]), pointOf(_p1, list, indices[j]));
+  }
+  const i0 = indices[s];
+  const i1 = indices[s + 1];
+  // the first segment in the first point's frame: the target's axis along the fibre
+  Vec3.sub(_ax, pointOf(_p1, list, i1), pointOf(_p0, list, i0));
+  Quat.conjugate(_q0, quatOf(_q0, list, i0));
+  const axis = Vec3.normalize(Vec3(), Vec3.transformQuat(Vec3(), _ax, _q0));
+  // the turn from the first point to the second, in the first's frame, about that axis
+  Quat.multiply(_r, _q0, quatOf(_q1, list, i1));
+  const angle = Quat.getAxisAngle(_ax, _r);
+  // its part about the axis (a fibre point turns about the fibre)
+  const twist = (angle * Vec3.dot(_ax, axis) * 180) / Math.PI;
+  return { axis, twist: Number.isFinite(twist) ? twist : 0, step: sum / (e - s - 1) };
+}
+
+/**
+ * The orientations of a new fibre's points (x, y, z, w each): the convention's axis along the way (each point toward
+ * the next, the last from the one before), turned by its twist a point
+ */
+export function fiberRotations(positions: ArrayLike<number>, c: Pick<FiberConvention, 'axis' | 'twist'>): number[] {
+  const k = Math.floor(positions.length / 3);
+  const out: number[] = new Array(k * 4);
+  const axis = Vec3.normalize(_a, c.axis);
+  for (let i = 0; i < k; ++i) {
+    const a = k < 2 ? i : i < k - 1 ? i : i - 1;
+    const b = k < 2 ? i : a + 1;
+    Vec3.set(
+      _n,
+      positions[b * 3] - positions[a * 3],
+      positions[b * 3 + 1] - positions[a * 3 + 1],
+      positions[b * 3 + 2] - positions[a * 3 + 2],
+    );
+    if (Vec3.squaredMagnitude(_n) === 0) Vec3.copy(_n, axis);
+    Vec3.normalize(_n, _n);
+    Quat.setAxisAngle(_spin, axis, (c.twist * i * Math.PI) / 180);
+    Quat.rotationTo(_q, axis, _n);
+    Quat.multiply(_q, _q, _spin);
+    Quat.normalize(_q, _q);
+    out[i * 4] = _q[0];
+    out[i * 4 + 1] = _q[1];
+    out[i * 4 + 2] = _q[2];
+    out[i * 4 + 3] = _q[3];
+  }
+  return out;
 }
 
 // --- The operation's helpers (`mesoscale.paint`) ---------------------------------------------------------------------

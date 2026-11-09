@@ -114,6 +114,28 @@ describe('mesoscale.paint', () => {
     expect(drawn(v).count).toBe(8);
   });
 
+  it('paints a fibre as one step: its points copies, one new fibre through them, turned along it; undo removes both', async () => {
+    const v = await viewer();
+    const before = { count: drawn(v).count, fibers: drawn(v).fibers?.count ?? 0, steps: steps(v) };
+    const r = await v.api.run('mesoscale.paint', {
+      entity: 'NC',
+      positions: [0, 0, 0, 10, 0, 0, 10, 10, 0],
+      fiber: true,
+    });
+    expectOk(r);
+    expect((r.value as { orient: string }).orient).toBe('fiber');
+    expect(steps(v)).toBe(before.steps + 1);
+    const list = drawn(v);
+    expect(list.count).toBe(before.count + 3);
+    expect(list.fibers!.count).toBe(before.fibers + 1);
+    const f = list.fibers!;
+    const last = Array.from(f.indices.slice(f.offsets[f.count - 1], f.offsets[f.count]));
+    expect(last).toEqual([before.count, before.count + 1, before.count + 2]);
+    expectOk(await v.api.run('history.undo', {}));
+    expect(drawn(v).count).toBe(before.count);
+    expect(drawn(v).fibers?.count ?? 0).toBe(before.fibers);
+  });
+
   it('turns a copy of an entity not on a surface at random, repeatably by its seed', async () => {
     const v = await viewer();
     const r = await v.api.run('mesoscale.paint', { entity: 'loose', positions: [0, 0, 0, 1, 1, 1], seed: 5 });

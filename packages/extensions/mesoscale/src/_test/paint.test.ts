@@ -7,8 +7,15 @@
 import { describe, expect, it } from 'vitest';
 import { Column } from '@molstar/core/data/db';
 import { Quat, Vec3 } from '@molstar/core/math/linear-algebra';
-import { getParticleTargetGroups } from '@molstar/model/model/particles/particle-list';
-import { type PaintStroke, paintParticles, paintRotations } from '../paint.js';
+import { getFiberParticleMask, getParticleTargetGroups } from '@molstar/model/model/particles/particle-list';
+import {
+  fiberConventionOf,
+  fiberRotations,
+  isFiberBrush,
+  type PaintStroke,
+  paintParticles,
+  paintRotations,
+} from '../paint.js';
 import { cellpackLike } from './fixtures.js';
 
 // The painted decorator's data (progress/2026-11-08-paint.md, Tests: decorator) and the copies' orientations.
@@ -140,5 +147,69 @@ describe('paintRotations', () => {
     }
     // uniform: their +z average near the centre
     expect(Vec3.magnitude(mean) / k).toBeLessThan(0.2);
+  });
+});
+
+describe('fibres (Round 2, Decided 4)', () => {
+  /** NC (target 2, particles 3, 4, 5, along x 10 Å apart) as a fibre: its +z along x, turned 30° a point about it */
+  const withFiber = () => {
+    const list = cellpackLike();
+    const q0 = Quat.rotationTo(Quat(), Vec3.create(0, 0, 1), Vec3.create(1, 0, 0));
+    const rotations = new Float32Array(list.count * 4);
+    for (let i = 0; i < list.count; ++i) rotations[i * 4 + 3] = 1;
+    for (let j = 0; j < 3; ++j) {
+      const twist = Quat.setAxisAngle(Quat(), Vec3.create(0, 0, 1), (30 * j * Math.PI) / 180);
+      rotations.set(Quat.multiply(Quat(), q0, twist), (3 + j) * 4);
+    }
+    const fibers = { count: 1, offsets: Int32Array.of(0, 3), indices: Int32Array.of(3, 4, 5) };
+    return { ...list, rotations, fibers };
+  };
+
+  it("a fibre stroke appends its copies and one fibre through them, in order; the input's fibres kept", () => {
+    const list = withFiber();
+    const line = { target: 2, fiber: true, positions: [0, 0, 0, 1, 0, 0, 2, 0, 0], rotations: [] };
+    const out = paintParticles(list, [stroke(), stroke(line)]);
+    expect(out.count).toBe(12);
+    expect(out.fibers!.count).toBe(2);
+    expect(Array.from(out.fibers!.offsets)).toEqual([0, 3, 6]);
+    expect(Array.from(out.fibers!.indices)).toEqual([3, 4, 5, 9, 10, 11]);
+    // the painted list's own fibre mask, not the input's (cached on it)
+    expect(getFiberParticleMask(list)!.length).toBe(7);
+    const mask = getFiberParticleMask(out)!;
+    expect(mask.length).toBe(12);
+    expect(Array.from(mask.slice(7))).toEqual([0, 0, 1, 1, 1]);
+    // a list without fibres gets its first
+    const first = paintParticles(cellpackLike(), [stroke({ fiber: true })]);
+    expect(Array.from(first.fibers!.offsets)).toEqual([0, 2]);
+    expect(Array.from(first.fibers!.indices)).toEqual([7, 8]);
+  });
+
+  it("reads a brush's fibres: the axis along them, the twist a point, the step; none for a brush without", () => {
+    const list = withFiber();
+    expect(isFiberBrush(list, 2)).toBe(true);
+    expect(isFiberBrush(list, 1)).toBe(false);
+    expect(fiberConventionOf(list, 1)).toBeUndefined();
+    const c = fiberConventionOf(list, 2)!;
+    expect(c.axis[2]).toBeCloseTo(1, 5);
+    expect(c.twist).toBeCloseTo(30, 3);
+    expect(c.step).toBeCloseTo(10, 5);
+  });
+
+  it("turns a new fibre's points as the brush's fibres are: its axis along the way, the twist a point", () => {
+    const list = withFiber();
+    const c = fiberConventionOf(list, 2)!;
+    // the same way as the existing fibre: the same orientations
+    const r = fiberRotations([30, 0, 0, 40, 0, 0, 50, 0, 0], c);
+    for (let j = 0; j < 3; ++j) {
+      const q = Quat.create(r[j * 4], r[j * 4 + 1], r[j * 4 + 2], r[j * 4 + 3]);
+      const o = list.rotations.subarray((3 + j) * 4);
+      expect(Math.abs(Quat.dot(q, Quat.create(o[0], o[1], o[2], o[3])))).toBeCloseTo(1, 4);
+    }
+    // a bend: each point's axis toward the next, the last from the one before
+    const z = Vec3.create(0, 0, 1);
+    const bent = fiberRotations([0, 0, 0, 0, 10, 0, 10, 10, 0], { axis: z, twist: 0 });
+    expect(axisOf(bent, 0, z)[1]).toBeCloseTo(1, 5);
+    expect(axisOf(bent, 1, z)[0]).toBeCloseTo(1, 5);
+    expect(axisOf(bent, 2, z)[0]).toBeCloseTo(1, 5);
   });
 });

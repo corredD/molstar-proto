@@ -22,7 +22,7 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolean } = {}) {
+function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolean; fiberStep?: number } = {}) {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   const root = document.createElement('div');
   const canvas = document.createElement('canvas');
@@ -37,6 +37,7 @@ function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolea
   /** The copy under the pointer: where it was last shown (undefined: hidden), its seed, disposed */
   const copy = { at: undefined as number[] | undefined, seed: -1, disposed: false };
   const seeds: number[] = [];
+  const fibers: boolean[] = [];
   const host: PaintHost = {
     canvas: () => canvas,
     holdCamera: () => {
@@ -76,9 +77,11 @@ function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolea
         copy.disposed = true;
       },
     }),
-    paint: async (_b, _s, positions, normals, seed) => {
+    fiberStep: () => options.fiberStep,
+    paint: async (_b, _s, positions, normals, seed, fiber) => {
       strokes.push({ positions, normals });
       seeds.push(seed);
+      fibers.push(fiber);
       // the commit's own change of the state, a moment later (a large list's rebuild)
       if (options.changeOnPaint) {
         await Promise.resolve();
@@ -106,6 +109,7 @@ function setup(pending = 0, options: { upright?: boolean; changeOnPaint?: boolea
     camera,
     copy,
     seeds,
+    fibers,
     removeList: () => (lists = false),
   };
 }
@@ -324,6 +328,30 @@ describe('paint mode', () => {
     expect(copy.at).toBeUndefined();
     mode.stop();
     expect(copy.disposed).toBe(true);
+  });
+
+  it("a brush with fibres paints a fibre by default, its points its fibres' step apart; Fibre overrides it", () => {
+    for (const [fiberStep, setting, painted, points] of [
+      [3, 'auto', true, 9],
+      [undefined, 'auto', false, 3],
+      [3, 'off', false, 3],
+      [undefined, 'on', true, 3],
+    ] as const) {
+      const { mode, layer, fibers, strokes } = setup(0, { upright: true, fiberStep });
+      mode.set({ fiber: setting });
+      mode.start(brush);
+      const el = layer();
+      expect(el.textContent?.includes('a fibre of'), `${fiberStep} ${setting}`).toBe(painted);
+      el.dispatchEvent(pointer('pointerdown', { x: 10, y: 10 }));
+      el.dispatchEvent(pointer('pointermove', { x: 40, y: 10 }));
+      el.dispatchEvent(pointer('pointerup', { x: 40, y: 10 }));
+      expect(fibers[0]).toBe(painted);
+      // 30 Å read every 3.75 px (1 Å a pixel): each read kept at its fibres' step (3 Å), every 10 Å (a copy's diameter)
+      // else
+      expect(strokes[0].positions.length / 3, `${fiberStep} ${setting}`).toBe(points);
+      mode.stop();
+      document.body.innerHTML = '';
+    }
   });
 
   it('Esc leaves the mode: its layer, its listeners and its brush gone', () => {

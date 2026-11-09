@@ -260,6 +260,16 @@ export function PaintBrush(props: { area: MesoscaleApi; particles: string; entit
         onPick={(id) => mode.set({ orient: id as PaintSettings['orient'] })}
       />
       <Choices
+        label="Fibre"
+        choices={[
+          { id: 'auto', label: 'Auto', title: 'A new fibre when the entity has fibres, else copies' },
+          { id: 'on', label: 'On', title: 'A stroke is a new fibre: its points a step apart, turned along it' },
+          { id: 'off', label: 'Off', title: 'A stroke is copies' },
+        ]}
+        active={mapState(settings, (s) => s.fiber)}
+        onPick={(id) => mode.set({ fiber: id as PaintSettings['fiber'] })}
+      />
+      <Choices
         label="Place"
         choices={[
           { id: 'auto', label: 'Auto', title: 'A membrane protein on the surface, anything else at the depth' },

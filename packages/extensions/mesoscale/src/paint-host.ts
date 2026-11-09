@@ -18,7 +18,7 @@ import {
 import type { PluginContext } from '@molstar/plugin/context';
 import type { ParticleListRef } from '@molstar/plugin/state/manager/particles/hierarchy-state';
 import type { PaintBrushTarget, PaintHost, PaintSettings } from './paint-mode.js';
-import { brushOf } from './paint.js';
+import { brushOf, fiberConventionOf } from './paint.js';
 import { pluginPaintCursor } from './paint-cursor.js';
 import { membraneFrame } from './pick-surface.js';
 
@@ -132,13 +132,18 @@ export function pluginPaintHost(
       const color = list ? colorOf?.(list, brush.entity) : undefined;
       return pluginPaintCursor(plugin, list, brush, color, !!data && !!brushOf(data, brush.entity)?.surface);
     },
-    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed) {
+    fiberStep(brush) {
+      const data = listOf(brush.particles)?.cell.obj?.data;
+      return data ? fiberConventionOf(data, brush.entity)?.step : undefined;
+    },
+    async paint(brush: PaintBrushTarget, s: PaintSettings, positions, normals, seed, fiber) {
       const r = (await paint({
         particles: brush.particles,
         entity: String(brush.entity),
         positions,
         normals,
         seed,
+        ...(fiber ? { fiber: true } : {}),
         side: s.side,
         ...(s.orient !== 'auto' ? { orient: s.orient } : {}),
         ...(s.spin !== undefined ? { spin: s.spin } : {}),

@@ -37,6 +37,8 @@ import { PaintMode } from './paint-mode.js';
 import {
   brushOf,
   decoratorUnder,
+  fiberConventionOf,
+  fiberRotations,
   type PaintOrient,
   type PaintStroke,
   ParticleListPainted,
@@ -630,15 +632,22 @@ export class MesoscaleApi extends ApiArea {
         PD.Numeric(0, { min: 0, max: 360, step: 1 }, { description: 'Turn about that axis, °; absent: at random' }),
       ),
       seed: OptionalParam(PD.Numeric(0, { step: 1 }, { description: "The random orientations' seed (repeatable)" })),
+      fiber: OptionalParam(
+        PD.Boolean(false, {
+          description:
+            "The copies are a new fibre's points, in order: turned along it as the entity's fibres are (absent: no fibre)",
+        }),
+      ),
       particles: ListParam(),
     },
     async run(values, ctx) {
       const { entity, positions, side, particles } = values;
-      const { normals, orient, spin, seed } = values as typeof values & {
+      const { normals, orient, spin, seed, fiber } = values as typeof values & {
         normals?: number[];
         orient?: PaintOrient;
         spin?: number;
         seed?: number;
+        fiber?: boolean;
       };
       if (!positions.length || positions.length % 3) {
         return ApiResult.fail('invalid', "Give the copies' positions, x, y, z each.");
@@ -684,21 +693,27 @@ export class MesoscaleApi extends ApiArea {
       }
       if (dirs && side === 'in') for (let i = 0; i < dirs.length; ++i) dirs[i] = -dirs[i];
       toListFrame(moved?.transform.params as { transform: Mat4; scale?: number } | undefined, local, dirs);
-      const rotations = paintRotations(
-        dirs ?? new Array(k * 3).fill(0),
-        how,
-        seed ?? Math.floor(Math.random() * 2 ** 31),
-        {
-          axis: how === 'axis' ? principalAxisOf(data.targetMapping?.get(brush.target)) : undefined,
-          spin,
-        },
-      );
+      // a fibre's points turned along it as the entity's own fibres are; without one, its principal axis along it
+      // (progress/2026-11-08-paint.md, Round 2, Decided 4)
+      const rotations = fiber
+        ? fiberRotations(
+            local,
+            fiberConventionOf(data, ids[0]) ?? {
+              axis: principalAxisOf(data.targetMapping?.get(brush.target)),
+              twist: 0,
+            },
+          )
+        : paintRotations(dirs ?? new Array(k * 3).fill(0), how, seed ?? Math.floor(Math.random() * 2 ** 31), {
+            axis: how === 'axis' ? principalAxisOf(data.targetMapping?.get(brush.target)) : undefined,
+            spin,
+          });
       const stroke: PaintStroke = {
         target: brush.target,
         entity: brush.entity,
         compartment: brush.compartment,
         positions: local,
         rotations,
+        ...(fiber ? { fiber: true } : {}),
       };
       const painted = decoratorUnder(state, l.cell.transform.ref, ParticleListPainted);
       const b = state.build();
@@ -713,9 +728,11 @@ export class MesoscaleApi extends ApiArea {
       await b.commit();
       const name = mesoEntities(dataOf(l) ?? data).find((e) => e.id === ids[0])?.name ?? entity;
       return ApiResult.ok(
-        `Painted ${k} ${k === 1 ? 'copy' : 'copies'} of ${name} (${how}).`,
+        fiber
+          ? `Painted a fibre of ${k} ${name} ${k === 1 ? 'point' : 'points'}.`
+          : `Painted ${k} ${k === 1 ? 'copy' : 'copies'} of ${name} (${how}).`,
         { nodes: [l.cell.transform.ref] },
-        { value: { count: k, orient: how } },
+        { value: { count: k, orient: fiber ? 'fiber' : how } },
       );
     },
   });
