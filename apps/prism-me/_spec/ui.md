@@ -240,14 +240,14 @@ on a tree row (its right-click or its ⋯), the same menu, in this order:
   at that level's tops (no step for the outline and the shadows to draw as a line), dithered in by distance from a lipid
   at twice the switch's px to the switch and not drawn nearer, so close up it hides no lipid (orthographic: drawn or
   not); beneath the close lipids a coarser one at the lowest head fills their gaps (no gap at any distance); a tiles
-  membrane's at its heads, beneath its tiles. Colour by zoom and the dither are set per size on screen (a resize), never
-  per frame. The membrane's Look switches the far look live (**Far**: Both (default), Spheres, Texture;
-  `mesoscale.membraneDetail { far }`): Texture takes lipids from **Lipids from** px (2), Both and Spheres down to
-  **Lipids down to** px (0.5), at their sphere levels, Both with the surface beneath, Spheres without it (past the
-  budget, far parts empty); **Lipids at most** the budget; each a slider committed once, never a new cut. Its species
-  are a particle system's entities: in its Look an eye and a colour a species (`mesoscale.membraneSpecies`; a hidden
-  species is not generated, the surface's colour without it), and a particle list's colours (round 4c item 8, the same
-  operations, its species its entities: Look's color for all its species, Generate colors, Reset, By zoom: far its
+  membrane's at its heads, beneath its tiles. The dither is set per size on screen (a resize), never per frame; colours
+  by zoom are blended in the shader, per pixel. The membrane's Look switches the far look live (**Far**: Both (default),
+  Spheres, Texture; `mesoscale.membraneDetail { far }`): Texture takes lipids from **Lipids from** px (2), Both and
+  Spheres down to **Lipids down to** px (0.5), at their sphere levels, Both with the surface beneath, Spheres without it
+  (past the budget, far parts empty); **Lipids at most** the budget; each a slider committed once, never a new cut. Its
+  species are a particle system's entities: in its Look an eye and a colour a species (`mesoscale.membraneSpecies`; a
+  hidden species is not generated, the surface's colour without it), and a particle list's colours (round 4c item 8, the
+  same operations, its species its entities: Look's color for all its species, Generate colors, Reset, By zoom: far its
   colour, then its species', no chain or atom colours as a lipid is one group; right-click Color…: the swatches and
   Generate colors; `mesoscale.style`, `mesoscale.colors`, `mesoscale.colorLevels` with the membrane as `particles`; no
   opacity or glow), its Object graphics' Quality the levels' preset (no Motion). Its right-click: **Export lipids (full
