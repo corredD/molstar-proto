@@ -36,8 +36,14 @@ is not built is [../TODO.md](../TODO.md).
     more efficient and looks better". Round 2 in progress (Ludo, 2026-11-08: "both, compared side by side"): close the
     tiles' holes, LOD for both, cellPACKgpu's cutter in WGSL as a second method, the comparison on the cow. Round 2 done
     and gated (93dbe21db; 1 must-fix, 4 should-fix fixed; S3 the library commit to its own lane from master): tiles 100
-    % covered (the lost legs cut), LOD 247 → 33 ms whole cow; recommendation tiles default, cutter by command. Waits on
-    Ludo's try. Server on 1353 stays up for Ludo.
+    % covered (the lost legs cut), LOD 247 → 33 ms whole cow; recommendation tiles default, cutter by command. Round 3
+    done and gated (1727ae414: the holes were the round patch's empty corners; region cutter; levels in the Look;
+    progress and Cancel; device-limit guard); waits on Ludo's try on 1353 (mesh still drawn: not reproduced). Server on
+    1353 stays up for Ludo.
+  - `lipid-procedural` (`me/lipid-procedural` from `me/lipid-tiles` at 1727ae414, port 1354,
+    [brief](2026-11-08-lipid-procedural.md) on its branch): round 4, started 2026-11-08 (Ludo: "run round 4 when round 3
+    is ready"). Procedural, view-dependent membranes (the region cutter as generator, lipids only where ≥ 2 px), far
+    look spheres and bump texture both, switchable; the membrane as a particle system. Design checkpoint first.
   - `paint` (`me/paint`, port 1352, [brief](2026-11-08-paint.md) on its branch): Paint v1, approved 2026-11-08 (the
     mesoscale extension, random orientation, no collisions in v1). On hold until the lipids (Ludo, 2026-11-08).
 
