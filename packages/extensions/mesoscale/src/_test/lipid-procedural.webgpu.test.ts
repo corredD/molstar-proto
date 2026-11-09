@@ -347,8 +347,10 @@ describe.skipIf(!webgpu)('a lipid membrane made per view (Dawn)', () => {
     }
   });
 
+  // medium (review S5: tens of seconds on Dawn); its quick representative the camera path above
   it('flies over a billion lipids (round 5: the model at x600, a sphere of its triangles): cells near, nothing far', {
     timeout: 300_000,
+    tags: ['medium'],
   }, async () => {
     const plugin = await HeadlessPluginContext.create(
       { webgpu },
