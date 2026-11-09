@@ -88,6 +88,11 @@ maintainer first (2026-10-25). All are v6 (master); the MRC reader and the parti
 
 ## Backlog
 
+- **MesoViewSpec tree, left open** (lane `mvs-tree`, 2026-11-09): `mesoviewspec.focus`'s `framing` (fit, close, context:
+  prism.md §4.5; only fit now); a distance on a document's copies (refused: it has no row to hang under); the shown
+  view's `selection` as a lasting highlight and Keep as the view's selection (§4.6, lane `mvs-views`); a part row's eye
+  and Look (§4.1, until Prism layers select copy runs).
+
 - **MesoViewSpec streaming, R5 frame time unmeasured** (lane `mesoviewspec-streaming`, 2026-11-08): measure the first
   and steady frame and the draw calls per list, at 1, 10, 100 and 1,000 lists, on a machine with a GL context (`gl`
   installed; `molstar/src/_test/r5-cases.ts` already records them when `gl` loads).

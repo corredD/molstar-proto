@@ -14,12 +14,17 @@ import {
   readData,
   readPatch,
 } from '@molstar/meso-spec/format';
+import { Sphere3D } from '@molstar/core/math/geometry';
+import { Vec3 } from '@molstar/core/math/linear-algebra';
 import { ApiArea, type ApiAreaContext, type ApiFailure, ApiResult } from '@molstar/prism-viewer/api/area';
 import { OptionalParam } from '@molstar/prism-viewer/api/params';
 import { operationCommand } from '@molstar/prism-viewer/commands/operations';
 import type { ViewerExtension } from '@molstar/prism-viewer/spec';
+import { watchedState } from '@molstar/prism-viewer/sources/watched';
 import { downloadBlob } from '@molstar/prism-viewer/ui/download';
+import type { Loci } from '@molstar/model/model/loci';
 import { MesoDocumentModel } from './document-model.js';
+import { documentVisible, type DocumentGroupBy, type DocumentLooks, type DocumentOutline } from './document-tree.js';
 import { openAddresses } from './prism-viewer.js';
 
 declare module '@molstar/prism-viewer/api' {
@@ -50,7 +55,32 @@ export interface DocumentInfo {
   readonly counts: Readonly<Record<string, { readonly requested?: number; readonly achieved: number }>>;
 }
 
+/** The open document as the Scene tree reads it (prism.md §4): its rows, their eyes and dots, its own eye. */
+export interface DocumentTree {
+  readonly outline: DocumentOutline;
+  readonly looks: DocumentLooks;
+  /** Every row shown (the document's eye, the Particles category's). */
+  readonly visible: boolean;
+  /** The shown view has Show-only looks: Show all again is offered. */
+  readonly showsOnly: boolean;
+  /** The session's issues (the document row's Issues). */
+  readonly issues: readonly Issue[];
+}
+
+/** A state a view reads (Prism's `ReadonlyState`, as `watchedState` gives it). */
+export type ReadonlyState<T> = ReturnType<typeof watchedState<T>>;
+
 const MaxIssuesListed = 5;
+
+/** The same issues, in order (the owner makes a new list at each step): the tree's Issues need not render again. */
+function sameIssues(a: readonly Issue[], b: readonly Issue[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i].code !== b[i].code || a[i].message !== b[i].message) return false;
+  return true;
+}
+
+const SelectParam = () =>
+  PD.Text('', { description: 'A MesoQL address: (population p.catalase), (in c.exosome), (instance i.x), (all)' });
 
 const OpenParams = {
   url: OptionalParam(PD.Text('', { description: 'The address of a document (.mesoviewspec.json or .mesoviewspec)' })),
@@ -125,6 +155,127 @@ export class MesoViewSpecApi extends ApiArea {
   override dispose(): void {
     this.#unregister();
     this.model.dispose();
+  }
+
+  /**
+   * The open document's rows, eyes and dots (prism.md §4), following the owner while watched; the same outline while
+   * only the looks change (a view edit). `groupBy` is the tree's view state (prism.md §4.2).
+   */
+  treeState(groupBy?: ReadonlyState<DocumentGroupBy | undefined>): ReadonlyState<DocumentTree | undefined> {
+    const model = this.model;
+    return watchedState(
+      () => {
+        const outline = model.outline(groupBy?.value ?? 'compartment');
+        if (!outline) return undefined;
+        const looks = model.looks(outline);
+        return {
+          outline,
+          looks,
+          visible: documentVisible(outline, looks),
+          showsOnly: model.showsOnly,
+          issues: model.issues,
+        };
+      },
+      () => (groupBy ? [model.changed, groupBy] : model.changed),
+      {
+        compare: (a, b) =>
+          a === b ||
+          (!!a &&
+            !!b &&
+            a.outline === b.outline &&
+            a.looks === b.looks &&
+            a.showsOnly === b.showsOnly &&
+            sameIssues(a.issues, b.issues)),
+      },
+    );
+  }
+
+  /** An address's copies on the drawn lists: one loci a list (prism.md §4.6); kept while what is drawn is the same. */
+  lociOf(select: string): readonly Loci[] {
+    return this.model.lociOf(select);
+  }
+
+  /** The row of a drawn copy (a list's set key and its index): a population's, an instance's, a part's. */
+  rowOfCopy(set: string, index: number): string | undefined {
+    return this.model.rowOfCopy(set, index);
+  }
+
+  readonly focus = this.operation({
+    id: 'mesoviewspec.focus',
+    title: 'Focus the camera on part of the MesoViewSpec document',
+    params: { select: SelectParam() },
+    history: false,
+    undoable: false,
+    run: async ({ select }, ctx) => {
+      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+      const s = this.model.sphereOf(select);
+      if (!s) return ApiResult.fail('not-found', `${select} picks no copy here.`);
+      ctx.plugin.managers.camera.focusSphere(Sphere3D.create(Vec3.create(...s.center), s.radius));
+      return ApiResult.ok(`Framed ${select}.`);
+    },
+  });
+
+  readonly highlight = this.operation({
+    id: 'mesoviewspec.highlight',
+    title: 'Highlight part of the MesoViewSpec document',
+    params: { select: SelectParam() },
+    history: false,
+    undoable: false,
+    run: async ({ select }, ctx) => {
+      if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+      const lights = ctx.plugin.managers.interactivity.lociHighlights;
+      lights.clearHighlights();
+      const loci = this.model.lociOf(select);
+      for (const l of loci) lights.highlight({ loci: l }, false);
+      return loci.length
+        ? ApiResult.ok(`Lit ${select}.`)
+        : ApiResult.fail('not-found', `${select} picks no copy here.`);
+    },
+  });
+
+  readonly eye = this.operation({
+    id: 'mesoviewspec.eye',
+    title: 'Show or hide part of the MesoViewSpec document',
+    params: {
+      select: PD.Text('', {
+        multiline: true,
+        description: 'MesoQL addresses, one a line: each gets its eye look (l.eye.<n>) on the shown view',
+      }),
+      visible: PD.Boolean(true),
+    },
+    run: async ({ select, visible }, ctx) => {
+      const selects = select
+        .split('\n')
+        .map((x: string) => x.trim())
+        .filter(Boolean);
+      if (!selects.length) return ApiResult.fail('invalid', 'Show or hide what? Give an address.');
+      return this.applyLooks(this.model.eyePatch(selects, visible), ctx.api, visible ? 'show' : 'hide');
+    },
+  });
+
+  readonly showOnly = this.operation({
+    id: 'mesoviewspec.showOnly',
+    title: 'Show only part of the MesoViewSpec document',
+    params: {
+      select: OptionalParam(PD.Text('', { description: 'A MesoQL address; none: show all again' })),
+    },
+    run: async ({ select }, ctx) =>
+      this.applyLooks(this.model.showOnlyPatch(select?.trim() || undefined), ctx.api, 'show only'),
+  });
+
+  /** A look patch committed as one step (an eye, Show only): saved in the document (prism.md §11, question 3). */
+  private async applyLooks(patch: Patch | undefined, api: ApiAreaContextApi, label: string) {
+    if (!this.model.doc) return ApiResult.fail('not-found', 'No document is open.');
+    if (!patch) return ApiResult.already('It is already so.');
+    let step: Awaited<ReturnType<MesoDocumentModel['edit']>>;
+    try {
+      step = await this.model.edit(patch, api, label);
+    } catch (e) {
+      return ApiResult.fail('failed', `Could not change the looks: ${(e as Error).message}`);
+    }
+    if (step.unchanged) return ApiResult.already('It is already so.');
+    if (!step.record) return ApiResult.fail('invalid', issueLines(step.issues).join('; ') || 'The looks were refused.');
+    return ApiResult.ok(`Changed the looks (${label}).`);
   }
 
   readonly open = this.operation({
@@ -364,6 +515,8 @@ async function fetchWithAssets(ctx: ApiAreaContext, url: string): Promise<string
     return undefined;
   }
 }
+
+type ApiAreaContextApi = Parameters<MesoDocumentModel['edit']>[1];
 
 export function createMesoViewSpecExtension(o: MesoViewSpecOptions = {}): ViewerExtension {
   return {

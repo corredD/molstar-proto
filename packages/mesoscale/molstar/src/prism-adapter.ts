@@ -7,7 +7,7 @@
 import { Vec3 } from '@molstar/core/math/linear-algebra';
 import { StateSelection } from '@molstar/core/state';
 import { Color } from '@molstar/core/util/color';
-import { type IR, type PlacementSet, placementSets } from '@molstar/meso-spec/ir';
+import { type IR, type MesoLoci, type PlacementSet, type PlacementType, placementSets } from '@molstar/meso-spec/ir';
 import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import { type Issue, issue } from '@molstar/meso-spec/format';
 import {
@@ -48,6 +48,35 @@ export interface AdapterViewer {
 interface Placed {
   readonly ref: string;
   readonly label: string;
+}
+
+/** How a copy and a type are named on hover (the document's owner: an instance by its id, a type's entity and compartment). */
+export interface AdapterLabels {
+  /** A copy's id: `p.lipids#12`; an instance's: `i.granule-docked`. */
+  copy(population: string, ordinal: number): string;
+  /** A type's description under the copy's id (its entity, its compartment). */
+  describe(type: PlacementType): string | undefined;
+}
+
+/** A copy as the document names it: its population (or instance) and its ordinal there. */
+export interface CopyName {
+  readonly population: string;
+  readonly ordinal: number;
+}
+
+/**
+ * An expanded list (`<instance set>|<type>*<template>`, `runtime/instancing.ts`): the instance set and type it expands,
+ * the template it repeats (a set, or another expansion), the template's size, and the instances' copies by rank.
+ */
+interface Expansion {
+  readonly outer: PlacementSet;
+  readonly type: number;
+  readonly template: string;
+  readonly size: number;
+  /** The outer set's copies of `type`, in order: the k-th instance is copy `copies[k]`. */
+  readonly copies: Int32Array;
+  /** Per copy of the outer set: its rank among the copies of `type`, else -1. */
+  readonly rank: Int32Array;
 }
 
 /** A representation's type as a list of a model had it: what its re-packed list is drawn with. */
@@ -96,16 +125,159 @@ export class PrismMesoAdapter implements RendererAdapter {
 
   constructor(
     readonly viewer: AdapterViewer,
-    readonly options: { readonly representation?: string; readonly sizeFactor?: number } = {},
+    readonly options: {
+      readonly representation?: string;
+      readonly sizeFactor?: number;
+      readonly labels?: AdapterLabels;
+    } = {},
   ) {}
+
+  /**
+   * Lets go of the expansions and bounds of sets not drawn; an expansion a drawn one repeats (two levels of
+   * superstructures: `W|0*K_out|0*K_in` repeats `K_out|0*K_in`) stays, so its copies are still named and lit.
+   */
+  private evict(drawn: ReadonlySet<string>) {
+    const keep = new Set(drawn);
+    for (const k of drawn) {
+      for (let r = k; ; ) {
+        const bar = r.indexOf('|');
+        const star = bar < 0 ? -1 : r.indexOf('*', bar);
+        if (star < 0) break;
+        r = r.slice(star + 1);
+        keep.add(r);
+      }
+    }
+    for (const k of [...this.expansions.keys()]) if (!keep.has(k)) this.expansions.delete(k);
+    for (const k of [...this.bounds.keys()]) if (!drawn.has(k)) this.bounds.delete(k);
+  }
+
+  /** The sets by key: the source's (templates included) and the expansions drawn. */
+  private sets = new Map<string, PlacementSet>();
+  private readonly expansionInfo = new Map<string, Expansion | null>();
+  /** Bumped when what is drawn changes: a cache of loci by revision (the owner's) is let go. */
+  revision = 0;
+
+  /** The source IR and the expansions as drawn now: the index the names and loci read. */
+  private index(source: IR) {
+    this.sets = new Map(placementSets(source).map((x) => [x.key, x]));
+    for (const [k, e] of this.expansions) this.sets.set(k, e);
+    this.expansionInfo.clear();
+    this.revision++;
+  }
+
+  /** An expanded list's instance set, type and template; null when the key is a set's own. */
+  private expansion(key: string): Expansion | null {
+    const known = this.expansionInfo.get(key);
+    if (known !== undefined) return known;
+    let out: Expansion | null = null;
+    const bar = key.indexOf('|');
+    const star = bar < 0 ? -1 : key.indexOf('*', bar);
+    if (star > 0) {
+      const outer = this.sets.get(key.slice(0, bar));
+      const type = Number(key.slice(bar + 1, star));
+      const template = key.slice(star + 1);
+      const size = this.sets.get(template)?.count;
+      if (outer && Number.isInteger(type) && size !== undefined) {
+        const rank = new Int32Array(outer.count).fill(-1);
+        const copies: number[] = [];
+        for (let i = 0; i < outer.count; i++) if (outer.types[i] === type) rank[i] = copies.push(i) - 1;
+        out = { outer, type, template, size, copies: Int32Array.from(copies), rank };
+      }
+    }
+    this.expansionInfo.set(key, out);
+    return out;
+  }
+
+  /**
+   * A drawn copy as the document names it (prism.md §4.6): `[p.lipids#12]`; an expanded instance's copy, the instance
+   * then the copy in its template (`[p.granules#12, p.Vamp2#305]`). Undefined for a key not drawn.
+   */
+  locate(key: string, index: number): CopyName[] | undefined {
+    const set = this.sets.get(key);
+    if (!set || index < 0 || index >= set.count) return undefined;
+    const x = this.expansion(key);
+    if (!x) {
+      const t = set.typeTable[set.types[index]];
+      return t && [{ population: t.population, ordinal: set.ordinals[index] }];
+    }
+    const k = Math.floor(index / x.size);
+    const i = x.copies[k];
+    const outer = x.outer.typeTable[x.type];
+    const inner = this.locate(x.template, index - k * x.size);
+    return outer && inner && [{ population: outer.population, ordinal: x.outer.ordinals[i] }, ...inner];
+  }
+
+  /**
+   * MesoLoci over the source IR as runs of the drawn lists (by state ref): a set's own; a template set's in every
+   * instance; an instance set's copies of an expanded type as their whole instances; one instance's (`part`'s virtual
+   * `<instance set>@<i>><template>`) as its block of the expansion.
+   */
+  drawnRuns(loci: MesoLoci): Map<string, number[]> {
+    const memo = new Map<string, number[]>();
+    const out = new Map<string, number[]>();
+    for (const [key, p] of this.placed) {
+      const runs = this.runsOn(key, loci, memo);
+      if (runs.length) out.set(p.ref, runs);
+    }
+    return out;
+  }
+
+  private runsOn(key: string, loci: MesoLoci, memo: Map<string, number[]>): number[] {
+    const known = memo.get(key);
+    if (known) return known;
+    const x = this.expansion(key);
+    if (!x) {
+      const own = [...(loci.get(key) ?? [])];
+      memo.set(key, own);
+      return own;
+    }
+    const pieces: number[] = [];
+    const n = x.size;
+    // whole instances picked: the instance set's copies of the type
+    const outer = loci.get(x.outer.key);
+    if (outer)
+      for (let j = 0; j < outer.length; j += 2)
+        for (let i = outer[j]; i < outer[j + 1]; i++) {
+          const k = x.rank[i];
+          if (k >= 0) pieces.push(k * n, (k + 1) * n);
+        }
+    // the template's copies, in every instance
+    const inner = this.runsOn(x.template, loci, memo);
+    if (inner.length)
+      for (let k = 0; k < x.copies.length; k++) for (let j = 0; j < inner.length; j++) pieces.push(inner[j] + k * n);
+    // one instance's copies (a `part`)
+    const prefix = `${x.outer.key}@`;
+    const suffix = `>${x.template}`;
+    for (const [k, runs] of loci) {
+      if (!k.startsWith(prefix) || !k.endsWith(suffix)) continue;
+      const i = Number(k.slice(prefix.length, k.length - suffix.length));
+      const rank = Number.isInteger(i) && i >= 0 && i < x.rank.length ? x.rank[i] : -1;
+      if (rank >= 0) for (let j = 0; j < runs.length; j++) pieces.push(runs[j] + rank * n);
+    }
+    const merged = mergeRuns(pieces);
+    memo.set(key, merged);
+    return merged;
+  }
+
+  /** A list's copy labels and type descriptions, from `options.labels`. */
+  private labelsOf(key: string) {
+    const labels = this.options.labels;
+    if (!labels) return undefined;
+    return {
+      copy: (i: number) =>
+        this.locate(key, i)
+          ?.map((c) => labels.copy(c.population, c.ordinal))
+          .join('/') ?? '',
+      describe: (t: PlacementType) => labels.describe(t),
+    };
+  }
 
   async commit(source: IR): Promise<CommitReport> {
     // superstructure instances expanded into world sets: Prism has no nested instancing (renderer-recommendations R7)
     const flat = flattenInstances(source, this.expansions);
     const ir = flat.ir;
     const keys = placementSetKeys(ir);
-    for (const k of [...this.expansions.keys()]) if (!keys.has(k)) this.expansions.delete(k);
-    for (const k of [...this.bounds.keys()]) if (!keys.has(k)) this.bounds.delete(k);
+    this.evict(keys);
     const t0 = now();
     const plan = planCommit(this.prev, ir);
     const v = this.viewer;
@@ -146,7 +318,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     // an empty set (a model whose input is missing) has nothing Prism can draw: no list (spacefill refuses it)
     for (const set of [...plan.add.filter((x) => x.count > 0), ...relist]) {
       const label = listLabel(set);
-      if (!store.has(set.key)) store.set(set.key, toParticleList(set, label));
+      if (!store.has(set.key)) store.set(set.key, toParticleList(set, label, this.labelsOf(set.key)));
       const b = v.plugin.state.data.build().toRoot().apply(MesoPlacements, { key: set.key, label });
       await v.plugin.runTask(v.plugin.state.data.updateTree(b));
       this.placed.set(set.key, { ref: b.ref, label });
@@ -239,6 +411,7 @@ export class PrismMesoAdapter implements RendererAdapter {
         ),
       );
     this.prev = ir;
+    this.index(source);
     return {
       added: plan.add.map((s) => s.key),
       removed: plan.remove,
@@ -286,8 +459,7 @@ export class PrismMesoAdapter implements RendererAdapter {
     const flat = flattenInstances(source, this.expansions);
     const ir = flat.ir;
     const keys = placementSetKeys(ir);
-    for (const k of [...this.expansions.keys()]) if (!keys.has(k)) this.expansions.delete(k);
-    for (const k of [...this.bounds.keys()]) if (!keys.has(k)) this.bounds.delete(k);
+    this.evict(keys);
     const state = this.viewer.plugin.state.data;
     const store = this.store;
     const cells = new Map<string, { ref: string; label: string; list: ParticleList | undefined }>();
@@ -303,12 +475,14 @@ export class PrismMesoAdapter implements RendererAdapter {
       if (!cell) continue;
       this.placed.set(set.key, { ref: cell.ref, label: cell.label });
       if (store.has(set.key) && !(cell.list && isMissingList(cell.list))) continue;
-      if (!store.has(set.key)) store.set(set.key, toParticleList(set, cell.label || listLabel(set)));
+      if (!store.has(set.key))
+        store.set(set.key, toParticleList(set, cell.label || listLabel(set), this.labelsOf(set.key)));
       filled.push(set.key);
       b.to(cell.ref).update((old: { fill?: number }) => ({ ...old, fill: (old.fill ?? 0) + 1 }));
     }
     if (filled.length) await this.viewer.plugin.runTask(state.updateTree(b));
     this.prev = ir;
+    this.index(source);
     return { filled };
   }
 
@@ -331,6 +505,9 @@ export class PrismMesoAdapter implements RendererAdapter {
     this.prev = undefined;
     this.expansions.clear();
     this.bounds.clear();
+    this.sets.clear();
+    this.expansionInfo.clear();
+    this.revision++;
   }
 
   /** Removes every list this adapter made (their placements stay: the owner lets them go, so Undo finds them). */
@@ -339,6 +516,9 @@ export class PrismMesoAdapter implements RendererAdapter {
     for (const [, p] of this.placed) b.delete(p.ref);
     this.placed.clear();
     this.prev = undefined;
+    this.sets.clear();
+    this.expansionInfo.clear();
+    this.revision++;
     await this.viewer.plugin.runTask(this.viewer.plugin.state.data.updateTree(b));
   }
 
@@ -418,6 +598,24 @@ export function sceneRadius(sets: readonly PlacementSet[], cache = new Map<strin
   }
   if (!(b[3] >= b[0])) return 0;
   return Math.hypot(b[3] - b[0], b[4] - b[1], b[5] - b[2]) / 2 + b[6];
+}
+
+/** Runs `[s, e, …]` in any order, sorted and merged (touching runs joined). */
+function mergeRuns(pieces: number[]): number[] {
+  if (pieces.length <= 2) return pieces;
+  const order: number[] = [];
+  for (let i = 0; i < pieces.length; i += 2) order.push(i);
+  let sorted = true;
+  for (let i = 2; i < pieces.length && sorted; i += 2) if (pieces[i] < pieces[i - 2]) sorted = false;
+  if (!sorted) order.sort((a, b) => pieces[a] - pieces[b]);
+  const out: number[] = [];
+  for (const i of order) {
+    const s = pieces[i];
+    const e = pieces[i + 1];
+    if (out.length && s <= out[out.length - 1]) out[out.length - 1] = Math.max(out[out.length - 1], e);
+    else out.push(s, e);
+  }
+  return out;
 }
 
 const listLabel = (set: PlacementSet) => `${set.model} · ${set.count.toLocaleString('en-US')} copies`;

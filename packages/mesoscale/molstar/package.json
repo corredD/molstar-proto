@@ -30,6 +30,7 @@
   ],
   "scripts": {
     "build": "tsc -b",
+    "test:scaling": "vitest run --config vitest.scaling.config.ts",
     "typecheck": "tsc -b",
     "typecheck:storybook": "tsc -p tsconfig.storybook.json"
   },

@@ -111,6 +111,11 @@ export interface IRLook {
   readonly types: readonly number[];
   readonly color?: number;
   readonly visible?: boolean;
+  /**
+   * Which of the view's looks decided `visible` (its index; none: the default): the instancing step merges an instance
+   * type's visibility onto its parts by it, so later looks win across the nesting. Not in the IR's JSON.
+   */
+  readonly visibleAt?: number;
   readonly transparency?: number;
   readonly emissive?: number;
   /**
@@ -205,7 +210,9 @@ export function irToJson(ir: IR, issues?: readonly Issue[]): unknown {
       ...(n.children?.length ? { children: n.children.map(node) } : {}),
     };
   };
-  return { root: node(ir.root), view: ir.view, ...(issues ? { issues } : {}) };
+  // `visibleAt` is the instancing step's, not the IR's
+  const view = { ...ir.view, looks: ir.view.looks.map(({ visibleAt: _, ...l }) => l) };
+  return { root: node(ir.root), view, ...(issues ? { issues } : {}) };
 }
 
 function round(x: number) {

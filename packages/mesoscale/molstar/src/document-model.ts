@@ -4,20 +4,38 @@
  * @author Ludovic Autin <autin@scripps.edu>
  */
 
+import { OrderedSet, SortedArray } from '@molstar/core/data/int';
+import { StateSelection } from '@molstar/core/state';
+import { RxEventHelper } from '@molstar/core/util/rx-event-helper';
 import { UUID } from '@molstar/core/util/uuid';
 import {
   applyPatch,
   classifyPatch,
   type Issue,
   issue,
+  type Look,
   type MesoViewSpecDoc,
+  type Op,
+  parseMesoQL,
   type Patch,
+  PatchFormat,
+  type PatchNode,
   printData,
 } from '@molstar/meso-spec/format';
+import { evaluateMesoQL, lociSphere, type MesoLoci, type PlacementType } from '@molstar/meso-spec/ir';
 import { DefaultResolvers } from '@molstar/meso-spec/resolvers';
 import { classifyEdit, type ResolveOutput, type Resolver } from '@molstar/meso-spec/runtime';
+import { Particle, type ParticleList } from '@molstar/model/model/particles/particle-list';
 import type { PluginContext } from '@molstar/plugin/context';
+import { PluginStateObject as SO } from '@molstar/plugin/state/objects';
 import type { ViewerApi } from '@molstar/prism-viewer/api';
+import {
+  type DocumentGroupBy,
+  type DocumentLooks,
+  type DocumentOutline,
+  documentLooks,
+  documentOutline,
+} from './document-tree.js';
 import { placementStore } from './particle-list.js';
 import { type AdapterViewer, PrismMesoAdapter } from './prism-adapter.js';
 import { type EditRecord, MesoSession } from './session.js';
@@ -96,12 +114,161 @@ export class MesoDocumentModel {
   private saved: SavedMesoViewSpec | undefined;
   /** A step started and has not ended well: a restore adopts the tree again even for the same value. */
   private dirty = false;
+  private readonly ev = RxEventHelper.create();
+  /** The document, its counts or its looks changed (a step ended, a restore, a close): the tree reads them again. */
+  readonly changed = this.ev<void>();
+  /** The copies an address lights, by the drawn lists' revision: a hover allocates nothing twice. */
+  private readonly lociCache = new Map<string, readonly Particle.Loci[]>();
+  private lociRevision = -1;
 
   constructor(
     readonly viewer: AdapterViewer & { readonly plugin: PluginContext },
     readonly options: MesoDocumentOptions = {},
   ) {
-    this.adapter = new PrismMesoAdapter(viewer);
+    this.adapter = new PrismMesoAdapter(viewer, {
+      labels: {
+        copy: (population, ordinal) => (this.isInstance(population) ? population : `${population}#${ordinal}`),
+        describe: (t) => this.describe(t),
+      },
+    });
+  }
+
+  // --- the Scene tree (prism.md §4) -----------------------------------------------------------------------------------
+
+  /** The document's rows under a grouping (prism.md §4.1, §4.2); none without a document. */
+  outline(groupBy: DocumentGroupBy = 'compartment'): DocumentOutline | undefined {
+    const doc = this.doc;
+    const session = this.session;
+    if (!doc || !session) return undefined;
+    return documentOutline(doc, session.ir, session.counts, groupBy);
+  }
+
+  /** The eyes and dots of an outline's rows under the shown view: one object while the view is the same. */
+  looks(outline: DocumentOutline): DocumentLooks {
+    const view = this.session?.ir?.view;
+    const kept = this.looksOf.get(outline);
+    if (kept && kept.view === view) return kept.looks;
+    const looks = documentLooks(outline, this.session?.ir);
+    this.looksOf.set(outline, { view, looks });
+    return looks;
+  }
+  private readonly looksOf = new WeakMap<DocumentOutline, { view: unknown; looks: DocumentLooks }>();
+
+  /**
+   * The row of a drawn copy (prism.md §4.6, a MesoLocation `{set, index}`): its population's or instance's; an
+   * expanded instance's copy, its part row (`p.granules/p.Vamp2`). Undefined for a list not the document's.
+   */
+  rowOfCopy(set: string, index: number): string | undefined {
+    const path = this.adapter.locate(set, index);
+    return path?.map((c) => c.population).join('/');
+  }
+
+  /** What an address picks, materialized over the IR (prism.md §4.6); undefined when it cannot be read. */
+  mesoLoci(select: string): MesoLoci | undefined {
+    const doc = this.doc;
+    const ir = this.session?.ir;
+    if (!doc || !ir || !select) return undefined;
+    const q = parseMesoQL(select, {}, undefined, 'selection');
+    if (!q.expr) return undefined;
+    return evaluateMesoQL(q.expr, { doc, ir }).loci;
+  }
+
+  /**
+   * An address's copies as one `Particle.Loci` a drawn list (prism.md §4.6): its runs on each list as drawn (an
+   * expanded instance's through its expansion). Kept per address until what is drawn changes.
+   */
+  lociOf(select: string): readonly Particle.Loci[] {
+    if (this.lociRevision !== this.adapter.revision) {
+      this.lociCache.clear();
+      this.lociRevision = this.adapter.revision;
+    }
+    const kept = this.lociCache.get(select);
+    if (kept) return kept;
+    const loci = this.mesoLoci(select);
+    const out: Particle.Loci[] = [];
+    if (loci) {
+      for (const [ref, runs] of this.adapter.drawnRuns(loci)) {
+        const data = drawnList(this.viewer.plugin, ref);
+        if (data) out.push(Particle.Loci(data, runsToSet(runs)));
+      }
+    }
+    this.lociCache.set(select, out);
+    return out;
+  }
+
+  /** The sphere around an address's copies (Å, world: `lociSphere`, through superstructure instances): what Focus frames. */
+  sphereOf(select: string): { center: [number, number, number]; radius: number } | undefined {
+    const loci = this.mesoLoci(select);
+    const ir = this.session?.ir;
+    return loci && ir ? lociSphere(loci, ir) : undefined;
+  }
+
+  /**
+   * The patch an eye makes (prism.md §5.2, §5.3): on the shown view, one look `l.eye.<n>` an address, `visible`; an eye
+   * look of the same address is set and moved last (later looks win), else one is inserted last. No view: `v.prism`
+   * ("Edited in Prism") is inserted with them. Undefined without a document.
+   */
+  eyePatch(selects: readonly string[], visible: boolean): Patch | undefined {
+    const doc = this.doc;
+    if (!doc) return undefined;
+    return lookPatch(doc, (looks, next) => {
+      const ops: Op[] = [];
+      const add: Look[] = [];
+      // the eye looks by address, once (a drag gives many rows)
+      const eyes = new Map<string, Look>();
+      for (const l of looks) if (l.id?.startsWith('l.eye.')) eyes.set(l.select, l);
+      for (const select of new Set(selects)) {
+        const had = eyes.get(select);
+        if (had?.id) {
+          if (had.visible !== visible) ops.push({ op: 'set', id: had.id, fields: { visible } });
+          ops.push({ op: 'move', id: had.id, after: 'last' });
+        } else add.push({ id: next('l.eye.'), select, visible });
+      }
+      return { ops, add };
+    });
+  }
+
+  /**
+   * Show only (prism.md §5.2): the Show-only looks (`l.only.<n>`) removed, then, for an address, two inserted last:
+   * `(all)` hidden, the address shown. None: Show all again (only those looks go; the eyes' and the author's stay).
+   */
+  showOnlyPatch(select: string | undefined): Patch | undefined {
+    const doc = this.doc;
+    if (!doc) return undefined;
+    return lookPatch(doc, (looks, next) => {
+      const ops: Op[] = looks
+        .filter((l) => l.id?.startsWith('l.only.'))
+        .map((l) => ({ op: 'remove', id: l.id! }) as Op);
+      const add: Look[] = select
+        ? [
+            { id: next('l.only.'), select: '(all)', visible: false },
+            { id: next('l.only.'), select, visible: true },
+          ]
+        : [];
+      return { ops, add };
+    });
+  }
+
+  /** Whether the shown view has Show-only looks (Show all again is offered). */
+  get showsOnly(): boolean {
+    const doc = this.doc;
+    const view = doc && shownView(doc);
+    return !!view?.looks?.some((l) => l.id?.startsWith('l.only.'));
+  }
+
+  private isInstance(id: string) {
+    // the session's document: an open draws its lists before `doc` is set
+    const doc = this.session?.doc ?? this.doc;
+    return !!doc && indexOf(doc).instances.has(id);
+  }
+
+  /** A type's entity and compartment, by their labels: the hover label's second line (prism.md §4.6). */
+  private describe(t: PlacementType): string | undefined {
+    const doc = this.session?.doc ?? this.doc;
+    if (!doc) return undefined;
+    const index = indexOf(doc);
+    const parts = [index.entities.get(t.entity), index.compartments.get(t.compartment)].filter(Boolean);
+    return parts.length ? parts.join(' · ') : undefined;
   }
 
   get issues(): readonly Issue[] {
@@ -202,12 +369,14 @@ export class MesoDocumentModel {
       : [];
     this.saved = value === this.saved ? this.saved : saved;
     if (!this.held.some((h) => h.doc === saved.doc)) this.hold();
+    this.changed.next();
   }
 
   /** Lets go of the session (the owner's viewer goes); the placements go with the plugin. */
   dispose() {
     this.session?.dispose();
     this.session = undefined;
+    this.ev.dispose();
   }
 
   private newSession(doc: MesoViewSpecDoc) {
@@ -225,6 +394,7 @@ export class MesoDocumentModel {
     this.saved = this.doc ? savedOf(this.doc, this.url, this.shown) : undefined;
     this.hold();
     this.dirty = false;
+    this.changed.next();
     return out;
   }
 
@@ -246,6 +416,7 @@ export class MesoDocumentModel {
     this.saved = undefined;
     this.restoreIssues = [];
     this.adapter.forget();
+    this.changed.next();
   }
 
   /**
@@ -287,6 +458,95 @@ export class MesoDocumentModel {
     }
     return this.options.fetchText?.(href);
   }
+}
+
+/** The view looks are written to: the one the runtime shows (`session.view ?? views[0]`, prism.md §4.4). */
+function shownView(doc: MesoViewSpecDoc) {
+  const id = doc.session?.view;
+  return (id !== undefined ? doc.views?.find((v) => v.id === id) : undefined) ?? doc.views?.[0];
+}
+
+/**
+ * A look patch on the shown view: `edit` gives the ops on its looks and the looks to insert last, with fresh ids from
+ * `next(prefix)` (`l.eye.3`: past every id of the document's looks). No view: `v.prism` with the looks. Undefined when
+ * there is nothing to do.
+ */
+function lookPatch(
+  doc: MesoViewSpecDoc,
+  edit: (looks: readonly Look[], next: (prefix: string) => string) => { ops: Op[]; add: Look[] },
+): Patch | undefined {
+  const view = shownView(doc);
+  const taken = new Set<string>();
+  for (const v of doc.views ?? []) for (const l of v.looks ?? []) if (l.id) taken.add(l.id);
+  const counters = new Map<string, number>();
+  const next = (prefix: string) => {
+    let n = counters.get(prefix) ?? 1;
+    while (taken.has(`${prefix}${n}`)) n++;
+    counters.set(prefix, n + 1);
+    taken.add(`${prefix}${n}`);
+    return `${prefix}${n}`;
+  };
+  const { ops, add } = edit(view?.looks ?? [], next);
+  if (view)
+    for (const node of add)
+      ops.push({ op: 'insert', node: { ...node } as PatchNode, parent: view.id, list: 'looks', after: 'last' });
+  else if (add.length) {
+    ops.push({
+      op: 'insert',
+      node: { id: PrismView, label: 'Edited in Prism', looks: add },
+      parent: 'views',
+      after: 'last',
+    });
+  }
+  return ops.length ? { format: PatchFormat, ops } : undefined;
+}
+
+/** The view the first look edit makes when a document has none (prism.md §4.4). */
+export const PrismView = 'v.prism';
+
+/** A document's labels by id (entities and compartments, superstructures' too) and its instances: made once a document. */
+const Indexes = new WeakMap<MesoViewSpecDoc, DocumentIndex>();
+interface DocumentIndex {
+  readonly entities: ReadonlyMap<string, string>;
+  readonly compartments: ReadonlyMap<string, string>;
+  readonly instances: ReadonlySet<string>;
+}
+function indexOf(doc: MesoViewSpecDoc): DocumentIndex {
+  let index = Indexes.get(doc);
+  if (index) return index;
+  const entities = new Map<string, string>();
+  const compartments = new Map<string, string>();
+  for (const ss of doc.superstructures ?? []) {
+    for (const e of ss.entities ?? []) entities.set(e.id, e.label);
+    for (const c of ss.compartments) compartments.set(c.id, c.label);
+  }
+  // the document's own win over a superstructure's of the same id
+  for (const e of doc.entities) entities.set(e.id, e.label);
+  for (const c of doc.compartments) compartments.set(c.id, c.label);
+  index = { entities, compartments, instances: new Set((doc.instances ?? []).map((i) => i.id)) };
+  Indexes.set(doc, index);
+  return index;
+}
+
+/** The list a representation draws (its source: decorated or not), else the list's own data. */
+function drawnList(plugin: PluginContext, ref: string): ParticleList | undefined {
+  const q = StateSelection.Generators.byRef(ref).subtree().ofType(SO.Particle.Representation3D);
+  const repr = plugin.state.data.select(q)[0]?.obj;
+  return (
+    (repr?.data.sourceData as ParticleList | undefined) ??
+    (plugin.state.data.cells.get(ref)?.obj?.data as ParticleList | undefined)
+  );
+}
+
+/** Runs `[s, e, …]` as an ordered set of copy indices: one run a range, else the indices. */
+function runsToSet(runs: readonly number[]): OrderedSet {
+  if (runs.length === 2) return OrderedSet.ofBounds(runs[0], runs[1]);
+  let n = 0;
+  for (let i = 0; i < runs.length; i += 2) n += runs[i + 1] - runs[i];
+  const out = new Int32Array(n);
+  let k = 0;
+  for (let i = 0; i < runs.length; i += 2) for (let j = runs[i]; j < runs[i + 1]; j++) out[k++] = j;
+  return OrderedSet.ofSortedArray(SortedArray.ofSortedArray(out));
 }
 
 /** A revision id for a committed patch. */

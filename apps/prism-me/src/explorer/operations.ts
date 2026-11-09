@@ -243,6 +243,23 @@ export class ExplorerApi extends ApiArea {
     );
   }
 
+  /**
+   * How many lists a MesoViewSpec document drew, following the state tree while watched: the objects leave them out,
+   * so the tree follows this to find the document (its extension loads with it)
+   */
+  documentListsState(): ReadonlyState<number> {
+    const plugin = this.ctx.plugin;
+    return (this.documentLists ??= watchedState(
+      () => {
+        let n = 0;
+        for (const l of plugin.managers.particles.hierarchy.current.lists) if (isDocumentList(l.cell.obj?.data)) n++;
+        return n;
+      },
+      () => plugin.state.data.events.changed,
+    ));
+  }
+  private documentLists?: ReadonlyState<number>;
+
   /** What a node stands for in 3D (empty when nothing) */
   loci(node: NodeRef): Loci {
     return lociOf(this.ctx.plugin, node);
@@ -617,6 +634,13 @@ export class ExplorerApi extends ApiArea {
     return this.ctx.plugin.canvas3dContext?.canvas ?? undefined;
   }
 
+  /** Highlights several loci at once (a MesoViewSpec row's copies over its lists, prism.md §4.6); none: clears */
+  highlightLoci(loci: readonly Loci[]) {
+    const lights = this.ctx.plugin.managers.interactivity.lociHighlights;
+    lights.clearHighlights();
+    for (const l of loci) lights.highlight({ loci: l }, false);
+  }
+
   /** Highlights a node in 3D (none: clears) */
   highlight(node: NodeRef | undefined) {
     const plugin = this.ctx.plugin;
@@ -693,6 +717,8 @@ function sceneObjects(plugin: PluginContext): SceneObject[] {
   }
   for (const l of plugin.managers.particles.hierarchy.current.lists) {
     const data = l.cell.obj?.data;
+    // a MesoViewSpec document's list: not a row, the document's rows are (prism.md §4.1, lists are not rows)
+    if (isDocumentList(data)) continue;
     const model = !!(data?.entityInfo?.size || data?.compartmentInfo?.size);
     out.push({
       ref: l.cell.transform.ref,
@@ -722,6 +748,11 @@ function sceneObjects(plugin: PluginContext): SceneObject[] {
   }
   for (const m of meshes(plugin)) out.push(m);
   return out;
+}
+
+/** A list a MesoViewSpec document drew (`toParticleList`'s source): its rows are the document's */
+export function isDocumentList(data: ParticleList | undefined): boolean {
+  return (data?.sourceData as { kind?: string } | undefined)?.kind === 'meso-view-spec';
 }
 
 /** A slice on a plane (an oblique slice), not along the grid */
@@ -851,7 +882,8 @@ function pickedRow(plugin: PluginContext, picked: StagePicked): PickedNode | und
     }
     case 'particles': {
       const data = plugin.state.data.cells.get(ref)?.obj?.data as ParticleList | undefined;
-      if (!data) return undefined;
+      // a document's copy: its row is the document's (the tree asks its owner first)
+      if (!data || isDocumentList(data)) return undefined;
       const model = !!(data.entityInfo?.size || data.compartmentInfo?.size);
       if (whole) {
         const label = fileLabel(plugin, ref) ?? plugin.state.data.cells.get(ref)!.obj!.label;

@@ -5,9 +5,11 @@
  */
 
 export { irToMolViewSpec } from './mvs-export.js';
-export { isMissingList, MesoPlacements, placementStore, toParticleList } from './particle-list.js';
+export { isMissingList, type ListLabels, MesoPlacements, placementStore, toParticleList } from './particle-list.js';
 export {
+  type AdapterLabels,
   type AdapterViewer,
+  type CopyName,
   type CameraCanvas,
   commitCamera,
   PrismMesoAdapter,
@@ -23,3 +25,16 @@ export {
   type SavedMesoViewSpec,
 } from './document-model.js';
 export { type EditRecord, MesoSession, type SessionOptions } from './session.js';
+export {
+  type Counts,
+  type DocumentGroupBy,
+  DocumentGroupings,
+  type DocumentLooks,
+  type DocumentOutline,
+  type DocumentRow,
+  type DocumentRowKind,
+  documentLooks,
+  documentOutline,
+  documentVisible,
+} from './document-tree.js';
+export type { DocumentTree, MesoViewSpecApi, MesoViewSpecOptions, ReadonlyState } from './extension.js';

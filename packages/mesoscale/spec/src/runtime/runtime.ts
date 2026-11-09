@@ -1136,11 +1136,11 @@ export function deriveView(doc: MesoViewSpecDoc, root: IRNode): IRView {
         visible: true,
       });
   const partial: IRLook[] = [];
-  for (const l of view?.looks ?? []) {
+  for (const [at, l] of (view?.looks ?? []).entries()) {
     const loci = materialize(l.select);
     const props = {
       ...(l.color ? { color: parseInt(l.color.slice(1), 16) } : {}),
-      ...(l.visible !== undefined ? { visible: l.visible } : {}),
+      ...(l.visible !== undefined ? { visible: l.visible, visibleAt: at } : {}),
       ...(l.transparency !== undefined ? { transparency: l.transparency } : {}),
       ...(l.emissive !== undefined ? { emissive: l.emissive } : {}),
       ...(l.representation !== undefined ? { representation: l.representation } : {}),

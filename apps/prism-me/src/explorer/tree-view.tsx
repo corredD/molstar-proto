@@ -107,6 +107,8 @@ export interface TreeRowView {
   readonly tip?: string;
   /** Atoms, particles, entities: faint after the name */
   readonly count?: string;
+  /** The count is short of what was asked (a population's "354 of 506"): in the warning tone */
+  readonly short?: boolean;
   /** Its one color (a dot), where it has one */
   readonly color?: number;
   /** Its eye: whether shown; absent, no eye */
@@ -286,7 +288,7 @@ function TreeRow<R extends TreeRowView>(p: {
             {row.tip}
           </span>
         ) : null}
-        <span class={classes.count}>{row.count ?? ''}</span>
+        <span class={row.short ? `${classes.count} ${classes.short}` : classes.count}>{row.count ?? ''}</span>
         <RowActions row={row} off={off} props={props} />
       </div>
     </div>
