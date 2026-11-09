@@ -94,6 +94,19 @@ async function draw(shift: [number, number]) {
     ValueCell.update(values.uPatch, Vec4.create(1000, Box, Box, 4));
     ValueCell.update(values.uPatchLevels, Vec4.create(0, 0, 0, 1));
     const object = createRenderObject('mesh', values, Mesh.Utils.createRenderableState(props), -1);
+    // a plain mesh added first, behind the square: the patch mesh's vertices not the first drawn (the shift is read by
+    // `vertex_index`, which must count from the patch mesh's own first vertex)
+    const behind = Float32Array.from(positions, (v, i) => (i % 3 === 2 ? -10 : v));
+    const plain = Mesh.create(behind, Uint32Array.of(0, 1, 2, 0, 2, 3), normals, new Float32Array(4), 4, 2);
+    const plainValues = Mesh.Utils.createValues(
+      plain,
+      createIdentityTransform(),
+      LocationIterator(1, 1, 1, () => ({}) as never),
+      { color, size: UniformSizeTheme({}, { value: 1 }) },
+      props,
+    );
+    const plainObject = createRenderObject('mesh', plainValues, Mesh.Utils.createRenderableState(props), -1);
+    canvas.add(Representation.fromRenderObject('plain', plainObject));
     canvas.add(Representation.fromRenderObject('patch', object));
     canvas.requestCameraReset({ durationMs: 0 });
     await plugin.getImageRaw({ width: Size, height: Size });

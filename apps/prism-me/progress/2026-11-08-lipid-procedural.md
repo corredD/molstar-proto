@@ -851,8 +851,12 @@ not committed), then its fix.
 
 Decided this session: the S2 shift lives in each surface's table (two tables a leaflet, one patch texture); the S6 test
 in plugin-headless (graphics has no Dawn context of its own); S4 at x20/x80, not x600 (the control there would count
-billions); the cutter's cap 2^21 triangles. Learned: a closure that is passed or writes doubles allocates a heap number
-each (the selection's 10 kB a view were that, not its arrays); `performance.now()` too.
+billions); the cutter's cap 2^21 triangles. Checked after: the shift is read by `vertex_index`; a standalone mesh draw
+binds each attribute's page by offset and draws with no base vertex (`render-item.ts`), and the patch surfaces are not
+merged: the index is the surface's own (the S6 test now draws a plain mesh first). S2 and X2 are a test and its fix in
+one commit each: their failures were shown on the code before (S2 through a local shim of the old call, X2 against
+HEAD's shader). Learned: a closure that is passed or writes doubles allocates a heap number each (the selection's 10 kB
+a view were that, not its arrays); `performance.now()` too.
 
 ## Round 5, checks (2026-11-09, after the gate closed)
 
