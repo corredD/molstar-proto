@@ -507,11 +507,10 @@ export function LipidMembraneRepresentation(graphics: GraphicsContext | undefine
     },
   };
   // the cutter's lipids, counted on the GPU (the tiles' are `membraneCounts`)
-  return Object.assign(repr, {
-    get cutLipids() {
-      return cutLipids;
-    },
-  });
+  // a getter (`Object.assign` would copy its value of now)
+  return Object.defineProperty(repr, 'cutLipids', { get: () => cutLipids }) as typeof repr & {
+    readonly cutLipids: number;
+  };
 }
 
 export const LipidMembraneParams = {
