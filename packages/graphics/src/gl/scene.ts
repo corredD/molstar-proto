@@ -3,7 +3,6 @@
  *
  * @author Alexander Rose <alexander.rose@weirdbyte.de>
  * @author David Sehnal <david.sehnal@gmail.com>
- * @author Ludovic Autin <autin@scripps.edu>
  */
 
 import type { GraphicsContext } from './context.js';
@@ -123,8 +122,6 @@ interface Scene extends Object3D {
   readonly hasOpaque: boolean;
   /** Is `true` if any primitive renderable has animation enabled */
   readonly hasAnimation: boolean;
-  /** Is `true` if any primitive renderable has a clip object whose cut part is drawn as outlines (`DrawFact.Ghost`) */
-  readonly hasGhosts: boolean;
 }
 
 namespace Scene {
@@ -160,7 +157,7 @@ namespace Scene {
     let opacityAverageDirty = true;
     let transparencyMinDirty = true;
     let hasOpaqueDirty = true;
-    let anyFactsDirty = true;
+    let hasAnimationDirty = true;
 
     let markerAverage = 0;
     let emissiveAverage = 0;
@@ -168,8 +165,7 @@ namespace Scene {
     let opacityAverage = 0;
     let transparencyMin = 0;
     let hasOpaque = false;
-    /** the facts of any visible primitive, OR-ed */
-    let anyFacts = 0;
+    let hasAnimation = false;
 
     const object3d = Object3D.create();
     const { view, position, direction, up } = object3d;
@@ -238,7 +234,7 @@ namespace Scene {
       opacityAverageDirty = true;
       transparencyMinDirty = true;
       hasOpaqueDirty = true;
-      anyFactsDirty = true;
+      hasAnimationDirty = true;
       return true;
     }
 
@@ -288,7 +284,7 @@ namespace Scene {
       opacityAverageDirty = true;
       transparencyMinDirty = true;
       hasOpaqueDirty = true;
-      anyFactsDirty = true;
+      hasAnimationDirty = true;
       return dropped;
     }
 
@@ -309,7 +305,7 @@ namespace Scene {
       opacityAverageDirty = true;
       transparencyMinDirty = true;
       hasOpaqueDirty = true;
-      anyFactsDirty = true;
+      hasAnimationDirty = true;
     }
 
     function syncVisibility() {
@@ -322,7 +318,7 @@ namespace Scene {
         opacityAverageDirty = true;
         transparencyMinDirty = true;
         hasOpaqueDirty = true;
-        anyFactsDirty = true;
+        hasAnimationDirty = true;
         visibleVersion = renderablesTable.visibleVersion;
         return true;
       } else {
@@ -404,15 +400,13 @@ namespace Scene {
       return false;
     }
 
-    function getAnyFacts() {
-      if (anyFactsDirty) {
-        const slots = visiblePrimitiveSlots();
-        const { bits } = primitivesTable;
-        anyFacts = 0;
-        for (let i = 0, il = slots.length; i < il; ++i) anyFacts |= bits[slots[i] * DrawRow.Stride + DrawRow.Facts];
-        anyFactsDirty = false;
+    function calculateHasAnimation() {
+      const slots = visiblePrimitiveSlots();
+      const { bits } = primitivesTable;
+      for (let i = 0, il = slots.length; i < il; ++i) {
+        if (bits[slots[i] * DrawRow.Stride + DrawRow.Facts] & DrawFact.Animated) return true;
       }
-      return anyFacts;
+      return false;
     }
 
     return {
@@ -551,10 +545,11 @@ namespace Scene {
         return hasOpaque;
       },
       get hasAnimation() {
-        return (getAnyFacts() & DrawFact.Animated) !== 0;
-      },
-      get hasGhosts() {
-        return (getAnyFacts() & DrawFact.Ghost) !== 0;
+        if (hasAnimationDirty) {
+          hasAnimation = calculateHasAnimation();
+          hasAnimationDirty = false;
+        }
+        return hasAnimation;
       },
     };
   }
