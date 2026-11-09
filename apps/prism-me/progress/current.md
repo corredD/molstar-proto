@@ -12,10 +12,10 @@ is not built is [../TODO.md](../TODO.md).
   instances). Ran as one session, not as lanes, until 2026-11-08: the review gate runs now, then streaming as its own
   lane. Review gate run 2026-11-08: 14 must-fix and 23 should-fix confirmed, fixed in four `me/mvs-gate-*` branches
   merged back (progress file, Review). Not pushed: Ludo signs off first.
-  - `mesoviewspec-streaming` (`me/mesoviewspec-streaming` from `me/mesoviewspec`, worktree
-    `~/prism-me-lanes/mesoviewspec-streaming`, Storybook port 6008, [brief](2026-11-08-mesoviewspec-streaming.md) on its
-    branch): David's "streaming concepts": manifest of tiles and levels, provider, budget, camera-driven coarse-first;
-    R5 measured. Sonnet lane, design step on Opus.
+  - `mesoviewspec-streaming`: done, merged into `me/mesoviewspec` (56335890c): design.md §6.8, manifest, provider,
+    planner, budget, levels as a runtime concept; R5 measured (keep resident lists ≤ ~100). Gate: 13 findings, 9 fixed.
+  - `mvs-spec-reference` (`me/mvs-spec-reference` from `me/mesoviewspec`, [brief](2026-11-08-mvs-spec-reference.md) on
+    its branch): a Seq\*-style `_spec/` (README, topic files, generated reference, a spec check). Sonnet.
   - `mvs-prism-design`: done, merged into `me/mesoviewspec` (c49e6a236): `packages/mesoscale/_spec/prism.md`, the app
     lanes 0-8 (~3,500 lines) and the questions for Ludo and David (its §11).
   - `mvs-patch` (`me/mvs-patch` from `me/mesoviewspec`, port 6009, [brief](2026-11-08-mvs-patch.md) on its branch):
